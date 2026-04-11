@@ -172,10 +172,10 @@ let b = field_access_base(expr.clone());
 if is_typed_service_call_receiver(&expr, source_index.clone()) {
                 match extract_typed_service_name(&expr, &source_index) {
     Some(svc_name) => service_var_name(svc_name.clone()),
-    None => v2_rt::concat(v2_rt::concat(emit_simple_expr(&b, &target, &source_index), ".".to_string()), emit_ident(f, target.clone())),
+    None => v2_rt::concat(v2_rt::concat(emit_simple_expr(&b, &target, &source_index), ".".to_string()), emit_ident(f.clone(), target.clone())),
 }
             } else {
-                v2_rt::concat(v2_rt::concat(emit_simple_expr(&b, &target, &source_index), ".".to_string()), emit_ident(f, target.clone()))
+                v2_rt::concat(v2_rt::concat(emit_simple_expr(&b, &target, &source_index), ".".to_string()), emit_ident(f.clone(), target.clone()))
             }
 },
     ExprData::ExprStringInterp => {
@@ -188,6 +188,14 @@ if is_typed_service_call_receiver(&expr, source_index.clone()) {
 }),
 }); } __result });
 emit_simple_string_interp(&ps, &target, source_index.clone())
+},
+    ExprData::ExprListLit => {
+            let el_strs = Rc::new({ let mut __result = Vec::new(); for e in expr.children.clone().iter().cloned() { __result.push(emit_simple_expr(&e, &target, &source_index)); } __result });
+v2_rt::concat(v2_rt::concat("[".to_string(), el_strs.join(&", ".to_string())), "]".to_string())
+},
+    ExprData::ExprRecordLit { .. } => {
+            let field_strs = Rc::new({ let mut __result = Vec::new(); for f in expr.children.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat("\"".to_string(), field_init_node_name_at(f.clone(), source_index.clone())), "\": ".to_string()), emit_simple_expr(&field_init_node_value(&f), &target, &source_index))); } __result });
+v2_rt::concat(v2_rt::concat("{".to_string(), field_strs.join(&", ".to_string())), "}".to_string())
 },
     _ => emit_error_expr("unsupported simple expr in test/mock binding".to_string(), target.clone()),
 }

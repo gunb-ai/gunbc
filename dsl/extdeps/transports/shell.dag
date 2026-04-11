@@ -11,6 +11,14 @@
 
 module extdeps.transports.shell
 
+// Process channels: the three outputs of a subprocess.
+// Used in transport `channels` blocks to map output fields to their source.
+// The emitter reads these structurally — no name-based heuristics.
+type ProcessChannel
+  = ExitSuccess     // output.status.success() → Bool
+  | Stdout          // captured stdout → String
+  | Stderr          // captured stderr → String
+
 // Configuration type for shell transport bindings.
 // argv is the command + arguments (POSIX.1-2017 Section 2.9.2).
 // env is additional environment variables (POSIX.1-2017 Section 8.1).

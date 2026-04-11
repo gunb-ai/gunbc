@@ -27,3 +27,11 @@ type VariantEncoding
 type WireContract {
   variant_encoding: VariantEncoding
 }
+
+// Response wire format: how the HTTP body should be deserialized.
+// Declared on operations via `wire_format: text` or `wire_format: json`.
+// The emitter reads this structurally — no type-name heuristics.
+// Default (when not declared) is json, since most REST APIs return JSON.
+type ResponseFormat
+  = TextBody    // response.text().await — raw string body
+  | JsonBody    // response.json().await — parse as structured JSON

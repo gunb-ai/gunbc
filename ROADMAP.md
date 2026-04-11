@@ -55,7 +55,7 @@ LAYER 4: End-to-end (depends on Layer 3)
   Track 10 (extdeps)       🟢 ── independent, data quality
 
 LAYER 5: Thesis completion (depends on Layer 4)
-  Track 13 (single emitter)        🟡 ── depends on Track 2 + 7; coercion dissolves into this
+  Track 13 (single emitter)        🟡 ── depends on Track 2 + 7
   Track 11 (runtime safety)        🟡 ── needs design (refinement types or total ops)
   Track 12 (verification)          🟡 ── depends on Track 5 (need working emission)
 
@@ -66,17 +66,17 @@ LAYER 6: Full vision (depends on Layer 5)
 
 | Track | Thesis tier | Readiness | Blocked on |
 |-------|------------|-----------|-----------|
-| Stream C / Track 8 / 9 | Tier 1 (structural facts) | 🟢 | C1 DONE, S8 Phase 1 DONE |
-| Track 6 | Tier 1 (string dispatch) | 🟢 | AlgebraFieldKind landed (PR #387); child lookup still string-based |
-| **Track 1 (provenance)** | **Tier 1 (CX gate)** | **🟢** | **S1-S6 DONE, C1-C2 DONE; C3-C6 next** |
-| Track 3 (Node.name) | Tier 1 (structural identity) | 🟢 | ~15 n.name reads + authored_name_at fallback (active: quick-owl-889) |
+| Stream C / Track 8 / 9 | Tier 1 (structural facts) | 🟢 | Nothing |
+| Track 6 | Tier 1 (string dispatch) | 🟢 | Nothing |
+| **Track 1 (provenance)** | **Tier 1 (CX gate)** | **🟢** | **S4 in progress** |
+| Track 3 (Node.name) | Tier 1 (structural identity) | 🟢 | Remaining n.name reads |
 | Track 7 (core tables) | Tier 1 (single authority) | 🟢 | Track 9 partially |
 | Track 2 (language spec) | Emission is mechanical | 🟡 | LS-4 borrow model design |
 | Track 4 (codegen) | Emission is mechanical | 🟢 | Track 2 partially |
-| Stream B (clone elision) | Tier 1 (ownership) | 🟢/🟡 | Layer 1 blocked on Track 3; Layer 2 DONE; Layer 3 in review (PR #390) |
-| Track 5 (real program) | End-to-end validation | 🟢 | RE-4 DONE (PR #384); RE-3 still partial (serde gaps) |
+| Stream B (clone elision) | Tier 1 (ownership) | 🟢/🟡 | Layers 1-2 🟢, Layer 3 needs LS-4 |
+| Track 5 (real program) | End-to-end validation | 🟢 | Track 4 |
 | Track 10 (extdeps) | Data quality | 🟢 | Nothing |
-| Track 13 (single emitter + coercion) | Emission is mechanical | 🟡 | Track 2 + 7; coercion infra exists (std/coercion.dag) |
+| Track 13 (single emitter) | Emission is mechanical | 🟡 | Track 2 + 7 |
 | Track 11 (runtime safety) | Tier 2 | 🟡 | Design phase |
 | Track 12 (verification) | Tier 3 | 🟡 | Track 5 |
 | Track 14 (omni-emission) | Omni-emission | 🔴 | Track 13 + vision |
@@ -113,7 +113,7 @@ type TypeBinding {
 
 Every downstream consumer that needs facts beyond the type must
 reconstruct them:
-- **Complexity:** 33 heuristics in annotate_descent_evidence (421 violations)
+- **Complexity:** 33 heuristics in annotate_descent_evidence (424 violations)
 - **Ownership:** string name matching for fold accumulators
 - **Emission:** compensates for upstream information loss (M2)
 - **Core tables:** hand-maintained string-keyed semantic maps
@@ -183,145 +183,59 @@ Bootstrap D ├─ Lane B: Emission ──────────────�
 | Gate | Command | Status |
 |------|---------|--------|
 | Lint | `cargo clippy --workspace -- -D warnings` | GREEN |
-| Tests | `cargo test -p v2-compiler-tests` | GREEN (393 pass) |
+| Tests | `cargo test -p v2-compiler-tests` | GREEN (392 pass) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN |
-| Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 421 measured (checked-in ratchet: 424, non-blocking) |
+| Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 424 (honest, non-blocking) |
 | L1 gate | `scripts/l1-ratchet.sh --check` | GREEN (0, hard gate) |
 | Stage0 freshness | `scripts/check-stage0-freshness.sh` | GREEN (blocking) |
-
----
-
-## Milestones to Gate 1
-
-Four concrete goals, in priority order. Each has a clear done-criterion.
-
-```
-M1: CX gate → 0 violations (currently 421, ratchet 424)
-    Done when: strict_compile_diagnostic_count = 0, gate is blocking
-    How: Stream D parser (-132), body-inferred return contracts (-196),
-         arithmetic refinement (-44), C3-C6 deletion, tokenizer (-22)
-    Remaining ~10 (graph DFS) needs language primitive
-
-M2: Node.name deleted
-    Done when: Node.name field removed, l1-ratchet = 0
-    How: fix authored_name_at fallback, eliminate ~15 remaining reads
-    Active: quick-owl-889
-    Unblocks: Stream B Layer 1 (last-use clone elision)
-
-M3: review.dag runs end-to-end
-    Done when: review.dag compiles, builds, runs live against real APIs
-    How: fix remaining RE-3 serde gaps
-    Mostly done (RE-1/2/4 complete)
-
-M4: Single emitter reads data, never decides
-    Done when: 05_emit_rust/python/go.dag deleted, all emission from specs
-    How: Lane C (coercion = emission, language plugins)
-    Blocked on: M1 + M2 substantially complete
-```
 
 ---
 
 ## Active work: close the model
 
 All active tracks are facets of one problem: the IR doesn't carry
-enough structure. Four parallel streams, plus CX consumer switchover.
+enough structure. Three parallel streams now, one phase after.
 
 ```
-Stream A (provenance)   S1→S2→S3→S4→S5→S6 ─→ C1→C2→C3→C4→C5→C6
-                        ════════════════      ═══════
-                        ALL DONE              C1-C2 DONE; C3-C6 remaining
-
-Stream B (ownership)    Layer 1 (reverted) → Layer 2 (DONE) → Layer 3 (DONE, PR #390)
-                                 │
-                                 └── blocked on Track 3 (binding identity)
-
-Stream C (std/)         C1 DONE   S8 Phase 1 DONE
-
-Stream D (structural parser)    P1 ────────────────── (02_parse.dag + compile.dag only)
+Stream A (provenance)   S1→S2→S3→S4→S5 ─→ C2→C3→C4→C5→C6
+                                                  ↑
+Stream B (ownership)    O1→O2→O3→O4→O5            │  (independent)
+                                                  │
+Stream C (std/)         C1  S8 ───────────────────┘
+                        (both feed into CX consumer)
 ```
 
 **Stream A: Provenance pipeline** (04_infer.dag, 04_env.dag, complexity.dag)
-S1-S6 DONE — binding provenance is set during inference for function
-params (PreservedValue), let-bindings (classified), match arms
-(StrictSubValue), for-each variables (IteratedSubValue), and lambda
-params (IteratedSubValue for fold/map). S7 (callee contracts for
-user-defined HOFs) not started.
-
-C1 DONE — direct SubValueRelation→LoweringTarget bypass (PR #383).
-C2 DONE — annotate_descent reads binding provenance from scope_locals
-(PR #386). Falls back to classify_argument for expression-level
-patterns. C3-C6 (validation, deletion, gate re-enable) are next.
+The critical path. S1-S5 build binding provenance. Then C2-C6 switch
+CX to read it. S6-S7 (lambda provenance) need callee contract design
+and are deferred within this stream.
 
 **Stream B: Clone elision** (ownership.dag, 05_emit_rust.dag)
-Layer 1 (last-use elision) landed then **reverted** (PR #385) — the
-name-keyed emit boundary collapsed distinct bindings. Blocked on
-Track 3 (stable binding identity via InternTable).
-Layer 2 (post-TCO) DONE (PR #387) — identity pass-throughs elided,
-~620 lines of dead reassignment removed from stage0.
-Layer 3 (borrow propagation O6-O9) DONE (PR #390) — eliminates
-535 `.clone()` calls (13,820→13,285).
+Layers 1+2 (O1-O5). Last-use elision and post-TCO ownership.
+**Fully independent** — no dependency on Stream A.
+Layer 3 (O6-O10, borrow propagation) is a separate design phase
+blocked on LS-4.
 
 **Stream C: std/ foundation** (std/induction.dag, std/algebra.dag, std/termination.dag)
-C1 DONE. S8 Phase 1 DONE (DescentEvidence lattice inhabitants).
-Phase 2 blocked on user-defined generic emission.
-
-**Stream D: Structural parser** (02_parse.dag, compile.dag)
-Restructure parser from integer position indexing to list consumption.
-Target: eliminate 132 CX violations (Category B) by construction.
-Design: [src/v2/parser-design.md](src/v2/parser-design.md).
-**Current state:** Phase 0 done (helper interface narrowing in
-02_parse.dag). Phases 1-4 (the structural rewrite) not yet started.
-Touches only parser + compile boundary — no overlap with other streams.
-
-Not in Stream D (separate future PRs):
-- Tokenizer restructuring (22 violations, needs span position design)
-- SubValueRelation → ProgressRelation rename (overlaps Stream A/C)
-
-### CX violation audit (measured 2026-04-11, ratchet is 424)
-
-Local measurement found 421 violations (ratchet set at 424 in
-bootstrap.rs). The violation count breaks into 8 root-cause categories:
-
-| Cat | Root cause | Count | Fix |
-|-----|-----------|------:|-----|
-| A | Node tree descent (children are sub-values) | 159 | Body-inferred return contracts |
-| B | Parser SCC (position advancement) | 132 | **Stream D: structural parser** |
-| C | Emission TCO mutual recursion | 22 | Body-inferred return contracts |
-| D | Inference mutual recursion (list shrinkage) | 15 | Body-inferred return contracts |
-| E | Complexity self-analysis | 17 | Follow-on work |
-| F | Tokenizer (position into bounded string) | 22 | Separate PR (span design needed) |
-| G | Arithmetic descent (`(n-d)/10`) | 44 | Classification refinement in S3 |
-| H | Graph DFS (visited-set termination) | 10 | Deferred (needs worklist primitive) |
-
-**Path to 0:** Stream D (-132) + body inference (-196) + tokenizer
-(-22) + arithmetic (-44) + complexity self-analysis (-17) = -411.
-Remaining ~10 = graph DFS (needs language primitive). Tokenizer and
-rename are separate PRs, not counted in Stream D scope.
+C1 (direct SubValueRelation→LoweringTarget) and S8 (lattice
+inhabitant declarations). Both small, both unblocked. C1 enables
+better bounds when C2 lands. S8 dissolves ad-hoc merge functions.
 
 ### What to start now
 
-| Item | Track/Stream | Files | Blocked on |
-|------|-------------|-------|-----------|
-| C3-C6 (CX validation → deletion → gate) | Stream A | complexity.dag, 04_infer.dag | Nothing (C2 landed) |
-| Stream D Phase 1-4 (parser restructuring) | Stream D | 02_parse.dag, compile.dag | Nothing (design done, PR #389) |
-| S7 (callee contracts for HOFs) | Stream A | 04_infer.dag | Design |
-| Track 3: ~15 n.name reads + fallback fix | Track 3 | 04_infer, 04_env, 04_types | Nothing (active: quick-owl-889) |
+| Stream | Items | Files |
+|--------|-------|-------|
+| A: Provenance infra | S1, S2, S3, S4, S5 | 04_env.dag, 04_infer.dag |
+| B: Clone elision | O1-O5 | ownership.dag, 05_emit_rust.dag |
+| C: std/ foundation | C1, S8 (Phase 1 done, Phase 2 blocked on generic emission) | std/induction.dag, std/algebra.dag, std/termination.dag |
 
-### Active branches and PRs (2026-04-11)
-
-| Branch | What | Lane | Status |
-|--------|------|------|--------|
-| `quick-owl-889` | Track 3: Node.name reads + authored_name_at fallback | A: Inference | Active |
-| ~~`bright-owl-13` (PR #389)~~ | CX violation audit + parser design doc | C: Complexity | Merged |
-| ~~`quick-bee-373` (PR #388)~~ | Track 9 + Track 10 structural modeling | D: DSL Modeling | Merged |
-| ~~`bright-elk-779` (PR #390)~~ | Stream B Layer 3 borrow propagation | B: Emission | Merged |
+Zero file overlap between streams. After Stream A (S1-S5), CX
+consumer items C2-C6 can start (same files as Stream A, sequential).
 
 ### Active workboards
 
 - **CX:** [src/v2/cx-design.md §Workboard](src/v2/cx-design.md)
   — S1-S8 shared, C1-C6 CX-specific, TDD plan, cleanup catalog
-- **Parser:** [src/v2/parser-design.md](src/v2/parser-design.md)
-  — D1-D8 design decisions, target structure, scope
 - **Ownership:** [src/v2/ownership-design.md §Workboard](src/v2/ownership-design.md)
   — O1-O10, violation classes, 3 layers, TDD plan, cleanup catalog
 
@@ -344,10 +258,10 @@ spec-referenced data lookups instead of inline logic.
 
 **LS-4: Ownership — three layers to clone elimination**
 
-Stage0 clone count is actively decreasing. The checked-in ratchet
-is 24,000 (compiler_tests_rust.dag); measured count after Layer 2
-and Layer 3 (PR #390) is ~13,820. The ownership analysis (PR #313)
-computes the facts needed to eliminate most clones.
+Stage0 emits 23,733 `.clone()` calls (~0.479 clones/line). The
+ownership analysis (PR #313) already computes the facts needed to
+eliminate most of them. The gap: the emitter doesn't consume all
+the facts it has.
 
 Conceptual violation classes (design orientation — not yet
 individually measured by the ratchet):
@@ -367,11 +281,11 @@ directional regression indicator, not a precise metric.
 
 Three layers, sequenced by dependency:
 
-| Layer | Size | Blocked on | Impact (est.) | Status |
-|-------|------|-----------|---------------|--------|
-| 1. Last-use elision | 1-2 PRs | Stable binding identity (Track 3) | ~2,000-4,000 clones | Reverted (PR #385) — name-keyed boundary violation |
-| 2. Post-TCO ownership | 1 PR | Nothing | ~620 lines dead reassignment | **DONE** (PR #387) |
-| 3. Borrow propagation | 3-5 PRs | LS-4 design | ~535 clones (first pass) | **DONE** (PR #390) |
+| Layer | Size | Blocked on | Impact (est.) |
+|-------|------|-----------|---------------|
+| 1. Last-use elision | 1-2 PRs | Stable binding identity (Track 3) | ~2,000-4,000 clones |
+| 2. Post-TCO ownership | 1 PR | Nothing | ~500-1,000 clones |
+| 3. Borrow propagation | 3-5 PRs | LS-4 design | ~15,000-18,000 clones |
 
 **Layer 1 (last-use elision):** For each binding with fan-out > 1,
 the last use site moves instead of cloning. The ownership analysis
@@ -379,11 +293,10 @@ has the span data, but threading it through the emit boundary requires
 stable binding identity (Track 3) — name-keyed fact tables collapse
 distinct bindings. Blocked on Track 3.
 
-**Layer 2 (post-TCO ownership): DONE (PR #387).** Investigation
-showed the "TCO zeroes movable set" concern was not a real mechanism
-— branch-aware merge already handles parameter fan-out correctly.
-TCO identity pass-throughs (e.g. `f(tokens: tokens)`) are now elided,
-removing ~620 lines of dead reassignment from stage0.
+**Layer 2 (post-TCO ownership):** TCO-eligible functions currently
+zero the movable set (conservative). Fix: run ownership after TCO
+transformation, not before. Fan-out=1 owned locals in TCO functions
+can then move. Unblocked.
 
 **Layer 3 (borrow propagation — the bulk):** Read-only function
 parameters should be borrowed (`&Rc<T>`) instead of owned (`Rc<T>`).
@@ -418,10 +331,9 @@ Deletion requires declaration-driven identity.
 | source_text_at threading (D6 PR #356, #362) | Mostly done (~20 n.name reads remain) |
 | Migrate accessor callers to `_at` variants (PR #378) | DONE — 109 sites migrated, 13 non-_at defs deleted |
 | Per-file source_index at resolve boundary (PR #378) | DONE — resolve_modules takes Map\<String, NewlineIndex\> |
-| InternTable on parse/compile boundary | DONE (PR #378) — on ParserState and FrontendResult; NOT yet on TypeEnv (threading to infer/emit deferred until first consumer) |
-| Fix `authored_name_at` fallback | In progress (active: quick-owl-889): cross-module span mismatch still falls back to node.name |
-| Remaining ~15 direct n.name reads | In progress (active: quick-owl-889) |
-| Node.name field deletion | Blocked by authored_name_at fallback + remaining direct reads |
+| InternTable as identity consumer | Pending: table exists in FrontendResult; threading to TypeEnv deferred until first real consumer |
+| Fix `authored_name_at` fallback | Blocked: cross-module span mismatch still falls back to node.name |
+| Node.name field deletion | Blocked by authored_name_at fallback + ~15 direct reads |
 
 ### Track 4: Codegen correctness (Lane B)
 
@@ -431,7 +343,7 @@ instead of derived from structural authorities.
 | Item | Status |
 |------|--------|
 | CG-1: Authority consolidation (type rendering, sharing, ownership) | DONE |
-| CG-2: Expression-level gaps (TLC-1..4) | TLC-1/2/3 done, TLC-4 partial |
+| CG-2: Expression-level gaps (TLC-1..4) | DONE (TLC-4: list/record in emit_simple_expr) |
 | CG-3: Parameterization (3 backends → 1 homomorphism) | Phases 1-3 done, 4-6 deferred |
 
 ### Track 5: Real-program emission (Lane B + D)
@@ -443,20 +355,18 @@ First target: `gunbc/tools/review.dag` (PR review agent).
 |------|--------|
 | RE-1: Transport emission fidelity (REST, shell) | DONE (21/21) |
 | RE-2: review.dag compiles (dry-run) | DONE |
-| RE-3: review.dag passes live integration | Partial — builds, dry-runs, reaches GitHub API; serde gaps remain |
-| RE-4: Anthropic REST API end-to-end | DONE (PR #384) — Messages API via REST, claude-sonnet-4-6 default |
+| RE-3: review.dag passes live integration | Partial (auth_source pruning done; shell multi-field + wire format reverted) |
+| RE-4: Anthropic REST API end-to-end | Test added (requires ANTHROPIC_API_KEY) |
 
 ### Track 6: Algebra field dispatch (Lane A)
 
-**Mostly done (PR #387).** `ExprBinOp.algebra_field` and
+**Partially resolved (M8/M9).** `ExprBinOp.algebra_field` and
 `OperatorSpec.algebra_field` now use the structural `AlgebraFieldKind`
-coproduct (defined in `std/syntax.dag`) instead of `String?`. Eight
-variants: `AlgAdd`, `AlgMul`, `AlgReciprocal`, `AlgQuotient`,
-`AlgRemainder`, `AlgCompare`, `AlgMeet`, `AlgJoin`. Dispatch is
-structural. Single-authority data table `algebra_field_entries` in
+coproduct (defined in `std/syntax.dag`) instead of `String?`. Dispatch
+is structural. Single-authority data table `algebra_field_entries` in
 `std/syntax.dag` declares the kind→name mapping.
 
-**Remaining (minor):** Child lookup still goes through `find_child_named`
+**Remaining:** Child lookup still goes through `find_child_named`
 (string). `algebra_field_kind_name` in `04_types.dag` converts back
 to strings for this lookup. The full structural fix requires typed
 child identifiers on algebra Nodes so lookup is by kind, not name.
@@ -477,21 +387,16 @@ These dissolve as types move to `std/` and carry structural facts
 metadata or annotations.
 
 Additional duplication surfaced by review (PR #371, external audit):
-- ~~`emit_rust_default_value`~~ DISSOLVED (PR #377) — reads from
-  `TypeCheckpoint.default_expr` instead of hand-coded type dispatch.
-- ~~`rust_type_map` / `python_type_map` / `go_type_map`~~ DISSOLVED
-  (PR #377) — dead code deleted, all three had zero callers after
-  migration to `*_type_checkpoints`.
+- `emit_rust_default_value` (05_emit_rust.dag) is a hand-written
+  if-forest over type names. `TypeCheckpoint.default_expr` already
+  carries the same defaults. Fix: read from checkpoint data.
+- `rust_type_map` (extdeps/languages/rust/emit.dag) duplicates the
+  primitive mapping in `rust_type_checkpoints`. Same for Go/Python.
+  Fix: derive from TypeCheckpoint only.
 - `go_source_extension` in extdeps/languages/go/emit.dag duplicates
   `go_scaffold.source_file_extension` in std/languages.dag.
 - `keyword_to_name` in 02_parse.dag duplicates the tokenizer keyword
   table. Reconcile to single authority.
-- HashMap vs BTreeMap disagreement: `map_template` in std/languages.dag
-  says `HashMap<{0},{1}>` but `empty_map` in rust/emit.dag uses
-  `BTreeMap::new()`. Pick one, delete the other.
-- `rt_function_registry` mirrors in rust/emit.dag: `rt_functions` and
-  `rt_bridge_function_names` are hand-maintained copies of data already
-  in the registry. Comments acknowledge the debt.
 - CallableOf coverage: `filter`, `any`, `all` now have CallableOf
   in their param_types (PR #379). `sort_by` deferred — its callback
   semantics are unresolved (key-extractor in primitives.dag vs
@@ -539,58 +444,21 @@ described but not structurally modeled in .dag:
 | Encoding lattice | **DONE** — consolidated to `Encoding` in encoding.dag with BoundedLattice meet/join; `ContentEncoding` deleted; `FileClassification` moved to filesystem.dag | — |
 | Stack\<T\> → FreeMonoid | **DONE** — imports algebra.dag; operations aligned to FreeMonoid vocabulary; inhabitation declared | — |
 | User-defined generic emission | Generic functions (T, V, K params) parse and type-check but emit unresolved type variables in Rust | Emitter needs monomorphization or generic Rust output |
-| **Duplicate foundational types** | `AuthScheme` defined in std/cloud.dag (3 variants) AND std/types.dag (4 variants, different payloads) — **actively divergent**. `CloudRuntime` and `WarningPolicy` exact duplicates in both files. | Pick single authority per type, delete the other |
-| **Phantom container types** | `container_type_arity` in std/types.dag lists NonEmptyList and NonEmptySet, but no `type NonEmptyList` or `type NonEmptySet` exists anywhere. Causes `__BUG_NO_PROFILE_*` fabrication fallback. | Either declare the types or remove from metadata tables |
-| Set not composed | Comments say `Set<A>` inhabits BooleanAlgebra but type declaration is opaque | Compose from BooleanAlgebra when generic emission supports it |
-| FermiDepth ad-hoc lattice | `fermi_max`, `fermi_ordinal` etc. implement lattice ops without declaring FermiDepth as BoundedLattice | Track 8 Phase 2 adjacent |
 
 ### Track 10: Extdeps modeling fidelity (Lane D)
 
 Stringly-typed fields that should be structural, surfaced by external
 audit (2026-04-10):
 
-| Item | File | Status |
-|------|------|--------|
-| ~~`GitHubAuthToken.scopes: List<String>`~~ | extdeps/github/github.dag | DONE (PR #387) — uses `List<GitHubScope>` |
-| ~~`ThinkingConfig.type: String`~~ | extdeps/llm/anthropic.dag | DONE (PR #388) — `ThinkingMode = Enabled \| Disabled` |
-| ~~`LlmMessage.content: String`~~ | extdeps/llm/llm.dag | DONE (PR #388) — `List<ContentBlock>` with `TextContent \| ImageContent` |
-| ~~`Gist.files: List<GistFile>`~~ | extdeps/github/gists.dag | DONE (PR #387) — `Map<String, GistFile>` |
-| OpenAI string-path extraction | extdeps/llm/openai.dag | Skipped — compiler-level `from` syntax feature, not extdeps issue |
-| `Gist.owner: String` | extdeps/github/gists.dag | Should be `GitHubUser` — already imported in same file, used structurally in pulls.dag |
-| `Gist.public: Bool` | extdeps/github/gists.dag | `GistVisibility` enum exists but unused; `public` still Bool |
-| ~~Policy defaults in `CloudSecretConfig`~~ | std/types.dag | DONE (PR #388) — dead type deleted; operations define own inputs |
-| ~~`ProjectId` vs `GcpProjectId`~~ | std/types.dag | DONE (PR #388) — renamed to `GcpProjectId`; 5 dead types deleted |
-
-### Coercion (folded into Track 13 — not a separate track)
-
-Coercion is not a separate mechanism — it IS emission. The compiler
-reads a target spec and generates code. Whether that code is "a Rust
-struct" or "a SPICE subcircuit" or "an HTTP client" is determined by
-the spec, not by a separate coercion engine. Maintaining coercion as
-a parallel mechanism would violate "No duplicate representations" and
-"No parallel implementations" (INVARIANTS.md).
-
-**Concept unification (THESIS.md):**
-- Coercion cost = complexity (CX proves bounds on .dag functions)
-- Coercion = emission (target spec → generated code)
-- Target language spec = transport spec (same role, different domain)
-
-**Existing infrastructure** (early form of Track 13 target spec data):
-
-| Component | File | Lines | Status |
-|-----------|------|-------|--------|
-| Shared schema | dsl/std/coercion.dag | 132 | DONE — TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax |
-| Live dispatch | src/v2/coercion.dag | 298 | DONE — 3-level lookup (checkpoint → inhabitant → structural) + test extraction |
-| Rust data | dsl/extdeps/languages/rust/types.dag | 250 | DONE — 8 checkpoints, 5 inhabitants, cast rules |
-| Python data | dsl/extdeps/languages/python/types.dag | 178 | DONE |
-| Go data | dsl/extdeps/languages/go/types.dag | 173 | DONE |
-| Design spec | docs/coercion-design.md | 1,484 | DONE — 5 coercion kinds, resolution algorithm, worked examples |
-| Plugin architecture | src/v2/compiler-laws.md Lane C | ~80 | Design only — single emitter + language plugins |
-
-This dissolves into Track 13 when the single emitter lands: coercion
-rules become .dag functions in `dsl/extdeps/languages/*/coerce.dag`,
-CX proves their bounds automatically, and the language-specific
-emitters (6,857 lines) are deleted.
+| Item | File | Fix |
+|------|------|-----|
+| `GitHubAuthToken.scopes: List<String>` | extdeps/github/github.dag | **Previously done** — uses `GitHubScope` enum |
+| `ThinkingConfig.type: String` | extdeps/llm/anthropic.dag | **DONE** — `ThinkingMode = Enabled \| Disabled` |
+| `LlmMessage.content: String` | extdeps/llm/llm.dag | **DONE** — `List<ContentBlock>` with `TextContent \| ImageContent` |
+| `Gist.files: List<GistFile>` | extdeps/github/gists.dag | **Previously done** — `Map<String, GistFile>` |
+| OpenAI string-path extraction | extdeps/llm/openai.dag | Structural field access (M8) |
+| Policy defaults in `CloudSecretConfig` | std/types.dag | **DONE** — dead type deleted; operations define own inputs |
+| `ProjectId` vs `GcpProjectId` | std/types.dag | **DONE** — renamed to `GcpProjectId`; 5 dead types deleted |
 
 ---
 
@@ -719,7 +587,7 @@ Every function gets a proven asymptotic bound at compile time. Not a
 lint — a structural proof. Grounded in three bounded primitives
 (fold/descend/repeat) and type-derived descent facts.
 
-**Status:** 421 measured violations (checked-in ratchet: 424, non-blocking). The provenance-on-
+**Status:** 424 honest violations (non-blocking). The provenance-on-
 bindings work (Track 1) is the path to 0. Once provenance flows
 through bindings, complexity is a consequence — not an analysis.
 
@@ -794,7 +662,6 @@ Each gate maps to a thesis tier.
 |-----------|------|-------|
 | Provenance on bindings | 0 CX violations, reconstruction code deleted | Track 1 |
 | Complexity gate blocking | CostUnknown = compile error | KF-1 |
-| Coercion completeness | Every .dag→target conversion is a .dag function; fail-closed | Track 13 (coercion = emission) |
 | Language specs modeled | No inline target-language knowledge in emitter | Track 2 |
 | Node.name deleted | l1-ratchet = 0, field deleted | Track 3 |
 | Codegen from structural authority | CG acceptance criteria met | Track 4 |

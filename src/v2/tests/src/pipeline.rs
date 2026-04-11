@@ -5093,6 +5093,49 @@ service test.Api {
     );
 }
 
+// ── BRIDGE 2a: auth_source prunes auth_input from signature ─────────────
+#[test]
+fn auth_source_prunes_auth_input_param() {
+    let source = r#"module prune
+
+import std.types { AuthScheme }
+import std.credentials { CredentialSource }
+
+service test.Api {
+  config {
+    endpoint: "https://api.example.com"
+    auth: Bearer
+    auth_input: api_key
+    auth_source: EnvVar { name: "MY_TOKEN" }
+  }
+  operation GetData {
+    input { api_key: Secret, query: String }
+    output { data: String }
+    transport rest { method: GET, path: "/data" }
+    response {
+      200 => String
+    }
+    mock_response {
+      200 => "ok" "data"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/prune.rs");
+    // api_key should NOT appear as a parameter in the method signature
+    assert!(
+        content.contains("fn get_data(&self, query: String)") || content.contains("fn get_data(&self, query: "),
+        "BRIDGE 2a: expected api_key pruned from signature, got:\n{content}"
+    );
+    // self.auth_token should still be used
+    assert!(
+        content.contains("self.auth_token"),
+        "BRIDGE 2a: expected self.auth_token used for auth, got:\n{content}"
+    );
+}
+
 // ── RE-2: review.dag compiles to Rust ───────────────────────────────────
 // Diagnostic-driven: compile review.dag + imports, write to disk, cargo check.
 // This is the acceptance gate for RE-2.
@@ -5469,6 +5512,49 @@ service test.Svc {
     );
 }
 
+// ── TLC-4: List/record literals in transport body ─────────────────────
+#[test]
+fn emit_simple_expr_handles_list_and_record_in_body() {
+    let source = r#"module tlc4
+
+import std.types { AuthScheme }
+
+service test.Api {
+  config {
+    endpoint: "https://api.example.com"
+    auth: Bearer
+    auth_input: token
+  }
+  operation Send {
+    input { token: Secret, model: String }
+    output { id: Int from "id" }
+    transport rest {
+      method: POST,
+      path: "/send",
+      body: { model: model, items: [{ name: "a" }, { name: "b" }] }
+    }
+    response {
+      200 => Json
+    }
+    mock_response {
+      200 => { id: 1 } "ok"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/tlc4.rs");
+    assert!(
+        content.contains("\"name\": \"a\"") && content.contains("\"name\": \"b\""),
+        "TLC-4: expected nested record literals in transport body, got:\n{content}"
+    );
+    assert!(
+        content.contains("[{") || content.contains("[ {"),
+        "TLC-4: expected list literal wrapping records, got:\n{content}"
+    );
+}
+
 // ── RE-1d: Header auth variant ─────────────────────────────────────────
 #[test]
 fn rest_emit_uses_header_auth() {
@@ -5780,6 +5866,96 @@ func ask_rest(api_key: Secret, prompt: String) -> String {
     assert!(
         content.contains("Command::new") && content.contains("client.post"),
         "RE-5: expected both shell Command and REST client in emitted code, got:\n{content}"
+    );
+}
+
+// ── RE-4: Live Anthropic API integration ────────────────────────────────
+// Compiles a minimal Anthropic .dag program, builds it, calls the real API.
+// Requires ANTHROPIC_API_KEY in the environment.
+#[test]
+#[ignore] // Expensive: builds binary, calls real Anthropic API
+fn anthropic_live_e2e() {
+    if std::env::var("ANTHROPIC_API_KEY").is_err() {
+        eprintln!("Skipping live test: ANTHROPIC_API_KEY not set");
+        return;
+    }
+
+    // Compile anthropic.dag (the extdep) to get the service definition
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/llm/anthropic.dag");
+    let source = std::fs::read_to_string(&source_path)
+        .expect("failed to read anthropic.dag");
+
+    let result = compile_dag_named(
+        "dsl/extdeps/llm/anthropic.dag",
+        &source,
+        RenderTarget::Rust,
+    );
+
+    let hard_diags: Vec<_> = diagnostic_messages(&result)
+        .into_iter()
+        .filter(|d| !d.contains("complexity:"))
+        .collect();
+    assert!(
+        hard_diags.is_empty(),
+        "RE-4 live: anthropic.dag has hard diagnostics:\n{}",
+        hard_diags.join("\n")
+    );
+    assert!(
+        !result.files.is_empty(),
+        "RE-4 live: anthropic.dag produced no emitted files"
+    );
+
+    // Write files to temp dir
+    let out_dir = std::env::temp_dir().join("v2-re4-live");
+    let _ = std::fs::remove_dir_all(&out_dir);
+    std::fs::create_dir_all(&out_dir).expect("failed to create temp dir");
+
+    for file in result.files.iter() {
+        let file_path = out_dir.join(&file.path);
+        if let Some(parent) = file_path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+        std::fs::write(&file_path, &file.content)
+            .unwrap_or_else(|e| panic!("failed to write {}: {}", file.path, e));
+    }
+
+    // Build
+    let build = std::process::Command::new("cargo")
+        .arg("build")
+        .current_dir(&out_dir)
+        .env("CARGO_BUILD_JOBS", "2")
+        .output()
+        .expect("failed to run cargo build");
+
+    if !build.status.success() {
+        let stderr = String::from_utf8_lossy(&build.stderr);
+        panic!("RE-4 live: cargo build failed:\n{}", stderr);
+    }
+
+    // Run: call Messages operation with minimal prompt
+    let binary_path = out_dir.join("target/debug/extdeps-llm-anthropic");
+    let run = std::process::Command::new(&binary_path)
+        .arg("messages")
+        .arg("--model").arg("claude-haiku-4-5-20251001")
+        .arg("--messages").arg(r#"[{"role": "user", "content": "Say hello in exactly 3 words."}]"#)
+        .arg("--max-tokens").arg("50")
+        .env("ANTHROPIC_API_KEY", std::env::var("ANTHROPIC_API_KEY").unwrap())
+        .output()
+        .expect("failed to run binary");
+
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    let stderr = String::from_utf8_lossy(&run.stderr);
+
+    assert!(
+        run.status.success(),
+        "RE-4 live: binary exited with error:\nstdout: {}\nstderr: {}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.trim().is_empty(),
+        "RE-4 live: expected non-empty response from Anthropic API, got empty.\nstderr: {}",
+        stderr
     );
 }
 
