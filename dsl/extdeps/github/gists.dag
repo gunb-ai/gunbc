@@ -28,7 +28,7 @@ type Gist {
   id: String
   description: String?
   public: Bool
-  files: List<GistFile>
+  files: Map<String, GistFile>
   owner: String
   created_at: Timestamp
   updated_at: Timestamp

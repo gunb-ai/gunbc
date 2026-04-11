@@ -127,14 +127,12 @@ let __tco_2 = next_scope;
 let __tco_3 = v2_rt::rc_list_push(typed_stmts, stmt_typed.clone());
 let __tco_4 = v2_rt::rc_list_push(diag_chunks, stmt_diags);
 let __tco_5 = stmt_rt.clone();
-let __tco_6 = expected;
 remaining = __tco_0;
 remaining_count = __tco_1;
 scope = __tco_2;
 typed_stmts = __tco_3;
 diag_chunks = __tco_4;
 last_type = __tco_5;
-expected = __tco_6;
 continue;
 } },
 }
@@ -276,32 +274,18 @@ Rc::new(InferScopeComponents {
         });
 {
             let __tco_0 = Rc::new(remaining.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = parent_index;
-let __tco_2 = env;
-let __tco_3 = parent_result.func_sigs.clone();
-let __tco_4 = parent_result.svc_registry.clone();
-let __tco_5 = parent_result.svc_locals.clone();
+let __tco_1 = parent_result.func_sigs.clone();
+let __tco_2 = parent_result.svc_registry.clone();
+let __tco_3 = parent_result.svc_locals.clone();
 remaining = __tco_0;
-parent_index = __tco_1;
-env = __tco_2;
-func_sigs = __tco_3;
-svc_registry = __tco_4;
-svc_locals = __tco_5;
+func_sigs = __tco_1;
+svc_registry = __tco_2;
+svc_locals = __tco_3;
 continue;
 } },
     None => { {
             let __tco_0 = Rc::new(remaining.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = parent_index;
-let __tco_2 = env;
-let __tco_3 = func_sigs;
-let __tco_4 = svc_registry;
-let __tco_5 = svc_locals;
 remaining = __tco_0;
-parent_index = __tco_1;
-env = __tco_2;
-func_sigs = __tco_3;
-svc_registry = __tco_4;
-svc_locals = __tco_5;
 continue;
 } },
 } },
@@ -2659,9 +2643,7 @@ let is_collection_preserving = (((((inner_mname.clone().as_str() == "enumerate".
 if is_collection_preserving {
             {
                 let __tco_0 = method_receiver(expr);
-let __tco_1 = ctx;
 expr = __tco_0;
-ctx = __tco_1;
 continue;
 }
 } else {
@@ -5245,18 +5227,12 @@ let __tco_1 = Rc::new(TypeEnv {
     inductive_fields: env.inductive_fields.clone(),
     source_index: env.source_index.clone(),
 });
-let __tco_2 = module_name;
-let __tco_3 = v2_rt::concat(diagnostics, ready_accum.diagnostics.clone());
-let __tco_4 = local_names;
-let __tco_5 = deps_map;
-let __tco_6 = (fuel - 1);
+let __tco_2 = v2_rt::concat(diagnostics, ready_accum.diagnostics.clone());
+let __tco_3 = (fuel - 1);
 remaining = __tco_0;
 env = __tco_1;
-module_name = __tco_2;
-diagnostics = __tco_3;
-local_names = __tco_4;
-deps_map = __tco_5;
-fuel = __tco_6;
+diagnostics = __tco_2;
+fuel = __tco_3;
 continue;
 }
 }
@@ -5363,13 +5339,11 @@ let __tco_1 = v2_rt::rc_list_push(modules, typed.clone());
 let __tco_2 = v2_rt::rc_map_insert(module_index, typed.module.clone().name.clone(), typed.clone());
 let __tco_3 = v2_rt::rc_map_merge(item_registry, typed.item_registry.clone());
 let __tco_4 = v2_rt::rc_list_push(v2_rt::rc_list_push(diag_chunks, parent_result.diagnostics.clone()), tc_diags);
-let __tco_5 = source_indices;
 remaining = __tco_0;
 modules = __tco_1;
 module_index = __tco_2;
 item_registry = __tco_3;
 diag_chunks = __tco_4;
-source_indices = __tco_5;
 continue;
 } },
 }

@@ -95,7 +95,7 @@ aggregates via scope-blind string matching (see pipeline.rs).
 | Class | What | Root cause | Measured by |
 |-------|------|------------|-------------|
 | V1: Last-use clone | Fan-out > 1, last use clones when it could move | Emitter doesn't track which use is last | `movable_but_cloned` (conflated with V2) |
-| V2: TCO-gated move | Fan-out = 1 + owned, but TCO gate zeroes movable set | TCO runs before ownership | `movable_but_cloned` (conflated with V1) |
+| V2: TCO-gated move | Fan-out = 1 + owned, but TCO gate zeroes movable set | TCO runs before ownership | `movable_but_cloned` (conflated with V1) -- **0 in practice** (branch merge handles correctly) |
 | V3: Fold fallback | Proof says eligible, emitter emits fallback anyway | Emitter doesn't trust proof | `try_unwrap_fallbacks` |
 | V4: Read-as-clone | Read edge emitted as `.clone()` when `&x` suffices | No borrow model in LanguageSpec | Not yet measured |
 
@@ -104,7 +104,7 @@ aggregates via scope-blind string matching (see pipeline.rs).
 | Layer | Size | Blocked on | Impact (est.) |
 |-------|------|-----------|---------------|
 | 1. Last-use elision | 1-2 PRs | Nothing | ~2,000-4,000 of 23,733 clones |
-| 2. Post-TCO ownership | 1 PR | Nothing | ~500-1,000 clones |
+| 2. Post-TCO ownership | 1 PR | Nothing | ~0 clones (V2 resolved by branch merge; emitter identity elision done) |
 | 3. Borrow propagation (LS-4) | 3-5 PRs | LanguageSpec design | ~15,000-18,000 clones |
 
 ---
@@ -130,12 +130,27 @@ facts can flow through EmitGraphInfo without lossy name collisions.
 | O2 | Emitter skips `.clone()` on last use of fan-out > 1 binding | Needs stable binding identity at emit boundary | — | Blocked on Track 3 |
 | O3 | V1 ratchet at 0 for focused test programs | Test: `count_ownership_violations` V1 = 0 | — | Not started |
 
-### Layer 2: Post-TCO ownership (unblocked)
+### Layer 2: Post-TCO ownership (resolved)
+
+V2 as originally conceived ("TCO gate zeroes movable set") does not
+manifest in practice. The branch-aware merge in ownership analysis
+already computes correct fan-out for TCO functions:
+
+- Parameters only threaded through self-calls (not used in body)
+  already have fan-out=1 and ARE movable. No V2 violation.
+- Parameters used in body AND self-call genuinely have fan-out>=2.
+  The clone is needed because Rust's loop semantics require the
+  value for both the body use and the next-iteration use.
+
+**Done:** TCO identity pass-through elision in the emitter (PR TBD).
+Self-calls like `f(tokens: tokens, state: new_state)` now skip the
+`tokens = tokens` reassignment, reducing generated code size. This
+does not change clone count but removes dead code from TCO loops.
 
 | # | Item | Test | Cleanup target | Status |
 |---|------|------|---------------|--------|
-| O4 | Run ownership analysis AFTER TCO transformation | Test: TCO-eligible function with fan-out=1 owned local produces move, not clone | TCO movable-set zeroing logic | Not started |
-| O5 | V2 ratchet at 0 for focused test programs | Test: `count_ownership_violations` V2 = 0 | — | Not started |
+| O4 | Skip identity pass-through in TCO reassignment | Test: TCO function with pass-through param has no `param = param` reassignment | Redundant `__tco_N = param; param = __tco_N;` lines | Done |
+| O5 | V2 ratchet at 0 for focused test programs | Test: `count_ownership_violations` V2 = 0 | — | N/A (V2 = 0 by construction) |
 
 ### Layer 3: Borrow propagation (needs LS-4 design)
 

@@ -64,6 +64,8 @@ type FunctionCall {
   arguments: String
 }
 
+// OpenAI tool call: wire shape requires {"type": "function", ...}.
+// Single-value discriminant, but the field must be present for API fidelity.
 type ToolCall {
   id: String
   type: String

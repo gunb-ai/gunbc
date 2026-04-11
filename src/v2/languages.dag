@@ -18,6 +18,7 @@ import v2.std.core {
 import std.syntax {
   ItemForm, ItemFormKind, FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm,
   OperatorSpec, SyntaxSpec,
+  AlgebraFieldKind,
   BodyKind, ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ServiceBody, ResourceBody
 }
@@ -634,7 +635,7 @@ fn target_operators(target: RenderTarget) -> List<OperatorSpec> {
 // Type-aware: when algebra_field is provided, prefers specs matching that field.
 // Falls back to unconstrained specs (algebra_field: none) for languages like
 // Go/Rust where a single operator handles both int and float division.
-fn binop_symbol(target: RenderTarget, op: BinOp, algebra_field: String?) -> String? {
+fn binop_symbol(target: RenderTarget, op: BinOp, algebra_field: AlgebraFieldKind?) -> String? {
   let ops = target_operators(target: target)
   let op_matching = ops |> filter(spec => match spec.binop {
     Some { value: b } => b == op

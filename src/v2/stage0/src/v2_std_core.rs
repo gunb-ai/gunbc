@@ -7,9 +7,10 @@ use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
 pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan, kernel_type_set, is_kernel_type, container_type_arity, is_container_type, container_expected_arity};
-pub use crate::std_syntax::{BinOp, LiteralValue};
+pub use crate::std_syntax::{BinOp, LiteralValue, AlgebraFieldKind};
 use crate::std_syntax::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce};
 use crate::std_syntax::LiteralValue::{LitStr, LitInt, LitFloat, LitBool, LitNull};
+use crate::std_syntax::AlgebraFieldKind::{AlgAdd, AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin};
 pub use crate::std_algebra::{CollectionSizeEffect, CostShape, AlgebraFieldTemplate};
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::CostShape::*;
@@ -253,7 +254,7 @@ pub enum ExprData {
     ExprListLit,
     ExprBinOp {
         op: BinOp,
-        algebra_field: Option<String>,
+        algebra_field: Option<AlgebraFieldKind>,
     },
     ExprUnaryOp {
         op: UnaryOpKind,

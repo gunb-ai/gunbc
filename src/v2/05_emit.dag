@@ -33,7 +33,7 @@ import v2.std.core {
   StringPart, Text, Interpolation,
   LiteralValue,
   TextFile, SourceSpan,
-  BinOp, UnaryOpKind, NullCoalesce,
+  BinOp, UnaryOpKind, NullCoalesce, AlgebraFieldKind,
   DeclaredFuncSig,
   lambda_param_names_at, record_lit_type_name_at,
   arm_body, arm_pattern, arm_guard,
@@ -874,7 +874,7 @@ fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
 
 // Operator symbol lookup — reads from per-language OperatorSpec in
 // extdeps/languages/*/syntax.dag. Type-aware: matches algebra_field when present.
-fn emit_bin_op_symbol(op: BinOp, target: RenderTarget, algebra_field: String?) -> String {
+fn emit_bin_op_symbol(op: BinOp, target: RenderTarget, algebra_field: AlgebraFieldKind?) -> String {
   match binop_symbol(target: target, op: op, algebra_field: algebra_field) {
     Some { value: sym } => sym
     None => emit_error_expr(message: "missing OperatorSpec for BinOp in target language", target: target)
@@ -2240,11 +2240,32 @@ fn emit_typed_first_arg_shared(args: List<Node>, target: RenderTarget, recurse: 
   }
 }
 
-// Shared TCO reassign — renders arg values and delegates to shared_tco_reassign.
+// Check if a TCO self-call argument is an identity pass-through: `f(param: param)`.
+// When the arg is ExprVar with the same name as the corresponding param, the
+// reassignment `let __tco = param; param = __tco;` is a no-op and can be skipped.
+// Shared across all backends — target-agnostic semantic fact.
+fn is_tco_identity_passthrough(arg_val: Node, param_name: String, si: NewlineIndex?) -> Bool {
+  match arg_val.expr_data {
+    ExprVar { binding_kind: _ } => expr_var_name_at(texpr: arg_val, source_index: si) == param_name
+    _ => false
+  }
+}
+
+// Shared TCO reassign — filters identity pass-throughs, renders arg values,
+// and delegates to shared_tco_reassign.
 fn emit_typed_tco_reassign_shared(args: List<Node>, params: List<Node>,
     target: RenderTarget, recurse: fn(Node) -> String, source_index: NewlineIndex?) -> String {
-  let ordered_args = args |> map(a => recurse(arg_value(n: a)))
-  let param_names = params |> map(p => emit_ident(name: param_node_name_at(n: p, source_index: source_index), target: target))
+  let arg_values = args |> map(a => arg_value(n: a))
+  // Filter out identity pass-throughs: `f(param: param)` → no-op reassignment.
+  let pairs = params |> enumerate
+    |> filter(pair =>
+      let pname = param_node_name_at(n: pair.second, source_index: source_index)
+      let av = match arg_values |> skip(pair.first) |> first { Some { value: v } => v  None => pair.second }
+      !is_tco_identity_passthrough(arg_val: av, param_name: pname, si: source_index))
+  let filtered_arg_values = pairs
+    |> map(pair => match arg_values |> skip(pair.first) |> first { Some { value: v } => v  None => pair.second })
+  let ordered_args = filtered_arg_values |> map(av => recurse(av))
+  let param_names = pairs |> map(pair => emit_ident(name: param_node_name_at(n: pair.second, source_index: source_index), target: target))
   shared_tco_reassign(ordered_args: ordered_args, param_names: param_names, spec: language_spec(target: target))
 }
 

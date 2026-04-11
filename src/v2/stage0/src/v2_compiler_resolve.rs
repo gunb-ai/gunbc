@@ -369,13 +369,11 @@ let new_zero = Rc::new({ let mut __sorted: Vec<_> = Rc::new(v2_rt::map_keys(&new
             let __tco_0 = new_zero;
 let __tco_1 = batch_result.sorted.clone();
 let __tco_2 = batch_result.in_degree_map.clone();
-let __tco_3 = adjacency;
-let __tco_4 = (fuel - 1);
+let __tco_3 = (fuel - 1);
 queue = __tco_0;
 sorted = __tco_1;
 in_degree_map = __tco_2;
-adjacency = __tco_3;
-fuel = __tco_4;
+fuel = __tco_3;
 continue;
 }
 }

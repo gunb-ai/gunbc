@@ -10,6 +10,7 @@ use BinOp::*;
 use LiteralValue::*;
 use BodyKind::*;
 use ItemFormKind::*;
+use AlgebraFieldKind::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -83,13 +84,65 @@ pub struct ItemForm {
     pub body_kind: BodyKind,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum AlgebraFieldKind {
+    AlgAdd,
+    AlgMul,
+    AlgReciprocal,
+    AlgQuotient,
+    AlgRemainder,
+    AlgCompare,
+    AlgMeet,
+    AlgJoin,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AlgebraFieldEntry {
+    pub kind: AlgebraFieldKind,
+    pub field_name: String,
+}
+
+pub fn algebra_field_entries() -> Rc<Vec<Rc<AlgebraFieldEntry>>> {
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<AlgebraFieldEntry>>> = {
+            Rc::new(vec![Rc::new(AlgebraFieldEntry {
+    kind: AlgebraFieldKind::AlgAdd,
+    field_name: "add".to_string(),
+}), Rc::new(AlgebraFieldEntry {
+    kind: AlgebraFieldKind::AlgMul,
+    field_name: "mul".to_string(),
+}), Rc::new(AlgebraFieldEntry {
+    kind: AlgebraFieldKind::AlgReciprocal,
+    field_name: "reciprocal".to_string(),
+}), Rc::new(AlgebraFieldEntry {
+    kind: AlgebraFieldKind::AlgQuotient,
+    field_name: "quotient".to_string(),
+}), Rc::new(AlgebraFieldEntry {
+    kind: AlgebraFieldKind::AlgRemainder,
+    field_name: "remainder".to_string(),
+}), Rc::new(AlgebraFieldEntry {
+    kind: AlgebraFieldKind::AlgCompare,
+    field_name: "compare".to_string(),
+}), Rc::new(AlgebraFieldEntry {
+    kind: AlgebraFieldKind::AlgMeet,
+    field_name: "meet".to_string(),
+}), Rc::new(AlgebraFieldEntry {
+    kind: AlgebraFieldKind::AlgJoin,
+    field_name: "join".to_string(),
+})])
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OperatorSpec {
     pub symbol: String,
     pub left_bp: i64,
     pub right_bp: i64,
     pub binop: Option<BinOp>,
-    pub algebra_field: Option<String>,
+    pub algebra_field: Option<AlgebraFieldKind>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

@@ -37,7 +37,7 @@ type Repository {
 
 type GitHubAuthToken {
   token: Secret
-  scopes: List<String>
+  scopes: List<GitHubScope>
   expires_at: Timestamp?
 }
 
