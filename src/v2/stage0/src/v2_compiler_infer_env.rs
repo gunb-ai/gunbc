@@ -73,12 +73,12 @@ pub fn put_inductive_field(fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>
     Some(fs) => fs.clone(),
     None => Rc::new(vec![]),
 };
-v2_rt::rc_map_insert(fields, type_name.clone(), v2_rt::concat(existing, Rc::new(vec![Rc::new(InductiveField {
+v2_rt::rc_map_insert(fields.clone(), type_name.clone(), v2_rt::concat(existing, Rc::new(vec![Rc::new(InductiveField {
     type_name: type_name.clone(),
     variant_name: variant_name,
     field_name: field_name,
     shape: shape,
-    element_type: type_name,
+    element_type: type_name.clone(),
 })])))
 }
 }
@@ -89,8 +89,8 @@ pub fn put_inductive_field_cross(fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveF
     Some(fs) => fs.clone(),
     None => Rc::new(vec![]),
 };
-v2_rt::rc_map_insert(fields, type_name.clone(), v2_rt::concat(existing, Rc::new(vec![Rc::new(InductiveField {
-    type_name: type_name,
+v2_rt::rc_map_insert(fields.clone(), type_name.clone(), v2_rt::concat(existing, Rc::new(vec![Rc::new(InductiveField {
+    type_name: type_name.clone(),
     variant_name: variant_name,
     field_name: field_name,
     shape: shape,
@@ -128,7 +128,7 @@ pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
 let merged_recursive = envs.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc.clone(), env.recursive_types.clone()));
 let merged_recursive_set = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.recursive_type_set.clone()));
 let merged_inductive_fields = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, env: Rc<TypeEnv>| merge_inductive_fields(acc.clone(), env.inductive_fields.clone()));
-let source_index = envs.iter().cloned().fold(None, |acc: _, env: Rc<TypeEnv>| if (env.source_index.clone() != None) {
+let source_index = envs.clone().iter().cloned().fold(None, |acc: _, env: Rc<TypeEnv>| if (env.source_index.clone() != None) {
             env.source_index.clone()
         } else {
             acc.clone()

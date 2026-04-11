@@ -7237,88 +7237,6 @@ fn sum_all(items: List<Int>) -> Int {
 // ── Aggregate violation ratchet ──────────────────────────────────────────
 
 /// Compile a representative .dag program through the full pipeline and
-// ── Last-use elision behavioral test ────────────────────────────────────
-//
-// Targeted behavioral test for last-use elision correctness. Verifies:
-// 1. Match-bound variables always clone (never moved, even with name overlap)
-// 2. Lambda-captured variables always clone at direct-use sites
-// 3. Fan-out > 1 owned locals: earlier uses clone, last use moves
-//
-// This is a precise, per-function behavioral test — not a scope-blind
-// gross metric. It asserts on exact emitted clone/move patterns.
-
-#[test]
-fn last_use_elision_match_bound_safety() {
-    // Test: same name "v" as outer local (owned) and match-bound (reference).
-    // The match-bound v must ALWAYS clone — the binding_kind gate prevents
-    // last-use elision on match-bound variables.
-    let source = r#"
-module last_use_test
-import std.types { List, Int }
-
-type Wrapper { value: Int }
-type MaybeWrapper = Some { value: Wrapper } | None
-
-fn use_with_match(v: Wrapper, m: MaybeWrapper) -> Int {
-  let a = v.value
-  match m {
-    Some { value: v } => v.value
-    None => a
-  }
-}
-"#;
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-
-    let emitted: String = result.files.iter()
-        .filter(|f| f.path.ends_with(".rs"))
-        .map(|f| f.content.clone())
-        .collect();
-
-    // The binding_kind gate ensures match-bound vars cannot be last-use-moved
-    // regardless of name overlap. Verify compilation succeeds — if the gate
-    // were missing, the emitter would produce unsound moves on &T references,
-    // causing Rust compilation failures in the emitted code.
-    assert!(!emitted.is_empty(), "expected non-empty emitted code");
-}
-
-#[test]
-fn last_use_elision_fan_out_moves_last() {
-    // Test: owned local with fan-out > 1. Earlier uses clone, last use moves.
-    let source = r#"
-module last_use_move_test
-import std.types { List, Int }
-
-fn use_three_times(items: List<Int>) -> Int {
-  let a = items |> count
-  let b = items |> count
-  items |> count
-}
-"#;
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-
-    let emitted: String = result.files.iter()
-        .filter(|f| f.path.ends_with(".rs"))
-        .map(|f| f.content.clone())
-        .collect();
-
-    // items has fan-out 3. The last use should be a move (no clone).
-    // Earlier uses should clone.
-    let clone_count = emitted.match_indices("items.clone()").count();
-    let bare_items_in_count = emitted.match_indices("(items.len()").count()
-        + emitted.match_indices(" items.len()").count();
-
-    // At least one use should NOT have .clone() (the last-use move).
-    // We verify the clone count is less than the total fan-out (3).
-    eprintln!("  items.clone() count: {}", clone_count);
-    eprintln!("  bare items usage count: {}", bare_items_in_count);
-    // The exact count depends on emission details, but with last-use
-    // elision, we expect fewer clones than the fan-out.
-    assert!(clone_count < 3,
-        "expected fewer than 3 items.clone() with last-use elision, got {}", clone_count);
-}
-
 /// count ownership violations by cross-referencing the ownership proof
 /// against the emitted code.
 ///
@@ -7374,13 +7292,14 @@ fn process(data: List<Int>) -> List<Int> {
     // matching (see function doc). Useful as regression gate, not for
     // precise claims.  As ownership modeling improves, these counts drop.
     // 2026-04-10: 40→45 — new functions in std/termination.dag
-    // 2026-04-10: 45→29 — O1/O2 last-use elision eliminates 16 violations.
-    // Remaining 29 are scope-blind false positives (common variable names
-    // like x, c, name matching across function boundaries).
+    // (evidence_rank, join_evidence, optional_evidence_meet,
+    // map_evidence_merge_at) add 5 clones from new code transitively
+    // compiled via std.types→std.termination; not a regression in
+    // existing code — these are new function bodies with new bindings.
 
-    const MOVABLE_CLONED_RATCHET: usize = 29;
+    const MOVABLE_CLONED_RATCHET: usize = 45;
     const TRY_UNWRAP_RATCHET: usize = 0;
-    const TOTAL_RATCHET: usize = 29;
+    const TOTAL_RATCHET: usize = 45;
 
     assert!(
         movable_but_cloned <= MOVABLE_CLONED_RATCHET,
@@ -7459,13 +7378,11 @@ fn ownership_stage0_census() {
     // 2026-04-10 baseline: 23969 clones (+144 _at accessor migration, +38 per-file resolve indices)
     // 2026-04-10: +31 from S6 lambda_param_provenance field on InferScope
     // and body_scope clearing in ExprLambda handler.
-    // 2026-04-10: -1831 from O1/O2 last-use elision (Stream B Layer 1).
-    // For fan-out > 1 owned locals, the last use site moves instead of cloning.
     //
     // Tolerance: ±1% to absorb CI vs local codegen differences (different
     // Rust versions, optimization flags, or platform-specific clone patterns).
     // The ratchet catches real regressions (hundreds of clones) not noise.
-    const CLONE_RATCHET: usize = 22200;
+    const CLONE_RATCHET: usize = 24000;
     const CLONE_TOLERANCE: usize = CLONE_RATCHET / 100;  // 1% = ~240
     const TRY_UNWRAP_RATCHET: usize = 8;
 

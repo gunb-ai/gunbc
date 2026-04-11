@@ -598,7 +598,7 @@ pub fn target_keyword(target: RenderTarget, key: String) -> String {
     match target {
     RenderTarget::Rust => match v2_rt::lookup(&rust_keywords(), key.clone()) {
     Some(kw) => kw.clone(),
-    None => key,
+    None => key.clone(),
 },
     RenderTarget::Go => match v2_rt::lookup(&go_keywords(), key.clone()) {
     Some(kw) => kw.clone(),
@@ -636,8 +636,8 @@ let specific = match algebra_field {
     None => None,
 };
 let result = match specific.clone() {
-    Some(_) => specific,
-    None => Rc::new({ let mut __result = Vec::new(); for spec in op_matching.iter().cloned() { if (spec.algebra_field.clone() == None) { __result.push(spec); } } __result }).first().cloned(),
+    Some(_) => specific.clone(),
+    None => Rc::new({ let mut __result = Vec::new(); for spec in op_matching.clone().iter().cloned() { if (spec.algebra_field.clone() == None) { __result.push(spec); } } __result }).first().cloned(),
 };
 match result {
     Some(spec) => Some(spec.symbol.clone()),

@@ -58,7 +58,7 @@ if is_optional {
 if (field_name.clone().as_str() == "value".to_string().as_str()) {
                         Some(inner)
                     } else {
-                        match lookup_field_type_node(inner, field_name, source_index) {
+                        match lookup_field_type_node(inner, field_name.clone(), source_index) {
     Some(inner_result) => Some(with_optional_cardinality(inner_result.clone())),
     None => None,
 }
@@ -71,7 +71,7 @@ if has_structure {
                         {
                             let is_product = (n.connective.clone() == Connective::Conj);
 if is_product {
-                                match find_child_named(n, field_name.clone(), source_index) {
+                                match find_child_named(n.clone(), field_name.clone(), source_index) {
     Some(field_child) => Some(child_type_node(field_child.clone())),
     None => None,
 }
@@ -92,7 +92,7 @@ pub fn lookup_coproduct_common_field_node(variants: Rc<Vec<Rc<Node>>>, field_nam
     {
         let found_in_all = { let mut __all = true; for v in variants.clone().iter().cloned() { if !(has_child_named(v.clone(), field_name.clone(), source_index.clone())) { __all = false; break; } } __all };
 let first_field = if found_in_all {
-            match variants.first().cloned() {
+            match variants.clone().first().cloned() {
     Some(first_variant) => find_child_named(first_variant.clone(), field_name.clone(), source_index.clone()),
     None => None,
 }
@@ -121,7 +121,7 @@ pub fn resolve_scrutinee_type_node_seen(env: Rc<TypeEnv>, n: Rc<Node>, seen: Rc<
 if n_is_type_var {
                 return n.clone()
             }
-let normed = normalize_access_type_node(n);
+let normed = normalize_access_type_node(n.clone());
 if ((normed.connective.clone() == Connective::NoConnective) && ((normed.children.clone().len() as i64) == 0)) {
                 {
                     let canonical = normed.name.clone();
@@ -134,7 +134,7 @@ if (normed.inferred.clone() != None) {
                             };
 match normed.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: target, .. }) => if ((((target.name.clone().as_str() == normed.name.clone().as_str()) && (target.inferred.clone() == None)) && (target.connective.clone() == Connective::NoConnective)) && ((target.children.clone().len() as i64) == 0)) {
-                                normed
+                                normed.clone()
                             } else {
                                 resolve_scrutinee_type_node_seen(env.clone(), target.clone(), next_seen)
                             },
@@ -147,16 +147,16 @@ match normed.inferred.clone().as_deref().cloned() {
                         } else {
                             {
                                 let next_seen = if (canonical.clone().as_str() == "".to_string().as_str()) {
-                                    seen
+                                    seen.clone()
                                 } else {
-                                    v2_rt::rc_map_insert(seen.clone(), canonical, true)
+                                    v2_rt::rc_map_insert(seen.clone(), canonical.clone(), true)
                                 };
 match lookup_type_for(env.clone(), normed.clone()) {
     Some(resolved) => if ((((resolved.name.clone().as_str() == normed.name.clone().as_str()) && (resolved.inferred.clone() == None)) && (resolved.connective.clone() == Connective::NoConnective)) && ((resolved.children.clone().len() as i64) == 0)) {
                                     normed.clone()
                                 } else {
                                     {
-                                        let result = resolve_scrutinee_type_node_seen(env, resolved.clone(), next_seen);
+                                        let result = resolve_scrutinee_type_node_seen(env.clone(), resolved.clone(), next_seen);
 let is_optional = (normed.return_cardinality.clone() == Cardinality::CardOptional);
 if is_optional {
                                             with_optional_cardinality(result)
@@ -222,10 +222,10 @@ if ((field.clone().as_str() == "value".to_string().as_str()) && normed_opt.clone
     value_shape: FieldValueShape::PlainValue,
 }))
             } else {
-                if normed_opt {
+                if normed_opt.clone() {
                     {
-                        let inner = with_required_cardinality(normed);
-match field_summary_for_type(inner, env, field) {
+                        let inner = with_required_cardinality(normed.clone());
+match field_summary_for_type(inner, env.clone(), field.clone()) {
     Some(inner_summary) => Some(Rc::new(FieldSummary {
     access_style: inner_summary.access_style.clone(),
     value_shape: FieldValueShape::OptionalValue,
@@ -242,7 +242,7 @@ if no_structure {
                             {
                                 let is_product = (resolved.connective.clone() == Connective::Conj);
 if is_product {
-                                    v2_rt::map_get(&build_struct_field_summaries(resolved, env.source_index.clone()), field.clone())
+                                    v2_rt::map_get(&build_struct_field_summaries(resolved.clone(), env.source_index.clone()), field.clone())
                                 } else {
                                     v2_rt::map_get(&build_enum_field_summaries(resolved.children.clone(), env.source_index.clone()), field.clone())
                                 }
@@ -309,7 +309,7 @@ if is_product {
             {
                 let direct = lookup_field_in_product(receiver_type.clone(), method_name.clone(), source_index);
 match direct.clone() {
-    Some(_) => direct,
+    Some(_) => direct.clone(),
     None => None,
 }
 }
@@ -318,7 +318,7 @@ match direct.clone() {
                 let enriched = enrich_kernel_type(receiver_type.name.clone(), receiver_type.clone());
 if ((enriched.connective.clone() == Connective::Conj) && ((enriched.children.clone().len() as i64) > 0)) {
                     {
-                        let base_result = lookup_field_in_product(enriched, method_name.clone(), source_index);
+                        let base_result = lookup_field_in_product(enriched.clone(), method_name.clone(), source_index);
 match base_result.clone() {
     Some(mfr) => {
                             let profile = v2_rt::map_get(&kernel_algebra_profile(), receiver_type.name.clone());
@@ -337,7 +337,7 @@ match template_match {
     cost_shape: t.cost_shape.clone(),
     algebra_template: Some(t.clone()),
 })),
-    None => base_result,
+    None => base_result.clone(),
 }
 },
     None => None,
@@ -368,7 +368,7 @@ Rc::new(KnownMethodResolution {
     result_type: Some(mfr.result_type.clone()),
 })
 },
-    None => match check_service_method_call_node(receiver_type.clone(), method_name, service_registry) {
+    None => match check_service_method_call_node(receiver_type.clone(), method_name.clone(), service_registry) {
     Some(svc_result) => Rc::new(KnownMethodResolution {
     semantics: Some(Rc::new(MethodSemantics::ServiceMethodSemantics {
     service_name: receiver_type.name.clone(),

@@ -92,7 +92,7 @@ pub fn lookup_checkpoint(target: RenderTarget, dag_name: String) -> Option<Rc<Ty
 pub fn coerce_primitive_type(target: RenderTarget, dag_name: String) -> String {
     match lookup_checkpoint(target, dag_name.clone()) {
     Some(cp) => cp.target_type.clone(),
-    None => dag_name,
+    None => dag_name.clone(),
 }
 }
 
@@ -184,7 +184,7 @@ if ((cps.clone().len() as i64) == 0) {
         } else {
             Rc::new(vec![Rc::new(CoercionTestEntry {
     test_name: v2_rt::concat(v2_rt::concat("coercion_".to_string(), label), "_checkpoint_resolves_primitives".to_string()),
-    assertions: Rc::new({ let mut __result = Vec::new(); for cp in cps.iter().cloned() { __result.push(Rc::new(CoercionAssertion::CheckpointAssertion {
+    assertions: Rc::new({ let mut __result = Vec::new(); for cp in cps.clone().iter().cloned() { __result.push(Rc::new(CoercionAssertion::CheckpointAssertion {
     target: target.clone(),
     dag_name: cp.dag_name.clone(),
     expected_type: cp.target_type.clone(),
@@ -214,7 +214,7 @@ if ((assertions.clone().len() as i64) == 0) {
         } else {
             Rc::new(vec![Rc::new(CoercionTestEntry {
     test_name: v2_rt::concat(v2_rt::concat("coercion_".to_string(), label), "_inhabitant_resolves_containers".to_string()),
-    assertions: assertions,
+    assertions: assertions.clone(),
 })])
         }
 }
@@ -236,7 +236,7 @@ if ((copy_assertions.clone().len() as i64) == 0) {
         } else {
             Rc::new(vec![Rc::new(CoercionTestEntry {
     test_name: "coercion_is_copy_from_checkpoint".to_string(),
-    assertions: copy_assertions,
+    assertions: copy_assertions.clone(),
 })])
         }
 }
@@ -278,7 +278,7 @@ if ((assertions.clone().len() as i64) == 0) {
         } else {
             Rc::new(vec![Rc::new(CoercionTestEntry {
     test_name: "coercion_template_application".to_string(),
-    assertions: assertions,
+    assertions: assertions.clone(),
 })])
         }
 }

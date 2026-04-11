@@ -50,7 +50,7 @@ pub fn seed_adjacency_map(names: Rc<Vec<String>>) -> Rc<HashMap<String, Rc<Vec<S
 pub fn build_call_graph_from_proof_edges(names: Rc<Vec<String>>, edges: Rc<Vec<Rc<ProofEdge>>>) -> Rc<CallGraph> {
     {
         let initial_forward = seed_adjacency_map(names.clone());
-let initial_reverse = seed_adjacency_map(names);
+let initial_reverse = seed_adjacency_map(names.clone());
 let graph_acc = Rc::new({ let mut __result = Vec::new(); for e in edges.iter().cloned() { if (e.caller.clone().as_str() != e.callee.clone().as_str()) { __result.push(e); } } __result }).iter().cloned().fold(Rc::new(CallGraphAcc {
     forward: initial_forward,
     reverse: initial_reverse,
@@ -92,7 +92,7 @@ let explored = neighbors.iter().cloned().fold(Rc::new(DfsFinishAcc {
 }), |inner: Rc<DfsFinishAcc>, neighbor: String| dfs_finish_order(neighbor.clone(), adjacency.clone(), inner.clone()));
 Rc::new(DfsFinishAcc {
     visited: explored.visited.clone(),
-    order: v2_rt::rc_list_push(explored.order.clone(), node),
+    order: v2_rt::rc_list_push(explored.order.clone(), node.clone()),
 })
 }
         }
@@ -107,7 +107,7 @@ pub fn dfs_collect_component(node: String, adjacency: Rc<HashMap<String, Rc<Vec<
             {
                 let next_visited = v2_rt::rc_map_insert(acc.visited.clone(), node.clone(), true);
 let next_members = v2_rt::rc_list_push(acc.members.clone(), node.clone());
-let neighbors = match v2_rt::map_get(&adjacency, node) {
+let neighbors = match v2_rt::map_get(&adjacency, node.clone()) {
     Some(ns) => ns.clone(),
     None => Rc::new(vec![]),
 };
@@ -173,9 +173,9 @@ if has_self_cycle {
             false
         } else {
             {
-                let members = Rc::new({ let mut __result = Vec::new(); for e in edges.iter().cloned() { __result.extend((*Rc::new(vec![e.caller.clone(), e.callee.clone()])).iter().cloned()); } __result });
-let nd_graph = build_call_graph_from_proof_edges(members.clone(), non_descending);
-(graph_has_multi_node_scc(members, nd_graph) == false)
+                let members = Rc::new({ let mut __result = Vec::new(); for e in edges.clone().iter().cloned() { __result.extend((*Rc::new(vec![e.caller.clone(), e.callee.clone()])).iter().cloned()); } __result });
+let nd_graph = build_call_graph_from_proof_edges(members.clone(), non_descending.clone());
+(graph_has_multi_node_scc(members.clone(), nd_graph) == false)
 }
         }
 }

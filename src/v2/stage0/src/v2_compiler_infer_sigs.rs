@@ -59,7 +59,7 @@ pub fn collect_calls_in_expr(caller: String, texpr: Rc<Node>, local_func_set: Rc
 if emit_map_has(local_func_set.clone(), f.clone()) {
                     Rc::new(vec![Rc::new(CallEdge {
     caller: caller.clone(),
-    callee: f,
+    callee: f.clone(),
 })])
                 } else {
                     Rc::new(vec![])
@@ -80,7 +80,7 @@ pub fn func_reaches_self(root: String, current: String, call_edges: Rc<Vec<Rc<Ca
             false
         } else {
             {
-                let next_visited = v2_rt::rc_map_insert(visited, current.clone(), true);
+                let next_visited = v2_rt::rc_map_insert(visited.clone(), current.clone(), true);
 let callees = Rc::new({ let mut __result = Vec::new(); for e in Rc::new({ let mut __result = Vec::new(); for e in call_edges.clone().iter().cloned() { if (e.caller.clone().as_str() == current.clone().as_str()) { __result.push(e); } } __result }).iter().cloned() { __result.push(e.callee.clone()); } __result });
 { let mut __found = false; for c in callees.iter().cloned() { if if (c.clone().as_str() == root.clone().as_str()) {
                     true
@@ -176,7 +176,7 @@ let all_resolved = Rc::new(v2_rt::map_values(&declared_sigs)).iter().cloned().fo
                 });
 return Rc::new(ResolveFuncSigsResult {
     func_env: Rc::new(ResolvedFuncEnv {
-    signatures: all_resolved,
+    signatures: all_resolved.clone(),
 }),
     diagnostics: v2_rt::concat(diagnostics.clone(), cycle_accum.diagnostics.clone()),
 })
@@ -184,7 +184,7 @@ return Rc::new(ResolveFuncSigsResult {
         }
 let ready_accum = ready.clone().iter().cloned().fold(Rc::new(SigsAccum {
     signatures: resolved.clone(),
-    diagnostics: diagnostics,
+    diagnostics: diagnostics.clone(),
 }), |acc: Rc<SigsAccum>, fn_name: String| match v2_rt::map_get(&declared_sigs, fn_name.clone()) {
     Some(dsig) => if (dsig.inferred.clone() != None) {
             Rc::new(SigsAccum {
@@ -203,8 +203,8 @@ let ready_accum = ready.clone().iter().cloned().fold(Rc::new(SigsAccum {
         },
     None => acc.clone(),
 });
-let ready_set = ready.iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, fn_name: String| v2_rt::rc_map_insert(acc.clone(), fn_name.clone(), true));
-let next_remaining = Rc::new({ let mut __result = Vec::new(); for fn_name in remaining.iter().cloned() { if (emit_map_has(ready_set.clone(), fn_name.clone()) == false) { __result.push(fn_name); } } __result });
+let ready_set = ready.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, fn_name: String| v2_rt::rc_map_insert(acc.clone(), fn_name.clone(), true));
+let next_remaining = Rc::new({ let mut __result = Vec::new(); for fn_name in remaining.clone().iter().cloned() { if (emit_map_has(ready_set.clone(), fn_name.clone()) == false) { __result.push(fn_name); } } __result });
 {
             let __tco_0 = next_remaining;
 let __tco_1 = ready_accum.signatures.clone();
@@ -231,8 +231,8 @@ pub fn resolve_func_sigs(declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>
     {
         let local_func_names = Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in items.clone().iter().cloned() { if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) { __result.push(item); } } __result }).iter().cloned() { __result.push(item.name.clone()); } __result });
 let local_func_set = build_name_set(local_func_names.clone());
-let call_edges = collect_func_call_edges(items, local_func_set.clone(), source_index);
+let call_edges = collect_func_call_edges(items.clone(), local_func_set.clone(), source_index);
 let parent_resolved = collect_parent_resolved_sigs(declared_sigs.clone(), local_func_set.clone());
-topo_resolve_loop(local_func_names.clone(), parent_resolved, declared_sigs, call_edges, local_func_set, module_name, Rc::new(vec![]), (local_func_names.len() as i64))
+topo_resolve_loop(local_func_names.clone(), parent_resolved, declared_sigs.clone(), call_edges, local_func_set.clone(), module_name, Rc::new(vec![]), (local_func_names.clone().len() as i64))
 }
 }

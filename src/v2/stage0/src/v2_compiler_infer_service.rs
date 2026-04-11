@@ -39,7 +39,7 @@ pub fn is_typed_service_call_receiver(receiver: Rc<Node>, source_index: Option<R
     match (*receiver.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
         let f = field_access_field_at(receiver.clone(), source_index);
-let b = field_access_base(receiver);
+let b = field_access_base(receiver.clone());
 match (*b.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => match Rc::new(f.chars().map(|c| c as i64).collect::<Vec<_>>()).first().cloned() {
     Some(ch) => ((ch.clone() >= 65) && (ch.clone() <= 90)),
@@ -56,10 +56,10 @@ pub fn extract_typed_service_name(receiver: Rc<Node>, source_index: Option<Rc<Ne
     match (*receiver.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
         let f = field_access_field_at(receiver.clone(), source_index.clone());
-let b = field_access_base(receiver);
+let b = field_access_base(receiver.clone());
 match (*b.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
-            let ns = expr_var_name_at(b, source_index);
+            let ns = expr_var_name_at(b.clone(), source_index.clone());
 Some(v2_rt::concat(v2_rt::concat(ns, ".".to_string()), f))
 },
     _ => None,
@@ -86,7 +86,7 @@ pub fn collect_typed_service_calls_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>, s
     ExprData::ExprMethodCall { .. } => {
                 let r = method_receiver(texpr.clone());
 if is_typed_service_call_receiver(r.clone(), source_index.clone()) {
-                    match extract_typed_service_name(r, source_index.clone()) {
+                    match extract_typed_service_name(r.clone(), source_index.clone()) {
     Some(service_name) => if emit_map_has(acc.seen.clone(), service_name.clone()) {
                         acc.clone()
                     } else {
@@ -120,7 +120,7 @@ if emit_map_has(acc.seen.clone(), f.clone()) {
                 } else {
                     Rc::new(UniqueAccum {
     seen: v2_rt::rc_map_insert(acc.seen.clone(), f.clone(), true),
-    result: v2_rt::rc_list_push(acc.result.clone(), f),
+    result: v2_rt::rc_list_push(acc.result.clone(), f.clone()),
 })
                 }
 },
@@ -194,11 +194,11 @@ pub fn expand_transitive_services(mut modules: Rc<Vec<Rc<TypedModule>>>, mut reg
 let next = expand_transitive_services_once(modules.clone(), registry.clone());
 let after = total_service_count(next.clone());
 if (before == after) {
-                break registry;
+                break registry.clone();
 } else {
                 {
                     let __tco_0 = modules;
-let __tco_1 = next;
+let __tco_1 = next.clone();
 let __tco_2 = (remaining_passes - 1);
 modules = __tco_0;
 registry = __tco_1;
@@ -215,7 +215,7 @@ pub fn check_service_field_access_node(base_type: Rc<Node>, field: String, servi
         {
             let path = v2_rt::concat(v2_rt::concat(base_type.name.clone(), ".".to_string()), field);
 match v2_rt::map_get(&service_registry, path.clone()) {
-    Some(_) => Some(nominal_type_ref(path)),
+    Some(_) => Some(nominal_type_ref(path.clone())),
     None => None,
 }
 }

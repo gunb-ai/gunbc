@@ -111,30 +111,31 @@ aggregates via scope-blind string matching (see pipeline.rs).
 
 ## Workboard
 
-### Layer 1: Last-use elision (DONE)
+### Layer 1: Last-use elision (blocked on stable binding identity)
+
+Ownership analysis computes last-use facts correctly (build_last_use_set
+in ownership.dag, with is_captured structural exclusion). However,
+threading these facts through the emit boundary requires stable binding
+identity — the current name-keyed Map<String, Int> table collapses
+distinct bindings with the same authored name, violating the explicit
+boundary contracts invariant.
+
+**Blocked on:** Track 3 (stable binding identity via InternTable or
+declaration span). Once bindings have unique identifiers, last-use
+facts can flow through EmitGraphInfo without lossy name collisions.
 
 | # | Item | Test | Cleanup target | Status |
 |---|------|------|---------------|--------|
-| O1 | Track use-site ordering in BindingUsage | span_start populated from texpr.span.start in walk_expr; is_captured structural flag | — | **DONE** |
-| O2 | Emitter skips `.clone()` on last use of fan-out > 1 binding | build_last_use_set → last_use_index/last_use_spans on EmitGraphInfo → emit_var_ref checks span | Clone ratchet 24000 → 22200 | **DONE** |
-| O3 | V1 ratchet at 0 for focused test programs | Test: `count_ownership_violations` V1 = 0 | — | Deferred (coarse aggregate, not V1-specific) |
+| O1 | Track use-site ordering in BindingUsage | span_start populated; is_captured structural flag added | — | **DONE** (ownership-internal) |
+| O2 | Emitter skips `.clone()` on last use of fan-out > 1 binding | Needs stable binding identity at emit boundary | — | Blocked on Track 3 |
+| O3 | V1 ratchet at 0 for focused test programs | Test: `count_ownership_violations` V1 = 0 | — | Not started |
 
-### Layer 2: Post-TCO ownership (no coarse signal found)
-
-Investigation (2026-04-10): V2 was described as "TCO gate zeroes the
-movable set." Empirical analysis shows the movable set flows unchanged
-through TCO functions. The scope-blind `movable_but_cloned` metric
-(45→29) does not surface TCO-specific violations — remaining counts
-appear to be from common variable names matching across function
-boundaries. Note: the metric is coarse and scope-blind (see function
-doc), so this finding is directional, not conclusive. A precise,
-scope-aware metric could reveal V2 violations not visible to the
-current measurement.
+### Layer 2: Post-TCO ownership (unblocked)
 
 | # | Item | Test | Cleanup target | Status |
 |---|------|------|---------------|--------|
-| O4 | Run ownership analysis AFTER TCO transformation | Investigation: movable set flows correctly through TCO; no coarse signal | None measured | Investigated — no coarse signal, needs precise metric to confirm |
-| O5 | V2 ratchet at 0 for focused test programs | movable_but_cloned 45→29 | — | Not started (metric too coarse) |
+| O4 | Run ownership analysis AFTER TCO transformation | Test: TCO-eligible function with fan-out=1 owned local produces move, not clone | TCO movable-set zeroing logic | Not started |
+| O5 | V2 ratchet at 0 for focused test programs | Test: `count_ownership_violations` V2 = 0 | — | Not started |
 
 ### Layer 3: Borrow propagation (needs LS-4 design)
 
