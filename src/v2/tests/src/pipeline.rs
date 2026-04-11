@@ -5179,15 +5179,17 @@ fn review_dag_compiles_to_rust() {
     // Show error lines with file:line context for diagnosis
     let error_lines: Vec<_> = check_stderr
         .lines()
-        .filter(|l| l.starts_with("error[") || l.trim_start().starts_with("--> src/"))
+        .filter(|l| l.starts_with("error[") || l.trim_start().starts_with("--> src/") || l.contains("expected") || l.contains("found"))
         .take(30)
         .collect();
     if !error_lines.is_empty() {
         eprintln!("RE-2 errors:\n{}", error_lines.join("\n"));
     }
 
-    // Cleanup
-    let _ = std::fs::remove_dir_all(&out_dir);
+    // Cleanup — skip when RE_KEEP_BUILD is set (for live testing)
+    if std::env::var("RE_KEEP_BUILD").is_err() {
+        let _ = std::fs::remove_dir_all(&out_dir);
+    }
 
     // RE-2 ratchet: 0 cargo check errors.
     // Reduced from 51 → 23 → 3 → 0 via: FuncItem detection (async+service params),
@@ -5345,6 +5347,7 @@ fn review_dag_builds_and_runs_dry_run() {
     // ── Stage 6: Run binary with --dry-run review-pr ─────────────────
     let run = std::process::Command::new(&binary_path)
         .env("GITHUB_TOKEN", "dry-run-placeholder")
+        .env("ANTHROPIC_API_KEY", "dry-run-placeholder")
         .arg("--dry-run")
         .arg("review-pr")
         .arg("--owner")
@@ -5379,14 +5382,19 @@ fn review_dag_builds_and_runs_dry_run() {
             "RE-2: binary output is not valid JSON: {}\nstdout: {}",
             e, run_stdout
         ));
+    // review_pr returns (Bool, String) → serialized as JSON array [true, "url"]
+    let output_arr = output_json.as_array().unwrap_or_else(|| panic!(
+        "RE-2: expected JSON array output, got: {}",
+        run_stdout
+    ));
     assert!(
-        output_json.get("reviewed").is_some(),
-        "RE-2: expected 'reviewed' field in output JSON, got: {}",
+        output_arr.len() == 2,
+        "RE-2: expected 2-element array (reviewed, comment_url), got: {}",
         run_stdout
     );
     assert!(
-        output_json.get("comment_url").is_some(),
-        "RE-2: expected 'comment_url' field in output JSON, got: {}",
+        output_arr[0].as_bool() == Some(true),
+        "RE-2: expected reviewed=true, got: {}",
         run_stdout
     );
 
@@ -5651,6 +5659,63 @@ fn anthropic_dag_compiles_to_rust() {
     assert!(
         !result.files.is_empty(),
         "RE-4: anthropic.dag produced no emitted files"
+    );
+}
+
+// ── RE-4: Anthropic auth_source reads ANTHROPIC_API_KEY from env ─────────
+#[test]
+#[ignore] // Expensive: reads from disk, resolves transitive imports
+fn anthropic_auth_source_emits_env_read() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/llm/anthropic.dag");
+    let source = std::fs::read_to_string(&source_path)
+        .expect("failed to read anthropic.dag");
+    let result = compile_dag_named(
+        "dsl/extdeps/llm/anthropic.dag",
+        &source,
+        RenderTarget::Rust,
+    );
+    let hard_diags: Vec<_> = diagnostic_messages(&result)
+        .into_iter()
+        .filter(|d| !d.contains("complexity:"))
+        .collect();
+    assert!(
+        hard_diags.is_empty(),
+        "RE-4: anthropic.dag has hard diagnostics:\n{}",
+        hard_diags.join("\n")
+    );
+    let content = find_file(&result, "src/extdeps_llm_anthropic.rs");
+    assert!(
+        content.contains("ANTHROPIC_API_KEY"),
+        "RE-4: expected env var ANTHROPIC_API_KEY in emitted code, got:\n{content}"
+    );
+    assert!(
+        content.contains("x-api-key"),
+        "RE-4: expected x-api-key header in emitted code, got:\n{content}"
+    );
+    assert!(
+        content.contains("self.auth_token"),
+        "RE-4: expected self.auth_token usage in emitted code, got:\n{content}"
+    );
+}
+
+// ── RE-4: Anthropic version header emission ──────────────────────────────
+#[test]
+#[ignore] // Expensive: reads from disk, resolves transitive imports
+fn anthropic_messages_emits_version_header() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/llm/anthropic.dag");
+    let source = std::fs::read_to_string(&source_path)
+        .expect("failed to read anthropic.dag");
+    let result = compile_dag_named(
+        "dsl/extdeps/llm/anthropic.dag",
+        &source,
+        RenderTarget::Rust,
+    );
+    let content = find_file(&result, "src/extdeps_llm_anthropic.rs");
+    assert!(
+        content.contains("anthropic-version") && content.contains("2023-06-01"),
+        "RE-4: expected anthropic-version header with 2023-06-01 in emitted code, got:\n{content}"
     );
 }
 

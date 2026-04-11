@@ -1,0 +1,29 @@
+// std/serialization.dag -- Wire format contracts for external APIs.
+//
+// Types declare how their values appear on the wire (JSON responses).
+// Modules declare a wire_contract that applies to all types within.
+// The emitter reads the contract and generates target-language
+// serialization attributes (e.g., serde for Rust).
+//
+// Without a wire_contract, enums use internal tagging ({"_variant": "Name"}).
+// With StringVariant, enums serialize as plain strings ("Name" or "name").
+
+module std.serialization
+
+// How enum variant names map to wire strings.
+// AsAuthored: variant name as-is (User → "User", Bot → "Bot").
+// SnakeCase: variant name lowercased with underscores (EndTurn → "end_turn").
+type VariantNaming = AsAuthored | SnakeCase
+
+// How enum variants appear on the wire.
+// StringVariant: plain strings — the common REST API pattern.
+// TaggedVariant: internally tagged objects ({"_variant": "Name"}) — .dag default.
+type VariantEncoding
+  = StringVariant { naming: VariantNaming }
+  | TaggedVariant
+
+// Module-level wire contract. Declared as:
+//   data wire_contract: WireContract = { variant_encoding: StringVariant { naming: AsAuthored } }
+type WireContract {
+  variant_encoding: VariantEncoding
+}

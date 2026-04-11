@@ -10,7 +10,12 @@ module extdeps.llm.anthropic
 
 import extdeps.llm.llm { Role, StopReason, TokenUsage }
 import std.errors { AnthropicErrorShape }
+import std.credentials { CredentialSource, EnvVar }
+import std.serialization { VariantEncoding, StringVariant, VariantNaming, SnakeCase }
 import std.types { HttpMethod }
+
+// Wire contract: Anthropic API returns enum values as snake_case strings.
+data wire_contract: VariantEncoding = StringVariant { naming: SnakeCase }
 
 // -- Models --------------------------------------------------------
 
@@ -88,6 +93,7 @@ service llm.Anthropic {
     endpoint: "https://api.anthropic.com"
     auth: Header("x-api-key")
     auth_input: api_key
+    auth_source: EnvVar { name: "ANTHROPIC_API_KEY" }
     // Anthropic API rate limits: varies by tier (1000-4000 RPM), use conservative default
     rate_limit: { requests: 1000, per: minute, scope: messages }
     // Retry on overload and server errors with exponential backoff
@@ -113,7 +119,8 @@ service llm.Anthropic {
     transport rest {
       method: POST,
       path: "/v1/messages",
-      body: { model: model, messages: messages, max_tokens: max_tokens, temperature: temperature, system: system }
+      body: { model: model, messages: messages, max_tokens: max_tokens, temperature: temperature, system: system },
+      headers: { "anthropic-version": current_api_version.version }
     }
     response {
       200 => Json
