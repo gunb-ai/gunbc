@@ -11,10 +11,26 @@
 
 module std.filesystem
 
-import std.types { FilePath, ContentEncoding, MimeType, EntryKind, SymlinkTarget }
+import std.encoding { Encoding }
+import std.types { FilePath, MimeType, EntryKind, SymlinkTarget }
 
 // EntryKind and SymlinkTarget are defined in std.types (the lower module)
 // and imported here to avoid circular dependencies.
+
+// -- Layer 0.5: Classification (moved from types.dag) -------------------------
+
+// What Filesystem.probe returns -- classifies a path's referent.
+// Includes entry kind (regular file, directory, symlink, etc.)
+// and symlink target resolution. The encoding field is optional
+// because directories, missing paths, and special files have no encoding.
+type FileClassification {
+  path: FilePath
+  kind: EntryKind
+  encoding: Encoding?            // null for dirs/missing/other
+  symlink_target: SymlinkTarget? // null unless kind = Symlink
+  size: Int
+  mime: MimeType?
+}
 
 // -- Layer 1: Categories ---------------------------------------------------
 
@@ -27,7 +43,7 @@ import std.types { FilePath, ContentEncoding, MimeType, EntryKind, SymlinkTarget
 type FileEntry {
   path: FilePath
   kind: EntryKind
-  encoding: ContentEncoding?     // only for RegularFile or Symlink->TargetFile
+  encoding: Encoding?             // only for RegularFile or Symlink->TargetFile
   symlink_target: SymlinkTarget? // only for kind = Symlink
   size: Int
   mime: MimeType?
@@ -51,13 +67,25 @@ type PartitionResult {
 
 // "Is this entry a text file we can read?"
 // Exhaustive over EntryKind -- every branch is explicit.
+// Only explicit text encodings are readable. Unknown and Binary are not.
 fn is_text_readable(entry: FileEntry) -> Bool {
   match entry.kind {
-    RegularFile => entry.encoding != Binary
-    Symlink     => entry.symlink_target == TargetFile && entry.encoding != Binary
+    RegularFile => is_text_encoding(e: entry.encoding)
+    Symlink     => entry.symlink_target == TargetFile && is_text_encoding(e: entry.encoding)
     Directory   => false
     Missing     => false
     Other       => false
+  }
+}
+
+// Helper: does this optional encoding represent a known text encoding?
+fn is_text_encoding(e: Encoding?) -> Bool {
+  match e {
+    Some { value: ASCII } => true
+    Some { value: UTF8 } => true
+    Some { value: Latin1 } => true
+    Some { value: Text } => true
+    _ => false
   }
 }
 
