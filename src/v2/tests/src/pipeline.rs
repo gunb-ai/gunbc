@@ -7361,10 +7361,12 @@ fn process(data: List<Int>) -> List<Int> {
     // map_evidence_merge_at) add 5 clones from new code transitively
     // compiled via std.types→std.termination; not a regression in
     // existing code — these are new function bodies with new bindings.
+    // 2026-04-11: 45→40 — borrow propagation (O6-O9) eliminates 5
+    // movable-but-cloned violations where params are now borrowed.
 
-    const MOVABLE_CLONED_RATCHET: usize = 45;
+    const MOVABLE_CLONED_RATCHET: usize = 40;
     const TRY_UNWRAP_RATCHET: usize = 0;
-    const TOTAL_RATCHET: usize = 45;
+    const TOTAL_RATCHET: usize = 40;
 
     assert!(
         movable_but_cloned <= MOVABLE_CLONED_RATCHET,
@@ -7443,12 +7445,14 @@ fn ownership_stage0_census() {
     // 2026-04-10 baseline: 23969 clones (+144 _at accessor migration, +38 per-file resolve indices)
     // 2026-04-10: +31 from S6 lambda_param_provenance field on InferScope
     // and body_scope clearing in ExprLambda handler.
+    // 2026-04-11: 24000→21000 — Stream B Layer 3 borrow propagation (O6-O9)
+    // eliminates ~535 Rc-wrapped clones at call sites + prior reductions.
     //
     // Tolerance: ±1% to absorb CI vs local codegen differences (different
     // Rust versions, optimization flags, or platform-specific clone patterns).
     // The ratchet catches real regressions (hundreds of clones) not noise.
-    const CLONE_RATCHET: usize = 24000;
-    const CLONE_TOLERANCE: usize = CLONE_RATCHET / 100;  // 1% = ~240
+    const CLONE_RATCHET: usize = 21000;
+    const CLONE_TOLERANCE: usize = CLONE_RATCHET / 100;  // 1% = ~210
     const TRY_UNWRAP_RATCHET: usize = 8;
 
     assert!(total_clones <= CLONE_RATCHET + CLONE_TOLERANCE,
