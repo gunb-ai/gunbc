@@ -317,6 +317,119 @@ instead of matching on target.
 
 ---
 
+## Phased Dissolution Plan
+
+Seven phases, each with a clear "what it accomplishes" and "what it
+deletes." Phases 2-4 can run in parallel after Phase 1.
+
+### Phase 1: Shared emitter is language-clean (05_emit.dag)
+
+Eliminate remaining `match target` branches → read from LanguageSpec.
+C-1 already did 16 of 20; 4 remain with designs above.
+
+**Accomplishes:** The shared emitter makes zero language decisions. All
+language knowledge comes from data. Foundation for everything after.
+**Deletes:** Nothing yet — refactor only.
+**Size:** Small (~6 remaining sites).
+
+### Phase 2: Unify expression dispatch (biggest bang)
+
+Factor three parallel 35-function expression walkers into one shared
+walker with syntax templates. 95% code duplication across Rust/Python/Go
+expression rendering — same recursion, different strings.
+
+**Accomplishes:** Proves the single-emitter architecture works for the
+core of emission (expressions are ~60% of emitter code). One ExprData
+walk, not three.
+**Deletes:** ~70 functions across the three emitters (~2,000 lines).
+**Size:** Large but mechanical — each expression type follows the same
+extraction pattern.
+
+### Phase 3: Unify TCO and block rendering
+
+TCO is 85% duplicated (12 Rust / 10 Python / 11 Go functions, only
+loop keywords differ). Block statement emission is 100% reused via
+`_shared` functions already.
+
+**Accomplishes:** Control flow is language-agnostic. Only syntax tokens vary.
+**Deletes:** ~30 functions (~800 lines).
+**Size:** Medium.
+
+### Phase 4: Unify service/transport rendering
+
+75% overlap — same dispatch (REST/shell/file/local), different HTTP
+client APIs. Transport client syntax (`reqwest` vs `aiohttp` vs
+`http.Client`) becomes LanguageSpec data.
+
+**Accomplishes:** Adding a new transport doesn't require per-language work.
+Cost of change = 1 file.
+**Deletes:** ~24 functions (~600 lines).
+**Size:** Medium.
+
+### Phase 5: Unify type rendering
+
+Rust has 12 type-rendering functions (ownership, derives, serde),
+Python has 6, Go has 7. Product/Coproduct rendering is structural and
+shared; ownership decoration is per-language.
+
+**Accomplishes:** Type definitions emit from structural facts +
+LanguageSpec presentation data.
+**Deletes:** ~15 functions (~400 lines).
+**Size:** Medium. Partially blocked on LS-4 (borrow model) for full
+Rust ownership extraction.
+
+### Phase 6: Extract Rust ownership to shared model
+
+~60 Rust-specific functions for Rc-wrapping, clone/move, borrow
+decisions. These aren't "Rust syntax" — they're ownership semantics
+that should be modeled in LanguageSpec:
+- Rust: clone/borrow
+- Go: pass-by-value (small) / pointer (large)
+- Python: no-op (GC)
+
+**Accomplishes:** Ownership becomes a LanguageSpec dimension, not
+Rust-specific logic. This is the LS-4 design work.
+**Deletes:** The last ~60 Rust-specific functions.
+**Size:** Large. This is the design project, not just extraction.
+**Blocked on:** LS-4 (Track 2).
+
+### Phase 7: Delete per-language emitters + coercion.dag
+
+After Phases 1-6, the three per-language files are empty or near-empty.
+`coercion.dag` dispatch merges into `05_emit.dag` (coercion IS emission).
+
+**Accomplishes:** M4 done criterion met. Zero language-specific emitter
+files. Adding a new language = add a `dsl/extdeps/languages/<lang>/`.
+**Deletes:** `05_emit_rust.dag` (5,709), `05_emit_python.dag` (1,172),
+`05_emit_go.dag` (1,200), `coercion.dag` (298) — ~8,400 lines total.
+
+### Dependency map
+
+```
+Phase 1 (emit.dag clean) ← nothing, start now
+Phase 2 (expressions)    ← Phase 1
+Phase 3 (TCO/blocks)     ← Phase 1        ← can run in parallel
+Phase 4 (services)       ← Phase 1
+Phase 5 (types)          ← Phase 1, partially LS-4
+Phase 6 (ownership)      ← LS-4 design (Track 2)
+Phase 7 (delete)         ← Phases 2-6
+```
+
+### Summary
+
+| Phase | Functions deleted | Lines deleted | Blocked on |
+|-------|-------------------|---------------|-----------|
+| 1 | 0 (refactor) | 0 | Nothing |
+| 2 | ~70 | ~2,000 | Phase 1 |
+| 3 | ~30 | ~800 | Phase 1 |
+| 4 | ~24 | ~600 | Phase 1 |
+| 5 | ~15 | ~400 | Phase 1 + LS-4 partial |
+| 6 | ~60 | ~1,800 | LS-4 design |
+| 7 | remaining | ~2,800 (file deletion) | Phases 2-6 |
+| **Total** | **~200** | **~8,400** | |
+
+---
+
 ## The Cost Question
 
 There is no cost model for emission.
