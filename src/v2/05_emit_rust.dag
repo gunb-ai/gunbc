@@ -110,7 +110,7 @@ import v2.compiler.infer_emit_info {
   lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum
 }
-import v2.compiler.ownership { OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set, build_last_use_set, build_read_only_params }
+import v2.compiler.ownership { OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set, build_last_use_set }
 import std.induction { SubValueUnknown }
 
 import v2.compiler.emit {
@@ -427,7 +427,6 @@ type OwnershipBuildResult {
   ownership_index: Map<String, Map<String, Bool>>
   fold_eligible_index: Map<String, Map<String, Bool>>
   last_use_index: Map<String, Map<String, Int>>
-  read_only_index: Map<String, Map<String, Bool>>
 }
 
 fn build_fold_eligible_set(proof: OwnershipProof) -> Map<String, Bool> {
@@ -442,12 +441,11 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
       OwnershipProofEntry { name: item.name, proof: analyze_ownership(func_name: item.name, params: item.params, body: item.body.value, si: m.type_env.source_index) }
     )
   )
-  proofs |> fold(init: OwnershipBuildResult { ownership_index: empty_map(), fold_eligible_index: empty_map(), last_use_index: empty_map(), read_only_index: empty_map() }, f: (acc, entry) =>
+  proofs |> fold(init: OwnershipBuildResult { ownership_index: empty_map(), fold_eligible_index: empty_map(), last_use_index: empty_map() }, f: (acc, entry) =>
     OwnershipBuildResult {
       ownership_index: map_insert(acc.ownership_index, entry.name, build_movable_set(proof: entry.proof)),
       fold_eligible_index: map_insert(acc.fold_eligible_index, entry.name, build_fold_eligible_set(proof: entry.proof)),
-      last_use_index: map_insert(acc.last_use_index, entry.name, build_last_use_set(proof: entry.proof)),
-      read_only_index: map_insert(acc.read_only_index, entry.name, build_read_only_params(proof: entry.proof))
+      last_use_index: map_insert(acc.last_use_index, entry.name, build_last_use_set(proof: entry.proof))
     }
   )
 }
@@ -472,45 +470,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     fold_eligible_index: ownership.fold_eligible_index,
     fold_eligible: empty_map(),
     last_use_index: ownership.last_use_index,
-    last_use_spans: empty_map(),
-    read_only_index: empty_map(),
-    read_only_params: empty_map()
-  }
-  // Filter read_only_index: only include params whose type is Rc-wrapped (shared).
-  // Primitive params (Int/i64, Bool/bool, Float/f64, String) are NOT borrowed
-  // because operators and call conventions break on &primitive.
-  let filtered_ro_index = typed.modules |> fold(init: empty_map(), f: (acc, m) =>
-    m.items |> filter(item => item.body != None) |> fold(init: acc, f: (acc2, item) =>
-      let raw_ro = match map_get(ownership.read_only_index, item.name) {
-        Some { value: ro } => ro
-        None => empty_map()
-      }
-      let filtered_ro = item.params |> fold(init: empty_map(), f: (ro_acc, p) =>
-        let pname = param_node_name_at(n: p, source_index: m.type_env.source_index)
-        let is_ro = emit_map_has(m: raw_ro, key: pname)
-        let is_shared = is_shared_param_type(param: p, shared_types: shared)
-        if is_ro && is_shared { map_insert(ro_acc, pname, true) } else { ro_acc }
-      )
-      if map_keys(filtered_ro) |> count > 0 {
-        map_insert(acc2, item.name, filtered_ro)
-      } else { acc2 }
-    )
-  )
-  let emit_info = EmitGraphInfo {
-    type_summaries: emit_info.type_summaries,
-    recursive_type_set: emit_info.recursive_type_set,
-    fielded_variants: emit_info.fielded_variants,
-    shared_types: emit_info.shared_types,
-    ownership_index: emit_info.ownership_index,
-    movable: emit_info.movable,
-    variant_to_enum: emit_info.variant_to_enum,
-    owned_bindings: emit_info.owned_bindings,
-    fold_eligible_index: emit_info.fold_eligible_index,
-    fold_eligible: emit_info.fold_eligible,
-    last_use_index: emit_info.last_use_index,
-    last_use_spans: emit_info.last_use_spans,
-    read_only_index: filtered_ro_index,
-    read_only_params: emit_info.read_only_params
+    last_use_spans: empty_map()
   }
   let shared_types = emit_info.shared_types
   let registry = typed.item_registry
@@ -619,9 +579,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     fold_eligible_index: base_info.fold_eligible_index,
     fold_eligible: empty_map(),
     last_use_index: base_info.last_use_index,
-    last_use_spans: empty_map(),
-    read_only_index: base_info.read_only_index,
-    read_only_params: empty_map()
+    last_use_spans: empty_map()
   }
   let shared_types = emit_info.shared_types
   emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map())
@@ -863,10 +821,6 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
       Some { value: m } => m
       None => empty_map()
     }
-    let fn_read_only = match map_get(emit_info.read_only_index, item.name) {
-      Some { value: m } => m
-      None => empty_map()
-    }
     let fn_emit_info = EmitGraphInfo {
       type_summaries: emit_info.type_summaries,
       recursive_type_set: emit_info.recursive_type_set,
@@ -879,9 +833,7 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
       fold_eligible_index: emit_info.fold_eligible_index,
       fold_eligible: fn_fold_eligible,
       last_use_index: emit_info.last_use_index,
-      last_use_spans: fn_last_use,
-      read_only_index: emit_info.read_only_index,
-      read_only_params: fn_read_only
+      last_use_spans: fn_last_use
     }
     // Items with resource uses or service calls are emitted as async workflow functions.
     // Single authority: service_names + resource_names on ItemInfo (not uses on the Node).
@@ -1137,14 +1089,11 @@ fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, shar
 
 fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_index
-  // TCO functions use mut params (reassigned in loop) — can't be borrowed.
-  // Non-TCO functions get read-only params from ownership analysis.
-  let use_tco = is_tco_eligible(name: name, body: body, registry: registry, source_index: si)
-  let fn_read_only = if use_tco { empty_map() } else { emit_info.read_only_params }
-  let params_str = emit_params(params: params, shared_types: shared_types, source_index: si, read_only_params: fn_read_only)
+  let params_str = emit_params(params: params, shared_types: shared_types, source_index: si)
   let ret_str = emit_inferred(inferred: inferred, shared_types: shared_types, source_index: si)
   let body_scope = build_params_scope(scope: scope, params: params)
   let depth = 0
+  let use_tco = is_tco_eligible(name: name, body: body, registry: registry, source_index: si)
   // Stacker wrapping: recursive non-TCO functions need stack growth to avoid
   // overflow on large .dag files (e.g., 02_parse.dag at ~4000 lines).
   let needs_stacker = is_self_recursive(name: name, body: body, registry: registry, source_index: si) && use_tco == false
@@ -1196,7 +1145,7 @@ fn emit_func_def(
     Some { value: info } => info.service_names
     None => []
   }
-  let params_str = emit_func_params(params: params, uses: uses, service_names: service_names, shared_types: shared_types, source_index: scope.type_env.source_index, read_only_params: emit_info.read_only_params)
+  let params_str = emit_func_params(params: params, uses: uses, service_names: service_names, shared_types: shared_types, source_index: scope.type_env.source_index)
   let ret_str = emit_func_inferred(inferred: inferred, shared_types: shared_types, source_index: scope.type_env.source_index)
   let body_scope = build_params_scope(scope: scope, params: params)
   let si = scope.type_env.source_index
@@ -1286,8 +1235,8 @@ fn emit_tco_param(param: Node, shared_types: Map<String, Bool>, source_index: Ne
   concat("mut ", emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: Rust), rust_items().param_type_sep, ty)
 }
 
-fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, shared_types: Map<String, Bool>, source_index: NewlineIndex?, read_only_params: Map<String, Bool>) -> String {
-  let param_strs = params |> map(p => emit_param(param: p, shared_types: shared_types, source_index: source_index, read_only_params: read_only_params))
+fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
+  let param_strs = params |> map(p => emit_param(param: p, shared_types: shared_types, source_index: source_index))
   let resource_strs = uses |> map(u =>
     concat(emit_ident(name: resource_use_name_at(n: u, source_index: source_index), target: Rust), ": &", render_rust_type(n: resource_use_resource(n: u), shared_types: shared_types, source_index: source_index))
   )
@@ -1306,8 +1255,8 @@ fn emit_func_inferred(inferred: Node, shared_types: Map<String, Bool>, source_in
 // Parameter emission
 // =========================================================================
 
-fn emit_params(params: List<Node>, shared_types: Map<String, Bool>, source_index: NewlineIndex?, read_only_params: Map<String, Bool>) -> String {
-  let strs = params |> map(p => emit_param(param: p, shared_types: shared_types, source_index: source_index, read_only_params: read_only_params))
+fn emit_params(params: List<Node>, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
+  let strs = params |> map(p => emit_param(param: p, shared_types: shared_types, source_index: source_index))
   strs |> join(separator: ", ")
 }
 
@@ -1325,32 +1274,13 @@ fn emit_rust_param_type(n: Node, shared_types: Map<String, Bool>, source_index: 
   }
 }
 
-fn is_shared_param_type(param: Node, shared_types: Map<String, Bool>) -> Bool {
-  let type_expr = param_node_type_expr(n: param)
-  // Check if the param's resolved type is Rc-wrapped (in shared_types).
-  // Only Rc-wrapped types benefit from borrowing. Primitives (i64, bool, f64),
-  // String, and callable types (impl Fn) are not borrowed — operators and
-  // call conventions don't work on &primitive.
-  let type_name = type_expr.name
-  // Also check inferred type for generics or resolved aliases.
-  let resolved_name = match type_expr.inferred {
-    Some { value: Resolved { node: rt } } => rt.name
-    _ => type_name
-  }
-  emit_map_has(m: shared_types, key: type_name) || emit_map_has(m: shared_types, key: resolved_name)
-}
-
-fn emit_param(param: Node, shared_types: Map<String, Bool>, source_index: NewlineIndex?, read_only_params: Map<String, Bool>) -> String {
+fn emit_param(param: Node, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
   let n = param_node_type_expr(n: param)
   let ty = emit_rust_param_type(n: n, shared_types: shared_types, source_index: source_index)
-  let pname = param_node_name_at(n: param, source_index: source_index)
-  // Read-only params with shared types (Rc<T>) are borrowed: callers pass
-  // &Rc<T> instead of cloning. Only Rc-wrapped types — primitives, String,
-  // and callables are NOT borrowed (operators/conventions break on &primitive).
-  let is_read_only = emit_map_has(m: read_only_params, key: pname)
-  let is_shared = is_shared_param_type(param: param, shared_types: shared_types)
-  let prefix = if is_read_only && is_shared { "&" } else { "" }
-  concat(emit_ident(name: pname, target: Rust), rust_items().param_type_sep, prefix, ty)
+  // All params are owned -- Rc-wrapped types are cheap to clone, and
+  // the .clone() pattern in function bodies produces owned values.
+  // Adding & to params creates reference/owned mismatches.
+  concat(emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: Rust), rust_items().param_type_sep, ty)
 }
 
 fn emit_inferred(inferred: Node, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
@@ -1880,17 +1810,11 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
   else if name == "true" || name == "false" { emit_keyword(key: name, target: Rust) }
   else {
     let sharing = language_spec(target: Rust).sharing
-    // Read-only params are &Rc<T> — they must always clone to produce owned Rc<T>.
-    // Cannot be moved or last-use-moved (moving &Rc<T> produces &Rc<T>, not Rc<T>).
-    let is_borrowed_param = emit_map_has(m: emit_info.read_only_params, key: name)
     // Last-use elision: if this reference's span matches the precomputed last-use
     // span for this binding, it can move instead of clone (O2).
-    // Disabled for borrowed params (already &Rc<T>).
-    let is_last_use = if is_borrowed_param { false } else {
-      match map_get(emit_info.last_use_spans, name) {
-        Some { value: last_span } => last_span == span_start && span_start > 0
-        None => false
-      }
+    let is_last_use = match map_get(emit_info.last_use_spans, name) {
+      Some { value: last_span } => last_span == span_start && span_start > 0
+      None => false
     }
     let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info)
     let ref_str = match variant_parent {
@@ -1910,8 +1834,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
                 _ => false
               }
               let ident = emit_ident(name: name, target: Rust)
-              // Borrowed params (&Rc<T>) cannot be moved — must clone to produce owned Rc<T>.
-              let is_movable = if is_borrowed_param { false } else { emit_map_has(m: emit_info.movable, key: name) || is_last_use }
+              let is_movable = emit_map_has(m: emit_info.movable, key: name) || is_last_use
               let ident_str = if is_function_value {
                 ident
               } else if is_movable {
@@ -1924,7 +1847,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
             }
           None =>
             let ident = emit_ident(name: name, target: Rust)
-            let is_movable = if is_borrowed_param { false } else { emit_map_has(m: emit_info.movable, key: name) || is_last_use }
+            let is_movable = emit_map_has(m: emit_info.movable, key: name) || is_last_use
             let ident_str = if is_movable {
               ident
             } else { match resolved_type {
@@ -2310,31 +2233,6 @@ fn emit_cloned_arg(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
   emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
 }
 
-// Emit an argument for a read-only callee param: borrow instead of clone.
-// For ExprVar: emit &name (or bare name if caller's param is already &Rc<T>).
-// For other expressions: emit &(expr) to borrow the result.
-fn emit_borrow_arg(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo, depth: Int) -> String {
-  match texpr.expr_data {
-    ExprVar { binding_kind: binding_kind } =>
-      let n = expr_var_name_at(texpr: texpr, source_index: scope.type_env.source_index)
-      // If this is none/None/true/false keyword, emit normally (no borrow).
-      if n == "none" || n == "None" || n == "true" || n == "false" {
-        emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: texpr.inferred, shared_types: shared_types, registry: registry, emit_info: emit_info, span_start: texpr.span.start)
-      } else {
-        let ident = emit_ident(name: n, target: Rust)
-        // If the caller's binding is already a read-only param (&Rc<T>),
-        // pass it directly — it's already a borrow.
-        let caller_param_borrowed = emit_map_has(m: emit_info.read_only_params, key: n)
-        if caller_param_borrowed { ident }
-        else { concat("&", ident) }
-      }
-    _ =>
-      // Non-variable expression: emit normally and borrow the result.
-      let expr_str = emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-      concat("&", expr_str)
-  }
-}
-
 // Check if a type name is an enum via structural type summaries.
 fn is_enum_type_name(type_name: String, type_summaries: Map<String, TypeSummary>) -> Bool {
   is_enum_in_summaries(type_summaries: type_summaries, type_name: type_name)
@@ -2462,15 +2360,6 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
   let filled_args = fill_default_args(ordered: ordered_args, callee: callee, registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let is_rt = map_contains_key(rt_functions, func)
   let is_rt_ref_map = map_contains_key(rt_ref_map_functions(), func)
-  // Look up callee's read-only params for borrow optimization.
-  // Only applies to .dag-defined functions (not runtime). Runtime functions
-  // take owned Rc<T> — their params are not in the read_only_index.
-  let callee_read_only = if is_rt { empty_map() } else {
-    match map_get(emit_info.read_only_index, func) {
-      Some { value: m } => m
-      None => empty_map()
-    }
-  }
   let arg_strs = filled_args |> enumerate |> map(pair =>
     let idx = pair.first
     let a = pair.second
@@ -2478,14 +2367,7 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
       let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       concat("&", base)
     } else {
-      // Check if this arg maps to a read-only param of the callee.
-      let aname = match arg_name_at(n: a, source_index: collection_scope.type_env.source_index) { Some { value: n } => n  None => "" }
-      let callee_param_read_only = emit_map_has(m: callee_read_only, key: aname)
-      if callee_param_read_only {
-        emit_borrow_arg(texpr: arg_value(n: a), registry: registry, scope: collection_scope, shared_types: shared_types, emit_info: emit_info, depth: depth)
-      } else {
-        emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-      }
+      emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     }
   )
   let extra_args = match callee {
@@ -2815,9 +2697,7 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
               fold_eligible_index: emit_info.fold_eligible_index,
               fold_eligible: emit_info.fold_eligible,
               last_use_index: emit_info.last_use_index,
-              last_use_spans: emit_info.last_use_spans,
-              read_only_index: emit_info.read_only_index,
-              read_only_params: emit_info.read_only_params
+              last_use_spans: emit_info.last_use_spans
             }
           None => emit_info
         }

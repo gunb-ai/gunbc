@@ -4579,9 +4579,7 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     fold_eligible_index: empty_map(),
     fold_eligible: empty_map(),
     last_use_index: empty_map(),
-    last_use_spans: empty_map(),
-    read_only_index: empty_map(),
-    read_only_params: empty_map()
+    last_use_spans: empty_map()
   }
 }
 

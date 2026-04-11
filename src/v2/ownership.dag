@@ -65,6 +65,10 @@ type EdgeClassification {
   kind: EdgeKind
   site: String
   span_start: Int
+  // Structural flag: true when this consumer is a synthetic record from a
+  // lambda or foreach capture. Captured bindings execute in a closure that
+  // may run after the "last" direct use, so last-use move is unsound.
+  is_captured: Bool
 }
 
 // =========================================================================
@@ -132,8 +136,8 @@ fn empty_usage_accum() -> UsageAccum {
 // Record a use of a binding with the given edge kind and site description.
 // binding_kind is set from ExprVar nodes; once set it is preserved across
 // subsequent records for the same name.
-fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, binding_kind: VarBindingKind?, span_start: Int) -> UsageAccum {
-  let edge = EdgeClassification { kind: kind, site: site, span_start: span_start }
+fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, binding_kind: VarBindingKind?, span_start: Int, is_captured: Bool) -> UsageAccum {
+  let edge = EdgeClassification { kind: kind, site: site, span_start: span_start, is_captured: is_captured }
   let existing = match map_get(accum.bindings, name) {
     Some { value: usage } => usage
     None => BindingUsage { name: name, binding_kind: none, consumers: [] }
@@ -193,9 +197,9 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -
     ExprVar { binding_kind: bk } =>
       let n = expr_var_name_at(texpr: texpr, source_index: si)
       if in_tail {
-        record_use(accum: accum, name: n, kind: Consumed, site: "return", binding_kind: bk, span_start: texpr.span.start)
+        record_use(accum: accum, name: n, kind: Consumed, site: "return", binding_kind: bk, span_start: texpr.span.start, is_captured: false)
       } else {
-        record_use(accum: accum, name: n, kind: Read, site: "read", binding_kind: bk, span_start: texpr.span.start)
+        record_use(accum: accum, name: n, kind: Read, site: "read", binding_kind: bk, span_start: texpr.span.start, is_captured: false)
       }
 
     ExprLiteral { value: _ } => accum
@@ -207,7 +211,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -
         ExprVar { binding_kind: bk } =>
           let vn = expr_var_name_at(texpr: base_node, source_index: si)
           let f = field_access_field_at(texpr: texpr, source_index: si)
-          record_use(accum: accum, name: vn, kind: Projected, site: concat(".", f), binding_kind: bk, span_start: texpr.span.start)
+          record_use(accum: accum, name: vn, kind: Projected, site: concat(".", f), binding_kind: bk, span_start: texpr.span.start, is_captured: false)
         _ => walk_expr(accum: accum, texpr: base_node, in_tail: false, si: si)
       }
 
@@ -222,7 +226,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -
             match ia_val.expr_data {
               ExprVar { binding_kind: bk } =>
                 let vn = expr_var_name_at(texpr: ia_val, source_index: si)
-                record_use(accum: accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start)
+                record_use(accum: accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start, is_captured: false)
               _ => walk_expr(accum: accum, texpr: ia_val, in_tail: false, si: si)
             }
           None => accum
@@ -251,7 +255,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -
             match ia_val.expr_data {
               ExprVar { binding_kind: bk } =>
                 let vn = expr_var_name_at(texpr: ia_val, source_index: si)
-                record_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start)
+                record_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start, is_captured: false)
               _ => walk_expr(accum: recv_accum, texpr: ia_val, in_tail: false, si: si)
             }
           None => recv_accum
@@ -330,8 +334,8 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -
       let body = lambda_body(texpr: texpr)
       let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false, si: si)
       let binding_merged = inner.bindings |> map_values |> fold(init: accum, f: (acc, usage) =>
-        let a1 = record_use(accum: acc, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none, span_start: 0)
-        record_use(accum: a1, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none, span_start: 0)
+        let a1 = record_use(accum: acc, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none, span_start: 0, is_captured: true)
+        record_use(accum: a1, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none, span_start: 0, is_captured: true)
       )
       UsageAccum { bindings: binding_merged.bindings, fold_call_nodes: binding_merged.fold_call_nodes |> concat(inner.fold_call_nodes) }
 
@@ -342,8 +346,8 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -
       let body = foreach_body(texpr: texpr)
       let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false, si: si)
       let binding_merged = inner.bindings |> map_values |> fold(init: coll_accum, f: (acc, usage) =>
-        let a1 = record_use(accum: acc, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none, span_start: 0)
-        record_use(accum: a1, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none, span_start: 0)
+        let a1 = record_use(accum: acc, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none, span_start: 0, is_captured: true)
+        record_use(accum: a1, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none, span_start: 0, is_captured: true)
       )
       UsageAccum { bindings: binding_merged.bindings, fold_call_nodes: binding_merged.fold_call_nodes |> concat(inner.fold_call_nodes) }
 
@@ -418,7 +422,7 @@ fn build_last_use_set(proof: OwnershipProof) -> Map<String, Int> {
     |> fold(init: empty_map(), f: (acc, usage) =>
       // Exclude bindings captured by lambdas or foreach — closure may execute
       // after the "last" direct use, making a move unsound.
-      let has_capture = usage.consumers |> any(c => c.site == "lambda-capture" || c.site == "foreach-capture")
+      let has_capture = usage.consumers |> any(c => c.is_captured)
       if has_capture { acc }
       else {
         // Find the maximum span_start across all non-Threaded consumers.
@@ -432,29 +436,6 @@ fn build_last_use_set(proof: OwnershipProof) -> Map<String, Int> {
         } else { acc }
       }
     )
-}
-
-// Read-only params: a function parameter is read-only when all its non-Threaded
-// consumers are Read or Projected — the function never consumes (moves) the value.
-// This is a structural fact about the function, not a rendering decision.
-//
-// Each target language renders this differently:
-//   Rust:   read-only param → &Rc<T>, call site → &x (borrow, no clone)
-//   Go:     read-only param → pointer for large types (no copy)
-//   Python: no change (reference semantics by default)
-//
-// Excludes params with Consumed edges (value moved) or zero consumers (unused).
-fn is_read_only_binding(usage: BindingUsage) -> Bool {
-  let non_threaded = usage.consumers |> filter(c => match c.kind { Threaded => false, _ => true })
-  let has_consumers = non_threaded |> count > 0
-  let all_read = non_threaded |> all(c => match c.kind { Read => true, Projected => true, _ => false })
-  has_consumers && all_read
-}
-
-fn build_read_only_params(proof: OwnershipProof) -> Map<String, Bool> {
-  proof.bindings |> map_values
-    |> filter(usage => is_owned_local(kind: usage.binding_kind) && is_read_only_binding(usage: usage))
-    |> fold(init: empty_map(), f: (acc, usage) => map_insert(acc, usage.name, true))
 }
 
 // =========================================================================

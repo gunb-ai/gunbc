@@ -115,28 +115,24 @@ aggregates via scope-blind string matching (see pipeline.rs).
 
 | # | Item | Test | Cleanup target | Status |
 |---|------|------|---------------|--------|
-| O1 | Track use-site ordering in BindingUsage | span_start populated from texpr.span.start in walk_expr | — | **DONE** (spans were already populated; lambda-capture exclusion added) |
-| O2 | Emitter skips `.clone()` on last use of fan-out > 1 binding | build_last_use_set → last_use_index/last_use_spans on EmitGraphInfo → emit_var_ref checks span | 1,831 `.clone()` calls removed | **DONE** (ratchet 24000 → 22200) |
+| O1 | Track use-site ordering in BindingUsage | span_start populated from texpr.span.start in walk_expr; is_captured structural flag | — | **DONE** |
+| O2 | Emitter skips `.clone()` on last use of fan-out > 1 binding | build_last_use_set → last_use_index/last_use_spans on EmitGraphInfo → emit_var_ref checks span | Clone ratchet 24000 → 22200 | **DONE** |
 | O3 | V1 ratchet at 0 for focused test programs | Test: `count_ownership_violations` V1 = 0 | — | Deferred (coarse aggregate, not V1-specific) |
 
-### Layer 2: Post-TCO ownership (NOT A REAL ISSUE)
+### Layer 2: Post-TCO ownership (no measured violations)
 
 Investigation (2026-04-10): V2 was described as "TCO gate zeroes the
-movable set." Empirical analysis shows this is not the case:
-
-1. The movable set flows unchanged through TCO functions — no zeroing.
-2. `emit_typed_tco_reassign` has a local heuristic that ADDS movability
-   for params in the reassignment expressions.
-3. Layer 1 (last-use elision) handles the main case: a binding used
-   once in the body + once in the self-call arg → last-use move.
-4. The 29 remaining movable_but_cloned violations are ALL scope-blind
-   false positives (common names like `x`, `c`, `name` matching across
-   function boundaries), NOT TCO-specific issues.
+movable set." Empirical analysis shows the movable set flows unchanged
+through TCO functions. The scope-blind `movable_but_cloned` metric
+(45→29) does not surface any TCO-specific violations — all remaining
+counts are from common variable names matching across function
+boundaries. Note: the metric is coarse (see function doc), so this
+finding is directional, not absolute.
 
 | # | Item | Test | Cleanup target | Status |
 |---|------|------|---------------|--------|
-| O4 | Run ownership analysis AFTER TCO transformation | Investigation: movable set already flows correctly through TCO | None needed | **N/A** (no real violations found) |
-| O5 | V2 ratchet at 0 for focused test programs | movable_but_cloned 45→29, all false positives | — | **N/A** |
+| O4 | Run ownership analysis AFTER TCO transformation | Investigation: movable set already flows correctly through TCO | None needed | **N/A** (no measured violations via scope-blind metric) |
+| O5 | V2 ratchet at 0 for focused test programs | movable_but_cloned 45→29 | — | **N/A** |
 
 ### Layer 3: Borrow propagation (needs LS-4 design)
 
