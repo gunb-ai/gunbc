@@ -194,7 +194,7 @@ Bootstrap D ├─ Lane B: Emission ──────────────�
 ## Active work: close the model
 
 All active tracks are facets of one problem: the IR doesn't carry
-enough structure. Three parallel streams now, one phase after.
+enough structure. Four parallel streams, one phase after.
 
 ```
 Stream A (provenance)   S1→S2→S3→S4→S5 ─→ C2→C3→C4→C5→C6
@@ -203,6 +203,8 @@ Stream B (ownership)    O1→O2→O3→O4→O5            │  (independent)
                                                   │
 Stream C (std/)         C1  S8 ───────────────────┘
                         (both feed into CX consumer)
+
+Stream D (structural parser)    P1 ────────────────── (02_parse.dag + compile.dag only)
 ```
 
 **Stream A: Provenance pipeline** (04_infer.dag, 04_env.dag, complexity.dag)
@@ -221,6 +223,39 @@ C1 (direct SubValueRelation→LoweringTarget) and S8 (lattice
 inhabitant declarations). Both small, both unblocked. C1 enables
 better bounds when C2 lands. S8 dissolves ad-hoc merge functions.
 
+**Stream D: Structural parser** (02_parse.dag, compile.dag)
+Restructure parser from integer position indexing to list consumption.
+Target: eliminate 132 CX violations (Category B) by construction.
+Design: [src/v2/parser-design.md](src/v2/parser-design.md).
+**Current state:** Phase 0 done (helper interface narrowing in
+02_parse.dag). Phases 1-4 (the structural rewrite) not yet started.
+Touches only parser + compile boundary — no overlap with other streams.
+
+Not in Stream D (separate future PRs):
+- Tokenizer restructuring (22 violations, needs span position design)
+- SubValueRelation → ProgressRelation rename (overlaps Stream A/C)
+
+### CX violation audit (measured 2026-04-11, ratchet is 424)
+
+Local measurement found 421 violations (ratchet set at 424 in
+bootstrap.rs). The violation count breaks into 8 root-cause categories:
+
+| Cat | Root cause | Count | Fix |
+|-----|-----------|------:|-----|
+| A | Node tree descent (children are sub-values) | 159 | Body-inferred return contracts |
+| B | Parser SCC (position advancement) | 132 | **Stream D: structural parser** |
+| C | Emission TCO mutual recursion | 22 | Body-inferred return contracts |
+| D | Inference mutual recursion (list shrinkage) | 15 | Body-inferred return contracts |
+| E | Complexity self-analysis | 17 | Follow-on work |
+| F | Tokenizer (position into bounded string) | 22 | Separate PR (span design needed) |
+| G | Arithmetic descent (`(n-d)/10`) | 44 | Classification refinement in S3 |
+| H | Graph DFS (visited-set termination) | 10 | Deferred (needs worklist primitive) |
+
+**Path to 0:** Stream D (-132) + body inference (-196) + tokenizer
+(-22) + arithmetic (-44) + complexity self-analysis (-17) = -411.
+Remaining ~10 = graph DFS (needs language primitive). Tokenizer and
+rename are separate PRs, not counted in Stream D scope.
+
 ### What to start now
 
 | Stream | Items | Files |
@@ -228,14 +263,17 @@ better bounds when C2 lands. S8 dissolves ad-hoc merge functions.
 | A: Provenance infra | S1, S2, S3, S4, S5 | 04_env.dag, 04_infer.dag |
 | B: Clone elision | O1-O5 | ownership.dag, 05_emit_rust.dag |
 | C: std/ foundation | C1, S8 (Phase 1 done, Phase 2 blocked on generic emission) | std/induction.dag, std/algebra.dag, std/termination.dag |
+| D: Structural parser | P1 | 02_parse.dag, compile.dag |
 
-Zero file overlap between streams. After Stream A (S1-S5), CX
+Streams A-D have no file overlap. After Stream A (S1-S5), CX
 consumer items C2-C6 can start (same files as Stream A, sequential).
 
 ### Active workboards
 
 - **CX:** [src/v2/cx-design.md §Workboard](src/v2/cx-design.md)
   — S1-S8 shared, C1-C6 CX-specific, TDD plan, cleanup catalog
+- **Parser:** [src/v2/parser-design.md](src/v2/parser-design.md)
+  — D1-D8 design decisions, target structure, scope
 - **Ownership:** [src/v2/ownership-design.md §Workboard](src/v2/ownership-design.md)
   — O1-O10, violation classes, 3 layers, TDD plan, cleanup catalog
 
