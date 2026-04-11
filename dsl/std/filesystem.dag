@@ -67,13 +67,25 @@ type PartitionResult {
 
 // "Is this entry a text file we can read?"
 // Exhaustive over EntryKind -- every branch is explicit.
+// Only explicit text encodings are readable. Unknown and Binary are not.
 fn is_text_readable(entry: FileEntry) -> Bool {
   match entry.kind {
-    RegularFile => entry.encoding != Binary
-    Symlink     => entry.symlink_target == TargetFile && entry.encoding != Binary
+    RegularFile => is_text_encoding(e: entry.encoding)
+    Symlink     => entry.symlink_target == TargetFile && is_text_encoding(e: entry.encoding)
     Directory   => false
     Missing     => false
     Other       => false
+  }
+}
+
+// Helper: does this optional encoding represent a known text encoding?
+fn is_text_encoding(e: Encoding?) -> Bool {
+  match e {
+    Some { value: ASCII } => true
+    Some { value: UTF8 } => true
+    Some { value: Latin1 } => true
+    Some { value: Text } => true
+    _ => false
   }
 }
 

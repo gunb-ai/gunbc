@@ -58,7 +58,7 @@ type SystemPrompt {
 type ThinkingMode = Enabled | Disabled
 
 type ThinkingConfig {
-  mode: ThinkingMode
+  type: ThinkingMode
   budget_tokens: Int?
 }
 

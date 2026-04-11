@@ -22,7 +22,6 @@ use AbiEnv::*;
 use ExecutionEnv::*;
 use EntryKind::*;
 use SymlinkTarget::*;
-use ContentEncoding::*;
 use HttpMethod::*;
 use AuthScheme::*;
 use CodegenBackend::*;
@@ -258,21 +257,9 @@ pub type ContentHash = String;
 
 pub type GitRef = String;
 
-pub type ProjectId = String;
+pub type GcpProjectId = String;
 
 pub type ServiceAccountEmail = String;
-
-pub type GcpSecretId = String;
-
-pub type GcpServiceAccountEmail = String;
-
-pub type GcpSubjectToken = String;
-
-pub type OidcAudience = String;
-
-pub type OidcSubjectToken = String;
-
-pub type WifAudience = String;
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -439,28 +426,9 @@ pub enum SymlinkTarget {
     Broken,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum ContentEncoding {
-    UTF8,
-    ASCII,
-    Latin1,
-    Binary,
-}
-
 pub type TextFilePath = String;
 
 pub type BinaryFilePath = String;
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct FileClassification {
-    pub path: String,
-    pub kind: EntryKind,
-    pub encoding: Option<ContentEncoding>,
-    pub symlink_target: Option<SymlinkTarget>,
-    pub size: i64,
-    pub mime: Option<String>,
-}
 
 pub type MimeType = String;
 
@@ -494,19 +462,6 @@ pub struct AccessToken {
     pub token: String,
     pub scheme: Rc<AuthScheme>,
     pub expires_at: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CloudSecretConfig {
-    pub project_id: String,
-    pub secret: String,
-    pub version: String,
-    pub service_account: Option<String>,
-    pub audience: String,
-    pub scheme: Rc<AuthScheme>,
-    pub header_name: Option<String>,
-    pub source_id: String,
-    pub required_scopes: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
