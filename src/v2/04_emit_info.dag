@@ -20,7 +20,7 @@ import v2.std.core {
   with_required_cardinality,
   Connective, Conj, NoConnective, Arrow,
   CardOptional,
-  param_node_name, param_node_name_at
+  param_node_name_at
 }
 import v2.compiler.infer_types {
   normalize_access_type_node,

@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{Node, InferredNode, VarBindingKind, import_is_all, import_specific_names, module_imports, module_items, param_node_type_expr, authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, expr_method_name_at, let_binding_name_at, param_node_name_at, resource_use_name_at, field_binding_name_at, MatchPattern, LiteralValue, field_binding_pattern, TextFile, SourceSpan, resource_use_resource, BinOp, UnaryOpKind, StringPart, DeclaredFuncSig, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, arg_name, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, field_access_field_at, method_receiver, expr_field_access_summary, expr_method_call_semantics, record_lit_type_name, lambda_body, cast_expr, cast_target, return_value, foreach_variable, foreach_variable_at, foreach_collection, foreach_body, method_arg_nodes, index_base, index_expr, slice_base, slice_start, slice_end, with_required_cardinality, Connective, is_rest_transport, is_shell_transport, is_file_transport, FieldAccessStyle, Cardinality};
+pub use crate::v2_std_core::{Node, InferredNode, VarBindingKind, import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr, authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, expr_method_name_at, let_binding_name_at, param_node_name_at, resource_use_name_at, field_binding_name_at, MatchPattern, LiteralValue, field_binding_pattern, TextFile, SourceSpan, resource_use_resource, BinOp, UnaryOpKind, StringPart, DeclaredFuncSig, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, field_access_field_at, method_receiver, expr_field_access_summary, expr_method_call_semantics, record_lit_type_name_at, lambda_body, cast_expr, cast_target, return_value, foreach_variable_at, foreach_collection, foreach_body, method_arg_nodes, index_base, index_expr, slice_base, slice_start, slice_end, with_required_cardinality, Connective, is_rest_transport, is_shell_transport, is_file_transport, FieldAccessStyle, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::VarBindingKind::{FunctionValueBinding};
 use crate::v2_std_core::BinOp::{NullCoalesce};
@@ -155,7 +155,7 @@ pub fn emit_py_module(typed_module: Rc<TypedModule>, registry: Rc<HashMap<String
         let m = typed_module.module.clone();
 let scope = module_emit_scope(typed_module.clone());
 let prelude = emit_py_prelude(typed_module.clone());
-let imports_str = emit_py_imports(module_imports(m.clone()));
+let imports_str = emit_py_imports(module_imports(m.clone()), scope.type_env.clone().source_index.clone());
 let imports_section = if (imports_str.clone().as_str() == "".to_string().as_str()) {
             "".to_string()
         } else {
@@ -171,7 +171,7 @@ Rc::new(TextFile {
 }
 }
 
-pub fn emit_py_imports(imports: Rc<Vec<Rc<Node>>>) -> String {
+pub fn emit_py_imports(imports: Rc<Vec<Rc<Node>>>, source_index: Option<Rc<NewlineIndex>>) -> String {
     if ((imports.clone().len() as i64) == 0) {
         "".to_string()
     } else {
@@ -183,7 +183,7 @@ if import_is_all(imp.clone()) {
                     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(items.import_from_keyword.clone(), " ".to_string()), mod_name.clone()), " ".to_string()), items.import_keyword.clone()), " *".to_string())
                 } else {
                     {
-                        let specific_names = import_specific_names(imp.clone());
+                        let specific_names = import_specific_names_at(imp.clone(), source_index.clone());
 if ((specific_names.clone().len() as i64) == 0) {
                             "".to_string()
                         } else {
@@ -351,7 +351,7 @@ let si = scope.type_env.clone().source_index.clone();
 let params_str = emit_py_params(params.clone(), si.clone());
 let ret_str = emit_py_inferred(inferred, si.clone());
 let body_scope = build_params_scope(scope.clone(), params.clone());
-let use_tco = is_tco_eligible(name.clone(), body.clone(), registry.clone());
+let use_tco = is_tco_eligible(name.clone(), body.clone(), registry.clone(), si.clone());
 if use_tco {
             {
                 let body_str = emit_py_typed_tco_body(body.clone(), name.clone(), params.clone(), registry.clone(), body_scope, (depth.clone() + 1));
@@ -478,7 +478,7 @@ pub fn emit_py_expr_let(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo
 }
 
 pub fn emit_py_expr_record_lit(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    emit_py_typed_record_lit(record_lit_type_name(expr.clone()), expr.children.clone(), registry, scope, depth)
+    emit_py_typed_record_lit(record_lit_type_name_at(expr.clone(), scope.type_env.clone().source_index.clone()), expr.children.clone(), registry, scope.clone(), depth)
 }
 
 pub fn emit_py_expr_string_interp(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
@@ -821,16 +821,16 @@ pub fn emit_py_service_def(item: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemI
 let safe_name = sanitize_service_name(authored_name(env.clone(), item.clone()));
 let transport = service_fallback_transport(item.clone());
 let op_children = item.children.clone();
-let init_method = emit_py_service_init(transport.clone(), op_children.clone());
+let init_method = emit_py_service_init(transport.clone(), op_children.clone(), env.source_index.clone());
 let methods = Rc::new({ let mut __result = Vec::new(); for op_node in op_children.clone().iter().cloned() { __result.push(emit_py_operation_method(safe_name.clone(), transport.clone(), op_node.clone(), registry.clone(), (depth.clone() + 1), env.clone())); } __result });
 let methods_str = methods.join(&"\n\n".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(language_spec(RenderTarget::Python).items.clone().struct_keyword.clone(), " ".to_string()), safe_name.clone()), ":\n".to_string()), make_indent((depth.clone() + 1))), init_method), "\n\n".to_string()), make_indent((depth.clone() + 1))), methods_str)
 }
 }
 
-pub fn emit_py_service_init(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> String {
+pub fn emit_py_service_init(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
-        let fs = compute_service_fields(fallback_transport, op_children);
+        let fs = compute_service_fields(fallback_transport, op_children, source_index);
 let params = service_field_decls(fs.clone(), language_spec(RenderTarget::Python).service_fields.clone());
 let assigns = service_field_ctors(fs.clone(), language_spec(RenderTarget::Python).service_fields.clone());
 if ((params.clone().len() as i64) == 0) {
@@ -864,13 +864,13 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 }
 
 pub fn emit_py_transport_call(transport: Rc<Node>, op_name: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    if is_rest_transport(transport.clone()) {
-        emit_py_rest_call(op_name, transport.clone(), source_index)
+    if is_rest_transport(transport.clone(), source_index.clone()) {
+        emit_py_rest_call(op_name, transport.clone(), source_index.clone())
     } else {
         if is_shell_transport(transport.clone()) {
-            emit_py_shell_call(op_name, transport.clone(), source_index)
+            emit_py_shell_call(op_name, transport.clone(), source_index.clone())
         } else {
-            if is_file_transport(transport.clone()) {
+            if is_file_transport(transport.clone(), source_index.clone()) {
                 emit_py_file_call(op_name)
             } else {
                 emit_py_local_call(op_name)
@@ -891,9 +891,9 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(url_line, "\n".to_string
 
 pub fn emit_py_headers_dict(transport: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
-        let auth_entry = if transport_has_auth(transport.clone()) {
+        let auth_entry = if transport_has_auth(transport.clone(), source_index.clone()) {
             {
-                let header_name = match transport_auth_header_name(transport.clone()) {
+                let header_name = match transport_auth_header_name(transport.clone(), source_index.clone()) {
     Some(h) => h.clone(),
     None => "Authorization".to_string(),
 };
@@ -902,7 +902,7 @@ v2_rt::concat(v2_rt::concat("\"".to_string(), header_name), "\": self.auth_token
         } else {
             "".to_string()
         };
-let hdrs = transport_headers(transport.clone());
+let hdrs = transport_headers(transport.clone(), source_index.clone());
 let header_entries = Rc::new({ let mut __result = Vec::new(); for h in hdrs.iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat("\"".to_string(), h.name.clone()), "\": ".to_string()), emit_simple_expr(field_init_node_value(h.clone()), RenderTarget::Python, source_index.clone()))); } __result });
 let all_entries = if (auth_entry.clone().as_str() == "".to_string().as_str()) {
             header_entries.join(&", ".to_string())
@@ -915,7 +915,7 @@ v2_rt::concat(v2_rt::concat("headers = {".to_string(), all_entries), "}".to_stri
 
 pub fn emit_py_shell_call(op_name: String, transport: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
-        let envs = transport_env(transport);
+        let envs = transport_env(transport, source_index.clone());
 let env_dict_entries = Rc::new({ let mut __result = Vec::new(); for e in envs.iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat("\"".to_string(), e.name.clone()), "\": ".to_string()), emit_simple_expr(field_init_node_value(e.clone()), RenderTarget::Python, source_index.clone()))); } __result });
 let env_str = v2_rt::concat(v2_rt::concat("{".to_string(), env_dict_entries.join(&", ".to_string())), "}".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("import subprocess\n".to_string(), "result = subprocess.run(\n".to_string()), "    [\"".to_string()), emit_ident(op_name, RenderTarget::Python)), "\"],\n".to_string()), "    cwd=self.working_dir or \".\",\n".to_string()), "    env=".to_string()), env_str), ",\n".to_string()), "    capture_output=True, text=True,\n".to_string()), ")\n".to_string()), "return result.stdout".to_string())

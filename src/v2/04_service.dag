@@ -19,7 +19,7 @@ import v2.std.core {
   NewlineIndex,
   no_span,
   unit_type,
-  expr_var_name, expr_var_name_at, expr_call_func, expr_call_func_at, field_access_field, field_access_field_at, field_access_base,
+  expr_var_name_at, expr_call_func_at, field_access_field_at, field_access_base,
   method_receiver, param_node_type_expr
 }
 import v2.compiler.infer_types {

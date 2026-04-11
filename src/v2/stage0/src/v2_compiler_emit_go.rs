@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{Node, InferredNode, VarBindingKind, import_is_all, import_specific_names, module_imports, module_items, param_node_type_expr, authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, expr_method_name_at, let_binding_name_at, param_node_name_at, resource_use_name_at, MatchPattern, LiteralValue, field_binding_pattern, TextFile, SourceSpan, resource_use_resource, BinOp, UnaryOpKind, StringPart, DeclaredFuncSig, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, FieldAccessStyle, arg_name, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, field_access_field_at, method_receiver, expr_field_access_summary, expr_method_call_semantics, record_lit_type_name, lambda_body, cast_expr, cast_target, return_value, foreach_variable, foreach_variable_at, foreach_collection, foreach_body, method_arg_nodes, index_base, index_expr, slice_base, slice_start, slice_end, with_required_cardinality, Connective, is_rest_transport, is_shell_transport, is_file_transport, Cardinality};
+pub use crate::v2_std_core::{Node, InferredNode, VarBindingKind, import_is_all, module_imports, module_items, param_node_type_expr, authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, expr_method_name_at, let_binding_name_at, param_node_name_at, resource_use_name_at, MatchPattern, LiteralValue, field_binding_pattern, TextFile, SourceSpan, resource_use_resource, BinOp, UnaryOpKind, StringPart, DeclaredFuncSig, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, FieldAccessStyle, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, field_access_field_at, method_receiver, expr_field_access_summary, expr_method_call_semantics, record_lit_type_name_at, lambda_body, cast_expr, cast_target, return_value, foreach_variable_at, foreach_collection, foreach_body, method_arg_nodes, index_base, index_expr, slice_base, slice_start, slice_end, with_required_cardinality, Connective, is_rest_transport, is_shell_transport, is_file_transport, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::VarBindingKind::{FunctionValueBinding};
 use crate::v2_std_core::BinOp::{NullCoalesce};
@@ -347,7 +347,7 @@ pub fn emit_go_fn_def(name: String, params: Rc<Vec<Rc<Node>>>, inferred: Rc<Node
 let params_str = emit_go_params(params.clone(), si.clone());
 let ret_str = emit_go_inferred(inferred, si.clone());
 let body_scope = build_params_scope(scope.clone(), params.clone());
-let use_tco = is_tco_eligible(name.clone(), body.clone(), registry.clone());
+let use_tco = is_tco_eligible(name.clone(), body.clone(), registry.clone(), si.clone());
 if use_tco {
             {
                 let body_str = emit_go_typed_tco_body(body.clone(), name.clone(), params.clone(), registry.clone(), body_scope, 1);
@@ -463,7 +463,7 @@ pub fn emit_go_expr_let(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo
 }
 
 pub fn emit_go_expr_record_lit(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    emit_go_typed_record_lit(record_lit_type_name(expr.clone()), expr.children.clone(), registry, scope, depth)
+    emit_go_typed_record_lit(record_lit_type_name_at(expr.clone(), scope.type_env.clone().source_index.clone()), expr.children.clone(), registry, scope.clone(), depth)
 }
 
 pub fn emit_go_expr_string_interp(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
@@ -823,16 +823,16 @@ pub fn emit_go_service_def(item: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemI
         let safe_name = sanitize_service_name(authored_name(env.clone(), item.clone()));
 let transport = service_fallback_transport(item.clone());
 let op_children = item.children.clone();
-let struct_def = emit_go_service_struct(safe_name.clone(), transport.clone(), op_children.clone());
+let struct_def = emit_go_service_struct(safe_name.clone(), transport.clone(), op_children.clone(), env.source_index.clone());
 let methods = Rc::new({ let mut __result = Vec::new(); for op_node in op_children.clone().iter().cloned() { __result.push(emit_go_operation_method(safe_name.clone(), transport.clone(), op_node.clone(), registry.clone(), env.clone())); } __result });
 let methods_str = methods.join(&"\n\n".to_string());
 v2_rt::concat(v2_rt::concat(struct_def, "\n\n".to_string()), methods_str)
 }
 }
 
-pub fn emit_go_service_struct(name: String, fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>) -> String {
+pub fn emit_go_service_struct(name: String, fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<Node>>>, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
-        let fs = compute_service_fields(fallback_transport, op_children);
+        let fs = compute_service_fields(fallback_transport, op_children, source_index);
 let decls = service_field_decls(fs, language_spec(RenderTarget::Go).service_fields.clone());
 if ((decls.clone().len() as i64) == 0) {
             v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(language_spec(RenderTarget::Go).items.clone().type_alias_keyword.clone(), " ".to_string()), name), " ".to_string()), language_spec(RenderTarget::Go).items.clone().struct_keyword.clone()), "{}".to_string())
@@ -856,13 +856,13 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 }
 
 pub fn emit_go_transport_call(transport: Rc<Node>, op_name: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64, source_index: Option<Rc<NewlineIndex>>) -> String {
-    if is_rest_transport(transport.clone()) {
-        emit_go_rest_call(op_name, transport.clone(), depth, source_index)
+    if is_rest_transport(transport.clone(), source_index.clone()) {
+        emit_go_rest_call(op_name, transport.clone(), depth, source_index.clone())
     } else {
         if is_shell_transport(transport.clone()) {
-            emit_go_shell_call(op_name, transport.clone(), depth, source_index)
+            emit_go_shell_call(op_name, transport.clone(), depth, source_index.clone())
         } else {
-            if is_file_transport(transport.clone()) {
+            if is_file_transport(transport.clone(), source_index.clone()) {
                 emit_go_file_call(op_name, depth)
             } else {
                 emit_go_local_call(op_name, depth)
@@ -877,9 +877,9 @@ pub fn emit_go_rest_call(op_name: String, transport: Rc<Node>, depth: i64, sourc
 let url_line = v2_rt::concat(v2_rt::concat(v2_rt::concat(prefix.clone(), "url := fmt.Sprintf(\"%s/".to_string()), to_snake(op_name)), "\", c.BaseURL)".to_string());
 let body_line = v2_rt::concat(prefix.clone(), "reqBody := bytes.NewBuffer(nil)".to_string());
 let req_line = v2_rt::concat(v2_rt::concat(prefix.clone(), "req, err := http.NewRequest(\"POST\", url, reqBody)\n".to_string()), "if err != nil {\n\treturn nil, fmt.Errorf(\"creating request: %w\", err)\n}".to_string());
-let auth_line = if transport_has_auth(transport.clone()) {
+let auth_line = if transport_has_auth(transport.clone(), source_index.clone()) {
             {
-                let header_name = match transport_auth_header_name(transport.clone()) {
+                let header_name = match transport_auth_header_name(transport.clone(), source_index.clone()) {
     Some(h) => h.clone(),
     None => "Authorization".to_string(),
 };
@@ -888,7 +888,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(prefix.clone(), "req.Header.Set(\"".to
         } else {
             "".to_string()
         };
-let hdrs = transport_headers(transport.clone());
+let hdrs = transport_headers(transport.clone(), source_index.clone());
 let header_lines = Rc::new({ let mut __result = Vec::new(); for h in hdrs.iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(prefix.clone(), "req.Header.Set(\"".to_string()), h.name.clone()), "\", ".to_string()), emit_simple_expr(field_init_node_value(h.clone()), RenderTarget::Go, source_index.clone())), ")".to_string())); } __result });
 let send_lines = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(prefix.clone(), "resp, err := http.DefaultClient.Do(req)\n".to_string()), "if err != nil {\n\treturn nil, fmt.Errorf(\"sending request: %w\", err)\n}\n".to_string()), "defer resp.Body.Close()\n".to_string()), "body, err := io.ReadAll(resp.Body)\n".to_string()), "if err != nil {\n\treturn nil, fmt.Errorf(\"reading response: %w\", err)\n}\n".to_string()), "var result interface{}\n".to_string()), "if err := json.Unmarshal(body, &result); err != nil {\n".to_string()), "\treturn nil, fmt.Errorf(\"decoding response: %w\", err)\n}\n".to_string()), "return result, nil".to_string());
 let all_lines = v2_rt::concat(v2_rt::concat(v2_rt::concat(Rc::new(vec![url_line, body_line, req_line]), if (auth_line.clone().as_str() == "".to_string().as_str()) {
@@ -905,7 +905,7 @@ pub fn emit_go_shell_call(op_name: String, transport: Rc<Node>, depth: i64, sour
         let prefix = make_indent(depth);
 let cmd_line = v2_rt::concat(v2_rt::concat(v2_rt::concat(prefix.clone(), "cmd := exec.Command(\"".to_string()), to_snake(op_name)), "\")".to_string());
 let dir_line = v2_rt::concat(prefix.clone(), "cmd.Dir = c.WorkingDir".to_string());
-let envs = transport_env(transport);
+let envs = transport_env(transport, source_index.clone());
 let env_lines = Rc::new({ let mut __result = Vec::new(); for e in envs.iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(prefix.clone(), "cmd.Env = append(cmd.Env, \"".to_string()), e.name.clone()), "=\" + ".to_string()), emit_simple_expr(field_init_node_value(e.clone()), RenderTarget::Go, source_index.clone())), ")".to_string())); } __result });
 let run_lines = v2_rt::concat(v2_rt::concat(v2_rt::concat(prefix.clone(), "output, err := cmd.Output()\n".to_string()), "if err != nil {\n\treturn \"\", fmt.Errorf(\"running command: %w\", err)\n}\n".to_string()), "return string(output), nil".to_string());
 let all_lines = v2_rt::concat(v2_rt::concat(Rc::new(vec![cmd_line, dir_line]), env_lines), Rc::new(vec![run_lines]));

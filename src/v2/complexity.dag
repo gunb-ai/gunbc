@@ -53,21 +53,21 @@ import v2.std.core {
   ExprBinOp, ExprUnaryOp, BinOp, Sub, Div,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprBlock, ExprForEach, ExprReturn, ExprLambda,
   MatchPattern, Bind, VariantPattern,
-  field_init_node_name, field_init_node_name_at, field_init_node_value,
-  arg_name, arg_name_at, arg_value, arm_body, arm_guard, arm_pattern,
+  field_init_node_name_at, field_init_node_value,
+  arg_name_at, arg_value, arm_body, arm_guard, arm_pattern,
   MethodSemantics, AlgebraMethodSemantics,
   PlainMethodSemantics, ServiceMethodSemantics,
   binop_left, binop_right,
-  field_binding_name, field_binding_pattern,
+  field_binding_pattern,
   foreach_collection, foreach_body,
   if_condition, if_then_branch, if_else_branch,
-  let_value, let_body, let_binding_name, let_binding_name_at,
+  let_value, let_body, let_binding_name_at,
   match_scrutinee, match_arm_nodes,
-  method_receiver, method_arg_nodes, param_node_name, param_node_name_at, param_node_type_expr, return_value,
-  expr_call_func, expr_call_func_at, expr_var_name, expr_var_name_at, field_access_base, field_access_field, field_access_field_at,
+  method_receiver, method_arg_nodes, param_node_name_at, param_node_type_expr, return_value,
+  expr_call_func_at, expr_var_name_at, field_access_base, field_access_field_at,
   LiteralValue, LitNull, LitInt,
   is_child_accessor_in_model,
-  lambda_param_names, lambda_body,
+  lambda_param_names_at, lambda_body,
   is_children_list_field, is_sub_value_field,
   is_tree_size_preserving, is_tree_size_reducing
 }
@@ -343,8 +343,8 @@ fn method_size_effect(method_semantics: MethodSemantics?) -> CollectionSizeEffec
 // algebra methods but relies on convention, not structural dispatch.
 // Fix: cross-module template lookup (ROADMAP CG-2/CG-3). When available,
 // replace with: template.callable_of.param_types |> find_index(ReceiverElement).
-fn iteration_element_name(method_semantics: MethodSemantics?, lambda: Node) -> String? {
-  lambda_param_names(texpr: lambda) |> last
+fn iteration_element_name(method_semantics: MethodSemantics?, lambda: Node, si: NewlineIndex?) -> String? {
+  lambda_param_names_at(texpr: lambda, source_index: si) |> last
 }
 
 
@@ -2272,7 +2272,7 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
             ExprLambda { semantics: _ } =>
               // Element variable derived from algebra template's CallableOf
               // (ReceiverElement position), falling back to last lambda param.
-              match iteration_element_name(method_semantics: ms, lambda: arg_val) {
+              match iteration_element_name(method_semantics: ms, lambda: arg_val, si: si) {
                 Some { value: iter_name } =>
                   let ext_vars = map_insert(vars, iter_name, true)
                   all_self_calls_descend_inc(body: lambda_body(texpr: arg_val), func_name: func_name, param_name: param_name, vars: ext_vars, check_child: check_child, check_list: check_list, si: si)
@@ -2665,7 +2665,7 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
           let ev = match arg_val.expr_data {
             ExprLambda { semantics: _ } =>
               // Element variable derived from algebra template's CallableOf.
-              match iteration_element_name(method_semantics: ms, lambda: arg_val) {
+              match iteration_element_name(method_semantics: ms, lambda: arg_val, si: si) {
                 Some { value: iter_name } =>
                   let ext_vars = map_insert(vars, iter_name, true)
                   collect_evidence_incremental(body: lambda_body(texpr: arg_val), func_name: func_name, param_name: param_name, vars: ext_vars, check_child: check_child, check_list: check_list, branching_only: branching_only, si: si)
@@ -2851,7 +2851,7 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
     // If ALL self-calls have structural descent evidence (StrictSubValue
     // or IteratedSubValue), convert to CallPattern directly. This unifies
     // both channels — no dual representation.
-    let all_evidence = collect_self_call_evidence(body: body, fn_name: func_name)
+    let all_evidence = collect_self_call_evidence(body: body, fn_name: func_name, si: si)
     let has_evidence = all_evidence |> count > 0
     // Two conditions for structural proof:
     // Check if ALL self-calls have structural evidence on at least one param.
@@ -3202,7 +3202,7 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
           match arg_val.expr_data {
             ExprLambda { semantics: _ } =>
               // Element variable derived from algebra template's CallableOf.
-              match iteration_element_name(method_semantics: ms, lambda: arg_val) {
+              match iteration_element_name(method_semantics: ms, lambda: arg_val, si: si) {
                 Some { value: iter_name } =>
                   let ext_vars = map_insert(descent_vars, iter_name, true)
                   collect_scc_child_edges(body: lambda_body(texpr: arg_val), caller: caller, param_name: param_name, descent_vars: ext_vars, target_set: target_set, check_child: check_child, check_list: check_list, scc_measure_params: scc_measure_params, si: si)
@@ -3578,7 +3578,7 @@ fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, F
     match map_get(func_index, name) {
       Some { value: entry } =>
         // Self-edge: read CX-L2 descent_evidence from annotated self-calls
-        let self_evidence = collect_self_call_evidence(body: entry.body, fn_name: name)
+        let self_evidence = collect_self_call_evidence(body: entry.body, fn_name: name, si: si)
         let self_has_calls = self_evidence |> count > 0
         let self_all_structural = self_has_calls && self_evidence |> all(call_ev =>
           call_ev |> any(rel =>
@@ -3625,7 +3625,7 @@ fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, F
         // Single authority — same annotations used for self-edges and cross-edges.
         let other_members = map_keys(scc_name_set) |> filter(m => m != name)
         let cross_edges = other_members |> flat_map(callee =>
-          let callee_evidence = collect_callee_evidence(body: entry.body, callee_name: callee)
+          let callee_evidence = collect_callee_evidence(body: entry.body, callee_name: callee, si: si)
           if callee_evidence |> count > 0 {
             let ev = derive_edge_evidence(all_calls: callee_evidence)
             [ProofEdge { caller: name, callee: callee, evidence: [ev] }]
@@ -3638,13 +3638,13 @@ fn collect_scc_cx_l2_tree_edges(members: List<String>, func_index: Map<String, F
 }
 
 // Extract the actual descending parameter name from CX-L2 evidence for the first SCC member.
-fn scc_descending_param(members: List<String>, func_index: Map<String, FuncEntry>) -> String {
+fn scc_descending_param(members: List<String>, func_index: Map<String, FuncEntry>, si: NewlineIndex?) -> String {
   members |> fold(init: "", f: (found, name) =>
     if found != "" { found }
     else {
       match map_get(func_index, name) {
         Some { value: entry } =>
-          let evidence = collect_self_call_evidence(body: entry.body, fn_name: name)
+          let evidence = collect_self_call_evidence(body: entry.body, fn_name: name, si: si)
           match evidence |> first {
             Some { value: call_ev } =>
               call_ev |> fold(init: "", f: (p, rel) =>
@@ -3675,7 +3675,7 @@ fn construct_scc_termination_proof(members: List<String>, func_index: Map<String
       _ => true
     }
   )
-  let cx_l2_param = scc_descending_param(members: members, func_index: func_index)
+  let cx_l2_param = scc_descending_param(members: members, func_index: func_index, si: si)
   let cx_l2_proof = TerminationProof { dimensions: [TreeSize { param: if cx_l2_param != "" { cx_l2_param } else { "scc" } }] }
   if cx_l2_all_known && (cx_l2_edges |> count) > 0 && proof_has_non_descending_cycle(proof: cx_l2_proof, members: members, edges: cx_l2_edges) == false {
     Some { value: cx_l2_proof }
@@ -4999,10 +4999,10 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
 // sound because annotate_descent's method-call handler sets up the correct context
 // (element parameter as IteratedSubValue). For parameter-callback lambdas, the
 // evidence will be SubValueUnknown (harmless — doesn't pass structural checks).
-fn collect_call_evidence(body: Node, target_set: Map<String, Bool>) -> List<List<SubValueRelation>> {
+fn collect_call_evidence(body: Node, target_set: Map<String, Bool>, si: NewlineIndex?) -> List<List<SubValueRelation>> {
   match body.expr_data {
     ExprCall { call_semantics: _, descent_evidence: de } =>
-      let callee = expr_call_func(texpr: body)
+      let callee = expr_call_func_at(texpr: body, source_index: si)
       let own = if map_get(target_set, callee) != none {
         match de {
           Some { value: evidence } => [evidence]
@@ -5010,24 +5010,24 @@ fn collect_call_evidence(body: Node, target_set: Map<String, Bool>) -> List<List
         }
       } else { [] }
       let from_children = body.children |> fold(init: [], f: (acc, child) =>
-        concat(acc, collect_call_evidence(body: child, target_set: target_set))
+        concat(acc, collect_call_evidence(body: child, target_set: target_set, si: si))
       )
       concat(own, from_children)
     _ =>
       body.children |> fold(init: [], f: (acc, child) =>
-        concat(acc, collect_call_evidence(body: child, target_set: target_set))
+        concat(acc, collect_call_evidence(body: child, target_set: target_set, si: si))
       )
   }
 }
 
 // Convenience: collect evidence for self-calls only.
-fn collect_self_call_evidence(body: Node, fn_name: String) -> List<List<SubValueRelation>> {
-  collect_call_evidence(body: body, target_set: map_insert(empty_map(), fn_name, true))
+fn collect_self_call_evidence(body: Node, fn_name: String, si: NewlineIndex?) -> List<List<SubValueRelation>> {
+  collect_call_evidence(body: body, target_set: map_insert(empty_map(), fn_name, true), si: si)
 }
 
 // Collect descent_evidence for calls to a specific callee within a body.
-fn collect_callee_evidence(body: Node, callee_name: String) -> List<List<SubValueRelation>> {
-  collect_call_evidence(body: body, target_set: map_insert(empty_map(), callee_name, true))
+fn collect_callee_evidence(body: Node, callee_name: String, si: NewlineIndex?) -> List<List<SubValueRelation>> {
+  collect_call_evidence(body: body, target_set: map_insert(empty_map(), callee_name, true), si: si)
 }
 
 // Derive best DescentEvidence from a list of call evidence vectors.
@@ -5094,10 +5094,10 @@ fn extract_shrink_factor(all_calls: List<List<SubValueRelation>>, param_index: I
 // Count the maximum number of descending self-calls on a given parameter
 // that can execute in a single path through the function body.
 // ExprIf/ExprMatch: MAX over branches. Sequential code: SUM.
-fn max_path_descending(body: Node, fn_name: String, param_index: Int) -> Int {
+fn max_path_descending(body: Node, fn_name: String, param_index: Int, si: NewlineIndex?) -> Int {
   match body.expr_data {
     ExprCall { call_semantics: _, descent_evidence: de } =>
-      let callee = expr_call_func(texpr: body)
+      let callee = expr_call_func_at(texpr: body, source_index: si)
       let own = if callee == fn_name {
         match de {
           Some { value: evidence } =>
@@ -5115,33 +5115,33 @@ fn max_path_descending(body: Node, fn_name: String, param_index: Int) -> Int {
         }
       } else { 0 }
       let from_children = body.children |> fold(init: 0, f: (acc, child) =>
-        acc + max_path_descending(body: child, fn_name: fn_name, param_index: param_index)
+        acc + max_path_descending(body: child, fn_name: fn_name, param_index: param_index, si: si)
       )
       own + from_children
     // ExprIf: condition executes on every path + MAX over then/else branches
     ExprIf =>
-      let cond_count = max_path_descending(body: if_condition(texpr: body), fn_name: fn_name, param_index: param_index)
-      let then_count = max_path_descending(body: if_then_branch(texpr: body), fn_name: fn_name, param_index: param_index)
+      let cond_count = max_path_descending(body: if_condition(texpr: body), fn_name: fn_name, param_index: param_index, si: si)
+      let then_count = max_path_descending(body: if_then_branch(texpr: body), fn_name: fn_name, param_index: param_index, si: si)
       let else_branch = if_else_branch(texpr: body)
       let else_count = match else_branch {
-        Some { value: eb } => max_path_descending(body: eb, fn_name: fn_name, param_index: param_index)
+        Some { value: eb } => max_path_descending(body: eb, fn_name: fn_name, param_index: param_index, si: si)
         None => 0
       }
       let branch_max = if then_count > else_count { then_count } else { else_count }
       cond_count + branch_max
     // ExprMatch: scrutinee executes on every path + MAX over arms
     ExprMatch =>
-      let scrut_count = max_path_descending(body: match_scrutinee(texpr: body), fn_name: fn_name, param_index: param_index)
+      let scrut_count = max_path_descending(body: match_scrutinee(texpr: body), fn_name: fn_name, param_index: param_index, si: si)
       let arms = match_arm_nodes(texpr: body)
       let arm_max = arms |> fold(init: 0, f: (acc, arm) =>
-        let arm_count = max_path_descending(body: arm_body(n: arm), fn_name: fn_name, param_index: param_index)
+        let arm_count = max_path_descending(body: arm_body(n: arm), fn_name: fn_name, param_index: param_index, si: si)
         if arm_count > acc { arm_count } else { acc }
       )
       scrut_count + arm_max
     // Sequential: SUM of children
     _ =>
       body.children |> fold(init: 0, f: (acc, child) =>
-        acc + max_path_descending(body: child, fn_name: fn_name, param_index: param_index)
+        acc + max_path_descending(body: child, fn_name: fn_name, param_index: param_index, si: si)
       )
   }
 }
@@ -5170,9 +5170,9 @@ fn distinct_descended_fields(all_calls: List<List<SubValueRelation>>, param_inde
 // Dispatches on ShrinkFactor to choose between catamorphism_bound
 // (UnitShrink/ConstantShrink → O(n)) and derive_bound → master_theorem
 // (ProportionalShrink → O(log n), O(n log n), etc.).
-fn analyze_structural_bounds(func_entries: List<FuncEntry>) -> List<StructuralBoundResult> {
+fn analyze_structural_bounds(func_entries: List<FuncEntry>, si: NewlineIndex?) -> List<StructuralBoundResult> {
   func_entries |> fold(init: [], f: (acc, entry) =>
-    let all_calls = collect_self_call_evidence(body: entry.body, fn_name: entry.name)
+    let all_calls = collect_self_call_evidence(body: entry.body, fn_name: entry.name, si: si)
     if all_calls |> count == 0 { acc }
     else {
       let param_results = entry.params |> enumerate |> fold(init: [], f: (pacc, pair) =>
@@ -5181,11 +5181,11 @@ fn analyze_structural_bounds(func_entries: List<FuncEntry>) -> List<StructuralBo
         let evidence = merge_param_evidence(all_calls: all_calls, param_index: param_index)
         match evidence {
           Strict =>
-            let param_name = param_node_name(n: param_node)
+            let param_name = param_node_name_at(n: param_node, source_index: si)
             let factor_opt = extract_shrink_factor(all_calls: all_calls, param_index: param_index)
             match factor_opt {
               Some { value: factor } =>
-                let branches = max_path_descending(body: entry.body, fn_name: entry.name, param_index: param_index)
+                let branches = max_path_descending(body: entry.body, fn_name: entry.name, param_index: param_index, si: si)
                 let recurrence = match factor {
                   // Structural recursion: catamorphism O(n) only if each sub-value
                   // is used at most once per path (disjointness check).
@@ -5356,7 +5356,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
   // intern_table is transit-only — not exposed in the report.
   // Evicted entries contain fabricated placeholders that would mislead consumers.
   // CX-L3: structural descent analysis — reads descent_evidence, not AST.
-  let structural_bounds = analyze_structural_bounds(func_entries: func_entries)
+  let structural_bounds = analyze_structural_bounds(func_entries: func_entries, si: si)
   ComplexityReport {
     function_classes: result.classes,
     violations: result.violations,

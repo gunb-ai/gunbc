@@ -41,7 +41,7 @@ import v2.std.core {
   arg_value, arm_body,
   field_access_base,
   if_condition, if_then_branch, if_else_branch,
-  let_value, let_body, lambda_body, lambda_param_names,
+  let_value, let_body, lambda_body, lambda_param_names_at,
   match_scrutinee, match_arm_nodes,
   method_receiver, method_arg_nodes,
   foreach_collection, foreach_body,
@@ -504,7 +504,7 @@ fn analyze_single_fold(method_call: Node, si: NewlineIndex?) -> FoldAccUnwrapPro
     None => method_call
   }
   let acc_param_name = match fold_lambda_node.expr_data {
-    ExprLambda { semantics: _ } => match lambda_param_names(texpr: fold_lambda_node) |> first {
+    ExprLambda { semantics: _ } => match lambda_param_names_at(texpr: fold_lambda_node, source_index: si) |> first {
       Some { value: n } => n
       None => ""
     }

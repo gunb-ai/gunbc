@@ -90,7 +90,7 @@ type TokenShape
 
 // Module, Import, ImportNames dissolved into Node compositions.
 // See dissolution helpers: module_node(), import_node(), module_imports(),
-// module_items(), import_is_all(), import_specific_names().
+// module_items(), import_is_all(), import_specific_names_at().
 
 // Connective -- the logical primitive for type structure.
 // Conj = conjunction (product): all children hold simultaneously (record fields).
@@ -232,7 +232,7 @@ type MatchPattern
 //   field_name → node.name
 //   binding    → node.match_pattern
 // Constructor: make_field_binding_node
-// Accessors: field_binding_name, field_binding_pattern
+// Accessors: field_binding_name_at, field_binding_pattern
 
 
 // BinOp and LiteralValue: canonical definitions in std/syntax.dag.
@@ -504,7 +504,6 @@ fn make_resource_use_node(name: String, resource: Node, span: SourceSpan, name_s
   }
 }
 
-fn resource_use_name(n: Node) -> String { n.name }
 fn resource_use_name_at(n: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: n) }
 
 fn resource_use_resource(n: Node) -> Node {
@@ -537,7 +536,6 @@ fn make_field_binding_node(field_name: String, binding: MatchPattern, span: Sour
   }
 }
 
-fn field_binding_name(n: Node) -> String { n.name }
 fn field_binding_name_at(n: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: n) }
 
 fn field_binding_pattern(n: Node) -> MatchPattern {
@@ -603,7 +601,6 @@ fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: So
   }
 }
 
-fn param_node_name(n: Node) -> String { n.name }
 fn param_node_name_at(n: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: n) }
 
 // Generic type parameter names (e.g., T, U in type<T, U>).
@@ -670,7 +667,6 @@ fn make_field_node(name: String, type_expr: Node, cardinality: Cardinality, defa
   }
 }
 
-fn field_node_name(n: Node) -> String { n.name }
 fn field_node_name_at(n: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: n) }
 
 fn field_node_type_expr(n: Node) -> Node {
@@ -709,7 +705,6 @@ fn make_variant_node(name: String, fields: List<Node>, span: SourceSpan, name_sp
   }
 }
 
-fn variant_node_name(n: Node) -> String { n.name }
 fn variant_node_name_at(n: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: n) }
 fn variant_node_fields(n: Node) -> List<Node> { n.children }
 fn variant_node_span(n: Node) -> SourceSpan { n.span }
@@ -931,9 +926,6 @@ fn expr_child_at(texpr: Node, index: Int, role: String) -> Node {
 
 // -- Wrapper node accessors (arg, arm, field-init) --
 
-fn arg_name(n: Node) -> String? {
-  if n.ident_span == none { none } else { Some { value: n.name } }
-}
 fn arg_name_at(n: Node, source_index: NewlineIndex?) -> String? {
   let name = authored_name_at(source_index: source_index, node: n)
   if name == "" { none } else { Some { value: name } }
@@ -961,9 +953,6 @@ fn arm_body(n: Node) -> Node {
   }
 }
 
-fn field_init_node_name(n: Node) -> String {
-  n.name
-}
 fn field_init_node_name_at(n: Node, source_index: NewlineIndex?) -> String {
   authored_name_at(source_index: source_index, node: n)
 }
@@ -992,19 +981,16 @@ fn binop_right(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role
 fn unaryop_operand(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "unaryop operand") }
 
 // -- ExprVar (D3: name dissolved into Node.name) --
-fn expr_var_name(texpr: Node) -> String { texpr.name }
 fn expr_var_name_at(texpr: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: texpr) }
 
 // -- ExprFieldAccess (D3: field dissolved into Node.name) --
 fn field_access_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "field access base") }
-fn field_access_field(texpr: Node) -> String { texpr.name }
 fn field_access_field_at(texpr: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: texpr) }
 fn expr_field_access_summary(texpr: Node) -> FieldSummary? {
   match texpr.expr_data { ExprFieldAccess { summary: s } => s  _ => none }
 }
 
 // -- ExprCall (D3: func dissolved into Node.name) --
-fn expr_call_func(texpr: Node) -> String { texpr.name }
 fn expr_call_func_at(texpr: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: texpr) }
 
 fn expr_call_descent_evidence(texpr: Node) -> List<SubValueRelation>? {
@@ -1017,7 +1003,6 @@ fn expr_call_descent_evidence(texpr: Node) -> List<SubValueRelation>? {
 // -- ExprMethodCall (D3: method dissolved into Node.name) --
 fn method_receiver(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "method receiver") }
 fn method_arg_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
-fn expr_method_name(texpr: Node) -> String { texpr.name }
 fn expr_method_name_at(texpr: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: texpr) }
 fn expr_method_call_semantics(texpr: Node) -> MethodSemantics? {
   match texpr.expr_data { ExprMethodCall { method_semantics: ms } => ms  _ => none }
@@ -1025,13 +1010,11 @@ fn expr_method_call_semantics(texpr: Node) -> MethodSemantics? {
 
 // -- ExprLambda (D3: params dissolved into child Nodes after body) --
 fn lambda_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "lambda body") }
-fn lambda_param_names(texpr: Node) -> List<String> { texpr.children |> skip(1) |> map(n => n.name) }
 fn lambda_param_names_at(texpr: Node, source_index: NewlineIndex?) -> List<String> { texpr.children |> skip(1) |> map(n => authored_name_at(source_index: source_index, node: n)) }
 
 // -- ExprLet (D3: name dissolved into Node.name) --
 fn let_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "let value") }
 fn let_body(texpr: Node) -> Node? { texpr.children |> skip(1) |> first }
-fn let_binding_name(texpr: Node) -> String { texpr.name }
 fn let_binding_name_at(texpr: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: texpr) }
 
 // -- ExprCast --
@@ -1041,7 +1024,6 @@ fn cast_target(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role
 // -- ExprForEach (D3: variable dissolved into Node.name) --
 fn foreach_collection(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "foreach collection") }
 fn foreach_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "foreach body") }
-fn foreach_variable(texpr: Node) -> String { texpr.name }
 fn foreach_variable_at(texpr: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: texpr) }
 
 // -- ExprIndex --
@@ -1060,9 +1042,6 @@ fn return_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, rol
 fn block_stmts(texpr: Node) -> List<Node> { texpr.children }
 
 // -- ExprRecordLit (D3: type_name dissolved into Node.name, parent_enum stays in ExprData) --
-fn record_lit_type_name(texpr: Node) -> String? {
-  if texpr.ident_span == none { none } else { Some { value: texpr.name } }
-}
 fn record_lit_type_name_at(texpr: Node, source_index: NewlineIndex?) -> String? {
   let name = authored_name_at(source_index: source_index, node: texpr)
   if name == "" { none } else { Some { value: name } }
@@ -1159,15 +1138,15 @@ fn file_transport_node(base_path: Node, span: SourceSpan) -> Node {
 // Transport Node accessors
 // =========================================================================
 
-fn find_property(props: List<Node>, prop_name: String) -> Node? {
-  match props |> filter(p => field_init_node_name(n: p) == prop_name) |> first() {
+fn find_property(props: List<Node>, prop_name: String, source_index: NewlineIndex?) -> Node? {
+  match props |> filter(p => field_init_node_name_at(n: p, source_index: source_index) == prop_name) |> first() {
     Some { value: fi } => Some { value: field_init_node_value(n: fi) }
     None => none
   }
 }
 
-fn find_property_string(props: List<Node>, prop_name: String) -> String? {
-  match find_property(props: props, prop_name: prop_name) {
+fn find_property_string(props: List<Node>, prop_name: String, source_index: NewlineIndex?) -> String? {
+  match find_property(props: props, prop_name: prop_name, source_index: source_index) {
     Some { value: n } => match n.expr_data {
       ExprLiteral { value: LitStr { value: s } } => Some { value: s }
       _ => none
@@ -1182,19 +1161,19 @@ fn find_property_string(props: List<Node>, prop_name: String) -> String? {
 //   has argv children → subprocess transport (shell)
 //   has base_path → filesystem transport (file)
 //   none of the above → local (pure computation)
-fn transport_base_path(t: Node) -> Node? {
-  find_property(props: t.properties, prop_name: transport_path_key)
+fn transport_base_path(t: Node, source_index: NewlineIndex?) -> Node? {
+  find_property(props: t.properties, prop_name: transport_path_key, source_index: source_index)
 }
 
 fn transport_has_argv(t: Node) -> Bool { t.children |> count > 0 }
 
-fn is_rest_transport(t: Node) -> Bool { transport_base_url(t: t) != none }
+fn is_rest_transport(t: Node, source_index: NewlineIndex?) -> Bool { transport_base_url(t: t, source_index: source_index) != none }
 fn is_shell_transport(t: Node) -> Bool { t.body != none }
-fn is_file_transport(t: Node) -> Bool { transport_base_path(t: t) != none }
-fn is_local_transport(t: Node) -> Bool { !is_rest_transport(t: t) && !is_shell_transport(t: t) && !is_file_transport(t: t) }
+fn is_file_transport(t: Node, source_index: NewlineIndex?) -> Bool { transport_base_path(t: t, source_index: source_index) != none }
+fn is_local_transport(t: Node, source_index: NewlineIndex?) -> Bool { !is_rest_transport(t: t, source_index: source_index) && !is_shell_transport(t: t) && !is_file_transport(t: t, source_index: source_index) }
 
-fn field_init_operation_modifier(field_init: Node) -> OperationModifier? {
-  let fi_name = field_init_node_name(n: field_init)
+fn field_init_operation_modifier(field_init: Node, source_index: NewlineIndex?) -> OperationModifier? {
+  let fi_name = field_init_node_name_at(n: field_init, source_index: source_index)
   if fi_name == "idempotent" { Some { value: Idempotent } }
   else if fi_name == "readonly" { Some { value: Readonly } }
   else if fi_name == "hermetic" { Some { value: Hermetic } }
@@ -1209,43 +1188,43 @@ fn operation_modifier_name(modifier: OperationModifier) -> String {
   }
 }
 
-fn transport_base_url(t: Node) -> Node? {
-  find_property(props: t.properties, prop_name: transport_url_key)
+fn transport_base_url(t: Node, source_index: NewlineIndex?) -> Node? {
+  find_property(props: t.properties, prop_name: transport_url_key, source_index: source_index)
 }
 
-fn transport_auth_token(t: Node) -> Node? {
-  find_property(props: t.properties, prop_name: transport_auth_token_key)
+fn transport_auth_token(t: Node, source_index: NewlineIndex?) -> Node? {
+  find_property(props: t.properties, prop_name: transport_auth_token_key, source_index: source_index)
 }
 
-fn transport_auth_header_name(t: Node) -> String? {
-  find_property_string(props: t.properties, prop_name: transport_auth_header_key)
+fn transport_auth_header_name(t: Node, source_index: NewlineIndex?) -> String? {
+  find_property_string(props: t.properties, prop_name: transport_auth_header_key, source_index: source_index)
 }
 
-fn transport_has_auth(t: Node) -> Bool {
-  match find_property(props: t.properties, prop_name: transport_auth_token_key) {
+fn transport_has_auth(t: Node, source_index: NewlineIndex?) -> Bool {
+  match find_property(props: t.properties, prop_name: transport_auth_token_key, source_index: source_index) {
     Some { value: _ } => true
     None => false
   }
 }
 
-fn transport_method(t: Node) -> Node? {
-  find_property(props: t.properties, prop_name: transport_method_key)
+fn transport_method(t: Node, source_index: NewlineIndex?) -> Node? {
+  find_property(props: t.properties, prop_name: transport_method_key, source_index: source_index)
 }
 
-fn transport_path_template(t: Node) -> Node? {
-  find_property(props: t.properties, prop_name: transport_path_template_key)
+fn transport_path_template(t: Node, source_index: NewlineIndex?) -> Node? {
+  find_property(props: t.properties, prop_name: transport_path_template_key, source_index: source_index)
 }
 
-fn transport_query(t: Node) -> Node? {
-  find_property(props: t.properties, prop_name: transport_query_key)
+fn transport_query(t: Node, source_index: NewlineIndex?) -> Node? {
+  find_property(props: t.properties, prop_name: transport_query_key, source_index: source_index)
 }
 
-fn transport_request_body(t: Node) -> Node? {
-  find_property(props: t.properties, prop_name: transport_body_key)
+fn transport_request_body(t: Node, source_index: NewlineIndex?) -> Node? {
+  find_property(props: t.properties, prop_name: transport_body_key, source_index: source_index)
 }
 
-fn transport_stdin(t: Node) -> Node? {
-  find_property(props: t.properties, prop_name: transport_stdin_key)
+fn transport_stdin(t: Node, source_index: NewlineIndex?) -> Node? {
+  find_property(props: t.properties, prop_name: transport_stdin_key, source_index: source_index)
 }
 
 fn is_config_reserved_key(name: String) -> Bool {
@@ -1255,15 +1234,15 @@ fn is_config_reserved_key(name: String) -> Bool {
     || name == transport_query_key || name == transport_body_key || name == transport_stdin_key
 }
 
-fn transport_headers(t: Node) -> List<Node> {
+fn transport_headers(t: Node, source_index: NewlineIndex?) -> List<Node> {
   t.properties |> filter(p =>
-    !is_config_reserved_key(name: field_init_node_name(n: p))
+    !is_config_reserved_key(name: field_init_node_name_at(n: p, source_index: source_index))
   )
 }
 
-fn transport_env(t: Node) -> List<Node> {
+fn transport_env(t: Node, source_index: NewlineIndex?) -> List<Node> {
   t.properties |> filter(p =>
-    !is_config_reserved_key(name: field_init_node_name(n: p))
+    !is_config_reserved_key(name: field_init_node_name_at(n: p, source_index: source_index))
   )
 }
 
@@ -1298,44 +1277,44 @@ fn map_children(node: Node, transform: fn(Node) -> Node) -> Node {
 // is_self_recursive and has_non_tail_self_call on Node.
 // =========================================================================
 
-fn expr_has_self_call(texpr: Node, fn_name: String) -> Bool {
+fn expr_has_self_call(texpr: Node, fn_name: String, source_index: NewlineIndex?) -> Bool {
   match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
-      if expr_call_func(texpr: texpr) == fn_name { true }
-      else { texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name)) }
-    _ => texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name))
+      if expr_call_func_at(texpr: texpr, source_index: source_index) == fn_name { true }
+      else { texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name, source_index: source_index)) }
+    _ => texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name, source_index: source_index))
   }
 }
 
-fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> Bool {
+fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, source_index: NewlineIndex?) -> Bool {
   match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
-      if expr_call_func(texpr: texpr) == fn_name {
+      if expr_call_func_at(texpr: texpr, source_index: source_index) == fn_name {
         if in_tail == false { true }
-        else { texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false)) }
+        else { texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_index: source_index)) }
       } else {
-        texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false))
+        texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_index: source_index))
       }
     ExprError { kind: _, message: _ } => false
     ExprVar { binding_kind: _ } => false
     ExprLiteral { value: _ } => false
     ExprFieldAccess { summary: _ } =>
-      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false))
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_index: source_index))
     ExprMethodCall { method_semantics: _ } =>
-      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false))
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_index: source_index))
     ExprIf =>
-      let cond_bad = expr_has_non_tail_self_call(texpr: if_condition(texpr: texpr), fn_name: fn_name, in_tail: false)
-      let then_bad = expr_has_non_tail_self_call(texpr: if_then_branch(texpr: texpr), fn_name: fn_name, in_tail: in_tail)
-      let else_bad = match if_else_branch(texpr: texpr) { Some { value: e } => expr_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: in_tail)  None => false }
+      let cond_bad = expr_has_non_tail_self_call(texpr: if_condition(texpr: texpr), fn_name: fn_name, in_tail: false, source_index: source_index)
+      let then_bad = expr_has_non_tail_self_call(texpr: if_then_branch(texpr: texpr), fn_name: fn_name, in_tail: in_tail, source_index: source_index)
+      let else_bad = match if_else_branch(texpr: texpr) { Some { value: e } => expr_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: in_tail, source_index: source_index)  None => false }
       cond_bad || then_bad || else_bad
     ExprMatch =>
-      let scrut_bad = expr_has_non_tail_self_call(texpr: match_scrutinee(texpr: texpr), fn_name: fn_name, in_tail: false)
+      let scrut_bad = expr_has_non_tail_self_call(texpr: match_scrutinee(texpr: texpr), fn_name: fn_name, in_tail: false, source_index: source_index)
       let arms_bad = match_arm_nodes(texpr: texpr) |> any(arm_node =>
-        expr_has_non_tail_self_call(texpr: arm_body(n: arm_node), fn_name: fn_name, in_tail: in_tail))
+        expr_has_non_tail_self_call(texpr: arm_body(n: arm_node), fn_name: fn_name, in_tail: in_tail, source_index: source_index))
       scrut_bad || arms_bad
     ExprLet =>
-      let val_bad = expr_has_non_tail_self_call(texpr: let_value(texpr: texpr), fn_name: fn_name, in_tail: false)
-      let body_bad = match let_body(texpr: texpr) { Some { value: b } => expr_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: in_tail)  None => false }
+      let val_bad = expr_has_non_tail_self_call(texpr: let_value(texpr: texpr), fn_name: fn_name, in_tail: false, source_index: source_index)
+      let body_bad = match let_body(texpr: texpr) { Some { value: b } => expr_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: in_tail, source_index: source_index)  None => false }
       val_bad || body_bad
     ExprBlock =>
       // children = [stmt0, stmt1, ...]. Only last is in tail position.
@@ -1345,23 +1324,23 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> B
       else {
         let init_bad = ss |> enumerate
           |> filter(p => p.first < ss_count - 1)
-          |> any(p => expr_has_non_tail_self_call(texpr: p.second, fn_name: fn_name, in_tail: false))
+          |> any(p => expr_has_non_tail_self_call(texpr: p.second, fn_name: fn_name, in_tail: false, source_index: source_index))
         let last_bad = match ss |> last {
           Some { value: last_expr } =>
-            expr_has_non_tail_self_call(texpr: last_expr, fn_name: fn_name, in_tail: in_tail)
+            expr_has_non_tail_self_call(texpr: last_expr, fn_name: fn_name, in_tail: in_tail, source_index: source_index)
           None => false
         }
         init_bad || last_bad
       }
     ExprReturn =>
       // return expr: the returned expression is always in tail position.
-      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: true))
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: true, source_index: source_index))
     NoExprData =>
       // Wrapper nodes (arg, arm, field-init) -- recurse through children preserving tail context.
-      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: in_tail))
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: in_tail, source_index: source_index))
     // All remaining variants: children are never in tail position.
     _ =>
-      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false))
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_index: source_index))
   }
 }
 
@@ -1409,32 +1388,32 @@ fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, aut
   concat(ep_prop, auth_prop, auth_input_prop, auth_source_prop, rate_prop, retry_prop)
 }
 
-fn has_service_config(n: Node) -> Bool {
-  n.properties |> any(p => field_init_node_name(n: p) == "svc_endpoint")
+fn has_service_config(n: Node, source_index: NewlineIndex?) -> Bool {
+  n.properties |> any(p => field_init_node_name_at(n: p, source_index: source_index) == "svc_endpoint")
 }
 
-fn service_config_endpoint(n: Node) -> Node? {
-  find_property(props: n.properties, prop_name: "svc_endpoint")
+fn service_config_endpoint(n: Node, source_index: NewlineIndex?) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_endpoint", source_index: source_index)
 }
 
-fn service_config_auth(n: Node) -> Node? {
-  find_property(props: n.properties, prop_name: "svc_auth")
+fn service_config_auth(n: Node, source_index: NewlineIndex?) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_auth", source_index: source_index)
 }
 
-fn service_config_rate_limit(n: Node) -> Node? {
-  find_property(props: n.properties, prop_name: "svc_rate_limit")
+fn service_config_rate_limit(n: Node, source_index: NewlineIndex?) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_rate_limit", source_index: source_index)
 }
 
-fn service_config_retry(n: Node) -> Node? {
-  find_property(props: n.properties, prop_name: "svc_retry")
+fn service_config_retry(n: Node, source_index: NewlineIndex?) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_retry", source_index: source_index)
 }
 
-fn service_config_auth_input(n: Node) -> Node? {
-  find_property(props: n.properties, prop_name: "svc_auth_input")
+fn service_config_auth_input(n: Node, source_index: NewlineIndex?) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_auth_input", source_index: source_index)
 }
 
-fn service_config_auth_source(n: Node) -> Node? {
-  find_property(props: n.properties, prop_name: "svc_auth_source")
+fn service_config_auth_source(n: Node, source_index: NewlineIndex?) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_auth_source", source_index: source_index)
 }
 
 // --- Module as Node ---
@@ -1476,8 +1455,8 @@ fn import_is_all(n: Node) -> Bool {
   n.body != none
 }
 
-fn import_specific_names(n: Node) -> List<String> {
-  n.children |> map(c => c.name)
+fn import_specific_names_at(n: Node, source_index: NewlineIndex?) -> List<String> {
+  n.children |> map(c => authored_name_at(source_index: source_index, node: c))
 }
 
 fn module_imports(n: Node) -> List<Node> {
@@ -1596,8 +1575,8 @@ fn source_text_at(index: NewlineIndex, span: SourceSpan) -> String {
 // =========================================================================
 // Intern table — parser-owned identifier authority (Phase 1: type + functions only)
 //
-// Phase 1 adds the InternTable type and parser wiring.
-// Phase 2 will add Node.ident field and thread intern_table through functions.
+// InternTable is built during parsing and carried on FrontendResult.
+// Identity consumer and TypeEnv threading deferred until first real use site.
 // =========================================================================
 
 type InternTable {
@@ -1651,6 +1630,14 @@ fn intern_find_or_empty(table: InternTable, s: String) -> Int {
     Some { value: id } => id
     None => 0
   }
+}
+
+fn merge_intern_tables(tables: List<InternTable>) -> InternTable {
+  tables |> fold(init: empty_intern_table(), f: (merged, t) =>
+    t.strings |> fold(init: merged, f: (m, s) =>
+      if s == "" { m } else { intern(table: m, s: s).table }
+    )
+  )
 }
 
 fn with_optional_cardinality(n: Node) -> Node {

@@ -16,8 +16,8 @@ import std.types { SourceSpan, container_param_name }
 import v2.std.core {
   Node,
   authored_name_at, NewlineIndex,
-  make_param_node, param_node_name, param_node_name_at, param_node_type_expr, param_node_default_value,
-  make_field_node, field_node_name, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
+  make_param_node, param_node_name_at, param_node_type_expr, param_node_default_value,
+  make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   ErrorNode, make_error_node,
   InternalError, ArityMismatch, UnresolvedType,
@@ -31,8 +31,8 @@ import v2.std.core {
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
   ExprErrorKind, SemanticExprError,
   make_expr_node, make_named_expr_node, make_expr_error_node, map_children,
-  expr_var_name, field_access_field, expr_call_func, expr_call_func_at, expr_method_name, expr_method_name_at, let_binding_name, let_binding_name_at, foreach_variable, foreach_variable_at, lambda_param_names, record_lit_type_name,
-  make_arg_node, arg_name, arg_name_at, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_name_at, field_init_node_value, make_resource_use_node, resource_use_name, resource_use_name_at, resource_use_resource, make_text_part_node, make_interp_part_node,
+  expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at,
+  make_arg_node, arg_name_at, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_resource_use_node, resource_use_name_at, resource_use_resource, make_text_part_node, make_interp_part_node,
   make_transport_node, local_transport_node,
   is_local_transport, transport_request_body,
   is_kernel_type, is_container_type,
@@ -581,7 +581,7 @@ fn resolve_named_arg(arg: Node, env: TypeEnv, module_name: String) -> NamedArgRe
   let value_expr = value_result.expr
   let value_diags = value_result.diagnostics
   NamedArgResolveResult {
-    arg: make_arg_node(name: arg_name(n: arg), value: value_expr, span: arg.span, name_span: node_name_span(n: arg)),
+    arg: make_arg_node(name: arg_name_at(n: arg, source_index: env.source_index), value: value_expr, span: arg.span, name_span: node_name_span(n: arg)),
     diagnostics: value_diags
   }
 }
@@ -646,7 +646,7 @@ fn resolve_string_part(part: StringPart, env: TypeEnv, module_name: String) -> S
 // resolved by the generic resolve_field_init loop in resolve_item_types.
 
 fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String) -> TransportResolveResult {
-  if is_local_transport(t: transport) {
+  if is_local_transport(t: transport, source_index: env.source_index) {
     TransportResolveResult { transport: transport, diagnostics: [] }
   } else {
     // Generic resolution: resolve all property values and children
@@ -661,7 +661,7 @@ fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String)
     let child_diags = flat_map(child_results, cr => cr.diagnostics)
     // Validate body shape: must be ExprRecordLit if present.
     // Reject non-record shapes here so the emitter only translates valid bodies.
-    let body_diags = match transport_request_body(t: transport) {
+    let body_diags = match transport_request_body(t: transport, source_index: env.source_index) {
       Some { value: b } => match b.expr_data {
         ExprRecordLit => []
         _ => [make_error_node(diagnostic: InternalError { message: "transport body must be a record expression { field: value, ... }", span: b.span }, module_name: module_name)]

@@ -758,7 +758,11 @@ mod compiler_tests {
                 eprintln!("  PARSE TOTAL:    {:?}\n", parse_total);
 
                 let t_stage = Instant::now();
-                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules));
+                let resolve_si = sources.iter().fold(
+                    crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                    |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), s.content.clone())),
+                );
+                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules), resolve_si);
                 let resolve_total = t_stage.elapsed();
                 let errors: Vec<_> = graph
                     .diagnostics
@@ -861,7 +865,11 @@ mod compiler_tests {
                 );
 
                 let t_stage = Instant::now();
-                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules));
+                let resolve_si = sources.iter().fold(
+                    crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                    |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), s.content.clone())),
+                );
+                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules), resolve_si);
                 let resolve_total = t_stage.elapsed();
                 let phase3_diags: usize = graph
                     .diagnostics
@@ -988,10 +996,13 @@ mod compiler_tests {
                     modules.push(m);
                 }
                 let parse_elapsed = t.elapsed();
-
                 // 1b. Resolve
                 let t = Instant::now();
-                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules));
+                let resolve_si = sources.iter().fold(
+                    crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                    |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), s.content.clone())),
+                );
+                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules), resolve_si);
                 let resolve_elapsed = t.elapsed();
                 let resolve_errors: usize = graph.diagnostics.iter()
                     .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
@@ -1108,7 +1119,11 @@ mod compiler_tests {
                         .unwrap_or_else(|| panic!("parse failed for source {}", source.path));
                     modules.push(m);
                 }
-                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules));
+                let resolve_si = sources.iter().fold(
+                    crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                    |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), s.content.clone())),
+                );
+                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules), resolve_si);
                 let setup_time = t0.elapsed();
                 let rss_baseline = get_rss_bytes();
                 eprintln!(
