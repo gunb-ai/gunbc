@@ -90,6 +90,32 @@ getting more complex.** Each dimension dissolved into the binding
 mechanism is one fewer analysis pass, one fewer set of heuristics,
 one fewer source of reconstruction bugs.
 
+### User-defined dimensions
+
+The mechanism is not compiler-internal. If the architecture is
+correct, users can declare their own correctness dimensions — the
+compiler enforces them with the same machinery it uses for
+termination and ownership.
+
+Examples:
+- **Security classification** — `Public | Internal | Secret` as a
+  lattice. Secret data can't flow to a Public drain without a
+  declassifier. Enforced at every binding.
+- **Regulatory compliance** — `PHI | NonPHI` for HIPAA. Patient
+  data can't flow to non-compliant storage.
+- **Financial provenance** — every monetary computation carries
+  provenance to its authorization source.
+
+A user declares a lattice, attaches it to their types, and the
+compiler enforces it universally. No special tooling. No
+annotations. The same non-consensual enforcement that applies to
+termination applies to their proprietary model.
+
+**This is the test of the architecture.** If user-defined
+dimensions work the same as built-in ones, the mechanism is
+general. If they require special compiler support, the mechanism
+is incomplete.
+
 ## Error handling: show the correct code
 
 When the compiler finds a broken causal link, it doesn't just
