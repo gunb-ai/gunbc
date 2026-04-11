@@ -78,11 +78,9 @@ data for_each_template: String = "for \{var\} in \{collection\}.into_iter() \{\n
 data iterator_method: String = ".into_iter()"
 
 // -- Map operations --------------------------------------------------
-// Ref: std::collections::BTreeMap
-
-// BTreeMap is used instead of HashMap for deterministic ordering.
-data map_type: String = "BTreeMap"
-data map_import: String = "use std::collections::BTreeMap;"
+// Ref: std::collections::HashMap
+data map_type: String = "HashMap"
+data map_import: String = "use std::collections::HashMap;"
 data map_get_template: String = "(\{map\}).get(&\{key\}).cloned()"
 data map_insert_template: String = "(\{map\}).insert(\{key\}, \{value\})"
 
@@ -96,18 +94,11 @@ data null_coalesce_template: String = "\{lhs\}.unwrap_or_else(|| \{rhs\})"
 data some_constructor: String = "Some(\{value\})"
 data none_literal: String = "None"
 
-// -- NonEmpty wrappers -----------------------------------------------
-// Custom newtype wrappers generated in the prelude.
-// Ref: project convention, not std library
-
-data non_empty_vec_type: String = "NonEmptyVec"
-data non_empty_set_type: String = "NonEmptyBTreeSet"
-
 // -- Prelude imports -------------------------------------------------
 // Standard imports emitted at the top of every generated module.
 
 data prelude_imports: List<String> = [
-  "use std::collections::BTreeMap;",
+  "use std::collections::HashMap;",
   "use serde::\{Serialize, Deserialize\};"
 ]
 

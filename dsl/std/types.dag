@@ -77,7 +77,7 @@ fn is_kernel_type(name: String) -> Bool {
 // Container types: parameterized types that stay unexpanded at resolve time.
 // Value is the expected type-parameter arity (element collections: 1, keyed: 2).
 data container_type_arity: Map<String, Int> = {
-  "List": 1, "Set": 1, "NonEmptyList": 1, "NonEmptySet": 1, "Map": 2
+  "List": 1, "Set": 1, "Map": 2
 }
 
 fn is_container_type(name: String) -> Bool {
@@ -123,7 +123,7 @@ fn container_param_name_required(kind_name: String, index: Int) -> String {
 // FreeMonoid-based collections preserve insertion order.
 // Set-based collections are unordered — no positional access.
 data ordered_element_collections: Map<String, Bool> = {
-  "List": true, "NonEmptyList": true
+  "List": true
 }
 
 fn is_ordered_element_collection(name: String) -> Bool {
@@ -139,14 +139,10 @@ fn is_ordered_element_collection(name: String) -> Bool {
 data container_to_algebra: Map<String, String> = {
   "List": "FreeMonoid",
   "list": "FreeMonoid",
-  "NonEmptyList": "FreeMonoid",
-  "non_empty_list": "FreeMonoid",
   "FreeMonoid": "FreeMonoid",
   "free_monoid": "FreeMonoid",
   "Set": "BooleanAlgebra",
   "set": "BooleanAlgebra",
-  "NonEmptySet": "BooleanAlgebra",
-  "non_empty_set": "BooleanAlgebra",
   "BooleanAlgebra": "BooleanAlgebra",
   "boolean_algebra": "BooleanAlgebra",
   "Map": "PartialFunction",
@@ -314,8 +310,6 @@ type ServiceAccountEmail = String where pattern("^[a-z][a-z0-9-]*@[a-z0-9-]+\\.i
 
 // --- Domain enums (Level 4: Finite Coproducts) ------------------------
 
-type WarningPolicy = DenyAll | Default                    // |[WarningPolicy]| = 2
-type CloudRuntime = GitHubActions | Metadata | LocalDev  // |[CloudRuntime]| = 3
 type Platform     = Linux | Macos | Windows              // aligned with canonical Os tokens
 
 // --- Extracted enums (WS1-2: stringly-typed -> sum types) ---------------
@@ -361,7 +355,7 @@ type RuntimePlatform {
 }
 
 // Simple enums are finite sets. Pattern matching must be exhaustive
-// (cover the full |). CloudRuntime <: Json (by injection into String).
+// (cover the full |).
 
 // --- Filesystem entry kinds (Level 4: Finite Coproducts) ----------------
 // "What can a path point to?" -- exhaustive over POSIX entry types.

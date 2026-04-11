@@ -1012,7 +1012,7 @@ data rust_string_ops: StringOps = {
 }
 
 data rust_map_ops: MapOps = {
-  empty_map: "BTreeMap::new()",
+  empty_map: "HashMap::new()",
   map_insert: "\{recv\}.insert(\{key\}, \{value\})",
   map_get: "\{recv\}.get(&\{key\}).cloned()",
   map_contains: "\{recv\}.contains_key(&\{key\})"

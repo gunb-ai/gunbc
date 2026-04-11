@@ -29,7 +29,7 @@ type Gist {
   description: String?
   public: Bool
   files: Map<String, GistFile>
-  owner: String
+  owner: GitHubUser
   created_at: Timestamp
   updated_at: Timestamp
   url: String
@@ -81,7 +81,7 @@ service github.Gist {
         description: "Mock gist",
         public: false,
         files: { "snippet.rs": { filename: "snippet.rs", content: "fn main() {}", language: "Rust", size: 12 } },
-        owner: { login: "mock-user" },
+        owner: { login: "mock-user", id: 12345, type: User },
         html_url: "https://gist.github.com/mock-user/gist-abc123",
         created_at: "2026-01-01T00:00:00Z",
         updated_at: "2026-01-01T00:00:00Z"

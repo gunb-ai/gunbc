@@ -218,7 +218,7 @@ fn checkpoint_tests(target: RenderTarget) -> List<CoercionTestEntry> {
 // Tests canonical container names from container_to_algebra (std/types.dag).
 // Ordered deterministically for fixed-point convergence (map_keys is unordered).
 fn inhabitant_test_names() -> List<String> {
-  ["BooleanAlgebra", "FreeMonoid", "List", "Map", "NonEmptyList", "NonEmptySet",
+  ["BooleanAlgebra", "FreeMonoid", "List", "Map",
    "PartialFunction", "Set"]
 }
 
