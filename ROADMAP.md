@@ -482,13 +482,16 @@ Additional duplication surfaced by review (PR #371, external audit):
 - ~~`rust_type_map` / `python_type_map` / `go_type_map`~~ DISSOLVED
   (PR #377) — dead code deleted, all three had zero callers after
   migration to `*_type_checkpoints`.
-- `go_source_extension` in extdeps/languages/go/emit.dag duplicates
-  `go_scaffold.source_file_extension` in std/languages.dag.
+- ~~`go_source_extension` in extdeps/languages/go/emit.dag duplicates
+  `go_scaffold.source_file_extension` in std/languages.dag.~~
+  Resolved: duplicate deleted (PR #394).
 - `keyword_to_name` in 02_parse.dag duplicates the tokenizer keyword
   table. Reconcile to single authority.
-- HashMap vs BTreeMap disagreement: `map_template` in std/languages.dag
+- ~~HashMap vs BTreeMap disagreement: `map_template` in std/languages.dag
   says `HashMap<{0},{1}>` but `empty_map` in rust/emit.dag uses
-  `BTreeMap::new()`. Pick one, delete the other.
+  `BTreeMap::new()`. Pick one, delete the other.~~
+  Resolved: standardized on HashMap; BTreeMap declarations in runtime.dag
+  were dead code (PR #394).
 - `rt_function_registry` mirrors in rust/emit.dag: `rt_functions` and
   `rt_bridge_function_names` are hand-maintained copies of data already
   in the registry. Comments acknowledge the debt.

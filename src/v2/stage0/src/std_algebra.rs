@@ -254,8 +254,6 @@ pub fn kernel_algebra_profile() -> Rc<HashMap<String, AlgebraProfile>> {
             __m.insert("String".to_string(), AlgebraProfile::FreeMonoidScalarProfile);
             __m.insert("List".to_string(), AlgebraProfile::FreeMonoidCollectionProfile);
             __m.insert("Set".to_string(), AlgebraProfile::BooleanAlgebraCollectionProfile);
-            __m.insert("NonEmptyList".to_string(), AlgebraProfile::FreeMonoidCollectionProfile);
-            __m.insert("NonEmptySet".to_string(), AlgebraProfile::BooleanAlgebraCollectionProfile);
             __m.insert("Map".to_string(), AlgebraProfile::PartialFunctionProfile);
             Rc::new(__m)
         };

@@ -8,8 +8,6 @@ use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
 pub use crate::std_algebra::{FreeMonoid, PartialFunction, kernel_algebra_profile, algebra_type_param_names};
 use Bool::*;
-use WarningPolicy::*;
-use CloudRuntime::*;
 use Platform::*;
 use TopologyNodeKind::*;
 use DocSourceKind::*;
@@ -57,8 +55,6 @@ pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), 1);
             __m.insert("Set".to_string(), 1);
-            __m.insert("NonEmptyList".to_string(), 1);
-            __m.insert("NonEmptySet".to_string(), 1);
             __m.insert("Map".to_string(), 2);
             Rc::new(__m)
         };
@@ -106,7 +102,6 @@ pub fn ordered_element_collections() -> Rc<HashMap<String, bool>> {
         static CACHED: Rc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), true);
-            __m.insert("NonEmptyList".to_string(), true);
             Rc::new(__m)
         };
     }
@@ -123,14 +118,10 @@ pub fn container_to_algebra() -> Rc<HashMap<String, String>> {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), "FreeMonoid".to_string());
             __m.insert("list".to_string(), "FreeMonoid".to_string());
-            __m.insert("NonEmptyList".to_string(), "FreeMonoid".to_string());
-            __m.insert("non_empty_list".to_string(), "FreeMonoid".to_string());
             __m.insert("FreeMonoid".to_string(), "FreeMonoid".to_string());
             __m.insert("free_monoid".to_string(), "FreeMonoid".to_string());
             __m.insert("Set".to_string(), "BooleanAlgebra".to_string());
             __m.insert("set".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("NonEmptySet".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("non_empty_set".to_string(), "BooleanAlgebra".to_string());
             __m.insert("BooleanAlgebra".to_string(), "BooleanAlgebra".to_string());
             __m.insert("boolean_algebra".to_string(), "BooleanAlgebra".to_string());
             __m.insert("Map".to_string(), "PartialFunction".to_string());
@@ -145,6 +136,10 @@ pub fn container_to_algebra() -> Rc<HashMap<String, String>> {
 
 pub fn container_to_algebra_name(name: String) -> Option<String> {
     v2_rt::map_get(&container_to_algebra(), name)
+}
+
+pub fn canonical_container_names() -> Rc<Vec<String>> {
+    Rc::new(vec!["BooleanAlgebra".to_string(), "FreeMonoid".to_string(), "List".to_string(), "Map".to_string(), "PartialFunction".to_string(), "Set".to_string()])
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -260,21 +255,6 @@ pub type GitRef = String;
 pub type GcpProjectId = String;
 
 pub type ServiceAccountEmail = String;
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum WarningPolicy {
-    DenyAll,
-    Default,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum CloudRuntime {
-    GitHubActions,
-    Metadata,
-    LocalDev,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
