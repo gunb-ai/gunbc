@@ -2773,8 +2773,8 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
 }
 
 // Classify a function call's output via the callee's output provenance.
-// For each callee param with provenance, finds the matching argument,
-// classifies the argument's relation, and composes.
+// Merges all matching param entries via meet_sub_value (deterministic
+// regardless of map iteration order).
 fn classify_call_via_provenance(call: Node, param_map: Map<String, SubValueRelation>, ctx: DescentContext) -> SubValueRelation? {
   let call_args = call.children
   let arg_by_name = fold(call_args, init: empty_map(), f: (acc, arg_node) =>
@@ -2784,23 +2784,23 @@ fn classify_call_via_provenance(call: Node, param_map: Map<String, SubValueRelat
     }
   )
   fold(param_map |> map_keys, init: none, f: (result, callee_pname) =>
-    match result {
-      Some { value: _ } => result
-      None =>
-        match map_get(param_map, callee_pname) {
-          Some { value: callee_rel } =>
-            match map_get(arg_by_name, callee_pname) {
-              Some { value: arg_expr } =>
-                let arg_rel = classify_call_arg_provenance(arg_expr: arg_expr, ctx: ctx)
-                match arg_rel {
-                  Some { value: arel } =>
-                    Some { value: compose_output_relations(arg_rel: arel, callee_rel: callee_rel) }
-                  None => none
+    match map_get(param_map, callee_pname) {
+      Some { value: callee_rel } =>
+        match map_get(arg_by_name, callee_pname) {
+          Some { value: arg_expr } =>
+            let arg_rel = classify_call_arg_provenance(arg_expr: arg_expr, ctx: ctx)
+            match arg_rel {
+              Some { value: arel } =>
+                let composed = compose_output_relations(arg_rel: arel, callee_rel: callee_rel)
+                match result {
+                  Some { value: prev } => Some { value: meet_sub_value(a: prev, b: composed) }
+                  None => Some { value: composed }
                 }
-              None => none
+              None => result
             }
-          None => none
+          None => result
         }
+      None => result
     }
   )
 }
@@ -3691,16 +3691,6 @@ fn resolved_type_name(n: Node) -> String {
 // fail-closed: returns empty_map() for any body shape we can't analyze.
 // =========================================================================
 
-type OutputRelation {
-  param: String
-  relation: SubValueRelation
-}
-
-type ProvenanceWalkState {
-  ctx: DescentContext
-  sources: Map<String, String>
-}
-
 // Stub: output provenance inference is not yet active.
 // The infrastructure (data structure, threading, consumption in classify_let_value)
 // is in place. Inference requires recursive body walking that currently generates
@@ -3710,16 +3700,18 @@ fn infer_output_provenance(body: Node, params: List<Node>, type_env: TypeEnv, sc
 }
 
 // Compose two sub-value relations across a function call boundary.
+// PreservedValue is the identity element: composing with it preserves the
+// other relation. Any non-trivial composition (e.g., StrictSubValue through
+// StrictSubValue) would require a path-based relation type that doesn't yet
+// exist, so it fails closed to SubValueUnknown.
 fn compose_output_relations(arg_rel: SubValueRelation, callee_rel: SubValueRelation) -> SubValueRelation {
-  match arg_rel {
-    PreservedValue => callee_rel
-    StrictSubValue { field: _, factor: _ } =>
-      match callee_rel {
-        PreservedValue => arg_rel
-        StrictSubValue { field: f, factor: fac } => StrictSubValue { field: f, factor: fac }
+  match callee_rel {
+    PreservedValue => arg_rel
+    _ =>
+      match arg_rel {
+        PreservedValue => callee_rel
         _ => SubValueUnknown
       }
-    _ => SubValueUnknown
   }
 }
 

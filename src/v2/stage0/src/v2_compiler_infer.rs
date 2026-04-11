@@ -2982,21 +2982,24 @@ let arg_by_name = call_args.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Node>>
     Some(aname) => v2_rt::rc_map_insert(acc.clone(), aname.clone(), arg_value(&arg_node)),
     None => acc.clone(),
 });
-Rc::new(v2_rt::map_keys(&param_map)).iter().cloned().fold(None, |result: _, callee_pname: String| match result.clone() {
-    Some(_) => result.clone(),
-    None => match v2_rt::map_get(&param_map, callee_pname.clone()) {
+Rc::new(v2_rt::map_keys(&param_map)).iter().cloned().fold(None, |result: _, callee_pname: String| match v2_rt::map_get(&param_map, callee_pname.clone()) {
     Some(callee_rel) => match v2_rt::map_get(&arg_by_name, callee_pname.clone()) {
     Some(arg_expr) => {
             let arg_rel = classify_call_arg_provenance(&arg_expr, &ctx);
 match arg_rel.clone() {
-    Some(arel) => Some(compose_output_relations(arel.clone(), callee_rel.clone())),
-    None => None,
+    Some(arel) => {
+                let composed = compose_output_relations(arel.clone(), callee_rel.clone());
+match result.clone() {
+    Some(prev) => Some(meet_sub_value(prev.clone(), composed.clone())),
+    None => Some(composed.clone()),
 }
 },
-    None => None,
+    None => result.clone(),
+}
 },
-    None => None,
+    None => result.clone(),
 },
+    None => result.clone(),
 })
 }
 }
@@ -3964,34 +3967,17 @@ pub fn resolved_type_name(n: &Rc<Node>) -> String {
 }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct OutputRelation {
-    pub param: String,
-    pub relation: Rc<SubValueRelation>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ProvenanceWalkState {
-    pub ctx: Rc<DescentContext>,
-    pub sources: Rc<HashMap<String, String>>,
-}
-
 pub fn infer_output_provenance(body: Rc<Node>, params: Rc<Vec<Rc<Node>>>, type_env: Rc<TypeEnv>, scope_locals: Rc<HashMap<String, Rc<TypeBinding>>>, func_sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>) -> Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>> {
     v2_rt::rc_empty_map::<Rc<HashMap<String, Rc<SubValueRelation>>>>()
 }
 
 pub fn compose_output_relations(arg_rel: Rc<SubValueRelation>, callee_rel: Rc<SubValueRelation>) -> Rc<SubValueRelation> {
-    match (*arg_rel.clone()).clone() {
-    SubValueRelation::PreservedValue => callee_rel,
-    SubValueRelation::StrictSubValue { .. } => match (*callee_rel).clone() {
-    SubValueRelation::PreservedValue => arg_rel.clone(),
-    SubValueRelation::StrictSubValue { field: f, factor: fac, .. } => Rc::new(SubValueRelation::StrictSubValue {
-    field: f.clone(),
-    factor: fac.clone(),
-}),
+    match (*callee_rel.clone()).clone() {
+    SubValueRelation::PreservedValue => arg_rel,
+    _ => match (*arg_rel).clone() {
+    SubValueRelation::PreservedValue => callee_rel.clone(),
     _ => Rc::new(SubValueRelation::SubValueUnknown),
 },
-    _ => Rc::new(SubValueRelation::SubValueUnknown),
 }
 }
 
