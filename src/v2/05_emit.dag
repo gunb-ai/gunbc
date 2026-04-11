@@ -33,7 +33,7 @@ import v2.std.core {
   StringPart, Text, Interpolation,
   LiteralValue,
   TextFile, SourceSpan,
-  BinOp, UnaryOpKind, NullCoalesce,
+  BinOp, UnaryOpKind, NullCoalesce, AlgebraFieldKind,
   DeclaredFuncSig,
   lambda_param_names_at, record_lit_type_name_at,
   arm_body, arm_pattern, arm_guard,
@@ -874,7 +874,7 @@ fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
 
 // Operator symbol lookup — reads from per-language OperatorSpec in
 // extdeps/languages/*/syntax.dag. Type-aware: matches algebra_field when present.
-fn emit_bin_op_symbol(op: BinOp, target: RenderTarget, algebra_field: String?) -> String {
+fn emit_bin_op_symbol(op: BinOp, target: RenderTarget, algebra_field: AlgebraFieldKind?) -> String {
   match binop_symbol(target: target, op: op, algebra_field: algebra_field) {
     Some { value: sym } => sym
     None => emit_error_expr(message: "missing OperatorSpec for BinOp in target language", target: target)

@@ -6,10 +6,11 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::std_syntax::{ItemForm, ItemFormKind, BodyKind, OperatorSpec, BinOp};
+pub use crate::std_syntax::{ItemForm, ItemFormKind, BodyKind, OperatorSpec, BinOp, AlgebraFieldKind};
 use crate::std_syntax::ItemFormKind::{FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm};
 use crate::std_syntax::BodyKind::{BlockBody, TypeBody, NoBody};
 use crate::std_syntax::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce};
+use crate::std_syntax::AlgebraFieldKind::{AlgReciprocal, AlgQuotient};
 
 pub fn python_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     thread_local! {
@@ -139,13 +140,13 @@ pub fn python_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     left_bp: 15,
     right_bp: 16,
     binop: Some(BinOp::Div),
-    algebra_field: Some("reciprocal".to_string()),
+    algebra_field: Some(AlgReciprocal),
 }), Rc::new(OperatorSpec {
     symbol: "//".to_string(),
     left_bp: 15,
     right_bp: 16,
     binop: Some(BinOp::Div),
-    algebra_field: Some("quotient".to_string()),
+    algebra_field: Some(AlgQuotient),
 }), Rc::new(OperatorSpec {
     symbol: "%".to_string(),
     left_bp: 15,

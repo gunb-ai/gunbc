@@ -10,6 +10,7 @@ use BinOp::*;
 use LiteralValue::*;
 use BodyKind::*;
 use ItemFormKind::*;
+use AlgebraFieldKind::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -83,13 +84,26 @@ pub struct ItemForm {
     pub body_kind: BodyKind,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum AlgebraFieldKind {
+    AlgAdd,
+    AlgMul,
+    AlgReciprocal,
+    AlgQuotient,
+    AlgRemainder,
+    AlgCompare,
+    AlgMeet,
+    AlgJoin,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OperatorSpec {
     pub symbol: String,
     pub left_bp: i64,
     pub right_bp: i64,
     pub binop: Option<BinOp>,
-    pub algebra_field: Option<String>,
+    pub algebra_field: Option<AlgebraFieldKind>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

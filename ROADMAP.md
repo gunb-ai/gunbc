@@ -359,12 +359,11 @@ First target: `gunbc/tools/review.dag` (PR review agent).
 
 ### Track 6: Algebra field dispatch (Lane A)
 
-**Known debt (M8/M9).** `ExprBinOp.algebra_field: String?` dispatches
-via string values ("add", "mul", etc.). Replace with structural
-`AlgebraFieldKind` coproduct.
+**Resolved (M8/M9).** `ExprBinOp.algebra_field` and `OperatorSpec.algebra_field`
+now use the structural `AlgebraFieldKind` coproduct (defined in `std/syntax.dag`)
+instead of `String?`. All producers and consumers updated.
 
-Status: Documented, not started. Low urgency (few consumers), but
-exemplifies the string-dispatch anti-pattern.
+Status: DONE.
 
 ### Track 7: Core table dissolution + duplication cleanup (Lane A + D)
 

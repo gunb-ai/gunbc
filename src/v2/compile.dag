@@ -38,6 +38,7 @@ import v2.compiler.resolve { resolve_modules, ModuleGraph }
 import v2.compiler.normalize { normalize_graph, NormalizeResult }
 import v2.compiler.infer_items { ResolvedGraph, TypedModule }
 import v2.compiler.infer { reconcile }
+import v2.compiler.infer_types { algebra_field_kind_name }
 import v2.compiler.emit { EmitResult, escape_json_string }
 import v2.compiler.emit_rust { emit_rust }
 import v2.compiler.emit_python { emit_python }
@@ -541,7 +542,7 @@ fn serialize_expr_data(expr_node: Node, source_index: NewlineIndex?) -> String {
     ExprBinOp { op: op, algebra_field: af } =>
       concat(
         "{\"kind\": \"ExprBinOp\", \"op\": ", json_quote(s: bin_op_name(value: op)),
-        ", \"algebra_field\": ", match af { Some { value: f } => json_quote(s: f)  None => "null" },
+        ", \"algebra_field\": ", match af { Some { value: f } => json_quote(s: algebra_field_kind_name(kind: f))  None => "null" },
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_index: source_index))),
         "}")
     ExprUnaryOp { op: op } =>

@@ -39,7 +39,7 @@ import v2.std.core {
   MatchPattern, field_binding_pattern,
   TextFile, ErrorNode, make_error_node, InternalError, SourceSpan,
   resource_use_resource,
-  BinOp,
+  BinOp, AlgebraFieldKind,
   UnaryOpKind, StringPart, Text, Interpolation,
   transport_base_url,
   transport_has_auth, transport_auth_token, transport_auth_header_name,
@@ -3432,7 +3432,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
 }
 
 
-fn emit_typed_bin_op(op: BinOp, algebra_field: String?, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let l_str = emit_typed_expr(texpr: left, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let r_str = emit_typed_expr(texpr: right, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   if is_null_coalesce(op: op) {

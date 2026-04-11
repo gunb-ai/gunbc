@@ -32,6 +32,7 @@ import v2.std.core {
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
   is_kernel_type,
   BinOp, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
+  AlgebraFieldKind, AlgAdd, AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin,
   InferredNode, Resolved, CompilerError, TypeVariable, has_inferred, is_compiler_error,
   leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality,
   unit_type, bool_type, string_type, int_type, float_type, none_type,
@@ -863,42 +864,56 @@ fn extract_optional_inner_node(n: Node) -> Node {
   else { n }
 }
 
-// Map BinOp to candidate algebra field names on the receiver type.
+// Convert AlgebraFieldKind to the field name string for child lookup on types.
+fn algebra_field_kind_name(kind: AlgebraFieldKind) -> String {
+  match kind {
+    AlgAdd => "add"
+    AlgMul => "mul"
+    AlgReciprocal => "reciprocal"
+    AlgQuotient => "quotient"
+    AlgRemainder => "remainder"
+    AlgCompare => "compare"
+    AlgMeet => "meet"
+    AlgJoin => "join"
+  }
+}
+
+// Map BinOp to candidate algebra field kinds on the receiver type.
 // Returns candidates in priority order — the first found on the type wins.
-// Div tries "reciprocal" (Field) then "quotient" (OrderedRing).
-// Mod maps to "remainder" (Euclidean division complement).
-fn binop_algebra_fields(op: BinOp) -> List<String> {
+// Div tries reciprocal (Field) then quotient (OrderedRing).
+// Mod maps to remainder (Euclidean division complement).
+fn binop_algebra_fields(op: BinOp) -> List<AlgebraFieldKind> {
   match op {
-    Add => ["add"]
-    Sub => ["add"]
-    Mul => ["mul"]
-    Div => ["reciprocal", "quotient"]
-    Mod => ["remainder"]
-    Eq => ["compare"]
-    Ne => ["compare"]
-    Lt => ["compare"]
-    Gt => ["compare"]
-    Le => ["compare"]
-    Ge => ["compare"]
-    And => ["meet"]
-    Or => ["join"]
+    Add => [AlgAdd]
+    Sub => [AlgAdd]
+    Mul => [AlgMul]
+    Div => [AlgReciprocal, AlgQuotient]
+    Mod => [AlgRemainder]
+    Eq => [AlgCompare]
+    Ne => [AlgCompare]
+    Lt => [AlgCompare]
+    Gt => [AlgCompare]
+    Le => [AlgCompare]
+    Ge => [AlgCompare]
+    And => [AlgMeet]
+    Or => [AlgJoin]
     NullCoalesce => []
   }
 }
 
-// Algebra field match — returns both the field name and node.
+// Algebra field match — returns both the field kind and node.
 type AlgebraFieldMatch {
-  field_name: String
+  field_kind: AlgebraFieldKind
   field_node: Node
 }
 
-// Try each candidate field name on the type, return first match with name.
-fn first_matching_algebra_field(n: Node, candidates: List<String>, source_index: NewlineIndex?) -> AlgebraFieldMatch? {
+// Try each candidate field kind on the type, return first match.
+fn first_matching_algebra_field(n: Node, candidates: List<AlgebraFieldKind>, source_index: NewlineIndex?) -> AlgebraFieldMatch? {
   match candidates |> first {
     None => none
-    Some { value: name } =>
-      match find_child_named(n: n, name: name, source_index: source_index) {
-        Some { value: f } => Some { value: AlgebraFieldMatch { field_name: name, field_node: f } }
+    Some { value: kind } =>
+      match find_child_named(n: n, name: algebra_field_kind_name(kind: kind), source_index: source_index) {
+        Some { value: f } => Some { value: AlgebraFieldMatch { field_kind: kind, field_node: f } }
         None => first_matching_algebra_field(n: n, candidates: candidates |> skip(1), source_index: source_index)
       }
   }
@@ -907,7 +922,7 @@ fn first_matching_algebra_field(n: Node, candidates: List<String>, source_index:
 // BinOp inference result — carries both result type and resolved algebra field.
 type BinOpInferred {
   result_type: Node
-  algebra_field: String?
+  algebra_field: AlgebraFieldKind?
 }
 
 fn infer_binop_type_node(op: BinOp, left_type: Node, source_index: NewlineIndex?) -> BinOpInferred {
@@ -935,10 +950,10 @@ fn infer_binop_type_node(op: BinOp, left_type: Node, source_index: NewlineIndex?
                 // Extract the callable's return type, not the callable itself
                 if rt.params |> count > 0 {
                   match rt.inferred {
-                    Some { value: Resolved { node: return_type } } => BinOpInferred { result_type: return_type, algebra_field: Some { value: m.field_name } }
-                    _ => BinOpInferred { result_type: left_type, algebra_field: Some { value: m.field_name } }
+                    Some { value: Resolved { node: return_type } } => BinOpInferred { result_type: return_type, algebra_field: Some { value: m.field_kind } }
+                    _ => BinOpInferred { result_type: left_type, algebra_field: Some { value: m.field_kind } }
                   }
-                } else { BinOpInferred { result_type: rt, algebra_field: Some { value: m.field_name } } }
+                } else { BinOpInferred { result_type: rt, algebra_field: Some { value: m.field_kind } } }
               _ => BinOpInferred { result_type: left_type, algebra_field: none }
             }
           None => BinOpInferred { result_type: left_type, algebra_field: none }
