@@ -46,6 +46,33 @@ cannot validate all causal links — some are undecidable. In a
 closed system, every link is checkable, so the compiler can prove
 the entire causal chain from source to drain.
 
+### Concept unification
+
+In a closed system, apparently distinct concepts often collapse into
+each other. This is not an optimization — it is a structural fact.
+When two "different" mechanisms turn out to be the same mechanism
+viewed from different angles, maintaining them separately is a dual
+representation (INVARIANTS: "No duplicate representations," "No
+parallel implementations").
+
+Known unifications:
+- **Coercion cost = complexity.** A type coercion is a .dag function.
+  Its cost is whatever CX proves, not a separate lattice.
+- **Coercion = emission.** Coercion is not a step before emission —
+  it IS emission. The compiler reads a target spec and generates
+  code. Whether that code is "a Rust struct" or "a SPICE subcircuit"
+  or "an HTTP client" is determined by the spec, not by a separate
+  coercion engine.
+- **Target language spec = transport spec.** A REST API spec and a
+  Rust language spec serve the same role: they declare what the
+  target can express, and the compiler generates the glue.
+
+**The test:** if adding a new concept requires a new mechanism rather
+than being an instance of an existing mechanism, investigate whether
+the new concept is really distinct. In a closed system, new concepts
+should compose from existing ones. A parallel mechanism is evidence
+of a missed unification.
+
 ## Correctness dimensions
 
 Correctness is not one property — it is many orthogonal dimensions:
@@ -77,7 +104,8 @@ Current dimensions and status:
 | Dimension | Declared in | Lattice? | Carried on bindings? | Enforced? |
 |-----------|------------|----------|---------------------|-----------|
 | Type safety | std/types.dag | N/A (structural) | TypeBinding.resolved | Yes (blocking) |
-| Termination | std/termination.dag | BoundedLattice | TypeBinding.provenance + ExprCall.descent_evidence | Partial (424 violations, non-blocking) |
+| Termination | std/termination.dag | BoundedLattice | TypeBinding.provenance + ExprCall.descent_evidence | Partial (421 violations, non-blocking) |
+| Coercion | (not a separate dimension — coercion IS emission; CX proves bounds on emission functions) | — | — | Partial (fail-closed where implemented) |
 | Ownership | ownership.dag | Not yet | Not yet (separate pass) | Partial (SharedError blocks) |
 | Side effects | std/behavioral.dag | Not yet | Not yet | No (declared, not consumed) |
 | Purity | (not declared) | — | — | No |
@@ -179,13 +207,15 @@ checking, and structural descent proofs make them unrepresentable.
 | Circular dependencies | CircularDependency diagnostic | DONE |
 | Cross-target drift | Single `.dag` declaration → all targets | DONE |
 | Diamond dependency divergence | Module graph deduplicates imports | DONE |
-| Non-termination | Structural descent proof (CX gate) | **424 violations → 0, then blocking** |
+| Non-termination | Structural descent proof (CX gate) | **421 violations → 0, then blocking** |
 | Record literal completeness | Missing-field diagnostic | **partial** |
-| Coercion completeness | Fail-closed inhabitant lookup | **partial** (fail-closed where implemented; coercion engine design incomplete) |
+| Coercion completeness | Fail-closed inhabitant lookup; coercion = emission (not a separate mechanism) | **partial** — schema + dispatch + per-language data done; single emitter (Lane C) not started |
 
-**Gating item:** CX gate. Once 424 → 0 and the gate is blocking,
-every function that compiles is proven to terminate. This is the
-single biggest remaining item in Tier 1.
+**Gating items:** CX gate (421 → 0, then blocking) and emission
+completeness (every .dag→target conversion is a declared .dag
+function with CX-proven bounds). Coercion is not a separate gate
+— it is emission. When the single emitter (Track 13) lands,
+coercion completeness is a consequence.
 
 **Note:** Tier 1 status claims reflect what the compiler enforces
 today, not aspirational targets. "DONE" means the diagnostic exists
@@ -232,7 +262,7 @@ faithful.
 | Test level | What it proves | Status |
 |------------|---------------|--------|
 | L0: Structural tests from data | Coercion mappings are complete and consistent | DONE |
-| L1: Pipeline unit tests | Compiler stages produce correct output | DONE (388 tests) |
+| L1: Pipeline unit tests | Compiler stages produce correct output | DONE (393 tests) |
 | L2: Bootstrap self-hosting | Compiler can compile itself | DONE |
 | L3: Syntax validity | Emitted code parses in target language | DONE |
 | L4: Semantic correctness | Emitted code executes, matches `.dag` evaluation | **not implemented** |
@@ -390,7 +420,8 @@ Updated manually. If this is stale, check ROADMAP.md for details.
 
 ```
 Tier 1: Structural         ██████████████░░ ~85%
-  CX gate:                 424 violations remaining (non-blocking)
+  CX gate:                 421 violations remaining (non-blocking)
+  Coercion (= emission):   schema + dispatch + data done; single emitter (Lane C) not started
   Record completeness:     partial
 
 Tier 2: Runtime safety      ░░░░░░░░░░░░░░░ ~0%
