@@ -189,6 +189,7 @@ type InferScope {
   module_name: String
   service_registry: Map<String, List<OpEntry>>
   item_registry: Map<String, ItemInfo>
+  lambda_param_provenance: Map<String, SubValueRelation>
 }
 
 type InferResult {
@@ -708,7 +709,8 @@ fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
     match_bound_names: scope.match_bound_names,
     module_name: scope.module_name,
     service_registry: scope.service_registry,
-    item_registry: scope.item_registry
+    item_registry: scope.item_registry,
+    lambda_param_provenance: empty_map()
   }
 }
 
@@ -724,7 +726,8 @@ fn extend_scope(scope: InferScope, name: String, resolved: Node, provenance: Sub
     match_bound_names: scope.match_bound_names,
     module_name: scope.module_name,
     service_registry: scope.service_registry,
-    item_registry: scope.item_registry
+    item_registry: scope.item_registry,
+    lambda_param_provenance: scope.lambda_param_provenance
   }
 }
 
@@ -736,7 +739,8 @@ fn extend_scope_match_bound(scope: InferScope, name: String, resolved: Node, pro
     match_bound_names: map_insert(scope.match_bound_names, name, true),
     module_name: scope.module_name,
     service_registry: scope.service_registry,
-    item_registry: scope.item_registry
+    item_registry: scope.item_registry,
+    lambda_param_provenance: scope.lambda_param_provenance
   }
 }
 
@@ -752,7 +756,8 @@ fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferSco
     match_bound_names: scope.match_bound_names,
     module_name: scope.module_name,
     service_registry: scope.service_registry,
-    item_registry: scope.item_registry
+    item_registry: scope.item_registry,
+    lambda_param_provenance: scope.lambda_param_provenance
   }
 }
 
@@ -864,9 +869,31 @@ fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_arg
   } else { none }
 }
 
+// Derive element provenance from a collection expression.
+// Single authority for the "collection has known provenance AND element type
+// has ListRecursion inductive fields → IteratedSubValue" pattern.
+// Used by ExprForEach, ExprCall bridge, and ExprMethodCall.
+fn derive_element_provenance(coll_expr: Node, elem_type: Node, scope: InferScope) -> SubValueRelation {
+  let coll_prov = classify_binding_provenance(val: coll_expr, scope: scope)
+  match coll_prov {
+    SubValueUnknown => SubValueUnknown
+    _ =>
+      if elem_type.name == "" { SubValueUnknown }
+      else {
+        let ind_fields = inductive_fields_for(env: scope.type_env, type_name: elem_type.name)
+        let list_field = ind_fields |> filter(f => match f.shape { ListRecursion => true, _ => false }) |> first
+        match list_field {
+          Some { value: f } => IteratedSubValue { field: f }
+          None => SubValueUnknown
+        }
+      }
+  }
+}
+
 // Infer method args with element type context and fold special-casing.
 // Shared between ExprCall bridge and ExprMethodCall paths.
-fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, scope: InferScope) -> List<ArgInferResult> {
+// S6: elem_provenance threads IteratedSubValue from the receiver to lambda params.
+fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, elem_provenance: SubValueRelation, scope: InferScope) -> List<ArgInferResult> {
   let is_fold = method_name_is(opt: method_name, expected: "fold")
   method_args |> enumerate |> map(idx_pair =>
     let a = idx_pair.second
@@ -891,10 +918,44 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         properties: [], type_annotation: none, is_self_recursive: false,
         has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
-      let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: Some { value: fold_callable })
+      // S6: set lambda_param_provenance so ExprLambda reads it without name-collision risk.
+      let lam_value = arg_value(n: a)
+      let prov_map = match elem_provenance {
+        SubValueUnknown => empty_map()
+        _ => map_insert(empty_map(), "elem", elem_provenance)
+      }
+      let fold_scope = InferScope {
+        type_env: scope.type_env,
+        func_env: scope.func_env,
+        locals: scope.locals,
+        match_bound_names: scope.match_bound_names,
+        module_name: scope.module_name,
+        service_registry: scope.service_registry,
+        item_registry: scope.item_registry,
+        lambda_param_provenance: prov_map
+      }
+      let ar = infer_expr(texpr: lam_value, scope: fold_scope, expected: Some { value: fold_callable })
       ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_index: scope.type_env.source_index), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
     } else {
-      infer_arg_with_element_type(arg: a, element_type: element_type, scope: scope)
+      // S6: set lambda_param_provenance for non-fold lambda params (map/filter/etc).
+      let nf_lam_value = arg_value(n: a)
+      let nf_prov_map = match elem_provenance {
+        SubValueUnknown => empty_map()
+        _ => map_insert(empty_map(), "elem", elem_provenance)
+      }
+      let nf_scope = if is_lambda_expr(e: nf_lam_value) {
+        InferScope {
+          type_env: scope.type_env,
+          func_env: scope.func_env,
+          locals: scope.locals,
+          match_bound_names: scope.match_bound_names,
+          module_name: scope.module_name,
+          service_registry: scope.service_registry,
+          item_registry: scope.item_registry,
+          lambda_param_provenance: nf_prov_map
+        }
+      } else { scope }
+      infer_arg_with_element_type(arg: a, element_type: element_type, scope: nf_scope)
     }
   )
 }
@@ -1125,7 +1186,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             let first_result = infer_expr(texpr: arg_value(n: first_arg), scope: scope, expected: none)
             let first_type = resolved_type(n: first_result.typed)
             let elem_type = for_each_element_type_node(n: first_type)
-            let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, scope: scope)
+            let call_elem_provenance = derive_element_provenance(coll_expr: first_result.typed, elem_type: elem_type, scope: scope)
+            let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, scope: scope)
             concat(
               [ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: first_arg, source_index: scope.type_env.source_index), value: first_result.typed, span: first_arg.span, name_span: first_arg.span), diagnostics: first_result.diagnostics }],
               remaining_results
@@ -1416,7 +1478,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         Some { value: fi } => resolved_type(n: arg_value(n: fi.typed_arg))
         None => error_type
       }
-      let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, scope: scope)
+      let mc_elem_provenance = derive_element_provenance(coll_expr: recv_typed, elem_type: recv_elem_type, scope: scope)
+      let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
       // Refine fold_acc_type from lambda body when init is under-resolved.
@@ -1818,30 +1881,39 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       // If expected carries an element type, use it for lambda params.
       // Single param or last param gets the element type; others get TypeVariable.
       // Unified lambda element-type threading: expected flows to param scope.
+      // S6: read provenance from lambda_param_provenance (set by fold/map caller),
+      // not from scope.locals (which could shadow from outer same-named bindings).
+      let elem_prov = match map_get(scope.lambda_param_provenance, "elem") {
+        Some { value: p } => p
+        None => SubValueUnknown
+      }
       let lam_scope = if expected != none {
         let exp = expected.value
         if exp.params |> count > 0 {
           // Callable expected: thread each callable param type to corresponding lambda param.
-          // Dissolves infer_lambda_with_callable_type bypass.
+          // Last param gets elem_prov; others get SubValueUnknown.
           fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
+            let param_prov = if pair.first == (lam_params |> count) - 1 { elem_prov } else { SubValueUnknown }
             match exp.params |> skip(pair.first) |> first {
-              Some { value: cp } => extend_scope(scope: acc, name: pair.second, resolved: param_node_type_expr(n: cp), provenance: SubValueUnknown)
-              None => extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "callable_param"), provenance: SubValueUnknown)
+              Some { value: cp } => extend_scope(scope: acc, name: pair.second, resolved: param_node_type_expr(n: cp), provenance: param_prov)
+              None => extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "callable_param"), provenance: param_prov)
             }
           )
         } else if lam_params |> count == 1 {
           // Single element type expected: apply to sole param.
           match lam_params |> first {
-            Some { value: p } => extend_scope(scope: scope, name: p, resolved: exp, provenance: SubValueUnknown)
+            Some { value: p } =>
+              extend_scope(scope: scope, name: p, resolved: exp, provenance: elem_prov)
             None => scope
           }
         } else {
-          // Element type expected with multiple params: apply to last param.
+          // Element type expected with multiple params: last gets elem_prov, others SubValueUnknown.
           fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
+            let param_prov = if pair.first == (lam_params |> count) - 1 { elem_prov } else { SubValueUnknown }
             if pair.first == (lam_params |> count) - 1 {
-              extend_scope(scope: acc, name: pair.second, resolved: exp, provenance: SubValueUnknown)
+              extend_scope(scope: acc, name: pair.second, resolved: exp, provenance: param_prov)
             } else {
-              extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "lambda_param"), provenance: SubValueUnknown)
+              extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "lambda_param"), provenance: param_prov)
             }
           )
         }
@@ -1854,7 +1926,15 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           Some { value: callable_inferred(n: exp) }
         } else { none }
       } else { none }
-      let body_result = infer_expr(texpr: lam_body, scope: lam_scope, expected: body_expected)
+      // Clear lambda_param_provenance before entering the body — it's only
+      // for THIS lambda's params, not for nested lambdas inside the body.
+      let body_scope = InferScope {
+        type_env: lam_scope.type_env, func_env: lam_scope.func_env,
+        locals: lam_scope.locals, match_bound_names: lam_scope.match_bound_names,
+        module_name: lam_scope.module_name, service_registry: lam_scope.service_registry,
+        item_registry: lam_scope.item_registry, lambda_param_provenance: empty_map()
+      }
+      let body_result = infer_expr(texpr: lam_body, scope: body_scope, expected: body_expected)
       let body_typed = body_result.typed
       let body_diags = body_result.diagnostics
       let lam_texpr = make_expr_node(
@@ -1956,22 +2036,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let coll_typed = coll_result.typed
       let coll_diags = coll_result.diagnostics
       let elem_type_node = for_each_element_type_node(n: resolved_type(n: coll_typed))
-      // S5: iteration variable gets IteratedSubValue when the collection
-      // has known provenance AND the element type has ListRecursion fields.
-      let coll_provenance = classify_binding_provenance(val: coll_typed, scope: scope)
-      let elem_provenance = match coll_provenance {
-        SubValueUnknown => SubValueUnknown
-        _ =>
-          if elem_type_node.name == "" { SubValueUnknown }
-          else {
-            let ind_fields = inductive_fields_for(env: scope.type_env, type_name: elem_type_node.name)
-            let list_field = ind_fields |> filter(f => match f.shape { ListRecursion => true, _ => false }) |> first
-            match list_field {
-              Some { value: f } => IteratedSubValue { field: f }
-              None => SubValueUnknown
-            }
-          }
-      }
+      let elem_provenance = derive_element_provenance(coll_expr: coll_typed, elem_type: elem_type_node, scope: scope)
       let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type_node, provenance: elem_provenance)
       let body_result = infer_expr(texpr: body_expr, scope: body_scope, expected: none)
       let body_typed = body_result.typed
@@ -4302,7 +4367,8 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     match_bound_names: empty_map(),
     module_name: resolved.module.name,
     service_registry: ctx.svc_registry,
-    item_registry: ctx.item_registry
+    item_registry: ctx.item_registry,
+    lambda_param_provenance: empty_map()
   }
   let typed_item_results = infer_items(items: ctx.resolved_items, scope: infer_scope)
   let typed_items = map(typed_item_results, tir => tir.item)

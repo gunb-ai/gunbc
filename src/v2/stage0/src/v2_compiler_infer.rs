@@ -83,6 +83,7 @@ pub struct InferScope {
     pub module_name: String,
     pub service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub lambda_param_provenance: Rc<HashMap<String, Rc<SubValueRelation>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -712,6 +713,7 @@ Rc::new(InferScope {
     module_name: scope.module_name.clone(),
     service_registry: scope.service_registry.clone(),
     item_registry: scope.item_registry.clone(),
+    lambda_param_provenance: v2_rt::rc_empty_map::<Rc<SubValueRelation>>(),
 })
 }
 }
@@ -729,6 +731,7 @@ pub fn extend_scope(scope: Rc<InferScope>, name: String, resolved: Rc<Node>, pro
     module_name: scope.module_name.clone(),
     service_registry: scope.service_registry.clone(),
     item_registry: scope.item_registry.clone(),
+    lambda_param_provenance: scope.lambda_param_provenance.clone(),
 })
 }
 
@@ -745,6 +748,7 @@ pub fn extend_scope_match_bound(scope: Rc<InferScope>, name: String, resolved: R
     module_name: scope.module_name.clone(),
     service_registry: scope.service_registry.clone(),
     item_registry: scope.item_registry.clone(),
+    lambda_param_provenance: scope.lambda_param_provenance.clone(),
 })
 }
 
@@ -763,6 +767,7 @@ Rc::new(InferScope {
     module_name: scope.module_name.clone(),
     service_registry: scope.service_registry.clone(),
     item_registry: scope.item_registry.clone(),
+    lambda_param_provenance: scope.lambda_param_provenance.clone(),
 })
 }
 }
@@ -902,7 +907,33 @@ Some(Rc::new(ArgInferResult {
 }
 }
 
-pub fn infer_method_args_with_fold(method_name: Option<String>, method_args: Rc<Vec<Rc<Node>>>, fold_info: Option<Rc<ArgInferResult>>, fold_acc_type: Rc<Node>, element_type: Rc<Node>, scope: Rc<InferScope>) -> Rc<Vec<Rc<ArgInferResult>>> {
+pub fn derive_element_provenance(coll_expr: Rc<Node>, elem_type: Rc<Node>, scope: Rc<InferScope>) -> Rc<SubValueRelation> {
+    {
+        let coll_prov = classify_binding_provenance(coll_expr, scope.clone());
+match (*coll_prov).clone() {
+    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+    _ => if (elem_type.name.clone().as_str() == "".to_string().as_str()) {
+            Rc::new(SubValueRelation::SubValueUnknown)
+        } else {
+            {
+                let ind_fields = inductive_fields_for(scope.type_env.clone(), elem_type.name.clone());
+let list_field = Rc::new({ let mut __result = Vec::new(); for f in ind_fields.iter().cloned() { if match f.shape.clone() {
+    RecursionShape::ListRecursion => true,
+    _ => false,
+} { __result.push(f); } } __result }).first().cloned();
+match list_field {
+    Some(f) => Rc::new(SubValueRelation::IteratedSubValue {
+    field: f.clone(),
+}),
+    None => Rc::new(SubValueRelation::SubValueUnknown),
+}
+}
+        },
+}
+}
+}
+
+pub fn infer_method_args_with_fold(method_name: Option<String>, method_args: Rc<Vec<Rc<Node>>>, fold_info: Option<Rc<ArgInferResult>>, fold_acc_type: Rc<Node>, element_type: Rc<Node>, elem_provenance: Rc<SubValueRelation>, scope: Rc<InferScope>) -> Rc<Vec<Rc<ArgInferResult>>> {
     {
         let is_fold = method_name_is(method_name, "fold".to_string());
 Rc::new({ let mut __result = Vec::new(); for idx_pair in Rc::new(method_args.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { __result.push({
@@ -937,14 +968,50 @@ let fold_callable = Rc::new(Node {
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 });
-let ar = infer_expr(arg_value(a.clone()), scope.clone(), Some(fold_callable.clone()));
+let lam_value = arg_value(a.clone());
+let prov_map = match (*elem_provenance.clone()).clone() {
+    SubValueRelation::SubValueUnknown => v2_rt::rc_empty_map::<Rc<SubValueRelation>>(),
+    _ => v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<SubValueRelation>>(), "elem".to_string(), elem_provenance.clone()),
+};
+let fold_scope = Rc::new(InferScope {
+    type_env: scope.type_env.clone(),
+    func_env: scope.func_env.clone(),
+    locals: scope.locals.clone(),
+    match_bound_names: scope.match_bound_names.clone(),
+    module_name: scope.module_name.clone(),
+    service_registry: scope.service_registry.clone(),
+    item_registry: scope.item_registry.clone(),
+    lambda_param_provenance: prov_map.clone(),
+});
+let ar = infer_expr(lam_value.clone(), fold_scope.clone(), Some(fold_callable.clone()));
 Rc::new(ArgInferResult {
     typed_arg: make_arg_node(arg_name_at(a.clone(), scope.type_env.clone().source_index.clone()), ar.typed.clone(), a.span.clone(), a.span.clone()),
     diagnostics: ar.diagnostics.clone(),
 })
 }
                 } else {
-                    infer_arg_with_element_type(a.clone(), element_type.clone(), scope.clone())
+                    {
+                        let nf_lam_value = arg_value(a.clone());
+let nf_prov_map = match (*elem_provenance.clone()).clone() {
+    SubValueRelation::SubValueUnknown => v2_rt::rc_empty_map::<Rc<SubValueRelation>>(),
+    _ => v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<SubValueRelation>>(), "elem".to_string(), elem_provenance.clone()),
+};
+let nf_scope = if is_lambda_expr(nf_lam_value.clone()) {
+                            Rc::new(InferScope {
+    type_env: scope.type_env.clone(),
+    func_env: scope.func_env.clone(),
+    locals: scope.locals.clone(),
+    match_bound_names: scope.match_bound_names.clone(),
+    module_name: scope.module_name.clone(),
+    service_registry: scope.service_registry.clone(),
+    item_registry: scope.item_registry.clone(),
+    lambda_param_provenance: nf_prov_map.clone(),
+})
+                        } else {
+                            scope.clone()
+                        };
+infer_arg_with_element_type(a.clone(), element_type.clone(), nf_scope.clone())
+}
                 }
             }
 }); } __result })
@@ -1146,7 +1213,8 @@ let arg_infer_results = if ((has_lambda && ((call_args.clone().len() as i64) >= 
                     let first_result = infer_expr(arg_value(first_arg.clone()), scope.clone(), None);
 let first_type = resolved_type(first_result.typed.clone());
 let elem_type = for_each_element_type_node(first_type);
-let remaining_results = infer_method_args_with_fold(call_method_name.clone(), call_method_args.clone(), call_fold_info.clone(), call_fold_acc_type.clone(), elem_type, scope.clone());
+let call_elem_provenance = derive_element_provenance(first_result.typed.clone(), elem_type.clone(), scope.clone());
+let remaining_results = infer_method_args_with_fold(call_method_name.clone(), call_method_args.clone(), call_fold_info.clone(), call_fold_acc_type.clone(), elem_type.clone(), call_elem_provenance, scope.clone());
 v2_rt::concat(Rc::new(vec![Rc::new(ArgInferResult {
     typed_arg: make_arg_node(arg_name_at(first_arg.clone(), scope.type_env.clone().source_index.clone()), first_result.typed.clone(), first_arg.span.clone(), first_arg.span.clone()),
     diagnostics: first_result.diagnostics.clone(),
@@ -1457,7 +1525,8 @@ let fold_acc_type = match fold_info.clone() {
     Some(fi) => resolved_type(arg_value(fi.typed_arg.clone())),
     None => error_type(),
 };
-let mc_arg_infer_results = infer_method_args_with_fold(mc_method_name.clone(), mc_args.clone(), fold_info.clone(), fold_acc_type.clone(), recv_elem_type, scope.clone());
+let mc_elem_provenance = derive_element_provenance(recv_typed.clone(), recv_elem_type.clone(), scope.clone());
+let mc_arg_infer_results = infer_method_args_with_fold(mc_method_name.clone(), mc_args.clone(), fold_info.clone(), fold_acc_type.clone(), recv_elem_type.clone(), mc_elem_provenance, scope.clone());
 let typed_mc_args = Rc::new({ let mut __result = Vec::new(); for air in mc_arg_infer_results.clone().iter().cloned() { __result.push(air.typed_arg.clone()); } __result });
 let mc_arg_diags = Rc::new({ let mut __result = Vec::new(); for air in mc_arg_infer_results.clone().iter().cloned() { __result.extend((*air.diagnostics.clone()).iter().cloned()); } __result });
 let mc_acc_is_under_resolved = !is_fully_resolved(fold_acc_type.clone(), scope.type_env.clone().source_index.clone());
@@ -1876,26 +1945,44 @@ Rc::new(InferResult {
 let lam_body = lambda_body(texpr.clone());
 let lam_params = lambda_param_names_at(texpr.clone(), scope.type_env.clone().source_index.clone());
 let lam_param_nodes = Rc::new(texpr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let elem_prov = match v2_rt::map_get(&scope.lambda_param_provenance.clone(), "elem".to_string()) {
+    Some(p) => p.clone(),
+    None => Rc::new(SubValueRelation::SubValueUnknown),
+};
 let lam_scope = if (expected.clone() != None) {
                 {
                     let exp = expected.clone().unwrap();
 if ((exp.params.clone().len() as i64) > 0) {
-                        Rc::new(lam_params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(scope.clone(), |acc: Rc<InferScope>, pair: (i64, String)| match exp.params.clone().get(pair.0.clone() as usize).cloned() {
-    Some(cp) => extend_scope(acc.clone(), pair.1.clone(), param_node_type_expr(cp.clone()), Rc::new(SubValueRelation::SubValueUnknown)),
-    None => extend_scope(acc.clone(), pair.1.clone(), type_variable_node("callable_param".to_string()), Rc::new(SubValueRelation::SubValueUnknown)),
+                        Rc::new(lam_params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(scope.clone(), |acc: Rc<InferScope>, pair: (i64, String)| {
+                            let param_prov = if (pair.0.clone() == ((lam_params.clone().len() as i64) - 1)) {
+                                elem_prov.clone()
+                            } else {
+                                Rc::new(SubValueRelation::SubValueUnknown)
+                            };
+match exp.params.clone().get(pair.0.clone() as usize).cloned() {
+    Some(cp) => extend_scope(acc.clone(), pair.1.clone(), param_node_type_expr(cp.clone()), param_prov.clone()),
+    None => extend_scope(acc.clone(), pair.1.clone(), type_variable_node("callable_param".to_string()), param_prov.clone()),
+}
 })
                     } else {
                         if ((lam_params.clone().len() as i64) == 1) {
                             match lam_params.clone().first().cloned() {
-    Some(p) => extend_scope(scope.clone(), p.clone(), exp.clone(), Rc::new(SubValueRelation::SubValueUnknown)),
+    Some(p) => extend_scope(scope.clone(), p.clone(), exp.clone(), elem_prov.clone()),
     None => scope.clone(),
 }
                         } else {
-                            Rc::new(lam_params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(scope.clone(), |acc: Rc<InferScope>, pair: (i64, String)| if (pair.0.clone() == ((lam_params.clone().len() as i64) - 1)) {
-                                extend_scope(acc.clone(), pair.1.clone(), exp.clone(), Rc::new(SubValueRelation::SubValueUnknown))
-                            } else {
-                                extend_scope(acc.clone(), pair.1.clone(), type_variable_node("lambda_param".to_string()), Rc::new(SubValueRelation::SubValueUnknown))
-                            })
+                            Rc::new(lam_params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(scope.clone(), |acc: Rc<InferScope>, pair: (i64, String)| {
+                                let param_prov = if (pair.0.clone() == ((lam_params.clone().len() as i64) - 1)) {
+                                    elem_prov.clone()
+                                } else {
+                                    Rc::new(SubValueRelation::SubValueUnknown)
+                                };
+if (pair.0.clone() == ((lam_params.clone().len() as i64) - 1)) {
+                                    extend_scope(acc.clone(), pair.1.clone(), exp.clone(), param_prov.clone())
+                                } else {
+                                    extend_scope(acc.clone(), pair.1.clone(), type_variable_node("lambda_param".to_string()), param_prov.clone())
+                                }
+})
                         }
                     }
 }
@@ -1914,7 +2001,17 @@ if ((exp.params.clone().len() as i64) > 0) {
             } else {
                 None
             };
-let body_result = infer_expr(lam_body, lam_scope.clone(), body_expected);
+let body_scope = Rc::new(InferScope {
+    type_env: lam_scope.type_env.clone(),
+    func_env: lam_scope.func_env.clone(),
+    locals: lam_scope.locals.clone(),
+    match_bound_names: lam_scope.match_bound_names.clone(),
+    module_name: lam_scope.module_name.clone(),
+    service_registry: lam_scope.service_registry.clone(),
+    item_registry: lam_scope.item_registry.clone(),
+    lambda_param_provenance: v2_rt::rc_empty_map::<Rc<SubValueRelation>>(),
+});
+let body_result = infer_expr(lam_body, body_scope, body_expected);
 let body_typed = body_result.typed.clone();
 let body_diags = body_result.diagnostics.clone();
 let lam_texpr = make_expr_node(Rc::new(ExprData::ExprLambda {
@@ -2006,27 +2103,7 @@ let coll_result = infer_expr(coll, scope.clone(), None);
 let coll_typed = coll_result.typed.clone();
 let coll_diags = coll_result.diagnostics.clone();
 let elem_type_node = for_each_element_type_node(resolved_type(coll_typed.clone()));
-let coll_provenance = classify_binding_provenance(coll_typed.clone(), scope.clone());
-let elem_provenance = match (*coll_provenance).clone() {
-    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-    _ => if (elem_type_node.name.clone().as_str() == "".to_string().as_str()) {
-                Rc::new(SubValueRelation::SubValueUnknown)
-            } else {
-                {
-                    let ind_fields = inductive_fields_for(scope.type_env.clone(), elem_type_node.name.clone());
-let list_field = Rc::new({ let mut __result = Vec::new(); for f in ind_fields.iter().cloned() { if match f.shape.clone() {
-    RecursionShape::ListRecursion => true,
-    _ => false,
-} { __result.push(f); } } __result }).first().cloned();
-match list_field {
-    Some(f) => Rc::new(SubValueRelation::IteratedSubValue {
-    field: f.clone(),
-}),
-    None => Rc::new(SubValueRelation::SubValueUnknown),
-}
-}
-            },
-};
+let elem_provenance = derive_element_provenance(coll_typed.clone(), elem_type_node.clone(), scope.clone());
 let body_scope = extend_scope(scope.clone(), variable.clone(), elem_type_node.clone(), elem_provenance);
 let body_result = infer_expr(body_expr.clone(), body_scope, None);
 let body_typed = body_result.typed.clone();
@@ -4987,6 +5064,7 @@ let infer_scope = Rc::new(InferScope {
     module_name: resolved.module.clone().name.clone(),
     service_registry: ctx.svc_registry.clone(),
     item_registry: ctx.item_registry.clone(),
+    lambda_param_provenance: v2_rt::rc_empty_map::<Rc<SubValueRelation>>(),
 });
 let typed_item_results = infer_items(ctx.resolved_items.clone(), infer_scope);
 let typed_items = Rc::new({ let mut __result = Vec::new(); for tir in typed_item_results.clone().iter().cloned() { __result.push(tir.item.clone()); } __result });

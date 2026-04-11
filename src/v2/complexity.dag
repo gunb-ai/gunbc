@@ -43,7 +43,7 @@ import std.induction {
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   CostBound, ConstantBound, AtomicBound, ForeverBound, ErrorBound,
   AtomicCost, PolyCost, PolynomialExponent, IntegerExp,
-  sub_value_to_evidence, sub_value_to_call_pattern, catamorphism_bound, derive_bound,
+  sub_value_to_evidence, sub_value_to_call_pattern, sub_value_to_lowering_target, catamorphism_bound, derive_bound,
 }
 import v2.std.core {
   Node,
@@ -2911,8 +2911,8 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
       } else {
       match first_call {
         Some { value: rel } =>
-          match sub_value_to_call_pattern(relation: rel) {
-            Some { value: cp } => lower_call_pattern(pattern: cp)
+          match sub_value_to_lowering_target(relation: rel) {
+            Some { value: target } => target
             None => lower_call_pattern(pattern: SameArgumentCall)
           }
         None => lower_call_pattern(pattern: SameArgumentCall)

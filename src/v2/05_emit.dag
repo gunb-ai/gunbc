@@ -309,7 +309,8 @@ fn empty_emit_scope() -> InferScope {
     match_bound_names: empty_map(),
     module_name: "",
     service_registry: empty_map(),
-    item_registry: empty_map()
+    item_registry: empty_map(),
+    lambda_param_provenance: empty_map()
   }
 }
 
@@ -321,7 +322,8 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
     match_bound_names: empty_map(),
     module_name: typed_module.module.name,
     service_registry: empty_map(),
-    item_registry: typed_module.item_registry
+    item_registry: typed_module.item_registry,
+    lambda_param_provenance: empty_map()
   }
 }
 

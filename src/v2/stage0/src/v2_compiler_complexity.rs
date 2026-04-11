@@ -18,7 +18,7 @@ use crate::std_termination::DescentSource::{ChildAccessor, ListShrink, Arithmeti
 pub use crate::std_computation::{CallPattern, LoweringTarget, lower_call_pattern, size_bound_param, IterationDimension, type_iteration_dimension};
 use crate::std_computation::CallPattern::{ChildAccessorCall, CollectionShrinkCall, ArithmeticDescentCall, ParserAdvanceCall, WorklistDrainCall, FoldBodyCall, SameArgumentCall};
 use crate::std_computation::IterationDimension::{TreeDescent, CollectionFold, ArithmeticRepeat};
-pub use crate::std_induction::{SubValueRelation, ShrinkFactor, CostBound, AtomicCost, PolynomialExponent, sub_value_to_evidence, sub_value_to_call_pattern, catamorphism_bound, derive_bound};
+pub use crate::std_induction::{SubValueRelation, ShrinkFactor, CostBound, AtomicCost, PolynomialExponent, sub_value_to_evidence, sub_value_to_call_pattern, sub_value_to_lowering_target, catamorphism_bound, derive_bound};
 use crate::std_induction::SubValueRelation::{StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown};
 use crate::std_induction::ShrinkFactor::{UnitShrink, ConstantShrink, ProportionalShrink};
 use crate::std_induction::CostBound::{ConstantBound, AtomicBound, ForeverBound, ErrorBound};
@@ -2436,8 +2436,8 @@ if is_arithmetic_branching {
                             lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
                         } else {
                             match first_call.clone() {
-    Some(rel) => match sub_value_to_call_pattern(rel.clone()) {
-    Some(cp) => lower_call_pattern(cp.clone()),
+    Some(rel) => match sub_value_to_lowering_target(rel.clone()) {
+    Some(target) => target.clone(),
     None => lower_call_pattern(Rc::new(CallPattern::SameArgumentCall)),
 },
     None => lower_call_pattern(Rc::new(CallPattern::SameArgumentCall)),
