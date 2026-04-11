@@ -145,6 +145,30 @@ the frontend and backend are just projections of the same graph.
 `.dag` syntax is one frontend. Rust/Python/Go are three backends.
 The set is open in both directions.
 
+### Omni-emission: one intent graph, many artifacts
+
+A single `.dag` program can describe an entire system — API
+server, frontend, database schema, CLI tool, deployment config.
+Different subgraphs of the intent emit to different targets.
+The emission topology is itself part of the declared intent:
+
+```dag
+service OrderAPI via rest::server(lang: Rust, port: 8080) { ... }
+service OrderUI  via web::frontend(lang: TypeScript) { ... }
+type   OrderSchema via sql::migration(target: Postgres) { ... }
+```
+
+The compiler validates the full causal graph across all
+artifacts — the Rust API server and the TypeScript frontend
+agree on types because they derive from the same declarations.
+The compiler owns the glue: serialization contracts, shared
+type definitions, API surface consistency. Each artifact is a
+projection of the validated intent onto a specific target.
+
+Emission is independent of intent. You declare what the system
+does; separately, you declare what artifacts it becomes. The
+compiler handles everything in between.
+
 ### Automatic parallelism (map-reduce)
 
 If every operation is a fold/descend/repeat, complexity is known,
