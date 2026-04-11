@@ -119,20 +119,22 @@ aggregates via scope-blind string matching (see pipeline.rs).
 | O2 | Emitter skips `.clone()` on last use of fan-out > 1 binding | build_last_use_set → last_use_index/last_use_spans on EmitGraphInfo → emit_var_ref checks span | Clone ratchet 24000 → 22200 | **DONE** |
 | O3 | V1 ratchet at 0 for focused test programs | Test: `count_ownership_violations` V1 = 0 | — | Deferred (coarse aggregate, not V1-specific) |
 
-### Layer 2: Post-TCO ownership (no measured violations)
+### Layer 2: Post-TCO ownership (no coarse signal found)
 
 Investigation (2026-04-10): V2 was described as "TCO gate zeroes the
 movable set." Empirical analysis shows the movable set flows unchanged
 through TCO functions. The scope-blind `movable_but_cloned` metric
-(45→29) does not surface any TCO-specific violations — all remaining
-counts are from common variable names matching across function
-boundaries. Note: the metric is coarse (see function doc), so this
-finding is directional, not absolute.
+(45→29) does not surface TCO-specific violations — remaining counts
+appear to be from common variable names matching across function
+boundaries. Note: the metric is coarse and scope-blind (see function
+doc), so this finding is directional, not conclusive. A precise,
+scope-aware metric could reveal V2 violations not visible to the
+current measurement.
 
 | # | Item | Test | Cleanup target | Status |
 |---|------|------|---------------|--------|
-| O4 | Run ownership analysis AFTER TCO transformation | Investigation: movable set already flows correctly through TCO | None needed | **N/A** (no measured violations via scope-blind metric) |
-| O5 | V2 ratchet at 0 for focused test programs | movable_but_cloned 45→29 | — | **N/A** |
+| O4 | Run ownership analysis AFTER TCO transformation | Investigation: movable set flows correctly through TCO; no coarse signal | None measured | Investigated — no coarse signal, needs precise metric to confirm |
+| O5 | V2 ratchet at 0 for focused test programs | movable_but_cloned 45→29 | — | Not started (metric too coarse) |
 
 ### Layer 3: Borrow propagation (needs LS-4 design)
 

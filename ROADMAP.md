@@ -284,7 +284,7 @@ Three layers, sequenced by dependency:
 | Layer | Size | Blocked on | Impact | Status |
 |-------|------|-----------|--------|--------|
 | 1. Last-use elision | 1-2 PRs | Nothing | Clone ratchet 24000→22200 | **DONE** (O1-O2) |
-| 2. Post-TCO ownership | — | — | No measured V2-specific violations | **N/A** (investigated via scope-blind metric) |
+| 2. Post-TCO ownership | 1 PR | Nothing | Est. ~500-1,000 clones | Investigated — no coarse signal found (scope-blind metric) |
 | 3. Borrow propagation | 3-5 PRs | LS-4 design | ~15,000-18,000 clones (est.) | Not started |
 
 **Layer 1 (last-use elision):** For each binding with fan-out > 1,

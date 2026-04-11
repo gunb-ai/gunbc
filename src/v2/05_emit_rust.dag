@@ -1812,10 +1812,20 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
     let sharing = language_spec(target: Rust).sharing
     // Last-use elision: if this reference's span matches the precomputed last-use
     // span for this binding, it can move instead of clone (O2).
-    let is_last_use = match map_get(emit_info.last_use_spans, name) {
-      Some { value: last_span } => last_span == span_start && span_start > 0
-      None => false
+    // Safety: only owned locals (LocalValueBinding) are eligible. Match-bound
+    // variables are &T references from destructuring — moving them is unsound.
+    // This binding_kind gate prevents name collisions between owned locals and
+    // match-bound variables from producing incorrect move-vs-clone decisions.
+    let is_owned_local_binding = match binding_kind {
+      Some { value: LocalValueBinding } => true
+      _ => false
     }
+    let is_last_use = if is_owned_local_binding {
+      match map_get(emit_info.last_use_spans, name) {
+        Some { value: last_span } => last_span == span_start && span_start > 0
+        None => false
+      }
+    } else { false }
     let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info)
     let ref_str = match variant_parent {
       Some { value: enum_name } =>

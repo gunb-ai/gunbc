@@ -1695,10 +1695,18 @@ pub fn emit_var_ref(name: String, binding_kind: Option<Rc<VarBindingKind>>, reso
         } else {
             {
                 let sharing = language_spec(RenderTarget::Rust).sharing.clone();
-let is_last_use = match v2_rt::map_get(&emit_info.last_use_spans.clone(), name.clone()) {
+let is_owned_local_binding = match binding_kind.clone().as_deref().cloned() {
+    Some(VarBindingKind::LocalValueBinding) => true,
+    _ => false,
+};
+let is_last_use = if is_owned_local_binding {
+                    match v2_rt::map_get(&emit_info.last_use_spans.clone(), name.clone()) {
     Some(last_span) => ((last_span.clone() == span_start.clone()) && (span_start > 0)),
     None => false,
-};
+}
+                } else {
+                    false
+                };
 let variant_parent = effective_variant_parent(name.clone(), binding_kind.clone(), resolved_type.clone(), emit_info.clone());
 let ref_str = match variant_parent {
     Some(enum_name) => {
