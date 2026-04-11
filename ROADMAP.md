@@ -24,20 +24,62 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 
 ---
 
-## Thesis alignment
+## Thesis alignment — dependency order
 
-See [THESIS.md](THESIS.md) for the full thesis. Every track below
-serves one of these:
+See [THESIS.md](THESIS.md) for the full thesis. Tracks are ordered
+by dependency: foundations first, dependents after. Readiness:
 
-| Thesis claim | What serves it | Status |
-|---|---|---|
-| **Causal engine** — validate source-to-drain consistency | Tracks 1, 3, 6, 7, 8, 9 (structural facts) | Active |
-| **Tier 1: Structural bugs impossible** | KF-1 (CX gate), Track 1 (provenance) | 424 violations → 0 |
-| **Tier 2: Runtime safety** | Track 11 (future) | **No track yet** |
-| **Tier 3: Verification from structure** | Track 12 (future) | **No track yet** |
-| **Emission is mechanical** | Tracks 2, 4; Track 13 (single emitter, future) | Partial |
-| **Omni-emission** | Track 14 (future) | **No track yet** |
-| **Free consequences** (parallelism, memoization, space) | Blocked on Tier 1 + ownership | Blocked |
+- 🟢 **Implement** — design clear, unblocked, ready to code
+- 🟡 **Design** — concept clear, design decisions pending
+- 🔴 **Vision** — concept-level work needed before design
+
+```
+LAYER 1: Foundations (no dependencies, all 🟢)
+  Track 9  (std/ structures)  ──┐
+  Track 8  (lattice)          ──┤
+  Track 6  (algebra dispatch) ──┤── feed structural facts into IR
+  Stream C (std/ foundation)  ──┘
+
+LAYER 2: IR carries facts (depends on Layer 1)
+  Track 1  (provenance) 🟢 ──── THE critical path
+  Track 3  (Node.name)  🟢 ──── parallel, independent
+  Track 7  (core tables) 🟢 ── dissolves as std/ types land
+
+LAYER 3: Emission correctness (depends on Layer 2)
+  Track 2  (language spec) 🟡 ── LS-4 borrow model needs design
+  Track 4  (codegen)       🟢 ── depends on Track 2 partially
+  Stream B (clone elision) 🟢 ── Layers 1-2 unblocked; Layer 3 needs LS-4
+
+LAYER 4: End-to-end (depends on Layer 3)
+  Track 5  (real program)  🟢 ── RE-3,4 remaining
+  Track 10 (extdeps)       🟢 ── independent, data quality
+
+LAYER 5: Thesis completion (depends on Layer 4)
+  Track 13 (single emitter)        🟡 ── depends on Track 2 + 7
+  Track 11 (runtime safety)        🟡 ── needs design (refinement types or total ops)
+  Track 12 (verification)          🟡 ── depends on Track 5 (need working emission)
+
+LAYER 6: Full vision (depends on Layer 5)
+  Track 14 (omni-emission)         🔴 ── depends on Track 13; needs vision
+  Free consequences (parallelism)  🔴 ── blocked on Tier 1 + ownership + purity
+```
+
+| Track | Thesis tier | Readiness | Blocked on |
+|-------|------------|-----------|-----------|
+| Stream C / Track 8 / 9 | Tier 1 (structural facts) | 🟢 | Nothing |
+| Track 6 | Tier 1 (string dispatch) | 🟢 | Nothing |
+| **Track 1 (provenance)** | **Tier 1 (CX gate)** | **🟢** | **S4 in progress** |
+| Track 3 (Node.name) | Tier 1 (structural identity) | 🟢 | Remaining n.name reads |
+| Track 7 (core tables) | Tier 1 (single authority) | 🟢 | Track 9 partially |
+| Track 2 (language spec) | Emission is mechanical | 🟡 | LS-4 borrow model design |
+| Track 4 (codegen) | Emission is mechanical | 🟢 | Track 2 partially |
+| Stream B (clone elision) | Tier 1 (ownership) | 🟢/🟡 | Layers 1-2 🟢, Layer 3 needs LS-4 |
+| Track 5 (real program) | End-to-end validation | 🟢 | Track 4 |
+| Track 10 (extdeps) | Data quality | 🟢 | Nothing |
+| Track 13 (single emitter) | Emission is mechanical | 🟡 | Track 2 + 7 |
+| Track 11 (runtime safety) | Tier 2 | 🟡 | Design phase |
+| Track 12 (verification) | Tier 3 | 🟡 | Track 5 |
+| Track 14 (omni-emission) | Omni-emission | 🔴 | Track 13 + vision |
 
 ---
 
