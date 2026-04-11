@@ -194,7 +194,7 @@ Bootstrap D ├─ Lane B: Emission ──────────────�
 ## Active work: close the model
 
 All active tracks are facets of one problem: the IR doesn't carry
-enough structure. Three parallel streams now, one phase after.
+enough structure. Four parallel streams, one phase after.
 
 ```
 Stream A (provenance)   S1→S2→S3→S4→S5 ─→ C2→C3→C4→C5→C6
@@ -225,8 +225,10 @@ better bounds when C2 lands. S8 dissolves ad-hoc merge functions.
 
 **Stream D: Structural parser** (02_parse.dag, compile.dag)
 Restructure parser from integer position indexing to list consumption.
-Eliminates 132 CX violations (Category B) by construction.
+Target: eliminate 132 CX violations (Category B) by construction.
 Design: [src/v2/parser-design.md](src/v2/parser-design.md).
+**Current state:** Phase 0 done (helper interface narrowing in
+02_parse.dag). Phases 1-4 (the structural rewrite) not yet started.
 Touches only parser + compile boundary — no overlap with other streams.
 
 Not in Stream D (separate future PRs):

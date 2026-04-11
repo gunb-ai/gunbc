@@ -46,6 +46,15 @@ a struct binding, not a list binding — it can't see the collection
 shrinking. As a separate parameter, `tokens` has standard
 `IteratedSubValue` provenance via `skip(1)`.
 
+**This is an interim constraint shaped by the analyzer's current
+limitation**, not the thesis end state. The thesis says dimensions
+should be generic, computed at binding sites, and carried through the
+IR — which means the analyzer should eventually see descent through
+struct fields. Under the Root-Cause Depth invariant, the deeper fix is
+field-level provenance tracking in the analyzer, which would make D1
+unnecessary. D1 is pragmatic: it gets provable descent now without
+waiting for analyzer improvements.
+
 ### D2: ParseContext for metadata, separate from tokens
 
 ```dag
