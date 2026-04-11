@@ -98,7 +98,7 @@ match Rc::new({ let mut __result = Vec::new(); for pair in Rc::new({ let mut __r
 pub fn container_param_name_required(kind_name: String, index: i64) -> String {
     match container_param_name(kind_name.clone(), index) {
     Some(n) => n.clone(),
-    None => v2_rt::concat("__BUG_NO_PROFILE_".to_string(), kind_name.clone()),
+    None => v2_rt::concat("__BUG_NO_PROFILE_".to_string(), kind_name),
 }
 }
 

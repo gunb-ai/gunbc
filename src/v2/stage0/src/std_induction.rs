@@ -84,7 +84,7 @@ pub fn meet_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
     SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
     SubValueRelation::PreservedValue => Rc::new(SubValueRelation::PreservedValue),
     SubValueRelation::StrictSubValue { field: fb, .. } => if (fa.field_name.clone().as_str() == fb.field_name.clone().as_str()) {
-        a.clone()
+        a
     } else {
         Rc::new(SubValueRelation::SubValueUnknown)
     },
@@ -118,10 +118,10 @@ pub fn join_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
     SubValueRelation::SubValueUnknown => b.clone(),
     SubValueRelation::PreservedValue => match (*b.clone()).clone() {
     SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::PreservedValue),
-    _ => b.clone(),
+    _ => b,
 },
     SubValueRelation::StrictSubValue { field: fa, .. } => match (*b.clone()).clone() {
-    SubValueRelation::SubValueUnknown => a.clone(),
+    SubValueRelation::SubValueUnknown => a,
     SubValueRelation::PreservedValue => a.clone(),
     SubValueRelation::StrictSubValue { field: fb, .. } => if (fa.field_name.clone().as_str() == fb.field_name.clone().as_str()) {
         a.clone()
@@ -312,7 +312,7 @@ pub fn cost_root(param: String, k: i64) -> Rc<CostBound> {
     param: param,
     exponent: Rc::new(PolynomialExponent::FractionExp {
     numerator: 1,
-    root: k.clone(),
+    root: k,
 }),
 }),
 })
@@ -343,7 +343,7 @@ pub fn cost_nlogn(param: String) -> Rc<CostBound> {
     value: 1,
 }),
 }), Rc::new(AtomicCost::LogCost {
-    param: param.clone(),
+    param: param,
 })]),
 })
 }
@@ -378,8 +378,8 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> i64 {
             1
         } else {
             {
-                let prev = int_pow_bounded(base.clone(), (exp.clone() - 1));
-(base.clone() * prev)
+                let prev = int_pow_bounded(base.clone(), (exp - 1));
+(base * prev)
 }
         }
     })
@@ -398,7 +398,7 @@ pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i6
                 let __tco_0 = base.clone();
 let __tco_1 = argument;
 let __tco_2 = (k + 1);
-let __tco_3 = (power * base.clone());
+let __tco_3 = (power * base);
 base = __tco_0;
 argument = __tco_1;
 k = __tco_2;
@@ -423,10 +423,10 @@ if ((a.clone() < 1) || (b.clone() < 2)) {
 if (a.clone() < b_to_d.clone()) {
                     match d.clone() {
     0 => Rc::new(CostBound::ConstantBound),
-    _ => cost_poly(n.clone(), d.clone()),
+    _ => cost_poly(n.clone(), d),
 }
                 } else {
-                    if (a.clone() == b_to_d.clone()) {
+                    if (a.clone() == b_to_d) {
                         match d.clone() {
     0 => cost_log(n.clone()),
     _ => Rc::new(CostBound::ProductBound {
@@ -436,7 +436,7 @@ if (a.clone() < b_to_d.clone()) {
     value: d.clone(),
 }),
 }), Rc::new(AtomicCost::LogCost {
-    param: n.clone(),
+    param: n,
 })]),
 }),
 }
@@ -445,8 +445,8 @@ if (a.clone() < b_to_d.clone()) {
     cost: Rc::new(AtomicCost::PolyCost {
     param: n.clone(),
     exponent: Rc::new(PolynomialExponent::LogBasedExp {
-    base: b.clone(),
-    argument: a.clone(),
+    base: b,
+    argument: a,
 }),
 }),
 })
@@ -460,7 +460,7 @@ if (a.clone() < b_to_d.clone()) {
 pub fn catamorphism_bound(param: String, nesting_depth: i64) -> Rc<CostBound> {
     match nesting_depth.clone() {
     0 => Rc::new(CostBound::ConstantBound),
-    _ => cost_poly(param, nesting_depth.clone()),
+    _ => cost_poly(param, nesting_depth),
 }
 }
 

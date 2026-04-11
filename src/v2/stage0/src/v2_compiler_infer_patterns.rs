@@ -120,7 +120,7 @@ if is_error {
             Rc::new(PatternSubject::PatternLookupBlocked)
         } else {
             Rc::new(PatternSubject::PatternResolved {
-    node: n.clone(),
+    node: n,
 })
         }
 }
@@ -190,10 +190,10 @@ if (((scrut_node.connective.clone() == Connective::NoConnective) && ((scrut_node
 let fallback = if (scrut_opt.clone() && (variant_name.clone().as_str() == "Some".to_string().as_str())) {
                     node_lookup_resolved(synthesize_optional_some_variant(scrut_node.clone()))
                 } else {
-                    if (scrut_opt.clone() && (variant_name.clone().as_str() == "None".to_string().as_str())) {
+                    if (scrut_opt && (variant_name.clone().as_str() == "None".to_string().as_str())) {
                         node_lookup_resolved(none_type())
                     } else {
-                        variant_not_found_result(scrut_node.clone(), variant_name.clone(), module_name)
+                        variant_not_found_result(scrut_node.clone(), variant_name, module_name)
                     }
                 };
 match direct_match {
@@ -220,7 +220,7 @@ pub fn lookup_field_in_variant(variant: Rc<PatternSubject>, field_name: String, 
 node_lookup_resolved(resolved)
 },
     None => node_lookup_failed(Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::FieldNotFound {
-    field: field_name.clone(),
+    field: field_name,
     type_name: variant_node.name.clone(),
     span: variant_node.span.clone(),
 }), module_name)])),
@@ -237,7 +237,7 @@ let resolved_raw = if has_structure {
         } else {
             match lookup_type(env, scrutinee_type.name.clone()) {
     Some(def) => def.clone(),
-    None => scrutinee_type.clone(),
+    None => scrutinee_type,
 }
         };
 let resolved = if scrut_is_optional {
@@ -249,7 +249,7 @@ let is_coproduct = (resolved.connective.clone() == Connective::Disj);
 let resolved_is_optional = (resolved.return_cardinality.clone() == Cardinality::CardOptional);
 if (is_coproduct || resolved_is_optional.clone()) {
             {
-                let variant_names = if resolved_is_optional.clone() {
+                let variant_names = if resolved_is_optional {
                     Rc::new(vec!["Some".to_string(), "None".to_string()])
                 } else {
                     Rc::new({ let mut __result = Vec::new(); for c in resolved.children.clone().iter().cloned() { __result.push(c.name.clone()); } __result })
@@ -263,7 +263,7 @@ if has_catch_all {
                     Rc::new(vec![])
                 } else {
                     {
-                        let covered_set = arms.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, arm: Rc<Node>| match (*arm_pattern(arm.clone())).clone() {
+                        let covered_set = arms.iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, arm: Rc<Node>| match (*arm_pattern(arm.clone())).clone() {
     MatchPattern::VariantPattern { name: n, .. } => v2_rt::rc_map_insert(acc.clone(), n.clone(), true),
     MatchPattern::LitPattern { value: v, .. } => match (*v.clone()).clone() {
     LiteralValue::LitBool { value: b, .. } => if b.clone() {
@@ -278,7 +278,7 @@ if has_catch_all {
 let uncovered = Rc::new({ let mut __result = Vec::new(); for v in variant_names.iter().cloned() { if (emit_map_has(covered_set.clone(), v.clone()) == false) { __result.push(v); } } __result });
 if ((uncovered.clone().len() as i64) > 0) {
                             Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::NonExhaustiveMatch {
-    missing: uncovered.clone(),
+    missing: uncovered,
     span: span,
 }), module_name)])
                         } else {

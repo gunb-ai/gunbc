@@ -134,7 +134,7 @@ let updated = Rc::new(BindingUsage {
     consumers: v2_rt::rc_list_push(existing.consumers.clone(), edge),
 });
 Rc::new(UsageAccum {
-    bindings: v2_rt::rc_map_insert(accum.bindings.clone(), name.clone(), updated),
+    bindings: v2_rt::rc_map_insert(accum.bindings.clone(), name, updated),
     fold_call_nodes: accum.fold_call_nodes.clone(),
 })
 }
@@ -142,15 +142,15 @@ Rc::new(UsageAccum {
 
 pub fn max_usage_by_fan_out(a: Rc<BindingUsage>, b: Rc<BindingUsage>) -> Rc<BindingUsage> {
     if (binding_fan_out(b.clone()) > binding_fan_out(a.clone())) {
-        b.clone()
+        b
     } else {
-        a.clone()
+        a
     }
 }
 
 pub fn map_usage_merge_at(base: Rc<HashMap<String, Rc<BindingUsage>>>, key: String, new_val: Rc<BindingUsage>) -> Rc<HashMap<String, Rc<BindingUsage>>> {
     match v2_rt::map_get(&base, key.clone()) {
-    Some(existing) => v2_rt::rc_map_insert(base.clone(), key.clone(), max_usage_by_fan_out(existing.clone(), new_val)),
+    Some(existing) => v2_rt::rc_map_insert(base, key, max_usage_by_fan_out(existing.clone(), new_val)),
     None => v2_rt::rc_map_insert(base.clone(), key.clone(), new_val),
 }
 }
@@ -159,7 +159,7 @@ pub fn merge_branch_usages(base: Rc<UsageAccum>, branches: Rc<Vec<Rc<UsageAccum>
     {
         let binding_merged = branches.clone().iter().cloned().fold(base.bindings.clone(), |merged: Rc<HashMap<String, Rc<BindingUsage>>>, branch: Rc<UsageAccum>| Rc::new(v2_rt::map_values(&branch.bindings.clone())).iter().cloned().fold(merged.clone(), |acc: Rc<HashMap<String, Rc<BindingUsage>>>, usage: Rc<BindingUsage>| map_usage_merge_at(acc.clone(), usage.name.clone(), usage.clone())));
 let base_fold_count = (base.fold_call_nodes.clone().len() as i64);
-let branch_fold_nodes = Rc::new({ let mut __result = Vec::new(); for b in branches.clone().iter().cloned() { __result.extend((*Rc::new(b.fold_call_nodes.clone().iter().cloned().skip(base_fold_count.clone() as usize).collect::<Vec<_>>())).iter().cloned()); } __result });
+let branch_fold_nodes = Rc::new({ let mut __result = Vec::new(); for b in branches.iter().cloned() { __result.extend((*Rc::new(b.fold_call_nodes.clone().iter().cloned().skip(base_fold_count.clone() as usize).collect::<Vec<_>>())).iter().cloned()); } __result });
 Rc::new(UsageAccum {
     bindings: binding_merged,
     fold_call_nodes: v2_rt::concat(base.fold_call_nodes.clone(), branch_fold_nodes),
@@ -183,7 +183,7 @@ if in_tail.clone() {
             let base_node = field_access_base(texpr.clone());
 match (*base_node.expr_data.clone()).clone() {
     ExprData::ExprVar { binding_kind: bk, .. } => {
-                let vn = expr_var_name_at(base_node.clone(), si.clone());
+                let vn = expr_var_name_at(base_node, si.clone());
 let f = field_access_field_at(texpr.clone(), si.clone());
 record_use(accum, vn, EdgeKind::Projected, v2_rt::concat(".".to_string(), f), bk.clone(), texpr.span.clone().start.clone())
 },
@@ -236,11 +236,11 @@ record_use(recv_accum, vn, EdgeKind::Threaded, "fold_init".to_string(), bk.clone
 },
     None => recv_accum,
 };
-let non_init = Rc::new({ let mut __result = Vec::new(); for a in mc_args.clone().iter().cloned() { if (a.name.clone().as_str() != "init".to_string().as_str()) { __result.push(a); } } __result });
+let non_init = Rc::new({ let mut __result = Vec::new(); for a in mc_args.iter().cloned() { if (a.name.clone().as_str() != "init".to_string().as_str()) { __result.push(a); } } __result });
 let walked = non_init.iter().cloned().fold(threaded_accum.clone(), |acc: Rc<UsageAccum>, a: Rc<Node>| walk_expr(acc.clone(), arg_value(a.clone()), false, si.clone()));
 Rc::new(UsageAccum {
     bindings: walked.bindings.clone(),
-    fold_call_nodes: v2_rt::rc_list_push(walked.fold_call_nodes.clone(), texpr.clone()),
+    fold_call_nodes: v2_rt::rc_list_push(walked.fold_call_nodes.clone(), texpr),
 })
 }
             } else {
@@ -266,7 +266,7 @@ let e_accum = match if_else_branch(texpr.clone()) {
     Some(eb) => walk_expr(c_accum.clone(), eb.clone(), in_tail.clone(), si.clone()),
     None => c_accum.clone(),
 };
-merge_branch_usages(c_accum.clone(), Rc::new(vec![t_accum, e_accum]))
+merge_branch_usages(c_accum, Rc::new(vec![t_accum, e_accum]))
 },
     ExprData::ExprLet => {
             let v = let_value(texpr.clone());
@@ -284,7 +284,7 @@ if (ss_count.clone() == 0) {
             } else {
                 {
                     let init_accum = Rc::new({ let mut __result = Vec::new(); for p in Rc::new(ss.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (p.0.clone() < (ss_count.clone() - 1)) { __result.push(p); } } __result }).iter().cloned().fold(accum, |acc: Rc<UsageAccum>, p: (i64, Rc<Node>)| walk_expr(acc.clone(), p.1.clone(), false, si.clone()));
-match ss.clone().last().cloned() {
+match ss.last().cloned() {
     Some(last_expr) => walk_expr(init_accum, last_expr.clone(), in_tail.clone(), si.clone()),
     None => init_accum,
 }
@@ -350,7 +350,7 @@ Rc::new(OwnershipDecision::SoleOwner {
 } { __result.push(c); } } __result }).iter().cloned() { __result.push(c.site.clone()); } __result });
 Rc::new(OwnershipDecision::SharedError {
     binding: usage.name.clone(),
-    consumer_count: sc.clone(),
+    consumer_count: sc,
     sites: sites,
 })
 }
@@ -375,22 +375,29 @@ pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Rc<HashMap<String, bool>>
     Rc::new({ let mut __result = Vec::new(); for usage in Rc::new(v2_rt::map_values(&proof.bindings.clone())).iter().cloned() { if ((binding_fan_out(usage.clone()) == 1) && is_owned_local(usage.binding_kind.clone())) { __result.push(usage); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, usage: Rc<BindingUsage>| v2_rt::rc_map_insert(acc.clone(), usage.name.clone(), true))
 }
 
-pub fn build_last_use_set(proof: Rc<OwnershipProof>) -> Rc<HashMap<String, bool>> {
-    Rc::new({ let mut __result = Vec::new(); for usage in Rc::new(v2_rt::map_values(&proof.bindings.clone())).iter().cloned() { if ((binding_fan_out(usage.clone()) > 1) && is_owned_local(usage.binding_kind.clone())) { __result.push(usage); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, usage: Rc<BindingUsage>| {
-        let consumers = Rc::new({ let mut __result = Vec::new(); for c in usage.consumers.clone().iter().cloned() { if match c.kind.clone() {
+pub fn build_last_use_set(proof: Rc<OwnershipProof>) -> Rc<HashMap<String, i64>> {
+    Rc::new({ let mut __result = Vec::new(); for usage in Rc::new(v2_rt::map_values(&proof.bindings.clone())).iter().cloned() { if ((binding_fan_out(usage.clone()) > 1) && is_owned_local(usage.binding_kind.clone())) { __result.push(usage); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<i64>(), |acc: Rc<HashMap<String, i64>>, usage: Rc<BindingUsage>| {
+        let has_capture = { let mut __found = false; for c in usage.consumers.clone().iter().cloned() { if ((c.site.clone().as_str() == "lambda-capture".to_string().as_str()) || (c.site.clone().as_str() == "foreach-capture".to_string().as_str())) { __found = true; break; } } __found };
+if has_capture.clone() {
+            acc.clone()
+        } else {
+            {
+                let consumers = Rc::new({ let mut __result = Vec::new(); for c in usage.consumers.clone().iter().cloned() { if match c.kind.clone() {
     EdgeKind::Threaded => false,
     _ => true,
 } { __result.push(c); } } __result });
 let max_span = consumers.clone().iter().cloned().fold(-1, |m: i64, c: Rc<EdgeClassification>| if (c.span_start.clone() > m.clone()) {
-            c.span_start.clone()
-        } else {
-            m.clone()
-        });
+                    c.span_start.clone()
+                } else {
+                    m.clone()
+                });
 let at_max = (Rc::new({ let mut __result = Vec::new(); for c in consumers.clone().iter().cloned() { if (c.span_start.clone() == max_span.clone()) { __result.push(c); } } __result }).len() as i64);
 if ((max_span.clone() > 0) && (at_max.clone() == 1)) {
-            v2_rt::rc_map_insert(acc.clone(), usage.name.clone(), true)
-        } else {
-            acc.clone()
+                    v2_rt::rc_map_insert(acc.clone(), usage.name.clone(), max_span.clone())
+                } else {
+                    acc.clone()
+                }
+}
         }
 })
 }
@@ -404,7 +411,7 @@ pub fn fold_terminal_expr(mut body: Rc<Node>) -> Rc<Node> {
 body = __tco_0;
 continue;
 } },
-    None => { break body.clone(); },
+    None => { break body; },
 } },
     ExprData::ExprBlock => { match body.children.clone().last().cloned() {
     Some(last_child) => { {
@@ -422,7 +429,7 @@ continue;
 pub fn fold_body_constructs_acc_struct(lambda_node: Rc<Node>, acc_type_name: String) -> bool {
     match (*lambda_node.expr_data.clone()).clone() {
     ExprData::ExprLambda { .. } => {
-        let body = lambda_body(lambda_node.clone());
+        let body = lambda_body(lambda_node);
 let terminal = fold_terminal_expr(body);
 match (*terminal.expr_data.clone()).clone() {
     ExprData::ExprRecordLit { .. } => (terminal.name.clone().as_str() == acc_type_name.as_str()),
@@ -439,11 +446,11 @@ pub fn collect_acc_field_moves(node: Rc<Node>, acc_name: String, si: Option<Rc<N
     ExprData::ExprFieldAccess { .. } => {
             let base = field_access_base(node.clone());
 let is_direct = match (*base.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => (expr_var_name_at(base.clone(), si.clone()).as_str() == acc_name.clone().as_str()),
+    ExprData::ExprVar { .. } => (expr_var_name_at(base, si.clone()).as_str() == acc_name.clone().as_str()),
     _ => false,
 };
 if is_direct {
-                Rc::new(vec![field_access_field_at(node.clone(), si.clone())])
+                Rc::new(vec![field_access_field_at(node, si.clone())])
             } else {
                 Rc::new({ let mut __result = Vec::new(); for c in node.children.clone().iter().cloned() { __result.extend((*collect_acc_field_moves(c.clone(), acc_name.clone(), si.clone())).iter().cloned()); } __result })
             }
@@ -456,10 +463,10 @@ if is_direct {
 pub fn fold_body_safe_field_moves(lambda_node: Rc<Node>, acc_name: String, si: Option<Rc<NewlineIndex>>) -> bool {
     match (*lambda_node.expr_data.clone()).clone() {
     ExprData::ExprLambda { .. } => {
-        let body = lambda_body(lambda_node.clone());
+        let body = lambda_body(lambda_node);
 let moves = collect_acc_field_moves(body, acc_name, si);
 let deduped = moves.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |seen: Rc<HashMap<String, bool>>, field: String| v2_rt::rc_map_insert(seen.clone(), field.clone(), true));
-((Rc::new(v2_rt::map_keys(&deduped)).len() as i64) == (moves.clone().len() as i64))
+((Rc::new(v2_rt::map_keys(&deduped)).len() as i64) == (moves.len() as i64))
 },
     _ => true,
 }
@@ -472,9 +479,9 @@ let init_arg_node = match args.clone().first().cloned() {
     Some(a) => arg_value(a.clone()),
     None => method_call.clone(),
 };
-let fold_lambda_node = match args.clone().get(1 as usize).cloned() {
+let fold_lambda_node = match args.get(1 as usize).cloned() {
     Some(a) => arg_value(a.clone()),
-    None => method_call.clone(),
+    None => method_call,
 };
 let acc_param_name = match (*fold_lambda_node.expr_data.clone()).clone() {
     ExprData::ExprLambda { .. } => match lambda_param_names_at(fold_lambda_node.clone(), si.clone()).first().cloned() {
@@ -498,13 +505,13 @@ let cond_required = match init_arg_node.inferred.clone().as_deref().cloned() {
     _ => false,
 };
 let cond_body = fold_body_constructs_acc_struct(fold_lambda_node.clone(), acc_type_name.clone());
-let cond_safe = fold_body_safe_field_moves(fold_lambda_node.clone(), acc_param_name.clone(), si.clone());
+let cond_safe = fold_body_safe_field_moves(fold_lambda_node, acc_param_name.clone(), si);
 let eligible = (((cond_required && cond_body.clone()) && cond_safe.clone()) && (acc_type_name.clone().as_str() != "".to_string().as_str()));
 Rc::new(FoldAccUnwrapProof {
-    acc_param_name: acc_param_name.clone(),
-    acc_type_name: acc_type_name.clone(),
-    body_constructs_acc: cond_body.clone(),
-    safe_field_moves: cond_safe.clone(),
+    acc_param_name: acc_param_name,
+    acc_type_name: acc_type_name,
+    body_constructs_acc: cond_body,
+    safe_field_moves: cond_safe,
     eligible: eligible,
 })
 }

@@ -50,7 +50,7 @@ Rc::new(AccessCheckResultNode {
     message: message,
     span: span,
 })),
-    diagnostics: diagnostics.clone(),
+    diagnostics: diagnostics,
 })
 }
     }
@@ -86,12 +86,12 @@ if base_is_string {
                 } else {
                     Rc::new(vec![access_error("string index requires an Int index".to_string(), span.clone(), module_name)])
                 };
-access_result(string_type(), diags, span.clone(), "invalid string index access".to_string())
+access_result(string_type(), diags, span, "invalid string index access".to_string())
 }
         } else {
             match keyed_collection_parts(normed.clone(), source_index.clone()) {
     Some(parts) => {
-                let key_diags = if node_type_equals(parts.key_type.clone(), normed_index.clone(), source_index.clone()) {
+                let key_diags = if node_type_equals(parts.key_type.clone(), normed_index, source_index.clone()) {
                     Rc::new(vec![])
                 } else {
                     Rc::new(vec![access_error("keyed collection index key type does not match the collection key type".to_string(), span.clone(), module_name)])
@@ -104,9 +104,9 @@ access_result(with_optional_cardinality(parts.value_type.clone()), key_diags, sp
 access_result(unit_type(), malformed_diags, span.clone(), "malformed keyed collection type in index access".to_string())
 }
             } else {
-                if ((is_ordered_element_collection(normed.name.clone()) && node_is_element_collection(normed.clone(), source_index.clone())) && index_is_int) {
+                if ((is_ordered_element_collection(normed.name.clone()) && node_is_element_collection(normed.clone(), source_index)) && index_is_int) {
                     {
-                        let elem = for_each_element_type_node(normed.clone());
+                        let elem = for_each_element_type_node(normed);
 access_result(with_optional_cardinality(elem), Rc::new(vec![]), span.clone(), "list index access".to_string())
 }
                 } else {
@@ -137,12 +137,12 @@ let start_diags = if node_type_equals(normed_start, int_type(), source_index.clo
             Rc::new(vec![access_error("slice start requires an Int index".to_string(), span.clone(), module_name.clone())])
         };
 let normed_end = normalize_access_type_node(end_type);
-let end_diags = if node_type_equals(normed_end, int_type(), source_index.clone()) {
+let end_diags = if node_type_equals(normed_end, int_type(), source_index) {
             Rc::new(vec![])
         } else {
-            Rc::new(vec![access_error("slice end requires an Int index".to_string(), span.clone(), module_name.clone())])
+            Rc::new(vec![access_error("slice end requires an Int index".to_string(), span.clone(), module_name)])
         };
 let all_diags = v2_rt::concat(v2_rt::concat(base_diags, start_diags), end_diags);
-access_result(string_type(), all_diags, span.clone(), "invalid slice access".to_string())
+access_result(string_type(), all_diags, span, "invalid slice access".to_string())
 }
 }

@@ -110,7 +110,7 @@ import v2.compiler.infer_emit_info {
   lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum
 }
-import v2.compiler.ownership { OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set }
+import v2.compiler.ownership { OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set, build_last_use_set }
 import std.induction { SubValueUnknown }
 
 import v2.compiler.emit {
@@ -426,6 +426,7 @@ type OwnershipProofEntry {
 type OwnershipBuildResult {
   ownership_index: Map<String, Map<String, Bool>>
   fold_eligible_index: Map<String, Map<String, Bool>>
+  last_use_index: Map<String, Map<String, Int>>
 }
 
 fn build_fold_eligible_set(proof: OwnershipProof) -> Map<String, Bool> {
@@ -440,10 +441,11 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
       OwnershipProofEntry { name: item.name, proof: analyze_ownership(func_name: item.name, params: item.params, body: item.body.value, si: m.type_env.source_index) }
     )
   )
-  proofs |> fold(init: OwnershipBuildResult { ownership_index: empty_map(), fold_eligible_index: empty_map() }, f: (acc, entry) =>
+  proofs |> fold(init: OwnershipBuildResult { ownership_index: empty_map(), fold_eligible_index: empty_map(), last_use_index: empty_map() }, f: (acc, entry) =>
     OwnershipBuildResult {
       ownership_index: map_insert(acc.ownership_index, entry.name, build_movable_set(proof: entry.proof)),
-      fold_eligible_index: map_insert(acc.fold_eligible_index, entry.name, build_fold_eligible_set(proof: entry.proof))
+      fold_eligible_index: map_insert(acc.fold_eligible_index, entry.name, build_fold_eligible_set(proof: entry.proof)),
+      last_use_index: map_insert(acc.last_use_index, entry.name, build_last_use_set(proof: entry.proof))
     }
   )
 }
@@ -466,7 +468,9 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     variant_to_enum: base_info.variant_to_enum,
     owned_bindings: empty_map(),
     fold_eligible_index: ownership.fold_eligible_index,
-    fold_eligible: empty_map()
+    fold_eligible: empty_map(),
+    last_use_index: ownership.last_use_index,
+    last_use_spans: empty_map()
   }
   let shared_types = emit_info.shared_types
   let registry = typed.item_registry
@@ -573,7 +577,9 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     variant_to_enum: base_info.variant_to_enum,
     owned_bindings: empty_map(),
     fold_eligible_index: base_info.fold_eligible_index,
-    fold_eligible: empty_map()
+    fold_eligible: empty_map(),
+    last_use_index: base_info.last_use_index,
+    last_use_spans: empty_map()
   }
   let shared_types = emit_info.shared_types
   emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map())
@@ -811,6 +817,10 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
       Some { value: m } => m
       None => empty_map()
     }
+    let fn_last_use = match map_get(emit_info.last_use_index, item.name) {
+      Some { value: m } => m
+      None => empty_map()
+    }
     let fn_emit_info = EmitGraphInfo {
       type_summaries: emit_info.type_summaries,
       recursive_type_set: emit_info.recursive_type_set,
@@ -821,7 +831,9 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
       variant_to_enum: emit_info.variant_to_enum,
       owned_bindings: empty_map(),
       fold_eligible_index: emit_info.fold_eligible_index,
-      fold_eligible: fn_fold_eligible
+      fold_eligible: fn_fold_eligible,
+      last_use_index: emit_info.last_use_index,
+      last_use_spans: fn_last_use
     }
     // Items with resource uses or service calls are emitted as async workflow functions.
     // Single authority: service_names + resource_names on ItemInfo (not uses on the Node).
@@ -1793,11 +1805,17 @@ fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolve
   }
 }
 
-fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, shared_types: Map<String, Bool>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> String {
+fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, shared_types: Map<String, Bool>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, span_start: Int) -> String {
   if name == "none" || name == "None" { emit_keyword(key: "null", target: Rust) }
   else if name == "true" || name == "false" { emit_keyword(key: name, target: Rust) }
   else {
     let sharing = language_spec(target: Rust).sharing
+    // Last-use elision: if this reference's span matches the precomputed last-use
+    // span for this binding, it can move instead of clone (O2).
+    let is_last_use = match map_get(emit_info.last_use_spans, name) {
+      Some { value: last_span } => last_span == span_start && span_start > 0
+      None => false
+    }
     let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info)
     let ref_str = match variant_parent {
       Some { value: enum_name } =>
@@ -1816,7 +1834,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
                 _ => false
               }
               let ident = emit_ident(name: name, target: Rust)
-              let is_movable = emit_map_has(m: emit_info.movable, key: name)
+              let is_movable = emit_map_has(m: emit_info.movable, key: name) || is_last_use
               let ident_str = if is_function_value {
                 ident
               } else if is_movable {
@@ -1829,7 +1847,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
             }
           None =>
             let ident = emit_ident(name: name, target: Rust)
-            let is_movable = emit_map_has(m: emit_info.movable, key: name)
+            let is_movable = emit_map_has(m: emit_info.movable, key: name) || is_last_use
             let ident_str = if is_movable {
               ident
             } else { match resolved_type {
@@ -2017,7 +2035,7 @@ fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, shared_types:
   match expr.expr_data {
     ExprVar { binding_kind: binding_kind } =>
       let n = expr_var_name_at(texpr: expr, source_index: source_index)
-      emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: expr.inferred, shared_types: shared_types, registry: registry, emit_info: emit_info)
+      emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: expr.inferred, shared_types: shared_types, registry: registry, emit_info: emit_info, span_start: expr.span.start)
     _ => emit_error_expr(message: "emit_rust_expr_var expected ExprVar", target: Rust)
   }
 }
@@ -2677,7 +2695,9 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
               variant_to_enum: emit_info.variant_to_enum,
               owned_bindings: map_insert(emit_info.owned_bindings, acc_name, true),
               fold_eligible_index: emit_info.fold_eligible_index,
-              fold_eligible: emit_info.fold_eligible
+              fold_eligible: emit_info.fold_eligible,
+              last_use_index: emit_info.last_use_index,
+              last_use_spans: emit_info.last_use_spans
             }
           None => emit_info
         }
@@ -3096,7 +3116,7 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
     ExprVar { binding_kind: body_binding_kind } =>
       let body_name = expr_var_name_at(texpr: arm_b, source_index: si)
       if variant_parent_from_binding_kind(binding_kind: body_binding_kind) != none {
-        emit_var_ref(name: body_name, binding_kind: body_binding_kind, resolved_type: Some { value: Resolved { node: match_result_type } }, shared_types: shared_types, registry: registry, emit_info: emit_info)
+        emit_var_ref(name: body_name, binding_kind: body_binding_kind, resolved_type: Some { value: Resolved { node: match_result_type } }, shared_types: shared_types, registry: registry, emit_info: emit_info, span_start: arm_b.span.start)
       } else {
         emit_typed_expr(texpr: arm_b, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       }

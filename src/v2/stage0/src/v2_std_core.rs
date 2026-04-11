@@ -569,7 +569,7 @@ pub fn make_named_expr_node(name: String, expr_data: Rc<ExprData>, children: Rc<
     Rc::new(Node {
     name: name.clone(),
     span: span,
-    ident_span: default_ident_span(name.clone(), name_span),
+    ident_span: default_ident_span(name, name_span),
     children: children,
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -597,7 +597,7 @@ pub fn make_expr_error_node(kind: ExprErrorKind, message: String, span: Rc<Sourc
     params: Rc::new(vec![]),
     inferred: Some(Rc::new(InferredNode::CompilerError {
     message: message.clone(),
-    span: span.clone(),
+    span: span,
 })),
     return_cardinality: Cardinality::Required,
     uses: Rc::new(vec![]),
@@ -610,7 +610,7 @@ pub fn make_expr_error_node(kind: ExprErrorKind, message: String, span: Rc<Sourc
     match_pattern: None,
     expr_data: Rc::new(ExprData::ExprError {
     kind: kind,
-    message: message.clone(),
+    message: message,
 }),
 })
 }
@@ -624,7 +624,7 @@ pub fn make_arg_node(name: Option<String>, value: Rc<Node>, span: Rc<SourceSpan>
 Rc::new(Node {
     name: arg_name.clone(),
     span: span,
-    ident_span: default_ident_span(arg_name.clone(), name_span),
+    ident_span: default_ident_span(arg_name, name_span),
     children: Rc::new(vec![value]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -675,7 +675,7 @@ pub fn make_resource_use_node(name: String, resource: Rc<Node>, span: Rc<SourceS
     Rc::new(Node {
     name: name.clone(),
     span: span,
-    ident_span: default_ident_span(name.clone(), name_span),
+    ident_span: default_ident_span(name, name_span),
     children: Rc::new(vec![resource]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -708,7 +708,7 @@ pub fn make_field_init_node(name: String, value: Rc<Node>, span: Rc<SourceSpan>,
     Rc::new(Node {
     name: name.clone(),
     span: span,
-    ident_span: default_ident_span(name.clone(), name_span),
+    ident_span: default_ident_span(name, name_span),
     children: Rc::new(vec![value]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -730,7 +730,7 @@ pub fn make_field_binding_node(field_name: String, binding: Rc<MatchPattern>, sp
     Rc::new(Node {
     name: field_name.clone(),
     span: span,
-    ident_span: default_ident_span(field_name.clone(), name_span),
+    ident_span: default_ident_span(field_name, name_span),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -816,7 +816,7 @@ pub fn make_param_node(name: String, type_expr: Rc<Node>, default_value: Option<
 Rc::new(Node {
     name: name.clone(),
     span: span,
-    ident_span: default_ident_span(name.clone(), name_span),
+    ident_span: default_ident_span(name, name_span),
     children: children,
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -852,7 +852,7 @@ pub fn authored_name_at(source_index: Option<Rc<NewlineIndex>>, node: Rc<Node>) 
 if (text.clone().as_str() == "".to_string().as_str()) {
                 node.name.clone()
             } else {
-                text.clone()
+                text
             }
 }
     } else {
@@ -925,7 +925,7 @@ let props = match from_key {
 Rc::new(Node {
     name: name.clone(),
     span: span,
-    ident_span: default_ident_span(name.clone(), name_span),
+    ident_span: default_ident_span(name, name_span),
     children: children,
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -982,7 +982,7 @@ pub fn make_variant_node(name: String, fields: Rc<Vec<Rc<Node>>>, span: Rc<Sourc
     Rc::new(Node {
     name: name.clone(),
     span: span,
-    ident_span: default_ident_span(name.clone(), name_span),
+    ident_span: default_ident_span(name, name_span),
     children: fields,
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -1159,7 +1159,7 @@ pub fn arg_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Optio
 if (name.clone().as_str() == "".to_string().as_str()) {
             None
         } else {
-            Some(name.clone())
+            Some(name)
         }
 }
 }
@@ -1359,7 +1359,7 @@ pub fn record_lit_type_name_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineI
 if (name.clone().as_str() == "".to_string().as_str()) {
             None
         } else {
-            Some(name.clone())
+            Some(name)
         }
 }
 }
@@ -1497,7 +1497,7 @@ let query_props = match query {
     None => Rc::new(vec![]),
 };
 let body_props = match request_body {
-    Some(b) => Rc::new(vec![make_field_init_node(transport_body_key(), b.clone(), zero_span.clone(), zero_span.clone())]),
+    Some(b) => Rc::new(vec![make_field_init_node(transport_body_key(), b.clone(), zero_span.clone(), zero_span)]),
     None => Rc::new(vec![]),
 };
 let props = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(Rc::new(vec![url_field]), method_props), path_props), query_props), body_props), auth_props), headers);
@@ -1528,13 +1528,13 @@ pub fn shell_transport_node(argv: Rc<Vec<Rc<Node>>>, env: Rc<Vec<Rc<Node>>>, std
 });
 let zero_span = make_span(0, 0);
 let stdin_props = match stdin {
-    Some(s) => Rc::new(vec![make_field_init_node(transport_stdin_key(), s.clone(), zero_span.clone(), zero_span.clone())]),
+    Some(s) => Rc::new(vec![make_field_init_node(transport_stdin_key(), s.clone(), zero_span.clone(), zero_span)]),
     None => Rc::new(vec![]),
 };
 let all_props = v2_rt::concat(env, stdin_props);
 Rc::new(Node {
     name: "".to_string(),
-    span: span.clone(),
+    span: span,
     ident_span: None,
     children: argv,
     connective: Connective::NoConnective,
@@ -1599,7 +1599,7 @@ pub fn is_file_transport(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) ->
 }
 
 pub fn is_local_transport(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
-    ((!is_rest_transport(t.clone(), source_index.clone()) && !is_shell_transport(t.clone())) && !is_file_transport(t.clone(), source_index.clone()))
+    ((!is_rest_transport(t.clone(), source_index.clone()) && !is_shell_transport(t.clone())) && !is_file_transport(t, source_index))
 }
 
 pub fn field_init_operation_modifier(field_init: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<OperationModifier> {
@@ -1611,7 +1611,7 @@ if (fi_name.clone().as_str() == "idempotent".to_string().as_str()) {
             if (fi_name.clone().as_str() == "readonly".to_string().as_str()) {
                 Some(OperationModifier::Readonly)
             } else {
-                if (fi_name.clone().as_str() == "hermetic".to_string().as_str()) {
+                if (fi_name.as_str() == "hermetic".to_string().as_str()) {
                     Some(OperationModifier::Hermetic)
                 } else {
                     None
@@ -1669,7 +1669,7 @@ pub fn transport_stdin(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> O
 }
 
 pub fn is_config_reserved_key(name: String) -> bool {
-    ((((((((((name.clone().as_str() == transport_url_key().as_str()) || (name.clone().as_str() == transport_path_key().as_str())) || (name.clone().as_str() == transport_auth_scheme_key().as_str())) || (name.clone().as_str() == transport_auth_header_key().as_str())) || (name.clone().as_str() == transport_auth_token_key().as_str())) || (name.clone().as_str() == transport_method_key().as_str())) || (name.clone().as_str() == transport_path_template_key().as_str())) || (name.clone().as_str() == transport_query_key().as_str())) || (name.clone().as_str() == transport_body_key().as_str())) || (name.clone().as_str() == transport_stdin_key().as_str()))
+    ((((((((((name.clone().as_str() == transport_url_key().as_str()) || (name.clone().as_str() == transport_path_key().as_str())) || (name.clone().as_str() == transport_auth_scheme_key().as_str())) || (name.clone().as_str() == transport_auth_header_key().as_str())) || (name.clone().as_str() == transport_auth_token_key().as_str())) || (name.clone().as_str() == transport_method_key().as_str())) || (name.clone().as_str() == transport_path_template_key().as_str())) || (name.clone().as_str() == transport_query_key().as_str())) || (name.clone().as_str() == transport_body_key().as_str())) || (name.as_str() == transport_stdin_key().as_str()))
 }
 
 pub fn transport_headers(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<Rc<Node>>> {
@@ -1735,8 +1735,8 @@ pub fn expr_has_non_tail_self_call(texpr: Rc<Node>, fn_name: String, in_tail: bo
     ExprData::ExprIf => {
             let cond_bad = expr_has_non_tail_self_call(if_condition(texpr.clone()), fn_name.clone(), false, source_index.clone());
 let then_bad = expr_has_non_tail_self_call(if_then_branch(texpr.clone()), fn_name.clone(), in_tail.clone(), source_index.clone());
-let else_bad = match if_else_branch(texpr.clone()) {
-    Some(e) => expr_has_non_tail_self_call(e.clone(), fn_name.clone(), in_tail.clone(), source_index.clone()),
+let else_bad = match if_else_branch(texpr) {
+    Some(e) => expr_has_non_tail_self_call(e.clone(), fn_name.clone(), in_tail, source_index.clone()),
     None => false,
 };
 ((cond_bad || then_bad) || else_bad)
@@ -1762,7 +1762,7 @@ if (ss_count.clone() == 0) {
             } else {
                 {
                     let init_bad = { let mut __found = false; for p in Rc::new({ let mut __result = Vec::new(); for p in Rc::new(ss.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (p.0.clone() < (ss_count.clone() - 1)) { __result.push(p); } } __result }).iter().cloned() { if expr_has_non_tail_self_call(p.1.clone(), fn_name.clone(), false, source_index.clone()) { __found = true; break; } } __found };
-let last_bad = match ss.clone().last().cloned() {
+let last_bad = match ss.last().cloned() {
     Some(last_expr) => expr_has_non_tail_self_call(last_expr.clone(), fn_name.clone(), in_tail.clone(), source_index.clone()),
     None => false,
 };
@@ -1798,7 +1798,7 @@ let rate_prop = match rate_limit {
     None => Rc::new(vec![]),
 };
 let retry_prop = match retry {
-    Some(r) => Rc::new(vec![make_field_init_node("svc_retry".to_string(), r.clone(), zero_span.clone(), zero_span.clone())]),
+    Some(r) => Rc::new(vec![make_field_init_node("svc_retry".to_string(), r.clone(), zero_span.clone(), zero_span)]),
     None => Rc::new(vec![]),
 };
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(ep_prop, auth_prop), auth_input_prop), auth_source_prop), rate_prop), retry_prop)
@@ -1837,7 +1837,7 @@ pub fn module_node(name: String, imports: Rc<Vec<Rc<Node>>>, items: Rc<Vec<Rc<No
     Rc::new(Node {
     name: name.clone(),
     span: span.clone(),
-    ident_span: default_ident_span(name.clone(), span.clone()),
+    ident_span: default_ident_span(name, span),
     children: items,
     connective: Connective::NoConnective,
     params: imports,
@@ -1883,7 +1883,7 @@ pub fn import_node(module_path: String, is_all: bool, specific_names: Rc<Vec<Rc<
 Rc::new(Node {
     name: module_path.clone(),
     span: span.clone(),
-    ident_span: default_ident_span(module_path.clone(), span.clone()),
+    ident_span: default_ident_span(module_path, span),
     children: specific_names,
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -1922,7 +1922,7 @@ pub fn leaf_node_with_span(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
     name: name.clone(),
     span: span.clone(),
-    ident_span: default_ident_span(name.clone(), span.clone()),
+    ident_span: default_ident_span(name, span),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -2188,7 +2188,7 @@ let offsets = Rc::new(char_codes.iter().cloned().enumerate().map(|(i, v)| (i as 
 Rc::new(NewlineIndex {
     file: file,
     offsets: offsets,
-    source: source.clone(),
+    source: source,
 })
 }
 }
@@ -2198,7 +2198,7 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> LineCol {
         let clamped = if (offset.clone() < 0) {
             0
         } else {
-            offset.clone()
+            offset
         };
 let line = ((Rc::new({ let mut __result = Vec::new(); for o in index.offsets.clone().iter().cloned() { if (o.clone() < clamped.clone()) { __result.push(o); } } __result }).len() as i64) + 1);
 let line_start = if (line.clone() <= 1) {
@@ -2211,7 +2211,7 @@ let line_start = if (line.clone() <= 1) {
         };
 let col = ((clamped.clone() - line_start) + 1);
 LineCol {
-    line: line.clone(),
+    line: line,
     col: col,
 }
 }
@@ -2228,9 +2228,9 @@ let line_start = if (line.clone() <= 1) {
     None => src_len.clone(),
 }
         };
-let line_end = match index.offsets.clone().get((line.clone() - 1) as usize).cloned() {
+let line_end = match index.offsets.clone().get((line - 1) as usize).cloned() {
     Some(o) => o.clone(),
-    None => src_len.clone(),
+    None => src_len,
 };
 v2_rt::substring(&index.source.clone(), line_start, line_end)
 }
@@ -2272,10 +2272,10 @@ pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
 Rc::new(InternResult {
     table: Rc::new(InternTable {
     strings: v2_rt::rc_list_push(table.strings.clone(), s.clone()),
-    index: v2_rt::rc_map_insert(table.index.clone(), s.clone(), id.clone()),
+    index: v2_rt::rc_map_insert(table.index.clone(), s, id.clone()),
     next_id: (id.clone() + 1),
 }),
-    id: id.clone(),
+    id: id,
 })
 },
 }

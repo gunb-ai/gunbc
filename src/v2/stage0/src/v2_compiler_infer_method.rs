@@ -84,7 +84,7 @@ let m = v2_rt::rc_map_insert(m.clone(), "map_keys".to_string(), list_of_type_var
 let m = v2_rt::rc_map_insert(m.clone(), "map_values".to_string(), list_of_type_variable("collection_element".to_string()));
 let m = v2_rt::rc_map_insert(m.clone(), "reverse".to_string(), list_of_type_variable("collection_element".to_string()));
 let m = v2_rt::rc_map_insert(m.clone(), "list_push".to_string(), list_of_type_variable("collection_element".to_string()));
-m.clone()
+m
 }
 }
 

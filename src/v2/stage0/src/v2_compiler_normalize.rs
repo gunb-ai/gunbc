@@ -74,7 +74,7 @@ pub fn normalize_graph(graph: Rc<ModuleGraph>) -> Rc<NormalizeResult> {
 Rc::new({ let mut __result = Vec::new(); for item in items.clone().iter().cloned() { __result.extend((*check_bare_containers(item.clone(), m.module.clone().name.clone())).iter().cloned()); } __result })
 }).iter().cloned()); } __result });
 Rc::new(NormalizeResult {
-    graph: graph.clone(),
+    graph: graph,
     diagnostics: diags,
 })
 }

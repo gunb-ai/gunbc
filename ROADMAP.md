@@ -258,7 +258,7 @@ spec-referenced data lookups instead of inline logic.
 
 **LS-4: Ownership — three layers to clone elimination**
 
-Stage0 emits 23,733 `.clone()` calls (~0.479 clones/line). The
+Stage0 emits 22,169 `.clone()` calls (~0.443 clones/line). The
 ownership analysis (PR #313) already computes the facts needed to
 eliminate most of them. The gap: the emitter doesn't consume all
 the facts it has.
@@ -281,11 +281,11 @@ directional regression indicator, not a precise metric.
 
 Three layers, sequenced by dependency:
 
-| Layer | Size | Blocked on | Impact (est.) |
-|-------|------|-----------|---------------|
-| 1. Last-use elision | 1-2 PRs | Nothing | ~2,000-4,000 clones |
-| 2. Post-TCO ownership | 1 PR | Nothing | ~500-1,000 clones |
-| 3. Borrow propagation | 3-5 PRs | LS-4 design | ~15,000-18,000 clones |
+| Layer | Size | Blocked on | Impact | Status |
+|-------|------|-----------|--------|--------|
+| 1. Last-use elision | 1-2 PRs | Nothing | 1,831 clones eliminated | **DONE** (O1-O2) |
+| 2. Post-TCO ownership | 1 PR | Nothing | ~500-1,000 clones (est.) | Not started |
+| 3. Borrow propagation | 3-5 PRs | LS-4 design | ~15,000-18,000 clones (est.) | Not started |
 
 **Layer 1 (last-use elision):** For each binding with fan-out > 1,
 the last use site moves instead of cloning. The data exists in

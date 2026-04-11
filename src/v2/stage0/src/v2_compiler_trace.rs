@@ -97,7 +97,7 @@ if (n.clone() <= 1) {
         } else {
             Rc::new(Trace {
     events: trace.events.clone(),
-    stack: Rc::new(trace.stack.clone().iter().cloned().take((n.clone() - 1) as usize).collect::<Vec<_>>()),
+    stack: Rc::new(trace.stack.clone().iter().cloned().take((n - 1) as usize).collect::<Vec<_>>()),
 })
         }
 }

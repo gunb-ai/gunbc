@@ -111,13 +111,13 @@ aggregates via scope-blind string matching (see pipeline.rs).
 
 ## Workboard
 
-### Layer 1: Last-use elision (unblocked)
+### Layer 1: Last-use elision (DONE)
 
 | # | Item | Test | Cleanup target | Status |
 |---|------|------|---------------|--------|
-| O1 | Track use-site ordering in BindingUsage | Test: `binding_last_use_index` returns correct position | — | Not started |
-| O2 | Emitter skips `.clone()` on last use of fan-out > 1 binding | Test: compile .dag with known fan-out, assert last use has no `.clone()` in emitted Rust | Hardcoded `.clone()` at use sites | Not started |
-| O3 | V1 ratchet at 0 for focused test programs | Test: `count_ownership_violations` V1 = 0 | — | Not started |
+| O1 | Track use-site ordering in BindingUsage | span_start populated from texpr.span.start in walk_expr | — | **DONE** (spans were already populated; lambda-capture exclusion added) |
+| O2 | Emitter skips `.clone()` on last use of fan-out > 1 binding | build_last_use_set → last_use_index/last_use_spans on EmitGraphInfo → emit_var_ref checks span | 1,831 `.clone()` calls removed | **DONE** (ratchet 24000 → 22200) |
+| O3 | V1 ratchet at 0 for focused test programs | Test: `count_ownership_violations` V1 = 0 | — | Deferred (coarse aggregate, not V1-specific) |
 
 ### Layer 2: Post-TCO ownership (unblocked)
 

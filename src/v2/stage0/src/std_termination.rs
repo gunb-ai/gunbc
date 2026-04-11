@@ -67,7 +67,7 @@ pub fn optional_evidence_meet(a: Option<DescentEvidence>, b: Option<DescentEvide
     match a.clone() {
     None => b,
     Some(va) => match b {
-    None => a.clone(),
+    None => a,
     Some(vb) => Some(merge_evidence(va.clone(), vb.clone())),
 },
 }
@@ -75,7 +75,7 @@ pub fn optional_evidence_meet(a: Option<DescentEvidence>, b: Option<DescentEvide
 
 pub fn map_evidence_merge_at(base: Rc<HashMap<String, DescentEvidence>>, key: String, new_val: DescentEvidence) -> Rc<HashMap<String, DescentEvidence>> {
     match v2_rt::map_get(&base, key.clone()) {
-    Some(existing) => v2_rt::rc_map_insert(base.clone(), key.clone(), merge_evidence(existing.clone(), new_val)),
+    Some(existing) => v2_rt::rc_map_insert(base, key, merge_evidence(existing.clone(), new_val)),
     None => v2_rt::rc_map_insert(base.clone(), key.clone(), new_val),
 }
 }

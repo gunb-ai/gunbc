@@ -7378,11 +7378,13 @@ fn ownership_stage0_census() {
     // 2026-04-10 baseline: 23969 clones (+144 _at accessor migration, +38 per-file resolve indices)
     // 2026-04-10: +31 from S6 lambda_param_provenance field on InferScope
     // and body_scope clearing in ExprLambda handler.
+    // 2026-04-10: -1831 from O1/O2 last-use elision (Stream B Layer 1).
+    // For fan-out > 1 owned locals, the last use site moves instead of cloning.
     //
     // Tolerance: ±1% to absorb CI vs local codegen differences (different
     // Rust versions, optimization flags, or platform-specific clone patterns).
     // The ratchet catches real regressions (hundreds of clones) not noise.
-    const CLONE_RATCHET: usize = 24000;
+    const CLONE_RATCHET: usize = 22200;
     const CLONE_TOLERANCE: usize = CLONE_RATCHET / 100;  // 1% = ~240
     const TRY_UNWRAP_RATCHET: usize = 8;
 

@@ -102,6 +102,15 @@ type EmitGraphInfo {
   fold_eligible_index: Map<String, Map<String, Bool>>
   // Current function's eligible fold accumulator types. Set by emit_typed_item.
   fold_eligible: Map<String, Bool>
+  // Per-function last-use index: func_name → (binding_name → last-use span).
+  // For fan-out > 1 owned locals, the last use site can move instead of clone.
+  // Built from ownership analysis. The emitter looks up the current function's
+  // last_use_spans during item dispatch.
+  last_use_index: Map<String, Map<String, Int>>
+  // Current function's last-use spans. Set by emit_typed_item.
+  // Key = binding name, value = span_start of the last use site.
+  // At that span, emit_var_ref emits a move instead of .clone().
+  last_use_spans: Map<String, Int>
 }
 
 type EmitInfoBuildState {
@@ -123,7 +132,9 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     variant_to_enum: empty_map(),
     owned_bindings: empty_map(),
     fold_eligible_index: empty_map(),
-    fold_eligible: empty_map()
+    fold_eligible: empty_map(),
+    last_use_index: empty_map(),
+    last_use_spans: empty_map()
   }
 }
 
