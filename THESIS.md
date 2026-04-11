@@ -262,7 +262,7 @@ faithful.
 | Test level | What it proves | Status |
 |------------|---------------|--------|
 | L0: Structural tests from data | Coercion mappings are complete and consistent | DONE |
-| L1: Pipeline unit tests | Compiler stages produce correct output | DONE (390 tests) |
+| L1: Pipeline unit tests | Compiler stages produce correct output | DONE (393 tests) |
 | L2: Bootstrap self-hosting | Compiler can compile itself | DONE |
 | L3: Syntax validity | Emitted code parses in target language | DONE |
 | L4: Semantic correctness | Emitted code executes, matches `.dag` evaluation | **not implemented** |

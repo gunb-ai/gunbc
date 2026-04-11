@@ -183,7 +183,7 @@ Bootstrap D ├─ Lane B: Emission ──────────────�
 | Gate | Command | Status |
 |------|---------|--------|
 | Lint | `cargo clippy --workspace -- -D warnings` | GREEN |
-| Tests | `cargo test -p v2-compiler-tests` | GREEN (390 pass) |
+| Tests | `cargo test -p v2-compiler-tests` | GREEN (393 pass) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN |
 | Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 421 measured (checked-in ratchet: 424, non-blocking) |
 | L1 gate | `scripts/l1-ratchet.sh --check` | GREEN (0, hard gate) |
@@ -299,11 +299,11 @@ directional regression indicator, not a precise metric.
 
 Three layers, sequenced by dependency:
 
-| Layer | Size | Blocked on | Impact (est.) |
-|-------|------|-----------|---------------|
+| Layer | Size | Blocked on | Impact (est.) | Status |
+|-------|------|-----------|---------------|--------|
 | 1. Last-use elision | 1-2 PRs | Stable binding identity (Track 3) | ~2,000-4,000 clones | Reverted (PR #385) — name-keyed boundary violation |
 | 2. Post-TCO ownership | 1 PR | Nothing | ~620 lines dead reassignment | **DONE** (PR #387) |
-| 3. Borrow propagation | 3-5 PRs | LS-4 design | ~535 clones (first pass) | In review (PR #390, O6-O9) |
+| 3. Borrow propagation | 3-5 PRs | LS-4 design | ~535 clones (first pass) | **DONE** (PR #390) |
 
 **Layer 1 (last-use elision):** For each binding with fan-out > 1,
 the last use site moves instead of cloning. The ownership analysis
@@ -350,7 +350,7 @@ Deletion requires declaration-driven identity.
 | source_text_at threading (D6 PR #356, #362) | Mostly done (~20 n.name reads remain) |
 | Migrate accessor callers to `_at` variants (PR #378) | DONE — 109 sites migrated, 13 non-_at defs deleted |
 | Per-file source_index at resolve boundary (PR #378) | DONE — resolve_modules takes Map\<String, NewlineIndex\> |
-| InternTable threading to TypeEnv | DONE (PR #378) — intern_table on TypeEnv, available in all stages |
+| InternTable on parse/compile boundary | DONE (PR #378) — on ParserState and FrontendResult; NOT yet on TypeEnv (threading to infer/emit deferred until first consumer) |
 | Fix `authored_name_at` fallback | In progress (active: quick-owl-889): cross-module span mismatch still falls back to node.name |
 | Remaining ~15 direct n.name reads | In progress (active: quick-owl-889) |
 | Node.name field deletion | Blocked by authored_name_at fallback + remaining direct reads |
