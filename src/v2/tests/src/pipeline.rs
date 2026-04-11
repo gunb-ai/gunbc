@@ -5593,6 +5593,133 @@ fn shell_emit_cron_upsert_script() {
     );
 }
 
+// ── RE-3e: Wire contract controls enum serde tag ─────────────────────────
+#[test]
+fn wire_contract_as_authored_omits_variant_tag() {
+    let source = r#"module re3e_wire
+
+import std.serialization { VariantEncoding, StringVariant, VariantNaming, AsAuthored }
+
+data wire_contract: VariantEncoding = StringVariant { naming: AsAuthored }
+
+type UserType = User | Bot | Organization
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re3e_wire.rs");
+    assert!(
+        !content.contains("_variant"),
+        "RE-3e: AsAuthored wire_contract should NOT emit _variant tag, got:\n{content}"
+    );
+}
+
+// ── RE-3f: response_format: Text uses response.text() ────────────────────
+#[test]
+fn rest_response_format_text_uses_text() {
+    let source = r#"module re3f
+
+import std.types { HttpMethod, AuthScheme }
+import std.serialization { WireFormat, Text }
+
+service test.Api {
+  config {
+    endpoint: "https://api.example.com"
+    auth: Bearer
+  }
+  operation GetDiff {
+    input { auth_token: Secret, id: Int }
+    output { diff: String }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/items/\{id\}/diff",
+      headers: { "Accept": "text/plain" },
+      response_format: Text
+    }
+    response {
+      200 => String
+      404 => String
+    }
+    mock_response {
+      200 => "some diff text" "ok"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re3f.rs");
+    assert!(
+        content.contains("response.text().await"),
+        "RE-3f: response_format: Text should emit response.text(), got:\n{content}"
+    );
+}
+
+// ── RE-3f: no response_format defaults to response.json() ────────────────
+#[test]
+fn rest_default_response_format_uses_json() {
+    let source = r#"module re3f_json
+
+import std.types { HttpMethod, AuthScheme }
+
+service test.Api {
+  config {
+    endpoint: "https://api.example.com"
+    auth: Bearer
+  }
+  operation GetItem {
+    input { auth_token: Secret, id: Int }
+    output { name: String }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/items/\{id\}"
+    }
+    response {
+      200 => String
+      404 => String
+    }
+    mock_response {
+      200 => "item" "ok"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re3f_json.rs");
+    assert!(
+        content.contains("response.json().await"),
+        "RE-3f: default (no response_format) should emit response.json(), got:\n{content}"
+    );
+    // Success path should use json, not text. (Error arms always use text for error body.)
+    assert!(
+        !content.contains("let result = response.text()"),
+        "RE-3f: success path should NOT use response.text() without response_format: Text, got:\n{content}"
+    );
+}
+
+// ── RE-3g: Shell from annotations control channel mapping ────────────────
+#[test]
+fn shell_from_annotation_maps_channels() {
+    let source = "module re3g\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { script: String }\n    output { success: Bool from \"exit_success\", stdout: String from \"stdout\", stderr: String from \"stderr\" }\n    transport shell { argv: [\"sh\", \"-lc\", \"{script}\"] }\n    exit { 0 => Unit  nonzero => String }\n    mock_response {\n      0 => { success: true, stdout: \"hello\", stderr: \"\" } \"ok\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re3g.rs");
+    assert!(
+        content.contains("output.status.success()"),
+        "RE-3g: from \"exit_success\" should emit output.status.success(), got:\n{content}"
+    );
+    assert!(
+        content.contains("stderr") && content.contains("from_utf8_lossy"),
+        "RE-3g: from \"stderr\" should capture stderr, got:\n{content}"
+    );
+    assert!(
+        !content.contains("serde_json::from_str(&stdout)"),
+        "RE-3g: should NOT JSON-parse stdout with from annotations, got:\n{content}"
+    );
+}
+
 // ── RE-4: Anthropic REST API emission ────────────────────────────────────
 #[test]
 fn anthropic_response_extracts_content_text() {

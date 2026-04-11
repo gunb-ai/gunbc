@@ -44,7 +44,7 @@ import v2.std.core {
   transport_base_url,
   transport_has_auth, transport_auth_token, transport_auth_header_name,
   transport_headers, transport_env,
-  transport_method, transport_path_template, transport_query, transport_request_body, transport_stdin,
+  transport_method, transport_path_template, transport_query, transport_request_body, transport_stdin, transport_response_format,
   service_config_auth, service_config_auth_input, service_config_auth_source, service_config_endpoint,
   expr_has_self_call, expr_has_non_tail_self_call,
   field_access_base, foreach_variable_at,
@@ -481,17 +481,26 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
       let pnames = item.params |> fold(init: empty_map(), f: (acc, p) =>
         map_insert(acc, param_node_name_at(n: p, source_index: m.type_env.source_index), true)
       )
-      OwnershipProofEntry { name: item.name, proof: analyze_ownership(func_name: item.name, params: item.params, body: item.body.value, si: m.type_env.source_index), param_names: pnames }
+      // Module-qualified key avoids cross-module name collisions.
+      let qualified = concat(m.module.name, ".", item.name)
+      OwnershipProofEntry { name: qualified, proof: analyze_ownership(func_name: item.name, params: item.params, body: item.body.value, si: m.type_env.source_index), param_names: pnames }
     )
   )
   proofs |> fold(init: OwnershipBuildResult { ownership_index: empty_map(), fold_eligible_index: empty_map(), read_only_params_index: empty_map() }, f: (acc, entry) =>
-    // Skip read-only classification for functions used as callables.
-    let read_only = if map_contains_key(callable_set, entry.name) { empty_map() }
+    // callable_set uses bare names from expression ASTs.
+    // Use the bare func_name (not the qualified entry.name) for the check.
+    let read_only = if map_contains_key(callable_set, entry.proof.func_name) { empty_map() }
       else { build_read_only_params(proof: entry.proof, param_names: entry.param_names) }
+    let movable = build_movable_set(proof: entry.proof)
+    let fold_eligible = build_fold_eligible_set(proof: entry.proof)
+    // Store under qualified key (for same-module lookups that know the module)
+    // and bare key (for cross-module callee lookups via registry).
+    // Qualified key takes precedence; bare key is a convenience fallback.
+    let bare = entry.proof.func_name
     OwnershipBuildResult {
-      ownership_index: map_insert(acc.ownership_index, entry.name, build_movable_set(proof: entry.proof)),
-      fold_eligible_index: map_insert(acc.fold_eligible_index, entry.name, build_fold_eligible_set(proof: entry.proof)),
-      read_only_params_index: map_insert(acc.read_only_params_index, entry.name, read_only)
+      ownership_index: map_insert(map_insert(acc.ownership_index, bare, movable), entry.name, movable),
+      fold_eligible_index: map_insert(map_insert(acc.fold_eligible_index, bare, fold_eligible), entry.name, fold_eligible),
+      read_only_params_index: map_insert(map_insert(acc.read_only_params_index, bare, read_only), entry.name, read_only)
     }
   )
 }
@@ -520,7 +529,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   }
   let shared_types = emit_info.shared_types
   let registry = typed.item_registry
-  let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry)
+  let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry, read_only_params_index: emit_info.read_only_params_index)
   let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs: workflow_funcs)
   if workflow_default_diags |> count > 0 {
     return EmitResult { files: [], diagnostics: workflow_default_diags }
@@ -669,7 +678,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   // and pass it to each item for per-enum resolution. No collapse to string.
   let wire_contract_item = typed_module.items |> filter(i => i.name == "wire_contract") |> first
   let items_str = typed_module.items
-    |> map(item => emit_typed_item(item: item, registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item))
+    |> map(item => emit_typed_item(item: item, module_name: m.name, registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item))
     |> join(separator: "\n\n")
   let raw_filename = module_to_filename(name: m.name)
   // Avoid collision with the CLI entry point (src/main.rs)
@@ -847,8 +856,9 @@ fn emit_non_empty_wrappers() -> String {
 // Item dispatch
 // =========================================================================
 
-fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo, wire_contract_item: Node?) -> String {
+fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo, wire_contract_item: Node?) -> String {
   let env = scope.type_env
+  let qualified_name = concat(module_name, ".", item.name)
   let item_text = authored_name(env: env, node: item)
   // Structural dispatch via shared predicates (CM: no taxonomy enum).
   if is_type_def_item(item: item) {
@@ -858,18 +868,18 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
   } else if is_type_decl_item(item: item, source_index: env.source_index) {
     ""
   } else if is_function_item(item: item) {
-    let fn_movable = match map_get(emit_info.ownership_index, item.name) {
+    let fn_movable = match map_get(emit_info.ownership_index, qualified_name) {
       Some { value: m } => m
       None => empty_map()
     }
-    let fn_fold_eligible = match map_get(emit_info.fold_eligible_index, item.name) {
+    let fn_fold_eligible = match map_get(emit_info.fold_eligible_index, qualified_name) {
       Some { value: m } => m
       None => empty_map()
     }
     // TCO functions use `mut` params (emit_tco_param), never borrowed.
     let item_is_tco = is_tco_eligible(name: item.name, body: item.body.value, registry: registry, source_index: env.source_index)
     let fn_read_only = if item_is_tco { empty_map() } else {
-      match map_get(emit_info.read_only_params_index, item.name) {
+      match map_get(emit_info.read_only_params_index, qualified_name) {
         Some { value: m } => m
         None => empty_map()
       }
@@ -4139,7 +4149,7 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
   )
   let send_line = "let response = request.send().await?;"
   // RE-1e: Response code mapping
-  let response_handling = emit_response_code_handling(op_node: op_node, source_index: source_index)
+  let response_handling = emit_response_code_handling(op_node: op_node, transport: transport, source_index: source_index)
   let all_lines = concat([client_init, url_line, auth_line],
     header_lines, [query_line, body_line, send_line, response_handling])
     |> filter(l => l != "")
@@ -4403,17 +4413,32 @@ fn emit_from_key_extraction(op_node: Node, source_index: NewlineIndex?) -> Strin
     "\nOk(", tuple_body, ")")
 }
 
-fn emit_response_code_handling(op_node: Node, source_index: NewlineIndex?) -> String {
+// Emit response body for operations without `from` key annotations.
+// Reads the declared response_format from the transport to decide
+// response.text() (Text) vs response.json() (Json, default).
+fn emit_plain_response_body(op_node: Node, transport: Node, source_index: NewlineIndex?) -> String {
+  let is_text = match transport_response_format(t: transport, source_index: source_index) {
+    Some { value: fmt } => fmt.name == "Text"
+    None => false
+  }
+  if is_text {
+    "let result = response.text().await?;\nOk(result)"
+  } else {
+    "let result = response.json().await?;\nOk(result)"
+  }
+}
+
+fn emit_response_code_handling(op_node: Node, transport: Node, source_index: NewlineIndex?) -> String {
   let use_from_key = has_from_key_fields(op_node: op_node, source_index: source_index)
   let response_props = op_node.properties |> filter(p => has_response_prefix(name: field_init_node_name_at(n: p, source_index: source_index)))
   if response_props |> count == 0 {
     if use_from_key {
       emit_from_key_extraction(op_node: op_node, source_index: source_index)
     } else {
-      "let result = response.json().await?;\nOk(result)"
+      emit_plain_response_body(op_node: op_node, transport: transport, source_index: source_index)
     }
   } else {
-    let arms = response_props |> map(p => emit_response_arm(prop: p, op_node: op_node, use_from_key: use_from_key, source_index: source_index))
+    let arms = response_props |> map(p => emit_response_arm(prop: p, op_node: op_node, use_from_key: use_from_key, transport: transport, source_index: source_index))
     concat(
       "let status = response.status().as_u16();\n",
       "match status {\n",
@@ -4423,7 +4448,7 @@ fn emit_response_code_handling(op_node: Node, source_index: NewlineIndex?) -> St
   }
 }
 
-fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, source_index: NewlineIndex?) -> String {
+fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, transport: Node, source_index: NewlineIndex?) -> String {
   let name = field_init_node_name_at(n: prop, source_index: source_index)
   let code_str = substring(s: name, start: 9, end: string_length(s: name))
   // RFC 9110: 2xx = success, everything else = error
@@ -4440,11 +4465,7 @@ fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, source_index
     if use_from_key {
       concat("    ", pattern, " => { ", emit_from_key_extraction(op_node: op_node, source_index: source_index), " },")
     } else {
-      // TODO: response wire format (text vs json) should be a structural
-      // fact in std/, not inferred by the emitter. Currently all success
-      // responses use response.json(). String-body responses (like diffs)
-      // need a WireFormat declaration on the response block.
-      concat("    ", pattern, " => { let result = response.json().await?; Ok(result) },")
+      concat("    ", pattern, " => { ", emit_plain_response_body(op_node: op_node, transport: transport, source_index: source_index), " },")
     }
   } else {
     concat("    ", pattern, " => { let err_body = response.text().await.unwrap_or_default(); Err(format!(\"HTTP {}: {}\", status, err_body).into()) },")
@@ -4614,28 +4635,65 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source
 fn emit_shell_return(inferred: Node, source_index: NewlineIndex?) -> String {
   let effective = unwrap_single_field_product(n: inferred)
   let is_product = is_product_type(n: effective)
-  // Bool = True | False: structural check (Disj + 2 children)
-  let is_bool = is_coproduct_type(n: effective) && effective.children |> count == 2
-  if is_bool {
-    "Ok(output.status.success())"
-  } else {
-    let __eff_is_container = node_is_element_collection(n: effective, source_index: source_index)
-    if __eff_is_container {
-      "Ok(Rc::new(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()))"
-    } else if is_product && effective.children |> count > 1 {
-      // BRIDGE: assumes shell stdout is JSON-parseable into the output type.
-      // Dissolves when transport definitions declare channel→field mappings
-      // (stdout from stdout, stderr from stderr, success from exit_code).
-      concat("let parsed: serde_json::Value = serde_json::from_str(&stdout)?;\nOk(serde_json::from_value(parsed)?)")
-    } else {
-      let is_optional = effective.return_cardinality == CardOptional
-      if is_optional {
-        "Ok(Some(stdout))"
-      } else {
-        "Ok(stdout)"
-      }
+  // Single-field output with from annotation — dispatch on declared channel.
+  let single_from = if is_product && effective.children |> count == 1 {
+    match effective.children |> first {
+      Some { value: ch } => child_from_key(ch: ch, source_index: source_index)
+      None => none
     }
+  } else { none }
+  match single_from {
+    Some { value: channel } =>
+      let is_optional = effective.return_cardinality == CardOptional
+      emit_shell_channel_expr(channel: channel, is_optional: is_optional)
+    None =>
+      if is_product && effective.children |> count > 1 {
+        // Multi-field: read from annotations on each field.
+        let needs_stderr = effective.children |> any(ch =>
+          match child_from_key(ch: ch, source_index: source_index) {
+            Some { value: "stderr" } => true
+            _ => false
+          })
+        let stderr_line = if needs_stderr {
+          "let stderr = String::from_utf8_lossy(&output.stderr).to_string();"
+        } else { "" }
+        let field_exprs = effective.children |> map(ch =>
+          let is_optional = ch.return_cardinality == CardOptional
+          let channel = match child_from_key(ch: ch, source_index: source_index) {
+            Some { value: c } => c
+            None => "stdout"
+          }
+          emit_shell_channel_expr(channel: channel, is_optional: is_optional)
+        )
+        let lines = if stderr_line != "" { concat(stderr_line, "\n") } else { "" }
+        concat(lines, "Ok((", field_exprs |> join(separator: ", "), "))")
+      } else {
+        // No from annotation, single field: legacy fallback paths.
+        let is_bool = is_coproduct_type(n: effective) && effective.children |> count == 2
+        if is_bool {
+          "Ok(output.status.success())"
+        } else {
+          let __eff_is_container = node_is_element_collection(n: effective, source_index: source_index)
+          if __eff_is_container {
+            "Ok(Rc::new(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()))"
+          } else {
+            let is_optional = effective.return_cardinality == CardOptional
+            if is_optional { "Ok(Some(stdout))" } else { "Ok(stdout)" }
+          }
+        }
+      }
   }
+}
+
+// Emit a Rust expression for a declared shell channel.
+fn emit_shell_channel_expr(channel: String, is_optional: Bool) -> String {
+  let base = if channel == "exit_success" { "output.status.success()" }
+    else if channel == "stderr" { "stderr.clone()" }
+    else if channel == "stdout_lines" {
+      "Rc::new(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect())"
+    }
+    else { "stdout.clone()" }
+  if is_optional { concat("Some(", base, ")") } else { base }
 }
 
 fn unwrap_single_field_product(n: Node) -> Node {
@@ -4872,6 +4930,8 @@ fn emit_mock_prop_setup(mock_prop: Node, depth: Int, source_index: NewlineIndex?
 
 fn emit_cargo_toml(crate_name: String, has_services: Bool) -> TextFile {
   let header = concat("[package]\nname = \"", crate_name, "\"\nversion = \"0.1.0\"\nedition = \"2021\"\n")
+  // [workspace] makes the crate standalone so it can be built inside a parent workspace dir.
+  let workspace = "\n[workspace]\n"
   let deps = "\n[dependencies]\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\n"
   let cli_dep = "clap = { version = \"4\", features = [\"derive\"] }\n"
   let async_deps = if has_services {
@@ -4880,7 +4940,7 @@ fn emit_cargo_toml(crate_name: String, has_services: Bool) -> TextFile {
     ""
   }
   let lazy_dep = "lazy_static = \"1\"\n"
-  TextFile { path: "Cargo.toml", content: concat(header, deps, cli_dep, async_deps, lazy_dep) }
+  TextFile { path: "Cargo.toml", content: concat(header, workspace, deps, cli_dep, async_deps, lazy_dep) }
 }
 
 // has_service_items is now shared -- imported from v2.compiler.emit
@@ -4902,6 +4962,9 @@ type WorkflowFunc {
   // Resolved param defaults: param name → literal string value.
   // Data references resolved at construction time via registry + module items.
   resolved_defaults: Map<String, String>
+  // Read-only params from ownership analysis — used by CLI call-site
+  // to add & for params whose function signature takes &T.
+  read_only_params: Map<String, Bool>
   source_index: NewlineIndex?
 }
 
@@ -4948,7 +5011,7 @@ fn resolve_param_default(param: Node, registry: Map<String, ItemInfo>, module_it
   }
 }
 
-fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemInfo>, module_items: List<Node>, source_index: NewlineIndex?) -> WorkflowFunc {
+fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemInfo>, module_items: List<Node>, source_index: NewlineIndex?, read_only_params_index: Map<String, Map<String, Bool>>) -> WorkflowFunc {
   let svc_names = match lookup_item(registry: registry, name: item.name) {
     Some { value: info } => info.service_names
     None => []
@@ -4959,6 +5022,12 @@ fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemI
       None => acc
     }
   )
+  // Use module-qualified key to avoid cross-module name collisions.
+  let qualified = concat(module_name, ".", item.name)
+  let ro_params = match map_get(read_only_params_index, qualified) {
+    Some { value: m } => m
+    None => empty_map()
+  }
   WorkflowFunc {
     name: item.name,
     module_name: module_name,
@@ -4967,6 +5036,7 @@ fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemI
     uses: item.uses,
     service_names: svc_names,
     resolved_defaults: defaults,
+    read_only_params: ro_params,
     source_index: source_index
   }
 }
@@ -4990,11 +5060,11 @@ fn is_workflow_item(item: Node, registry: Map<String, ItemInfo>) -> Bool {
   }
 }
 
-fn collect_workflow_funcs(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> List<WorkflowFunc> {
+fn collect_workflow_funcs(modules: List<TypedModule>, registry: Map<String, ItemInfo>, read_only_params_index: Map<String, Map<String, Bool>>) -> List<WorkflowFunc> {
   modules |> flat_map(tm =>
     tm.items
       |> filter(item => is_workflow_item(item: item, registry: registry))
-      |> map(item => to_workflow_func(item: item, module_name: tm.module.name, registry: registry, module_items: tm.items, source_index: tm.type_env.source_index))
+      |> map(item => to_workflow_func(item: item, module_name: tm.module.name, registry: registry, module_items: tm.items, source_index: tm.type_env.source_index, read_only_params_index: read_only_params_index))
   )
 }
 
@@ -5646,10 +5716,17 @@ fn emit_main_match_arm(wf: WorkflowFunc, has_services: Bool) -> String {
 
 // Emit the argument list for calling a workflow function from main.
 // Includes the function's params, then service instance args.
-// CLI args from clap are owned values — pass them directly without &.
+// CLI args from clap are owned values. Params that the function takes
+// by reference (read-only non-Copy types) need & at the call site.
 fn emit_main_call_args(wf: WorkflowFunc, has_services: Bool) -> String {
   let param_args = wf.params |> map(p =>
-    emit_ident(name: param_node_name_at(n: p, source_index: wf.source_index), target: Rust)
+    let pname = param_node_name_at(n: p, source_index: wf.source_index)
+    let ident = emit_ident(name: pname, target: Rust)
+    let n = param_node_type_expr(n: p)
+    let is_borrowable = map_contains_key(wf.read_only_params, pname)
+      && n.params |> count == 0
+      && needs_reference_node(n: n)
+    if is_borrowable { concat("&", ident) } else { ident }
   )
   let service_args = emit_main_service_arg_list(wf: wf, has_services: has_services)
   let all_args = concat(param_args, service_args)

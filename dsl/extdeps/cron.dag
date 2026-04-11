@@ -53,7 +53,7 @@ service cron.Tab {
       command: String
       log_path: String?
     }
-    output { success: Bool, stdout: String, stderr: String }
+    output { success: Bool from "exit_success", stdout: String from "stdout", stderr: String from "stderr" }
     transport shell {
       argv: ["sh", "-c", "TAG='# tag:{tag}'; ENTRY='{schedule} {command} >> {log_path} 2>&1 $TAG'; CURRENT=$(crontab -l 2>/dev/null || true); if echo \"$CURRENT\" | grep -qF \"$TAG\"; then echo \"$CURRENT\" | sed \"/$TAG/c\\\\$ENTRY\" | crontab -; else (echo \"$CURRENT\"; echo \"$ENTRY\") | crontab -; fi"]
     }
@@ -62,7 +62,7 @@ service cron.Tab {
       nonzero => String "Crontab upsert failed"
     }
     mock_response {
-      0 => { success: true, stdout: "", stderr: "" } "Upsert succeeded"
+      0 => { exit_success: true, stdout: "", stderr: "" } "Upsert succeeded"
     }
   }
 
@@ -70,7 +70,7 @@ service cron.Tab {
     input {
       tag: String
     }
-    output { success: Bool, stdout: String, stderr: String }
+    output { success: Bool from "exit_success", stdout: String from "stdout", stderr: String from "stderr" }
     transport shell {
       argv: ["sh", "-c", "TAG='# tag:{tag}'; CURRENT=$(crontab -l 2>/dev/null || true); echo \"$CURRENT\" | grep -vF \"$TAG\" | crontab -"]
     }
@@ -79,7 +79,7 @@ service cron.Tab {
       nonzero => String "Crontab remove failed"
     }
     mock_response {
-      0 => { success: true, stdout: "", stderr: "" } "Remove succeeded"
+      0 => { exit_success: true, stdout: "", stderr: "" } "Remove succeeded"
     }
   }
 }

@@ -27,3 +27,9 @@ type VariantEncoding
 type WireContract {
   variant_encoding: VariantEncoding
 }
+
+// Wire format for response bodies.
+// Json: parse with serde_json (default for REST).
+// Text: read as raw string (diffs, plain-text APIs).
+// Declared on transport: response_format: Text
+type WireFormat = Json | Text
