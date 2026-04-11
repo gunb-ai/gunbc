@@ -4,6 +4,7 @@
 
 pub mod std_algebra;
 pub mod std_types;
+pub mod extdeps_languages_dag_emit;
 pub mod extdeps_languages_go_emit;
 pub mod extdeps_languages_python_emit;
 pub mod extdeps_languages_rust_emit;

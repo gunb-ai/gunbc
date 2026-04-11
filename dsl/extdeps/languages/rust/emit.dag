@@ -128,6 +128,29 @@ data rust_module_keyword: String = "mod"
 data rust_import_keyword: String = "use"
 data rust_import_from_keyword: String = ""
 
+// -- Expression syntax templates ------------------------------------------
+// {0} = params, {1} = body. Ref: Rust Reference §8.2.2 "Closure expressions"
+data rust_lambda_template: String = "|{0}| {1}"
+// {0} = message string
+data rust_error_expr_template: String = "panic!({0})"
+// {0} = comma-separated elements
+data rust_list_literal_empty: String = "Rc::new(vec![])"
+data rust_list_literal_template: String = "Rc::new(vec![{0}])"
+// {0} = left expr, {1} = right expr
+data rust_null_coalesce_template: String = "{0}.unwrap_or_else(|| {1})"
+// {0} = error label
+data rust_error_type_template: String = "compile_error!(\"{0}\")"
+// -- Type argument brackets -----------------------------------------------
+data rust_type_arg_open: String = "<"
+data rust_type_arg_close: String = ">"
+// -- Void type ------------------------------------------------------------
+data rust_void_type: String = "()"
+// -- Tuple syntax ---------------------------------------------------------
+data rust_tuple_empty: String = "()"
+data rust_tuple_pair_template: String = "({0}, {1})"
+data rust_tuple_multi_template: String = "({0})"
+data rust_tuple_separator: String = ", "
+
 // -- Project scaffold ----------------------------------------------------
 // Ref: Cargo Reference (doc.rust-lang.org/cargo/reference)
 // Mirrors rust_scaffold from std.languages.

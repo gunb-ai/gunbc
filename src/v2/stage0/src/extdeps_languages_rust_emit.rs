@@ -248,6 +248,123 @@ pub fn rust_import_from_keyword() -> String {
     CACHED.with(|c| c.clone())
 }
 
+pub fn rust_lambda_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "|{0}| {1}".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_error_expr_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "panic!({0})".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_list_literal_empty() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Rc::new(vec![])".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_list_literal_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Rc::new(vec![{0}])".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_null_coalesce_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "{0}.unwrap_or_else(|| {1})".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_error_type_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "compile_error!(\"{0}\")".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_type_arg_open() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "<".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_type_arg_close() -> String {
+    thread_local! {
+        static CACHED: String = {
+            ">".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_void_type() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "()".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_tuple_empty() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "()".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_tuple_pair_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "({0}, {1})".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_tuple_multi_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "({0})".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_tuple_separator() -> String {
+    thread_local! {
+        static CACHED: String = {
+            ", ".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
 pub fn rust_source_extension() -> String {
     thread_local! {
         static CACHED: String = {

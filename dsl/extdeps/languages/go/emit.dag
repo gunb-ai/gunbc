@@ -99,3 +99,18 @@ data go_method_templates: Map<String, String> = {
   "sort_by": "v2rt.SortBy(\{recv\}, \{arg\})",
   "append": "append(\{recv\}, \{arg\})"
 }
+
+// -- Expression syntax templates ------------------------------------------
+data go_lambda_template: String = "func({0}) interface\{\} \{ return {1} \}"
+data go_error_expr_template: String = "panic({0})"
+data go_list_literal_empty: String = "[]interface\{\}\{\}"
+data go_list_literal_template: String = "[]interface\{\}\{{0}\}"
+data go_null_coalesce_template: String = "func() interface\{\} \{ if {0} != nil \{ return {0} \}; return {1} \}()"
+data go_error_type_template: String = "__EMIT_BUG_{0}__"
+data go_type_arg_open: String = "<"
+data go_type_arg_close: String = ">"
+data go_void_type: String = ""
+data go_tuple_empty: String = "struct\{\}"
+data go_tuple_pair_template: String = "struct\{ First {0}; Second {1} \}"
+data go_tuple_multi_template: String = "struct\{ {0} \}"
+data go_tuple_separator: String = "; "

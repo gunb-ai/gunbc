@@ -3638,7 +3638,7 @@ pub fn emit_typed_bin_op(op: &BinOp, algebra_field: Option<AlgebraFieldKind>, le
         let l_str = emit_typed_expr(left.clone(), registry.clone(), &scope, depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
 let r_str = emit_typed_expr(right.clone(), registry.clone(), &scope, depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
 if is_null_coalesce(op.clone()) {
-            emit_null_coalesce(&l_str, r_str, RenderTarget::Rust)
+            emit_null_coalesce(l_str, r_str, RenderTarget::Rust)
         } else {
             {
                 let op_str = emit_bin_op_symbol(op.clone(), &RenderTarget::Rust, algebra_field);
