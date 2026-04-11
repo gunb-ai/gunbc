@@ -140,13 +140,13 @@ pub fn python_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     left_bp: 15,
     right_bp: 16,
     binop: Some(BinOp::Div),
-    algebra_field: Some(AlgReciprocal),
+    algebra_field: Some(AlgebraFieldKind::AlgReciprocal),
 }), Rc::new(OperatorSpec {
     symbol: "//".to_string(),
     left_bp: 15,
     right_bp: 16,
     binop: Some(BinOp::Div),
-    algebra_field: Some(AlgQuotient),
+    algebra_field: Some(AlgebraFieldKind::AlgQuotient),
 }), Rc::new(OperatorSpec {
     symbol: "%".to_string(),
     left_bp: 15,

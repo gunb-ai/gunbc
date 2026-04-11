@@ -12,13 +12,13 @@ use crate::std_algebra::AlgebraProfile::{OrderedRingProfile, ApproximateFieldPro
 use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue, NamedTemplate, ContainerOf, OptionalOf, TupleOf, AlgebraTypeVariable};
 use crate::std_algebra::ContainerSource::{SameAsReceiver, Named};
 pub use crate::v2_std_core::{Node, make_param_node, param_node_type_expr, find_child_named, NewlineIndex, Connective, Cardinality, ExprErrorKind, make_expr_node, make_expr_error_node, LiteralValue, is_kernel_type, BinOp, AlgebraFieldKind, InferredNode, has_inferred, is_compiler_error, leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, default_ident_span, authored_name_at, ExprData};
-use crate::v2_std_core::AlgebraFieldKind::{AlgAdd, AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral};
 use crate::v2_std_core::ExprErrorKind::{SemanticExprError};
 use crate::v2_std_core::LiteralValue::{LitStr, LitInt, LitFloat, LitBool, LitNull};
 use crate::v2_std_core::BinOp::{Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce};
+use crate::v2_std_core::AlgebraFieldKind::{AlgAdd, AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
@@ -911,10 +911,8 @@ if (left_el_is_unit || right_el_is_unit) {
                                     {
                                         let __tco_0 = left_el.clone();
 let __tco_1 = right_el.clone();
-let __tco_2 = source_index;
 left = __tco_0;
 right = __tco_1;
-source_index = __tco_2;
 continue;
 }
 } },
@@ -935,10 +933,8 @@ if (left_inner_is_unit || right_inner_is_unit) {
                                     {
                                         let __tco_0 = left_inner.clone();
 let __tco_1 = right_inner.clone();
-let __tco_2 = source_index;
 left = __tco_0;
 right = __tco_1;
-source_index = __tco_2;
 continue;
 }
 }
@@ -1294,19 +1290,19 @@ pub fn algebra_field_kind_name(kind: AlgebraFieldKind) -> String {
 
 pub fn binop_algebra_fields(op: BinOp) -> Rc<Vec<AlgebraFieldKind>> {
     match op {
-    BinOp::Add => Rc::new(vec![AlgAdd]),
-    BinOp::Sub => Rc::new(vec![AlgAdd]),
-    BinOp::Mul => Rc::new(vec![AlgMul]),
-    BinOp::Div => Rc::new(vec![AlgReciprocal, AlgQuotient]),
-    BinOp::Mod => Rc::new(vec![AlgRemainder]),
-    BinOp::Eq => Rc::new(vec![AlgCompare]),
-    BinOp::Ne => Rc::new(vec![AlgCompare]),
-    BinOp::Lt => Rc::new(vec![AlgCompare]),
-    BinOp::Gt => Rc::new(vec![AlgCompare]),
-    BinOp::Le => Rc::new(vec![AlgCompare]),
-    BinOp::Ge => Rc::new(vec![AlgCompare]),
-    BinOp::And => Rc::new(vec![AlgMeet]),
-    BinOp::Or => Rc::new(vec![AlgJoin]),
+    BinOp::Add => Rc::new(vec![AlgebraFieldKind::AlgAdd]),
+    BinOp::Sub => Rc::new(vec![AlgebraFieldKind::AlgAdd]),
+    BinOp::Mul => Rc::new(vec![AlgebraFieldKind::AlgMul]),
+    BinOp::Div => Rc::new(vec![AlgebraFieldKind::AlgReciprocal, AlgebraFieldKind::AlgQuotient]),
+    BinOp::Mod => Rc::new(vec![AlgebraFieldKind::AlgRemainder]),
+    BinOp::Eq => Rc::new(vec![AlgebraFieldKind::AlgCompare]),
+    BinOp::Ne => Rc::new(vec![AlgebraFieldKind::AlgCompare]),
+    BinOp::Lt => Rc::new(vec![AlgebraFieldKind::AlgCompare]),
+    BinOp::Gt => Rc::new(vec![AlgebraFieldKind::AlgCompare]),
+    BinOp::Le => Rc::new(vec![AlgebraFieldKind::AlgCompare]),
+    BinOp::Ge => Rc::new(vec![AlgebraFieldKind::AlgCompare]),
+    BinOp::And => Rc::new(vec![AlgebraFieldKind::AlgMeet]),
+    BinOp::Or => Rc::new(vec![AlgebraFieldKind::AlgJoin]),
     BinOp::NullCoalesce => Rc::new(vec![]),
 }
 }
@@ -1327,12 +1323,8 @@ pub fn first_matching_algebra_field(mut n: Rc<Node>, mut candidates: Rc<Vec<Alge
     field_node: f.clone(),
 })); },
     None => { {
-            let __tco_0 = n;
-let __tco_1 = Rc::new(candidates.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_2 = source_index;
-n = __tco_0;
-candidates = __tco_1;
-source_index = __tco_2;
+            let __tco_0 = Rc::new(candidates.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+candidates = __tco_0;
 continue;
 } },
 } },
