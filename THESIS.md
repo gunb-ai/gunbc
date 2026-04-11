@@ -1,22 +1,62 @@
-# gunbc Thesis: Zero Bugs by Construction
+# gunbc Thesis
 
 This is the parent document. Everything else — ROADMAP, INVARIANTS,
 MODELING, architecture, design docs — serves this thesis.
 
-## The claim
+## What gunbc is
 
-A `.dag` program that compiles has **zero bugs**. Not "fewer bugs" —
-zero. The compiler either proves the program correct or refuses to
-emit it. Generated tests cover what static analysis cannot.
+gunbc is a **causal engine**. Its job is to validate that a program
+has a consistent, coherent cause-and-effect flow from source (inputs,
+declarations, intent) to drain (outputs, behavior, emitted code).
 
-This is achievable because `.dag` is a closed system: all data is
-finite, all iteration is bounded, all composition preserves
-boundedness. In a closed system, correctness properties are
-**consequences of the model** — they don't require separate analysis.
+Traditional compilers work bottom-up: the developer has high-level
+intent, and the compiler's job is to align machine code to that
+intent. The question is "can I make this execute?" gunbc inverts
+this. The question is **"is what you said sound?"** The compiler
+validates intent against itself — every declaration must be
+consistent with every other declaration, every data flow must have
+a valid source and a valid drain, every computation must terminate
+with a proven bound. If the answer is yes, emission is mechanical
+translation. The emitted code is a consequence of the validated
+intent, not an interpretation of it.
 
-## What "zero bugs" means concretely
+**If it compiles, the intent is sound and will execute as declared.**
 
-Three tiers. A compiled `.dag` program must satisfy all three.
+The only possible failure after compilation is an external reality
+mismatch — you declared access to a resource you don't actually
+have, or an external service returned something outside its declared
+contract. These are facts the compiler cannot verify because they
+exist outside the program's causal graph. If those facts are
+structured in the language (service declarations, transport
+contracts), the compiler can validate them too.
+
+## Why this works
+
+`.dag` is a closed system. All data is finite (Bit/Word64). All
+iteration is bounded (fold/descend/repeat). Composition preserves
+boundedness. In a closed system, correctness properties —
+termination, type safety, exhaustiveness, ownership, complexity
+bounds — are **consequences of the model**, like conservation laws
+in physics. They don't require separate analysis passes. They
+emerge from the structure.
+
+This is what makes the causal engine possible. In an open system
+(Turing-complete, unbounded iteration, implicit coercions), you
+cannot validate all causal links — some are undecidable. In a
+closed system, every link is checkable, so the compiler can prove
+the entire causal chain from source to drain.
+
+## What falls out
+
+### Zero bugs
+
+If every causal link from source to drain is validated, there are
+no bugs. A bug is a broken causal link — a field that doesn't
+exist, a branch that isn't handled, a computation that doesn't
+terminate, a type that doesn't match. The compiler checks every
+link. What it can't check statically, it generates tests for.
+
+Three tiers of the zero-bug guarantee:
 
 ### Tier 1: Structural bugs — impossible by construction
 
@@ -84,11 +124,26 @@ from the `.dag` declarations.
 
 ---
 
-## Free consequences
+## What else falls out
 
-These are not separate features. They fall out of the closed model
-once Tiers 1-3 are satisfied. They require no additional language
-design — only that the compiler has enough information to apply them.
+These are not separate features. They are consequences of the
+causal engine being designed correctly.
+
+### Frontend/backend agnosticism
+
+The causal engine validates the causal graph — it does not care
+what syntax produced it or what language consumes it. The IR
+(Node + Edge, fold/descend/repeat) is the invariant. Anything
+that can express basic truths — types, lists, functions, even
+structured English — can in principle be ingested. Anything that
+can represent the primitives can be emitted to.
+
+This is not a primary goal — it is a side effect of designing the
+causal system properly. If the compiler's only job is to validate
+causal consistency, and the IR captures all the structure, then
+the frontend and backend are just projections of the same graph.
+`.dag` syntax is one frontend. Rust/Python/Go are three backends.
+The set is open in both directions.
 
 ### Automatic parallelism (map-reduce)
 
@@ -206,7 +261,7 @@ Free consequences:          ░░░░░░░░░░░░░░░ blocke
 
 ## The test: when is it real?
 
-The "zero bugs" claim becomes real when a user can write:
+The causal engine is real when a user can declare their intent:
 
 ```dag
 type Order { customer: String  amount: Float  status: OrderStatus }
@@ -219,10 +274,13 @@ service OrderService {
 ```
 
 ...and the compiler:
-1. **Refuses** to emit if any structural invariant is violated (Tier 1)
-2. **Proves** that no runtime operation can panic (Tier 2)
-3. **Generates** tests that verify the service behaves correctly (Tier 3)
-4. **Parallelizes** independent operations automatically (free consequence)
+1. **Validates** every causal link — types, fields, transports,
+   termination, ownership (Tier 1)
+2. **Proves** that no internal operation can fail at runtime (Tier 2)
+3. **Generates** tests that verify the declared behavior matches
+   actual behavior (Tier 3)
+4. **Emits** to any target language as mechanical translation
 
-No test is written by hand. No runtime crash is possible. No bug
-class is left to developer discipline.
+The only possible failure is external: the REST endpoint doesn't
+exist, the network is down, the upstream service violates its
+contract. Everything inside the causal graph is proven sound.
