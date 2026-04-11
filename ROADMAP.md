@@ -191,6 +191,45 @@ Bootstrap D ├─ Lane B: Emission ──────────────�
 
 ---
 
+## Milestones to Gate 1
+
+Four concrete goals, in priority order. Each has a clear done-criterion.
+
+```
+M1: CX gate → 0 violations (currently 421, ratchet 424)
+    Done when: strict_compile_diagnostic_count = 0, gate is blocking
+    Key blocker: OUTPUT PROVENANCE on function signatures.
+      Same SubValueRelation already on input bindings (S1-S6),
+      mirrored to outputs. Not a new system — completes the
+      existing pattern. 3 touch points: infer from body, store
+      on signature, consumers read at call sites.
+    Unlocks: Stream D (-132), body-inferred categories (-196),
+      arithmetic refinement (-44), C3-C6 deletion, tokenizer (-22)
+    Remaining ~10 (graph DFS) needs language primitive
+    Note: Stream D parser restructuring is DONE mechanically but
+      CX can't see through helper returns without output provenance.
+      Shelved until provenance lands.
+
+M2: Node.name deleted
+    Done when: Node.name field removed, l1-ratchet = 0
+    How: fix authored_name_at fallback, eliminate ~15 remaining reads
+    Active: quick-owl-889
+    Unblocks: Stream B Layer 1 (last-use clone elision)
+
+M3: review.dag runs end-to-end
+    Done when: review.dag compiles, builds, runs live against real APIs
+    How: fix remaining RE-3 serde gaps
+    Mostly done (RE-1/2/4 complete)
+
+M4: Single emitter reads data, never decides
+    Done when: 05_emit_rust/python/go.dag deleted, all emission from specs
+    How: Lane C (coercion = emission, language plugins)
+    Blocked on: M1 + M2 substantially complete
+    Design: docs/single-emitter-design.md
+```
+
+---
+
 ## Active work: close the model
 
 All active tracks are facets of one problem: the IR doesn't carry
@@ -217,20 +256,22 @@ Layer 3 (O6-O10, borrow propagation) is a separate design phase
 blocked on LS-4.
 
 **Stream C: std/ foundation** (std/induction.dag, std/algebra.dag, std/termination.dag)
-C1 (direct SubValueRelation→LoweringTarget) and S8 (lattice
-inhabitant declarations). Both small, both unblocked. C1 enables
-better bounds when C2 lands. S8 dissolves ad-hoc merge functions.
+C1 DONE. S8 Phase 1 DONE (DescentEvidence lattice inhabitants).
+Phase 2 blocked on user-defined generic emission.
 
-### What to start now
-
-| Stream | Items | Files |
-|--------|-------|-------|
-| A: Provenance infra | S1, S2, S3, S4, S5 | 04_env.dag, 04_infer.dag |
-| B: Clone elision | O1-O5 | ownership.dag, 05_emit_rust.dag |
-| C: std/ foundation | C1, S8 (Phase 1 done, Phase 2 blocked on generic emission) | std/induction.dag, std/algebra.dag, std/termination.dag |
-
-Zero file overlap between streams. After Stream A (S1-S5), CX
-consumer items C2-C6 can start (same files as Stream A, sequential).
+**Stream D: Structural parser** (02_parse.dag, compile.dag)
+Restructure parser from integer position indexing to list consumption.
+Target: eliminate 132 CX violations (Category B) by construction.
+Design: [src/v2/parser-design.md](src/v2/parser-design.md).
+**Current state:** Mechanical restructuring DONE (0 ParserState
+references, fixed-point verified, 392/393 tests pass). BUT CX
+violations did not decrease — the CX analyzer can't see that helper
+return values (e.g. `expect(tokens).tokens`) are sub-lists of the
+input. **Blocked on output provenance** (SubValueRelation on function
+signatures). Shelved until that lands.
+Performance note: `tokens |> skip(1)` on `Rc<Vec<>>` is O(n) per
+step (O(n²) total). Needs runtime representation design — not a
+parser-specific fix.
 
 ### Active workboards
 
