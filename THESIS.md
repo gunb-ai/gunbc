@@ -90,6 +90,37 @@ getting more complex.** Each dimension dissolved into the binding
 mechanism is one fewer analysis pass, one fewer set of heuristics,
 one fewer source of reconstruction bugs.
 
+## Error handling: show the correct code
+
+When the compiler finds a broken causal link, it doesn't just
+report the error — it shows the fix. Because the system is closed
+and the compiler has full structural knowledge, it knows the finite
+set of ways to make the code correct.
+
+A diagnostic is not "error on line 42." It is:
+- **What's wrong** — which causal link is broken
+- **Why it's wrong** — the structural contradiction
+- **How to fix it** — the literal corrected code, emitted to the
+  terminal
+
+This falls out of bidirectional emission. If the compiler can emit
+`.dag` → Rust, it can emit "corrected `.dag`" → terminal. The
+error diagnostic is emission targeted at the developer.
+
+Examples:
+- `NonExhaustiveMatch` → show the missing arms with placeholder
+  bodies
+- `ComplexityUnknown` → show which argument should be the sub-value
+  and the corrected call
+- `TypeMismatch` → enumerate the concrete options (change the
+  branch, change the return type, widen the type)
+- `FieldNotFound` → show the available fields, suggest the closest
+  match
+
+The compiler knows enough to solve the error, not just report it.
+In many cases, only one fix is structurally valid — the compiler
+can apply it automatically.
+
 ## What falls out
 
 ### Zero bugs
