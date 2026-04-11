@@ -5829,7 +5829,10 @@ func ask_rest(api_key: Secret, prompt: String) -> String {
 }
 
 // ── RE-4: Live Anthropic API integration ────────────────────────────────
-// Compiles a minimal Anthropic .dag program, builds it, calls the real API.
+// Exploratory integration probe: compiles anthropic.dag, builds, calls
+// the real API. This is NOT an L4 semantic correctness test — it checks
+// process exit and non-empty output, not declared contract fields.
+// Full L4 tests require Track 12 (verification from structure).
 // Requires ANTHROPIC_API_KEY in the environment.
 #[test]
 #[ignore] // Expensive: builds binary, calls real Anthropic API
@@ -5892,8 +5895,16 @@ fn anthropic_live_e2e() {
         panic!("RE-4 live: cargo build failed:\n{}", stderr);
     }
 
-    // Run: call Messages operation with minimal prompt
-    let binary_path = out_dir.join("target/debug/extdeps-llm-anthropic");
+    // Derive binary name from Cargo.toml (single authority, not hardcoded)
+    let cargo_toml_content = std::fs::read_to_string(out_dir.join("Cargo.toml"))
+        .expect("failed to read generated Cargo.toml");
+    let binary_name = cargo_toml_content
+        .lines()
+        .find(|l| l.starts_with("name = "))
+        .and_then(|l| l.strip_prefix("name = \""))
+        .and_then(|l| l.strip_suffix('"'))
+        .expect("failed to parse binary name from Cargo.toml");
+    let binary_path = out_dir.join("target/debug").join(binary_name);
     let run = std::process::Command::new(&binary_path)
         .arg("messages")
         .arg("--model").arg("claude-haiku-4-5-20251001")
