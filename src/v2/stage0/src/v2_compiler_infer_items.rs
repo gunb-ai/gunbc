@@ -7,7 +7,7 @@ use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, ErrorNode, make_param_node, param_node_name, param_node_name_at, param_node_type_expr, make_field_node, InferredNode, Cardinality, expr_has_self_call, expr_has_non_tail_self_call, Connective, node_name_span, no_span};
+pub use crate::v2_std_core::{Node, ErrorNode, make_param_node, param_node_name_at, param_node_type_expr, make_field_node, InferredNode, Cardinality, expr_has_self_call, expr_has_non_tail_self_call, Connective, node_name_span, no_span};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::Cardinality::{Required};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};

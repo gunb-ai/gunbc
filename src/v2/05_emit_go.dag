@@ -24,7 +24,7 @@ module v2.compiler.emit_go
 import v2.std.core {
   Node, InferredNode, Resolved, CompilerError,
   VarBindingKind, FunctionValueBinding,
-  import_is_all, import_specific_names, module_imports, module_items,
+  import_is_all, module_imports, module_items,
   param_node_type_expr,
   authored_name_at, NewlineIndex,
   expr_var_name_at, expr_call_func_at, expr_method_name_at, let_binding_name_at,
@@ -49,15 +49,15 @@ import v2.std.core {
   Text, Interpolation,
   FieldSummary, FieldAccessStyle,
   StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond,
-  arg_name, arg_value, arm_body, arm_pattern, arm_guard,
-  field_init_node_name, field_init_node_name_at, field_init_node_value,
+  arg_value, arm_body, arm_pattern, arm_guard,
+  field_init_node_name_at, field_init_node_value,
   if_condition, if_then_branch, if_else_branch,
   match_scrutinee, match_arm_nodes,
   let_value, let_body,
   field_access_base, field_access_field_at, method_receiver, expr_field_access_summary, expr_method_call_semantics,
-  record_lit_type_name,
+  record_lit_type_name_at,
   lambda_body, cast_expr, cast_target, return_value,
-  foreach_variable, foreach_variable_at, foreach_collection, foreach_body, method_arg_nodes,
+  foreach_variable_at, foreach_collection, foreach_body, method_arg_nodes,
   index_base, index_expr, slice_base, slice_start, slice_end,
   with_required_cardinality,
   Connective, Conj, Disj,
@@ -477,7 +477,7 @@ fn emit_go_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, 
   let params_str = emit_go_params(params: params, source_index: si)
   let ret_str = emit_go_inferred(inferred: inferred, source_index: si)
   let body_scope = build_params_scope(scope: scope, params: params)
-  let use_tco = is_tco_eligible(name: name, body: body, registry: registry)
+  let use_tco = is_tco_eligible(name: name, body: body, registry: registry, source_index: si)
   if use_tco {
     let body_str = emit_go_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope, depth: 1)
     concat(language_spec(target: Go).items.func_keyword, " ", go_export_ident(name: name), "(", params_str, ")", ret_str, " {\n",
@@ -608,7 +608,7 @@ fn emit_go_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferSco
 }
 
 fn emit_go_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_go_typed_record_lit(type_name: record_lit_type_name(texpr: expr), fields: expr.children, registry: registry, scope: scope, depth: depth)
+  emit_go_typed_record_lit(type_name: record_lit_type_name_at(texpr: expr, source_index: scope.type_env.source_index), fields: expr.children, registry: registry, scope: scope, depth: depth)
 }
 
 fn emit_go_expr_string_interp(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
@@ -1014,7 +1014,7 @@ fn emit_go_service_def(
   let safe_name = sanitize_service_name(name: authored_name(env: env, node: item))
   let transport = service_fallback_transport(item: item)
   let op_children = item.children
-  let struct_def = emit_go_service_struct(name: safe_name, fallback_transport: transport, op_children: op_children)
+  let struct_def = emit_go_service_struct(name: safe_name, fallback_transport: transport, op_children: op_children, source_index: env.source_index)
   let methods = op_children |> map(op_node =>
     emit_go_operation_method(service_name: safe_name, transport: transport, op_node: op_node, registry: registry, env: env)
   )
@@ -1022,8 +1022,8 @@ fn emit_go_service_def(
   concat(struct_def, "\n\n", methods_str)
 }
 
-fn emit_go_service_struct(name: String, fallback_transport: Node, op_children: List<Node>) -> String {
-  let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children)
+fn emit_go_service_struct(name: String, fallback_transport: Node, op_children: List<Node>, source_index: NewlineIndex?) -> String {
+  let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children, source_index: source_index)
   let decls = service_field_decls(fs: fs, t: language_spec(target: Go).service_fields)
   if decls |> count == 0 {
     concat(language_spec(target: Go).items.type_alias_keyword, " ", name, " ", language_spec(target: Go).items.struct_keyword, "{}")
@@ -1049,9 +1049,9 @@ fn emit_go_operation_method(service_name: String, transport: Node, op_node: Node
 }
 
 fn emit_go_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, source_index: NewlineIndex?) -> String {
-  if is_rest_transport(t: transport) { emit_go_rest_call(op_name: op_name, transport: transport, depth: depth, source_index: source_index) }
+  if is_rest_transport(t: transport, source_index: source_index) { emit_go_rest_call(op_name: op_name, transport: transport, depth: depth, source_index: source_index) }
   else if is_shell_transport(t: transport) { emit_go_shell_call(op_name: op_name, transport: transport, depth: depth, source_index: source_index) }
-  else if is_file_transport(t: transport) { emit_go_file_call(op_name: op_name, depth: depth) }
+  else if is_file_transport(t: transport, source_index: source_index) { emit_go_file_call(op_name: op_name, depth: depth) }
   else { emit_go_local_call(op_name: op_name, depth: depth) }
 }
 
@@ -1061,14 +1061,14 @@ fn emit_go_rest_call(op_name: String, transport: Node, depth: Int, source_index:
   let body_line = concat(prefix, "reqBody := bytes.NewBuffer(nil)")
   let req_line = concat(prefix, "req, err := http.NewRequest(\"POST\", url, reqBody)\n",
     "if err != nil {\n\treturn nil, fmt.Errorf(\"creating request: %w\", err)\n}")
-  let auth_line = if transport_has_auth(t: transport) {
-    let header_name = match transport_auth_header_name(t: transport) {
+  let auth_line = if transport_has_auth(t: transport, source_index: source_index) {
+    let header_name = match transport_auth_header_name(t: transport, source_index: source_index) {
       Some { value: h } => h
       None => "Authorization"
     }
     concat(prefix, "req.Header.Set(\"", header_name, "\", c.AuthToken)")
   } else { "" }
-  let hdrs = transport_headers(t: transport)
+  let hdrs = transport_headers(t: transport, source_index: source_index)
   let header_lines = hdrs |> map(h =>
     concat(prefix, "req.Header.Set(\"", h.name, "\", ", emit_simple_expr(expr: field_init_node_value(n: h), target: Go, source_index: source_index), ")")
   )
@@ -1093,7 +1093,7 @@ fn emit_go_shell_call(op_name: String, transport: Node, depth: Int, source_index
   let prefix = make_indent(level: depth)
   let cmd_line = concat(prefix, "cmd := exec.Command(\"", to_snake(name: op_name), "\")")
   let dir_line = concat(prefix, "cmd.Dir = c.WorkingDir")
-  let envs = transport_env(t: transport)
+  let envs = transport_env(t: transport, source_index: source_index)
   let env_lines = envs |> map(e =>
     concat(prefix, "cmd.Env = append(cmd.Env, \"", e.name, "=\" + ", emit_simple_expr(expr: field_init_node_value(n: e), target: Go, source_index: source_index), ")")
   )

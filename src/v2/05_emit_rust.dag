@@ -16,8 +16,8 @@ module v2.compiler.emit_rust
 
 import v2.std.core {
   Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
-  import_is_all, import_specific_names, module_imports, module_items,
-  param_node_name, param_node_type_expr, param_node_default_value,
+  import_is_all, import_specific_names_at, module_imports, module_items,
+  param_node_type_expr, param_node_default_value,
   authored_name_at, NewlineIndex, find_child_named,
   expr_var_name_at, expr_call_func_at, field_access_field_at,
   param_node_name_at, resource_use_name_at, field_binding_name_at, generic_param_name_at,
@@ -47,13 +47,13 @@ import v2.std.core {
   transport_method, transport_path_template, transport_query, transport_request_body, transport_stdin,
   service_config_auth, service_config_auth_input, service_config_auth_source,
   expr_has_self_call, expr_has_non_tail_self_call,
-  field_access_base, field_access_field, foreach_variable, foreach_variable_at,
-  expr_var_name, expr_var_name_at, expr_call_func, expr_call_func_at, expr_method_name, expr_method_name_at, let_binding_name, let_binding_name_at,
-  record_lit_type_name, record_lit_type_name_at,
-  arg_name, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard,
-  field_init_node_name, field_init_node_name_at, field_init_node_value,
-  field_binding_name, make_arg_node, make_named_expr_node,
-  let_value, let_body, lambda_body, lambda_param_names, lambda_param_names_at,
+  field_access_base, foreach_variable_at,
+  expr_method_name_at, let_binding_name_at,
+  record_lit_type_name_at,
+  arg_name_at, arg_value, arm_body, arm_pattern, arm_guard,
+  field_init_node_name_at, field_init_node_value,
+  make_arg_node, make_named_expr_node,
+  let_value, let_body, lambda_body, lambda_param_names_at,
   foreach_collection, foreach_body, method_receiver, method_arg_nodes,
   match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch,
   index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
@@ -587,7 +587,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let local_type_names = typed_module.items
     |> filter(item => is_type_def_item(item: item))
     |> map(item => item.name)
-  let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names)
+  let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, source_index: scope.type_env.source_index)
   let imports_section = if imports_str == "" { "" } else { concat("\n", imports_str) }
   let this_mod_filename = module_to_filename(name: m.name)
   let all_svc_names = typed_module.items |> flat_map(item =>
@@ -638,7 +638,7 @@ fn emit_import_name(n: String, registry: Map<String, ItemInfo>) -> String {
   if is_data { to_snake(n) } else { n }
 }
 
-fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>) -> String {
+fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, source_index: NewlineIndex?) -> String {
   if imports |> count == 0 {
     ""
   } else {
@@ -648,7 +648,7 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
       if import_is_all(n: imp) {
         concat("use crate::", mod_name, "::*;")
       } else {
-          let specific_names = import_specific_names(n: imp)
+          let specific_names = import_specific_names_at(n: imp, source_index: source_index)
           // Filter out names that are locally defined (local definition shadows import).
           let filtered_names = specific_names |> filter(n => local_names |> all(ln => ln != n))
           if filtered_names |> count == 0 {
@@ -1081,10 +1081,10 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   let ret_str = emit_inferred(inferred: inferred, shared_types: shared_types, source_index: si)
   let body_scope = build_params_scope(scope: scope, params: params)
   let depth = 0
-  let use_tco = is_tco_eligible(name: name, body: body, registry: registry)
+  let use_tco = is_tco_eligible(name: name, body: body, registry: registry, source_index: si)
   // Stacker wrapping: recursive non-TCO functions need stack growth to avoid
   // overflow on large .dag files (e.g., 02_parse.dag at ~4000 lines).
-  let needs_stacker = is_self_recursive(name: name, body: body, registry: registry) && use_tco == false
+  let needs_stacker = is_self_recursive(name: name, body: body, registry: registry, source_index: si) && use_tco == false
   if use_tco {
     let tco_params_str = emit_tco_params(params: params, shared_types: shared_types, source_index: si)
     let body_str = emit_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
@@ -2384,18 +2384,18 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
 
 fn fill_default_args(ordered: List<Node>, callee: ItemInfo?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> List<Node> {
   // Boundary: info.params come from the declaring module. Caller's
-  // source_index can't recover cross-module names. Use param_node_name
-  // until names are precomputed at resolve time.
+  // source_index can't recover cross-module names — _at falls back to
+  // node.name when span recovery fails the file check.
   match callee {
     Some { value: info } =>
       let provided_names = ordered |> map(a => match arg_name_at(n: a, source_index: scope.type_env.source_index) { Some { value: n } => n  None => "" })
       let missing_with_defaults = info.params |> filter(p =>
-        let is_provided = provided_names |> any(n => n == param_node_name(n: p))
+        let is_provided = provided_names |> any(n => n == param_node_name_at(n: p, source_index: scope.type_env.source_index))
         if is_provided { false }
         else { param_node_default_value(n: p) != none }
       )
       let default_args = missing_with_defaults |> map(p =>
-        make_arg_node(name: Some { value: param_node_name(n: p) }, value: param_node_default_value(n: p).value, span: p.span, name_span: p.span)
+        make_arg_node(name: Some { value: param_node_name_at(n: p, source_index: scope.type_env.source_index) }, value: param_node_default_value(n: p).value, span: p.span, name_span: p.span)
       )
       concat(ordered, default_args)
     None => ordered
@@ -3769,22 +3769,22 @@ fn emit_service_def(
   let safe_name = sanitize_service_name(name: item.name)
   let fallback_transport = service_fallback_transport(item: item)
   let op_children = item.children
-  let struct_def = emit_service_struct(name: safe_name, fallback_transport: fallback_transport, op_children: op_children, service_item: item)
+  let struct_def = emit_service_struct(name: safe_name, fallback_transport: fallback_transport, op_children: op_children, service_item: item, source_index: env.source_index)
   let impl_block = emit_service_impl(name: safe_name, transport: fallback_transport, op_children: op_children, registry: registry, shared_types: shared_types, env: env, service_item: item)
   concat(struct_def, "\n\n", impl_block)
 }
 
-fn emit_service_struct(name: String, fallback_transport: Node, op_children: List<Node>, service_item: Node) -> String {
+fn emit_service_struct(name: String, fallback_transport: Node, op_children: List<Node>, service_item: Node, source_index: NewlineIndex?) -> String {
   let derives = "#[derive(Debug, Clone)]"
-  let config_fields = emit_service_config_fields(fallback_transport: fallback_transport, op_children: op_children, service_item: service_item)
+  let config_fields = emit_service_config_fields(fallback_transport: fallback_transport, op_children: op_children, service_item: service_item, source_index: source_index)
   let dry_run_field = "\n    pub dry_run: crate::dry_run::DryRunMode,"
   concat(derives, "\npub struct ", name, " {\n", config_fields, dry_run_field, "\n}")
 }
 
-fn emit_service_config_fields(fallback_transport: Node, op_children: List<Node>, service_item: Node) -> String {
-  let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children)
+fn emit_service_config_fields(fallback_transport: Node, op_children: List<Node>, service_item: Node, source_index: NewlineIndex?) -> String {
+  let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children, source_index: source_index)
   // Service-level auth_source also requires the auth_token field
-  let has_svc_auth = match service_config_auth_source(n: service_item) { Some { value: _ } => true  None => false }
+  let has_svc_auth = match service_config_auth_source(n: service_item, source_index: source_index) { Some { value: _ } => true  None => false }
   let fs = if has_svc_auth { ServiceFieldSet { has_rest: fs.has_rest, has_shell: fs.has_shell, has_file: fs.has_file, has_auth: true } }
   else { fs }
   let decls = service_field_decls(fs: fs, t: language_spec(target: Rust).service_fields)
@@ -3794,7 +3794,7 @@ fn emit_service_config_fields(fallback_transport: Node, op_children: List<Node>,
 
 fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, registry: Map<String, ItemInfo>, shared_types: Map<String, Bool>, env: TypeEnv, service_item: Node) -> String {
   let depth = 0
-  let new_method = emit_service_new_method(name: name, fallback_transport: transport, op_children: op_children, service_item: service_item)
+  let new_method = emit_service_new_method(name: name, fallback_transport: transport, op_children: op_children, service_item: service_item, source_index: env.source_index)
   let method_strs = op_children |> map(op_node =>
     emit_operation_method(service_name: name, transport: transport, op_node: op_node, registry: registry, depth: depth + 1, shared_types: shared_types, env: env, service_item: service_item)
   )
@@ -3807,16 +3807,16 @@ fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, reg
 // Scans all operations to determine which transport fields to initialize.
 // When auth_source is present, emits credential acquisition (e.g., env var read)
 // instead of the default empty auth_token.
-fn emit_service_new_method(name: String, fallback_transport: Node, op_children: List<Node>, service_item: Node) -> String {
-  let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children)
-  let has_svc_auth = match service_config_auth_source(n: service_item) { Some { value: _ } => true  None => false }
+fn emit_service_new_method(name: String, fallback_transport: Node, op_children: List<Node>, service_item: Node, source_index: NewlineIndex?) -> String {
+  let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children, source_index: source_index)
+  let has_svc_auth = match service_config_auth_source(n: service_item, source_index: source_index) { Some { value: _ } => true  None => false }
   let fs = if has_svc_auth { ServiceFieldSet { has_rest: fs.has_rest, has_shell: fs.has_shell, has_file: fs.has_file, has_auth: true } }
   else { fs }
   // Find a default base_url from the service-level REST transport or from any REST op
   let base_url_default = if fs.has_rest {
-    let fallback_is_rest = is_rest_transport(t: fallback_transport)
+    let fallback_is_rest = is_rest_transport(t: fallback_transport, source_index: source_index)
     let from_fallback = if fallback_is_rest {
-      match transport_base_url(t: fallback_transport) {
+      match transport_base_url(t: fallback_transport, source_index: source_index) {
         Some { value: bu } => match bu.expr_data {
           ExprLiteral { value: LitStr { value: s } } => s
           _ => ""
@@ -3829,9 +3829,9 @@ fn emit_service_new_method(name: String, fallback_transport: Node, op_children: 
   let ctors = service_field_ctors(fs: fs, t: language_spec(target: Rust).service_fields)
   let ctors = ctors |> map(c => apply_type_template1(template: c, arg0: base_url_default))
   // Override auth_token initialization when auth_source is declared
-  let ctors = match service_config_auth_source(n: service_item) {
+  let ctors = match service_config_auth_source(n: service_item, source_index: source_index) {
     Some { value: src } => ctors |> map(c =>
-      if contains(c, "auth_token") { emit_auth_source_ctor(source_expr: src) }
+      if contains(c, "auth_token") { emit_auth_source_ctor(source_expr: src, source_index: source_index) }
       else { c }
     )
     None => ctors
@@ -3851,9 +3851,9 @@ fn emit_service_new_method(name: String, fallback_transport: Node, op_children: 
 // that has been through resolve + infer. Dispatch on the variant identity
 // (closed set: CredentialSource variants in std/credentials.dag) to generate
 // target-specific acquisition code.
-fn emit_auth_source_ctor(source_expr: Node) -> String {
+fn emit_auth_source_ctor(source_expr: Node, source_index: NewlineIndex?) -> String {
   match source_expr.expr_data {
-    ExprRecordLit => match record_lit_type_name(texpr: source_expr) {
+    ExprRecordLit => match record_lit_type_name_at(texpr: source_expr, source_index: source_index) {
       Some { value: variant } =>
       if variant == "EnvVar" {
         // Extract the 'name' field from the record literal
@@ -3875,8 +3875,8 @@ fn emit_auth_source_ctor(source_expr: Node) -> String {
 }
 
 // Extract modifier names from properties.
-fn emit_modifier_doc_from_props(properties: List<Node>) -> String {
-  let names = extract_modifier_names(properties: properties)
+fn emit_modifier_doc_from_props(properties: List<Node>, source_index: NewlineIndex?) -> String {
+  let names = extract_modifier_names(properties: properties, source_index: source_index)
   if names |> count == 0 {
     ""
   } else {
@@ -3907,7 +3907,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
     "} else {\n",
     make_indent(level: depth + 2),real_body, "\n",
     "}")
-  let modifier_doc = emit_modifier_doc_from_props(properties: op_node.properties)
+  let modifier_doc = emit_modifier_doc_from_props(properties: op_node.properties, source_index: env.source_index)
   let items = rust_items()
   concat(modifier_doc, rust_visibility_prefix(), items.async_prefix, items.func_keyword, " ", emit_ident(name: op_text, target: Rust),
     "(", all_params, ") -> Result<", ret_type, ", Box<dyn std::error::Error>> {\n",
@@ -3936,9 +3936,9 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
 }
 
 fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, service_item: Node, op_node: Node, source_index: NewlineIndex?) -> String {
-  if is_rest_transport(t: transport) { emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_index: source_index) }
+  if is_rest_transport(t: transport, source_index: source_index) { emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_index: source_index) }
   else if is_shell_transport(t: transport) { emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred, op_node: op_node, source_index: source_index) }
-  else if is_file_transport(t: transport) { emit_file_call(op_name: op_name, inferred: inferred) }
+  else if is_file_transport(t: transport, source_index: source_index) { emit_file_call(op_name: op_name, inferred: inferred) }
   else { emit_local_call(op_name: op_name) }
 }
 
@@ -3949,14 +3949,14 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
   let auth_line = emit_rest_auth_line(transport: transport, service_item: service_item, http_method: http_method, source_index: source_index)
   let query_line = emit_rest_query_line(transport: transport, source_index: source_index)
   let body_line = emit_rest_body_line(transport: transport, source_index: source_index)
-  let headers = transport_headers(t: transport)
+  let headers = transport_headers(t: transport, source_index: source_index)
   let header_lines = headers |> map(h =>
     concat("let request = request.header(\"", h.name, "\", ",
       emit_simple_expr(expr: field_init_node_value(n: h), target: Rust, source_index: source_index), ");")
   )
   let send_line = "let response = request.send().await?;"
   // RE-1e: Response code mapping
-  let response_handling = emit_response_code_handling(op_node: op_node)
+  let response_handling = emit_response_code_handling(op_node: op_node, source_index: source_index)
   let all_lines = concat([client_init, url_line, auth_line],
     header_lines, [query_line, body_line, send_line, response_handling])
     |> filter(l => l != "")
@@ -3966,7 +3966,7 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
 // RE-1a: HTTP method dispatch — reads transport method field.
 // Fail-closed: unknown method or non-identifier expression → compile_error!
 fn emit_rest_http_method(transport: Node, source_index: NewlineIndex?) -> String {
-  match transport_method(t: transport) {
+  match transport_method(t: transport, source_index: source_index) {
     Some { value: m } => match m.inferred {
       // Structural dispatch: inferred type from transport property inference.
       // HttpMethod variants are RFC 9110 uppercase; reqwest uses lowercase.
@@ -3988,7 +3988,7 @@ fn emit_rest_http_method(transport: Node, source_index: NewlineIndex?) -> String
 // String interpolation paths like "/repos/{owner}/{repo}" produce ExprStringInterp
 // with structured Text + Interpolation parts — no ad-hoc template scanning needed.
 fn emit_rest_url_line(transport: Node, op_name: String, source_index: NewlineIndex?) -> String {
-  match transport_path_template(t: transport) {
+  match transport_path_template(t: transport, source_index: source_index) {
     Some { value: path_node } => match path_node.expr_data {
       ExprLiteral { value: LitStr { value: path_str } } =>
         concat("let url = format!(\"{}", escape_string_literal_body(s: path_str), "\", self.base_url);")
@@ -4033,8 +4033,8 @@ fn emit_rest_url_line(transport: Node, op_name: String, source_index: NewlineInd
 // Structural dispatch: auth scheme is a resolved variant (Bearer, Header, etc.)
 // after transport property inference. ExprVar = unit variant, ExprCall = payload variant.
 fn emit_rest_auth_line(transport: Node, service_item: Node, http_method: String, source_index: NewlineIndex?) -> String {
-  let auth_scheme = service_config_auth(n: service_item)
-  let auth_input = service_config_auth_input(n: service_item)
+  let auth_scheme = service_config_auth(n: service_item, source_index: source_index)
+  let auth_input = service_config_auth_input(n: service_item, source_index: source_index)
   // Use service-level auth scheme if available
   match auth_scheme {
     Some { value: auth } => {
@@ -4045,7 +4045,7 @@ fn emit_rest_auth_line(transport: Node, service_item: Node, http_method: String,
       // still appears in the .dag definition for both cases — filtering it
       // from the emitted signature when auth_source is present requires
       // operation parameter pruning at emit time (tracked as RE follow-up #10).
-      let has_auth_source = match service_config_auth_source(n: service_item) { Some { value: _ } => true  None => false }
+      let has_auth_source = match service_config_auth_source(n: service_item, source_index: source_index) { Some { value: _ } => true  None => false }
       let token_param = if has_auth_source { "self.auth_token" }
       else {
         match auth_input {
@@ -4077,12 +4077,12 @@ fn emit_rest_auth_line(transport: Node, service_item: Node, http_method: String,
     }
     None => {
       // No service-level auth: use transport-level auth properties
-      if transport_has_auth(t: transport) {
-        let header_name = match transport_auth_header_name(t: transport) {
+      if transport_has_auth(t: transport, source_index: source_index) {
+        let header_name = match transport_auth_header_name(t: transport, source_index: source_index) {
           Some { value: h } => h
           None => "Authorization"
         }
-        let token_node = match transport_auth_token(t: transport) {
+        let token_node = match transport_auth_token(t: transport, source_index: source_index) {
           Some { value: tn } => emit_simple_expr(expr: tn, target: Rust, source_index: source_index)
           None => "\"\""
         }
@@ -4098,11 +4098,11 @@ fn emit_rest_auth_line(transport: Node, service_item: Node, http_method: String,
 // RE-1c: Query parameters — reads transport query field.
 // Query values are emitted structurally via emit_simple_expr (not name extraction).
 fn emit_rest_query_line(transport: Node, source_index: NewlineIndex?) -> String {
-  match transport_query(t: transport) {
+  match transport_query(t: transport, source_index: source_index) {
     Some { value: q } => {
       // Query is a record-like expression whose children are field-init nodes
       let pairs = q.children |> map(fi =>
-        concat("(\"", field_init_node_name(n: fi), "\", &",
+        concat("(\"", field_init_node_name_at(n: fi, source_index: source_index), "\", &",
           emit_simple_expr(expr: field_init_node_value(n: fi), target: Rust, source_index: source_index),
           ".to_string())")
       )
@@ -4118,11 +4118,11 @@ fn emit_rest_query_line(transport: Node, source_index: NewlineIndex?) -> String 
 // Body must be ExprRecordLit (field-init children). Fail-closed: any other
 // expression shape produces compile_error! — no silent fabrication.
 fn emit_rest_body_line(transport: Node, source_index: NewlineIndex?) -> String {
-  match transport_request_body(t: transport) {
+  match transport_request_body(t: transport, source_index: source_index) {
     Some { value: b } => match b.expr_data {
       ExprRecordLit => {
         let fields = b.children |> map(fi =>
-          concat("\"", field_init_node_name(n: fi), "\": ",
+          concat("\"", field_init_node_name_at(n: fi, source_index: source_index), "\": ",
             emit_simple_expr(expr: field_init_node_value(n: fi), target: Rust, source_index: source_index))
         )
         if fields |> count > 0 {
@@ -4144,8 +4144,8 @@ fn has_response_prefix(name: String) -> Bool {
 }
 
 // RE-1i: Extract from_key path from an output field's properties.
-fn child_from_key(ch: Node) -> String? {
-  match ch.properties |> filter(p => field_init_node_name(n: p) == "from_key") |> first {
+fn child_from_key(ch: Node, source_index: NewlineIndex?) -> String? {
+  match ch.properties |> filter(p => field_init_node_name_at(n: p, source_index: source_index) == "from_key") |> first {
     Some { value: prop } => match field_init_node_value(n: prop).expr_data {
       ExprLiteral { value: LitStr { value: s } } => Some { value: s }
       _ => none
@@ -4155,10 +4155,10 @@ fn child_from_key(ch: Node) -> String? {
 }
 
 // RE-1i: Check if any output field of an operation has a from_key path.
-fn has_from_key_fields(op_node: Node) -> Bool {
+fn has_from_key_fields(op_node: Node, source_index: NewlineIndex?) -> Bool {
   let rt = resolved_type(n: op_node)
   let is_conj = rt.connective == Conj
-  let from_key_count = rt.children |> filter(ch => match child_from_key(ch: ch) { Some { value: _ } => true  None => false }) |> count
+  let from_key_count = rt.children |> filter(ch => match child_from_key(ch: ch, source_index: source_index) { Some { value: _ } => true  None => false }) |> count
   is_conj && from_key_count > 0
 }
 
@@ -4192,12 +4192,12 @@ fn emit_json_value_extract(var_name: String, from_path: String, dag_type_name: S
 
 // RE-1i: Emit JSON pointer extraction for all output fields.
 // Deserializes to serde_json::Value, extracts each field by path, returns tuple.
-fn emit_from_key_extraction(op_node: Node) -> String {
+fn emit_from_key_extraction(op_node: Node, source_index: NewlineIndex?) -> String {
   let rt = resolved_type(n: op_node)
   let children = rt.children
   let extract_lines = children |> map(ch =>
     let field_name = emit_ident(name: ch.name, target: Rust)
-    let from_path = match child_from_key(ch: ch) {
+    let from_path = match child_from_key(ch: ch, source_index: source_index) {
       Some { value: p } => p
       None => ch.name
     }
@@ -4220,17 +4220,17 @@ fn emit_from_key_extraction(op_node: Node) -> String {
     "\nOk(", tuple_body, ")")
 }
 
-fn emit_response_code_handling(op_node: Node) -> String {
-  let use_from_key = has_from_key_fields(op_node: op_node)
-  let response_props = op_node.properties |> filter(p => has_response_prefix(name: field_init_node_name(n: p)))
+fn emit_response_code_handling(op_node: Node, source_index: NewlineIndex?) -> String {
+  let use_from_key = has_from_key_fields(op_node: op_node, source_index: source_index)
+  let response_props = op_node.properties |> filter(p => has_response_prefix(name: field_init_node_name_at(n: p, source_index: source_index)))
   if response_props |> count == 0 {
     if use_from_key {
-      emit_from_key_extraction(op_node: op_node)
+      emit_from_key_extraction(op_node: op_node, source_index: source_index)
     } else {
       "let result = response.json().await?;\nOk(result)"
     }
   } else {
-    let arms = response_props |> map(p => emit_response_arm(prop: p, op_node: op_node, use_from_key: use_from_key))
+    let arms = response_props |> map(p => emit_response_arm(prop: p, op_node: op_node, use_from_key: use_from_key, source_index: source_index))
     concat(
       "let status = response.status().as_u16();\n",
       "match status {\n",
@@ -4240,8 +4240,8 @@ fn emit_response_code_handling(op_node: Node) -> String {
   }
 }
 
-fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool) -> String {
-  let name = field_init_node_name(n: prop)
+fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, source_index: NewlineIndex?) -> String {
+  let name = field_init_node_name_at(n: prop, source_index: source_index)
   let code_str = substring(s: name, start: 9, end: string_length(s: name))
   // RFC 9110: 2xx = success, everything else = error
   let is_success = if string_length(s: code_str) >= 1 {
@@ -4255,7 +4255,7 @@ fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool) -> String {
     else { code_str }
   if is_success {
     if use_from_key {
-      concat("    ", pattern, " => { ", emit_from_key_extraction(op_node: op_node), " },")
+      concat("    ", pattern, " => { ", emit_from_key_extraction(op_node: op_node, source_index: source_index), " },")
     } else {
       concat("    ", pattern, " => { let result = response.json().await?; Ok(result) },")
     }
@@ -4271,11 +4271,11 @@ fn has_exit_prefix(name: String) -> Bool {
 }
 
 fn emit_exit_code_handling(op_node: Node, inferred: Node, source_index: NewlineIndex?) -> String {
-  let exit_props = op_node.properties |> filter(p => has_exit_prefix(name: field_init_node_name(n: p)))
+  let exit_props = op_node.properties |> filter(p => has_exit_prefix(name: field_init_node_name_at(n: p, source_index: source_index)))
   if exit_props |> count == 0 {
     emit_shell_return(inferred: inferred, source_index: source_index)
   } else {
-    let has_nonzero = exit_props |> any(p => field_init_node_name(n: p) == "exit_nonzero")
+    let has_nonzero = exit_props |> any(p => field_init_node_name_at(n: p, source_index: source_index) == "exit_nonzero")
     let exit_arms = exit_props |> map(p => emit_exit_arm(prop: p, inferred: inferred, source_index: source_index))
     let default_arm = if has_nonzero { "" }
       else { "\n    _ => { let stderr = String::from_utf8_lossy(&output.stderr).to_string(); Err(stderr.into()) }," }
@@ -4289,7 +4289,7 @@ fn emit_exit_code_handling(op_node: Node, inferred: Node, source_index: NewlineI
 }
 
 fn emit_exit_arm(prop: Node, inferred: Node, source_index: NewlineIndex?) -> String {
-  let name = field_init_node_name(n: prop)
+  let name = field_init_node_name_at(n: prop, source_index: source_index)
   let code_str = substring(s: name, start: 5, end: string_length(s: name))
   let pattern = if code_str == "nonzero" { "_" }
     else { code_str }
@@ -4309,7 +4309,7 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
     |> filter(p => param_node_type_expr(n: p).return_cardinality == CardOptional)
     |> fold(init: empty_map(), f: (acc, p) => map_insert(acc, param_node_name_at(n: p, source_index: source_index), true))
   // RE-1g: Shell stdin — if present, use spawn + write + wait_with_output
-  let has_stdin = match transport_stdin(t: transport) {
+  let has_stdin = match transport_stdin(t: transport, source_index: source_index) {
     Some { value: _ } => true
     None => false
   }
@@ -4331,15 +4331,15 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
       concat("    .arg(", emit_shell_argv_element(arg: arg, optional_params: optional_params, source_index: source_index), ")")
     )
   } else { [] }
-  let env_entries = transport_env(t: transport)
+  let env_entries = transport_env(t: transport, source_index: source_index)
   let env_lines = env_entries |> map(e =>
-    concat("    .env(\"", field_init_node_name(n: e), "\", ", emit_simple_expr(expr: field_init_node_value(n: e), target: Rust, source_index: source_index), ")")
+    concat("    .env(\"", field_init_node_name_at(n: e, source_index: source_index), "\", ", emit_simple_expr(expr: field_init_node_value(n: e), target: Rust, source_index: source_index), ")")
   )
   let wd_line = "    .current_dir(self.working_dir.as_deref().unwrap_or(\".\"))"
   if has_stdin {
-    let stdin_expr = transport_stdin(t: transport).value
+    let stdin_expr = transport_stdin(t: transport, source_index: source_index).value
     let stdin_var = match stdin_expr.expr_data {
-      ExprVar { binding_kind: _ } => emit_ident(name: expr_var_name(texpr: stdin_expr), target: Rust)
+      ExprVar { binding_kind: _ } => emit_ident(name: expr_var_name_at(texpr: stdin_expr, source_index: source_index), target: Rust)
       _ => emit_simple_expr(expr: stdin_expr, target: Rust, source_index: source_index)
     }
     let spawn_line = "    .stdin(std::process::Stdio::piped())\n    .stdout(std::process::Stdio::piped())\n    .stderr(std::process::Stdio::piped())"

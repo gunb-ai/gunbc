@@ -15,7 +15,7 @@ module v2.compiler.emit_python
 import v2.std.core {
   Node, InferredNode, Resolved, CompilerError,
   VarBindingKind, FunctionValueBinding,
-  import_is_all, import_specific_names, module_imports, module_items,
+  import_is_all, import_specific_names_at, module_imports, module_items,
   param_node_type_expr,
   authored_name_at, NewlineIndex,
   expr_var_name_at, expr_call_func_at, expr_method_name_at, let_binding_name_at,
@@ -39,15 +39,15 @@ import v2.std.core {
   ServiceMethodSemantics,
   FieldSummary, TupleFirst, TupleSecond,
   Text, Interpolation,
-  arg_name, arg_value, arm_body, arm_pattern, arm_guard,
-  field_init_node_name, field_init_node_name_at, field_init_node_value,
+  arg_value, arm_body, arm_pattern, arm_guard,
+  field_init_node_name_at, field_init_node_value,
   if_condition, if_then_branch, if_else_branch,
   match_scrutinee, match_arm_nodes,
   let_value, let_body,
   field_access_base, field_access_field_at, method_receiver, expr_field_access_summary, expr_method_call_semantics,
-  record_lit_type_name,
+  record_lit_type_name_at,
   lambda_body, cast_expr, cast_target, return_value,
-  foreach_variable, foreach_variable_at, foreach_collection, foreach_body, method_arg_nodes,
+  foreach_variable_at, foreach_collection, foreach_body, method_arg_nodes,
   index_base, index_expr, slice_base, slice_start, slice_end,
   with_required_cardinality,
   Connective, Conj, Disj,
@@ -280,7 +280,7 @@ fn emit_py_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) ->
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
   let prelude = emit_py_prelude(typed_module: typed_module)
-  let imports_str = emit_py_imports(imports: module_imports(n: m))
+  let imports_str = emit_py_imports(imports: module_imports(n: m), source_index: scope.type_env.source_index)
   let imports_section = if imports_str == "" { "" } else { concat("\n", imports_str) }
   let items_str = typed_module.items
     |> map(item => emit_py_typed_item(item: item, registry: registry, scope: scope))
@@ -297,7 +297,7 @@ fn emit_py_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) ->
 // Import emission
 // =========================================================================
 
-fn emit_py_imports(imports: List<Node>) -> String {
+fn emit_py_imports(imports: List<Node>, source_index: NewlineIndex?) -> String {
   if imports |> count == 0 {
     ""
   } else {
@@ -307,7 +307,7 @@ fn emit_py_imports(imports: List<Node>) -> String {
       if import_is_all(n: imp) {
         concat(items.import_from_keyword, " ", mod_name, " ", items.import_keyword, " *")
       } else {
-          let specific_names = import_specific_names(n: imp)
+          let specific_names = import_specific_names_at(n: imp, source_index: source_index)
           if specific_names |> count == 0 {
             ""
           } else {
@@ -461,7 +461,7 @@ fn emit_py_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, 
   let params_str = emit_py_params(params: params, source_index: si)
   let ret_str = emit_py_inferred(inferred: inferred, source_index: si)
   let body_scope = build_params_scope(scope: scope, params: params)
-  let use_tco = is_tco_eligible(name: name, body: body, registry: registry)
+  let use_tco = is_tco_eligible(name: name, body: body, registry: registry, source_index: si)
   if use_tco {
     let body_str = emit_py_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope, depth: depth + 1)
     let kw = language_spec(target: Python).items.func_keyword
@@ -598,7 +598,7 @@ fn emit_py_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferSco
 }
 
 fn emit_py_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_py_typed_record_lit(type_name: record_lit_type_name(texpr: expr), fields: expr.children, registry: registry, scope: scope, depth: depth)
+  emit_py_typed_record_lit(type_name: record_lit_type_name_at(texpr: expr, source_index: scope.type_env.source_index), fields: expr.children, registry: registry, scope: scope, depth: depth)
 }
 
 fn emit_py_expr_string_interp(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
@@ -987,7 +987,7 @@ fn emit_py_service_def(
   let safe_name = sanitize_service_name(name: authored_name(env: env, node: item))
   let transport = service_fallback_transport(item: item)
   let op_children = item.children
-  let init_method = emit_py_service_init(fallback_transport: transport, op_children: op_children)
+  let init_method = emit_py_service_init(fallback_transport: transport, op_children: op_children, source_index: env.source_index)
   let methods = op_children |> map(op_node =>
     emit_py_operation_method(service_name: safe_name, transport: transport, op_node: op_node, registry: registry, depth: depth + 1, env: env)
   )
@@ -997,8 +997,8 @@ fn emit_py_service_def(
     make_indent(level: depth + 1), methods_str)
 }
 
-fn emit_py_service_init(fallback_transport: Node, op_children: List<Node>) -> String {
-  let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children)
+fn emit_py_service_init(fallback_transport: Node, op_children: List<Node>, source_index: NewlineIndex?) -> String {
+  let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children, source_index: source_index)
   let params = service_field_decls(fs: fs, t: language_spec(target: Python).service_fields)
   let assigns = service_field_ctors(fs: fs, t: language_spec(target: Python).service_fields)
   if params |> count == 0 {
@@ -1031,9 +1031,9 @@ fn emit_py_operation_method(service_name: String, transport: Node, op_node: Node
 }
 
 fn emit_py_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, source_index: NewlineIndex?) -> String {
-  if is_rest_transport(t: transport) { emit_py_rest_call(op_name: op_name, transport: transport, source_index: source_index) }
+  if is_rest_transport(t: transport, source_index: source_index) { emit_py_rest_call(op_name: op_name, transport: transport, source_index: source_index) }
   else if is_shell_transport(t: transport) { emit_py_shell_call(op_name: op_name, transport: transport, source_index: source_index) }
-  else if is_file_transport(t: transport) { emit_py_file_call(op_name: op_name) }
+  else if is_file_transport(t: transport, source_index: source_index) { emit_py_file_call(op_name: op_name) }
   else { emit_py_local_call(op_name: op_name) }
 }
 
@@ -1050,14 +1050,14 @@ fn emit_py_rest_call(op_name: String, transport: Node, source_index: NewlineInde
 }
 
 fn emit_py_headers_dict(transport: Node, source_index: NewlineIndex?) -> String {
-  let auth_entry = if transport_has_auth(t: transport) {
-    let header_name = match transport_auth_header_name(t: transport) {
+  let auth_entry = if transport_has_auth(t: transport, source_index: source_index) {
+    let header_name = match transport_auth_header_name(t: transport, source_index: source_index) {
       Some { value: h } => h
       None => "Authorization"
     }
     concat("\"", header_name, "\": self.auth_token, ")
   } else { "" }
-  let hdrs = transport_headers(t: transport)
+  let hdrs = transport_headers(t: transport, source_index: source_index)
   let header_entries = hdrs |> map(h =>
     concat("\"", h.name, "\": ", emit_simple_expr(expr: field_init_node_value(n: h), target: Python, source_index: source_index))
   )
@@ -1070,7 +1070,7 @@ fn emit_py_headers_dict(transport: Node, source_index: NewlineIndex?) -> String 
 }
 
 fn emit_py_shell_call(op_name: String, transport: Node, source_index: NewlineIndex?) -> String {
-  let envs = transport_env(t: transport)
+  let envs = transport_env(t: transport, source_index: source_index)
   let env_dict_entries = envs |> map(e =>
     concat("\"", e.name, "\": ", emit_simple_expr(expr: field_init_node_value(n: e), target: Python, source_index: source_index))
   )

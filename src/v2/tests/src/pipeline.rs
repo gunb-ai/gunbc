@@ -6932,7 +6932,7 @@ fn diag_render_node_type_evidence() {
         eprintln!("\n=== render_node_type ===");
         eprintln!("  path_calls: {}", path_calls);
 
-        let evidence = collect_self_call_evidence(entry.body.clone(), "render_node_type".to_string());
+        let evidence = collect_self_call_evidence(entry.body.clone(), "render_node_type".to_string(), None);
         eprintln!("  evidence count (self-calls found): {}", evidence.len());
         for (i, call_ev) in evidence.iter().enumerate() {
             let has_strict = call_ev.iter().any(|r| {
@@ -7036,6 +7036,7 @@ fn diag_emitter_scc() {
             let target_evidence = collect_callee_evidence(
                 entry.body.clone(),
                 "emit_rust_expr_match".to_string(),
+                None,
             );
             eprintln!("\n  collect_callee_evidence(emit_typed_expr → emit_rust_expr_match):");
             eprintln!("    calls found: {}", target_evidence.len());
@@ -7053,7 +7054,7 @@ fn diag_emitter_scc() {
             }
 
             // Also check self evidence
-            let self_ev = collect_self_call_evidence(entry.body.clone(), "emit_typed_expr".to_string());
+            let self_ev = collect_self_call_evidence(entry.body.clone(), "emit_typed_expr".to_string(), None);
             eprintln!("\n  collect_self_call_evidence(emit_typed_expr):");
             eprintln!("    self-calls found: {}", self_ev.len());
             for (i, call_ev) in self_ev.iter().enumerate() {
@@ -7076,7 +7077,7 @@ fn diag_emitter_scc() {
     // Check apply_named_template_nested
     let entry = func_entries.iter().find(|e| e.name == "apply_named_template_nested");
     if let Some(entry) = entry {
-        let self_ev = collect_self_call_evidence(entry.body.clone(), "apply_named_template_nested".to_string());
+        let self_ev = collect_self_call_evidence(entry.body.clone(), "apply_named_template_nested".to_string(), None);
         eprintln!("\n=== apply_named_template_nested ===");
         eprintln!("  self-calls: {}", self_ev.len());
         for (i, call_ev) in self_ev.iter().enumerate() {
@@ -7374,11 +7375,8 @@ fn ownership_stage0_census() {
     eprintln!("  TOTAL lines:            {}", total_lines);
     eprintln!("  clones/line:            {:.3}", total_clones as f64 / total_lines as f64);
 
-    // 2026-04-10 baseline: 23784 clones (+51 from workflow func CLI generation)
-    // 2026-04-10: +3 from new compiler helpers (optional_evidence_meet,
-    // map_evidence_merge_at, max_usage_by_fan_out, map_usage_merge_at
-    // in stage0 via std/termination.dag and ownership.dag).
-    const CLONE_RATCHET: usize = 23787;
+    // 2026-04-10 baseline: 23969 clones (+144 _at accessor migration, +38 per-file resolve indices)
+    const CLONE_RATCHET: usize = 23969;
     const TRY_UNWRAP_RATCHET: usize = 8;
 
     assert!(total_clones <= CLONE_RATCHET, ".clone() {} > ratchet {}", total_clones, CLONE_RATCHET);

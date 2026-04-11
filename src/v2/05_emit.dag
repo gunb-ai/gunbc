@@ -20,7 +20,7 @@ module v2.compiler.emit
 import v2.std.core {
   Node, ErrorNode, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   module_imports, module_items,
-  param_node_name, param_node_name_at, param_node_type_expr, param_node_default_value,
+  param_node_name_at, param_node_type_expr, param_node_default_value,
   NewlineIndex, authored_name_at,
   expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at,
   ExprData, NoExprData,
@@ -35,10 +35,10 @@ import v2.std.core {
   TextFile, SourceSpan,
   BinOp, UnaryOpKind, NullCoalesce,
   DeclaredFuncSig,
-  lambda_param_names_at, record_lit_type_name,
+  lambda_param_names_at, record_lit_type_name_at,
   arm_body, arm_pattern, arm_guard,
-  arg_name, arg_name_at, arg_value,
-  field_init_node_name, field_init_node_name_at, field_init_node_value,
+  arg_name_at, arg_value,
+  field_init_node_name_at, field_init_node_value,
   if_condition, if_then_branch, if_else_branch,
   match_scrutinee, match_arm_nodes,
   let_value, let_body,
@@ -361,7 +361,7 @@ fn typed_named_arg_matches(arg: Node, name: String, source_index: NewlineIndex?)
 }
 
 fn order_typed_call_args(args: List<Node>, func: String, scope: InferScope) -> List<Node> {
-  let has_unnamed = args |> any(arg => arg_name(n: arg) == none)
+  let has_unnamed = args |> any(arg => arg_name_at(n: arg, source_index: scope.type_env.source_index) == none)
   if has_unnamed {
     args
   } else {
@@ -370,23 +370,22 @@ fn order_typed_call_args(args: List<Node>, func: String, scope: InferScope) -> L
       Some { value: sig } => {
         // Boundary: sig.params come from the declaring module's source file,
         // but scope.type_env.source_index is the caller's file. Cross-module
-        // ident_span recovery fails the file check and falls back to node.name.
-        // Use param_node_name until names are precomputed at resolve time.
+        // ident_span recovery fails the file check — _at falls back to node.name.
         let arg_map = args |> fold(init: empty_map(), f: (acc, arg) =>
-          let n = arg_name(n: arg)
+          let n = arg_name_at(n: arg, source_index: scope.type_env.source_index)
           if n != none { map_insert(acc, n.value, arg) } else { acc }
         )
         let param_name_set = sig.params |> fold(init: empty_map(), f: (acc, param) =>
-          map_insert(acc, param_node_name(n: param), true)
+          map_insert(acc, param_node_name_at(n: param, source_index: scope.type_env.source_index), true)
         )
         let ordered = sig.params |> flat_map(param =>
-          match map_get(arg_map, param_node_name(n: param)) {
+          match map_get(arg_map, param_node_name_at(n: param, source_index: scope.type_env.source_index)) {
             Some { value: arg } => [arg]
             None => []
           }
         )
         let leftovers = args |> filter(arg =>
-          let n = arg_name(n: arg)
+          let n = arg_name_at(n: arg, source_index: scope.type_env.source_index)
           if n == none {
             true
           } else {
@@ -1182,10 +1181,10 @@ fn effective_operation_transport(op_node: Node, fallback: Node) -> Node {
 
 // Structural transport queries: check if any operation in the service
 // uses a transport with specific structural properties.
-fn service_has_rest(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  let from_fallback = is_rest_transport(t: fallback_transport)
+fn service_has_rest(fallback_transport: Node, op_children: List<Node>, source_index: NewlineIndex?) -> Bool {
+  let from_fallback = is_rest_transport(t: fallback_transport, source_index: source_index)
   let from_ops = op_children |> any(op =>
-    if op.transport != none { is_rest_transport(t: op.transport.value) } else { false }
+    if op.transport != none { is_rest_transport(t: op.transport.value, source_index: source_index) } else { false }
   )
   from_fallback || from_ops
 }
@@ -1198,33 +1197,33 @@ fn service_has_shell(fallback_transport: Node, op_children: List<Node>) -> Bool 
   from_fallback || from_ops
 }
 
-fn service_has_file(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  let from_fallback = is_file_transport(t: fallback_transport)
+fn service_has_file(fallback_transport: Node, op_children: List<Node>, source_index: NewlineIndex?) -> Bool {
+  let from_fallback = is_file_transport(t: fallback_transport, source_index: source_index)
   let from_ops = op_children |> any(op =>
-    if op.transport != none { is_file_transport(t: op.transport.value) } else { false }
+    if op.transport != none { is_file_transport(t: op.transport.value, source_index: source_index) } else { false }
   )
   from_fallback || from_ops
 }
 
 // Check if any REST operation (or the service-level fallback) has auth.
-fn service_has_rest_auth(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  let fallback_is_rest = is_rest_transport(t: fallback_transport)
+fn service_has_rest_auth(fallback_transport: Node, op_children: List<Node>, source_index: NewlineIndex?) -> Bool {
+  let fallback_is_rest = is_rest_transport(t: fallback_transport, source_index: source_index)
   let from_fallback = if fallback_is_rest {
-    transport_has_auth(t: fallback_transport)
+    transport_has_auth(t: fallback_transport, source_index: source_index)
   } else { false }
   let from_ops = op_children |> any(op =>
     if op.transport != none {
       let t = op.transport.value
-      if is_rest_transport(t: t) { transport_has_auth(t: t) } else { false }
+      if is_rest_transport(t: t, source_index: source_index) { transport_has_auth(t: t, source_index: source_index) } else { false }
     } else { false }
   )
   from_fallback || from_ops
 }
 
 // Extract operation modifier names from a list of property field inits.
-fn extract_modifier_names(properties: List<Node>) -> List<String> {
+fn extract_modifier_names(properties: List<Node>, source_index: NewlineIndex?) -> List<String> {
   properties |> flat_map(p =>
-    match field_init_operation_modifier(field_init: p) {
+    match field_init_operation_modifier(field_init: p, source_index: source_index) {
       Some { value: modifier } => [operation_modifier_name(modifier: modifier)]
       None => []
     }
@@ -1241,12 +1240,12 @@ type ServiceFieldSet {
   has_auth: Bool
 }
 
-fn compute_service_fields(fallback_transport: Node, op_children: List<Node>) -> ServiceFieldSet {
+fn compute_service_fields(fallback_transport: Node, op_children: List<Node>, source_index: NewlineIndex?) -> ServiceFieldSet {
   ServiceFieldSet {
-    has_rest: service_has_rest(fallback_transport: fallback_transport, op_children: op_children),
+    has_rest: service_has_rest(fallback_transport: fallback_transport, op_children: op_children, source_index: source_index),
     has_shell: service_has_shell(fallback_transport: fallback_transport, op_children: op_children),
-    has_file: service_has_file(fallback_transport: fallback_transport, op_children: op_children),
-    has_auth: service_has_rest_auth(fallback_transport: fallback_transport, op_children: op_children)
+    has_file: service_has_file(fallback_transport: fallback_transport, op_children: op_children, source_index: source_index),
+    has_auth: service_has_rest_auth(fallback_transport: fallback_transport, op_children: op_children, source_index: source_index)
   }
 }
 
@@ -1426,21 +1425,21 @@ fn block_stmts_init(stmts: List<Node>) -> List<Node> {
 // emit_go_fn_def, and emit_py_fn_def.
 // =========================================================================
 
-fn is_tco_eligible(name: String, body: Node, registry: Map<String, ItemInfo>) -> Bool {
+fn is_tco_eligible(name: String, body: Node, registry: Map<String, ItemInfo>, source_index: NewlineIndex?) -> Bool {
   match lookup_item(registry: registry, name: name) {
     Some { value: info } => info.is_self_recursive && info.has_non_tail_self_call == false
     None => {
-      expr_has_self_call(texpr: body, fn_name: name)
-        && expr_has_non_tail_self_call(texpr: body, fn_name: name, in_tail: true) == false
+      expr_has_self_call(texpr: body, fn_name: name, source_index: source_index)
+        && expr_has_non_tail_self_call(texpr: body, fn_name: name, in_tail: true, source_index: source_index) == false
     }
   }
 }
 
 // is_self_recursive check -- used by Rust stacker wrapping.
-fn is_self_recursive(name: String, body: Node, registry: Map<String, ItemInfo>) -> Bool {
+fn is_self_recursive(name: String, body: Node, registry: Map<String, ItemInfo>, source_index: NewlineIndex?) -> Bool {
   match lookup_item(registry: registry, name: name) {
     Some { value: info } => info.is_self_recursive
-    None => expr_has_self_call(texpr: body, fn_name: name)
+    None => expr_has_self_call(texpr: body, fn_name: name, source_index: source_index)
   }
 }
 

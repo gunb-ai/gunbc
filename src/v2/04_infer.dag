@@ -25,8 +25,8 @@ import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v2.std.core {
   Node,
   authored_name_at, NewlineIndex, has_child_named,
-  module_node, module_imports, module_items, import_is_all, import_specific_names,
-  make_param_node, param_node_name, param_node_name_at, param_node_type_expr,
+  module_node, module_imports, module_items, import_is_all,
+  make_param_node, param_node_name_at, param_node_type_expr,
   field_node_type_expr,
   Connective, Conj, Disj, NoConnective, Arrow,
   ExprData, NoExprData,
@@ -35,14 +35,14 @@ import v2.std.core {
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
   make_expr_node, make_named_expr_node, make_expr_error_node,
-  expr_var_name, expr_var_name_at, field_access_base, field_access_field, field_access_field_at, expr_call_func, expr_call_func_at, expr_method_name, expr_method_name_at, let_binding_name, let_binding_name_at, foreach_variable, foreach_variable_at, lambda_param_names, lambda_param_names_at, record_lit_type_name,
-  make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name, field_init_node_name_at, field_init_node_value, make_text_part_node, make_interp_part_node,
-  map_children, arg_value, arg_name, arg_name_at,
+  expr_var_name_at, field_access_base, field_access_field_at, expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at, lambda_param_names_at, record_lit_type_name_at,
+  make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_text_part_node, make_interp_part_node,
+  map_children, arg_value, arg_name_at,
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic,
   InternalError, VariantCollision,
-  resource_use_name, resource_use_name_at, resource_use_resource,
+  resource_use_name_at, resource_use_resource,
   kernel_type_set, is_kernel_type,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
   expr_has_self_call, expr_has_non_tail_self_call,
@@ -61,7 +61,7 @@ import v2.std.core {
   And, Or, NullCoalesce,
   UnaryOpKind, Not, Neg, unaryop_operand,
   MatchPattern, Bind, VariantPattern, Wildcard, StringPart,
-  make_field_binding_node, field_binding_name, field_binding_name_at, field_binding_pattern,
+  make_field_binding_node, field_binding_name_at, field_binding_pattern,
   let_value, let_body, lambda_body,
   foreach_collection, foreach_body, method_receiver, method_arg_nodes,
   match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch,
@@ -858,7 +858,7 @@ fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_arg
         // Thread expected from caller context so empty collections (empty_map(), [])
         // can adopt the expected type instead of falling back to bare nodes.
         let init_result = infer_expr(texpr: arg_value(n: ia), scope: scope, expected: expected)
-        Some { value: ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: ia), value: init_result.typed, span: ia.span, name_span: ia.span), diagnostics: init_result.diagnostics } }
+        Some { value: ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: ia, source_index: scope.type_env.source_index), value: init_result.typed, span: ia.span, name_span: ia.span), diagnostics: init_result.diagnostics } }
       None => none
     }
   } else { none }
@@ -871,7 +871,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
   method_args |> enumerate |> map(idx_pair =>
     let a = idx_pair.second
     let idx = idx_pair.first
-    let is_init_arg = arg_has_name(arg: a, name: "init", source_index: scope.type_env.source_index) || (arg_name(n: a) == none && idx == 0)
+    let is_init_arg = arg_has_name(arg: a, name: "init", source_index: scope.type_env.source_index) || (arg_name_at(n: a, source_index: scope.type_env.source_index) == none && idx == 0)
     if is_fold && fold_info != none && is_init_arg {
       match fold_info {
         Some { value: fi } => fi
@@ -892,7 +892,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
       let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: Some { value: fold_callable })
-      ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: a), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
+      ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_index: scope.type_env.source_index), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
     } else {
       infer_arg_with_element_type(arg: a, element_type: element_type, scope: scope)
     }
@@ -934,7 +934,7 @@ fn infer_arg_with_element_type(arg: Node, element_type: Node, scope: InferScope)
   // Pass element_type as expected: lambdas use it for param typing,
   // non-lambdas ignore it (expected is advisory, not mandatory).
   let ar = infer_expr(texpr: arg_value(n: arg), scope: scope, expected: Some { value: element_type })
-  ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: arg), value: ar.typed, span: arg.span, name_span: arg.span), diagnostics: ar.diagnostics }
+  ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: arg, source_index: scope.type_env.source_index), value: ar.typed, span: arg.span, name_span: arg.span), diagnostics: ar.diagnostics }
 }
 
 // -------------------------------------------------------------------------
@@ -1127,7 +1127,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             let elem_type = for_each_element_type_node(n: first_type)
             let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, scope: scope)
             concat(
-              [ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: first_arg), value: first_result.typed, span: first_arg.span, name_span: first_arg.span), diagnostics: first_result.diagnostics }],
+              [ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: first_arg, source_index: scope.type_env.source_index), value: first_result.typed, span: first_arg.span, name_span: first_arg.span), diagnostics: first_result.diagnostics }],
               remaining_results
             )
           None =>
@@ -1145,7 +1145,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           let has_formal = match sig_params |> skip(pair.first) |> first { Some { value: _ } => true  None => false }
           let expected = if has_formal { Some { value: formal_param_type } } else { none }
           let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
-          ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: a), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
+          ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_index: scope.type_env.source_index), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
         )
       }
       let typed_args = arg_infer_results |> map(air => air.typed_arg)
@@ -1247,7 +1247,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               match_pattern: receiver.match_pattern, expr_data: receiver.expr_data
             }
           } else { receiver }
-          let remaining_arg_nodes = remaining |> map(ta => make_arg_node(name: arg_name(n: ta), value: arg_value(n: ta), span: span, name_span: span))
+          let remaining_arg_nodes = remaining |> map(ta => make_arg_node(name: arg_name_at(n: ta, source_index: scope.type_env.source_index), value: arg_value(n: ta), span: span, name_span: span))
           InferResult {
             typed: make_named_expr_node(
               name: func_name, expr_data: ExprMethodCall { method_semantics: method_resolution.semantics },
@@ -1722,7 +1722,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let span = texpr.span
       // children: field init nodes
       let field_inits = texpr.children
-      infer_record_lit(type_name: record_lit_type_name(texpr: texpr), field_inits: field_inits, span: span, name_span: node_name_span(n: texpr), scope: scope)
+      infer_record_lit(type_name: record_lit_type_name_at(texpr: texpr, source_index: scope.type_env.source_index), field_inits: field_inits, span: span, name_span: node_name_span(n: texpr), scope: scope)
 
     ExprListLit =>
       let span = texpr.span
@@ -2263,12 +2263,12 @@ fn classify_size_expr(val: Node, ctx: DescentContext) -> SizeExpr? {
   match val.expr_data {
     // xs |> count → ParamSize { param: "xs" }
     ExprMethodCall { method_semantics: _ } =>
-      let mname = expr_method_name(texpr: val)
+      let mname = expr_method_name_at(texpr: val, source_index: ctx.type_env.source_index)
       if mname == "count" {
         let receiver = method_receiver(texpr: val)
         match receiver.expr_data {
           ExprVar { binding_kind: _ } =>
-            let rname = expr_var_name(texpr: receiver)
+            let rname = expr_var_name_at(texpr: receiver, source_index: ctx.type_env.source_index)
             match map_get(ctx.param_names, rname) {
               Some { value: _ } => Some { value: ParamSize { param: rname } }
               None => none
@@ -2284,7 +2284,7 @@ fn classify_size_expr(val: Node, ctx: DescentContext) -> SizeExpr? {
         ExprBinOp { op: Div, algebra_field: _ } =>
           match left.expr_data {
             ExprVar { binding_kind: _ } =>
-              let lname = expr_var_name(texpr: left)
+              let lname = expr_var_name_at(texpr: left, source_index: ctx.type_env.source_index)
               match map_get(ctx.size_aliases, lname) {
                 Some { value: ParamSize { param: p } } =>
                   match right.expr_data {
@@ -2308,13 +2308,13 @@ fn classify_size_expr(val: Node, ctx: DescentContext) -> SizeExpr? {
 fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentContext) -> SubValueRelation {
   match arg_expr.expr_data {
     ExprMethodCall { method_semantics: _ } =>
-      let mname = expr_method_name(texpr: arg_expr)
+      let mname = expr_method_name_at(texpr: arg_expr, source_index: ctx.type_env.source_index)
       if mname == "take" || mname == "skip" {
         let receiver = method_receiver(texpr: arg_expr)
         // Check receiver is the parameter
         match receiver.expr_data {
           ExprVar { binding_kind: _ } =>
-            let rname = expr_var_name(texpr: receiver)
+            let rname = expr_var_name_at(texpr: receiver, source_index: ctx.type_env.source_index)
             if rname == param_name {
               // Check argument is a known size alias
               let args = method_arg_nodes(texpr: arg_expr)
@@ -2333,7 +2333,7 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
                       } else { SubValueUnknown }
                     // skip(mid), take(mid): variable that is a known size alias
                     ExprVar { binding_kind: _ } =>
-                      let aname = expr_var_name(texpr: arg_val)
+                      let aname = expr_var_name_at(texpr: arg_val, source_index: ctx.type_env.source_index)
                       match map_get(ctx.size_aliases, aname) {
                         Some { value: DividedSize { param: p, divisor: d } } =>
                           if p == param_name {
@@ -2352,7 +2352,7 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
                           if rhs_is_literal {
                             match left.expr_data {
                               ExprVar { binding_kind: _ } =>
-                                let lname = expr_var_name(texpr: left)
+                                let lname = expr_var_name_at(texpr: left, source_index: ctx.type_env.source_index)
                                 match map_get(ctx.size_aliases, lname) {
                                   Some { value: DividedSize { param: p, divisor: d } } =>
                                     if p == param_name {
@@ -2371,7 +2371,7 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
                           if rhs_is_literal {
                             match left.expr_data {
                               ExprVar { binding_kind: _ } =>
-                                let lname = expr_var_name(texpr: left)
+                                let lname = expr_var_name_at(texpr: left, source_index: ctx.type_env.source_index)
                                 match map_get(ctx.size_aliases, lname) {
                                   Some { value: DividedSize { param: p, divisor: d } } =>
                                     if p == param_name {
@@ -2410,10 +2410,10 @@ fn resolve_collection_field(expr: Node, ctx: DescentContext) -> InductiveField? 
   match expr.expr_data {
     ExprFieldAccess { summary: _ } =>
       let base = field_access_base(texpr: expr)
-      let fname = field_access_field(texpr: expr)
+      let fname = field_access_field_at(texpr: expr, source_index: ctx.type_env.source_index)
       match base.expr_data {
         ExprVar { binding_kind: _ } =>
-          let bname = expr_var_name(texpr: base)
+          let bname = expr_var_name_at(texpr: base, source_index: ctx.type_env.source_index)
           let base_type = match map_get(ctx.param_names, bname) {
             Some { value: t } => t
             None =>
@@ -2436,7 +2436,7 @@ fn resolve_collection_field(expr: Node, ctx: DescentContext) -> InductiveField? 
         _ => none
       }
     ExprVar { binding_kind: _ } =>
-      let rname = expr_var_name(texpr: expr)
+      let rname = expr_var_name_at(texpr: expr, source_index: ctx.type_env.source_index)
       match map_get(ctx.sub_value_vars, rname) {
         Some { value: rel } =>
           match rel {
@@ -2449,7 +2449,7 @@ fn resolve_collection_field(expr: Node, ctx: DescentContext) -> InductiveField? 
         None => none
       }
     ExprMethodCall { method_semantics: _ } =>
-      let inner_mname = expr_method_name(texpr: expr)
+      let inner_mname = expr_method_name_at(texpr: expr, source_index: ctx.type_env.source_index)
       let is_collection_preserving = inner_mname == "enumerate" || inner_mname == "skip" || inner_mname == "take" || inner_mname == "filter" || inner_mname == "reverse"
       if is_collection_preserving {
         resolve_collection_field(expr: method_receiver(texpr: expr), ctx: ctx)
@@ -2466,17 +2466,17 @@ fn resolve_collection_field(expr: Node, ctx: DescentContext) -> InductiveField? 
 fn classify_binding_provenance(val: Node, scope: InferScope) -> SubValueRelation {
   match val.expr_data {
     ExprVar { binding_kind: _ } =>
-      let vname = expr_var_name(texpr: val)
+      let vname = expr_var_name_at(texpr: val, source_index: scope.type_env.source_index)
       match map_get(scope.locals, vname) {
         Some { value: binding } => binding.provenance
         None => SubValueUnknown
       }
     ExprFieldAccess { summary: _ } =>
       let base = field_access_base(texpr: val)
-      let field = field_access_field(texpr: val)
+      let field = field_access_field_at(texpr: val, source_index: scope.type_env.source_index)
       match base.expr_data {
         ExprVar { binding_kind: _ } =>
-          let bname = expr_var_name(texpr: base)
+          let bname = expr_var_name_at(texpr: base, source_index: scope.type_env.source_index)
           match map_get(scope.locals, bname) {
             Some { value: binding } =>
               // Compose provenance via compose_sub_value (std/induction.dag authority).
@@ -2499,14 +2499,14 @@ fn classify_binding_provenance(val: Node, scope: InferScope) -> SubValueRelation
 fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
   match val.expr_data {
     ExprVar { binding_kind: _ } =>
-      let vname = expr_var_name(texpr: val)
+      let vname = expr_var_name_at(texpr: val, source_index: ctx.type_env.source_index)
       map_get(ctx.sub_value_vars, vname)
     ExprFieldAccess { summary: _ } =>
       let base = field_access_base(texpr: val)
-      let field = field_access_field(texpr: val)
+      let field = field_access_field_at(texpr: val, source_index: ctx.type_env.source_index)
       match base.expr_data {
         ExprVar { binding_kind: _ } =>
-          let bname = expr_var_name(texpr: base)
+          let bname = expr_var_name_at(texpr: base, source_index: ctx.type_env.source_index)
           let type_name = match map_get(ctx.param_names, bname) {
             Some { value: t } => t
             None =>
@@ -2531,7 +2531,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
         _ => none
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
-      let callee = expr_call_func(texpr: val)
+      let callee = expr_call_func_at(texpr: val, source_index: ctx.type_env.source_index)
       if is_child_accessor_in_model(name: callee) || is_tree_size_reducing(func_name: callee) {
         let call_args = val.children
         match call_args |> first {
@@ -2539,7 +2539,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
             let inner = arg_value(n: first_arg)
             match inner.expr_data {
               ExprVar { binding_kind: _ } =>
-                let iname = expr_var_name(texpr: inner)
+                let iname = expr_var_name_at(texpr: inner, source_index: ctx.type_env.source_index)
                 let inner_type = match map_get(ctx.param_names, iname) {
                   Some { value: t } => t
                   None =>
@@ -2601,7 +2601,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
         Sub =>
           match left.expr_data {
             ExprVar { binding_kind: _ } =>
-              let lname = expr_var_name(texpr: left)
+              let lname = expr_var_name_at(texpr: left, source_index: ctx.type_env.source_index)
               if map_get(ctx.param_names, lname) != none || map_get(ctx.sub_value_vars, lname) != none {
                 match right.expr_data {
                   ExprLiteral { value: LitInt { value: k } } =>
@@ -2616,13 +2616,13 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
         Div =>
           let left_name = match left.expr_data {
             ExprVar { binding_kind: _ } =>
-              let lname = expr_var_name(texpr: left)
+              let lname = expr_var_name_at(texpr: left, source_index: ctx.type_env.source_index)
               if map_get(ctx.param_names, lname) != none || map_get(ctx.sub_value_vars, lname) != none { lname } else { "" }
             ExprBinOp { op: Sub } =>
               let inner_left = binop_left(texpr: left)
               match inner_left.expr_data {
                 ExprVar { binding_kind: _ } =>
-                  let lname = expr_var_name(texpr: inner_left)
+                  let lname = expr_var_name_at(texpr: inner_left, source_index: ctx.type_env.source_index)
                   if map_get(ctx.param_names, lname) != none || map_get(ctx.sub_value_vars, lname) != none { lname } else { "" }
                 _ => ""
               }
@@ -2647,7 +2647,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
     // Collection-preserving methods: skip/filter/take/enumerate on a known collection
     // preserve the ListRecursion property. Also: list-returning child accessors.
     ExprMethodCall { method_semantics: _ } =>
-      let mname = expr_method_name(texpr: val)
+      let mname = expr_method_name_at(texpr: val, source_index: ctx.type_env.source_index)
       let is_collection_preserving = mname == "skip" || mname == "filter" || mname == "take" || mname == "enumerate" || mname == "reverse"
       if is_collection_preserving {
         let receiver = method_receiver(texpr: val)
@@ -2672,7 +2672,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
               if skip_amount > 0 {
                 match receiver.expr_data {
                   ExprVar { binding_kind: _ } =>
-                    let rname = expr_var_name(texpr: receiver)
+                    let rname = expr_var_name_at(texpr: receiver, source_index: ctx.type_env.source_index)
                     if map_get(ctx.param_names, rname) != none || map_get(ctx.sub_value_vars, rname) != none {
                       let synth_field = InductiveField { type_name: rname, variant_name: "", field_name: mname, shape: ListRecursion, element_type: rname }
                       Some { value: StrictSubValue { field: synth_field, factor: ConstantShrink { amount: skip_amount } } }
@@ -2710,7 +2710,7 @@ fn merge_argument_relations(rels: List<SubValueRelation>) -> SubValueRelation {
 fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) -> SubValueRelation {
   match arg_expr.expr_data {
     ExprVar { binding_kind: _ } =>
-      let vname = expr_var_name(texpr: arg_expr)
+      let vname = expr_var_name_at(texpr: arg_expr, source_index: ctx.type_env.source_index)
       if vname == param_name { PreservedValue }
       else {
         match map_get(ctx.sub_value_vars, vname) {
@@ -2721,10 +2721,10 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
     // base.field where base is a param or bound sub-value, and field is inductive → StrictSubValue
     ExprFieldAccess { summary: _ } =>
       let base = field_access_base(texpr: arg_expr)
-      let field = field_access_field(texpr: arg_expr)
+      let field = field_access_field_at(texpr: arg_expr, source_index: ctx.type_env.source_index)
       match base.expr_data {
         ExprVar { binding_kind: _ } =>
-          let bname = expr_var_name(texpr: base)
+          let bname = expr_var_name_at(texpr: base, source_index: ctx.type_env.source_index)
           // Look up type from params first, then from bound sub-values
           let type_name = match map_get(ctx.param_names, bname) {
             Some { value: t } => t
@@ -2765,7 +2765,7 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
             // Accessor applied to the parameter itself: if it's a child accessor,
             // the result is a strict sub-value (extracts from Node.children).
             PreservedValue =>
-              let callee = expr_call_func(texpr: arg_expr)
+              let callee = expr_call_func_at(texpr: arg_expr, source_index: ctx.type_env.source_index)
               if is_child_accessor_in_model(name: callee) || is_tree_size_reducing(func_name: callee) {
                 let type_name = match map_get(ctx.param_names, param_name) { Some { value: t } => t  None => "" }
                 let fields = inductive_fields_for(env: ctx.type_env, type_name: type_name)
@@ -2795,7 +2795,7 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
       match op {
         Sub =>
           let left_is_param = match left.expr_data {
-            ExprVar { binding_kind: _ } => expr_var_name(texpr: left) == param_name || map_get(ctx.sub_value_vars, expr_var_name(texpr: left)) != none
+            ExprVar { binding_kind: _ } => expr_var_name_at(texpr: left, source_index: ctx.type_env.source_index) == param_name || map_get(ctx.sub_value_vars, expr_var_name_at(texpr: left, source_index: ctx.type_env.source_index)) != none
             _ => false
           }
           if left_is_param {
@@ -2812,11 +2812,11 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
           }
         Div =>
           let left_is_param = match left.expr_data {
-            ExprVar { binding_kind: _ } => expr_var_name(texpr: left) == param_name || map_get(ctx.sub_value_vars, expr_var_name(texpr: left)) != none
+            ExprVar { binding_kind: _ } => expr_var_name_at(texpr: left, source_index: ctx.type_env.source_index) == param_name || map_get(ctx.sub_value_vars, expr_var_name_at(texpr: left, source_index: ctx.type_env.source_index)) != none
             ExprBinOp { op: Sub } =>
               let inner_left = binop_left(texpr: left)
               match inner_left.expr_data {
-                ExprVar { binding_kind: _ } => expr_var_name(texpr: inner_left) == param_name || map_get(ctx.sub_value_vars, expr_var_name(texpr: inner_left)) != none
+                ExprVar { binding_kind: _ } => expr_var_name_at(texpr: inner_left, source_index: ctx.type_env.source_index) == param_name || map_get(ctx.sub_value_vars, expr_var_name_at(texpr: inner_left, source_index: ctx.type_env.source_index)) != none
                 _ => false
               }
             _ => false
@@ -2880,14 +2880,14 @@ fn build_call_evidence(call_node: Node, ctx: DescentContext) -> List<SubValueRel
   let arg_map = call_node.children |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
     let idx = pair.first
     let arg_node = pair.second
-    let aname = arg_name(n: arg_node)
+    let aname = arg_name_at(n: arg_node, source_index: ctx.type_env.source_index)
     match aname {
       Some { value: pname } => map_insert(acc, pname, arg_value(n: arg_node))
       None => acc
     }
   )
   // Build positional list for unnamed args
-  let positional_args = call_node.children |> filter(arg_node => arg_name(n: arg_node) == none) |> map(arg_node => arg_value(n: arg_node))
+  let positional_args = call_node.children |> filter(arg_node => arg_name_at(n: arg_node, source_index: ctx.type_env.source_index) == none) |> map(arg_node => arg_value(n: arg_node))
   // Produce evidence in param definition order
   let positional_idx = 0
   ctx.param_order |> enumerate |> map(pair =>
@@ -2934,7 +2934,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
               let arg_val = arg_value(n: arg_node)
               match arg_val.expr_data {
                 ExprVar { binding_kind: _ } =>
-                  let vname = expr_var_name(texpr: arg_val)
+                  let vname = expr_var_name_at(texpr: arg_val, source_index: ctx.type_env.source_index)
                   match map_get(ctx.param_names, vname) { Some { value: t } => t  None => "" }
                 _ => ""
               }
@@ -2949,7 +2949,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
               // Register lambda params with source param type for descent tracking.
               // Most callback lambdas have 1-2 params. Register all with PreservedValue
               // so calls inside the lambda body see them as related to the source param.
-              let lparams = lambda_param_names(texpr: arg_val)
+              let lparams = lambda_param_names_at(texpr: arg_val, source_index: ctx.type_env.source_index)
               let p1 = match lparams |> first { Some { value: n } => n  None => "" }
               let p2 = match lparams |> skip(1) |> first { Some { value: n } => n  None => "" }
               let lambda_ctx = DescentContext {
@@ -2971,11 +2971,11 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                 } else { ctx.sub_value_vars },
                 size_aliases: ctx.size_aliases
               }
-              make_arg_node(name: arg_name(n: child), value: annotate_descent(body: arg_val, ctx: lambda_ctx), span: child.span, name_span: child.span)
+              make_arg_node(name: arg_name_at(n: child, source_index: ctx.type_env.source_index), value: annotate_descent(body: arg_val, ctx: lambda_ctx), span: child.span, name_span: child.span)
             } else {
-              make_arg_node(name: arg_name(n: child), value: annotate_descent(body: arg_val, ctx: ctx), span: child.span, name_span: child.span)
+              make_arg_node(name: arg_name_at(n: child, source_index: ctx.type_env.source_index), value: annotate_descent(body: arg_val, ctx: ctx), span: child.span, name_span: child.span)
             }
-          _ => make_arg_node(name: arg_name(n: child), value: annotate_descent(body: arg_val, ctx: ctx), span: child.span, name_span: child.span)
+          _ => make_arg_node(name: arg_name_at(n: child, source_index: ctx.type_env.source_index), value: annotate_descent(body: arg_val, ctx: ctx), span: child.span, name_span: child.span)
         }
       )
       Node {
@@ -2996,7 +2996,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       // Determine scrutinee type (for enum params) or inducing field (for field-access)
       let scrut_type = match scrut.expr_data {
         ExprVar { binding_kind: _ } =>
-          let sname = expr_var_name(texpr: scrut)
+          let sname = expr_var_name_at(texpr: scrut, source_index: ctx.type_env.source_index)
           match map_get(ctx.param_names, sname) {
             Some { value: t } => t
             None =>
@@ -3021,10 +3021,10 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       let scrut_inducing_field = match scrut.expr_data {
         ExprFieldAccess { summary: _ } =>
           let base = field_access_base(texpr: scrut)
-          let fname = field_access_field(texpr: scrut)
+          let fname = field_access_field_at(texpr: scrut, source_index: ctx.type_env.source_index)
           match base.expr_data {
             ExprVar { binding_kind: _ } =>
-              let bname = expr_var_name(texpr: base)
+              let bname = expr_var_name_at(texpr: base, source_index: ctx.type_env.source_index)
               let base_type = match map_get(ctx.param_names, bname) {
                 Some { value: t } => t
                 None => ""
@@ -3039,7 +3039,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         // If receiver is a tracked collection (param or sub-value with ListRecursion),
         // the Some binding is an IteratedSubValue.
         ExprMethodCall { method_semantics: _ } =>
-          let mname = expr_method_name(texpr: scrut)
+          let mname = expr_method_name_at(texpr: scrut, source_index: ctx.type_env.source_index)
           if mname == "first" || mname == "last" {
             let receiver = method_receiver(texpr: scrut)
             resolve_collection_field(expr: receiver, ctx: ctx)
@@ -3076,7 +3076,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                           // Look up inductive fields for the element_type (e.g., InferredNode)
                           let inner_ind_fields = inductive_fields_for(env: c.type_env, type_name: ind_field.element_type)
                           inner_bindings |> fold(init: c, f: (ic, inner_fb) =>
-                            let inner_field_name = field_binding_name(n: inner_fb)
+                            let inner_field_name = field_binding_name_at(n: inner_fb, source_index: ctx.type_env.source_index)
                             let inner_bind_name = match field_binding_pattern(n: inner_fb) {
                               Bind { name: ibname } => ibname
                               _ => ""
@@ -3104,7 +3104,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   // Standard case: match on enum parameter, look up variant fields
                   let ind_fields = inductive_fields_for(env: ctx.type_env, type_name: scrut_type)
                   bindings |> fold(init: ctx, f: (c, fb) =>
-                    let field_name = field_binding_name(n: fb)
+                    let field_name = field_binding_name_at(n: fb, source_index: ctx.type_env.source_index)
                     let bind_name = match field_binding_pattern(n: fb) {
                       Bind { name: bname } => bname
                       _ => ""
@@ -3171,7 +3171,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       // If let-value is a known sub-value (variable alias, field access, or child accessor),
       // extend context for binding name.
       let val = let_value(texpr: body)
-      let binding_name = let_binding_name(texpr: body)
+      let binding_name = let_binding_name_at(texpr: body, source_index: ctx.type_env.source_index)
       let val_relation = classify_let_value(val: val, ctx: ctx)
       // Track size aliases: let n = xs |> count → ParamSize, let mid = n / 2 → DividedSize
       let size_alias = classify_size_expr(val: val, ctx: ctx)
@@ -3228,7 +3228,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         let next_ctx = match child.expr_data {
           ExprLet =>
             let val = let_value(texpr: child)
-            let bname = let_binding_name(texpr: child)
+            let bname = let_binding_name_at(texpr: child, source_index: ctx.type_env.source_index)
             let val_rel = classify_let_value(val: val, ctx: acc.ctx)
             let sa = classify_size_expr(val: val, ctx: acc.ctx)
             let new_sa = match sa {
@@ -3274,7 +3274,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
     // lambda bodies. The lambda element parameter is an IteratedSubValue of
     // the receiver's collection field.
     ExprMethodCall { method_semantics: _ } =>
-      let mname = expr_method_name(texpr: body)
+      let mname = expr_method_name_at(texpr: body, source_index: ctx.type_env.source_index)
       let is_iteration = mname == "fold" || mname == "map" || mname == "filter" || mname == "flat_map" || mname == "any" || mname == "all"
       if is_iteration {
         // Check if receiver is a collection sub-value (field access or bound variable).
@@ -3282,17 +3282,17 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         let raw_receiver = method_receiver(texpr: body)
         let receiver = match raw_receiver.expr_data {
           ExprMethodCall { method_semantics: _ } =>
-            let inner_mname = expr_method_name(texpr: raw_receiver)
+            let inner_mname = expr_method_name_at(texpr: raw_receiver, source_index: ctx.type_env.source_index)
             if inner_mname == "enumerate" { method_receiver(texpr: raw_receiver) } else { raw_receiver }
           _ => raw_receiver
         }
         let receiver_field = match receiver.expr_data {
           ExprFieldAccess { summary: _ } =>
             let base = field_access_base(texpr: receiver)
-            let fname = field_access_field(texpr: receiver)
+            let fname = field_access_field_at(texpr: receiver, source_index: ctx.type_env.source_index)
             match base.expr_data {
               ExprVar { binding_kind: _ } =>
-                let bname = expr_var_name(texpr: base)
+                let bname = expr_var_name_at(texpr: base, source_index: ctx.type_env.source_index)
                 let base_type = match map_get(ctx.param_names, bname) {
                   Some { value: t } => t
                   None =>
@@ -3313,7 +3313,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             }
           // Receiver is a variable bound as a sub-value (e.g., cs from match children: cs)
           ExprVar { binding_kind: _ } =>
-            let rname = expr_var_name(texpr: receiver)
+            let rname = expr_var_name_at(texpr: receiver, source_index: ctx.type_env.source_index)
             match map_get(ctx.sub_value_vars, rname) {
               Some { value: rel } =>
                 match rel {
@@ -3340,7 +3340,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         let lambda_elem_info = match lambda_arg {
           Some { value: la } =>
             let lambda_node = arg_value(n: la)
-            let lparams = lambda_param_names(texpr: lambda_node)
+            let lparams = lambda_param_names_at(texpr: lambda_node, source_index: ctx.type_env.source_index)
             match lparams |> skip(lparams |> count - 1) |> first {
               Some { value: n } => Some { value: n }
               None => none
@@ -3381,9 +3381,9 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
           let arg_val = arg_value(n: arg_node)
           let is_lambda = match arg_val.expr_data { ExprLambda { semantics: _ } => true  _ => false }
           if is_lambda {
-            make_arg_node(name: match arg_name(n: arg_node) { Some { value: n } => Some { value: n }  None => none }, value: annotate_descent(body: arg_val, ctx: inner_ctx), span: arg_node.span, name_span: arg_node.span)
+            make_arg_node(name: match arg_name_at(n: arg_node, source_index: ctx.type_env.source_index) { Some { value: n } => Some { value: n }  None => none }, value: annotate_descent(body: arg_val, ctx: inner_ctx), span: arg_node.span, name_span: arg_node.span)
           } else {
-            make_arg_node(name: match arg_name(n: arg_node) { Some { value: n } => Some { value: n }  None => none }, value: annotate_descent(body: arg_val, ctx: ctx), span: arg_node.span, name_span: arg_node.span)
+            make_arg_node(name: match arg_name_at(n: arg_node, source_index: ctx.type_env.source_index) { Some { value: n } => Some { value: n }  None => none }, value: annotate_descent(body: arg_val, ctx: ctx), span: arg_node.span, name_span: arg_node.span)
           }
         )
         Node {
@@ -3405,7 +3405,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       // field, register the element variable as IteratedSubValue.
       let coll = foreach_collection(texpr: body)
       let fe_body = foreach_body(texpr: body)
-      let fe_var = foreach_variable(texpr: body)
+      let fe_var = foreach_variable_at(texpr: body, source_index: ctx.type_env.source_index)
       let coll_field = resolve_collection_field(expr: coll, ctx: ctx)
       let inner_ctx = match coll_field {
         Some { value: ind_field } =>
@@ -3458,11 +3458,11 @@ fn resolved_type_name(n: Node) -> String {
 // Top-level: annotate a self-recursive function body with descent evidence.
 fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, type_env: TypeEnv) -> Node {
   let param_name_map = params |> fold(init: empty_map(), f: (acc, p) =>
-    let pname = param_node_name(n: p)
+    let pname = param_node_name_at(n: p, source_index: type_env.source_index)
     let ptype = resolved_type_name(n: p)
     map_insert(acc, pname, ptype)
   )
-  let param_order_list = params |> map(p => param_node_name(n: p))
+  let param_order_list = params |> map(p => param_node_name_at(n: p, source_index: type_env.source_index))
   let ctx = DescentContext {
     fn_name: fn_name,
     param_names: param_name_map,
@@ -3518,7 +3518,7 @@ fn infer_property_values(props: List<Node>, scope: InferScope) -> InferPropertie
 // declarations that reference operation parameters, not service-scope variables.
 fn infer_auth_source_properties(props: List<Node>, scope: InferScope) -> InferPropertiesResult {
   let results = props |> map(p =>
-    if field_init_node_name(n: p) == "svc_auth_source" {
+    if field_init_node_name_at(n: p, source_index: scope.type_env.source_index) == "svc_auth_source" {
       let val = field_init_node_value(n: p)
       let val_result = infer_expr(texpr: val, scope: scope, expected: none)
       {
@@ -3609,7 +3609,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let body_diags = body_result.diagnostics
     let inferred_ret = if item.inferred != none { item.inferred } else { body_typed.inferred }
     // CX-L2: annotate self-call sites with descent evidence
-    let is_recursive = expr_has_self_call(texpr: body_typed, fn_name: item.name)
+    let is_recursive = expr_has_self_call(texpr: body_typed, fn_name: item.name, source_index: scope.type_env.source_index)
     let annotated_body = if is_recursive {
       annotate_descent_evidence(body: body_typed, fn_name: item.name, params: item.params, type_env: scope.type_env)
     } else { body_typed }
@@ -3620,7 +3620,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         connective: NoConnective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
         is_self_recursive: is_recursive,
-        has_non_tail_self_call: expr_has_non_tail_self_call(texpr: body_typed, fn_name: item.name, in_tail: true),
+        has_non_tail_self_call: expr_has_non_tail_self_call(texpr: body_typed, fn_name: item.name, in_tail: true, source_index: scope.type_env.source_index),
         match_pattern: none, expr_data: NoExprData
       },
       diagnostics: concat(transport_diags, props_diags, body_diags)
@@ -3931,7 +3931,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     recursive_types: resolved_env_out.recursive_types,
     recursive_type_set: resolved_env_out.recursive_type_set,
     inductive_fields: resolved_env_out.inductive_fields,
-    source_index: resolved_env_out.source_index
+    source_index: resolved_env_out.source_index,
   }
   BuildTypeEnvResult {
     env: final_env,
@@ -4047,8 +4047,8 @@ fn build_item_info(item: Node, source_index: NewlineIndex?) -> ItemInfo {
         service_names: if item.body == none { [] } else { collect_typed_service_calls(texpr: item.body.value, source_index: source_index) },
         resource_names: res_names,
         params: item.params,
-        is_self_recursive: if item.body == none { false } else { expr_has_self_call(texpr: item.body.value, fn_name: item.name) },
-        has_non_tail_self_call: if item.body == none { false } else { expr_has_non_tail_self_call(texpr: item.body.value, fn_name: item.name, in_tail: true) }
+        is_self_recursive: if item.body == none { false } else { expr_has_self_call(texpr: item.body.value, fn_name: item.name, source_index: source_index) },
+        has_non_tail_self_call: if item.body == none { false } else { expr_has_non_tail_self_call(texpr: item.body.value, fn_name: item.name, in_tail: true, source_index: source_index) }
       }
     _ =>
       ItemInfo {

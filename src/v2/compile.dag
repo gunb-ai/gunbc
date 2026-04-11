@@ -17,20 +17,20 @@ import v2.std.core {
   CompileResult, TextFile, SourceSpan,
   ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, InternalError, OwnershipViolation, no_span,
   Connective, NoConnective, Arrow, Cardinality,
-  resource_use_name, resource_use_name_at, resource_use_resource,
-  param_node_name, param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span,
-  field_node_name, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span,
-  module_imports, module_items, import_is_all, import_specific_names,
+  resource_use_name_at, resource_use_resource,
+  param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span,
+  field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span,
+  module_imports, module_items, import_is_all, import_specific_names_at,
   FieldAccessStyle, FieldValueShape, FieldSummary,
   InferredNode, Resolved, CompilerError, TypeVariable,
   VarBindingKind, CallSemantics, LambdaSemantics,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
-  ExprErrorKind, ExprData, MatchPattern, field_binding_name, field_binding_name_at, field_binding_pattern,
-  arg_name, arg_name_at, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name, field_init_node_name_at, field_init_node_value,
+  ExprErrorKind, ExprData, MatchPattern, field_binding_name_at, field_binding_pattern,
+  arg_name_at, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name_at, field_init_node_value,
   LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token,
   NewlineIndex, build_newline_index,
-  field_access_field, field_access_field_at, expr_call_func, expr_call_func_at, lambda_param_names, lambda_param_names_at, record_lit_type_name, foreach_variable, foreach_variable_at, expr_method_name, expr_method_name_at,
-  InternTable, InternResult, empty_intern_table, intern
+  field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at, foreach_variable_at, expr_method_name_at,
+  InternTable, InternResult, empty_intern_table, intern, merge_intern_tables
 }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
@@ -300,13 +300,13 @@ fn serialize_span(span: SourceSpan) -> String {
   concat("{\"start\": ", to_string(i: span.start), ", \"end\": ", to_string(i: span.end), "}")
 }
 
-fn serialize_import_node(imp: Node) -> String {
+fn serialize_import_node(imp: Node, source_index: NewlineIndex?) -> String {
   let names_json = if import_is_all(n: imp) {
     "{\"kind\": \"ImportAll\"}"
   } else {
     concat(
       "{\"kind\": \"ImportSpecific\", \"names\": ",
-      json_list(items: import_specific_names(n: imp) |> map(v => json_quote(s: v))),
+      json_list(items: import_specific_names_at(n: imp, source_index: source_index) |> map(v => json_quote(s: v))),
       "}")
   }
   concat(
@@ -562,7 +562,7 @@ fn serialize_expr_data(expr_node: Node, source_index: NewlineIndex?) -> String {
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_index: source_index))),
         "}")
     ExprRecordLit { parent_enum: parent_enum } =>
-      let type_name = record_lit_type_name(texpr: expr_node)
+      let type_name = record_lit_type_name_at(texpr: expr_node, source_index: source_index)
       concat(
         "{\"kind\": \"ExprRecordLit\", \"type_name\": ", json_optional_string(value: type_name),
         ", \"parent_enum\": ", json_optional_string(value: parent_enum),
@@ -691,10 +691,10 @@ fn serialize_node(node: Node, source_index: NewlineIndex?) -> String {
     "}")
 }
 
-fn serialize_module(module: Node) -> String {
+fn serialize_module(module: Node, source_index: NewlineIndex?) -> String {
   concat(
     "{\"name\": ", json_quote(s: module.name),
-    ", \"imports\": ", json_list(items: module_imports(n: module) |> map(imp => serialize_import_node(imp: imp))),
+    ", \"imports\": ", json_list(items: module_imports(n: module) |> map(imp => serialize_import_node(imp: imp, source_index: source_index))),
     ", \"span\": ", serialize_span(span: module.span),
     "}")
 }
@@ -702,7 +702,7 @@ fn serialize_module(module: Node) -> String {
 fn serialize_typed_module(module: TypedModule) -> String {
   let si = module.type_env.source_index
   concat(
-    "{\"module\": ", serialize_module(module: module.module),
+    "{\"module\": ", serialize_module(module: module.module, source_index: si),
     ", \"items\": ", json_list(items: module.items |> map(item => serialize_node(node: item, source_index: si))),
     ", \"item_registry_keys\": ", json_list(items: map_keys(module.item_registry) |> map(k => json_quote(s: k))),
     "}")
@@ -800,7 +800,8 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
     FrontendResult { graph: none, diagnostics: parse_diagnostics, newline_indices: newline_indices, intern_table: merged_intern_table }
   } else {
     let modules = parse_results |> map(p => p.module.value)
-    let graph = resolve_modules(modules: modules)
+    let source_indices = fold(newline_indices, init: empty_map(), f: (acc, si) => map_insert(acc, si.file, si))
+    let graph = resolve_modules(modules: modules, source_indices: source_indices)
     FrontendResult {
       graph: Some { value: graph },
       diagnostics: concat(parse_diagnostics, graph.diagnostics),
@@ -810,13 +811,7 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   }
 }
 
-fn merge_intern_tables(tables: List<InternTable>) -> InternTable {
-  tables |> fold(init: empty_intern_table(), f: (merged, t) =>
-    t.strings |> fold(init: merged, f: (m, s) =>
-      if s == "" { m } else { intern(table: m, s: s).table }
-    )
-  )
-}
+// merge_intern_tables is defined in v2.std.core (single authority next to InternTable)
 
 // =========================================================================
 // Full pipeline

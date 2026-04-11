@@ -328,7 +328,11 @@ Deletion requires declaration-driven identity.
 | L1 ratchet (type constructor comparisons) | 0 (hard gate, PR #352) |
 | Declaration-driven algebra (Tiers 1-2.5) | DONE |
 | source_text_at threading (D6 PR #356, #362) | Mostly done (~20 n.name reads remain) |
-| Node.name field deletion | Blocked by remaining n.name reads |
+| Migrate accessor callers to `_at` variants (PR #378) | DONE — 109 sites migrated, 13 non-_at defs deleted |
+| Per-file source_index at resolve boundary (PR #378) | DONE — resolve_modules takes Map\<String, NewlineIndex\> |
+| InternTable as identity consumer | Pending: table exists in FrontendResult; threading to TypeEnv deferred until first real consumer |
+| Fix `authored_name_at` fallback | Blocked: cross-module span mismatch still falls back to node.name |
+| Node.name field deletion | Blocked by authored_name_at fallback + ~15 direct reads |
 
 ### Track 4: Codegen correctness (Lane B)
 

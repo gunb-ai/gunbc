@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, no_span, Connective, Cardinality, resource_use_name, resource_use_name_at, resource_use_resource, param_node_name, param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span, field_node_name, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span, module_imports, module_items, import_is_all, import_specific_names, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, MethodSemantics, ExprErrorKind, ExprData, MatchPattern, field_binding_name, field_binding_name_at, field_binding_pattern, arg_name, arg_name_at, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name, field_init_node_name_at, field_init_node_value, LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index, field_access_field, field_access_field_at, expr_call_func, expr_call_func_at, lambda_param_names, lambda_param_names_at, record_lit_type_name, foreach_variable, foreach_variable_at, expr_method_name, expr_method_name_at, InternTable, InternResult, empty_intern_table, intern};
+pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, no_span, Connective, Cardinality, resource_use_name_at, resource_use_resource, param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span, module_imports, module_items, import_is_all, import_specific_names_at, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, MethodSemantics, ExprErrorKind, ExprData, MatchPattern, field_binding_name_at, field_binding_pattern, arg_name_at, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name_at, field_init_node_value, LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index, field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at, foreach_variable_at, expr_method_name_at, InternTable, InternResult, empty_intern_table, intern, merge_intern_tables};
 use crate::v2_std_core::CompilerDiagnostic::{InternalError, OwnershipViolation};
 use crate::v2_std_core::Connective::{NoConnective, Arrow};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
@@ -265,12 +265,12 @@ pub fn serialize_span(span: Rc<SourceSpan>) -> String {
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"start\": ".to_string(), (span.start.clone()).to_string()), ", \"end\": ".to_string()), (span.end.clone()).to_string()), "}".to_string())
 }
 
-pub fn serialize_import_node(imp: Rc<Node>) -> String {
+pub fn serialize_import_node(imp: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
         let names_json = if import_is_all(imp.clone()) {
             "{\"kind\": \"ImportAll\"}".to_string()
         } else {
-            v2_rt::concat(v2_rt::concat("{\"kind\": \"ImportSpecific\", \"names\": ".to_string(), json_list(Rc::new({ let mut __result = Vec::new(); for v in import_specific_names(imp.clone()).iter().cloned() { __result.push(json_quote(v.clone())); } __result }))), "}".to_string())
+            v2_rt::concat(v2_rt::concat("{\"kind\": \"ImportSpecific\", \"names\": ".to_string(), json_list(Rc::new({ let mut __result = Vec::new(); for v in import_specific_names_at(imp.clone(), source_index).iter().cloned() { __result.push(json_quote(v.clone())); } __result }))), "}".to_string())
         };
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"module_path\": ".to_string(), json_quote(imp.name.clone())), ", \"names\": ".to_string()), names_json), ", \"span\": ".to_string()), serialize_span(imp.span.clone())), "}".to_string())
 }
@@ -428,7 +428,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 },
     ExprData::ExprLet => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprLet\", \"name\": ".to_string(), json_quote(name)), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_index.clone())); } __result }))), "}".to_string()),
     ExprData::ExprRecordLit { parent_enum, .. } => {
-            let type_name = record_lit_type_name(expr_node.clone());
+            let type_name = record_lit_type_name_at(expr_node.clone(), source_index.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprRecordLit\", \"type_name\": ".to_string(), json_optional_string(type_name)), ", \"parent_enum\": ".to_string()), json_optional_string(parent_enum.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_index.clone())); } __result }))), "}".to_string())
 },
     ExprData::ExprForEach => {
@@ -479,14 +479,14 @@ pub fn serialize_node(node: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) ->
     })
 }
 
-pub fn serialize_module(module: Rc<Node>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(module.name.clone())), ", \"imports\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for imp in module_imports(module.clone()).iter().cloned() { __result.push(serialize_import_node(imp.clone())); } __result }))), ", \"span\": ".to_string()), serialize_span(module.span.clone())), "}".to_string())
+pub fn serialize_module(module: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(module.name.clone())), ", \"imports\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for imp in module_imports(module.clone()).iter().cloned() { __result.push(serialize_import_node(imp.clone(), source_index.clone())); } __result }))), ", \"span\": ".to_string()), serialize_span(module.span.clone())), "}".to_string())
 }
 
 pub fn serialize_typed_module(module: Rc<TypedModule>) -> String {
     {
         let si = module.type_env.clone().source_index.clone();
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"module\": ".to_string(), serialize_module(module.module.clone())), ", \"items\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for item in module.items.clone().iter().cloned() { __result.push(serialize_node(item.clone(), si.clone())); } __result }))), ", \"item_registry_keys\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for k in Rc::new(v2_rt::map_keys(&module.item_registry.clone())).iter().cloned() { __result.push(json_quote(k.clone())); } __result }))), "}".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"module\": ".to_string(), serialize_module(module.module.clone(), si.clone())), ", \"items\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for item in module.items.clone().iter().cloned() { __result.push(serialize_node(item.clone(), si.clone())); } __result }))), ", \"item_registry_keys\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for k in Rc::new(v2_rt::map_keys(&module.item_registry.clone())).iter().cloned() { __result.push(json_quote(k.clone())); } __result }))), "}".to_string())
 }
 }
 
@@ -584,30 +584,23 @@ if has_parse_errors {
             Rc::new(FrontendResult {
     graph: None,
     diagnostics: parse_diagnostics,
-    newline_indices: newline_indices,
+    newline_indices: newline_indices.clone(),
     intern_table: merged_intern_table,
 })
         } else {
             {
                 let modules = Rc::new({ let mut __result = Vec::new(); for p in parse_results.clone().iter().cloned() { __result.push(p.module.clone().clone().unwrap()); } __result });
-let graph = resolve_modules(modules);
+let source_indices = newline_indices.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<NewlineIndex>>(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, si: Rc<NewlineIndex>| v2_rt::rc_map_insert(acc.clone(), si.file.clone(), si.clone()));
+let graph = resolve_modules(modules, source_indices);
 Rc::new(FrontendResult {
     graph: Some(graph.clone()),
     diagnostics: v2_rt::concat(parse_diagnostics, graph.diagnostics.clone()),
-    newline_indices: newline_indices,
+    newline_indices: newline_indices.clone(),
     intern_table: merged_intern_table,
 })
 }
         }
 }
-}
-
-pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> {
-    tables.iter().cloned().fold(empty_intern_table(), |merged: Rc<InternTable>, t: Rc<InternTable>| t.strings.clone().iter().cloned().fold(merged.clone(), |m: Rc<InternTable>, s: String| if (s.clone().as_str() == "".to_string().as_str()) {
-        m.clone()
-    } else {
-        intern(m.clone(), s.clone()).table.clone()
-    }))
 }
 
 pub fn resolve_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CompileResult> {
