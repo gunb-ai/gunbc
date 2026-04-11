@@ -8,7 +8,8 @@
 The parser uses `ParserState { pos: Int }` to index into a token list.
 The CX analyzer cannot prove termination because integers are opaque —
 it reports `SameArgumentCall` for every function in the parser SCC.
-This accounts for 132 of 421 CX violations (31%).
+This accounts for 132 of the violations measured locally (421; ratchet
+in bootstrap.rs is 424).
 
 The tokenizer has the same pattern (`pos: Int` on source characters),
 contributing 22 more violations.
@@ -164,10 +165,13 @@ Both are genuinely shared across parser functions — this is not a
 convenience bundle. A function that only inspects tokens (helpers) does
 NOT take ctx; a function that builds AST nodes (parse functions) does.
 
-**Bespoke result types are a deliberate deferral.** The ~55 result types
-(TypeResult, ExprResult, etc.) are not the clean end state — a generic
-result pattern (M6 direction) would be better. This PR keeps them to
-minimize scope; collapsing to a generic result is a separate refactor.
+**Bespoke result types are a deliberate deferral, not the end state.**
+The ~55 result types (TypeResult, ExprResult, etc.) are a known modeling
+debt flagged by MODELING.md (M6: one generic result pattern, not N
+bespoke types). The structural parser rewrite is the natural moment to
+unify them, but doing both in one PR conflates the position fix with
+the result-type fix. This design deliberately scopes to position only;
+result-type unification is a first-class follow-up requirement.
 
 Helper results (no ctx — callers use `ctx` from their own scope):
 ```dag
@@ -378,13 +382,25 @@ for helper results. Parse results DO have ctx.
 
 ### Implementation order
 
-**Phase 0: Refactor helpers to minimum information (FIRST)**
-Rewrite ~30 `peek_is_*` functions to take `Token?` instead of
-`(tokens, state)`. Eliminate `peek` (callers use `tokens |> first`).
-Rewrite `current_span` → `token_span(tok: Token?)`. This is a
-self-contained change within the current parser structure — rename
-the helpers and update their call sites while `ParserState` still
-exists. Compile and test. This reduces the surface area for Phase 1.
+**Phase 0: Refactor helpers to minimum information (DONE)**
+Rewrite ~25 `peek_is_*` functions to `tok_is_*(tok: Token?)`.
+This is interface narrowing only — `ParserState { pos }` still
+exists, `peek(tokens, state)` still exists, and the root cause
+(integer-indexed position) is not yet fixed. Phase 0 reduces
+the surface area for the structural fix (Phases 1-2) by ensuring
+inspection helpers can't reference the wrong token list.
+
+**Known deferrals in Phase 0:**
+- `tok_keyword_to_name` / `tok_is_keyword_name` preserve the same
+  keyword-name authority that was in `keyword_to_name`. This is the
+  same logic in a narrower wrapper, not a structural dissolution.
+  The structural fix: derive keyword-name logic from the tokenizer's
+  keyword table (SyntaxSpec) rather than maintaining a parser-side copy.
+  Deferred — the authority question is orthogonal to the position fix.
+- 5 lookahead helpers (`peek_is_*_after_ident`, `peek_is_*_at`) remain
+  with `(tokens, state)` signatures — they genuinely need multi-token
+  access. These dissolve in Phase 2 when `tokens` becomes the remaining
+  list and lookahead uses `tokens |> skip(N) |> first`.
 
 **Phase 1: Types + consumption helpers**
 Change ParserState → ParseContext (delete `pos`). Update ~55 result
