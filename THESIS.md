@@ -116,6 +116,9 @@ dimensions work the same as built-in ones, the mechanism is
 general. If they require special compiler support, the mechanism
 is incomplete.
 
+Design: [src/v2/dimensions-design.md](src/v2/dimensions-design.md)
+— the general mechanism abstracted from CX and ownership.
+
 ## Error handling: show the correct code
 
 When the compiler finds a broken causal link, it doesn't just
@@ -362,10 +365,11 @@ docs/ (project-wide design — read for understanding)
 
 src/v2/ (compiler implementation — read when working)
   DESIGN.md .............. compiler design principles
-  cx-design.md ........... complexity analysis (Tier 1 gating item)
+  dimensions-design.md ... general correctness dimension mechanism
+  cx-design.md ........... complexity (first dimension instance)
   cx-computation-model.md  CX core model and evidence system
   cx-violation-triage.md . CX violation snapshot
-  ownership-design.md .... ownership proofs (Tier 1 + parallelism)
+  ownership-design.md .... ownership (second dimension instance)
   compiler-laws.md ....... compiler structural laws
   CM.md .................. concept model gaps
   CM-inventory.md ........ heuristic inventory
