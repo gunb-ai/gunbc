@@ -486,8 +486,9 @@ audit (2026-04-10):
 ### Track 15: Coercion as correctness dimension (Lane B + D)
 
 **Thesis claim:** the compiler knows the cost of every type conversion.
-Every coercion from .dag type to target-language type is declared,
-carries a cost, and is visible to complexity analysis.
+Coercion functions are .dag functions — CX proves their complexity
+bounds with the same machinery it uses for everything else. No new
+cost model. No new concepts.
 
 **Current state: substantial design and partial implementation exist.**
 
@@ -515,20 +516,28 @@ carries a cost, and is visible to complexity analysis.
 - Project (Lossy) — lose structural info
 - Transform (Transformed) — compute new representation
 
-**Cost categories** (designed, not tracked):
-- Native — pattern exists natively in target
-- Isomorphic — structurally equivalent, different syntax
-- Lowered — directly representable at lower level
-- Synthesized — requires synthesis (expensive)
+**Cost model: no new concepts.** A coercion is a .dag function. CX
+already proves complexity bounds on .dag functions. When coercion
+functions are .dag functions (Lane C), their cost is a free
+consequence of the existing CX machinery:
+- Checkpoint lookup (Int → i64): O(1) — constant, no recursion
+- Container coercion (List\<T\> → Vec\<T\>): O(n) — fold over elements
+- Recursive product (coerce each field): O(fields) — bounded by structure
+- Synthesized (coproduct → SPICE mux): whatever the synthesis function's
+  CostShape is — CX proves it from descent structure
+
+The human vocabulary (Native/Isomorphic/Lowered/Synthesized from
+compiler-laws.md) describes cost *ranges* for design orientation.
+The compiler tracks actual CostShapes, not categories.
 
 **Gap: what's missing to close the dimension:**
 
 | Item | Description | Blocked on |
 |------|-------------|-----------|
-| CO-1: Cost field on TypeCheckpoint + InhabitantDecl | Every declared coercion carries its cost category | Nothing |
-| CO-2: Coercion cost visible to CX | CX sees coercion operations as cost-bearing, not invisible | Track 1 (provenance on bindings) |
-| CO-3: Full coercion engine (Lane C) | Single emitter reads coercion data; language-specific emitters dissolve | Track 13 (single emitter) |
-| CO-4: User-declared coercion paths | Users declare coercion between their own types with cost | CO-1 + generic emission |
+| CO-1: Coercion functions as .dag functions | Lane C: coercion rules authored in .dag, not inline emitter logic | Track 13 (single emitter architecture) |
+| CO-2: CX proves coercion bounds | Once coercions are .dag functions, CX analyzes them automatically | CO-1 + Track 1 (CX gate closed) |
+| CO-3: Full coercion engine (Lane C) | Single emitter reads coercion data; language-specific emitters dissolve | Track 2 (LanguageSpec) + Track 7 (core tables) |
+| CO-4: User-declared coercion paths | Users declare coercion between their own types | CO-1 + generic emission |
 
 **Connects to:** Track 13 (single emitter depends on coercion
 completeness), Track 2 (LanguageSpec models target-language
