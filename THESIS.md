@@ -77,7 +77,8 @@ Current dimensions and status:
 | Dimension | Declared in | Lattice? | Carried on bindings? | Enforced? |
 |-----------|------------|----------|---------------------|-----------|
 | Type safety | std/types.dag | N/A (structural) | TypeBinding.resolved | Yes (blocking) |
-| Termination | std/termination.dag | BoundedLattice | TypeBinding.provenance + ExprCall.descent_evidence | Partial (424 violations, non-blocking) |
+| Termination | std/termination.dag | BoundedLattice | TypeBinding.provenance + ExprCall.descent_evidence | Partial (421 violations, non-blocking) |
+| Coercion | std/coercion.dag | Cost ordering (Native ≤ Isomorphic ≤ Lowered ≤ Synthesized) | Not yet (checkpoint/inhabitant lookup at emit time) | Partial (fail-closed where implemented) |
 | Ownership | ownership.dag | Not yet | Not yet (separate pass) | Partial (SharedError blocks) |
 | Side effects | std/behavioral.dag | Not yet | Not yet | No (declared, not consumed) |
 | Purity | (not declared) | — | — | No |
@@ -179,13 +180,14 @@ checking, and structural descent proofs make them unrepresentable.
 | Circular dependencies | CircularDependency diagnostic | DONE |
 | Cross-target drift | Single `.dag` declaration → all targets | DONE |
 | Diamond dependency divergence | Module graph deduplicates imports | DONE |
-| Non-termination | Structural descent proof (CX gate) | **424 violations → 0, then blocking** |
+| Non-termination | Structural descent proof (CX gate) | **421 violations → 0, then blocking** |
 | Record literal completeness | Missing-field diagnostic | **partial** |
-| Coercion completeness | Fail-closed inhabitant lookup | **partial** (fail-closed where implemented; coercion engine design incomplete) |
+| Coercion completeness | Fail-closed inhabitant lookup | **partial** — schema (TypeCheckpoint, InhabitantDecl) + 3-level dispatch + per-language data tables done; coercion cost tracking + full engine (Lane C) not started |
+| Coercion cost visibility | Every type conversion carries a cost visible to CX | **not started** — cost categories designed (Native/Isomorphic/Lowered/Synthesized) but not tracked on coercion operations |
 
-**Gating item:** CX gate. Once 424 → 0 and the gate is blocking,
-every function that compiles is proven to terminate. This is the
-single biggest remaining item in Tier 1.
+**Gating items:** CX gate (421 → 0, then blocking) and coercion
+completeness. Once every function terminates and every type
+conversion is accounted for with a known cost, Tier 1 is closed.
 
 **Note:** Tier 1 status claims reflect what the compiler enforces
 today, not aspirational targets. "DONE" means the diagnostic exists
@@ -232,7 +234,7 @@ faithful.
 | Test level | What it proves | Status |
 |------------|---------------|--------|
 | L0: Structural tests from data | Coercion mappings are complete and consistent | DONE |
-| L1: Pipeline unit tests | Compiler stages produce correct output | DONE (388 tests) |
+| L1: Pipeline unit tests | Compiler stages produce correct output | DONE (390 tests) |
 | L2: Bootstrap self-hosting | Compiler can compile itself | DONE |
 | L3: Syntax validity | Emitted code parses in target language | DONE |
 | L4: Semantic correctness | Emitted code executes, matches `.dag` evaluation | **not implemented** |
@@ -390,7 +392,8 @@ Updated manually. If this is stale, check ROADMAP.md for details.
 
 ```
 Tier 1: Structural         ██████████████░░ ~85%
-  CX gate:                 424 violations remaining (non-blocking)
+  CX gate:                 421 violations remaining (non-blocking)
+  Coercion:                schema + dispatch + data done; cost tracking not started
   Record completeness:     partial
 
 Tier 2: Runtime safety      ░░░░░░░░░░░░░░░ ~0%
