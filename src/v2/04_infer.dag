@@ -107,7 +107,8 @@ import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.induction {
   InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
   SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown,
-  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink
+  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
+  sub_value_to_evidence, meet_sub_value
 }
 import v2.compiler.infer_resolve {
   resolve_node, resolve_item_types,
@@ -727,11 +728,11 @@ fn extend_scope(scope: InferScope, name: String, resolved: Node, provenance: Sub
   }
 }
 
-fn extend_scope_match_bound(scope: InferScope, name: String, resolved: Node) -> InferScope {
+fn extend_scope_match_bound(scope: InferScope, name: String, resolved: Node, provenance: SubValueRelation) -> InferScope {
   InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
-    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown }),
+    locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: provenance }),
     match_bound_names: map_insert(scope.match_bound_names, name, true),
     module_name: scope.module_name,
     service_registry: scope.service_registry,
@@ -772,9 +773,33 @@ fn scope_after_stmt_node(stmt: Node, stmt_type: Node, scope: InferScope) -> Infe
   }
 }
 
-fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scrutinee_subject: PatternSubject) -> PatternScopeResult {
+// Derive provenance for a match-arm field binding.
+// If the scrutinee has known provenance and the field is inductive (recursive),
+// the binding is a StrictSubValue. Otherwise SubValueUnknown (fail-closed).
+fn derive_field_provenance(scope: InferScope, scrutinee_provenance: SubValueRelation, scrutinee_subject: PatternSubject, variant_name: String, field_name: String) -> SubValueRelation {
+  match scrutinee_provenance {
+    SubValueUnknown => SubValueUnknown
+    _ =>
+      // Get the scrutinee type name for inductive field lookup
+      let scrut_type_name = match scrutinee_subject {
+        PatternResolved { node: n } => resolved_type(n: n).name
+        _ => ""
+      }
+      if scrut_type_name == "" { SubValueUnknown }
+      else {
+        let ind_fields = inductive_fields_for(env: scope.type_env, type_name: scrut_type_name)
+        let matching = ind_fields |> filter(f => f.variant_name == variant_name && f.field_name == field_name) |> first
+        match matching {
+          Some { value: ind_field } => StrictSubValue { field: ind_field, factor: UnitShrink }
+          None => SubValueUnknown
+        }
+      }
+  }
+}
+
+fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scrutinee_subject: PatternSubject, scrutinee_provenance: SubValueRelation) -> PatternScopeResult {
   match pattern {
-    Bind { name: n } => PatternScopeResult { scope: extend_scope_match_bound(scope: scope, name: n, resolved: pattern_binding_type(subject: scrutinee_subject)), diagnostics: [] }
+    Bind { name: n } => PatternScopeResult { scope: extend_scope_match_bound(scope: scope, name: n, resolved: pattern_binding_type(subject: scrutinee_subject), provenance: scrutinee_provenance), diagnostics: [] }
     Wildcard => PatternScopeResult { scope: scope, diagnostics: [] }
     LitPattern { value: _ } => PatternScopeResult { scope: scope, diagnostics: [] }
     VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
@@ -783,17 +808,19 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
       let variant_subject = lookup_result_subject(result: variant_lookup)
       let variant_diags = variant_lookup.diagnostics
       fold(bindings, init: PatternScopeResult { scope: scope, diagnostics: variant_diags }, f: (acc, fb) =>
-        let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_binding_name_at(n: fb, source_index: scope.type_env.source_index), module_name: scope.module_name, source_index: scope.type_env.source_index)
+        let field_name = field_binding_name_at(n: fb, source_index: scope.type_env.source_index)
+        let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_name, module_name: scope.module_name, source_index: scope.type_env.source_index)
         let field_subject = lookup_result_subject(result: field_lookup)
         let field_type = pattern_binding_type(subject: field_subject)
+        let field_provenance = derive_field_provenance(scope: scope, scrutinee_provenance: scrutinee_provenance, scrutinee_subject: scrutinee_subject, variant_name: vname, field_name: field_name)
         let fb_pattern = field_binding_pattern(n: fb)
         match fb_pattern {
           Bind { name: n } => PatternScopeResult {
-            scope: extend_scope_match_bound(scope: acc.scope, name: n, resolved: field_type),
+            scope: extend_scope_match_bound(scope: acc.scope, name: n, resolved: field_type, provenance: field_provenance),
             diagnostics: concat(acc.diagnostics, field_lookup.diagnostics)
           }
           _ =>
-            let nested = extend_scope_with_pattern_node(scope: acc.scope, pattern: fb_pattern, scrutinee_subject: field_subject)
+            let nested = extend_scope_with_pattern_node(scope: acc.scope, pattern: fb_pattern, scrutinee_subject: field_subject, scrutinee_provenance: field_provenance)
             PatternScopeResult {
               scope: nested.scope,
               diagnostics: concat(acc.diagnostics, concat(field_lookup.diagnostics, nested.diagnostics))
@@ -1465,6 +1492,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let scrut_diags = scrut_result.diagnostics
       let scrut_rt = resolved_type(n: scrut_typed)
       let scrut_subject = pattern_subject_from_inferred(n: scrut_typed.inferred)
+      let scrut_provenance = classify_binding_provenance(val: scrut, scope: scope)
       // Infer all match arms independently with only the caller's expected type.
       // Post-inference: compute a unified type across all arms, then patch any
       // under-resolved arms. This is order-independent — arm ordering does not
@@ -1474,7 +1502,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         let arm_g = arm_guard(n: arm_node)
         let arm_b = arm_body(n: arm_node)
         let typed_pattern = annotate_pattern_parent_enums(pattern: arm_pat, scrutinee_subject: scrut_subject, scope: scope)
-        let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_subject: scrut_subject)
+        let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_subject: scrut_subject, scrutinee_provenance: scrut_provenance)
         let arm_scope = pattern_result.scope
         let pattern_diags = pattern_result.diagnostics
         let guard_result = if arm_g != none {
@@ -1527,7 +1555,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             let arm_g = arm_guard(n: arm_node)
             let arm_b = arm_body(n: arm_node)
             let typed_pattern = annotate_pattern_parent_enums(pattern: arm_pat, scrutinee_subject: scrut_subject, scope: scope)
-            let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_subject: scrut_subject)
+            let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_subject: scrut_subject, scrutinee_provenance: scrut_provenance)
             let arm_scope = pattern_result.scope
             let pattern_diags = pattern_result.diagnostics
             let guard_result = if arm_g != none {
@@ -2664,31 +2692,22 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
   }
 }
 
-// Classify one self-call argument against its corresponding parameter.
-// Merge SubValueRelations across branches (match arms, if branches).
-// Conservative: if ALL are the same structural kind, keep it.
-// If ANY is SubValueUnknown, result is SubValueUnknown.
-// PreservedValue is weaker than Strict — mixed Strict+Preserved → PreservedValue.
+// Merge SubValueRelations across branches using the structural lattice
+// meet from std/induction.dag. No lossy projection — meet_sub_value is
+// the single authority for SubValueRelation lattice operations.
+//
+// Uses first-element-as-init because the lattice has no unique top
+// (structural variants are incomparable). Empty list → SubValueUnknown
+// (fail-closed; shouldn't occur in practice since match/if always has
+// at least one branch).
 fn merge_argument_relations(rels: List<SubValueRelation>) -> SubValueRelation {
-  rels |> fold(init: PreservedValue, f: (acc, rel) =>
-    match rel {
-      SubValueUnknown => SubValueUnknown
-      _ =>
-        match acc {
-          SubValueUnknown => SubValueUnknown
-          PreservedValue =>
-            match rel {
-              PreservedValue => PreservedValue
-              _ => rel  // first non-Preserved sets the structural kind
-            }
-          _ =>
-            match rel {
-              PreservedValue => PreservedValue  // Preserved weakens to Preserved
-              _ => acc  // keep existing structural kind (conservative: first wins)
-            }
-        }
-    }
-  )
+  match rels |> first {
+    None => SubValueUnknown
+    Some { value: first_rel } =>
+      rels |> skip(1) |> fold(init: first_rel, f: (acc, rel) =>
+        meet_sub_value(a: acc, b: rel)
+      )
+  }
 }
 
 fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) -> SubValueRelation {

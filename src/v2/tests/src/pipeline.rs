@@ -3259,6 +3259,60 @@ fn label_of(value: MappedElement) -> String {
     ]);
     assert_no_diagnostics(&result);
 }
+// ── Higher-order function: named function as argument ──────────────────
+//
+// Verify that a user-defined function can be passed by name to another
+// function that accepts a function-typed parameter. This is the pattern
+// needed for generic lattice lifters: pass `merge_evidence` to
+// `optional_meet(meet, a, b)`.
+
+#[test]
+fn named_binary_function_passed_as_argument() {
+    let source = r#"module hof_binary
+
+fn pick_smaller(a: Int, b: Int) -> Int {
+  if a < b { a } else { b }
+}
+
+fn apply_binary(f: fn(Int, Int) -> Int, x: Int, y: Int) -> Int {
+  f(x, y)
+}
+
+fn test_it(x: Int, y: Int) -> Int {
+  apply_binary(f: pick_smaller, x: x, y: y)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn generic_optional_lift_with_function_param() {
+    let source = r#"module hof_optional_lift
+
+fn pick_smaller(a: Int, b: Int) -> Int {
+  if a < b { a } else { b }
+}
+
+fn optional_merge(merge: fn(Int, Int) -> Int, a: Int?, b: Int?) -> Int? {
+  match a {
+    None => b
+    Some { value: va } =>
+      match b {
+        None => a
+        Some { value: vb } => Some { value: merge(va, vb) }
+      }
+  }
+}
+
+fn test_it(a: Int?, b: Int?) -> Int? {
+  optional_merge(merge: pick_smaller, a: a, b: b)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
 // ── Parse-emit round-trip smoke test ────────────────────────────────────
 //
 // Verify that compiling the same source twice produces identical typed
@@ -7236,10 +7290,15 @@ fn process(data: List<Int>) -> List<Int> {
     // 2026-04-10: baseline (40/0/40).  Approximate — scope-blind string
     // matching (see function doc). Useful as regression gate, not for
     // precise claims.  As ownership modeling improves, these counts drop.
+    // 2026-04-10: 40→45 — new functions in std/termination.dag
+    // (evidence_rank, join_evidence, optional_evidence_meet,
+    // map_evidence_merge_at) add 5 clones from new code transitively
+    // compiled via std.types→std.termination; not a regression in
+    // existing code — these are new function bodies with new bindings.
 
-    const MOVABLE_CLONED_RATCHET: usize = 40;
+    const MOVABLE_CLONED_RATCHET: usize = 45;
     const TRY_UNWRAP_RATCHET: usize = 0;
-    const TOTAL_RATCHET: usize = 40;
+    const TOTAL_RATCHET: usize = 45;
 
     assert!(
         movable_but_cloned <= MOVABLE_CLONED_RATCHET,
@@ -7315,9 +7374,11 @@ fn ownership_stage0_census() {
     eprintln!("  TOTAL lines:            {}", total_lines);
     eprintln!("  clones/line:            {:.3}", total_clones as f64 / total_lines as f64);
 
-    // 2026-04-10 baseline: 23784 clones (+51 from workflow func CLI generation:
-    // resolved_defaults, service imports, subcommand enum, is_workflow_item)
-    const CLONE_RATCHET: usize = 23784;
+    // 2026-04-10 baseline: 23784 clones (+51 from workflow func CLI generation)
+    // 2026-04-10: +3 from new compiler helpers (optional_evidence_meet,
+    // map_evidence_merge_at, max_usage_by_fan_out, map_usage_merge_at
+    // in stage0 via std/termination.dag and ownership.dag).
+    const CLONE_RATCHET: usize = 23787;
     const TRY_UNWRAP_RATCHET: usize = 8;
 
     assert!(total_clones <= CLONE_RATCHET, ".clone() {} > ratchet {}", total_clones, CLONE_RATCHET);

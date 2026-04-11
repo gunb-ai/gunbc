@@ -140,27 +140,28 @@ Rc::new(UsageAccum {
 }
 }
 
+pub fn max_usage_by_fan_out(a: Rc<BindingUsage>, b: Rc<BindingUsage>) -> Rc<BindingUsage> {
+    if (binding_fan_out(b.clone()) > binding_fan_out(a.clone())) {
+        b.clone()
+    } else {
+        a.clone()
+    }
+}
+
+pub fn map_usage_merge_at(base: Rc<HashMap<String, Rc<BindingUsage>>>, key: String, new_val: Rc<BindingUsage>) -> Rc<HashMap<String, Rc<BindingUsage>>> {
+    match v2_rt::map_get(&base, key.clone()) {
+    Some(existing) => v2_rt::rc_map_insert(base.clone(), key.clone(), max_usage_by_fan_out(existing.clone(), new_val)),
+    None => v2_rt::rc_map_insert(base.clone(), key.clone(), new_val),
+}
+}
+
 pub fn merge_branch_usages(base: Rc<UsageAccum>, branches: Rc<Vec<Rc<UsageAccum>>>) -> Rc<UsageAccum> {
     {
-        let binding_merged = branches.clone().iter().cloned().fold(base.clone(), |merged: Rc<UsageAccum>, branch: Rc<UsageAccum>| Rc::new(v2_rt::map_values(&branch.bindings.clone())).iter().cloned().fold(merged.clone(), |acc: Rc<UsageAccum>, usage: Rc<BindingUsage>| {
-            let current_count = match v2_rt::map_get(&acc.bindings.clone(), usage.name.clone()) {
-    Some(existing) => binding_fan_out(existing.clone()),
-    None => 0,
-};
-let branch_count = binding_fan_out(usage.clone());
-if (branch_count.clone() > current_count.clone()) {
-                Rc::new(UsageAccum {
-    bindings: v2_rt::rc_map_insert(acc.bindings.clone(), usage.name.clone(), usage.clone()),
-    fold_call_nodes: acc.fold_call_nodes.clone(),
-})
-            } else {
-                acc.clone()
-            }
-}));
+        let binding_merged = branches.clone().iter().cloned().fold(base.bindings.clone(), |merged: Rc<HashMap<String, Rc<BindingUsage>>>, branch: Rc<UsageAccum>| Rc::new(v2_rt::map_values(&branch.bindings.clone())).iter().cloned().fold(merged.clone(), |acc: Rc<HashMap<String, Rc<BindingUsage>>>, usage: Rc<BindingUsage>| map_usage_merge_at(acc.clone(), usage.name.clone(), usage.clone())));
 let base_fold_count = (base.fold_call_nodes.clone().len() as i64);
 let branch_fold_nodes = Rc::new({ let mut __result = Vec::new(); for b in branches.clone().iter().cloned() { __result.extend((*Rc::new(b.fold_call_nodes.clone().iter().cloned().skip(base_fold_count.clone() as usize).collect::<Vec<_>>())).iter().cloned()); } __result });
 Rc::new(UsageAccum {
-    bindings: binding_merged.bindings.clone(),
+    bindings: binding_merged,
     fold_call_nodes: v2_rt::concat(base.fold_call_nodes.clone(), branch_fold_nodes),
 })
 }

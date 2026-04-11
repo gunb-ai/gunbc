@@ -27,7 +27,8 @@ import std.termination {
   RankingDimension, TreeSize, ListLength, ArithmeticValue, TokenPosition, SetCardinality,
   DescentSource, ChildAccessor, ListShrink, ArithmeticDecrease, ParserAdvance, SetRemoval, FoldIteration,
   TerminationProof, ProofEdge,
-  merge_evidence, promote_to_strict
+  merge_evidence, join_evidence, evidence_rank, promote_to_strict,
+  optional_evidence_meet, map_evidence_merge_at
 }
 import std.computation {
   CallPattern,
@@ -2437,16 +2438,9 @@ fn try_branching_dimension_for_param(body: Node, func_name: String, param_name: 
   collect_evidence_incremental(body: body, func_name: func_name, param_name: param_name, vars: empty_map(), check_child: check_child, check_list: check_list, branching_only: true, si: si)
 }
 
-// Merge two optional evidence values (helper for fold accumulation)
+// Merge two optional evidence values: lifted BoundedLattice meet.
 fn merge_optional_evidence(a: DescentEvidence?, b: DescentEvidence?) -> DescentEvidence? {
-  match a {
-    None => b
-    Some { value: ea } =>
-      match b {
-        None => a
-        Some { value: eb } => Some { value: merge_evidence(a: ea, b: eb) }
-      }
-  }
+  optional_evidence_meet(a: a, b: b)
 }
 
 // Collect the WORST evidence across all self-calls for a given param/dimension.
@@ -3466,19 +3460,8 @@ fn collect_scc_proof_edges_for_dim(members: List<String>, func_index: Map<String
 // caller→callee through one param must ALL descend. Cross-param selection
 // uses pick_best_param_edges (single best param) instead.
 fn merge_edge_evidence(acc_map: Map<String, DescentEvidence>, pe: ParserProgressEdge) -> Map<String, DescentEvidence> {
-  // Key by callee only — caller is always the same within a per-member loop.
-  let existing = map_get(acc_map, pe.callee)
-  let new_ev = pe.progress
-  let merged_ev = match existing {
-    Some { value: prev } =>
-      match prev {
-        Strict => match new_ev { Strict => Strict  NonIncreasing => NonIncreasing  DescentUnknown => DescentUnknown }
-        NonIncreasing => match new_ev { Strict => NonIncreasing  NonIncreasing => NonIncreasing  DescentUnknown => DescentUnknown }
-        DescentUnknown => DescentUnknown
-      }
-    None => new_ev
-  }
-  map_insert(acc_map, pe.callee, merged_ev)
+  // Pointwise BoundedLattice meet, keyed by callee.
+  map_evidence_merge_at(base: acc_map, key: pe.callee, new_val: pe.progress)
 }
 
 // Count edges with known evidence (not DescentUnknown) in an edge map.
@@ -5069,6 +5052,8 @@ fn derive_edge_evidence(all_calls: List<List<SubValueRelation>>) -> DescentEvide
 }
 
 // Merge descent evidence for a specific parameter across all self-call sites.
+// Fold-meet across all call sites: project SubValueRelation → DescentEvidence,
+// then meet in the DescentEvidence lattice. Init = top (Strict).
 fn merge_param_evidence(all_calls: List<List<SubValueRelation>>, param_index: Int) -> DescentEvidence {
   all_calls |> fold(init: Strict, f: (acc, call_evidence) =>
     match call_evidence |> skip(param_index) |> first {
