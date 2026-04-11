@@ -343,7 +343,7 @@ instead of derived from structural authorities.
 | Item | Status |
 |------|--------|
 | CG-1: Authority consolidation (type rendering, sharing, ownership) | DONE |
-| CG-2: Expression-level gaps (TLC-1..4) | TLC-1/2/3 done, TLC-4 partial (Rust/Python; Go fail-closed) |
+| CG-2: Expression-level gaps (TLC-1..4) | TLC-1/2/3 done, TLC-4 partial (Rust REST body only) |
 | CG-3: Parameterization (3 backends → 1 homomorphism) | Phases 1-3 done, 4-6 deferred |
 
 ### Track 5: Real-program emission (Lane B + D)
