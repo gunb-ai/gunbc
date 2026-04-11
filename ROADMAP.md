@@ -67,14 +67,14 @@ LAYER 6: Full vision (depends on Layer 5)
 | Track | Thesis tier | Readiness | Blocked on |
 |-------|------------|-----------|-----------|
 | Stream C / Track 8 / 9 | Tier 1 (structural facts) | 🟢 | C1 DONE, S8 Phase 1 DONE |
-| Track 6 | Tier 1 (string dispatch) | 🟢 | **DONE** (AlgebraFieldKind coproduct, PR #387) |
+| Track 6 | Tier 1 (string dispatch) | 🟢 | AlgebraFieldKind landed (PR #387); child lookup still string-based |
 | **Track 1 (provenance)** | **Tier 1 (CX gate)** | **🟢** | **S1-S6 DONE, C1-C2 DONE; C3-C6 next** |
 | Track 3 (Node.name) | Tier 1 (structural identity) | 🟢 | ~15 n.name reads + authored_name_at fallback (active: quick-owl-889) |
 | Track 7 (core tables) | Tier 1 (single authority) | 🟢 | Track 9 partially |
 | Track 2 (language spec) | Emission is mechanical | 🟡 | LS-4 borrow model design |
 | Track 4 (codegen) | Emission is mechanical | 🟢 | Track 2 partially |
 | Stream B (clone elision) | Tier 1 (ownership) | 🟢/🟡 | Layer 1 blocked on Track 3; Layer 2 DONE; Layer 3 in review (PR #390) |
-| Track 5 (real program) | End-to-end validation | 🟢 | RE-3/RE-4 DONE (PR #384); live integration partial |
+| Track 5 (real program) | End-to-end validation | 🟢 | RE-4 DONE (PR #384); RE-3 still partial (serde gaps) |
 | Track 10 (extdeps) | Data quality | 🟢 | Nothing |
 | Track 13 (single emitter + coercion) | Emission is mechanical | 🟡 | Track 2 + 7; coercion infra exists (std/coercion.dag) |
 | Track 11 (runtime safety) | Tier 2 | 🟡 | Design phase |
@@ -185,7 +185,7 @@ Bootstrap D ├─ Lane B: Emission ──────────────�
 | Lint | `cargo clippy --workspace -- -D warnings` | GREEN |
 | Tests | `cargo test -p v2-compiler-tests` | GREEN (390 pass) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN |
-| Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 421 (honest, non-blocking) |
+| Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 421 measured (checked-in ratchet: 424, non-blocking) |
 | L1 gate | `scripts/l1-ratchet.sh --check` | GREEN (0, hard gate) |
 | Stage0 freshness | `scripts/check-stage0-freshness.sh` | GREEN (blocking) |
 
@@ -276,10 +276,10 @@ spec-referenced data lookups instead of inline logic.
 
 **LS-4: Ownership — three layers to clone elimination**
 
-Stage0 emits ~13,820 `.clone()` calls (down from 23,733 before
-ownership work). The ownership analysis (PR #313) computes the facts
-needed to eliminate most of them. Layer 2 (TCO) and Layer 3 (borrow
-propagation) are actively reducing this further.
+Stage0 clone count is actively decreasing. The checked-in ratchet
+is 24,000 (compiler_tests_rust.dag); measured count after Layer 2
+and Layer 3 (PR #390) is ~13,820. The ownership analysis (PR #313)
+computes the facts needed to eliminate most clones.
 
 Conceptual violation classes (design orientation — not yet
 individually measured by the ratchet):
@@ -380,7 +380,7 @@ First target: `gunbc/tools/review.dag` (PR review agent).
 
 ### Track 6: Algebra field dispatch (Lane A)
 
-**DONE (PR #387).** `ExprBinOp.algebra_field` and
+**Mostly done (PR #387).** `ExprBinOp.algebra_field` and
 `OperatorSpec.algebra_field` now use the structural `AlgebraFieldKind`
 coproduct (defined in `std/syntax.dag`) instead of `String?`. Eight
 variants: `AlgAdd`, `AlgMul`, `AlgReciprocal`, `AlgQuotient`,
@@ -639,7 +639,7 @@ Every function gets a proven asymptotic bound at compile time. Not a
 lint — a structural proof. Grounded in three bounded primitives
 (fold/descend/repeat) and type-derived descent facts.
 
-**Status:** 424 honest violations (non-blocking). The provenance-on-
+**Status:** 421 measured violations (checked-in ratchet: 424, non-blocking). The provenance-on-
 bindings work (Track 1) is the path to 0. Once provenance flows
 through bindings, complexity is a consequence — not an analysis.
 
