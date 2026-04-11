@@ -72,21 +72,21 @@ pub fn empty_trace() -> Rc<Trace> {
 })
 }
 
-pub fn trace_push_event(trace: Rc<Trace>, event: Rc<TraceEvent>) -> Rc<Trace> {
+pub fn trace_push_event(trace: &Rc<Trace>, event: Rc<TraceEvent>) -> Rc<Trace> {
     Rc::new(Trace {
     events: v2_rt::rc_list_push(trace.events.clone(), event),
     stack: trace.stack.clone(),
 })
 }
 
-pub fn trace_push_frame(trace: Rc<Trace>, frame: Rc<TraceFrame>) -> Rc<Trace> {
+pub fn trace_push_frame(trace: &Rc<Trace>, frame: Rc<TraceFrame>) -> Rc<Trace> {
     Rc::new(Trace {
     events: trace.events.clone(),
     stack: v2_rt::rc_list_push(trace.stack.clone(), frame),
 })
 }
 
-pub fn trace_pop_frame(trace: Rc<Trace>) -> Rc<Trace> {
+pub fn trace_pop_frame(trace: &Rc<Trace>) -> Rc<Trace> {
     {
         let n = (trace.stack.clone().len() as i64);
 if (n.clone() <= 1) {
@@ -150,15 +150,15 @@ pub fn replay_trace(trace: Rc<Trace>, filter: Rc<TraceFilter>) -> Rc<Vec<Rc<Trac
 }
 }
 
-pub fn format_span(sp: Rc<SourceSpan>) -> String {
+pub fn format_span(sp: &Rc<SourceSpan>) -> String {
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("[".to_string(), (sp.start.clone()).to_string()), "..".to_string()), (sp.end.clone()).to_string()), ")".to_string())
 }
 
 pub fn format_trace_event(event: Rc<TraceEvent>) -> String {
     match (*event).clone() {
-    TraceEvent::TraceEnter { node_id: id, span: sp, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat("> ".to_string(), id.clone()), " at ".to_string()), format_span(sp.clone())),
-    TraceEvent::TraceExit { node_id: id, span: sp, output: out, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("< ".to_string(), id.clone()), " at ".to_string()), format_span(sp.clone())), ": ".to_string()), out.clone()),
-    TraceEvent::TraceError { node_id: id, span: sp, message: msg, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("! ".to_string(), id.clone()), " at ".to_string()), format_span(sp.clone())), ": ".to_string()), msg.clone()),
+    TraceEvent::TraceEnter { node_id: id, span: sp, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat("> ".to_string(), id.clone()), " at ".to_string()), format_span(&sp)),
+    TraceEvent::TraceExit { node_id: id, span: sp, output: out, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("< ".to_string(), id.clone()), " at ".to_string()), format_span(&sp)), ": ".to_string()), out.clone()),
+    TraceEvent::TraceError { node_id: id, span: sp, message: msg, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("! ".to_string(), id.clone()), " at ".to_string()), format_span(&sp)), ": ".to_string()), msg.clone()),
 }
 }
 

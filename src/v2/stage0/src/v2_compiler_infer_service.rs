@@ -35,7 +35,7 @@ pub struct ServiceMethodResult {
     pub op_params: Rc<Vec<Rc<Node>>>,
 }
 
-pub fn is_typed_service_call_receiver(receiver: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
+pub fn is_typed_service_call_receiver(receiver: &Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
     match (*receiver.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
         let f = field_access_field_at(receiver.clone(), source_index);
@@ -52,7 +52,7 @@ match (*b.expr_data.clone()).clone() {
 }
 }
 
-pub fn extract_typed_service_name(receiver: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<String> {
+pub fn extract_typed_service_name(receiver: &Rc<Node>, source_index: &Option<Rc<NewlineIndex>>) -> Option<String> {
     match (*receiver.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
         let f = field_access_field_at(receiver.clone(), source_index.clone());
@@ -71,22 +71,22 @@ Some(v2_rt::concat(v2_rt::concat(ns, ".".to_string()), f))
 
 pub fn collect_typed_service_calls(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<String>> {
     {
-        let result = collect_typed_service_calls_into(texpr, Rc::new(UniqueAccum {
+        let result = collect_typed_service_calls_into(&texpr, &Rc::new(UniqueAccum {
     seen: v2_rt::rc_empty_map::<bool>(),
     result: Rc::new(vec![]),
-}), source_index);
+}), &source_index);
 result.result.clone()
 }
 }
 
-pub fn collect_typed_service_calls_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>, source_index: Option<Rc<NewlineIndex>>) -> Rc<UniqueAccum> {
+pub fn collect_typed_service_calls_into(texpr: &Rc<Node>, acc: &Rc<UniqueAccum>, source_index: &Option<Rc<NewlineIndex>>) -> Rc<UniqueAccum> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let this_acc = match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprMethodCall { .. } => {
                 let r = method_receiver(texpr.clone());
-if is_typed_service_call_receiver(r.clone(), source_index.clone()) {
-                    match extract_typed_service_name(r.clone(), source_index.clone()) {
+if is_typed_service_call_receiver(&r, source_index.clone()) {
+                    match extract_typed_service_name(&r, &source_index) {
     Some(service_name) => if emit_map_has(acc.seen.clone(), service_name.clone()) {
                         acc.clone()
                     } else {
@@ -103,13 +103,13 @@ if is_typed_service_call_receiver(r.clone(), source_index.clone()) {
 },
     _ => acc.clone(),
 };
-let result = texpr.children.clone().iter().cloned().fold(this_acc.clone(), |a: Rc<UniqueAccum>, child: Rc<Node>| collect_typed_service_calls_into(child.clone(), a.clone(), source_index.clone()));
+let result = texpr.children.clone().iter().cloned().fold(this_acc.clone(), |a: Rc<UniqueAccum>, child: Rc<Node>| collect_typed_service_calls_into(&child, &a, &source_index));
 result
 }
     })
 }
 
-pub fn collect_called_func_names_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>, source_index: Option<Rc<NewlineIndex>>) -> Rc<UniqueAccum> {
+pub fn collect_called_func_names_into(texpr: &Rc<Node>, acc: &Rc<UniqueAccum>, source_index: &Option<Rc<NewlineIndex>>) -> Rc<UniqueAccum> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let this_acc = match (*texpr.expr_data.clone()).clone() {
@@ -126,7 +126,7 @@ if emit_map_has(acc.seen.clone(), f.clone()) {
 },
     _ => acc.clone(),
 };
-let result = texpr.children.clone().iter().cloned().fold(this_acc.clone(), |a: Rc<UniqueAccum>, child: Rc<Node>| collect_called_func_names_into(child.clone(), a.clone(), source_index.clone()));
+let result = texpr.children.clone().iter().cloned().fold(this_acc.clone(), |a: Rc<UniqueAccum>, child: Rc<Node>| collect_called_func_names_into(&child, &a, &source_index));
 result
 }
     })
@@ -134,10 +134,10 @@ result
 
 pub fn collect_called_func_names(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<String>> {
     {
-        let result = collect_called_func_names_into(texpr, Rc::new(UniqueAccum {
+        let result = collect_called_func_names_into(&texpr, &Rc::new(UniqueAccum {
     seen: v2_rt::rc_empty_map::<bool>(),
     result: Rc::new(vec![]),
-}), source_index);
+}), &source_index);
 result.result.clone()
 }
 }
@@ -208,7 +208,7 @@ continue;
 }
 }
 
-pub fn check_service_field_access_node(base_type: Rc<Node>, field: String, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>) -> Option<Rc<Node>> {
+pub fn check_service_field_access_node(base_type: &Rc<Node>, field: String, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>) -> Option<Rc<Node>> {
     if ((base_type.connective.clone() == Connective::NoConnective) && ((base_type.children.clone().len() as i64) == 0)) {
         {
             let path = v2_rt::concat(v2_rt::concat(base_type.name.clone(), ".".to_string()), field);
@@ -222,7 +222,7 @@ match v2_rt::map_get(&service_registry, path.clone()) {
     }
 }
 
-pub fn check_service_method_call_node(receiver_type: Rc<Node>, method: String, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>) -> Option<Rc<ServiceMethodResult>> {
+pub fn check_service_method_call_node(receiver_type: &Rc<Node>, method: String, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>) -> Option<Rc<ServiceMethodResult>> {
     if ((receiver_type.connective.clone() == Connective::NoConnective) && ((receiver_type.children.clone().len() as i64) == 0)) {
         match v2_rt::map_get(&service_registry, receiver_type.name.clone()) {
     Some(ops) => {
@@ -247,7 +247,7 @@ match matching.first().cloned() {
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
     inferred: Some(Rc::new(InferredNode::Resolved {
-    node: param_node_type_expr(f.clone()),
+    node: param_node_type_expr(&f),
 })),
     return_cardinality: Cardinality::Required,
     uses: Rc::new(vec![]),
@@ -287,10 +287,10 @@ match matching.first().cloned() {
     }
 }
 
-pub fn service_op_entry(child: Rc<Node>) -> Rc<OpEntry> {
+pub fn service_op_entry(child: &Rc<Node>) -> Rc<OpEntry> {
     Rc::new(OpEntry {
     name: child.name.clone(),
-    outputs: inferred_to_outputs(child.inferred.clone(), child.span.clone()),
+    outputs: inferred_to_outputs(&child.inferred.clone(), child.span.clone()),
     params: child.params.clone(),
 })
 }

@@ -110,7 +110,7 @@ import v2.compiler.infer_emit_info {
   lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum
 }
-import v2.compiler.ownership { OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set }
+import v2.compiler.ownership { OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set, build_read_only_params, collect_callable_refs }
 import std.induction { SubValueUnknown }
 
 import v2.compiler.emit {
@@ -453,11 +453,13 @@ fn build_shared_types(type_summaries: Map<String, TypeSummary>, recursive_type_s
 type OwnershipProofEntry {
   name: String
   proof: OwnershipProof
+  param_names: Map<String, Bool>
 }
 
 type OwnershipBuildResult {
   ownership_index: Map<String, Map<String, Bool>>
   fold_eligible_index: Map<String, Map<String, Bool>>
+  read_only_params_index: Map<String, Map<String, Bool>>
 }
 
 fn build_fold_eligible_set(proof: OwnershipProof) -> Map<String, Bool> {
@@ -467,15 +469,29 @@ fn build_fold_eligible_set(proof: OwnershipProof) -> Map<String, Bool> {
 }
 
 fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
-  let proofs = modules |> flat_map(m =>
-    m.items |> filter(item => item.body != None) |> map(item =>
-      OwnershipProofEntry { name: item.name, proof: analyze_ownership(func_name: item.name, params: item.params, body: item.body.value, si: m.type_env.source_index) }
+  // Collect functions used as first-class callables (passed as arguments to HOFs).
+  // These cannot have params borrowed — borrowing changes the callable signature.
+  let callable_set = modules |> fold(init: empty_map(), f: (acc, m) =>
+    m.items |> filter(item => item.body != None) |> fold(init: acc, f: (inner, item) =>
+      map_merge(inner, collect_callable_refs(texpr: item.body.value, si: m.type_env.source_index))
     )
   )
-  proofs |> fold(init: OwnershipBuildResult { ownership_index: empty_map(), fold_eligible_index: empty_map() }, f: (acc, entry) =>
+  let proofs = modules |> flat_map(m =>
+    m.items |> filter(item => item.body != None) |> map(item =>
+      let pnames = item.params |> fold(init: empty_map(), f: (acc, p) =>
+        map_insert(acc, param_node_name_at(n: p, source_index: m.type_env.source_index), true)
+      )
+      OwnershipProofEntry { name: item.name, proof: analyze_ownership(func_name: item.name, params: item.params, body: item.body.value, si: m.type_env.source_index), param_names: pnames }
+    )
+  )
+  proofs |> fold(init: OwnershipBuildResult { ownership_index: empty_map(), fold_eligible_index: empty_map(), read_only_params_index: empty_map() }, f: (acc, entry) =>
+    // Skip read-only classification for functions used as callables.
+    let read_only = if map_contains_key(callable_set, entry.name) { empty_map() }
+      else { build_read_only_params(proof: entry.proof, param_names: entry.param_names) }
     OwnershipBuildResult {
       ownership_index: map_insert(acc.ownership_index, entry.name, build_movable_set(proof: entry.proof)),
-      fold_eligible_index: map_insert(acc.fold_eligible_index, entry.name, build_fold_eligible_set(proof: entry.proof))
+      fold_eligible_index: map_insert(acc.fold_eligible_index, entry.name, build_fold_eligible_set(proof: entry.proof)),
+      read_only_params_index: map_insert(acc.read_only_params_index, entry.name, read_only)
     }
   )
 }
@@ -498,7 +514,9 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     variant_to_enum: base_info.variant_to_enum,
     owned_bindings: empty_map(),
     fold_eligible_index: ownership.fold_eligible_index,
-    fold_eligible: empty_map()
+    fold_eligible: empty_map(),
+    read_only_params_index: ownership.read_only_params_index,
+    read_only_params: empty_map()
   }
   let shared_types = emit_info.shared_types
   let registry = typed.item_registry
@@ -605,7 +623,9 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     variant_to_enum: base_info.variant_to_enum,
     owned_bindings: empty_map(),
     fold_eligible_index: base_info.fold_eligible_index,
-    fold_eligible: empty_map()
+    fold_eligible: empty_map(),
+    read_only_params_index: base_info.read_only_params_index,
+    read_only_params: empty_map()
   }
   let shared_types = emit_info.shared_types
   emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map())
@@ -846,6 +866,14 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
       Some { value: m } => m
       None => empty_map()
     }
+    // TCO functions use `mut` params (emit_tco_param), never borrowed.
+    let item_is_tco = is_tco_eligible(name: item.name, body: item.body.value, registry: registry, source_index: env.source_index)
+    let fn_read_only = if item_is_tco { empty_map() } else {
+      match map_get(emit_info.read_only_params_index, item.name) {
+        Some { value: m } => m
+        None => empty_map()
+      }
+    }
     let fn_emit_info = EmitGraphInfo {
       type_summaries: emit_info.type_summaries,
       recursive_type_set: emit_info.recursive_type_set,
@@ -856,7 +884,9 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
       variant_to_enum: emit_info.variant_to_enum,
       owned_bindings: empty_map(),
       fold_eligible_index: emit_info.fold_eligible_index,
-      fold_eligible: fn_fold_eligible
+      fold_eligible: fn_fold_eligible,
+      read_only_params_index: emit_info.read_only_params_index,
+      read_only_params: fn_read_only
     }
     // Items with resource uses or service calls are emitted as async workflow functions.
     // Single authority: service_names + resource_names on ItemInfo (not uses on the Node).
@@ -1128,7 +1158,7 @@ fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, shar
 
 fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_index
-  let params_str = emit_params(params: params, shared_types: shared_types, source_index: si)
+  let params_str = emit_params(params: params, shared_types: shared_types, source_index: si, read_only_params: emit_info.read_only_params)
   let ret_str = emit_inferred(inferred: inferred, shared_types: shared_types, source_index: si)
   let body_scope = build_params_scope(scope: scope, params: params)
   let depth = 0
@@ -1184,7 +1214,7 @@ fn emit_func_def(
     Some { value: info } => info.service_names
     None => []
   }
-  let params_str = emit_func_params(params: params, uses: uses, service_names: service_names, shared_types: shared_types, source_index: scope.type_env.source_index)
+  let params_str = emit_func_params(params: params, uses: uses, service_names: service_names, shared_types: shared_types, source_index: scope.type_env.source_index, read_only_params: emit_info.read_only_params)
   let ret_str = emit_func_inferred(inferred: inferred, shared_types: shared_types, source_index: scope.type_env.source_index)
   let body_scope = build_params_scope(scope: scope, params: params)
   let si = scope.type_env.source_index
@@ -1274,8 +1304,8 @@ fn emit_tco_param(param: Node, shared_types: Map<String, Bool>, source_index: Ne
   concat("mut ", emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: Rust), rust_items().param_type_sep, ty)
 }
 
-fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
-  let param_strs = params |> map(p => emit_param(param: p, shared_types: shared_types, source_index: source_index))
+fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, shared_types: Map<String, Bool>, source_index: NewlineIndex?, read_only_params: Map<String, Bool>) -> String {
+  let param_strs = params |> map(p => emit_param(param: p, shared_types: shared_types, source_index: source_index, read_only_params: read_only_params))
   let resource_strs = uses |> map(u =>
     concat(emit_ident(name: resource_use_name_at(n: u, source_index: source_index), target: Rust), ": &", render_rust_type(n: resource_use_resource(n: u), shared_types: shared_types, source_index: source_index))
   )
@@ -1294,8 +1324,8 @@ fn emit_func_inferred(inferred: Node, shared_types: Map<String, Bool>, source_in
 // Parameter emission
 // =========================================================================
 
-fn emit_params(params: List<Node>, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
-  let strs = params |> map(p => emit_param(param: p, shared_types: shared_types, source_index: source_index))
+fn emit_params(params: List<Node>, shared_types: Map<String, Bool>, source_index: NewlineIndex?, read_only_params: Map<String, Bool>) -> String {
+  let strs = params |> map(p => emit_param(param: p, shared_types: shared_types, source_index: source_index, read_only_params: read_only_params))
   strs |> join(separator: ", ")
 }
 
@@ -1313,13 +1343,20 @@ fn emit_rust_param_type(n: Node, shared_types: Map<String, Bool>, source_index: 
   }
 }
 
-fn emit_param(param: Node, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
+fn emit_param(param: Node, shared_types: Map<String, Bool>, source_index: NewlineIndex?, read_only_params: Map<String, Bool>) -> String {
   let n = param_node_type_expr(n: param)
   let ty = emit_rust_param_type(n: n, shared_types: shared_types, source_index: source_index)
-  // All params are owned -- Rc-wrapped types are cheap to clone, and
-  // the .clone() pattern in function bodies produces owned values.
-  // Adding & to params creates reference/owned mismatches.
-  concat(emit_ident(name: param_node_name_at(n: param, source_index: source_index), target: Rust), rust_items().param_type_sep, ty)
+  let pname = param_node_name_at(n: param, source_index: source_index)
+  // Borrow read-only params of non-Copy types. Callable functions are already
+  // excluded at the read_only_params_index level (callable_set filter).
+  let is_callable_param = n.params |> count > 0
+  let is_borrowable = map_contains_key(read_only_params, pname)
+    && is_callable_param == false
+    && needs_reference_node(n: n)
+  let final_ty = if is_borrowable {
+    apply_type_template1(template: sharing_for_target(target: Rust).borrow_param_template, arg0: ty)
+  } else { ty }
+  concat(emit_ident(name: pname, target: Rust), rust_items().param_type_sep, final_ty)
 }
 
 fn emit_inferred(inferred: Node, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
@@ -2393,12 +2430,41 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
   let filled_args = fill_default_args(ordered: ordered_args, callee: callee, registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let is_rt = map_contains_key(rt_functions, func)
   let is_rt_ref_map = map_contains_key(rt_ref_map_functions(), func)
+  let callee_read_only = match map_get(emit_info.read_only_params_index, func) {
+    Some { value: m } => m
+    None => empty_map()
+  }
+  // Build positional borrow set: maps position index → true for borrowed params.
+  // Must replicate the same checks as emit_param: read-only, non-Copy, non-callable,
+  // and exclude TCO functions (their params are always `mut`, never borrowed).
+  // Uses the same is_self_recursive + has_non_tail_self_call predicate as
+  // is_tco_eligible (single authority via ItemInfo).
+  let callee_is_tco = match callee {
+    Some { value: info } => info.is_self_recursive && info.has_non_tail_self_call == false
+    None => false
+  }
+  let callee_borrow_positions = if callee_is_tco { empty_map() } else {
+    match callee {
+      Some { value: info } =>
+        info.params |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
+          let pname = param_node_name_at(n: pair.second, source_index: collection_scope.type_env.source_index)
+          let n = param_node_type_expr(n: pair.second)
+          let is_callable = n.params |> count > 0
+          let is_borrowable = map_contains_key(callee_read_only, pname) && is_callable == false && needs_reference_node(n: n)
+          if is_borrowable { map_insert(acc, to_string(value: pair.first), true) } else { acc }
+        )
+      None => empty_map()
+    }
+  }
   let arg_strs = filled_args |> enumerate |> map(pair =>
     let idx = pair.first
     let a = pair.second
     if is_rt_ref_map && idx == 0 {
       let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       concat("&", base)
+    } else if map_contains_key(callee_borrow_positions, to_string(value: idx)) {
+      let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      apply_type_template1(template: sharing_for_target(target: Rust).borrow_arg_template, arg0: base)
     } else {
       emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     }
@@ -2728,7 +2794,9 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
               variant_to_enum: emit_info.variant_to_enum,
               owned_bindings: map_insert(emit_info.owned_bindings, acc_name, true),
               fold_eligible_index: emit_info.fold_eligible_index,
-              fold_eligible: emit_info.fold_eligible
+              fold_eligible: emit_info.fold_eligible,
+              read_only_params_index: emit_info.read_only_params_index,
+              read_only_params: emit_info.read_only_params
             }
           None => emit_info
         }
@@ -5496,7 +5564,7 @@ fn emit_main_diagnostic_fns(crate_name: String) -> String {
     "\n",
     "    let location = if !span.file.is_empty() {\n",
     "        if let Some(idx) = index_map.get(&span.file) {\n",
-    "            let lc = byte_to_line_col(idx.clone(), span.start);\n",
+    "            let lc = byte_to_line_col(idx, span.start);\n",
     "            format!(\"{}:{}:{}\", span.file, lc.line, lc.col)\n",
     "        } else {\n",
     "            span.file.clone()\n",
@@ -5515,8 +5583,8 @@ fn emit_main_diagnostic_fns(crate_name: String) -> String {
     "\n",
     "    if !span.file.is_empty() {\n",
     "        if let Some(idx) = index_map.get(&span.file) {\n",
-    "            let lc = byte_to_line_col(idx.clone(), span.start);\n",
-    "            let line_text = source_line_at(idx.clone(), lc.line);\n",
+    "            let lc = byte_to_line_col(idx, span.start);\n",
+    "            let line_text = source_line_at(idx, lc.line);\n",
     "            let line_num = format!(\"{}\", lc.line);\n",
     "            let gutter_width = line_num.len();\n",
     "            eprintln!(\"{} {} |\", indent, \" \".repeat(gutter_width));\n",

@@ -295,7 +295,7 @@ fn render_one_diagnostic(
 
     let location = if !span.file.is_empty() {
         if let Some(idx) = index_map.get(&span.file) {
-            let lc = byte_to_line_col(idx.clone(), span.start);
+            let lc = byte_to_line_col(idx, span.start);
             format!("{}:{}:{}", span.file, lc.line, lc.col)
         } else {
             span.file.clone()
@@ -314,8 +314,8 @@ fn render_one_diagnostic(
 
     if !span.file.is_empty() {
         if let Some(idx) = index_map.get(&span.file) {
-            let lc = byte_to_line_col(idx.clone(), span.start);
-            let line_text = source_line_at(idx.clone(), lc.line);
+            let lc = byte_to_line_col(idx, span.start);
+            let line_text = source_line_at(idx, lc.line);
             let line_num = format!("{}", lc.line);
             let gutter_width = line_num.len();
             eprintln!("{} {} |", indent, " ".repeat(gutter_width));
