@@ -31,7 +31,7 @@ pub use crate::v2_compiler_infer_method::{infer_builtin_call_type, resolve_built
 pub use crate::v2_compiler_infer_cycle::{detect_type_cycles_kahn};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for, merge_envs, put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for, inductive_fields_list_to_map};
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
-pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation, ShrinkFactor, sub_value_to_evidence, meet_sub_value};
+pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation, ShrinkFactor, sub_value_to_evidence, meet_sub_value, compose_sub_value};
 use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion};
 use crate::std_induction::SubValueRelation::{StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown};
 use crate::std_induction::ShrinkFactor::{UnitShrink, ConstantShrink, ProportionalShrink};
@@ -785,7 +785,7 @@ extend_scope(scope.clone(), let_binding_name_at(stmt.clone(), scope.type_env.clo
 }
 
 pub fn derive_field_provenance(scope: Rc<InferScope>, scrutinee_provenance: Rc<SubValueRelation>, scrutinee_subject: Rc<PatternSubject>, variant_name: String, field_name: String) -> Rc<SubValueRelation> {
-    match (*scrutinee_provenance).clone() {
+    match (*scrutinee_provenance.clone()).clone() {
     SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
     _ => {
         let scrut_type_name = match (*scrutinee_subject).clone() {
@@ -799,10 +799,7 @@ if (scrut_type_name.clone().as_str() == "".to_string().as_str()) {
                 let ind_fields = inductive_fields_for(scope.type_env.clone(), scrut_type_name.clone());
 let matching = Rc::new({ let mut __result = Vec::new(); for f in ind_fields.iter().cloned() { if ((f.variant_name.clone().as_str() == variant_name.clone().as_str()) && (f.field_name.clone().as_str() == field_name.clone().as_str())) { __result.push(f); } } __result }).first().cloned();
 match matching {
-    Some(ind_field) => Rc::new(SubValueRelation::StrictSubValue {
-    field: ind_field.clone(),
-    factor: Rc::new(ShrinkFactor::UnitShrink),
-}),
+    Some(ind_field) => compose_sub_value(scrutinee_provenance.clone(), ind_field.clone()),
     None => Rc::new(SubValueRelation::SubValueUnknown),
 }
 }
@@ -2613,19 +2610,13 @@ match (*base.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
             let bname = expr_var_name(base.clone());
 match v2_rt::map_get(&scope.locals.clone(), bname) {
-    Some(binding) => match (*binding.provenance.clone()).clone() {
-    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-    _ => {
+    Some(binding) => {
                 let fields = inductive_fields_for(scope.type_env.clone(), binding.resolved.clone().name.clone());
 let matching = Rc::new({ let mut __result = Vec::new(); for f in fields.iter().cloned() { if (f.field_name.clone().as_str() == field.clone().as_str()) { __result.push(f); } } __result }).first().cloned();
 match matching {
-    Some(ind_field) => Rc::new(SubValueRelation::StrictSubValue {
-    field: ind_field.clone(),
-    factor: Rc::new(ShrinkFactor::UnitShrink),
-}),
+    Some(ind_field) => compose_sub_value(binding.provenance.clone(), ind_field.clone()),
     None => Rc::new(SubValueRelation::SubValueUnknown),
 }
-},
 },
     None => Rc::new(SubValueRelation::SubValueUnknown),
 }

@@ -153,6 +153,16 @@ pub fn join_sub_value(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>) -> Rc<Su
 }
 }
 
+pub fn compose_sub_value(base: Rc<SubValueRelation>, field: Rc<InductiveField>) -> Rc<SubValueRelation> {
+    match (*base).clone() {
+    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+    _ => Rc::new(SubValueRelation::StrictSubValue {
+    field: field,
+    factor: Rc::new(ShrinkFactor::UnitShrink),
+}),
+}
+}
+
 pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Option<Rc<CallPattern>> {
     match (*relation).clone() {
     SubValueRelation::StrictSubValue { field: f, .. } => Some(Rc::new(CallPattern::ChildAccessorCall {

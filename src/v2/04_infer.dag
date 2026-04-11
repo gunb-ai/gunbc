@@ -108,7 +108,7 @@ import std.induction {
   InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
   SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown,
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
-  sub_value_to_evidence, meet_sub_value
+  sub_value_to_evidence, meet_sub_value, compose_sub_value
 }
 import v2.compiler.infer_resolve {
   resolve_node, resolve_item_types,
@@ -776,11 +776,13 @@ fn scope_after_stmt_node(stmt: Node, stmt_type: Node, scope: InferScope) -> Infe
 // Derive provenance for a match-arm field binding.
 // If the scrutinee has known provenance and the field is inductive (recursive),
 // the binding is a StrictSubValue. Otherwise SubValueUnknown (fail-closed).
+// Derive provenance for a match-arm field binding via compose_sub_value
+// (std/induction.dag authority). Looks up whether the field is inductive;
+// if so, composes the scrutinee's provenance with the field.
 fn derive_field_provenance(scope: InferScope, scrutinee_provenance: SubValueRelation, scrutinee_subject: PatternSubject, variant_name: String, field_name: String) -> SubValueRelation {
   match scrutinee_provenance {
     SubValueUnknown => SubValueUnknown
     _ =>
-      // Get the scrutinee type name for inductive field lookup
       let scrut_type_name = match scrutinee_subject {
         PatternResolved { node: n } => resolved_type(n: n).name
         _ => ""
@@ -790,7 +792,7 @@ fn derive_field_provenance(scope: InferScope, scrutinee_provenance: SubValueRela
         let ind_fields = inductive_fields_for(env: scope.type_env, type_name: scrut_type_name)
         let matching = ind_fields |> filter(f => f.variant_name == variant_name && f.field_name == field_name) |> first
         match matching {
-          Some { value: ind_field } => StrictSubValue { field: ind_field, factor: UnitShrink }
+          Some { value: ind_field } => compose_sub_value(base: scrutinee_provenance, field: ind_field)
           None => SubValueUnknown
         }
       }
@@ -2477,17 +2479,12 @@ fn classify_binding_provenance(val: Node, scope: InferScope) -> SubValueRelation
           let bname = expr_var_name(texpr: base)
           match map_get(scope.locals, bname) {
             Some { value: binding } =>
-              // Only derive StrictSubValue if the base has known provenance.
-              // A SubValueUnknown binding should not be upgraded via type lookup.
-              match binding.provenance {
-                SubValueUnknown => SubValueUnknown
-                _ =>
-                  let fields = inductive_fields_for(env: scope.type_env, type_name: binding.resolved.name)
-                  let matching = fields |> filter(f => f.field_name == field) |> first
-                  match matching {
-                    Some { value: ind_field } => StrictSubValue { field: ind_field, factor: UnitShrink }
-                    None => SubValueUnknown
-                  }
+              // Compose provenance via compose_sub_value (std/induction.dag authority).
+              let fields = inductive_fields_for(env: scope.type_env, type_name: binding.resolved.name)
+              let matching = fields |> filter(f => f.field_name == field) |> first
+              match matching {
+                Some { value: ind_field } => compose_sub_value(base: binding.provenance, field: ind_field)
+                None => SubValueUnknown
               }
             None => SubValueUnknown
           }

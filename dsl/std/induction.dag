@@ -282,6 +282,27 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
 
 
 // =========================================================================
+// SubValueRelation composition — authority for provenance threading
+// =========================================================================
+
+// Compose a provenance relation with a field access. When a binding has
+// known provenance (not SubValueUnknown) and the accessed field is
+// inductive (recursive), the result is StrictSubValue — a structural
+// sub-value one level deeper.
+//
+// This is the single authority for provenance composition through field
+// access, pattern destructuring, and let-binding classification.
+// Consumers (inference, descent analysis) call this instead of
+// fabricating StrictSubValue locally.
+fn compose_sub_value(base: SubValueRelation, field: InductiveField) -> SubValueRelation {
+  match base {
+    SubValueUnknown => SubValueUnknown
+    _ => StrictSubValue { field: field, factor: UnitShrink }
+  }
+}
+
+
+// =========================================================================
 // SubValueRelation → CallPattern
 // =========================================================================
 

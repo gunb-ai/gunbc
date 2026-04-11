@@ -328,11 +328,12 @@ Additional duplication surfaced by review (PR #371, external audit):
   `go_scaffold.source_file_extension` in std/languages.dag.
 - `keyword_to_name` in 02_parse.dag duplicates the tokenizer keyword
   table. Reconcile to single authority.
-- CallableOf coverage incomplete: `filter`, `any`, `all`, `sort_by`
-  still omit CallableOf from their param_types in algebra templates.
-  Completing this dissolves downstream string dispatch in emit + CX.
-  Ignored tests in compiler_tests_rust.dag (wrong-callback-arity,
-  wrong-return-type) are blocked on this.
+- CallableOf coverage: `filter`, `any`, `all` now have CallableOf
+  in their param_types (PR #379). `sort_by` deferred — its callback
+  semantics are unresolved (key-extractor in primitives.dag vs
+  comparator in algebra.dag type spec). Ignored tests
+  (wrong-callback-arity, wrong-return-type) blocked on sort_by
+  resolution + inference-time CallableOf validation.
 
 ### Track 8: Lattice inhabitant consolidation (Lane D)
 
