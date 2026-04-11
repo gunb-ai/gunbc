@@ -208,20 +208,12 @@ let next_remaining = Rc::new({ let mut __result = Vec::new(); for fn_name in rem
 {
             let __tco_0 = next_remaining;
 let __tco_1 = ready_accum.signatures.clone();
-let __tco_2 = declared_sigs;
-let __tco_3 = call_edges;
-let __tco_4 = local_func_set;
-let __tco_5 = module_name;
-let __tco_6 = ready_accum.diagnostics.clone();
-let __tco_7 = (fuel - 1);
+let __tco_2 = ready_accum.diagnostics.clone();
+let __tco_3 = (fuel - 1);
 remaining = __tco_0;
 resolved = __tco_1;
-declared_sigs = __tco_2;
-call_edges = __tco_3;
-local_func_set = __tco_4;
-module_name = __tco_5;
-diagnostics = __tco_6;
-fuel = __tco_7;
+diagnostics = __tco_2;
+fuel = __tco_3;
 continue;
 }
 }

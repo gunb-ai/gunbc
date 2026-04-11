@@ -2650,7 +2650,7 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
   }
   // Fold accumulator unwrap: structural eligibility proven by ownership.dag,
   // Rc guard checked here (Rust-specific rendering concern).
-  let acc_type_name = acc_type_node.name
+  let acc_type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: acc_type_node)
   let fold_lambda_node = match args |> skip(1) |> first {
     Some { value: a } => arg_value(n: a)
     None => type_variable_node(id: "")
@@ -2691,7 +2691,7 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
   let acc_type_str = render_rust_type(n: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
   // Split: lambda annotation can use "_" for bare containers, but init value
   // resolution needs the real type for turbofish generation.
-  let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_node.name)
+  let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_name)
   let lambda_acc_type_str = if is_bare_container { "_" } else { acc_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
   let init_str = match args |> first {
@@ -3273,7 +3273,7 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
               // (e.g., Token struct where resolved_type has name "Token" but no field defs),
               // look up the field type from the per-type field_type_map in type_summaries.
               if struct_node.ident_span != none {
-                match lookup_emit_type_summary(emit_info: emit_info, type_name: struct_node.name) {
+                match lookup_emit_type_summary(emit_info: emit_info, type_name: authored_name_at(source_indices: scope.type_env.source_indices, node: struct_node)) {
                   Some { value: summary } => map_get(summary.field_type_map, field_name)
                   None => none
                 }

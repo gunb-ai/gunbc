@@ -375,26 +375,6 @@ pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Rc<HashMap<String, bool>>
     Rc::new({ let mut __result = Vec::new(); for usage in Rc::new(v2_rt::map_values(&proof.bindings.clone())).iter().cloned() { if ((binding_fan_out(usage.clone()) == 1) && is_owned_local(usage.binding_kind.clone())) { __result.push(usage); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, usage: Rc<BindingUsage>| v2_rt::rc_map_insert(acc.clone(), usage.name.clone(), true))
 }
 
-pub fn build_last_use_set(proof: Rc<OwnershipProof>) -> Rc<HashMap<String, bool>> {
-    Rc::new({ let mut __result = Vec::new(); for usage in Rc::new(v2_rt::map_values(&proof.bindings.clone())).iter().cloned() { if ((binding_fan_out(usage.clone()) > 1) && is_owned_local(usage.binding_kind.clone())) { __result.push(usage); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, usage: Rc<BindingUsage>| {
-        let consumers = Rc::new({ let mut __result = Vec::new(); for c in usage.consumers.clone().iter().cloned() { if match c.kind.clone() {
-    EdgeKind::Threaded => false,
-    _ => true,
-} { __result.push(c); } } __result });
-let max_span = consumers.clone().iter().cloned().fold(-1, |m: i64, c: Rc<EdgeClassification>| if (c.span_start.clone() > m.clone()) {
-            c.span_start.clone()
-        } else {
-            m.clone()
-        });
-let at_max = (Rc::new({ let mut __result = Vec::new(); for c in consumers.clone().iter().cloned() { if (c.span_start.clone() == max_span.clone()) { __result.push(c); } } __result }).len() as i64);
-if ((max_span.clone() > 0) && (at_max.clone() == 1)) {
-            v2_rt::rc_map_insert(acc.clone(), usage.name.clone(), true)
-        } else {
-            acc.clone()
-        }
-})
-}
-
 pub fn fold_terminal_expr(mut body: Rc<Node>) -> Rc<Node> {
     loop {
         match (*body.expr_data.clone()).clone() {

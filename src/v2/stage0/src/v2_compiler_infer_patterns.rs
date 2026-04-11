@@ -7,7 +7,7 @@ use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, find_child_named, NewlineIndex, ExprData, InferredNode, is_compiler_error, Cardinality, Connective, ErrorNode, make_error_node, MatchPattern, arm_pattern, LiteralValue, with_optional_cardinality, none_type, error_type, no_span, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, find_child_named, NewlineIndex, authored_name_at, ExprData, InferredNode, is_compiler_error, Cardinality, Connective, ErrorNode, make_error_node, MatchPattern, arm_pattern, LiteralValue, with_optional_cardinality, none_type, error_type, no_span, CompilerDiagnostic};
 use crate::v2_std_core::ExprData::{NoExprData};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
@@ -214,14 +214,14 @@ pub fn lookup_field_in_variant(variant: Rc<PatternSubject>, field_name: String, 
     type_name: "unresolved".to_string(),
     span: dynamic_span.clone(),
 }), module_name)])),
-    PatternSubject::PatternResolved { node: variant_node, .. } => match find_child_named(variant_node.clone(), field_name.clone(), source_indices) {
+    PatternSubject::PatternResolved { node: variant_node, .. } => match find_child_named(variant_node.clone(), field_name.clone(), source_indices.clone()) {
     Some(field_child) => {
         let resolved = child_type_node(field_child.clone());
 node_lookup_resolved(resolved)
 },
     None => node_lookup_failed(Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::FieldNotFound {
     field: field_name.clone(),
-    type_name: variant_node.name.clone(),
+    type_name: authored_name_at(source_indices.clone(), variant_node.clone()),
     span: variant_node.span.clone(),
 }), module_name)])),
 },

@@ -11,13 +11,14 @@ pub use crate::std_algebra::{AlgebraProfile, AlgebraTypeTemplate, ContainerSourc
 use crate::std_algebra::AlgebraProfile::{OrderedRingProfile, ApproximateFieldProfile, BooleanAlgebraProfile, BooleanAlgebraCollectionProfile, FreeMonoidScalarProfile, FreeMonoidCollectionProfile, PartialFunctionProfile};
 use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue, NamedTemplate, ContainerOf, OptionalOf, TupleOf, AlgebraTypeVariable};
 use crate::std_algebra::ContainerSource::{SameAsReceiver, Named};
-pub use crate::v2_std_core::{Node, make_param_node, param_node_type_expr, find_child_named, NewlineIndex, Connective, Cardinality, ExprErrorKind, make_expr_node, make_expr_error_node, LiteralValue, is_kernel_type, BinOp, InferredNode, has_inferred, is_compiler_error, leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, default_ident_span, authored_name_at, ExprData};
+pub use crate::v2_std_core::{Node, make_param_node, param_node_type_expr, find_child_named, NewlineIndex, Connective, Cardinality, ExprErrorKind, make_expr_node, make_expr_error_node, LiteralValue, is_kernel_type, BinOp, AlgebraFieldKind, InferredNode, has_inferred, is_compiler_error, leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, default_ident_span, authored_name_at, ExprData};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral};
 use crate::v2_std_core::ExprErrorKind::{SemanticExprError};
 use crate::v2_std_core::LiteralValue::{LitStr, LitInt, LitFloat, LitBool, LitNull};
 use crate::v2_std_core::BinOp::{Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce};
+use crate::v2_std_core::AlgebraFieldKind::{AlgAdd, AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
@@ -910,10 +911,8 @@ if (left_el_is_unit || right_el_is_unit) {
                                     {
                                         let __tco_0 = left_el.clone();
 let __tco_1 = right_el.clone();
-let __tco_2 = source_indices;
 left = __tco_0;
 right = __tco_1;
-source_indices = __tco_2;
 continue;
 }
 } },
@@ -934,10 +933,8 @@ if (left_inner_is_unit || right_inner_is_unit) {
                                     {
                                         let __tco_0 = left_inner.clone();
 let __tco_1 = right_inner.clone();
-let __tco_2 = source_indices;
 left = __tco_0;
 right = __tco_1;
-source_indices = __tco_2;
 continue;
 }
 }
@@ -1278,47 +1275,56 @@ if is_optional {
 }
 }
 
-pub fn binop_algebra_fields(op: BinOp) -> Rc<Vec<String>> {
+pub fn algebra_field_kind_name(kind: AlgebraFieldKind) -> String {
+    match kind {
+    AlgebraFieldKind::AlgAdd => "add".to_string(),
+    AlgebraFieldKind::AlgMul => "mul".to_string(),
+    AlgebraFieldKind::AlgReciprocal => "reciprocal".to_string(),
+    AlgebraFieldKind::AlgQuotient => "quotient".to_string(),
+    AlgebraFieldKind::AlgRemainder => "remainder".to_string(),
+    AlgebraFieldKind::AlgCompare => "compare".to_string(),
+    AlgebraFieldKind::AlgMeet => "meet".to_string(),
+    AlgebraFieldKind::AlgJoin => "join".to_string(),
+}
+}
+
+pub fn binop_algebra_fields(op: BinOp) -> Rc<Vec<AlgebraFieldKind>> {
     match op {
-    BinOp::Add => Rc::new(vec!["add".to_string()]),
-    BinOp::Sub => Rc::new(vec!["add".to_string()]),
-    BinOp::Mul => Rc::new(vec!["mul".to_string()]),
-    BinOp::Div => Rc::new(vec!["reciprocal".to_string(), "quotient".to_string()]),
-    BinOp::Mod => Rc::new(vec!["remainder".to_string()]),
-    BinOp::Eq => Rc::new(vec!["compare".to_string()]),
-    BinOp::Ne => Rc::new(vec!["compare".to_string()]),
-    BinOp::Lt => Rc::new(vec!["compare".to_string()]),
-    BinOp::Gt => Rc::new(vec!["compare".to_string()]),
-    BinOp::Le => Rc::new(vec!["compare".to_string()]),
-    BinOp::Ge => Rc::new(vec!["compare".to_string()]),
-    BinOp::And => Rc::new(vec!["meet".to_string()]),
-    BinOp::Or => Rc::new(vec!["join".to_string()]),
+    BinOp::Add => Rc::new(vec![AlgebraFieldKind::AlgAdd]),
+    BinOp::Sub => Rc::new(vec![AlgebraFieldKind::AlgAdd]),
+    BinOp::Mul => Rc::new(vec![AlgebraFieldKind::AlgMul]),
+    BinOp::Div => Rc::new(vec![AlgebraFieldKind::AlgReciprocal, AlgebraFieldKind::AlgQuotient]),
+    BinOp::Mod => Rc::new(vec![AlgebraFieldKind::AlgRemainder]),
+    BinOp::Eq => Rc::new(vec![AlgebraFieldKind::AlgCompare]),
+    BinOp::Ne => Rc::new(vec![AlgebraFieldKind::AlgCompare]),
+    BinOp::Lt => Rc::new(vec![AlgebraFieldKind::AlgCompare]),
+    BinOp::Gt => Rc::new(vec![AlgebraFieldKind::AlgCompare]),
+    BinOp::Le => Rc::new(vec![AlgebraFieldKind::AlgCompare]),
+    BinOp::Ge => Rc::new(vec![AlgebraFieldKind::AlgCompare]),
+    BinOp::And => Rc::new(vec![AlgebraFieldKind::AlgMeet]),
+    BinOp::Or => Rc::new(vec![AlgebraFieldKind::AlgJoin]),
     BinOp::NullCoalesce => Rc::new(vec![]),
 }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AlgebraFieldMatch {
-    pub field_name: String,
+    pub field_kind: AlgebraFieldKind,
     pub field_node: Rc<Node>,
 }
 
-pub fn first_matching_algebra_field(mut n: Rc<Node>, mut candidates: Rc<Vec<String>>, mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<AlgebraFieldMatch>> {
+pub fn first_matching_algebra_field(mut n: Rc<Node>, mut candidates: Rc<Vec<AlgebraFieldKind>>, mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<AlgebraFieldMatch>> {
     loop {
         match candidates.clone().first().cloned() {
     None => { break None; },
-    Some(name) => { match find_child_named(n.clone(), name.clone(), source_indices.clone()) {
+    Some(kind) => { match find_child_named(n.clone(), algebra_field_kind_name(kind.clone()), source_indices.clone()) {
     Some(f) => { break Some(Rc::new(AlgebraFieldMatch {
-    field_name: name.clone(),
+    field_kind: kind.clone(),
     field_node: f.clone(),
 })); },
     None => { {
-            let __tco_0 = n;
-let __tco_1 = Rc::new(candidates.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_2 = source_indices;
-n = __tco_0;
-candidates = __tco_1;
-source_indices = __tco_2;
+            let __tco_0 = Rc::new(candidates.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+candidates = __tco_0;
 continue;
 } },
 } },
@@ -1329,7 +1335,7 @@ continue;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BinOpInferred {
     pub result_type: Rc<Node>,
-    pub algebra_field: Option<String>,
+    pub algebra_field: Option<AlgebraFieldKind>,
 }
 
 pub fn infer_binop_type_node(op: BinOp, left_type: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<BinOpInferred> {
@@ -1380,17 +1386,17 @@ if is_product {
                 match rt.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: return_type, .. }) => Rc::new(BinOpInferred {
     result_type: return_type.clone(),
-    algebra_field: Some(m.field_name.clone()),
+    algebra_field: Some(m.field_kind.clone()),
 }),
     _ => Rc::new(BinOpInferred {
     result_type: left_type.clone(),
-    algebra_field: Some(m.field_name.clone()),
+    algebra_field: Some(m.field_kind.clone()),
 }),
 }
             } else {
                 Rc::new(BinOpInferred {
     result_type: rt.clone(),
-    algebra_field: Some(m.field_name.clone()),
+    algebra_field: Some(m.field_kind.clone()),
 })
             },
     _ => Rc::new(BinOpInferred {

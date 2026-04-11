@@ -29,6 +29,7 @@ pub use crate::v2_compiler_resolve::{resolve_modules, ModuleGraph};
 pub use crate::v2_compiler_normalize::{normalize_graph, NormalizeResult};
 pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v2_compiler_infer::{reconcile};
+pub use crate::v2_compiler_infer_types::{algebra_field_kind_name};
 pub use crate::v2_compiler_emit::{EmitResult, escape_json_string};
 pub use crate::v2_compiler_emit_rust::{emit_rust};
 pub use crate::v2_compiler_emit_python::{emit_python};
@@ -390,7 +391,7 @@ pub fn serialize_descent_evidence(de: Option<Rc<Vec<Rc<SubValueRelation>>>>) -> 
 pub fn serialize_expr_data(expr_node: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
     {
         let ch = expr_node.children.clone();
-let name = expr_node.name.clone();
+let name = authored_name_at(source_indices.clone(), expr_node.clone());
 match (*expr_node.expr_data.clone()).clone() {
     ExprData::NoExprData => "{\"kind\": \"NoExprData\"}".to_string(),
     ExprData::ExprLiteral { value, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprLiteral\", \"value\": ".to_string(), serialize_literal(value.clone())), "}".to_string()),
@@ -418,7 +419,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprMethodCall\", \"method\": ".to_string(), json_quote(method)), ", \"method_semantics\": ".to_string()), serialize_method_semantics(method_semantics.clone(), source_indices.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_indices.clone())); } __result }))), "}".to_string())
 },
     ExprData::ExprBinOp { op, algebra_field: af, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprBinOp\", \"op\": ".to_string(), json_quote(bin_op_name(op.clone()))), ", \"algebra_field\": ".to_string()), match af.clone() {
-    Some(f) => json_quote(f.clone()),
+    Some(f) => json_quote(algebra_field_kind_name(f.clone())),
     None => "null".to_string(),
 }), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_indices.clone())); } __result }))), "}".to_string()),
     ExprData::ExprUnaryOp { op, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprUnaryOp\", \"op\": ".to_string(), json_quote(unary_op_name(op.clone()))), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_indices.clone())); } __result }))), "}".to_string()),

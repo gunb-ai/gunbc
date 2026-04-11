@@ -397,8 +397,8 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       let val_result = resolve_node_bounded(n: val_type, env: env, module_name: module_name, depth: depth + 1)
       let val_resolved = val_result.resolved
       let val_diags = val_result.diagnostics
-      let key_param_name = if key_child_node.inferred != none { key_child_node.name } else { match container_param_name(kind_name: type_name, index: 0) { Some { value: pn } => pn  None => key_child_node.name } }
-      let val_param_name = if val_child_node.inferred != none { val_child_node.name } else { match container_param_name(kind_name: type_name, index: 1) { Some { value: pn } => pn  None => val_child_node.name } }
+      let key_param_name = if key_child_node.inferred != none { authored_name(env: env, node: key_child_node) } else { match container_param_name(kind_name: type_name, index: 0) { Some { value: pn } => pn  None => authored_name(env: env, node: key_child_node) } }
+      let val_param_name = if val_child_node.inferred != none { authored_name(env: env, node: val_child_node) } else { match container_param_name(kind_name: type_name, index: 1) { Some { value: pn } => pn  None => authored_name(env: env, node: val_child_node) } }
       let resolved_key_child = Node { name: key_param_name, span: key_child_node.span, ident_span: key_child_node.ident_span, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key_resolved } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       let resolved_val_child = Node { name: val_param_name, span: val_child_node.span, ident_span: val_child_node.ident_span, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: val_resolved } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       NodeResolveResult {
@@ -414,7 +414,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
         let el_result = resolve_node_bounded(n: el_type, env: env, module_name: module_name, depth: depth + 1)
         let el_resolved = el_result.resolved
         let el_diags = el_result.diagnostics
-        let el_param_name = if child_node.inferred != none { child_node.name } else { match container_param_name(kind_name: type_name, index: 0) { Some { value: pn } => pn  None => child_node.name } }
+        let el_param_name = if child_node.inferred != none { authored_name(env: env, node: child_node) } else { match container_param_name(kind_name: type_name, index: 0) { Some { value: pn } => pn  None => authored_name(env: env, node: child_node) } }
         let resolved_child = Node { name: el_param_name, span: child_node.span, ident_span: child_node.ident_span, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: el_resolved } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
         NodeResolveResult {
           resolved: Node { name: type_name, span: n.span, ident_span: n.ident_span, children: [resolved_child], connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
@@ -698,7 +698,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let resolved_children = texpr.children |> map(arg_node =>
         let val = match arg_node.children |> first { Some { value: v } => v  None => arg_node }
         let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
-        make_arg_node(name: if arg_node.ident_span == none { none } else { Some { value: arg_node.name } }, value: vr.expr, span: arg_node.span, name_span: node_name_span(n: arg_node))
+        make_arg_node(name: if arg_node.ident_span == none { none } else { Some { value: authored_name(env: env, node: arg_node) } }, value: vr.expr, span: arg_node.span, name_span: node_name_span(n: arg_node))
       )
       let all_diags = texpr.children |> flat_map(arg_node =>
         let val = match arg_node.children |> first { Some { value: v } => v  None => arg_node }
@@ -795,7 +795,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let resolved_children = texpr.children |> map(fi_node =>
         let val = match fi_node.children |> first { Some { value: v } => v  None => fi_node }
         let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
-        make_field_init_node(name: fi_node.name, value: vr.expr, span: fi_node.span, name_span: node_name_span(n: fi_node))
+        make_field_init_node(name: authored_name(env: env, node: fi_node), value: vr.expr, span: fi_node.span, name_span: node_name_span(n: fi_node))
       )
       let all_diags = texpr.children |> flat_map(fi_node =>
         let val = match fi_node.children |> first { Some { value: v } => v  None => fi_node }

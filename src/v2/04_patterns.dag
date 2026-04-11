@@ -11,7 +11,7 @@ module v2.compiler.infer_patterns
 import std.types { SourceSpan }
 import v2.std.core {
   Node,
-  find_child_named, NewlineIndex,
+  find_child_named, NewlineIndex, authored_name_at,
   ExprData, NoExprData,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   Cardinality, Required,
@@ -167,7 +167,7 @@ fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_n
         Some { value: field_child } =>
           let resolved = child_type_node(ch: field_child)
           node_lookup_resolved(node: resolved)
-        None => node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: variant_node.name, span: variant_node.span }, module_name: module_name)])
+        None => node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: authored_name_at(source_indices: source_indices, node: variant_node), span: variant_node.span }, module_name: module_name)])
       }
   }
 }

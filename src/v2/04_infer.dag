@@ -451,11 +451,11 @@ fn classify_field_recursion(field_node: Node, parent_name: String, recursive_typ
 }
 
 // Collect InductiveFields for the fields of a single variant or record.
-fn collect_fields_inductive(fields: List<Node>, parent_name: String, variant_name: String, recursive_type_set: Map<String, Bool>, acc: Map<String, List<InductiveField>>) -> Map<String, List<InductiveField>> {
+fn collect_fields_inductive(fields: List<Node>, parent_name: String, variant_name: String, recursive_type_set: Map<String, Bool>, acc: Map<String, List<InductiveField>>, source_indices: Map<String, NewlineIndex>) -> Map<String, List<InductiveField>> {
   fields |> fold(init: acc, f: (field_acc, field_node) =>
     match classify_field_recursion(field_node: field_node, parent_name: parent_name, recursive_type_set: recursive_type_set) {
       Some { value: result } =>
-        put_inductive_field_cross(fields: field_acc, type_name: parent_name, variant_name: variant_name, field_name: field_node.name, shape: result.shape, element_type: result.element_type)
+        put_inductive_field_cross(fields: field_acc, type_name: parent_name, variant_name: variant_name, field_name: authored_name_at(source_indices: source_indices, node: field_node), shape: result.shape, element_type: result.element_type)
       None => field_acc
     }
   )
@@ -463,22 +463,23 @@ fn collect_fields_inductive(fields: List<Node>, parent_name: String, variant_nam
 
 // Collect InductiveFields from a type item (handles both Disj and Conj).
 // Detects both self-referential fields and cross-type references to other recursive types.
-fn collect_item_inductive_fields(item: Node, recursive_type_set: Map<String, Bool>) -> Map<String, List<InductiveField>> {
+fn collect_item_inductive_fields(item: Node, recursive_type_set: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> Map<String, List<InductiveField>> {
+  let item_name = authored_name_at(source_indices: source_indices, node: item)
   // Cross-type: any type can have fields referencing recursive types, not just recursive types themselves
   match item.connective {
     Disj =>
       item.children |> fold(init: empty_map(), f: (variant_acc, variant_node) =>
-        collect_fields_inductive(fields: variant_node.children, parent_name: item.name, variant_name: variant_node.name, recursive_type_set: recursive_type_set, acc: variant_acc)
+        collect_fields_inductive(fields: variant_node.children, parent_name: item_name, variant_name: authored_name_at(source_indices: source_indices, node: variant_node), recursive_type_set: recursive_type_set, acc: variant_acc, source_indices: source_indices)
       )
     Conj =>
-      collect_fields_inductive(fields: item.children, parent_name: item.name, variant_name: "", recursive_type_set: recursive_type_set, acc: empty_map())
+      collect_fields_inductive(fields: item.children, parent_name: item_name, variant_name: "", recursive_type_set: recursive_type_set, acc: empty_map(), source_indices: source_indices)
     _ => empty_map()
   }
 }
 
-fn build_item_inductive_fields(items: List<Node>, recursive_type_set: Map<String, Bool>) -> Map<String, List<InductiveField>> {
+fn build_item_inductive_fields(items: List<Node>, recursive_type_set: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> Map<String, List<InductiveField>> {
   items |> fold(init: empty_map(), f: (acc, item) =>
-    merge_inductive_fields(left: acc, right: collect_item_inductive_fields(item: item, recursive_type_set: recursive_type_set))
+    merge_inductive_fields(left: acc, right: collect_item_inductive_fields(item: item, recursive_type_set: recursive_type_set, source_indices: source_indices))
   )
 }
 
@@ -671,7 +672,7 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
           } else {
             let is_coproduct = resolved_scrut_node.connective == Disj
             if is_coproduct {
-              Some { value: resolved_scrut_node.name }
+              Some { value: authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_scrut_node) }
             } else { none }
           }
         PatternDynamic { span: _ } => none
@@ -4079,7 +4080,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // Merge compiler_recursive_types so cross-type detection finds Node-referencing fields
   // in module-local types (e.g., MatchPattern.VariantPattern.field_bindings: List<Node>).
   let cross_type_set = map_merge(cycle_map, compiler_recursive_types)
-  let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cross_type_set)
+  let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cross_type_set, source_indices: source_indices)
   let merged_inductive_fields = merge_inductive_fields(left: merged.inductive_fields, right: local_inductive_fields)
   let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices }
   // Resolve only LOCAL type bindings. Imported bindings are already resolved.
@@ -4176,7 +4177,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   // Merge compiler_recursive_types so cross-type detection finds Node-referencing fields
   // in module-local types (e.g., MatchPattern.VariantPattern.field_bindings: List<Node>).
   let cross_type_set = map_merge(cycle_map, compiler_recursive_types)
-  let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cross_type_set)
+  let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cross_type_set, source_indices: source_indices)
   let merged_inductive_fields = merge_inductive_fields(left: merged.inductive_fields, right: local_inductive_fields)
   let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices }
   BuildTypeEnvResult { env: unresolved_env, diagnostics: [] }

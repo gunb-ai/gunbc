@@ -127,14 +127,12 @@ let __tco_2 = next_scope;
 let __tco_3 = v2_rt::rc_list_push(typed_stmts, stmt_typed.clone());
 let __tco_4 = v2_rt::rc_list_push(diag_chunks, stmt_diags);
 let __tco_5 = stmt_rt.clone();
-let __tco_6 = expected;
 remaining = __tco_0;
 remaining_count = __tco_1;
 scope = __tco_2;
 typed_stmts = __tco_3;
 diag_chunks = __tco_4;
 last_type = __tco_5;
-expected = __tco_6;
 continue;
 } },
 }
@@ -276,32 +274,18 @@ Rc::new(InferScopeComponents {
         });
 {
             let __tco_0 = Rc::new(remaining.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = parent_index;
-let __tco_2 = env;
-let __tco_3 = parent_result.func_sigs.clone();
-let __tco_4 = parent_result.svc_registry.clone();
-let __tco_5 = parent_result.svc_locals.clone();
+let __tco_1 = parent_result.func_sigs.clone();
+let __tco_2 = parent_result.svc_registry.clone();
+let __tco_3 = parent_result.svc_locals.clone();
 remaining = __tco_0;
-parent_index = __tco_1;
-env = __tco_2;
-func_sigs = __tco_3;
-svc_registry = __tco_4;
-svc_locals = __tco_5;
+func_sigs = __tco_1;
+svc_registry = __tco_2;
+svc_locals = __tco_3;
 continue;
 } },
     None => { {
             let __tco_0 = Rc::new(remaining.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = parent_index;
-let __tco_2 = env;
-let __tco_3 = func_sigs;
-let __tco_4 = svc_registry;
-let __tco_5 = svc_locals;
 remaining = __tco_0;
-parent_index = __tco_1;
-env = __tco_2;
-func_sigs = __tco_3;
-svc_registry = __tco_4;
-svc_locals = __tco_5;
 continue;
 } },
 } },
@@ -424,23 +408,26 @@ match field_type_name.clone().as_str() {
 }
 }
 
-pub fn collect_fields_inductive(fields: Rc<Vec<Rc<Node>>>, parent_name: String, variant_name: String, recursive_type_set: Rc<HashMap<String, bool>>, acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+pub fn collect_fields_inductive(fields: Rc<Vec<Rc<Node>>>, parent_name: String, variant_name: String, recursive_type_set: Rc<HashMap<String, bool>>, acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     fields.iter().cloned().fold(acc.clone(), |field_acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field_node: Rc<Node>| match classify_field_recursion(field_node.clone(), parent_name.clone(), recursive_type_set.clone()) {
-    Some(result) => put_inductive_field_cross(field_acc.clone(), parent_name.clone(), variant_name.clone(), field_node.name.clone(), result.shape.clone(), result.element_type.clone()),
+    Some(result) => put_inductive_field_cross(field_acc.clone(), parent_name.clone(), variant_name.clone(), authored_name_at(source_indices.clone(), field_node.clone()), result.shape.clone(), result.element_type.clone()),
     None => field_acc.clone(),
 })
 }
 
-pub fn collect_item_inductive_fields(item: Rc<Node>, recursive_type_set: Rc<HashMap<String, bool>>) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
-    match item.connective.clone() {
-    Connective::Disj => item.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(), |variant_acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, variant_node: Rc<Node>| collect_fields_inductive(variant_node.children.clone(), item.name.clone(), variant_node.name.clone(), recursive_type_set.clone(), variant_acc.clone())),
-    Connective::Conj => collect_fields_inductive(item.children.clone(), item.name.clone(), "".to_string(), recursive_type_set.clone(), v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>()),
+pub fn collect_item_inductive_fields(item: Rc<Node>, recursive_type_set: Rc<HashMap<String, bool>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+    {
+        let item_name = authored_name_at(source_indices.clone(), item.clone());
+match item.connective.clone() {
+    Connective::Disj => item.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(), |variant_acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, variant_node: Rc<Node>| collect_fields_inductive(variant_node.children.clone(), item_name.clone(), authored_name_at(source_indices.clone(), variant_node.clone()), recursive_type_set.clone(), variant_acc.clone(), source_indices.clone())),
+    Connective::Conj => collect_fields_inductive(item.children.clone(), item_name.clone(), "".to_string(), recursive_type_set.clone(), v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(), source_indices.clone()),
     _ => v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(),
 }
 }
+}
 
-pub fn build_item_inductive_fields(items: Rc<Vec<Rc<Node>>>, recursive_type_set: Rc<HashMap<String, bool>>) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
-    items.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, item: Rc<Node>| merge_inductive_fields(acc.clone(), collect_item_inductive_fields(item.clone(), recursive_type_set.clone())))
+pub fn build_item_inductive_fields(items: Rc<Vec<Rc<Node>>>, recursive_type_set: Rc<HashMap<String, bool>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+    items.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, item: Rc<Node>| merge_inductive_fields(acc.clone(), collect_item_inductive_fields(item.clone(), recursive_type_set.clone(), source_indices.clone())))
 }
 
 pub fn nominal_ref_node(name: String, span: Rc<SourceSpan>, ident_span: Option<Rc<SourceSpan>>) -> Rc<Node> {
@@ -664,7 +651,7 @@ let inferred_parent = match (*resolved_scrut.clone()).clone() {
                 {
                     let is_coproduct = (resolved_scrut_node.connective.clone() == Connective::Disj);
 if is_coproduct {
-                        Some(resolved_scrut_node.name.clone())
+                        Some(authored_name_at(scope.type_env.clone().source_indices.clone(), resolved_scrut_node.clone()))
                     } else {
                         None
                     }
@@ -2382,6 +2369,7 @@ pub struct DescentContext {
     pub type_env: Rc<TypeEnv>,
     pub sub_value_vars: Rc<HashMap<String, Rc<SubValueRelation>>>,
     pub size_aliases: Rc<HashMap<String, Rc<SizeExpr>>>,
+    pub scope_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
 }
 
 pub fn classify_size_expr(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<SizeExpr>> {
@@ -2658,9 +2646,7 @@ let is_collection_preserving = (((((inner_mname.clone().as_str() == "enumerate".
 if is_collection_preserving {
             {
                 let __tco_0 = method_receiver(expr);
-let __tco_1 = ctx;
 expr = __tco_0;
-ctx = __tco_1;
 continue;
 }
 } else {
@@ -3173,6 +3159,55 @@ merge_argument_relations(Rc::new(vec![then_rel, else_rel]))
     })
 }
 
+pub fn read_arg_provenance(arg_expr: Rc<Node>, param_name: String, ctx: Rc<DescentContext>) -> Rc<SubValueRelation> {
+    match (*arg_expr.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+        let vname = expr_var_name_at(arg_expr.clone(), ctx.type_env.clone().source_indices.clone());
+match v2_rt::map_get(&ctx.scope_locals.clone(), vname) {
+    Some(binding) => match (*binding.provenance.clone()).clone() {
+    SubValueRelation::SubValueUnknown => classify_argument(arg_expr.clone(), param_name, ctx.clone()),
+    _ => binding.provenance.clone(),
+},
+    None => classify_argument(arg_expr.clone(), param_name, ctx.clone()),
+}
+},
+    ExprData::ExprFieldAccess { .. } => {
+        let base = field_access_base(arg_expr.clone());
+let field = field_access_field_at(arg_expr.clone(), ctx.type_env.clone().source_indices.clone());
+match (*base.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => {
+            let bname = expr_var_name_at(base.clone(), ctx.type_env.clone().source_indices.clone());
+match v2_rt::map_get(&ctx.scope_locals.clone(), bname) {
+    Some(binding) => match (*binding.provenance.clone()).clone() {
+    SubValueRelation::SubValueUnknown => classify_argument(arg_expr.clone(), param_name, ctx.clone()),
+    _ => {
+                let fields = inductive_fields_for(ctx.type_env.clone(), binding.resolved.clone().name.clone());
+let matching = Rc::new({ let mut __result = Vec::new(); for f in fields.iter().cloned() { if (f.field_name.clone().as_str() == field.clone().as_str()) { __result.push(f); } } __result }).first().cloned();
+match matching {
+    Some(ind_field) => compose_sub_value(binding.provenance.clone(), ind_field.clone()),
+    None => Rc::new(SubValueRelation::SubValueUnknown),
+}
+},
+},
+    None => classify_argument(arg_expr.clone(), param_name, ctx.clone()),
+}
+},
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+}
+},
+    ExprData::ExprCall { .. } => classify_argument(arg_expr.clone(), param_name, ctx.clone()),
+    ExprData::ExprMethodCall { .. } => classify_argument(arg_expr.clone(), param_name, ctx.clone()),
+    ExprData::ExprBinOp { .. } => classify_argument(arg_expr.clone(), param_name, ctx.clone()),
+    ExprData::ExprMatch => classify_argument(arg_expr.clone(), param_name, ctx.clone()),
+    ExprData::ExprIf => classify_argument(arg_expr.clone(), param_name, ctx.clone()),
+    ExprData::ExprBlock => classify_argument(arg_expr.clone(), param_name, ctx.clone()),
+    ExprData::ExprLet => classify_argument(arg_expr.clone(), param_name, ctx.clone()),
+    ExprData::ExprCast => classify_argument(arg_expr.clone(), param_name, ctx.clone()),
+    ExprData::ExprReturn => classify_argument(arg_expr.clone(), param_name, ctx.clone()),
+    _ => Rc::new(SubValueRelation::SubValueUnknown),
+}
+}
+
 pub fn build_call_evidence(call_node: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Vec<Rc<SubValueRelation>>> {
     {
         let arg_map = Rc::new(call_node.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
@@ -3190,9 +3225,9 @@ Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(ctx.param_order.clo
             let def_idx = pair.0.clone();
 let pname = pair.1.clone();
 match v2_rt::map_get(&arg_map, pname.clone()) {
-    Some(arg_val) => classify_argument(arg_val.clone(), pname.clone(), ctx.clone()),
+    Some(arg_val) => read_arg_provenance(arg_val.clone(), pname.clone(), ctx.clone()),
     None => match positional_args.clone().get(def_idx.clone() as usize).cloned() {
-    Some(arg_val) => classify_argument(arg_val.clone(), pname.clone(), ctx.clone()),
+    Some(arg_val) => read_arg_provenance(arg_val.clone(), pname.clone(), ctx.clone()),
     None => Rc::new(SubValueRelation::SubValueUnknown),
 },
 }
@@ -3275,6 +3310,7 @@ if (p2.clone().as_str() != "".to_string().as_str()) {
                             ctx.sub_value_vars.clone()
                         },
     size_aliases: ctx.size_aliases.clone(),
+    scope_locals: ctx.scope_locals.clone(),
 });
 make_arg_node(arg_name_at(child.clone(), ctx.type_env.clone().source_indices.clone()), annotate_descent(arg_val.clone(), lambda_ctx.clone()), child.span.clone(), child.span.clone())
 }
@@ -3380,6 +3416,7 @@ let annotated_arms = Rc::new({ let mut __result = Vec::new(); for arm_node in ma
     factor: Rc::new(ShrinkFactor::UnitShrink),
 })),
     size_aliases: c.size_aliases.clone(),
+    scope_locals: c.scope_locals.clone(),
 }),
     MatchPattern::VariantPattern { name: inner_vname, field_bindings: inner_bindings, .. } => {
                             let inner_ind_fields = inductive_fields_for(c.type_env.clone(), ind_field.element_type.clone());
@@ -3402,6 +3439,7 @@ match inner_matching.clone() {
     factor: Rc::new(ShrinkFactor::UnitShrink),
 })),
     size_aliases: ic.size_aliases.clone(),
+    scope_locals: ic.scope_locals.clone(),
 })
                                 } else {
                                     ic.clone()
@@ -3436,6 +3474,7 @@ match matching.clone() {
     factor: Rc::new(ShrinkFactor::UnitShrink),
 })),
     size_aliases: c.size_aliases.clone(),
+    scope_locals: c.scope_locals.clone(),
 })
                             } else {
                                 c.clone()
@@ -3453,6 +3492,7 @@ match matching.clone() {
     type_env: ctx.type_env.clone(),
     sub_value_vars: v2_rt::rc_map_insert(ctx.sub_value_vars.clone(), bname.clone(), Rc::new(SubValueRelation::PreservedValue)),
     size_aliases: ctx.size_aliases.clone(),
+    scope_locals: ctx.scope_locals.clone(),
 })
                     } else {
                         match scrut_inducing_field.clone() {
@@ -3466,6 +3506,7 @@ match matching.clone() {
     factor: Rc::new(ShrinkFactor::UnitShrink),
 })),
     size_aliases: ctx.size_aliases.clone(),
+    scope_locals: ctx.scope_locals.clone(),
 }),
     None => ctx.clone(),
 }
@@ -3525,6 +3566,7 @@ Rc::new(DescentContext {
     type_env: ctx.type_env.clone(),
     sub_value_vars: v2_rt::rc_map_insert(ctx.sub_value_vars.clone(), binding_name.clone(), rel.clone()),
     size_aliases: inner_size_aliases,
+    scope_locals: ctx.scope_locals.clone(),
 })
 },
     None => Rc::new(DescentContext {
@@ -3534,6 +3576,7 @@ Rc::new(DescentContext {
     type_env: ctx.type_env.clone(),
     sub_value_vars: ctx.sub_value_vars.clone(),
     size_aliases: inner_size_aliases,
+    scope_locals: ctx.scope_locals.clone(),
 }),
 };
 let annotated_value = annotate_descent(val.clone(), ctx.clone());
@@ -3595,6 +3638,7 @@ Rc::new(DescentContext {
     type_env: acc.ctx.clone().type_env.clone(),
     sub_value_vars: v2_rt::rc_map_insert(acc.ctx.clone().sub_value_vars.clone(), bname.clone(), rel.clone()),
     size_aliases: new_sa.clone(),
+    scope_locals: acc.ctx.clone().scope_locals.clone(),
 })
 },
     None => Rc::new(DescentContext {
@@ -3604,6 +3648,7 @@ Rc::new(DescentContext {
     type_env: acc.ctx.clone().type_env.clone(),
     sub_value_vars: acc.ctx.clone().sub_value_vars.clone(),
     size_aliases: new_sa.clone(),
+    scope_locals: acc.ctx.clone().scope_locals.clone(),
 }),
 }
 },
@@ -3731,6 +3776,7 @@ let inner_ctx = match lambda_elem_info {
 }))
                     },
     size_aliases: ctx.size_aliases.clone(),
+    scope_locals: ctx.scope_locals.clone(),
 }),
     None => Rc::new(DescentContext {
     fn_name: ctx.fn_name.clone(),
@@ -3743,6 +3789,7 @@ let inner_ctx = match lambda_elem_info {
                         ctx.sub_value_vars.clone()
                     },
     size_aliases: ctx.size_aliases.clone(),
+    scope_locals: ctx.scope_locals.clone(),
 }),
 },
     None => ctx.clone(),
@@ -3805,6 +3852,7 @@ let inner_ctx = match coll_field {
     field: ind_field.clone(),
 })),
     size_aliases: ctx.size_aliases.clone(),
+    scope_locals: ctx.scope_locals.clone(),
 }),
     None => Rc::new(DescentContext {
     fn_name: ctx.fn_name.clone(),
@@ -3813,6 +3861,7 @@ let inner_ctx = match coll_field {
     type_env: ctx.type_env.clone(),
     sub_value_vars: v2_rt::rc_empty_map::<Rc<SubValueRelation>>(),
     size_aliases: ctx.size_aliases.clone(),
+    scope_locals: ctx.scope_locals.clone(),
 }),
 };
 let annotated_coll = annotate_descent(coll.clone(), ctx.clone());
@@ -3852,7 +3901,7 @@ pub fn resolved_type_name(n: Rc<Node>, source_indices: Rc<HashMap<String, Rc<New
 }
 }
 
-pub fn annotate_descent_evidence(body: Rc<Node>, fn_name: String, params: Rc<Vec<Rc<Node>>>, type_env: Rc<TypeEnv>) -> Rc<Node> {
+pub fn annotate_descent_evidence(body: Rc<Node>, fn_name: String, params: Rc<Vec<Rc<Node>>>, type_env: Rc<TypeEnv>, scope_locals: Rc<HashMap<String, Rc<TypeBinding>>>) -> Rc<Node> {
     {
         let param_name_map = params.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, p: Rc<Node>| {
             let pname = param_node_name_at(p.clone(), type_env.source_indices.clone());
@@ -3867,6 +3916,7 @@ let ctx = Rc::new(DescentContext {
     type_env: type_env.clone(),
     sub_value_vars: v2_rt::rc_empty_map::<Rc<SubValueRelation>>(),
     size_aliases: v2_rt::rc_empty_map::<Rc<SizeExpr>>(),
+    scope_locals: scope_locals,
 });
 annotate_descent(body, ctx)
 }
@@ -4046,7 +4096,7 @@ let inferred_ret = if (item.inferred.clone() != None) {
                         };
 let is_recursive = expr_has_self_call(body_typed.clone(), item.name.clone(), scope.type_env.clone().source_indices.clone());
 let annotated_body = if is_recursive.clone() {
-                            annotate_descent_evidence(body_typed.clone(), item.name.clone(), item.params.clone(), scope.type_env.clone())
+                            annotate_descent_evidence(body_typed.clone(), item.name.clone(), item.params.clone(), scope.type_env.clone(), scope.locals.clone())
                         } else {
                             body_typed.clone()
                         };
@@ -4533,7 +4583,7 @@ let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().c
 let cycle_set = detect_type_cycles_kahn(all_deps_map.clone(), merged.bindings.clone());
 let cycle_map = cycle_set.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
 let cross_type_set = v2_rt::rc_map_merge(cycle_map, compiler_recursive_types());
-let local_inductive_fields = build_item_inductive_fields(module_items(module.module.clone()), cross_type_set.clone());
+let local_inductive_fields = build_item_inductive_fields(module_items(module.module.clone()), cross_type_set.clone(), source_indices.clone());
 let merged_inductive_fields = merge_inductive_fields(merged.inductive_fields.clone(), local_inductive_fields);
 let unresolved_env = Rc::new(TypeEnv {
     bindings: merged.bindings.clone(),
@@ -4785,7 +4835,7 @@ let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().c
 let cycle_set = detect_type_cycles_kahn(all_deps_map, merged.bindings.clone());
 let cycle_map = cycle_set.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
 let cross_type_set = v2_rt::rc_map_merge(cycle_map, compiler_recursive_types());
-let local_inductive_fields = build_item_inductive_fields(module_items(module.module.clone()), cross_type_set.clone());
+let local_inductive_fields = build_item_inductive_fields(module_items(module.module.clone()), cross_type_set.clone(), source_indices.clone());
 let merged_inductive_fields = merge_inductive_fields(merged.inductive_fields.clone(), local_inductive_fields);
 let unresolved_env = Rc::new(TypeEnv {
     bindings: merged.bindings.clone(),
@@ -5178,18 +5228,12 @@ let __tco_1 = Rc::new(TypeEnv {
     inductive_fields: env.inductive_fields.clone(),
     source_indices: env.source_indices.clone(),
 });
-let __tco_2 = module_name;
-let __tco_3 = v2_rt::concat(diagnostics, ready_accum.diagnostics.clone());
-let __tco_4 = local_names;
-let __tco_5 = deps_map;
-let __tco_6 = (fuel - 1);
+let __tco_2 = v2_rt::concat(diagnostics, ready_accum.diagnostics.clone());
+let __tco_3 = (fuel - 1);
 remaining = __tco_0;
 env = __tco_1;
-module_name = __tco_2;
-diagnostics = __tco_3;
-local_names = __tco_4;
-deps_map = __tco_5;
-fuel = __tco_6;
+diagnostics = __tco_2;
+fuel = __tco_3;
 continue;
 }
 }
@@ -5296,13 +5340,11 @@ let __tco_1 = v2_rt::rc_list_push(modules, typed.clone());
 let __tco_2 = v2_rt::rc_map_insert(module_index, typed.module.clone().name.clone(), typed.clone());
 let __tco_3 = v2_rt::rc_map_merge(item_registry, typed.item_registry.clone());
 let __tco_4 = v2_rt::rc_list_push(v2_rt::rc_list_push(diag_chunks, parent_result.diagnostics.clone()), tc_diags);
-let __tco_5 = source_indices;
 remaining = __tco_0;
 modules = __tco_1;
 module_index = __tco_2;
 item_registry = __tco_3;
 diag_chunks = __tco_4;
-source_indices = __tco_5;
 continue;
 } },
 }

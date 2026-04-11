@@ -1454,10 +1454,8 @@ pub fn skip_newlines(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>)
         if peek_is_newline(tokens.clone(), state.clone()) {
             let adv = advance(tokens.clone(), state.clone());
 {
-                let __tco_0 = tokens;
-let __tco_1 = adv.state.clone();
-tokens = __tco_0;
-state = __tco_1;
+                let __tco_0 = adv.state.clone();
+state = __tco_0;
 continue;
 }
 } else {
@@ -1703,14 +1701,10 @@ if has_err(r.err.clone()) {
                 return r.clone()
             }
 {
-                let __tco_0 = tokens;
-let __tco_1 = r.state.clone();
-let __tco_2 = v2_rt::concat(v2_rt::concat(acc, ".".to_string()), r.name.clone());
-let __tco_3 = span;
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
-span = __tco_3;
+                let __tco_0 = r.state.clone();
+let __tco_1 = v2_rt::concat(v2_rt::concat(acc, ".".to_string()), r.name.clone());
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 } else {
@@ -1821,12 +1815,10 @@ if has_err(r.err.clone()) {
 })
             }
 {
-                let __tco_0 = tokens;
-let __tco_1 = r.state.clone();
-let __tco_2 = v2_rt::rc_list_push(acc, r.import.clone());
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                let __tco_0 = r.state.clone();
+let __tco_1 = v2_rt::rc_list_push(acc, r.import.clone());
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 } else {
@@ -1862,12 +1854,10 @@ if has_err(r.err.clone()) {
 })
             }
 {
-                let __tco_0 = tokens;
-let __tco_1 = r.state.clone();
-let __tco_2 = v2_rt::rc_list_push(acc, r.item.clone());
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                let __tco_0 = r.state.clone();
+let __tco_1 = v2_rt::rc_list_push(acc, r.item.clone());
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 }
@@ -1978,12 +1968,10 @@ let s = skip_newlines(tokens.clone(), if e.consumed.clone() {
                 s.clone()
             });
 {
-                let __tco_0 = tokens;
-let __tco_1 = s.clone();
-let __tco_2 = v2_rt::rc_list_push(acc, name_node);
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                let __tco_0 = s.clone();
+let __tco_1 = v2_rt::rc_list_push(acc, name_node);
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 }
@@ -2926,12 +2914,8 @@ acc = v2_rt::rc_list_push(acc.clone(), r.predicate.clone());
 let e = eat(tokens.clone(), r.state.clone(), Rc::new(ExpectedToken::ExpectComma));
 if e.consumed.clone() {
             {
-                let __tco_0 = tokens.clone();
-let __tco_1 = skip_newlines(tokens.clone(), e.state.clone());
-let __tco_2 = acc;
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                let __tco_0 = skip_newlines(tokens.clone(), e.state.clone());
+state = __tco_0;
 continue;
 }
 } else {
@@ -3354,12 +3338,10 @@ if has_err(r2.err.clone()) {
 })
             }
 {
-                let __tco_0 = tokens;
-let __tco_1 = r2.state.clone();
-let __tco_2 = v2_rt::rc_list_push(acc, r2.variant.clone());
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                let __tco_0 = r2.state.clone();
+let __tco_1 = v2_rt::rc_list_push(acc, r2.variant.clone());
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 } else {
@@ -3556,12 +3538,8 @@ if peek_is_rparen(tokens.clone(), s.clone()) {
 });
 } else {
                 {
-                    let __tco_0 = tokens;
-let __tco_1 = s.clone();
-let __tco_2 = acc;
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                    let __tco_0 = s.clone();
+state = __tco_0;
 continue;
 }
 }
@@ -3670,12 +3648,10 @@ let next_params = v2_rt::rc_list_push(params, param);
 let e = eat(tokens.clone(), r.state.clone(), Rc::new(ExpectedToken::ExpectComma));
 if e.consumed.clone() {
                 {
-                    let __tco_0 = tokens;
-let __tco_1 = e.state.clone();
-let __tco_2 = next_params;
-tokens = __tco_0;
-state = __tco_1;
-params = __tco_2;
+                    let __tco_0 = e.state.clone();
+let __tco_1 = next_params;
+state = __tco_0;
+params = __tco_1;
 continue;
 }
 } else {
@@ -3713,12 +3689,10 @@ if has_err(r.err.clone()) {
 })
             }
 {
-                let __tco_0 = tokens;
-let __tco_1 = r.state.clone();
-let __tco_2 = v2_rt::rc_list_push(args, r.type_expr.clone());
-tokens = __tco_0;
-state = __tco_1;
-args = __tco_2;
+                let __tco_0 = r.state.clone();
+let __tco_1 = v2_rt::rc_list_push(args, r.type_expr.clone());
+state = __tco_0;
+args = __tco_1;
 continue;
 }
 } else {
@@ -3802,12 +3776,10 @@ let s3 = skip_newlines(tokens.clone(), if e.consumed.clone() {
                     s2.clone()
                 });
 {
-                    let __tco_0 = tokens;
-let __tco_1 = s3;
-let __tco_2 = v2_rt::rc_list_push(acc, r.field.clone());
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                    let __tco_0 = s3;
+let __tco_1 = v2_rt::rc_list_push(acc, r.field.clone());
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 } else {
@@ -4488,12 +4460,8 @@ let s = r.state.clone();
 let e = eat(tokens.clone(), s.clone(), Rc::new(ExpectedToken::ExpectComma));
 if e.consumed.clone() {
             {
-                let __tco_0 = tokens;
-let __tco_1 = e.state.clone();
-let __tco_2 = acc;
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                let __tco_0 = e.state.clone();
+state = __tco_0;
 continue;
 }
 } else {
@@ -4644,12 +4612,8 @@ acc = v2_rt::rc_list_push(acc.clone(), fi);
 let e = eat(tokens.clone(), r3.state.clone(), Rc::new(ExpectedToken::ExpectComma));
 if e.consumed.clone() {
             {
-                let __tco_0 = tokens.clone();
-let __tco_1 = skip_newlines(tokens.clone(), e.state.clone());
-let __tco_2 = acc;
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                let __tco_0 = skip_newlines(tokens.clone(), e.state.clone());
+state = __tco_0;
 continue;
 }
 } else {
@@ -4900,16 +4864,10 @@ if has_err(r3.err.clone()) {
 })
                 }
 {
-                    let __tco_0 = tokens;
-let __tco_1 = r3.state.clone();
-let __tco_2 = Some(r2.config.clone());
-let __tco_3 = transport;
-let __tco_4 = operations;
-tokens = __tco_0;
-state = __tco_1;
-config = __tco_2;
-transport = __tco_3;
-operations = __tco_4;
+                    let __tco_0 = r3.state.clone();
+let __tco_1 = Some(r2.config.clone());
+state = __tco_0;
+config = __tco_1;
 continue;
 }
 } else {
@@ -4926,16 +4884,10 @@ if has_err(r.err.clone()) {
 })
                     }
 {
-                        let __tco_0 = tokens;
-let __tco_1 = r.state.clone();
-let __tco_2 = config;
-let __tco_3 = r.transport.clone();
-let __tco_4 = operations;
-tokens = __tco_0;
-state = __tco_1;
-config = __tco_2;
-transport = __tco_3;
-operations = __tco_4;
+                        let __tco_0 = r.state.clone();
+let __tco_1 = r.transport.clone();
+state = __tco_0;
+transport = __tco_1;
 continue;
 }
 } else {
@@ -4961,16 +4913,10 @@ if has_err(r.err.clone()) {
 })
                 }
 {
-                    let __tco_0 = tokens;
-let __tco_1 = r.state.clone();
-let __tco_2 = config;
-let __tco_3 = transport;
-let __tco_4 = v2_rt::rc_list_push(operations, r.operation.clone());
-tokens = __tco_0;
-state = __tco_1;
-config = __tco_2;
-transport = __tco_3;
-operations = __tco_4;
+                    let __tco_0 = r.state.clone();
+let __tco_1 = v2_rt::rc_list_push(operations, r.operation.clone());
+state = __tco_0;
+operations = __tco_1;
 continue;
 }
 } else {
@@ -5069,136 +5015,50 @@ let s3 = if e.consumed.clone() {
             };
 match fname.as_str() {
     "endpoint" => { {
-                let __tco_0 = tokens;
-let __tco_1 = s3;
-let __tco_2 = Some(r3.expr.clone());
-let __tco_3 = auth;
-let __tco_4 = auth_input;
-let __tco_5 = auth_source;
-let __tco_6 = rate_limit;
-let __tco_7 = retry;
-tokens = __tco_0;
-state = __tco_1;
-endpoint = __tco_2;
-auth = __tco_3;
-auth_input = __tco_4;
-auth_source = __tco_5;
-rate_limit = __tco_6;
-retry = __tco_7;
+                let __tco_0 = s3;
+let __tco_1 = Some(r3.expr.clone());
+state = __tco_0;
+endpoint = __tco_1;
 continue;
 } },
     "auth" => { {
-                let __tco_0 = tokens;
-let __tco_1 = s3;
-let __tco_2 = endpoint;
-let __tco_3 = Some(r3.expr.clone());
-let __tco_4 = auth_input;
-let __tco_5 = auth_source;
-let __tco_6 = rate_limit;
-let __tco_7 = retry;
-tokens = __tco_0;
-state = __tco_1;
-endpoint = __tco_2;
-auth = __tco_3;
-auth_input = __tco_4;
-auth_source = __tco_5;
-rate_limit = __tco_6;
-retry = __tco_7;
+                let __tco_0 = s3;
+let __tco_1 = Some(r3.expr.clone());
+state = __tco_0;
+auth = __tco_1;
 continue;
 } },
     "auth_input" => { {
-                let __tco_0 = tokens;
-let __tco_1 = s3;
-let __tco_2 = endpoint;
-let __tco_3 = auth;
-let __tco_4 = Some(r3.expr.clone());
-let __tco_5 = auth_source;
-let __tco_6 = rate_limit;
-let __tco_7 = retry;
-tokens = __tco_0;
-state = __tco_1;
-endpoint = __tco_2;
-auth = __tco_3;
-auth_input = __tco_4;
-auth_source = __tco_5;
-rate_limit = __tco_6;
-retry = __tco_7;
+                let __tco_0 = s3;
+let __tco_1 = Some(r3.expr.clone());
+state = __tco_0;
+auth_input = __tco_1;
 continue;
 } },
     "auth_source" => { {
-                let __tco_0 = tokens;
-let __tco_1 = s3;
-let __tco_2 = endpoint;
-let __tco_3 = auth;
-let __tco_4 = auth_input;
-let __tco_5 = Some(r3.expr.clone());
-let __tco_6 = rate_limit;
-let __tco_7 = retry;
-tokens = __tco_0;
-state = __tco_1;
-endpoint = __tco_2;
-auth = __tco_3;
-auth_input = __tco_4;
-auth_source = __tco_5;
-rate_limit = __tco_6;
-retry = __tco_7;
+                let __tco_0 = s3;
+let __tco_1 = Some(r3.expr.clone());
+state = __tco_0;
+auth_source = __tco_1;
 continue;
 } },
     "rate_limit" => { {
-                let __tco_0 = tokens;
-let __tco_1 = s3;
-let __tco_2 = endpoint;
-let __tco_3 = auth;
-let __tco_4 = auth_input;
-let __tco_5 = auth_source;
-let __tco_6 = Some(r3.expr.clone());
-let __tco_7 = retry;
-tokens = __tco_0;
-state = __tco_1;
-endpoint = __tco_2;
-auth = __tco_3;
-auth_input = __tco_4;
-auth_source = __tco_5;
-rate_limit = __tco_6;
-retry = __tco_7;
+                let __tco_0 = s3;
+let __tco_1 = Some(r3.expr.clone());
+state = __tco_0;
+rate_limit = __tco_1;
 continue;
 } },
     "retry" => { {
-                let __tco_0 = tokens;
-let __tco_1 = s3;
-let __tco_2 = endpoint;
-let __tco_3 = auth;
-let __tco_4 = auth_input;
-let __tco_5 = auth_source;
-let __tco_6 = rate_limit;
-let __tco_7 = Some(r3.expr.clone());
-tokens = __tco_0;
-state = __tco_1;
-endpoint = __tco_2;
-auth = __tco_3;
-auth_input = __tco_4;
-auth_source = __tco_5;
-rate_limit = __tco_6;
-retry = __tco_7;
+                let __tco_0 = s3;
+let __tco_1 = Some(r3.expr.clone());
+state = __tco_0;
+retry = __tco_1;
 continue;
 } },
     _ => { {
-                let __tco_0 = tokens;
-let __tco_1 = s3;
-let __tco_2 = endpoint;
-let __tco_3 = auth;
-let __tco_4 = auth_input;
-let __tco_5 = auth_source;
-let __tco_6 = rate_limit;
-let __tco_7 = retry;
-tokens = __tco_0;
-state = __tco_1;
-endpoint = __tco_2;
-auth = __tco_3;
-auth_input = __tco_4;
-auth_source = __tco_5;
-rate_limit = __tco_6;
-retry = __tco_7;
+                let __tco_0 = s3;
+state = __tco_0;
 continue;
 } },
 }
@@ -5396,114 +5256,52 @@ let s2 = if e.consumed.clone() {
             };
 if (fname.clone().as_str() == transport_url_key().as_str()) {
                 {
-                    let __tco_0 = tokens;
-let __tco_1 = s2;
-let __tco_2 = Some(r3.expr.clone());
-let __tco_3 = method;
-let __tco_4 = path_template;
-let __tco_5 = query;
-let __tco_6 = request_body;
-tokens = __tco_0;
-state = __tco_1;
-base_url = __tco_2;
-method = __tco_3;
-path_template = __tco_4;
-query = __tco_5;
-request_body = __tco_6;
+                    let __tco_0 = s2;
+let __tco_1 = Some(r3.expr.clone());
+state = __tco_0;
+base_url = __tco_1;
 continue;
 }
 } else {
                 if (fname.clone().as_str() == transport_method_key().as_str()) {
                     {
-                        let __tco_0 = tokens;
-let __tco_1 = s2;
-let __tco_2 = base_url;
-let __tco_3 = Some(r3.expr.clone());
-let __tco_4 = path_template;
-let __tco_5 = query;
-let __tco_6 = request_body;
-tokens = __tco_0;
-state = __tco_1;
-base_url = __tco_2;
-method = __tco_3;
-path_template = __tco_4;
-query = __tco_5;
-request_body = __tco_6;
+                        let __tco_0 = s2;
+let __tco_1 = Some(r3.expr.clone());
+state = __tco_0;
+method = __tco_1;
 continue;
 }
 } else {
                     if (fname.clone().as_str() == transport_path_template_key().as_str()) {
                         {
-                            let __tco_0 = tokens;
-let __tco_1 = s2;
-let __tco_2 = base_url;
-let __tco_3 = method;
-let __tco_4 = Some(r3.expr.clone());
-let __tco_5 = query;
-let __tco_6 = request_body;
-tokens = __tco_0;
-state = __tco_1;
-base_url = __tco_2;
-method = __tco_3;
-path_template = __tco_4;
-query = __tco_5;
-request_body = __tco_6;
+                            let __tco_0 = s2;
+let __tco_1 = Some(r3.expr.clone());
+state = __tco_0;
+path_template = __tco_1;
 continue;
 }
 } else {
                         if (fname.clone().as_str() == transport_query_key().as_str()) {
                             {
-                                let __tco_0 = tokens;
-let __tco_1 = s2;
-let __tco_2 = base_url;
-let __tco_3 = method;
-let __tco_4 = path_template;
-let __tco_5 = Some(r3.expr.clone());
-let __tco_6 = request_body;
-tokens = __tco_0;
-state = __tco_1;
-base_url = __tco_2;
-method = __tco_3;
-path_template = __tco_4;
-query = __tco_5;
-request_body = __tco_6;
+                                let __tco_0 = s2;
+let __tco_1 = Some(r3.expr.clone());
+state = __tco_0;
+query = __tco_1;
 continue;
 }
 } else {
                             if (fname.clone().as_str() == transport_body_key().as_str()) {
                                 {
-                                    let __tco_0 = tokens;
-let __tco_1 = s2;
-let __tco_2 = base_url;
-let __tco_3 = method;
-let __tco_4 = path_template;
-let __tco_5 = query;
-let __tco_6 = Some(r3.expr.clone());
-tokens = __tco_0;
-state = __tco_1;
-base_url = __tco_2;
-method = __tco_3;
-path_template = __tco_4;
-query = __tco_5;
-request_body = __tco_6;
+                                    let __tco_0 = s2;
+let __tco_1 = Some(r3.expr.clone());
+state = __tco_0;
+request_body = __tco_1;
 continue;
 }
 } else {
                                 {
-                                    let __tco_0 = tokens;
-let __tco_1 = s2;
-let __tco_2 = base_url;
-let __tco_3 = method;
-let __tco_4 = path_template;
-let __tco_5 = query;
-let __tco_6 = request_body;
-tokens = __tco_0;
-state = __tco_1;
-base_url = __tco_2;
-method = __tco_3;
-path_template = __tco_4;
-query = __tco_5;
-request_body = __tco_6;
+                                    let __tco_0 = s2;
+state = __tco_0;
 continue;
 }
 }
@@ -5580,14 +5378,10 @@ let s2 = if e.consumed.clone() {
                     r5.state.clone()
                 };
 {
-                    let __tco_0 = tokens;
-let __tco_1 = s2;
-let __tco_2 = r4.exprs.clone();
-let __tco_3 = stdin;
-tokens = __tco_0;
-state = __tco_1;
-argv = __tco_2;
-stdin = __tco_3;
+                    let __tco_0 = s2;
+let __tco_1 = r4.exprs.clone();
+state = __tco_0;
+argv = __tco_1;
 continue;
 }
 } else {
@@ -5607,14 +5401,10 @@ let s2 = if e.consumed.clone() {
                         r3.state.clone()
                     };
 {
-                        let __tco_0 = tokens;
-let __tco_1 = s2;
-let __tco_2 = argv;
-let __tco_3 = Some(r3.expr.clone());
-tokens = __tco_0;
-state = __tco_1;
-argv = __tco_2;
-stdin = __tco_3;
+                        let __tco_0 = s2;
+let __tco_1 = Some(r3.expr.clone());
+state = __tco_0;
+stdin = __tco_1;
 continue;
 }
 } else {
@@ -5633,14 +5423,8 @@ let s2 = if e.consumed.clone() {
                         r3.state.clone()
                     };
 {
-                        let __tco_0 = tokens;
-let __tco_1 = s2;
-let __tco_2 = argv;
-let __tco_3 = stdin;
-tokens = __tco_0;
-state = __tco_1;
-argv = __tco_2;
-stdin = __tco_3;
+                        let __tco_0 = s2;
+state = __tco_0;
 continue;
 }
 }
@@ -5706,22 +5490,16 @@ let s2 = if e.consumed.clone() {
             };
 if ((fname.clone().as_str() == "path".to_string().as_str()) || (fname.clone().as_str() == transport_path_key().as_str())) {
                 {
-                    let __tco_0 = tokens;
-let __tco_1 = s2;
-let __tco_2 = Some(r3.expr.clone());
-tokens = __tco_0;
-state = __tco_1;
-base_path = __tco_2;
+                    let __tco_0 = s2;
+let __tco_1 = Some(r3.expr.clone());
+state = __tco_0;
+base_path = __tco_1;
 continue;
 }
 } else {
                 {
-                    let __tco_0 = tokens;
-let __tco_1 = s2;
-let __tco_2 = base_path;
-tokens = __tco_0;
-state = __tco_1;
-base_path = __tco_2;
+                    let __tco_0 = s2;
+state = __tco_0;
 continue;
 }
 }
@@ -5953,24 +5731,10 @@ if has_err(r3.err.clone()) {
 })
                 }
 {
-                    let __tco_0 = tokens;
-let __tco_1 = r3.state.clone();
-let __tco_2 = r2.fields.clone();
-let __tco_3 = outputs;
-let __tco_4 = modifier_props;
-let __tco_5 = transport;
-let __tco_6 = exit_props;
-let __tco_7 = response_props;
-let __tco_8 = mock_props;
-tokens = __tco_0;
-state = __tco_1;
-inputs = __tco_2;
-outputs = __tco_3;
-modifier_props = __tco_4;
-transport = __tco_5;
-exit_props = __tco_6;
-response_props = __tco_7;
-mock_props = __tco_8;
+                    let __tco_0 = r3.state.clone();
+let __tco_1 = r2.fields.clone();
+state = __tco_0;
+inputs = __tco_1;
 continue;
 }
 } else {
@@ -6019,24 +5783,10 @@ if has_err(r3.err.clone()) {
 })
                     }
 {
-                        let __tco_0 = tokens;
-let __tco_1 = r3.state.clone();
-let __tco_2 = inputs;
-let __tco_3 = r2.fields.clone();
-let __tco_4 = modifier_props;
-let __tco_5 = transport;
-let __tco_6 = exit_props;
-let __tco_7 = response_props;
-let __tco_8 = mock_props;
-tokens = __tco_0;
-state = __tco_1;
-inputs = __tco_2;
-outputs = __tco_3;
-modifier_props = __tco_4;
-transport = __tco_5;
-exit_props = __tco_6;
-response_props = __tco_7;
-mock_props = __tco_8;
+                        let __tco_0 = r3.state.clone();
+let __tco_1 = r2.fields.clone();
+state = __tco_0;
+outputs = __tco_1;
 continue;
 }
 } else {
@@ -6044,24 +5794,10 @@ continue;
                         let adv = advance(tokens.clone(), s.clone());
 let prop = modifier_to_prop("idempotent".to_string(), current_span(tokens.clone(), s.clone()));
 {
-                            let __tco_0 = tokens;
-let __tco_1 = adv.state.clone();
-let __tco_2 = inputs;
-let __tco_3 = outputs;
-let __tco_4 = v2_rt::rc_list_push(modifier_props, prop);
-let __tco_5 = transport;
-let __tco_6 = exit_props;
-let __tco_7 = response_props;
-let __tco_8 = mock_props;
-tokens = __tco_0;
-state = __tco_1;
-inputs = __tco_2;
-outputs = __tco_3;
-modifier_props = __tco_4;
-transport = __tco_5;
-exit_props = __tco_6;
-response_props = __tco_7;
-mock_props = __tco_8;
+                            let __tco_0 = adv.state.clone();
+let __tco_1 = v2_rt::rc_list_push(modifier_props, prop);
+state = __tco_0;
+modifier_props = __tco_1;
 continue;
 }
 } else {
@@ -6069,24 +5805,10 @@ continue;
                             let adv = advance(tokens.clone(), s.clone());
 let prop = modifier_to_prop("readonly".to_string(), current_span(tokens.clone(), s.clone()));
 {
-                                let __tco_0 = tokens;
-let __tco_1 = adv.state.clone();
-let __tco_2 = inputs;
-let __tco_3 = outputs;
-let __tco_4 = v2_rt::rc_list_push(modifier_props, prop);
-let __tco_5 = transport;
-let __tco_6 = exit_props;
-let __tco_7 = response_props;
-let __tco_8 = mock_props;
-tokens = __tco_0;
-state = __tco_1;
-inputs = __tco_2;
-outputs = __tco_3;
-modifier_props = __tco_4;
-transport = __tco_5;
-exit_props = __tco_6;
-response_props = __tco_7;
-mock_props = __tco_8;
+                                let __tco_0 = adv.state.clone();
+let __tco_1 = v2_rt::rc_list_push(modifier_props, prop);
+state = __tco_0;
+modifier_props = __tco_1;
 continue;
 }
 } else {
@@ -6094,24 +5816,10 @@ continue;
                                 let adv = advance(tokens.clone(), s.clone());
 let prop = modifier_to_prop("hermetic".to_string(), current_span(tokens.clone(), s.clone()));
 {
-                                    let __tco_0 = tokens;
-let __tco_1 = adv.state.clone();
-let __tco_2 = inputs;
-let __tco_3 = outputs;
-let __tco_4 = v2_rt::rc_list_push(modifier_props, prop);
-let __tco_5 = transport;
-let __tco_6 = exit_props;
-let __tco_7 = response_props;
-let __tco_8 = mock_props;
-tokens = __tco_0;
-state = __tco_1;
-inputs = __tco_2;
-outputs = __tco_3;
-modifier_props = __tco_4;
-transport = __tco_5;
-exit_props = __tco_6;
-response_props = __tco_7;
-mock_props = __tco_8;
+                                    let __tco_0 = adv.state.clone();
+let __tco_1 = v2_rt::rc_list_push(modifier_props, prop);
+state = __tco_0;
+modifier_props = __tco_1;
 continue;
 }
 } else {
@@ -6139,24 +5847,10 @@ if has_err(r.err.clone()) {
 })
                 }
 {
-                    let __tco_0 = tokens;
-let __tco_1 = r.state.clone();
-let __tco_2 = inputs;
-let __tco_3 = outputs;
-let __tco_4 = modifier_props;
-let __tco_5 = Some(r.transport.clone());
-let __tco_6 = exit_props;
-let __tco_7 = response_props;
-let __tco_8 = mock_props;
-tokens = __tco_0;
-state = __tco_1;
-inputs = __tco_2;
-outputs = __tco_3;
-modifier_props = __tco_4;
-transport = __tco_5;
-exit_props = __tco_6;
-response_props = __tco_7;
-mock_props = __tco_8;
+                    let __tco_0 = r.state.clone();
+let __tco_1 = Some(r.transport.clone());
+state = __tco_0;
+transport = __tco_1;
 continue;
 }
 } else {
@@ -6205,24 +5899,10 @@ if has_err(r3.err.clone()) {
 })
                     }
 {
-                        let __tco_0 = tokens;
-let __tco_1 = r3.state.clone();
-let __tco_2 = inputs;
-let __tco_3 = outputs;
-let __tco_4 = modifier_props;
-let __tco_5 = transport;
-let __tco_6 = r2.entries.clone();
-let __tco_7 = response_props;
-let __tco_8 = mock_props;
-tokens = __tco_0;
-state = __tco_1;
-inputs = __tco_2;
-outputs = __tco_3;
-modifier_props = __tco_4;
-transport = __tco_5;
-exit_props = __tco_6;
-response_props = __tco_7;
-mock_props = __tco_8;
+                        let __tco_0 = r3.state.clone();
+let __tco_1 = r2.entries.clone();
+state = __tco_0;
+exit_props = __tco_1;
 continue;
 }
 } else {
@@ -6242,24 +5922,10 @@ if has_err(r.err.clone()) {
 })
                         }
 {
-                            let __tco_0 = tokens;
-let __tco_1 = r.state.clone();
-let __tco_2 = inputs;
-let __tco_3 = outputs;
-let __tco_4 = modifier_props;
-let __tco_5 = transport;
-let __tco_6 = exit_props;
-let __tco_7 = r.responses.clone();
-let __tco_8 = mock_props;
-tokens = __tco_0;
-state = __tco_1;
-inputs = __tco_2;
-outputs = __tco_3;
-modifier_props = __tco_4;
-transport = __tco_5;
-exit_props = __tco_6;
-response_props = __tco_7;
-mock_props = __tco_8;
+                            let __tco_0 = r.state.clone();
+let __tco_1 = r.responses.clone();
+state = __tco_0;
+response_props = __tco_1;
 continue;
 }
 } else {
@@ -6279,24 +5945,10 @@ if has_err(r.err.clone()) {
 })
                             }
 {
-                                let __tco_0 = tokens;
-let __tco_1 = r.state.clone();
-let __tco_2 = inputs;
-let __tco_3 = outputs;
-let __tco_4 = modifier_props;
-let __tco_5 = transport;
-let __tco_6 = exit_props;
-let __tco_7 = response_props;
-let __tco_8 = r.mocks.clone();
-tokens = __tco_0;
-state = __tco_1;
-inputs = __tco_2;
-outputs = __tco_3;
-modifier_props = __tco_4;
-transport = __tco_5;
-exit_props = __tco_6;
-response_props = __tco_7;
-mock_props = __tco_8;
+                                let __tco_0 = r.state.clone();
+let __tco_1 = r.mocks.clone();
+state = __tco_0;
+mock_props = __tco_1;
 continue;
 }
 } else {
@@ -6344,24 +5996,8 @@ if has_err(r3.err.clone()) {
 })
                                 }
 {
-                                    let __tco_0 = tokens.clone();
-let __tco_1 = skip_newlines(tokens.clone(), r3.state.clone());
-let __tco_2 = inputs;
-let __tco_3 = outputs;
-let __tco_4 = modifier_props;
-let __tco_5 = transport;
-let __tco_6 = exit_props;
-let __tco_7 = response_props;
-let __tco_8 = mock_props;
-tokens = __tco_0;
-state = __tco_1;
-inputs = __tco_2;
-outputs = __tco_3;
-modifier_props = __tco_4;
-transport = __tco_5;
-exit_props = __tco_6;
-response_props = __tco_7;
-mock_props = __tco_8;
+                                    let __tco_0 = skip_newlines(tokens.clone(), r3.state.clone());
+state = __tco_0;
 continue;
 }
 } else {
@@ -6601,12 +6237,10 @@ let s2 = skip_newlines(tokens.clone(), if e.consumed.clone() {
                 desc_r.state.clone()
             });
 {
-                let __tco_0 = tokens;
-let __tco_1 = s2;
-let __tco_2 = v2_rt::rc_list_push(acc, entry);
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                let __tco_0 = s2;
+let __tco_1 = v2_rt::rc_list_push(acc, entry);
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 }
@@ -6623,36 +6257,30 @@ pub fn parse_operation_modifiers_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: 
 if (kw.clone().as_str() == "idempotent".to_string().as_str()) {
             let adv = advance(tokens.clone(), state.clone());
 {
-                let __tco_0 = tokens;
-let __tco_1 = adv.state.clone();
-let __tco_2 = v2_rt::rc_list_push(acc, OperationModifier::Idempotent);
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                let __tco_0 = adv.state.clone();
+let __tco_1 = v2_rt::rc_list_push(acc, OperationModifier::Idempotent);
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 } else {
             if (kw.clone().as_str() == "readonly".to_string().as_str()) {
                 let adv = advance(tokens.clone(), state.clone());
 {
-                    let __tco_0 = tokens;
-let __tco_1 = adv.state.clone();
-let __tco_2 = v2_rt::rc_list_push(acc, OperationModifier::Readonly);
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                    let __tco_0 = adv.state.clone();
+let __tco_1 = v2_rt::rc_list_push(acc, OperationModifier::Readonly);
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 } else {
                 if (kw.clone().as_str() == "hermetic".to_string().as_str()) {
                     let adv = advance(tokens.clone(), state.clone());
 {
-                        let __tco_0 = tokens;
-let __tco_1 = adv.state.clone();
-let __tco_2 = v2_rt::rc_list_push(acc, OperationModifier::Hermetic);
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                        let __tco_0 = adv.state.clone();
+let __tco_1 = v2_rt::rc_list_push(acc, OperationModifier::Hermetic);
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 } else {
@@ -6883,12 +6511,10 @@ let s2 = skip_newlines(tokens.clone(), if e.consumed.clone() {
                 r3.state.clone()
             });
 {
-                let __tco_0 = tokens;
-let __tco_1 = s2;
-let __tco_2 = v2_rt::rc_list_push(acc, entry);
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                let __tco_0 = s2;
+let __tco_1 = v2_rt::rc_list_push(acc, entry);
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 }
@@ -7014,12 +6640,10 @@ let s2 = skip_newlines(tokens.clone(), if e.consumed.clone() {
                 desc_r.state.clone()
             });
 {
-                let __tco_0 = tokens;
-let __tco_1 = s2;
-let __tco_2 = v2_rt::rc_list_push(acc, entry);
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                let __tco_0 = s2;
+let __tco_1 = v2_rt::rc_list_push(acc, entry);
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 }
@@ -7188,14 +6812,10 @@ if has_err(r.err.clone()) {
 })
                 }
 {
-                    let __tco_0 = tokens;
-let __tco_1 = r.state.clone();
-let __tco_2 = properties;
-let __tco_3 = v2_rt::rc_list_push(capabilities, r.capability.clone());
-tokens = __tco_0;
-state = __tco_1;
-properties = __tco_2;
-capabilities = __tco_3;
+                    let __tco_0 = r.state.clone();
+let __tco_1 = v2_rt::rc_list_push(capabilities, r.capability.clone());
+state = __tco_0;
+capabilities = __tco_1;
 continue;
 }
 } else {
@@ -7221,14 +6841,8 @@ if has_err(r3.err.clone()) {
 })
                     }
 {
-                        let __tco_0 = tokens.clone();
-let __tco_1 = skip_newlines(tokens.clone(), r3.state.clone());
-let __tco_2 = properties;
-let __tco_3 = capabilities;
-tokens = __tco_0;
-state = __tco_1;
-properties = __tco_2;
-capabilities = __tco_3;
+                        let __tco_0 = skip_newlines(tokens.clone(), r3.state.clone());
+state = __tco_0;
 continue;
 }
 } else {
@@ -7254,14 +6868,8 @@ if has_err(r3.err.clone()) {
 })
                         }
 {
-                            let __tco_0 = tokens.clone();
-let __tco_1 = skip_newlines(tokens.clone(), r3.state.clone());
-let __tco_2 = properties;
-let __tco_3 = capabilities;
-tokens = __tco_0;
-state = __tco_1;
-properties = __tco_2;
-capabilities = __tco_3;
+                            let __tco_0 = skip_newlines(tokens.clone(), r3.state.clone());
+state = __tco_0;
 continue;
 }
 } else {
@@ -7305,14 +6913,10 @@ if has_err(r3.err.clone()) {
                 }
 let fi = make_field_init_node(fname, r3.expr.clone(), make_span(0, 0), r.span.clone());
 {
-                    let __tco_0 = tokens.clone();
-let __tco_1 = skip_newlines(tokens.clone(), r3.state.clone());
-let __tco_2 = v2_rt::rc_list_push(properties, fi);
-let __tco_3 = capabilities;
-tokens = __tco_0;
-state = __tco_1;
-properties = __tco_2;
-capabilities = __tco_3;
+                    let __tco_0 = skip_newlines(tokens.clone(), r3.state.clone());
+let __tco_1 = v2_rt::rc_list_push(properties, fi);
+state = __tco_0;
+properties = __tco_1;
 continue;
 }
 } else {
@@ -7535,14 +7139,10 @@ if has_err(r3.err.clone()) {
 })
                 }
 {
-                    let __tco_0 = tokens;
-let __tco_1 = r3.state.clone();
-let __tco_2 = r2.fields.clone();
-let __tco_3 = outputs;
-tokens = __tco_0;
-state = __tco_1;
-inputs = __tco_2;
-outputs = __tco_3;
+                    let __tco_0 = r3.state.clone();
+let __tco_1 = r2.fields.clone();
+state = __tco_0;
+inputs = __tco_1;
 continue;
 }
 } else {
@@ -7576,14 +7176,10 @@ if has_err(r3.err.clone()) {
 })
                     }
 {
-                        let __tco_0 = tokens;
-let __tco_1 = r3.state.clone();
-let __tco_2 = inputs;
-let __tco_3 = r2.fields.clone();
-tokens = __tco_0;
-state = __tco_1;
-inputs = __tco_2;
-outputs = __tco_3;
+                        let __tco_0 = r3.state.clone();
+let __tco_1 = r2.fields.clone();
+state = __tco_0;
+outputs = __tco_1;
 continue;
 }
 } else {
@@ -7818,12 +7414,8 @@ if peek_is_rparen(tokens.clone(), s2.clone()) {
 });
 } else {
                 {
-                    let __tco_0 = tokens;
-let __tco_1 = s2.clone();
-let __tco_2 = acc;
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                    let __tco_0 = s2.clone();
+state = __tco_0;
 continue;
 }
 }
@@ -7980,12 +7572,10 @@ if has_err(r.err.clone()) {
 })
             }
 {
-                let __tco_0 = tokens;
-let __tco_1 = r.state.clone();
-let __tco_2 = v2_rt::rc_list_push(acc, r.expr.clone());
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                let __tco_0 = r.state.clone();
+let __tco_1 = v2_rt::rc_list_push(acc, r.expr.clone());
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 }
@@ -8345,14 +7935,10 @@ if has_err(post.err.clone()) {
 } else {
                 if post.changed.clone() {
                     {
-                        let __tco_0 = tokens;
-let __tco_1 = post.state.clone();
-let __tco_2 = post.expr.clone();
-let __tco_3 = min_bp;
-tokens = __tco_0;
-state = __tco_1;
-lhs = __tco_2;
-min_bp = __tco_3;
+                        let __tco_0 = post.state.clone();
+let __tco_1 = post.expr.clone();
+state = __tco_0;
+lhs = __tco_1;
 continue;
 }
 } else {
@@ -8381,14 +7967,10 @@ let new_lhs = make_named_expr_node(r.name.clone(), Rc::new(ExprData::ExprFieldAc
     summary: None,
 }), Rc::new(vec![lhs.clone()]), None, span, r.span.clone());
 {
-                                let __tco_0 = tokens;
-let __tco_1 = r.state.clone();
-let __tco_2 = new_lhs;
-let __tco_3 = min_bp;
-tokens = __tco_0;
-state = __tco_1;
-lhs = __tco_2;
-min_bp = __tco_3;
+                                let __tco_0 = r.state.clone();
+let __tco_1 = new_lhs;
+state = __tco_0;
+lhs = __tco_1;
 continue;
 }
 } else {
@@ -8403,14 +7985,10 @@ if has_err(r.err.clone()) {
 })
                                 }
 {
-                                    let __tco_0 = tokens;
-let __tco_1 = r.state.clone();
-let __tco_2 = r.expr.clone();
-let __tco_3 = min_bp;
-tokens = __tco_0;
-state = __tco_1;
-lhs = __tco_2;
-min_bp = __tco_3;
+                                    let __tco_0 = r.state.clone();
+let __tco_1 = r.expr.clone();
+state = __tco_0;
+lhs = __tco_1;
 continue;
 }
 } else {
@@ -8431,14 +8009,10 @@ match binop_opt {
     algebra_field: None,
 }), Rc::new(vec![lhs.clone(), r.expr.clone()]), None, span);
 {
-                                    let __tco_0 = tokens;
-let __tco_1 = r.state.clone();
-let __tco_2 = new_lhs;
-let __tco_3 = min_bp;
-tokens = __tco_0;
-state = __tco_1;
-lhs = __tco_2;
-min_bp = __tco_3;
+                                    let __tco_0 = r.state.clone();
+let __tco_1 = new_lhs;
+state = __tco_0;
+lhs = __tco_1;
 continue;
 } },
     None => { break Rc::new(ExprResult {
@@ -8775,12 +8349,10 @@ if has_err(r.err.clone()) {
 })
             }
 {
-                let __tco_0 = tokens;
-let __tco_1 = r.state.clone();
-let __tco_2 = v2_rt::rc_list_push(acc, r.expr.clone());
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                let __tco_0 = r.state.clone();
+let __tco_1 = v2_rt::rc_list_push(acc, r.expr.clone());
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 }
@@ -9081,12 +8653,8 @@ acc = v2_rt::rc_list_push(acc.clone(), fi);
 let ec = eat(tokens.clone(), r.state.clone(), Rc::new(ExpectedToken::ExpectComma));
 if ec.consumed.clone() {
             {
-                let __tco_0 = tokens;
-let __tco_1 = ec.state.clone();
-let __tco_2 = acc;
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                let __tco_0 = ec.state.clone();
+state = __tco_0;
 continue;
 }
 } else {
@@ -9269,12 +8837,8 @@ if peek_is_rparen(tokens.clone(), s2.clone()) {
 });
 } else {
                 {
-                    let __tco_0 = tokens;
-let __tco_1 = s2.clone();
-let __tco_2 = acc;
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                    let __tco_0 = s2.clone();
+state = __tco_0;
 continue;
 }
 }
@@ -9464,14 +9028,10 @@ if has_err(r.err.clone()) {
 let span = current_span(tokens.clone(), s.clone());
 let new_lhs = make_call_expr(lhs.clone(), r.args.clone(), span, state.source_indices.clone());
 {
-                    let __tco_0 = tokens;
-let __tco_1 = r.state.clone();
-let __tco_2 = new_lhs;
-let __tco_3 = min_bp;
-tokens = __tco_0;
-state = __tco_1;
-lhs = __tco_2;
-min_bp = __tco_3;
+                    let __tco_0 = r.state.clone();
+let __tco_1 = new_lhs;
+state = __tco_0;
+lhs = __tco_1;
 continue;
 }
 } else {
@@ -9486,14 +9046,10 @@ if has_err(r.err.clone()) {
 })
                     }
 {
-                        let __tco_0 = tokens;
-let __tco_1 = r.state.clone();
-let __tco_2 = r.expr.clone();
-let __tco_3 = min_bp;
-tokens = __tco_0;
-state = __tco_1;
-lhs = __tco_2;
-min_bp = __tco_3;
+                        let __tco_0 = r.state.clone();
+let __tco_1 = r.expr.clone();
+state = __tco_0;
+lhs = __tco_1;
 continue;
 }
 } else {
@@ -9522,14 +9078,10 @@ let new_lhs = make_named_expr_node(r.name.clone(), Rc::new(ExprData::ExprFieldAc
     summary: None,
 }), Rc::new(vec![lhs.clone()]), None, span, r.span.clone());
 {
-                                let __tco_0 = tokens;
-let __tco_1 = r.state.clone();
-let __tco_2 = new_lhs;
-let __tco_3 = min_bp;
-tokens = __tco_0;
-state = __tco_1;
-lhs = __tco_2;
-min_bp = __tco_3;
+                                let __tco_0 = r.state.clone();
+let __tco_1 = new_lhs;
+state = __tco_0;
+lhs = __tco_1;
 continue;
 }
 } else {
@@ -9544,14 +9096,10 @@ if has_err(r.err.clone()) {
 })
                                 }
 {
-                                    let __tco_0 = tokens;
-let __tco_1 = r.state.clone();
-let __tco_2 = r.expr.clone();
-let __tco_3 = min_bp;
-tokens = __tco_0;
-state = __tco_1;
-lhs = __tco_2;
-min_bp = __tco_3;
+                                    let __tco_0 = r.state.clone();
+let __tco_1 = r.expr.clone();
+state = __tco_0;
+lhs = __tco_1;
 continue;
 }
 } else {
@@ -9572,14 +9120,10 @@ match binop_opt {
     algebra_field: None,
 }), Rc::new(vec![lhs.clone(), r.expr.clone()]), None, span);
 {
-                                    let __tco_0 = tokens;
-let __tco_1 = r.state.clone();
-let __tco_2 = new_lhs;
-let __tco_3 = min_bp;
-tokens = __tco_0;
-state = __tco_1;
-lhs = __tco_2;
-min_bp = __tco_3;
+                                    let __tco_0 = r.state.clone();
+let __tco_1 = new_lhs;
+state = __tco_0;
+lhs = __tco_1;
 continue;
 } },
     None => { break Rc::new(ExprResult {
@@ -9632,12 +9176,10 @@ let s2 = skip_newlines(tokens.clone(), if e.consumed.clone() {
                 r.state.clone()
             });
 {
-                let __tco_0 = tokens;
-let __tco_1 = s2;
-let __tco_2 = v2_rt::rc_list_push(acc, r.arm.clone());
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                let __tco_0 = s2;
+let __tco_1 = v2_rt::rc_list_push(acc, r.arm.clone());
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 }
@@ -9757,12 +9299,10 @@ if has_err(r.err.clone()) {
 })
                 }
 {
-                    let __tco_0 = tokens;
-let __tco_1 = r.state.clone();
-let __tco_2 = v2_rt::rc_list_push(acc, r.expr.clone());
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                    let __tco_0 = r.state.clone();
+let __tco_1 = v2_rt::rc_list_push(acc, r.expr.clone());
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 }
@@ -9856,39 +9396,25 @@ match tok {
 match tok {
     Some(t) => { if is_lbrace_shape(t.shape.clone()) {
                 {
-                    let __tco_0 = tokens;
-let __tco_1 = state;
-let __tco_2 = (idx + 1);
-let __tco_3 = (depth + 1);
-tokens = __tco_0;
-state = __tco_1;
-idx = __tco_2;
-depth = __tco_3;
+                    let __tco_0 = (idx + 1);
+let __tco_1 = (depth + 1);
+idx = __tco_0;
+depth = __tco_1;
 continue;
 }
 } else {
                 if is_rbrace_shape(t.shape.clone()) {
                     {
-                        let __tco_0 = tokens;
-let __tco_1 = state;
-let __tco_2 = (idx + 1);
-let __tco_3 = (depth - 1);
-tokens = __tco_0;
-state = __tco_1;
-idx = __tco_2;
-depth = __tco_3;
+                        let __tco_0 = (idx + 1);
+let __tco_1 = (depth - 1);
+idx = __tco_0;
+depth = __tco_1;
 continue;
 }
 } else {
                     {
-                        let __tco_0 = tokens;
-let __tco_1 = state;
-let __tco_2 = (idx + 1);
-let __tco_3 = depth;
-tokens = __tco_0;
-state = __tco_1;
-idx = __tco_2;
-depth = __tco_3;
+                        let __tco_0 = (idx + 1);
+idx = __tco_0;
 continue;
 }
 }
@@ -10140,12 +9666,10 @@ let s3 = skip_newlines(tokens.clone(), if e2.consumed.clone() {
                 });
 let fb = make_field_binding_node(field_name.clone(), r2.pattern.clone(), current_span(tokens.clone(), s.clone()), field_name_span);
 {
-                    let __tco_0 = tokens;
-let __tco_1 = s3;
-let __tco_2 = v2_rt::rc_list_push(acc, fb);
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                    let __tco_0 = s3;
+let __tco_1 = v2_rt::rc_list_push(acc, fb);
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 } else {
@@ -10159,12 +9683,10 @@ let fb = make_field_binding_node(field_name.clone(), Rc::new(MatchPattern::Bind 
     name: field_name.clone(),
 }), current_span(tokens.clone(), s.clone()), field_name_span);
 {
-                    let __tco_0 = tokens;
-let __tco_1 = s2.clone();
-let __tco_2 = v2_rt::rc_list_push(acc, fb);
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                    let __tco_0 = s2.clone();
+let __tco_1 = v2_rt::rc_list_push(acc, fb);
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 }
@@ -10456,12 +9978,10 @@ let s2 = skip_newlines(tokens.clone(), if e.consumed.clone() {
                 r.state.clone()
             });
 {
-                let __tco_0 = tokens;
-let __tco_1 = s2;
-let __tco_2 = v2_rt::rc_list_push(acc, r.field.clone());
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                let __tco_0 = s2;
+let __tco_1 = v2_rt::rc_list_push(acc, r.field.clone());
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 }
@@ -10630,14 +10150,10 @@ let s2 = skip_newlines(tokens.clone(), if e.consumed.clone() {
                 r.state.clone()
             });
 {
-                let __tco_0 = tokens;
-let __tco_1 = s2;
-let __tco_2 = end_expected;
-let __tco_3 = v2_rt::rc_list_push(acc, r.expr.clone());
-tokens = __tco_0;
-state = __tco_1;
-end_expected = __tco_2;
-acc = __tco_3;
+                let __tco_0 = s2;
+let __tco_1 = v2_rt::rc_list_push(acc, r.expr.clone());
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 }
@@ -10790,15 +10306,13 @@ if has_err(name_r.err.clone()) {
 if peek_is_comma(tokens.clone(), s2.clone()) {
                     let adv = advance(tokens.clone(), s2.clone());
 {
-                        let __tco_0 = tokens;
-let __tco_1 = adv.state.clone();
-let __tco_2 = v2_rt::rc_list_push(acc, Rc::new(ParserParam {
+                        let __tco_0 = adv.state.clone();
+let __tco_1 = v2_rt::rc_list_push(acc, Rc::new(ParserParam {
     name: name_r.name.clone(),
     span: name_r.span.clone(),
 }));
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 } else {
@@ -10885,12 +10399,10 @@ let new_acc = v2_rt::rc_list_push(acc, param);
 let e = eat(tokens.clone(), adv.state.clone(), Rc::new(ExpectedToken::ExpectComma));
 if e.consumed.clone() {
                 {
-                    let __tco_0 = tokens;
-let __tco_1 = e.state.clone();
-let __tco_2 = new_acc;
-tokens = __tco_0;
-state = __tco_1;
-acc = __tco_2;
+                    let __tco_0 = e.state.clone();
+let __tco_1 = new_acc;
+state = __tco_0;
+acc = __tco_1;
 continue;
 }
 } else {
@@ -10968,14 +10480,10 @@ let mid_parts = if (v2_rt::string_length(&mid) > 0) {
             new_parts
         };
 {
-            let __tco_0 = tokens;
-let __tco_1 = adv.state.clone();
-let __tco_2 = mid_parts;
-let __tco_3 = span;
-tokens = __tco_0;
-state = __tco_1;
-parts = __tco_2;
-span = __tco_3;
+            let __tco_0 = adv.state.clone();
+let __tco_1 = mid_parts;
+state = __tco_0;
+parts = __tco_1;
 continue;
 } },
     Some(TokenShape::ShStrEnd) => { let suffix = interp_tok.clone().unwrap().text.clone();
