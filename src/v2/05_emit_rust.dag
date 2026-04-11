@@ -4645,7 +4645,7 @@ fn emit_shell_return(inferred: Node, source_index: NewlineIndex?) -> String {
     } else if is_product && effective.children |> count > 1 {
       // Shell output channels: map fields by type and name to process channels.
       // Bool fields → exit code success, "stderr" → captured stderr,
-      // other String fields → captured stdout.
+      // String fields → captured stdout, other types → JSON decode from stdout.
       let stderr_line = "let stderr = String::from_utf8_lossy(&output.stderr).to_string();"
       let field_exprs = effective.children |> map(ch =>
         let fname = authored_name_at(source_index: source_index, node: ch)
@@ -4655,13 +4655,17 @@ fn emit_shell_return(inferred: Node, source_index: NewlineIndex?) -> String {
           _ => ch
         }
         let is_bool = is_coproduct_type(n: child_type) && child_type.children |> count == 2
+        let is_string = coerce_primitive_type(target: Rust, dag_name: child_type.name) == "String"
         let is_optional = ch.return_cardinality == CardOptional
         if is_bool {
-          "output.status.success()"
-        } else if snake == "stderr" {
+          if is_optional { "Some(output.status.success())" } else { "output.status.success()" }
+        } else if snake == "stderr" && is_string {
           if is_optional { "Some(stderr.clone())" } else { "stderr.clone()" }
-        } else {
+        } else if is_string {
           if is_optional { "Some(stdout.clone())" } else { "stdout.clone()" }
+        } else {
+          // Non-string, non-bool: JSON decode from stdout
+          concat("serde_json::from_str(&stdout)?")
         }
       )
       concat(stderr_line, "\nOk((", field_exprs |> join(separator: ", "), "))")

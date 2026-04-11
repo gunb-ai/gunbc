@@ -4768,21 +4768,30 @@ let child_type = match ch.inferred.clone().as_deref().cloned() {
     _ => ch.clone(),
 };
 let is_bool = (is_coproduct_type(child_type.clone()) && ((child_type.children.clone().len() as i64) == 2));
+let is_string = (coerce_primitive_type(RenderTarget::Rust, child_type.name.clone()).as_str() == "String".to_string().as_str());
 let is_optional = (ch.return_cardinality.clone() == Cardinality::CardOptional);
 if is_bool.clone() {
-                                    "output.status.success()".to_string()
+                                    if is_optional.clone() {
+                                        "Some(output.status.success())".to_string()
+                                    } else {
+                                        "output.status.success()".to_string()
+                                    }
                                 } else {
-                                    if (snake.clone().as_str() == "stderr".to_string().as_str()) {
+                                    if ((snake.clone().as_str() == "stderr".to_string().as_str()) && is_string.clone()) {
                                         if is_optional.clone() {
                                             "Some(stderr.clone())".to_string()
                                         } else {
                                             "stderr.clone()".to_string()
                                         }
                                     } else {
-                                        if is_optional.clone() {
-                                            "Some(stdout.clone())".to_string()
+                                        if is_string.clone() {
+                                            if is_optional.clone() {
+                                                "Some(stdout.clone())".to_string()
+                                            } else {
+                                                "stdout.clone()".to_string()
+                                            }
                                         } else {
-                                            "stdout.clone()".to_string()
+                                            "serde_json::from_str(&stdout)?".to_string()
                                         }
                                     }
                                 }
