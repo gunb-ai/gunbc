@@ -28,7 +28,7 @@ fn first_diag(files: &[(&str, &str)]) -> Rc<ErrorNode> {
 fn diag_line_col(diag: &ErrorNode, source: &str, file: &str) -> (i64, i64) {
     let span = v2_compiler::v2_std_core::diagnostic_to_span(diag.diagnostic.clone());
     let idx = build_newline_index(file.to_string(), source.to_string());
-    let lc = byte_to_line_col(idx, span.start);
+    let lc = byte_to_line_col(&idx, span.start);
     (lc.line, lc.col)
 }
 

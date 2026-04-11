@@ -59,7 +59,7 @@ pub fn resolved_type(n: Rc<Node>) -> Rc<Node> {
 }
 }
 
-pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
+pub fn child_type_node(ch: &Rc<Node>) -> Rc<Node> {
     if (ch.inferred.clone() != None) {
         resolved_type(ch.clone())
     } else {
@@ -69,21 +69,21 @@ pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
 
 pub fn child_type_at(n: Rc<Node>, index: i64) -> Option<Rc<Node>> {
     match n.children.clone().get(index as usize).cloned() {
-    Some(ch) => Some(child_type_node(ch.clone())),
+    Some(ch) => Some(child_type_node(&ch)),
     None => None,
 }
 }
 
-pub fn node_is_collection(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
-    ((((n.children.clone().len() as i64) > 0) && (n.connective.clone() == Connective::NoConnective)) && is_container_type(authored_name_at(source_index, n.clone())))
+pub fn node_is_collection(n: &Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
+    ((((n.children.clone().len() as i64) > 0) && (n.connective.clone() == Connective::NoConnective)) && is_container_type(authored_name_at(source_index, &n)))
 }
 
-pub fn node_is_keyed_collection(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
-    (node_is_collection(n.clone(), source_index) && ((n.children.clone().len() as i64) == 2))
+pub fn node_is_keyed_collection(n: &Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
+    (node_is_collection(&n, source_index) && ((n.children.clone().len() as i64) == 2))
 }
 
-pub fn node_is_element_collection(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
-    (node_is_collection(n.clone(), source_index) && ((n.children.clone().len() as i64) == 1))
+pub fn node_is_element_collection(n: &Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
+    (node_is_collection(&n, source_index) && ((n.children.clone().len() as i64) == 1))
 }
 
 pub fn is_product_type(n: Rc<Node>) -> bool {
@@ -98,11 +98,11 @@ pub fn is_leaf_type(n: Rc<Node>) -> bool {
     (n.connective.clone() == Connective::NoConnective)
 }
 
-pub fn is_unit_like(n: Rc<Node>) -> bool {
+pub fn is_unit_like(n: &Rc<Node>) -> bool {
     ((n.connective.clone() == Connective::Conj) && ((n.children.clone().len() as i64) == 0))
 }
 
-pub fn is_fully_resolved(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
+pub fn is_fully_resolved(n: &Rc<Node>, source_index: &Option<Rc<NewlineIndex>>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let self_is_type_var = match n.inferred.clone() {
@@ -113,14 +113,14 @@ if self_is_type_var {
                 false
             } else {
                 {
-                    let under_param = match container_expected_arity(authored_name_at(source_index.clone(), n.clone())) {
+                    let under_param = match container_expected_arity(authored_name_at(source_index.clone(), &n)) {
     Some(expected) => ((n.children.clone().len() as i64) < expected.clone()),
     None => false,
 };
 if under_param {
                         false
                     } else {
-                        { let mut __all = true; for ch in n.children.clone().iter().cloned() { if !(is_fully_resolved(child_type_node(ch.clone()), source_index.clone())) { __all = false; break; } } __all }
+                        { let mut __all = true; for ch in n.children.clone().iter().cloned() { if !(is_fully_resolved(&child_type_node(&ch), &source_index)) { __all = false; break; } } __all }
                     }
 }
             }
@@ -445,7 +445,7 @@ Rc::new(Node {
 }
 }
 
-pub fn enrich_base_with_fields(name: String, base: Rc<Node>, fields: Rc<Vec<Rc<Node>>>) -> Rc<Node> {
+pub fn enrich_base_with_fields(name: String, base: &Rc<Node>, fields: Rc<Vec<Rc<Node>>>) -> Rc<Node> {
     Rc::new(Node {
     name: name,
     span: base.span.clone(),
@@ -472,17 +472,17 @@ pub fn placeholder_type_node(name: String) -> Rc<Node> {
 }
 
 pub fn nominal_type_ref(name: String) -> Rc<Node> {
-    leaf_node_with_span(name, make_span(0, 0))
+    leaf_node_with_span(name, &make_span(0, 0))
 }
 
 pub fn algebra_child_or_placeholder(base: Rc<Node>, child_index: i64, placeholder: String) -> Rc<Node> {
     match Rc::new({ let mut __result = Vec::new(); for pair in Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(base.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (pair.0.clone() == child_index.clone()) { __result.push(pair); } } __result }).iter().cloned() { __result.push(pair.1.clone()); } __result }).first().cloned() {
-    Some(child) => child_type_node(child.clone()),
+    Some(child) => child_type_node(&child),
     None => type_variable_node(placeholder),
 }
 }
 
-pub fn instantiate_algebra_type(template: Rc<AlgebraTypeTemplate>, base: Rc<Node>) -> Rc<Node> {
+pub fn instantiate_algebra_type(template: Rc<AlgebraTypeTemplate>, base: &Rc<Node>) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let elem = algebra_child_or_placeholder(base.clone(), 0, "T".to_string());
@@ -500,20 +500,20 @@ match (*template).clone() {
     ContainerSource::SameAsReceiver => base.name.clone(),
     ContainerSource::Named { name: n, .. } => n.clone(),
 };
-make_container_type(kind_name, instantiate_algebra_type(inner.clone(), base.clone()))
+make_container_type(kind_name, instantiate_algebra_type(inner.clone(), &base))
 },
-    AlgebraTypeTemplate::OptionalOf { inner, .. } => with_optional_cardinality(instantiate_algebra_type(inner.clone(), base.clone())),
-    AlgebraTypeTemplate::TupleOf { first, second, .. } => make_tuple_type(instantiate_algebra_type(first.clone(), base.clone()), instantiate_algebra_type(second.clone(), base.clone())),
-    AlgebraTypeTemplate::CallableOf { params: p, return_type: r, .. } => make_callable_type(Rc::new({ let mut __result = Vec::new(); for tp in p.clone().iter().cloned() { __result.push(instantiate_algebra_type(tp.clone(), base.clone())); } __result }), instantiate_algebra_type(r.clone(), base.clone())),
+    AlgebraTypeTemplate::OptionalOf { inner, .. } => with_optional_cardinality(&instantiate_algebra_type(inner.clone(), &base)),
+    AlgebraTypeTemplate::TupleOf { first, second, .. } => make_tuple_type(instantiate_algebra_type(first.clone(), &base), instantiate_algebra_type(second.clone(), &base)),
+    AlgebraTypeTemplate::CallableOf { params: p, return_type: r, .. } => make_callable_type(Rc::new({ let mut __result = Vec::new(); for tp in p.clone().iter().cloned() { __result.push(instantiate_algebra_type(tp.clone(), &base)); } __result }), instantiate_algebra_type(r.clone(), &base)),
 }
 }
     })
 }
 
-pub fn instantiate_algebra_field(template: Rc<AlgebraFieldTemplate>, base: Rc<Node>) -> Rc<Node> {
+pub fn instantiate_algebra_field(template: &Rc<AlgebraFieldTemplate>, base: &Rc<Node>) -> Rc<Node> {
     {
-        let param_types = Rc::new({ let mut __result = Vec::new(); for tp in template.param_types.clone().iter().cloned() { __result.push(instantiate_algebra_type(tp.clone(), base.clone())); } __result });
-let return_type = instantiate_algebra_type(template.return_type.clone(), base.clone());
+        let param_types = Rc::new({ let mut __result = Vec::new(); for tp in template.param_types.clone().iter().cloned() { __result.push(instantiate_algebra_type(tp.clone(), &base)); } __result });
+let return_type = instantiate_algebra_type(template.return_type.clone(), &base);
 if ((param_types.clone().len() as i64) > 0) {
             algebra_method_field(template.name.clone(), param_types.clone(), return_type)
         } else {
@@ -522,20 +522,20 @@ if ((param_types.clone().len() as i64) > 0) {
 }
 }
 
-pub fn enrich_kernel_type(name: String, base: Rc<Node>) -> Rc<Node> {
+pub fn enrich_kernel_type(name: String, base: &Rc<Node>) -> Rc<Node> {
     {
         let profile = v2_rt::map_get(&kernel_algebra_profile(), name.clone());
 match profile {
     Some(p) => {
-            let fields = Rc::new({ let mut __result = Vec::new(); for template in algebra_templates_for_profile(p.clone()).iter().cloned() { __result.push(instantiate_algebra_field(template.clone(), base.clone())); } __result });
-enrich_base_with_fields(name.clone(), base.clone(), fields)
+            let fields = Rc::new({ let mut __result = Vec::new(); for template in algebra_templates_for_profile(p.clone()).iter().cloned() { __result.push(instantiate_algebra_field(&template, &base)); } __result });
+enrich_base_with_fields(name.clone(), &base, fields)
 },
     None => base.clone(),
 }
 }
 }
 
-pub fn unify_template(template: Rc<AlgebraTypeTemplate>, concrete: Rc<Node>, receiver: Rc<Node>, subst: Rc<HashMap<String, Rc<Node>>>) -> Rc<HashMap<String, Rc<Node>>> {
+pub fn unify_template(template: Rc<AlgebraTypeTemplate>, concrete: &Rc<Node>, receiver: &Rc<Node>, subst: Rc<HashMap<String, Rc<Node>>>) -> Rc<HashMap<String, Rc<Node>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*template).clone() {
     AlgebraTypeTemplate::AlgebraTypeVariable { id: var_id, .. } => if (v2_rt::map_get(&subst, var_id.clone()) != None) {
@@ -548,7 +548,7 @@ pub fn unify_template(template: Rc<AlgebraTypeTemplate>, concrete: Rc<Node>, rec
     Some(k) => if (v2_rt::map_get(&subst, "__key__".to_string()) != None) {
                 subst.clone()
             } else {
-                v2_rt::rc_map_insert(subst.clone(), "__key__".to_string(), child_type_node(k.clone()))
+                v2_rt::rc_map_insert(subst.clone(), "__key__".to_string(), child_type_node(&k))
             },
     None => subst.clone(),
 };
@@ -556,7 +556,7 @@ match concrete.children.clone().get(1 as usize).cloned() {
     Some(v) => if (v2_rt::map_get(&s1, "__value__".to_string()) != None) {
                 s1.clone()
             } else {
-                v2_rt::rc_map_insert(s1.clone(), "__value__".to_string(), child_type_node(v.clone()))
+                v2_rt::rc_map_insert(s1.clone(), "__value__".to_string(), child_type_node(&v))
             },
     None => s1.clone(),
 }
@@ -576,7 +576,7 @@ match concrete.children.clone().get(1 as usize).cloned() {
         } else {
             v2_rt::rc_map_insert(subst.clone(), "__element__".to_string(), concrete.clone())
         },
-    AlgebraTypeTemplate::CallableOf { return_type: ret_template, .. } => unify_template(ret_template.clone(), concrete.clone(), receiver.clone(), subst.clone()),
+    AlgebraTypeTemplate::CallableOf { return_type: ret_template, .. } => unify_template(ret_template.clone(), &concrete, &receiver, subst.clone()),
     AlgebraTypeTemplate::ContainerOf { source: src, element: elem_template, .. } => {
             let expected_name = match (*src.clone()).clone() {
     ContainerSource::SameAsReceiver => receiver.name.clone(),
@@ -586,22 +586,22 @@ if (concrete.name.clone().as_str() != expected_name.as_str()) {
                 subst.clone()
             } else {
                 match concrete.children.clone().first().cloned() {
-    Some(child) => unify_template(elem_template.clone(), child_type_node(child.clone()), receiver.clone(), subst.clone()),
+    Some(child) => unify_template(elem_template.clone(), &child_type_node(&child), &receiver, subst.clone()),
     None => subst.clone(),
 }
             }
 },
     AlgebraTypeTemplate::OptionalOf { inner: inner_template, .. } => match concrete.children.clone().first().cloned() {
-    Some(child) => unify_template(inner_template.clone(), child_type_node(child.clone()), receiver.clone(), subst.clone()),
+    Some(child) => unify_template(inner_template.clone(), &child_type_node(&child), &receiver, subst.clone()),
     None => subst.clone(),
 },
     AlgebraTypeTemplate::TupleOf { first: ft, second: st, .. } => {
             let s2 = match concrete.children.clone().first().cloned() {
-    Some(c) => unify_template(ft.clone(), child_type_node(c.clone()), receiver.clone(), subst.clone()),
+    Some(c) => unify_template(ft.clone(), &child_type_node(&c), &receiver, subst.clone()),
     None => subst.clone(),
 };
 match concrete.children.clone().get(1 as usize).cloned() {
-    Some(c) => unify_template(st.clone(), child_type_node(c.clone()), receiver.clone(), s2),
+    Some(c) => unify_template(st.clone(), &child_type_node(&c), &receiver, s2),
     None => s2,
 }
 },
@@ -617,7 +617,7 @@ pub fn is_receiver_self(t: Rc<AlgebraTypeTemplate>) -> bool {
 }
 }
 
-pub fn build_type_substitution(param_templates: Rc<Vec<Rc<AlgebraTypeTemplate>>>, arg_types: Rc<Vec<Rc<Node>>>, receiver: Rc<Node>, base_subst: Rc<HashMap<String, Rc<Node>>>) -> Rc<HashMap<String, Rc<Node>>> {
+pub fn build_type_substitution(param_templates: &Rc<Vec<Rc<AlgebraTypeTemplate>>>, arg_types: Rc<Vec<Rc<Node>>>, receiver: Rc<Node>, base_subst: Rc<HashMap<String, Rc<Node>>>) -> Rc<HashMap<String, Rc<Node>>> {
     {
         let first_is_self = match param_templates.clone().first().cloned() {
     Some(t) => is_receiver_self(t.clone()),
@@ -634,12 +634,12 @@ pairs.iter().cloned().fold(base_subst.clone(), |subst: Rc<HashMap<String, Rc<Nod
     Some(a) => a.clone(),
     None => error_type(),
 };
-unify_template(pair.1.clone(), arg_type.clone(), receiver.clone(), subst.clone())
+unify_template(pair.1.clone(), &arg_type, &receiver, subst.clone())
 })
 }
 }
 
-pub fn apply_type_substitution(template: Rc<AlgebraTypeTemplate>, subst: Rc<HashMap<String, Rc<Node>>>, receiver: Rc<Node>) -> Rc<Node> {
+pub fn apply_type_substitution(template: Rc<AlgebraTypeTemplate>, subst: &Rc<HashMap<String, Rc<Node>>>, receiver: Rc<Node>) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*template).clone() {
     AlgebraTypeTemplate::AlgebraTypeVariable { id: var_id, .. } => match v2_rt::map_get(&subst, var_id.clone()) {
@@ -648,7 +648,7 @@ pub fn apply_type_substitution(template: Rc<AlgebraTypeTemplate>, subst: Rc<Hash
 },
     AlgebraTypeTemplate::ReceiverSelf => {
             let is_bare = (is_container_type(receiver.name.clone()) && { let mut __all = true; for ch in receiver.children.clone().iter().cloned() { if !({
-                let inner = child_type_node(ch.clone());
+                let inner = child_type_node(&ch);
 if (inner.inferred.clone() != None) {
                     is_type_variable(inner.inferred.clone().clone().unwrap())
                 } else {
@@ -685,21 +685,21 @@ make_map_type(key.clone(), val)
             }
 },
     AlgebraTypeTemplate::ReceiverElement => match receiver.children.clone().first().cloned() {
-    Some(child) => child_type_node(child.clone()),
+    Some(child) => child_type_node(&child),
     None => match v2_rt::map_get(&subst, "__element__".to_string()) {
     Some(elem) => elem.clone(),
     None => type_variable_node(container_param_name_required(receiver.name.clone(), 0)),
 },
 },
     AlgebraTypeTemplate::ReceiverKey => match receiver.children.clone().first().cloned() {
-    Some(child) => child_type_node(child.clone()),
+    Some(child) => child_type_node(&child),
     None => match v2_rt::map_get(&subst, "__key__".to_string()) {
     Some(key) => key.clone(),
     None => type_variable_node(container_param_name_required(receiver.name.clone(), 0)),
 },
 },
     AlgebraTypeTemplate::ReceiverValue => match receiver.children.clone().get(1 as usize).cloned() {
-    Some(child) => child_type_node(child.clone()),
+    Some(child) => child_type_node(&child),
     None => match v2_rt::map_get(&subst, "__value__".to_string()) {
     Some(val) => val,
     None => type_variable_node(container_param_name_required(receiver.name.clone(), 1)),
@@ -711,13 +711,13 @@ make_map_type(key.clone(), val)
     ContainerSource::SameAsReceiver => receiver.name.clone(),
     ContainerSource::Named { name: n, .. } => n.clone(),
 };
-make_container_type(kind_name, apply_type_substitution(inner.clone(), subst.clone(), receiver.clone()))
+make_container_type(kind_name, apply_type_substitution(inner.clone(), &subst, receiver.clone()))
 },
-    AlgebraTypeTemplate::OptionalOf { inner, .. } => with_optional_cardinality(apply_type_substitution(inner.clone(), subst.clone(), receiver.clone())),
-    AlgebraTypeTemplate::TupleOf { first: ft, second: st, .. } => make_tuple_type(apply_type_substitution(ft.clone(), subst.clone(), receiver.clone()), apply_type_substitution(st.clone(), subst.clone(), receiver.clone())),
+    AlgebraTypeTemplate::OptionalOf { inner, .. } => with_optional_cardinality(&apply_type_substitution(inner.clone(), &subst, receiver.clone())),
+    AlgebraTypeTemplate::TupleOf { first: ft, second: st, .. } => make_tuple_type(apply_type_substitution(ft.clone(), &subst, receiver.clone()), apply_type_substitution(st.clone(), &subst, receiver.clone())),
     AlgebraTypeTemplate::CallableOf { params: p, return_type: r, .. } => {
-            let param_nodes = Rc::new({ let mut __result = Vec::new(); for tp in p.clone().iter().cloned() { __result.push(apply_type_substitution(tp.clone(), subst.clone(), receiver.clone())); } __result });
-make_callable_type(Rc::new({ let mut __result = Vec::new(); for pn in param_nodes.iter().cloned() { __result.push(make_param_node("_".to_string(), pn.clone(), None, no_span(), no_span())); } __result }), apply_type_substitution(r.clone(), subst.clone(), receiver.clone()))
+            let param_nodes = Rc::new({ let mut __result = Vec::new(); for tp in p.clone().iter().cloned() { __result.push(apply_type_substitution(tp.clone(), &subst, receiver.clone())); } __result });
+make_callable_type(Rc::new({ let mut __result = Vec::new(); for pn in param_nodes.iter().cloned() { __result.push(make_param_node("_".to_string(), pn.clone(), None, no_span(), no_span())); } __result }), apply_type_substitution(r.clone(), &subst, receiver.clone()))
 },
 }
     })
@@ -744,14 +744,14 @@ pub fn has_type_variable(t: Rc<AlgebraTypeTemplate>) -> bool {
     })
 }
 
-pub fn resolve_type_variables_from_template(template: Rc<AlgebraFieldTemplate>, arg_types: Rc<Vec<Rc<Node>>>, receiver_type: Rc<Node>, overrides: Rc<HashMap<String, Rc<Node>>>) -> Rc<Node> {
+pub fn resolve_type_variables_from_template(template: &Rc<AlgebraFieldTemplate>, arg_types: Rc<Vec<Rc<Node>>>, receiver_type: &Rc<Node>, overrides: Rc<HashMap<String, Rc<Node>>>) -> Rc<Node> {
     {
-        let subst = build_type_substitution(template.param_types.clone(), arg_types, receiver_type.clone(), overrides);
-apply_type_substitution(template.return_type.clone(), subst, receiver_type.clone())
+        let subst = build_type_substitution(&template.param_types.clone(), arg_types, receiver_type.clone(), overrides);
+apply_type_substitution(template.return_type.clone(), &subst, receiver_type.clone())
 }
 }
 
-pub fn callable_inferred(n: Rc<Node>) -> Rc<Node> {
+pub fn callable_inferred(n: &Rc<Node>) -> Rc<Node> {
     {
         let is_callable = ((n.params.clone().len() as i64) > 0);
 if is_callable {
@@ -785,15 +785,15 @@ continue;
 }
 }
 
-pub fn node_type_shape(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
+pub fn node_type_shape(n: &Rc<Node>, source_index: &Option<Rc<NewlineIndex>>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let __is_leaf = (((n.connective.clone() == Connective::NoConnective) && ((n.children.clone().len() as i64) == 0)) && ((n.properties.clone().len() as i64) == 0));
-let n_name = authored_name_at(source_index.clone(), n.clone());
+let n_name = authored_name_at(source_index.clone(), &n);
 if __is_leaf {
                 {
                     let __is_named_ref = match n.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => (((((rt.connective.clone() == Connective::NoConnective) && ((rt.children.clone().len() as i64) == 0)) && (rt.ident_span.clone() != None)) && (authored_name_at(source_index.clone(), rt.clone()).as_str() != "None".to_string().as_str())) && (is_kernel_type(authored_name_at(source_index.clone(), rt.clone())) == false)),
+    Some(InferredNode::Resolved { node: rt, .. }) => (((((rt.connective.clone() == Connective::NoConnective) && ((rt.children.clone().len() as i64) == 0)) && (rt.ident_span.clone() != None)) && (authored_name_at(source_index.clone(), &rt).as_str() != "None".to_string().as_str())) && (is_kernel_type(authored_name_at(source_index.clone(), &rt)) == false)),
     _ => false,
 };
 if __is_named_ref {
@@ -821,13 +821,13 @@ if is_product {
                             }
                         } else {
                             {
-                                let __is_container = node_is_element_collection(n.clone(), source_index.clone());
+                                let __is_container = node_is_element_collection(&n, source_index.clone());
 let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
-let is_map = node_is_keyed_collection(n.clone(), source_index.clone());
+let is_map = node_is_keyed_collection(&n, source_index.clone());
 if __is_container {
                                     {
                                         let elem_shape = match n.children.clone().first().cloned() {
-    Some(el) => node_type_shape(child_type_node(el.clone()), source_index.clone()),
+    Some(el) => node_type_shape(&child_type_node(&el), &source_index),
     None => "?".to_string(),
 };
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Container(".to_string(), n_name), ",".to_string()), elem_shape), ")".to_string())
@@ -835,7 +835,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Container(".to_string()
                                 } else {
                                     if is_optional {
                                         {
-                                            let inner_shape = node_type_shape(with_required_cardinality(n.clone()), source_index.clone());
+                                            let inner_shape = node_type_shape(&with_required_cardinality(&n), &source_index);
 v2_rt::concat(v2_rt::concat("Optional(".to_string(), inner_shape), ")".to_string())
 }
                                     } else {
@@ -879,8 +879,8 @@ let right_tv = if (right.inferred.clone() != None) {
         };
 let left_opt = (left.return_cardinality.clone() == Cardinality::CardOptional);
 let right_opt = (right.return_cardinality.clone() == Cardinality::CardOptional);
-let right_is_unit = is_unit_like(right.clone());
-let left_is_unit = is_unit_like(left.clone());
+let right_is_unit = is_unit_like(&right);
+let left_is_unit = is_unit_like(&left);
 if (left_err || right_err) {
             break true;
 } else {
@@ -893,18 +893,18 @@ if (left_err || right_err) {
                     if (left_is_unit && right_opt.clone()) {
                         break true;
 } else {
-                        let left_is_container = node_is_element_collection(left.clone(), source_index.clone());
-let right_is_container = node_is_element_collection(right.clone(), source_index.clone());
+                        let left_is_container = node_is_element_collection(&left, source_index.clone());
+let right_is_container = node_is_element_collection(&right, source_index.clone());
 if (left_is_container && right_is_container) {
                             if (left.name.clone().as_str() != right.name.clone().as_str()) {
                                 break false;
 } else {
                                 match left.children.clone().first().cloned() {
     Some(left_ch) => { match right.children.clone().first().cloned() {
-    Some(right_ch) => { let left_el = child_type_node(left_ch.clone());
-let right_el = child_type_node(right_ch.clone());
-let left_el_is_unit = is_unit_like(left_el.clone());
-let right_el_is_unit = is_unit_like(right_el.clone());
+    Some(right_ch) => { let left_el = child_type_node(&left_ch);
+let right_el = child_type_node(&right_ch);
+let left_el_is_unit = is_unit_like(&left_el);
+let right_el_is_unit = is_unit_like(&right_el);
 if (left_el_is_unit || right_el_is_unit) {
                                     break true;
 } else {
@@ -923,10 +923,10 @@ continue;
 }
 } else {
                             if (left_opt.clone() && right_opt.clone()) {
-                                let left_inner = with_required_cardinality(left.clone());
-let right_inner = with_required_cardinality(right.clone());
-let left_inner_is_unit = is_unit_like(left_inner.clone());
-let right_inner_is_unit = is_unit_like(right_inner.clone());
+                                let left_inner = with_required_cardinality(&left);
+let right_inner = with_required_cardinality(&right);
+let left_inner_is_unit = is_unit_like(&left_inner);
+let right_inner_is_unit = is_unit_like(&right_inner);
 if (left_inner_is_unit || right_inner_is_unit) {
                                     break true;
 } else {
@@ -953,17 +953,17 @@ continue;
 }
 }
 
-pub fn prefer_specific_type(left: Rc<Node>, right: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Node> {
+pub fn prefer_specific_type(left: Rc<Node>, right: Rc<Node>, source_index: &Option<Rc<NewlineIndex>>) -> Rc<Node> {
     {
-        let left_is_container = node_is_element_collection(left.clone(), source_index.clone());
+        let left_is_container = node_is_element_collection(&left, source_index.clone());
 let left_is_optional = (left.return_cardinality.clone() == Cardinality::CardOptional);
 let left_first_child = left.children.clone().first().cloned();
 let left_norm_name = left.name.clone();
 let left_is_unit_inner = if left_is_container.clone() {
             match left_first_child {
     Some(ch) => {
-                let el = child_type_node(ch.clone());
-let el_is_unit = is_unit_like(el);
+                let el = child_type_node(&ch);
+let el_is_unit = is_unit_like(&el);
 el_is_unit
 },
     None => false,
@@ -971,14 +971,14 @@ el_is_unit
         } else {
             if left_is_optional.clone() {
                 {
-                    let left_is_unit = is_unit_like(left.clone());
+                    let left_is_unit = is_unit_like(&left);
 left_is_unit
 }
             } else {
                 false
             }
         };
-let right_is_container = node_is_element_collection(right.clone(), source_index.clone());
+let right_is_container = node_is_element_collection(&right, source_index.clone());
 let right_is_optional = (right.return_cardinality.clone() == Cardinality::CardOptional);
 let same_kind = if (left_is_container.clone() && right_is_container) {
             (left_norm_name.as_str() == right.name.clone().as_str())
@@ -992,7 +992,7 @@ let same_kind = if (left_is_container.clone() && right_is_container) {
 if (same_kind && left_is_unit_inner) {
             right.clone()
         } else {
-            if (is_fully_resolved(right.clone(), source_index.clone()) && !is_fully_resolved(left.clone(), source_index.clone())) {
+            if (is_fully_resolved(&right, &source_index) && !is_fully_resolved(&left, &source_index)) {
                 right.clone()
             } else {
                 left.clone()
@@ -1001,7 +1001,7 @@ if (same_kind && left_is_unit_inner) {
 }
 }
 
-pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
+pub fn node_type_equals(left: &Rc<Node>, right: &Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
     {
         let left_err = if (left.inferred.clone() != None) {
             is_compiler_error(left.inferred.clone().clone().unwrap())
@@ -1025,8 +1025,8 @@ let right_tv = if (right.inferred.clone() != None) {
         };
 let left_opt = (left.return_cardinality.clone() == Cardinality::CardOptional);
 let right_opt = (right.return_cardinality.clone() == Cardinality::CardOptional);
-let right_is_unit_eq = is_unit_like(right.clone());
-let left_is_unit_eq = is_unit_like(left.clone());
+let right_is_unit_eq = is_unit_like(&right);
+let left_is_unit_eq = is_unit_like(&left);
 if (left_err || right_err) {
             true
         } else {
@@ -1043,9 +1043,9 @@ if (left_err || right_err) {
                             true
                         } else {
                             if (left_opt.clone() && right_opt.clone()) {
-                                node_type_equals_core(with_required_cardinality(left.clone()), with_required_cardinality(right.clone()), source_index)
+                                node_type_equals_core(&with_required_cardinality(&left), &with_required_cardinality(&right), &source_index)
                             } else {
-                                node_type_equals_core(left.clone(), right.clone(), source_index)
+                                node_type_equals_core(&left, &right, &source_index)
                             }
                         }
                     }
@@ -1055,7 +1055,7 @@ if (left_err || right_err) {
 }
 }
 
-pub fn node_type_equals_core(left: Rc<Node>, right: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
+pub fn node_type_equals_core(left: &Rc<Node>, right: &Rc<Node>, source_index: &Option<Rc<NewlineIndex>>) -> bool {
     {
         let left_leaf = (((left.connective.clone() == Connective::NoConnective) && ((left.children.clone().len() as i64) == 0)) && ((left.properties.clone().len() as i64) == 0));
 let right_leaf = (((right.connective.clone() == Connective::NoConnective) && ((right.children.clone().len() as i64) == 0)) && ((right.properties.clone().len() as i64) == 0));
@@ -1075,7 +1075,7 @@ if (left_leaf.clone() && right_leaf.clone()) {
                             false
                         } else {
                             { let mut __all = true; for pair in Rc::new(left.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if !(match right.children.clone().get(pair.0.clone() as usize).cloned() {
-    Some(right_child) => node_type_equals(pair.1.clone(), right_child.clone(), source_index.clone()),
+    Some(right_child) => node_type_equals(&pair.1.clone(), &right_child, source_index.clone()),
     None => false,
 }) { __all = false; break; } } __all }
                         }
@@ -1089,15 +1089,15 @@ if (left_leaf.clone() && right_leaf.clone()) {
                         (left.name.clone().as_str() == right.name.clone().as_str())
                     } else {
                         {
-                            let left_is_container = node_is_element_collection(left.clone(), source_index.clone());
-let right_is_container = node_is_element_collection(right.clone(), source_index.clone());
+                            let left_is_container = node_is_element_collection(&left, source_index.clone());
+let right_is_container = node_is_element_collection(&right, source_index.clone());
 if (left_is_container && right_is_container) {
                                 if (left.name.clone().as_str() != right.name.clone().as_str()) {
                                     false
                                 } else {
                                     match left.children.clone().first().cloned() {
     Some(left_ch) => match right.children.clone().first().cloned() {
-    Some(right_ch) => node_type_equals(child_type_node(left_ch.clone()), child_type_node(right_ch.clone()), source_index.clone()),
+    Some(right_ch) => node_type_equals(&child_type_node(&left_ch), &child_type_node(&right_ch), source_index.clone()),
     None => false,
 },
     None => false,
@@ -1105,14 +1105,14 @@ if (left_is_container && right_is_container) {
                                 }
                             } else {
                                 {
-                                    let both_maps = (node_is_keyed_collection(left.clone(), source_index.clone()) && node_is_keyed_collection(right.clone(), source_index.clone()));
+                                    let both_maps = (node_is_keyed_collection(&left, source_index.clone()) && node_is_keyed_collection(&right, source_index.clone()));
 if both_maps {
                                         if (((left.children.clone().len() as i64) == 2) && ((right.children.clone().len() as i64) == 2)) {
                                             match left.children.clone().first().cloned() {
     Some(left_first) => match right.children.clone().first().cloned() {
     Some(right_first) => match left.children.clone().get(1 as usize).cloned() {
     Some(left_second) => match right.children.clone().get(1 as usize).cloned() {
-    Some(right_second) => (node_type_equals(child_type_node(left_first.clone()), child_type_node(right_first.clone()), source_index.clone()) && node_type_equals(child_type_node(left_second.clone()), child_type_node(right_second.clone()), source_index.clone())),
+    Some(right_second) => (node_type_equals(&child_type_node(&left_first), &child_type_node(&right_first), source_index.clone()) && node_type_equals(&child_type_node(&left_second), &child_type_node(&right_second), source_index.clone())),
     None => false,
 },
     None => false,
@@ -1131,7 +1131,7 @@ if both_maps {
                                             } else {
                                                 {
                                                     let params_eq = { let mut __all = true; for pair in Rc::new(left.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if !(match right.params.clone().get(pair.0.clone() as usize).cloned() {
-    Some(right_param) => node_type_equals(param_node_type_expr(pair.1.clone()), param_node_type_expr(right_param.clone()), source_index.clone()),
+    Some(right_param) => node_type_equals(&param_node_type_expr(&pair.1.clone()), &param_node_type_expr(&right_param), source_index.clone()),
     None => false,
 }) { __all = false; break; } } __all };
 if (params_eq == false) {
@@ -1139,7 +1139,7 @@ if (params_eq == false) {
                                                     } else {
                                                         match left.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: left_ret, .. }) => match right.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: right_ret, .. }) => node_type_equals(left_ret.clone(), right_ret.clone(), source_index.clone()),
+    Some(InferredNode::Resolved { node: right_ret, .. }) => node_type_equals(&left_ret, &right_ret, source_index.clone()),
     None => false,
     _ => false,
 },
@@ -1163,7 +1163,7 @@ if (params_eq == false) {
 }
 }
 
-pub fn node_type_deps(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<String>> {
+pub fn node_type_deps(n: &Rc<Node>, source_index: &Option<Rc<NewlineIndex>>) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let n_is_type_var = if (n.inferred.clone() != None) {
@@ -1178,23 +1178,23 @@ let __is_named_ref = if (n.inferred.clone() == None) {
                 false
             } else {
                 match n.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => (((((rt.connective.clone() == Connective::NoConnective) && ((rt.children.clone().len() as i64) == 0)) && (rt.ident_span.clone() != None)) && (authored_name_at(source_index.clone(), rt.clone()).as_str() != "None".to_string().as_str())) && (is_kernel_type(authored_name_at(source_index.clone(), rt.clone())) == false)),
+    Some(InferredNode::Resolved { node: rt, .. }) => (((((rt.connective.clone() == Connective::NoConnective) && ((rt.children.clone().len() as i64) == 0)) && (rt.ident_span.clone() != None)) && (authored_name_at(source_index.clone(), &rt).as_str() != "None".to_string().as_str())) && (is_kernel_type(authored_name_at(source_index.clone(), &rt)) == false)),
     _ => false,
 }
             };
 let has_structure = (n.connective.clone() != Connective::NoConnective);
-let n_name = authored_name_at(source_index.clone(), n.clone());
+let n_name = authored_name_at(source_index.clone(), &n);
 if __is_named_ref {
                 match n.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => Rc::new(vec![authored_name_at(source_index.clone(), rt.clone())]),
+    Some(InferredNode::Resolved { node: rt, .. }) => Rc::new(vec![authored_name_at(source_index.clone(), &rt)]),
     _ => Rc::new(vec![]),
 }
             } else {
                 if has_structure {
                     Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.extend((*match child.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => node_type_deps(rt.clone(), source_index.clone()),
+    Some(InferredNode::Resolved { node: rt, .. }) => node_type_deps(&rt, &source_index),
     _ => if (child.inferred.clone() == None) {
-                        node_type_deps(child.clone(), source_index.clone())
+                        node_type_deps(&child, &source_index)
                     } else {
                         Rc::new(vec![])
                     },
@@ -1202,13 +1202,13 @@ if __is_named_ref {
                 } else {
                     if (n.inferred.clone() != None) {
                         match n.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => node_type_deps(rt.clone(), source_index.clone()),
+    Some(InferredNode::Resolved { node: rt, .. }) => node_type_deps(&rt, &source_index),
     _ => Rc::new(vec![]),
 }
                     } else {
                         if ((n.children.clone().len() as i64) > 0) {
                             {
-                                let child_deps = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.extend((*node_type_deps(child.clone(), source_index.clone())).iter().cloned()); } __result });
+                                let child_deps = Rc::new({ let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.extend((*node_type_deps(&child, &source_index)).iter().cloned()); } __result });
 if ((n.ident_span.clone() != None) && (is_kernel_type(n_name.clone()) == false)) {
                                     v2_rt::concat(Rc::new(vec![n_name.clone()]), child_deps)
                                 } else {
@@ -1235,22 +1235,22 @@ pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
     LiteralValue::LitInt { .. } => int_type(),
     LiteralValue::LitFloat { .. } => float_type(),
     LiteralValue::LitBool { .. } => bool_type(),
-    LiteralValue::LitNull => with_optional_cardinality(unit_type()),
+    LiteralValue::LitNull => with_optional_cardinality(&unit_type()),
 }
 }
 
 pub fn method_receiver_element_node(receiver_type: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Node> {
     {
         let normed = normalize_access_type_node(receiver_type.clone());
-let maybe_element = if node_is_keyed_collection(normed.clone(), source_index) {
+let maybe_element = if node_is_keyed_collection(&normed, source_index) {
             match normed.children.clone().get(1 as usize).cloned() {
-    Some(ch) => Some(child_type_node(ch.clone())),
+    Some(ch) => Some(child_type_node(&ch)),
     None => None,
 }
         } else {
             if ((normed.connective.clone() == Connective::NoConnective) && ((normed.children.clone().len() as i64) == 1)) {
                 match normed.children.clone().first().cloned() {
-    Some(ch) => Some(child_type_node(ch.clone())),
+    Some(ch) => Some(child_type_node(&ch)),
     None => None,
 }
             } else {
@@ -1264,11 +1264,11 @@ match maybe_element {
 }
 }
 
-pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
+pub fn extract_optional_inner_node(n: &Rc<Node>) -> Rc<Node> {
     {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
 if is_optional {
-            with_required_cardinality(n.clone())
+            with_required_cardinality(&n)
         } else {
             n.clone()
         }
@@ -1338,7 +1338,7 @@ pub struct BinOpInferred {
     pub algebra_field: Option<AlgebraFieldKind>,
 }
 
-pub fn infer_binop_type_node(op: BinOp, left_type: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<BinOpInferred> {
+pub fn infer_binop_type_node(op: BinOp, left_type: &Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<BinOpInferred> {
     match op.clone() {
     BinOp::Eq => Rc::new(BinOpInferred {
     result_type: bool_type(),
@@ -1373,7 +1373,7 @@ pub fn infer_binop_type_node(op: BinOp, left_type: Rc<Node>, source_index: Optio
     algebra_field: None,
 }),
     BinOp::NullCoalesce => Rc::new(BinOpInferred {
-    result_type: extract_optional_inner_node(left_type.clone()),
+    result_type: extract_optional_inner_node(&left_type),
     algebra_field: None,
 }),
     _ => {
@@ -1425,7 +1425,7 @@ pub fn for_each_element_type_node(n: Rc<Node>) -> Rc<Node> {
 let is_single_child = ((normed.connective.clone() == Connective::NoConnective) && ((normed.children.clone().len() as i64) == 1));
 let extracted = if is_single_child {
             match normed.children.clone().first().cloned() {
-    Some(ch) => Some(child_type_node(ch.clone())),
+    Some(ch) => Some(child_type_node(&ch)),
     None => None,
 }
         } else {

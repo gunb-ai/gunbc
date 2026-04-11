@@ -762,7 +762,7 @@ mod compiler_tests {
                     crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), s.content.clone())),
                 );
-                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules), resolve_si);
+                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), resolve_si);
                 let resolve_total = t_stage.elapsed();
                 let errors: Vec<_> = graph
                     .diagnostics
@@ -869,7 +869,7 @@ mod compiler_tests {
                     crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), s.content.clone())),
                 );
-                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules), resolve_si);
+                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), resolve_si);
                 let resolve_total = t_stage.elapsed();
                 let phase3_diags: usize = graph
                     .diagnostics
@@ -914,7 +914,7 @@ mod compiler_tests {
                 );
 
                 let t_stage = Instant::now();
-                let emit_result = crate::v2_compiler_emit_rust::emit_rust(typed);
+                let emit_result = crate::v2_compiler_emit_rust::emit_rust(&typed);
                 let emit_total = t_stage.elapsed();
                 let phase5_diags: usize = emit_result
                     .diagnostics
@@ -1002,7 +1002,7 @@ mod compiler_tests {
                     crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), s.content.clone())),
                 );
-                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules), resolve_si);
+                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), resolve_si);
                 let resolve_elapsed = t.elapsed();
                 let resolve_errors: usize = graph.diagnostics.iter()
                     .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
@@ -1024,7 +1024,7 @@ mod compiler_tests {
 
                 // 2. Normalize
                 let t = Instant::now();
-                let norm = crate::v2_compiler_normalize::normalize_graph(graph);
+                let norm = crate::v2_compiler_normalize::normalize_graph(&graph);
                 let normalize_elapsed = t.elapsed();
                 eprintln!("  Normalize:                    {:>8.2?}", normalize_elapsed);
 
@@ -1047,7 +1047,7 @@ mod compiler_tests {
                 let func_count = func_entries.len();
                 let recursion_ctx = crate::v2_compiler_compile::build_recursion_context(typed.clone());
                 let complexity = crate::v2_compiler_complexity::build_complexity_report(
-                    func_entries, recursion_ctx,
+                    &func_entries, recursion_ctx,
                 );
                 let complexity_elapsed = t.elapsed();
                 let cx_diags = crate::v2_compiler_compile::complexity_diagnostics(complexity.clone());
@@ -1066,7 +1066,7 @@ mod compiler_tests {
                     crate::v2_compiler_artifact::RenderTarget::Rust,
                 );
                 let t = Instant::now();
-                let emit_result = crate::v2_compiler_compile::emit_from_artifact_plan(typed.clone(), artifact_plan);
+                let emit_result = crate::v2_compiler_compile::emit_from_artifact_plan(typed.clone(), &artifact_plan);
                 let emit_elapsed = t.elapsed();
                 let emitted_files = emit_result.files.len();
                 let emitted_bytes: usize = emit_result.files.iter().map(|f| f.content.len()).sum();
@@ -1123,7 +1123,7 @@ mod compiler_tests {
                     crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), s.content.clone())),
                 );
-                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules), resolve_si);
+                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), resolve_si);
                 let setup_time = t0.elapsed();
                 let rss_baseline = get_rss_bytes();
                 eprintln!(
@@ -1163,8 +1163,8 @@ mod compiler_tests {
 
                     let t_unres = Instant::now();
                     let _unres = crate::v2_compiler_infer::build_type_env_unresolved(
-                        resolved.clone(),
-                        module_index.clone(),
+                        &resolved.clone(),
+                        &module_index.clone(),
                         source_indices.clone(),
                     );
                     let unres_elapsed = t_unres.elapsed();
@@ -1188,8 +1188,8 @@ mod compiler_tests {
 
                     let t_env = Instant::now();
                     let env_result = crate::v2_compiler_infer::build_type_env(
-                        resolved.clone(),
-                        module_index.clone(),
+                        &resolved.clone(),
+                        &module_index.clone(),
                         source_indices.clone(),
                     );
                     let env_elapsed = t_env.elapsed();
@@ -1223,8 +1223,8 @@ mod compiler_tests {
 
                     let t_full = Instant::now();
                     let tc_result = crate::v2_compiler_infer::typecheck_module(
-                        resolved.clone(),
-                        module_index,
+                        &resolved.clone(),
+                        &module_index,
                         source_indices.clone(),
                     );
                     let full_elapsed = t_full.elapsed();

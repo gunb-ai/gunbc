@@ -405,6 +405,23 @@ fn build_movable_set(proof: OwnershipProof) -> Map<String, Bool> {
     |> fold(init: empty_map(), f: (acc, usage) => map_insert(acc, usage.name, true))
 }
 
+// Read-only params: function parameters where all usage edges are
+// Read/Projected/Threaded (no Consumed). These can be passed by borrow
+// (&Rc<T>) instead of owned (Rc<T>), eliminating clone at each call site.
+// Fan-out=1 params are excluded — they're already movable (zero cost).
+// param_names restricts to actual function parameters (VarBindingKind
+// doesn't distinguish params from let-bindings).
+fn build_read_only_params(proof: OwnershipProof, param_names: Map<String, Bool>) -> Map<String, Bool> {
+  proof.bindings |> map_values
+    |> filter(usage =>
+      map_contains_key(param_names, usage.name)
+      && is_owned_local(kind: usage.binding_kind)
+      && binding_fan_out(usage: usage) > 1
+      && usage.consumers |> all(c => match c.kind { Read => true, Projected => true, Threaded => true, _ => false })
+    )
+    |> fold(init: empty_map(), f: (acc, usage) => map_insert(acc, usage.name, true))
+}
+
 // =========================================================================
 // Fold accumulator unwrap — structural analysis (target-agnostic)
 // =========================================================================

@@ -138,6 +138,10 @@ type SharingStrategy {
   field_clone: String       // owned copy of a field: Rust "{0}.{1}.clone()", Python/Go "{0}.{1}"
   iter_owned: String        // owned iterator from shared collection: Rust "{0}.iter().cloned()"
   clone_suffix: String      // appended for owned element access: Rust ".cloned()", Python/Go ""
+  // Borrow templates: {0}=type (param) or {0}=expr (arg).
+  // Rust: "&{0}" wraps both types and expressions. GC languages: identity (no borrows needed).
+  borrow_param_template: String  // wraps param type: Rust "&Rc<T>", Go/Python identity
+  borrow_arg_template: String    // wraps call-site arg: Rust "&x", Go/Python identity
 }
 
 // -- Indexing semantics: per-collection-type rendering templates ------------
@@ -342,7 +346,9 @@ fn rust_spec() -> LanguageSpec {
       deref_clone: "(*{0}).clone()",
       field_clone: "{0}.{1}.clone()",
       iter_owned: "{0}.iter().cloned()",
-      clone_suffix: ".cloned()"
+      clone_suffix: ".cloned()",
+      borrow_param_template: "&{0}",
+      borrow_arg_template: "&{0}"
     },
     indexing: IndexingSemantics {
       list_index: "{0}[({1}) as usize].clone()",
@@ -442,7 +448,9 @@ fn python_spec() -> LanguageSpec {
       deref_clone: "{0}",
       field_clone: "{0}.{1}",
       iter_owned: "{0}",
-      clone_suffix: ""
+      clone_suffix: "",
+      borrow_param_template: "{0}",
+      borrow_arg_template: "{0}"
     },
     indexing: IndexingSemantics {
       list_index: "{0}[{1}]",
@@ -542,7 +550,9 @@ fn go_spec() -> LanguageSpec {
       deref_clone: "{0}",
       field_clone: "{0}.{1}",
       iter_owned: "{0}",
-      clone_suffix: ""
+      clone_suffix: "",
+      borrow_param_template: "{0}",
+      borrow_arg_template: "{0}"
     },
     indexing: IndexingSemantics {
       list_index: "{0}[{1}]",
