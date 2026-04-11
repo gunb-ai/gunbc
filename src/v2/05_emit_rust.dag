@@ -2438,7 +2438,7 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
   let ordered_args = order_typed_call_args(args: args, func: func, scope: collection_scope)
   let callee = lookup_item(registry: registry, name: func)
   let filled_args = fill_default_args(ordered: ordered_args, callee: callee, registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  let is_rt = map_contains_key(rt_functions, func)
+  let is_rt = map_contains_key(rt_functions(), func)
   let is_rt_ref_map = map_contains_key(rt_ref_map_functions(), func)
   let callee_read_only = match map_get(emit_info.read_only_params_index, func) {
     Some { value: m } => m

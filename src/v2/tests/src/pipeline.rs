@@ -5720,6 +5720,52 @@ fn shell_from_annotation_maps_channels() {
     );
 }
 
+// ── RE-3h: Shell multi-field without `from` defaults to stdout ───────────
+// Documents current behavior: without explicit `from` annotations, all fields
+// default to the stdout channel. This is the gap the architectural review
+// identified — proper channel mapping requires `from` annotations (see re3g).
+#[test]
+fn shell_multi_field_no_from_defaults_to_stdout() {
+    let source = "module re3h\n\nservice test.Shell {\n  config {}\n  operation Stats {\n    input { path: String }\n    output { success: Bool, line_count: Int, content: String }\n    transport shell { argv: [\"wc\", \"-l\", \"{path}\"] }\n    exit { 0 => Unit  nonzero => String }\n    mock_response {\n      0 => { success: true, line_count: 42, content: \"hello\" } \"ok\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re3h.rs");
+    // Without `from` annotations, all fields default to stdout channel
+    assert!(
+        content.contains("stdout.clone()"),
+        "RE-3h: fields without `from` should default to stdout, got:\n{content}"
+    );
+    // No exit_success mapping without explicit `from "exit_success"` annotation
+    assert!(
+        !content.contains("output.status.success()"),
+        "RE-3h: Bool field without `from` should NOT infer exit code, got:\n{content}"
+    );
+}
+
+// ── RE-3i: Shell multi-field with `from` on mixed types ──────────────────
+#[test]
+fn shell_from_annotation_with_int_field() {
+    let source = "module re3i\n\nservice test.Shell {\n  config {}\n  operation Stats {\n    input { path: String }\n    output { ok: Bool from \"exit_success\", line_count: Int from \"stdout\", errors: String from \"stderr\" }\n    transport shell { argv: [\"wc\", \"-l\", \"{path}\"] }\n    exit { 0 => Unit  nonzero => String }\n    mock_response {\n      0 => { ok: true, line_count: 42, errors: \"\" } \"ok\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re3i.rs");
+    // Bool with from "exit_success" → exit code
+    assert!(
+        content.contains("output.status.success()"),
+        "RE-3i: from \"exit_success\" should emit exit code check, got:\n{content}"
+    );
+    // String with from "stderr" → stderr channel
+    assert!(
+        content.contains("from_utf8_lossy(&output.stderr)"),
+        "RE-3i: from \"stderr\" should capture stderr, got:\n{content}"
+    );
+    // Int with from "stdout" → stdout (string capture)
+    assert!(
+        content.contains("stdout.clone()"),
+        "RE-3i: from \"stdout\" for Int should use stdout, got:\n{content}"
+    );
+}
+
 // ── RE-4: Anthropic REST API emission ────────────────────────────────────
 #[test]
 fn anthropic_response_extracts_content_text() {
