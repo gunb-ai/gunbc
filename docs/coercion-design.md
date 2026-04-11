@@ -1,3 +1,5 @@
+> Part of: [THESIS.md](../THESIS.md) > [ROADMAP.md](../ROADMAP.md) > **Tier 1: Structural** (coercion completeness)
+
 # Coercion Design: Algebra Inhabitants and Type Sidecast
 
 **Status:** Design sketch (no compiler changes)

@@ -1,8 +1,10 @@
+> Part of: [THESIS.md](../../THESIS.md) > [ROADMAP.md](../../ROADMAP.md) > **Tier 1 + Tier 3** (algebraic laws)
+
 # gunbc Compiler Laws
 
 This document describes the compiler's structural laws, coercion model,
-and execution lanes. See [ROADMAP.md](../ROADMAP.md) for milestone plan
-and [INVARIANTS.md](../INVARIANTS.md) for enforcement.
+and execution lanes. See [ROADMAP.md](../../ROADMAP.md) for milestone plan
+and [INVARIANTS.md](../../INVARIANTS.md) for enforcement.
 
 ## The pipeline law
 

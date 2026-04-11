@@ -1,8 +1,10 @@
+> Part of: [THESIS.md](../../../THESIS.md) > [ROADMAP.md](../../../ROADMAP.md) > **Tier 3: Generated tests**
+
 # gunbc Testing Strategy
 
 This document describes the testing and verification strategy — what the
 compiler proves, what it tests, and what it generates for external
-verification. See [ROADMAP.md](../ROADMAP.md) M3 for current status.
+verification. See [ROADMAP.md](../../../ROADMAP.md) M3 for current status.
 
 ## Core thesis: verifiable by construction
 

@@ -1,3 +1,6 @@
+> Part of: [THESIS.md](../../THESIS.md) > [ROADMAP.md](../../ROADMAP.md) > **Tier 1: Structural** (CX gate)
+> See also: [cx-design.md](cx-design.md), [cx-violation-triage.md](cx-violation-triage.md)
+
 # CX Computation Model
 
 Design doc for the complexity analyzer. Single source of truth for
@@ -344,5 +347,5 @@ the full analysis.
 - **ROADMAP.md §CX** — work items, sequencing, acceptance criteria
 - **INVARIANTS.md** — bounded kernel, fail-closed, decidability
 - **MODELING.md** — DSL modeling philosophy (shared facts, concept DAG)
-- **docs/cx-violation-triage.md** — violation breakdown by callee (stale: based on 526, current is 168)
+- **cx-violation-triage.md** — violation breakdown by callee (stale: based on 526, current is 168)
 - **src/v2/DESIGN.md** — compiler design principles

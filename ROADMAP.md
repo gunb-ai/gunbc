@@ -14,12 +14,72 @@ type definitions. Non-Node types are flat discriminants and data
 tables. This makes descent provable by construction: any function
 that walks Node.children is structurally bounded.
 
-Full thesis: [docs/architecture.md](docs/architecture.md)
-Compiler laws and coercion model: [docs/compiler-laws.md](docs/compiler-laws.md)
+Full thesis: [THESIS.md](THESIS.md)
+Architecture: [docs/architecture.md](docs/architecture.md)
+Compiler laws and coercion model: [src/v2/compiler-laws.md](src/v2/compiler-laws.md)
 Coercion design (algebra-keyed inhabitants): [docs/coercion-design.md](docs/coercion-design.md)
-Testing strategy: [docs/testing-strategy.md](docs/testing-strategy.md)
+Testing strategy: [src/v2/tests/testing-strategy.md](src/v2/tests/testing-strategy.md)
 Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 Modeling guidelines: [MODELING.md](MODELING.md)
+
+---
+
+## Thesis alignment — dependency order
+
+See [THESIS.md](THESIS.md) for the full thesis. Tracks are ordered
+by dependency: foundations first, dependents after. Readiness:
+
+- 🟢 **Implement** — design clear, unblocked, ready to code
+- 🟡 **Design** — concept clear, design decisions pending
+- 🔴 **Vision** — concept-level work needed before design
+
+```
+LAYER 1: Foundations (no dependencies, all 🟢)
+  Track 9  (std/ structures)  ──┐
+  Track 8  (lattice)          ──┤
+  Track 6  (algebra dispatch) ──┤── feed structural facts into IR
+  Stream C (std/ foundation)  ──┘
+
+LAYER 2: IR carries facts (depends on Layer 1)
+  Track 1  (provenance) 🟢 ──── THE critical path
+  Track 3  (Node.name)  🟢 ──── parallel, independent
+  Track 7  (core tables) 🟢 ── dissolves as std/ types land
+
+LAYER 3: Emission correctness (depends on Layer 2)
+  Track 2  (language spec) 🟡 ── LS-4 borrow model needs design
+  Track 4  (codegen)       🟢 ── depends on Track 2 partially
+  Stream B (clone elision) 🟢 ── Layers 1-2 unblocked; Layer 3 needs LS-4
+
+LAYER 4: End-to-end (depends on Layer 3)
+  Track 5  (real program)  🟢 ── RE-3,4 remaining
+  Track 10 (extdeps)       🟢 ── independent, data quality
+
+LAYER 5: Thesis completion (depends on Layer 4)
+  Track 13 (single emitter)        🟡 ── depends on Track 2 + 7
+  Track 11 (runtime safety)        🟡 ── needs design (refinement types or total ops)
+  Track 12 (verification)          🟡 ── depends on Track 5 (need working emission)
+
+LAYER 6: Full vision (depends on Layer 5)
+  Track 14 (omni-emission)         🔴 ── depends on Track 13; needs vision
+  Free consequences (parallelism)  🔴 ── blocked on Tier 1 + ownership + purity
+```
+
+| Track | Thesis tier | Readiness | Blocked on |
+|-------|------------|-----------|-----------|
+| Stream C / Track 8 / 9 | Tier 1 (structural facts) | 🟢 | Nothing |
+| Track 6 | Tier 1 (string dispatch) | 🟢 | Nothing |
+| **Track 1 (provenance)** | **Tier 1 (CX gate)** | **🟢** | **S4 in progress** |
+| Track 3 (Node.name) | Tier 1 (structural identity) | 🟢 | Remaining n.name reads |
+| Track 7 (core tables) | Tier 1 (single authority) | 🟢 | Track 9 partially |
+| Track 2 (language spec) | Emission is mechanical | 🟡 | LS-4 borrow model design |
+| Track 4 (codegen) | Emission is mechanical | 🟢 | Track 2 partially |
+| Stream B (clone elision) | Tier 1 (ownership) | 🟢/🟡 | Layers 1-2 🟢, Layer 3 needs LS-4 |
+| Track 5 (real program) | End-to-end validation | 🟢 | Track 4 |
+| Track 10 (extdeps) | Data quality | 🟢 | Nothing |
+| Track 13 (single emitter) | Emission is mechanical | 🟡 | Track 2 + 7 |
+| Track 11 (runtime safety) | Tier 2 | 🟡 | Design phase |
+| Track 12 (verification) | Tier 3 | 🟡 | Track 5 |
+| Track 14 (omni-emission) | Omni-emission | 🔴 | Track 13 + vision |
 
 ---
 
@@ -38,7 +98,7 @@ the TypeBinding boundary, then reconstructed downstream via heuristics.
 This construct-discard-reconstruct pattern is the root cause of most
 active work items.
 
-See [docs/cx-design.md](docs/cx-design.md) for the full diagnosis,
+See [src/v2/cx-design.md](src/v2/cx-design.md) for the full diagnosis,
 including 6 confirmed instances across all compiler stages.
 
 ### The gap: TypeBinding is too narrow
@@ -83,7 +143,7 @@ lines). Emission heuristics reduce. Total estimated net dissolution:
 ~1500+ lines across stages. See cx-design.md cleanup catalog for
 per-function accounting.
 
-Implementation plan: [docs/cx-design.md §Option B](docs/cx-design.md).
+Implementation plan: [src/v2/cx-design.md §Option B](src/v2/cx-design.md).
 
 ---
 
@@ -112,9 +172,9 @@ Bootstrap D ├─ Lane B: Emission ──────────────�
 |------|------|--------------|
 | **A: Inference** | 00_core, 02_parse, 04_resolve, 04_infer, 04_types, 04_patterns, 04_lookup, 04_items, 04_access, 04_service | 05_emit*, complexity, dsl/, tests/ |
 | **B: Emission** | 05_emit, 05_emit_rust, 05_emit_go, 05_emit_python, 04_emit_info, dsl/extdeps/languages/*, dsl/extdeps/transports/* | 04_infer, 04_types, complexity, dsl/std/, tests/ |
-| **C: Complexity** | complexity.dag, docs/cx-*, docs/cost-* | 04_*, 05_*, dsl/, tests/ |
+| **C: Complexity** | complexity.dag, src/v2/cx-*.md | 04_*, 05_*, dsl/, tests/ |
 | **D: DSL Modeling** | dsl/std/, dsl/extdeps/{llm,github,shell,cron,cloud,git}/, dsl/gunbc/, dsl/tools/, dsl/config/ | src/v2/*.dag (compiler sources) |
-| **E: Testing** | src/v2/tests/, scripts/, docs/testing-*, std/verification.dag, compiler_tests_rust.dag, coercion.dag (test extraction) | 04_*, 05_emit*, complexity |
+| **E: Testing** | src/v2/tests/, scripts/, std/verification.dag, compiler_tests_rust.dag, coercion.dag (test extraction) | 04_*, 05_emit*, complexity |
 
 ---
 
@@ -167,16 +227,16 @@ better bounds when C2 lands. S8 dissolves ad-hoc merge functions.
 |--------|-------|-------|
 | A: Provenance infra | S1, S2, S3, S4, S5 | 04_env.dag, 04_infer.dag |
 | B: Clone elision | O1-O5 | ownership.dag, 05_emit_rust.dag |
-| C: std/ foundation | C1, ~~S8~~ (DONE) | std/induction.dag, std/algebra.dag, std/termination.dag |
+| C: std/ foundation | C1, S8 (Phase 1 done, Phase 2 blocked on generic emission) | std/induction.dag, std/algebra.dag, std/termination.dag |
 
 Zero file overlap between streams. After Stream A (S1-S5), CX
 consumer items C2-C6 can start (same files as Stream A, sequential).
 
 ### Active workboards
 
-- **CX:** [docs/cx-design.md §Workboard](docs/cx-design.md)
+- **CX:** [src/v2/cx-design.md §Workboard](src/v2/cx-design.md)
   — S1-S8 shared, C1-C6 CX-specific, TDD plan, cleanup catalog
-- **Ownership:** [docs/ownership-design.md §Workboard](docs/ownership-design.md)
+- **Ownership:** [src/v2/ownership-design.md §Workboard](src/v2/ownership-design.md)
   — O1-O10, violation classes, 3 layers, TDD plan, cleanup catalog
 
 ### Track 2: Language spec modeling + ownership (Lane B)
@@ -192,7 +252,7 @@ spec-referenced data lookups instead of inline logic.
 | LS-1: Type cast rules | Partial (numeric casts validated in infer) |
 | LS-2: Operator semantics | DONE (PR #355) |
 | LS-3: Expression syntax | Not started |
-| LS-4: Ownership/borrowing | See [ownership-design.md](docs/ownership-design.md) |
+| LS-4: Ownership/borrowing | See [ownership-design.md](src/v2/ownership-design.md) |
 | LS-5: Visibility/module system | Not started |
 | LS-6: Shared typed handlers | DONE (PR #355) |
 
@@ -328,11 +388,12 @@ Additional duplication surfaced by review (PR #371, external audit):
   `go_scaffold.source_file_extension` in std/languages.dag.
 - `keyword_to_name` in 02_parse.dag duplicates the tokenizer keyword
   table. Reconcile to single authority.
-- CallableOf coverage incomplete: `filter`, `any`, `all`, `sort_by`
-  still omit CallableOf from their param_types in algebra templates.
-  Completing this dissolves downstream string dispatch in emit + CX.
-  Ignored tests in compiler_tests_rust.dag (wrong-callback-arity,
-  wrong-return-type) are blocked on this.
+- CallableOf coverage: `filter`, `any`, `all` now have CallableOf
+  in their param_types (PR #379). `sort_by` deferred — its callback
+  semantics are unresolved (key-extractor in primitives.dag vs
+  comparator in algebra.dag type spec). Ignored tests
+  (wrong-callback-arity, wrong-return-type) blocked on sort_by
+  resolution + inference-time CallableOf validation.
 
 ### Track 8: Lattice inhabitant consolidation (Lane D)
 
@@ -392,6 +453,99 @@ audit (2026-04-10):
 
 ---
 
+## Future tracks (thesis gaps — not yet active)
+
+These are named so they don't drift out of sight. Each corresponds
+to a thesis claim that has no active work.
+
+### Track 11: Runtime safety (Tier 2)
+
+**Thesis claim:** no internal operation can fail at runtime.
+
+**Current state:** zero coverage. Division by zero, integer overflow,
+string/array out-of-bounds, optional force-unwrap — all compile fine
+and crash or silently produce wrong data at runtime.
+
+**Design direction:** either prove preconditions at compile time
+(refinement types: `NonZero<Int>`, `BoundedIndex<N>`) or make all
+operations total (division returns `Option<Int>`, indexing returns
+`Option<T>`). No partial functions in the runtime.
+
+**Blocked on:** nothing conceptually. This is design work. The closed
+system makes it tractable — all values are finite, so bounds are
+decidable.
+
+### Track 12: Verification from structure (Tier 3)
+
+**Thesis claim:** the compiler generates verification from declarations.
+
+In a causal engine, the structure IS the behavior specification.
+The compiler has both the intent (declarations) and the output
+(emitted code). Verification is: **does the emitted code reproduce
+the declared intent?** This is not a separate test framework — it
+is a free consequence of having a closed causal graph.
+
+| What the compiler knows | What it can verify |
+|---|---|
+| Type `Order { amount: Float }` | Construct → serialize → deserialize → fields match |
+| Service `get_order(id) -> Order via rest::get(...)` with `mock_response` | Call mock → response parses to declared type |
+| Algebra law `FreeMonoid.concat is associative` | `concat(concat(a,b),c) == concat(a,concat(b,c))` for generated witnesses |
+| Function `fn sum(xs: List<Int>) -> Int` | Input/output pairs derived from type inhabitants |
+| `type Status = Active \| Inactive \| Suspended` | Exhaustive round-trip: every variant serializes and deserializes |
+
+Traditional testing verifies behavior independently of code. Here,
+behavior and structure are coupled — the declarations carry enough
+information to derive both the code AND its tests. The compiler
+emits both from the same source.
+
+**Levels (from testing-strategy.md):**
+- L4 (semantic correctness): execute emitted code, verify results
+- L5 (cross-language equivalence): same .dag → same behavior in all targets
+- L6 (exhaustive form coverage): every structural form compiles to every target
+- L7 (algebraic law verification): operations obey declared laws
+
+**Blocked on:** Track 5 (need working emission to execute against).
+
+### Track 13: Single emitter (compiler-laws.md Lane C)
+
+**Thesis claim:** emission is mechanical translation.
+
+**Current state:** 6,857 lines of language-specific code in three
+separate emitter files (`05_emit_rust.dag`, `05_emit_python.dag`,
+`05_emit_go.dag`) with 632 language mentions across 12 compiler files.
+The emitter decides instead of reading from data.
+
+**Target:** one emitter that reads `LanguageSpec` + `InhabitantDecl`
+data per target. Adding a new target language means adding a new
+`dsl/extdeps/languages/<lang>/` directory, not touching the compiler.
+
+**Blocked on:** Track 2 (LanguageSpec modeling), Track 7 (core table
+dissolution). Conceptually: the coercion engine must be complete
+enough that no inline language knowledge is needed.
+
+### Track 14: Omni-emission
+
+**Thesis claim:** one intent graph, many artifacts; emission topology
+is part of declared intent.
+
+**Current state:** `artifact.dag` is a placeholder (monolithic
+single-artifact plan). The compiler takes one target at a time via
+`compile_sources(sources, target)`. No mechanism for a `.dag` program
+to declare multi-target intent or for the compiler to handle
+cross-artifact glue (shared types, serialization contracts, API
+surface consistency).
+
+**Design direction:** artifact planning reads declared emission
+targets from the `.dag` source. The compiler validates cross-artifact
+type consistency (same type used in Rust server and TypeScript
+frontend → serialization contracts agree). Each artifact is a
+projection of the validated intent onto a specific target.
+
+**Blocked on:** Track 13 (single emitter — need target-agnostic
+emission before multi-target is meaningful).
+
+---
+
 ## Bootstrap
 
 **Status: COMPLETE.** Stage0 content is generated from .dag source.
@@ -437,13 +591,16 @@ equivalent exists. Requires cost ordering + equivalence catalog in
 **Status:** Not built. Infrastructure close (CostShape per method,
 CostExpr composition). Blocked by KF-1 (needs working cost algebra).
 
-### KF-3: Automated test generation from types
+### KF-3: Verification from structure (free)
 
-Compiler generates tests from type definitions. Add a type → tests
-appear. Grounded in finite, enumerable type algebra with canonical
-witness generation.
+In a causal engine, structure and behavior are coupled — the
+declarations carry enough information to derive both code AND its
+verification. The compiler emits both from the same source. Add a
+type → verification appears. Add a service → integration test
+appears. No hand-written tests needed for declared behavior.
 
-**Status:** Not built. Design in ROADMAP history / docs.
+**Status:** L0 (coercion tests from data) done. L4-L7 not built.
+See Track 12 for the full plan.
 
 ### KF-4: Cross-language equivalence proof
 
@@ -488,42 +645,57 @@ lossy ranking).
 ## Public release gates
 
 The release is the conjunction of all gates. No partial credit.
+Each gate maps to a thesis tier.
 
-### Gate 1: Model is closed
+### Gate 1: Causal engine is closed (Tier 1)
+
+| Criterion | Test | Track |
+|-----------|------|-------|
+| Provenance on bindings | 0 CX violations, reconstruction code deleted | Track 1 |
+| Complexity gate blocking | CostUnknown = compile error | KF-1 |
+| Language specs modeled | No inline target-language knowledge in emitter | Track 2 |
+| Node.name deleted | l1-ratchet = 0, field deleted | Track 3 |
+| Codegen from structural authority | CG acceptance criteria met | Track 4 |
+| Real program compiles and runs | review.dag end-to-end | Track 5 |
+| Performance | No test >2s, self-compile <30s | PERF |
+
+### Gate 2: Runtime safety (Tier 2)
+
+| Criterion | Test | Track |
+|-----------|------|-------|
+| All runtime operations total | No `.force()`, no unchecked division, no panics | Track 11 |
+| Checked arithmetic | Overflow = compile error or checked op | Track 11 |
+| Bounds safety | Out-of-bounds = compile error or Option return | Track 11 |
+
+### Gate 3: Verification from structure (Tier 3)
+
+| Criterion | Test | Track |
+|-----------|------|-------|
+| Semantic correctness (L4) | Emitted code executes, produces correct results | Track 12 |
+| Cross-language equivalence (L5) | Same .dag → same behavior in all targets | Track 12 / KF-4 |
+| Decidable language | Working (already met) | KF-5 |
+
+### Gate 4: Demo quality
 
 | Criterion | Test |
 |-----------|------|
-| Provenance on bindings (Track 1 complete) | 0 CX violations, reconstruction code deleted |
-| Language specs modeled (Track 2 complete) | No inline target-language knowledge in emitter |
-| Node.name deleted (Track 3 complete) | l1-ratchet = 0, field deleted |
-| Codegen from structural authority (Track 4) | CG acceptance criteria met |
-| RE ratchet (Track 5) | 21/21 |
-| Performance | No test >2s, self-compile <30s |
-
-### Gate 2: Killer features ship
-
-| Criterion | Test |
-|-----------|------|
-| KF-1: Complexity proof | 0 CostUnknown, gate blocking |
-| KF-2: Reject suboptimal | Equivalence catalog with ≥5 rules |
-| KF-4: Cross-language parity | All 3 backends compile full DSL |
-| KF-5: Decidable language | Working (already met) |
-
-### Gate 3: Demo quality
-
-| Criterion | Test |
-|-----------|------|
-| One impressive demo | Compile .dag agent → show Rust → run live → show complexity proof |
+| One impressive demo | Compile .dag service → show Rust + Python → run live → show proofs |
 | Documentation | README, getting-started, language reference |
 | Clean install | `cargo install gunbc` works |
 
 ### Release dependency chain
 
 ```
-Track 1 (provenance) ──→ KF-1 (complexity proof) ──→ Gate 2
+Track 1 (provenance) ──→ KF-1 (CX gate) ──→ Gate 1 (causal engine)
 Track 2 (language specs) ──→ Gate 1
 Track 3 (Node.name) ──→ Gate 1
 Track 4 (codegen) ──→ Gate 1
 Track 5 (RE) ──→ Gate 1
-                                              Gate 1 + Gate 2 ──→ Gate 3 ──→ Release
+                                                          │
+Track 11 (runtime safety) ──────────────────────────→ Gate 2 (runtime)
+                                                          │
+Track 12 (verification) ────────────────────────────→ Gate 3 (tests)
+Track 13 (single emitter) ──→ Track 14 (omni-emit)       │
+                                                          │
+                                    Gate 1 + Gate 2 + Gate 3 ──→ Gate 4 ──→ Release
 ```

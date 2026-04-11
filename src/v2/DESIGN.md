@@ -1,8 +1,10 @@
+> Part of: [THESIS.md](../../THESIS.md) > [ROADMAP.md](../../ROADMAP.md) > [docs/architecture.md](../../docs/architecture.md)
+
 # v2 Compiler Design Principles
 
 These are the governing design decisions for the self-hosted compiler.
-For current status, phases, and workboards, see `ROADMAP.md`.
-For invariants, see `INVARIANTS.md`.
+For current status, phases, and workboards, see [ROADMAP.md](../../ROADMAP.md).
+For invariants, see [INVARIANTS.md](../../INVARIANTS.md).
 
 ## Core claim
 

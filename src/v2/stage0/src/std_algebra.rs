@@ -811,12 +811,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     cost_shape: Some(CostShape::ShapeIterateBody),
 }), Rc::new(AlgebraFieldTemplate {
     name: "sort_by".to_string(),
-    param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::CallableOf {
-    params: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverElement), Rc::new(AlgebraTypeTemplate::ReceiverElement)]),
-    return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-    name: "Int".to_string(),
-}),
-})]),
+    param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
     return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
     size_effect: Some(CollectionSizeEffect::IdentityEffect),
     cost_shape: Some(CostShape::ShapeSortBody),

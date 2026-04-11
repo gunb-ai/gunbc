@@ -1,9 +1,9 @@
+> Part of: [THESIS.md](../THESIS.md) > [docs/architecture.md](architecture.md)
+
 # Algebraic Type Specification
 
 This document pins the denotational semantics, algebraic representations,
-and cardinality model for the `.dag` type system. It is the authoritative
-reference for Phase 3 (P3.6) `.dag` declarations and Phase 1 (P1.4)
-cardinality dissolution.
+and cardinality model for the `.dag` type system.
 
 ## 1. Primitives
 
