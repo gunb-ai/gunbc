@@ -7379,6 +7379,78 @@ fn process(data: List<Int>) -> List<Int> {
     assert!(total <= TOTAL_RATCHET, "total violations {} > ratchet {}", total, TOTAL_RATCHET);
 }
 
+// ── Borrow propagation behavioral tests ──────────────────────────────────
+
+/// Read-only Rc-wrapped param emits as &Rc<T>, call site emits &x.
+#[test]
+fn borrow_read_only_rc_param() {
+    let source = r#"
+module bp_rc
+import std.types { List }
+
+fn count_twice(items: List<Int>) -> Int {
+  let a = items |> count
+  let b = items |> count
+  a + b
+}
+
+fn caller(data: List<Int>) -> Int {
+  count_twice(items: data)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/bp_rc.rs");
+    // Param should be borrowed
+    assert!(content.contains("items: &Rc<Vec"), "read-only Rc param should be &Rc<Vec<...>>:\n{}", content);
+    // Call site should pass &
+    assert!(content.contains("&data") || content.contains("& data"),
+        "call site should pass &data, not data.clone():\n{}", content);
+}
+
+/// Consumed param stays owned (not borrowed).
+#[test]
+fn consumed_param_stays_owned() {
+    let source = r#"
+module bp_consumed
+import std.types { List }
+
+fn take_and_return(items: List<Int>) -> List<Int> {
+  items
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/bp_consumed.rs");
+    // Param should NOT be borrowed — it's consumed (returned)
+    assert!(!content.contains("items: &Rc<Vec"),
+        "consumed param must stay owned, not borrowed:\n{}", content);
+}
+
+/// TCO-eligible functions do not borrow params (they use mut).
+#[test]
+fn tco_params_not_borrowed() {
+    let source = r#"
+module bp_tco
+import std.types { List }
+
+fn sum_rec(items: List<Int>, acc: Int) -> Int {
+  match items |> first {
+    Some { value: x } => sum_rec(items: items |> skip(1), acc: acc + x)
+    None => acc
+  }
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/bp_tco.rs");
+    // TCO params should be mut, not borrowed
+    assert!(content.contains("mut items") || content.contains("mut acc"),
+        "TCO function params should be mut:\n{}", content);
+    assert!(!content.contains("items: &Rc") && !content.contains("acc: &"),
+        "TCO params must not be borrowed:\n{}", content);
+}
+
 // ── Stage0 clone census (gross metric, context for violations) ──────────
 
 /// Count raw clone patterns in committed stage0 files.

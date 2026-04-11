@@ -2437,6 +2437,8 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
   // Build positional borrow set: maps position index → true for borrowed params.
   // Must replicate the same checks as emit_param: read-only, non-Copy, non-callable,
   // and exclude TCO functions (their params are always `mut`, never borrowed).
+  // Uses the same is_self_recursive + has_non_tail_self_call predicate as
+  // is_tco_eligible (single authority via ItemInfo).
   let callee_is_tco = match callee {
     Some { value: info } => info.is_self_recursive && info.has_non_tail_self_call == false
     None => false
