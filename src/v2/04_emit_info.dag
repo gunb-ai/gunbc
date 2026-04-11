@@ -111,6 +111,13 @@ type EmitGraphInfo {
   // Key = binding name, value = span_start of the last use site.
   // At that span, emit_var_ref emits a move instead of .clone().
   last_use_spans: Map<String, Int>
+  // Per-function read-only param index: func_name → (param_name → true).
+  // A param is read-only when all its consumers are Read or Projected — the
+  // function never consumes the value. Target languages render this as borrows
+  // (Rust: &Rc<T>), pointers (Go), or no-op (Python reference semantics).
+  read_only_index: Map<String, Map<String, Bool>>
+  // Current function's read-only params. Set by emit_typed_item.
+  read_only_params: Map<String, Bool>
 }
 
 type EmitInfoBuildState {
@@ -134,7 +141,9 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     fold_eligible_index: empty_map(),
     fold_eligible: empty_map(),
     last_use_index: empty_map(),
-    last_use_spans: empty_map()
+    last_use_spans: empty_map(),
+    read_only_index: empty_map(),
+    read_only_params: empty_map()
   }
 }
 

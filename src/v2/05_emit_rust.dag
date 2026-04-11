@@ -110,7 +110,7 @@ import v2.compiler.infer_emit_info {
   lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum
 }
-import v2.compiler.ownership { OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set, build_last_use_set }
+import v2.compiler.ownership { OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set, build_last_use_set, build_read_only_params }
 import std.induction { SubValueUnknown }
 
 import v2.compiler.emit {
@@ -427,6 +427,7 @@ type OwnershipBuildResult {
   ownership_index: Map<String, Map<String, Bool>>
   fold_eligible_index: Map<String, Map<String, Bool>>
   last_use_index: Map<String, Map<String, Int>>
+  read_only_index: Map<String, Map<String, Bool>>
 }
 
 fn build_fold_eligible_set(proof: OwnershipProof) -> Map<String, Bool> {
@@ -441,11 +442,12 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
       OwnershipProofEntry { name: item.name, proof: analyze_ownership(func_name: item.name, params: item.params, body: item.body.value, si: m.type_env.source_index) }
     )
   )
-  proofs |> fold(init: OwnershipBuildResult { ownership_index: empty_map(), fold_eligible_index: empty_map(), last_use_index: empty_map() }, f: (acc, entry) =>
+  proofs |> fold(init: OwnershipBuildResult { ownership_index: empty_map(), fold_eligible_index: empty_map(), last_use_index: empty_map(), read_only_index: empty_map() }, f: (acc, entry) =>
     OwnershipBuildResult {
       ownership_index: map_insert(acc.ownership_index, entry.name, build_movable_set(proof: entry.proof)),
       fold_eligible_index: map_insert(acc.fold_eligible_index, entry.name, build_fold_eligible_set(proof: entry.proof)),
-      last_use_index: map_insert(acc.last_use_index, entry.name, build_last_use_set(proof: entry.proof))
+      last_use_index: map_insert(acc.last_use_index, entry.name, build_last_use_set(proof: entry.proof)),
+      read_only_index: map_insert(acc.read_only_index, entry.name, build_read_only_params(proof: entry.proof))
     }
   )
 }
@@ -470,7 +472,9 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     fold_eligible_index: ownership.fold_eligible_index,
     fold_eligible: empty_map(),
     last_use_index: ownership.last_use_index,
-    last_use_spans: empty_map()
+    last_use_spans: empty_map(),
+    read_only_index: ownership.read_only_index,
+    read_only_params: empty_map()
   }
   let shared_types = emit_info.shared_types
   let registry = typed.item_registry
@@ -579,7 +583,9 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     fold_eligible_index: base_info.fold_eligible_index,
     fold_eligible: empty_map(),
     last_use_index: base_info.last_use_index,
-    last_use_spans: empty_map()
+    last_use_spans: empty_map(),
+    read_only_index: base_info.read_only_index,
+    read_only_params: empty_map()
   }
   let shared_types = emit_info.shared_types
   emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map())
@@ -821,6 +827,10 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
       Some { value: m } => m
       None => empty_map()
     }
+    let fn_read_only = match map_get(emit_info.read_only_index, item.name) {
+      Some { value: m } => m
+      None => empty_map()
+    }
     let fn_emit_info = EmitGraphInfo {
       type_summaries: emit_info.type_summaries,
       recursive_type_set: emit_info.recursive_type_set,
@@ -833,7 +843,9 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
       fold_eligible_index: emit_info.fold_eligible_index,
       fold_eligible: fn_fold_eligible,
       last_use_index: emit_info.last_use_index,
-      last_use_spans: fn_last_use
+      last_use_spans: fn_last_use,
+      read_only_index: emit_info.read_only_index,
+      read_only_params: fn_read_only
     }
     // Items with resource uses or service calls are emitted as async workflow functions.
     // Single authority: service_names + resource_names on ItemInfo (not uses on the Node).
@@ -2697,7 +2709,9 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
               fold_eligible_index: emit_info.fold_eligible_index,
               fold_eligible: emit_info.fold_eligible,
               last_use_index: emit_info.last_use_index,
-              last_use_spans: emit_info.last_use_spans
+              last_use_spans: emit_info.last_use_spans,
+              read_only_index: emit_info.read_only_index,
+              read_only_params: emit_info.read_only_params
             }
           None => emit_info
         }

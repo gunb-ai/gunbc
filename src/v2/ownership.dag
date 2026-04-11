@@ -434,6 +434,29 @@ fn build_last_use_set(proof: OwnershipProof) -> Map<String, Int> {
     )
 }
 
+// Read-only params: a function parameter is read-only when all its non-Threaded
+// consumers are Read or Projected — the function never consumes (moves) the value.
+// This is a structural fact about the function, not a rendering decision.
+//
+// Each target language renders this differently:
+//   Rust:   read-only param → &Rc<T>, call site → &x (borrow, no clone)
+//   Go:     read-only param → pointer for large types (no copy)
+//   Python: no change (reference semantics by default)
+//
+// Excludes params with Consumed edges (value moved) or zero consumers (unused).
+fn is_read_only_binding(usage: BindingUsage) -> Bool {
+  let non_threaded = usage.consumers |> filter(c => match c.kind { Threaded => false, _ => true })
+  let has_consumers = non_threaded |> count > 0
+  let all_read = non_threaded |> all(c => match c.kind { Read => true, Projected => true, _ => false })
+  has_consumers && all_read
+}
+
+fn build_read_only_params(proof: OwnershipProof) -> Map<String, Bool> {
+  proof.bindings |> map_values
+    |> filter(usage => is_owned_local(kind: usage.binding_kind) && is_read_only_binding(usage: usage))
+    |> fold(init: empty_map(), f: (acc, usage) => map_insert(acc, usage.name, true))
+}
+
 // =========================================================================
 // Fold accumulator unwrap — structural analysis (target-agnostic)
 // =========================================================================
