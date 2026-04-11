@@ -55,8 +55,7 @@ LAYER 4: End-to-end (depends on Layer 3)
   Track 10 (extdeps)       🟢 ── independent, data quality
 
 LAYER 5: Thesis completion (depends on Layer 4)
-  Track 15 (coercion)              🟢 ── CO-1 unblocked; CO-3 depends on Track 13
-  Track 13 (single emitter)        🟡 ── depends on Track 2 + 7 + 15
+  Track 13 (single emitter)        🟡 ── depends on Track 2 + 7; coercion dissolves into this
   Track 11 (runtime safety)        🟡 ── needs design (refinement types or total ops)
   Track 12 (verification)          🟡 ── depends on Track 5 (need working emission)
 
@@ -77,8 +76,7 @@ LAYER 6: Full vision (depends on Layer 5)
 | Stream B (clone elision) | Tier 1 (ownership) | 🟢/🟡 | Layer 1 blocked on Track 3; Layer 2 DONE; Layer 3 in review (PR #390) |
 | Track 5 (real program) | End-to-end validation | 🟢 | RE-3/RE-4 DONE (PR #384); live integration partial |
 | Track 10 (extdeps) | Data quality | 🟢 | Nothing |
-| Track 15 (coercion) | Tier 1 (coercion cost) | 🟢 | CO-1 unblocked; CO-3 depends on Track 13 |
-| Track 13 (single emitter) | Emission is mechanical | 🟡 | Track 2 + 7 + 15 |
+| Track 13 (single emitter + coercion) | Emission is mechanical | 🟡 | Track 2 + 7; coercion infra exists (std/coercion.dag) |
 | Track 11 (runtime safety) | Tier 2 | 🟡 | Design phase |
 | Track 12 (verification) | Tier 3 | 🟡 | Track 5 |
 | Track 14 (omni-emission) | Omni-emission | 🔴 | Track 13 + vision |
@@ -483,14 +481,21 @@ audit (2026-04-10):
 | ~~Policy defaults in `CloudSecretConfig`~~ | std/types.dag | DONE (PR #387) — defaults removed |
 | ~~`ProjectId` vs `GcpProjectId`~~ | std/types.dag | DONE (PR #387) — `GcpProjectId` deleted |
 
-### Track 15: Coercion as correctness dimension (Lane B + D)
+### Coercion (folded into Track 13 — not a separate track)
 
-**Thesis claim:** the compiler knows the cost of every type conversion.
-Coercion functions are .dag functions — CX proves their complexity
-bounds with the same machinery it uses for everything else. No new
-cost model. No new concepts.
+Coercion is not a separate mechanism — it IS emission. The compiler
+reads a target spec and generates code. Whether that code is "a Rust
+struct" or "a SPICE subcircuit" or "an HTTP client" is determined by
+the spec, not by a separate coercion engine. Maintaining coercion as
+a parallel mechanism would violate "No duplicate representations" and
+"No parallel implementations" (INVARIANTS.md).
 
-**Current state: substantial design and partial implementation exist.**
+**Concept unification (THESIS.md):**
+- Coercion cost = complexity (CX proves bounds on .dag functions)
+- Coercion = emission (target spec → generated code)
+- Target language spec = transport spec (same role, different domain)
+
+**Existing infrastructure** (early form of Track 13 target spec data):
 
 | Component | File | Lines | Status |
 |-----------|------|-------|--------|
@@ -500,49 +505,12 @@ cost model. No new concepts.
 | Python data | dsl/extdeps/languages/python/types.dag | 178 | DONE |
 | Go data | dsl/extdeps/languages/go/types.dag | 173 | DONE |
 | Design spec | docs/coercion-design.md | 1,484 | DONE — 5 coercion kinds, resolution algorithm, worked examples |
-| Plugin architecture | src/v2/compiler-laws.md Lane C | ~80 | Design only — graph coercion engine, language plugin extraction |
+| Plugin architecture | src/v2/compiler-laws.md Lane C | ~80 | Design only — single emitter + language plugins |
 
-**Resolution algorithm** (from coercion-design.md):
-1. CHECKPOINT: Is T.name in target's type checkpoint table? → use it
-2. ALGEBRA: Does T inhabit algebra A with a target inhabitant? → apply template
-3. STRUCTURAL: Is T a Product/Coproduct? → coerce each field recursively
-4. REFINEMENT: Is T a refinement of base B? → coerce B + attach validation
-5. FAIL: No path → COMPILE ERROR (fail-closed)
-
-**Five coercion kinds with witnesses:**
-- Widen (Free) — erase guarantees
-- Refine (Proven) — add proven guarantees
-- Validate (Checked) — add runtime-checked guarantees
-- Project (Lossy) — lose structural info
-- Transform (Transformed) — compute new representation
-
-**Cost model: no new concepts.** A coercion is a .dag function. CX
-already proves complexity bounds on .dag functions. When coercion
-functions are .dag functions (Lane C), their cost is a free
-consequence of the existing CX machinery:
-- Checkpoint lookup (Int → i64): O(1) — constant, no recursion
-- Container coercion (List\<T\> → Vec\<T\>): O(n) — fold over elements
-- Recursive product (coerce each field): O(fields) — bounded by structure
-- Synthesized (coproduct → SPICE mux): whatever the synthesis function's
-  CostShape is — CX proves it from descent structure
-
-The human vocabulary (Native/Isomorphic/Lowered/Synthesized from
-compiler-laws.md) describes cost *ranges* for design orientation.
-The compiler tracks actual CostShapes, not categories.
-
-**Gap: what's missing to close the dimension:**
-
-| Item | Description | Blocked on |
-|------|-------------|-----------|
-| CO-1: Coercion functions as .dag functions | Lane C: coercion rules authored in .dag, not inline emitter logic | Track 13 (single emitter architecture) |
-| CO-2: CX proves coercion bounds | Once coercions are .dag functions, CX analyzes them automatically | CO-1 + Track 1 (CX gate closed) |
-| CO-3: Full coercion engine (Lane C) | Single emitter reads coercion data; language-specific emitters dissolve | Track 2 (LanguageSpec) + Track 7 (core tables) |
-| CO-4: User-declared coercion paths | Users declare coercion between their own types | CO-1 + generic emission |
-
-**Connects to:** Track 13 (single emitter depends on coercion
-completeness), Track 2 (LanguageSpec models target-language
-patterns), KF-4 (cross-language equivalence requires coercion
-correctness), MODELING.md ontology (coercion is one of 7 branches).
+This dissolves into Track 13 when the single emitter lands: coercion
+rules become .dag functions in `dsl/extdeps/languages/*/coerce.dag`,
+CX proves their bounds automatically, and the language-specific
+emitters (6,857 lines) are deleted.
 
 ---
 
@@ -746,7 +714,7 @@ Each gate maps to a thesis tier.
 |-----------|------|-------|
 | Provenance on bindings | 0 CX violations, reconstruction code deleted | Track 1 |
 | Complexity gate blocking | CostUnknown = compile error | KF-1 |
-| Coercion completeness | Every .dag→target type conversion declared with cost; fail-closed | Track 15 |
+| Coercion completeness | Every .dag→target conversion is a .dag function; fail-closed | Track 13 (coercion = emission) |
 | Language specs modeled | No inline target-language knowledge in emitter | Track 2 |
 | Node.name deleted | l1-ratchet = 0, field deleted | Track 3 |
 | Codegen from structural authority | CG acceptance criteria met | Track 4 |
@@ -785,7 +753,6 @@ Track 2 (language specs) ──→ Gate 1
 Track 3 (Node.name) ──→ Gate 1
 Track 4 (codegen) ──→ Gate 1
 Track 5 (RE) ──→ Gate 1
-Track 15 (coercion) ──→ Gate 1   ──→ Track 13 (single emitter)
                                                           │
 Track 11 (runtime safety) ──────────────────────────→ Gate 2 (runtime)
                                                           │
