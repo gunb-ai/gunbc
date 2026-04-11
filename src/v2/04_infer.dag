@@ -869,6 +869,27 @@ fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_arg
   } else { none }
 }
 
+// Derive element provenance from a collection expression.
+// Single authority for the "collection has known provenance AND element type
+// has ListRecursion inductive fields → IteratedSubValue" pattern.
+// Used by ExprForEach, ExprCall bridge, and ExprMethodCall.
+fn derive_element_provenance(coll_expr: Node, elem_type: Node, scope: InferScope) -> SubValueRelation {
+  let coll_prov = classify_binding_provenance(val: coll_expr, scope: scope)
+  match coll_prov {
+    SubValueUnknown => SubValueUnknown
+    _ =>
+      if elem_type.name == "" { SubValueUnknown }
+      else {
+        let ind_fields = inductive_fields_for(env: scope.type_env, type_name: elem_type.name)
+        let list_field = ind_fields |> filter(f => match f.shape { ListRecursion => true, _ => false }) |> first
+        match list_field {
+          Some { value: f } => IteratedSubValue { field: f }
+          None => SubValueUnknown
+        }
+      }
+  }
+}
+
 // Infer method args with element type context and fold special-casing.
 // Shared between ExprCall bridge and ExprMethodCall paths.
 // S6: elem_provenance threads IteratedSubValue from the receiver to lambda params.
@@ -1165,21 +1186,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             let first_result = infer_expr(texpr: arg_value(n: first_arg), scope: scope, expected: none)
             let first_type = resolved_type(n: first_result.typed)
             let elem_type = for_each_element_type_node(n: first_type)
-            // S6: compute element provenance from first arg (collection), mirroring ExprForEach.
-            let call_coll_provenance = classify_binding_provenance(val: first_result.typed, scope: scope)
-            let call_elem_provenance = match call_coll_provenance {
-              SubValueUnknown => SubValueUnknown
-              _ =>
-                if elem_type.name == "" { SubValueUnknown }
-                else {
-                  let call_ind_fields = inductive_fields_for(env: scope.type_env, type_name: elem_type.name)
-                  let call_list_field = call_ind_fields |> filter(f => match f.shape { ListRecursion => true, _ => false }) |> first
-                  match call_list_field {
-                    Some { value: f } => IteratedSubValue { field: f }
-                    None => SubValueUnknown
-                  }
-                }
-            }
+            let call_elem_provenance = derive_element_provenance(coll_expr: first_result.typed, elem_type: elem_type, scope: scope)
             let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, scope: scope)
             concat(
               [ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: first_arg, source_index: scope.type_env.source_index), value: first_result.typed, span: first_arg.span, name_span: first_arg.span), diagnostics: first_result.diagnostics }],
@@ -1471,21 +1478,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         Some { value: fi } => resolved_type(n: arg_value(n: fi.typed_arg))
         None => error_type
       }
-      // S6: compute element provenance from receiver, mirroring ExprForEach logic.
-      let mc_recv_provenance = classify_binding_provenance(val: recv_typed, scope: scope)
-      let mc_elem_provenance = match mc_recv_provenance {
-        SubValueUnknown => SubValueUnknown
-        _ =>
-          if recv_elem_type.name == "" { SubValueUnknown }
-          else {
-            let mc_ind_fields = inductive_fields_for(env: scope.type_env, type_name: recv_elem_type.name)
-            let mc_list_field = mc_ind_fields |> filter(f => match f.shape { ListRecursion => true, _ => false }) |> first
-            match mc_list_field {
-              Some { value: f } => IteratedSubValue { field: f }
-              None => SubValueUnknown
-            }
-          }
-      }
+      let mc_elem_provenance = derive_element_provenance(coll_expr: recv_typed, elem_type: recv_elem_type, scope: scope)
       let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
@@ -2035,22 +2028,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let coll_typed = coll_result.typed
       let coll_diags = coll_result.diagnostics
       let elem_type_node = for_each_element_type_node(n: resolved_type(n: coll_typed))
-      // S5: iteration variable gets IteratedSubValue when the collection
-      // has known provenance AND the element type has ListRecursion fields.
-      let coll_provenance = classify_binding_provenance(val: coll_typed, scope: scope)
-      let elem_provenance = match coll_provenance {
-        SubValueUnknown => SubValueUnknown
-        _ =>
-          if elem_type_node.name == "" { SubValueUnknown }
-          else {
-            let ind_fields = inductive_fields_for(env: scope.type_env, type_name: elem_type_node.name)
-            let list_field = ind_fields |> filter(f => match f.shape { ListRecursion => true, _ => false }) |> first
-            match list_field {
-              Some { value: f } => IteratedSubValue { field: f }
-              None => SubValueUnknown
-            }
-          }
-      }
+      let elem_provenance = derive_element_provenance(coll_expr: coll_typed, elem_type: elem_type_node, scope: scope)
       let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type_node, provenance: elem_provenance)
       let body_result = infer_expr(texpr: body_expr, scope: body_scope, expected: none)
       let body_typed = body_result.typed

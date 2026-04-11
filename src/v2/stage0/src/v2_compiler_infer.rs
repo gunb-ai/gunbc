@@ -910,6 +910,32 @@ Some(Rc::new(ArgInferResult {
 }
 }
 
+pub fn derive_element_provenance(coll_expr: Rc<Node>, elem_type: Rc<Node>, scope: Rc<InferScope>) -> Rc<SubValueRelation> {
+    {
+        let coll_prov = classify_binding_provenance(coll_expr, scope.clone());
+match (*coll_prov).clone() {
+    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
+    _ => if (elem_type.name.clone().as_str() == "".to_string().as_str()) {
+            Rc::new(SubValueRelation::SubValueUnknown)
+        } else {
+            {
+                let ind_fields = inductive_fields_for(scope.type_env.clone(), elem_type.name.clone());
+let list_field = Rc::new({ let mut __result = Vec::new(); for f in ind_fields.iter().cloned() { if match f.shape.clone() {
+    RecursionShape::ListRecursion => true,
+    _ => false,
+} { __result.push(f); } } __result }).first().cloned();
+match list_field {
+    Some(f) => Rc::new(SubValueRelation::IteratedSubValue {
+    field: f.clone(),
+}),
+    None => Rc::new(SubValueRelation::SubValueUnknown),
+}
+}
+        },
+}
+}
+}
+
 pub fn infer_method_args_with_fold(method_name: Option<String>, method_args: Rc<Vec<Rc<Node>>>, fold_info: Option<Rc<ArgInferResult>>, fold_acc_type: Rc<Node>, element_type: Rc<Node>, elem_provenance: Rc<SubValueRelation>, scope: Rc<InferScope>) -> Rc<Vec<Rc<ArgInferResult>>> {
     {
         let is_fold = method_name_is(method_name, "fold".to_string());
@@ -1190,27 +1216,7 @@ let arg_infer_results = if ((has_lambda && ((call_args.clone().len() as i64) >= 
                     let first_result = infer_expr(arg_value(first_arg.clone()), scope.clone(), None);
 let first_type = resolved_type(first_result.typed.clone());
 let elem_type = for_each_element_type_node(first_type);
-let call_coll_provenance = classify_binding_provenance(first_result.typed.clone(), scope.clone());
-let call_elem_provenance = match (*call_coll_provenance).clone() {
-    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-    _ => if (elem_type.name.clone().as_str() == "".to_string().as_str()) {
-                        Rc::new(SubValueRelation::SubValueUnknown)
-                    } else {
-                        {
-                            let call_ind_fields = inductive_fields_for(scope.type_env.clone(), elem_type.name.clone());
-let call_list_field = Rc::new({ let mut __result = Vec::new(); for f in call_ind_fields.iter().cloned() { if match f.shape.clone() {
-    RecursionShape::ListRecursion => true,
-    _ => false,
-} { __result.push(f); } } __result }).first().cloned();
-match call_list_field {
-    Some(f) => Rc::new(SubValueRelation::IteratedSubValue {
-    field: f.clone(),
-}),
-    None => Rc::new(SubValueRelation::SubValueUnknown),
-}
-}
-                    },
-};
+let call_elem_provenance = derive_element_provenance(first_result.typed.clone(), elem_type.clone(), scope.clone());
 let remaining_results = infer_method_args_with_fold(call_method_name.clone(), call_method_args.clone(), call_fold_info.clone(), call_fold_acc_type.clone(), elem_type.clone(), call_elem_provenance, scope.clone());
 v2_rt::concat(Rc::new(vec![Rc::new(ArgInferResult {
     typed_arg: make_arg_node(arg_name(first_arg.clone()), first_result.typed.clone(), first_arg.span.clone(), first_arg.span.clone()),
@@ -1522,27 +1528,7 @@ let fold_acc_type = match fold_info.clone() {
     Some(fi) => resolved_type(arg_value(fi.typed_arg.clone())),
     None => error_type(),
 };
-let mc_recv_provenance = classify_binding_provenance(recv_typed.clone(), scope.clone());
-let mc_elem_provenance = match (*mc_recv_provenance).clone() {
-    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-    _ => if (recv_elem_type.name.clone().as_str() == "".to_string().as_str()) {
-                Rc::new(SubValueRelation::SubValueUnknown)
-            } else {
-                {
-                    let mc_ind_fields = inductive_fields_for(scope.type_env.clone(), recv_elem_type.name.clone());
-let mc_list_field = Rc::new({ let mut __result = Vec::new(); for f in mc_ind_fields.iter().cloned() { if match f.shape.clone() {
-    RecursionShape::ListRecursion => true,
-    _ => false,
-} { __result.push(f); } } __result }).first().cloned();
-match mc_list_field {
-    Some(f) => Rc::new(SubValueRelation::IteratedSubValue {
-    field: f.clone(),
-}),
-    None => Rc::new(SubValueRelation::SubValueUnknown),
-}
-}
-            },
-};
+let mc_elem_provenance = derive_element_provenance(recv_typed.clone(), recv_elem_type.clone(), scope.clone());
 let mc_arg_infer_results = infer_method_args_with_fold(mc_method_name.clone(), mc_args.clone(), fold_info.clone(), fold_acc_type.clone(), recv_elem_type.clone(), mc_elem_provenance, scope.clone());
 let typed_mc_args = Rc::new({ let mut __result = Vec::new(); for air in mc_arg_infer_results.clone().iter().cloned() { __result.push(air.typed_arg.clone()); } __result });
 let mc_arg_diags = Rc::new({ let mut __result = Vec::new(); for air in mc_arg_infer_results.clone().iter().cloned() { __result.extend((*air.diagnostics.clone()).iter().cloned()); } __result });
@@ -2110,27 +2096,7 @@ let coll_result = infer_expr(coll, scope.clone(), None);
 let coll_typed = coll_result.typed.clone();
 let coll_diags = coll_result.diagnostics.clone();
 let elem_type_node = for_each_element_type_node(resolved_type(coll_typed.clone()));
-let coll_provenance = classify_binding_provenance(coll_typed.clone(), scope.clone());
-let elem_provenance = match (*coll_provenance).clone() {
-    SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-    _ => if (elem_type_node.name.clone().as_str() == "".to_string().as_str()) {
-                Rc::new(SubValueRelation::SubValueUnknown)
-            } else {
-                {
-                    let ind_fields = inductive_fields_for(scope.type_env.clone(), elem_type_node.name.clone());
-let list_field = Rc::new({ let mut __result = Vec::new(); for f in ind_fields.iter().cloned() { if match f.shape.clone() {
-    RecursionShape::ListRecursion => true,
-    _ => false,
-} { __result.push(f); } } __result }).first().cloned();
-match list_field {
-    Some(f) => Rc::new(SubValueRelation::IteratedSubValue {
-    field: f.clone(),
-}),
-    None => Rc::new(SubValueRelation::SubValueUnknown),
-}
-}
-            },
-};
+let elem_provenance = derive_element_provenance(coll_typed.clone(), elem_type_node.clone(), scope.clone());
 let body_scope = extend_scope(scope.clone(), variable.clone(), elem_type_node.clone(), elem_provenance);
 let body_result = infer_expr(body_expr.clone(), body_scope, None);
 let body_typed = body_result.typed.clone();
