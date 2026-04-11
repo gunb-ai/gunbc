@@ -142,7 +142,7 @@ continue;
 }
 }
 
-pub fn tokenize(source: String, file: String) -> Rc<Vec<Rc<Token>>> {
+pub fn tokenize(source: &String, file: String) -> Rc<Vec<Rc<Token>>> {
     {
         let c = Rc::new(source.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
 let src = Rc::new(SourceRef {
@@ -191,7 +191,7 @@ return scan_str_cont(&source, &cont_pos, pos.pos.clone())
                 }
 }
         }
-scan_token(&source, &pos, ch.clone())
+scan_token(&source, &pos, &ch)
 }
 }
 
@@ -221,7 +221,7 @@ continue;
 }
 }
 
-pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: String) -> Rc<ScanResult> {
+pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<ScanResult> {
     {
         if (ch.clone().as_str() == "\"".to_string().as_str()) {
             return scan_string(&source, &pos)
@@ -229,7 +229,7 @@ pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: String) -> Rc<Sc
 if is_digit(ch.clone()) {
             return scan_number(&source, &pos)
         }
-if is_ident_start(ch.clone()) {
+if is_ident_start(&ch) {
             return scan_ident(&source, &pos)
         }
 let next_ch = if ((pos.pos.clone() + 1) < source_len(source.clone())) {
@@ -555,7 +555,7 @@ pub fn should_start_interpolation(source: &Rc<SourceRef>, pos: i64) -> bool {
     } else {
         {
             let next = source_char(source.clone(), (pos.clone() + 1));
-(((is_ident_start(next.clone()) || (next.clone().as_str() == "(".to_string().as_str())) || (next.clone().as_str() == "!".to_string().as_str())) || (next.clone().as_str() == "-".to_string().as_str()))
+(((is_ident_start(&next) || (next.clone().as_str() == "(".to_string().as_str())) || (next.clone().as_str() == "!".to_string().as_str())) || (next.clone().as_str() == "-".to_string().as_str()))
 }
     }
 }
@@ -658,10 +658,10 @@ pub fn is_digit(ch: String) -> bool {
     ((ch.clone() >= "0".to_string()) && (ch.clone() <= "9".to_string()))
 }
 
-pub fn is_ident_start(ch: String) -> bool {
+pub fn is_ident_start(ch: &String) -> bool {
     ((((ch.clone() >= "a".to_string()) && (ch.clone() <= "z".to_string())) || ((ch.clone() >= "A".to_string()) && (ch.clone() <= "Z".to_string()))) || (ch.clone().as_str() == "_".to_string().as_str()))
 }
 
 pub fn is_ident_char(ch: String) -> bool {
-    (is_ident_start(ch.clone()) || is_digit(ch.clone()))
+    (is_ident_start(&ch) || is_digit(ch.clone()))
 }

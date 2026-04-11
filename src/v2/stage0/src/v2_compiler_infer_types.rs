@@ -130,8 +130,8 @@ if under_param {
 
 pub fn bare_map_node() -> Rc<Node> {
     {
-        let key_id = container_param_name_required("Map".to_string(), 0);
-let val_id = container_param_name_required("Map".to_string(), 1);
+        let key_id = container_param_name_required(&"Map".to_string(), 0);
+let val_id = container_param_name_required(&"Map".to_string(), 1);
 let key_node = type_variable_node(key_id.clone());
 let val_node = type_variable_node(val_id.clone());
 Rc::new(Node {
@@ -196,9 +196,9 @@ Rc::new(Node {
 }
 }
 
-pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<Node> {
+pub fn make_container_type(kind_name: &String, element: Rc<Node>) -> Rc<Node> {
     {
-        let param_name = container_param_name_required(kind_name.clone(), 0);
+        let param_name = container_param_name_required(&kind_name, 0);
 Rc::new(Node {
     name: kind_name.clone(),
     span: make_span(0, 0),
@@ -243,8 +243,8 @@ Rc::new(Node {
 
 pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
     {
-        let key_name = container_param_name_required("Map".to_string(), 0);
-let val_name = container_param_name_required("Map".to_string(), 1);
+        let key_name = container_param_name_required(&"Map".to_string(), 0);
+let val_name = container_param_name_required(&"Map".to_string(), 1);
 Rc::new(Node {
     name: "Map".to_string(),
     span: make_span(0, 0),
@@ -393,7 +393,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
 })
 }
 
-pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
+pub fn algebra_value_field(name: &String, type_node: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
     name: name.clone(),
     span: no_span(),
@@ -417,9 +417,9 @@ pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
 })
 }
 
-pub fn algebra_method_field(name: String, param_types: Rc<Vec<Rc<Node>>>, return_type: Rc<Node>) -> Rc<Node> {
+pub fn algebra_method_field(name: &String, param_types: Rc<Vec<Rc<Node>>>, return_type: Rc<Node>) -> Rc<Node> {
     {
-        let params = Rc::new({ let mut __result = Vec::new(); for t in param_types.iter().cloned() { __result.push(make_param_node("_".to_string(), t.clone(), None, no_span(), no_span())); } __result });
+        let params = Rc::new({ let mut __result = Vec::new(); for t in param_types.iter().cloned() { __result.push(make_param_node(&"_".to_string(), t.clone(), None, no_span(), no_span())); } __result });
 let callable = make_callable_type(params, return_type);
 Rc::new(Node {
     name: name.clone(),
@@ -472,7 +472,7 @@ pub fn placeholder_type_node(name: String) -> Rc<Node> {
 }
 
 pub fn nominal_type_ref(name: String) -> Rc<Node> {
-    leaf_node_with_span(name, &make_span(0, 0))
+    leaf_node_with_span(&name, &make_span(0, 0))
 }
 
 pub fn algebra_child_or_placeholder(base: Rc<Node>, child_index: i64, placeholder: String) -> Rc<Node> {
@@ -500,7 +500,7 @@ match (*template).clone() {
     ContainerSource::SameAsReceiver => base.name.clone(),
     ContainerSource::Named { name: n, .. } => n.clone(),
 };
-make_container_type(kind_name, instantiate_algebra_type(inner.clone(), &base))
+make_container_type(&kind_name, instantiate_algebra_type(inner.clone(), &base))
 },
     AlgebraTypeTemplate::OptionalOf { inner, .. } => with_optional_cardinality(&instantiate_algebra_type(inner.clone(), &base)),
     AlgebraTypeTemplate::TupleOf { first, second, .. } => make_tuple_type(instantiate_algebra_type(first.clone(), &base), instantiate_algebra_type(second.clone(), &base)),
@@ -515,14 +515,14 @@ pub fn instantiate_algebra_field(template: &Rc<AlgebraFieldTemplate>, base: &Rc<
         let param_types = Rc::new({ let mut __result = Vec::new(); for tp in template.param_types.clone().iter().cloned() { __result.push(instantiate_algebra_type(tp.clone(), &base)); } __result });
 let return_type = instantiate_algebra_type(template.return_type.clone(), &base);
 if ((param_types.clone().len() as i64) > 0) {
-            algebra_method_field(template.name.clone(), param_types.clone(), return_type)
+            algebra_method_field(&template.name.clone(), param_types.clone(), return_type)
         } else {
-            algebra_value_field(template.name.clone(), return_type)
+            algebra_value_field(&template.name.clone(), return_type)
         }
 }
 }
 
-pub fn enrich_kernel_type(name: String, base: &Rc<Node>) -> Rc<Node> {
+pub fn enrich_kernel_type(name: &String, base: &Rc<Node>) -> Rc<Node> {
     {
         let profile = v2_rt::map_get(&kernel_algebra_profile(), name.clone());
 match profile {
@@ -672,7 +672,7 @@ make_map_type(key.clone(), val)
                     } else {
                         if (arity.clone() == Some(1)) {
                             match v2_rt::map_get(&subst, "__element__".to_string()) {
-    Some(elem) => make_container_type(receiver.name.clone(), elem.clone()),
+    Some(elem) => make_container_type(&receiver.name.clone(), elem.clone()),
     None => receiver.clone(),
 }
                         } else {
@@ -688,21 +688,21 @@ make_map_type(key.clone(), val)
     Some(child) => child_type_node(&child),
     None => match v2_rt::map_get(&subst, "__element__".to_string()) {
     Some(elem) => elem.clone(),
-    None => type_variable_node(container_param_name_required(receiver.name.clone(), 0)),
+    None => type_variable_node(container_param_name_required(&receiver.name.clone(), 0)),
 },
 },
     AlgebraTypeTemplate::ReceiverKey => match receiver.children.clone().first().cloned() {
     Some(child) => child_type_node(&child),
     None => match v2_rt::map_get(&subst, "__key__".to_string()) {
     Some(key) => key.clone(),
-    None => type_variable_node(container_param_name_required(receiver.name.clone(), 0)),
+    None => type_variable_node(container_param_name_required(&receiver.name.clone(), 0)),
 },
 },
     AlgebraTypeTemplate::ReceiverValue => match receiver.children.clone().get(1 as usize).cloned() {
     Some(child) => child_type_node(&child),
     None => match v2_rt::map_get(&subst, "__value__".to_string()) {
     Some(val) => val,
-    None => type_variable_node(container_param_name_required(receiver.name.clone(), 1)),
+    None => type_variable_node(container_param_name_required(&receiver.name.clone(), 1)),
 },
 },
     AlgebraTypeTemplate::NamedTemplate { name: n, .. } => nominal_type_ref(n.clone()),
@@ -711,13 +711,13 @@ make_map_type(key.clone(), val)
     ContainerSource::SameAsReceiver => receiver.name.clone(),
     ContainerSource::Named { name: n, .. } => n.clone(),
 };
-make_container_type(kind_name, apply_type_substitution(inner.clone(), &subst, receiver.clone()))
+make_container_type(&kind_name, apply_type_substitution(inner.clone(), &subst, receiver.clone()))
 },
     AlgebraTypeTemplate::OptionalOf { inner, .. } => with_optional_cardinality(&apply_type_substitution(inner.clone(), &subst, receiver.clone())),
     AlgebraTypeTemplate::TupleOf { first: ft, second: st, .. } => make_tuple_type(apply_type_substitution(ft.clone(), &subst, receiver.clone()), apply_type_substitution(st.clone(), &subst, receiver.clone())),
     AlgebraTypeTemplate::CallableOf { params: p, return_type: r, .. } => {
             let param_nodes = Rc::new({ let mut __result = Vec::new(); for tp in p.clone().iter().cloned() { __result.push(apply_type_substitution(tp.clone(), &subst, receiver.clone())); } __result });
-make_callable_type(Rc::new({ let mut __result = Vec::new(); for pn in param_nodes.iter().cloned() { __result.push(make_param_node("_".to_string(), pn.clone(), None, no_span(), no_span())); } __result }), apply_type_substitution(r.clone(), &subst, receiver.clone()))
+make_callable_type(Rc::new({ let mut __result = Vec::new(); for pn in param_nodes.iter().cloned() { __result.push(make_param_node(&"_".to_string(), pn.clone(), None, no_span(), no_span())); } __result }), apply_type_substitution(r.clone(), &subst, receiver.clone()))
 },
 }
     })
@@ -1338,7 +1338,7 @@ pub struct BinOpInferred {
     pub algebra_field: Option<AlgebraFieldKind>,
 }
 
-pub fn infer_binop_type_node(op: BinOp, left_type: &Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<BinOpInferred> {
+pub fn infer_binop_type_node(op: &BinOp, left_type: &Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<BinOpInferred> {
     match op.clone() {
     BinOp::Eq => Rc::new(BinOpInferred {
     result_type: bool_type(),

@@ -19,7 +19,7 @@ use v2_compiler::std_types::container_param_name;
 
 // Test helpers: replicate deleted L1 constructor functions for test convenience.
 fn leaf_node(name: String) -> Rc<Node> {
-    leaf_node_with_span(name, &make_span(0, 0))
+    leaf_node_with_span(&name, &make_span(0, 0))
 }
 
 fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
@@ -175,7 +175,7 @@ fn invalid_slice_returns_compiler_error_type() {
         leaf_node("Int".to_string()),
         leaf_node("Int".to_string()),
         &zero_span(),
-        "test".to_string(),
+        &"test".to_string(),
         &None,
     );
 
@@ -220,7 +220,7 @@ fn pattern_lookup_blocks_on_infer_error_without_cascade_diagnostic() {
         })));
     let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
         subject,
-        "Some".to_string(),
+        &"Some".to_string(),
         "test".to_string(),
         None,
     );
@@ -244,7 +244,7 @@ fn pattern_lookup_reports_error_scrutinee_structurally() {
         v2_compiler_infer_patterns::pattern_subject_from_node(&error_type());
     let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
         subject,
-        "Some".to_string(),
+        &"Some".to_string(),
         "test".to_string(),
         None,
     );
@@ -263,7 +263,7 @@ fn optional_pattern_lookup_still_resolves_some_variant() {
     ));
     let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
         subject,
-        "Some".to_string(),
+        &"Some".to_string(),
         "test".to_string(),
         None,
     );
@@ -385,7 +385,7 @@ fn structural_method_lookup_resolves_all_list_collection_methods() {
         assert!(
             v2_compiler_infer_lookup::lookup_structural_method(
                 &list_int,
-                method_name.to_string(),
+                &method_name.to_string(),
                 None,
             )
             .is_some(),
@@ -400,7 +400,7 @@ fn structural_method_any_on_list_returns_bool() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let result = v2_compiler_infer_lookup::lookup_structural_method(
         &list_int,
-        "any".to_string(),
+        &"any".to_string(),
         None,
     )
     .expect("any must resolve on List<Int>");
@@ -412,7 +412,7 @@ fn structural_method_all_on_list_returns_bool() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let result = v2_compiler_infer_lookup::lookup_structural_method(
         &list_int,
-        "all".to_string(),
+        &"all".to_string(),
         None,
     )
     .expect("all must resolve on List<Int>");
@@ -424,7 +424,7 @@ fn structural_method_sort_by_on_list_returns_self() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let result = v2_compiler_infer_lookup::lookup_structural_method(
         &list_int,
-        "sort_by".to_string(),
+        &"sort_by".to_string(),
         None,
     )
     .expect("sort_by must resolve on List<Int>");
@@ -439,7 +439,7 @@ fn structural_method_first_on_list_returns_optional_element() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let result = v2_compiler_infer_lookup::lookup_structural_method(
         &list_int,
-        "first".to_string(),
+        &"first".to_string(),
         None,
     )
     .expect("first must resolve on List<Int>");
@@ -455,7 +455,7 @@ fn structural_method_count_on_list_returns_int() {
     let list_string = container_node("List".to_string(), leaf_node("String".to_string()));
     let result = v2_compiler_infer_lookup::lookup_structural_method(
         &list_string,
-        "count".to_string(),
+        &"count".to_string(),
         None,
     )
     .expect("count must resolve on List<String>");
@@ -470,7 +470,7 @@ fn structural_method_lookup_resolves_all_int_ring_methods() {
         assert!(
             v2_compiler_infer_lookup::lookup_structural_method(
                 &int_node,
-                method_name.to_string(),
+                &method_name.to_string(),
                 None,
             )
             .is_some(),
@@ -485,7 +485,7 @@ fn structural_method_compare_on_int_returns_ordering() {
     let int_node = leaf_node("Int".to_string());
     let result = v2_compiler_infer_lookup::lookup_structural_method(
         &int_node,
-        "compare".to_string(),
+        &"compare".to_string(),
         None,
     )
     .expect("compare must resolve on Int");
@@ -509,7 +509,7 @@ fn structural_method_lookup_resolves_all_map_partial_function_methods() {
         assert!(
             v2_compiler_infer_lookup::lookup_structural_method(
                 &m,
-                method_name.to_string(),
+                &method_name.to_string(),
                 None,
             )
             .is_some(),
@@ -527,7 +527,7 @@ fn structural_method_get_on_map_returns_optional_value() {
     );
     let result = v2_compiler_infer_lookup::lookup_structural_method(
         &m,
-        "get".to_string(),
+        &"get".to_string(),
         None,
     )
     .expect("get must resolve on Map<String,Int>");
@@ -546,7 +546,7 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
     );
     let result = v2_compiler_infer_lookup::lookup_structural_method(
         &m,
-        "keys".to_string(),
+        &"keys".to_string(),
         None,
     )
     .expect("keys must resolve on Map<String,Int>");
@@ -565,7 +565,7 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
 fn structural_method_lookup_returns_none_for_unknown_type() {
     let custom = leaf_node("MyType".to_string());
     assert!(
-        v2_compiler_infer_lookup::lookup_structural_method(&custom, "add".to_string(), None).is_none(),
+        v2_compiler_infer_lookup::lookup_structural_method(&custom, &"add".to_string(), None).is_none(),
         "custom types without algebra should not have structural methods"
     );
 }

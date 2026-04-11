@@ -68,7 +68,7 @@ fn full_dsl_compiles() {
                 .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
             let result =
                 v2_compiler::v2_compiler_parse::parse(v2_compiler::v2_compiler_tokenize::tokenize(
-                    content,
+                    &content,
                     path.to_string_lossy().to_string(),
                 ), None);
             if let Some(ref err) = result.error {
@@ -1890,7 +1890,7 @@ fn diag_parse_node_decl_env() {
 
     // Call exactly what the SCC analysis calls
     let edges = collect_parser_progress_edges(
-        "parse_node_decl".to_string(),
+        &"parse_node_decl".to_string(),
         &pnd.body,
         &state_param,
         &scc_name_set,
@@ -4113,7 +4113,7 @@ type Bar<K, V> {
 
 fn test_leaf_node(name: &str) -> Rc<v2_compiler::v2_std_core::Node> {
     use v2_compiler::v2_std_core::{leaf_node_with_span, SourceSpan};
-    leaf_node_with_span(name.to_string(), &Rc::new(SourceSpan { file: "test".to_string(), start: 0, end: 0 }))
+    leaf_node_with_span(&name.to_string(), &Rc::new(SourceSpan { file: "test".to_string(), start: 0, end: 0 }))
 }
 
 #[test]
@@ -4123,7 +4123,7 @@ fn type_rendering_bare_list_not_map() {
     let list_node = test_leaf_node("List");
     let shared_types = Rc::new(HashMap::from([("List".to_string(), true)]));
 
-    let rendered = render_node_type(&list_node, RenderTarget::Rust, &shared_types, &None);
+    let rendered = render_node_type(&list_node, &RenderTarget::Rust, &shared_types, &None);
 
     assert!(rendered.contains("Vec"), "bare List rendered as {:?}, expected Vec<_>", rendered);
     assert!(!rendered.contains("HashMap"), "bare List incorrectly rendered as HashMap: {:?}", rendered);
@@ -4136,7 +4136,7 @@ fn type_rendering_bare_map_stays_hashmap() {
     let map_node = test_leaf_node("Map");
     let shared_types = Rc::new(HashMap::from([("Map".to_string(), true)]));
 
-    let rendered = render_node_type(&map_node, RenderTarget::Rust, &shared_types, &None);
+    let rendered = render_node_type(&map_node, &RenderTarget::Rust, &shared_types, &None);
 
     assert!(rendered.contains("HashMap"), "bare Map rendered as {:?}, expected HashMap<_, _>", rendered);
 }
@@ -4154,7 +4154,7 @@ fn type_rendering_named_conj_with_container_template() {
     });
     let shared_types = Rc::new(HashMap::from([("FreeMonoid".to_string(), true)]));
 
-    let rendered = render_node_type(&free_monoid_conj, RenderTarget::Rust, &shared_types, &None);
+    let rendered = render_node_type(&free_monoid_conj, &RenderTarget::Rust, &shared_types, &None);
 
     assert!(rendered.contains("Vec"), "FreeMonoid Conj rendered as {:?}, expected Vec<_> via container template", rendered);
     assert!(!rendered.contains("FreeMonoid"), "FreeMonoid Conj rendered bare name instead of container template: {:?}", rendered);

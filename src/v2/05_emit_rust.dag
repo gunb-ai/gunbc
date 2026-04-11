@@ -110,7 +110,7 @@ import v2.compiler.infer_emit_info {
   lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum
 }
-import v2.compiler.ownership { OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set, build_read_only_params }
+import v2.compiler.ownership { OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set, build_read_only_params, collect_callable_refs }
 import std.induction { SubValueUnknown }
 
 import v2.compiler.emit {
@@ -469,6 +469,13 @@ fn build_fold_eligible_set(proof: OwnershipProof) -> Map<String, Bool> {
 }
 
 fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
+  // Collect functions used as first-class callables (passed as arguments to HOFs).
+  // These cannot have params borrowed — borrowing changes the callable signature.
+  let callable_set = modules |> fold(init: empty_map(), f: (acc, m) =>
+    m.items |> filter(item => item.body != None) |> fold(init: acc, f: (inner, item) =>
+      map_merge(inner, collect_callable_refs(texpr: item.body.value, si: m.type_env.source_index))
+    )
+  )
   let proofs = modules |> flat_map(m =>
     m.items |> filter(item => item.body != None) |> map(item =>
       let pnames = item.params |> fold(init: empty_map(), f: (acc, p) =>
@@ -478,10 +485,13 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
     )
   )
   proofs |> fold(init: OwnershipBuildResult { ownership_index: empty_map(), fold_eligible_index: empty_map(), read_only_params_index: empty_map() }, f: (acc, entry) =>
+    // Skip read-only classification for functions used as callables.
+    let read_only = if map_contains_key(callable_set, entry.name) { empty_map() }
+      else { build_read_only_params(proof: entry.proof, param_names: entry.param_names) }
     OwnershipBuildResult {
       ownership_index: map_insert(acc.ownership_index, entry.name, build_movable_set(proof: entry.proof)),
       fold_eligible_index: map_insert(acc.fold_eligible_index, entry.name, build_fold_eligible_set(proof: entry.proof)),
-      read_only_params_index: map_insert(acc.read_only_params_index, entry.name, build_read_only_params(proof: entry.proof, param_names: entry.param_names))
+      read_only_params_index: map_insert(acc.read_only_params_index, entry.name, read_only)
     }
   )
 }
@@ -1333,24 +1343,16 @@ fn emit_rust_param_type(n: Node, shared_types: Map<String, Bool>, source_index: 
   }
 }
 
-// Check if a param type renders as Rc-wrapped. Only Rc-wrapped types should be
-// borrowed: &Rc<T> is safe (auto-deref), but &String or &i64 changes the
-// calling convention and breaks first-class callable usage.
-fn param_type_is_rc_wrapped(n: Node, shared_types: Map<String, Bool>, source_index: NewlineIndex?) -> Bool {
-  let tn = authored_name_at(source_index: source_index, node: n)
-  emit_map_has(m: shared_types, key: tn) || is_container_type(name: to_snake(name: tn))
-}
-
 fn emit_param(param: Node, shared_types: Map<String, Bool>, source_index: NewlineIndex?, read_only_params: Map<String, Bool>) -> String {
   let n = param_node_type_expr(n: param)
   let ty = emit_rust_param_type(n: n, shared_types: shared_types, source_index: source_index)
   let pname = param_node_name_at(n: param, source_index: source_index)
-  // Borrow read-only params: &Rc<T> instead of Rc<T>. Only Rc-wrapped types
-  // are borrowable — non-Rc types (String, i64) would break callable usage.
-  let is_callable = n.params |> count > 0
+  // Borrow read-only params of non-Copy types. Callable functions are already
+  // excluded at the read_only_params_index level (callable_set filter).
+  let is_callable_param = n.params |> count > 0
   let is_borrowable = map_contains_key(read_only_params, pname)
-    && is_callable == false
-    && param_type_is_rc_wrapped(n: n, shared_types: shared_types, source_index: source_index)
+    && is_callable_param == false
+    && needs_reference_node(n: n)
   let final_ty = if is_borrowable {
     apply_type_template1(template: sharing_for_target(target: Rust).borrow_param_template, arg0: ty)
   } else { ty }
@@ -2446,7 +2448,7 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
           let pname = param_node_name_at(n: pair.second, source_index: collection_scope.type_env.source_index)
           let n = param_node_type_expr(n: pair.second)
           let is_callable = n.params |> count > 0
-          let is_borrowable = map_contains_key(callee_read_only, pname) && is_callable == false && param_type_is_rc_wrapped(n: n, shared_types: shared_types, source_index: collection_scope.type_env.source_index)
+          let is_borrowable = map_contains_key(callee_read_only, pname) && is_callable == false && needs_reference_node(n: n)
           if is_borrowable { map_insert(acc, to_string(value: pair.first), true) } else { acc }
         )
       None => empty_map()

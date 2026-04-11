@@ -75,7 +75,7 @@ Rc::new(CallGraph {
 }
 }
 
-pub fn dfs_finish_order(node: String, adjacency: &Rc<HashMap<String, Rc<Vec<String>>>>, acc: &Rc<DfsFinishAcc>) -> Rc<DfsFinishAcc> {
+pub fn dfs_finish_order(node: &String, adjacency: &Rc<HashMap<String, Rc<Vec<String>>>>, acc: &Rc<DfsFinishAcc>) -> Rc<DfsFinishAcc> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if set_has(acc.visited.clone(), node.clone()) {
             acc.clone()
@@ -89,7 +89,7 @@ let neighbors = match v2_rt::map_get(&adjacency, node.clone()) {
 let explored = neighbors.iter().cloned().fold(Rc::new(DfsFinishAcc {
     visited: next_visited,
     order: acc.order.clone(),
-}), |inner: Rc<DfsFinishAcc>, neighbor: String| dfs_finish_order(neighbor.clone(), &adjacency, &inner));
+}), |inner: Rc<DfsFinishAcc>, neighbor: String| dfs_finish_order(&neighbor, &adjacency, &inner));
 Rc::new(DfsFinishAcc {
     visited: explored.visited.clone(),
     order: v2_rt::rc_list_push(explored.order.clone(), node.clone()),
@@ -99,7 +99,7 @@ Rc::new(DfsFinishAcc {
     })
 }
 
-pub fn dfs_collect_component(node: String, adjacency: &Rc<HashMap<String, Rc<Vec<String>>>>, acc: &Rc<SccComponentAcc>) -> Rc<SccComponentAcc> {
+pub fn dfs_collect_component(node: &String, adjacency: &Rc<HashMap<String, Rc<Vec<String>>>>, acc: &Rc<SccComponentAcc>) -> Rc<SccComponentAcc> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if set_has(acc.visited.clone(), node.clone()) {
             acc.clone()
@@ -114,7 +114,7 @@ let neighbors = match v2_rt::map_get(&adjacency, node.clone()) {
 neighbors.iter().cloned().fold(Rc::new(SccComponentAcc {
     visited: next_visited,
     members: next_members,
-}), |inner: Rc<SccComponentAcc>, neighbor: String| dfs_collect_component(neighbor.clone(), &adjacency, &inner))
+}), |inner: Rc<SccComponentAcc>, neighbor: String| dfs_collect_component(&neighbor, &adjacency, &inner))
 }
         }
     })
@@ -125,7 +125,7 @@ pub fn graph_has_multi_node_scc(names: Rc<Vec<String>>, graph: Rc<CallGraph>) ->
         let finish = names.iter().cloned().fold(Rc::new(DfsFinishAcc {
     visited: v2_rt::rc_empty_map::<bool>(),
     order: Rc::new(vec![]),
-}), |acc: Rc<DfsFinishAcc>, name: String| dfs_finish_order(name.clone(), &graph.forward.clone(), &acc));
+}), |acc: Rc<DfsFinishAcc>, name: String| dfs_finish_order(&name, &graph.forward.clone(), &acc));
 let result = v2_rt::reverse(finish.order.clone()).iter().cloned().fold(Rc::new(SccCycleAcc {
     visited: v2_rt::rc_empty_map::<bool>(),
     has_cycle: false,
@@ -133,7 +133,7 @@ let result = v2_rt::reverse(finish.order.clone()).iter().cloned().fold(Rc::new(S
             acc.clone()
         } else {
             {
-                let component = dfs_collect_component(name.clone(), &graph.reverse.clone(), &Rc::new(SccComponentAcc {
+                let component = dfs_collect_component(&name, &graph.reverse.clone(), &Rc::new(SccComponentAcc {
     visited: acc.visited.clone(),
     members: Rc::new(vec![]),
 }));

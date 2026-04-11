@@ -43,11 +43,11 @@ pub fn map_of_type_variables() -> Rc<Node> {
 }
 
 pub fn list_of_type_variable(id: String) -> Rc<Node> {
-    make_container_type("List".to_string(), type_variable_node(id))
+    make_container_type(&"List".to_string(), type_variable_node(id))
 }
 
 pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
-    make_container_type("List".to_string(), element)
+    make_container_type(&"List".to_string(), element)
 }
 
 pub fn seed_node_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {

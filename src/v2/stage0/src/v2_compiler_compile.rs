@@ -514,7 +514,7 @@ Rc::new(EmitResult {
 }
 }
 
-pub fn boundary_ref_error(names: Rc<Vec<String>>, ref_name: String) -> Rc<Vec<Rc<ErrorNode>>> {
+pub fn boundary_ref_error(names: Rc<Vec<String>>, ref_name: &String) -> Rc<Vec<Rc<ErrorNode>>> {
     if { let mut __found = false; for n in names.iter().cloned() { if (n.clone().as_str() == ref_name.clone().as_str()) { __found = true; break; } } __found } {
         Rc::new(vec![])
     } else {
@@ -525,7 +525,7 @@ pub fn boundary_ref_error(names: Rc<Vec<String>>, ref_name: String) -> Rc<Vec<Rc
 pub fn validate_boundaries(plan: &Rc<ArtifactPlan>) -> Rc<Vec<Rc<ErrorNode>>> {
     {
         let names = Rc::new({ let mut __result = Vec::new(); for a in plan.artifacts.clone().iter().cloned() { __result.push(a.name.clone()); } __result });
-Rc::new({ let mut __result = Vec::new(); for b in plan.boundaries.clone().iter().cloned() { __result.extend((*v2_rt::concat(boundary_ref_error(names.clone(), b.from_artifact.clone()), boundary_ref_error(names.clone(), b.to_artifact.clone()))).iter().cloned()); } __result })
+Rc::new({ let mut __result = Vec::new(); for b in plan.boundaries.clone().iter().cloned() { __result.extend((*v2_rt::concat(boundary_ref_error(names.clone(), &b.from_artifact.clone()), boundary_ref_error(names.clone(), &b.to_artifact.clone()))).iter().cloned()); } __result })
 }
 }
 
@@ -567,8 +567,8 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
     parse_results: Rc::new(vec![]),
     newline_indices: Rc::new(vec![]),
 }), |acc: Rc<FrontendAccum>, s: Rc<SourceFile>| { let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone()); {
-            let tokens = tokenize(s.content.clone(), s.path.clone());
-let si = build_newline_index(s.path.clone(), s.content.clone());
+            let tokens = tokenize(&s.content.clone(), s.path.clone());
+let si = build_newline_index(s.path.clone(), &s.content.clone());
 let pr = parse(tokens.clone(), Some(si.clone()));
 Rc::new(FrontendAccum {
     parse_results: v2_rt::rc_list_push(acc.parse_results, pr.clone()),

@@ -112,7 +112,7 @@ pub struct ModuleResolveResult {
 
 pub fn resolve_module_imports(module: &Rc<Node>, module_index: Rc<HashMap<String, Rc<Node>>>, export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, source_index: Option<Rc<NewlineIndex>>) -> Rc<ModuleResolveResult> {
     {
-        let results = Rc::new({ let mut __result = Vec::new(); for imp in module_imports(module.clone()).iter().cloned() { __result.push(resolve_import(&imp, module_index.clone(), module.name.clone(), export_sets.clone(), &source_index)); } __result });
+        let results = Rc::new({ let mut __result = Vec::new(); for imp in module_imports(module.clone()).iter().cloned() { __result.push(resolve_import(&imp, module_index.clone(), &module.name.clone(), export_sets.clone(), &source_index)); } __result });
 let resolved = Rc::new({ let mut __result = Vec::new(); for r in Rc::new({ let mut __result = Vec::new(); for r in results.clone().iter().cloned() { if ((r.resolved.clone().target_module.clone() != None) && ((r.diagnostics.clone().len() as i64) == 0)) { __result.push(r); } } __result }).iter().cloned() { __result.push(r.resolved.clone()); } __result });
 let diags = Rc::new({ let mut __result = Vec::new(); for r in results.clone().iter().cloned() { __result.extend((*r.diagnostics.clone()).iter().cloned()); } __result });
 Rc::new(ModuleResolveResult {
@@ -128,7 +128,7 @@ pub struct ImportResolveResult {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn resolve_import(import: &Rc<Node>, module_index: Rc<HashMap<String, Rc<Node>>>, importing_module: String, export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, source_index: &Option<Rc<NewlineIndex>>) -> Rc<ImportResolveResult> {
+pub fn resolve_import(import: &Rc<Node>, module_index: Rc<HashMap<String, Rc<Node>>>, importing_module: &String, export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, source_index: &Option<Rc<NewlineIndex>>) -> Rc<ImportResolveResult> {
     {
         let target = find_module(module_index, import.name.clone());
 match target {
@@ -243,7 +243,7 @@ pub struct TopoResult {
     pub cycle_error: Option<Rc<ErrorNode>>,
 }
 
-pub fn adjacency_add_edge(adjacency: &Rc<HashMap<String, Rc<Vec<String>>>>, from_module: String, to_module: String) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+pub fn adjacency_add_edge(adjacency: &Rc<HashMap<String, Rc<Vec<String>>>>, from_module: &String, to_module: String) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     {
         let existing = match v2_rt::map_get(&adjacency, from_module.clone()) {
     Some(lst) => lst.clone(),
@@ -284,7 +284,7 @@ if (((m.name.clone().as_str() != "std.types".to_string().as_str()) && (m.name.cl
         } else {
             Rc::new(vec![])
         };
-let adjacency = v2_rt::concat(explicit_edges, implicit_std_types_edges).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, edge: Rc<DepEdge>| adjacency_add_edge(&acc, edge.from_module.clone(), edge.to_module.clone()));
+let adjacency = v2_rt::concat(explicit_edges, implicit_std_types_edges).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, edge: Rc<DepEdge>| adjacency_add_edge(&acc, &edge.from_module.clone(), edge.to_module.clone()));
 let in_degree_map = modules.clone().iter().cloned().fold(v2_rt::rc_empty_map::<i64>(), |acc: Rc<HashMap<String, i64>>, m: Rc<Node>| {
             let imports_std_types = { let mut __found = false; for imp in module_imports(m.clone()).iter().cloned() { if (imp.name.clone().as_str() == "std.types".to_string().as_str()) { __found = true; break; } } __found };
 let implicit_std_types_in_degree = if (((has_std_types.clone() && (m.name.clone().as_str() != "std.types".to_string().as_str())) && (m.name.clone().as_str() != "std.algebra".to_string().as_str())) && (imports_std_types.clone() == false)) {

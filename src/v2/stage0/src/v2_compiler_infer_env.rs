@@ -67,7 +67,7 @@ pub fn is_inductive_field(env: Rc<TypeEnv>, type_name: String, variant_name: Str
     { let mut __found = false; for f in inductive_fields_for(env, type_name).iter().cloned() { if ((f.variant_name.clone().as_str() == variant_name.clone().as_str()) && (f.field_name.clone().as_str() == field_name.clone().as_str())) { __found = true; break; } } __found }
 }
 
-pub fn put_inductive_field(fields: &Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, type_name: String, variant_name: String, field_name: String, shape: RecursionShape) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+pub fn put_inductive_field(fields: &Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, type_name: &String, variant_name: String, field_name: String, shape: RecursionShape) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     {
         let existing = match v2_rt::map_get(&fields, type_name.clone()) {
     Some(fs) => fs.clone(),
@@ -83,7 +83,7 @@ v2_rt::rc_map_insert(fields.clone(), type_name.clone(), v2_rt::concat(existing, 
 }
 }
 
-pub fn put_inductive_field_cross(fields: &Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, type_name: String, variant_name: String, field_name: String, shape: RecursionShape, element_type: String) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+pub fn put_inductive_field_cross(fields: &Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, type_name: &String, variant_name: String, field_name: String, shape: RecursionShape, element_type: String) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     {
         let existing = match v2_rt::map_get(&fields, type_name.clone()) {
     Some(fs) => fs.clone(),

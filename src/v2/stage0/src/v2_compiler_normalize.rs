@@ -19,7 +19,7 @@ pub struct NormalizeResult {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn check_bare_containers(n: &Rc<Node>, module_name: String) -> Rc<Vec<Rc<ErrorNode>>> {
+pub fn check_bare_containers(n: &Rc<Node>, module_name: &String) -> Rc<Vec<Rc<ErrorNode>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let has_structure = ((match n.body.clone() {
@@ -39,14 +39,14 @@ let self_diags = match container_expected_arity(n.name.clone()) {
             },
     None => Rc::new(vec![]),
 };
-let child_diags = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.extend((*check_bare_containers(&c, module_name.clone())).iter().cloned()); } __result });
-let param_diags = Rc::new({ let mut __result = Vec::new(); for p in n.params.clone().iter().cloned() { __result.extend((*check_bare_containers(&p, module_name.clone())).iter().cloned()); } __result });
+let child_diags = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.extend((*check_bare_containers(&c, &module_name)).iter().cloned()); } __result });
+let param_diags = Rc::new({ let mut __result = Vec::new(); for p in n.params.clone().iter().cloned() { __result.extend((*check_bare_containers(&p, &module_name)).iter().cloned()); } __result });
 let type_ann_diags = match n.type_annotation.clone() {
-    Some(ta) => check_bare_containers(&ta, module_name.clone()),
+    Some(ta) => check_bare_containers(&ta, &module_name),
     None => Rc::new(vec![]),
 };
 let body_diags = match n.body.clone() {
-    Some(b) => check_bare_containers(&b, module_name.clone()),
+    Some(b) => check_bare_containers(&b, &module_name),
     None => Rc::new(vec![]),
 };
 let inferred_diags = if ((n.params.clone().len() as i64) > 0) {
@@ -54,14 +54,14 @@ let inferred_diags = if ((n.params.clone().len() as i64) > 0) {
             } else {
                 match n.inferred.clone() {
     Some(inf) => match (*inf.clone()).clone() {
-    InferredNode::Resolved { node: rn, .. } => check_bare_containers(&rn, module_name.clone()),
+    InferredNode::Resolved { node: rn, .. } => check_bare_containers(&rn, &module_name),
     _ => Rc::new(vec![]),
 },
     None => Rc::new(vec![]),
 }
             };
-let uses_diags = Rc::new({ let mut __result = Vec::new(); for u in n.uses.clone().iter().cloned() { __result.extend((*check_bare_containers(&u, module_name.clone())).iter().cloned()); } __result });
-let prop_diags = Rc::new({ let mut __result = Vec::new(); for p in n.properties.clone().iter().cloned() { __result.extend((*check_bare_containers(&p, module_name.clone())).iter().cloned()); } __result });
+let uses_diags = Rc::new({ let mut __result = Vec::new(); for u in n.uses.clone().iter().cloned() { __result.extend((*check_bare_containers(&u, &module_name)).iter().cloned()); } __result });
+let prop_diags = Rc::new({ let mut __result = Vec::new(); for p in n.properties.clone().iter().cloned() { __result.extend((*check_bare_containers(&p, &module_name)).iter().cloned()); } __result });
 Rc::new({ let mut __result = Vec::new(); for d in Rc::new(vec![self_diags, child_diags, param_diags, type_ann_diags, inferred_diags, body_diags, uses_diags, prop_diags]).iter().cloned() { __result.extend((*d.clone()).iter().cloned()); } __result })
 }
     })
@@ -71,7 +71,7 @@ pub fn normalize_graph(graph: &Rc<ModuleGraph>) -> Rc<NormalizeResult> {
     {
         let diags = Rc::new({ let mut __result = Vec::new(); for m in graph.modules.clone().iter().cloned() { __result.extend((*{
             let items = module_items(m.module.clone());
-Rc::new({ let mut __result = Vec::new(); for item in items.clone().iter().cloned() { __result.extend((*check_bare_containers(&item, m.module.clone().name.clone())).iter().cloned()); } __result })
+Rc::new({ let mut __result = Vec::new(); for item in items.clone().iter().cloned() { __result.extend((*check_bare_containers(&item, &m.module.clone().name.clone())).iter().cloned()); } __result })
 }).iter().cloned()); } __result });
 Rc::new(NormalizeResult {
     graph: graph.clone(),

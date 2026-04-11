@@ -121,7 +121,7 @@ access_result(unit_type(), &diags, span.clone(), "invalid index access".to_strin
 }
 }
 
-pub fn check_slice_access_node(base_type: Rc<Node>, start_type: Rc<Node>, end_type: Rc<Node>, span: &Rc<SourceSpan>, module_name: String, source_index: &Option<Rc<NewlineIndex>>) -> Rc<AccessCheckResultNode> {
+pub fn check_slice_access_node(base_type: Rc<Node>, start_type: Rc<Node>, end_type: Rc<Node>, span: &Rc<SourceSpan>, module_name: &String, source_index: &Option<Rc<NewlineIndex>>) -> Rc<AccessCheckResultNode> {
     {
         let normed_base = normalize_access_type_node(base_type);
 let base_is_string = node_type_equals(&normed_base, &string_type(), source_index.clone());

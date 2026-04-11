@@ -175,7 +175,7 @@ pub fn target_label(target: RenderTarget) -> String {
 }
 }
 
-pub fn checkpoint_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn checkpoint_tests(target: &RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> {
     {
         let label = target_label(target.clone());
 let cps = target_checkpoints(target.clone());
@@ -198,7 +198,7 @@ pub fn inhabitant_test_names() -> Rc<Vec<String>> {
     Rc::new(vec!["BooleanAlgebra".to_string(), "FreeMonoid".to_string(), "List".to_string(), "Map".to_string(), "NonEmptyList".to_string(), "NonEmptySet".to_string(), "PartialFunction".to_string(), "Set".to_string()])
 }
 
-pub fn inhabitant_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn inhabitant_tests(target: &RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> {
     {
         let label = target_label(target.clone());
 let assertions = Rc::new({ let mut __result = Vec::new(); for name in inhabitant_test_names().iter().cloned() { __result.extend((*match coerce_container_template(target.clone(), name.clone()) {
@@ -285,5 +285,5 @@ if ((assertions.clone().len() as i64) == 0) {
 }
 
 pub fn extract_coercion_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(checkpoint_tests(RenderTarget::Rust), checkpoint_tests(RenderTarget::Python)), checkpoint_tests(RenderTarget::Go)), inhabitant_tests(RenderTarget::Rust)), inhabitant_tests(RenderTarget::Python)), inhabitant_tests(RenderTarget::Go)), copy_tests()), template_application_tests())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(checkpoint_tests(&RenderTarget::Rust), checkpoint_tests(&RenderTarget::Python)), checkpoint_tests(&RenderTarget::Go)), inhabitant_tests(&RenderTarget::Rust)), inhabitant_tests(&RenderTarget::Python)), inhabitant_tests(&RenderTarget::Go)), copy_tests()), template_application_tests())
 }

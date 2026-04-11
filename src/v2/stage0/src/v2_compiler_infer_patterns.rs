@@ -172,7 +172,7 @@ pub fn variant_not_found_result(scrut: &Rc<Node>, variant_name: String, module_n
 }), module_name)]))
 }
 
-pub fn lookup_variant_in_type(scrut: Rc<PatternSubject>, variant_name: String, module_name: String, source_index: Option<Rc<NewlineIndex>>) -> Rc<NodeLookupResult> {
+pub fn lookup_variant_in_type(scrut: Rc<PatternSubject>, variant_name: &String, module_name: String, source_index: Option<Rc<NewlineIndex>>) -> Rc<NodeLookupResult> {
     match (*scrut).clone() {
     PatternSubject::PatternLookupBlocked => node_lookup_failed(Rc::new(vec![])),
     PatternSubject::PatternDynamic { span: dynamic_span, .. } => node_lookup_failed(Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::VariantNotFound {
@@ -206,7 +206,7 @@ match direct_match {
 }
 }
 
-pub fn lookup_field_in_variant(variant: Rc<PatternSubject>, field_name: String, module_name: String, source_index: Option<Rc<NewlineIndex>>) -> Rc<NodeLookupResult> {
+pub fn lookup_field_in_variant(variant: Rc<PatternSubject>, field_name: &String, module_name: String, source_index: Option<Rc<NewlineIndex>>) -> Rc<NodeLookupResult> {
     match (*variant).clone() {
     PatternSubject::PatternLookupBlocked => node_lookup_failed(Rc::new(vec![])),
     PatternSubject::PatternDynamic { span: dynamic_span, .. } => node_lookup_failed(Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::FieldNotFound {

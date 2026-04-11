@@ -44,13 +44,13 @@ pub struct CallEdge {
 
 pub fn collect_func_call_edges(items: Rc<Vec<Rc<Node>>>, local_func_set: Rc<HashMap<String, bool>>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<Rc<CallEdge>>> {
     Rc::new({ let mut __result = Vec::new(); for item in items.iter().cloned() { __result.extend((*if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) {
-        collect_calls_in_expr(item.name.clone(), &item.body.clone().clone().unwrap(), &local_func_set, &source_index)
+        collect_calls_in_expr(&item.name.clone(), &item.body.clone().clone().unwrap(), &local_func_set, &source_index)
     } else {
         Rc::new(vec![])
     }).iter().cloned()); } __result })
 }
 
-pub fn collect_calls_in_expr(caller: String, texpr: &Rc<Node>, local_func_set: &Rc<HashMap<String, bool>>, source_index: &Option<Rc<NewlineIndex>>) -> Rc<Vec<Rc<CallEdge>>> {
+pub fn collect_calls_in_expr(caller: &String, texpr: &Rc<Node>, local_func_set: &Rc<HashMap<String, bool>>, source_index: &Option<Rc<NewlineIndex>>) -> Rc<Vec<Rc<CallEdge>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let this_edges = match (*texpr.expr_data.clone()).clone() {
@@ -67,14 +67,14 @@ if emit_map_has(local_func_set.clone(), f.clone()) {
 },
     _ => Rc::new(vec![]),
 };
-let child_edges = Rc::new({ let mut __result = Vec::new(); for child in texpr.children.clone().iter().cloned() { __result.extend((*collect_calls_in_expr(caller.clone(), &child, &local_func_set, &source_index)).iter().cloned()); } __result });
+let child_edges = Rc::new({ let mut __result = Vec::new(); for child in texpr.children.clone().iter().cloned() { __result.extend((*collect_calls_in_expr(&caller, &child, &local_func_set, &source_index)).iter().cloned()); } __result });
 let result = v2_rt::concat(this_edges, child_edges);
 result
 }
     })
 }
 
-pub fn func_reaches_self(root: String, current: String, call_edges: &Rc<Vec<Rc<CallEdge>>>, visited: &Rc<HashMap<String, bool>>) -> bool {
+pub fn func_reaches_self(root: String, current: &String, call_edges: &Rc<Vec<Rc<CallEdge>>>, visited: &Rc<HashMap<String, bool>>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if emit_map_has(visited.clone(), current.clone()) {
             false
@@ -85,7 +85,7 @@ let callees = Rc::new({ let mut __result = Vec::new(); for e in Rc::new({ let mu
 { let mut __found = false; for c in callees.iter().cloned() { if if (c.clone().as_str() == root.clone().as_str()) {
                     true
                 } else {
-                    func_reaches_self(root.clone(), c.clone(), &call_edges, &next_visited)
+                    func_reaches_self(root.clone(), &c, &call_edges, &next_visited)
                 } { __found = true; break; } } __found }
 }
         }
