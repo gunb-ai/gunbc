@@ -288,9 +288,10 @@ Three layers, sequenced by dependency:
 | 3. Borrow propagation | 3-5 PRs | LS-4 design | ~15,000-18,000 clones |
 
 **Layer 1 (last-use elision):** For each binding with fan-out > 1,
-the last use site moves instead of cloning. The data exists in
-BindingUsage — the emitter just needs to track which use is last
-and skip the `.clone()`. Unblocked.
+the last use site moves instead of cloning. The ownership analysis
+has the span data, but threading it through the emit boundary requires
+stable binding identity (Track 3) — name-keyed fact tables collapse
+distinct bindings. Blocked on Track 3.
 
 **Layer 2 (post-TCO ownership):** TCO-eligible functions currently
 zero the movable set (conservative). Fix: run ownership after TCO
