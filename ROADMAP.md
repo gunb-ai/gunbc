@@ -396,8 +396,24 @@ First target: `gunbc/tools/review.dag` (PR review agent).
 |------|--------|
 | RE-1: Transport emission fidelity (REST, shell) | DONE (21/21) |
 | RE-2: review.dag compiles (dry-run) | DONE |
-| RE-3: review.dag passes live integration | Partial (auth_source pruning done; shell multi-field + wire format reverted) |
+| RE-3: review.dag passes live integration | Partial — PR #397 merged (CLI borrow, text responses, shell channels, standalone Cargo.toml). Remaining: emitter heuristics should become structural facts (see below). |
 | RE-4: Anthropic REST API end-to-end | Test added (requires ANTHROPIC_API_KEY) |
+
+**RE-3 deferred architectural items** (PR #397 review feedback, M4/M8 direction):
+- Shell channel contracts: `emit_shell_return` infers field semantics from
+  type shape and field name (Bool→exit code, "stderr"→stderr, String→stdout).
+  Upstream fix: extend `ShellTransportConfig` in `dsl/extdeps/transports/shell.dag`
+  with explicit channel→field mappings. No types exist yet for this.
+- WireFormat structural type: `emit_plain_response_body` infers text vs JSON
+  from output type shape. Upstream fix: add `WireFormat`/`ContentType` type to
+  `std.serialization` or a new module; attach to response blocks so the emitter
+  translates rather than guesses. REST transport has `content_type: String?`
+  but it is not leveraged by the emitter.
+- Qualified identity for `read_only_params_index`: currently keyed by bare
+  `item.name` strings. Should use module-qualified or stable interned identity
+  (Track 3 dependency).
+- Structural Cargo model: `emit_cargo_toml` uses raw string concatenation.
+  `dsl/extdeps/cargo.dag` defines `CargoPackage` but the emitter doesn't use it.
 
 ### Track 6: Algebra field dispatch (Lane A)
 
@@ -443,9 +459,12 @@ Additional duplication surfaced by review (PR #371, external audit):
   `BTreeMap::new()`. Pick one, delete the other.~~
   Resolved: standardized on HashMap; BTreeMap declarations in runtime.dag
   were dead code (PR #394).
-- `rt_function_registry` mirrors in rust/emit.dag: `rt_functions` and
+- ~~`rt_function_registry` mirrors in rust/emit.dag: `rt_functions` and
   `rt_bridge_function_names` are hand-maintained copies of data already
-  in the registry. Comments acknowledge the debt.
+  in the registry. Comments acknowledge the debt.~~
+  Resolved: both converted from `data` to computed `fn` using
+  filter/fold over `rt_function_registry`, matching the existing
+  pattern of `rt_ref_map_functions` and `rt_wraps_result`.
 - CallableOf coverage: `filter`, `any`, `all` now have CallableOf
   in their param_types (PR #379). `sort_by` deferred — its callback
   semantics are unresolved (key-extractor in primitives.dag vs
