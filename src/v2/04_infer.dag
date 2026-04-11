@@ -3724,9 +3724,40 @@ fn compose_output_relations(arg_rel: SubValueRelation, callee_rel: SubValueRelat
 }
 
 // Populate output provenance on resolved function signatures after body typing.
-// Currently a no-op until inference is enabled.
+// Lifts existing hardcoded knowledge from expr_child_roles, wrapper_child_roles,
+// and function_size_effects into output_provenance entries. Non-recursive (flat fold).
 fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv, type_env: TypeEnv, locals: Map<String, TypeBinding>) -> ResolvedFuncEnv {
-  func_env
+  let updated_sigs = fold(typed_items, init: func_env.signatures, f: (acc, item) =>
+    if item.params |> count > 0 {
+      let fn_name = item.name
+      if is_child_accessor_in_model(name: fn_name) || is_tree_size_reducing(func_name: fn_name) {
+        match item.params |> first {
+          Some { value: first_param } =>
+            let pname = param_node_name_at(n: first_param, source_index: type_env.source_index)
+            let ptype = resolved_type_name(n: first_param)
+            if ptype != "" && pname != "" {
+              let fields = inductive_fields_for(env: type_env, type_name: ptype)
+              let list_field = fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
+              match list_field {
+                Some { value: ind_field } =>
+                  let provenance = map_insert(empty_map(), "", map_insert(empty_map(), pname, StrictSubValue { field: ind_field, factor: UnitShrink }))
+                  match map_get(acc, fn_name) {
+                    Some { value: sig } =>
+                      map_insert(acc, fn_name, ResolvedFuncSig {
+                        name: sig.name, params: sig.params, inferred: sig.inferred,
+                        is_async: sig.is_async, output_provenance: provenance
+                      })
+                    None => acc
+                  }
+                None => acc
+              }
+            } else { acc }
+          None => acc
+        }
+      } else { acc }
+    } else { acc }
+  )
+  ResolvedFuncEnv { signatures: updated_sigs }
 }
 
 // Top-level: annotate a self-recursive function body with descent evidence.

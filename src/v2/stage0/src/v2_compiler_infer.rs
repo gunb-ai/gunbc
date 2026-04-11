@@ -3996,7 +3996,59 @@ pub fn compose_output_relations(arg_rel: Rc<SubValueRelation>, callee_rel: Rc<Su
 }
 
 pub fn populate_output_provenance(typed_items: Rc<Vec<Rc<Node>>>, func_env: Rc<ResolvedFuncEnv>, type_env: Rc<TypeEnv>, locals: Rc<HashMap<String, Rc<TypeBinding>>>) -> Rc<ResolvedFuncEnv> {
-    func_env
+    {
+        let updated_sigs = typed_items.iter().cloned().fold(func_env.signatures.clone(), |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, item: Rc<Node>| if ((item.params.clone().len() as i64) > 0) {
+            {
+                let fn_name = item.name.clone();
+if (is_child_accessor_in_model(fn_name.clone()) || is_tree_size_reducing(fn_name.clone())) {
+                    match item.params.clone().first().cloned() {
+    Some(first_param) => {
+                        let pname = param_node_name_at(first_param.clone(), type_env.source_index.clone());
+let ptype = resolved_type_name(&first_param);
+if ((ptype.clone().as_str() != "".to_string().as_str()) && (pname.clone().as_str() != "".to_string().as_str())) {
+                            {
+                                let fields = inductive_fields_for(type_env.clone(), ptype.clone());
+let list_field = Rc::new({ let mut __result = Vec::new(); for f in fields.clone().iter().cloned() { if match f.shape.clone() {
+    RecursionShape::ListRecursion => true,
+    _ => false,
+} { __result.push(f); } } __result }).first().cloned();
+match list_field.clone() {
+    Some(ind_field) => {
+                                    let provenance = v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<HashMap<String, Rc<SubValueRelation>>>>(), "".to_string(), v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<SubValueRelation>>(), pname.clone(), Rc::new(SubValueRelation::StrictSubValue {
+    field: ind_field.clone(),
+    factor: Rc::new(ShrinkFactor::UnitShrink),
+})));
+match v2_rt::map_get(&acc, fn_name.clone()) {
+    Some(sig) => v2_rt::rc_map_insert(acc.clone(), fn_name.clone(), Rc::new(ResolvedFuncSig {
+    name: sig.name.clone(),
+    params: sig.params.clone(),
+    inferred: sig.inferred.clone(),
+    is_async: sig.is_async.clone(),
+    output_provenance: provenance.clone(),
+})),
+    None => acc.clone(),
+}
+},
+    None => acc.clone(),
+}
+}
+                        } else {
+                            acc.clone()
+                        }
+},
+    None => acc.clone(),
+}
+                } else {
+                    acc.clone()
+                }
+}
+        } else {
+            acc.clone()
+        });
+Rc::new(ResolvedFuncEnv {
+    signatures: updated_sigs,
+})
+}
 }
 
 pub fn annotate_descent_evidence(body: Rc<Node>, fn_name: String, params: &Rc<Vec<Rc<Node>>>, type_env: &Rc<TypeEnv>, scope_locals: Rc<HashMap<String, Rc<TypeBinding>>>, func_sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>) -> Rc<Node> {
