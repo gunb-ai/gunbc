@@ -4705,18 +4705,18 @@ fn process(items: List<String>) -> Map<String, Bool> {
 
 #[test]
 fn python_div_uses_algebra_aware_dispatch() {
-    // Python: Div with algebra_field "reciprocal" → "/" (true division)
-    //         Div with algebra_field "quotient" → "//" (integer division)
+    // Python: Div with AlgReciprocal → "/" (true division)
+    //         Div with AlgQuotient → "//" (integer division)
     //         Div with no algebra_field → falls back to unconstrained (none exists → error)
     use v2_compiler::v2_compiler_languages::binop_symbol;
     use v2_compiler::v2_compiler_artifact::RenderTarget;
-    use v2_compiler::std_syntax::BinOp;
+    use v2_compiler::std_syntax::{BinOp, AlgebraFieldKind};
 
-    let py_recip = binop_symbol(RenderTarget::Python, BinOp::Div, Some("reciprocal".to_string()));
-    assert_eq!(py_recip, Some("/".to_string()), "Python Div+reciprocal → /");
+    let py_recip = binop_symbol(RenderTarget::Python, BinOp::Div, Some(AlgebraFieldKind::AlgReciprocal));
+    assert_eq!(py_recip, Some("/".to_string()), "Python Div+AlgReciprocal → /");
 
-    let py_quot = binop_symbol(RenderTarget::Python, BinOp::Div, Some("quotient".to_string()));
-    assert_eq!(py_quot, Some("//".to_string()), "Python Div+quotient → //");
+    let py_quot = binop_symbol(RenderTarget::Python, BinOp::Div, Some(AlgebraFieldKind::AlgQuotient));
+    assert_eq!(py_quot, Some("//".to_string()), "Python Div+AlgQuotient → //");
 }
 
 #[test]
@@ -4724,16 +4724,16 @@ fn go_rust_div_ignores_algebra_field() {
     // Go and Rust have single "/" with algebra_field: none → matches anything
     use v2_compiler::v2_compiler_languages::binop_symbol;
     use v2_compiler::v2_compiler_artifact::RenderTarget;
-    use v2_compiler::std_syntax::BinOp;
+    use v2_compiler::std_syntax::{BinOp, AlgebraFieldKind};
 
-    let go_recip = binop_symbol(RenderTarget::Go, BinOp::Div, Some("reciprocal".to_string()));
-    assert_eq!(go_recip, Some("/".to_string()), "Go Div+reciprocal → / (fallback to unconstrained)");
+    let go_recip = binop_symbol(RenderTarget::Go, BinOp::Div, Some(AlgebraFieldKind::AlgReciprocal));
+    assert_eq!(go_recip, Some("/".to_string()), "Go Div+AlgReciprocal → / (fallback to unconstrained)");
 
-    let go_quot = binop_symbol(RenderTarget::Go, BinOp::Div, Some("quotient".to_string()));
-    assert_eq!(go_quot, Some("/".to_string()), "Go Div+quotient → / (fallback to unconstrained)");
+    let go_quot = binop_symbol(RenderTarget::Go, BinOp::Div, Some(AlgebraFieldKind::AlgQuotient));
+    assert_eq!(go_quot, Some("/".to_string()), "Go Div+AlgQuotient → / (fallback to unconstrained)");
 
-    let rust_div = binop_symbol(RenderTarget::Rust, BinOp::Div, Some("reciprocal".to_string()));
-    assert_eq!(rust_div, Some("/".to_string()), "Rust Div+reciprocal → / (fallback to unconstrained)");
+    let rust_div = binop_symbol(RenderTarget::Rust, BinOp::Div, Some(AlgebraFieldKind::AlgReciprocal));
+    assert_eq!(rust_div, Some("/".to_string()), "Rust Div+AlgReciprocal → / (fallback to unconstrained)");
 }
 
 #[test]
@@ -4753,18 +4753,18 @@ fn mod_maps_to_remainder_algebra() {
 
 #[test]
 fn binop_algebra_fields_div_tries_reciprocal_then_quotient() {
-    // Div candidates: ["reciprocal", "quotient"] — Field types match first, Ring types second.
+    // Div candidates: [AlgReciprocal, AlgQuotient] — Field types match first, Ring types second.
     use v2_compiler::v2_compiler_infer_types::binop_algebra_fields;
-    use v2_compiler::std_syntax::BinOp;
+    use v2_compiler::std_syntax::{BinOp, AlgebraFieldKind};
 
     let div_fields = binop_algebra_fields(BinOp::Div);
     assert_eq!(div_fields.len(), 2);
-    assert_eq!(div_fields[0], "reciprocal", "Div primary: reciprocal (Field)");
-    assert_eq!(div_fields[1], "quotient", "Div fallback: quotient (Ring)");
+    assert_eq!(div_fields[0], AlgebraFieldKind::AlgReciprocal, "Div primary: AlgReciprocal (Field)");
+    assert_eq!(div_fields[1], AlgebraFieldKind::AlgQuotient, "Div fallback: AlgQuotient (Ring)");
 
     let mod_fields = binop_algebra_fields(BinOp::Mod);
     assert_eq!(mod_fields.len(), 1);
-    assert_eq!(mod_fields[0], "remainder", "Mod: remainder (was incorrectly 'add')");
+    assert_eq!(mod_fields[0], AlgebraFieldKind::AlgRemainder, "Mod: AlgRemainder");
 }
 
 // ── RE-1: Transport Emission Fidelity ───────────────────────────────────

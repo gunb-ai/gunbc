@@ -20,7 +20,8 @@ module v2.std.core
 import std.types { FilePath, NonEmptyStr, SourceSpan, kernel_type_set, is_kernel_type, container_type_arity, is_container_type, container_expected_arity }
 import std.syntax {
   BinOp, Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
-  LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull
+  LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
+  AlgebraFieldKind, AlgAdd, AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin
 }
 import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
 import std.induction { SubValueRelation }
@@ -191,13 +192,8 @@ type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError
 // All child Nodes live in node.children. ExprData retains only
 // non-Node metadata that identifies the expression kind.
 //
-// KNOWN DEBT (M8/M9): ExprBinOp.algebra_field uses String? for dispatch
-// (values: "add", "mul", "quotient", "reciprocal", "remainder"). This
-// should be a coproduct AlgebraFieldKind for structural dispatch. Fix path:
-//   1. Define AlgebraFieldKind in std/syntax.dag alongside OperatorSpec
-//   2. Update OperatorSpec.algebra_field: AlgebraFieldKind?
-//   3. Update ExprBinOp.algebra_field: AlgebraFieldKind?
-//   4. Update binop_algebra_fields, binop_symbol, first_matching_algebra_field
+// AlgebraFieldKind coproduct (Track 6): replaces former String? dispatch.
+// Defined in std/syntax.dag, used by ExprBinOp and OperatorSpec.
 type ExprData
   = NoExprData
   | ExprLiteral { value: LiteralValue }
@@ -211,7 +207,7 @@ type ExprData
   | ExprLet
   | ExprRecordLit { parent_enum: String? }
   | ExprListLit
-  | ExprBinOp { op: BinOp, algebra_field: String? }
+  | ExprBinOp { op: BinOp, algebra_field: AlgebraFieldKind? }
   | ExprUnaryOp { op: UnaryOpKind }
   | ExprLambda { semantics: LambdaSemantics? }
   | ExprStringInterp

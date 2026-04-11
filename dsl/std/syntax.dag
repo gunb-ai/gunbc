@@ -72,6 +72,15 @@ type ItemForm {
   body_kind: BodyKind
 }
 
+// -- Algebra field kind -----------------------------------------------
+// Which algebra field an operator dispatches through on the operand type.
+// Variants correspond 1:1 to field names on algebraic structure types
+// in std/algebra.dag (Ring.add, Field.reciprocal, OrderedRing.quotient, etc.).
+
+type AlgebraFieldKind
+  = AlgAdd | AlgMul | AlgReciprocal | AlgQuotient | AlgRemainder
+  | AlgCompare | AlgMeet | AlgJoin
+
 // -- Operator specification -------------------------------------------
 // One entry in the precedence table.
 
@@ -80,7 +89,7 @@ type OperatorSpec {
   left_bp: Int
   right_bp: Int
   binop: BinOp?
-  algebra_field: String?  // when present, matches only this algebra field on the operand type
+  algebra_field: AlgebraFieldKind?  // when present, matches only this algebra field on the operand type
 }
 
 // -- Full syntax specification ----------------------------------------

@@ -1047,12 +1047,11 @@ Each branch applies type-narrowing rules that should be declared on
 the function's signature, not hardcoded as name-matching in the
 inference engine.
 
-**6. Algebra — ExprBinOp.algebra_field: String?**
+**6. Algebra — ExprBinOp.algebra_field: AlgebraFieldKind?** (RESOLVED)
 
-Documented as known debt (M8/M9). Binary operator algebra dispatch
-uses `algebra_field: String?` with values "add", "mul", "quotient",
-etc. Every consumer (inference, emit, complexity) matches on these
-strings instead of a proper AlgebraFieldKind coproduct.
+Resolved: `algebra_field` now uses the structural `AlgebraFieldKind`
+coproduct defined in `std/syntax.dag`. All producers and consumers
+updated to use structural dispatch instead of string matching.
 
 ### The pattern
 

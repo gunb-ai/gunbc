@@ -13,7 +13,8 @@ import std.syntax {
   BodyKind, BlockBody, TypeBody, NoBody,
   OperatorSpec,
   BinOp, Add, Sub, Mul, Div, Mod,
-  Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce
+  Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
+  AlgebraFieldKind, AlgReciprocal, AlgQuotient
 }
 
 // Python emission item forms — target keywords for .dag→Python compilation.
@@ -55,7 +56,7 @@ data python_operators: List<OperatorSpec> = [
   // Div is algebra-aware: Float (Field) → true division "/",
   // Int (OrderedRing) → integer division "//".
   // Ref: Python Reference §6.7 "Binary arithmetic operations"
-  OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: Div, algebra_field: Some { value: "reciprocal" } },
-  OperatorSpec { symbol: "//", left_bp: 15, right_bp: 16, binop: Div, algebra_field: Some { value: "quotient" } },
+  OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: Div, algebra_field: Some { value: AlgReciprocal } },
+  OperatorSpec { symbol: "//", left_bp: 15, right_bp: 16, binop: Div, algebra_field: Some { value: AlgQuotient } },
   OperatorSpec { symbol: "%", left_bp: 15, right_bp: 16, binop: Mod, algebra_field: none }
 ]

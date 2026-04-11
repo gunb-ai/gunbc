@@ -11,7 +11,7 @@ use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
 pub use crate::v2_std_core::{BinOp, LiteralValue};
 use crate::v2_std_core::BinOp::{Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce};
 use crate::v2_std_core::LiteralValue::*;
-pub use crate::std_syntax::{ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec, BodyKind};
+pub use crate::std_syntax::{ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec, BodyKind, AlgebraFieldKind};
 use crate::std_syntax::ItemFormKind::{FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm};
 use crate::std_syntax::BodyKind::{ExprBody, BlockBody, TypeBody, ValueBody, NoBody, ServiceBody, ResourceBody};
 pub use crate::extdeps_languages_rust_syntax::{rust_operators, rust_item_forms};
@@ -621,16 +621,16 @@ pub fn target_operators(target: RenderTarget) -> Rc<Vec<Rc<OperatorSpec>>> {
 }
 }
 
-pub fn binop_symbol(target: RenderTarget, op: BinOp, algebra_field: Option<String>) -> Option<String> {
+pub fn binop_symbol(target: RenderTarget, op: BinOp, algebra_field: Option<AlgebraFieldKind>) -> Option<String> {
     {
         let ops = target_operators(target);
 let op_matching = Rc::new({ let mut __result = Vec::new(); for spec in ops.iter().cloned() { if match spec.binop.clone() {
     Some(b) => (b.clone() == op.clone()),
     None => false,
 } { __result.push(spec); } } __result });
-let specific = match algebra_field {
+let specific = match algebra_field.clone() {
     Some(af) => Rc::new({ let mut __result = Vec::new(); for spec in op_matching.clone().iter().cloned() { if match spec.algebra_field.clone() {
-    Some(sf) => (sf.clone().as_str() == af.clone().as_str()),
+    Some(sf) => (sf == af),
     _ => false,
 } { __result.push(spec); } } __result }).first().cloned(),
     None => None,
