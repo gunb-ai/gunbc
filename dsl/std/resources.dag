@@ -11,7 +11,8 @@
 
 module std.resources
 
-import std.types { Timestamp, FilePath, TextFilePath, FileClassification }
+import std.filesystem { FileClassification }
+import std.types { Timestamp, FilePath, TextFilePath }
 
 // Opaque proof of resource acquisition. Only the compiler's acquire
 // nodes can mint these -- user code cannot construct handles directly.

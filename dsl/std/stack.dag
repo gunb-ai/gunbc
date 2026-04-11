@@ -1,41 +1,36 @@
 // std/stack.dag -- Persistent LIFO stack (cons list).
 //
-// A Stack is a recursive coproduct: either Empty or a Push of an
-// element onto another Stack. This is the fundamental persistent
-// data structure for LIFO access patterns.
+// Stack<T> inhabits FreeMonoid<T>: finite sequence under concatenation.
+// The cons-list representation gives different cost characteristics than
+// the array-backed FreeMonoid (List):
 //
-// COST MODEL:
-//   push:     O(1) — construct Push node
-//   pop:      O(1) — return rest
-//   peek:     O(1) — return top
-//   is_empty: O(1) — match on variant
-//   size:     O(n) — fold over stack
-//   to_list:  O(n) — fold, reversed
+//   FreeMonoid operation    Stack (cons-list)    List (array)
+//   ─────────────────────   ─────────────────    ────────────
+//   append (push/prepend)   O(1)                 O(n)
+//   first (peek)            O(1)                 O(1)
+//   rest (pop)              O(1)                 O(n)
+//   concat                  O(n)                 O(1) amortized
+//   index                   O(n)                 O(1)
+//   length                  O(n)                 O(1)
+//   fold                    O(n)                 O(n)
 //
-// WHY NOT LIST?
-//   List is backed by an array (Vec in Rust). Append is O(1) amortized,
-//   but prepend and remove-last are O(n) because they copy the array.
-//   Stack is a linked list — push/pop are O(1) by construction.
-//
-//   Use List when you need indexed access or iteration over all elements.
-//   Use Stack when you need LIFO push/pop (call stacks, undo history,
-//   parsing state, depth-first traversal).
+// Use Stack when you need LIFO push/pop (call stacks, undo history,
+// parsing state, depth-first traversal).
+// Use List when you need indexed access or append.
 //
 // DECIDABILITY:
 //   Stack is inductively defined. Every Stack is finite because:
 //   - Empty has 0 elements
 //   - Push { top, rest } has 1 + |rest| elements
 //   There is no constructor for infinite stacks.
-//   fold_stack is bounded by |stack| — same as fold on List.
-//
-// RELATIONSHIP TO COMPOSITION STACK:
-//   Layer 4 (structural compositions). Stack complements List (Layer 3)
-//   as a persistent structure optimized for different access patterns.
+//   fold is bounded by |stack| — same as fold on List.
 
 module std.stack
 
+import std.algebra { FreeMonoid }
+
 // =========================================================================
-// Stack type — recursive coproduct
+// Stack type — recursive coproduct (cons-list representation of FreeMonoid)
 // =========================================================================
 
 type Stack<T>
@@ -43,71 +38,70 @@ type Stack<T>
   | Push { top: T, rest: Stack<T> }
 
 // =========================================================================
-// Core operations — all O(1)
+// FreeMonoid witness — Stack operations mapped to FreeMonoid vocabulary
 // =========================================================================
 
-fn stack_push<T>(stack: Stack<T>, value: T) -> Stack<T> {
+// FreeMonoid.append: O(1) — construct Push node
+fn append<T>(stack: Stack<T>, value: T) -> Stack<T> {
   Push { top: value, rest: stack }
 }
 
-fn stack_pop<T>(stack: Stack<T>) -> Stack<T> {
-  match stack {
-    Empty => Empty
-    Push { top: _, rest: r } => r
-  }
-}
+// FreeMonoid.empty: Stack<T> = Empty (the identity element)
 
-fn stack_peek<T>(stack: Stack<T>) -> T? {
+// FreeMonoid.first: O(1) — return top element
+fn first<T>(stack: Stack<T>) -> T? {
   match stack {
     Empty => none
     Push { top: t, rest: _ } => Some { value: t }
   }
 }
 
-fn stack_is_empty<T>(stack: Stack<T>) -> Bool {
+// rest: O(1) — return stack without top (pop)
+fn rest<T>(stack: Stack<T>) -> Stack<T> {
   match stack {
-    Empty => true
-    Push { top: _, rest: _ } => false
+    Empty => Empty
+    Push { top: _, rest: r } => r
   }
 }
 
-// =========================================================================
-// Derived operations — O(n)
-// =========================================================================
-
-fn stack_size<T>(stack: Stack<T>) -> Int {
+// FreeMonoid.length: O(n) — count elements
+fn length<T>(stack: Stack<T>) -> Int {
   match stack {
     Empty => 0
-    Push { top: _, rest: r } => 1 + stack_size(stack: r)
+    Push { top: _, rest: r } => 1 + length(stack: r)
   }
 }
 
-fn stack_to_list<T>(stack: Stack<T>) -> List<T> {
-  // Produces elements in LIFO order (top first).
-  match stack {
-    Empty => []
-    Push { top: t, rest: r } => [t] |> concat(stack_to_list(stack: r))
-  }
-}
-
-fn list_to_stack<T>(items: List<T>) -> Stack<T> {
-  // First element of list becomes bottom of stack;
-  // last element becomes top.
-  fold(items, Empty, fn(stack, item) { stack_push(stack: stack, value: item) })
-}
-
-// =========================================================================
-// fold_stack — the bounded iteration primitive for Stack
-//
+// FreeMonoid.fold: O(n) — the bounded iteration primitive for Stack.
 // Process each element top-to-bottom. Bounded by |stack|.
-// This is the Stack analogue of fold on List.
-//
-// Cost: O(|stack| × per_element_cost)
-// =========================================================================
-
-fn fold_stack<T, B>(stack: Stack<T>, init: B, f: fn(B, T) -> B) -> B {
+fn fold<T, B>(stack: Stack<T>, init: B, f: fn(B, T) -> B) -> B {
   match stack {
     Empty => init
-    Push { top: t, rest: r } => fold_stack(stack: r, init: f(init, t), f: f)
+    Push { top: t, rest: r } => fold(stack: r, init: f(init, t), f: f)
   }
 }
+
+// =========================================================================
+// Conversion — homomorphism between Stack and List (both FreeMonoid<T>)
+// =========================================================================
+
+fn to_list<T>(stack: Stack<T>) -> List<T> {
+  match stack {
+    Empty => []
+    Push { top: t, rest: r } => [t] |> concat(to_list(stack: r))
+  }
+}
+
+fn from_list<T>(items: List<T>) -> Stack<T> {
+  fold(items, Empty, fn(stack, item) { append(stack: stack, value: item) })
+}
+
+// Stack<T> inhabits FreeMonoid<T>:
+//   empty    = Empty
+//   append   = append (Push constructor)
+//   first    = first (peek at top)
+//   fold     = fold (top-to-bottom catamorphism)
+//   length   = length (structural recursion)
+//   to_list  = the unique FreeMonoid homomorphism Stack<T> → List<T>
+// Data declaration deferred: compiler does not yet emit generic type
+// parameters for data constants (FreeMonoid<T> instance).

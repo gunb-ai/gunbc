@@ -1,9 +1,138 @@
-// std/encoding.dag -- Character encoding vocabulary.
+// std/encoding.dag -- Character encoding lattice.
 //
-// Encoding lattice for classifying byte-sequence interpretation.
-// This is a type-level vocabulary; the lattice structure
-// (subtyping, join, meet) is defined in the Rust ContentEncoding enum.
+// Single authority for byte-sequence interpretation classification.
+// The lattice enables compile-time narrowing at I/O boundaries.
+//
+//            Unknown (top)
+//           /       \
+//        Text      Binary
+//       /    \
+//    UTF8   Latin1
+//       \    /
+//       ASCII (bottom)
+//
+// Lattice: join(UTF8, Binary) = Unknown, ASCII <: UTF8, ASCII <: Latin1
+//
+// The compiler uses Encoding to:
+//   1. Verify domain compatibility at I/O boundaries (compile-time)
+//   2. Generate coproduct branch scenarios in tests (text vs binary)
+//   3. Produce diverse mock file lists from @file_types rules
 
 module std.encoding
 
-type Encoding = ASCII | UTF8 | Latin1 | Text | Binary | Unknown
+type Encoding
+  = ASCII                          // 7-bit subset (bottom: most specific)
+  | UTF8                           // valid Unicode
+  | Latin1                         // ISO 8859-1
+  | Text                           // some text encoding (join of UTF8, Latin1)
+  | Binary                         // opaque byte sequence
+  | Unknown                        // top: could be anything
+
+// Encoding inhabits BoundedLattice<Encoding>
+//
+// Partial order (not total): UTF8 and Latin1 are incomparable,
+// Text and Binary are incomparable. ASCII is bottom, Unknown is top.
+
+// Numeric rank within the text chain. Used by meet/join for
+// comparisons within the text subtree.
+fn encoding_rank(e: Encoding) -> Int {
+  match e {
+    ASCII => 0
+    UTF8 => 1
+    Latin1 => 1
+    Text => 2
+    Binary => 2
+    Unknown => 3
+  }
+}
+
+// Is this encoding in the text branch (ASCII, UTF8, Latin1, Text)?
+fn is_text_encoding(e: Encoding) -> Bool {
+  match e {
+    ASCII => true
+    UTF8 => true
+    Latin1 => true
+    Text => true
+    Binary => false
+    Unknown => false
+  }
+}
+
+// BoundedLattice.meet: greatest lower bound (conservative narrowing).
+// meet(x, x) = x. For incompatible branches (text vs binary), result is ASCII.
+fn encoding_meet(a: Encoding, b: Encoding) -> Encoding {
+  match a {
+    Unknown => b
+    ASCII => ASCII
+    Binary => match b {
+      Binary => Binary
+      Unknown => Binary
+      _ => ASCII
+    }
+    UTF8 => match b {
+      Unknown => UTF8
+      Text => UTF8
+      UTF8 => UTF8
+      _ => ASCII
+    }
+    Latin1 => match b {
+      Unknown => Latin1
+      Text => Latin1
+      Latin1 => Latin1
+      _ => ASCII
+    }
+    Text => match b {
+      Unknown => Text
+      Text => Text
+      UTF8 => UTF8
+      Latin1 => Latin1
+      ASCII => ASCII
+      Binary => ASCII
+    }
+  }
+}
+
+// BoundedLattice.join: least upper bound (combining from branches).
+// join(x, x) = x. For incompatible branches (text vs binary), result is Unknown.
+fn encoding_join(a: Encoding, b: Encoding) -> Encoding {
+  match a {
+    ASCII => b
+    Unknown => Unknown
+    Binary => match b {
+      Binary => Binary
+      ASCII => Binary
+      Unknown => Unknown
+      _ => Unknown
+    }
+    UTF8 => match b {
+      ASCII => UTF8
+      UTF8 => UTF8
+      Latin1 => Text
+      Text => Text
+      Unknown => Unknown
+      Binary => Unknown
+    }
+    Latin1 => match b {
+      ASCII => Latin1
+      Latin1 => Latin1
+      UTF8 => Text
+      Text => Text
+      Unknown => Unknown
+      Binary => Unknown
+    }
+    Text => match b {
+      ASCII => Text
+      UTF8 => Text
+      Latin1 => Text
+      Text => Text
+      Unknown => Unknown
+      Binary => Unknown
+    }
+  }
+}
+
+// BoundedLattice<Encoding>:
+//   meet = encoding_meet, join = encoding_join
+//   top = Unknown, bottom = ASCII
+// Data declaration deferred: compiler does not yet emit generic type
+// parameters for data constants (BoundedLattice<Encoding>).

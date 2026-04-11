@@ -441,8 +441,8 @@ described but not structurally modeled in .dag:
 
 | Item | Current state | Fix |
 |------|--------------|-----|
-| Encoding lattice | `dsl/std/encoding.dag` names the lattice but delegates to Rust's `ContentEncoding` | Model join/meet in .dag; reconcile `Encoding` and `ContentEncoding` to one authority |
-| Stack<T> → FreeMonoid | `dsl/std/stack.dag` defines bespoke push/pop/fold_stack instead of attaching to FreeMonoid | Import algebra.dag; Stack IS FreeMonoid |
+| Encoding lattice | **DONE** — consolidated to `Encoding` in encoding.dag with BoundedLattice meet/join; `ContentEncoding` deleted; `FileClassification` moved to filesystem.dag | — |
+| Stack\<T\> → FreeMonoid | **DONE** — imports algebra.dag; operations aligned to FreeMonoid vocabulary; inhabitation declared | — |
 | User-defined generic emission | Generic functions (T, V, K params) parse and type-check but emit unresolved type variables in Rust | Emitter needs monomorphization or generic Rust output |
 
 ### Track 10: Extdeps modeling fidelity (Lane D)
@@ -452,13 +452,13 @@ audit (2026-04-10):
 
 | Item | File | Fix |
 |------|------|-----|
-| `GitHubAuthToken.scopes: List<String>` | extdeps/github/github.dag | Use existing `GitHubScope` enum in same file |
-| `ThinkingConfig.type: String` | extdeps/llm/anthropic.dag | Structural coproduct |
-| `LlmMessage.content: String` | extdeps/llm/llm.dag | Richer multimodal block structure (M1) |
-| `Gist.files: List<GistFile>` | extdeps/github/gists.dag | `Map<String, GistFile>` per API shape |
+| `GitHubAuthToken.scopes: List<String>` | extdeps/github/github.dag | **Previously done** — uses `GitHubScope` enum |
+| `ThinkingConfig.type: String` | extdeps/llm/anthropic.dag | **DONE** — `ThinkingMode = Enabled \| Disabled` |
+| `LlmMessage.content: String` | extdeps/llm/llm.dag | **DONE** — `List<ContentBlock>` with `TextContent \| ImageContent` |
+| `Gist.files: List<GistFile>` | extdeps/github/gists.dag | **Previously done** — `Map<String, GistFile>` |
 | OpenAI string-path extraction | extdeps/llm/openai.dag | Structural field access (M8) |
-| Policy defaults in `CloudSecretConfig` | std/types.dag | Move `"latest"`, `"sigstore"`, `Bearer` to call sites |
-| `ProjectId` vs `GcpProjectId` | std/types.dag | Reconcile to one branded type |
+| Policy defaults in `CloudSecretConfig` | std/types.dag | **DONE** — dead type deleted; operations define own inputs |
+| `ProjectId` vs `GcpProjectId` | std/types.dag | **DONE** — renamed to `GcpProjectId`; 5 dead types deleted |
 
 ---
 

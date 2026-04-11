@@ -17,9 +17,22 @@ module extdeps.llm.llm
 
 type Role = LlmSystem | LlmUser | LlmAssistant | LlmTool
 
+// -- Content blocks (shared across providers) ----------------------
+// Both Anthropic and OpenAI support rich multimodal content.
+// Provider-specific block types (tool use, etc.) live in
+// anthropic.dag / openai.dag.
+
+type ImageSource
+  = Base64Image { media_type: String, data: String }
+  | UrlImage { url: String }
+
+type ContentBlock
+  = TextContent { text: String }
+  | ImageContent { source: ImageSource }
+
 type LlmMessage {
   role: Role
-  content: String
+  content: List<ContentBlock>
 }
 
 // -- Token accounting ----------------------------------------------
