@@ -428,16 +428,24 @@ These dissolve as types move to `std/` and carry structural facts
 metadata or annotations.
 
 Additional duplication surfaced by review (PR #371, external audit):
-- `emit_rust_default_value` (05_emit_rust.dag) is a hand-written
-  if-forest over type names. `TypeCheckpoint.default_expr` already
-  carries the same defaults. Fix: read from checkpoint data.
-- `rust_type_map` (extdeps/languages/rust/emit.dag) duplicates the
-  primitive mapping in `rust_type_checkpoints`. Same for Go/Python.
-  Fix: derive from TypeCheckpoint only.
-- `go_source_extension` in extdeps/languages/go/emit.dag duplicates
-  `go_scaffold.source_file_extension` in std/languages.dag.
+- ~~`emit_rust_default_value`~~ DISSOLVED (PR #377) — reads from
+  `TypeCheckpoint.default_expr` instead of hand-coded type dispatch.
+- ~~`rust_type_map` / `python_type_map` / `go_type_map`~~ DISSOLVED
+  (PR #377) — dead code deleted, all three had zero callers after
+  migration to `*_type_checkpoints`.
+- ~~`go_source_extension` in extdeps/languages/go/emit.dag duplicates
+  `go_scaffold.source_file_extension` in std/languages.dag.~~
+  Resolved: duplicate deleted (PR #394).
 - `keyword_to_name` in 02_parse.dag duplicates the tokenizer keyword
   table. Reconcile to single authority.
+- ~~HashMap vs BTreeMap disagreement: `map_template` in std/languages.dag
+  says `HashMap<{0},{1}>` but `empty_map` in rust/emit.dag uses
+  `BTreeMap::new()`. Pick one, delete the other.~~
+  Resolved: standardized on HashMap; BTreeMap declarations in runtime.dag
+  were dead code (PR #394).
+- `rt_function_registry` mirrors in rust/emit.dag: `rt_functions` and
+  `rt_bridge_function_names` are hand-maintained copies of data already
+  in the registry. Comments acknowledge the debt.
 - CallableOf coverage: `filter`, `any`, `all` now have CallableOf
   in their param_types (PR #379). `sort_by` deferred — its callback
   semantics are unresolved (key-extractor in primitives.dag vs

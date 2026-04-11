@@ -116,8 +116,11 @@ mod compiler_tests {
             "dsl/gunbc/auth/credentials.dag",
             "dsl/gunbc/tools/gist.dag",
             "dsl/std/algebra.dag",
+            "dsl/std/encoding.dag",
             "dsl/std/errors.dag",
+            "dsl/std/filesystem.dag",
             "dsl/std/resources.dag",
+            "dsl/std/serialization.dag",
             "dsl/std/types.dag",
         ];
         let root = workspace_root();
@@ -578,8 +581,6 @@ mod compiler_tests {
         assert_eq!(coerce_container_template(RenderTarget::Rust, "FreeMonoid".into()), Some("Vec<{0}>".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Rust, "List".into()), Some("Vec<{0}>".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Rust, "Map".into()), Some("HashMap<{0}, {1}>".to_string()));
-        assert_eq!(coerce_container_template(RenderTarget::Rust, "NonEmptyList".into()), Some("Vec<{0}>".to_string()));
-        assert_eq!(coerce_container_template(RenderTarget::Rust, "NonEmptySet".into()), Some("std::collections::BTreeSet<{0}>".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Rust, "PartialFunction".into()), Some("HashMap<{0}, {1}>".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Rust, "Set".into()), Some("std::collections::BTreeSet<{0}>".to_string()));
     }
@@ -592,8 +593,6 @@ mod compiler_tests {
         assert_eq!(coerce_container_template(RenderTarget::Python, "FreeMonoid".into()), Some("list[{0}]".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Python, "List".into()), Some("list[{0}]".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Python, "Map".into()), Some("dict[{0}, {1}]".to_string()));
-        assert_eq!(coerce_container_template(RenderTarget::Python, "NonEmptyList".into()), Some("list[{0}]".to_string()));
-        assert_eq!(coerce_container_template(RenderTarget::Python, "NonEmptySet".into()), Some("set[{0}]".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Python, "PartialFunction".into()), Some("dict[{0}, {1}]".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Python, "Set".into()), Some("set[{0}]".to_string()));
     }
@@ -606,8 +605,6 @@ mod compiler_tests {
         assert_eq!(coerce_container_template(RenderTarget::Go, "FreeMonoid".into()), Some("[]{0}".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Go, "List".into()), Some("[]{0}".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Go, "Map".into()), Some("map[{0}]{1}".to_string()));
-        assert_eq!(coerce_container_template(RenderTarget::Go, "NonEmptyList".into()), Some("[]{0}".to_string()));
-        assert_eq!(coerce_container_template(RenderTarget::Go, "NonEmptySet".into()), Some("map[{0}]struct{}".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Go, "PartialFunction".into()), Some("map[{0}]{1}".to_string()));
         assert_eq!(coerce_container_template(RenderTarget::Go, "Set".into()), Some("map[{0}]struct{}".to_string()));
     }

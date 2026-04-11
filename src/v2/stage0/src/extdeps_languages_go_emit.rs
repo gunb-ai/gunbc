@@ -30,8 +30,6 @@ pub fn go_container_templates() -> Rc<HashMap<String, String>> {
             let mut __m = HashMap::new();
             __m.insert("list".to_string(), "[]{0}".to_string());
             __m.insert("set".to_string(), "map[{0}]struct{}".to_string());
-            __m.insert("non_empty_list".to_string(), "[]{0}".to_string());
-            __m.insert("non_empty_set".to_string(), "map[{0}]struct{}".to_string());
             __m.insert("optional".to_string(), "*{0}".to_string());
             __m.insert("map".to_string(), "map[{0}]{1}".to_string());
             __m.insert("free_monoid".to_string(), "[]{0}".to_string());
@@ -155,15 +153,6 @@ pub fn go_import_from_keyword() -> String {
     thread_local! {
         static CACHED: String = {
             "".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
-pub fn go_source_extension() -> String {
-    thread_local! {
-        static CACHED: String = {
-            ".go".to_string()
         };
     }
     CACHED.with(|c| c.clone())

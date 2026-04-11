@@ -365,15 +365,7 @@ match field_type_name.clone().as_str() {
     shape: RecursionShape::ListRecursion,
     element_type: elem,
 })),
-    "NonEmptyList" => Some(Rc::new(FieldRecursionResult {
-    shape: RecursionShape::ListRecursion,
-    element_type: elem,
-})),
     "Set" => Some(Rc::new(FieldRecursionResult {
-    shape: RecursionShape::SetRecursion,
-    element_type: elem,
-})),
-    "NonEmptySet" => Some(Rc::new(FieldRecursionResult {
     shape: RecursionShape::SetRecursion,
     element_type: elem,
 })),

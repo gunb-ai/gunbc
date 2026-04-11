@@ -9,7 +9,7 @@ use crate::NonEmptyBTreeSet;
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
 pub use crate::std_coercion::{TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax};
-pub use crate::std_types::{container_to_algebra_name, container_to_algebra};
+pub use crate::std_types::{container_to_algebra_name, container_to_algebra, canonical_container_names};
 pub use crate::extdeps_languages_rust_types::{rust_type_checkpoints, rust_algebra_inhabitants, rust_callable, rust_optional_template, rust_cast_syntax};
 pub use crate::extdeps_languages_python_types::{python_type_checkpoints, python_algebra_inhabitants, python_callable, python_optional_template, python_cast_syntax};
 pub use crate::extdeps_languages_go_types::{go_type_checkpoints, go_algebra_inhabitants, go_callable, go_optional_template, go_cast_syntax};
@@ -195,7 +195,7 @@ if ((cps.clone().len() as i64) == 0) {
 }
 
 pub fn inhabitant_test_names() -> Rc<Vec<String>> {
-    Rc::new(vec!["BooleanAlgebra".to_string(), "FreeMonoid".to_string(), "List".to_string(), "Map".to_string(), "NonEmptyList".to_string(), "NonEmptySet".to_string(), "PartialFunction".to_string(), "Set".to_string()])
+    canonical_container_names()
 }
 
 pub fn inhabitant_tests(target: &RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> {

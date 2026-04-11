@@ -434,9 +434,7 @@ fn classify_field_recursion(field_node: Node, parent_name: String, recursive_typ
       let elem = if value_type == parent_name { parent_name } else { value_type }
       match field_type_name {
         "List" => Some { value: FieldRecursionResult { shape: ListRecursion, element_type: elem } }
-        "NonEmptyList" => Some { value: FieldRecursionResult { shape: ListRecursion, element_type: elem } }
         "Set" => Some { value: FieldRecursionResult { shape: SetRecursion, element_type: elem } }
-        "NonEmptySet" => Some { value: FieldRecursionResult { shape: SetRecursion, element_type: elem } }
         "Map" => Some { value: FieldRecursionResult { shape: MapValueRecursion, element_type: elem } }
         _ => none
       }

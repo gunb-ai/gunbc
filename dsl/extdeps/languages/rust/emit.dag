@@ -30,7 +30,6 @@ data rust_keywords: Map<String, String> = {
 // templates and the rc_types predicate.
 data rust_container_templates: Map<String, String> = {
   "list": "Vec<\{0\}>", "set": "std::collections::BTreeSet<\{0\}>",
-  "non_empty_list": "NonEmptyVec<\{0\}>", "non_empty_set": "NonEmptyBTreeSet<\{0\}>",
   "optional": "Option<\{0\}>", "map": "HashMap<\{0\}, \{1\}>",
   "free_monoid": "Vec<\{0\}>", "partial_function": "HashMap<\{0\}, \{1\}>",
   "boolean_algebra": "bool"

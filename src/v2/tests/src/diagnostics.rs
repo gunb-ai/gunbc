@@ -251,3 +251,9 @@ fn clean_compile_produces_zero_diagnostics() {
         diagnostic_messages(&result)
     );
 }
+
+// NOTE: NonEmptyList and NonEmptySet were removed from metadata tables
+// but the compiler does not yet reject undeclared type names in field
+// positions (no unresolved-type diagnostic). Negative tests for
+// fail-closed behavior deferred until the resolve stage emits
+// diagnostics for unresolved type references.

@@ -5,5 +5,3 @@
 module std.cloud
 
 type CloudRuntime = GitHubActions | Metadata | LocalDev
-
-type AuthScheme = Bearer | Header | Basic
