@@ -56,8 +56,7 @@ pub fn resolve_modules(modules: Rc<Vec<Rc<Node>>>, source_indices: Rc<HashMap<St
         let dup_diags = check_duplicate_modules(modules.clone());
 let module_index = modules.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, m: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), m.name.clone(), m.clone()));
 let export_sets = modules.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(), |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, m: Rc<Node>| {
-            let source_index = v2_rt::map_get(&source_indices, m.span.clone().file.clone());
-let exported = get_exported_names(m.clone(), source_index.clone());
+            let exported = get_exported_names(m.clone(), source_indices.clone());
 let exported_set = exported.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |inner_acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(inner_acc.clone(), name.clone(), true));
 v2_rt::rc_map_insert(acc.clone(), m.name.clone(), exported_set.clone())
 });
@@ -65,8 +64,7 @@ let resolve_accum = modules.clone().iter().cloned().fold(Rc::new(ResolveAccum {
     imports_by_name: v2_rt::rc_empty_map::<Rc<Vec<Rc<ResolvedImport>>>>(),
     diagnostics: Rc::new(vec![]),
 }), |acc: Rc<ResolveAccum>, m: Rc<Node>| { let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone()); {
-            let source_index = v2_rt::map_get(&source_indices, m.span.clone().file.clone());
-let result = resolve_module_imports(m.clone(), module_index.clone(), export_sets.clone(), source_index.clone());
+            let result = resolve_module_imports(m.clone(), module_index.clone(), export_sets.clone(), source_indices.clone());
 Rc::new(ResolveAccum {
     imports_by_name: v2_rt::rc_map_insert(acc.imports_by_name, m.name.clone(), result.resolved_imports.clone()),
     diagnostics: v2_rt::concat(acc.diagnostics, result.diagnostics.clone()),
@@ -110,9 +108,9 @@ pub struct ModuleResolveResult {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn resolve_module_imports(module: Rc<Node>, module_index: Rc<HashMap<String, Rc<Node>>>, export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, source_index: Option<Rc<NewlineIndex>>) -> Rc<ModuleResolveResult> {
+pub fn resolve_module_imports(module: Rc<Node>, module_index: Rc<HashMap<String, Rc<Node>>>, export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<ModuleResolveResult> {
     {
-        let results = Rc::new({ let mut __result = Vec::new(); for imp in module_imports(module.clone()).iter().cloned() { __result.push(resolve_import(imp.clone(), module_index.clone(), module.name.clone(), export_sets.clone(), source_index.clone())); } __result });
+        let results = Rc::new({ let mut __result = Vec::new(); for imp in module_imports(module.clone()).iter().cloned() { __result.push(resolve_import(imp.clone(), module_index.clone(), module.name.clone(), export_sets.clone(), source_indices.clone())); } __result });
 let resolved = Rc::new({ let mut __result = Vec::new(); for r in Rc::new({ let mut __result = Vec::new(); for r in results.clone().iter().cloned() { if ((r.resolved.clone().target_module.clone() != None) && ((r.diagnostics.clone().len() as i64) == 0)) { __result.push(r); } } __result }).iter().cloned() { __result.push(r.resolved.clone()); } __result });
 let diags = Rc::new({ let mut __result = Vec::new(); for r in results.clone().iter().cloned() { __result.extend((*r.diagnostics.clone()).iter().cloned()); } __result });
 Rc::new(ModuleResolveResult {
@@ -128,7 +126,7 @@ pub struct ImportResolveResult {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn resolve_import(import: Rc<Node>, module_index: Rc<HashMap<String, Rc<Node>>>, importing_module: String, export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, source_index: Option<Rc<NewlineIndex>>) -> Rc<ImportResolveResult> {
+pub fn resolve_import(import: Rc<Node>, module_index: Rc<HashMap<String, Rc<Node>>>, importing_module: String, export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<ImportResolveResult> {
     {
         let target = find_module(module_index, import.name.clone());
 match target {
@@ -142,7 +140,7 @@ Rc::new(ImportResolveResult {
     resolved: Rc::new(ResolvedImport {
     module_path: import.name.clone(),
     is_all: import_is_all(import.clone()),
-    specific_names: import_specific_names_at(import.clone(), source_index.clone()),
+    specific_names: import_specific_names_at(import.clone(), source_indices.clone()),
     target_module: None,
 }),
     diagnostics: Rc::new(vec![diag]),
@@ -156,8 +154,8 @@ Rc::new(ImportResolveResult {
 let name_diags = if import_is_all(import.clone()) {
                 Rc::new(vec![])
             } else {
-                Rc::new({ let mut __result = Vec::new(); for child in Rc::new({ let mut __result = Vec::new(); for child in import.children.clone().iter().cloned() { if (v2_rt::map_has(&exported_set, authored_name_at(source_index.clone(), child.clone())) == false) { __result.push(child); } } __result }).iter().cloned() { __result.push(make_error_node(Rc::new(CompilerDiagnostic::MissingExport {
-    name: authored_name_at(source_index.clone(), child.clone()),
+                Rc::new({ let mut __result = Vec::new(); for child in Rc::new({ let mut __result = Vec::new(); for child in import.children.clone().iter().cloned() { if (v2_rt::map_has(&exported_set, authored_name_at(source_indices.clone(), child.clone())) == false) { __result.push(child); } } __result }).iter().cloned() { __result.push(make_error_node(Rc::new(CompilerDiagnostic::MissingExport {
+    name: authored_name_at(source_indices.clone(), child.clone()),
     module_path: import.name.clone(),
     importing_module: importing_module.clone(),
     span: child.span.clone(),
@@ -167,7 +165,7 @@ Rc::new(ImportResolveResult {
     resolved: Rc::new(ResolvedImport {
     module_path: import.name.clone(),
     is_all: import_is_all(import.clone()),
-    specific_names: import_specific_names_at(import.clone(), source_index.clone()),
+    specific_names: import_specific_names_at(import.clone(), source_indices.clone()),
     target_module: Some(target_mod.clone()),
 }),
     diagnostics: name_diags,
@@ -177,28 +175,28 @@ Rc::new(ImportResolveResult {
 }
 }
 
-pub fn get_exported_names(module: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<String>> {
+pub fn get_exported_names(module: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<String>> {
     {
-        let item_names = Rc::new({ let mut __result = Vec::new(); for item in module_items(module.clone()).iter().cloned() { __result.push(get_item_name(item.clone(), source_index.clone())); } __result });
-let variant_names = Rc::new({ let mut __result = Vec::new(); for item in module_items(module.clone()).iter().cloned() { __result.extend((*get_variant_names(item.clone(), source_index.clone())).iter().cloned()); } __result });
+        let item_names = Rc::new({ let mut __result = Vec::new(); for item in module_items(module.clone()).iter().cloned() { __result.push(get_item_name(item.clone(), source_indices.clone())); } __result });
+let variant_names = Rc::new({ let mut __result = Vec::new(); for item in module_items(module.clone()).iter().cloned() { __result.extend((*get_variant_names(item.clone(), source_indices.clone())).iter().cloned()); } __result });
 let imported_names = Rc::new({ let mut __result = Vec::new(); for imp in module_imports(module.clone()).iter().cloned() { __result.extend((*if import_is_all(imp.clone()) {
             Rc::new(vec![])
         } else {
-            import_specific_names_at(imp.clone(), source_index.clone())
+            import_specific_names_at(imp.clone(), source_indices.clone())
         }).iter().cloned()); } __result });
 v2_rt::concat(v2_rt::concat(v2_rt::concat(item_names, variant_names), imported_names), Rc::new(v2_rt::map_keys(&kernel_type_set())))
 }
 }
 
-pub fn get_item_name(item: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index, item)
+pub fn get_item_name(item: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    authored_name_at(source_indices, item)
 }
 
-pub fn get_variant_names(item: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<String>> {
+pub fn get_variant_names(item: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<String>> {
     {
         let is_coproduct = (item.connective.clone() == Connective::Disj);
 if is_coproduct {
-            Rc::new({ let mut __result = Vec::new(); for c in item.children.clone().iter().cloned() { __result.push(authored_name_at(source_index.clone(), c.clone())); } __result })
+            Rc::new({ let mut __result = Vec::new(); for c in item.children.clone().iter().cloned() { __result.push(authored_name_at(source_indices.clone(), c.clone())); } __result })
         } else {
             Rc::new(vec![])
         }
@@ -369,11 +367,13 @@ let new_zero = Rc::new({ let mut __sorted: Vec<_> = Rc::new(v2_rt::map_keys(&new
             let __tco_0 = new_zero;
 let __tco_1 = batch_result.sorted.clone();
 let __tco_2 = batch_result.in_degree_map.clone();
-let __tco_3 = (fuel - 1);
+let __tco_3 = adjacency;
+let __tco_4 = (fuel - 1);
 queue = __tco_0;
 sorted = __tco_1;
 in_degree_map = __tco_2;
-fuel = __tco_3;
+adjacency = __tco_3;
+fuel = __tco_4;
 continue;
 }
 }

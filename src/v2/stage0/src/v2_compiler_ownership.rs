@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{Node, ExprData, VarBindingKind, InferredNode, Cardinality, arg_value, arm_body, field_access_base, if_condition, if_then_branch, if_else_branch, let_value, let_body, lambda_body, lambda_param_names_at, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, foreach_collection, foreach_body, expr_var_name_at, expr_call_func_at, expr_method_name_at, field_access_field_at, NewlineIndex};
+pub use crate::v2_std_core::{Node, ExprData, VarBindingKind, InferredNode, Cardinality, arg_value, arm_body, field_access_base, if_condition, if_then_branch, if_else_branch, let_value, let_body, lambda_body, lambda_param_names_at, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, foreach_collection, foreach_body, expr_var_name_at, expr_call_func_at, expr_method_name_at, field_access_field_at, authored_name_at, NewlineIndex};
 use crate::v2_std_core::ExprData::{NoExprData, ExprError, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprBlock, ExprReturn, ExprLambda, ExprForEach, ExprRecordLit};
 use crate::v2_std_core::VarBindingKind::{LocalValueBinding};
 use crate::v2_std_core::InferredNode::{Resolved};
@@ -167,7 +167,7 @@ Rc::new(UsageAccum {
 }
 }
 
-pub fn walk_expr(accum: Rc<UsageAccum>, texpr: Rc<Node>, in_tail: bool, si: Option<Rc<NewlineIndex>>) -> Rc<UsageAccum> {
+pub fn walk_expr(accum: Rc<UsageAccum>, texpr: Rc<Node>, in_tail: bool, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<UsageAccum> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprVar { binding_kind: bk, .. } => {
@@ -194,7 +194,7 @@ record_use(accum, vn, EdgeKind::Projected, v2_rt::concat(".".to_string(), f), bk
             let fname = expr_call_func_at(texpr.clone(), si.clone());
 if (fname.as_str() == "fold".to_string().as_str()) {
                 {
-                    let init_arg = Rc::new({ let mut __result = Vec::new(); for a in texpr.children.clone().iter().cloned() { if (a.name.clone().as_str() == "init".to_string().as_str()) { __result.push(a); } } __result }).first().cloned();
+                    let init_arg = Rc::new({ let mut __result = Vec::new(); for a in texpr.children.clone().iter().cloned() { if (authored_name_at(si.clone(), a.clone()).as_str() == "init".to_string().as_str()) { __result.push(a); } } __result }).first().cloned();
 let threaded_accum = match init_arg {
     Some(ia) => {
                         let ia_val = arg_value(ia.clone());
@@ -375,6 +375,26 @@ pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Rc<HashMap<String, bool>>
     Rc::new({ let mut __result = Vec::new(); for usage in Rc::new(v2_rt::map_values(&proof.bindings.clone())).iter().cloned() { if ((binding_fan_out(usage.clone()) == 1) && is_owned_local(usage.binding_kind.clone())) { __result.push(usage); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, usage: Rc<BindingUsage>| v2_rt::rc_map_insert(acc.clone(), usage.name.clone(), true))
 }
 
+pub fn build_last_use_set(proof: Rc<OwnershipProof>) -> Rc<HashMap<String, bool>> {
+    Rc::new({ let mut __result = Vec::new(); for usage in Rc::new(v2_rt::map_values(&proof.bindings.clone())).iter().cloned() { if ((binding_fan_out(usage.clone()) > 1) && is_owned_local(usage.binding_kind.clone())) { __result.push(usage); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, usage: Rc<BindingUsage>| {
+        let consumers = Rc::new({ let mut __result = Vec::new(); for c in usage.consumers.clone().iter().cloned() { if match c.kind.clone() {
+    EdgeKind::Threaded => false,
+    _ => true,
+} { __result.push(c); } } __result });
+let max_span = consumers.clone().iter().cloned().fold(-1, |m: i64, c: Rc<EdgeClassification>| if (c.span_start.clone() > m.clone()) {
+            c.span_start.clone()
+        } else {
+            m.clone()
+        });
+let at_max = (Rc::new({ let mut __result = Vec::new(); for c in consumers.clone().iter().cloned() { if (c.span_start.clone() == max_span.clone()) { __result.push(c); } } __result }).len() as i64);
+if ((max_span.clone() > 0) && (at_max.clone() == 1)) {
+            v2_rt::rc_map_insert(acc.clone(), usage.name.clone(), true)
+        } else {
+            acc.clone()
+        }
+})
+}
+
 pub fn fold_terminal_expr(mut body: Rc<Node>) -> Rc<Node> {
     loop {
         match (*body.expr_data.clone()).clone() {
@@ -413,7 +433,7 @@ match (*terminal.expr_data.clone()).clone() {
 }
 }
 
-pub fn collect_acc_field_moves(node: Rc<Node>, acc_name: String, si: Option<Rc<NewlineIndex>>) -> Rc<Vec<String>> {
+pub fn collect_acc_field_moves(node: Rc<Node>, acc_name: String, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*node.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
@@ -433,7 +453,7 @@ if is_direct {
     })
 }
 
-pub fn fold_body_safe_field_moves(lambda_node: Rc<Node>, acc_name: String, si: Option<Rc<NewlineIndex>>) -> bool {
+pub fn fold_body_safe_field_moves(lambda_node: Rc<Node>, acc_name: String, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
     match (*lambda_node.expr_data.clone()).clone() {
     ExprData::ExprLambda { .. } => {
         let body = lambda_body(lambda_node.clone());
@@ -445,7 +465,7 @@ let deduped = moves.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), 
 }
 }
 
-pub fn analyze_single_fold(method_call: Rc<Node>, si: Option<Rc<NewlineIndex>>) -> Rc<FoldAccUnwrapProof> {
+pub fn analyze_single_fold(method_call: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<FoldAccUnwrapProof> {
     {
         let args = method_arg_nodes(method_call.clone());
 let init_arg_node = match args.clone().first().cloned() {
@@ -490,7 +510,7 @@ Rc::new(FoldAccUnwrapProof {
 }
 }
 
-pub fn analyze_ownership(func_name: String, params: Rc<Vec<Rc<Node>>>, body: Rc<Node>, si: Option<Rc<NewlineIndex>>) -> Rc<OwnershipProof> {
+pub fn analyze_ownership(func_name: String, params: Rc<Vec<Rc<Node>>>, body: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<OwnershipProof> {
     {
         let initial = params.iter().cloned().fold(empty_usage_accum(), |acc: Rc<UsageAccum>, p: Rc<Node>| { let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone()); Rc::new(UsageAccum {
     bindings: v2_rt::rc_map_insert(acc.bindings, p.name.clone(), Rc::new(BindingUsage {

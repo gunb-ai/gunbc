@@ -155,7 +155,7 @@ pub fn is_tuple_type(n: Rc<Node>) -> bool {
     (((n.connective.clone() == Connective::Conj) && (n.ident_span.clone() == None)) && ((n.children.clone().len() as i64) == 2))
 }
 
-pub fn build_struct_field_summaries(parent: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<HashMap<String, Rc<FieldSummary>>> {
+pub fn build_struct_field_summaries(parent: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<HashMap<String, Rc<FieldSummary>>> {
     {
         let is_pair = is_tuple_type(parent.clone());
 Rc::new(parent.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<FieldSummary>>(), |acc: Rc<HashMap<String, Rc<FieldSummary>>>, pair: (i64, Rc<Node>)| {
@@ -174,7 +174,7 @@ if (child.inferred.clone() == None) {
                     } else {
                         FieldAccessStyle::StoredField
                     };
-let key = authored_name_at(source_index.clone(), child.clone());
+let key = authored_name_at(source_indices.clone(), child.clone());
 v2_rt::rc_map_insert(acc.clone(), key.clone(), Rc::new(FieldSummary {
     access_style: style.clone(),
     value_shape: field_value_shape_from_type_node(child_type_node(child.clone())),
@@ -185,9 +185,9 @@ v2_rt::rc_map_insert(acc.clone(), key.clone(), Rc::new(FieldSummary {
 }
 }
 
-pub fn find_first_enum_field_node(variants: Rc<Vec<Rc<Node>>>, field_name: String, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
+pub fn find_first_enum_field_node(variants: Rc<Vec<Rc<Node>>>, field_name: String, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
     match variants.first().cloned() {
-    Some(variant) => match find_child_named(variant.clone(), field_name, source_index) {
+    Some(variant) => match find_child_named(variant.clone(), field_name, source_indices) {
     Some(field_child) => Some(field_child.clone()),
     None => None,
 },
@@ -195,29 +195,29 @@ pub fn find_first_enum_field_node(variants: Rc<Vec<Rc<Node>>>, field_name: Strin
 }
 }
 
-pub fn enum_field_present_in_all_variants(variants: Rc<Vec<Rc<Node>>>, field_name: String, source_index: Option<Rc<NewlineIndex>>) -> bool {
-    { let mut __all = true; for variant in variants.iter().cloned() { if !(has_child_named(variant.clone(), field_name.clone(), source_index.clone())) { __all = false; break; } } __all }
+pub fn enum_field_present_in_all_variants(variants: Rc<Vec<Rc<Node>>>, field_name: String, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+    { let mut __all = true; for variant in variants.iter().cloned() { if !(has_child_named(variant.clone(), field_name.clone(), source_indices.clone())) { __all = false; break; } } __all }
 }
 
-pub fn enum_field_type_consistent(variants: Rc<Vec<Rc<Node>>>, field_name: String, expected: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
-    { let mut __all = true; for variant in variants.iter().cloned() { if !(match find_child_named(variant.clone(), field_name.clone(), source_index.clone()) {
-    Some(field_child) => node_type_equals(child_type_node(field_child.clone()), expected.clone(), source_index.clone()),
+pub fn enum_field_type_consistent(variants: Rc<Vec<Rc<Node>>>, field_name: String, expected: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+    { let mut __all = true; for variant in variants.iter().cloned() { if !(match find_child_named(variant.clone(), field_name.clone(), source_indices.clone()) {
+    Some(field_child) => node_type_equals(child_type_node(field_child.clone()), expected.clone(), source_indices.clone()),
     None => false,
 }) { __all = false; break; } } __all }
 }
 
-pub fn build_enum_field_summaries(variants: Rc<Vec<Rc<Node>>>, source_index: Option<Rc<NewlineIndex>>) -> Rc<HashMap<String, Rc<FieldSummary>>> {
+pub fn build_enum_field_summaries(variants: Rc<Vec<Rc<Node>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<HashMap<String, Rc<FieldSummary>>> {
     {
         let first_field_names = match variants.clone().first().cloned() {
-    Some(first_variant) => Rc::new({ let mut __result = Vec::new(); for f in first_variant.children.clone().iter().cloned() { __result.push(authored_name_at(source_index.clone(), f.clone())); } __result }),
+    Some(first_variant) => Rc::new({ let mut __result = Vec::new(); for f in first_variant.children.clone().iter().cloned() { __result.push(authored_name_at(source_indices.clone(), f.clone())); } __result }),
     None => Rc::new(vec![]),
 };
-let shared = Rc::new({ let mut __result = Vec::new(); for field_name in first_field_names.iter().cloned() { if enum_field_present_in_all_variants(variants.clone(), field_name.clone(), source_index.clone()) { __result.push(field_name); } } __result });
-let consistent = Rc::new({ let mut __result = Vec::new(); for field_name in shared.iter().cloned() { if match find_first_enum_field_node(variants.clone(), field_name.clone(), source_index.clone()) {
-    Some(first_field) => enum_field_type_consistent(variants.clone(), field_name.clone(), child_type_node(first_field.clone()), source_index.clone()),
+let shared = Rc::new({ let mut __result = Vec::new(); for field_name in first_field_names.iter().cloned() { if enum_field_present_in_all_variants(variants.clone(), field_name.clone(), source_indices.clone()) { __result.push(field_name); } } __result });
+let consistent = Rc::new({ let mut __result = Vec::new(); for field_name in shared.iter().cloned() { if match find_first_enum_field_node(variants.clone(), field_name.clone(), source_indices.clone()) {
+    Some(first_field) => enum_field_type_consistent(variants.clone(), field_name.clone(), child_type_node(first_field.clone()), source_indices.clone()),
     None => false,
 } { __result.push(field_name); } } __result });
-consistent.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<FieldSummary>>(), |acc: Rc<HashMap<String, Rc<FieldSummary>>>, field_name: String| match find_first_enum_field_node(variants.clone(), field_name.clone(), source_index.clone()) {
+consistent.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<FieldSummary>>(), |acc: Rc<HashMap<String, Rc<FieldSummary>>>, field_name: String| match find_first_enum_field_node(variants.clone(), field_name.clone(), source_indices.clone()) {
     Some(first_field) => v2_rt::rc_map_insert(acc.clone(), field_name.clone(), Rc::new(FieldSummary {
     access_style: FieldAccessStyle::EnumAccessor,
     value_shape: field_value_shape_from_type_node(child_type_node(first_field.clone())),
@@ -227,7 +227,7 @@ consistent.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<FieldSummary>>(), |acc:
 }
 }
 
-pub fn build_field_type_map(children: Rc<Vec<Rc<Node>>>, source_index: Option<Rc<NewlineIndex>>) -> Rc<HashMap<String, String>> {
+pub fn build_field_type_map(children: Rc<Vec<Rc<Node>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<HashMap<String, String>> {
     children.iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, child: Rc<Node>| match child.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: ft, .. }) => {
         let resolved_name = normalize_access_type_node(ft.clone()).name.clone();
@@ -236,7 +236,7 @@ let ft_is_type_var = if (ft.inferred.clone() != None) {
         } else {
             false
         };
-let key = authored_name_at(source_index.clone(), child.clone());
+let key = authored_name_at(source_indices.clone(), child.clone());
 if (((resolved_name.clone().as_str() != "".to_string().as_str()) && !ft_is_type_var.clone()) && (resolved_name.clone().as_str() != "Dynamic".to_string().as_str())) {
             v2_rt::rc_map_insert(acc.clone(), key.clone(), resolved_name.clone())
         } else {
@@ -247,12 +247,12 @@ if (((resolved_name.clone().as_str() != "".to_string().as_str()) && !ft_is_type_
 })
 }
 
-pub fn build_type_summary(item: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<TypeSummary>> {
+pub fn build_type_summary(item: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<TypeSummary>> {
     {
         if (((item.connective.clone() == Connective::NoConnective) || (item.connective.clone() == Connective::Arrow)) || (item.transport.clone() != None)) {
             return None
         }
-let gpn = Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { __result.push(param_node_name_at(p.clone(), source_index.clone())); } __result });
+let gpn = Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { __result.push(param_node_name_at(p.clone(), source_indices.clone())); } __result });
 let is_product = (item.connective.clone() == Connective::Conj);
 let has_fn = { let mut __found = false; for child in item.children.clone().iter().cloned() { if match child.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => (rt.connective.clone() == Connective::Arrow),
@@ -262,8 +262,8 @@ if is_product {
             Some(Rc::new(TypeSummary {
     name: item.name.clone(),
     repr: Rc::new(TypeRepr::StructRepr),
-    field_summaries: build_struct_field_summaries(item.clone(), source_index.clone()),
-    field_type_map: build_field_type_map(item.children.clone(), source_index.clone()),
+    field_summaries: build_struct_field_summaries(item.clone(), source_indices.clone()),
+    field_type_map: build_field_type_map(item.children.clone(), source_indices.clone()),
     variant_name_set: v2_rt::rc_empty_map::<bool>(),
     generic_param_names: gpn,
     has_fn_fields: has_fn,
@@ -276,9 +276,9 @@ Some(Rc::new(TypeSummary {
     repr: Rc::new(TypeRepr::EnumRepr {
     unit_only: unit_only,
 }),
-    field_summaries: build_enum_field_summaries(item.children.clone(), source_index.clone()),
+    field_summaries: build_enum_field_summaries(item.children.clone(), source_indices.clone()),
     field_type_map: v2_rt::rc_empty_map::<String>(),
-    variant_name_set: item.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, child: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), authored_name_at(source_index.clone(), child.clone()), true)),
+    variant_name_set: item.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, child: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), authored_name_at(source_indices.clone(), child.clone()), true)),
     generic_param_names: gpn,
     has_fn_fields: has_fn,
 }))
@@ -287,8 +287,8 @@ Some(Rc::new(TypeSummary {
 }
 }
 
-pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<EmitInfoBuildState> {
-    match build_type_summary(item.clone(), source_index.clone()) {
+pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<EmitInfoBuildState> {
+    match build_type_summary(item.clone(), source_indices.clone()) {
     Some(summary) => {
         let with_variants = match (*summary.repr.clone()).clone() {
     TypeRepr::EnumRepr { .. } => item.children.clone().iter().cloned().fold(state.type_summaries.clone(), |acc: Rc<HashMap<String, Rc<TypeSummary>>>, variant: Rc<Node>| if ((variant.children.clone().len() as i64) > 0) {
@@ -297,12 +297,12 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>, sour
     Some(InferredNode::Resolved { node: rt, .. }) => (rt.connective.clone() == Connective::Arrow),
     _ => false,
 } { __found = true; break; } } __found };
-let vname = authored_name_at(source_index.clone(), variant.clone());
+let vname = authored_name_at(source_indices.clone(), variant.clone());
 v2_rt::rc_map_insert(acc.clone(), vname.clone(), Rc::new(TypeSummary {
     name: vname.clone(),
     repr: Rc::new(TypeRepr::StructRepr),
-    field_summaries: build_struct_field_summaries(variant.clone(), source_index.clone()),
-    field_type_map: build_field_type_map(variant.children.clone(), source_index.clone()),
+    field_summaries: build_struct_field_summaries(variant.clone(), source_indices.clone()),
+    field_type_map: build_field_type_map(variant.children.clone(), source_indices.clone()),
     variant_name_set: v2_rt::rc_empty_map::<bool>(),
     generic_param_names: Rc::new(vec![]),
     has_fn_fields: v_has_fn.clone(),

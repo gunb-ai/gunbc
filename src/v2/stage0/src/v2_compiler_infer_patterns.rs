@@ -172,7 +172,7 @@ pub fn variant_not_found_result(scrut: Rc<Node>, variant_name: String, module_na
 }), module_name)]))
 }
 
-pub fn lookup_variant_in_type(scrut: Rc<PatternSubject>, variant_name: String, module_name: String, source_index: Option<Rc<NewlineIndex>>) -> Rc<NodeLookupResult> {
+pub fn lookup_variant_in_type(scrut: Rc<PatternSubject>, variant_name: String, module_name: String, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<NodeLookupResult> {
     match (*scrut).clone() {
     PatternSubject::PatternLookupBlocked => node_lookup_failed(Rc::new(vec![])),
     PatternSubject::PatternDynamic { span: dynamic_span, .. } => node_lookup_failed(Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::VariantNotFound {
@@ -186,7 +186,7 @@ if (((scrut_node.connective.clone() == Connective::NoConnective) && ((scrut_node
             node_lookup_failed(Rc::new(vec![]))
         } else {
             {
-                let direct_match = find_child_named(scrut_node.clone(), variant_name.clone(), source_index);
+                let direct_match = find_child_named(scrut_node.clone(), variant_name.clone(), source_indices);
 let fallback = if (scrut_opt.clone() && (variant_name.clone().as_str() == "Some".to_string().as_str())) {
                     node_lookup_resolved(synthesize_optional_some_variant(scrut_node.clone()))
                 } else {
@@ -206,7 +206,7 @@ match direct_match {
 }
 }
 
-pub fn lookup_field_in_variant(variant: Rc<PatternSubject>, field_name: String, module_name: String, source_index: Option<Rc<NewlineIndex>>) -> Rc<NodeLookupResult> {
+pub fn lookup_field_in_variant(variant: Rc<PatternSubject>, field_name: String, module_name: String, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<NodeLookupResult> {
     match (*variant).clone() {
     PatternSubject::PatternLookupBlocked => node_lookup_failed(Rc::new(vec![])),
     PatternSubject::PatternDynamic { span: dynamic_span, .. } => node_lookup_failed(Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::FieldNotFound {
@@ -214,7 +214,7 @@ pub fn lookup_field_in_variant(variant: Rc<PatternSubject>, field_name: String, 
     type_name: "unresolved".to_string(),
     span: dynamic_span.clone(),
 }), module_name)])),
-    PatternSubject::PatternResolved { node: variant_node, .. } => match find_child_named(variant_node.clone(), field_name.clone(), source_index) {
+    PatternSubject::PatternResolved { node: variant_node, .. } => match find_child_named(variant_node.clone(), field_name.clone(), source_indices) {
     Some(field_child) => {
         let resolved = child_type_node(field_child.clone());
 node_lookup_resolved(resolved)

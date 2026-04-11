@@ -224,7 +224,7 @@ fn emit_init_py(modules: List<TypedModule>) -> TextFile {
 
 fn python_test_signature_comment(projection: TestProjection) -> String {
   let params_str = projection.params
-    |> map(p => concat(param_node_name_at(n: p, source_index: projection.source_index), ": ", emit_node_type(n: param_node_type_expr(n: p), target: Python, source_index: projection.source_index)))
+    |> map(p => concat(param_node_name_at(n: p, source_indices: projection.source_indices), ": ", emit_node_type(n: param_node_type_expr(n: p), target: Python, source_indices: projection.source_indices)))
     |> join(separator: ", ")
   concat(
     "# Signature: ",
@@ -233,7 +233,7 @@ fn python_test_signature_comment(projection: TestProjection) -> String {
     "(",
     params_str,
     ") -> ",
-    emit_node_type(n: projection.inferred, target: Python, source_index: projection.source_index))
+    emit_node_type(n: projection.inferred, target: Python, source_indices: projection.source_indices))
 }
 
 fn emit_py_test_file(module_name: String, projections: List<TestProjection>) -> TextFile {
@@ -255,7 +255,7 @@ fn emit_py_operation_test(projection: TestProjection, depth: Int) -> String {
   let test_name = py_test_name(projection: projection)
   let indent = make_indent(level: depth + 1)
   let mock_setup = projection.mock_field_inits
-    |> map(mp => emit_py_mock_prop_setup(mock_prop: mp, depth: depth + 1, source_index: projection.source_index))
+    |> map(mp => emit_py_mock_prop_setup(mock_prop: mp, depth: depth + 1, source_indices: projection.source_indices))
     |> join(separator: "\n")
   concat(
     language_spec(target: Python).items.func_keyword, " ", test_name, "() -> None:\n",
@@ -265,11 +265,11 @@ fn emit_py_operation_test(projection: TestProjection, depth: Int) -> String {
     indent, "assert True  # mock data setup verified\n")
 }
 
-fn emit_py_mock_prop_setup(mock_prop: Node, depth: Int, source_index: NewlineIndex?) -> String {
+fn emit_py_mock_prop_setup(mock_prop: Node, depth: Int, source_indices: Map<String, NewlineIndex>) -> String {
   concat(
-    emit_ident(name: field_init_node_name_at(n: mock_prop, source_index: source_index), target: Python),
+    emit_ident(name: field_init_node_name_at(n: mock_prop, source_indices: source_indices), target: Python),
     " = ",
-    emit_simple_expr(expr: field_init_node_value(n: mock_prop), target: Python, source_index: source_index))
+    emit_simple_expr(expr: field_init_node_value(n: mock_prop), target: Python, source_indices: source_indices))
 }
 
 // =========================================================================
@@ -280,7 +280,7 @@ fn emit_py_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) ->
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
   let prelude = emit_py_prelude(typed_module: typed_module)
-  let imports_str = emit_py_imports(imports: module_imports(n: m), source_index: scope.type_env.source_index)
+  let imports_str = emit_py_imports(imports: module_imports(n: m), source_indices: scope.type_env.source_indices)
   let imports_section = if imports_str == "" { "" } else { concat("\n", imports_str) }
   let items_str = typed_module.items
     |> map(item => emit_py_typed_item(item: item, registry: registry, scope: scope))
@@ -297,7 +297,7 @@ fn emit_py_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) ->
 // Import emission
 // =========================================================================
 
-fn emit_py_imports(imports: List<Node>, source_index: NewlineIndex?) -> String {
+fn emit_py_imports(imports: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
   if imports |> count == 0 {
     ""
   } else {
@@ -307,7 +307,7 @@ fn emit_py_imports(imports: List<Node>, source_index: NewlineIndex?) -> String {
       if import_is_all(n: imp) {
         concat(items.import_from_keyword, " ", mod_name, " ", items.import_keyword, " *")
       } else {
-          let specific_names = import_specific_names_at(n: imp, source_index: source_index)
+          let specific_names = import_specific_names_at(n: imp, source_indices: source_indices)
           if specific_names |> count == 0 {
             ""
           } else {
@@ -349,9 +349,9 @@ fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
   // Structural dispatch via shared predicates (CM: no taxonomy enum).
   if is_type_def_item(item: item) {
     emit_py_type_def_from_connective(item: item, env: env)
-  } else if is_type_alias_item(item: item, source_index: env.source_index) {
-    concat(item_text, " = ", emit_node_type(n: resolved_type(n: item), target: Python, source_index: env.source_index))
-  } else if is_type_decl_item(item: item, source_index: env.source_index) {
+  } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
+    concat(item_text, " = ", emit_node_type(n: resolved_type(n: item), target: Python, source_indices: env.source_indices))
+  } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
     ""
   } else if is_function_item(item: item) {
     if item.uses |> count > 0 {
@@ -402,7 +402,7 @@ fn emit_py_dataclass_from_children(name: String, children: List<Node>, env: Type
 }
 
 fn emit_py_dataclass_field_from_child(child: Node, env: TypeEnv) -> String {
-  let ty = emit_node_type(n: resolved_type(n: child), target: Python, source_index: env.source_index)
+  let ty = emit_node_type(n: resolved_type(n: child), target: Python, source_indices: env.source_indices)
   let is_optional = resolved_type(n: child).return_cardinality == CardOptional
   let default_str = if is_optional {
     concat(" = ", py_default_value())
@@ -457,11 +457,11 @@ fn emit_py_variant_class_from_child(parent_name: String, child: Node, env: TypeE
 
 fn emit_py_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let depth = 0
-  let si = scope.type_env.source_index
-  let params_str = emit_py_params(params: params, source_index: si)
-  let ret_str = emit_py_inferred(inferred: inferred, source_index: si)
+  let si = scope.type_env.source_indices
+  let params_str = emit_py_params(params: params, source_indices: si)
+  let ret_str = emit_py_inferred(inferred: inferred, source_indices: si)
   let body_scope = build_params_scope(scope: scope, params: params)
-  let use_tco = is_tco_eligible(name: name, body: body, registry: registry, source_index: si)
+  let use_tco = is_tco_eligible(name: name, body: body, registry: registry, source_indices: si)
   if use_tco {
     let body_str = emit_py_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope, depth: depth + 1)
     let kw = language_spec(target: Python).items.func_keyword
@@ -493,12 +493,12 @@ fn emit_py_func_def(
     Some { value: info } => info.service_names
     None => []
   }
-  let params_str = emit_py_func_params(params: params, uses: uses, service_names: service_names, source_index: scope.type_env.source_index)
-  let ret_str = emit_py_inferred(inferred: inferred, source_index: scope.type_env.source_index)
+  let params_str = emit_py_func_params(params: params, uses: uses, service_names: service_names, source_indices: scope.type_env.source_indices)
+  let ret_str = emit_py_inferred(inferred: inferred, source_indices: scope.type_env.source_indices)
   let body_scope = build_params_scope(scope: scope, params: params)
-  let si = scope.type_env.source_index
+  let si = scope.type_env.source_indices
   let body_scope = fold(uses, init: body_scope, f: (s, u) =>
-    extend_scope(scope: s, name: resource_use_name_at(n: u, source_index: si), resolved: resource_use_resource(n: u), provenance: SubValueUnknown)
+    extend_scope(scope: s, name: resource_use_name_at(n: u, source_indices: si), resolved: resource_use_resource(n: u), provenance: SubValueUnknown)
   )
   let body_str = emit_py_typed_func_body(body: body, registry: registry, scope: body_scope, depth: depth + 1)
   let items = language_spec(target: Python).items
@@ -506,10 +506,10 @@ fn emit_py_func_def(
     make_indent(level: depth + 1), body_str)
 }
 
-fn emit_py_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, source_index: NewlineIndex?) -> String {
-  let param_strs = params |> map(p => emit_py_param(param: p, source_index: source_index))
+fn emit_py_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  let param_strs = params |> map(p => emit_py_param(param: p, source_indices: source_indices))
   let resource_strs = uses |> map(u =>
-    concat(emit_ident(name: resource_use_name_at(n: u, source_index: source_index), target: Python), ": ", emit_node_type(n: resource_use_resource(n: u), target: Python, source_index: source_index))
+    concat(emit_ident(name: resource_use_name_at(n: u, source_indices: source_indices), target: Python), ": ", emit_node_type(n: resource_use_resource(n: u), target: Python, source_indices: source_indices))
   )
   let service_strs = service_names |> map(sn =>
     concat(service_var_name(service_name: sn), ": ", sanitize_service_name(name: sn))
@@ -522,34 +522,34 @@ fn emit_py_func_params(params: List<Node>, uses: List<Node>, service_names: List
 // Parameter emission
 // =========================================================================
 
-fn emit_py_params(params: List<Node>, source_index: NewlineIndex?) -> String {
-  emit_params_shared(params: params, target: Python, source_index: source_index)
+fn emit_py_params(params: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+  emit_params_shared(params: params, target: Python, source_indices: source_indices)
 }
 
-fn emit_py_param(param: Node, source_index: NewlineIndex?) -> String {
-  emit_param_shared(param: param, target: Python, source_index: source_index)
+fn emit_py_param(param: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  emit_param_shared(param: param, target: Python, source_indices: source_indices)
 }
 
-fn emit_py_inferred(inferred: Node, source_index: NewlineIndex?) -> String {
-  emit_inferred_shared(inferred: inferred, target: Python, source_index: source_index)
+fn emit_py_inferred(inferred: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  emit_inferred_shared(inferred: inferred, target: Python, source_indices: source_indices)
 }
-fn emit_py_pattern(pattern: MatchPattern, source_index: NewlineIndex?) -> String {
+fn emit_py_pattern(pattern: MatchPattern, source_indices: Map<String, NewlineIndex>) -> String {
   match pattern {
     Bind { name: n } => emit_ident(name: n, target: Python)
     LitPattern { value: v } => emit_literal(value: v, target: Python)
     VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
-      emit_py_variant_pattern(name: n, field_bindings: fbs, source_index: source_index)
+      emit_py_variant_pattern(name: n, field_bindings: fbs, source_indices: source_indices)
     Wildcard => "_"
   }
 }
 
-fn emit_py_variant_pattern(name: String, field_bindings: List<Node>, source_index: NewlineIndex?) -> String {
+fn emit_py_variant_pattern(name: String, field_bindings: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
   if field_bindings |> count == 0 {
     concat(name, "()")
   } else {
     let binding_strs = field_bindings |> map(fb =>
-      let pat_str = emit_py_pattern(pattern: field_binding_pattern(n: fb), source_index: source_index)
-      concat(emit_ident(name: field_binding_name_at(n: fb, source_index: source_index), target: Python), "=", pat_str)
+      let pat_str = emit_py_pattern(pattern: field_binding_pattern(n: fb), source_indices: source_indices)
+      concat(emit_ident(name: field_binding_name_at(n: fb, source_indices: source_indices), target: Python), "=", pat_str)
     )
     let bindings_str = binding_strs |> join(separator: ", ")
     concat(name, "(", bindings_str, ")")
@@ -568,21 +568,21 @@ fn emit_py_field_access(base: Node, field: String, summary: FieldSummary?, regis
   }
 }
 
-fn emit_py_expr_var(expr: Node, source_index: NewlineIndex?) -> String {
-  emit_expr_var_shared(expr: expr, target: Python, source_index: source_index)
+fn emit_py_expr_var(expr: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  emit_expr_var_shared(expr: expr, target: Python, source_indices: source_indices)
 }
 
 fn emit_py_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let si = scope.type_env.source_index
-  emit_expr_field_access_shared(expr: expr, target: Python, emit_field: e => emit_py_field_access(base: field_access_base(texpr: e), field: field_access_field_at(texpr: e, source_index: si), summary: expr_field_access_summary(texpr: e), registry: registry, scope: scope, depth: depth), source_index: si)
+  let si = scope.type_env.source_indices
+  emit_expr_field_access_shared(expr: expr, target: Python, emit_field: e => emit_py_field_access(base: field_access_base(texpr: e), field: field_access_field_at(texpr: e, source_indices: si), summary: expr_field_access_summary(texpr: e), registry: registry, scope: scope, depth: depth), source_indices: si)
 }
 
 fn emit_py_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_py_typed_call(func: expr_call_func_at(texpr: expr, source_index: scope.type_env.source_index), args: expr.children, registry: registry, scope: scope, depth: depth)
+  emit_py_typed_call(func: expr_call_func_at(texpr: expr, source_indices: scope.type_env.source_indices), args: expr.children, registry: registry, scope: scope, depth: depth)
 }
 
 fn emit_py_expr_method_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_py_typed_method_call(receiver: method_receiver(texpr: expr), method: expr_method_name_at(texpr: expr, source_index: scope.type_env.source_index), args: method_arg_nodes(texpr: expr), method_semantics: expr_method_call_semantics(texpr: expr), registry: registry, scope: scope, depth: depth)
+  emit_py_typed_method_call(receiver: method_receiver(texpr: expr), method: expr_method_name_at(texpr: expr, source_indices: scope.type_env.source_indices), args: method_arg_nodes(texpr: expr), method_semantics: expr_method_call_semantics(texpr: expr), registry: registry, scope: scope, depth: depth)
 }
 
 fn emit_py_expr_match(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
@@ -594,11 +594,11 @@ fn emit_py_expr_if(expr: Node, registry: Map<String, ItemInfo>, scope: InferScop
 }
 
 fn emit_py_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_py_typed_let(name: let_binding_name_at(texpr: expr, source_index: scope.type_env.source_index), value: let_value(texpr: expr), body: let_body(texpr: expr), registry: registry, scope: scope, depth: depth)
+  emit_py_typed_let(name: let_binding_name_at(texpr: expr, source_indices: scope.type_env.source_indices), value: let_value(texpr: expr), body: let_body(texpr: expr), registry: registry, scope: scope, depth: depth)
 }
 
 fn emit_py_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_py_typed_record_lit(type_name: record_lit_type_name_at(texpr: expr, source_index: scope.type_env.source_index), fields: expr.children, registry: registry, scope: scope, depth: depth)
+  emit_py_typed_record_lit(type_name: record_lit_type_name_at(texpr: expr, source_indices: scope.type_env.source_indices), fields: expr.children, registry: registry, scope: scope, depth: depth)
 }
 
 fn emit_py_expr_string_interp(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
@@ -610,35 +610,35 @@ fn emit_py_expr_block(expr: Node, registry: Map<String, ItemInfo>, scope: InferS
 }
 
 fn emit_py_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_typed_cast_shared(expr: cast_expr(texpr: expr), cast_target_node: cast_target(texpr: expr), target: Python, recurse: child => emit_py_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: 1024), source_index: scope.type_env.source_index)
+  emit_typed_cast_shared(expr: cast_expr(texpr: expr), cast_target_node: cast_target(texpr: expr), target: Python, recurse: child => emit_py_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: 1024), source_indices: scope.type_env.source_indices)
 }
 
 fn emit_py_expr_for_each(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   emit_typed_for_each_shared(
-    variable: foreach_variable_at(texpr: expr, source_index: scope.type_env.source_index),
+    variable: foreach_variable_at(texpr: expr, source_indices: scope.type_env.source_indices),
     collection: foreach_collection(texpr: expr),
     body: foreach_body(texpr: expr),
-    target: Python, depth: depth, source_index: scope.type_env.source_index,
+    target: Python, depth: depth, source_indices: scope.type_env.source_indices,
     recurse: (child, s, d) => emit_py_typed_expr(texpr: child, registry: registry, scope: s, depth: d, fuel: 1024),
     scope: scope)
 }
 
 fn emit_py_expr_index(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_typed_index_shared(base: index_base(texpr: expr), index: index_expr(texpr: expr), target: Python, recurse: child => emit_py_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: 1024), source_index: scope.type_env.source_index)
+  emit_typed_index_shared(base: index_base(texpr: expr), index: index_expr(texpr: expr), target: Python, recurse: child => emit_py_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: 1024), source_indices: scope.type_env.source_indices)
 }
 
 fn emit_py_expr_slice(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_typed_slice_shared(base: slice_base(texpr: expr), start: slice_start(texpr: expr), end: slice_end(texpr: expr), target: Python, recurse: child => emit_py_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: 1024), source_index: scope.type_env.source_index)
+  emit_typed_slice_shared(base: slice_base(texpr: expr), start: slice_start(texpr: expr), end: slice_end(texpr: expr), target: Python, recurse: child => emit_py_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: 1024), source_indices: scope.type_env.source_indices)
 }
 
 fn emit_py_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, fuel: Int) -> String {
   emit_shared_expr(
     texpr: texpr,
     target: Python,
-    source_index: scope.type_env.source_index,
+    source_indices: scope.type_env.source_indices,
     wrap_result: result => result,
     recurse: child => emit_py_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: fuel - 1),
-    emit_var: expr => emit_py_expr_var(expr: expr, source_index: scope.type_env.source_index),
+    emit_var: expr => emit_py_expr_var(expr: expr, source_indices: scope.type_env.source_indices),
     emit_field_access: expr => emit_py_expr_field_access(expr: expr, registry: registry, scope: scope, depth: depth),
     emit_call: expr => emit_py_expr_call(expr: expr, registry: registry, scope: scope, depth: depth),
     emit_method_call: expr => emit_py_expr_method_call(expr: expr, registry: registry, scope: scope, depth: depth),
@@ -652,7 +652,7 @@ fn emit_py_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
     emit_for_each: expr => emit_py_expr_for_each(expr: expr, registry: registry, scope: scope, depth: depth),
     emit_index: expr => emit_py_expr_index(expr: expr, registry: registry, scope: scope, depth: depth),
     emit_slice: expr => emit_py_expr_slice(expr: expr, registry: registry, scope: scope, depth: depth),
-    emit_bin_op: expr => emit_default_bin_op(texpr: expr, target: Python, source_index: scope.type_env.source_index, recurse: child => emit_py_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: fuel - 1), wrap_result: result => result))
+    emit_bin_op: expr => emit_default_bin_op(texpr: expr, target: Python, source_indices: scope.type_env.source_indices, recurse: child => emit_py_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: fuel - 1), wrap_result: result => result))
 }
 
 fn emit_py_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
@@ -721,8 +721,8 @@ fn emit_py_typed_method_call(receiver: Node, method: String, args: List<Node>, m
       emit_py_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope, depth: depth)
   } }
   else {
-      if is_typed_service_call_receiver(receiver: receiver, source_index: scope.type_env.source_index) {
-        match extract_typed_service_name(receiver: receiver, source_index: scope.type_env.source_index) {
+      if is_typed_service_call_receiver(receiver: receiver, source_indices: scope.type_env.source_indices) {
+        match extract_typed_service_name(receiver: receiver, source_indices: scope.type_env.source_indices) {
           Some { value: svc_name } =>
             let var_name = service_var_name(service_name: svc_name)
             let arg_strs = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, fuel: 1024))
@@ -751,7 +751,7 @@ fn emit_py_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, 
 
 fn emit_py_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let bs = language_spec(target: Python).block_syntax
-  let pat_str = emit_py_pattern(pattern: arm_pattern(n: arm), source_index: scope.type_env.source_index)
+  let pat_str = emit_py_pattern(pattern: arm_pattern(n: arm), source_indices: scope.type_env.source_indices)
   let guard_str = match arm_guard(n: arm) {
     Some { value: g } => concat(" if ", emit_py_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, fuel: 1024))
     None => ""
@@ -764,7 +764,7 @@ fn emit_py_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: In
 fn emit_py_typed_if(condition: Node, then_branch: Node, else_branch: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let cond_str = emit_py_typed_expr(texpr: condition, registry: registry, scope: scope, depth: depth, fuel: 1024)
   emit_typed_if_shared(cond_str: cond_str, then_branch: then_branch, else_branch: else_branch,
-    if_result_type: none, depth: depth, target: Python, source_index: scope.type_env.source_index,
+    if_result_type: none, depth: depth, target: Python, source_indices: scope.type_env.source_indices,
     recurse: (node, d) => emit_py_typed_expr(texpr: node, registry: registry, scope: scope, depth: d, fuel: 1024))
 }
 
@@ -782,7 +782,7 @@ fn emit_py_typed_record_lit(type_name: String?, fields: List<Node>, registry: Ma
         "{}"
       } else {
         let field_strs = fields |> map(f =>
-          concat("    \"", field_init_node_name_at(n: f, source_index: scope.type_env.source_index), "\": ", emit_py_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, fuel: 1024), ",")
+          concat("    \"", field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices), "\": ", emit_py_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, fuel: 1024), ",")
         )
         let fields_str = field_strs |> join(separator: "\n")
         concat("{\n", fields_str, "\n}")
@@ -793,7 +793,7 @@ fn emit_py_typed_record_lit(type_name: String?, fields: List<Node>, registry: Ma
         concat(tn, "()")
       } else {
         let field_strs = fields |> map(f =>
-          concat(emit_ident(name: field_init_node_name_at(n: f, source_index: scope.type_env.source_index), target: Python), "=", emit_py_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, fuel: 1024))
+          concat(emit_ident(name: field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices), target: Python), "=", emit_py_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, fuel: 1024))
         )
         let fields_str = field_strs |> join(separator: ", ")
         concat(tn, "(", fields_str, ")")
@@ -829,10 +829,10 @@ fn emit_py_typed_block(stmts: List<Node>, registry: Map<String, ItemInfo>, scope
 // =========================================================================
 
 fn emit_py_typed_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let si = scope.type_env.source_index
+  let si = scope.type_env.source_indices
   match body.expr_data {
     ExprLet => {
-      let n = let_binding_name_at(texpr: body, source_index: si)
+      let n = let_binding_name_at(texpr: body, source_indices: si)
       let ch = body.children
       let v = let_value(texpr: body)
       let inner = let_body(texpr: body)
@@ -953,7 +953,7 @@ fn emit_py_typed_tco_expr(texpr: Node, fn_name: String, params: List<Node>, regi
 
 fn emit_py_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let bs = language_spec(target: Python).block_syntax
-  let pat_str = emit_py_pattern(pattern: arm_pattern(n: arm), source_index: scope.type_env.source_index)
+  let pat_str = emit_py_pattern(pattern: arm_pattern(n: arm), source_indices: scope.type_env.source_indices)
   let guard_str = match arm_guard(n: arm) {
     Some { value: g } => concat(" if ", emit_py_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, fuel: 1024))
     None => ""
@@ -966,7 +966,7 @@ fn emit_py_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, r
 fn emit_py_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   emit_typed_tco_reassign_shared(args: args, params: params, target: Python,
     recurse: child => emit_py_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: 1024),
-    source_index: scope.type_env.source_index)
+    source_indices: scope.type_env.source_indices)
 }
 
 // =========================================================================
@@ -987,7 +987,7 @@ fn emit_py_service_def(
   let safe_name = sanitize_service_name(name: authored_name(env: env, node: item))
   let transport = service_fallback_transport(item: item)
   let op_children = item.children
-  let init_method = emit_py_service_init(fallback_transport: transport, op_children: op_children, source_index: env.source_index)
+  let init_method = emit_py_service_init(fallback_transport: transport, op_children: op_children, source_indices: env.source_indices)
   let methods = op_children |> map(op_node =>
     emit_py_operation_method(service_name: safe_name, transport: transport, op_node: op_node, registry: registry, depth: depth + 1, env: env)
   )
@@ -997,8 +997,8 @@ fn emit_py_service_def(
     make_indent(level: depth + 1), methods_str)
 }
 
-fn emit_py_service_init(fallback_transport: Node, op_children: List<Node>, source_index: NewlineIndex?) -> String {
-  let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children, source_index: source_index)
+fn emit_py_service_init(fallback_transport: Node, op_children: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+  let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children, source_indices: source_indices)
   let params = service_field_decls(fs: fs, t: language_spec(target: Python).service_fields)
   let assigns = service_field_ctors(fs: fs, t: language_spec(target: Python).service_fields)
   if params |> count == 0 {
@@ -1013,7 +1013,7 @@ fn emit_py_service_init(fallback_transport: Node, op_children: List<Node>, sourc
 fn emit_py_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int, env: TypeEnv) -> String {
   let op_text = authored_name(env: env, node: op_node)
   let input_params = op_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name_at(n: p, source_index: env.source_index), target: Python), ": ", emit_node_type(n: param_node_type_expr(n: p), target: Python, source_index: env.source_index))
+    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Python), ": ", emit_node_type(n: param_node_type_expr(n: p), target: Python, source_indices: env.source_indices))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -1021,26 +1021,26 @@ fn emit_py_operation_method(service_name: String, transport: Node, op_node: Node
   } else {
     concat("self, ", params_str)
   }
-  let ret_type = emit_node_type(n: resolved_type(n: op_node), target: Python, source_index: env.source_index)
+  let ret_type = emit_node_type(n: resolved_type(n: op_node), target: Python, source_indices: env.source_indices)
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
-  let body = emit_py_transport_call(transport: eff_transport, op_name: op_text, registry: registry, source_index: env.source_index)
+  let body = emit_py_transport_call(transport: eff_transport, op_name: op_text, registry: registry, source_indices: env.source_indices)
   let items = language_spec(target: Python).items
   concat(items.async_prefix, items.func_keyword, " ", emit_ident(name: op_text, target: Python),
     "(", all_params, ") -> ", ret_type, ":\n",
     make_indent(level: depth + 1), body)
 }
 
-fn emit_py_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, source_index: NewlineIndex?) -> String {
-  if is_rest_transport(t: transport, source_index: source_index) { emit_py_rest_call(op_name: op_name, transport: transport, source_index: source_index) }
-  else if is_shell_transport(t: transport) { emit_py_shell_call(op_name: op_name, transport: transport, source_index: source_index) }
-  else if is_file_transport(t: transport, source_index: source_index) { emit_py_file_call(op_name: op_name) }
+fn emit_py_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> String {
+  if is_rest_transport(t: transport, source_indices: source_indices) { emit_py_rest_call(op_name: op_name, transport: transport, source_indices: source_indices) }
+  else if is_shell_transport(t: transport) { emit_py_shell_call(op_name: op_name, transport: transport, source_indices: source_indices) }
+  else if is_file_transport(t: transport, source_indices: source_indices) { emit_py_file_call(op_name: op_name) }
   else { emit_py_local_call(op_name: op_name) }
 }
 
-fn emit_py_rest_call(op_name: String, transport: Node, source_index: NewlineIndex?) -> String {
+fn emit_py_rest_call(op_name: String, transport: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let self_base_url = concat("{", "self.base_url", "}")
   let url_line = concat("url = f\"", self_base_url, "/", emit_ident(name: op_name, target: Python), "\"")
-  let headers_dict = emit_py_headers_dict(transport: transport, source_index: source_index)
+  let headers_dict = emit_py_headers_dict(transport: transport, source_indices: source_indices)
   let session_lines = concat(
     "async with aiohttp.ClientSession() as session:\n",
     "    async with session.post(url, headers=headers) as response:\n",
@@ -1049,17 +1049,17 @@ fn emit_py_rest_call(op_name: String, transport: Node, source_index: NewlineInde
   concat(url_line, "\n", headers_dict, "\n", session_lines)
 }
 
-fn emit_py_headers_dict(transport: Node, source_index: NewlineIndex?) -> String {
-  let auth_entry = if transport_has_auth(t: transport, source_index: source_index) {
-    let header_name = match transport_auth_header_name(t: transport, source_index: source_index) {
+fn emit_py_headers_dict(transport: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let auth_entry = if transport_has_auth(t: transport, source_indices: source_indices) {
+    let header_name = match transport_auth_header_name(t: transport, source_indices: source_indices) {
       Some { value: h } => h
       None => "Authorization"
     }
     concat("\"", header_name, "\": self.auth_token, ")
   } else { "" }
-  let hdrs = transport_headers(t: transport, source_index: source_index)
+  let hdrs = transport_headers(t: transport, source_indices: source_indices)
   let header_entries = hdrs |> map(h =>
-    concat("\"", h.name, "\": ", emit_simple_expr(expr: field_init_node_value(n: h), target: Python, source_index: source_index))
+    concat("\"", h.name, "\": ", emit_simple_expr(expr: field_init_node_value(n: h), target: Python, source_indices: source_indices))
   )
   let all_entries = if auth_entry == "" {
     header_entries |> join(separator: ", ")
@@ -1069,10 +1069,10 @@ fn emit_py_headers_dict(transport: Node, source_index: NewlineIndex?) -> String 
   concat("headers = {", all_entries, "}")
 }
 
-fn emit_py_shell_call(op_name: String, transport: Node, source_index: NewlineIndex?) -> String {
-  let envs = transport_env(t: transport, source_index: source_index)
+fn emit_py_shell_call(op_name: String, transport: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let envs = transport_env(t: transport, source_indices: source_indices)
   let env_dict_entries = envs |> map(e =>
-    concat("\"", e.name, "\": ", emit_simple_expr(expr: field_init_node_value(n: e), target: Python, source_index: source_index))
+    concat("\"", e.name, "\": ", emit_simple_expr(expr: field_init_node_value(n: e), target: Python, source_indices: source_indices))
   )
   let env_str = concat("{", env_dict_entries |> join(separator: ", "), "}")
   concat(
@@ -1120,7 +1120,7 @@ fn emit_py_resource_def(item: Node, env: TypeEnv) -> String {
 
 fn emit_py_capability_method(cap_node: Node, env: TypeEnv) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name_at(n: p, source_index: env.source_index), target: Python), ": ", emit_node_type(n: param_node_type_expr(n: p), target: Python, source_index: env.source_index))
+    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Python), ": ", emit_node_type(n: param_node_type_expr(n: p), target: Python, source_indices: env.source_indices))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -1128,7 +1128,7 @@ fn emit_py_capability_method(cap_node: Node, env: TypeEnv) -> String {
   } else {
     concat("self, ", params_str)
   }
-  let ret = emit_node_type(n: resolved_type(n: cap_node), target: Python, source_index: env.source_index)
+  let ret = emit_node_type(n: resolved_type(n: cap_node), target: Python, source_indices: env.source_indices)
   concat("@abstractmethod\n",
     language_spec(target: Python).items.async_prefix, language_spec(target: Python).items.func_keyword, " ", emit_ident(name: authored_name(env: env, node: cap_node), target: Python), "(", all_params, ") -> ", ret, ":\n",
     "    ...")
@@ -1141,7 +1141,7 @@ fn emit_py_capability_method(cap_node: Node, env: TypeEnv) -> String {
 // =========================================================================
 
 fn emit_py_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let ty_str = emit_node_type(n: type_node, target: Python, source_index: scope.type_env.source_index)
+  let ty_str = emit_node_type(n: type_node, target: Python, source_indices: scope.type_env.source_indices)
   let upper_name = to_screaming_snake(name: name)
   let val_str = emit_py_typed_expr(texpr: value, registry: registry, scope: scope, depth: 0, fuel: 1024)
   concat(upper_name, ": ", ty_str, " = ", val_str)

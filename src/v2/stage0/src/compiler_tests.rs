@@ -1024,15 +1024,15 @@ mod compiler_tests {
 
                 // 2. Normalize
                 let t = Instant::now();
-                let norm = crate::v2_compiler_normalize::normalize_graph(graph);
-                let normalize_elapsed = t.elapsed();
-                eprintln!("  Normalize:                    {:>8.2?}", normalize_elapsed);
-
-                // 3. Reconcile
                 let source_indices = newline_indices.iter().cloned().fold(
                     crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, index| crate::v2_rt::rc_map_insert(acc, index.file.clone(), index.clone()),
                 );
+                let norm = crate::v2_compiler_normalize::normalize_graph(graph, source_indices.clone());
+                let normalize_elapsed = t.elapsed();
+                eprintln!("  Normalize:                    {:>8.2?}", normalize_elapsed);
+
+                // 3. Reconcile
                 let t = Instant::now();
                 let typed = crate::v2_compiler_infer::reconcile(norm.graph.clone(), source_indices);
                 let reconcile_elapsed = t.elapsed();
@@ -1047,7 +1047,7 @@ mod compiler_tests {
                 let func_count = func_entries.len();
                 let recursion_ctx = crate::v2_compiler_compile::build_recursion_context(typed.clone());
                 let complexity = crate::v2_compiler_complexity::build_complexity_report(
-                    func_entries, recursion_ctx,
+                    func_entries, recursion_ctx, source_indices.clone(),
                 );
                 let complexity_elapsed = t.elapsed();
                 let cx_diags = crate::v2_compiler_compile::complexity_diagnostics(complexity.clone());

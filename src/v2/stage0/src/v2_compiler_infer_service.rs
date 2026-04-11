@@ -35,10 +35,10 @@ pub struct ServiceMethodResult {
     pub op_params: Rc<Vec<Rc<Node>>>,
 }
 
-pub fn is_typed_service_call_receiver(receiver: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
+pub fn is_typed_service_call_receiver(receiver: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
     match (*receiver.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
-        let f = field_access_field_at(receiver.clone(), source_index);
+        let f = field_access_field_at(receiver.clone(), source_indices);
 let b = field_access_base(receiver.clone());
 match (*b.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => match Rc::new(f.chars().map(|c| c as i64).collect::<Vec<_>>()).first().cloned() {
@@ -52,14 +52,14 @@ match (*b.expr_data.clone()).clone() {
 }
 }
 
-pub fn extract_typed_service_name(receiver: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<String> {
+pub fn extract_typed_service_name(receiver: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<String> {
     match (*receiver.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
-        let f = field_access_field_at(receiver.clone(), source_index.clone());
+        let f = field_access_field_at(receiver.clone(), source_indices.clone());
 let b = field_access_base(receiver.clone());
 match (*b.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
-            let ns = expr_var_name_at(b.clone(), source_index.clone());
+            let ns = expr_var_name_at(b.clone(), source_indices.clone());
 Some(v2_rt::concat(v2_rt::concat(ns, ".".to_string()), f))
 },
     _ => None,
@@ -69,24 +69,24 @@ Some(v2_rt::concat(v2_rt::concat(ns, ".".to_string()), f))
 }
 }
 
-pub fn collect_typed_service_calls(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<String>> {
+pub fn collect_typed_service_calls(texpr: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<String>> {
     {
         let result = collect_typed_service_calls_into(texpr, Rc::new(UniqueAccum {
     seen: v2_rt::rc_empty_map::<bool>(),
     result: Rc::new(vec![]),
-}), source_index);
+}), source_indices);
 result.result.clone()
 }
 }
 
-pub fn collect_typed_service_calls_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>, source_index: Option<Rc<NewlineIndex>>) -> Rc<UniqueAccum> {
+pub fn collect_typed_service_calls_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<UniqueAccum> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let this_acc = match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprMethodCall { .. } => {
                 let r = method_receiver(texpr.clone());
-if is_typed_service_call_receiver(r.clone(), source_index.clone()) {
-                    match extract_typed_service_name(r.clone(), source_index.clone()) {
+if is_typed_service_call_receiver(r.clone(), source_indices.clone()) {
+                    match extract_typed_service_name(r.clone(), source_indices.clone()) {
     Some(service_name) => if emit_map_has(acc.seen.clone(), service_name.clone()) {
                         acc.clone()
                     } else {
@@ -103,18 +103,18 @@ if is_typed_service_call_receiver(r.clone(), source_index.clone()) {
 },
     _ => acc.clone(),
 };
-let result = texpr.children.clone().iter().cloned().fold(this_acc.clone(), |a: Rc<UniqueAccum>, child: Rc<Node>| collect_typed_service_calls_into(child.clone(), a.clone(), source_index.clone()));
+let result = texpr.children.clone().iter().cloned().fold(this_acc.clone(), |a: Rc<UniqueAccum>, child: Rc<Node>| collect_typed_service_calls_into(child.clone(), a.clone(), source_indices.clone()));
 result
 }
     })
 }
 
-pub fn collect_called_func_names_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>, source_index: Option<Rc<NewlineIndex>>) -> Rc<UniqueAccum> {
+pub fn collect_called_func_names_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<UniqueAccum> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let this_acc = match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
-                let f = expr_call_func_at(texpr.clone(), source_index.clone());
+                let f = expr_call_func_at(texpr.clone(), source_indices.clone());
 if emit_map_has(acc.seen.clone(), f.clone()) {
                     acc.clone()
                 } else {
@@ -126,18 +126,18 @@ if emit_map_has(acc.seen.clone(), f.clone()) {
 },
     _ => acc.clone(),
 };
-let result = texpr.children.clone().iter().cloned().fold(this_acc.clone(), |a: Rc<UniqueAccum>, child: Rc<Node>| collect_called_func_names_into(child.clone(), a.clone(), source_index.clone()));
+let result = texpr.children.clone().iter().cloned().fold(this_acc.clone(), |a: Rc<UniqueAccum>, child: Rc<Node>| collect_called_func_names_into(child.clone(), a.clone(), source_indices.clone()));
 result
 }
     })
 }
 
-pub fn collect_called_func_names(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<String>> {
+pub fn collect_called_func_names(texpr: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<String>> {
     {
         let result = collect_called_func_names_into(texpr, Rc::new(UniqueAccum {
     seen: v2_rt::rc_empty_map::<bool>(),
     result: Rc::new(vec![]),
-}), source_index);
+}), source_indices);
 result.result.clone()
 }
 }
@@ -150,7 +150,7 @@ if has_no_body.clone() {
             reg2.clone()
         } else {
             {
-                let called = collect_called_func_names(item.body.clone().clone().unwrap(), m.type_env.clone().source_index.clone());
+                let called = collect_called_func_names(item.body.clone().clone().unwrap(), m.type_env.clone().source_indices.clone());
 let extra = Rc::new({ let mut __result = Vec::new(); for callee_name in called.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&reg2, callee_name.clone()) {
     Some(callee_info) => callee_info.service_names.clone(),
     None => Rc::new(vec![]),
@@ -197,10 +197,12 @@ if (before == after) {
                 break registry.clone();
 } else {
                 {
-                    let __tco_0 = next.clone();
-let __tco_1 = (remaining_passes - 1);
-registry = __tco_0;
-remaining_passes = __tco_1;
+                    let __tco_0 = modules;
+let __tco_1 = next.clone();
+let __tco_2 = (remaining_passes - 1);
+modules = __tco_0;
+registry = __tco_1;
+remaining_passes = __tco_2;
 continue;
 }
 }

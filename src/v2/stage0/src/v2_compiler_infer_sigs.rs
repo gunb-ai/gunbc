@@ -42,20 +42,20 @@ pub struct CallEdge {
     pub callee: String,
 }
 
-pub fn collect_func_call_edges(items: Rc<Vec<Rc<Node>>>, local_func_set: Rc<HashMap<String, bool>>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<Rc<CallEdge>>> {
+pub fn collect_func_call_edges(items: Rc<Vec<Rc<Node>>>, local_func_set: Rc<HashMap<String, bool>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<Rc<CallEdge>>> {
     Rc::new({ let mut __result = Vec::new(); for item in items.iter().cloned() { __result.extend((*if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) {
-        collect_calls_in_expr(item.name.clone(), item.body.clone().clone().unwrap(), local_func_set.clone(), source_index.clone())
+        collect_calls_in_expr(item.name.clone(), item.body.clone().clone().unwrap(), local_func_set.clone(), source_indices.clone())
     } else {
         Rc::new(vec![])
     }).iter().cloned()); } __result })
 }
 
-pub fn collect_calls_in_expr(caller: String, texpr: Rc<Node>, local_func_set: Rc<HashMap<String, bool>>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<Rc<CallEdge>>> {
+pub fn collect_calls_in_expr(caller: String, texpr: Rc<Node>, local_func_set: Rc<HashMap<String, bool>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<Rc<CallEdge>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let this_edges = match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
-                let f = expr_call_func_at(texpr.clone(), source_index.clone());
+                let f = expr_call_func_at(texpr.clone(), source_indices.clone());
 if emit_map_has(local_func_set.clone(), f.clone()) {
                     Rc::new(vec![Rc::new(CallEdge {
     caller: caller.clone(),
@@ -67,7 +67,7 @@ if emit_map_has(local_func_set.clone(), f.clone()) {
 },
     _ => Rc::new(vec![]),
 };
-let child_edges = Rc::new({ let mut __result = Vec::new(); for child in texpr.children.clone().iter().cloned() { __result.extend((*collect_calls_in_expr(caller.clone(), child.clone(), local_func_set.clone(), source_index.clone())).iter().cloned()); } __result });
+let child_edges = Rc::new({ let mut __result = Vec::new(); for child in texpr.children.clone().iter().cloned() { __result.extend((*collect_calls_in_expr(caller.clone(), child.clone(), local_func_set.clone(), source_indices.clone())).iter().cloned()); } __result });
 let result = v2_rt::concat(this_edges, child_edges);
 result
 }
@@ -208,22 +208,30 @@ let next_remaining = Rc::new({ let mut __result = Vec::new(); for fn_name in rem
 {
             let __tco_0 = next_remaining;
 let __tco_1 = ready_accum.signatures.clone();
-let __tco_2 = ready_accum.diagnostics.clone();
-let __tco_3 = (fuel - 1);
+let __tco_2 = declared_sigs;
+let __tco_3 = call_edges;
+let __tco_4 = local_func_set;
+let __tco_5 = module_name;
+let __tco_6 = ready_accum.diagnostics.clone();
+let __tco_7 = (fuel - 1);
 remaining = __tco_0;
 resolved = __tco_1;
-diagnostics = __tco_2;
-fuel = __tco_3;
+declared_sigs = __tco_2;
+call_edges = __tco_3;
+local_func_set = __tco_4;
+module_name = __tco_5;
+diagnostics = __tco_6;
+fuel = __tco_7;
 continue;
 }
 }
 }
 
-pub fn resolve_func_sigs(declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>, items: Rc<Vec<Rc<Node>>>, module_name: String, source_index: Option<Rc<NewlineIndex>>) -> Rc<ResolveFuncSigsResult> {
+pub fn resolve_func_sigs(declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>, items: Rc<Vec<Rc<Node>>>, module_name: String, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<ResolveFuncSigsResult> {
     {
         let local_func_names = Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in items.clone().iter().cloned() { if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) { __result.push(item); } } __result }).iter().cloned() { __result.push(item.name.clone()); } __result });
 let local_func_set = build_name_set(local_func_names.clone());
-let call_edges = collect_func_call_edges(items.clone(), local_func_set.clone(), source_index);
+let call_edges = collect_func_call_edges(items.clone(), local_func_set.clone(), source_indices);
 let parent_resolved = collect_parent_resolved_sigs(declared_sigs.clone(), local_func_set.clone());
 topo_resolve_loop(local_func_names.clone(), parent_resolved, declared_sigs.clone(), call_edges, local_func_set.clone(), module_name, Rc::new(vec![]), (local_func_names.clone().len() as i64))
 }

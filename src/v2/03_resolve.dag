@@ -82,8 +82,7 @@ fn resolve_modules(modules: List<Node>, source_indices: Map<String, NewlineIndex
 
   // Build per-module exported-name sets once for O(1) membership during import resolution.
   let export_sets = modules |> fold(init: empty_map(), f: (acc, m) =>
-    let source_index = map_get(source_indices, m.span.file)
-    let exported = get_exported_names(module: m, source_index: source_index)
+    let exported = get_exported_names(module: m, source_indices: source_indices)
     let exported_set = fold(exported, init: empty_map(), f: (inner_acc, name) => map_insert(inner_acc, name, true))
     map_insert(acc, m.name, exported_set)
   )
@@ -95,8 +94,7 @@ fn resolve_modules(modules: List<Node>, source_indices: Map<String, NewlineIndex
     imports_by_name: empty_map(),
     diagnostics: []
   }, f: (acc, m) =>
-    let source_index = map_get(source_indices, m.span.file)
-    let result = resolve_module_imports(module: m, module_index: module_index, export_sets: export_sets, source_index: source_index)
+    let result = resolve_module_imports(module: m, module_index: module_index, export_sets: export_sets, source_indices: source_indices)
     ResolveAccum {
       imports_by_name: map_insert(acc.imports_by_name, m.name, result.resolved_imports),
       diagnostics: concat(acc.diagnostics, result.diagnostics)
@@ -167,9 +165,9 @@ type ModuleResolveResult {
 }
 
 // Resolve all imports for a single module.
-fn resolve_module_imports(module: Node, module_index: Map<String, Node>, export_sets: Map<String, Map<String, Bool>>, source_index: NewlineIndex?) -> ModuleResolveResult {
+fn resolve_module_imports(module: Node, module_index: Map<String, Node>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>) -> ModuleResolveResult {
   let results = module_imports(n: module) |> map(imp =>
-    resolve_import(import: imp, module_index: module_index, importing_module: module.name, export_sets: export_sets, source_index: source_index)
+    resolve_import(import: imp, module_index: module_index, importing_module: module.name, export_sets: export_sets, source_indices: source_indices)
   )
   let resolved = results
     |> filter(r => r.resolved.target_module != none && (r.diagnostics |> count == 0))
@@ -193,7 +191,7 @@ fn resolve_import(
   module_index: Map<String, Node>,
   importing_module: String,
   export_sets: Map<String, Map<String, Bool>>,
-  source_index: NewlineIndex?
+  source_indices: Map<String, NewlineIndex>
 ) -> ImportResolveResult {
   let target = find_module(module_index: module_index, path: import.name)
   match target {
@@ -203,7 +201,7 @@ fn resolve_import(
         resolved: ResolvedImport {
           module_path: import.name,
           is_all: import_is_all(n: import),
-          specific_names: import_specific_names_at(n: import, source_index: source_index),
+          specific_names: import_specific_names_at(n: import, source_indices: source_indices),
           target_module: None
         },
         diagnostics: [diag]
@@ -218,16 +216,16 @@ fn resolve_import(
       }
       let name_diags = if import_is_all(n: import) { [] } else {
         import.children
-          |> filter(child => map_has(m: exported_set, key: authored_name_at(source_index: source_index, node: child)) == false)
+          |> filter(child => map_has(m: exported_set, key: authored_name_at(source_indices: source_indices, node: child)) == false)
           |> map(child =>
-            make_error_node(diagnostic: MissingExport { name: authored_name_at(source_index: source_index, node: child), module_path: import.name, importing_module: importing_module, span: child.span }, module_name: importing_module)
+            make_error_node(diagnostic: MissingExport { name: authored_name_at(source_indices: source_indices, node: child), module_path: import.name, importing_module: importing_module, span: child.span }, module_name: importing_module)
           )
       }
       ImportResolveResult {
         resolved: ResolvedImport {
           module_path: import.name,
           is_all: import_is_all(n: import),
-          specific_names: import_specific_names_at(n: import, source_index: source_index),
+          specific_names: import_specific_names_at(n: import, source_indices: source_indices),
           target_module: Some { value: target_mod }
         },
         diagnostics: name_diags
@@ -248,26 +246,26 @@ fn resolve_import(
 // `import B { Foo }`, then importers of A can also see Foo.
 // Kernel primitives (String, Int, Bool, etc.) are always available
 // and treated as implicitly exported by every module.
-fn get_exported_names(module: Node, source_index: NewlineIndex?) -> List<String> {
-  let item_names = module_items(n: module) |> map(item => get_item_name(item: item, source_index: source_index))
+fn get_exported_names(module: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let item_names = module_items(n: module) |> map(item => get_item_name(item: item, source_indices: source_indices))
   let variant_names = module_items(n: module)
-    |> flat_map(item => get_variant_names(item: item, source_index: source_index))
+    |> flat_map(item => get_variant_names(item: item, source_indices: source_indices))
   let imported_names = module_imports(n: module)
-    |> flat_map(imp => if import_is_all(n: imp) { [] } else { import_specific_names_at(n: imp, source_index: source_index) })
+    |> flat_map(imp => if import_is_all(n: imp) { [] } else { import_specific_names_at(n: imp, source_indices: source_indices) })
   concat(item_names, variant_names, imported_names, map_keys(kernel_type_set))
 }
 
 // Extract the primary name from an item.
-fn get_item_name(item: Node, source_index: NewlineIndex?) -> String {
-  authored_name_at(source_index: source_index, node: item)
+fn get_item_name(item: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  authored_name_at(source_indices: source_indices, node: item)
 }
 
 // Extract variant constructor names from a type definition.
 // For sum types (disjunction), each child node is a variant whose name
 // is importable. For other items, returns an empty list.
-fn get_variant_names(item: Node, source_index: NewlineIndex?) -> List<String> {
+fn get_variant_names(item: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
   let is_coproduct = item.connective == Disj
-  if is_coproduct { item.children |> map(c => authored_name_at(source_index: source_index, node: c)) }
+  if is_coproduct { item.children |> map(c => authored_name_at(source_indices: source_indices, node: c)) }
   else { [] }
 }
 

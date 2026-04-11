@@ -45,7 +45,7 @@ import v2.std.core {
   match_scrutinee, match_arm_nodes,
   method_receiver, method_arg_nodes,
   foreach_collection, foreach_body,
-  expr_var_name_at, expr_call_func_at, expr_method_name_at, field_access_field_at,
+  expr_var_name_at, expr_call_func_at, expr_method_name_at, field_access_field_at, authored_name_at,
   NewlineIndex
 }
 
@@ -188,10 +188,10 @@ fn merge_branch_usages(base: UsageAccum, branches: List<UsageAccum>) -> UsageAcc
 //              a fold lambda body (for Threaded classification)
 // =========================================================================
 
-fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -> UsageAccum {
+fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, NewlineIndex>) -> UsageAccum {
   match texpr.expr_data {
     ExprVar { binding_kind: bk } =>
-      let n = expr_var_name_at(texpr: texpr, source_index: si)
+      let n = expr_var_name_at(texpr: texpr, source_indices: si)
       if in_tail {
         record_use(accum: accum, name: n, kind: Consumed, site: "return", binding_kind: bk, span_start: texpr.span.start)
       } else {
@@ -205,23 +205,23 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -
       let base_node = field_access_base(texpr: texpr)
       match base_node.expr_data {
         ExprVar { binding_kind: bk } =>
-          let vn = expr_var_name_at(texpr: base_node, source_index: si)
-          let f = field_access_field_at(texpr: texpr, source_index: si)
+          let vn = expr_var_name_at(texpr: base_node, source_indices: si)
+          let f = field_access_field_at(texpr: texpr, source_indices: si)
           record_use(accum: accum, name: vn, kind: Projected, site: concat(".", f), binding_kind: bk, span_start: texpr.span.start)
         _ => walk_expr(accum: accum, texpr: base_node, in_tail: false, si: si)
       }
 
     ExprCall =>
       // children = [arg0_node, arg1_node, ...]. Arg names on node.name.
-      let fname = expr_call_func_at(texpr: texpr, source_index: si)
+      let fname = expr_call_func_at(texpr: texpr, source_indices: si)
       if fname == "fold" {
-        let init_arg = texpr.children |> filter(a => a.name == "init") |> first
+        let init_arg = texpr.children |> filter(a => authored_name_at(source_indices: si, node: a) == "init") |> first
         let threaded_accum = match init_arg {
           Some { value: ia } =>
             let ia_val = arg_value(n: ia)
             match ia_val.expr_data {
               ExprVar { binding_kind: bk } =>
-                let vn = expr_var_name_at(texpr: ia_val, source_index: si)
+                let vn = expr_var_name_at(texpr: ia_val, source_indices: si)
                 record_use(accum: accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start)
               _ => walk_expr(accum: accum, texpr: ia_val, in_tail: false, si: si)
             }
@@ -241,7 +241,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -
       // children = [receiver, arg0_node, arg1_node, ...].
       let recv = method_receiver(texpr: texpr)
       let mc_args = method_arg_nodes(texpr: texpr)
-      let mname = expr_method_name_at(texpr: texpr, source_index: si)
+      let mname = expr_method_name_at(texpr: texpr, source_indices: si)
       if mname == "fold" {
         let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false, si: si)
         let init_arg = mc_args |> filter(a => a.name == "init") |> first
@@ -250,7 +250,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: NewlineIndex?) -
             let ia_val = arg_value(n: ia)
             match ia_val.expr_data {
               ExprVar { binding_kind: bk } =>
-                let vn = expr_var_name_at(texpr: ia_val, source_index: si)
+                let vn = expr_var_name_at(texpr: ia_val, source_indices: si)
                 record_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start)
               _ => walk_expr(accum: recv_accum, texpr: ia_val, in_tail: false, si: si)
             }
@@ -439,16 +439,16 @@ fn fold_body_constructs_acc_struct(lambda_node: Node, acc_type_name: String) -> 
 }
 
 // Collect all acc.field references in a node tree (conservative: counts every access as a move).
-fn collect_acc_field_moves(node: Node, acc_name: String, si: NewlineIndex?) -> List<String> {
+fn collect_acc_field_moves(node: Node, acc_name: String, si: Map<String, NewlineIndex>) -> List<String> {
   match node.expr_data {
     ExprFieldAccess { summary: _ } =>
       let base = field_access_base(texpr: node)
       let is_direct = match base.expr_data {
-        ExprVar { binding_kind: _ } => expr_var_name_at(texpr: base, source_index: si) == acc_name
+        ExprVar { binding_kind: _ } => expr_var_name_at(texpr: base, source_indices: si) == acc_name
         _ => false
       }
       if is_direct {
-        [field_access_field_at(texpr: node, source_index: si)]
+        [field_access_field_at(texpr: node, source_indices: si)]
       } else {
         node.children |> flat_map(c => collect_acc_field_moves(node: c, acc_name: acc_name, si: si))
       }
@@ -458,7 +458,7 @@ fn collect_acc_field_moves(node: Node, acc_name: String, si: NewlineIndex?) -> L
 }
 
 // Are all acc field accesses unique (each field moved at most once)?
-fn fold_body_safe_field_moves(lambda_node: Node, acc_name: String, si: NewlineIndex?) -> Bool {
+fn fold_body_safe_field_moves(lambda_node: Node, acc_name: String, si: Map<String, NewlineIndex>) -> Bool {
   match lambda_node.expr_data {
     ExprLambda { semantics: _ } =>
       let body = lambda_body(texpr: lambda_node)
@@ -470,7 +470,7 @@ fn fold_body_safe_field_moves(lambda_node: Node, acc_name: String, si: NewlineIn
 }
 
 // Analyze a single fold method call node and produce a structural proof.
-fn analyze_single_fold(method_call: Node, si: NewlineIndex?) -> FoldAccUnwrapProof {
+fn analyze_single_fold(method_call: Node, si: Map<String, NewlineIndex>) -> FoldAccUnwrapProof {
   let args = method_arg_nodes(texpr: method_call)
   let init_arg_node = match args |> first {
     Some { value: a } => arg_value(n: a)
@@ -481,7 +481,7 @@ fn analyze_single_fold(method_call: Node, si: NewlineIndex?) -> FoldAccUnwrapPro
     None => method_call
   }
   let acc_param_name = match fold_lambda_node.expr_data {
-    ExprLambda { semantics: _ } => match lambda_param_names_at(texpr: fold_lambda_node, source_index: si) |> first {
+    ExprLambda { semantics: _ } => match lambda_param_names_at(texpr: fold_lambda_node, source_indices: si) |> first {
       Some { value: n } => n
       None => ""
     }
@@ -520,7 +520,7 @@ fn analyze_single_fold(method_call: Node, si: NewlineIndex?) -> FoldAccUnwrapPro
 
 // Analyze a function body and produce ownership proof for all bindings.
 // One pass over the function body AST.
-fn analyze_ownership(func_name: String, params: List<Node>, body: Node, si: NewlineIndex?) -> OwnershipProof {
+fn analyze_ownership(func_name: String, params: List<Node>, body: Node, si: Map<String, NewlineIndex>) -> OwnershipProof {
   // Seed the accumulator with parameter names so they appear in bindings.
   // binding_kind is none here; it will be set from ExprVar during the walk.
   let initial = params |> fold(init: empty_usage_accum(), f: (acc, p) =>

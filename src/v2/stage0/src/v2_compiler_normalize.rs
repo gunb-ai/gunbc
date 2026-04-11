@@ -6,8 +6,9 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, make_error_node, module_items, Connective, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, ErrorNode, NewlineIndex, InferredNode, ExprData, make_error_node, module_items, authored_name_at, Connective, CompilerDiagnostic};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
+use crate::v2_std_core::ExprData::{NoExprData};
 use crate::v2_std_core::Connective::{NoConnective};
 use crate::v2_std_core::CompilerDiagnostic::{ArityMismatch};
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedModule};
@@ -19,34 +20,43 @@ pub struct NormalizeResult {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn check_bare_containers(n: Rc<Node>, module_name: String) -> Rc<Vec<Rc<ErrorNode>>> {
+pub fn check_bare_containers(n: Rc<Node>, module_name: String, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<Rc<ErrorNode>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let has_structure = ((match n.body.clone() {
     Some(_) => true,
     None => false,
 } || ((n.uses.clone().len() as i64) > 0)) || ((n.properties.clone().len() as i64) > 0));
-let self_diags = match container_expected_arity(n.name.clone()) {
+let is_expr = match (*n.expr_data.clone()).clone() {
+    ExprData::NoExprData => false,
+    _ => true,
+};
+let nname = authored_name_at(source_indices.clone(), n.clone());
+let self_diags = if is_expr {
+                Rc::new(vec![])
+            } else {
+                match container_expected_arity(nname.clone()) {
     Some(expected) => if (((((n.children.clone().len() as i64) == 0) && ((n.params.clone().len() as i64) == 0)) && (n.connective.clone() == Connective::NoConnective)) && !has_structure) {
-                Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ArityMismatch {
-    name: n.name.clone(),
+                    Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ArityMismatch {
+    name: nname.clone(),
     expected: expected.clone(),
     got: 0,
     span: n.span.clone(),
 }), module_name.clone())])
-            } else {
-                Rc::new(vec![])
-            },
+                } else {
+                    Rc::new(vec![])
+                },
     None => Rc::new(vec![]),
-};
-let child_diags = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.extend((*check_bare_containers(c.clone(), module_name.clone())).iter().cloned()); } __result });
-let param_diags = Rc::new({ let mut __result = Vec::new(); for p in n.params.clone().iter().cloned() { __result.extend((*check_bare_containers(p.clone(), module_name.clone())).iter().cloned()); } __result });
+}
+            };
+let child_diags = Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.extend((*check_bare_containers(c.clone(), module_name.clone(), source_indices.clone())).iter().cloned()); } __result });
+let param_diags = Rc::new({ let mut __result = Vec::new(); for p in n.params.clone().iter().cloned() { __result.extend((*check_bare_containers(p.clone(), module_name.clone(), source_indices.clone())).iter().cloned()); } __result });
 let type_ann_diags = match n.type_annotation.clone() {
-    Some(ta) => check_bare_containers(ta.clone(), module_name.clone()),
+    Some(ta) => check_bare_containers(ta.clone(), module_name.clone(), source_indices.clone()),
     None => Rc::new(vec![]),
 };
 let body_diags = match n.body.clone() {
-    Some(b) => check_bare_containers(b.clone(), module_name.clone()),
+    Some(b) => check_bare_containers(b.clone(), module_name.clone(), source_indices.clone()),
     None => Rc::new(vec![]),
 };
 let inferred_diags = if ((n.params.clone().len() as i64) > 0) {
@@ -54,24 +64,24 @@ let inferred_diags = if ((n.params.clone().len() as i64) > 0) {
             } else {
                 match n.inferred.clone() {
     Some(inf) => match (*inf.clone()).clone() {
-    InferredNode::Resolved { node: rn, .. } => check_bare_containers(rn.clone(), module_name.clone()),
+    InferredNode::Resolved { node: rn, .. } => check_bare_containers(rn.clone(), module_name.clone(), source_indices.clone()),
     _ => Rc::new(vec![]),
 },
     None => Rc::new(vec![]),
 }
             };
-let uses_diags = Rc::new({ let mut __result = Vec::new(); for u in n.uses.clone().iter().cloned() { __result.extend((*check_bare_containers(u.clone(), module_name.clone())).iter().cloned()); } __result });
-let prop_diags = Rc::new({ let mut __result = Vec::new(); for p in n.properties.clone().iter().cloned() { __result.extend((*check_bare_containers(p.clone(), module_name.clone())).iter().cloned()); } __result });
+let uses_diags = Rc::new({ let mut __result = Vec::new(); for u in n.uses.clone().iter().cloned() { __result.extend((*check_bare_containers(u.clone(), module_name.clone(), source_indices.clone())).iter().cloned()); } __result });
+let prop_diags = Rc::new({ let mut __result = Vec::new(); for p in n.properties.clone().iter().cloned() { __result.extend((*check_bare_containers(p.clone(), module_name.clone(), source_indices.clone())).iter().cloned()); } __result });
 Rc::new({ let mut __result = Vec::new(); for d in Rc::new(vec![self_diags, child_diags, param_diags, type_ann_diags, inferred_diags, body_diags, uses_diags, prop_diags]).iter().cloned() { __result.extend((*d.clone()).iter().cloned()); } __result })
 }
     })
 }
 
-pub fn normalize_graph(graph: Rc<ModuleGraph>) -> Rc<NormalizeResult> {
+pub fn normalize_graph(graph: Rc<ModuleGraph>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<NormalizeResult> {
     {
         let diags = Rc::new({ let mut __result = Vec::new(); for m in graph.modules.clone().iter().cloned() { __result.extend((*{
             let items = module_items(m.module.clone());
-Rc::new({ let mut __result = Vec::new(); for item in items.clone().iter().cloned() { __result.extend((*check_bare_containers(item.clone(), m.module.clone().name.clone())).iter().cloned()); } __result })
+Rc::new({ let mut __result = Vec::new(); for item in items.clone().iter().cloned() { __result.extend((*check_bare_containers(item.clone(), m.module.clone().name.clone(), source_indices.clone())).iter().cloned()); } __result })
 }).iter().cloned()); } __result });
 Rc::new(NormalizeResult {
     graph: graph.clone(),
