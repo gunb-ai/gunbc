@@ -46,6 +46,50 @@ cannot validate all causal links — some are undecidable. In a
 closed system, every link is checkable, so the compiler can prove
 the entire causal chain from source to drain.
 
+## Correctness dimensions
+
+Correctness is not one property — it is many orthogonal dimensions:
+termination, type safety, ownership, side effects, purity,
+idempotence, space bounds. In traditional systems these are separate
+tools (type checker, linter, static analyzer, profiler) that you
+opt into. In gunbc, they are **inescapable properties of the
+system**, like conservation laws in physics. You don't opt into
+gravity.
+
+Every dimension is:
+1. **Declared in `std/`** as a structural type with lattice
+   operations (meet, join, top, bottom)
+2. **Computed at binding sites** during inference — no separate
+   analysis pass
+3. **Carried through the IR** on bindings, from computation to
+   consumption
+4. **Enforced universally** — all code is subject to all dimensions,
+   no escape hatch, no wrapper functions
+
+The compiler doesn't have "a complexity pass" and "an ownership
+pass." It has one mechanism that reads whatever dimensions `std/`
+declares and enforces them all uniformly. Adding a new dimension
+means declaring a lattice in `std/` and its binding-site rule.
+The compiler carries it generically. Cost of change: one file.
+
+Current dimensions and status:
+
+| Dimension | Declared in | Lattice? | Carried on bindings? | Enforced? |
+|-----------|------------|----------|---------------------|-----------|
+| Type safety | std/types.dag | N/A (structural) | TypeBinding.resolved | Yes (blocking) |
+| Termination | std/termination.dag | BoundedLattice | TypeBinding.provenance + ExprCall.descent_evidence | Partial (424 violations, non-blocking) |
+| Ownership | ownership.dag | Not yet | Not yet (separate pass) | Partial (SharedError blocks) |
+| Side effects | std/behavioral.dag | Not yet | Not yet | No (declared, not consumed) |
+| Purity | (not declared) | — | — | No |
+| Idempotence | std/behavioral.dag | Not yet | Not yet | No (declared, not consumed) |
+| Space bounds | (not declared) | — | — | No |
+
+The architecture is: **as dimensions move from "separate pass" to
+"lattice on bindings," the compiler gets more correct without
+getting more complex.** Each dimension dissolved into the binding
+mechanism is one fewer analysis pass, one fewer set of heuristics,
+one fewer source of reconstruction bugs.
+
 ## What falls out
 
 ### Zero bugs
@@ -101,10 +145,24 @@ data from safe operations.
 (refinement types) or make the operation total (return Option,
 use checked arithmetic). No partial functions in the runtime.
 
-### Tier 3: Logic bugs — generated tests as proof
+### Tier 3: Verification from structure
 
-The compiler cannot know your intent. But it can generate tests
-from your declarations that verify behavioral contracts.
+In a causal engine, structure and behavior are coupled. The `.dag`
+source IS the behavior specification — not a separate oracle. The
+compiler has both the intent (declarations) and the output (emitted
+code). Verification is: **does the emitted code faithfully translate
+the `.dag` evaluation?**
+
+The compiler can generate witness values for any type (all data is
+finite, all types have known inhabitants). For any function
+`f(x, y)`, the compiler can evaluate it at the `.dag` level for
+generated inputs, emit it to each target, execute the emitted code,
+and compare results. The `.dag` source is the oracle. No
+hand-written tests needed.
+
+This is not "testing" in the traditional sense. It is **emission
+verification** — proving that the mechanical translation is
+faithful.
 
 | Test level | What it proves | Status |
 |------------|---------------|--------|
@@ -112,15 +170,15 @@ from your declarations that verify behavioral contracts.
 | L1: Pipeline unit tests | Compiler stages produce correct output | DONE (388 tests) |
 | L2: Bootstrap self-hosting | Compiler can compile itself | DONE |
 | L3: Syntax validity | Emitted code parses in target language | DONE |
-| L4: Semantic correctness | Emitted code executes and produces correct results | **not implemented** |
+| L4: Semantic correctness | Emitted code executes, matches `.dag` evaluation | **not implemented** |
 | L5: Cross-language equivalence | Same `.dag` → same behavior in Rust/Python/Go | **not implemented** |
 | L6: Exhaustive form coverage | Every structural form compiles to every target | **not implemented** |
-| L7: Algebraic law verification | fold/map/filter obey their algebraic laws | **not implemented** |
+| L7: Algebraic law verification | fold/map/filter obey their declared laws | **not implemented** |
 
 **Gating items:** L4 (semantic correctness) is the critical gap.
-A program can compile, pass L0-L3, and still compute the wrong
-answer. L4 requires executing emitted code against oracles derived
-from the `.dag` declarations.
+The compiler can evaluate `.dag` functions directly (closed,
+decidable, finite). The emitted code must agree. Until L4 is
+gated, "emission is mechanical translation" is unverified.
 
 ---
 
