@@ -3523,9 +3523,8 @@ fn find_operator_bp(ops: List<OperatorSpec>, symbol: String) -> BindingPower? {
   }
 }
 
-fn infix_bp(tokens: List<Token>, state: ParserState) -> BindingPower? {
-  let tok = peek(tokens: tokens, state: state)
-  match tok {
+fn infix_bp(tokens: List<Token>) -> BindingPower? {
+  match tokens |> first {
     Some { value: t } => find_operator_bp(ops: dag_syntax_spec.operators, symbol: t.text)
     None => none
   }
@@ -3543,42 +3542,39 @@ fn find_operator_binop(ops: List<OperatorSpec>, symbol: String) -> BinOp? {
 // parse_pipe_rhs: after |>, parse the method name and optional (args).
 // Produces MethodCall { receiver, method, args }.
 // Supports: lhs |> method, lhs |> method(args), lhs |> method(name: arg)
-fn parse_pipe_rhs(tokens: List<Token>, state: ParserState, receiver: Node, span: SourceSpan) -> ExprResult {
+fn parse_pipe_rhs(tokens: List<Token>, ctx: ParseContext, receiver: Node, span: SourceSpan) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect_name(tokens: tokens, state: state)
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let r = expect_name(tokens: tokens)
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
   let method = r.name
-  let s = r.state
-  let s = skip_newlines(tokens: tokens, state: s)
+  let tokens = skip_newlines(tokens: r.tokens)
 
   // Check for (args) after method name
-  if tok_is_lparen(tok: peek(tokens: tokens, state: s)) {
-    let r2 = parse_call_args(tokens: tokens, state: s)
-    if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
-    ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: concat([receiver], r2.args |> map(na => make_arg_node(name: arg_name_at(n: na, source_indices: state.source_indices), value: arg_value(n: na), span: na.span, name_span: node_name_span(n: na)))), inferred: none, span: span, name_span: r.span), state: r2.state, err: none }
+  if tok_is_lparen(tok: tokens |> first) {
+    let r2 = parse_call_args(tokens: tokens, ctx: ctx)
+    if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
+    ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: concat([receiver], r2.args |> map(na => make_arg_node(name: arg_name_at(n: na, source_indices: ctx.source_indices), value: arg_value(n: na), span: na.span, name_span: node_name_span(n: na)))), inferred: none, span: span, name_span: r.span), tokens: r2.tokens, ctx: r2.ctx, err: none }
   } else {
-    ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: [receiver], inferred: none, span: span, name_span: r.span), state: s, err: none }
+    ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: [receiver], inferred: none, span: span, name_span: r.span), tokens: tokens, ctx: ctx, err: none }
   }
 }
 
-fn parse_prefix(tokens: List<Token>, state: ParserState) -> ExprResult {
-  let sh = peek_shape(tokens: tokens, state: state)
+fn parse_prefix(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
+  let tok = tokens |> first
+  let sh = match tok { Some { value: t } => Some { value: t.shape }  None => none }
+  let span = token_span(tok: tok)
   match sh {
     Some { value: ShBang } => {
-      let adv = advance(tokens: tokens, state: state)
-      let span = current_span(tokens: tokens, state: state)
-      let r = parse_expr_bp(tokens: tokens, state: adv.state, min_bp: 12)
-      if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
-      ExprResult { expr: make_expr_node(expr_data: ExprUnaryOp { op: Not }, children: [r.expr], inferred: none, span: span), state: r.state, err: none }
+      let r = parse_expr_bp(tokens: tokens |> skip(1), ctx: ctx, min_bp: 12)
+      if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+      ExprResult { expr: make_expr_node(expr_data: ExprUnaryOp { op: Not }, children: [r.expr], inferred: none, span: span), tokens: r.tokens, ctx: r.ctx, err: none }
     }
     Some { value: ShMinus } => {
-      let adv = advance(tokens: tokens, state: state)
-      let span = current_span(tokens: tokens, state: state)
-      let r = parse_expr_bp(tokens: tokens, state: adv.state, min_bp: 12)
-      if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
-      ExprResult { expr: make_expr_node(expr_data: ExprUnaryOp { op: Neg }, children: [r.expr], inferred: none, span: span), state: r.state, err: none }
+      let r = parse_expr_bp(tokens: tokens |> skip(1), ctx: ctx, min_bp: 12)
+      if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+      ExprResult { expr: make_expr_node(expr_data: ExprUnaryOp { op: Neg }, children: [r.expr], inferred: none, span: span), tokens: r.tokens, ctx: r.ctx, err: none }
     }
-    _ => parse_primary(tokens: tokens, state: state)
+    _ => parse_primary(tokens: tokens, ctx: ctx)
   }
 }
 
@@ -3586,10 +3582,10 @@ fn parse_prefix(tokens: List<Token>, state: ParserState) -> ExprResult {
 // 17. parse_primary
 // =========================================================================
 
-fn parse_primary(tokens: List<Token>, state: ParserState) -> ExprResult {
-  let tok = peek(tokens: tokens, state: state)
+fn parse_primary(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
+  let tok = tokens |> first
   let sh = match tok { Some { value: t } => Some { value: t.shape }  None => none }
-  let span = current_span(tokens: tokens, state: state)
+  let span = token_span(tok: tok)
   match sh {
     Some { value: ShKeyword } => {
       let kw_text = tok.value.text
@@ -3597,26 +3593,26 @@ fn parse_primary(tokens: List<Token>, state: ParserState) -> ExprResult {
       let lit_val = lookup(dag_syntax_spec.keyword_literals, key: kw_text)
       match lit_val {
         Some { value: lv } => {
-          let adv = advance(tokens: tokens, state: state)
-          ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: lv }, children: [], inferred: none, span: span), state: adv.state, err: none }
+          ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: lv }, children: [], inferred: none, span: span), tokens: tokens |> skip(1), ctx: ctx, err: none }
         }
         None => {
       // Expression keywords (structural forms, not data-drivable)
-      if kw_text == "match" { parse_match(tokens: tokens, state: state) }
-      else if kw_text == "if" { parse_if(tokens: tokens, state: state) }
-      else if kw_text == "for" { parse_for(tokens: tokens, state: state) }
-      else if kw_text == "let" { parse_let(tokens: tokens, state: state) }
-      else if kw_text == "return" { parse_return(tokens: tokens, state: state) }
-      else if kw_text == "fn" { parse_fn_lambda(tokens: tokens, state: state) }
+      if kw_text == "match" { parse_match(tokens: tokens, ctx: ctx) }
+      else if kw_text == "if" { parse_if(tokens: tokens, ctx: ctx) }
+      else if kw_text == "for" { parse_for(tokens: tokens, ctx: ctx) }
+      else if kw_text == "let" { parse_let(tokens: tokens, ctx: ctx) }
+      else if kw_text == "return" { parse_return(tokens: tokens, ctx: ctx) }
+      else if kw_text == "fn" { parse_fn_lambda(tokens: tokens, ctx: ctx) }
       else {
         // Keywords used as variable names (e.g., module, type, pattern).
-        let kw_name = tok_keyword_to_name(tok: peek(tokens: tokens, state: state))
+        let kw_name = tok_keyword_to_name(tok: tok)
         match kw_name {
-          Some { value: n } => parse_ident_expr(tokens: tokens, state: state, name: n)
+          Some { value: n } => parse_ident_expr(tokens: tokens, ctx: ctx, name: n)
           None => {
             ExprResult {
               expr: parse_recovery_expr(span: span, message: "expected expression, found keyword '{kw_text}'"),
-              state: state,
+              tokens: tokens,
+              ctx: ctx,
               err: Some { value: parse_error(msg: "expected expression, found keyword '{kw_text}'", span: span) }
             }
           }
@@ -3627,28 +3623,25 @@ fn parse_primary(tokens: List<Token>, state: ParserState) -> ExprResult {
     }
     Some { value: ShLitInt } => {
       let n_opt = parse_int(s: tok.value.text)
-      let n = match n_opt { Some { value: v } => v  None => { return ExprResult { expr: make_expr_error_node(kind: InternalExprError, message: concat("internal: ShLitInt token text not parseable as int: '", tok.value.text, "'"), span: current_span(tokens: tokens, state: state)), state: state, err: none } } }
-      let adv = advance(tokens: tokens, state: state)
-      ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitInt { value: n } }, children: [], inferred: none, span: span), state: adv.state, err: none }
+      let n = match n_opt { Some { value: v } => v  None => { return ExprResult { expr: make_expr_error_node(kind: InternalExprError, message: concat("internal: ShLitInt token text not parseable as int: '", tok.value.text, "'"), span: span), tokens: tokens, ctx: ctx, err: none } } }
+      ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitInt { value: n } }, children: [], inferred: none, span: span), tokens: tokens |> skip(1), ctx: ctx, err: none }
     }
     Some { value: ShLitFloat } => {
       let f = tok.value.text
-      let adv = advance(tokens: tokens, state: state)
-      ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitFloat { value: f } }, children: [], inferred: none, span: span), state: adv.state, err: none }
+      ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitFloat { value: f } }, children: [], inferred: none, span: span), tokens: tokens |> skip(1), ctx: ctx, err: none }
     }
     Some { value: ShLitStr } => {
       let s = tok.value.text
-      let adv = advance(tokens: tokens, state: state)
-      ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: s } }, children: [], inferred: none, span: span), state: adv.state, err: none }
+      ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: s } }, children: [], inferred: none, span: span), tokens: tokens |> skip(1), ctx: ctx, err: none }
     }
-    Some { value: ShStrBegin } => parse_string_interp(tokens: tokens, state: state)
+    Some { value: ShStrBegin } => parse_string_interp(tokens: tokens, ctx: ctx)
     Some { value: ShIdent } => {
       let n = tok.value.text
-      parse_ident_expr(tokens: tokens, state: state, name: n)
+      parse_ident_expr(tokens: tokens, ctx: ctx, name: n)
     }
-    Some { value: ShLParen } => parse_paren_expr(tokens: tokens, state: state)
-    Some { value: ShLBracket } => parse_list_literal(tokens: tokens, state: state)
-    Some { value: ShLBrace } => parse_brace_expr(tokens: tokens, state: state)
+    Some { value: ShLParen } => parse_paren_expr(tokens: tokens, ctx: ctx)
+    Some { value: ShLBracket } => parse_list_literal(tokens: tokens, ctx: ctx)
+    Some { value: ShLBrace } => parse_brace_expr(tokens: tokens, ctx: ctx)
     _ => {
       let tag = match sh {
         Some { value: shape } => shape_display_name(shape: shape)
@@ -3656,7 +3649,8 @@ fn parse_primary(tokens: List<Token>, state: ParserState) -> ExprResult {
       }
       ExprResult {
         expr: parse_recovery_expr(span: span, message: "expected expression, found {tag}"),
-        state: state,
+        tokens: tokens,
+        ctx: ctx,
         err: Some { value: parse_error(msg: "expected expression, found {tag}", span: span) }
       }
     }
