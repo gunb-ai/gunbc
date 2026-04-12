@@ -244,6 +244,41 @@ impl ServiceReturnStrategy {
     }
 }
 
+pub fn service_self_param(spec: Rc<LanguageSpec>) -> String {
+    match (*spec.service_method.clone()).clone() {
+    ServiceMethodStrategy::SelfInParams { self_param: sp, .. } => sp.clone(),
+    ServiceMethodStrategy::ExternalReceiver { .. } => "".to_string(),
+}
+}
+
+pub fn service_receiver_str(spec: Rc<LanguageSpec>, service_name: String) -> String {
+    match (*spec.service_method.clone()).clone() {
+    ServiceMethodStrategy::SelfInParams { .. } => "".to_string(),
+    ServiceMethodStrategy::ExternalReceiver { var_name: v, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), v.clone()), " *".to_string()), service_name), ") ".to_string()),
+}
+}
+
+pub fn service_method_depth(spec: Rc<LanguageSpec>) -> i64 {
+    match (*spec.service_method.clone()).clone() {
+    ServiceMethodStrategy::SelfInParams { .. } => 1,
+    ServiceMethodStrategy::ExternalReceiver { .. } => 0,
+}
+}
+
+pub fn service_methods_inside_class(spec: Rc<LanguageSpec>) -> bool {
+    match (*spec.service_method.clone()).clone() {
+    ServiceMethodStrategy::SelfInParams { .. } => true,
+    ServiceMethodStrategy::ExternalReceiver { .. } => false,
+}
+}
+
+pub fn service_return_str(spec: &Rc<LanguageSpec>, ret_type: String) -> String {
+    match (*spec.service_return.clone()).clone() {
+    ServiceReturnStrategy::ArrowReturn => v2_rt::concat(spec.items.clone().return_arrow.clone(), ret_type),
+    ServiceReturnStrategy::ErrorTupleReturn { error_type: et, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(" (".to_string(), ret_type), ", ".to_string()), et.clone()), ")".to_string()),
+}
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemKeywords {
     pub func_keyword: String,

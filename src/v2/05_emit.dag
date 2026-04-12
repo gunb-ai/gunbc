@@ -96,7 +96,9 @@ import v2.compiler.languages {
   language_spec_for_target, is_string_like,
   test_conventions_for_target,
   target_keyword, binop_symbol,
-  wrap_shared_type
+  wrap_shared_type,
+  service_self_param, service_receiver_str, service_method_depth,
+  service_methods_inside_class, service_return_str
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -1330,33 +1332,15 @@ fn emit_unified_operation_method(
   let si = env.source_indices
   let op_text = authored_name(env: env, node: op_node)
   let params_str = emit_params_shared(params: op_node.params, target: target, source_indices: si)
-  // Structural dispatch on method strategy — SelfInParams vs ExternalReceiver
-  let all_params = match spec.service_method {
-    SelfInParams { self_param: sp } =>
-      if sp == "" { params_str }
-      else if params_str == "" { sp }
-      else { concat(sp, ", ", params_str) }
-    ExternalReceiver { var_name: _ } => params_str
-  }
-  // TODO: receiver_template on LanguageSpec — the Go receiver syntax
-  // "(c *Name) " is hardcoded here. Phase 5: move to a data-driven
-  // rendering template so the shared emitter reads, never decides.
-  let receiver_str = match spec.service_method {
-    SelfInParams { self_param: _ } => ""
-    ExternalReceiver { var_name: v } => concat("(", v, " *", service_name, ") ")
-  }
-  let method_depth = match spec.service_method {
-    SelfInParams { self_param: _ } => 1
-    ExternalReceiver { var_name: _ } => 0
-  }
-  // Structural dispatch on return strategy — ArrowReturn vs ErrorTupleReturn.
-  // TODO: error tuple format "(T, error)" is hardcoded below. Phase 5:
-  // move to a return_template on LanguageSpec for fully data-driven rendering.
+  // Read service method facts via accessor functions (languages.dag).
+  let sp = service_self_param(spec: spec)
+  let all_params = if sp == "" { params_str }
+    else if params_str == "" { sp }
+    else { concat(sp, ", ", params_str) }
+  let receiver_str = service_receiver_str(spec: spec, service_name: service_name)
+  let method_depth = service_method_depth(spec: spec)
   let ret_type = emit_node_type(n: resolved_type(n: op_node), target: target, source_indices: si)
-  let ret_str = match spec.service_return {
-    ArrowReturn => concat(spec.items.return_arrow, ret_type)
-    ErrorTupleReturn { error_type: et } => concat(" (", ret_type, ", ", et, ")")
-  }
+  let ret_str = service_return_str(spec: spec, ret_type: ret_type)
   let method_name = match spec.visibility {
     CaseVisibility { export_case: _ } => emit_export_ident(name: op_text, target: target)
     _ => emit_ident(name: op_text, target: target)
@@ -1393,14 +1377,12 @@ fn emit_unified_service_def(
       target: target, registry: registry, env: env,
       render_transport_body: render_transport_body))
   let methods_str = methods |> join(separator: "\n\n")
-  // Structural dispatch: SelfInParams → methods inside class body, ExternalReceiver → top-level
-  match spec.service_method {
-    SelfInParams { self_param: _ } =>
-      concat(spec.items.struct_keyword, " ", safe_name, ":\n",
-        make_indent(level: 1), fields_str, "\n\n",
-        make_indent(level: 1), methods_str)
-    ExternalReceiver { var_name: _ } =>
-      concat(fields_str, "\n\n", methods_str)
+  if service_methods_inside_class(spec: spec) {
+    concat(spec.items.struct_keyword, " ", safe_name, ":\n",
+      make_indent(level: 1), fields_str, "\n\n",
+      make_indent(level: 1), methods_str)
+  } else {
+    concat(fields_str, "\n\n", methods_str)
   }
 }
 

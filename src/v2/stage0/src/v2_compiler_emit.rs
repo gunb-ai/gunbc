@@ -33,12 +33,7 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope}
 pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo};
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
-// Bootstrap: ServiceMethodStrategy + ServiceReturnStrategy imports are added
-// manually because the .dag compiler does not yet generate `use` statements
-// for coproduct types used in match arms (tracked as M5 codegen gap).
-pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, BlockSyntax, TcoSyntax, ExpressionSemantics, IfValueForm, VisibilitySpec, NamingCase, ReservedWordStrategy, StringInterpSyntax, InterpStyle, EscapePair, RecordLitSyntax, ImportRule, language_spec_for_target, is_string_like, test_conventions_for_target, target_keyword, binop_symbol, wrap_shared_type, TestNameStyle, ImportTrigger, ServiceMethodStrategy, ServiceReturnStrategy};
-use crate::v2_compiler_languages::ServiceMethodStrategy::{SelfInParams, ExternalReceiver};
-use crate::v2_compiler_languages::ServiceReturnStrategy::{ArrowReturn, ErrorTupleReturn};
+pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, BlockSyntax, TcoSyntax, ExpressionSemantics, IfValueForm, VisibilitySpec, NamingCase, ReservedWordStrategy, StringInterpSyntax, InterpStyle, EscapePair, RecordLitSyntax, ImportRule, language_spec_for_target, is_string_like, test_conventions_for_target, target_keyword, binop_symbol, wrap_shared_type, service_self_param, service_receiver_str, service_method_depth, service_methods_inside_class, service_return_str, TestNameStyle, ImportTrigger};
 use crate::v2_compiler_languages::TestNameStyle::{SnakeCaseTestNames, PascalCaseTestNames};
 use crate::v2_compiler_languages::IfValueForm::{IfExpression, ConditionalTernary, IfStatement};
 use crate::v2_compiler_languages::VisibilitySpec::{KeywordVisibility, CaseVisibility};
@@ -1317,8 +1312,8 @@ pub fn emit_unified_operation_method(service_name: String, fallback_transport: R
 let si = env.source_indices.clone();
 let op_text = authored_name(env.clone(), op_node.clone());
 let params_str = emit_params_shared(op_node.params.clone(), &target, si.clone());
-let all_params = match (*spec.service_method.clone()).clone() {
-    ServiceMethodStrategy::SelfInParams { self_param: sp, .. } => if (sp.clone().as_str() == "".to_string().as_str()) {
+let sp = service_self_param(spec.clone());
+let all_params = if (sp.clone().as_str() == "".to_string().as_str()) {
             params_str.clone()
         } else {
             if (params_str.clone().as_str() == "".to_string().as_str()) {
@@ -1326,22 +1321,11 @@ let all_params = match (*spec.service_method.clone()).clone() {
             } else {
                 v2_rt::concat(v2_rt::concat(sp.clone(), ", ".to_string()), params_str.clone())
             }
-        },
-    ServiceMethodStrategy::ExternalReceiver { .. } => params_str.clone(),
-};
-let receiver_str = match (*spec.service_method.clone()).clone() {
-    ServiceMethodStrategy::SelfInParams { .. } => "".to_string(),
-    ServiceMethodStrategy::ExternalReceiver { var_name: v, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), v.clone()), " *".to_string()), service_name), ") ".to_string()),
-};
-let method_depth = match (*spec.service_method.clone()).clone() {
-    ServiceMethodStrategy::SelfInParams { .. } => 1,
-    ServiceMethodStrategy::ExternalReceiver { .. } => 0,
-};
+        };
+let receiver_str = service_receiver_str(spec.clone(), service_name);
+let method_depth = service_method_depth(spec.clone());
 let ret_type = emit_node_type(resolved_type(op_node.clone()), target.clone(), si.clone());
-let ret_str = match (*spec.service_return.clone()).clone() {
-    ServiceReturnStrategy::ArrowReturn => v2_rt::concat(spec.items.clone().return_arrow.clone(), ret_type),
-    ServiceReturnStrategy::ErrorTupleReturn { error_type: et, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(" (".to_string(), ret_type), ", ".to_string()), et.clone()), ")".to_string()),
-};
+let ret_str = service_return_str(&spec, ret_type);
 let method_name = match (*spec.visibility.clone()).clone() {
     VisibilitySpec::CaseVisibility { .. } => emit_export_ident(op_text.clone(), &target),
     _ => emit_ident(op_text.clone(), target.clone()),
@@ -1366,10 +1350,11 @@ let op_children = item.children.clone();
 let fields_str = render_service_fields(safe_name.clone(), transport.clone(), op_children.clone(), env.source_indices.clone());
 let methods = Rc::new({ let mut __result = Vec::new(); for op_node in op_children.clone().iter().cloned() { __result.push(emit_unified_operation_method(safe_name.clone(), transport.clone(), &op_node, &target, registry.clone(), &env, render_transport_body.clone())); } __result });
 let methods_str = methods.join(&"\n\n".to_string());
-match (*spec.service_method.clone()).clone() {
-    ServiceMethodStrategy::SelfInParams { .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(spec.items.clone().struct_keyword.clone(), " ".to_string()), safe_name.clone()), ":\n".to_string()), make_indent(1)), fields_str), "\n\n".to_string()), make_indent(1)), methods_str),
-    ServiceMethodStrategy::ExternalReceiver { .. } => v2_rt::concat(v2_rt::concat(fields_str, "\n\n".to_string()), methods_str),
-}
+if service_methods_inside_class(spec.clone()) {
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(spec.items.clone().struct_keyword.clone(), " ".to_string()), safe_name.clone()), ":\n".to_string()), make_indent(1)), fields_str), "\n\n".to_string()), make_indent(1)), methods_str)
+        } else {
+            v2_rt::concat(v2_rt::concat(fields_str, "\n\n".to_string()), methods_str)
+        }
 }
 }
 
