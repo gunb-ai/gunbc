@@ -179,7 +179,32 @@ if is_typed_service_call_receiver(&expr, source_indices.clone()) {
     None => v2_rt::concat(v2_rt::concat(emit_simple_expr(&b, &target, &source_indices), ".".to_string()), emit_ident(f.clone(), target.clone())),
 }
             } else {
-                v2_rt::concat(v2_rt::concat(emit_simple_expr(&b, &target, &source_indices), ".".to_string()), emit_ident(f.clone(), target.clone()))
+                {
+                    let base_is_fn = match (*b.expr_data.clone()).clone() {
+    ExprData::ExprVar { binding_kind: bk, .. } => match bk.clone().as_deref().cloned() {
+    Some(VarBindingKind::MatchBoundBinding) => false,
+    Some(VarBindingKind::VariantValueBinding { .. }) => false,
+    _ => true,
+},
+    _ => false,
+};
+let base_str = emit_simple_expr(&b, &target, &source_indices);
+let base_call = if base_is_fn.clone() {
+                        v2_rt::concat(base_str, "()".to_string())
+                    } else {
+                        base_str
+                    };
+let field_str = v2_rt::concat(v2_rt::concat(base_call, ".".to_string()), emit_ident(f.clone(), target.clone()));
+let needs_clone = (base_is_fn.clone() && match target.clone() {
+    RenderTarget::Rust => true,
+    _ => false,
+});
+if needs_clone {
+                        v2_rt::concat(field_str, ".clone()".to_string())
+                    } else {
+                        field_str
+                    }
+}
             }
 },
     ExprData::ExprStringInterp => {

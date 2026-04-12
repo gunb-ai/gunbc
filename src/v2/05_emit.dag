@@ -313,7 +313,7 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, sour
 
 fn empty_emit_scope() -> InferScope {
   InferScope {
-    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: none },
+    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: empty_map() },
     func_env: ResolvedFuncEnv { signatures: empty_map() },
     locals: empty_map(),
     match_bound_names: empty_map(),
@@ -1302,7 +1302,6 @@ fn service_field_ctors(fs: ServiceFieldSet, t: ServiceFieldTemplates) -> List<St
 fn emit_unified_transport_dispatch(
   transport: Node,
   op_name: String,
-  registry: Map<String, ItemInfo>,
   source_indices: Map<String, NewlineIndex>,
   depth: Int,
   target: RenderTarget,
@@ -1325,7 +1324,7 @@ fn emit_unified_operation_method(
   target: RenderTarget,
   registry: Map<String, ItemInfo>,
   env: TypeEnv,
-  render_transport_body: fn(Node, String, Map<String, ItemInfo>, Map<String, NewlineIndex>, Int) -> String
+  render_transport_body: fn(Node, String, Map<String, NewlineIndex>, Int) -> String
 ) -> String {
   let spec = language_spec(target: target)
   let si = env.source_indices
@@ -1358,7 +1357,7 @@ fn emit_unified_operation_method(
     _ => emit_ident(name: op_text, target: target)
   }
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: fallback_transport)
-  let body = render_transport_body(eff_transport, op_text, registry, si, method_depth + 1)
+  let body = render_transport_body(eff_transport, op_text, si, method_depth + 1)
   let sig = concat(spec.items.async_prefix, spec.items.func_keyword, " ", receiver_str, method_name,
     "(", all_params, ")", ret_str)
   if spec.block_syntax.significant_whitespace {
@@ -1376,7 +1375,7 @@ fn emit_unified_service_def(
   registry: Map<String, ItemInfo>,
   env: TypeEnv,
   render_service_fields: fn(String, Node, List<Node>, Map<String, NewlineIndex>) -> String,
-  render_transport_body: fn(Node, String, Map<String, ItemInfo>, Map<String, NewlineIndex>, Int) -> String
+  render_transport_body: fn(Node, String, Map<String, NewlineIndex>, Int) -> String
 ) -> String {
   let spec = language_spec(target: target)
   let safe_name = sanitize_service_name(name: authored_name(env: env, node: item))

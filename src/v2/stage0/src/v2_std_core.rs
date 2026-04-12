@@ -1461,6 +1461,15 @@ pub fn transport_response_format_key() -> String {
     CACHED.with(|c| c.clone())
 }
 
+pub fn transport_headers_key() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "headers".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
 pub fn make_transport_node(properties: Rc<Vec<Rc<Node>>>, children: Rc<Vec<Rc<Node>>>, body: Option<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
     name: "".to_string(),
@@ -1684,7 +1693,7 @@ pub fn transport_response_format(t: Rc<Node>, source_indices: Rc<HashMap<String,
 }
 
 pub fn is_config_reserved_key(name: &String) -> bool {
-    (((((((((((name.clone().as_str() == transport_url_key().as_str()) || (name.clone().as_str() == transport_path_key().as_str())) || (name.clone().as_str() == transport_auth_scheme_key().as_str())) || (name.clone().as_str() == transport_auth_header_key().as_str())) || (name.clone().as_str() == transport_auth_token_key().as_str())) || (name.clone().as_str() == transport_method_key().as_str())) || (name.clone().as_str() == transport_path_template_key().as_str())) || (name.clone().as_str() == transport_query_key().as_str())) || (name.clone().as_str() == transport_body_key().as_str())) || (name.clone().as_str() == transport_stdin_key().as_str())) || (name.clone().as_str() == transport_response_format_key().as_str()))
+    ((((((((((((name.clone().as_str() == transport_url_key().as_str()) || (name.clone().as_str() == transport_path_key().as_str())) || (name.clone().as_str() == transport_auth_scheme_key().as_str())) || (name.clone().as_str() == transport_auth_header_key().as_str())) || (name.clone().as_str() == transport_auth_token_key().as_str())) || (name.clone().as_str() == transport_method_key().as_str())) || (name.clone().as_str() == transport_path_template_key().as_str())) || (name.clone().as_str() == transport_query_key().as_str())) || (name.clone().as_str() == transport_body_key().as_str())) || (name.clone().as_str() == transport_stdin_key().as_str())) || (name.clone().as_str() == transport_response_format_key().as_str())) || (name.clone().as_str() == transport_headers_key().as_str()))
 }
 
 pub fn transport_headers(t: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<Rc<Node>>> {
