@@ -739,56 +739,98 @@ Source of truth: `.dag` files. Stage0 `.rs` is a derived artifact.
 
 ## PERF: Eliminate unnecessary work
 
-**Status: URGENT.** Self-compile 70s (was 30s). CI 15min (was 5min).
-Growing with every PR. The target is not a time number — the target
-is zero unnecessary work.
+**Status (2026-04-12 post-dark-emu):** Self-compile 60-75s →
+**37.6s** (~50% faster). Perf ratchet 120s → 55s. The urgent
+perf crisis is resolved. But the LESSON from how it got
+resolved is more important than the speedup.
 
-Root causes (measured, not speculative):
+### What actually happened
 
-| Root cause | Metric | Fix | Depends on |
-|-----------|--------|-----|-----------|
-| 23,733 Rc::clone() on immutable data | `grep -c .clone() stage0` | Stream B clone elision | Node.name deletion (for Layer 1) |
-| String allocation per Node (node.name) | Every Node constructs a heap String | Delete Node.name, use ident:Int | authored_name_at fix (Step 1) |
-| 8 stages run on 60+ data-only files | 113 files × 8 stages | Skip CX/ownership for data-only modules | Nothing (unblocked) |
-| Fact re-derivation | construct-discard-reconstruct pattern | Track 1 (provenance on bindings) | Stream D |
+The biggest win was NOT clone elimination. It was a 6-line fix
+to `merge_envs` that eliminated fact re-derivation. After PR2
+threaded a single `InternTable` through `TypeEnv`, every env in
+the pipeline shared the same table — but `merge_envs` still
+iterated and rebuilt a fresh table from the merged envs. Per
+module × 2 merges × 3 envs × every string = ~20 seconds of
+pure waste.
 
-Execution order:
+**Impact breakdown (gist test pipeline):**
 
-```
-P1: Skip CX/ownership for data-only modules     ← fastest win, unblocked
-P2: Fix authored_name_at fallbacks (3 lines)     ← unblocks Node.name deletion
-P3: Wire InternTable to TypeEnv                  ← unblocks registry migration
-P4: Migrate registry maps String→Int (~30 sites) ← unblocks Node.name deletion
-P5: Delete Node.name field                       ← eliminates String allocs
-P6: Clone elision Layer 1 (last-use moves)       ← needs P5
-P7: Clone elision Layer 2 (post-TCO ownership)   ← independent, do anytime
-P8: Pipeline profiling                           ← do early for signal
-```
+| Stage | Before | After | Δ |
+|-------|--------|-------|---|
+| Reconcile | 9.54s | 140ms | **68×** |
+| Per-module reconcile | ~1.1s | ~5ms | **200×** |
+| Total pipeline | 11.72s | 2.34s | **5×** |
+| Self-compile (all files) | ~60-75s | 37.6s | **~2×** |
 
-Design: [docs/perf-borrow-design.md](docs/perf-borrow-design.md)
+`.clone()` count is UNCHANGED (13,724). The speedup had nothing
+to do with clones.
 
-Current state: 21,211 `.clone()` sites across 59 stage0 files.
-Selective borrowing is already landed via `read_only_params_index`
-(05_emit_rust.dag:471) — most functions emit borrowed params.
-Remaining clones cluster in excluded categories: higher-order
-callables (can't change signature), TCO functions (reassign params
-in loop), parser state threading (Stream D target), and String
-field clones (M2 Node.name target).
+### The uncomfortable lesson
 
-Priority: resume M2 Node.name deletion — `name.clone()` is
-`String::clone` (malloc+memcpy), the highest heap-allocation
-source still unresolved. Profile self-compile to identify actual
-wall-clock hot spots before chasing refcount clones (which are
-atomic increments, much cheaper).
+We wrote perf design docs focused on `.clone()` elimination
+because clones are grep-able. 21,211 clones! Must be the
+problem! But most clones are `Rc::clone` (refcount++, cheap).
+**The actual bottleneck was one function doing O(n²) work on
+data it could have read in O(1).**
 
-Success criteria (work elimination, not time):
+This is a KF-2 violation we committed against ourselves:
+`merge(a, a, a) = a` by idempotency, but the compiler doesn't
+enforce this yet, so the runtime did the wasted work. Every
+merge_envs-class bug is evidence that KF-2 would have saved us.
+
+### The 5 rules (from docs/perf/clone-elimination.md)
+
+1. **Profile first.** Before writing any perf plan, run the
+   profiler. Use it to INVALIDATE hypotheses, not gather data
+   for one you already committed to.
+2. **Audit for re-derivation, not just clones.** Inspect every
+   `merge_*` / `combine_*` / `collect_*` / `unify_*` / `build_*_from_*`
+   function. Ask: "is this rebuilding a fact that upstream
+   already computed?"
+3. **When you thread a fact forward, DELETE the old reconstruction.**
+   PR2 threaded `InternTable` but didn't delete `merge_envs`'s
+   reconstruction. That IS the bug.
+4. **Watch for fact-flow violations in reviews.** Functions that
+   take N structured inputs and produce one output are
+   re-derivation hazards.
+5. **Log every case as a KF-2 target.** When KF-2 lands, these
+   become its test suite.
+
+### Current state (post-dark-emu)
 
 | Metric | Current | Target |
 |--------|---------|--------|
-| `.clone()` in stage0 | 21,211 | measured heap-alloc reduction |
-| `name.clone()` (String heap alloc) | ~1,188 | 0 (via M2 ident:Int) |
+| Self-compile wall time | 37.6s | Continue reducing via fact-flow audit |
+| Perf ratchet | 55s | Continue lowering as fixes land |
+| `.clone()` in stage0 | 13,724 | Not the priority metric anymore |
+| `name.clone()` (heap alloc) | ~1,188 | 0 (via M2 ident:Int — modeling value) |
 | node.name reads in compiler | 107 | 0 |
-| Stages run on data-only files | 8 | 3 |
+| Stages run on data-only files | 3 (was 8) | Done — 82 of 143 files skip CX/ownership |
+| merge_envs re-derivation | 0 (was 20s) | Done |
+| Other re-derivation hotspots | Unknown | **Audit needed** |
+
+### What's next
+
+**Not:** another clone elimination plan. That framing was wrong.
+
+**Is:**
+
+1. **Audit for other re-derivation hotspots.** Apply Rules 2
+   and 3. Find the next merge_envs. This is the single highest-
+   leverage perf work until we know the next bottleneck.
+2. **M2 Node.name deletion** — still valuable for modeling
+   (stable binding identity → Stream B Layer 1), but no longer
+   the critical perf path.
+3. **M1 Step 3 + transition relations** — see
+   [docs/transition-relations.md](docs/transition-relations.md)
+   for the upstream unification.
+4. **Elevate KF-2.** We keep committing these bugs against
+   ourselves. Building KF-2 catches the next merge_envs before
+   it ships. This should move up in priority given how often
+   we hit it.
+
+Design: [docs/perf/clone-elimination.md](docs/perf/clone-elimination.md)
 
 ---
 
@@ -861,6 +903,17 @@ equivalent exists. Requires cost ordering + equivalence catalog in
 
 **Status:** Not built. Infrastructure close (CostShape per method,
 CostExpr composition). Blocked by KF-1 (needs working cost algebra).
+
+**Priority elevated (2026-04-12):** we keep committing KF-2
+violations against ourselves. The `merge_envs` perf bug was
+`merge(a, a, a)` on identical inputs — by idempotency, the
+result equals any input, but the compiler didn't enforce it,
+so the runtime wasted ~20 seconds per self-compile. Every
+such perf regression is a KF-2 bug we'd catch at compile time
+if KF-2 existed. The perf crisis is partly a thesis crisis —
+we're running a half-built causal engine that doesn't yet
+catch its own redundant work. Logged cases become KF-2's
+test suite. See [docs/perf/clone-elimination.md](docs/perf/clone-elimination.md).
 
 ### KF-3: Verification from structure (free)
 
