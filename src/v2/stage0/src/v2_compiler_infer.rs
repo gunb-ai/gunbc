@@ -31,7 +31,7 @@ pub use crate::v2_compiler_infer_method::{infer_builtin_call_type, resolve_built
 pub use crate::v2_compiler_infer_cycle::{detect_type_cycles_kahn};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, lookup_type_for, merge_envs, put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for, inductive_fields_list_to_map};
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
-pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation, ShrinkFactor, sub_value_to_evidence, meet_sub_value, compose_sub_value};
+pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation, ShrinkFactor, sub_value_to_evidence, meet_sub_value, compose_sub_value, compose_sub_value_relations};
 use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion};
 use crate::std_induction::SubValueRelation::{StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown};
 use crate::std_induction::ShrinkFactor::{UnitShrink, ConstantShrink, ProportionalShrink};
@@ -3975,13 +3975,7 @@ pub fn infer_output_provenance(body: Rc<Node>, params: Rc<Vec<Rc<Node>>>, type_e
 }
 
 pub fn compose_output_relations(arg_rel: Rc<SubValueRelation>, callee_rel: Rc<SubValueRelation>) -> Rc<SubValueRelation> {
-    match (*callee_rel.clone()).clone() {
-    SubValueRelation::PreservedValue => arg_rel,
-    _ => match (*arg_rel).clone() {
-    SubValueRelation::PreservedValue => callee_rel.clone(),
-    _ => Rc::new(SubValueRelation::SubValueUnknown),
-},
-}
+    compose_sub_value_relations(arg_rel, callee_rel)
 }
 
 pub fn populate_output_provenance(typed_items: Rc<Vec<Rc<Node>>>, func_env: Rc<ResolvedFuncEnv>, type_env: Rc<TypeEnv>, locals: Rc<HashMap<String, Rc<TypeBinding>>>) -> Rc<ResolvedFuncEnv> {

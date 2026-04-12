@@ -108,7 +108,7 @@ import std.induction {
   InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
   SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown,
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
-  sub_value_to_evidence, meet_sub_value, compose_sub_value
+  sub_value_to_evidence, meet_sub_value, compose_sub_value, compose_sub_value_relations
 }
 import v2.compiler.infer_resolve {
   resolve_node, resolve_item_types,
@@ -3708,19 +3708,10 @@ fn infer_output_provenance(body: Node, params: List<Node>, type_env: TypeEnv, sc
 }
 
 // Compose two sub-value relations across a function call boundary.
-// PreservedValue is the identity element: composing with it preserves the
-// other relation. Any non-trivial composition (e.g., StrictSubValue through
-// StrictSubValue) would require a path-based relation type that doesn't yet
-// exist, so it fails closed to SubValueUnknown.
+// Delegates to std/induction.dag's compose_sub_value_relations — the
+// single authority for SubValueRelation sequential composition.
 fn compose_output_relations(arg_rel: SubValueRelation, callee_rel: SubValueRelation) -> SubValueRelation {
-  match callee_rel {
-    PreservedValue => arg_rel
-    _ =>
-      match arg_rel {
-        PreservedValue => callee_rel
-        _ => SubValueUnknown
-      }
-  }
+  compose_sub_value_relations(arg_rel: arg_rel, callee_rel: callee_rel)
 }
 
 // Populate output provenance on resolved function signatures after body typing.
