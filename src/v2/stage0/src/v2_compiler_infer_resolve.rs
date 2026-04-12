@@ -157,7 +157,7 @@ Rc::new(Node {
     has_non_tail_self_call: child.has_non_tail_self_call.clone(),
     match_pattern: child.match_pattern.clone(),
     expr_data: child.expr_data.clone(),
-    ident: 0,
+    ident: None,
 })
 }
                     } else {
@@ -187,7 +187,7 @@ Rc::new(Node {
     has_non_tail_self_call: n.has_non_tail_self_call.clone(),
     match_pattern: n.match_pattern.clone(),
     expr_data: n.expr_data.clone(),
-    ident: 0,
+    ident: None,
 })
 }
             }
@@ -271,7 +271,7 @@ Rc::new(NodeResolveResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 }),
     diagnostics: base_diags,
 })
@@ -315,7 +315,7 @@ Rc::new(NodeResolveResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 }),
     diagnostics: rt_diags.clone(),
 })
@@ -342,7 +342,7 @@ Rc::new(NodeResolveResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 }),
     diagnostics: all_diags,
 })
@@ -405,7 +405,7 @@ Rc::new(NodeResolveResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 }),
     diagnostics: rt_diags.clone(),
 })
@@ -432,7 +432,7 @@ Rc::new(NodeResolveResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 }),
     diagnostics: field_diags.clone(),
 })
@@ -458,7 +458,7 @@ Rc::new(NodeResolveResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 }),
     diagnostics: all_diags,
 })
@@ -525,7 +525,7 @@ let resolved_node = Rc::new(Node {
     has_non_tail_self_call: n.has_non_tail_self_call.clone(),
     match_pattern: n.match_pattern.clone(),
     expr_data: n.expr_data.clone(),
-    ident: 0,
+    ident: None,
 });
 Rc::new(NodeResolveResult {
     resolved: resolved_node,
@@ -555,7 +555,7 @@ let result = Rc::new(NodeResolveResult {
     has_non_tail_self_call: n.has_non_tail_self_call.clone(),
     match_pattern: n.match_pattern.clone(),
     expr_data: n.expr_data.clone(),
-    ident: 0,
+    ident: None,
 }),
     diagnostics: v2_rt::concat(arity_diags, arg_diags),
 });
@@ -621,7 +621,7 @@ let resolved_key_child = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let resolved_val_child = Rc::new(Node {
     name: val_param_name,
@@ -643,7 +643,7 @@ let resolved_val_child = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 Rc::new(NodeResolveResult {
     resolved: Rc::new(Node {
@@ -664,7 +664,7 @@ Rc::new(NodeResolveResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 }),
     diagnostics: v2_rt::concat(key_diags, val_diags),
 })
@@ -707,7 +707,7 @@ let resolved_child = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 Rc::new(NodeResolveResult {
     resolved: Rc::new(Node {
@@ -728,7 +728,7 @@ Rc::new(NodeResolveResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 }),
     diagnostics: el_diags,
 })
@@ -1537,7 +1537,7 @@ let env = tp_names.iter().cloned().fold(env.clone(), |e: Rc<TypeEnv>, tp_name: S
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 }),
     provenance: Rc::new(SubValueRelation::SubValueUnknown),
 })),
@@ -1634,7 +1634,7 @@ Rc::new(ItemResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 }),
     diagnostics: v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(param_diags, ret_diags), use_diags), body_diags), anno_diags), transport_diags), prop_diags), child_diags),
 })

@@ -1642,7 +1642,7 @@ pub fn leaf_type_node(name: &String, span: &Rc<SourceSpan>) -> Rc<Node> {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 })
 }
 
@@ -1784,7 +1784,7 @@ let s = r.state.clone();
 let mod_ir = intern(&s.intern_table.clone(), &mod_name);
 let s = Rc::new(ParserState { intern_table: mod_ir.table.clone(), ..(*s.clone()).clone() });
 let r#mod = module_node(&mod_name, imports, items, &start_span);
-let r#mod = Rc::new(Node { ident: mod_ir.id.clone(), ..(*r#mod.clone()).clone() });
+let r#mod = Rc::new(Node { ident: Some(mod_ir.id.clone()), ..(*r#mod.clone()).clone() });
 Rc::new(ModuleResult {
     module: r#mod.clone(),
     state: s.clone(),
@@ -1909,7 +1909,7 @@ let s = skip_newlines(tokens.clone(), r.state.clone());
 let imp = import_node(&mod_path, false, names, &start_span);
 let imp_ir = intern(&s.intern_table.clone(), &mod_path);
 let s = Rc::new(ParserState { intern_table: imp_ir.table.clone(), ..(*s.clone()).clone() });
-let imp = Rc::new(Node { ident: imp_ir.id.clone(), ..(*imp.clone()).clone() });
+let imp = Rc::new(Node { ident: Some(imp_ir.id.clone()), ..(*imp.clone()).clone() });
 Rc::new(ImportResult {
     import: imp.clone(),
     state: s.clone(),
@@ -1922,7 +1922,7 @@ Rc::new(ImportResult {
 let imp = import_node(&mod_path, true, Rc::new(vec![]), &start_span);
 let imp_ir = intern(&s.intern_table.clone(), &mod_path);
 let s = Rc::new(ParserState { intern_table: imp_ir.table.clone(), ..(*s.clone()).clone() });
-let imp = Rc::new(Node { ident: imp_ir.id.clone(), ..(*imp.clone()).clone() });
+let imp = Rc::new(Node { ident: Some(imp_ir.id.clone()), ..(*imp.clone()).clone() });
 Rc::new(ImportResult {
     import: imp.clone(),
     state: s.clone(),
@@ -2015,7 +2015,7 @@ match form {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 }),
     state: s.clone(),
     err: Some(parse_error("expected item declaration (type, fn, func, service, resource, data, extern, pattern, interface)".to_string(), current_span(tokens.clone(), s.clone()))),
@@ -2162,7 +2162,7 @@ let dummy = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let r = expect(&tokens, &state, &Rc::new(ExpectedToken::ExpectKeyword {
     text: form.keyword.clone(),
@@ -2257,7 +2257,7 @@ Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 })
 }
 }
@@ -2288,7 +2288,7 @@ Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 })
 }
 }
@@ -2314,7 +2314,7 @@ pub fn outputs_to_inferred(outputs: &Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>, so
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 }),
 }))
     } else {
@@ -2343,7 +2343,7 @@ Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 })
 }
 }
@@ -2367,7 +2367,7 @@ pub fn make_capability_node(name: String, ident_span: Option<Rc<SourceSpan>>, in
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 })
 }
 
@@ -2392,7 +2392,7 @@ let dummy = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let r = expect(&tokens, &state, &Rc::new(ExpectedToken::ExpectKeyword {
     text: "type".to_string(),
@@ -2428,7 +2428,7 @@ pub fn parse_type_after_kw(tokens: &Rc<Vec<Rc<Token>>>, state: &Rc<ParserState>,
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let r = expect_ident(&tokens, &state);
 if has_err(r.err.clone()) {
@@ -2465,7 +2465,7 @@ let named_dummy = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 if has_err(r.err.clone()) {
                     return Rc::new(ItemResult {
@@ -2502,7 +2502,7 @@ let item = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 Rc::new(ItemResult {
     item: item,
@@ -2540,7 +2540,7 @@ parse_type_body_after_eq(&tokens, &s, &name, &name_span, &start_span, &type_para
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 Rc::new(ItemResult {
     item: item,
@@ -2577,7 +2577,7 @@ let named_dummy = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let s = skip_newlines(tokens.clone(), prefix.state.clone());
 let e = eat(&tokens, &s, Rc::new(ExpectedToken::ExpectLBrace));
@@ -2619,7 +2619,7 @@ let item = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 Rc::new(ItemResult {
     item: item,
@@ -2657,7 +2657,7 @@ parse_type_body_after_eq(&tokens, &s, &name, &name_span, &start_span, &type_para
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 Rc::new(ItemResult {
     item: item,
@@ -2691,7 +2691,7 @@ pub fn parse_type_body_after_eq(tokens: &Rc<Vec<Rc<Token>>>, state: &Rc<ParserSt
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 if tok_is_ident(peek(tokens.clone(), state.clone())) {
             {
@@ -2745,7 +2745,7 @@ let item = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 Rc::new(ItemResult {
     item: item,
@@ -2791,7 +2791,7 @@ let item = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 Rc::new(ItemResult {
     item: item,
@@ -2839,7 +2839,7 @@ let item = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 Rc::new(ItemResult {
     item: item,
@@ -2881,7 +2881,7 @@ let predicate_node = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let refined = Rc::new(Node {
     name: "".to_string(),
@@ -2901,7 +2901,7 @@ let refined = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 Rc::new(TypeResult {
     type_expr: refined,
@@ -3424,7 +3424,7 @@ let te = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 Rc::new(TypeResult {
     type_expr: te,
@@ -3533,7 +3533,7 @@ let te = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 maybe_optional(tokens.clone(), &ret.state.clone(), &te, start_span.clone())
 }
@@ -3623,7 +3623,7 @@ let te = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 maybe_optional(tokens.clone(), &r3.state.clone(), &te, start_span.clone())
 }
@@ -3753,7 +3753,7 @@ if e.consumed.clone() {
     has_non_tail_self_call: te.has_non_tail_self_call.clone(),
     match_pattern: te.match_pattern.clone(),
     expr_data: te.expr_data.clone(),
-    ident: 0,
+    ident: None,
 });
 Rc::new(TypeResult {
     type_expr: ote,
@@ -3963,7 +3963,7 @@ let dummy = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let r = expect(&tokens, &state, &Rc::new(ExpectedToken::ExpectKeyword {
     text: "fn".to_string(),
@@ -3999,7 +3999,7 @@ pub fn parse_fn_after_kw(tokens: &Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, st
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let r = expect_ident(&tokens, &state);
 if has_err(r.err.clone()) {
@@ -4029,7 +4029,7 @@ let named_dummy = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let r = parse_params(&tokens, r.state.clone());
 if has_err(r.err.clone()) {
@@ -4078,7 +4078,7 @@ let item = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 Rc::new(ItemResult {
     item: item,
@@ -4114,7 +4114,7 @@ let named_dummy = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let r = parse_block(&tokens, &skip_newlines(tokens.clone(), prefix.state.clone()));
 if has_err(r.err.clone()) {
@@ -4143,7 +4143,7 @@ let item = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 Rc::new(ItemResult {
     item: item,
@@ -4174,7 +4174,7 @@ let dummy = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let kw = tok_keyword_text(peek(tokens.clone(), state.clone()));
 let r = if (kw.clone().as_str() == "func".to_string().as_str()) {
@@ -4248,7 +4248,7 @@ pub fn parse_block_item_after_kw(tokens: &Rc<Vec<Rc<Token>>>, state: Rc<ParserSt
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let r = expect_ident(&tokens, &state);
 if has_err(r.err.clone()) {
@@ -4278,7 +4278,7 @@ let named_dummy = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let r = parse_params(&tokens, r.state.clone());
 if has_err(r.err.clone()) {
@@ -4345,7 +4345,7 @@ let item = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 Rc::new(ItemResult {
     item: item,
@@ -4380,7 +4380,7 @@ let named_dummy = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let r = parse_block(&tokens, &skip_newlines(tokens.clone(), prefix.state.clone()));
 if has_err(r.err.clone()) {
@@ -4409,7 +4409,7 @@ let item = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 Rc::new(ItemResult {
     item: item,
@@ -4439,7 +4439,7 @@ pub fn parse_no_body_from_prefix(prefix: &Rc<ItemPrefixResult>, start_span: Rc<S
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 Rc::new(ItemResult {
     item: item,
@@ -4579,7 +4579,7 @@ let res_node = Rc::new(Node {
     has_non_tail_self_call: r3.type_expr.clone().has_non_tail_self_call.clone(),
     match_pattern: r3.type_expr.clone().match_pattern.clone(),
     expr_data: r3.type_expr.clone().expr_data.clone(),
-    ident: 0,
+    ident: None,
 });
 let ru = make_resource_use_node(&name, res_node, start_span.clone(), r.span.clone());
 Rc::new(ResUseResult {
@@ -4718,7 +4718,7 @@ let dummy = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let r = expect(&tokens, &state, &Rc::new(ExpectedToken::ExpectKeyword {
     text: "service".to_string(),
@@ -4754,7 +4754,7 @@ pub fn parse_service_after_kw(tokens: &Rc<Vec<Rc<Token>>>, state: Rc<ParserState
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let r_ns = expect_name(&tokens, &state);
 if has_err(r_ns.err.clone()) {
@@ -4786,7 +4786,7 @@ let named_dummy = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let r = expect(&tokens, &r.state.clone(), &Rc::new(ExpectedToken::ExpectLBrace));
 if has_err(r.err.clone()) {
@@ -4841,7 +4841,7 @@ let item = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 Rc::new(ItemResult {
     item: item,
@@ -6746,7 +6746,7 @@ let dummy = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let r = expect(&tokens, &state, &Rc::new(ExpectedToken::ExpectKeyword {
     text: "resource".to_string(),
@@ -6782,7 +6782,7 @@ pub fn parse_resource_after_kw(tokens: &Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let r = expect_ident(&tokens, &state);
 if has_err(r.err.clone()) {
@@ -6812,7 +6812,7 @@ let named_dummy = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let r = expect(&tokens, &r.state.clone(), &Rc::new(ExpectedToken::ExpectLBrace));
 if has_err(r.err.clone()) {
@@ -6856,7 +6856,7 @@ let item = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 Rc::new(ItemResult {
     item: item,
@@ -7296,7 +7296,7 @@ let dummy = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let r = expect(&tokens, &state, &Rc::new(ExpectedToken::ExpectKeyword {
     text: "data".to_string(),
@@ -7332,7 +7332,7 @@ pub fn parse_data_after_kw(tokens: &Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, 
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let r = expect_ident(&tokens, &state);
 if has_err(r.err.clone()) {
@@ -7362,7 +7362,7 @@ let named_dummy = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 let r = expect(&tokens, &r.state.clone(), &Rc::new(ExpectedToken::ExpectColon));
 if has_err(r.err.clone()) {
@@ -7415,7 +7415,7 @@ let item = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 });
 Rc::new(ItemResult {
     item: item,
@@ -7808,7 +7808,7 @@ let node = Rc::new(Node {
     has_non_tail_self_call: node.has_non_tail_self_call.clone(),
     match_pattern: node.match_pattern.clone(),
     expr_data: node.expr_data.clone(),
-    ident: 0,
+    ident: None,
 });
 Rc::new(ExprResult {
     expr: node.clone(),
@@ -7902,7 +7902,7 @@ let node = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::ExprLet),
-    ident: 0,
+    ident: None,
 });
 Rc::new(ExprResult {
     expr: node,
@@ -7967,7 +7967,7 @@ if ((cr.constraints.clone().len() as i64) > 0) {
     has_non_tail_self_call: node.has_non_tail_self_call.clone(),
     match_pattern: node.match_pattern.clone(),
     expr_data: node.expr_data.clone(),
-    ident: 0,
+    ident: None,
 });
 Rc::new(ExprResult {
     expr: node.clone(),

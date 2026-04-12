@@ -376,7 +376,11 @@ type DeclaredFuncEnv {
 
 type Node {
   name: String
-  ident: Int
+  // Interned identifier for name-based identity. None for anonymous or
+  // synthesized nodes that have no authored identifier. Using Int? (not
+  // Int defaulting to 0) so "no ident" is structurally distinct from a
+  // valid ident 0 and cannot be confused at a registry key.
+  ident: Int?
   span: SourceSpan
   ident_span: SourceSpan?
   // Fractal composition -- operations, capabilities, items are all children

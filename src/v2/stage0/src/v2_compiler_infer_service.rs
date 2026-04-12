@@ -260,7 +260,7 @@ match matching.first().cloned() {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 })); } __result }),
     connective: Connective::Conj,
     params: Rc::new(vec![]),
@@ -275,7 +275,7 @@ match matching.first().cloned() {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 }),
     op_params: op.params.clone(),
 }))
