@@ -56,6 +56,7 @@ pub mod v2_compiler_emit_python;
 pub mod v2_compiler_emit_rust;
 pub mod v2_compiler_compile;
 pub mod v2_rt;
+pub mod v2_interpreter;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);

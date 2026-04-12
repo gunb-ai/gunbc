@@ -1,0 +1,40 @@
+// Interpreter test: exercises types, enums, pattern matching,
+// field access, list ops (map, fold), closures, and string concat.
+// Run: dag run --source-root dsl/examples/interp_test --source-root dsl/std
+module examples.interp_test
+
+type Temperature {
+  celsius: Float
+}
+
+type Condition
+  = Sunny
+  | Cloudy
+  | Rainy { mm_per_hour: Float }
+
+fn to_fahrenheit(temp: Temperature) -> Float {
+  temp.celsius * 1.8 + 32.0
+}
+
+fn describe(cond: Condition) -> String {
+  match cond {
+    Sunny => "clear skies"
+    Cloudy => "overcast"
+    Rainy { mm_per_hour: rate } =>
+      if rate > 10.0 { "heavy rain" }
+      else { "light rain" }
+  }
+}
+
+fn main() -> String {
+  let temp = Temperature { celsius: 25.0 }
+  let f = to_fahrenheit(temp: temp)
+  let cond = Rainy { mm_per_hour: 5.0 }
+  let desc = describe(cond: cond)
+  let nums = [1, 2, 3, 4, 5]
+  let doubled = nums |> map(x => x * 2)
+  let sum = doubled |> fold(init: 0, f: (acc, x) => acc + x)
+  let f_str = to_string(value: f)
+  let sum_str = to_string(value: sum)
+  concat("Temp: ", f_str, "F, ", desc, ", sum=", sum_str)
+}
