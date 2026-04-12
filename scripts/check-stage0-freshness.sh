@@ -23,7 +23,10 @@ rm -rf "$CHECK_DIR"
 "$SCRIPT_DIR/regenerate-stage0.sh" --output-dir "$CHECK_DIR"
 
 echo "=== Comparing ==="
-DIFF_OUTPUT=$(diff -rq "$CHECK_DIR/src/" "$ROOT/src/v2/stage0/src/" 2>&1 || true)
+# Exclude hand-maintained files (not generated, survive regen).
+# These are declared in 05_emit_rust.dag via hand_maintained_mods.
+DIFF_EXCLUDE="--exclude=v2_interpreter.rs --exclude=cli_run.rs"
+DIFF_OUTPUT=$(diff -rq $DIFF_EXCLUDE "$CHECK_DIR/src/" "$ROOT/src/v2/stage0/src/" 2>&1 || true)
 
 if [ -z "$DIFF_OUTPUT" ]; then
     rm -rf "$CHECK_DIR"
