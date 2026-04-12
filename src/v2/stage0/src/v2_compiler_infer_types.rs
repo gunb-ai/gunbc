@@ -49,7 +49,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 })
 }
 
@@ -159,7 +159,7 @@ Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 }), Rc::new(Node {
     name: val_id.clone(),
     span: make_span(0, 0),
@@ -180,7 +180,7 @@ Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 })]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -195,7 +195,7 @@ Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 })
 }
 }
@@ -227,7 +227,7 @@ Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 })]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -242,7 +242,7 @@ Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 })
 }
 }
@@ -275,7 +275,7 @@ Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 }), Rc::new(Node {
     name: val_name.clone(),
     span: kernel_span(&val_name),
@@ -296,7 +296,7 @@ Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 })]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -311,7 +311,7 @@ Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 })
 }
 }
@@ -337,7 +337,7 @@ pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<N
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 })
 }
 
@@ -366,7 +366,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 }), Rc::new(Node {
     name: "second".to_string(),
     span: kernel_span(&"second".to_string()),
@@ -387,7 +387,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 })]),
     connective: Connective::Conj,
     params: Rc::new(vec![]),
@@ -402,7 +402,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 })
 }
 
@@ -427,7 +427,7 @@ pub fn algebra_value_field(name: &String, type_node: Rc<Node>) -> Rc<Node> {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 })
 }
 
@@ -455,7 +455,7 @@ Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 })
 }
 }
@@ -479,7 +479,7 @@ pub fn enrich_base_with_fields(name: String, base: &Rc<Node>, fields: Rc<Vec<Rc<
     has_non_tail_self_call: base.has_non_tail_self_call.clone(),
     match_pattern: base.match_pattern.clone(),
     expr_data: base.expr_data.clone(),
-    ident: 0,
+    ident: None,
 })
 }
 

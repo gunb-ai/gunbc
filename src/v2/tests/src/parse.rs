@@ -206,21 +206,21 @@ type Foo { value: String }
     assert!(result.error.is_none(), "parse error: {:?}", result.error);
 
     let module = result.module.clone().expect("module");
-    // Module ident should be non-zero (interned by parser)
-    assert_ne!(module.ident, 0, "module ident should be non-zero after parsing");
+    // Module ident should be Some (interned by parser)
+    assert!(module.ident.is_some(), "module ident should be Some after parsing");
     // The intern table should be able to recover the name from the ident
     let recovered_name = v2_compiler::v2_std_core::intern_str(
-        result.intern_table.clone(), module.ident);
+        result.intern_table.clone(), module.ident.unwrap());
     assert_eq!(recovered_name, "my.test.module",
         "intern_str(table, module.ident) should recover the module name");
 
-    // Import node ident should also be non-zero
+    // Import node ident should also be Some
     let imports = module.params.clone();
     assert_eq!(imports.len(), 1);
     let import_node = imports[0].clone();
-    assert_ne!(import_node.ident, 0, "import ident should be non-zero");
+    assert!(import_node.ident.is_some(), "import ident should be Some");
     let import_name = v2_compiler::v2_std_core::intern_str(
-        result.intern_table.clone(), import_node.ident);
+        result.intern_table.clone(), import_node.ident.unwrap());
     assert_eq!(import_name, "std.types",
         "intern_str(table, import.ident) should recover the import path");
 }

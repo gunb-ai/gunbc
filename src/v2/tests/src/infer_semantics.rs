@@ -34,12 +34,12 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
     let sp = make_span(0, 0);
     Rc::new(Node {
         name: kind_name.clone(),
-        ident: 0,
+        ident: None,
         span: sp.clone(),
         ident_span: default_ident_span(kind_name, sp.clone()),
         children: Rc::new(vec![Rc::new(Node {
             name: param_name.clone(),
-            ident: 0,
+            ident: None,
             span: sp.clone(),
             ident_span: default_ident_span(param_name, sp.clone()),
             children: Rc::new(vec![]),
@@ -73,12 +73,12 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
     let sp = make_span(0, 0);
     Rc::new(Node {
         name: "Map".to_string(),
-        ident: 0,
+        ident: None,
         span: sp.clone(),
         ident_span: Some(sp.clone()),
         children: Rc::new(vec![
             Rc::new(Node {
-                name: key_name, ident: 0, span: sp.clone(),
+                name: key_name, ident: None, span: sp.clone(),
                 ident_span: Some(sp.clone()),
                 children: Rc::new(vec![]), connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
@@ -89,7 +89,7 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
                 match_pattern: None, expr_data: Rc::new(ExprData::NoExprData),
             }),
             Rc::new(Node {
-                name: val_name, ident: 0, span: sp.clone(),
+                name: val_name, ident: None, span: sp.clone(),
                 ident_span: Some(sp.clone()),
                 children: Rc::new(vec![]), connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
@@ -337,7 +337,7 @@ fn optional_match_exhaustiveness_accepts_some_and_none() {
 fn resolve_node_uses_node_name_for_lookup() {
     let node_ref = Rc::new(Node {
         name: "User".to_string(),
-        ident: 0,
+        ident: None,
         span: zero_span(),
         ident_span: Some(Rc::new(v2_compiler::v2_std_core::SourceSpan { file: "".to_string(), start: 0, end: 0 })),
         children: Rc::new(vec![]),
