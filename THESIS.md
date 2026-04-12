@@ -453,6 +453,23 @@ Three verification layers (same for all three):
    (e.g., `f(f(x)) == f(x)` for idempotency)
 3. **Runtime receipt:** log when operations are no-ops
 
+**Case study: we commit this bug against ourselves.** The
+`merge_envs` function in the compiler (2026-04-12) was doing
+`merge(a, a, a)` where all inputs were the same InternTable
+(threaded from a single upstream authority). By idempotency
+of merge, the result equals any input — but the compiler
+didn't enforce this, so the runtime spent ~20 seconds per
+self-compile iterating and rebuilding a table identical to
+its inputs. A 6-line fix (read the first input instead of
+merging) produced a 68× speedup on the reconcile stage.
+
+This is KF-2 we're committing against ourselves. Every such
+perf bug we hit is advance payment on KF-2's priority: if
+the compiler enforced algebraic simplification at compile
+time, merge_envs-class bugs would be compile errors, not
+latent hot spots. See [docs/perf/clone-elimination.md](docs/perf/clone-elimination.md)
+for the full case and the rules it teaches.
+
 ### Space bound proofs
 
 If complexity is known and all data is finite, the maximum heap
