@@ -790,6 +790,69 @@ Success criteria (work elimination, not time):
 | node.name reads in compiler | 107 | 0 |
 | Stages run on data-only files | 8 | 3 |
 
+### The upstream unification: transition relations
+
+See [docs/transition-relations.md](docs/transition-relations.md)
+for the full framing.
+
+Multiple emitter "exclusions" (TCO, callable-set, match-bound,
+owned-after-unwrap, field-access style) are currently modeled as
+independent side-tables. They're actually consumers of **one
+upstream fact that doesn't exist yet**: the per-param transition
+relation on recursive/call edges.
+
+**Insight:** TCO is not a property of a function. It is a
+**state transition on the frame**. A normal call enters a fresh
+frame. A tail call updates the frame's state vector and iterates.
+Per-param, that transition has facets: `Reassigned`, `PassThrough`,
+`Consumed`, `Fresh`.
+
+Once this is modeled upstream, the current emitter exclusions
+fall out mechanically:
+
+| Current exclusion | Falls out of transition relation |
+|-------------------|----------------------------------|
+| TCO needs owned params | `Reassigned` params need ownership. `PassThrough` don't. Per-param, not per-function. |
+| Callable-set exclusion | Value-level use is a different edge type (closure capture). Different transition, different rules. |
+| Last-use move at call site | `Consumed` params move at the call. Already in the transition. |
+| Pass-through params skip loop mutation | `PassThrough` is a facet of the edge. |
+| CX lexicographic proofs | Transition classification IS the proof construction (M1 Step 3). |
+
+The pattern: **TCO, last-use move, CX descent evidence, and
+borrow decisions are all downstream consumers of per-param
+transition behavior.** Currently each has its own table
+(`is_tco_eligible`, `movable`, `descent_evidence`,
+`read_only_params_index`). The sustainable version: one
+transition relation, multiple consumers. Adding a new emitter
+decision means reading the transition, not adding a new table.
+
+**The eventual goal:** delete explicit TCO modeling. Replace it
+with a regression test that verifies tail-recursive functions
+still emit as loops. TCO emerges from the transition relation
+plus the emission strategy for frame-reassignment edges. No
+`is_tco_eligible` flag. No TCO-specific code path. The test
+becomes: "given this structural transition, does emission still
+produce loop lowering?" If yes, TCO works by construction.
+
+This is the same pattern as idempotency/cancellation/redundancy
+(THESIS.md §algebraic simplification) — multiple apparently
+distinct behaviors unified under one upstream model.
+
+**Status:** Design direction. This is not the immediate perf
+work — the perf session should continue on M2 Node.name deletion.
+But the transition relation should be the framing for:
+
+- M1 Step 3 (lexicographic proof construction) — this IS the
+  transition relation on the CX side
+- Stream B Layer 1 (last-use clone elision) — `Consumed` vs
+  `PassThrough` per-param
+- TCO lowering — eventually derivable, eventually deletable
+
+The Stream D -3 gap is evidence this is missing: the parser
+now passes shrinking lists, but CX classifies per-argument in
+isolation. The full transition relation would compose the
+per-param evidence automatically and produce the expected -137.
+
 ---
 
 ## Experimental
