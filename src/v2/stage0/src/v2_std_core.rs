@@ -485,7 +485,11 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
 }
 
 pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
-    true
+    match (*d).clone() {
+    CompilerDiagnostic::ComplexityUnknown { .. } => false,
+    CompilerDiagnostic::OwnershipViolation { .. } => false,
+    _ => true,
+}
 }
 
 pub fn make_error_node(diagnostic: Rc<CompilerDiagnostic>, module_name: String) -> Rc<ErrorNode> {

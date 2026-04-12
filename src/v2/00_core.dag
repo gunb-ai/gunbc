@@ -341,7 +341,11 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
 }
 
 fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
-  true
+  match d {
+    ComplexityUnknown  { func_name: _, reason: _, span: _ } => false
+    OwnershipViolation { binding: _, fn_name: _, consumers: _, span: _ } => false
+    _ => true
+  }
 }
 
 fn make_error_node(diagnostic: CompilerDiagnostic, module_name: String) -> ErrorNode {
