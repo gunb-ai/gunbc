@@ -172,6 +172,7 @@ if same_count.clone() {
     params: info.params.clone(),
     is_self_recursive: info.is_self_recursive.clone(),
     has_non_tail_self_call: info.has_non_tail_self_call.clone(),
+    module_name: "".to_string(),
 }))
                 }
 }

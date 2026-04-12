@@ -4865,13 +4865,14 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
 // (resolve_node, resolve_node_bounded, resolve_optional_node, resolve_field,
 //  resolve_param, resolve_expr_types, resolve_item_types, etc.)
 
-fn build_item_info(item: Node, source_indices: Map<String, NewlineIndex>) -> ItemInfo {
+fn build_item_info(item: Node, source_indices: Map<String, NewlineIndex>, module_name: String) -> ItemInfo {
   let kind = item_kind(item: item)
   let res_names = item.uses |> map(u => resource_use_name_at(n: u, source_indices: source_indices))
   match kind {
     FuncItem =>
       ItemInfo {
         name: item.name,
+        module_name: module_name,
         kind: kind,
         service_names: if item.body == none { [] } else { collect_typed_service_calls(texpr: item.body.value, source_indices: source_indices) },
         resource_names: res_names,
@@ -4882,6 +4883,7 @@ fn build_item_info(item: Node, source_indices: Map<String, NewlineIndex>) -> Ite
     FnItem =>
       ItemInfo {
         name: item.name,
+        module_name: module_name,
         kind: kind,
         service_names: if item.body == none { [] } else { collect_typed_service_calls(texpr: item.body.value, source_indices: source_indices) },
         resource_names: res_names,
@@ -4892,6 +4894,7 @@ fn build_item_info(item: Node, source_indices: Map<String, NewlineIndex>) -> Ite
     _ =>
       ItemInfo {
         name: item.name,
+        module_name: module_name,
         kind: kind,
         service_names: [],
         resource_names: res_names,
@@ -4942,7 +4945,7 @@ fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContributi
     func_sig: func_sig,
     svc_entries: svc_entries,
     svc_local: svc_local,
-    item_info: build_item_info(item: ritem, source_indices: env.source_indices)
+    item_info: build_item_info(item: ritem, source_indices: env.source_indices, module_name: module_name)
   }
 }
 

@@ -105,7 +105,7 @@ data regions: List<GcpRegion> = [
 service gcloud.Auth {
   operation Login {
     input { update_adc: Bool = true }
-    output { ok: Bool }
+    output { ok: Bool from "exit_success" }
     transport shell { argv: ["gcloud", "auth", "login", "--update-adc"] }
     exit {
       0 => Unit
@@ -164,7 +164,7 @@ service oauth2.Google {
 service shell.OAuth2 {
   operation RefreshToken {
     input { refresh_token: Secret }
-    output { access_token: Secret, valid: Bool }
+    output { access_token: Secret from "stdout", valid: Bool from "exit_success" }
     transport shell { argv: ["curl", "-s", "-X", "POST", "https://oauth2.googleapis.com/token", "-d", "grant_type=refresh_token&refresh_token=\{refresh_token\}"] }
     exit {
       0 => Unit
@@ -179,7 +179,7 @@ service shell.OAuth2 {
 service shell.GCloud {
   operation AuthPrintAccessToken {
     input {}
-    output { access_token: Secret }
+    output { access_token: Secret from "stdout" }
     readonly
     transport shell { argv: ["gcloud", "auth", "print-access-token"] }
     exit {
@@ -197,7 +197,7 @@ service shell.GCloud {
       secret_name: NonEmptyStr
       version: NonEmptyStr = "latest"
     }
-    output { secret_value: Secret }
+    output { secret_value: Secret from "stdout" }
     readonly
     transport shell { argv: ["gcloud", "secrets", "versions", "access", "\{version\}", "--secret=\{secret_name\}", "--project=\{project_id\}"] }
     exit {

@@ -28,9 +28,9 @@ service llm.Codex {
       reasoning_effort: String = "high"
     }
     output {
-      success: Bool
-      stdout: String
-      stderr: String
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
     }
     transport shell {
       argv: [
@@ -65,9 +65,9 @@ service llm.Claude {
       effort: String = "max"
     }
     output {
-      success: Bool
-      stdout: String
-      stderr: String
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
     }
     transport shell {
       argv: [
@@ -100,9 +100,9 @@ service llm.Gemini {
       prompt: String
     }
     output {
-      success: Bool
-      stdout: String
-      stderr: String
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
     }
     transport shell {
       argv: [

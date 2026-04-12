@@ -87,7 +87,7 @@ data default_branch_names: List<String> = ["main", "master"]
 service git.Core {
   operation CurrentBranch {
     input {}
-    output { branch: String }
+    output { branch: String from "stdout" }
     readonly
     transport shell { argv: ["git", "rev-parse", "--abbrev-ref", "HEAD"] }
     exit {
@@ -101,7 +101,7 @@ service git.Core {
 
   operation RemoteBranches {
     input {}
-    output { branches: List<String> }
+    output { branches: List<String> from "stdout_lines" }
     readonly
     transport shell { argv: ["git", "branch", "-r", "--format=%(refname:short)"] }
     exit {
@@ -115,7 +115,7 @@ service git.Core {
 
   operation LsFiles {
     input {}
-    output { files: List<FilePath> }
+    output { files: List<FilePath> from "stdout_lines" }
     readonly
     transport shell { argv: ["git", "ls-files"] }
     exit {
@@ -129,7 +129,7 @@ service git.Core {
 
   operation Diff {
     input { base: GitRef, head: GitRef = "HEAD" }
-    output { diff: String }
+    output { diff: String from "stdout" }
     readonly
     transport shell { argv: ["git", "diff", "{base}", "{head}"] }
     exit {
@@ -143,7 +143,7 @@ service git.Core {
 
   operation RevList {
     input { since: String }
-    output { commits: List<CommitSha> }
+    output { commits: List<CommitSha> from "stdout_lines" }
     readonly
     transport shell { argv: ["git", "rev-list", "{since}..HEAD"] }
     exit {
@@ -157,7 +157,7 @@ service git.Core {
 
   operation RevListBefore {
     input { before: String }
-    output { base_ref: CommitSha }
+    output { base_ref: CommitSha from "stdout" }
     readonly
     transport shell { argv: ["git", "rev-list", "-1", "--before={before}", "HEAD"] }
     exit {
@@ -171,7 +171,7 @@ service git.Core {
 
   operation Show {
     input { ref: GitRef, path: FilePath }
-    output { content: String }
+    output { content: String from "stdout" }
     readonly
     transport shell { argv: ["git", "show", "{ref}:{path}"] }
     exit {
