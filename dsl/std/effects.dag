@@ -38,6 +38,8 @@
 
 module std.effects
 
+import std.http_path { PathTemplate, parse_path_template, has_path_params, last_path_param }
+
 // =========================================================================
 // Effect shapes: how an operation modifies external state
 // =========================================================================
@@ -184,6 +186,201 @@ fn compose_effects(effects: List<OperationEffect>) -> ComposedEffect {
 //
 // The derivation replaces the manual `idempotent: Bool` on
 // OperationBehavior. The flag dissolves.
+
+// -------------------------------------------------------------------------
+// Modifier roles after v1 derivation lands
+// -------------------------------------------------------------------------
+// Three modifiers survive with distinct roles after this PR:
+//   idempotent on REST ops:
+//     - DISSOLVED where derivation Agrees (1 site: AccessVersion)
+//     - KEPT where derivation Disagrees due to Google :verb convention
+//       (2 sites: AddVersion, GenerateAccessToken) — see :verb section
+//       in docs/effects-derivation-design.md
+//     - KEPT where derivation is DerivationUnknown due to spec-level
+//       idempotency (2 sites: Refresh/RFC 6749, Exchange/RFC 8693)
+//   readonly on REST GETs:
+//     - ASSERTABLE-REDUNDANT (check_modifier_vs_derivation returns Agrees)
+//     - Deletion deferred to v2 once derivation has wider track record
+//   readonly on shell/file/cron/cargo/git/gunbc ops:
+//     - LOAD-BEARING declaration, not a REST method proxy
+//     - INPUT to future derive_shell_effect_shape (out of scope for v1)
+
+// =========================================================================
+// Effect derivation implementation
+// =========================================================================
+
+type HttpMethod = Get | Put | Post | Delete | Patch | Head | Options
+
+fn parse_http_method(raw: String) -> HttpMethod? {
+  if raw == "GET" { Some { value: Get } }
+  else if raw == "PUT" { Some { value: Put } }
+  else if raw == "POST" { Some { value: Post } }
+  else if raw == "DELETE" { Some { value: Delete } }
+  else if raw == "PATCH" { Some { value: Patch } }
+  else if raw == "HEAD" { Some { value: Head } }
+  else if raw == "OPTIONS" { Some { value: Options } }
+  else { none }
+}
+
+type DerivedOpEffect {
+  operation_name: String
+  method: HttpMethod
+  path_template: PathTemplate
+  shape: EffectShape
+}
+
+fn derive_effect_shape(
+  method: HttpMethod,
+  path: PathTemplate,
+  input_fields: List<String>
+) -> EffectShape {
+  match method {
+    Get     => ReadEffect
+    Head    => ReadEffect
+    Options => ReadEffect
+    Delete =>
+      match last_path_param(template: path) {
+        Some { value: p } => DeleteEffect { key_source: PathParam { param: p } }
+        None =>
+          match input_fields |> first {
+            Some { value: f } => DeleteEffect { key_source: InputField { field: f } }
+            None => DeleteEffect { key_source: InputField { field: "" } }
+          }
+      }
+    Put =>
+      match last_path_param(template: path) {
+        Some { value: p } => UpsertEffect { key_source: PathParam { param: p } }
+        None =>
+          match input_fields |> first {
+            Some { value: f } => UpsertEffect { key_source: InputField { field: f } }
+            None => UpsertEffect { key_source: InputField { field: "" } }
+          }
+      }
+    Patch =>
+      match last_path_param(template: path) {
+        Some { value: p } => UpsertEffect { key_source: PathParam { param: p } }
+        None =>
+          match input_fields |> first {
+            Some { value: f } => UpsertEffect { key_source: InputField { field: f } }
+            None => UpsertEffect { key_source: InputField { field: "" } }
+          }
+      }
+    Post =>
+      if has_path_params(template: path) {
+        match last_path_param(template: path) {
+          Some { value: p } => UpsertEffect { key_source: PathParam { param: p } }
+          None => CreateEffect
+        }
+      } else {
+        CreateEffect
+      }
+  }
+}
+
+fn derive_op_effect(
+  operation_name: String,
+  method_str: String,
+  path_str: String,
+  input_fields: List<String>
+) -> DerivedOpEffect? {
+  match parse_http_method(raw: method_str) {
+    None => none
+    Some { value: method } => {
+      let path = parse_path_template(raw: path_str)
+      let shape = derive_effect_shape(method: method, path: path, input_fields: input_fields)
+      Some { value: DerivedOpEffect {
+        operation_name: operation_name,
+        method: method,
+        path_template: path,
+        shape: shape
+      } }
+    }
+  }
+}
+
+// =========================================================================
+// Modifier falsification
+// =========================================================================
+
+type ModifierAgreement
+  = Agrees
+  | Disagrees          { reason: String }
+  | DerivationUnknown  { reason: String }
+
+type ModifierCheck {
+  operation_name: String
+  declared_idempotent: Bool
+  declared_readonly: Bool
+  derived_shape: EffectShape
+  agreement: ModifierAgreement
+}
+
+fn check_modifier_vs_derivation(
+  op: DerivedOpEffect,
+  declared_idempotent: Bool,
+  declared_readonly: Bool
+) -> ModifierCheck {
+  let derived_idempotent = is_idempotent_effect(shape: op.shape)
+  let agreement = if declared_idempotent && derived_idempotent {
+    Agrees
+  } else if declared_idempotent && !derived_idempotent {
+    match op.shape {
+      CreateEffect =>
+        DerivationUnknown { reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared" }
+      _ =>
+        Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
+    }
+  } else if !declared_idempotent && declared_readonly {
+    match op.method {
+      Get => Agrees
+      Head => Agrees
+      Options => Agrees
+      _ => Disagrees { reason: "readonly declared but method is not GET/HEAD/OPTIONS" }
+    }
+  } else {
+    Agrees
+  }
+  ModifierCheck {
+    operation_name: op.operation_name,
+    declared_idempotent: declared_idempotent,
+    declared_readonly: declared_readonly,
+    derived_shape: op.shape,
+    agreement: agreement
+  }
+}
+
+// =========================================================================
+// Test obligation generation
+// =========================================================================
+
+type IdempotencyTestObligation {
+  operation_name: String
+  effect_shape: EffectShape
+  claim: String
+  witness_required: Bool
+}
+
+fn generate_idempotency_obligations(
+  ops: List<DerivedOpEffect>
+) -> List<IdempotencyTestObligation> {
+  ops |> filter(o => is_idempotent_effect(shape: o.shape))
+      |> map(o => IdempotencyTestObligation {
+           operation_name: o.operation_name,
+           effect_shape: o.shape,
+           claim: "f(f(x)) == f(x)",
+           witness_required: true
+         })
+}
+
+// =========================================================================
+// Workflow-level effect concerns
+// =========================================================================
+
+type WorkflowEffectConcern {
+  workflow_name: String
+  create_op: String
+  reason: String
+}
 
 // =========================================================================
 // Relationship to verification (KF-3)

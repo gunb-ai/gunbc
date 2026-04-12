@@ -1,0 +1,89 @@
+// std/http_path.dag -- Structured HTTP path templates.
+//
+// Parses "/v1/{project_id}/secrets/{secret}" into a flat sequence
+// of literal and parameter tokens. Used by effects.dag to derive
+// EffectShape from (method, path key presence).
+//
+// EXTERNAL AUTHORITY:
+//   RFC 6570 (URI Template) — we support only the simple {name} form,
+//   not operators (+, #, ., /, ;, ?, &). Sufficient for REST extdeps.
+//
+// SCOPE:
+//   v1 handles the 16 ops in the effects-derivation acceptance surface.
+//   No query strings, no nested params, at most one param per segment.
+//   The `:verb` suffix (Google Cloud convention) is treated as literal.
+
+module std.http_path
+
+type UrlPathToken
+  = LiteralToken { text: String }
+  | ParamToken   { name: String }
+
+type PathTemplate {
+  tokens: List<UrlPathToken>
+}
+
+fn parse_path_template(raw: String) -> PathTemplate {
+  let segments = raw |> split(delimiter: "/") |> filter(s => s != "")
+  let tokens = segments |> flat_map(seg => parse_segment_tokens(seg: seg))
+  PathTemplate { tokens: tokens }
+}
+
+fn parse_segment_tokens(seg: String) -> List<UrlPathToken> {
+  if !(seg |> contains("{")) {
+    [LiteralToken { text: seg }]
+  } else {
+    let before_and_rest = seg |> split(delimiter: "{")
+    let prefix = match before_and_rest |> first {
+      Some { value: p } => p
+      None => ""
+    }
+    let after_open = match before_and_rest |> skip(1) |> first {
+      Some { value: r } => r
+      None => ""
+    }
+    let name_and_suffix = after_open |> split(delimiter: "}")
+    let param_name = match name_and_suffix |> first {
+      Some { value: p } => p
+      None => ""
+    }
+    let suffix = match name_and_suffix |> skip(1) |> first {
+      Some { value: s } => s
+      None => ""
+    }
+    let prefix_tokens = if prefix != "" {
+      [LiteralToken { text: prefix }]
+    } else { [] }
+    let param_tokens = if param_name != "" {
+      [ParamToken { name: param_name }]
+    } else { [] }
+    let suffix_tokens = if suffix != "" {
+      [LiteralToken { text: suffix }]
+    } else { [] }
+    concat(prefix_tokens, param_tokens, suffix_tokens)
+  }
+}
+
+fn has_path_params(template: PathTemplate) -> Bool {
+  any(template.tokens, t =>
+    match t {
+      ParamToken => true
+      LiteralToken => false
+    })
+}
+
+fn last_path_param(template: PathTemplate) -> String? {
+  let params = template.tokens |> filter(t =>
+    match t {
+      ParamToken => true
+      LiteralToken => false
+    })
+  match params |> last {
+    Some { value: tok } =>
+      match tok {
+        ParamToken { name: n } => Some { value: n }
+        LiteralToken => none
+      }
+    None => none
+  }
+}

@@ -53,8 +53,6 @@ type CapabilityFailureContract {
 // Canonical behavior payload attached to operations and capabilities.
 type OperationBehavior {
   side_effects: SideEffects
-  idempotent: Bool
-  idempotency_keys: List<String>?
   determinism: Determinism
   failure_modes: List<FailureMode>
   edge_cases: List<EdgeCase>
