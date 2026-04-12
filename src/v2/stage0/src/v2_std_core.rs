@@ -488,13 +488,6 @@ pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     true
 }
 
-pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
-    match (*d).clone() {
-    CompilerDiagnostic::ComplexityUnknown { .. } => false,
-    _ => true,
-}
-}
-
 pub fn make_error_node(diagnostic: Rc<CompilerDiagnostic>, module_name: String) -> Rc<ErrorNode> {
     Rc::new(ErrorNode {
     diagnostic: diagnostic,
