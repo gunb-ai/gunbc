@@ -6,13 +6,14 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name_at, param_node_type_expr, param_node_default_value, NewlineIndex, authored_name_at, expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at, ExprData, VarBindingKind, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, AlgebraFieldKind, DeclaredFuncSig, MethodSemantics, MatchPattern, lambda_param_names_at, record_lit_type_name_at, arm_body, arm_pattern, arm_guard, arg_name_at, arg_value, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, return_value, binop_left, binop_right, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, transport_has_auth, field_init_operation_modifier, operation_modifier_name, with_required_cardinality, tuple_type_name, find_child_named, Connective, Cardinality};
+pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name_at, param_node_type_expr, param_node_default_value, NewlineIndex, authored_name_at, expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at, ExprData, VarBindingKind, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, AlgebraFieldKind, DeclaredFuncSig, MethodSemantics, MatchPattern, FieldSummary, expr_method_name_at, method_arg_nodes, expr_method_call_semantics, expr_field_access_summary, lambda_param_names_at, record_lit_type_name_at, arm_body, arm_pattern, arm_guard, arg_name_at, arg_value, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, cast_target, return_value, binop_left, binop_right, foreach_variable_at, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, transport_has_auth, field_init_operation_modifier, operation_modifier_name, with_required_cardinality, tuple_type_name, find_child_named, Connective, FieldAccessStyle, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
 use crate::v2_std_core::BinOp::{NullCoalesce};
 use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::MatchPattern::{Wildcard};
+use crate::v2_std_core::FieldAccessStyle::{TupleFirst, TupleSecond};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
 use crate::v2_std_core::Cardinality::{CardOptional};
 use crate::v2_std_core::VarBindingKind::*;
@@ -2352,6 +2353,66 @@ if (bs.block_close.clone().as_str() == "".to_string().as_str()) {
             v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(bs.match_keyword.clone(), scrutinee_str), bs.block_open.clone()), arms_str), "\n".to_string()), make_indent(depth.clone())), bs.block_close.clone())
         }
 }
+}
+
+pub fn emit_field_access_unified(base_str: String, field: String, summary: Option<Rc<FieldSummary>>, target: &RenderTarget) -> String {
+    {
+        let ts = language_spec(target.clone()).tuple_syntax.clone();
+match summary {
+    Some(fs) => match fs.access_style.clone() {
+    FieldAccessStyle::TupleFirst => v2_rt::concat(base_str, ts.first_accessor.clone()),
+    FieldAccessStyle::TupleSecond => v2_rt::concat(base_str, ts.second_accessor.clone()),
+    _ => v2_rt::concat(v2_rt::concat(base_str, ".".to_string()), emit_export_ident(field, &target)),
+},
+    None => v2_rt::concat(v2_rt::concat(base_str, ".".to_string()), emit_export_ident(field, &target)),
+}
+}
+}
+
+pub fn emit_unified_typed_expr(texpr: Rc<Node>, target: &RenderTarget, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64, fuel: i64, render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        {
+            let si = scope.type_env.clone().source_index.clone();
+let spec = language_spec(target.clone());
+emit_shared_expr(&texpr, &target, si.clone(), |result| result.clone(), |child| emit_unified_typed_expr(child.clone(), &target, registry.clone(), &scope, depth.clone(), (fuel.clone() - 1), render_pattern.clone()), |expr| emit_expr_var_shared(expr.clone(), target.clone(), si.clone()), |expr| {
+                let fa_si = scope.type_env.clone().source_index.clone();
+if is_typed_service_call_receiver(&expr, fa_si.clone()) {
+                    match extract_typed_service_name(&expr, &fa_si) {
+    Some(svc_name) => service_var_name(svc_name.clone()),
+    None => {
+                        let base_str = emit_unified_typed_expr(field_access_base(expr.clone()), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone());
+emit_field_access_unified(base_str.clone(), field_access_field_at(expr.clone(), fa_si.clone()), expr_field_access_summary(expr.clone()), &target)
+},
+}
+                } else {
+                    {
+                        let base_str = emit_unified_typed_expr(field_access_base(expr.clone()), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone());
+emit_field_access_unified(base_str.clone(), field_access_field_at(expr.clone(), fa_si.clone()), expr_field_access_summary(expr.clone()), &target)
+}
+                }
+}, |expr| emit_typed_call_unified(&expr_call_func_at(expr.clone(), si.clone()), expr.children.clone(), &target, registry.clone(), scope.clone(), |n| emit_unified_typed_expr(n.clone(), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone())), |expr| emit_typed_method_call_unified(&method_receiver(expr.clone()), expr_method_name_at(expr.clone(), si.clone()), &method_arg_nodes(expr.clone()), &expr_method_call_semantics(expr.clone()), &target, registry.clone(), scope.clone(), depth.clone(), |n| emit_unified_typed_expr(n.clone(), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone())), |expr| {
+                let scrut_str = emit_unified_typed_expr(match_scrutinee(expr.clone()), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone());
+emit_typed_match_unified(scrut_str.clone(), match_arm_nodes(expr.clone()), target.clone(), depth.clone(), |node, d| emit_unified_typed_expr(node.clone(), &target, registry.clone(), &scope, d.clone(), 1024, render_pattern.clone()), render_pattern.clone(), si.clone())
+}, |expr| {
+                let cond_str = emit_unified_typed_expr(if_condition(expr.clone()), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone());
+let if_result_type = match spec.expression_semantics.clone().if_value_form.clone() {
+    IfValueForm::IfStatement => Some(resolved_type(expr.clone())),
+    _ => None,
+};
+emit_typed_if_shared(cond_str.clone(), &if_then_branch(expr.clone()), if_else_branch(expr.clone()), if_result_type.clone(), depth.clone(), &target, si.clone(), |node, d| emit_unified_typed_expr(node.clone(), &target, registry.clone(), &scope, d.clone(), 1024, render_pattern.clone()))
+}, |expr| {
+                let val_str = emit_unified_typed_expr(let_value(expr.clone()), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone());
+emit_typed_let_shared(&let_binding_name_at(expr.clone(), si.clone()), val_str.clone(), let_body(expr.clone()), target.clone(), |bd, sc| emit_unified_typed_expr(bd.clone(), &target, registry.clone(), &sc, depth.clone(), 1024, render_pattern.clone()), scope.clone(), let_value(expr.clone()))
+}, |expr| emit_typed_record_lit_unified(record_lit_type_name_at(expr.clone(), si.clone()), &expr.children.clone(), &target, si.clone(), |n| emit_unified_typed_expr(n.clone(), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone())), |expr| emit_typed_string_interp_unified(&extract_string_interp_parts(expr.clone()), target.clone(), |e| emit_unified_typed_expr(e.clone(), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone())), |expr| emit_typed_block_join(expr.children.clone(), scope.clone(), depth.clone(), |remaining, sc, d| {
+                let prepend = if spec.block_syntax.clone().significant_whitespace.clone() {
+                    false
+                } else {
+                    true
+                };
+emit_block_stmts_shared(remaining.clone(), Rc::new(vec![]), sc.clone(), d.clone(), prepend.clone(), |stmt, s, dd| emit_unified_typed_expr(stmt.clone(), &target, registry.clone(), &s, dd.clone(), 1024, render_pattern.clone()))
+}), |expr| emit_typed_cast_shared(&cast_expr(expr.clone()), cast_target(expr.clone()), &target, |child| emit_unified_typed_expr(child.clone(), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone()), &si), |expr| emit_typed_for_each_shared(&foreach_variable_at(expr.clone(), si.clone()), &foreach_collection(expr.clone()), foreach_body(expr.clone()), &target, depth.clone(), si.clone(), |child, s, d| emit_unified_typed_expr(child.clone(), &target, registry.clone(), &s, d.clone(), 1024, render_pattern.clone()), &scope), |expr| emit_typed_index_shared(&index_base(expr.clone()), index_expr(expr.clone()), &target, |child| emit_unified_typed_expr(child.clone(), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone()), &si), |expr| emit_typed_slice_shared(&slice_base(expr.clone()), slice_start(expr.clone()), slice_end(expr.clone()), &target, |child| emit_unified_typed_expr(child.clone(), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone()), si.clone()), |expr| emit_default_bin_op(&expr, target.clone(), si.clone(), |child| emit_unified_typed_expr(child.clone(), &target, registry.clone(), &scope, depth.clone(), (fuel.clone() - 1), render_pattern.clone()), |result| result.clone()))
+}
+    })
 }
 
 pub fn is_tco_identity_passthrough(arg_val: &Rc<Node>, param_name: String, si: Option<Rc<NewlineIndex>>) -> bool {

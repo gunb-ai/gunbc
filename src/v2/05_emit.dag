@@ -37,6 +37,8 @@ import v2.std.core {
   DeclaredFuncSig,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
   MatchPattern, Wildcard,
+  FieldSummary, TupleFirst, TupleSecond,
+  expr_method_name_at, method_arg_nodes, expr_method_call_semantics, expr_field_access_summary,
   lambda_param_names_at, record_lit_type_name_at,
   arm_body, arm_pattern, arm_guard,
   arg_name_at, arg_value,
@@ -45,8 +47,9 @@ import v2.std.core {
   match_scrutinee, match_arm_nodes,
   let_value, let_body,
   field_access_base, method_receiver,
-  lambda_body, cast_expr, return_value, binop_left, binop_right,
-  slice_start, slice_end, unaryop_operand,
+  lambda_body, cast_expr, cast_target, return_value, binop_left, binop_right,
+  foreach_variable_at, foreach_collection, foreach_body,
+  index_base, index_expr, slice_base, slice_start, slice_end, unaryop_operand,
   expr_has_self_call, expr_has_non_tail_self_call,
   local_transport_node,
   is_rest_transport, is_shell_transport, is_file_transport,
@@ -2436,6 +2439,122 @@ fn emit_typed_match_unified(scrutinee_str: String, arms: List<Node>, target: Ren
   } else {
     concat(bs.match_keyword, scrutinee_str, bs.block_open, arms_str, "\n", make_indent(level: depth), bs.block_close)
   }
+}
+
+// Unified field access — reads TupleSyntax accessors + emit_export_ident from LanguageSpec.
+fn emit_field_access_unified(base_str: String, field: String, summary: FieldSummary?, target: RenderTarget) -> String {
+  let ts = language_spec(target: target).tuple_syntax
+  match summary {
+    Some { value: fs } =>
+      match fs.access_style {
+        TupleFirst => concat(base_str, ts.first_accessor)
+        TupleSecond => concat(base_str, ts.second_accessor)
+        _ => concat(base_str, ".", emit_export_ident(name: field, target: target))
+      }
+    None => concat(base_str, ".", emit_export_ident(name: field, target: target))
+  }
+}
+
+// =========================================================================
+// Unified typed expression entry point (Phase 2)
+//
+// Single dispatcher for Python and Go expression rendering. Reads all
+// language facts from LanguageSpec. Takes one callback: render_pattern
+// (per-language pattern rendering, not yet unified — Phase 5).
+//
+// Rust uses its own entry point (05_emit_rust.dag) due to ownership
+// logic. When Phase 6 unifies Rust, it can call this function.
+// =========================================================================
+
+fn emit_unified_typed_expr(texpr: Node, target: RenderTarget, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, fuel: Int, render_pattern: fn(MatchPattern) -> String) -> String {
+  let si = scope.type_env.source_index
+  let spec = language_spec(target: target)
+  emit_shared_expr(
+    texpr: texpr,
+    target: target,
+    source_index: si,
+    wrap_result: result => result,
+    recurse: child => emit_unified_typed_expr(texpr: child, target: target, registry: registry, scope: scope, depth: depth, fuel: fuel - 1, render_pattern: render_pattern),
+    emit_var: expr => emit_expr_var_shared(expr: expr, target: target, source_index: si),
+    emit_field_access: expr => {
+      let fa_si = scope.type_env.source_index
+      if is_typed_service_call_receiver(receiver: expr, source_index: fa_si) {
+        match extract_typed_service_name(receiver: expr, source_index: fa_si) {
+          Some { value: svc_name } => service_var_name(service_name: svc_name)
+          None =>
+            let base_str = emit_unified_typed_expr(texpr: field_access_base(texpr: expr), target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)
+            emit_field_access_unified(base_str: base_str, field: field_access_field_at(texpr: expr, source_index: fa_si), summary: expr_field_access_summary(texpr: expr), target: target)
+        }
+      } else {
+        let base_str = emit_unified_typed_expr(texpr: field_access_base(texpr: expr), target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)
+        emit_field_access_unified(base_str: base_str, field: field_access_field_at(texpr: expr, source_index: fa_si), summary: expr_field_access_summary(texpr: expr), target: target)
+      }
+    },
+    emit_call: expr =>
+      emit_typed_call_unified(func: expr_call_func_at(texpr: expr, source_index: si), args: expr.children, target: target, registry: registry, scope: scope,
+        recurse: n => emit_unified_typed_expr(texpr: n, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)),
+    emit_method_call: expr =>
+      emit_typed_method_call_unified(receiver: method_receiver(texpr: expr), method: expr_method_name_at(texpr: expr, source_index: si), args: method_arg_nodes(texpr: expr), method_semantics: expr_method_call_semantics(texpr: expr), target: target, registry: registry, scope: scope, depth: depth,
+        recurse: n => emit_unified_typed_expr(texpr: n, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)),
+    emit_match: expr => {
+      let scrut_str = emit_unified_typed_expr(texpr: match_scrutinee(texpr: expr), target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)
+      emit_typed_match_unified(scrutinee_str: scrut_str, arms: match_arm_nodes(texpr: expr), target: target, depth: depth, source_index: si,
+        recurse: (node, d) => emit_unified_typed_expr(texpr: node, target: target, registry: registry, scope: scope, depth: d, fuel: 1024, render_pattern: render_pattern),
+        render_pattern: render_pattern)
+    },
+    emit_if: expr => {
+      let cond_str = emit_unified_typed_expr(texpr: if_condition(texpr: expr), target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)
+      let if_result_type = match spec.expression_semantics.if_value_form {
+        IfStatement => Some { value: resolved_type(n: expr) }
+        _ => none
+      }
+      emit_typed_if_shared(cond_str: cond_str, then_branch: if_then_branch(texpr: expr), else_branch: if_else_branch(texpr: expr),
+        if_result_type: if_result_type, depth: depth, target: target, source_index: si,
+        recurse: (node, d) => emit_unified_typed_expr(texpr: node, target: target, registry: registry, scope: scope, depth: d, fuel: 1024, render_pattern: render_pattern))
+    },
+    emit_let: expr => {
+      let val_str = emit_unified_typed_expr(texpr: let_value(texpr: expr), target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)
+      emit_typed_let_shared(name: let_binding_name_at(texpr: expr, source_index: si), value_str: val_str, body: let_body(texpr: expr), target: target,
+        recurse: (bd, sc) => emit_unified_typed_expr(texpr: bd, target: target, registry: registry, scope: sc, depth: depth, fuel: 1024, render_pattern: render_pattern),
+        scope: scope, value_node: let_value(texpr: expr))
+    },
+    emit_record_lit: expr =>
+      emit_typed_record_lit_unified(type_name: record_lit_type_name_at(texpr: expr, source_index: si), fields: expr.children, target: target, source_index: si,
+        recurse: n => emit_unified_typed_expr(texpr: n, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)),
+    emit_string_interp: expr =>
+      emit_typed_string_interp_unified(parts: extract_string_interp_parts(expr: expr), target: target,
+        recurse: e => emit_unified_typed_expr(texpr: e, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)),
+    emit_block: expr =>
+      emit_typed_block_join(stmts: expr.children, scope: scope, depth: depth,
+        emit_block_stmts: (remaining, sc, d) => {
+          let prepend = if spec.block_syntax.significant_whitespace { false } else { true }
+          emit_block_stmts_shared(remaining: remaining, text: [], scope: sc, depth: d, prepend_indent: prepend,
+            emit_expr: (stmt, s, dd) => emit_unified_typed_expr(texpr: stmt, target: target, registry: registry, scope: s, depth: dd, fuel: 1024, render_pattern: render_pattern))
+        }),
+    emit_cast: expr =>
+      emit_typed_cast_shared(expr: cast_expr(texpr: expr), cast_target_node: cast_target(texpr: expr), target: target,
+        recurse: child => emit_unified_typed_expr(texpr: child, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern),
+        source_index: si),
+    emit_for_each: expr =>
+      emit_typed_for_each_shared(
+        variable: foreach_variable_at(texpr: expr, source_index: si),
+        collection: foreach_collection(texpr: expr),
+        body: foreach_body(texpr: expr),
+        target: target, depth: depth, source_index: si,
+        recurse: (child, s, d) => emit_unified_typed_expr(texpr: child, target: target, registry: registry, scope: s, depth: d, fuel: 1024, render_pattern: render_pattern),
+        scope: scope),
+    emit_index: expr =>
+      emit_typed_index_shared(base: index_base(texpr: expr), index: index_expr(texpr: expr), target: target,
+        recurse: child => emit_unified_typed_expr(texpr: child, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern),
+        source_index: si),
+    emit_slice: expr =>
+      emit_typed_slice_shared(base: slice_base(texpr: expr), start: slice_start(texpr: expr), end: slice_end(texpr: expr), target: target,
+        recurse: child => emit_unified_typed_expr(texpr: child, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern),
+        source_index: si),
+    emit_bin_op: expr =>
+      emit_default_bin_op(texpr: expr, target: target, source_index: si,
+        recurse: child => emit_unified_typed_expr(texpr: child, target: target, registry: registry, scope: scope, depth: depth, fuel: fuel - 1, render_pattern: render_pattern),
+        wrap_result: result => result))
 }
 
 // Check if a TCO self-call argument is an identity pass-through: `f(param: param)`.

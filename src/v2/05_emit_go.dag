@@ -129,7 +129,8 @@ import v2.compiler.emit {
   emit_algebra_method_template,
   emit_typed_string_interp_unified, emit_typed_record_lit_unified,
   emit_typed_call_unified, emit_typed_method_call_unified,
-  emit_typed_match_unified
+  emit_typed_match_unified,
+  emit_unified_typed_expr
 }
 // =========================================================================
 // Go language facts -- from std.languages spec (go_language, go_literals)
@@ -568,151 +569,10 @@ fn emit_go_variant_pattern(name: String, field_bindings: List<Node>) -> String {
   // Go type switch: case TypeName:
   name
 }
-fn emit_go_field_access(base: Node, field: String, summary: FieldSummary?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let base_str = emit_go_typed_expr(texpr: base, registry: registry, scope: scope, depth: depth, fuel: 1024)
-  match summary {
-    Some { value: fs } =>
-      match fs.access_style {
-        TupleFirst => concat(base_str, ".First")
-        TupleSecond => concat(base_str, ".Second")
-        _ => concat(base_str, ".", go_export_ident(name: field))
-      }
-    None => concat(base_str, ".", go_export_ident(name: field))
-  }
-}
-
-fn emit_go_expr_var(expr: Node, source_index: NewlineIndex?) -> String {
-  emit_expr_var_shared(expr: expr, target: Go, source_index: source_index)
-}
-
-fn emit_go_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let si = scope.type_env.source_index
-  emit_expr_field_access_shared(expr: expr, target: Go, emit_field: e => emit_go_field_access(base: field_access_base(texpr: e), field: field_access_field_at(texpr: e, source_index: si), summary: expr_field_access_summary(texpr: e), registry: registry, scope: scope, depth: depth), source_index: si)
-}
-
-fn emit_go_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_go_typed_call(func: expr_call_func_at(texpr: expr, source_index: scope.type_env.source_index), args: expr.children, registry: registry, scope: scope, depth: depth)
-}
-
-fn emit_go_expr_method_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_go_typed_method_call(receiver: method_receiver(texpr: expr), method: expr_method_name_at(texpr: expr, source_index: scope.type_env.source_index), args: method_arg_nodes(texpr: expr), method_semantics: expr_method_call_semantics(texpr: expr), registry: registry, scope: scope, depth: depth)
-}
-
-fn emit_go_expr_match(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_go_typed_match(scrutinee: match_scrutinee(texpr: expr), arms: match_arm_nodes(texpr: expr), registry: registry, scope: scope, depth: depth)
-}
-
-fn emit_go_expr_if(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_go_typed_if(condition: if_condition(texpr: expr), then_branch: if_then_branch(texpr: expr), else_branch: if_else_branch(texpr: expr), if_result_type: Some { value: resolved_type(n: expr) }, registry: registry, scope: scope, depth: depth)
-}
-
-fn emit_go_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_go_typed_let(name: let_binding_name_at(texpr: expr, source_index: scope.type_env.source_index), value: let_value(texpr: expr), body: let_body(texpr: expr), registry: registry, scope: scope, depth: depth)
-}
-
-fn emit_go_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_go_typed_record_lit(type_name: record_lit_type_name_at(texpr: expr, source_index: scope.type_env.source_index), fields: expr.children, registry: registry, scope: scope, depth: depth)
-}
-
-fn emit_go_expr_string_interp(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_go_typed_string_interp(parts: extract_string_interp_parts(expr: expr), registry: registry, scope: scope, depth: depth)
-}
-
-fn emit_go_expr_block(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_go_typed_block(stmts: expr.children, registry: registry, scope: scope, depth: depth)
-}
-
-fn emit_go_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_typed_cast_shared(expr: cast_expr(texpr: expr), cast_target_node: cast_target(texpr: expr), target: Go, recurse: child => emit_go_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: 1024), source_index: scope.type_env.source_index)
-}
-
-fn emit_go_expr_for_each(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_typed_for_each_shared(
-    variable: foreach_variable_at(texpr: expr, source_index: scope.type_env.source_index),
-    collection: foreach_collection(texpr: expr),
-    body: foreach_body(texpr: expr),
-    target: Go, depth: depth, source_index: scope.type_env.source_index,
-    recurse: (child, s, d) => emit_go_typed_expr(texpr: child, registry: registry, scope: s, depth: d, fuel: 1024),
-    scope: scope)
-}
-
-fn emit_go_expr_index(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_typed_index_shared(base: index_base(texpr: expr), index: index_expr(texpr: expr), target: Go, recurse: child => emit_go_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: 1024), source_index: scope.type_env.source_index)
-}
-
-fn emit_go_expr_slice(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_typed_slice_shared(base: slice_base(texpr: expr), start: slice_start(texpr: expr), end: slice_end(texpr: expr), target: Go, recurse: child => emit_go_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: 1024), source_index: scope.type_env.source_index)
-}
-
+// Unified expression entry point — delegates to shared emit_unified_typed_expr.
 fn emit_go_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, fuel: Int) -> String {
-  emit_shared_expr(
-    texpr: texpr,
-    target: Go,
-    source_index: scope.type_env.source_index,
-    wrap_result: result => result,
-    recurse: child => emit_go_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: fuel - 1),
-    emit_var: expr => emit_go_expr_var(expr: expr, source_index: scope.type_env.source_index),
-    emit_field_access: expr => emit_go_expr_field_access(expr: expr, registry: registry, scope: scope, depth: depth),
-    emit_call: expr => emit_go_expr_call(expr: expr, registry: registry, scope: scope, depth: depth),
-    emit_method_call: expr => emit_go_expr_method_call(expr: expr, registry: registry, scope: scope, depth: depth),
-    emit_match: expr => emit_go_expr_match(expr: expr, registry: registry, scope: scope, depth: depth),
-    emit_if: expr => emit_go_expr_if(expr: expr, registry: registry, scope: scope, depth: depth),
-    emit_let: expr => emit_go_expr_let(expr: expr, registry: registry, scope: scope, depth: depth),
-    emit_record_lit: expr => emit_go_expr_record_lit(expr: expr, registry: registry, scope: scope, depth: depth),
-    emit_string_interp: expr => emit_go_expr_string_interp(expr: expr, registry: registry, scope: scope, depth: depth),
-    emit_block: expr => emit_go_expr_block(expr: expr, registry: registry, scope: scope, depth: depth),
-    emit_cast: expr => emit_go_expr_cast(expr: expr, registry: registry, scope: scope, depth: depth),
-    emit_for_each: expr => emit_go_expr_for_each(expr: expr, registry: registry, scope: scope, depth: depth),
-    emit_index: expr => emit_go_expr_index(expr: expr, registry: registry, scope: scope, depth: depth),
-    emit_slice: expr => emit_go_expr_slice(expr: expr, registry: registry, scope: scope, depth: depth),
-    emit_bin_op: expr => emit_default_bin_op(texpr: expr, target: Go, source_index: scope.type_env.source_index, recurse: child => emit_go_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: fuel - 1), wrap_result: result => result))
-}
-
-fn emit_go_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_typed_call_unified(func: func, args: args, target: Go, registry: registry, scope: scope,
-    recurse: n => emit_go_typed_expr(texpr: n, registry: registry, scope: scope, depth: depth, fuel: 1024))
-}
-
-fn emit_go_typed_method_call(receiver: Node, method: String, args: List<Node>, method_semantics: MethodSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_typed_method_call_unified(receiver: receiver, method: method, args: args, method_semantics: method_semantics, target: Go, registry: registry, scope: scope, depth: depth,
-    recurse: n => emit_go_typed_expr(texpr: n, registry: registry, scope: scope, depth: depth, fuel: 1024))
-}
-
-fn emit_go_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let scrut_str = emit_go_typed_expr(texpr: scrutinee, registry: registry, scope: scope, depth: depth, fuel: 1024)
-  emit_typed_match_unified(scrutinee_str: scrut_str, arms: arms, target: Go, depth: depth, source_index: scope.type_env.source_index,
-    recurse: (node, d) => emit_go_typed_expr(texpr: node, registry: registry, scope: scope, depth: d, fuel: 1024),
+  emit_unified_typed_expr(texpr: texpr, target: Go, registry: registry, scope: scope, depth: depth, fuel: fuel,
     render_pattern: pat => emit_go_pattern(pattern: pat))
-}
-
-fn emit_go_typed_if(condition: Node, then_branch: Node, else_branch: Node?, if_result_type: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let cond_str = emit_go_typed_expr(texpr: condition, registry: registry, scope: scope, depth: depth, fuel: 1024)
-  emit_typed_if_shared(cond_str: cond_str, then_branch: then_branch, else_branch: else_branch,
-    if_result_type: if_result_type, depth: depth, target: Go, source_index: scope.type_env.source_index,
-    recurse: (node, d) => emit_go_typed_expr(texpr: node, registry: registry, scope: scope, depth: d, fuel: 1024))
-}
-
-fn emit_go_typed_let(name: String, value: Node, body: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let val_str = emit_go_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, fuel: 1024)
-  emit_typed_let_shared(name: name, value_str: val_str, body: body, target: Go,
-    recurse: (bd, sc) => emit_go_typed_expr(texpr: bd, registry: registry, scope: sc, depth: depth, fuel: 1024),
-    scope: scope, value_node: value)
-}
-
-fn emit_go_typed_record_lit(type_name: String?, fields: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_typed_record_lit_unified(type_name: type_name, fields: fields, target: Go, source_index: scope.type_env.source_index,
-    recurse: n => emit_go_typed_expr(texpr: n, registry: registry, scope: scope, depth: depth, fuel: 1024))
-}
-
-
-fn emit_go_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_typed_string_interp_unified(parts: parts, target: Go,
-    recurse: e => emit_go_typed_expr(texpr: e, registry: registry, scope: scope, depth: depth, fuel: 1024))
-}
-
-fn emit_go_typed_block(stmts: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_typed_block_join(stmts: stmts, scope: scope, depth: depth,
-    emit_block_stmts: (s, sc, d) => emit_go_block_stmts(remaining: s, text: [], scope: sc, registry: registry, depth: d))
 }
 
 // =========================================================================
@@ -773,7 +633,8 @@ fn emit_go_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>) -
     frame: frame,
     target: Go,
     spec: language_spec(target: Go),
-    recurse_call: (f, args, scope, depth) => emit_go_typed_call(func: f, args: args, registry: registry, scope: scope, depth: depth))
+    recurse_call: (f, args, scope, depth) => emit_typed_call_unified(func: f, args: args, target: Go, registry: registry, scope: scope,
+      recurse: n => emit_go_typed_expr(texpr: n, registry: registry, scope: scope, depth: depth, fuel: 1024)))
 }
 
 fn emit_go_tco_if(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>) -> String {

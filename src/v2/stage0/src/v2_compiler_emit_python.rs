@@ -30,7 +30,7 @@ pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extra
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, expr_span};
 pub use crate::std_induction::{SubValueRelation};
 use crate::std_induction::SubValueRelation::{SubValueUnknown};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, emit_literal, emit_bin_op_symbol, emit_keyword, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_python_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, typed_named_arg_matches, order_typed_call_args, unique_strings, has_nested_records_node, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, shared_tco_body, shared_tco_default_return, shared_tco_non_self_call, shared_tco_if, shared_tco_let, shared_tco_block, shared_tco_reassign, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, seed_bindings, emit_expr_var_shared, emit_expr_field_access_shared, extract_string_interp_parts, emit_typed_cast_shared, emit_typed_for_each_shared, emit_typed_index_shared, emit_typed_slice_shared, emit_block_stmts_shared, emit_init_block_stmts_shared, emit_typed_if_shared, emit_typed_let_shared, emit_param_shared, emit_params_shared, emit_inferred_shared, emit_typed_block_join, emit_typed_first_arg_shared, emit_typed_tco_reassign_shared, emit_algebra_method_template, emit_typed_string_interp_unified, emit_typed_record_lit_unified, emit_typed_call_unified, emit_typed_method_call_unified, emit_typed_match_unified};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, emit_literal, emit_bin_op_symbol, emit_keyword, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_python_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, typed_named_arg_matches, order_typed_call_args, unique_strings, has_nested_records_node, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, shared_tco_body, shared_tco_default_return, shared_tco_non_self_call, shared_tco_if, shared_tco_let, shared_tco_block, shared_tco_reassign, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, seed_bindings, emit_expr_var_shared, emit_expr_field_access_shared, extract_string_interp_parts, emit_typed_cast_shared, emit_typed_for_each_shared, emit_typed_index_shared, emit_typed_slice_shared, emit_block_stmts_shared, emit_init_block_stmts_shared, emit_typed_if_shared, emit_typed_let_shared, emit_param_shared, emit_params_shared, emit_inferred_shared, emit_typed_block_join, emit_typed_first_arg_shared, emit_typed_tco_reassign_shared, emit_algebra_method_template, emit_typed_string_interp_unified, emit_typed_record_lit_unified, emit_typed_call_unified, emit_typed_method_call_unified, emit_typed_match_unified, emit_unified_typed_expr};
 
 pub fn emit_py_block_stmts(remaining: Rc<Vec<Rc<Node>>>, text: Rc<Vec<String>>, scope: Rc<InferScope>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64) -> Rc<BlockEmitState> {
     emit_block_stmts_shared(remaining, text, scope, depth, false, |stmt, sc, d| emit_py_typed_expr(stmt.clone(), registry.clone(), &sc, d.clone(), 1024))
@@ -432,124 +432,8 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(name, "(".to_string()), bindings_str),
     }
 }
 
-pub fn emit_py_field_access(base: Rc<Node>, field: String, summary: Option<Rc<FieldSummary>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    {
-        let base_str = emit_py_typed_expr(base, registry, &scope, depth, 1024);
-match summary {
-    Some(fs) => match fs.access_style.clone() {
-    FieldAccessStyle::TupleFirst => v2_rt::concat(base_str, "[0]".to_string()),
-    FieldAccessStyle::TupleSecond => v2_rt::concat(base_str, "[1]".to_string()),
-    _ => v2_rt::concat(v2_rt::concat(base_str, ".".to_string()), emit_ident(field, RenderTarget::Python)),
-},
-    None => v2_rt::concat(v2_rt::concat(base_str, ".".to_string()), emit_ident(field, RenderTarget::Python)),
-}
-}
-}
-
-pub fn emit_py_expr_var(expr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    emit_expr_var_shared(expr, RenderTarget::Python, source_index)
-}
-
-pub fn emit_py_expr_field_access(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64) -> String {
-    {
-        let si = scope.type_env.clone().source_index.clone();
-emit_expr_field_access_shared(&expr, RenderTarget::Python, |e| emit_py_field_access(field_access_base(e.clone()), field_access_field_at(e.clone(), si.clone()), expr_field_access_summary(e.clone()), registry.clone(), scope.clone(), depth.clone()), &si)
-}
-}
-
-pub fn emit_py_expr_call(expr: &Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64) -> String {
-    emit_py_typed_call(expr_call_func_at(expr.clone(), scope.type_env.clone().source_index.clone()), expr.children.clone(), &registry, &scope, depth)
-}
-
-pub fn emit_py_expr_method_call(expr: &Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64) -> String {
-    emit_py_typed_method_call(method_receiver(expr.clone()), expr_method_name_at(expr.clone(), scope.type_env.clone().source_index.clone()), method_arg_nodes(expr.clone()), expr_method_call_semantics(expr.clone()), &registry, &scope, depth)
-}
-
-pub fn emit_py_expr_match(expr: &Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    emit_py_typed_match(match_scrutinee(expr.clone()), match_arm_nodes(expr.clone()), &registry, &scope, depth)
-}
-
-pub fn emit_py_expr_if(expr: &Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    emit_py_typed_if(if_condition(expr.clone()), if_then_branch(expr.clone()), if_else_branch(expr.clone()), &registry, &scope, depth)
-}
-
-pub fn emit_py_expr_let(expr: &Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64) -> String {
-    emit_py_typed_let(let_binding_name_at(expr.clone(), scope.type_env.clone().source_index.clone()), &let_value(expr.clone()), let_body(expr.clone()), &registry, &scope, depth)
-}
-
-pub fn emit_py_expr_record_lit(expr: &Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64) -> String {
-    emit_py_typed_record_lit(record_lit_type_name_at(expr.clone(), scope.type_env.clone().source_index.clone()), expr.children.clone(), registry, &scope, depth)
-}
-
-pub fn emit_py_expr_string_interp(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    emit_py_typed_string_interp(extract_string_interp_parts(expr), registry, scope, depth)
-}
-
-pub fn emit_py_expr_block(expr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    emit_py_typed_block(expr.children.clone(), registry, scope, depth)
-}
-
-pub fn emit_py_expr_cast(expr: &Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64) -> String {
-    emit_typed_cast_shared(&cast_expr(expr.clone()), cast_target(expr.clone()), &RenderTarget::Python, |child| emit_py_typed_expr(child.clone(), registry.clone(), &scope, depth.clone(), 1024), &scope.type_env.clone().source_index.clone())
-}
-
-pub fn emit_py_expr_for_each(expr: &Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64) -> String {
-    emit_typed_for_each_shared(&foreach_variable_at(expr.clone(), scope.type_env.clone().source_index.clone()), &foreach_collection(expr.clone()), foreach_body(expr.clone()), &RenderTarget::Python, depth, scope.type_env.clone().source_index.clone(), |child, s, d| emit_py_typed_expr(child.clone(), registry.clone(), &s, d.clone(), 1024), &scope)
-}
-
-pub fn emit_py_expr_index(expr: &Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64) -> String {
-    emit_typed_index_shared(&index_base(expr.clone()), index_expr(expr.clone()), &RenderTarget::Python, |child| emit_py_typed_expr(child.clone(), registry.clone(), &scope, depth.clone(), 1024), &scope.type_env.clone().source_index.clone())
-}
-
-pub fn emit_py_expr_slice(expr: &Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64) -> String {
-    emit_typed_slice_shared(&slice_base(expr.clone()), slice_start(expr.clone()), slice_end(expr.clone()), &RenderTarget::Python, |child| emit_py_typed_expr(child.clone(), registry.clone(), &scope, depth.clone(), 1024), scope.type_env.clone().source_index.clone())
-}
-
 pub fn emit_py_typed_expr(texpr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64, fuel: i64) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        emit_shared_expr(&texpr, &RenderTarget::Python, scope.type_env.clone().source_index.clone(), |result| result.clone(), |child| emit_py_typed_expr(child.clone(), registry.clone(), &scope, depth.clone(), (fuel.clone() - 1)), |expr| emit_py_expr_var(expr.clone(), scope.type_env.clone().source_index.clone()), |expr| emit_py_expr_field_access(expr.clone(), registry.clone(), &scope, depth.clone()), |expr| emit_py_expr_call(&expr, registry.clone(), &scope, depth.clone()), |expr| emit_py_expr_method_call(&expr, registry.clone(), &scope, depth.clone()), |expr| emit_py_expr_match(&expr, registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_if(&expr, registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_let(&expr, registry.clone(), &scope, depth.clone()), |expr| emit_py_expr_record_lit(&expr, registry.clone(), &scope, depth.clone()), |expr| emit_py_expr_string_interp(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_block(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_py_expr_cast(&expr, registry.clone(), &scope, depth.clone()), |expr| emit_py_expr_for_each(&expr, registry.clone(), &scope, depth.clone()), |expr| emit_py_expr_index(&expr, registry.clone(), &scope, depth.clone()), |expr| emit_py_expr_slice(&expr, registry.clone(), &scope, depth.clone()), |expr| emit_default_bin_op(&expr, RenderTarget::Python, scope.type_env.clone().source_index.clone(), |child| emit_py_typed_expr(child.clone(), registry.clone(), &scope, depth.clone(), (fuel.clone() - 1)), |result| result.clone()))
-    })
-}
-
-pub fn emit_py_typed_call(func: String, args: Rc<Vec<Rc<Node>>>, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64) -> String {
-    emit_typed_call_unified(&func, args, &RenderTarget::Python, registry.clone(), scope.clone(), |n| emit_py_typed_expr(n.clone(), registry.clone(), &scope, depth.clone(), 1024))
-}
-
-pub fn emit_py_typed_method_call(receiver: Rc<Node>, method: String, args: Rc<Vec<Rc<Node>>>, method_semantics: Option<Rc<MethodSemantics>>, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64) -> String {
-    emit_typed_method_call_unified(&receiver, method, &args, &method_semantics, &RenderTarget::Python, registry.clone(), scope.clone(), depth.clone(), |n| emit_py_typed_expr(n.clone(), registry.clone(), &scope, depth.clone(), 1024))
-}
-
-pub fn emit_py_typed_match(scrutinee: Rc<Node>, arms: Rc<Vec<Rc<Node>>>, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64) -> String {
-    {
-        let scrut_str = emit_py_typed_expr(scrutinee, registry.clone(), &scope, depth.clone(), 1024);
-emit_typed_match_unified(scrut_str, arms, RenderTarget::Python, depth.clone(), |node, d| emit_py_typed_expr(node.clone(), registry.clone(), &scope, d.clone(), 1024), |pat| emit_py_pattern(pat.clone(), scope.type_env.clone().source_index.clone()), scope.type_env.clone().source_index.clone())
-}
-}
-
-pub fn emit_py_typed_if(condition: Rc<Node>, then_branch: Rc<Node>, else_branch: Option<Rc<Node>>, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64) -> String {
-    {
-        let cond_str = emit_py_typed_expr(condition, registry.clone(), &scope, depth.clone(), 1024);
-emit_typed_if_shared(cond_str, &then_branch, else_branch, None, depth.clone(), &RenderTarget::Python, scope.type_env.clone().source_index.clone(), |node, d| emit_py_typed_expr(node.clone(), registry.clone(), &scope, d.clone(), 1024))
-}
-}
-
-pub fn emit_py_typed_let(name: String, value: &Rc<Node>, body: Option<Rc<Node>>, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64) -> String {
-    {
-        let val_str = emit_py_typed_expr(value.clone(), registry.clone(), &scope, depth.clone(), 1024);
-emit_typed_let_shared(&name, val_str, body, RenderTarget::Python, |bd, sc| emit_py_typed_expr(bd.clone(), registry.clone(), &sc, depth.clone(), 1024), scope.clone(), value.clone())
-}
-}
-
-pub fn emit_py_typed_record_lit(type_name: Option<String>, fields: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64) -> String {
-    emit_typed_record_lit_unified(type_name, &fields, &RenderTarget::Python, scope.type_env.clone().source_index.clone(), |n| emit_py_typed_expr(n.clone(), registry.clone(), &scope, depth.clone(), 1024))
-}
-
-pub fn emit_py_typed_string_interp(parts: Rc<Vec<Rc<StringPart>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    emit_typed_string_interp_unified(&parts, RenderTarget::Python, |e| emit_py_typed_expr(e.clone(), registry.clone(), &scope, depth.clone(), 1024))
-}
-
-pub fn emit_py_typed_block(stmts: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64) -> String {
-    emit_typed_block_join(stmts, scope, depth, |s, sc, d| emit_py_block_stmts(s.clone(), Rc::new(vec![]), sc.clone(), registry.clone(), d.clone()))
+    emit_unified_typed_expr(texpr, &RenderTarget::Python, registry, &scope, depth, fuel, |pat| emit_py_pattern(pat.clone(), scope.type_env.clone().source_index.clone()))
 }
 
 pub fn emit_py_typed_func_body(body: &Rc<Node>, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64) -> String {
@@ -604,7 +488,7 @@ shared_tco_body(inner, depth.clone(), &language_spec(RenderTarget::Python))
 }
 
 pub fn emit_py_tco_non_self_call(frame: Rc<TcoFrame>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> String {
-    shared_tco_non_self_call(&frame, RenderTarget::Python, language_spec(RenderTarget::Python), |f, args, scope, depth| emit_py_typed_call(f.clone(), args.clone(), &registry, &scope, depth.clone()))
+    shared_tco_non_self_call(&frame, RenderTarget::Python, language_spec(RenderTarget::Python), |f, args, scope, depth| emit_typed_call_unified(&f, args.clone(), &RenderTarget::Python, registry.clone(), scope.clone(), |n| emit_py_typed_expr(n.clone(), registry.clone(), &scope, depth.clone(), 1024)))
 }
 
 pub fn emit_py_tco_if(frame: Rc<TcoFrame>, fn_name: &String, params: &Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> String {
