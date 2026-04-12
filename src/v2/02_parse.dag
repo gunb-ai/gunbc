@@ -4464,53 +4464,51 @@ fn parse_field_init_list(tokens: List<Token>, ctx: ParseContext) -> FieldInitsRe
   parse_field_init_list_acc(tokens: tokens, ctx: ctx, acc: [])
 }
 
-fn parse_field_init_list_acc(tokens: List<Token>, state: ParserState, acc: List<Node>) -> FieldInitsResult {
-  let s = skip_newlines(tokens: tokens, state: state)
-  if tok_is_rbrace(tok: peek(tokens: tokens, state: s)) || at_end(tokens: tokens, state: s) {
-    FieldInitsResult { fields: acc, state: s, err: none }
+fn parse_field_init_list_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) -> FieldInitsResult {
+  let tokens = skip_newlines(tokens: tokens)
+  if tok_is_rbrace(tok: tokens |> first) || tok_is_eof(tok: tokens |> first) {
+    FieldInitsResult { fields: acc, tokens: tokens, ctx: ctx, err: none }
   } else {
-    let r = parse_field_init(tokens: tokens, state: s)
-    if has_err(err: r.err) { return FieldInitsResult { fields: [], state: r.state, err: r.err } }
-    let e = eat(tokens: tokens, state: r.state, expected: ExpectComma)
-    let s2 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { r.state })
-    parse_field_init_list_acc(tokens: tokens, state: s2, acc: list_push(acc, r.field))
+    let r = parse_field_init(tokens: tokens, ctx: ctx)
+    if has_err(err: r.err) { return FieldInitsResult { fields: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
+    let e = eat(tokens: r.tokens, expected: ExpectComma)
+    let tokens = skip_newlines(tokens: if e.consumed { e.tokens } else { r.tokens })
+    parse_field_init_list_acc(tokens: tokens, ctx: r.ctx, acc: list_push(acc, r.field))
   }
 }
 
-fn parse_field_init(tokens: List<Token>, state: ParserState) -> FieldInitResult {
+fn parse_field_init(tokens: List<Token>, ctx: ParseContext) -> FieldInitResult {
   let zero_span = make_span(start: 0, end: 0)
+  let span = token_span(tok: tokens |> first)
   let dummy_fi = make_field_init_node(name: "", value: parse_recovery_placeholder(), span: zero_span, name_span: zero_span)
-  if tok_is_ident(tok: peek(tokens: tokens, state: state)) || tok_is_keyword_name(tok: peek(tokens: tokens, state: state)) {
-    let name_r = expect_name(tokens: tokens, state: state)
-    if has_err(err: name_r.err) { return FieldInitResult { field: dummy_fi, state: name_r.state, err: name_r.err } }
+  let tok = tokens |> first
+  if tok_is_ident(tok: tok) || tok_is_keyword_name(tok: tok) {
+    let name_r = expect_name(tokens: tokens)
+    if has_err(err: name_r.err) { return FieldInitResult { field: dummy_fi, tokens: name_r.tokens, ctx: ctx, err: name_r.err } }
     let n = name_r.name
-    if tok_is_colon(tok: peek(tokens: tokens, state: name_r.state)) {
-      let adv2 = advance(tokens: tokens, state: name_r.state)
-      let r = parse_expr(tokens: tokens, state: adv2.state)
-      if has_err(err: r.err) { return FieldInitResult { field: dummy_fi, state: r.state, err: r.err } }
-      let fi = make_field_init_node(name: n, value: r.expr, span: current_span(tokens: tokens, state: state), name_span: name_r.span)
-      FieldInitResult { field: fi, state: r.state, err: none }
+    if tok_is_colon(tok: name_r.tokens |> first) {
+      let r = parse_expr(tokens: name_r.tokens |> skip(1), ctx: ctx)
+      if has_err(err: r.err) { return FieldInitResult { field: dummy_fi, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+      let fi = make_field_init_node(name: n, value: r.expr, span: span, name_span: name_r.span)
+      FieldInitResult { field: fi, tokens: r.tokens, ctx: r.ctx, err: none }
     } else {
-      let fi = make_field_init_node(name: n, value: make_named_expr_node(name: n, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: current_span(tokens: tokens, state: state), name_span: name_r.span), span: current_span(tokens: tokens, state: state), name_span: name_r.span)
-      FieldInitResult { field: fi, state: name_r.state, err: none }
+      let fi = make_field_init_node(name: n, value: make_named_expr_node(name: n, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: span, name_span: name_r.span), span: span, name_span: name_r.span)
+      FieldInitResult { field: fi, tokens: name_r.tokens, ctx: ctx, err: none }
     }
-  } else if tok_is_lit_str(tok: peek(tokens: tokens, state: state)) && peek_is_colon_after_ident(tokens: tokens, state: state) {
-    let str_tok = peek(tokens: tokens, state: state)
-    let str_name = match str_tok {
+  } else if tok_is_lit_str(tok: tok) && peek_is_colon_after_ident(tokens: tokens) {
+    let str_name = match tok {
       Some { value: t } => t.text
       None => "_"
     }
-    let adv = advance(tokens: tokens, state: state)
-    let adv2 = advance(tokens: tokens, state: adv.state)
-    let r = parse_expr(tokens: tokens, state: adv2.state)
-    if has_err(err: r.err) { return FieldInitResult { field: dummy_fi, state: r.state, err: r.err } }
-    let fi = make_field_init_node(name: str_name, value: r.expr, span: current_span(tokens: tokens, state: state), name_span: no_span())
-    FieldInitResult { field: fi, state: r.state, err: none }
+    let r = parse_expr(tokens: tokens |> skip(2), ctx: ctx)
+    if has_err(err: r.err) { return FieldInitResult { field: dummy_fi, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+    let fi = make_field_init_node(name: str_name, value: r.expr, span: span, name_span: no_span())
+    FieldInitResult { field: fi, tokens: r.tokens, ctx: r.ctx, err: none }
   } else {
-    let r = parse_expr(tokens: tokens, state: state)
-    if has_err(err: r.err) { return FieldInitResult { field: dummy_fi, state: r.state, err: r.err } }
-    let fi = make_field_init_node(name: "_", value: r.expr, span: current_span(tokens: tokens, state: state), name_span: no_span())
-    FieldInitResult { field: fi, state: r.state, err: none }
+    let r = parse_expr(tokens: tokens, ctx: ctx)
+    if has_err(err: r.err) { return FieldInitResult { field: dummy_fi, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+    let fi = make_field_init_node(name: "_", value: r.expr, span: span, name_span: no_span())
+    FieldInitResult { field: fi, tokens: r.tokens, ctx: r.ctx, err: none }
   }
 }
 
@@ -4518,39 +4516,39 @@ fn parse_field_init(tokens: List<Token>, state: ParserState) -> FieldInitResult 
 // 27. parse_list_literal: [expr1, expr2]
 // =========================================================================
 
-fn parse_list_literal(tokens: List<Token>, state: ParserState) -> ExprResult {
-  let span = current_span(tokens: tokens, state: state)
+fn parse_list_literal(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
+  let span = token_span(tok: tokens |> first)
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, expected: ExpectLBracket)
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let r = expect(tokens: tokens, expected: ExpectLBracket)
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  let r = parse_expr_list_until(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), end_expected: ExpectRBracket)
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let r = parse_expr_list_until(tokens: skip_newlines(tokens: r.tokens), ctx: ctx, end_expected: ExpectRBracket)
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
 
-  let r2 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), expected: ExpectRBracket)
-  if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
+  let r2 = expect(tokens: skip_newlines(tokens: r.tokens), expected: ExpectRBracket)
+  if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
 
-  ExprResult { expr: make_expr_node(expr_data: ExprListLit, children: r.exprs, inferred: none, span: span), state: r2.state, err: none }
+  ExprResult { expr: make_expr_node(expr_data: ExprListLit, children: r.exprs, inferred: none, span: span), tokens: r2.tokens, ctx: r.ctx, err: none }
 }
 
-fn parse_expr_list_until(tokens: List<Token>, state: ParserState, end_expected: ExpectedToken) -> ExprsResult {
-  parse_expr_list_until_acc(tokens: tokens, state: state, end_expected: end_expected, acc: [])
+fn parse_expr_list_until(tokens: List<Token>, ctx: ParseContext, end_expected: ExpectedToken) -> ExprsResult {
+  parse_expr_list_until_acc(tokens: tokens, ctx: ctx, end_expected: end_expected, acc: [])
 }
 
-fn parse_expr_list_until_acc(tokens: List<Token>, state: ParserState, end_expected: ExpectedToken, acc: List<Node>) -> ExprsResult {
-  let s = skip_newlines(tokens: tokens, state: state)
-  let at_end_tag = match peek(tokens: tokens, state: s) {
+fn parse_expr_list_until_acc(tokens: List<Token>, ctx: ParseContext, end_expected: ExpectedToken, acc: List<Node>) -> ExprsResult {
+  let tokens = skip_newlines(tokens: tokens)
+  let at_end_tag = match tokens |> first {
     Some { value: t } => token_matches_expected(token: t, expected: end_expected)
     None => false
   }
-  if at_end_tag || at_end(tokens: tokens, state: s) {
-    ExprsResult { exprs: acc, state: s, err: none }
+  if at_end_tag || tok_is_eof(tok: tokens |> first) {
+    ExprsResult { exprs: acc, tokens: tokens, ctx: ctx, err: none }
   } else {
-    let r = parse_expr(tokens: tokens, state: s)
-    if has_err(err: r.err) { return ExprsResult { exprs: [], state: r.state, err: r.err } }
-    let e = eat(tokens: tokens, state: r.state, expected: ExpectComma)
-    let s2 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { r.state })
-    parse_expr_list_until_acc(tokens: tokens, state: s2, end_expected: end_expected, acc: list_push(acc, r.expr))
+    let r = parse_expr(tokens: tokens, ctx: ctx)
+    if has_err(err: r.err) { return ExprsResult { exprs: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
+    let e = eat(tokens: r.tokens, expected: ExpectComma)
+    let tokens = skip_newlines(tokens: if e.consumed { e.tokens } else { r.tokens })
+    parse_expr_list_until_acc(tokens: tokens, ctx: r.ctx, end_expected: end_expected, acc: list_push(acc, r.expr))
   }
 }
 
@@ -4564,29 +4562,29 @@ fn parse_expr_list_until_acc(tokens: List<Token>, state: ParserState, end_expect
 // Parenthesized expression or multi-param lambda
 // =========================================================================
 
-fn parse_paren_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
-  let span = current_span(tokens: tokens, state: state)
+fn parse_paren_expr(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
+  let span = token_span(tok: tokens |> first)
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, expected: ExpectLParen)
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
-  let s = skip_newlines(tokens: tokens, state: r.state)
+  let r = expect(tokens: tokens, expected: ExpectLParen)
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
+  let tokens = skip_newlines(tokens: r.tokens)
 
-  if tok_is_rparen(tok: peek(tokens: tokens, state: s)) {
-    let adv = advance(tokens: tokens, state: s)
-    ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { parent_enum: none }, children: [], inferred: none, span: span), state: adv.state, err: none }
+  if tok_is_rparen(tok: tokens |> first) {
+    ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { parent_enum: none }, children: [], inferred: none, span: span), tokens: tokens |> skip(1), ctx: ctx, err: none }
   } else {
-    let lambda_r = try_lambda_params(tokens: tokens, state: s)
+    let lambda_r = try_lambda_params(tokens: tokens, ctx: ctx)
     if lambda_r.is_lambda {
-      let r = parse_lambda_body(tokens: tokens, state: lambda_r.state)
-      if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
-      ExprResult { expr: make_expr_node(expr_data: ExprLambda { semantics: none }, children: concat([r.expr], lambda_r.params |> map(p => parsed_name_leaf(name: p.name, span: p.span))), inferred: none, span: span), state: r.state, err: none }
+      let r = parse_lambda_body(tokens: lambda_r.tokens, ctx: lambda_r.ctx)
+      if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+      ExprResult { expr: make_expr_node(expr_data: ExprLambda { semantics: none }, children: concat([r.expr], lambda_r.params |> map(p => parsed_name_leaf(name: p.name, span: p.span))), inferred: none, span: span), tokens: r.tokens, ctx: r.ctx, err: none }
     } else {
-      let r = parse_expr(tokens: tokens, state: s)
-      if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
-      let s = skip_newlines(tokens: tokens, state: r.state)
-      let r2 = expect(tokens: tokens, state: s, expected: ExpectRParen)
-      if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
-      ExprResult { expr: r.expr, state: r2.state, err: none }
+      // lambda_r.tokens is restored to original tokens on failure
+      let r = parse_expr(tokens: lambda_r.tokens, ctx: lambda_r.ctx)
+      if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+      let tokens = skip_newlines(tokens: r.tokens)
+      let r2 = expect(tokens: tokens, expected: ExpectRParen)
+      if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
+      ExprResult { expr: r.expr, tokens: r2.tokens, ctx: r.ctx, err: none }
     }
   }
 }
@@ -4598,88 +4596,82 @@ fn parse_paren_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
 // and a brace-delimited body. Produces a Lambda AST node.
 // =========================================================================
 
-fn parse_fn_lambda(tokens: List<Token>, state: ParserState) -> ExprResult {
-  let span = current_span(tokens: tokens, state: state)
+fn parse_fn_lambda(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
+  let span = token_span(tok: tokens |> first)
   let dummy = parse_recovery_placeholder()
   // Consume 'fn'
-  let r1 = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "fn" })
-  if has_err(err: r1.err) { return ExprResult { expr: dummy, state: r1.state, err: r1.err } }
+  let r1 = expect(tokens: tokens, expected: ExpectKeyword { text: "fn" })
+  if has_err(err: r1.err) { return ExprResult { expr: dummy, tokens: r1.tokens, ctx: ctx, err: r1.err } }
   // Consume '('
-  let r2 = expect(tokens: tokens, state: r1.state, expected: ExpectLParen)
-  if has_err(err: r2.err) { return ExprResult { expr: dummy, state: r2.state, err: r2.err } }
+  let r2 = expect(tokens: r1.tokens, expected: ExpectLParen)
+  if has_err(err: r2.err) { return ExprResult { expr: dummy, tokens: r2.tokens, ctx: ctx, err: r2.err } }
   // Collect parameter names
-  let params_r = collect_fn_lambda_params(tokens: tokens, state: r2.state, acc: [])
+  let params_r = collect_fn_lambda_params(tokens: r2.tokens, ctx: ctx, acc: [])
   // Consume ')'
-  let r3 = expect(tokens: tokens, state: params_r.state, expected: ExpectRParen)
-  if has_err(err: r3.err) { return ExprResult { expr: dummy, state: r3.state, err: r3.err } }
-  let s = skip_newlines(tokens: tokens, state: r3.state)
+  let r3 = expect(tokens: params_r.tokens, expected: ExpectRParen)
+  if has_err(err: r3.err) { return ExprResult { expr: dummy, tokens: r3.tokens, ctx: params_r.ctx, err: r3.err } }
+  let tokens = skip_newlines(tokens: r3.tokens)
   // Parse body: { ... }
-  let body_r = parse_brace_expr(tokens: tokens, state: s)
+  let body_r = parse_brace_expr(tokens: tokens, ctx: params_r.ctx)
   if has_err(err: body_r.err) { return body_r }
-  ExprResult { expr: make_expr_node(expr_data: ExprLambda { semantics: none }, children: concat([body_r.expr], params_r.params |> map(p => parsed_name_leaf(name: p.name, span: p.span))), inferred: none, span: span), state: body_r.state, err: none }
+  ExprResult { expr: make_expr_node(expr_data: ExprLambda { semantics: none }, children: concat([body_r.expr], params_r.params |> map(p => parsed_name_leaf(name: p.name, span: p.span))), inferred: none, span: span), tokens: body_r.tokens, ctx: body_r.ctx, err: none }
 }
 
 // Collect comma-separated identifiers for fn lambda params.
-fn collect_fn_lambda_params(tokens: List<Token>, state: ParserState, acc: List<ParserParam>) -> IdentCollectResult {
-  let s = skip_newlines(tokens: tokens, state: state)
-  if tok_is_rparen(tok: peek(tokens: tokens, state: s)) {
+fn collect_fn_lambda_params(tokens: List<Token>, ctx: ParseContext, acc: List<ParserParam>) -> IdentCollectResult {
+  let tokens = skip_newlines(tokens: tokens)
+  if tok_is_rparen(tok: tokens |> first) {
     // End of params
-    IdentCollectResult { success: true, params: acc, state: s, err: none }
+    IdentCollectResult { success: true, params: acc, tokens: tokens, ctx: ctx, err: none }
   } else {
-    let name_r = expect_ident(tokens: tokens, state: s)
+    let name_r = expect_ident(tokens: tokens)
     if has_err(err: name_r.err) {
-      IdentCollectResult { success: false, params: acc, state: name_r.state, err: name_r.err }
+      IdentCollectResult { success: false, params: acc, tokens: name_r.tokens, ctx: ctx, err: name_r.err }
     } else {
-      let s2 = skip_newlines(tokens: tokens, state: name_r.state)
-      if tok_is_comma(tok: peek(tokens: tokens, state: s2)) {
-        let adv = advance(tokens: tokens, state: s2)
-        collect_fn_lambda_params(tokens: tokens, state: adv.state, acc: list_push(acc, ParserParam { name: name_r.name, span: name_r.span }))
+      let tokens = skip_newlines(tokens: name_r.tokens)
+      if tok_is_comma(tok: tokens |> first) {
+        collect_fn_lambda_params(tokens: tokens |> skip(1), ctx: ctx, acc: list_push(acc, ParserParam { name: name_r.name, span: name_r.span }))
       } else {
         // Last param (no trailing comma)
-        IdentCollectResult { success: true, params: list_push(acc, ParserParam { name: name_r.name, span: name_r.span }), state: s2, err: none }
+        IdentCollectResult { success: true, params: list_push(acc, ParserParam { name: name_r.name, span: name_r.span }), tokens: tokens, ctx: ctx, err: none }
       }
     }
   }
 }
 
-fn try_lambda_params(tokens: List<Token>, state: ParserState) -> LambdaCheckResult {
-  let save_pos = state.pos
-
-  let r = collect_lambda_idents(tokens: tokens, state: state, acc: [])
+fn try_lambda_params(tokens: List<Token>, ctx: ParseContext) -> LambdaCheckResult {
+  // Speculatively collect idents — original `tokens` available for fallback
+  let r = collect_lambda_idents(tokens: tokens, ctx: ctx, acc: [])
   if r.success && count(r.params) >= 2 {
-    if tok_is_rparen(tok: peek(tokens: tokens, state: r.state)) {
-      let adv = advance(tokens: tokens, state: r.state)
-      if tok_is_fat_arrow(tok: peek(tokens: tokens, state: adv.state)) {
-        let adv2 = advance(tokens: tokens, state: adv.state)
-        LambdaCheckResult { is_lambda: true, params: r.params, state: adv2.state, err: none }
+    if tok_is_rparen(tok: r.tokens |> first) {
+      let after_rparen = r.tokens |> skip(1)
+      if tok_is_fat_arrow(tok: after_rparen |> first) {
+        LambdaCheckResult { is_lambda: true, params: r.params, tokens: after_rparen |> skip(1), ctx: r.ctx, err: none }
       } else {
-        let restored = with(state, { pos: save_pos })
-        LambdaCheckResult { is_lambda: false, params: [], state: restored, err: none }
+        // Not a lambda — return original tokens for fallback
+        LambdaCheckResult { is_lambda: false, params: [], tokens: tokens, ctx: ctx, err: none }
       }
     } else {
-      let restored = with(state, { pos: save_pos })
-      LambdaCheckResult { is_lambda: false, params: [], state: restored, err: none }
+      LambdaCheckResult { is_lambda: false, params: [], tokens: tokens, ctx: ctx, err: none }
     }
   } else {
-    let restored = with(state, { pos: save_pos })
-    LambdaCheckResult { is_lambda: false, params: [], state: restored, err: none }
+    LambdaCheckResult { is_lambda: false, params: [], tokens: tokens, ctx: ctx, err: none }
   }
 }
 
-fn collect_lambda_idents(tokens: List<Token>, state: ParserState, acc: List<ParserParam>) -> IdentCollectResult {
-  if tok_is_ident(tok: peek(tokens: tokens, state: state)) {
-    let tok = peek(tokens: tokens, state: state)
+fn collect_lambda_idents(tokens: List<Token>, ctx: ParseContext, acc: List<ParserParam>) -> IdentCollectResult {
+  if tok_is_ident(tok: tokens |> first) {
+    let tok = tokens |> first
     let param = ParserParam { name: tok.value.text, span: tok.value.span }
-    let adv = advance(tokens: tokens, state: state)
     let new_acc = list_push(acc, param)
-    let e = eat(tokens: tokens, state: adv.state, expected: ExpectComma)
+    let e = eat(tokens: tokens |> skip(1), expected: ExpectComma)
     if e.consumed {
-      collect_lambda_idents(tokens: tokens, state: e.state, acc: new_acc)
+      collect_lambda_idents(tokens: e.tokens, ctx: ctx, acc: new_acc)
     } else {
-      IdentCollectResult { success: true, params: new_acc, state: adv.state, err: none }
+      IdentCollectResult { success: true, params: new_acc, tokens: tokens |> skip(1), ctx: ctx, err: none }
     }
   } else {
-    IdentCollectResult { success: false, params: acc, state: state, err: none }
+    IdentCollectResult { success: false, params: acc, tokens: tokens, ctx: ctx, err: none }
   }
 }
 
@@ -4687,60 +4679,59 @@ fn collect_lambda_idents(tokens: List<Token>, state: ParserState, acc: List<Pars
 // 29. parse_string_interp: StrBegin + exprs + StrMid/StrEnd
 // =========================================================================
 
-fn parse_string_interp(tokens: List<Token>, state: ParserState) -> ExprResult {
-  let span = current_span(tokens: tokens, state: state)
-  let tok = peek(tokens: tokens, state: state)
+fn parse_string_interp(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
+  let tok = tokens |> first
+  let span = token_span(tok: tok)
   let sh = match tok { Some { value: t } => Some { value: t.shape }  None => none }
   match sh {
     Some { value: ShStrBegin } => {
       let prefix = tok.value.text
-      let adv = advance(tokens: tokens, state: state)
       let parts_init = if string_length(s: prefix) > 0 {
         [Text { value: prefix }]
       } else {
         []
       }
-      parse_interp_parts(tokens: tokens, state: adv.state, parts: parts_init, span: span)
+      parse_interp_parts(tokens: tokens |> skip(1), ctx: ctx, parts: parts_init, span: span)
     }
     _ => ExprResult {
       expr: parse_recovery_expr(span: span, message: "expected string interpolation"),
-      state: state,
+      tokens: tokens,
+      ctx: ctx,
       err: Some { value: parse_error(msg: "expected string interpolation", span: span) }
     }
   }
 }
 
-fn parse_interp_parts(tokens: List<Token>, state: ParserState, parts: List<StringPart>, span: SourceSpan) -> ExprResult {
-  let r = parse_expr(tokens: tokens, state: state)
+fn parse_interp_parts(tokens: List<Token>, ctx: ParseContext, parts: List<StringPart>, span: SourceSpan) -> ExprResult {
+  let r = parse_expr(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return r }
   let new_parts = list_push(parts, Interpolation { expr: r.expr })
-  let s = r.state
+  let tokens = r.tokens
+  let ctx = r.ctx
 
-  let interp_tok = peek(tokens: tokens, state: s)
+  let interp_tok = tokens |> first
   let interp_sh = match interp_tok { Some { value: t } => Some { value: t.shape }  None => none }
   match interp_sh {
     Some { value: ShStrMid } => {
       let mid = interp_tok.value.text
-      let adv = advance(tokens: tokens, state: s)
       let mid_parts = if string_length(s: mid) > 0 {
         list_push(new_parts, Text { value: mid })
       } else {
         new_parts
       }
-      parse_interp_parts(tokens: tokens, state: adv.state, parts: mid_parts, span: span)
+      parse_interp_parts(tokens: tokens |> skip(1), ctx: ctx, parts: mid_parts, span: span)
     }
     Some { value: ShStrEnd } => {
       let suffix = interp_tok.value.text
-      let adv = advance(tokens: tokens, state: s)
       let final_parts = if string_length(s: suffix) > 0 {
         list_push(new_parts, Text { value: suffix })
       } else {
         new_parts
       }
-      ExprResult { expr: make_expr_node(expr_data: ExprStringInterp, children: final_parts |> map(p => match p { Text { value: v } => make_text_part_node(text: v, span: span)  Interpolation { expr: e } => make_interp_part_node(expr: e, span: span) }), inferred: none, span: span), state: adv.state, err: none }
+      ExprResult { expr: make_expr_node(expr_data: ExprStringInterp, children: final_parts |> map(p => match p { Text { value: v } => make_text_part_node(text: v, span: span)  Interpolation { expr: e } => make_interp_part_node(expr: e, span: span) }), inferred: none, span: span), tokens: tokens |> skip(1), ctx: ctx, err: none }
     }
     _ =>
-      ExprResult { expr: make_expr_node(expr_data: ExprStringInterp, children: new_parts |> map(p => match p { Text { value: v } => make_text_part_node(text: v, span: span)  Interpolation { expr: e } => make_interp_part_node(expr: e, span: span) }), inferred: none, span: span), state: s, err: none }
+      ExprResult { expr: make_expr_node(expr_data: ExprStringInterp, children: new_parts |> map(p => match p { Text { value: v } => make_text_part_node(text: v, span: span)  Interpolation { expr: e } => make_interp_part_node(expr: e, span: span) }), inferred: none, span: span), tokens: tokens, ctx: ctx, err: none }
   }
 }
 
@@ -4748,78 +4739,76 @@ fn parse_interp_parts(tokens: List<Token>, state: ParserState, parts: List<Strin
 // Brace expression: could be block or record literal or map literal
 // =========================================================================
 
-fn parse_brace_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
-  let span = current_span(tokens: tokens, state: state)
+fn parse_brace_expr(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
+  let span = token_span(tok: tokens |> first)
   let dummy_expr = parse_recovery_placeholder()
-  let adv = advance(tokens: tokens, state: state)
-  let s = skip_newlines(tokens: tokens, state: adv.state)
+  let tokens = skip_newlines(tokens: tokens |> skip(1))
 
-  if tok_is_rbrace(tok: peek(tokens: tokens, state: s)) {
-    let adv2 = advance(tokens: tokens, state: s)
-    ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { parent_enum: none }, children: [], inferred: none, span: span), state: adv2.state, err: none }
+  let tok = tokens |> first
+  if tok_is_rbrace(tok: tok) {
+    ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { parent_enum: none }, children: [], inferred: none, span: span), tokens: tokens |> skip(1), ctx: ctx, err: none }
   } else {
-    let sh = peek_shape(tokens: tokens, state: s)
+    let sh = match tok { Some { value: t } => Some { value: t.shape }  None => none }
     match sh {
       Some { value: ShKeyword } => {
-        let brace_kw = tok_keyword_text(tok: peek(tokens: tokens, state: s))
+        let brace_kw = tok_keyword_text(tok: tok)
         if brace_kw == "let" || brace_kw == "return" {
-          let r = parse_stmts(tokens: tokens, state: s)
-          if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
-          let s2 = skip_newlines(tokens: tokens, state: r.state)
-          let r2 = expect(tokens: tokens, state: s2, expected: ExpectRBrace)
-          if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
+          let r = parse_stmts(tokens: tokens, ctx: ctx)
+          if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+          let tokens = skip_newlines(tokens: r.tokens)
+          let r2 = expect(tokens: tokens, expected: ExpectRBrace)
+          if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
           if count(r.stmts) == 1 {
-            ExprResult { expr: first(r.stmts).value, state: r2.state, err: none }
+            ExprResult { expr: first(r.stmts).value, tokens: r2.tokens, ctx: r.ctx, err: none }
           } else {
-            ExprResult { expr: make_expr_node(expr_data: ExprBlock, children: r.stmts, inferred: none, span: span), state: r2.state, err: none }
+            ExprResult { expr: make_expr_node(expr_data: ExprBlock, children: r.stmts, inferred: none, span: span), tokens: r2.tokens, ctx: r.ctx, err: none }
           }
         } else {
           // Keyword used as field name in record literal
-          let ident_or_keyword = tok_is_keyword_name(tok: peek(tokens: tokens, state: s))
-          if ident_or_keyword && peek_is_colon_after_ident(tokens: tokens, state: s) {
-            let r = parse_field_init_list(tokens: tokens, state: s)
-            if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
-            let s2 = skip_newlines(tokens: tokens, state: r.state)
-            let r2 = expect(tokens: tokens, state: s2, expected: ExpectRBrace)
-            if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
-            ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span), state: r2.state, err: none }
+          if tok_is_keyword_name(tok: tok) && peek_is_colon_after_ident(tokens: tokens) {
+            let r = parse_field_init_list(tokens: tokens, ctx: ctx)
+            if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+            let tokens = skip_newlines(tokens: r.tokens)
+            let r2 = expect(tokens: tokens, expected: ExpectRBrace)
+            if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
+            ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span), tokens: r2.tokens, ctx: r.ctx, err: none }
           } else {
             // Fall through to expression parsing
-            let r = parse_expr(tokens: tokens, state: s)
-            if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
-            let s2 = skip_newlines(tokens: tokens, state: r.state)
-            let r2 = expect(tokens: tokens, state: s2, expected: ExpectRBrace)
-            if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
-            ExprResult { expr: r.expr, state: r2.state, err: none }
+            let r = parse_expr(tokens: tokens, ctx: ctx)
+            if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+            let tokens = skip_newlines(tokens: r.tokens)
+            let r2 = expect(tokens: tokens, expected: ExpectRBrace)
+            if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
+            ExprResult { expr: r.expr, tokens: r2.tokens, ctx: r.ctx, err: none }
           }
         }
       }
       _ => {
-        let ident_or_keyword = tok_is_ident(tok: peek(tokens: tokens, state: s)) || tok_is_keyword_name(tok: peek(tokens: tokens, state: s))
-        if ident_or_keyword && peek_is_colon_after_ident(tokens: tokens, state: s) {
-          let r = parse_field_init_list(tokens: tokens, state: s)
-          if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
-          let s2 = skip_newlines(tokens: tokens, state: r.state)
-          let r2 = expect(tokens: tokens, state: s2, expected: ExpectRBrace)
-          if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
-          ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span), state: r2.state, err: none }
-        } else if tok_is_lit_str(tok: peek(tokens: tokens, state: s)) && peek_is_colon_after_ident(tokens: tokens, state: s) {
-          let r = parse_field_init_list(tokens: tokens, state: s)
-          if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
-          let s2 = skip_newlines(tokens: tokens, state: r.state)
-          let r2 = expect(tokens: tokens, state: s2, expected: ExpectRBrace)
-          if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
-          ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span), state: r2.state, err: none }
+        let ident_or_keyword = tok_is_ident(tok: tok) || tok_is_keyword_name(tok: tok)
+        if ident_or_keyword && peek_is_colon_after_ident(tokens: tokens) {
+          let r = parse_field_init_list(tokens: tokens, ctx: ctx)
+          if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+          let tokens = skip_newlines(tokens: r.tokens)
+          let r2 = expect(tokens: tokens, expected: ExpectRBrace)
+          if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
+          ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span), tokens: r2.tokens, ctx: r.ctx, err: none }
+        } else if tok_is_lit_str(tok: tok) && peek_is_colon_after_ident(tokens: tokens) {
+          let r = parse_field_init_list(tokens: tokens, ctx: ctx)
+          if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+          let tokens = skip_newlines(tokens: r.tokens)
+          let r2 = expect(tokens: tokens, expected: ExpectRBrace)
+          if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
+          ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span), tokens: r2.tokens, ctx: r.ctx, err: none }
         } else {
-          let r = parse_stmts(tokens: tokens, state: s)
-          if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
-          let s2 = skip_newlines(tokens: tokens, state: r.state)
-          let r2 = expect(tokens: tokens, state: s2, expected: ExpectRBrace)
-          if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
+          let r = parse_stmts(tokens: tokens, ctx: ctx)
+          if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+          let tokens = skip_newlines(tokens: r.tokens)
+          let r2 = expect(tokens: tokens, expected: ExpectRBrace)
+          if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
           if count(r.stmts) == 1 {
-            ExprResult { expr: first(r.stmts).value, state: r2.state, err: none }
+            ExprResult { expr: first(r.stmts).value, tokens: r2.tokens, ctx: r.ctx, err: none }
           } else {
-            ExprResult { expr: make_expr_node(expr_data: ExprBlock, children: r.stmts, inferred: none, span: span), state: r2.state, err: none }
+            ExprResult { expr: make_expr_node(expr_data: ExprBlock, children: r.stmts, inferred: none, span: span), tokens: r2.tokens, ctx: r.ctx, err: none }
           }
         }
       }
@@ -4827,15 +4816,9 @@ fn parse_brace_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
   }
 }
 
-fn peek_is_colon_after_ident(tokens: List<Token>, state: ParserState) -> Bool {
-  // Peek two tokens ahead: ident then colon
-  if state.pos + 1 < count(tokens) {
-    let next_tok = tokens |> skip(state.pos + 1) |> first
-    match next_tok {
-      Some { value: t } => is_colon_shape(shape: t.shape)
-      None => false
-    }
-  } else {
-    false
+fn peek_is_colon_after_ident(tokens: List<Token>) -> Bool {
+  match tokens |> skip(1) |> first {
+    Some { value: t } => is_colon_shape(shape: t.shape)
+    None => false
   }
 }
