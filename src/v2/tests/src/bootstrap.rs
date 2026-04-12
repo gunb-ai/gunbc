@@ -611,7 +611,7 @@ fn gist_full_pipeline() {
 /// The ratchet must be generous enough for CI runners under load.
 /// Verified 2026-04-12: bumped from 60s after dsl/ grew (browser.dag, review_codex.dag).
 /// Dev hardware: ~10.8s. Colima container: 32-37s.
-/// GitHub CI runners hit 60s+ under shared load — 120s budget covers CI variance.
+/// GitHub CI runners hit 64s+ under shared load — 120s budget covers CI variance.
 const PERF_RATCHET_SECONDS: u64 = 120;
 
 #[test]

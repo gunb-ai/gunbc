@@ -76,6 +76,10 @@ LAYER 6: Full vision (depends on Layer 5)
 | Stream B (clone elision) | Tier 1 (ownership) | 🟢/🟡 | Layers 1-2 🟢, Layer 3 needs LS-4 |
 | Track 5 (real program) | End-to-end validation | 🟢 | Track 4 |
 | Track 10 (extdeps) | Data quality | 🟢 | Nothing |
+| **Track 15 (CLI tool modeling)** | **M5 Phase 2** | **🟢** | **Nothing — landed in #418** |
+| **Track 16 (CI YAML emission via .dag)** | **M5 Phase 3** | **🟢** | **Nothing — follow-up to #418** |
+| **Track 17 (wire unused modeling)** | **Structural proof** | **🟢** | **Nothing — highest leverage** |
+| **Track 18 (error mode taxonomy)** | **Tier 1 (no duplicate representations)** | **🟢** | **Nothing** |
 | Track 13 (single emitter) | Emission is mechanical | 🟡 | Track 2 + 7 |
 | Track 11 (runtime safety) | Tier 2 | 🟡 | Design phase |
 | Track 12 (verification) | Tier 3 | 🟡 | Track 5 |
@@ -279,7 +283,8 @@ M4: Single emitter reads data, never decides
 
 M5: Meta-process modeling (bootstrap, CI, dev process)
     Done when: adding a Node field requires zero manual stage0 edits;
-      CI gates derived from .dag declarations
+      CI gates derived from .dag declarations; `dag run` is the
+      primary way to execute repo processes across all environments
     Enabler: .dag interpreter (Phase 0). `dag run foo.dag` is the
       primary development workflow; emission is a deployment optimization.
     Phase 0 (interpreter): DONE (PR #409)
@@ -287,9 +292,38 @@ M5: Meta-process modeling (bootstrap, CI, dev process)
       I-2: shell service dispatch (std::process::Command)
       I-3: REST service dispatch (ureq, auth, JSON path extraction)
       Verified: `dag run review.dag` end-to-end against live APIs
-    Phase 1 (bootstrap modeling): unblocked with Phase 0
-    Phase 2 (CI as multi-artifact): after Phase 1
-    Phase 3 (dev process): future
+    Phase 1 (bootstrap modeling): DONE (PR #418)
+      compiler.dag as single authority for self-hosting cycle
+      ci.dag gates derived from compiler.dag (zero hardcoded crate names)
+      tools/regen.dag, tools/freshness.dag, tools/ratchet.dag built
+      is_error_diagnostic fixed: CX/ownership non-fatal for interpreter
+      Proven: `dag run check_l1_ratchet` end-to-end
+    Phase 2 (tool modeling): NEXT — see Track 15
+      Without this, Phase 1 only works in environments where bare
+      command names (`cargo`, `grep`, `diff`) resolve correctly via
+      PATH. Track 15 replaces PATH-based resolution with explicit
+      tool registry + upsert (pattern from gunb.ai/tools/toolpaths).
+    Phase 3 (CI as multi-artifact): after Phase 2 — see Track 16
+      ci.yml becomes a generated artifact rendered from a typed
+      Workflow declaration in ci.dag using extdeps/github/actions.dag
+      types. The renderer is a .dag program (Shape B), not a compiler
+      render target (Shape A) — YAML is data manipulation, not a
+      programming language. See Track 16 for the full design.
+    Phase 3.5 (wire existing modeling): PARALLEL — see Track 17
+      ~770 lines of declared types in gunbc/workflow, gunbc/bootstrap,
+      std/effects, std/resources, gunbc/auth have zero consumers.
+      Before adding new modeling, make the existing modeling
+      load-bearing. Each wiring is a separate PR (17a–17e) and
+      can land in parallel with M1/M2/PERF. Unblocks the next
+      thesis-level claims about idempotency, resources, and
+      structural review output. Strictly cheaper than new design.
+    Phase 3.6 (error mode taxonomy): PARALLEL — see Track 18
+      Workflows in gunbc/tools/ each invent their own Result
+      coproduct with duplicated ToolsMissing / Failed variants.
+      Unify via std/errors.dag with ErrorClass + Retryability.
+      Directly folds the three-workflow duplication from PR #418
+      into a single authority.
+    Phase 4 (dev process): future
     Design: docs/meta-process-design.md
     Hand-maintained Rust: v2_interpreter.rs (bootstrap), cli_run.rs
       (convertible once interpreter exposed as transport/built-in)
@@ -598,6 +632,475 @@ audit (2026-04-10):
 | OpenAI string-path extraction | extdeps/llm/openai.dag | Structural field access (M8) |
 | Policy defaults in `CloudSecretConfig` | std/types.dag | **DONE** — dead type deleted; operations define own inputs |
 | `ProjectId` vs `GcpProjectId` | std/types.dag | **DONE** — renamed to `GcpProjectId`; 5 dead types deleted |
+
+---
+
+### Track 15: Holistic CLI tool modeling (Lane D, M5 Phase 2)
+
+**Thesis:** Every external CLI binary is a hidden PATH dependency.
+`.dag` programs that shell out to `cargo`, `grep`, `diff`, `cp`, etc.
+rely on the environment resolving bare command names. This is exactly
+the kind of implicit dependency the closed-model philosophy rejects:
+the environment is an unmodeled input.
+
+**Current state (post PR #418):** `gunbc.compiler` is the single authority
+for the self-hosting cycle (source roots, crate names, command derivation).
+`dag run check_l1_ratchet` executes end-to-end via the interpreter.
+**BUT** every command derivation function emits bare command names
+(`"cargo build"`, `"grep -rqE"`, etc.) that depend on PATH. `shell.Which.Check`
+exists in `extdeps/shell.dag` with **zero consumers**. The `cargo`/colima
+issue where `sh -lc` picks up the cargo alias inside the container and
+fails is a direct symptom — bare `cargo` resolves to the wrong binary.
+
+**Design reference:** `gunb.ai/tools/toolpaths/` — the sibling repo has
+a proven pattern for holistic tool management. Key ideas:
+1. `Tool { name, path, version, source, install_cmd }` — single source
+   of truth registry
+2. `InstallSource` enum — `Container | Rustup | Apt | Brew | Builtin`
+   tells *how* to get the tool
+3. `Ensure(tool) -> path` upsert — check expected path → check PATH →
+   self-heal if source is self-healing → fail with actionable hint
+4. Command strings use resolved absolute paths, not bare names
+5. Platform/arch mappings are declared data, not inline detection logic
+
+**Target state for gunbc:**
+
+```dag
+// dsl/extdeps/tools.dag (new)
+type InstallSource
+  = SourceBuiltin                            // POSIX tools: cp, rm, sh, grep
+  | SourceRustup                             // cargo, rustc
+  | SourceApt { package: NonEmptyStr }
+  | SourceBrew { package: NonEmptyStr }
+  | SourceContainer { image_ref: NonEmptyStr }
+
+type CliTool {
+  name: NonEmptyStr
+  min_version: String?
+  source: InstallSource
+}
+
+type ResolvedTool { tool: CliTool, path: FilePath }
+type ResolveResult = Resolved { resolved: ResolvedTool } | NotFound { tool: CliTool, hint: String }
+
+func resolve(tool: CliTool) -> ResolveResult uses sh: Shell { ... }
+
+// dsl/gunbc/compiler.dag (extend)
+data cargo_tool: CliTool = { name: "cargo", min_version: Some { value: "1.93.0" }, source: SourceRustup }
+data grep_tool: CliTool = { name: "grep", min_version: None, source: SourceBuiltin }
+data diff_tool, cp_tool, rm_tool, sh_tool: CliTool = ...
+
+data required_tools: List<CliTool> = [cargo_tool, grep_tool, diff_tool, cp_tool, rm_tool, sh_tool]
+
+// Command derivation takes resolved paths
+fn build_command(cargo_path: FilePath, cycle: SelfHostingCycle) -> String {
+  concat(cargo_path, " build -p ", cycle.generated.package_name, " --release")
+}
+```
+
+**Every tool starts with resolution:**
+```dag
+func regenerate(cycle: SelfHostingCycle) -> RegenResult uses sh: Shell {
+  let resolved = resolve_all(tools: required_tools)
+  match resolved {
+    Failed { missing: m } => return ToolsMissing { tools: m }
+    Ok { cargo: c, ... } => { ... use c, not "cargo" ... }
+  }
+}
+```
+
+**Done when:**
+- `dsl/extdeps/tools.dag` exists with `CliTool`, `InstallSource`, `ResolvedTool`
+- `compiler.dag` declares all tools the compiler cycle depends on
+- Every command derivation function takes resolved paths instead of building strings from bare names
+- `regen.dag`, `freshness.dag`, `ratchet.dag` call `resolve_all` before dispatching
+- `dag run regenerate_stage0` works inside colima without hitting the cargo alias
+- Zero bare command names in any .dag file under `dsl/gunbc/`
+
+**Blocked on:** nothing — immediate follow-up to PR #418. Everything
+#418 built stays; this is additive.
+
+**Why urgent:** without this, the meta-process modeling is architecturally
+clean but practically broken in any environment where the PATH resolution
+of `cargo`/`grep`/`diff` differs from expectation. The current code only
+works because CI runs on a specific environment where bare names happen
+to resolve correctly. That's a hidden dependency, not a verified one.
+
+---
+
+### Track 16: GitHub Actions YAML emission via .dag program (Lane D, M5 Phase 3)
+
+**Thesis:** The CI workflow YAML should be **generated** from a typed
+`Workflow` declaration that uses the `extdeps/github/actions.dag`
+schema, not hand-maintained. The hand-maintained `.github/workflows/ci.yml`
+is a parallel representation of what `gunbc/ci.dag` already declares
+structurally — same risk we fixed for stage0.
+
+**Current state (post Track 15):** `dsl/extdeps/github/actions.dag`
+models the full GH Actions platform (Workflow, Job, Step, RunnerSpec,
+LogAnnotation, ActionRef, MatrixStrategy) per the spec. **Zero
+consumers.** `dsl/gunbc/ci.dag` declares 8 gates and a `ci_pipeline`
+but NOT the surrounding workflow shape (triggers, runner, job, env,
+permissions). `.github/workflows/ci.yml` is hand-maintained YAML that
+calls `dag run run_ci_pipeline` — it's now a thin shim, but still
+hand-maintained. ci_runner.dag executes the pipeline once invoked.
+
+**Key architectural decision: Shape B (.dag program emits YAML), not
+Shape A (compiler render target).**
+
+The compiler emits real programming languages — Rust, Python, Go — via
+its render targets. YAML is a configuration format, not a programming
+language. Treating YAML as a compiler render target would be a category
+error: it would grow the compiler core for a concern that belongs in
+user code. Instead, a `.dag` program walks a `Workflow` value and
+constructs a YAML string via `concat`/`fold`/`match`. The interpreter
+runs the program; the program writes the file via `shell.Exec.Run`.
+
+This is parallel to how `tools/ratchet.dag` produces grep commands —
+data manipulation in a .dag program, not a compiler concern. It also
+exercises the interpreter as the primary execution path (M5 thesis:
+`dag run` is the development workflow).
+
+**Target file layout:**
+
+```
+dsl/extdeps/github/actions.dag       Workflow/Job/Step types (exists)
+dsl/gunbc/ci.dag                      data ci_workflow: Workflow (NEW)
+dsl/gunbc/tools/yaml_emitter.dag      func render_workflow(wf) -> String (NEW)
+dsl/gunbc/tools/ci_codegen.dag        func gen_ci_yml() (NEW)
+                                      — calls render_workflow + writes file
+dsl/gunbc/tools/freshness.dag         extended to also check ci.yml freshness
+.github/workflows/ci.yml              becomes a generated artifact
+```
+
+**Workflow declaration shape (in ci.dag):**
+
+```dag
+import extdeps.github.actions {
+  Workflow, Job, Step, RunnerSpec, HostedRunner, UbuntuLatest,
+  WorkflowTrigger, Push, PullRequest, ActionRef, RunStep, UsesStep,
+  PermissionLevel, PermRead, WorkflowPermissions, checkout_action,
+  setup_rust_action, cache_action
+}
+
+data ci_workflow: Workflow = {
+  name: "ci",
+  on: [
+    Push { branches: ["main"], paths: [] },
+    PullRequest { branches: ["main"], types: [Opened, Synchronize, Reopened] }
+  ],
+  permissions: WorkflowPermissions { contents: PermRead, ... },
+  env: { CARGO_TERM_COLOR: "always", RUSTFLAGS: "-D warnings" },
+  jobs: [
+    Job {
+      id: "ci",
+      runner: HostedRunner { label: UbuntuLatest },
+      timeout_minutes: 45,
+      steps: [
+        UsesStep { uses: checkout_action, with: { fetch-depth: "1" } },
+        UsesStep { uses: setup_rust_action, with: { toolchain: "1.93.0" } },
+        UsesStep { uses: cache_action, with: { ... } },
+        RunStep { name: "Build Compiler", run: build_command(...) },
+        RunStep { name: "CI Pipeline", run: dag_run_command(...) }
+      ]
+    }
+  ]
+}
+```
+
+**YAML emitter shape (in tools/yaml_emitter.dag):**
+
+```dag
+func render_workflow(wf: Workflow) -> String {
+  let header = "# GENERATED — do not edit. Regenerate via dag run gen_ci_yml.\n"
+  concat(
+    header,
+    "name: ", wf.name, "\n",
+    "on:\n", render_triggers(wf.on),
+    "permissions:\n", render_permissions(wf.permissions),
+    "env:\n", render_env_map(wf.env),
+    "jobs:\n", render_jobs(wf.jobs)
+  )
+}
+
+// ... render_triggers, render_jobs, render_steps with manual indent tracking
+```
+
+**Pure .dag string concatenation. No new compiler features needed.**
+
+**Generator and freshness check:**
+
+```dag
+// tools/ci_codegen.dag
+func gen_ci_yml() -> CodegenResult {
+  match resolve_compiler_tools() {
+    ToolsMissing { ... } => ...
+    ToolsReady { tools: t } => {
+      let yaml_text = render_workflow(wf: ci_workflow)
+      let write = shell.Exec.Run(script: concat("cat > .github/workflows/ci.yml <<'EOF'\n", yaml_text, "\nEOF"))
+      // ...
+    }
+  }
+}
+
+// tools/freshness.dag (extended)
+//   reads committed ci.yml
+//   compares to render_workflow(ci_workflow)
+//   returns Stale if drift
+```
+
+**Done when:**
+- `dsl/extdeps/github/actions.dag` has at least one structural consumer (`ci_workflow` data in `gunbc/ci.dag`)
+- `dsl/gunbc/tools/yaml_emitter.dag` exists and produces byte-identical output to the current hand-maintained `ci.yml`
+- `dsl/gunbc/tools/ci_codegen.dag` provides `gen_ci_yml()` entry point
+- `dag run gen_ci_yml` regenerates `.github/workflows/ci.yml` and the result matches the committed file
+- `dag run check_stage0_freshness` (or new equivalent) verifies the YAML matches the declaration
+- A new CI gate proves the YAML is up-to-date (in CI, regenerate to a temp dir, diff against committed)
+
+**Blocked on:** nothing — follow-up to PR #418. The schema (actions.dag),
+the interpreter (`dag run`), and tool resolution (Track 15) are all in
+place. This is the wire-up step.
+
+**Why this is the next step:** with this, the meta-process modeling
+chain is complete end-to-end. Every CI gate command, every workflow
+trigger, every runner spec, every action ref traces back to typed
+.dag declarations. The only hand-maintained content is the data
+declarations themselves (which are the source of truth). Everything
+else — gate commands, YAML, regen process, freshness checks — is
+derived. Adding a CI gate is one .dag edit; the YAML regenerates
+automatically.
+
+**Open design question (resolve in PR):** should `gen_ci_yml()` write
+the file via `cat > FILE <<EOF` (heredoc) or via a dedicated file-write
+service in `extdeps/shell.dag`? The latter is more honest to the
+extdeps modeling philosophy — `shell.Write.WriteFile` would be a
+proper service operation, not a heredoc workaround.
+
+---
+
+### Track 17: Wire unused modeling (structural proof over paper modeling)
+
+**Thesis:** A type with zero consumers is a paper exercise, not
+structural proof. gunbc currently has ~770 lines of declared types
+across `gunbc/workflow/types.dag`, `gunbc/bootstrap.dag`,
+`gunbc/auth/credentials.dag`, and `std/effects.dag` with NO consumers
+reading them. Per INVARIANTS.md §"Every feature by construction":
+if the model isn't load-bearing, it isn't proving anything.
+
+**The modeling consumption gap:**
+
+| File | Lines | Consumers | Models |
+|------|-------|-----------|--------|
+| `gunbc/workflow/types.dag` | 335 | **0** | IntentSheet, IssueBinding, ClaimLease, StageRunKey, StageOutcome, PipelineRun, DesignReviewOutput, IssueLifecycleStage |
+| `gunbc/bootstrap.dag` | 195 | **0** | CompilerStage, StageInput/Output, BootstrapStrategy |
+| `std/effects.dag` | 210 | **0** (self-ref only) | EffectShape with derived idempotency |
+| `gunbc/auth/credentials.dag` | 32 | **0** | Credential patterns |
+| `std/resources.dag` | — | **0** (self-ref only) | ResourceHandle with acquire/release |
+
+Each of these was modeled as a structural claim about the system.
+None of them is checked by any compile-time path. Adding a new field
+is free; removing one is free; breaking the semantics is free — there
+are no consumers to break. **These are not structural facts. They are
+decorative types.**
+
+This is the M1 thesis problem applied to M5: single authorities
+exist, but "consumers don't read them" (INVARIANTS §"Facts Flow
+Forward"). The fix is the same: thread the authoritative facts
+through at least one real consumer so the modeling becomes
+load-bearing.
+
+**Design reference:** this matches the-gunbai's architectural
+principle that every type should appear in a Contract somewhere
+— Provides, Requires, Claims, Imports, or Exports. A type not
+mentioned in any contract is a candidate for deletion.
+
+**Target wirings (each can land as a separate PR for clear
+before/after benefit):**
+
+- **PR 17a: `std/effects.dag` → extdeps REST operations**
+  - `extdeps/github/pulls.dag` operations tagged with `EffectShape`
+    (e.g., `CreatePullRequest: CreateEffect`, `MergePullRequest:
+    UpsertEffect { key: PathParam { name: "pull_number" } }`,
+    `GetPullRequest: ReadEffect`)
+  - `extdeps/github/gists.dag`, `extdeps/llm/anthropic.dag` same
+  - Add structural test: for every operation marked `UpsertEffect`
+    with a `CompositeKey`, the compiler derives an
+    `IdempotencyEvidence::LatticeEffect` and emits an
+    `f(f(x)) == f(x)` test stub.
+  - **Benefit:** idempotency becomes a compile-time property, not
+    a comment. `compose_effects` gains its first real call site.
+  - **Size:** medium. Each REST op needs a one-line annotation;
+    the structural test is new infrastructure.
+
+- **PR 17b: `gunbc/bootstrap.dag` → `gunbc/tools/regen.dag`**
+  - Currently `regen.dag` hardcodes the 5-step sequence in nested
+    matches (build → compile → copy → check → rebuild → recompile).
+  - Replace with `let stages: List<CompilerStage> = [...]` driven
+    from `bootstrap.dag`, folded over.
+  - Each step's input/output derives from `StageInput`/`StageOutput`,
+    not bare strings.
+  - **Benefit:** adding a new compiler stage is one edit to
+    `bootstrap.dag`, not edits in regen/freshness/ci. Pipeline
+    sequence becomes data.
+  - **Size:** small. ~20 lines of refactor in regen.dag.
+
+- **PR 17c: `gunbc/workflow/types.dag` → `gunbc/tools/review.dag`**
+  - `review.dag` currently composes review output as free-form JSON.
+  - Map its outputs onto `DesignReviewOutput`, `DesignFinding`,
+    `ReviewConcern`, `SeverityLevel`.
+  - Future: map review stages onto `IssueLifecycleStage`.
+  - **Benefit:** review stops being a string-typed blob; severity
+    becomes a typed concept; concern dimensions are a closed
+    coproduct.
+  - **Size:** medium. Requires touching `review.dag` output schema
+    and any consumers.
+
+- **PR 17d: `gunbc/auth/credentials.dag` → `extdeps/github/auth.dag`**
+  - `extdeps/github/auth.dag` currently has its own credential
+    pattern. Fold into `gunbc/auth/credentials.dag` as single
+    authority.
+  - **Benefit:** credential handling is one authority, not per-
+    provider reinvention.
+  - **Size:** small.
+
+- **PR 17e: `std/resources.dag` → at least one resource consumer**
+  - `resources.dag` declares `Filesystem` as a resource with
+    acquire/release and file classification. No callers.
+  - Candidate consumers: `gunbc/tools/freshness.dag` (reads
+    generated files), `gunbc/tools/regen.dag` (writes generated
+    files).
+  - **Benefit:** filesystem access becomes a tracked resource, not
+    an ambient capability.
+  - **Size:** medium. Requires the interpreter to understand
+    resource handles.
+
+**Done when:**
+- Every file in the modeling consumption gap table has ≥1 structural
+  consumer (not just an import)
+- Adding a new EffectShape variant, new CompilerStage, new
+  DesignFinding field forces updates in the consumer — if it
+  doesn't, the consumer isn't really reading the fact.
+- The tests for each wiring are structural (generated from the
+  declaration), not hand-written.
+
+**Blocked on:** nothing — each wiring is additive and independent.
+Track 17 should proceed in parallel with M1/M2/PERF work, because
+it's about MAKING EXISTING MODELING PROVE THINGS, not new modeling.
+
+**Why highest leverage:** every decorative type costs credibility
+— "gunbc models X" is only true if X is checked. Wiring consumers
+is strictly cheaper than designing new types and produces a real
+correctness boost. Before adding another modeling track, we should
+make the existing 770 lines load-bearing.
+
+---
+
+### Track 18: Error mode taxonomy in std/errors.dag
+
+**Thesis:** Every `.dag` workflow that dispatches shell/REST calls
+invents its own Result coproduct: `RegenResult = Converged |
+Diverged | Failed { stage, stderr } | ToolsMissing { tool, hint }`,
+`FreshnessCheckResult = Fresh | Stale { diff } | Failed { stderr }
+| ToolsMissing { tool, hint }`, `L1RatchetResult = L1Passed |
+L1Failed { report } | ToolsMissing { tool, hint }`. The
+`ToolsMissing` variant repeats verbatim in all three — a dual
+representation per INVARIANTS.md §"No duplicate representations."
+
+The deeper issue: each workflow classifies failure ad-hoc.
+`Failed { stderr }` is a bucket for "something went wrong at
+transport level" that hides everything useful — was it a rate
+limit? an auth failure? a missing binary? a network timeout? The
+workflow can't distinguish "retry in 5 seconds" from "abort and
+escalate."
+
+**Design reference:** the-gunbai's integration contracts declare
+error classes as first-class data:
+
+```
+type ErrorClass
+  = RateLimit { retry_after: Duration? }
+  | AuthFailure { reauth_hint: String }
+  | NotFound { resource: String }
+  | Timeout { elapsed: Duration }
+  | Conflict { reason: String }
+  | ToolsMissing { tool: String, hint: String }
+  | TransportFailure { stderr: String }
+```
+
+Each operation declares which error classes it can produce; the
+caller can pattern-match to decide retry vs escalate vs fail.
+
+**Target state:**
+
+```dag
+// std/errors.dag (extend)
+type ErrorClass
+  = RateLimit { retry_after: Duration? }
+  | AuthFailure { hint: String }
+  | NotFound { resource: String }
+  | Timeout { elapsed_ms: Milliseconds }
+  | Conflict { reason: String }
+  | ToolsMissing { tool: NonEmptyStr, install_hint: String }
+  | TransportFailure { stderr: String }
+  | Cancelled
+  | InvalidInput { field: String, reason: String }
+
+type Retryability
+  = Retryable { backoff: BackoffStrategy }
+  | NonRetryable
+  | RequiresReauth
+  | RequiresEscalation
+```
+
+**Wirings (per workflow):**
+
+- `gunbc/tools/regen.dag`: replace `ToolsMissing` variant → use
+  `ErrorClass::ToolsMissing`. Replace `Failed { stage, stderr }`
+  → use `ErrorClass::TransportFailure` with stage as context.
+- `gunbc/tools/freshness.dag`: same.
+- `gunbc/tools/ratchet.dag`: same.
+- `extdeps/llm/anthropic.dag`: REST 429 → `RateLimit`, 401 →
+  `AuthFailure`, timeout → `Timeout`.
+- `extdeps/github/*.dag`: REST 403 rate-limit → `RateLimit`, 404 →
+  `NotFound`, 409 → `Conflict`.
+
+**Retryability derivation:**
+
+```dag
+fn retryability(err: ErrorClass) -> Retryability {
+  match err {
+    RateLimit { retry_after: r } => Retryable { backoff: ... }
+    AuthFailure { hint: _ } => RequiresReauth
+    NotFound { resource: _ } => NonRetryable
+    Timeout { elapsed_ms: _ } => Retryable { backoff: Exponential }
+    Conflict { reason: _ } => RequiresEscalation
+    ToolsMissing { tool: _, install_hint: _ } => RequiresEscalation
+    TransportFailure { stderr: _ } => Retryable { backoff: Linear }
+    Cancelled => NonRetryable
+    InvalidInput { field: _, reason: _ } => NonRetryable
+  }
+}
+```
+
+**Done when:**
+- `std/errors.dag` declares `ErrorClass` and `Retryability`
+- Every workflow file in `gunbc/tools/` uses `ErrorClass` instead
+  of its own ad-hoc result variant for failure cases (success
+  variants stay per-workflow — they're domain-specific)
+- `extdeps/github/*.dag` and `extdeps/llm/*.dag` REST operations
+  map HTTP status codes to `ErrorClass`
+- The generated tests validate: every declared `ErrorClass` variant
+  has a corresponding `retryability` branch (exhaustiveness check)
+
+**Blocked on:** nothing. Low risk, immediate benefit, directly
+unifies a visible dual representation across cool-cod-501's
+three workflow files.
+
+**Why Track 18 unblocks Track 17e:** Track 17e (resources.dag →
+freshness/regen) needs an error model that can distinguish "file
+missing" (NotFound) from "permission denied" (AuthFailure-like)
+from "disk full" (TransportFailure). Having `ErrorClass` means the
+resource layer can return typed errors, not bare `Failed { stderr }`.
 
 ---
 

@@ -1,0 +1,52 @@
+// extdeps/rustup.dag — The Rust toolchain installer.
+//
+// Spec: https://rust-lang.github.io/rustup/
+// Version: rustup 1.27+ (current stable as of 2026)
+//
+// This is a STUB. It documents the rustup-managed dependencies our
+// workflows actually rely on. Cargo itself is modeled separately in
+// extdeps/cargo.dag — this file describes how cargo gets onto a
+// system in the first place.
+//
+// What we actually depend on from rustup:
+//   - cargo binary, installed by default with the stable toolchain
+//   - rustc, installed by default
+//   - Pinned toolchain "1.93.0" in CI (.github/workflows/ci.yml)
+//
+// What we do NOT currently depend on:
+//   - Custom components (clippy ships with stable, rustfmt ships with stable)
+//   - Cross-compilation targets (gunbc only builds for the host)
+//   - Multiple toolchains (no toolchain switching)
+//
+// The CI workflow uses dtolnay/rust-toolchain@stable to provision
+// rustup. Local dev uses whatever rustup ships as stable.
+//
+// Future:
+//   When we model toolchain switching, channels, components, or
+//   cross-targets, this file gets full coverage. For now it's the
+//   dependency declaration.
+
+module extdeps.rustup
+
+import std.types { NonEmptyStr }
+
+// ── Channel ─────────────────────────────────────────────────────────
+
+// Closed set of well-known channels. Custom date-pinned channels
+// (e.g., "nightly-2025-01-15") are out of scope until we need them.
+type RustChannel = Stable | Beta | Nightly
+
+// ── Documented dependencies ─────────────────────────────────────────
+
+// Where to install rustup if missing. Used by extdeps.tools install_hint.
+data rustup_install_url: NonEmptyStr = "https://rustup.rs"
+
+// Default channel we expect when "rustup default" is queried.
+data default_channel: RustChannel = Stable
+
+// The pinned toolchain version used in CI. Local dev usually tracks
+// stable; CI pins for reproducibility.
+data ci_pinned_toolchain: NonEmptyStr = "1.93.0"
+
+// Rustup docs URL for reference.
+data rustup_docs: NonEmptyStr = "https://rust-lang.github.io/rustup/"

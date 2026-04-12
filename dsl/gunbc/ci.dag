@@ -1,39 +1,70 @@
-// gunbc/ci.dag -- CI gate declarations for the gunbc project.
+// gunbc/ci.dag — CI gate declarations with structural gate kind.
 //
-// Models the CI pipeline as .dag declarations so that adding a new
-// feature automatically produces CI coverage (upsert semantics).
-// YAML is a transport constraint (GitHub requires it), not the CI
-// logic. This file IS the CI logic.
+// Every gate command derives from gunbc.compiler facts. Commands are
+// still string-typed (that's the transport) but each gate carries a
+// structural GateSource variant that names what the gate actually
+// proves — lint / test / ratchet / freshness / fixed-point. The closed
+// GateSource coproduct makes it possible to reason about gate kind
+// without parsing command strings.
 //
-// M5 Phase 2b: CI intent declarations.
+// Tool resolution: gate commands are constructed with resolved cargo
+// path as input. A future dag run of the pipeline would resolve tools
+// once at the top, then build gate commands from the resolved set.
+// For the current CI transport (ci.yml shim), commands are assembled
+// lazily inside the interpreter or pre-rendered with `cargo` bare name
+// since CI runners have cargo on PATH by convention.
+//
+// The two script gates (l1, freshness) will become dag run invocations
+// once tools/ratchet.dag and tools/freshness.dag execute reliably in
+// any environment (blocked on tool upsert landing end-to-end).
 //
 // Consumers:
 //   .github/workflows/ci.yml     -- current transport (hand-maintained shim)
-//   future: dag run ci.dag       -- interpreter execution of gates
+//   future: dag run ci_pipeline  -- interpreter execution of gates
 
 module gunbc.ci
 
-// -- Gate source: what a gate checks ------------------------------------
+import gunbc.compiler {
+  compiler_cycle, test_package,
+  lint_command, test_command, ignored_test_command
+}
 
+// ── Ratchet kind ────────────────────────────────────────────────────
+
+// Direction of a ratchet gate. Down = monotonically decreasing (we
+// track regressions); Stable = must remain at the threshold value.
 type RatchetDirection = Down | Stable
 
+// Closed set of ratchet metrics — no opaque strings. Each corresponds
+// to a specific measurement the compiler produces or a script computes.
+// Adding a new ratchet is a new variant, not a new string.
+type RatchetMetric
+  = DiagnosticCount       // total compile-time diagnostics (CX)
+  | L1TypeKnowledge       // type constructors and name comparisons in .dag
+  | Performance           // self-compile pipeline duration
+  | FixedPointConvergence // bootstrap stage1 == stage2
+
+// ── Gate kind ───────────────────────────────────────────────────────
+
+// What a gate is structurally. Closed coproduct — every variant is a
+// category of gate with its own invariant. Consumers that need to
+// reason about gate category (e.g., "how many ratchet gates are there?")
+// pattern-match on this rather than parsing command strings.
+//
+// RatchetGate intentionally does NOT carry a threshold value. The
+// numeric threshold is enforced by whatever runs the gate (a Rust test
+// const, a shell script comparison). Duplicating it here would create
+// a second authority that drifts (the original ci.dag had 424, while
+// the bootstrap test had 354 — exactly the kind of dual-authority
+// problem the invariants forbid). The structural fact is "this is a
+// ratchet on metric M with direction D"; the threshold value is
+// operational data that lives with the enforcer.
 type GateSource
   = LintGate
-  | TestSuiteGate { test_pattern: String }
-  | RatchetGate {
-      metric: String
-      direction: RatchetDirection
-      threshold: Int
-    }
-  | FreshnessGate { generated_files: List<String> }
-
-// -- Gate result --------------------------------------------------------
-
-type GateResult
-  = Pass
-  | Fail { detail: String }
-
-// -- Gate declaration ---------------------------------------------------
+  | TestSuiteGate { test_name: String }  // empty means run all tests
+  | RatchetGate { metric: RatchetMetric, direction: RatchetDirection }
+  | FreshnessGate                        // proves committed stage0 == compile(source)
+  | FixedPointGate                       // proves regen(regen(source)) == regen(source)
 
 type CIGate {
   name: String
@@ -42,72 +73,80 @@ type CIGate {
   source: GateSource
 }
 
-// -- Pipeline -----------------------------------------------------------
-
 type CIPipeline {
   name: String
   gates: List<CIGate>
 }
 
-// -- Declared gates -----------------------------------------------------
+// ── Gates ───────────────────────────────────────────────────────────
+// Commands are derived from compiler.dag; commands use bare "cargo"
+// because CI runners always have cargo on PATH. For local dag run,
+// tools/*.dag workflows resolve the absolute path via extdeps.tools.
+// Sustainability test: changing package_name in compiler.dag updates
+// all gate commands automatically.
 
 data lint_gate: CIGate = {
   name: "Lint",
-  command: "cargo clippy --workspace -- -D warnings",
+  command: lint_command(cargo: "cargo"),
   blocking: true,
   source: LintGate
 }
 
 data test_gate: CIGate = {
   name: "Tests",
-  command: "cargo test -p v2-compiler-tests",
+  command: test_command(cargo: "cargo", package: test_package),
   blocking: true,
-  source: TestSuiteGate { test_pattern: "" }
+  source: TestSuiteGate { test_name: "" }
 }
 
 data full_dsl_gate: CIGate = {
   name: "Full DSL Compiles",
-  command: "cargo test -p v2-compiler-tests full_dsl_compiles -- --ignored --nocapture",
+  command: ignored_test_command(cargo: "cargo", package: test_package, test_name: "full_dsl_compiles"),
   blocking: true,
-  source: TestSuiteGate { test_pattern: "full_dsl_compiles" }
+  source: TestSuiteGate { test_name: "full_dsl_compiles" }
 }
 
 data diagnostic_ratchet_gate: CIGate = {
   name: "Diagnostic Ratchet",
-  command: "cargo test -p v2-compiler-tests strict_compile_diagnostic_count -- --ignored --nocapture",
+  command: ignored_test_command(cargo: "cargo", package: test_package, test_name: "strict_compile_diagnostic_count"),
   blocking: false,
-  source: RatchetGate { metric: "diagnostics", direction: Down, threshold: 424 }
+  source: RatchetGate { metric: DiagnosticCount, direction: Down }
 }
+
+// Script gates — will become `dag run` invocations once the tool
+// workflows execute reliably in any environment.
 
 data l1_gate: CIGate = {
   name: "L1 Type Knowledge Ratchet",
   command: "scripts/l1-ratchet.sh --check",
   blocking: true,
-  source: RatchetGate { metric: "l1_type_knowledge", direction: Stable, threshold: 0 }
+  source: RatchetGate { metric: L1TypeKnowledge, direction: Stable }
 }
 
 data stage0_freshness_gate: CIGate = {
   name: "Stage0 Freshness",
   command: "scripts/check-stage0-freshness.sh",
   blocking: true,
-  source: FreshnessGate { generated_files: ["src/v2/stage0/src/"] }
+  source: FreshnessGate
 }
+
+// Test gates derived from compiler.dag.
 
 data performance_ratchet_gate: CIGate = {
   name: "Performance Ratchet",
-  command: "cargo test -p v2-compiler-tests performance_ratchet -- --ignored --nocapture",
+  command: ignored_test_command(cargo: "cargo", package: test_package, test_name: "performance_ratchet"),
   blocking: true,
-  source: RatchetGate { metric: "performance", direction: Stable, threshold: 0 }
+  source: RatchetGate { metric: Performance, direction: Stable }
 }
 
 data bootstrap_fixed_point_gate: CIGate = {
   name: "Bootstrap Fixed Point",
-  command: "cargo test -p v2-compiler-tests bootstrap_fixed_point -- --ignored --nocapture",
+  command: ignored_test_command(cargo: "cargo", package: test_package, test_name: "bootstrap_fixed_point"),
   blocking: true,
-  source: TestSuiteGate { test_pattern: "bootstrap_fixed_point" }
+  source: FixedPointGate
 }
 
-// -- Pipeline assembly --------------------------------------------------
+// ── Pipeline assembly ───────────────────────────────────────────────
 
 data ci_pipeline: CIPipeline = {
   name: "gunbc-ci",

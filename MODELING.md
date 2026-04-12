@@ -1694,6 +1694,50 @@ delete the function and derive from the data.
 
 Pattern matching should operate on type structure, not string extraction.
 
+### M10: Concepts get proper homes, not flat slots
+
+When you introduce a concept (an external tool, a package manager, a
+service, a protocol), create its proper file under `dsl/extdeps/` or
+`dsl/std/` **before** adding a flat enum variant or string slot that
+references it. The variant references the file's exports.
+
+**Anti-pattern:** `SourceApt { package: NonEmptyStr }` as a variant in
+`extdeps/tools.dag` with no `extdeps/apt.dag` to back it. The variant
+carries no real model — it's a deferred modeling debt that pretends to
+be a structural fact.
+
+**Pattern:** `dsl/extdeps/apt.dag` exists first, with minimal apt
+modeling — spec citation, the specific commands/flags we actually use,
+types/data that consumers reference. The `InstallSource` variant
+imports from it. Adding the variant requires modeling the concept first.
+
+**Stubs are valid.** A new extdeps file doesn't need full coverage on
+day one. It needs:
+- Spec citation (link to upstream docs)
+- The specific commands/flags/features we actually depend on
+- Types or data that other code can reference
+- Honest notes on what we explicitly do NOT depend on
+
+Stubs grow into full models when a consumer needs more behavior. The
+invariant: **every higher-level variant has a backing file in the
+right place.**
+
+**Why this works:** two failure modes are prevented. First, flat
+enums become orphaned — variants exist for concepts no one modeled,
+strings as the only structure. Second, when a real consumer arrives,
+the modeling work is already started.
+
+**Negative test:** if you can write a variant referencing a concept
+without creating its file, the model is lying. The file is the proof
+that the concept exists for us, not just for the docs.
+
+**Worked example (PR #418):** the original `InstallSource` had
+`SourceApt`, `SourceBrew`, `SourceContainer` variants with no backing
+extdeps files. None had consumers. The fix was to drop unused variants
+AND create real stubs for the ones we use: `dsl/extdeps/coreutils.dag`,
+`dsl/extdeps/rustup.dag`, `dsl/extdeps/brew.dag`. Each carries citation,
+flag inventory, and the explicit list of what we don't yet model.
+
 ### M9: DFS the ontology — every construct attaches to first principles
 
 The `std/` library is an **ontology** — a connected DAG of concepts

@@ -64,14 +64,23 @@ service shell.Which {
 service shell.Exec {
   operation Run {
     input { script: String }
-    output { success: Bool from "exit_success", stdout: String from "stdout", stderr: String from "stderr" }
+    // exit_code is the actual subprocess exit code (0 = success, 1, 2, ...).
+    // success is the convenience bool (exit_code == 0). Workflows that
+    // need tri-state semantics (grep: 0=match, 1=no-match, 2=error;
+    // diff: 0=same, 1=different, 2=error) match on exit_code, not success.
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
     transport shell { argv: ["sh", "-lc", "{script}"] }
     exit {
       0 => Unit
       nonzero => String "Script failed"
     }
     mock_response {
-      0 => { exit_success: true, stdout: "(mock)", stderr: "" } "Mock shell execution"
+      0 => { exit_code: 0, exit_success: true, stdout: "(mock)", stderr: "" } "Mock shell execution"
     }
   }
 
