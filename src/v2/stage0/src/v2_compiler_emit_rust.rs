@@ -32,7 +32,7 @@ pub use crate::v2_compiler_runtime_rust::{rust_runtime_source};
 pub use crate::v2_compiler_compiler_tests_rust::{compiler_tests_source};
 pub use crate::v2_compiler_coercion::{coerce_primitive_type, is_copy, lookup_checkpoint};
 pub use crate::std_types::{is_container_type};
-pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
+pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name, lookup_type_by_name};
 pub use crate::v2_compiler_infer_types::{resolved_type, normalize_access_type_node, for_each_element_type_node, child_type_node, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_collection, is_product_type, is_coproduct_type, is_unit_like};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, ItemKind};
@@ -831,11 +831,11 @@ pub fn emit_struct_field_from_child(child: &Rc<Node>, recursive_types: Rc<HashMa
 let ty = if ((is_product_type(rt_child.clone()) && (rt_child.ident_span.clone() != None)) && ((rt_child.children.clone().len() as i64) > 2)) {
             {
                 let rt_child_name = authored_name_at(env.source_indices.clone(), &rt_child);
-match v2_rt::map_get(&env.bindings.clone(), rt_child_name.clone()) {
-    Some(binding) => if ((binding.resolved.clone().params.clone().len() as i64) > 0) {
+match lookup_type_by_name(&env, rt_child_name.clone()) {
+    Some(resolved) => if ((resolved.params.clone().len() as i64) > 0) {
                     {
                         let base = coerce_primitive_type(RenderTarget::Rust, rt_child_name.clone());
-let param_names = Rc::new({ let mut __result = Vec::new(); for p in binding.resolved.clone().params.clone().iter().cloned() { __result.push(generic_param_name_at(p.clone(), env.source_indices.clone())); } __result });
+let param_names = Rc::new({ let mut __result = Vec::new(); for p in resolved.params.clone().iter().cloned() { __result.push(generic_param_name_at(p.clone(), env.source_indices.clone())); } __result });
 let with_params = v2_rt::concat(v2_rt::concat(v2_rt::concat(base, "<".to_string()), param_names.join(&", ".to_string())), ">".to_string());
 if emit_map_has(shared_types.clone(), rt_child_name.clone()) {
                             v2_rt::concat(v2_rt::concat("Rc<".to_string(), with_params), ">".to_string())

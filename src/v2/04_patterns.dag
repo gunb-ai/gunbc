@@ -31,7 +31,7 @@ import v2.compiler.infer_types {
 }
 import v2.compiler.infer_env {
   TypeEnv,
-  lookup_type
+  lookup_type, lookup_type_by_name
 }
 
 // =========================================================================
@@ -191,7 +191,7 @@ fn check_match_exhaustiveness(
   let resolved_raw = if has_structure {
     scrutinee_type
   } else {
-    match lookup_type(env: env, name: scrutinee_type.name) {
+    match lookup_type_by_name(env: env, name: scrutinee_type.name) {
       Some { value: def } => def
       None => scrutinee_type
     }

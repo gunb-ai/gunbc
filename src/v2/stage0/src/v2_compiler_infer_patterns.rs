@@ -16,7 +16,7 @@ use crate::v2_std_core::CompilerDiagnostic::{VariantNotFound, FieldNotFound, Non
 use crate::v2_std_core::MatchPattern::{LitPattern};
 use crate::v2_std_core::LiteralValue::{LitBool};
 pub use crate::v2_compiler_infer_types::{child_type_node, extract_optional_inner_node, emit_map_has};
-pub use crate::v2_compiler_infer_env::{TypeEnv, lookup_type};
+pub use crate::v2_compiler_infer_env::{TypeEnv, lookup_type, lookup_type_by_name};
 use NodeLookupStatus::*;
 use PatternSubject::*;
 
@@ -237,7 +237,7 @@ let has_structure = (scrutinee_type.connective.clone() != Connective::NoConnecti
 let resolved_raw = if has_structure {
             scrutinee_type.clone()
         } else {
-            match lookup_type(env, scrutinee_type.name.clone()) {
+            match lookup_type_by_name(&env, scrutinee_type.name.clone()) {
     Some(def) => def.clone(),
     None => scrutinee_type.clone(),
 }

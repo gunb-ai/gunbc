@@ -40,14 +40,14 @@ import v2.std.core {
   Connective, Conj, Disj, NoConnective,
   CardOptional, no_span,
   unit_type, string_type,
-  default_ident_span, kernel_span, node_name_span
+  default_ident_span, kernel_span, node_name_span, intern_find_or_empty
 }
 import v2.compiler.infer_types {
   resolved_type, child_type_node, node_is_keyed_collection
 }
 import std.induction { SubValueUnknown }
 import v2.compiler.infer_env {
-  TypeEnv, TypeBinding, lookup_type, lookup_type_for, is_recursive_type, is_recursive_type_for, authored_name
+  TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -225,7 +225,7 @@ fn resolve_alias_target(target: Node, env: TypeEnv, module_name: String, depth: 
     AliasParameterized =>
       resolve_node_bounded(n: target, env: env, module_name: module_name, depth: depth + 1).resolved
     AliasLeaf =>
-      match lookup_type(env: env, name: target.name) {
+      match lookup_type_by_name(env: env, name: target.name) {
         Some { value: env_target } => env_target
         None => target
       }
@@ -368,14 +368,14 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
         _ => n
       }
       let target_result = resolve_node_bounded(n: alias_target, env: env, module_name: module_name, depth: depth + 1)
-      let is_recursive = is_recursive_type(env: env, name: type_name)
+      let is_recursive = is_recursive_type_by_name(env: env, name: type_name)
       let resolved_node = Node { name: type_name, span: n.span, ident_span: n.ident_span, children: target_result.resolved.children, connective: target_result.resolved.connective, params: [], inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: target_result.resolved.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
       NodeResolveResult { resolved: resolved_node, diagnostics: concat(arity_diags, arg_diags, target_result.diagnostics) }
     } else {
       let substituted_children = decl.children |> map(child =>
         substitute_type_slots(n: child, slot_bindings: slot_bindings, decl_name: type_name, source_indices: env.source_indices)
       )
-      let is_recursive = is_recursive_type(env: env, name: type_name)
+      let is_recursive = is_recursive_type_by_name(env: env, name: type_name)
       let result = NodeResolveResult {
         resolved: Node { name: type_name, span: n.span, ident_span: n.ident_span, children: substituted_children, connective: decl.connective, params: [], inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data },
         diagnostics: concat(arity_diags, arg_diags)
@@ -912,7 +912,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   let tp_names = fn_type_param_names(item: item, source_indices: env.source_indices)
   let env = fold(tp_names, init: env, f: (e, tp_name) =>
     TypeEnv {
-      bindings: map_insert(e.bindings, tp_name, TypeBinding {
+      bindings: map_insert(e.bindings, intern_find_or_empty(table: e.intern_table, s: tp_name), TypeBinding {
         name: tp_name,
         resolved: Node { name: tp_name, span: kernel_span(name: tp_name), ident_span: Some { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
         provenance: SubValueUnknown
