@@ -184,7 +184,7 @@ fn extract_test_projections(typed: ResolvedGraph) -> List<TestProjection> {
             inferred: resolved_type(n: c),
             params: c.params,
             mock_field_inits: c.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: tm.type_env.source_indices))),
-            source_indices: tm.type_env.source_index
+            source_indices: tm.type_env.source_indices
           })
       )
   )
@@ -1617,7 +1617,7 @@ fn emit_shared_tco_expr(
   emit_block: fn(TcoFrame) -> String,
   emit_default_return: fn(TcoFrame) -> String
 ) -> String {
-  let si = frame.scope.type_env.source_index
+  let si = frame.scope.type_env.source_indices
   match frame.expr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       if expr_call_func_at(texpr: frame.expr, source_indices: si) == fn_name {
@@ -2565,7 +2565,7 @@ fn emit_plain_method_call_unified(receiver: Node, method: String, args: List<Nod
 // Unified typed method call — dispatches on MethodSemantics, reads LanguageSpec.
 fn emit_typed_method_call_unified(receiver: Node, method: String, args: List<Node>, method_semantics: MethodSemantics?, target: RenderTarget, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, recurse: fn(Node) -> String) -> String {
   let spec = language_spec(target: target)
-  let source_indices = scope.type_env.source_index
+  let source_indices = scope.type_env.source_indices
   if method_semantics != none { match method_semantics.value {
     ServiceMethodSemantics { service_name: svc_name } => {
       let var_name = service_var_name(service_name: svc_name)
@@ -2656,7 +2656,7 @@ fn emit_field_access_unified(base_str: String, field: String, summary: FieldSumm
 // =========================================================================
 
 fn emit_unified_typed_expr(texpr: Node, target: RenderTarget, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, fuel: Int, render_pattern: fn(MatchPattern) -> String) -> String {
-  let si = scope.type_env.source_index
+  let si = scope.type_env.source_indices
   let spec = language_spec(target: target)
   emit_shared_expr(
     texpr: texpr,
@@ -2666,7 +2666,7 @@ fn emit_unified_typed_expr(texpr: Node, target: RenderTarget, registry: Map<Stri
     recurse: child => emit_unified_typed_expr(texpr: child, target: target, registry: registry, scope: scope, depth: depth, fuel: fuel - 1, render_pattern: render_pattern),
     emit_var: expr => emit_expr_var_shared(expr: expr, target: target, source_indices: si),
     emit_field_access: expr => {
-      let fa_si = scope.type_env.source_index
+      let fa_si = scope.type_env.source_indices
       if is_typed_service_call_receiver(receiver: expr, source_indices: fa_si) {
         match extract_typed_service_name(receiver: expr, source_indices: fa_si) {
           Some { value: svc_name } => service_var_name(service_name: svc_name)

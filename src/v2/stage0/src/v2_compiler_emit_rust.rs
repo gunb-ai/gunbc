@@ -4297,11 +4297,7 @@ let auth_line = emit_rest_auth_line(&transport, &service_item, http_method, &sou
 let query_line = emit_rest_query_line(transport.clone(), &source_indices);
 let body_line = emit_rest_body_line(transport.clone(), &source_indices);
 let headers = transport_headers(transport.clone(), source_indices.clone());
-let header_lines = Rc::new({ let mut __result = Vec::new(); for h in headers.iter().cloned() { __result.push({
-            let hval = field_init_node_value(&h);
-let val_str = emit_simple_expr(&hval, &RenderTarget::Rust, &source_indices);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let request = request.header(\"".to_string(), field_init_node_name_at(h.clone(), source_indices.clone())), "\", ".to_string()), val_str.clone()), ");".to_string())
-}); } __result });
+let header_lines = Rc::new({ let mut __result = Vec::new(); for h in headers.iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let request = request.header(\"".to_string(), h.name.clone()), "\", ".to_string()), emit_simple_expr(&field_init_node_value(&h), &RenderTarget::Rust, &source_indices)), ");".to_string())); } __result });
 let send_line = "let response = request.send().await?;".to_string();
 let response_handling = emit_response_code_handling(&op_node, transport.clone(), &source_indices);
 let all_lines = Rc::new({ let mut __result = Vec::new(); for l in v2_rt::concat(v2_rt::concat(Rc::new(vec![client_init, url_line, auth_line]), header_lines), Rc::new(vec![query_line, body_line, send_line, response_handling])).iter().cloned() { if (l.clone().as_str() != "".to_string().as_str()) { __result.push(l); } } __result });
@@ -4437,26 +4433,11 @@ pub fn emit_rest_body_line(transport: Rc<Node>, source_indices: &Rc<HashMap<Stri
     match transport_request_body(transport, source_indices.clone()) {
     Some(b) => match (*b.expr_data.clone()).clone() {
     ExprData::ExprRecordLit { .. } => {
-        let required_fields = Rc::new({ let mut __result = Vec::new(); for fi in b.children.clone().iter().cloned() { if !is_optional_typed_expr(field_init_node_value(&fi)) { __result.push(fi); } } __result });
-let optional_fields = Rc::new({ let mut __result = Vec::new(); for fi in b.children.clone().iter().cloned() { if is_optional_typed_expr(field_init_node_value(&fi)) { __result.push(fi); } } __result });
-let req_strs = Rc::new({ let mut __result = Vec::new(); for fi in required_fields.iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat("\"".to_string(), field_init_node_name_at(fi.clone(), source_indices.clone())), "\": ".to_string()), emit_simple_expr(&field_init_node_value(&fi), &RenderTarget::Rust, &source_indices))); } __result });
-if (((req_strs.clone().len() as i64) == 0) && ((optional_fields.clone().len() as i64) == 0)) {
-            "compile_error!(\"transport body record has no fields\");".to_string()
+        let fields = Rc::new({ let mut __result = Vec::new(); for fi in b.children.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat("\"".to_string(), field_init_node_name_at(fi.clone(), source_indices.clone())), "\": ".to_string()), emit_simple_expr(&field_init_node_value(&fi), &RenderTarget::Rust, &source_indices))); } __result });
+if ((fields.clone().len() as i64) > 0) {
+            v2_rt::concat(v2_rt::concat("let request = request.json(&serde_json::json!({ ".to_string(), fields.clone().join(&", ".to_string())), " }));".to_string())
         } else {
-            {
-                let body_init = if ((req_strs.clone().len() as i64) > 0) {
-                    v2_rt::concat(v2_rt::concat("let mut __body = serde_json::json!({ ".to_string(), req_strs.clone().join(&", ".to_string())), " });".to_string())
-                } else {
-                    "let mut __body = serde_json::json!({});".to_string()
-                };
-let opt_lines = Rc::new({ let mut __result = Vec::new(); for fi in optional_fields.clone().iter().cloned() { __result.push({
-                    let fname = field_init_node_name_at(fi.clone(), source_indices.clone());
-let fexpr = emit_simple_expr(&field_init_node_value(&fi), &RenderTarget::Rust, &source_indices);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("if let Some(ref __v) = ".to_string(), fexpr.clone()), " { __body[\"".to_string()), fname.clone()), "\"] = serde_json::json!(__v); }".to_string())
-}); } __result });
-let assign_line = "let request = request.json(&__body);".to_string();
-v2_rt::concat(v2_rt::concat(Rc::new(vec![body_init]), opt_lines), Rc::new(vec![assign_line])).join(&"\n".to_string())
-}
+            "compile_error!(\"transport body record has no fields\");".to_string()
         }
 },
     _ => "compile_error!(\"transport body must be a record expression { field: value, ... }\");".to_string(),

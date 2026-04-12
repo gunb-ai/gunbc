@@ -29,6 +29,8 @@ use ImportTrigger::*;
 use IfValueForm::*;
 use NamingCase::*;
 use VisibilitySpec::*;
+use ServiceMethodStrategy::*;
+use ServiceReturnStrategy::*;
 use InterpStyle::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -215,6 +217,34 @@ pub struct TcoSyntax {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ServiceMethodStrategy {
+    SelfInParams {
+        self_param: String,
+    },
+    ExternalReceiver {
+        var_name: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ServiceReturnStrategy {
+    ArrowReturn,
+    ErrorTupleReturn {
+        error_type: String,
+    },
+}
+impl ServiceReturnStrategy {
+    pub fn error_type(&self) -> String {
+        match self {
+            ServiceReturnStrategy::ArrowReturn => panic!("no error_type on unit variant"),
+            ServiceReturnStrategy::ErrorTupleReturn { error_type: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemKeywords {
     pub func_keyword: String,
     pub async_prefix: String,
@@ -275,6 +305,8 @@ pub struct LanguageSpec {
     pub bridge_method_case: NamingCase,
     pub bridge_method_overrides: Rc<HashMap<String, String>>,
     pub record_lit: Rc<RecordLitSyntax>,
+    pub service_method: Rc<ServiceMethodStrategy>,
+    pub service_return: Rc<ServiceReturnStrategy>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -489,6 +521,10 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     anon_suffix: "}".to_string(),
     anon_field_indent: "    ".to_string(),
 }),
+    service_method: Rc::new(ServiceMethodStrategy::SelfInParams {
+    self_param: "&self".to_string(),
+}),
+    service_return: Rc::new(ServiceReturnStrategy::ArrowReturn),
 })
 }
 
@@ -648,6 +684,10 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     anon_suffix: "}".to_string(),
     anon_field_indent: "    ".to_string(),
 }),
+    service_method: Rc::new(ServiceMethodStrategy::SelfInParams {
+    self_param: "self".to_string(),
+}),
+    service_return: Rc::new(ServiceReturnStrategy::ArrowReturn),
 })
 }
 
@@ -806,6 +846,12 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     anon_suffix: "}".to_string(),
     anon_field_indent: "\t".to_string(),
 }),
+    service_method: Rc::new(ServiceMethodStrategy::ExternalReceiver {
+    var_name: "c".to_string(),
+}),
+    service_return: Rc::new(ServiceReturnStrategy::ErrorTupleReturn {
+    error_type: "error".to_string(),
+}),
 })
 }
 
@@ -963,6 +1009,10 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
     anon_suffix: "}".to_string(),
     anon_field_indent: "    ".to_string(),
 }),
+    service_method: Rc::new(ServiceMethodStrategy::SelfInParams {
+    self_param: "".to_string(),
+}),
+    service_return: Rc::new(ServiceReturnStrategy::ArrowReturn),
 })
 }
 

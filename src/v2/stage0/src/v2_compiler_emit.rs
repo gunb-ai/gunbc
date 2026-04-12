@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name_at, param_node_type_expr, param_node_default_value, NewlineIndex, authored_name_at, expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at, ExprData, VarBindingKind, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, AlgebraFieldKind, DeclaredFuncSig, MethodSemantics, MatchPattern, FieldSummary, expr_method_name_at, method_arg_nodes, expr_method_call_semantics, expr_field_access_summary, lambda_param_names_at, record_lit_type_name_at, arm_body, arm_pattern, arm_guard, arg_name_at, arg_value, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, cast_target, return_value, binop_left, binop_right, foreach_variable_at, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, transport_has_auth, field_init_operation_modifier, operation_modifier_name, with_required_cardinality, tuple_type_name, find_child_named, Connective, FieldAccessStyle, Cardinality};
+pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name_at, param_node_type_expr, param_node_default_value, NewlineIndex, authored_name_at, expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at, ExprData, VarBindingKind, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, AlgebraFieldKind, DeclaredFuncSig, MethodSemantics, MatchPattern, FieldSummary, expr_method_name_at, method_arg_nodes, expr_method_call_semantics, expr_field_access_summary, lambda_param_names_at, record_lit_type_name_at, arm_body, arm_pattern, arm_guard, arg_name_at, arg_value, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, cast_target, return_value, binop_left, binop_right, foreach_variable_at, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, is_local_transport, transport_has_auth, field_init_operation_modifier, operation_modifier_name, with_required_cardinality, tuple_type_name, find_child_named, Connective, FieldAccessStyle, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
@@ -20,7 +20,7 @@ use crate::v2_std_core::VarBindingKind::*;
 use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
 use crate::v2_std_core::AlgebraFieldKind::*;
-pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding};
+pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 use crate::std_induction::SubValueRelation::{SubValueUnknown};
 pub use crate::v2_compiler_infer_types::{resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node};
@@ -33,7 +33,9 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope}
 pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo};
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
-pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, BlockSyntax, TcoSyntax, ExpressionSemantics, IfValueForm, VisibilitySpec, NamingCase, ReservedWordStrategy, StringInterpSyntax, InterpStyle, EscapePair, RecordLitSyntax, ImportRule, language_spec_for_target, is_string_like, test_conventions_for_target, target_keyword, binop_symbol, wrap_shared_type, TestNameStyle, ImportTrigger};
+pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, BlockSyntax, TcoSyntax, ExpressionSemantics, IfValueForm, VisibilitySpec, NamingCase, ReservedWordStrategy, StringInterpSyntax, InterpStyle, EscapePair, RecordLitSyntax, ImportRule, language_spec_for_target, is_string_like, test_conventions_for_target, target_keyword, binop_symbol, wrap_shared_type, TestNameStyle, ImportTrigger, ServiceMethodStrategy, ServiceReturnStrategy};
+use crate::v2_compiler_languages::ServiceMethodStrategy::{SelfInParams, ExternalReceiver};
+use crate::v2_compiler_languages::ServiceReturnStrategy::{ArrowReturn, ErrorTupleReturn};
 use crate::v2_compiler_languages::TestNameStyle::{SnakeCaseTestNames, PascalCaseTestNames};
 use crate::v2_compiler_languages::IfValueForm::{IfExpression, ConditionalTernary, IfStatement};
 use crate::v2_compiler_languages::VisibilitySpec::{KeywordVisibility, CaseVisibility};
@@ -179,32 +181,7 @@ if is_typed_service_call_receiver(&expr, source_indices.clone()) {
     None => v2_rt::concat(v2_rt::concat(emit_simple_expr(&b, &target, &source_indices), ".".to_string()), emit_ident(f.clone(), target.clone())),
 }
             } else {
-                {
-                    let base_is_fn = match (*b.expr_data.clone()).clone() {
-    ExprData::ExprVar { binding_kind: bk, .. } => match bk.clone().as_deref().cloned() {
-    Some(VarBindingKind::MatchBoundBinding) => false,
-    Some(VarBindingKind::VariantValueBinding { .. }) => false,
-    _ => true,
-},
-    _ => false,
-};
-let base_str = emit_simple_expr(&b, &target, &source_indices);
-let base_call = if base_is_fn.clone() {
-                        v2_rt::concat(base_str, "()".to_string())
-                    } else {
-                        base_str
-                    };
-let field_str = v2_rt::concat(v2_rt::concat(base_call, ".".to_string()), emit_ident(f.clone(), target.clone()));
-let needs_clone = (base_is_fn.clone() && match target.clone() {
-    RenderTarget::Rust => true,
-    _ => false,
-});
-if needs_clone {
-                        v2_rt::concat(field_str, ".clone()".to_string())
-                    } else {
-                        field_str
-                    }
-}
+                v2_rt::concat(v2_rt::concat(emit_simple_expr(&b, &target, &source_indices), ".".to_string()), emit_ident(f.clone(), target.clone()))
             }
 },
     ExprData::ExprStringInterp => {
@@ -1311,6 +1288,88 @@ result.clone()
 }
 }
 
+pub fn emit_unified_transport_dispatch(transport: &Rc<Node>, op_name: String, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>, depth: i64, target: RenderTarget, render_rest: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String + Clone, render_shell: impl Fn(String, Rc<Node>, i64, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String + Clone, render_file: impl Fn(String, i64) -> String + Clone, render_local: impl Fn(String, i64) -> String + Clone) -> String {
+    if is_rest_transport(transport.clone(), source_indices.clone()) {
+        render_rest(op_name, transport.clone(), depth, source_indices.clone())
+    } else {
+        if is_shell_transport(transport.clone()) {
+            render_shell(op_name, transport.clone(), depth, source_indices.clone())
+        } else {
+            if is_file_transport(transport.clone(), source_indices.clone()) {
+                render_file(op_name, depth)
+            } else {
+                if is_local_transport(&transport, &source_indices) {
+                    render_local(op_name, depth)
+                } else {
+                    emit_error_expr("unrecognized transport kind".to_string(), target)
+                }
+            }
+        }
+    }
+}
+
+pub fn emit_unified_operation_method(service_name: String, fallback_transport: Rc<Node>, op_node: &Rc<Node>, target: &RenderTarget, registry: Rc<HashMap<String, Rc<ItemInfo>>>, env: &Rc<TypeEnv>, render_transport_body: impl Fn(Rc<Node>, String, Rc<HashMap<String, Rc<NewlineIndex>>>, i64) -> String + Clone) -> String {
+    {
+        let spec = language_spec(target.clone());
+let si = env.source_indices.clone();
+let op_text = authored_name(env.clone(), op_node.clone());
+let params_str = emit_params_shared(op_node.params.clone(), &target, si.clone());
+let all_params = match (*spec.service_method.clone()).clone() {
+    ServiceMethodStrategy::SelfInParams { self_param: sp, .. } => if (sp.clone().as_str() == "".to_string().as_str()) {
+            params_str.clone()
+        } else {
+            if (params_str.clone().as_str() == "".to_string().as_str()) {
+                sp.clone()
+            } else {
+                v2_rt::concat(v2_rt::concat(sp.clone(), ", ".to_string()), params_str.clone())
+            }
+        },
+    ServiceMethodStrategy::ExternalReceiver { .. } => params_str.clone(),
+};
+let receiver_str = match (*spec.service_method.clone()).clone() {
+    ServiceMethodStrategy::SelfInParams { .. } => "".to_string(),
+    ServiceMethodStrategy::ExternalReceiver { var_name: v, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), v.clone()), " *".to_string()), service_name), ") ".to_string()),
+};
+let method_depth = match (*spec.service_method.clone()).clone() {
+    ServiceMethodStrategy::SelfInParams { .. } => 1,
+    ServiceMethodStrategy::ExternalReceiver { .. } => 0,
+};
+let ret_type = emit_node_type(resolved_type(op_node.clone()), target.clone(), si.clone());
+let ret_str = match (*spec.service_return.clone()).clone() {
+    ServiceReturnStrategy::ArrowReturn => v2_rt::concat(spec.items.clone().return_arrow.clone(), ret_type),
+    ServiceReturnStrategy::ErrorTupleReturn { error_type: et, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(" (".to_string(), ret_type), ", ".to_string()), et.clone()), ")".to_string()),
+};
+let method_name = match (*spec.visibility.clone()).clone() {
+    VisibilitySpec::CaseVisibility { .. } => emit_export_ident(op_text.clone(), &target),
+    _ => emit_ident(op_text.clone(), target.clone()),
+};
+let eff_transport = effective_operation_transport(op_node.clone(), fallback_transport);
+let body = render_transport_body(eff_transport, op_text.clone(), si.clone(), (method_depth.clone() + 1));
+let sig = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(spec.items.clone().async_prefix.clone(), spec.items.clone().func_keyword.clone()), " ".to_string()), receiver_str), method_name), "(".to_string()), all_params), ")".to_string()), ret_str);
+if spec.block_syntax.clone().significant_whitespace.clone() {
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(sig, spec.block_syntax.clone().block_open.clone()), make_indent((method_depth.clone() + 1))), body)
+        } else {
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(sig, spec.block_syntax.clone().block_open.clone()), body), "\n".to_string()), make_indent(method_depth.clone())), spec.block_syntax.clone().block_close.clone())
+        }
+}
+}
+
+pub fn emit_unified_service_def(item: &Rc<Node>, target: &RenderTarget, registry: Rc<HashMap<String, Rc<ItemInfo>>>, env: &Rc<TypeEnv>, render_service_fields: impl Fn(String, Rc<Node>, Rc<Vec<Rc<Node>>>, Rc<HashMap<String, Rc<NewlineIndex>>>) -> String + Clone, render_transport_body: impl Fn(Rc<Node>, String, Rc<HashMap<String, Rc<NewlineIndex>>>, i64) -> String + Clone) -> String {
+    {
+        let spec = language_spec(target.clone());
+let safe_name = sanitize_service_name(authored_name(env.clone(), item.clone()));
+let transport = service_fallback_transport(&item);
+let op_children = item.children.clone();
+let fields_str = render_service_fields(safe_name.clone(), transport.clone(), op_children.clone(), env.source_indices.clone());
+let methods = Rc::new({ let mut __result = Vec::new(); for op_node in op_children.clone().iter().cloned() { __result.push(emit_unified_operation_method(safe_name.clone(), transport.clone(), &op_node, &target, registry.clone(), &env, render_transport_body.clone())); } __result });
+let methods_str = methods.join(&"\n\n".to_string());
+match (*spec.service_method.clone()).clone() {
+    ServiceMethodStrategy::SelfInParams { .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(spec.items.clone().struct_keyword.clone(), " ".to_string()), safe_name.clone()), ":\n".to_string()), make_indent(1)), fields_str), "\n\n".to_string()), make_indent(1)), methods_str),
+    ServiceMethodStrategy::ExternalReceiver { .. } => v2_rt::concat(v2_rt::concat(fields_str, "\n\n".to_string()), methods_str),
+}
+}
+}
+
 pub fn is_type_def_item(item: &Rc<Node>) -> bool {
     ((item.connective.clone() != Connective::NoConnective) && (item.transport.clone() == None))
 }
@@ -1666,6 +1725,33 @@ pub fn shared_tco_reassign(ordered_args: Rc<Vec<String>>, param_names: Rc<Vec<St
     {
         let all_lines = tco_reassign_core(ordered_args, param_names, spec.tco.clone().temp_var_prefix.clone(), spec.tco.clone().temp_decl_prefix.clone(), spec.tco.clone().temp_assign_op.clone(), spec.block_syntax.clone().stmt_terminator.clone(), spec.tco.clone().continue_str.clone(), &"".to_string());
 all_lines.join(&"\n".to_string())
+}
+}
+
+pub fn unified_tco_recurse(expr: Rc<Node>, scope: Rc<InferScope>, depth: i64, fn_name: String, params: Rc<Vec<Rc<Node>>>, target: RenderTarget, registry: Rc<HashMap<String, Rc<ItemInfo>>>, recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone, render_match: impl Fn(Rc<TcoFrame>) -> String + Clone, render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone) -> String {
+    emit_unified_tco_expr(&Rc::new(TcoFrame {
+    expr: expr,
+    scope: scope,
+    depth: depth,
+}), &fn_name, params, &target, registry, recurse_expr, render_match, render_init_stmts)
+}
+
+pub fn emit_unified_tco_expr(frame: &Rc<TcoFrame>, fn_name: &String, params: Rc<Vec<Rc<Node>>>, target: &RenderTarget, registry: Rc<HashMap<String, Rc<ItemInfo>>>, recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone, render_match: impl Fn(Rc<TcoFrame>) -> String + Clone, render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone) -> String {
+    {
+        let spec = language_spec(target.clone());
+emit_shared_tco_expr(frame.clone(), fn_name.clone(), |input| emit_typed_tco_reassign_shared(input.args.clone(), params.clone(), &target, |child| recurse_expr(child.clone(), input.scope.clone(), input.depth.clone()), input.scope.clone().type_env.clone().source_indices.clone()), |frame| shared_tco_non_self_call(&frame, target.clone(), spec.clone(), |f, args, scope, depth| emit_typed_call_unified(&f, args.clone(), &target, registry.clone(), scope.clone(), |n| recurse_expr(n.clone(), scope.clone(), depth.clone()))), |frame| shared_tco_if(&frame, fn_name.clone(), params.clone(), target.clone(), spec.clone(), recurse_expr.clone(), |expr, scope, depth| unified_tco_recurse(expr.clone(), scope.clone(), depth.clone(), fn_name.clone(), params.clone(), target.clone(), registry.clone(), recurse_expr.clone(), render_match.clone(), render_init_stmts.clone())), render_match.clone(), |frame| shared_tco_let(&frame, fn_name.clone(), params.clone(), target.clone(), recurse_expr.clone(), |expr, scope, depth| unified_tco_recurse(expr.clone(), scope.clone(), depth.clone(), fn_name.clone(), params.clone(), target.clone(), registry.clone(), recurse_expr.clone(), render_match.clone(), render_init_stmts.clone())), |frame| shared_tco_block(&frame, fn_name.clone(), params.clone(), target.clone(), spec.clone(), render_init_stmts.clone(), |expr, scope, depth| unified_tco_recurse(expr.clone(), scope.clone(), depth.clone(), fn_name.clone(), params.clone(), target.clone(), registry.clone(), recurse_expr.clone(), render_match.clone(), render_init_stmts.clone())), |frame| shared_tco_default_return(&frame, spec.clone(), recurse_expr.clone()))
+}
+}
+
+pub fn emit_unified_tco_body(texpr: Rc<Node>, fn_name: String, params: Rc<Vec<Rc<Node>>>, target: &RenderTarget, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone, render_match: impl Fn(Rc<TcoFrame>) -> String + Clone, render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone) -> String {
+    {
+        let spec = language_spec(target.clone());
+let inner = emit_unified_tco_expr(&Rc::new(TcoFrame {
+    expr: texpr,
+    scope: scope,
+    depth: (depth.clone() + 1),
+}), &fn_name, params, &target, registry, recurse_expr, render_match, render_init_stmts);
+shared_tco_body(inner, depth.clone(), &spec)
 }
 }
 

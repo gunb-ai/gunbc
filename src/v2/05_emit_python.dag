@@ -465,7 +465,7 @@ fn emit_py_variant_class_from_child(parent_name: String, child: Node, env: TypeE
 
 fn emit_py_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let depth = 0
-  let si = scope.type_env.source_index
+  let si = scope.type_env.source_indices
   let params_str = emit_py_params(params: params, source_indices: si)
   let ret_str = emit_py_inferred(inferred: inferred, source_indices: si)
   let body_scope = build_params_scope(scope: scope, params: params)
@@ -504,7 +504,7 @@ fn emit_py_func_def(
   let params_str = emit_py_func_params(params: params, uses: uses, service_names: service_names, source_indices: scope.type_env.source_indices)
   let ret_str = emit_py_inferred(inferred: inferred, source_indices: scope.type_env.source_indices)
   let body_scope = build_params_scope(scope: scope, params: params)
-  let si = scope.type_env.source_index
+  let si = scope.type_env.source_indices
   let body_scope = fold(uses, init: body_scope, f: (s, u) =>
     extend_scope(scope: s, name: resource_use_name_at(n: u, source_indices: si), resolved: resource_use_resource(n: u), provenance: SubValueUnknown)
   )
@@ -576,7 +576,7 @@ fn emit_py_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
 // =========================================================================
 
 fn emit_py_typed_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let si = scope.type_env.source_index
+  let si = scope.type_env.source_indices
   match body.expr_data {
     ExprLet => {
       let n = let_binding_name_at(texpr: body, source_indices: si)
