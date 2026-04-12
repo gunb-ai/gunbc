@@ -207,21 +207,57 @@ M1: CX gate → 0 violations (currently 420, ratchet 420)
       correction Map<String,…>→List (positional by return child),
       classify_argument reads provenance before hardcoded fallback,
       composition algebra (compose_sub_value_relations in std/),
-      body inference for non-recursive functions (#402),
-      ExprMethodCall in body inference (pipe |> composes via func_sigs).
-    Next: lambda transparency (S7), per-field struct provenance.
-      Violation landscape: 104 parse_type_expr + 89 render_node_type
-      + 48 to_string = 241/420 (57%), all lambda transparency.
-      Body inference is complete for scalar returns. Remaining
-      violations need: (a) lambda param provenance from callee
-      contracts (map/fold callbacks), (b) per-field provenance on
-      struct returns (parser helper return.tokens).
-    Unlocks: Stream D (-132), body-inferred categories (-196),
-      arithmetic refinement (-44), C3-C6 deletion, tokenizer (-22)
-    Remaining ~10 (graph DFS) needs language primitive
+      body inference for non-recursive functions (#402/#406),
+      ExprMethodCall in body inference (pipe |> composes via func_sigs),
+      S7 callback element contracts on algebra templates (#406).
+
+    PATH TO ZERO (sequenced by dependency):
+
+    Step 1: Per-field struct provenance consumption        ~-132
+      When callee returns a struct, caller accesses .tokens →
+      look up callee.output_provenance[field_index], compose.
+      Wire child-indexed lookup in classify_let_value.
+      Depends on: nothing (infrastructure ready).
+
+    Step 2: Lambda param provenance from callee contracts   ~-50
+      S7 callback_element_position is declared but CX
+      annotate_descent doesn't yet propagate element
+      provenance into lambda body classification.
+      Depends on: Step 1 (validates composition pipeline).
+
+    Step 3: Lexicographic proof construction                ~-150
+      Wire TerminationProof from std/termination.dag into CX.
+      Replace per-argument heuristic classification with
+      proof CONSTRUCTORS that build TerminationProof values.
+      Handles "locally increasing, globally decreasing":
+        (pos increases, tokens shrinks) → lexicographic descent.
+        (tree level same, list shrinks) → lexicographic descent.
+      Types exist: TerminationProof, ProofEdge, RankingDimension.
+      Checker exists: is_valid_proof, is_lexicographic_descent
+        (std/graph.dag). Design: cx-computation-model.md.
+      Depends on: Steps 1-2 (reliable per-argument evidence
+        to compose lexicographically).
+
+    Step 4: Universal checker replaces classify_* heuristics ~-80
+      is_valid_proof becomes the single termination authority.
+      Delete 5+ ad-hoc classification functions, hardcoded
+      fallback tables (C3-C6). One function, not five heuristics.
+      Depends on: Step 3.
+
+    Step 5: Remaining edge cases                            ~-10
+      Graph DFS (needs language primitive or work-list
+      RankingDimension), arithmetic refinement.
+
+    Violation landscape (420 total):
+      104 parse_type_expr + 89 render_node_type + 48 to_string
+      = 241 (57%) from recursive functions with multi-param
+      descent patterns (lexicographic, Steps 2-3).
+      132 from parser struct returns (per-field, Step 1).
+      ~47 from other patterns (arithmetic, graph DFS, Step 4-5).
+
     Note: Stream D parser restructuring is DONE mechanically but
       CX can't see through helper returns without output provenance.
-      Shelved until provenance lands.
+      Shelved until Step 1 lands.
 
 M2: Node.name deleted
     Done when: Node.name field removed, l1-ratchet = 0
