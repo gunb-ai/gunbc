@@ -3366,32 +3366,32 @@ fn peek_text_is(tokens: List<Token>, expected: String) -> Bool {
 
 // Parse node declaration: node <name> [constraints]: <expr>
 // Represented as ExprLet with type_annotation for the node type and properties for constraints.
-fn parse_node_decl(tokens: List<Token>, state: ParserState) -> ExprResult {
-  let span = current_span(tokens: tokens, state: state)
+fn parse_node_decl(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
+  let span = token_span(tok: tokens |> first)
   let dummy_expr = parse_recovery_placeholder()
   // Consume "node" identifier
-  let adv = advance(tokens: tokens, state: state)
+  let tokens = tokens |> skip(1)
   // Parse node name
-  let r = expect_name(tokens: tokens, state: adv.state)
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let r = expect_name(tokens: tokens)
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
   // Optional constraint annotations: [after X, when Y]
-  let cr = try_constraint_annotations(tokens: tokens, state: r.state)
-  if has_err(err: cr.err) { return ExprResult { expr: dummy_expr, state: cr.state, err: cr.err } }
+  let cr = try_constraint_annotations(tokens: r.tokens, ctx: ctx)
+  if has_err(err: cr.err) { return ExprResult { expr: dummy_expr, tokens: cr.tokens, ctx: cr.ctx, err: cr.err } }
   // Expect colon or equals: node x: Type  OR  node x = expr
-  let e_colon = eat(tokens: tokens, state: cr.state, expected: ExpectColon)
-  let r2_state = if e_colon.consumed { e_colon.state } else {
-    let r2 = expect(tokens: tokens, state: cr.state, expected: ExpectEq)
-    if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
-    r2.state
+  let e_colon = eat(tokens: cr.tokens, expected: ExpectColon)
+  let tokens = if e_colon.consumed { e_colon.tokens } else {
+    let r2 = expect(tokens: cr.tokens, expected: ExpectEq)
+    if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: cr.ctx, err: r2.err } }
+    r2.tokens
   }
   // Parse node type/value expression
-  let r3 = parse_expr(tokens: tokens, state: r2_state)
+  let r3 = parse_expr(tokens: tokens, ctx: cr.ctx)
   if has_err(err: r3.err) { return r3 }
   // Optional return type annotation: node x: call() -> { fields }
-  let ret = parse_optional_inferred(tokens: tokens, state: r3.state)
-  if has_err(err: ret.err) { return ExprResult { expr: dummy_expr, state: ret.state, err: ret.err } }
+  let ret = parse_optional_inferred(tokens: r3.tokens, ctx: r3.ctx)
+  if has_err(err: ret.err) { return ExprResult { expr: dummy_expr, tokens: ret.tokens, ctx: ret.ctx, err: ret.err } }
   // If colon form was used (node x: Type), the expression IS the type annotation.
   // Preserve this fact for downstream phases.
   let type_ann = if e_colon.consumed { Some { value: r3.expr } } else { none }
@@ -3401,24 +3401,24 @@ fn parse_node_decl(tokens: List<Token>, state: ParserState) -> ExprResult {
     type_annotation: type_ann, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none,
     expr_data: ExprLet }
-  ExprResult { expr: node, state: ret.state, err: none }
+  ExprResult { expr: node, tokens: ret.tokens, ctx: ret.ctx, err: none }
 }
 
 // Parse bare assignment: name = expr -> desugar to Let { name, value, body: none }
-fn parse_bare_assignment(tokens: List<Token>, state: ParserState) -> ExprResult {
-  let span = current_span(tokens: tokens, state: state)
+fn parse_bare_assignment(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
+  let span = token_span(tok: tokens |> first)
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect_name(tokens: tokens, state: state)
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let r = expect_name(tokens: tokens)
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
-  let r2 = expect(tokens: tokens, state: r.state, expected: ExpectEq)
-  if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
-  let r3 = parse_expr(tokens: tokens, state: r2.state)
+  let r2 = expect(tokens: r.tokens, expected: ExpectEq)
+  if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: ctx, err: r2.err } }
+  let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
   if has_err(err: r3.err) { return r3 }
   // Optional constraint annotations: name = expr [after X, when Y]
-  let cr = try_constraint_annotations(tokens: tokens, state: r3.state)
-  if has_err(err: cr.err) { return ExprResult { expr: dummy_expr, state: cr.state, err: cr.err } }
+  let cr = try_constraint_annotations(tokens: r3.tokens, ctx: r3.ctx)
+  if has_err(err: cr.err) { return ExprResult { expr: dummy_expr, tokens: cr.tokens, ctx: cr.ctx, err: cr.err } }
   let node = make_named_expr_node(name: name, expr_data: ExprLet, children: [r3.expr], inferred: none, span: span, name_span: name_span)
   if count(cr.constraints) > 0 {
     let node = Node { name: node.name, span: node.span, ident_span: node.ident_span, children: node.children, params: node.params,
@@ -3427,9 +3427,9 @@ fn parse_bare_assignment(tokens: List<Token>, state: ParserState) -> ExprResult 
       transport: node.transport, properties: cr.constraints, type_annotation: node.type_annotation,
       is_self_recursive: node.is_self_recursive, has_non_tail_self_call: node.has_non_tail_self_call,
       match_pattern: node.match_pattern, expr_data: node.expr_data }
-    ExprResult { expr: node, state: cr.state, err: none }
+    ExprResult { expr: node, tokens: cr.tokens, ctx: cr.ctx, err: none }
   } else {
-    ExprResult { expr: node, state: cr.state, err: none }
+    ExprResult { expr: node, tokens: cr.tokens, ctx: cr.ctx, err: none }
   }
 }
 
@@ -3437,76 +3437,73 @@ fn parse_bare_assignment(tokens: List<Token>, state: ParserState) -> ExprResult 
 // 15. parse_expr -- Pratt precedence climbing entry
 // =========================================================================
 
-fn parse_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
-  parse_expr_bp(tokens: tokens, state: state, min_bp: 0)
+fn parse_expr(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
+  parse_expr_bp(tokens: tokens, ctx: ctx, min_bp: 0)
 }
 
 // =========================================================================
 // 16. parse_expr_bp -- precedence climbing core
 // =========================================================================
 
-fn parse_expr_bp(tokens: List<Token>, state: ParserState, min_bp: Int) -> ExprResult {
+fn parse_expr_bp(tokens: List<Token>, ctx: ParseContext, min_bp: Int) -> ExprResult {
   // Parse prefix (unary ops or primary)
-  let r = parse_prefix(tokens: tokens, state: state)
+  let r = parse_prefix(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return r }
   let lhs = r.expr
-  let s = r.state
-  parse_expr_loop(tokens: tokens, state: s, lhs: lhs, min_bp: min_bp)
+  parse_expr_loop(tokens: r.tokens, ctx: r.ctx, lhs: lhs, min_bp: min_bp)
 }
 
-fn parse_expr_loop(tokens: List<Token>, state: ParserState, lhs: Node, min_bp: Int) -> ExprResult {
-  if at_end(tokens: tokens, state: state) || tok_is_eof(tok: peek(tokens: tokens, state: state)) {
-    ExprResult { expr: lhs, state: state, err: none }
+fn parse_expr_loop(tokens: List<Token>, ctx: ParseContext, lhs: Node, min_bp: Int) -> ExprResult {
+  if tok_is_eof(tok: tokens |> first) {
+    ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
   } else {
+    let loop_span = token_span(tok: tokens |> first)
     // Skip newlines if the next non-newline token is a continuation operator
     // (|> or .) -- these operators work across line breaks.
-    let s = skip_continuation_newlines(tokens: tokens, state: state)
+    let tokens = skip_continuation_newlines(tokens: tokens)
     // Try postfix: .field, (args), as Type
-    let post = try_postfix(tokens: tokens, state: s, lhs: lhs, min_bp: min_bp)
+    let post = try_postfix(tokens: tokens, ctx: ctx, lhs: lhs, min_bp: min_bp)
     if has_err(err: post.err) {
-      ExprResult { expr: lhs, state: post.state, err: post.err }
+      ExprResult { expr: lhs, tokens: post.tokens, ctx: post.ctx, err: post.err }
     } else {
     if post.changed {
-      parse_expr_loop(tokens: tokens, state: post.state, lhs: post.expr, min_bp: min_bp)
+      parse_expr_loop(tokens: post.tokens, ctx: post.ctx, lhs: post.expr, min_bp: min_bp)
     } else {
-      // Try infix: binary operators (use s which has continuation newlines skipped)
-      let bp = infix_bp(tokens: tokens, state: s)
+      // Try infix: binary operators (use tokens which has continuation newlines skipped)
+      let bp = infix_bp(tokens: tokens)
       match bp {
         Some { value: bps } => {
           if bps.left < min_bp {
-            ExprResult { expr: lhs, state: s, err: none }
+            ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
           } else {
-            let adv = advance(tokens: tokens, state: s)
+            let adv = advance(tokens: tokens)
             let op_shape = adv.token.shape
             // Special case: dot is field access
             if is_dot_shape(shape: op_shape) {
-              let r = expect_name(tokens: tokens, state: adv.state)
-              if has_err(err: r.err) { return ExprResult { expr: lhs, state: r.state, err: r.err } }
-              let span = current_span(tokens: tokens, state: state)
-              let new_lhs = make_named_expr_node(name: r.name, expr_data: ExprFieldAccess { summary: none }, children: [lhs], inferred: none, span: span, name_span: r.span)
-              parse_expr_loop(tokens: tokens, state: r.state, lhs: new_lhs, min_bp: min_bp)
+              let r = expect_name(tokens: adv.tokens)
+              if has_err(err: r.err) { return ExprResult { expr: lhs, tokens: r.tokens, ctx: ctx, err: r.err } }
+              let new_lhs = make_named_expr_node(name: r.name, expr_data: ExprFieldAccess { summary: none }, children: [lhs], inferred: none, span: loop_span, name_span: r.span)
+              parse_expr_loop(tokens: r.tokens, ctx: ctx, lhs: new_lhs, min_bp: min_bp)
             } else if is_pipe_arrow_shape(shape: op_shape) {
-              let span = current_span(tokens: tokens, state: state)
-              let r = parse_pipe_rhs(tokens: tokens, state: adv.state, receiver: lhs, span: span)
-              if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
-              parse_expr_loop(tokens: tokens, state: r.state, lhs: r.expr, min_bp: min_bp)
+              let r = parse_pipe_rhs(tokens: adv.tokens, ctx: ctx, receiver: lhs, span: loop_span)
+              if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+              parse_expr_loop(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, min_bp: min_bp)
             } else {
-              let rhs_state = skip_newlines(tokens: tokens, state: adv.state)
-              let r = parse_expr_bp(tokens: tokens, state: rhs_state, min_bp: bps.right)
-              if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
-              let span = current_span(tokens: tokens, state: state)
+              let tokens = skip_newlines(tokens: adv.tokens)
+              let r = parse_expr_bp(tokens: tokens, ctx: ctx, min_bp: bps.right)
+              if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
               let binop_opt = find_operator_binop(ops: dag_syntax_spec.operators, symbol: adv.token.text)
               match binop_opt {
                 Some { value: binop } => {
-                  let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, algebra_field: none }, children: [lhs, r.expr], inferred: none, span: span)
-                  parse_expr_loop(tokens: tokens, state: r.state, lhs: new_lhs, min_bp: min_bp)
+                  let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, algebra_field: none }, children: [lhs, r.expr], inferred: none, span: loop_span)
+                  parse_expr_loop(tokens: r.tokens, ctx: r.ctx, lhs: new_lhs, min_bp: min_bp)
                 }
-                None => ExprResult { expr: lhs, state: r.state, err: Some { value: parse_error(msg: concat("unknown binary operator: ", adv.token.text), span: span) } }
+                None => ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: Some { value: parse_error(msg: concat("unknown binary operator: ", adv.token.text), span: loop_span) } }
               }
             }
           }
         }
-        None => ExprResult { expr: lhs, state: s, err: none }
+        None => ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
       }
     }
     }
