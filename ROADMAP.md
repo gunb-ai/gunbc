@@ -765,12 +765,19 @@ P7: Clone elision Layer 2 (post-TCO ownership)   ← independent, do anytime
 P8: Pipeline profiling                           ← do early for signal
 ```
 
-Guide: `/tmp/perf-lane-guide.md`
+Design: [docs/perf-borrow-design.md](docs/perf-borrow-design.md)
+
+Root cause: the Rust emitter translates pure .dag parameters as
+owned `Rc<T>`, forcing every call site to clone. .dag is pure — all
+params are read-only. Emit `&Rc<T>` (borrow) instead. 3 emitter
+decisions account for all 13,694 clones. This IS the LS-4 borrow
+model — trivially solved by .dag purity.
 
 Success criteria (work elimination, not time):
 
 | Metric | Current | Target |
 |--------|---------|--------|
+| .clone() in stage0 | 13,694 | <1,000 |
 | node.name reads in compiler | 107 | 0 |
 | Rc::clone() in stage0 | 23,733 | <1,000 |
 | Stages run on data-only files | 8 | 3 |
