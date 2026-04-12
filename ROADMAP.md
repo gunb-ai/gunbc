@@ -196,13 +196,27 @@ Bootstrap D ├─ Lane B: Emission ──────────────�
 Four concrete goals, in priority order. Each has a clear done-criterion.
 
 ```
-M1: CX gate → 0 violations (currently 421, ratchet 424)
+M1: CX gate → 0 violations (currently 421, ratchet 421)
     Done when: strict_compile_diagnostic_count = 0, gate is blocking
     Key blocker: OUTPUT PROVENANCE on function signatures.
       Same SubValueRelation already on input bindings (S1-S6),
       mirrored to outputs. Not a new system — completes the
       existing pattern. 3 touch points: infer from body, store
       on signature, consumers read at call sites.
+    Done: infrastructure (#398), seed data (e61d199),
+      classify_argument reads provenance before hardcoded fallback,
+      compose_sub_value_relations in std/induction.dag (single
+      authority for cross-call composition, conservative on
+      IteratedSubValue — identity only). Body inference active
+      for non-recursive functions (classify_body_provenance).
+    Limitation: output_provenance is List but consumers only
+      read |> first (scalar). Per-field consumption not wired.
+      Param identity still string-keyed (needs Track 3 ident:Int).
+      Body walker is a bootstrap parallel authority — should
+      derive from InferScope/TypeBinding.provenance pipeline
+      in topo/SCC order once that path exists.
+    Next: per-field provenance consumption for product returns
+      (Step 3). Wire child-indexed lookup in classify_let_value.
     Unlocks: Stream D (-132), body-inferred categories (-196),
       arithmetic refinement (-44), C3-C6 deletion, tokenizer (-22)
     Remaining ~10 (graph DFS) needs language primitive
@@ -589,18 +603,22 @@ emits both from the same source.
 
 **Thesis claim:** emission is mechanical translation.
 
-**Current state:** 6,857 lines of language-specific code in three
-separate emitter files (`05_emit_rust.dag`, `05_emit_python.dag`,
-`05_emit_go.dag`) with 632 language mentions across 12 compiler files.
-The emitter decides instead of reading from data.
+**Current state:** Phase 1 complete, Phase 2 (expression dispatch) complete.
+The shared emitter (`05_emit.dag`) has zero language-decision `match target`
+branches. Python and Go expression rendering is unified into a single
+`emit_unified_typed_expr` dispatcher that reads LanguageSpec data — ~50
+per-language functions deleted, CX ratchet 421→416. Per-language emitter
+files retain: pattern rendering, TCO, func body, type defs, service defs.
+Rust emitter is untouched (ownership logic, Phase 6).
+
+**Progress:** Phase 1 ✓, Phase 2 ✓, Phase 3-4 ready, Phase 5-6 blocked on LS-4.
 
 **Target:** one emitter that reads `LanguageSpec` + `InhabitantDecl`
 data per target. Adding a new target language means adding a new
 `dsl/extdeps/languages/<lang>/` directory, not touching the compiler.
 
-**Blocked on:** Track 2 (LanguageSpec modeling), Track 7 (core table
-dissolution). Conceptually: the coercion engine must be complete
-enough that no inline language knowledge is needed.
+**Next:** Phase 3 (TCO/block unification), Phase 4 (service/transport).
+**Blocked on (for Phase 5-6):** Track 2 LS-4 (borrow model design).
 
 ### Track 14: Omni-emission
 

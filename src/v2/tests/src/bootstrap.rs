@@ -70,9 +70,8 @@ fn stage0_cargo_check() {
 //   collection element extraction (match list |> first), lambda boundary fix.
 //   render_node_type dissolved (140). make_indent dissolved (44).
 //   488→469 after merge with main.
-// 2026-04-12: 424→421 — go_source_extension moved to data constant
-//   eliminates 2 scope errors; keyword_to_name data-driven (-1 via
-//   dag_non_name_keywords lookup replacing dual checks).
+// 2026-04-11: 424→421 — output provenance body inference for non-recursive
+//   functions. compose_sub_value_relations fixes structural∘structural.
 const DIAG_RATCHET: usize = 421;
 
 #[test]
