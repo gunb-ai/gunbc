@@ -6,7 +6,7 @@
 //
 module v2.compiler.infer_env
 
-import v2.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, source_text_at, authored_name_at }
+import v2.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find_or_empty, intern_str, source_text_at, authored_name_at }
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 
 // =========================================================================
@@ -14,9 +14,9 @@ import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecu
 // =========================================================================
 
 type TypeEnv {
-  bindings: Map<String, TypeBinding>
-  recursive_types: List<String>
-  recursive_type_set: Map<String, Bool>
+  bindings: Map<Int, TypeBinding>
+  recursive_types: List<Int>
+  recursive_type_set: Map<Int, Bool>
   inductive_fields: Map<String, List<InductiveField>>
   source_indices: Map<String, NewlineIndex>
   intern_table: InternTable
@@ -32,19 +32,26 @@ type TypeBinding {
 // Environment operations
 // =========================================================================
 
-fn is_recursive_type(env: TypeEnv, name: String) -> Bool {
-  match map_get(env.recursive_type_set, name) {
+fn is_recursive_type(env: TypeEnv, ident: Int) -> Bool {
+  match map_get(env.recursive_type_set, ident) {
     Some { value: _ } => true
     _ => false
   }
 }
 
-fn lookup_type(env: TypeEnv, name: String) -> Node? {
-  let canonical = name
-  match map_get(env.bindings, canonical) {
+fn is_recursive_type_by_name(env: TypeEnv, name: String) -> Bool {
+  is_recursive_type(env: env, ident: intern_find_or_empty(table: env.intern_table, s: name))
+}
+
+fn lookup_type(env: TypeEnv, ident: Int) -> Node? {
+  match map_get(env.bindings, ident) {
     Some { value: binding } => Some { value: binding.resolved }
     None => None
   }
+}
+
+fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
+  lookup_type(env: env, ident: intern_find_or_empty(table: env.intern_table, s: name))
 }
 
 fn authored_name(env: TypeEnv, node: Node) -> String {
@@ -54,11 +61,17 @@ fn authored_name(env: TypeEnv, node: Node) -> String {
 // Node-based lookup accessors — encapsulate identity extraction so
 // resolve callers use node-based API, not string-based.
 fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
-  lookup_type(env: env, name: authored_name(env: env, node: node))
+  match node.ident {
+    Some { value: id } => lookup_type(env: env, ident: id)
+    None => lookup_type_by_name(env: env, name: authored_name(env: env, node: node))
+  }
 }
 
 fn is_recursive_type_for(env: TypeEnv, node: Node) -> Bool {
-  is_recursive_type(env: env, name: authored_name(env: env, node: node))
+  match node.ident {
+    Some { value: id } => is_recursive_type(env: env, ident: id)
+    None => is_recursive_type_by_name(env: env, name: authored_name(env: env, node: node))
+  }
 }
 
 fn inductive_fields_for(env: TypeEnv, type_name: String) -> List<InductiveField> {

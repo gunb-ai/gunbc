@@ -7,7 +7,7 @@ use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
 pub use crate::std_types::{SourceSpan, container_param_name};
-pub use crate::v2_std_core::{Node, authored_name_at, NewlineIndex, make_param_node, param_node_name_at, param_node_type_expr, param_node_default_value, make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, InferredNode, is_compiler_error, ErrorNode, make_error_node, Cardinality, StringPart, MatchPattern, ExprData, ExprErrorKind, make_expr_node, make_named_expr_node, make_expr_error_node, map_children, expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at, make_arg_node, arg_name_at, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_resource_use_node, resource_use_name_at, resource_use_resource, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_local_transport, transport_request_body, is_kernel_type, is_container_type, with_optional_cardinality, with_required_cardinality, Connective, no_span, unit_type, string_type, default_ident_span, kernel_span, node_name_span, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, authored_name_at, NewlineIndex, make_param_node, param_node_name_at, param_node_type_expr, param_node_default_value, make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, InferredNode, is_compiler_error, ErrorNode, make_error_node, Cardinality, StringPart, MatchPattern, ExprData, ExprErrorKind, make_expr_node, make_named_expr_node, make_expr_error_node, map_children, expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at, make_arg_node, arg_name_at, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_resource_use_node, resource_use_name_at, resource_use_resource, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_local_transport, transport_request_body, is_kernel_type, is_container_type, with_optional_cardinality, with_required_cardinality, Connective, no_span, unit_type, string_type, default_ident_span, kernel_span, node_name_span, intern_find_or_empty, CompilerDiagnostic};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::CompilerDiagnostic::{InternalError, ArityMismatch, UnresolvedType};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
@@ -19,7 +19,7 @@ use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 pub use crate::v2_compiler_infer_types::{resolved_type, child_type_node, node_is_keyed_collection};
 pub use crate::std_induction::{SubValueRelation};
 use crate::std_induction::SubValueRelation::{SubValueUnknown};
-pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, lookup_type, lookup_type_for, is_recursive_type, is_recursive_type_for, authored_name};
+pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name};
 use AliasKind::*;
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
@@ -105,7 +105,7 @@ pub fn is_user_generic_use_site(n: &Rc<Node>, env: &Rc<TypeEnv>) -> bool {
 if has_structure {
             false
         } else {
-            match lookup_type_for(&env, n.clone()) {
+            match lookup_type_for(&env, &n) {
     Some(decl) => if ((decl.params.clone().len() as i64) > 0) {
                 if is_container_type(authored_name(env.clone(), n.clone())) {
                     false
@@ -221,7 +221,7 @@ if (((target.children.clone().len() as i64) > 0) && nc.clone()) {
 pub fn resolve_alias_target(target: Rc<Node>, env: Rc<TypeEnv>, module_name: String, depth: i64) -> Rc<Node> {
     match classify_alias(&target) {
     AliasKind::AliasParameterized => resolve_node_bounded(&target, &env, &module_name, (depth + 1)).resolved.clone(),
-    AliasKind::AliasLeaf => match lookup_type(env, target.name.clone()) {
+    AliasKind::AliasLeaf => match lookup_type_by_name(&env, target.name.clone()) {
     Some(env_target) => env_target.clone(),
     None => target.clone(),
 },
@@ -471,7 +471,7 @@ Rc::new(NodeResolveResult {
                 if (((n.children.clone().len() as i64) > 0) && is_user_generic_use_site(&n, &env)) {
                     {
                         let type_name = authored_name(env.clone(), n.clone());
-let decl = match lookup_type_for(&env, n.clone()) {
+let decl = match lookup_type_for(&env, &n) {
     Some(d) => d.clone(),
     None => n.clone(),
 };
@@ -506,7 +506,7 @@ if is_parameterized_alias {
     _ => n.clone(),
 };
 let target_result = resolve_node_bounded(&alias_target, &env, &module_name, (depth.clone() + 1));
-let is_recursive = is_recursive_type(env.clone(), type_name.clone());
+let is_recursive = is_recursive_type_by_name(&env, type_name.clone());
 let resolved_node = Rc::new(Node {
     name: type_name.clone(),
     span: n.span.clone(),
@@ -535,7 +535,7 @@ Rc::new(NodeResolveResult {
                         } else {
                             {
                                 let substituted_children = Rc::new({ let mut __result = Vec::new(); for child in decl.children.clone().iter().cloned() { __result.push(substitute_type_slots(&child, &slot_bindings, &type_name, &env.source_indices.clone())); } __result });
-let is_recursive = is_recursive_type(env.clone(), type_name.clone());
+let is_recursive = is_recursive_type_by_name(&env, type_name.clone());
 let result = Rc::new(NodeResolveResult {
     resolved: Rc::new(Node {
     name: type_name.clone(),
@@ -741,13 +741,13 @@ Rc::new(NodeResolveResult {
 }
                             } else {
                                 if ((n.children.clone().len() as i64) == 0) {
-                                    if is_recursive_type_for(&env, n.clone()) {
+                                    if is_recursive_type_for(&env, &n) {
                                         Rc::new(NodeResolveResult {
     resolved: n.clone(),
     diagnostics: Rc::new(vec![]),
 })
                                     } else {
-                                        match lookup_type_for(&env, n.clone()) {
+                                        match lookup_type_for(&env, &n) {
     Some(resolved) => {
                                             let structurally_resolved = if (((resolved.connective.clone() == Connective::NoConnective) && ((resolved.children.clone().len() as i64) == 0)) && (resolved.inferred.clone() != None)) {
                                                 match resolved.inferred.clone().as_deref().cloned() {
@@ -1514,8 +1514,8 @@ pub fn resolve_item_types(item: &Rc<Node>, env: &Rc<TypeEnv>, module_name: &Stri
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let tp_names = fn_type_param_names(item.clone(), env.source_indices.clone());
-let env = tp_names.iter().cloned().fold(env.clone(), |e: Rc<TypeEnv>, tp_name: String| { let e = Rc::try_unwrap(e).unwrap_or_else(|rc| (*rc).clone()); Rc::new(TypeEnv {
-    bindings: v2_rt::rc_map_insert(e.bindings, tp_name.clone(), Rc::new(TypeBinding {
+let env = tp_names.iter().cloned().fold(env.clone(), |e: Rc<TypeEnv>, tp_name: String| Rc::new(TypeEnv {
+    bindings: v2_rt::rc_map_insert(e.bindings.clone(), intern_find_or_empty(e.intern_table.clone(), tp_name.clone()), Rc::new(TypeBinding {
     name: tp_name.clone(),
     resolved: Rc::new(Node {
     name: tp_name.clone(),
@@ -1541,12 +1541,12 @@ let env = tp_names.iter().cloned().fold(env.clone(), |e: Rc<TypeEnv>, tp_name: S
 }),
     provenance: Rc::new(SubValueRelation::SubValueUnknown),
 })),
-    recursive_types: e.recursive_types,
-    recursive_type_set: e.recursive_type_set,
-    inductive_fields: e.inductive_fields,
-    source_indices: e.source_indices,
-    intern_table: e.intern_table,
-}) });
+    recursive_types: e.recursive_types.clone(),
+    recursive_type_set: e.recursive_type_set.clone(),
+    inductive_fields: e.inductive_fields.clone(),
+    source_indices: e.source_indices.clone(),
+    intern_table: e.intern_table.clone(),
+}));
 let param_results = Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { __result.push(resolve_param(&p, &env, &module_name)); } __result });
 let resolved_params = Rc::new({ let mut __result = Vec::new(); for pr in param_results.clone().iter().cloned() { __result.push(pr.param.clone()); } __result });
 let param_diags = Rc::new({ let mut __result = Vec::new(); for pr in param_results.clone().iter().cloned() { __result.extend((*pr.diagnostics.clone()).iter().cloned()); } __result });

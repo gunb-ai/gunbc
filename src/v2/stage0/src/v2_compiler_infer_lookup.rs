@@ -151,7 +151,7 @@ match normed.inferred.clone().as_deref().cloned() {
                                 } else {
                                     v2_rt::rc_map_insert(seen.clone(), canonical.clone(), true)
                                 };
-match lookup_type_for(&env, normed.clone()) {
+match lookup_type_for(&env, &normed) {
     Some(resolved) => if ((((authored_name(env.clone(), resolved.clone()).as_str() == canonical.clone().as_str()) && (resolved.inferred.clone() == None)) && (resolved.connective.clone() == Connective::NoConnective)) && ((resolved.children.clone().len() as i64) == 0)) {
                                     normed.clone()
                                 } else {

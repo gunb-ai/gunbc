@@ -11,7 +11,7 @@ use v2_compiler::v2_compiler_infer_types::{
 };
 use v2_compiler::v2_compiler_parse;
 use v2_compiler::v2_std_core::{
-    leaf_node_with_span, make_arm_node, make_span, with_optional_cardinality,
+    empty_intern_table, intern, leaf_node_with_span, make_arm_node, make_span, with_optional_cardinality,
     Cardinality, Connective, ExprData, InferredNode, MatchPattern, Node, SourceSpan,
     default_ident_span,
 };
@@ -335,8 +335,10 @@ fn optional_match_exhaustiveness_accepts_some_and_none() {
 
 #[test]
 fn resolve_node_uses_node_name_for_lookup() {
+    let user_name = "User".to_string();
+    let interned_user = intern(&empty_intern_table(), &user_name);
     let node_ref = Rc::new(Node {
-        name: "User".to_string(),
+        name: user_name.clone(),
         ident: None,
         span: zero_span(),
         ident_span: Some(Rc::new(v2_compiler::v2_std_core::SourceSpan { file: "".to_string(), start: 0, end: 0 })),
@@ -357,10 +359,10 @@ fn resolve_node_uses_node_name_for_lookup() {
     });
     let env = Rc::new(TypeEnv {
         bindings: Rc::new(std::collections::HashMap::from([(
-            "User".to_string(),
+            interned_user.id,
             Rc::new(TypeBinding {
-                name: "User".to_string(),
-                resolved: leaf_node("User".to_string()),
+                name: user_name.clone(),
+                resolved: leaf_node(user_name.clone()),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             }),
         )])),
@@ -368,7 +370,7 @@ fn resolve_node_uses_node_name_for_lookup() {
         recursive_type_set: Rc::new(std::collections::HashMap::new()),
         inductive_fields: Rc::new(std::collections::HashMap::new()),
         source_indices: Rc::new(std::collections::HashMap::new()),
-        intern_table: v2_compiler::v2_std_core::empty_intern_table(),
+        intern_table: interned_user.table.clone(),
     });
 
     let result = resolve_node(node_ref, env, "test".to_string());
@@ -757,4 +759,3 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
         outputs.len()
     );
 }
-

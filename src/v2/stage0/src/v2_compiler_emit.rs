@@ -297,9 +297,9 @@ apply_type_template1(interp.format_template.clone(), segments.join(&"".to_string
 pub fn empty_emit_scope() -> Rc<InferScope> {
     Rc::new(InferScope {
     type_env: Rc::new(TypeEnv {
-    bindings: v2_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+    bindings: v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
     recursive_types: Rc::new(vec![]),
-    recursive_type_set: v2_rt::rc_empty_map::<String, bool>(),
+    recursive_type_set: v2_rt::rc_empty_map::<i64, bool>(),
     inductive_fields: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
     source_indices: v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
     intern_table: empty_intern_table(),
