@@ -541,10 +541,10 @@ fn gist_full_pipeline() {
 /// lost facts, unnecessary allocations).
 ///
 /// The ratchet must be generous enough for CI runners under load.
-/// Verified 2026-04-10: no regression from CX evidence work.
-/// Pre-CX and post-CX both measure ~10.8s on dev hardware.
-/// CI runners exceed 30s due to shared load — 45s budget is CI variance.
-const PERF_RATCHET_SECONDS: u64 = 45;
+/// Verified 2026-04-11: no regression from source_indices merge.
+/// Dev hardware: ~10.8s. Colima container: 32-37s.
+/// GitHub CI runners hit 50s+ under shared load — 60s budget covers CI variance.
+const PERF_RATCHET_SECONDS: u64 = 60;
 
 #[test]
 #[ignore] // Requires building stage0 binary
