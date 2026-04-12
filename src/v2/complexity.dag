@@ -69,7 +69,8 @@ import v2.std.core {
   is_child_accessor_in_model,
   lambda_param_names_at, lambda_body,
   is_children_list_field, is_sub_value_field,
-  is_tree_size_preserving, is_tree_size_reducing
+  is_tree_size_preserving, is_tree_size_reducing,
+  authored_name_at
 }
 import v2.compiler.infer_types {
   resolved_type, node_is_collection
@@ -389,7 +390,7 @@ fn parser_state_param(params: List<Node>, si: Map<String, NewlineIndex>) -> Pars
     } else {
       let idx = pair.first
       let param = pair.second
-      if param_node_type_expr(n: param).name == "ParserState" {
+      if authored_name_at(source_indices: si, node: param_node_type_expr(n: param)) == "ParserState" {
         Some { value: ParserStateParam { name: param_node_name_at(n: param, source_indices: si), index: idx } }
       } else {
         none
@@ -2852,7 +2853,7 @@ fn construct_termination_proof(func_name: String, body: Node, params: List<Node>
       Some { value: _ } => best  // already found a proof
       None =>
         let pname = param_node_name_at(n: p, source_indices: si)
-        let type_name = param_node_type_expr(n: p).name
+        let type_name = authored_name_at(source_indices: si, node: param_node_type_expr(n: p))
         match type_iteration_dimension(type_name: type_name) {
           Some { value: dim } =>
             // Type-directed: only try the matching dimension
@@ -2925,7 +2926,7 @@ fn construct_branching_termination_proof(func_name: String, body: Node, params: 
       Some { value: _ } => best
       None =>
         let pname = param_node_name_at(n: p, source_indices: si)
-        let type_name = param_node_type_expr(n: p).name
+        let type_name = authored_name_at(source_indices: si, node: param_node_type_expr(n: p))
         match type_iteration_dimension(type_name: type_name) {
           Some { value: TreeDescent } =>
             match try_branching_dimension_for_param(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false, si: si) {
@@ -4066,8 +4067,8 @@ fn size_binder_name(size: SizeExpr) -> String {
 //   ShapeConstant     -- O(1) regardless of input size
 // =========================================================================
 
-fn resolve_lambda_arg(mc_arg_nodes: List<Node>) -> Node? {
-  let f_arg = mc_arg_nodes |> filter(a => a.name == "f") |> first
+fn resolve_lambda_arg(mc_arg_nodes: List<Node>, si: Map<String, NewlineIndex>) -> Node? {
+  let f_arg = mc_arg_nodes |> filter(a => authored_name_at(source_indices: si, node: a) == "f") |> first
   match f_arg {
     Some { value: fa } => Some { value: arg_value(n: fa) }
     None => mc_arg_nodes |> map(a => arg_value(n: a)) |> first
@@ -4105,7 +4106,7 @@ fn resolve_callback_cost(lambda_arg: Node?, recv_r: SummaryResult, func_index: M
 fn cost_of_method_by_shape(shape: CostShape, produces_collection: Bool, recv_r: SummaryResult, mc_args: List<Node>, size: SizeExpr, binder: String, func_index: Map<String, FuncEntry>, scc_index: Map<String, SccInfo>, parser_always_advancing: Map<String, Bool>, recursion_ctx: RecursionContext, si: Map<String, NewlineIndex>) -> SummaryResult {
   match shape {
     ShapeIterateBody =>
-      let lambda_arg = resolve_lambda_arg(mc_args: mc_args)
+      let lambda_arg = resolve_lambda_arg(mc_arg_nodes: mc_args, si: si)
       let body_result = resolve_callback_cost(lambda_arg: lambda_arg, recv_r: recv_r, func_index: func_index, scc_index: scc_index, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
       let loop_work = cost_loop(binder: binder, iterations: size, body: body_result.summary.work)
       // Space: non-producing iterators (fold/any/all) produce scalar or body output;
@@ -4129,7 +4130,7 @@ fn cost_of_method_by_shape(shape: CostShape, produces_collection: Bool, recv_r: 
     ShapeSortBody =>
       // Comparison sort is O(n log n × key_cost). CostLog makes this
       // expressible as a tight Proven bound.
-      let lambda_arg = resolve_lambda_arg(mc_args: mc_args)
+      let lambda_arg = resolve_lambda_arg(mc_arg_nodes: mc_args, si: si)
       let key_result = match lambda_arg {
         Some { value: la } =>
           cost_of_expr(texpr: la, func_index: func_index, scc_index: scc_index, table: recv_r.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)

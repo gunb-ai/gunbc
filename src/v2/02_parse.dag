@@ -835,7 +835,10 @@ fn parse_dotted_ident_rest(tokens: List<Token>, acc: String, span: SourceSpan) -
   if e.consumed {
     let r = expect_name(tokens: e.tokens)
     if has_err(err: r.err) { return r }
-    parse_dotted_ident_rest(tokens: r.tokens, acc: concat(acc, ".", r.name), span: span)
+    // Extend span to cover the full dotted path so authored_name_at
+    // reads "v2.std.core", not just "v2".
+    let extended = SourceSpan { file: span.file, start: span.start, end: r.span.end }
+    parse_dotted_ident_rest(tokens: r.tokens, acc: concat(acc, ".", r.name), span: extended)
   } else {
     NameResult { name: acc, span: span, tokens: tokens, err: none }
   }
@@ -872,6 +875,7 @@ fn parse_module(tokens: List<Token>, ctx: ParseContext) -> ModuleResult {
   let r = parse_dotted_ident(tokens: tokens)
   if has_err(err: r.err) { return ModuleResult { module: module_node(name: "", imports: [], items: [], span: start_span), tokens: r.tokens, ctx: ctx, err: r.err } }
   let mod_name = r.name
+  let mod_name_span = r.span
   let tokens = skip_newlines(tokens: r.tokens)
 
   // imports
@@ -891,8 +895,18 @@ fn parse_module(tokens: List<Token>, ctx: ParseContext) -> ModuleResult {
   // Intern the module name for future identity lookup
   let mod_ir = intern(table: ctx.intern_table, s: mod_name)
   let ctx = with(ctx, { intern_table: mod_ir.table })
-  let mod = module_node(name: mod_name, imports: imports, items: items, span: start_span)
-  let mod = with(mod, { ident: Some { value: mod_ir.id } })
+  // Build module node with the name-token ident_span so authored_name_at
+  // returns the dotted name (not the full module source).
+  let base_mod = Node {
+    name: mod_name, span: start_span,
+    ident_span: Some { value: mod_name_span },
+    children: items, connective: NoConnective,
+    params: imports, inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+  let mod = with(base_mod, { ident: Some { value: mod_ir.id } })
   ModuleResult { module: mod, tokens: tokens, ctx: ctx, err: none }
 }
 
