@@ -2727,7 +2727,7 @@ match matching {
     ExprData::ExprCall { .. } => {
         let callee = expr_call_func_at(val.clone(), ctx.type_env.clone().source_index.clone());
 let from_provenance = match v2_rt::map_get(&ctx.func_sigs.clone(), callee.clone()) {
-    Some(sig) => match v2_rt::map_get(&sig.output_provenance.clone(), "".to_string()) {
+    Some(sig) => match sig.output_provenance.clone().first().cloned() {
     Some(param_map) => classify_call_via_provenance(val.clone(), &param_map, ctx.clone()),
     None => None,
 },
@@ -3073,6 +3073,16 @@ match (*inner_rel.clone()).clone() {
     SubValueRelation::ArithmeticDescent { .. } => inner_rel.clone(),
     SubValueRelation::PreservedValue => {
                     let callee = expr_call_func_at(arg_expr.clone(), ctx.type_env.clone().source_index.clone());
+let from_provenance = match v2_rt::map_get(&ctx.func_sigs.clone(), callee.clone()) {
+    Some(sig) => match sig.output_provenance.clone().first().cloned() {
+    Some(param_map) => classify_call_via_provenance(arg_expr.clone(), &param_map, ctx.clone()),
+    None => None,
+},
+    None => None,
+};
+match from_provenance {
+    Some(prov_rel) => prov_rel,
+    None =>
 if (is_child_accessor_in_model(callee.clone()) || is_tree_size_reducing(callee.clone())) {
                         {
                             let type_name = match v2_rt::map_get(&ctx.param_names.clone(), param_name.clone()) {
@@ -3103,7 +3113,8 @@ match cf {
                         } else {
                             Rc::new(SubValueRelation::PreservedValue)
                         }
-                    }
+                    },
+}
 },
     SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
 }
@@ -3959,8 +3970,8 @@ pub fn resolved_type_name(n: &Rc<Node>) -> String {
 }
 }
 
-pub fn infer_output_provenance(body: Rc<Node>, params: Rc<Vec<Rc<Node>>>, type_env: Rc<TypeEnv>, scope_locals: Rc<HashMap<String, Rc<TypeBinding>>>, func_sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>) -> Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>> {
-    v2_rt::rc_empty_map::<Rc<HashMap<String, Rc<SubValueRelation>>>>()
+pub fn infer_output_provenance(body: Rc<Node>, params: Rc<Vec<Rc<Node>>>, type_env: Rc<TypeEnv>, scope_locals: Rc<HashMap<String, Rc<TypeBinding>>>, func_sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>) -> Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>> {
+    Rc::new(vec![])
 }
 
 pub fn compose_output_relations(arg_rel: Rc<SubValueRelation>, callee_rel: Rc<SubValueRelation>) -> Rc<SubValueRelation> {
@@ -3992,10 +4003,10 @@ let list_field = Rc::new({ let mut __result = Vec::new(); for f in fields.clone(
 } { __result.push(f); } } __result }).first().cloned();
 match list_field.clone() {
     Some(ind_field) => {
-                                    let provenance = v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<HashMap<String, Rc<SubValueRelation>>>>(), "".to_string(), v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<SubValueRelation>>(), pname.clone(), Rc::new(SubValueRelation::StrictSubValue {
+                                    let provenance = Rc::new(vec![v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<SubValueRelation>>(), pname.clone(), Rc::new(SubValueRelation::StrictSubValue {
     field: ind_field.clone(),
     factor: Rc::new(ShrinkFactor::UnitShrink),
-})));
+}))]);
 match v2_rt::map_get(&acc, fn_name.clone()) {
     Some(sig) => v2_rt::rc_map_insert(acc.clone(), fn_name.clone(), Rc::new(ResolvedFuncSig {
     name: sig.name.clone(),
@@ -5052,7 +5063,7 @@ Some(Rc::new(DeclaredFuncSig {
     params: ritem.params.clone(),
     inferred: declared_rt,
     is_async: ((ritem.uses.clone().len() as i64) > 0),
-    output_provenance: v2_rt::rc_empty_map::<Rc<HashMap<String, Rc<SubValueRelation>>>>(),
+    output_provenance: Rc::new(vec![]),
 }))
 }
         } else {

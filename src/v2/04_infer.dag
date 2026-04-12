@@ -2601,7 +2601,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
       // Check output provenance from func_sigs first
       let from_provenance = match map_get(ctx.func_sigs, callee) {
         Some { value: sig } =>
-          match map_get(sig.output_provenance, "") {
+          match sig.output_provenance |> first {
             Some { value: param_map } =>
               classify_call_via_provenance(call: val, param_map: param_map, ctx: ctx)
             None => none
@@ -2890,25 +2890,35 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
             StrictSubValue { field: _, factor: _ } => inner_rel
             IteratedSubValue { field: _ } => inner_rel
             ArithmeticDescent { param: _, factor: _ } => inner_rel
-            // Accessor applied to the parameter itself: if it's a child accessor,
-            // the result is a strict sub-value (extracts from Node.children).
+            // Accessor applied to the parameter itself: check output provenance
+            // first, fall back to hardcoded child accessor tables.
             PreservedValue =>
               let callee = expr_call_func_at(texpr: arg_expr, source_index: ctx.type_env.source_index)
-              if is_child_accessor_in_model(name: callee) || is_tree_size_reducing(func_name: callee) {
-                let type_name = match map_get(ctx.param_names, param_name) { Some { value: t } => t  None => "" }
-                let fields = inductive_fields_for(env: ctx.type_env, type_name: type_name)
-                let cf = fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
-                match cf {
-                  Some { value: ind_field } => StrictSubValue { field: ind_field, factor: UnitShrink }
-                  None => PreservedValue
-                }
-              } else if is_property_contraction(func_name: callee) {
-                // PropertyContraction: the function changes a finite-domain property
-                // (e.g., with_required_cardinality strips optional). The domain has
-                // bounded size, so this recursion path fires at most domain_size times.
-                // Model as ArithmeticDescent — the property domain acts as a counter.
-                ArithmeticDescent { param: param_name, factor: ConstantShrink { amount: 1 } }
-              } else { PreservedValue }
+              let from_provenance = match map_get(ctx.func_sigs, callee) {
+                Some { value: sig } =>
+                  match sig.output_provenance |> first {
+                    Some { value: param_map } =>
+                      classify_call_via_provenance(call: arg_expr, param_map: param_map, ctx: ctx)
+                    None => none
+                  }
+                None => none
+              }
+              match from_provenance {
+                Some { value: prov_rel } => prov_rel
+                None =>
+                  // Fall back to hardcoded child accessor / tree-size-reducing table
+                  if is_child_accessor_in_model(name: callee) || is_tree_size_reducing(func_name: callee) {
+                    let type_name = match map_get(ctx.param_names, param_name) { Some { value: t } => t  None => "" }
+                    let fields = inductive_fields_for(env: ctx.type_env, type_name: type_name)
+                    let cf = fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
+                    match cf {
+                      Some { value: ind_field } => StrictSubValue { field: ind_field, factor: UnitShrink }
+                      None => PreservedValue
+                    }
+                  } else if is_property_contraction(func_name: callee) {
+                    ArithmeticDescent { param: param_name, factor: ConstantShrink { amount: 1 } }
+                  } else { PreservedValue }
+              }
             SubValueUnknown => SubValueUnknown
           }
         None => SubValueUnknown
@@ -3693,8 +3703,8 @@ fn resolved_type_name(n: Node) -> String {
 // The infrastructure (data structure, threading, consumption in classify_let_value)
 // is in place. Inference requires recursive body walking that currently generates
 // CX violations; enable when the descent analysis can verify its own termination.
-fn infer_output_provenance(body: Node, params: List<Node>, type_env: TypeEnv, scope_locals: Map<String, TypeBinding>, func_sigs: Map<String, ResolvedFuncSig>) -> Map<String, Map<String, SubValueRelation>> {
-  empty_map()
+fn infer_output_provenance(body: Node, params: List<Node>, type_env: TypeEnv, scope_locals: Map<String, TypeBinding>, func_sigs: Map<String, ResolvedFuncSig>) -> List<Map<String, SubValueRelation>> {
+  []
 }
 
 // Compose two sub-value relations across a function call boundary.
@@ -3730,7 +3740,7 @@ fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv
               let list_field = fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
               match list_field {
                 Some { value: ind_field } =>
-                  let provenance = map_insert(empty_map(), "", map_insert(empty_map(), pname, StrictSubValue { field: ind_field, factor: UnitShrink }))
+                  let provenance = [map_insert(empty_map(), pname, StrictSubValue { field: ind_field, factor: UnitShrink })]
                   match map_get(acc, fn_name) {
                     Some { value: sig } =>
                       map_insert(acc, fn_name, ResolvedFuncSig {
@@ -4378,7 +4388,7 @@ fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContributi
       params: ritem.params,
       inferred: declared_rt,
       is_async: ritem.uses |> count > 0,
-      output_provenance: empty_map()
+      output_provenance: []
     } }
   } else {
     none

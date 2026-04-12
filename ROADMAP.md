@@ -203,6 +203,13 @@ M1: CX gate → 0 violations (currently 421, ratchet 424)
       mirrored to outputs. Not a new system — completes the
       existing pattern. 3 touch points: infer from body, store
       on signature, consumers read at call sites.
+    Done: infrastructure (#398), seed data (e61d199), type
+      correction Map<String,…>→List (positional by return child),
+      classify_argument reads provenance before hardcoded fallback.
+    Next: body inference for non-recursive functions (no bootstrap
+      problem). compose_output_relations is too conservative
+      (StrictSubValue∘StrictSubValue→Unknown) but this should
+      emerge from proper sub-value algebra, not be hand-patched.
     Unlocks: Stream D (-132), body-inferred categories (-196),
       arithmetic refinement (-44), C3-C6 deletion, tokenizer (-22)
     Remaining ~10 (graph DFS) needs language primitive
