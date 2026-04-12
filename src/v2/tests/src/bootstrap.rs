@@ -70,7 +70,10 @@ fn stage0_cargo_check() {
 //   collection element extraction (match list |> first), lambda boundary fix.
 //   render_node_type dissolved (140). make_indent dissolved (44).
 //   488→469 after merge with main.
-const DIAG_RATCHET: usize = 424;
+// 2026-04-12: 424→421 — go_source_extension moved to data constant
+//   eliminates 2 scope errors; keyword_to_name data-driven (-1 via
+//   dag_non_name_keywords lookup replacing dual checks).
+const DIAG_RATCHET: usize = 421;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)
