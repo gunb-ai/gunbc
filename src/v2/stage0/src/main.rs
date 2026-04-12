@@ -14,6 +14,7 @@ use v2_compiler::v2_std_core::{
     byte_to_line_col, source_line_at, NewlineIndex,
     CompilerDiagnostic,
 };
+use v2_compiler::cli_run;
 
 #[derive(Parser)]
 #[command(name = "v2-compiled", about = "Generated CLI from DAG compiler")]
@@ -41,6 +42,15 @@ enum Commands {
         /// Target language: rust, python, go, dag
         #[arg(long, default_value = "rust")]
         target: String,
+    },
+/// Execute a .dag program directly (interpreter)
+    Run {
+        /// Source root directories (searched recursively for .dag files)
+        #[arg(long = "source-root")]
+        source_roots: Vec<String>,
+        /// Entry function to execute (default: "main")
+        #[arg(long, default_value = "main")]
+        function: String,
     },
 }
 
@@ -262,6 +272,10 @@ let _result = match cli.command {
                 eprintln!("error: no files emitted");
                 std::process::exit(1);
             }
+        },
+
+        Commands::Run { source_roots, function } => {
+            cli_run::handle_run(source_roots, function);
         },
     };
 }

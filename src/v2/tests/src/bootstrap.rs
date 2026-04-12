@@ -80,7 +80,9 @@ fn stage0_cargo_check() {
 //   tree-walking functions into arithmetic mode. Dissolves render_node_type
 //   and composed violations across emit files. Per-field provenance re-annotation
 //   pass added (infrastructure for Stream D).
-const DIAG_RATCHET: usize = 353;
+// 2026-04-12: 353→354 — compile_to_resolved added (M5 Phase 0 interpreter).
+//   Same complexity warning as compile_sources (same call chain).
+const DIAG_RATCHET: usize = 354;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)
@@ -298,6 +300,30 @@ fn bootstrap_stage0_to_stage1() {
         stage1_dir.display()
     );
 
+    // Copy hand-maintained files into stage1 (not generated, but declared
+    // in lib.rs via 05_emit_rust.dag hand_maintained_mods).
+    // Also patch Cargo.toml with dependencies they need.
+    let stage0_src = ws.join("src/v2/stage0/src");
+    for name in &["v2_interpreter.rs", "cli_run.rs"] {
+        let src = stage0_src.join(name);
+        if src.exists() {
+            let dst = stage1_dir.join("src").join(name);
+            std::fs::copy(&src, &dst).unwrap_or_else(|e|
+                panic!("failed to copy {} to stage1: {}", name, e));
+        }
+    }
+    let cargo_toml = stage1_dir.join("Cargo.toml");
+    if cargo_toml.exists() {
+        let contents = std::fs::read_to_string(&cargo_toml).unwrap();
+        if !contents.contains("ureq") {
+            let patched = contents.replace(
+                "\n[dependencies]\n",
+                "\n[dependencies]\nureq = { version = \"2\", features = [\"json\"] }\n",
+            );
+            std::fs::write(&cargo_toml, patched).unwrap();
+        }
+    }
+
     let check = std::process::Command::new("cargo")
         .arg("check")
         .current_dir(&stage1_dir)
@@ -397,6 +423,29 @@ fn bootstrap_fixed_point() {
         String::from_utf8_lossy(&s1.stderr)
     );
 
+    // Copy hand-maintained files into stage1 (not generated, but declared in lib.rs).
+    // Also patch Cargo.toml with dependencies they need (ureq for REST dispatch).
+    let stage0_src = ws.join("src/v2/stage0/src");
+    for name in &["v2_interpreter.rs", "cli_run.rs"] {
+        let src = stage0_src.join(name);
+        if src.exists() {
+            let dst = stage1_dir.join("src").join(name);
+            std::fs::copy(&src, &dst).unwrap_or_else(|e|
+                panic!("failed to copy {} to stage1: {}", name, e));
+        }
+    }
+    let cargo_toml = stage1_dir.join("Cargo.toml");
+    if cargo_toml.exists() {
+        let contents = std::fs::read_to_string(&cargo_toml).unwrap();
+        if !contents.contains("ureq") {
+            let patched = contents.replace(
+                "\n[dependencies]\n",
+                "\n[dependencies]\nureq = { version = \"2\", features = [\"json\"] }\n",
+            );
+            std::fs::write(&cargo_toml, patched).unwrap();
+        }
+    }
+
     // Build stage1 binary
     let build1 = std::process::Command::new("cargo")
         .arg("build")
@@ -437,8 +486,12 @@ fn bootstrap_fixed_point() {
     let stage1_src = stage1_dir.join("src");
     let stage2_src = stage2_dir.join("src");
 
+    // Exclude hand-maintained files from diff (copied into stage1 but
+    // not generated into stage2 — expected, not a divergence).
     let diff = std::process::Command::new("diff")
         .arg("-r")
+        .arg("--exclude=v2_interpreter.rs")
+        .arg("--exclude=cli_run.rs")
         .arg(&stage1_src)
         .arg(&stage2_src)
         .output()
