@@ -30,7 +30,9 @@
 module gunbc.compiler
 
 import std.types { FilePath, NonEmptyStr }
-import extdeps.tools { CliTool, InstallSource, SourceCoreutils, SourceRustup }
+import extdeps.tools { CliTool, InstallSource, SourceCoreutils, SourceRustup, SourceBrew, SourceApt }
+import extdeps.brew { formula_rust, formula_grep, formula_diffutils, formula_coreutils }
+import extdeps.apt  { package_cargo, package_grep, package_diffutils, package_coreutils }
 
 // ── Source roots ────────────────────────────────────────────────────
 
@@ -92,16 +94,61 @@ data compiler_cycle: SelfHostingCycle = {
 
 // ── Tool registry ───────────────────────────────────────────────────
 
-// The CLI tools the compiler cycle depends on. Each is declared with
-// its install source so the resolver can produce a precise hint if a
-// tool is missing. SourceBuiltin tools are POSIX-standard (assumed
-// present); SourceRustup covers cargo via the Rust toolchain.
+// The CLI tools the compiler cycle depends on. Each declares ALL the
+// known install paths so the resolver's failure hint enumerates them
+// for the user's platform — macOS dev (brew), Linux dev (apt), CI
+// (rustup), etc. The resolver itself just runs `which`; the list is
+// for documentation and recovery.
 
-data cargo_tool: CliTool = { name: "cargo", min_version: None, source: SourceRustup }
-data grep_tool:  CliTool = { name: "grep",  min_version: None, source: SourceCoreutils }
-data diff_tool:  CliTool = { name: "diff",  min_version: None, source: SourceCoreutils }
-data cp_tool:    CliTool = { name: "cp",    min_version: None, source: SourceCoreutils }
-data rm_tool:    CliTool = { name: "rm",    min_version: None, source: SourceCoreutils }
+data cargo_tool: CliTool = {
+  name: "cargo",
+  min_version: None,
+  installable_via: [
+    SourceRustup,
+    SourceBrew { formula: formula_rust },
+    SourceApt { package: package_cargo }
+  ]
+}
+
+data grep_tool: CliTool = {
+  name: "grep",
+  min_version: None,
+  installable_via: [
+    SourceCoreutils,
+    SourceBrew { formula: formula_grep },
+    SourceApt { package: package_grep }
+  ]
+}
+
+data diff_tool: CliTool = {
+  name: "diff",
+  min_version: None,
+  installable_via: [
+    SourceCoreutils,
+    SourceBrew { formula: formula_diffutils },
+    SourceApt { package: package_diffutils }
+  ]
+}
+
+data cp_tool: CliTool = {
+  name: "cp",
+  min_version: None,
+  installable_via: [
+    SourceCoreutils,
+    SourceBrew { formula: formula_coreutils },
+    SourceApt { package: package_coreutils }
+  ]
+}
+
+data rm_tool: CliTool = {
+  name: "rm",
+  min_version: None,
+  installable_via: [
+    SourceCoreutils,
+    SourceBrew { formula: formula_coreutils },
+    SourceApt { package: package_coreutils }
+  ]
+}
 
 data required_tools: List<CliTool> = [cargo_tool, grep_tool, diff_tool, cp_tool, rm_tool]
 

@@ -5,12 +5,17 @@
 // explicit declared facts with install sources, and provides a
 // fail-closed upsert that resolves tool → absolute path via `which`.
 //
-// Consumers build command strings from resolved ResolvedTool.path values
-// instead of bare names, eliminating hidden PATH dependencies.
+// Each tool can be installed via multiple paths (rustup OR brew OR
+// apt OR system) — installable_via is a list, not a single value.
+// This is honest: the same tool reaches different developers via
+// different package managers depending on platform. The resolver
+// doesn't care which one was used; it just runs `which`. The list
+// is for install hints when the tool is missing, and for documenting
+// the supported environments.
 //
-// InstallSource only contains variants we actually use today. Adding a
-// new install source means modeling that source completely first
-// (e.g., `dsl/extdeps/apt.dag` before `SourceApt`).
+// Per M10 (MODELING.md): every InstallSource variant references a
+// proper extdeps file. Adding a new variant requires modeling the
+// install source first.
 //
 // Pattern reference: gunb.ai/tools/toolpaths/toolpaths.go (Ensure upsert).
 
@@ -20,28 +25,35 @@ import std.types { FilePath, NonEmptyStr }
 import extdeps.shell
 import extdeps.coreutils
 import extdeps.rustup { rustup_install_url }
+import extdeps.brew   { brew_install_url }
+import extdeps.apt
 
 // ── Install source ──────────────────────────────────────────────────
 
-// How a required CLI tool gets onto the system. Closed set — only
-// variants whose backing extdeps file exists. Don't add a variant
-// for an install source we haven't modeled.
+// Closed set of install paths. Each variant references its backing
+// extdeps file. Adding a new variant means modeling that source first.
 //
-//   SourceCoreutils → extdeps/coreutils.dag (grep, diff, cp, rm, ...)
+//   SourceCoreutils → extdeps/coreutils.dag (cp, rm, grep, diff, ...)
 //   SourceRustup    → extdeps/rustup.dag    (cargo, rustc)
+//   SourceBrew      → extdeps/brew.dag      (macOS Homebrew)
+//   SourceApt       → extdeps/apt.dag       (Debian/Ubuntu APT)
 type InstallSource
   = SourceCoreutils
   | SourceRustup
+  | SourceBrew { formula: NonEmptyStr }
+  | SourceApt { package: NonEmptyStr }
 
 // ── Tool declaration and resolution ────────────────────────────────
 
-// A required external CLI tool. The name is what the workflow would
-// invoke; min_version is an optional version floor; source tells the
-// resolver how the tool gets installed.
+// A required external CLI tool. installable_via is a list of all
+// known install paths — the same tool reaches macOS via brew, Linux
+// via apt or rustup, CI via rustup, etc. The resolver just runs
+// `which` and uses whatever's first on PATH; install_hint enumerates
+// all paths when the tool is missing.
 type CliTool {
   name: NonEmptyStr
   min_version: String?
-  source: InstallSource
+  installable_via: List<InstallSource>
 }
 
 // A resolved tool: the declared CliTool paired with its actual absolute
@@ -53,32 +65,45 @@ type ResolvedTool {
 }
 
 // The outcome of attempting to resolve a tool. Fail-closed: if the
-// tool isn't found, the hint tells the user exactly how to install it.
+// tool isn't found, the hint enumerates ALL known install paths so
+// the user can pick the one for their platform.
 type ResolveResult
   = Resolved { resolved: ResolvedTool }
   | NotFound { tool: CliTool, hint: String }
 
 // ── Install hints ──────────────────────────────────────────────────
 
-// Human-readable recovery instruction when a tool is missing.
-// Each variant references the documented dependency in its extdeps file.
-fn install_hint(source: InstallSource) -> String {
+// Recovery instruction for a single install source. Each variant
+// references its backing extdeps file's install URL or canonical
+// command form.
+fn one_hint(source: InstallSource) -> String {
   match source {
-    SourceCoreutils => "expected GNU/BSD coreutils — see extdeps/coreutils.dag for the documented dependency"
+    SourceCoreutils => "expected from system coreutils (GNU on Linux, BSD on macOS)"
     SourceRustup => concat("install rustup from ", rustup_install_url)
+    SourceBrew { formula: f } => concat("brew install ", f)
+    SourceApt { package: p } => concat("apt install ", p)
   }
+}
+
+// Enumerate ALL install paths for a tool. The user picks the one for
+// their platform. Joined with " | " so the hint reads:
+//   "install rustup from https://rustup.rs | brew install rust | apt install cargo"
+fn install_hint(sources: List<InstallSource>) -> String {
+  sources |> fold(init: "", f: (acc, s) =>
+    if acc == "" { one_hint(source: s) }
+    else { concat(acc, " | ", one_hint(source: s)) }
+  )
 }
 
 // ── Resolution workflow ─────────────────────────────────────────────
 
 // Fail-closed upsert: check if the tool is on PATH via `which`, return
-// Resolved with the absolute path if found, NotFound with an install
-// hint if not. This is the single authority for "where does this tool
-// live on this system."
+// Resolved with the absolute path if found, NotFound with the
+// enumerated install hint if not.
 func resolve(tool: CliTool) -> ResolveResult {
   let check = shell.Which.Check(command: tool.name)
   match check.path {
     Some { value: p } => Resolved { resolved: { tool: tool, path: p } }
-    None => NotFound { tool: tool, hint: install_hint(source: tool.source) }
+    None => NotFound { tool: tool, hint: install_hint(sources: tool.installable_via) }
   }
 }
