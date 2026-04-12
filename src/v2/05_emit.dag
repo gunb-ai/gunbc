@@ -66,7 +66,7 @@ import v2.std.core {
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
 import std.induction { InductiveField, SubValueUnknown }
 // NamingCase, PascalCase, SnakeCase imported via v2.compiler.languages (bootstrap-local mirror)
-import v2.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node }
+import v2.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node, is_unit_like }
 import std.types { is_container_type, container_to_algebra_name }
 import v2.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
@@ -698,6 +698,16 @@ fn apply_naming_case(name: String, case_style: NamingCase) -> String {
 // Derive the variable name for a service: "git.Core" -> "git_core"
 fn service_var_name(service_name: String) -> String {
   to_snake(name: sanitize_service_name(name: service_name))
+}
+
+fn test_file_path(module_name: String, target: RenderTarget) -> String {
+  let conventions = test_conventions_for_target(target: target)
+  let file_dir = match conventions.file_dir {
+    Some { value: dir } => dir
+    None => ""
+  }
+  let filename = module_to_filename(name: module_name)
+  concat(file_dir, conventions.file_prefix, filename, conventions.file_suffix, scaffold_for_target(target: target).source_file_extension)
 }
 
 fn test_function_name(projection: TestProjection, target: RenderTarget) -> String {
@@ -2000,6 +2010,50 @@ fn emit_tco_unified(
     render_init_stmts: (stmts, scope, depth) => emit_unified_init_block_stmts(remaining: stmts, text: [], scope: scope, depth: depth, target: target, registry: registry, render_pattern: render_pattern))
 }
 
+// Unified func body — reads return model from ExpressionSemantics.
+// Replaces emit_py_typed_func_body / emit_go_typed_func_body.
+// Differences: indent prefix (significant_whitespace), empty_return_value, return_suffix.
+fn emit_unified_typed_func_body(body: Node, target: RenderTarget, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let es = language_spec(target: target).expression_semantics
+  let bs = language_spec(target: target).block_syntax
+  let si = scope.type_env.source_indices
+  let prefix = if bs.significant_whitespace { "" } else { make_indent(level: depth) }
+  let rp = pat => emit_unified_pattern(pattern: pat, target: target, source_indices: si)
+  match body.expr_data {
+    ExprLet => {
+      let n = let_binding_name_at(texpr: body, source_indices: si)
+      let ch = body.children
+      let v = let_value(texpr: body)
+      let inner = let_body(texpr: body)
+      let val_str = emit_unified_typed_expr(texpr: v, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: rp)
+      let let_line = concat(prefix, emit_let_binding(name: n, value: val_str, target: target))
+      let next_scope = extend_scope(scope: scope, name: n, resolved: resolved_type(n: v), provenance: SubValueUnknown)
+      match inner {
+        Some { value: bd } =>
+          concat(let_line, "\n", emit_unified_typed_func_body(body: bd, target: target, registry: registry, scope: next_scope, depth: depth))
+        None => let_line
+      }
+    }
+    ExprBlock => {
+      let ss = body.children
+      if ss |> count == 0 {
+        concat(prefix, "return ", es.empty_return_value)
+      } else {
+        let init_state = emit_unified_init_block_stmts(
+          remaining: ss, text: [], scope: scope, depth: depth,
+          target: target, registry: registry, render_pattern: rp)
+        let last_stmt = ss |> last
+        let last_str = match last_stmt {
+          Some { value: s } => concat(prefix, "return ", emit_unified_typed_expr(texpr: s, target: target, registry: registry, scope: init_state.scope, depth: depth, fuel: 1024, render_pattern: rp), es.return_suffix)
+          None => concat(prefix, "return ", es.empty_return_value)
+        }
+        if init_state.text |> count == 0 { last_str } else { concat(init_state.text |> join(separator: "\n"), "\n", last_str) }
+      }
+    }
+    _ => concat(prefix, "return ", emit_unified_typed_expr(texpr: body, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: rp), es.return_suffix)
+  }
+}
+
 fn is_tco_candidate(texpr: Node, func_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
   match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } => expr_call_func_at(texpr: texpr, source_indices: source_indices) == func_name
@@ -2502,10 +2556,15 @@ fn emit_params_shared(params: List<Node>, target: RenderTarget, source_indices: 
 }
 
 // Shared inferred (return type) rendering.
-// Go suppresses void (Unit → "struct{}") return annotations; Python/Rust include them.
-// Go wraps this with its own void check; Python/Rust call directly.
+// Reads suppress_unit_return from ExpressionSemantics: Go suppresses void
+// (Unit → "struct{}") return annotations; Python/Rust include them.
 fn emit_inferred_shared(inferred: Node, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
-  concat(language_spec(target: target).items.return_arrow, emit_node_type(n: inferred, target: target, source_indices: source_indices))
+  if language_spec(target: target).expression_semantics.suppress_unit_return {
+    if is_unit_like(n: inferred) { "" }
+    else { concat(language_spec(target: target).items.return_arrow, emit_node_type(n: inferred, target: target, source_indices: source_indices)) }
+  } else {
+    concat(language_spec(target: target).items.return_arrow, emit_node_type(n: inferred, target: target, source_indices: source_indices))
+  }
 }
 
 // Shared typed block — delegates to emit_block_stmts callback, joins with newline.

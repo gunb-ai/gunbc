@@ -260,6 +260,12 @@ type ExpressionSemantics {
   if_value_form: IfValueForm
   wildcard_case: String?        // Go: "default", Rust/Python: none (use pattern)
   variant_pattern: VariantPatternSyntax?  // None → type-name only (Go type switch)
+  // Return model — rendering convention for function return statements.
+  // The .dag source says `fn foo() -> Order`; the target language's convention
+  // determines how returns are rendered (single vs multi-return+error).
+  empty_return_value: String    // "None" (Python) / "struct{}{}, nil" (Go) / "()" (Rust)
+  return_suffix: String         // "" (Python/Rust) / ", nil" (Go)
+  suppress_unit_return: Bool    // false (Python/Rust) / true (Go: omit struct{} from sigs)
 }
 
 // Variant pattern syntax — how match arms destructure variant constructors.
@@ -576,7 +582,10 @@ fn rust_spec() -> LanguageSpec {
     expression_semantics: ExpressionSemantics {
       if_value_form: IfExpression,
       wildcard_case: None,
-      variant_pattern: Some { value: VariantPatternSyntax { open: " { ", close: " }", binding_sep: ": ", empty_suffix: "" } }
+      variant_pattern: Some { value: VariantPatternSyntax { open: " { ", close: " }", binding_sep: ": ", empty_suffix: "" } },
+      empty_return_value: "()",
+      return_suffix: "",
+      suppress_unit_return: false
     },
     lambda_template: rust_lambda_template,
     error_expr_template: rust_error_expr_template,
@@ -716,7 +725,10 @@ fn python_spec() -> LanguageSpec {
     expression_semantics: ExpressionSemantics {
       if_value_form: ConditionalTernary,
       wildcard_case: None,
-      variant_pattern: Some { value: VariantPatternSyntax { open: "(", close: ")", binding_sep: "=", empty_suffix: "()" } }
+      variant_pattern: Some { value: VariantPatternSyntax { open: "(", close: ")", binding_sep: "=", empty_suffix: "()" } },
+      empty_return_value: "None",
+      return_suffix: "",
+      suppress_unit_return: false
     },
     lambda_template: python_lambda_template,
     error_expr_template: python_error_expr_template,
@@ -856,7 +868,10 @@ fn go_spec() -> LanguageSpec {
     expression_semantics: ExpressionSemantics {
       if_value_form: IfStatement,
       wildcard_case: Some { value: "default" },
-      variant_pattern: None
+      variant_pattern: None,
+      empty_return_value: "struct{}{}, nil",
+      return_suffix: ", nil",
+      suppress_unit_return: true
     },
     lambda_template: go_lambda_template,
     error_expr_template: go_error_expr_template,
@@ -999,7 +1014,10 @@ fn dag_spec() -> LanguageSpec {
     expression_semantics: ExpressionSemantics {
       if_value_form: IfExpression,
       wildcard_case: None,
-      variant_pattern: Some { value: VariantPatternSyntax { open: " { ", close: " }", binding_sep: ": ", empty_suffix: "" } }
+      variant_pattern: Some { value: VariantPatternSyntax { open: " { ", close: " }", binding_sep: ": ", empty_suffix: "" } },
+      empty_return_value: "()",
+      return_suffix: "",
+      suppress_unit_return: false
     },
     lambda_template: dag_lambda_template,
     error_expr_template: dag_error_expr_template,
