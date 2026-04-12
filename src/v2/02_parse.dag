@@ -2521,91 +2521,84 @@ fn parse_op_body_entries(
   modifier_props: List<Node>, transport: Node?,
   exit_props: List<Node>, response_props: List<Node>, mock_props: List<Node>
 ) -> OpBodyResult {
-  let s = skip_newlines(tokens: tokens, state: state)
-  let mk_result = OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: s, err: none }
-  if tok_is_rbrace(tok: peek(tokens: tokens, state: s)) || at_end(tokens: tokens, state: s) {
+  let tokens = skip_newlines(tokens: tokens)
+  let tok = tokens |> first
+  let span = token_span(tok: tok)
+  let mk_result = OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: tokens, ctx: ctx, err: none }
+  if tok_is_rbrace(tok: tok) || tok_is_eof(tok: tok) {
     mk_result
   } else {
-    let tok = peek(tokens: tokens, state: s)
     let sh = match tok { Some { value: t } => Some { value: t.shape }  None => none }
-    let err_result = OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: s, err: none }
     match sh {
       Some { value: ShKeyword } => {
         let kw_text = tok.value.text
         if kw_text == "input" {
-          let adv = advance(tokens: tokens, state: s)
-          let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
-          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
-          let r2 = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-          if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r2.state, err: r2.err } }
-          let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
-          if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r3.state, err: r3.err } }
-          parse_op_body_entries(tokens: tokens, state: r3.state, inputs: r2.fields, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
+          let r = expect(tokens: tokens |> skip(1), expected: ExpectLBrace)
+          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r.tokens, ctx: ctx, err: r.err } }
+          let r2 = parse_field_list(tokens: skip_newlines(tokens: r.tokens), ctx: ctx)
+          if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
+          let r3 = expect(tokens: skip_newlines(tokens: r2.tokens), expected: ExpectRBrace)
+          if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
+          parse_op_body_entries(tokens: r3.tokens, ctx: r2.ctx, inputs: r2.fields, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
         } else if kw_text == "output" {
-          let adv = advance(tokens: tokens, state: s)
-          let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
-          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
-          let r2 = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-          if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r2.state, err: r2.err } }
-          let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
-          if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r3.state, err: r3.err } }
-          parse_op_body_entries(tokens: tokens, state: r3.state, inputs: inputs, outputs: r2.fields, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
+          let r = expect(tokens: tokens |> skip(1), expected: ExpectLBrace)
+          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r.tokens, ctx: ctx, err: r.err } }
+          let r2 = parse_field_list(tokens: skip_newlines(tokens: r.tokens), ctx: ctx)
+          if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
+          let r3 = expect(tokens: skip_newlines(tokens: r2.tokens), expected: ExpectRBrace)
+          if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
+          parse_op_body_entries(tokens: r3.tokens, ctx: r2.ctx, inputs: inputs, outputs: r2.fields, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
         } else if kw_text == "idempotent" {
-          let adv = advance(tokens: tokens, state: s)
-          let prop = modifier_to_prop(name: "idempotent", span: current_span(tokens: tokens, state: s))
-          parse_op_body_entries(tokens: tokens, state: adv.state, inputs: inputs, outputs: outputs, modifier_props: list_push(modifier_props, prop), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
+          let prop = modifier_to_prop(name: "idempotent", span: span)
+          parse_op_body_entries(tokens: tokens |> skip(1), ctx: ctx, inputs: inputs, outputs: outputs, modifier_props: list_push(modifier_props, prop), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
         } else if kw_text == "readonly" {
-          let adv = advance(tokens: tokens, state: s)
-          let prop = modifier_to_prop(name: "readonly", span: current_span(tokens: tokens, state: s))
-          parse_op_body_entries(tokens: tokens, state: adv.state, inputs: inputs, outputs: outputs, modifier_props: list_push(modifier_props, prop), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
+          let prop = modifier_to_prop(name: "readonly", span: span)
+          parse_op_body_entries(tokens: tokens |> skip(1), ctx: ctx, inputs: inputs, outputs: outputs, modifier_props: list_push(modifier_props, prop), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
         } else if kw_text == "hermetic" {
-          let adv = advance(tokens: tokens, state: s)
-          let prop = modifier_to_prop(name: "hermetic", span: current_span(tokens: tokens, state: s))
-          parse_op_body_entries(tokens: tokens, state: adv.state, inputs: inputs, outputs: outputs, modifier_props: list_push(modifier_props, prop), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
+          let prop = modifier_to_prop(name: "hermetic", span: span)
+          parse_op_body_entries(tokens: tokens |> skip(1), ctx: ctx, inputs: inputs, outputs: outputs, modifier_props: list_push(modifier_props, prop), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
         } else {
-          err_result
+          mk_result
         }
       }
       Some { value: ShIdent } => {
         let id = tok.value.text
         if id == "transport" {
-          let adv = advance(tokens: tokens, state: s)
-          let r = parse_transport_binding(tokens: tokens, state: adv.state)
-          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
-          parse_op_body_entries(tokens: tokens, state: r.state, inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: Some { value: r.transport }, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
+          let r = parse_transport_binding(tokens: tokens |> skip(1), ctx: ctx)
+          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+          parse_op_body_entries(tokens: r.tokens, ctx: r.ctx, inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: Some { value: r.transport }, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
         } else if id == "exit" {
-          let adv = advance(tokens: tokens, state: s)
-          let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
-          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
-          let r2 = parse_exit_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-          if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r2.state, err: r2.err } }
-          let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
-          if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r3.state, err: r3.err } }
-          parse_op_body_entries(tokens: tokens, state: r3.state, inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: r2.entries, response_props: response_props, mock_props: mock_props)
+          let r = expect(tokens: tokens |> skip(1), expected: ExpectLBrace)
+          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r.tokens, ctx: ctx, err: r.err } }
+          let r2 = parse_exit_entries(tokens: skip_newlines(tokens: r.tokens), ctx: ctx)
+          if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
+          let r3 = expect(tokens: skip_newlines(tokens: r2.tokens), expected: ExpectRBrace)
+          if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
+          parse_op_body_entries(tokens: r3.tokens, ctx: r2.ctx, inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: r2.entries, response_props: response_props, mock_props: mock_props)
         } else if id == "response" {
-          let r = parse_optional_response_block(tokens: tokens, state: s)
-          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
-          parse_op_body_entries(tokens: tokens, state: r.state, inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: r.responses, mock_props: mock_props)
+          let r = parse_optional_response_block(tokens: tokens, ctx: ctx)
+          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+          parse_op_body_entries(tokens: r.tokens, ctx: r.ctx, inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: r.responses, mock_props: mock_props)
         } else if id == "mock_response" {
-          let r = parse_optional_mock_response_block(tokens: tokens, state: s)
-          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
-          parse_op_body_entries(tokens: tokens, state: r.state, inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: r.mocks)
+          let r = parse_optional_mock_response_block(tokens: tokens, ctx: ctx)
+          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+          parse_op_body_entries(tokens: r.tokens, ctx: r.ctx, inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: r.mocks)
         } else {
           // Unknown identifier entry -- skip it (name: value)
-          if peek_is_colon_after_ident(tokens: tokens, state: s) {
-            let r = expect_ident(tokens: tokens, state: s)
-            if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
-            let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
-            if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r2.state, err: r2.err } }
-            let r3 = parse_expr(tokens: tokens, state: r2.state)
-            if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r3.state, err: r3.err } }
-            parse_op_body_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r3.state), inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
+          if peek_is_colon_after_ident(tokens: tokens) {
+            let r = expect_ident(tokens: tokens)
+            if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r.tokens, ctx: ctx, err: r.err } }
+            let r2 = expect(tokens: r.tokens, expected: ExpectColon)
+            if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r2.tokens, ctx: ctx, err: r2.err } }
+            let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
+            if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
+            parse_op_body_entries(tokens: skip_newlines(tokens: r3.tokens), ctx: r3.ctx, inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
           } else {
-            OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: s, err: Some { value: parse_error(msg: "unexpected '{id}' in operation body", span: current_span(tokens: tokens, state: s)) } }
+            OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: tokens, ctx: ctx, err: Some { value: parse_error(msg: "unexpected '{id}' in operation body", span: span) } }
           }
         }
       }
-      _ => OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: s, err: Some { value: parse_error(msg: "unexpected token in operation body", span: current_span(tokens: tokens, state: s)) } }
+      _ => OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: tokens, ctx: ctx, err: Some { value: parse_error(msg: "unexpected token in operation body", span: span) } }
     }
   }
 }
