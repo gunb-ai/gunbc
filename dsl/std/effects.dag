@@ -61,8 +61,8 @@ module std.effects
 //   Set<T> with insert/remove    → BoundedLattice (idempotent)
 //   List<T> with append          → FreeMonoid (NOT idempotent)
 
-type EffectShape =
-  | ReadEffect
+type EffectShape
+  = ReadEffect
   | UpsertEffect { key_source: KeySource }
   | DeleteEffect { key_source: KeySource }
   | CreateEffect
@@ -78,8 +78,8 @@ type EffectShape =
 // InputField:    key is a declared input field of the operation
 // CompositeKey:  key is a tuple of multiple fields
 
-type KeySource =
-  | PathParam { param: String }
+type KeySource
+  = PathParam { param: String }
   | InputField { field: String }
   | CompositeKey { fields: List<String> }
 
@@ -93,8 +93,8 @@ type KeySource =
 //   termination: "this argument is structurally smaller"
 //   idempotency: "this effect forms a lattice on the target state"
 
-type IdempotencyEvidence =
-  | LatticeEffect { shape: EffectShape }
+type IdempotencyEvidence
+  = LatticeEffect { shape: EffectShape }
   | IdentityEffect
   | NonIdempotent { shape: EffectShape, reason: String }
 
