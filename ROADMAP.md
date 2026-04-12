@@ -19,6 +19,7 @@ Architecture: [docs/architecture.md](docs/architecture.md)
 Compiler laws and coercion model: [src/v2/compiler-laws.md](src/v2/compiler-laws.md)
 Coercion design (algebra-keyed inhabitants): [docs/coercion-design.md](docs/coercion-design.md)
 Testing strategy: [src/v2/tests/testing-strategy.md](src/v2/tests/testing-strategy.md)
+Meta-process design (bootstrap, CI, dev process): [docs/meta-process-design.md](docs/meta-process-design.md)
 Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 Modeling guidelines: [MODELING.md](MODELING.md)
 
@@ -59,7 +60,8 @@ LAYER 5: Thesis completion (depends on Layer 4)
   Track 11 (runtime safety)        🟡 ── needs design (refinement types or total ops)
   Track 12 (verification)          🟡 ── depends on Track 5 (need working emission)
 
-LAYER 6: Full vision (depends on Layer 5)
+LAYER 6: Meta + full vision (depends on Layer 5)
+  Track 15 (meta-processes)        🟢 ── Phase 1 unblocked; Phases 2-3 depend on Track 13
   Track 14 (omni-emission)         🔴 ── depends on Track 13; needs vision
   Free consequences (parallelism)  🔴 ── blocked on Tier 1 + ownership + purity
 ```
@@ -79,6 +81,7 @@ LAYER 6: Full vision (depends on Layer 5)
 | Track 13 (single emitter) | Emission is mechanical | 🟡 | Track 2 + 7 |
 | Track 11 (runtime safety) | Tier 2 | 🟡 | Design phase |
 | Track 12 (verification) | Tier 3 | 🟡 | Track 5 |
+| Track 15 (meta-processes) | Process modeling | 🟢/🟡 | Phase 1 unblocked; Phases 2-3 need Track 13 |
 | Track 14 (omni-emission) | Omni-emission | 🔴 | Track 13 + vision |
 
 ---
@@ -193,7 +196,7 @@ Bootstrap D ├─ Lane B: Emission ──────────────�
 
 ## Milestones to Gate 1
 
-Four concrete goals, in priority order. Each has a clear done-criterion.
+Five concrete goals, in priority order. Each has a clear done-criterion.
 
 ```
 M1: CX gate → 0 violations (currently 421, ratchet 421)
@@ -240,6 +243,18 @@ M4: Single emitter reads data, never decides
     How: Lane C (coercion = emission, language plugins)
     Blocked on: M1 + M2 substantially complete
     Design: docs/single-emitter-design.md
+
+M5: Meta-process modeling (bootstrap, CI, dev process)
+    Done when: adding a Node field requires zero manual stage0 edits;
+      CI gates derived from .dag declarations
+    How: model bootstrap stages, CI gates, and dev process as .dag
+      declarations in dsl/gunbc/. Upsert semantics — adding a
+      declared fact automatically produces the corresponding process
+      step. Can't "forget" to update CI.
+    Phase 1 (bootstrap): unblocked, immediate value
+    Phase 2 (CI gates): after Phase 1, benefits from M4
+    Phase 3 (dev process): future
+    Design: docs/meta-process-design.md
 ```
 
 ---
@@ -644,15 +659,35 @@ projection of the validated intent onto a specific target.
 **Blocked on:** Track 13 (single emitter — need target-agnostic
 emission before multi-target is meaningful).
 
+### Track 15: Meta-process modeling (M5)
+
+**Thesis claim:** .dag models compositional facts. The compiler's own
+processes — bootstrap, CI, testing, release — are compositional facts.
+Model them in .dag.
+
+**Core principle: upsert semantics.** Adding a declared fact (a type,
+a field, a target) automatically produces the corresponding process
+step. You can't "forget" to update CI because CI is derived from
+structure, not maintained in parallel.
+
+| Phase | Scope | Status | Depends on |
+|-------|-------|--------|-----------|
+| 1. Bootstrap modeling | `dsl/gunbc/bootstrap.dag` — stage deps, field propagation, change classification | 🟢 Unblocked | Emitter default-value support (landing) |
+| 2. CI gate derivation | `dsl/gunbc/ci.dag` — gates derived from .dag declarations | 🟡 | Phase 1, M4 partially |
+| 3. Dev process | `dsl/gunbc/process.dag` — track deps, readiness, milestones | 🔴 | Phases 1-2 |
+
+**Design:** [docs/meta-process-design.md](docs/meta-process-design.md)
+
 ---
 
 ## Bootstrap
 
-**Status: COMPLETE.** Stage0 content is generated from .dag source.
-One non-generated file remains: `compiler_tests.rs` (test harness,
-`#[cfg(test)]` only — not part of the compiler binary). Regenerated
-binary produces identical output when it self-compiles (fixed-point
-convergence).
+**Status: COMPLETE (basic), ACTIVE (modeling).**
+
+Stage0 content is generated from .dag source. One non-generated file
+remains: `compiler_tests.rs` (test harness, `#[cfg(test)]` only — not
+part of the compiler binary). Regenerated binary produces identical
+output when it self-compiles (fixed-point convergence).
 
 ```
 .dag source ──(v2-compiler)──▶ stage0 .rs ──(cargo/rustc)──▶ v2-compiler binary
@@ -661,6 +696,15 @@ convergence).
 ```
 
 Source of truth: `.dag` files. Stage0 `.rs` is a derived artifact.
+
+**Next: model the pipeline itself in .dag (Track 15, M5 Phase 1).**
+The bootstrap pipeline is currently implicit — adding structural
+changes (new Node fields) requires manual stage0 edits and multi-phase
+coordination. PR #404's `ident: Int` chicken-and-egg is the canonical
+example. Target: `dsl/gunbc/bootstrap.dag` declares stage dependencies,
+field propagation rules, and change classification so that adding a
+field requires only the .dag change. See
+[docs/meta-process-design.md](docs/meta-process-design.md).
 
 ---
 
@@ -796,6 +840,7 @@ Track 11 (runtime safety) ──────────────────
                                                           │
 Track 12 (verification) ────────────────────────────→ Gate 3 (tests)
 Track 13 (single emitter) ──→ Track 14 (omni-emit)       │
+Track 15 (meta-processes) ──→ CI/bootstrap automation     │
                                                           │
                                     Gate 1 + Gate 2 + Gate 3 ──→ Gate 4 ──→ Release
 ```
