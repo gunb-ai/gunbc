@@ -89,7 +89,7 @@ fn stage0_cargo_check() {
 //   -3 dissolved: scan_braces_depth, scan_for_fat_arrow_after_braces,
 //   looks_like_arm_start — integer idx recursion replaced by list consumption.
 //   Net +4. Correct observations; dissolves with return-contract inference.
-const DIAG_RATCHET: usize = 358;
+const DIAG_RATCHET: usize = 350;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)
