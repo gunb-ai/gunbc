@@ -236,8 +236,10 @@ elimination remains valuable for:
 - **Stable binding identity** (unblocks last-use clone elision,
   Stream B Layer 1) — worth doing for modeling correctness.
 - **The exclusion categories** (callables, TCO, match-bound,
-  owned-after-unwrap) — see [transition-relations.md](transition-relations.md)
-  for the upstream unification that dissolves these.
+  owned-after-unwrap) — each is a downstream consumer of an
+  upstream fact. The fix is NOT a new umbrella concept; it's
+  threading the existing authorities through the call-site
+  boundary. See "Cross-pass composition" below.
 
 But all of this is **planned work with known structure.** It's
 not the "urgent perf crisis" the previous revisions framed it
@@ -285,12 +287,82 @@ during reviews. The tactical answer is:
 2. **M2 Node.name deletion continues** — for modeling, not
    perf. String clones are worth eliminating but no longer
    critical.
-3. **M1 Step 3 + transition relations** — the upstream
-   unification that dissolves multiple downstream exclusions.
-   See [transition-relations.md](transition-relations.md).
+3. **M1 Step 3 — thread existing authorities, don't invent
+   new ones.** `SubValueRelation` (std/induction.dag),
+   `TerminationProof` (std/termination.dag), and
+   `read_only_params_index` (05_emit_rust.dag:471) already
+   exist. The gap is that helper function outputs don't carry
+   `SubValueRelation` across the call-site boundary. Threading
+   that is the path. See "Cross-pass composition" below.
 4. **KF-2 planning** — we're committing this bug against
    ourselves repeatedly. Building KF-2 means the compiler
    catches the NEXT merge_envs before it ships.
+
+## Cross-pass composition: the existing authorities chain
+
+A recurring pattern: multiple emitter decisions (TCO owned
+params, callable-set exclusion, match-bound cloning,
+owned-after-unwrap) look like independent side-tables that
+need unifying. A naive reading says "invent a transition
+relation type that replaces all of them."
+
+**That's wrong.** The existing authorities already compose.
+The gap is not an umbrella concept. The gap is that
+`SubValueRelation` evidence doesn't flow across the call-site
+boundary.
+
+The existing chain:
+
+| Authority | Lives in | What it models |
+|-----------|----------|----------------|
+| `SubValueRelation` | `std/induction.dag` | Is this argument a structural sub-value of the input? |
+| `TerminationProof` | `std/termination.dag` | Lexicographic composition of per-param descent evidence |
+| `DescentEvidence` | complexity.dag consumers | Per-call-site descent facts |
+| `read_only_params_index` | 05_emit_rust.dag:471 | Per-function read-only param set from ownership analysis |
+| `movable` set | ownership.dag:402 | Single-use owned locals (fan_out == 1) |
+| `callable_set` | 05_emit_rust.dag:472 | Functions used as first-class values |
+
+Each authority lives at its correct level (std/, complexity,
+ownership, emission). Each is the single source of truth for
+its fact. They're NOT duplicating each other — they're
+different facets that need to compose.
+
+**The real gap:** helper function OUTPUTS don't carry
+`SubValueRelation` across the boundary. When
+`parse_expr(tokens)` returns a `ParseResult` containing a
+sub-list of tokens, the caller's downstream use of
+`result.tokens` has no way to see that it's still a
+`SubValueRelation::StrictSubValue(tokens)`. CX has to
+reclassify per-argument in isolation.
+
+**M1 Step 3 is threading this fact through the call-site
+boundary.** The plan already exists: output provenance on
+function signatures + per-field provenance consumption.
+When it lands, the downstream exclusions compose
+mechanically because each consumer reads the relevant
+facet from the flowing evidence:
+
+- TCO owned param requirement ← reads per-param "param is
+  reassigned across the recursive edge" from the proof
+- Last-use move ← reads per-binding "this use is terminal"
+  from ownership proof
+- Callable exclusion ← reads "this function is referenced
+  at value position" from expression analysis
+- Match-bound cloning ← reads "this binding projects a
+  shared owner" from pattern analysis
+
+Each consumer reads a different fact. Each fact lives at a
+single authority. The **composition** across passes is what
+dissolves the exclusions — not a replacement concept. This
+is the M1/M8/M9 principle: model once, read many, compose
+at the usage site.
+
+The prior draft of this unification invented a "transition
+relation" type to replace the existing chain. That was the
+wrong framing per Codex review and INVARIANTS.md §Single
+authority. The right framing is: **the authorities already
+exist; thread their outputs through the boundary so they can
+be composed downstream.**
 
 ## The bottom line
 

@@ -366,10 +366,15 @@ spec-referenced data lookups instead of inline logic.
 
 **LS-4: Ownership — three layers to clone elimination**
 
-Stage0 emits 23,733 `.clone()` calls (~0.479 clones/line). The
-ownership analysis (PR #313) already computes the facts needed to
-eliminate most of them. The gap: the emitter doesn't consume all
-the facts it has.
+Stage0 emits ~13,724 `.clone()` calls (verified 2026-04-12, post
+dark-emu; previous count of 23,733 was stale). The ownership
+analysis (PR #313) already computes the facts needed to eliminate
+most of them. The gap: the emitter doesn't consume all the facts
+it has. See [docs/perf/clone-elimination.md](docs/perf/clone-elimination.md)
+for the cost model — most clones are `Rc::clone` (atomic
+refcount++), not heap allocations. The real perf wins have come
+from fact re-derivation elimination (merge_envs), not clone
+counting.
 
 Conceptual violation classes (design orientation — not yet
 individually measured by the ratchet):
@@ -822,9 +827,16 @@ merge_envs-class bug is evidence that KF-2 would have saved us.
 2. **M2 Node.name deletion** — still valuable for modeling
    (stable binding identity → Stream B Layer 1), but no longer
    the critical perf path.
-3. **M1 Step 3 + transition relations** — see
-   [docs/transition-relations.md](docs/transition-relations.md)
-   for the upstream unification.
+3. **M1 Step 3 — thread SubValueRelation outputs.** The existing
+   chain (`SubValueRelation` in std/induction.dag →
+   `TerminationProof` in std/termination.dag → `read_only_params_index`
+   in 05_emit_rust.dag) already has the authorities needed to
+   compose per-param evidence across function boundaries. Stream
+   D's -3 gap is because helper outputs don't carry provenance —
+   threading that through the call-site boundary is the M1 plan
+   that already exists. The "side-table unification" insight
+   is useful, but it's a composition of these existing
+   authorities, not a replacement umbrella.
 4. **Elevate KF-2.** We keep committing these bugs against
    ourselves. Building KF-2 catches the next merge_envs before
    it ships. This should move up in priority given how often
