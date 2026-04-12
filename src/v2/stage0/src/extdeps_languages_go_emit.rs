@@ -167,6 +167,15 @@ pub fn go_manifest_file() -> String {
     CACHED.with(|c| c.clone())
 }
 
+pub fn go_source_extension() -> String {
+    thread_local! {
+        static CACHED: String = {
+            ".go".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
 pub fn go_string_types() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {

@@ -452,8 +452,10 @@ Additional duplication surfaced by review (PR #371, external audit):
 - ~~`go_source_extension` in extdeps/languages/go/emit.dag duplicates
   `go_scaffold.source_file_extension` in std/languages.dag.~~
   Resolved: duplicate deleted (PR #394).
-- `keyword_to_name` in 02_parse.dag duplicates the tokenizer keyword
-  table. Reconcile to single authority.
+- ~~`keyword_to_name` in 02_parse.dag duplicates the tokenizer keyword
+  table. Reconcile to single authority.~~
+  Resolved: `dag_non_name_keywords` data set in dag/syntax.dag is the
+  single authority; `is_name_keyword` uses lookup, no hardcoded strings.
 - ~~HashMap vs BTreeMap disagreement: `map_template` in std/languages.dag
   says `HashMap<{0},{1}>` but `empty_map` in rust/emit.dag uses
   `BTreeMap::new()`. Pick one, delete the other.~~

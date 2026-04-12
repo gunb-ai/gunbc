@@ -21,7 +21,7 @@ use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Go};
-pub use crate::extdeps_languages_go_emit::{go_reserved, go_reserved_escape_suffix};
+pub use crate::extdeps_languages_go_emit::{go_reserved, go_reserved_escape_suffix, go_source_extension};
 pub use crate::v2_compiler_languages::{scaffold_for_target, TestConventions, ItemKeywords, test_conventions_for_target, is_string_like, VisibilitySpec};
 use crate::v2_compiler_languages::VisibilitySpec::{CaseVisibility};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
@@ -69,10 +69,6 @@ Rc::new(TextFile {
     content: content,
 })
 }
-}
-
-pub fn go_source_extension() -> String {
-    scaffold_for_target(RenderTarget::Go).source_file_extension.clone()
 }
 
 pub fn go_test_file_path(module_name: String) -> String {

@@ -66,7 +66,7 @@ import v2.std.core {
 }
 
 import v2.compiler.artifact { RenderTarget, Go }
-import extdeps.languages.go.emit { go_reserved, go_reserved_escape_suffix }
+import extdeps.languages.go.emit { go_reserved, go_reserved_escape_suffix, go_source_extension }
 import v2.compiler.languages {
   scaffold_for_target, TestConventions, ItemKeywords, test_conventions_for_target,
   is_string_like, CaseVisibility
@@ -187,10 +187,6 @@ fn emit_go_mod(module_name: String) -> TextFile {
   }
   let content = concat("module ", module_name, "\n\ngo 1.21\n")
   TextFile { path: manifest_path, content: content }
-}
-
-fn go_source_extension() -> String {
-  scaffold_for_target(target: Go).source_file_extension
 }
 
 fn go_test_file_path(module_name: String) -> String {

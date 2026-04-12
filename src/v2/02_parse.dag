@@ -71,7 +71,7 @@ import v2.compiler.languages {
   OperatorSpec, SyntaxSpec
 }
 
-import extdeps.languages.dag.syntax { dag_syntax_spec }
+import extdeps.languages.dag.syntax { dag_syntax_spec, dag_non_name_keywords }
 
 // =========================================================================
 // Parser state types
@@ -653,17 +653,14 @@ fn expect_name(tokens: List<Token>, state: ParserState) -> NameResult {
 
 
 // Keywords that are valid as names (field names, type names).
-// Derived structurally: any keyword that is NOT a literal keyword
-// and NOT a resource lifecycle keyword (acquire/release).
-// No local enumeration — the keyword set comes from SyntaxSpec.
+// Derived structurally: any keyword NOT in dag_non_name_keywords
+// (literals + lifecycle). Single authority: dag/syntax.dag.
 fn is_name_keyword(token: Token) -> Bool {
   if is_keyword_shape(shape: token.shape) {
-    let is_literal = match lookup(dag_syntax_spec.keyword_literals, key: token.text) {
-      Some { value: _ } => true
-      None => false
+    match lookup(dag_non_name_keywords, key: token.text) {
+      Some { value: _ } => false
+      None => true
     }
-    let is_lifecycle = token.text == "acquire" || token.text == "release"
-    !is_literal && !is_lifecycle
   } else {
     false
   }

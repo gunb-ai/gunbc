@@ -1974,7 +1974,7 @@ dependency depth. Start at the roots and follow imports.
 **02_parse.dag** — 6/10 (CRITICAL)
 - M6: **42 result types** — needs generic `Result<T>`
 - M8: `kind_tag(token)` string comparison — fragile
-- M7: `keyword_to_name` duplicates tokenizer keyword table
+- ~~M7: `keyword_to_name` duplicates tokenizer keyword table~~ RESOLVED: `dag_non_name_keywords`
 
 **03_resolve.dag** — 8/10
 - M5: Wildcard import `"*"` sentinel — should be `Optional<List<String>>`
