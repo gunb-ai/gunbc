@@ -297,22 +297,22 @@ apply_type_template1(interp.format_template.clone(), segments.join(&"".to_string
 pub fn empty_emit_scope() -> Rc<InferScope> {
     Rc::new(InferScope {
     type_env: Rc::new(TypeEnv {
-    bindings: v2_rt::rc_empty_map::<Rc<TypeBinding>>(),
+    bindings: v2_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
     recursive_types: Rc::new(vec![]),
-    recursive_type_set: v2_rt::rc_empty_map::<bool>(),
-    inductive_fields: v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(),
-    source_indices: v2_rt::rc_empty_map::<Rc<NewlineIndex>>(),
+    recursive_type_set: v2_rt::rc_empty_map::<String, bool>(),
+    inductive_fields: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
+    source_indices: v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
     intern_table: empty_intern_table(),
 }),
     func_env: Rc::new(ResolvedFuncEnv {
-    signatures: v2_rt::rc_empty_map::<Rc<ResolvedFuncSig>>(),
+    signatures: v2_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
 }),
-    locals: v2_rt::rc_empty_map::<Rc<TypeBinding>>(),
-    match_bound_names: v2_rt::rc_empty_map::<bool>(),
+    locals: v2_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+    match_bound_names: v2_rt::rc_empty_map::<String, bool>(),
     module_name: "".to_string(),
-    service_registry: v2_rt::rc_empty_map::<Rc<Vec<Rc<OpEntry>>>>(),
-    item_registry: v2_rt::rc_empty_map::<Rc<ItemInfo>>(),
-    lambda_param_provenance: v2_rt::rc_empty_map::<Rc<SubValueRelation>>(),
+    service_registry: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
+    item_registry: v2_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+    lambda_param_provenance: v2_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
 })
 }
 
@@ -320,12 +320,12 @@ pub fn module_emit_scope(typed_module: &Rc<TypedModule>) -> Rc<InferScope> {
     Rc::new(InferScope {
     type_env: typed_module.type_env.clone(),
     func_env: typed_module.func_env.clone(),
-    locals: v2_rt::rc_empty_map::<Rc<TypeBinding>>(),
-    match_bound_names: v2_rt::rc_empty_map::<bool>(),
+    locals: v2_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+    match_bound_names: v2_rt::rc_empty_map::<String, bool>(),
     module_name: typed_module.module.clone().name.clone(),
-    service_registry: v2_rt::rc_empty_map::<Rc<Vec<Rc<OpEntry>>>>(),
+    service_registry: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
     item_registry: typed_module.item_registry.clone(),
-    lambda_param_provenance: v2_rt::rc_empty_map::<Rc<SubValueRelation>>(),
+    lambda_param_provenance: v2_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
 })
 }
 
@@ -375,7 +375,7 @@ if has_unnamed {
             match lookup_func_sig_in_scope(scope.clone(), func) {
     None => args.clone(),
     Some(sig) => {
-                let arg_map = args.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, arg: Rc<Node>| {
+                let arg_map = args.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, arg: Rc<Node>| {
                     let n = arg_name_at(arg.clone(), scope.type_env.clone().source_indices.clone());
 if (n.clone() != None) {
                         v2_rt::rc_map_insert(acc.clone(), n.clone().unwrap(), arg.clone())
@@ -383,7 +383,7 @@ if (n.clone() != None) {
                         acc.clone()
                     }
 });
-let param_name_set = sig.params.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, param: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), param_node_name_at(param.clone(), scope.type_env.clone().source_indices.clone()), true));
+let param_name_set = sig.params.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, param: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), param_node_name_at(param.clone(), scope.type_env.clone().source_indices.clone()), true));
 let ordered = Rc::new({ let mut __result = Vec::new(); for param in sig.params.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&arg_map, param_node_name_at(param.clone(), scope.type_env.clone().source_indices.clone())) {
     Some(arg) => Rc::new(vec![arg.clone()]),
     None => Rc::new(vec![]),
@@ -406,7 +406,7 @@ v2_rt::concat(ordered, leftovers)
 pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
         let result = items.iter().cloned().fold(Rc::new(UniqueAccum {
-    seen: v2_rt::rc_empty_map::<bool>(),
+    seen: v2_rt::rc_empty_map::<String, bool>(),
     result: Rc::new(vec![]),
 }), |acc: Rc<UniqueAccum>, item: String| if emit_map_has(acc.seen.clone(), item.clone()) {
             acc.clone()
@@ -868,7 +868,7 @@ pub fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -
 }
 
 pub fn emit_node_type(n: Rc<Node>, target: RenderTarget, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    render_node_type(&n, &target, &v2_rt::rc_empty_map::<bool>(), &source_indices)
+    render_node_type(&n, &target, &v2_rt::rc_empty_map::<String, bool>(), &source_indices)
 }
 
 pub fn render_node_type(n: &Rc<Node>, target: &RenderTarget, shared_types: &Rc<HashMap<String, bool>>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
@@ -2569,5 +2569,5 @@ shared_tco_reassign(ordered_args, param_names, &language_spec(target.clone()))
 }
 
 pub fn seed_bindings(key: String, value: String) -> Rc<HashMap<String, String>> {
-    v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String>(), key, value)
+    v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String, String>(), key, value)
 }

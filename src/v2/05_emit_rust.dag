@@ -2084,6 +2084,22 @@ fn rust_empty_map_value_type_str(map_type: Node, shared_types: Map<String, Bool>
   }
 }
 
+// Return both key and value type strings for empty_map turbofish.
+// The resolved Map type node carries [key_child, value_child] as children.
+fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> String {
+  let key_str = match map_type.children |> first {
+    Some { value: key_child } =>
+      render_rust_type(n: child_type_node(ch: key_child), shared_types: shared_types, source_indices: source_indices)
+    None => ""
+  }
+  let val_str = rust_empty_map_value_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices)
+  if key_str != "" && val_str != "" {
+    concat(key_str, ", ", val_str)
+  } else if val_str != "" {
+    val_str
+  } else { "" }
+}
+
 // rust_runtime_bridge_wraps_result_in_rc: DELETED.
 // With shared_types as single authority, map values are already Rc-wrapped
 // for non-Copy types. lookup/map_get return the correct type directly.
@@ -2344,9 +2360,9 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
   let call_str = if func == "empty_map" {
     match inferred {
       Some { value: Resolved { node: ret_type } } =>
-        let value_type_str = rust_empty_map_value_type_str(map_type: ret_type, shared_types: shared_types, source_indices: scope.type_env.source_indices)
-        if value_type_str != "" {
-          concat("v2_rt::rc_empty_map::<", value_type_str, ">()")
+        let kv_type_str = rust_empty_map_kv_type_str(map_type: ret_type, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+        if kv_type_str != "" {
+          concat("v2_rt::rc_empty_map::<", kv_type_str, ">()")
         } else {
           "Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */"
         }
@@ -2832,9 +2848,9 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
         ExprCall { call_semantics: _, descent_evidence: _ } =>
           let init_func = expr_call_func_at(texpr: arg_value(n: init_arg), source_indices: scope.type_env.source_indices)
           if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "" && !acc_has_unit_child {
-            let value_type_str = rust_empty_map_value_type_str(map_type: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
-            if value_type_str != "" {
-              concat("v2_rt::rc_empty_map::<", value_type_str, ">()")
+            let kv_type_str = rust_empty_map_kv_type_str(map_type: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+            if kv_type_str != "" {
+              concat("v2_rt::rc_empty_map::<", kv_type_str, ">()")
             } else {
               "Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */"
             }

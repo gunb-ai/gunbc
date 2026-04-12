@@ -44,7 +44,7 @@ pub fn set_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
 }
 
 pub fn seed_adjacency_map(names: Rc<Vec<String>>) -> Rc<HashMap<String, Rc<Vec<String>>>> {
-    names.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), Rc::new(vec![])))
+    names.iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), Rc::new(vec![])))
 }
 
 pub fn build_call_graph_from_proof_edges(names: &Rc<Vec<String>>, edges: Rc<Vec<Rc<ProofEdge>>>) -> Rc<CallGraph> {
@@ -123,11 +123,11 @@ neighbors.iter().cloned().fold(Rc::new(SccComponentAcc {
 pub fn graph_has_multi_node_scc(names: Rc<Vec<String>>, graph: Rc<CallGraph>) -> bool {
     {
         let finish = names.iter().cloned().fold(Rc::new(DfsFinishAcc {
-    visited: v2_rt::rc_empty_map::<bool>(),
+    visited: v2_rt::rc_empty_map::<String, bool>(),
     order: Rc::new(vec![]),
 }), |acc: Rc<DfsFinishAcc>, name: String| dfs_finish_order(&name, &graph.forward.clone(), &acc));
 let result = v2_rt::reverse(finish.order.clone()).iter().cloned().fold(Rc::new(SccCycleAcc {
-    visited: v2_rt::rc_empty_map::<bool>(),
+    visited: v2_rt::rc_empty_map::<String, bool>(),
     has_cycle: false,
 }), |acc: Rc<SccCycleAcc>, name: String| if (acc.has_cycle.clone() || set_has(acc.visited.clone(), name.clone())) {
             acc.clone()

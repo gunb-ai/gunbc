@@ -759,7 +759,7 @@ mod compiler_tests {
 
                 let t_stage = Instant::now();
                 let resolve_si = sources.iter().fold(
-                    crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                    crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), &s.content.clone())),
                 );
                 let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), resolve_si);
@@ -869,7 +869,7 @@ mod compiler_tests {
 
                 let t_stage = Instant::now();
                 let resolve_si = sources.iter().fold(
-                    crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                    crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), &s.content.clone())),
                 );
                 let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), resolve_si);
@@ -1005,7 +1005,7 @@ mod compiler_tests {
                 // 1b. Resolve
                 let t = Instant::now();
                 let resolve_si = sources.iter().fold(
-                    crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                    crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), &s.content.clone())),
                 );
                 let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), resolve_si);
@@ -1031,7 +1031,7 @@ mod compiler_tests {
                 // 2. Normalize
                 let t = Instant::now();
                 let source_indices = newline_indices.iter().cloned().fold(
-                    crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                    crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, index| crate::v2_rt::rc_map_insert(acc, index.file.clone(), index.clone()),
                 );
                 let norm = crate::v2_compiler_normalize::normalize_graph(&graph, source_indices.clone());
@@ -1129,7 +1129,7 @@ mod compiler_tests {
                 }
                 let intern_table = crate::v2_std_core::merge_intern_tables(std::rc::Rc::new(intern_tables_r));
                 let resolve_si = sources.iter().fold(
-                    crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                    crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), &s.content.clone())),
                 );
                 let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), resolve_si);

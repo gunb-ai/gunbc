@@ -72,7 +72,7 @@ Some(v2_rt::concat(v2_rt::concat(ns, ".".to_string()), f))
 pub fn collect_typed_service_calls(texpr: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<String>> {
     {
         let result = collect_typed_service_calls_into(&texpr, &Rc::new(UniqueAccum {
-    seen: v2_rt::rc_empty_map::<bool>(),
+    seen: v2_rt::rc_empty_map::<String, bool>(),
     result: Rc::new(vec![]),
 }), &source_indices);
 result.result.clone()
@@ -135,7 +135,7 @@ result
 pub fn collect_called_func_names(texpr: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<String>> {
     {
         let result = collect_called_func_names_into(&texpr, &Rc::new(UniqueAccum {
-    seen: v2_rt::rc_empty_map::<bool>(),
+    seen: v2_rt::rc_empty_map::<String, bool>(),
     result: Rc::new(vec![]),
 }), &source_indices);
 result.result.clone()
