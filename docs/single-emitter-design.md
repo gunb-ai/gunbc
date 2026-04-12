@@ -347,13 +347,45 @@ extraction pattern.
 
 ### Phase 3: Unify TCO and block rendering
 
-TCO is 85% duplicated (12 Rust / 10 Python / 11 Go functions, only
-loop keywords differ). Block statement emission is 100% reused via
-`_shared` functions already.
+TCO is 85% duplicated (14 Rust / 10 Python / 10 Go functions).
+Python and Go are already thin wrappers around shared functions —
+8 of 10 functions in each just delegate. Block statement emission
+is 100% reused via `_shared` functions already.
+
+**Audit results (2026-04-12):**
+
+100% identical (delete per-language, use shared directly):
+- `*_tco_non_self_call`, `*_tco_if`, `*_tco_let`,
+  `*_tco_default_return`, `*_typed_tco_expr`, `*_typed_tco_reassign`
+  — 6 functions × 3 languages = 18 functions → 0
+
+Structurally parallel (parameterize via LanguageSpec):
+- `*_typed_tco_body` — Rust hard-codes `loop`, Py/Go use spec
+- `*_tco_block` — Rust has custom param-shadowing init
+
+Language-specific match rendering (needs callback pattern):
+- `*_tco_match` — Rust: Rc deref analysis. Python: if/elif. Go: switch.
+  45% overlap. Unify via `match_renderer` callback in shared dispatch.
+
+Rust-only (defer to Phase 6 / ownership extraction):
+- `emit_tco_params`, `emit_tco_param` — `mut` annotation
+- `emit_tco_init_block_stmts`, `emit_tco_init_stmt` — param shadowing
+- `emit_rust_tco_match` Rc analysis — isolate as optional callback
+
+New LanguageSpec fields needed:
+
+| Field | Rust | Python | Go |
+|-------|------|--------|-----|
+| `loop_keyword` | `loop` | `while True` | `for` |
+| `break_return` | `break` | `return` | `return` |
+| `continue_str` | `continue;` | `continue` | `continue` |
+| `temp_var_prefix` | `__tco_` | `__tco_` | `tco` |
+| `temp_decl_prefix` | `let ` | (empty) | (empty) |
+| `temp_assign_op` | ` = ` | ` = ` | ` := ` |
 
 **Accomplishes:** Control flow is language-agnostic. Only syntax tokens vary.
-**Deletes:** ~30 functions (~800 lines).
-**Size:** Medium.
+**Deletes:** ~20 Python/Go functions, Rust functions stay until Phase 6.
+**Size:** Medium. Python/Go deletion is mechanical; Rust isolation needs care.
 
 ### Phase 4: Unify service/transport rendering
 
