@@ -4226,14 +4226,13 @@ fn scan_for_fat_arrow_after_braces(remaining: List<Token>, depth: Int) -> Bool {
   }
 }
 
-fn parse_optional_guard(tokens: List<Token>, state: ParserState) -> GuardResult {
-  if tok_is_keyword(tok: peek(tokens: tokens, state: state), kw: "if") {
-    let adv = advance(tokens: tokens, state: state)
-    let r = parse_expr(tokens: tokens, state: adv.state)
-    if has_err(err: r.err) { return GuardResult { guard: none, state: r.state, err: r.err } }
-    GuardResult { guard: Some { value: r.expr }, state: r.state, err: none }
+fn parse_optional_guard(tokens: List<Token>, ctx: ParseContext) -> GuardResult {
+  if tok_is_keyword(tok: tokens |> first, kw: "if") {
+    let r = parse_expr(tokens: tokens |> skip(1), ctx: ctx)
+    if has_err(err: r.err) { return GuardResult { guard: none, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+    GuardResult { guard: Some { value: r.expr }, tokens: r.tokens, ctx: r.ctx, err: none }
   } else {
-    GuardResult { guard: none, state: state, err: none }
+    GuardResult { guard: none, tokens: tokens, ctx: ctx, err: none }
   }
 }
 
@@ -4241,20 +4240,20 @@ fn parse_optional_guard(tokens: List<Token>, state: ParserState) -> GuardResult 
 // 21. parse_pattern
 // =========================================================================
 
-fn parse_pattern(tokens: List<Token>, state: ParserState) -> PatternResult {
-  let tok = peek(tokens: tokens, state: state)
+fn parse_pattern(tokens: List<Token>, ctx: ParseContext) -> PatternResult {
+  let tok = tokens |> first
   let sh = match tok { Some { value: t } => Some { value: t.shape }  None => none }
+  let span = token_span(tok: tok)
   match sh {
     Some { value: ShIdent } => {
       let n = tok.value.text
-      let adv = advance(tokens: tokens, state: state)
       if n == "_" {
-        PatternResult { pattern: Wildcard, state: adv.state, err: none }
+        PatternResult { pattern: Wildcard, tokens: tokens |> skip(1), ctx: ctx, err: none }
       } else {
         if is_uppercase_start(name: n) {
-          parse_variant_pattern(tokens: tokens, state: adv.state, name: n)
+          parse_variant_pattern(tokens: tokens |> skip(1), ctx: ctx, name: n)
         } else {
-          PatternResult { pattern: Bind { name: n }, state: adv.state, err: none }
+          PatternResult { pattern: Bind { name: n }, tokens: tokens |> skip(1), ctx: ctx, err: none }
         }
       }
     }
@@ -4263,78 +4262,74 @@ fn parse_pattern(tokens: List<Token>, state: ParserState) -> PatternResult {
       let lit_val = lookup(dag_syntax_spec.keyword_literals, key: kw_text)
       match lit_val {
         Some { value: lv } => {
-          let adv = advance(tokens: tokens, state: state)
-          PatternResult { pattern: LitPattern { value: lv }, state: adv.state, err: none }
+          PatternResult { pattern: LitPattern { value: lv }, tokens: tokens |> skip(1), ctx: ctx, err: none }
         }
-        None => PatternResult { pattern: Wildcard, state: state, err: none }
+        None => PatternResult { pattern: Wildcard, tokens: tokens, ctx: ctx, err: none }
       }
     }
     Some { value: ShLitInt } => {
       let n_opt = parse_int(s: tok.value.text)
-      let n = match n_opt { Some { value: v } => v  None => { return PatternResult { pattern: Wildcard, state: state, err: Some { value: parse_error(msg: concat("internal: ShLitInt token text not parseable as int: '", tok.value.text, "'"), span: current_span(tokens: tokens, state: state)) } } } }
-      let adv = advance(tokens: tokens, state: state)
-      PatternResult { pattern: LitPattern { value: LitInt { value: n } }, state: adv.state, err: none }
+      let n = match n_opt { Some { value: v } => v  None => { return PatternResult { pattern: Wildcard, tokens: tokens, ctx: ctx, err: Some { value: parse_error(msg: concat("internal: ShLitInt token text not parseable as int: '", tok.value.text, "'"), span: span) } } } }
+      PatternResult { pattern: LitPattern { value: LitInt { value: n } }, tokens: tokens |> skip(1), ctx: ctx, err: none }
     }
     Some { value: ShLitStr } => {
       let s = tok.value.text
-      let adv = advance(tokens: tokens, state: state)
-      PatternResult { pattern: LitPattern { value: LitStr { value: s } }, state: adv.state, err: none }
+      PatternResult { pattern: LitPattern { value: LitStr { value: s } }, tokens: tokens |> skip(1), ctx: ctx, err: none }
     }
-    _ => PatternResult { pattern: Wildcard, state: state, err: none }
+    _ => PatternResult { pattern: Wildcard, tokens: tokens, ctx: ctx, err: none }
   }
 }
 
-fn parse_variant_pattern(tokens: List<Token>, state: ParserState, name: String) -> PatternResult {
-  if tok_is_lbrace(tok: peek(tokens: tokens, state: state)) {
-    let adv = advance(tokens: tokens, state: state)
-    let r = parse_variant_bindings_brace(tokens: tokens, state: skip_newlines(tokens: tokens, state: adv.state))
-    if has_err(err: r.err) { return PatternResult { pattern: Wildcard, state: r.state, err: r.err } }
-    let r2 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), expected: ExpectRBrace)
-    if has_err(err: r2.err) { return PatternResult { pattern: Wildcard, state: r2.state, err: r2.err } }
-    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: r.field_bindings }, state: r2.state, err: none }
-  } else if tok_is_lparen(tok: peek(tokens: tokens, state: state)) {
+fn parse_variant_pattern(tokens: List<Token>, ctx: ParseContext, name: String) -> PatternResult {
+  let span = token_span(tok: tokens |> first)
+  if tok_is_lbrace(tok: tokens |> first) {
+    let r = parse_variant_bindings_brace(tokens: skip_newlines(tokens: tokens |> skip(1)), ctx: ctx)
+    if has_err(err: r.err) { return PatternResult { pattern: Wildcard, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+    let r2 = expect(tokens: skip_newlines(tokens: r.tokens), expected: ExpectRBrace)
+    if has_err(err: r2.err) { return PatternResult { pattern: Wildcard, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
+    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: r.field_bindings }, tokens: r2.tokens, ctx: r.ctx, err: none }
+  } else if tok_is_lparen(tok: tokens |> first) {
     // Paren variant: Some(binding) or Some(_)
-    let adv = advance(tokens: tokens, state: state)
-    let r = parse_pattern(tokens: tokens, state: adv.state)
-    if has_err(err: r.err) { return PatternResult { pattern: Wildcard, state: r.state, err: r.err } }
-    let r2 = expect(tokens: tokens, state: r.state, expected: ExpectRParen)
-    if has_err(err: r2.err) { return PatternResult { pattern: Wildcard, state: r2.state, err: r2.err } }
-    let fb = make_field_binding_node(field_name: "0", binding: r.pattern, span: current_span(tokens: tokens, state: state), name_span: current_span(tokens: tokens, state: state))
-    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [fb] }, state: r2.state, err: none }
+    let r = parse_pattern(tokens: tokens |> skip(1), ctx: ctx)
+    if has_err(err: r.err) { return PatternResult { pattern: Wildcard, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+    let r2 = expect(tokens: r.tokens, expected: ExpectRParen)
+    if has_err(err: r2.err) { return PatternResult { pattern: Wildcard, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
+    let fb = make_field_binding_node(field_name: "0", binding: r.pattern, span: span, name_span: span)
+    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [fb] }, tokens: r2.tokens, ctx: r.ctx, err: none }
   } else {
-    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [] }, state: state, err: none }
+    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [] }, tokens: tokens, ctx: ctx, err: none }
   }
 }
 
-fn parse_variant_bindings_brace(tokens: List<Token>, state: ParserState) -> BindingsResult {
-  parse_variant_bindings_brace_acc(tokens: tokens, state: state, acc: [])
+fn parse_variant_bindings_brace(tokens: List<Token>, ctx: ParseContext) -> BindingsResult {
+  parse_variant_bindings_brace_acc(tokens: tokens, ctx: ctx, acc: [])
 }
 
-fn parse_variant_bindings_brace_acc(tokens: List<Token>, state: ParserState, acc: List<Node>) -> BindingsResult {
-  let s = skip_newlines(tokens: tokens, state: state)
-  if tok_is_rbrace(tok: peek(tokens: tokens, state: s)) || at_end(tokens: tokens, state: s) {
-    BindingsResult { field_bindings: acc, state: s, err: none }
+fn parse_variant_bindings_brace_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) -> BindingsResult {
+  let tokens = skip_newlines(tokens: tokens)
+  if tok_is_rbrace(tok: tokens |> first) || tok_is_eof(tok: tokens |> first) {
+    BindingsResult { field_bindings: acc, tokens: tokens, ctx: ctx, err: none }
   } else {
-    let r = expect_name(tokens: tokens, state: s)
-    if has_err(err: r.err) { return BindingsResult { field_bindings: [], state: r.state, err: r.err } }
+    let bind_span = token_span(tok: tokens |> first)
+    let r = expect_name(tokens: tokens)
+    if has_err(err: r.err) { return BindingsResult { field_bindings: [], tokens: r.tokens, ctx: ctx, err: r.err } }
     let field_name = r.name
     let field_name_span = r.span
-    let s = r.state
+    let tokens = r.tokens
 
-    let e = eat(tokens: tokens, state: s, expected: ExpectColon)
+    let e = eat(tokens: tokens, expected: ExpectColon)
     if e.consumed {
-      let r2 = parse_pattern(tokens: tokens, state: e.state)
-      if has_err(err: r2.err) { return BindingsResult { field_bindings: [], state: r2.state, err: r2.err } }
-      let s2 = r2.state
-      let e2 = eat(tokens: tokens, state: s2, expected: ExpectComma)
-      let s3 = skip_newlines(tokens: tokens, state: if e2.consumed { e2.state } else { s2 })
-      let fb = make_field_binding_node(field_name: field_name, binding: r2.pattern, span: current_span(tokens: tokens, state: s), name_span: field_name_span)
-      parse_variant_bindings_brace_acc(tokens: tokens, state: s3, acc: list_push(acc, fb))
+      let r2 = parse_pattern(tokens: e.tokens, ctx: ctx)
+      if has_err(err: r2.err) { return BindingsResult { field_bindings: [], tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
+      let e2 = eat(tokens: r2.tokens, expected: ExpectComma)
+      let tokens = skip_newlines(tokens: if e2.consumed { e2.tokens } else { r2.tokens })
+      let fb = make_field_binding_node(field_name: field_name, binding: r2.pattern, span: bind_span, name_span: field_name_span)
+      parse_variant_bindings_brace_acc(tokens: tokens, ctx: r2.ctx, acc: list_push(acc, fb))
     } else {
-      let e2 = eat(tokens: tokens, state: s, expected: ExpectComma)
-      let s2 = skip_newlines(tokens: tokens, state: if e2.consumed { e2.state } else { s })
-      let fb = make_field_binding_node(field_name: field_name, binding: Bind { name: field_name }, span: current_span(tokens: tokens, state: s), name_span: field_name_span)
-      parse_variant_bindings_brace_acc(tokens: tokens, state: s2, acc: list_push(acc, fb))
+      let e2 = eat(tokens: tokens, expected: ExpectComma)
+      let tokens = skip_newlines(tokens: if e2.consumed { e2.tokens } else { tokens })
+      let fb = make_field_binding_node(field_name: field_name, binding: Bind { name: field_name }, span: bind_span, name_span: field_name_span)
+      parse_variant_bindings_brace_acc(tokens: tokens, ctx: ctx, acc: list_push(acc, fb))
     }
   }
 }
