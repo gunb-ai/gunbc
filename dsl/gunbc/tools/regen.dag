@@ -76,7 +76,8 @@ func regenerate(cycle: SelfHostingCycle) -> RegenResult {
                     return Failed { stage: Build, stderr: build.stderr }
                   }
 
-                  // Step 2: Compile .dag source → generated Rust (pass 1)
+                  // Step 2: Clear stale output, then compile .dag source → Rust (pass 1)
+                  let _ = shell.Exec.Run(script: concat(rm_path, " -rf .regen-pass1 .regen-pass2"))
                   let pass1 = shell.Exec.Run(
                     script: compile_command(cargo: cargo, cycle: cycle, output_dir: ".regen-pass1")
                   )
