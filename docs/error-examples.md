@@ -1,337 +1,473 @@
 # What .dag catches: concrete examples
 
+Part of: [THESIS.md](../THESIS.md) §[What .dag catches](../THESIS.md#what-dag-catches-that-normal-compilers-dont)
+Related: [ROADMAP.md](../ROADMAP.md) §[Milestones](../ROADMAP.md#milestones-to-gate-1) |
+[std/effects.dag](../dsl/std/effects.dag) |
+[std/algebra.dag](../dsl/std/algebra.dag) |
+[std/termination.dag](../dsl/std/termination.dag)
+
 Every example below compiles in Rust, Go, and Python. Every example
 is rejected by .dag at compile time. No lint rules, no annotations,
 no opt-in — the errors emerge from the algebraic structure that
 `.dag` already has.
 
+**These serve as TDD targets:** each example is a test case. The
+`.dag` code is the test input; the error message is the acceptance
+criterion. When the feature lands, the test should pass.
+
 Each example shows:
 1. The `.dag` code
 2. The compiler error
-3. Why it catches it (which algebra)
+3. Why it catches it — which algebra, with links to the source
 4. How it emerges from modeling — not a special-case check
+5. Why a traditional compiler can't catch it
 
 ---
 
-## 1. Non-terminating recursion through lookup
+## 1. Non-terminating recursion through type resolution
+
+**Severity:** production crashes. This bug class has hit TypeScript
+(recursive type aliases), Rust (trait resolution cycles), and
+Haskell (type family expansion). It's not a beginner mistake — it's
+a fundamental design issue that manifests in mature, well-tested
+compilers.
 
 ```dag
-fn resolve_type(t: Node) -> Node {
+fn check_type(t: Node) -> Bool {
   match t.connective {
-    Leaf => t
+    Leaf => true
     Generic => {
-      let resolved = lookup_type(name: t.name)
-      resolve_type(t: resolved)
+      let resolved = lookup_type_def(name: t.name)
+      check_type(t: resolved)
     }
-    Conj => make_conj(children: t.children |> map(c => resolve_type(t: c)))
+    Conj => t.children |> all(c => check_type(t: c))
   }
 }
 ```
 
 **Compiler error:**
 ```
-error[CX]: cannot prove termination of resolve_type
+error[CX]: cannot prove termination of check_type
 
-  resolve_type(t: resolved)
+  check_type(t: resolved)
                ^^^^^^^^^
-  `resolved` came from lookup_type() — a lookup, not structural
+  `resolved` came from lookup_type_def() — a lookup, not structural
   descent on `t`. SubValueRelation: Unknown.
 
   The Conj branch is fine:
-    resolve_type(t: c) where c is IteratedSubValue of t.children ✓
+    check_type(t: c) where c is IteratedSubValue of t.children ✓
 
   The Generic branch is the problem:
-    resolve_type(t: resolved) where resolved has no descent
-    relationship to t. If the looked-up type contains Generic
-    references, this recurses forever.
+    check_type(t: resolved) — no descent relationship to t.
+    If the looked-up type contains Generic references, this
+    recurses without bound.
 
   Fix: separate resolution from walking. Resolve all type
-  references in a prior pass, then walk the resolved tree.
+  references in a prior pass, then walk the resolved tree
+  where descent on Node.children is structurally bounded.
 ```
 
-**Why it catches it:** CX tracks `SubValueRelation` per argument.
-`lookup_type(name: t.name)` returns a fresh value — no descent
-relationship to `t`. The compiler doesn't need a special "recursive
-type alias" check. It falls out of the structural descent proof
-that every recursive function requires.
+**Algebra:** [std/termination.dag](../dsl/std/termination.dag) —
+well-founded descent. [std/induction.dag](../dsl/std/induction.dag)
+— SubValueRelation tracks whether each argument is structurally
+smaller. See [THESIS.md §Correctness dimensions](../THESIS.md#correctness-dimensions).
 
-**How it emerges from modeling:** The bounded kernel invariant says
-Node is the only recursive type, and recursion must be on
-`Node.children`. This isn't a rule someone added for this case —
-it's the foundational property that makes all descent proofs work.
-The type alias bug is just one consequence.
+**Why a traditional compiler can't catch it:** Rust/Go/Python
+have no concept of "structural descent." They check types, not
+termination. A function that recurses on a lookup result is
+syntactically identical to one that recurses on a child — the
+type system can't distinguish them. Only a system with bounded
+iteration primitives and mandatory descent proofs catches this.
+
+**TDD target:** [ROADMAP.md §M1](../ROADMAP.md#milestones-to-gate-1)
+— CX gate. Example 1 is a generalization of our own
+`render_node_type` recursion through `n.inferred`.
 
 ---
 
-## 2. Redundant work: reverse of reverse
+## 2. Cross-service data corruption through non-idempotent retry
+
+**Severity:** silent data corruption in production. The retry
+succeeds, the system appears healthy, but audit logs have
+duplicates, billing gets double-charged, or notifications fire
+twice. The bug is invisible until someone audits the data.
 
 ```dag
-fn normalize_tokens(tokens: List<Token>) -> List<Token> {
-  tokens
-    |> reverse
-    |> filter(t => t.kind != Whitespace)
-    |> reverse
-}
-```
+func process_payment(order: Order) {
+  uses payment.Gateway, billing.Ledger, notify.Email
 
-**Compiler error:**
-```
-error[OPT]: redundant operation sequence
-
-  tokens |> reverse |> filter(...) |> reverse
-          ^^^^^^^^^                ^^^^^^^^^
-  `reverse` is an involution (reverse ∘ reverse = identity).
-  The outer reverse ∘ inner reverse cancels.
-
-  Equivalent: tokens |> filter(t => t.kind != Whitespace)
-  Cost: O(n) saved (two unnecessary traversals).
-
-  If the reversed order matters for the filter, use:
-    tokens |> reverse |> filter(...)
-  without the second reverse.
-```
-
-**Why it catches it:** `reverse` is declared in `std/algebra.dag`
-as an involution on `FreeMonoid<T>` — `f(f(x)) = x`. The compiler
-composes operations symbolically and applies simplification laws.
-When two involutions are adjacent (even with operations between
-them that don't affect order), they cancel.
-
-**How it emerges from modeling:** The programmer didn't annotate
-anything. `List<T>` inhabits `FreeMonoid<T>`, which declares
-`reverse` as an involution. The compiler reads the algebra and
-simplifies. Adding a new involution to any type gets the same
-check for free.
-
----
-
-## 3. Non-idempotent workflow in retry context
-
-```dag
-func provision_database() {
-  uses cloud.Sql, audit.Logger
-
-  let db = cloud.Sql.CreateOrUpdate(
-    name: "orders-db",
-    spec: db_config
+  let charge = payment.Gateway.Charge(
+    customer_id: order.customer_id,
+    amount: order.amount,
+    idempotency_key: order.id
   )
 
-  audit.Logger.Append(entry: LogEntry {
-    action: "provisioned",
-    resource: db.name,
-    timestamp: now()
+  billing.Ledger.AppendEntry(entry: LedgerEntry {
+    order_id: order.id,
+    amount: order.amount,
+    charge_id: charge.id
   })
+
+  notify.Email.Send(
+    to: order.customer_email,
+    template: "payment_confirmed",
+    data: charge
+  )
 }
 
-func deploy_with_retry() {
+func process_with_retry(order: Order) {
   uses retry
-
-  retry.WithRetries(
-    max: 3,
-    action: () => provision_database()
-  )
+  retry.WithRetries(max: 3, action: () => process_payment(order: order))
 }
 ```
 
 **Compiler error:**
 ```
-error[EFFECT]: non-idempotent operation in retry context
+error[EFFECT]: non-idempotent operations in retry context
 
-  retry.WithRetries(action: () => provision_database())
-                                  ^^^^^^^^^^^^^^^^^^^^
-  provision_database() is NOT idempotent because:
+  retry.WithRetries(action: () => process_payment(order: order))
+                                  ^^^^^^^^^^^^^^^
+  process_payment() is NOT idempotent:
 
-    cloud.Sql.CreateOrUpdate(name: "orders-db", ...)
-      PUT /instances/{name} → Map upsert → lattice meet ✓
+    payment.Gateway.Charge(idempotency_key: order.id)
+      POST /charges with key → UpsertEffect ✓ (key guards retry)
 
-    audit.Logger.Append(entry: ...)
-      POST /logs → List append → NOT lattice
-      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-      Append creates duplicate entries on retry.
+    billing.Ledger.AppendEntry(entry: ...)
+      POST /entries (no key) → AppendEffect ✗
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      Duplicate ledger entries on retry. Double-charges the order.
 
-  Effect composition: meet ∘ append = non-idempotent.
-  The retry context requires all operations to be idempotent.
+    notify.Email.Send(to: ..., template: ...)
+      POST /send (no key) → AppendEffect ✗
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      Duplicate emails on retry.
 
-  Fix: either
-    (a) Move the audit log outside the retry block, or
-    (b) Use audit.Logger.Upsert with a deduplication key:
-        audit.Logger.Upsert(key: request_id, entry: ...)
+  Effect composition: UpsertEffect ∘ AppendEffect ∘ AppendEffect
+  = non-idempotent. Retry context requires idempotent composition.
+
+  Fix:
+    billing.Ledger.UpsertEntry(key: order.id, entry: ...)
+    notify.Email.SendOnce(key: order.id, ...)
+  Or: move ledger + email outside the retry block.
 ```
 
-**Why it catches it:** The effect algebra (`std/effects.dag`)
-derives idempotency from effect shape. `CreateOrUpdate` with a
-key is a lattice meet (idempotent). `Append` without a key is a
-monoid concatenation (not idempotent). The `retry` context
-declares that its action must be idempotent. Composition fails.
+**Algebra:** [std/effects.dag](../dsl/std/effects.dag) — EffectShape
+composition. [THESIS.md §Algebraic simplification](../THESIS.md#algebraic-simplification-idempotency-cancellation-redundancy).
 
-**How it emerges from modeling:** The programmer modeled their
-services honestly — `CreateOrUpdate` uses PUT with a key,
-`Append` uses POST without a key. The transport declarations
-carry enough information to derive the effect shape. The `retry`
-combinator declares its contract. The contradiction between
-"retry requires idempotent" and "Append is not idempotent"
-is found automatically.
+**Why a traditional compiler can't catch it:** The types are all
+correct. The function signatures match. The control flow is valid.
+No compiler in any mainstream language tracks effect shapes through
+function composition to detect that retrying a workflow with an
+`Append` operation produces duplicates. This requires algebraic
+reasoning about state effects — lattice meets compose safely,
+monoid appends don't.
+
+**TDD target:** Effect algebra consumption. The types exist in
+`std/effects.dag`; compiler consumption is not wired.
 
 ---
 
-## 4. Dead effect: write then overwrite
+## 3. Redundant computation across service boundaries
+
+**Severity:** wasted latency, money, and API quota. Not a crash,
+but a systemic cost that multiplies with traffic.
 
 ```dag
-func update_config(db: Database, new_config: Config) {
-  uses cloud.Sql
+func enrich_user_profile(user_id: String) -> EnrichedProfile {
+  uses crm.Service, analytics.Service
 
-  cloud.Sql.UpdateConfig(name: db.name, config: default_config())
+  let crm_data = crm.Service.GetUser(id: user_id)
+  let analytics_data = analytics.Service.GetUserMetrics(id: user_id)
 
-  let merged = merge_configs(base: default_config(), override: new_config)
+  let enriched = merge_profile(crm: crm_data, analytics: analytics_data)
 
-  cloud.Sql.UpdateConfig(name: db.name, config: merged)
+  // Bug: fetches CRM data again to get the same name field
+  let display_name = crm.Service.GetUser(id: user_id).name
+
+  EnrichedProfile {
+    profile: enriched,
+    display_name: display_name
+  }
 }
 ```
 
 **Compiler error:**
 ```
-error[EFFECT]: dead effect — first write is subsumed
+error[EFFECT]: redundant service call — result already available
 
-  cloud.Sql.UpdateConfig(name: db.name, config: default_config())
-  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  This effect is overwritten by:
+  let display_name = crm.Service.GetUser(id: user_id).name
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  crm.Service.GetUser(id: user_id) was already called at line 4.
 
-  cloud.Sql.UpdateConfig(name: db.name, config: merged)
-  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  at line 8.
+  GetUser is ReadEffect (GET /users/{id}) — deterministic for the
+  same input within this scope. The result is already bound to
+  `crm_data`.
 
-  Both operations target the same key (db.name) with UpsertEffect.
-  The second upsert subsumes the first:
-    upsert(k, v1) ∘ upsert(k, v2) = upsert(k, v2)
-
-  The first UpdateConfig has no observable effect.
-
-  Fix: remove the first UpdateConfig call.
+  Equivalent: crm_data.name
+  Cost saved: 1 network round-trip + API quota.
 ```
 
-**Why it catches it:** Two upserts to the same key compose to
-just the second upsert. The effect algebra knows that
-`meet(state, {k: v1})` followed by `meet(state, {k: v2})`
-equals `meet(state, {k: v2})` — the first is absorbed.
+**Algebra:** ReadEffect is idempotent and deterministic. Two calls
+with the same arguments in the same scope produce the same result.
+The second call is algebraically redundant — it's `f(x)` when
+`f(x)` is already bound to `crm_data`.
 
-**How it emerges from modeling:** The `UpdateConfig` operation
-declares its transport as `PUT /configs/{name}`. The `{name}`
-in the path is the key. Two PUTs to the same key = the first
-is dead. No special "dead store" analysis — it falls out of
-lattice absorption.
+**Why a traditional compiler can't catch it:** The two calls cross
+a service boundary. A traditional compiler sees two function calls
+with the same arguments and has no idea they're deterministic (the
+function might have side effects, read mutable state, etc.). .dag
+knows the effect shape (ReadEffect = deterministic) from the
+transport declaration (GET), so it can prove the redundancy.
 
 ---
 
-## 5. Accidentally quadratic
+## 4. Accidentally quadratic with a non-obvious cause
+
+**Severity:** O(n²) masquerading as O(n). Works fine in testing
+with small datasets. Falls over in production with real data.
 
 ```dag
-fn find_duplicates(items: List<Item>) -> List<Item> {
-  items |> filter(item =>
-    items |> count(other => other.id == item.id) > 1
+fn deduplicate(items: List<Record>) -> List<Record> {
+  items |> fold(init: [], f: (seen, item) =>
+    if seen |> any(s => s.id == item.id) {
+      seen
+    } else {
+      seen |> append(item)
+    }
   )
 }
 ```
 
 **Compiler error:**
 ```
-error[CX]: O(n^2) — cheaper equivalent exists
+error[CX]: O(n^2) complexity — cheaper equivalent exists
 
-  items |> filter(item =>
-    items |> count(other => other.id == item.id) > 1
-    ^^^^^
-    Inner fold over `items` (length n) inside outer fold
-    over `items` (length n).
-  )
+  items |> fold(init: [], f: (seen, item) =>
+    if seen |> any(s => s.id == item.id) {
+                  ^^^
+  Inner fold: `any` over `seen` (grows to length n).
+  Outer fold: over `items` (length n).
 
   Cost: O(n) * O(n) = O(n^2)
 
-  Cheaper equivalent using Map grouping: O(n)
-    let counts = items |> fold(init: {}, f: (acc, item) =>
-      acc |> map_upsert(key: item.id, value: 1, merge: add))
-    items |> filter(item => counts |> get(key: item.id) > 1)
+  `seen |> any(s => s.id == item.id)` is a membership test.
+  Membership on List is O(n). Membership on Set is O(1).
+
+  Cheaper equivalent using Set:
+    let seen_ids = items |> fold(init: empty_set(), f: (ids, item) =>
+      ids |> set_insert(item.id))
+    items |> filter(item => seen_ids |> set_contains(item.id))
+
+  Cost: O(n)
 ```
 
-**Why it catches it:** CX computes cost by composing fold costs.
-`filter(n, body: count(n, ...))` = `fold(n, fold(n, ...))` = O(n²).
-If the compiler's optimization catalog has a cheaper equivalent
-(group-by via Map, O(n)), it rejects the quadratic version.
+**Algebra:** [std/algebra.dag](../dsl/std/algebra.dag) — FreeMonoid
+(List) vs BooleanAlgebra (Set). Membership cost is declared per
+algebraic structure. CX composes costs through fold bodies.
+See [ROADMAP.md §KF-2](../ROADMAP.md#kf-2-reject-suboptimal-algorithms).
 
-**How it emerges from modeling:** `List<T>` operations have
-declared costs in `std/`. `filter` is O(n). `count` inside
-filter makes the body O(n), so total is O(n²). The `Map`
-group-by pattern is declared as O(n). CX compares and rejects.
+**Why a traditional compiler can't catch it:** The code is
+type-correct. The algorithm is correct. It produces the right
+output. It's just slow. No mainstream compiler reasons about
+asymptotic complexity — they optimize constant factors (inlining,
+vectorization) but can't detect algorithmic inefficiency. .dag has
+cost algebra on every operation, so it can compose costs and
+compare against known cheaper patterns.
+
+**TDD target:** [ROADMAP.md §KF-2](../ROADMAP.md#kf-2-reject-suboptimal-algorithms)
+— optimization catalog in `std/optimization.dag`.
 
 ---
 
-## 6. Infrastructure bringup: already running is benign
+## 5. Infrastructure drift through partial failure
+
+**Severity:** infrastructure in an inconsistent state. The workflow
+ran, some operations succeeded, some failed. Re-running either
+duplicates or skips — depending on which operations are idempotent.
+The operator can't tell which state they're in.
 
 ```dag
-func bring_up_service(config: ServiceConfig) {
-  uses cloud.Compute, cloud.Firewall, cloud.Dns
+func deploy_service(config: DeployConfig) {
+  uses cloud.Registry, cloud.Compute, cloud.LoadBalancer
 
-  cloud.Compute.CreateOrUpdate(
-    id: config.service_id,
-    spec: config.machine_spec
-  )
+  // Step 1: push image (idempotent — same tag = same image)
+  cloud.Registry.Push(tag: config.image_tag, image: config.image)
 
-  cloud.Firewall.CreateOrUpdate(
-    name: concat(config.service_id, "-allow-https"),
-    rule: config.firewall_rule
-  )
+  // Step 2: create instance (NOT idempotent — no key!)
+  cloud.Compute.Create(spec: config.machine_spec)
 
-  cloud.Dns.CreateOrUpdate(
-    name: config.hostname,
-    target: config.service_id
+  // Step 3: register with load balancer (idempotent — keyed by name)
+  cloud.LoadBalancer.Register(
+    name: config.service_name,
+    target: config.instance_id
   )
 }
 ```
 
-**Compiler output (not an error — a proof):**
+**Compiler error:**
 ```
-proof[EFFECT]: bring_up_service is idempotent ✓
+error[EFFECT]: non-idempotent operation in deployment workflow
 
-  cloud.Compute.CreateOrUpdate: PUT /instances/{id}
-    → Map<id, spec> upsert (lattice meet) ✓
-  cloud.Firewall.CreateOrUpdate: PUT /firewalls/{name}
-    → Map<name, rule> upsert (lattice meet) ✓
-  cloud.Dns.CreateOrUpdate: PUT /dns/{name}
-    → Map<name, target> upsert (lattice meet) ✓
+  cloud.Compute.Create(spec: config.machine_spec)
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  POST /instances (no key) → CreateEffect (not idempotent).
 
-  Composition: meet ∘ meet ∘ meet = meet ✓
-  Running again when services are already up: no state change.
+  If this workflow fails after step 2 and is retried:
+    Step 1 (Registry.Push): safe — UpsertEffect, same result ✓
+    Step 2 (Compute.Create): UNSAFE — creates duplicate instance
+    Step 3 (LoadBalancer.Register): safe — UpsertEffect ✓
 
-  Generated test:
-    test "bring_up_service is idempotent" {
-      let s1 = bring_up_service(config: test_config)
-      let s2 = bring_up_service(config: test_config)
-      assert s1 == s2
+  The workflow is not safe to retry. Partial failure leaves
+  infrastructure in an inconsistent state.
+
+  Fix: use Compute.CreateOrUpdate with an explicit instance key:
+    cloud.Compute.CreateOrUpdate(
+      id: config.service_name,
+      spec: config.machine_spec
+    )
+```
+
+**Algebra:** [std/effects.dag](../dsl/std/effects.dag) — CreateEffect
+vs UpsertEffect. The compiler traces the partial-failure scenario
+structurally: which operations have already committed, which haven't,
+and whether re-running is safe.
+
+**Why a traditional compiler can't catch it:** Infrastructure-as-code
+tools (Terraform, Pulumi) handle this at runtime with state files.
+.dag catches it at compile time because the effect algebra
+distinguishes Create (non-idempotent, unsafe to retry) from
+CreateOrUpdate (idempotent, safe to retry) based on whether a
+key exists in the transport declaration.
+
+---
+
+## 6. Semantic cancellation across function boundaries
+
+**Severity:** wasted computation that produces no net effect. The
+program is correct but does unnecessary work that costs time and
+resources. Unlike dead code, both operations ARE used — they just
+cancel each other out.
+
+```dag
+fn process_message(msg: Message) -> ProcessedMessage {
+  let compressed = compress(data: msg.body)
+  let encrypted = encrypt(data: compressed, key: msg.recipient_key)
+  let decrypted = decrypt(data: encrypted, key: msg.recipient_key)
+  let validated = validate_schema(data: decrypted)
+  ProcessedMessage { original: msg, validated: validated }
+}
+```
+
+**Compiler error:**
+```
+error[OPT]: operation cancellation — encrypt/decrypt is identity
+
+  let encrypted = encrypt(data: compressed, key: msg.recipient_key)
+  let decrypted = decrypt(data: encrypted, key: msg.recipient_key)
+      ^^^^^^^^^
+  encrypt and decrypt are declared inverses (with matching keys).
+
+    encrypt(key: k) ∘ decrypt(key: k) = identity
+
+  `decrypted` is equivalent to `compressed`. The encrypt/decrypt
+  pair has no net effect.
+
+  Equivalent:
+    let validated = validate_schema(data: compressed)
+
+  Cost saved: encrypt + decrypt operations.
+```
+
+**Algebra:** `encrypt` and `decrypt` are declared as an inverse
+pair in their algebra (group inverse with key parameter). The
+compiler composes operations symbolically and detects when an
+operation and its inverse are adjacent. This works across `let`
+bindings — it's not pattern matching on syntax, it's algebraic
+simplification. See [THESIS.md §Concept unification](../THESIS.md#concept-unification).
+
+**Why a traditional compiler can't catch it:** A traditional
+compiler doesn't know that `encrypt` and `decrypt` are inverses.
+They're just function calls. Even with inlining, the compiler
+would need to prove that the bit-level operations cancel — which
+is intractable in general. .dag doesn't prove bit-level
+cancellation. It reads the declared algebraic relationship
+(inverse pair) and simplifies symbolically. The proof is: "you
+declared these are inverses, and you composed them. The
+composition is identity."
+
+---
+
+## 7. Exponential blowup from unguarded recursive branching
+
+**Severity:** code that works on small inputs and takes hours or
+OOMs on slightly larger inputs. Classic in tree-processing code.
+
+```dag
+fn count_paths(tree: Node) -> Int {
+  match tree.connective {
+    Leaf => 1
+    Conj => {
+      let left = tree.children |> first
+      let right = tree.children |> last
+      match left {
+        Some { value: l } => match right {
+          Some { value: r } =>
+            count_paths(tree: l) + count_paths(tree: r)
+          None => count_paths(tree: l)
+        }
+        None => 0
+      }
     }
+  }
+}
 ```
 
-**Why it works:** Every operation uses PUT with a key. PUT with
-a key = Map upsert = lattice meet. Lattice meets compose. The
-workflow is idempotent by construction. Running it when services
-are already up is a no-op — every upsert converges to the same
-state.
+**Compiler error:**
+```
+error[CX]: O(2^n) — exponential branching
 
-**How it emerges from modeling:** The programmer just used
-`CreateOrUpdate` with named resources. The compiler reads the
-transport declarations (PUT + key), derives the effect shape
-(UpsertEffect), checks the algebra (lattice meet), and proves
-idempotency. No `@idempotent` annotation. No `@safe_to_retry`.
-The structure carries the proof.
+  count_paths(tree: l) + count_paths(tree: r)
+  ^^^^^^^^^^^^^^^^^^^    ^^^^^^^^^^^^^^^^^^^
+  Two recursive calls on the same path, both with StrictSubValue
+  descent. Each call produces two more calls.
+
+  This is structurally identical to naive fibonacci:
+    fib(n-1) + fib(n-2) → O(2^n)
+
+  For a balanced binary tree of depth d: 2^d calls.
+
+  Fix: if paths overlap, memoize:
+    fn count_paths(tree: Node, memo: Map<Int, Int>) -> ...
+  Or restructure to single-pass fold:
+    tree.children |> fold(init: 0, f: (acc, c) =>
+      acc + count_paths(tree: c))
+```
+
+**Algebra:** [std/termination.dag](../dsl/std/termination.dag) —
+CX branching guard. Multiple recursive calls with descent on the
+same path produce exponential cost. The function terminates (each
+call descends), but its complexity is O(2^n), which CX rejects
+when a polynomial equivalent exists.
+See [ROADMAP.md §KF-1](../ROADMAP.md#kf-1-complexity-proof-on-every-compile).
+
+**Why a traditional compiler can't catch it:** The code is correct.
+It terminates. The types are fine. Traditional compilers have no
+complexity analysis — they'll happily compile O(2^n) code. .dag's
+CX proves cost bounds on every function and rejects exponential
+complexity when the branching structure indicates it.
 
 ---
 
 ## The pattern
 
-Every example above is the same mechanism at work:
+Every example is the same mechanism:
 
 1. **The programmer models facts honestly** — types, operations,
    transports, algebraic inhabitants. No special annotations.
 
 2. **The compiler reads the algebra** — lattice laws, group
-   inverses, involutions, cost functions. All declared in `std/`.
+   inverses, involutions, cost functions. Declared in
+   [std/](../dsl/std/). See [THESIS.md §Correctness dimensions](../THESIS.md#correctness-dimensions).
 
 3. **The compiler composes and simplifies** — symbolic composition
    of operations under their algebraic laws.
@@ -339,9 +475,13 @@ Every example above is the same mechanism at work:
 4. **Contradictions surface automatically** — a non-terminating
    recursion is a missing descent proof. A non-idempotent retry
    is a lattice violation. A dead effect is lattice absorption.
-   Redundant work is an algebraic simplification.
+   Redundant work is algebraic simplification. Exponential
+   blowup is branching guard rejection.
 
 No lint rules. No special-case checks. No opt-in. The algebra
 does the work. Adding a new algebraic law to `std/` makes every
 program that uses that algebra gain the corresponding check — for
 free, retroactively, without touching any user code.
+
+See [THESIS.md §What else falls out](../THESIS.md#what-else-falls-out)
+for how these properties emerge from the closed system.
