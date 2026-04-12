@@ -82,7 +82,14 @@ fn stage0_cargo_check() {
 //   pass added (infrastructure for Stream D).
 // 2026-04-12: 353→354 — compile_to_resolved added (M5 Phase 0 interpreter).
 //   Same complexity warning as compile_sources (same call chain).
-const DIAG_RATCHET: usize = 354;
+// 2026-04-12: 354→358 — Stream D parser restructuring (int indexing → list consumption).
+//   +7 new: parse_dotted_ident_rest, collect_lambda_idents, parse_predicates_acc,
+//   try_where_clause, try_lambda_params — CX can't yet see descent through
+//   helper return types (output provenance gap, same as Category B).
+//   -3 dissolved: scan_braces_depth, scan_for_fat_arrow_after_braces,
+//   looks_like_arm_start — integer idx recursion replaced by list consumption.
+//   Net +4. Correct observations; dissolves with return-contract inference.
+const DIAG_RATCHET: usize = 350;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)
