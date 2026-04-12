@@ -29,6 +29,7 @@ use ImportTrigger::*;
 use IfValueForm::*;
 use NamingCase::*;
 use VisibilitySpec::*;
+use InterpStyle::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -188,6 +189,8 @@ pub struct ExpressionSemantics {
 pub enum NamingCase {
     PascalCase,
     SnakeCase,
+    CamelCase,
+    AsAuthored,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -264,6 +267,14 @@ pub struct LanguageSpec {
     pub type_arg_close: String,
     pub void_type: String,
     pub tuple_syntax: Rc<TupleSyntax>,
+    pub string_interp: Rc<StringInterpSyntax>,
+    pub callable_type_template: Option<String>,
+    pub naming_case: NamingCase,
+    pub async_call_prefix: String,
+    pub bridge_method_prefix: String,
+    pub bridge_method_case: NamingCase,
+    pub bridge_method_overrides: Rc<HashMap<String, String>>,
+    pub record_lit: Rc<RecordLitSyntax>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -272,6 +283,52 @@ pub struct TupleSyntax {
     pub pair_template: String,
     pub multi_template: String,
     pub separator: String,
+    pub first_accessor: String,
+    pub second_accessor: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RecordLitSyntax {
+    pub named_open: String,
+    pub named_close: String,
+    pub named_empty: String,
+    pub named_field_sep: String,
+    pub named_field_join: String,
+    pub anon_empty: String,
+    pub anon_prefix: String,
+    pub anon_suffix: String,
+    pub anon_field_indent: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum InterpStyle {
+    FormatArgs {
+        placeholder: String,
+    },
+    InlineExpr,
+}
+impl InterpStyle {
+    pub fn placeholder(&self) -> String {
+        match self {
+            InterpStyle::FormatArgs { placeholder: __val, .. } => __val.clone(),
+            InterpStyle::InlineExpr => panic!("no placeholder on unit variant"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EscapePair {
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StringInterpSyntax {
+    pub style: Rc<InterpStyle>,
+    pub format_template: String,
+    pub plain_template: String,
+    pub escape_pairs: Rc<Vec<Rc<EscapePair>>>,
 }
 
 pub fn rust_spec() -> Rc<LanguageSpec> {
@@ -398,6 +455,39 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     pair_template: rust_tuple_pair_template(),
     multi_template: rust_tuple_multi_template(),
     separator: rust_tuple_separator(),
+    first_accessor: ".0".to_string(),
+    second_accessor: ".1".to_string(),
+}),
+    string_interp: Rc::new(StringInterpSyntax {
+    style: Rc::new(InterpStyle::FormatArgs {
+    placeholder: "{}".to_string(),
+}),
+    format_template: "format!(\"{0}\", {1})".to_string(),
+    plain_template: "\"{0}\".to_string()".to_string(),
+    escape_pairs: Rc::new(vec![Rc::new(EscapePair {
+    from: "{".to_string(),
+    to: "{{".to_string(),
+}), Rc::new(EscapePair {
+    from: "}".to_string(),
+    to: "}}".to_string(),
+})]),
+}),
+    callable_type_template: Some("Rc<dyn Fn({params}) -> {return}>".to_string()),
+    naming_case: NamingCase::SnakeCase,
+    async_call_prefix: "".to_string(),
+    bridge_method_prefix: "".to_string(),
+    bridge_method_case: NamingCase::SnakeCase,
+    bridge_method_overrides: v2_rt::rc_empty_map::<String>(),
+    record_lit: Rc::new(RecordLitSyntax {
+    named_open: " {".to_string(),
+    named_close: "}".to_string(),
+    named_empty: " {}".to_string(),
+    named_field_sep: ": ".to_string(),
+    named_field_join: ", ".to_string(),
+    anon_empty: "{}".to_string(),
+    anon_prefix: "{\n".to_string(),
+    anon_suffix: "}".to_string(),
+    anon_field_indent: "    ".to_string(),
 }),
 })
 }
@@ -526,6 +616,37 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     pair_template: python_tuple_pair_template(),
     multi_template: python_tuple_multi_template(),
     separator: python_tuple_separator(),
+    first_accessor: "[0]".to_string(),
+    second_accessor: "[1]".to_string(),
+}),
+    string_interp: Rc::new(StringInterpSyntax {
+    style: Rc::new(InterpStyle::InlineExpr),
+    format_template: "f\"{0}\"".to_string(),
+    plain_template: "f\"{0}\"".to_string(),
+    escape_pairs: Rc::new(vec![Rc::new(EscapePair {
+    from: "{".to_string(),
+    to: "{{".to_string(),
+}), Rc::new(EscapePair {
+    from: "}".to_string(),
+    to: "}}".to_string(),
+})]),
+}),
+    callable_type_template: None,
+    naming_case: NamingCase::SnakeCase,
+    async_call_prefix: "await ".to_string(),
+    bridge_method_prefix: "".to_string(),
+    bridge_method_case: NamingCase::SnakeCase,
+    bridge_method_overrides: v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String>(), "with".to_string(), "with_update".to_string()),
+    record_lit: Rc::new(RecordLitSyntax {
+    named_open: "(".to_string(),
+    named_close: ")".to_string(),
+    named_empty: "()".to_string(),
+    named_field_sep: "=".to_string(),
+    named_field_join: ", ".to_string(),
+    anon_empty: "{}".to_string(),
+    anon_prefix: "{\n".to_string(),
+    anon_suffix: "}".to_string(),
+    anon_field_indent: "    ".to_string(),
 }),
 })
 }
@@ -654,6 +775,36 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     pair_template: go_tuple_pair_template(),
     multi_template: go_tuple_multi_template(),
     separator: go_tuple_separator(),
+    first_accessor: ".First".to_string(),
+    second_accessor: ".Second".to_string(),
+}),
+    string_interp: Rc::new(StringInterpSyntax {
+    style: Rc::new(InterpStyle::FormatArgs {
+    placeholder: "%v".to_string(),
+}),
+    format_template: "fmt.Sprintf(\"{0}\", {1})".to_string(),
+    plain_template: "\"{0}\"".to_string(),
+    escape_pairs: Rc::new(vec![Rc::new(EscapePair {
+    from: "%".to_string(),
+    to: "%%".to_string(),
+})]),
+}),
+    callable_type_template: None,
+    naming_case: NamingCase::CamelCase,
+    async_call_prefix: "".to_string(),
+    bridge_method_prefix: "v2rt.".to_string(),
+    bridge_method_case: NamingCase::PascalCase,
+    bridge_method_overrides: v2_rt::rc_empty_map::<String>(),
+    record_lit: Rc::new(RecordLitSyntax {
+    named_open: "{".to_string(),
+    named_close: "}".to_string(),
+    named_empty: "{}".to_string(),
+    named_field_sep: ": ".to_string(),
+    named_field_join: ", ".to_string(),
+    anon_empty: "map[string]interface{}{}".to_string(),
+    anon_prefix: "map[string]interface{}{\n".to_string(),
+    anon_suffix: "}".to_string(),
+    anon_field_indent: "\t".to_string(),
 }),
 })
 }
@@ -780,6 +931,37 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
     pair_template: dag_tuple_pair_template(),
     multi_template: dag_tuple_multi_template(),
     separator: dag_tuple_separator(),
+    first_accessor: ".0".to_string(),
+    second_accessor: ".1".to_string(),
+}),
+    string_interp: Rc::new(StringInterpSyntax {
+    style: Rc::new(InterpStyle::InlineExpr),
+    format_template: "\"{0}\"".to_string(),
+    plain_template: "\"{0}\"".to_string(),
+    escape_pairs: Rc::new(vec![Rc::new(EscapePair {
+    from: "{".to_string(),
+    to: "\\{".to_string(),
+}), Rc::new(EscapePair {
+    from: "}".to_string(),
+    to: "\\}".to_string(),
+})]),
+}),
+    callable_type_template: None,
+    naming_case: NamingCase::AsAuthored,
+    async_call_prefix: "".to_string(),
+    bridge_method_prefix: "".to_string(),
+    bridge_method_case: NamingCase::SnakeCase,
+    bridge_method_overrides: v2_rt::rc_empty_map::<String>(),
+    record_lit: Rc::new(RecordLitSyntax {
+    named_open: " {".to_string(),
+    named_close: "}".to_string(),
+    named_empty: " {}".to_string(),
+    named_field_sep: ": ".to_string(),
+    named_field_join: ", ".to_string(),
+    anon_empty: "{}".to_string(),
+    anon_prefix: "{\n".to_string(),
+    anon_suffix: "}".to_string(),
+    anon_field_indent: "    ".to_string(),
 }),
 })
 }

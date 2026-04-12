@@ -251,14 +251,14 @@ unblocks Track 13 without waiting:
 
 ### C-1 progress
 
-`match target` in `05_emit.dag`: 20 → 4. Remaining 4:
+`match target` in `05_emit.dag`: 20 → 0. **All 4 remaining sites resolved (PR #400):**
 
-| Site | What | Design status |
+| Site | What | Resolution |
 |---|---|---|
-| String interpolation (line 251) | 3 structurally different interp models | Designed below |
-| Callable wrapping (line 954) | Rust Rc<dyn Fn(...)> wrapping | Designed below |
-| Identifier escaping (line 1718) | Case conversion + reserved word escape | Designed below |
-| String literal suffix (line 862) | Dag guard (no TypeCheckpoints) | Semantic — not a language decision |
+| String interpolation | 3 structurally different interp models | `StringInterpSyntax` type (FormatArgs \| InlineExpr) + `apply_escape_pairs` |
+| Callable wrapping | Rust Rc<dyn Fn(...)> wrapping | `callable_type_template: String?` on LanguageSpec |
+| Identifier escaping | Case conversion + reserved word escape | `NamingCase` enum (SnakeCase \| CamelCase \| PascalCase \| AsAuthored) |
+| String literal suffix | Dag guard (no TypeCheckpoints) | Added `dsl/extdeps/languages/dag/types.dag`; fail-closed restored |
 
 ### Design: String interpolation
 
@@ -322,28 +322,22 @@ instead of matching on target.
 Seven phases, each with a clear "what it accomplishes" and "what it
 deletes." Phases 2-4 can run in parallel after Phase 1.
 
-### Phase 1: Shared emitter is language-clean (05_emit.dag)
+### Phase 1: Shared emitter is language-clean (05_emit.dag) — **DONE** (PR #400)
 
-Eliminate remaining `match target` branches → read from LanguageSpec.
-C-1 already did 16 of 20; 4 remain with designs above.
+`match target` branches: 20 → 0. All language knowledge reads from
+LanguageSpec data. New types: `StringInterpSyntax`, `RecordLitSyntax`,
+`NamingCase` (extended), `callable_type_template`, `async_call_prefix`,
+`bridge_method_*`, `emit_export_ident`, `emit_field_access_unified`.
 
-**Accomplishes:** The shared emitter makes zero language decisions. All
-language knowledge comes from data. Foundation for everything after.
-**Deletes:** Nothing yet — refactor only.
-**Size:** Small (~6 remaining sites).
+### Phase 2: Unify expression dispatch (biggest bang) — **DONE** (PR #400)
 
-### Phase 2: Unify expression dispatch (biggest bang)
+`emit_unified_typed_expr` in shared emitter replaces per-language
+expression dispatch. Python and Go entry points are 3-line aliases.
+~50 per-language functions deleted (25 Python + 25 Go). CX ratchet
+421 → 416 (-5). Remaining per-language pattern rendering stays (Phase 5).
 
-Factor three parallel 35-function expression walkers into one shared
-walker with syntax templates. 95% code duplication across Rust/Python/Go
-expression rendering — same recursion, different strings.
-
-**Accomplishes:** Proves the single-emitter architecture works for the
-core of emission (expressions are ~60% of emitter code). One ExprData
-walk, not three.
-**Deletes:** ~70 functions across the three emitters (~2,000 lines).
-**Size:** Large but mechanical — each expression type follows the same
-extraction pattern.
+**Actual deletions:** ~50 functions, ~580 lines deleted (net -73 lines
+including new shared infrastructure).
 
 ### Phase 3: Unify TCO and block rendering
 

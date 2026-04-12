@@ -261,8 +261,9 @@ type ExpressionSemantics {
 }
 
 // Naming case — bootstrap-local mirror of std.languages.NamingCase.
-// Only PascalCase is used by current visibility rendering.
-type NamingCase = PascalCase | SnakeCase
+// PascalCase: visibility rendering. SnakeCase/CamelCase: identifier rendering.
+// AsAuthored: pass through unchanged (Dag target).
+type NamingCase = PascalCase | SnakeCase | CamelCase | AsAuthored
 
 // Visibility specification — how each language controls export/access.
 // Ref: Rust Reference §6.1 "Visibility", Go Spec "Exported identifiers".
@@ -343,6 +344,21 @@ type LanguageSpec {
   type_arg_close: String               // ">" or "]"
   void_type: String                    // "()" / "None" / ""
   tuple_syntax: TupleSyntax
+  string_interp: StringInterpSyntax
+  // Callable type rendering: non-null overrides CallableRepr.template entirely.
+  // Rust: "Rc<dyn Fn({params}) -> {return}>". Others: null (use CallableRepr).
+  callable_type_template: String?
+  // Identifier case conversion for local variable names.
+  naming_case: NamingCase
+  // Async call prefix — prepended to effectful calls (service/resource).
+  // Python: "await ". Go/Rust/Dag: "".
+  async_call_prefix: String
+  // Bridge method rendering — how algebra method fallbacks render.
+  bridge_method_prefix: String              // "" (Python) or "v2rt." (Go)
+  bridge_method_case: NamingCase            // SnakeCase (Python) or PascalCase (Go)
+  bridge_method_overrides: Map<String, String>  // {"with": "with_update"} (Python) or {} (Go)
+  // Record literal syntax.
+  record_lit: RecordLitSyntax
 }
 
 type TupleSyntax {
@@ -350,6 +366,44 @@ type TupleSyntax {
   pair_template: String      // "({0}, {1})" — {0} = first, {1} = second
   multi_template: String     // "({0})" — {0} = joined parts
   separator: String          // ", " / "; "
+  first_accessor: String     // "[0]" (Python) / ".First" (Go)
+  second_accessor: String    // "[1]" (Python) / ".Second" (Go)
+}
+
+// Record literal syntax — how named and anonymous records render.
+// Python: TypeName(field=val, ...) / {"key": val}
+// Go: TypeName{Field: val, ...} / map[string]interface{}{"key": val}
+type RecordLitSyntax {
+  named_open: String           // "(" (Python) or "{" (Go)
+  named_close: String          // ")" (Python) or "}" (Go)
+  named_empty: String          // "()" (Python) or "{}" (Go) — appended to type name
+  named_field_sep: String      // "=" (Python) or ": " (Go)
+  named_field_join: String     // ", " (both)
+  anon_empty: String           // "{}" (Python) or "map[string]interface{}{}" (Go)
+  anon_prefix: String          // "{\n" (Python) or "map[string]interface{}{\n" (Go)
+  anon_suffix: String          // "}" (both)
+  anon_field_indent: String    // "    " (Python) or "\t" (Go)
+}
+
+// String interpolation — three structurally different models:
+//   FormatArgs: format function + positional args (Rust format!, Go fmt.Sprintf)
+//   InlineExpr: inline interpolation (Python f-strings)
+// C-1: dissolves `match target` in emit_simple_string_interp.
+// InterpStyle: FormatArgs carries its placeholder; InlineExpr has none.
+type InterpStyle
+  = FormatArgs { placeholder: String }   // "{}" (Rust) or "%v" (Go)
+  | InlineExpr
+
+type EscapePair {
+  from: String
+  to: String
+}
+
+type StringInterpSyntax {
+  style: InterpStyle
+  format_template: String          // FormatArgs: "format!(\"{0}\", {1})"; InlineExpr: "f\"{0}\""
+  plain_template: String           // no-interpolation fallback: "\"{0}\".to_string()" / "\"{0}\""
+  escape_pairs: List<EscapePair>   // interp-specific escaping applied after standard string escape
 }
 
 // =========================================================================
@@ -469,7 +523,27 @@ fn rust_spec() -> LanguageSpec {
       empty: rust_tuple_empty,
       pair_template: rust_tuple_pair_template,
       multi_template: rust_tuple_multi_template,
-      separator: rust_tuple_separator
+      separator: rust_tuple_separator,
+      first_accessor: ".0",
+      second_accessor: ".1"
+    },
+    string_interp: StringInterpSyntax {
+      style: FormatArgs { placeholder: "{}" },
+      format_template: "format!(\"{0}\", {1})",
+      plain_template: "\"{0}\".to_string()",
+      escape_pairs: [EscapePair { from: "{", to: "{{" }, EscapePair { from: "}", to: "}}" }]
+    },
+    callable_type_template: "Rc<dyn Fn(\{params\}) -> \{return\}>",
+    naming_case: SnakeCase,
+    async_call_prefix: "",
+    bridge_method_prefix: "",
+    bridge_method_case: SnakeCase,
+    bridge_method_overrides: empty_map(),
+    record_lit: RecordLitSyntax {
+      named_open: " \{", named_close: "\}", named_empty: " \{\}",
+      named_field_sep: ": ", named_field_join: ", ",
+      anon_empty: "\{\}", anon_prefix: "\{\n", anon_suffix: "\}",
+      anon_field_indent: "    "
     }
   }
 }
@@ -586,7 +660,27 @@ fn python_spec() -> LanguageSpec {
       empty: python_tuple_empty,
       pair_template: python_tuple_pair_template,
       multi_template: python_tuple_multi_template,
-      separator: python_tuple_separator
+      separator: python_tuple_separator,
+      first_accessor: "[0]",
+      second_accessor: "[1]"
+    },
+    string_interp: StringInterpSyntax {
+      style: InlineExpr,
+      format_template: "f\"{0}\"",
+      plain_template: "f\"{0}\"",
+      escape_pairs: [EscapePair { from: "{", to: "{{" }, EscapePair { from: "}", to: "}}" }]
+    },
+    callable_type_template: null,
+    naming_case: SnakeCase,
+    async_call_prefix: "await ",
+    bridge_method_prefix: "",
+    bridge_method_case: SnakeCase,
+    bridge_method_overrides: map_insert(empty_map(), "with", "with_update"),
+    record_lit: RecordLitSyntax {
+      named_open: "(", named_close: ")", named_empty: "()",
+      named_field_sep: "=", named_field_join: ", ",
+      anon_empty: "\{\}", anon_prefix: "\{\n", anon_suffix: "\}",
+      anon_field_indent: "    "
     }
   }
 }
@@ -703,7 +797,27 @@ fn go_spec() -> LanguageSpec {
       empty: go_tuple_empty,
       pair_template: go_tuple_pair_template,
       multi_template: go_tuple_multi_template,
-      separator: go_tuple_separator
+      separator: go_tuple_separator,
+      first_accessor: ".First",
+      second_accessor: ".Second"
+    },
+    string_interp: StringInterpSyntax {
+      style: FormatArgs { placeholder: "%v" },
+      format_template: "fmt.Sprintf(\"{0}\", {1})",
+      plain_template: "\"{0}\"",
+      escape_pairs: [EscapePair { from: "%", to: "%%" }]
+    },
+    callable_type_template: null,
+    naming_case: CamelCase,
+    async_call_prefix: "",
+    bridge_method_prefix: "v2rt.",
+    bridge_method_case: PascalCase,
+    bridge_method_overrides: empty_map(),
+    record_lit: RecordLitSyntax {
+      named_open: "\{", named_close: "\}", named_empty: "\{\}",
+      named_field_sep: ": ", named_field_join: ", ",
+      anon_empty: "map[string]interface\{\}\{\}", anon_prefix: "map[string]interface\{\}\{\n", anon_suffix: "\}",
+      anon_field_indent: "\t"
     }
   }
 }
@@ -823,7 +937,27 @@ fn dag_spec() -> LanguageSpec {
       empty: dag_tuple_empty,
       pair_template: dag_tuple_pair_template,
       multi_template: dag_tuple_multi_template,
-      separator: dag_tuple_separator
+      separator: dag_tuple_separator,
+      first_accessor: ".0",
+      second_accessor: ".1"
+    },
+    string_interp: StringInterpSyntax {
+      style: InlineExpr,
+      format_template: "\"\{0\}\"",
+      plain_template: "\"\{0\}\"",
+      escape_pairs: [EscapePair { from: "{", to: "\\{" }, EscapePair { from: "}", to: "\\}" }]
+    },
+    callable_type_template: null,
+    naming_case: AsAuthored,
+    async_call_prefix: "",
+    bridge_method_prefix: "",
+    bridge_method_case: SnakeCase,
+    bridge_method_overrides: empty_map(),
+    record_lit: RecordLitSyntax {
+      named_open: " \{", named_close: "\}", named_empty: " \{\}",
+      named_field_sep: ": ", named_field_join: ", ",
+      anon_empty: "\{\}", anon_prefix: "\{\n", anon_suffix: "\}",
+      anon_field_indent: "    "
     }
   }
 }

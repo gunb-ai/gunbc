@@ -6,11 +6,14 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name_at, param_node_type_expr, param_node_default_value, NewlineIndex, authored_name_at, expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at, ExprData, VarBindingKind, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, AlgebraFieldKind, DeclaredFuncSig, lambda_param_names_at, record_lit_type_name_at, arm_body, arm_pattern, arm_guard, arg_name_at, arg_value, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, return_value, binop_left, binop_right, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, transport_has_auth, field_init_operation_modifier, operation_modifier_name, with_required_cardinality, tuple_type_name, find_child_named, Connective, Cardinality};
+pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name_at, param_node_type_expr, param_node_default_value, NewlineIndex, authored_name_at, expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at, ExprData, VarBindingKind, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, AlgebraFieldKind, DeclaredFuncSig, MethodSemantics, MatchPattern, FieldSummary, expr_method_name_at, method_arg_nodes, expr_method_call_semantics, expr_field_access_summary, lambda_param_names_at, record_lit_type_name_at, arm_body, arm_pattern, arm_guard, arg_name_at, arg_value, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, cast_target, return_value, binop_left, binop_right, foreach_variable_at, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, transport_has_auth, field_init_operation_modifier, operation_modifier_name, with_required_cardinality, tuple_type_name, find_child_named, Connective, FieldAccessStyle, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
 use crate::v2_std_core::BinOp::{NullCoalesce};
+use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics};
+use crate::v2_std_core::MatchPattern::{Wildcard};
+use crate::v2_std_core::FieldAccessStyle::{TupleFirst, TupleSecond};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
 use crate::v2_std_core::Cardinality::{CardOptional};
 use crate::v2_std_core::VarBindingKind::*;
@@ -30,12 +33,13 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope}
 pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo};
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
-pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, BlockSyntax, TcoSyntax, ExpressionSemantics, IfValueForm, VisibilitySpec, NamingCase, ReservedWordStrategy, ImportRule, language_spec_for_target, is_string_like, test_conventions_for_target, target_keyword, binop_symbol, wrap_shared_type, TestNameStyle, ImportTrigger};
+pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, BlockSyntax, TcoSyntax, ExpressionSemantics, IfValueForm, VisibilitySpec, NamingCase, ReservedWordStrategy, StringInterpSyntax, InterpStyle, EscapePair, RecordLitSyntax, ImportRule, language_spec_for_target, is_string_like, test_conventions_for_target, target_keyword, binop_symbol, wrap_shared_type, TestNameStyle, ImportTrigger};
 use crate::v2_compiler_languages::TestNameStyle::{SnakeCaseTestNames, PascalCaseTestNames};
 use crate::v2_compiler_languages::IfValueForm::{IfExpression, ConditionalTernary, IfStatement};
 use crate::v2_compiler_languages::VisibilitySpec::{KeywordVisibility, CaseVisibility};
-use crate::v2_compiler_languages::NamingCase::{PascalCase, SnakeCase};
+use crate::v2_compiler_languages::NamingCase::{PascalCase, SnakeCase, CamelCase, AsAuthored};
 use crate::v2_compiler_languages::ReservedWordStrategy::{PrefixEscape, SuffixEscape, NoEscape};
+use crate::v2_compiler_languages::InterpStyle::{FormatArgs, InlineExpr};
 use crate::v2_compiler_languages::ImportTrigger::{TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger, ContainerUsageTrigger, AsyncUsageTrigger};
 use BackendCapability::*;
 use ExprCategory::*;
@@ -210,18 +214,21 @@ v2_rt::concat(v2_rt::concat("{".to_string(), field_strs.join(&", ".to_string()))
 
 pub fn emit_simple_string_interp(parts: &Rc<Vec<Rc<StringPart>>>, target: &RenderTarget, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
-        let has_interpolations = { let mut __found = false; for p in parts.clone().iter().cloned() { if match (*p.clone()).clone() {
+        let spec = language_spec(target.clone());
+let interp = spec.string_interp.clone();
+let has_interpolations = { let mut __found = false; for p in parts.clone().iter().cloned() { if match (*p.clone()).clone() {
     StringPart::Interpolation { .. } => true,
     _ => false,
 } { __found = true; break; } } __found };
-match target.clone() {
-    RenderTarget::Rust => {
+match (*interp.style.clone()).clone() {
+    InterpStyle::FormatArgs { placeholder: ph, .. } => {
             let fmt_parts = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(match (*p.clone()).clone() {
     StringPart::Text { value: v, .. } => {
-                let escaped = if has_interpolations.clone() {
-                    escape_rust_interp_text(v.clone())
+                let base = escape_string_literal_body(v.clone());
+let escaped = if has_interpolations.clone() {
+                    apply_escape_pairs(base.clone(), interp.escape_pairs.clone())
                 } else {
-                    escape_string_literal_body(v.clone())
+                    base.clone()
                 };
 Rc::new(InterpPart {
     format_segment: escaped.clone(),
@@ -229,62 +236,35 @@ Rc::new(InterpPart {
 })
 },
     StringPart::Interpolation { expr: e, .. } => Rc::new(InterpPart {
-    format_segment: "{}".to_string(),
+    format_segment: ph.clone(),
     arg_expr: emit_simple_expr(&e, &target, &source_index),
 }),
 }); } __result });
 let fmt_str = Rc::new({ let mut __result = Vec::new(); for p in fmt_parts.clone().iter().cloned() { __result.push(p.format_segment.clone()); } __result }).join(&"".to_string());
 let args = Rc::new({ let mut __result = Vec::new(); for a in Rc::new({ let mut __result = Vec::new(); for p in fmt_parts.clone().iter().cloned() { __result.push(p.arg_expr.clone()); } __result }).iter().cloned() { if (a.clone().as_str() != "".to_string().as_str()) { __result.push(a); } } __result });
 if ((args.clone().len() as i64) == 0) {
-                v2_rt::concat(v2_rt::concat("\"".to_string(), fmt_str), "\".to_string()".to_string())
+                apply_type_template1(interp.plain_template.clone(), fmt_str)
             } else {
                 {
                     let args_str = args.clone().join(&", ".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("format!(\"".to_string(), fmt_str), "\", ".to_string()), args_str), ")".to_string())
+apply_type_template2(interp.format_template.clone(), fmt_str, args_str)
 }
             }
 },
-    RenderTarget::Go => {
-            let fmt_parts = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(match (*p.clone()).clone() {
-    StringPart::Text { value: v, .. } => {
-                let escaped = if has_interpolations.clone() {
-                    escape_go_interp_text(v.clone())
-                } else {
-                    escape_string_literal_body(v.clone())
-                };
-Rc::new(InterpPart {
-    format_segment: escaped.clone(),
-    arg_expr: "".to_string(),
-})
-},
-    StringPart::Interpolation { expr: e, .. } => Rc::new(InterpPart {
-    format_segment: "%v".to_string(),
-    arg_expr: emit_simple_expr(&e, &target, &source_index),
-}),
-}); } __result });
-let fmt_str = Rc::new({ let mut __result = Vec::new(); for p in fmt_parts.clone().iter().cloned() { __result.push(p.format_segment.clone()); } __result }).join(&"".to_string());
-let args = Rc::new({ let mut __result = Vec::new(); for a in Rc::new({ let mut __result = Vec::new(); for p in fmt_parts.clone().iter().cloned() { __result.push(p.arg_expr.clone()); } __result }).iter().cloned() { if (a.clone().as_str() != "".to_string().as_str()) { __result.push(a); } } __result });
-if ((args.clone().len() as i64) == 0) {
-                v2_rt::concat(v2_rt::concat("\"".to_string(), fmt_str), "\"".to_string())
-            } else {
-                {
-                    let args_str = args.clone().join(&", ".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("fmt.Sprintf(\"".to_string(), fmt_str), "\", ".to_string()), args_str), ")".to_string())
-}
-            }
-},
-    RenderTarget::Python => {
+    InterpStyle::InlineExpr => {
             let segments = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(match (*p.clone()).clone() {
-    StringPart::Text { value: v, .. } => if has_interpolations.clone() {
-                escape_python_interp_text(v.clone())
-            } else {
-                escape_string_literal_body(v.clone())
-            },
+    StringPart::Text { value: v, .. } => {
+                let base = escape_string_literal_body(v.clone());
+if has_interpolations.clone() {
+                    apply_escape_pairs(base.clone(), interp.escape_pairs.clone())
+                } else {
+                    base.clone()
+                }
+},
     StringPart::Interpolation { expr: e, .. } => v2_rt::concat(v2_rt::concat("{".to_string(), emit_simple_expr(&e, &target, &source_index)), "}".to_string()),
 }); } __result });
-v2_rt::concat(v2_rt::concat("f\"".to_string(), segments.join(&"".to_string())), "\"".to_string())
+apply_type_template1(interp.format_template.clone(), segments.join(&"".to_string()))
 },
-    _ => emit_error_expr("unsupported simple string interpolation target".to_string(), target.clone()),
 }
 }
 }
@@ -576,6 +556,24 @@ Rc::new({ let mut __result = Vec::new(); for ch in Rc::new(snake.chars().map(|c|
 }
 }
 
+pub fn to_camel(name: String) -> String {
+    {
+        let parts = Rc::new(name.clone().split(&"_".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
+if ((parts.clone().len() as i64) == 0) {
+            name.clone()
+        } else {
+            {
+                let first_part = match parts.clone().first().cloned() {
+    Some(p) => Rc::new({ let mut __result = Vec::new(); for c in Rc::new(p.clone().chars().map(|c| c as i64).collect::<Vec<_>>()).iter().cloned() { __result.push(to_lower_char(c.clone())); } __result }).join(&"".to_string()),
+    None => "".to_string(),
+};
+let rest_parts = Rc::new({ let mut __result = Vec::new(); for pair in Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(parts.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (pair.0.clone() > 0) { __result.push(pair); } } __result }).iter().cloned() { __result.push(capitalize_first(pair.1.clone())); } __result });
+v2_rt::concat(first_part, rest_parts.join(&"".to_string()))
+}
+        }
+}
+}
+
 pub fn is_upper(ch: i64) -> bool {
     ((ch.clone() >= 65) && (ch.clone() <= 90))
 }
@@ -648,6 +646,8 @@ let pascal_parts = Rc::new({ let mut __result = Vec::new(); for p in parts.iter(
 pascal_parts.join(&"".to_string())
 },
     NamingCase::SnakeCase => to_snake(name),
+    NamingCase::CamelCase => to_camel(name),
+    NamingCase::AsAuthored => name,
 }
 }
 
@@ -760,6 +760,10 @@ Rc::new(escaped.split(&"}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>
 }
 }
 
+pub fn apply_escape_pairs(s: String, pairs: Rc<Vec<Rc<EscapePair>>>) -> String {
+    pairs.iter().cloned().fold(s.clone(), |acc: String, pair: Rc<EscapePair>| Rc::new(acc.clone().split(&pair.from.clone()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&pair.to.clone()))
+}
+
 pub fn emit_string_literal(s: String, suffix: String) -> String {
     v2_rt::concat(v2_rt::concat(v2_rt::concat("\"".to_string(), escape_string_literal_body(s)), "\"".to_string()), suffix)
 }
@@ -794,10 +798,7 @@ pub fn emit_literal(value: Rc<LiteralValue>, target: &RenderTarget) -> String {
     LiteralValue::LitStr { value: s, .. } => {
         let suffix = match literal_suffix(target.clone(), "String".to_string()) {
     Some(sfx) => sfx.clone(),
-    None => match target.clone() {
-    RenderTarget::Dag => "".to_string(),
-    _ => emit_error_expr("missing TypeCheckpoint for String literal suffix".to_string(), target.clone()),
-},
+    None => emit_error_expr("missing TypeCheckpoint for String literal suffix".to_string(), target.clone()),
 };
 emit_string_literal(s.clone(), suffix)
 },
@@ -880,16 +881,17 @@ let ret_str = match n.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => render_node_type(&rt, &target, &shared_types, &source_index),
     _ => language_spec(target.clone()).void_type.clone(),
 };
-let callable_str = v2_rt::replace(v2_rt::replace(repr.template.clone(), "{params}".to_string(), param_str.clone()), "{return}".to_string(), ret_str.clone());
-let go_callable_str = if (ret_str.clone().as_str() == "".to_string().as_str()) {
-                        v2_rt::concat(v2_rt::concat("func(".to_string(), param_str.clone()), ")".to_string())
+let spec = language_spec(target.clone());
+let result = match spec.callable_type_template.clone() {
+    Some(t) => v2_rt::replace(v2_rt::replace(t.clone(), "{params}".to_string(), param_str), "{return}".to_string(), ret_str.clone()),
+    None => if (ret_str.clone().as_str() == "".to_string().as_str()) {
+                        {
+                            let void_template = v2_rt::replace(repr.template.clone(), v2_rt::concat(repr.return_separator.clone(), "{return}".to_string()), "".to_string());
+v2_rt::replace(void_template, "{params}".to_string(), param_str)
+}
                     } else {
-                        callable_str.clone()
-                    };
-let result = match target.clone() {
-    RenderTarget::Rust => v2_rt::concat(v2_rt::concat("Rc<dyn ".to_string(), v2_rt::replace(callable_str.clone(), "fn(".to_string(), "Fn(".to_string())), ">".to_string()),
-    RenderTarget::Go => go_callable_str,
-    _ => callable_str.clone(),
+                        v2_rt::replace(v2_rt::replace(repr.template.clone(), "{params}".to_string(), param_str), "{return}".to_string(), ret_str.clone())
+                    },
 };
 return result
 }
@@ -1668,44 +1670,53 @@ let else_cand = match if_else_branch(texpr.clone()) {
 }
 
 pub fn emit_ident(name: String, target: RenderTarget) -> String {
-    match target {
-    RenderTarget::Rust => {
-        let snake = to_snake(name.clone());
-if { let mut __found = false; for r in language_spec(RenderTarget::Rust).reserved_words.clone().keywords.clone().iter().cloned() { if (r.clone().as_str() == snake.clone().as_str()) { __found = true; break; } } __found } {
-            v2_rt::concat(reserved_prefix(RenderTarget::Rust), snake.clone())
-        } else {
-            snake.clone()
-        }
-},
-    RenderTarget::Go => {
-        let parts = Rc::new(name.clone().split(&"_".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
-if ((parts.clone().len() as i64) == 0) {
-            name.clone()
-        } else {
-            {
-                let first_part = match parts.clone().first().cloned() {
-    Some(p) => Rc::new({ let mut __result = Vec::new(); for c in Rc::new(p.clone().chars().map(|c| c as i64).collect::<Vec<_>>()).iter().cloned() { __result.push(to_lower_char(c.clone())); } __result }).join(&"".to_string()),
-    None => "".to_string(),
+    {
+        let spec = language_spec(target);
+let converted = match spec.naming_case.clone() {
+    NamingCase::SnakeCase => to_snake(name),
+    NamingCase::CamelCase => to_camel(name),
+    NamingCase::PascalCase => capitalize_first(to_camel(name)),
+    NamingCase::AsAuthored => name,
 };
-let rest_parts = Rc::new({ let mut __result = Vec::new(); for pair in Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(parts.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (pair.0.clone() > 0) { __result.push(pair); } } __result }).iter().cloned() { __result.push(capitalize_first(pair.1.clone())); } __result });
-let camel = v2_rt::concat(first_part, rest_parts.join(&"".to_string()));
-if { let mut __found = false; for r in language_spec(RenderTarget::Go).reserved_words.clone().keywords.clone().iter().cloned() { if (r.clone().as_str() == camel.clone().as_str()) { __found = true; break; } } __found } {
-                    v2_rt::concat(camel.clone(), reserved_suffix(RenderTarget::Go))
-                } else {
-                    camel.clone()
-                }
+let is_reserved = { let mut __found = false; for r in spec.reserved_words.clone().keywords.clone().iter().cloned() { if (r.clone().as_str() == converted.clone().as_str()) { __found = true; break; } } __found };
+if is_reserved {
+            match (*spec.reserved_words.clone().strategy.clone()).clone() {
+    ReservedWordStrategy::PrefixEscape { prefix: p, .. } => v2_rt::concat(p.clone(), converted.clone()),
+    ReservedWordStrategy::SuffixEscape { suffix: s, .. } => v2_rt::concat(converted.clone(), s.clone()),
+    ReservedWordStrategy::NoEscape => converted.clone(),
 }
-        }
-},
-    RenderTarget::Python => {
-        let snake = to_snake(name.clone());
-if { let mut __found = false; for r in language_spec(RenderTarget::Python).reserved_words.clone().keywords.clone().iter().cloned() { if (r.clone().as_str() == snake.clone().as_str()) { __found = true; break; } } __found } {
-            v2_rt::concat(snake.clone(), reserved_suffix(RenderTarget::Python))
         } else {
-            snake.clone()
+            converted.clone()
         }
+}
+}
+
+pub fn emit_export_ident(name: String, target: &RenderTarget) -> String {
+    {
+        let spec = language_spec(target.clone());
+match (*spec.visibility.clone()).clone() {
+    VisibilitySpec::CaseVisibility { export_case: ec, .. } => {
+            let result = apply_naming_case(name, ec.clone());
+let is_reserved = { let mut __found = false; for r in spec.reserved_words.clone().keywords.clone().iter().cloned() { if (r.clone().as_str() == result.clone().as_str()) { __found = true; break; } } __found };
+if is_reserved {
+                match (*spec.reserved_words.clone().strategy.clone()).clone() {
+    ReservedWordStrategy::SuffixEscape { suffix: s, .. } => v2_rt::concat(result.clone(), s.clone()),
+    ReservedWordStrategy::PrefixEscape { prefix: p, .. } => v2_rt::concat(p.clone(), result.clone()),
+    ReservedWordStrategy::NoEscape => result.clone(),
+}
+            } else {
+                result.clone()
+            }
 },
-    RenderTarget::Dag => name.clone(),
+    VisibilitySpec::KeywordVisibility { .. } => emit_ident(name, target.clone()),
+}
+}
+}
+
+pub fn apply_bridge_method_overrides(name: String, overrides: Rc<HashMap<String, String>>) -> String {
+    match v2_rt::lookup(&overrides, name.clone()) {
+    Some(replacement) => replacement.clone(),
+    None => name.clone(),
 }
 }
 
@@ -2115,6 +2126,293 @@ pub fn emit_typed_first_arg_shared(args: Rc<Vec<Rc<Node>>>, target: RenderTarget
     Some(a) => recurse(arg_value(&a)),
     None => emit_error_expr("missing method argument".to_string(), target),
 }
+}
+
+pub fn emit_typed_string_interp_unified(parts: &Rc<Vec<Rc<StringPart>>>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone) -> String {
+    {
+        let spec = language_spec(target);
+let interp = spec.string_interp.clone();
+let has_interpolations = { let mut __found = false; for p in parts.clone().iter().cloned() { if match (*p.clone()).clone() {
+    StringPart::Interpolation { .. } => true,
+    _ => false,
+} { __found = true; break; } } __found };
+match (*interp.style.clone()).clone() {
+    InterpStyle::FormatArgs { placeholder: ph, .. } => {
+            let fmt_parts = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(match (*p.clone()).clone() {
+    StringPart::Text { value: v, .. } => {
+                let base = escape_string_literal_body(v.clone());
+let escaped = if has_interpolations.clone() {
+                    apply_escape_pairs(base.clone(), interp.escape_pairs.clone())
+                } else {
+                    base.clone()
+                };
+Rc::new(InterpPart {
+    format_segment: escaped.clone(),
+    arg_expr: "".to_string(),
+})
+},
+    StringPart::Interpolation { expr: e, .. } => Rc::new(InterpPart {
+    format_segment: ph.clone(),
+    arg_expr: recurse(e.clone()),
+}),
+}); } __result });
+let fmt_str = Rc::new({ let mut __result = Vec::new(); for p in fmt_parts.clone().iter().cloned() { __result.push(p.format_segment.clone()); } __result }).join(&"".to_string());
+let args = Rc::new({ let mut __result = Vec::new(); for a in Rc::new({ let mut __result = Vec::new(); for p in fmt_parts.clone().iter().cloned() { __result.push(p.arg_expr.clone()); } __result }).iter().cloned() { if (a.clone().as_str() != "".to_string().as_str()) { __result.push(a); } } __result });
+if ((args.clone().len() as i64) == 0) {
+                apply_type_template1(interp.plain_template.clone(), fmt_str)
+            } else {
+                {
+                    let args_str = args.clone().join(&", ".to_string());
+apply_type_template2(interp.format_template.clone(), fmt_str, args_str)
+}
+            }
+},
+    InterpStyle::InlineExpr => {
+            let segments = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(match (*p.clone()).clone() {
+    StringPart::Text { value: v, .. } => {
+                let base = escape_string_literal_body(v.clone());
+if has_interpolations.clone() {
+                    apply_escape_pairs(base.clone(), interp.escape_pairs.clone())
+                } else {
+                    base.clone()
+                }
+},
+    StringPart::Interpolation { expr: e, .. } => v2_rt::concat(v2_rt::concat("{".to_string(), recurse(e.clone())), "}".to_string()),
+}); } __result });
+apply_type_template1(interp.format_template.clone(), segments.join(&"".to_string()))
+},
+}
+}
+}
+
+pub fn emit_typed_record_lit_unified(type_name: Option<String>, fields: &Rc<Vec<Rc<Node>>>, target: &RenderTarget, source_index: Option<Rc<NewlineIndex>>, recurse: impl Fn(Rc<Node>) -> String + Clone) -> String {
+    {
+        let rls = language_spec(target.clone()).record_lit.clone();
+match type_name {
+    None => if ((fields.clone().len() as i64) == 0) {
+            rls.anon_empty.clone()
+        } else {
+            {
+                let field_strs = Rc::new({ let mut __result = Vec::new(); for f in fields.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rls.anon_field_indent.clone(), "\"".to_string()), field_init_node_name_at(f.clone(), source_index.clone())), "\": ".to_string()), recurse(field_init_node_value(&f))), ",".to_string())); } __result });
+let fields_str = field_strs.join(&"\n".to_string());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(rls.anon_prefix.clone(), fields_str), "\n".to_string()), rls.anon_suffix.clone())
+}
+        },
+    Some(tn) => if ((fields.clone().len() as i64) == 0) {
+            v2_rt::concat(tn.clone(), rls.named_empty.clone())
+        } else {
+            {
+                let field_strs = Rc::new({ let mut __result = Vec::new(); for f in fields.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_export_ident(field_init_node_name_at(f.clone(), source_index.clone()), &target), rls.named_field_sep.clone()), recurse(field_init_node_value(&f)))); } __result });
+let fields_str = field_strs.join(&rls.named_field_join.clone());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(tn.clone(), rls.named_open.clone()), fields_str), rls.named_close.clone())
+}
+        },
+}
+}
+}
+
+pub fn emit_typed_call_unified(func: &String, args: Rc<Vec<Rc<Node>>>, target: &RenderTarget, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, recurse: impl Fn(Rc<Node>) -> String + Clone) -> String {
+    {
+        let spec = language_spec(target.clone());
+let ordered_args = order_typed_call_args(&args, func.clone(), &scope);
+let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in ordered_args.iter().cloned() { __result.push(recurse(arg_value(&a))); } __result });
+let callee = lookup_item(registry, func.clone());
+let extra_args = match callee.clone() {
+    Some(info) => {
+            let has_effects = (((info.service_names.clone().len() as i64) > 0) || ((info.resource_names.clone().len() as i64) > 0));
+if has_effects.clone() {
+                {
+                    let resource_args = Rc::new({ let mut __result = Vec::new(); for rn in info.resource_names.clone().iter().cloned() { __result.push(emit_ident(rn.clone(), target.clone())); } __result });
+let service_args = Rc::new({ let mut __result = Vec::new(); for sn in info.service_names.clone().iter().cloned() { __result.push(service_var_name(sn.clone())); } __result });
+v2_rt::concat(resource_args, service_args)
+}
+            } else {
+                Rc::new(vec![])
+            }
+},
+    None => Rc::new(vec![]),
+};
+let all_args = v2_rt::concat(arg_strs, extra_args);
+let args_str = all_args.join(&", ".to_string());
+let call_str = v2_rt::concat(v2_rt::concat(v2_rt::concat(emit_export_ident(func.clone(), &target), "(".to_string()), args_str), ")".to_string());
+match callee.clone() {
+    Some(info) => {
+            let has_effects = (((info.service_names.clone().len() as i64) > 0) || ((info.resource_names.clone().len() as i64) > 0));
+if has_effects.clone() {
+                v2_rt::concat(spec.async_call_prefix.clone(), call_str)
+            } else {
+                call_str
+            }
+},
+    None => call_str,
+}
+}
+}
+
+pub fn bridge_method_name_unified(method_name: String, target: RenderTarget) -> String {
+    {
+        let spec = language_spec(target);
+let overridden = apply_bridge_method_overrides(method_name, spec.bridge_method_overrides.clone());
+apply_naming_case(overridden, spec.bridge_method_case.clone())
+}
+}
+
+pub fn emit_algebra_method_call_unified(method_name: &String, receiver: Rc<Node>, args: Rc<Vec<Rc<Node>>>, target: &RenderTarget, first_arg_str: String, recurse: impl Fn(Rc<Node>) -> String + Clone) -> String {
+    {
+        let spec = language_spec(target.clone());
+let recv_str = recurse(receiver);
+match emit_algebra_method_template(method_name.clone(), recv_str.clone(), first_arg_str, target.clone()) {
+    Some(result) => result.clone(),
+    None => {
+            let function_name = bridge_method_name_unified(method_name.clone(), target.clone());
+let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in args.iter().cloned() { __result.push(recurse(arg_value(&a))); } __result });
+let all_args = v2_rt::concat(Rc::new(vec![recv_str.clone()]), arg_strs);
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(spec.bridge_method_prefix.clone(), emit_export_ident(function_name, &target)), "(".to_string()), all_args.join(&", ".to_string())), ")".to_string())
+},
+}
+}
+}
+
+pub fn emit_plain_method_call_unified(receiver: Rc<Node>, method: String, args: Rc<Vec<Rc<Node>>>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String + Clone) -> String {
+    {
+        let recv_str = recurse(receiver);
+let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in args.iter().cloned() { __result.push(recurse(arg_value(&a))); } __result });
+let args_str = arg_strs.join(&", ".to_string());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str, ".".to_string()), emit_export_ident(method, &target)), "(".to_string()), args_str), ")".to_string())
+}
+}
+
+pub fn emit_typed_method_call_unified(receiver: &Rc<Node>, method: String, args: &Rc<Vec<Rc<Node>>>, method_semantics: &Option<Rc<MethodSemantics>>, target: &RenderTarget, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, recurse: impl Fn(Rc<Node>) -> String + Clone) -> String {
+    {
+        let spec = language_spec(target.clone());
+let source_index = scope.type_env.clone().source_index.clone();
+if (method_semantics.clone() != None) {
+            match (*method_semantics.clone().unwrap()).clone() {
+    MethodSemantics::ServiceMethodSemantics { service_name: svc_name, .. } => {
+                let var_name = service_var_name(svc_name.clone());
+let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in args.clone().iter().cloned() { __result.push(recurse(arg_value(&a))); } __result });
+let args_str = arg_strs.join(&", ".to_string());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(spec.async_call_prefix.clone(), var_name), ".".to_string()), emit_export_ident(method, &target)), "(".to_string()), args_str), ")".to_string())
+},
+    MethodSemantics::AlgebraMethodSemantics { method_def, .. } => {
+                let mn = method_def.name.clone();
+let first_arg_str = emit_typed_first_arg_shared(args.clone(), target.clone(), recurse.clone());
+emit_algebra_method_call_unified(&mn, receiver.clone(), args.clone(), &target, first_arg_str, recurse.clone())
+},
+    MethodSemantics::PlainMethodSemantics => emit_plain_method_call_unified(receiver.clone(), method, args.clone(), target.clone(), recurse.clone()),
+}
+        } else {
+            if is_typed_service_call_receiver(&receiver, source_index.clone()) {
+                match extract_typed_service_name(&receiver, &source_index) {
+    Some(svc_name) => {
+                    let var_name = service_var_name(svc_name.clone());
+let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in args.clone().iter().cloned() { __result.push(recurse(arg_value(&a))); } __result });
+let args_str = arg_strs.join(&", ".to_string());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(spec.async_call_prefix.clone(), var_name), ".".to_string()), emit_export_ident(method, &target)), "(".to_string()), args_str), ")".to_string())
+},
+    None => emit_error_expr("unsupported service receiver".to_string(), target.clone()),
+}
+            } else {
+                emit_plain_method_call_unified(receiver.clone(), method, args.clone(), target.clone(), recurse.clone())
+            }
+        }
+}
+}
+
+pub fn emit_typed_match_unified(scrutinee_str: String, arms: Rc<Vec<Rc<Node>>>, target: RenderTarget, depth: i64, recurse: impl Fn(Rc<Node>, i64) -> String + Clone, render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone, source_index: Option<Rc<NewlineIndex>>) -> String {
+    {
+        let spec = language_spec(target);
+let bs = spec.block_syntax.clone();
+let es = spec.expression_semantics.clone();
+let case_depth = if bs.significant_whitespace.clone() {
+            (depth.clone() + 1)
+        } else {
+            depth.clone()
+        };
+let body_depth = (case_depth.clone() + 1);
+let arm_strs = Rc::new({ let mut __result = Vec::new(); for arm in arms.iter().cloned() { __result.push({
+            let pat = arm_pattern(arm.clone());
+let body_str = recurse(arm_body(&arm), body_depth.clone());
+let guard_str = match arm_guard(&arm) {
+    Some(g) => v2_rt::concat(" if ".to_string(), recurse(g.clone(), depth.clone())),
+    None => "".to_string(),
+};
+let case_kw = match (*pat.clone()).clone() {
+    MatchPattern::Wildcard => match es.wildcard_case.clone() {
+    Some(wc) => wc.clone(),
+    None => v2_rt::concat(bs.case_keyword.clone(), render_pattern(pat.clone())),
+},
+    _ => v2_rt::concat(bs.case_keyword.clone(), render_pattern(pat.clone())),
+};
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(make_indent(case_depth.clone()), case_kw.clone()), guard_str.clone()), ":\n".to_string()), make_indent(body_depth.clone())), body_str.clone())
+}); } __result });
+let arms_str = arm_strs.join(&"\n".to_string());
+if (bs.block_close.clone().as_str() == "".to_string().as_str()) {
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(bs.match_keyword.clone(), scrutinee_str), bs.block_open.clone()), arms_str)
+        } else {
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(bs.match_keyword.clone(), scrutinee_str), bs.block_open.clone()), arms_str), "\n".to_string()), make_indent(depth.clone())), bs.block_close.clone())
+        }
+}
+}
+
+pub fn emit_field_access_unified(base_str: String, field: String, summary: Option<Rc<FieldSummary>>, target: &RenderTarget) -> String {
+    {
+        let ts = language_spec(target.clone()).tuple_syntax.clone();
+match summary {
+    Some(fs) => match fs.access_style.clone() {
+    FieldAccessStyle::TupleFirst => v2_rt::concat(base_str, ts.first_accessor.clone()),
+    FieldAccessStyle::TupleSecond => v2_rt::concat(base_str, ts.second_accessor.clone()),
+    _ => v2_rt::concat(v2_rt::concat(base_str, ".".to_string()), emit_export_ident(field, &target)),
+},
+    None => v2_rt::concat(v2_rt::concat(base_str, ".".to_string()), emit_export_ident(field, &target)),
+}
+}
+}
+
+pub fn emit_unified_typed_expr(texpr: Rc<Node>, target: &RenderTarget, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64, fuel: i64, render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        {
+            let si = scope.type_env.clone().source_index.clone();
+let spec = language_spec(target.clone());
+emit_shared_expr(&texpr, &target, si.clone(), |result| result.clone(), |child| emit_unified_typed_expr(child.clone(), &target, registry.clone(), &scope, depth.clone(), (fuel.clone() - 1), render_pattern.clone()), |expr| emit_expr_var_shared(expr.clone(), target.clone(), si.clone()), |expr| {
+                let fa_si = scope.type_env.clone().source_index.clone();
+if is_typed_service_call_receiver(&expr, fa_si.clone()) {
+                    match extract_typed_service_name(&expr, &fa_si) {
+    Some(svc_name) => service_var_name(svc_name.clone()),
+    None => {
+                        let base_str = emit_unified_typed_expr(field_access_base(expr.clone()), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone());
+emit_field_access_unified(base_str.clone(), field_access_field_at(expr.clone(), fa_si.clone()), expr_field_access_summary(expr.clone()), &target)
+},
+}
+                } else {
+                    {
+                        let base_str = emit_unified_typed_expr(field_access_base(expr.clone()), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone());
+emit_field_access_unified(base_str.clone(), field_access_field_at(expr.clone(), fa_si.clone()), expr_field_access_summary(expr.clone()), &target)
+}
+                }
+}, |expr| emit_typed_call_unified(&expr_call_func_at(expr.clone(), si.clone()), expr.children.clone(), &target, registry.clone(), scope.clone(), |n| emit_unified_typed_expr(n.clone(), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone())), |expr| emit_typed_method_call_unified(&method_receiver(expr.clone()), expr_method_name_at(expr.clone(), si.clone()), &method_arg_nodes(expr.clone()), &expr_method_call_semantics(expr.clone()), &target, registry.clone(), scope.clone(), depth.clone(), |n| emit_unified_typed_expr(n.clone(), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone())), |expr| {
+                let scrut_str = emit_unified_typed_expr(match_scrutinee(expr.clone()), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone());
+emit_typed_match_unified(scrut_str.clone(), match_arm_nodes(expr.clone()), target.clone(), depth.clone(), |node, d| emit_unified_typed_expr(node.clone(), &target, registry.clone(), &scope, d.clone(), 1024, render_pattern.clone()), render_pattern.clone(), si.clone())
+}, |expr| {
+                let cond_str = emit_unified_typed_expr(if_condition(expr.clone()), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone());
+let if_result_type = match spec.expression_semantics.clone().if_value_form.clone() {
+    IfValueForm::IfStatement => Some(resolved_type(expr.clone())),
+    _ => None,
+};
+emit_typed_if_shared(cond_str.clone(), &if_then_branch(expr.clone()), if_else_branch(expr.clone()), if_result_type.clone(), depth.clone(), &target, si.clone(), |node, d| emit_unified_typed_expr(node.clone(), &target, registry.clone(), &scope, d.clone(), 1024, render_pattern.clone()))
+}, |expr| {
+                let val_str = emit_unified_typed_expr(let_value(expr.clone()), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone());
+emit_typed_let_shared(&let_binding_name_at(expr.clone(), si.clone()), val_str.clone(), let_body(expr.clone()), target.clone(), |bd, sc| emit_unified_typed_expr(bd.clone(), &target, registry.clone(), &sc, depth.clone(), 1024, render_pattern.clone()), scope.clone(), let_value(expr.clone()))
+}, |expr| emit_typed_record_lit_unified(record_lit_type_name_at(expr.clone(), si.clone()), &expr.children.clone(), &target, si.clone(), |n| emit_unified_typed_expr(n.clone(), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone())), |expr| emit_typed_string_interp_unified(&extract_string_interp_parts(expr.clone()), target.clone(), |e| emit_unified_typed_expr(e.clone(), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone())), |expr| emit_typed_block_join(expr.children.clone(), scope.clone(), depth.clone(), |remaining, sc, d| {
+                let prepend = if spec.block_syntax.clone().significant_whitespace.clone() {
+                    false
+                } else {
+                    true
+                };
+emit_block_stmts_shared(remaining.clone(), Rc::new(vec![]), sc.clone(), d.clone(), prepend.clone(), |stmt, s, dd| emit_unified_typed_expr(stmt.clone(), &target, registry.clone(), &s, dd.clone(), 1024, render_pattern.clone()))
+}), |expr| emit_typed_cast_shared(&cast_expr(expr.clone()), cast_target(expr.clone()), &target, |child| emit_unified_typed_expr(child.clone(), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone()), &si), |expr| emit_typed_for_each_shared(&foreach_variable_at(expr.clone(), si.clone()), &foreach_collection(expr.clone()), foreach_body(expr.clone()), &target, depth.clone(), si.clone(), |child, s, d| emit_unified_typed_expr(child.clone(), &target, registry.clone(), &s, d.clone(), 1024, render_pattern.clone()), &scope), |expr| emit_typed_index_shared(&index_base(expr.clone()), index_expr(expr.clone()), &target, |child| emit_unified_typed_expr(child.clone(), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone()), &si), |expr| emit_typed_slice_shared(&slice_base(expr.clone()), slice_start(expr.clone()), slice_end(expr.clone()), &target, |child| emit_unified_typed_expr(child.clone(), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone()), si.clone()), |expr| emit_default_bin_op(&expr, target.clone(), si.clone(), |child| emit_unified_typed_expr(child.clone(), &target, registry.clone(), &scope, depth.clone(), (fuel.clone() - 1), render_pattern.clone()), |result| result.clone()))
+}
+    })
 }
 
 pub fn is_tco_identity_passthrough(arg_val: &Rc<Node>, param_name: String, si: Option<Rc<NewlineIndex>>) -> bool {

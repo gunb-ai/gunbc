@@ -587,18 +587,22 @@ emits both from the same source.
 
 **Thesis claim:** emission is mechanical translation.
 
-**Current state:** 6,857 lines of language-specific code in three
-separate emitter files (`05_emit_rust.dag`, `05_emit_python.dag`,
-`05_emit_go.dag`) with 632 language mentions across 12 compiler files.
-The emitter decides instead of reading from data.
+**Current state:** Phase 1 complete, Phase 2 (expression dispatch) complete.
+The shared emitter (`05_emit.dag`) has zero language-decision `match target`
+branches. Python and Go expression rendering is unified into a single
+`emit_unified_typed_expr` dispatcher that reads LanguageSpec data — ~50
+per-language functions deleted, CX ratchet 421→416. Per-language emitter
+files retain: pattern rendering, TCO, func body, type defs, service defs.
+Rust emitter is untouched (ownership logic, Phase 6).
+
+**Progress:** Phase 1 ✓, Phase 2 ✓, Phase 3-4 ready, Phase 5-6 blocked on LS-4.
 
 **Target:** one emitter that reads `LanguageSpec` + `InhabitantDecl`
 data per target. Adding a new target language means adding a new
 `dsl/extdeps/languages/<lang>/` directory, not touching the compiler.
 
-**Blocked on:** Track 2 (LanguageSpec modeling), Track 7 (core table
-dissolution). Conceptually: the coercion engine must be complete
-enough that no inline language knowledge is needed.
+**Next:** Phase 3 (TCO/block unification), Phase 4 (service/transport).
+**Blocked on (for Phase 5-6):** Track 2 LS-4 (borrow model design).
 
 ### Track 14: Omni-emission
 
