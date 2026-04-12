@@ -2296,126 +2296,127 @@ fn parse_transport_binding(tokens: List<Token>, ctx: ParseContext) -> TransportR
   }
 }
 
-fn parse_rest_binding_body(tokens: List<Token>, state: ParserState) -> TransportResult {
+fn parse_rest_binding_body(tokens: List<Token>, ctx: ParseContext) -> TransportResult {
   // Parse REST transport fields (auth always empty at parse time)
-  parse_rest_fields(tokens: tokens, state: state, base_url: none, method: none, path_template: none, query: none, request_body: none, response_format: none, headers: [])
+  parse_rest_fields(tokens: tokens, ctx: ctx, base_url: none, method: none, path_template: none, query: none, request_body: none, response_format: none, headers: [])
 }
 
-fn parse_rest_fields(tokens: List<Token>, state: ParserState, base_url: Node?, method: Node?, path_template: Node?, query: Node?, request_body: Node?, response_format: Node?, headers: List<Node>) -> TransportResult {
-  let s = skip_newlines(tokens: tokens, state: state)
-  let span = current_span(tokens: tokens, state: s)
+fn parse_rest_fields(tokens: List<Token>, ctx: ParseContext, base_url: Node?, method: Node?, path_template: Node?, query: Node?, request_body: Node?, response_format: Node?, headers: List<Node>) -> TransportResult {
+  let tokens = skip_newlines(tokens: tokens)
+  let span = token_span(tok: tokens |> first)
   let dummy = local_transport_node(span: span)
-  if tok_is_rbrace(tok: peek(tokens: tokens, state: s)) || at_end(tokens: tokens, state: s) {
+  if tok_is_rbrace(tok: tokens |> first) || tok_is_eof(tok: tokens |> first) {
     let bu = match base_url {
       Some { value: e } => e
       None => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: make_span(start: 0, end: 0))
     }
-    TransportResult { transport: rest_transport_node(base_url: bu, auth_props: [], headers: headers, method: method, path: path_template, query: query, request_body: request_body, response_format: response_format, span: span), state: s, err: none }
+    TransportResult { transport: rest_transport_node(base_url: bu, auth_props: [], headers: headers, method: method, path: path_template, query: query, request_body: request_body, response_format: response_format, span: span), tokens: tokens, ctx: ctx, err: none }
   } else {
-    let r = expect_ident(tokens: tokens, state: s)
-    if has_err(err: r.err) { return TransportResult { transport: dummy, state: r.state, err: r.err } }
+    let r = expect_ident(tokens: tokens)
+    if has_err(err: r.err) { return TransportResult { transport: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
     let fname = r.name
-    let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
-    if has_err(err: r2.err) { return TransportResult { transport: dummy, state: r2.state, err: r2.err } }
-    let r3 = parse_expr(tokens: tokens, state: r2.state)
-    if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
-    let e = eat(tokens: tokens, state: r3.state, expected: ExpectComma)
-    let s2 = if e.consumed { e.state } else { r3.state }
+    let r2 = expect(tokens: r.tokens, expected: ExpectColon)
+    if has_err(err: r2.err) { return TransportResult { transport: dummy, tokens: r2.tokens, ctx: ctx, err: r2.err } }
+    let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
+    if has_err(err: r3.err) { return TransportResult { transport: dummy, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
+    let e = eat(tokens: r3.tokens, expected: ExpectComma)
+    let tokens = if e.consumed { e.tokens } else { r3.tokens }
+    let ctx = r3.ctx
     if fname == transport_url_key {
-      parse_rest_fields(tokens: tokens, state: s2, base_url: Some { value: r3.expr }, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: headers)
+      parse_rest_fields(tokens: tokens, ctx: ctx, base_url: Some { value: r3.expr }, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: headers)
     } else if fname == transport_method_key {
-      parse_rest_fields(tokens: tokens, state: s2, base_url: base_url, method: Some { value: r3.expr }, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: headers)
+      parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: Some { value: r3.expr }, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: headers)
     } else if fname == transport_path_template_key {
-      parse_rest_fields(tokens: tokens, state: s2, base_url: base_url, method: method, path_template: Some { value: r3.expr }, query: query, request_body: request_body, response_format: response_format, headers: headers)
+      parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: Some { value: r3.expr }, query: query, request_body: request_body, response_format: response_format, headers: headers)
     } else if fname == transport_query_key {
-      parse_rest_fields(tokens: tokens, state: s2, base_url: base_url, method: method, path_template: path_template, query: Some { value: r3.expr }, request_body: request_body, response_format: response_format, headers: headers)
+      parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: Some { value: r3.expr }, request_body: request_body, response_format: response_format, headers: headers)
     } else if fname == transport_body_key {
-      parse_rest_fields(tokens: tokens, state: s2, base_url: base_url, method: method, path_template: path_template, query: query, request_body: Some { value: r3.expr }, response_format: response_format, headers: headers)
+      parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: Some { value: r3.expr }, response_format: response_format, headers: headers)
     } else if fname == transport_response_format_key {
-      parse_rest_fields(tokens: tokens, state: s2, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: Some { value: r3.expr }, headers: headers)
+      parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: Some { value: r3.expr }, headers: headers)
     } else if fname == transport_headers_key {
       let h = match r3.expr.expr_data {
         ExprRecordLit => r3.expr.children
-        _ => return TransportResult { transport: dummy, state: s2, err: Some { value: make_error_node(diagnostic: InternalError { message: "transport headers must be a record literal { \"Name\": value, ... }", span: current_span(tokens: tokens, state: s2) }, module_name: "") } }
+        _ => return TransportResult { transport: dummy, tokens: tokens, ctx: ctx, err: Some { value: make_error_node(diagnostic: InternalError { message: "transport headers must be a record literal { \"Name\": value, ... }", span: token_span(tok: tokens |> first) }, module_name: "") } }
       }
-      parse_rest_fields(tokens: tokens, state: s2, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: h)
+      parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: h)
     } else {
-      parse_rest_fields(tokens: tokens, state: s2, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: headers)
+      parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: headers)
     }
   }
 }
 
-fn parse_shell_binding_body(tokens: List<Token>, state: ParserState) -> TransportResult {
+fn parse_shell_binding_body(tokens: List<Token>, ctx: ParseContext) -> TransportResult {
   // Parse argv (env always empty at parse time)
-  parse_shell_fields(tokens: tokens, state: state, argv: [], stdin: none)
+  parse_shell_fields(tokens: tokens, ctx: ctx, argv: [], stdin: none)
 }
 
-fn parse_shell_fields(tokens: List<Token>, state: ParserState, argv: List<Node>, stdin: Node?) -> TransportResult {
-  let s = skip_newlines(tokens: tokens, state: state)
-  let span = current_span(tokens: tokens, state: s)
+fn parse_shell_fields(tokens: List<Token>, ctx: ParseContext, argv: List<Node>, stdin: Node?) -> TransportResult {
+  let tokens = skip_newlines(tokens: tokens)
+  let span = token_span(tok: tokens |> first)
   let dummy = local_transport_node(span: span)
-  if tok_is_rbrace(tok: peek(tokens: tokens, state: s)) || at_end(tokens: tokens, state: s) {
-    TransportResult { transport: shell_transport_node(argv: argv, env: [], stdin: stdin, span: span), state: s, err: none }
+  if tok_is_rbrace(tok: tokens |> first) || tok_is_eof(tok: tokens |> first) {
+    TransportResult { transport: shell_transport_node(argv: argv, env: [], stdin: stdin, span: span), tokens: tokens, ctx: ctx, err: none }
   } else {
-    let r = expect_ident(tokens: tokens, state: s)
-    if has_err(err: r.err) { return TransportResult { transport: dummy, state: r.state, err: r.err } }
+    let r = expect_ident(tokens: tokens)
+    if has_err(err: r.err) { return TransportResult { transport: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
     let fname = r.name
-    let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
-    if has_err(err: r2.err) { return TransportResult { transport: dummy, state: r2.state, err: r2.err } }
+    let r2 = expect(tokens: r.tokens, expected: ExpectColon)
+    if has_err(err: r2.err) { return TransportResult { transport: dummy, tokens: r2.tokens, ctx: ctx, err: r2.err } }
     if fname == "argv" {
-      let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectLBracket)
-      if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
-      let r4 = parse_expr_list_until(tokens: tokens, state: r3.state, end_expected: ExpectRBracket)
-      if has_err(err: r4.err) { return TransportResult { transport: dummy, state: r4.state, err: r4.err } }
-      let r5 = expect(tokens: tokens, state: r4.state, expected: ExpectRBracket)
-      if has_err(err: r5.err) { return TransportResult { transport: dummy, state: r5.state, err: r5.err } }
-      let e = eat(tokens: tokens, state: r5.state, expected: ExpectComma)
-      let s2 = if e.consumed { e.state } else { r5.state }
-      parse_shell_fields(tokens: tokens, state: s2, argv: r4.exprs, stdin: stdin)
+      let r3 = expect(tokens: r2.tokens, expected: ExpectLBracket)
+      if has_err(err: r3.err) { return TransportResult { transport: dummy, tokens: r3.tokens, ctx: ctx, err: r3.err } }
+      let r4 = parse_expr_list_until(tokens: r3.tokens, ctx: ctx, end_expected: ExpectRBracket)
+      if has_err(err: r4.err) { return TransportResult { transport: dummy, tokens: r4.tokens, ctx: r4.ctx, err: r4.err } }
+      let r5 = expect(tokens: r4.tokens, expected: ExpectRBracket)
+      if has_err(err: r5.err) { return TransportResult { transport: dummy, tokens: r5.tokens, ctx: r4.ctx, err: r5.err } }
+      let e = eat(tokens: r5.tokens, expected: ExpectComma)
+      let tokens = if e.consumed { e.tokens } else { r5.tokens }
+      parse_shell_fields(tokens: tokens, ctx: r4.ctx, argv: r4.exprs, stdin: stdin)
     } else if fname == transport_stdin_key {
-      let r3 = parse_expr(tokens: tokens, state: r2.state)
-      if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
-      let e = eat(tokens: tokens, state: r3.state, expected: ExpectComma)
-      let s2 = if e.consumed { e.state } else { r3.state }
-      parse_shell_fields(tokens: tokens, state: s2, argv: argv, stdin: Some { value: r3.expr })
+      let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
+      if has_err(err: r3.err) { return TransportResult { transport: dummy, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
+      let e = eat(tokens: r3.tokens, expected: ExpectComma)
+      let tokens = if e.consumed { e.tokens } else { r3.tokens }
+      parse_shell_fields(tokens: tokens, ctx: r3.ctx, argv: argv, stdin: Some { value: r3.expr })
     } else {
-      let r3 = parse_expr(tokens: tokens, state: r2.state)
-      if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
-      let e = eat(tokens: tokens, state: r3.state, expected: ExpectComma)
-      let s2 = if e.consumed { e.state } else { r3.state }
-      parse_shell_fields(tokens: tokens, state: s2, argv: argv, stdin: stdin)
+      let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
+      if has_err(err: r3.err) { return TransportResult { transport: dummy, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
+      let e = eat(tokens: r3.tokens, expected: ExpectComma)
+      let tokens = if e.consumed { e.tokens } else { r3.tokens }
+      parse_shell_fields(tokens: tokens, ctx: r3.ctx, argv: argv, stdin: stdin)
     }
   }
 }
 
-fn parse_file_binding_body(tokens: List<Token>, state: ParserState) -> TransportResult {
-  parse_file_fields(tokens: tokens, state: state, base_path: none)
+fn parse_file_binding_body(tokens: List<Token>, ctx: ParseContext) -> TransportResult {
+  parse_file_fields(tokens: tokens, ctx: ctx, base_path: none)
 }
 
-fn parse_file_fields(tokens: List<Token>, state: ParserState, base_path: Node?) -> TransportResult {
-  let s = skip_newlines(tokens: tokens, state: state)
-  let span = current_span(tokens: tokens, state: s)
+fn parse_file_fields(tokens: List<Token>, ctx: ParseContext, base_path: Node?) -> TransportResult {
+  let tokens = skip_newlines(tokens: tokens)
+  let span = token_span(tok: tokens |> first)
   let dummy = local_transport_node(span: span)
-  if tok_is_rbrace(tok: peek(tokens: tokens, state: s)) || at_end(tokens: tokens, state: s) {
+  if tok_is_rbrace(tok: tokens |> first) || tok_is_eof(tok: tokens |> first) {
     let bp = match base_path {
       Some { value: e } => e
       None => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: make_span(start: 0, end: 0))
     }
-    TransportResult { transport: file_transport_node(base_path: bp, span: span), state: s, err: none }
+    TransportResult { transport: file_transport_node(base_path: bp, span: span), tokens: tokens, ctx: ctx, err: none }
   } else {
-    let r = expect_ident(tokens: tokens, state: s)
-    if has_err(err: r.err) { return TransportResult { transport: dummy, state: r.state, err: r.err } }
+    let r = expect_ident(tokens: tokens)
+    if has_err(err: r.err) { return TransportResult { transport: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
     let fname = r.name
-    let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
-    if has_err(err: r2.err) { return TransportResult { transport: dummy, state: r2.state, err: r2.err } }
-    let r3 = parse_expr(tokens: tokens, state: r2.state)
-    if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
-    let e = eat(tokens: tokens, state: r3.state, expected: ExpectComma)
-    let s2 = if e.consumed { e.state } else { r3.state }
+    let r2 = expect(tokens: r.tokens, expected: ExpectColon)
+    if has_err(err: r2.err) { return TransportResult { transport: dummy, tokens: r2.tokens, ctx: ctx, err: r2.err } }
+    let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
+    if has_err(err: r3.err) { return TransportResult { transport: dummy, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
+    let e = eat(tokens: r3.tokens, expected: ExpectComma)
+    let tokens = if e.consumed { e.tokens } else { r3.tokens }
     if fname == "path" || fname == transport_path_key {
-      parse_file_fields(tokens: tokens, state: s2, base_path: Some { value: r3.expr })
+      parse_file_fields(tokens: tokens, ctx: r3.ctx, base_path: Some { value: r3.expr })
     } else {
-      parse_file_fields(tokens: tokens, state: s2, base_path: base_path)
+      parse_file_fields(tokens: tokens, ctx: r3.ctx, base_path: base_path)
     }
   }
 }
