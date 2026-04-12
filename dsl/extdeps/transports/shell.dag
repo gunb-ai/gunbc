@@ -11,6 +11,15 @@
 
 module extdeps.transports.shell
 
+// Process output channels (POSIX.1-2017).
+// Each variant names the source a shell output field reads from.
+// Output fields declare their channel via `from "VariantName"`.
+type ShellOutputChannel
+  = Stdout          // fd 1 captured as String (POSIX.1-2017 Section 2.5.1)
+  | Stderr          // fd 2 captured as String (POSIX.1-2017 Section 2.5.1)
+  | StdoutLines     // fd 1 split by newline into List<String>
+  | ExitSuccess     // waitpid(2) WEXITSTATUS == 0 as Bool
+
 // Configuration type for shell transport bindings.
 // argv is the command + arguments (POSIX.1-2017 Section 2.9.2).
 // env is additional environment variables (POSIX.1-2017 Section 8.1).

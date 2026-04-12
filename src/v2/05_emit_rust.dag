@@ -493,14 +493,12 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
       else { build_read_only_params(proof: entry.proof, param_names: entry.param_names) }
     let movable = build_movable_set(proof: entry.proof)
     let fold_eligible = build_fold_eligible_set(proof: entry.proof)
-    // Store under qualified key (for same-module lookups that know the module)
-    // and bare key (for cross-module callee lookups via registry).
-    // Qualified key takes precedence; bare key is a convenience fallback.
-    let bare = entry.proof.func_name
+    // Store under qualified key only. Call sites resolve the callee's
+    // module_name via ItemInfo to build the qualified lookup key.
     OwnershipBuildResult {
-      ownership_index: map_insert(map_insert(acc.ownership_index, bare, movable), entry.name, movable),
-      fold_eligible_index: map_insert(map_insert(acc.fold_eligible_index, bare, fold_eligible), entry.name, fold_eligible),
-      read_only_params_index: map_insert(map_insert(acc.read_only_params_index, bare, read_only), entry.name, read_only)
+      ownership_index: map_insert(acc.ownership_index, entry.name, movable),
+      fold_eligible_index: map_insert(acc.fold_eligible_index, entry.name, fold_eligible),
+      read_only_params_index: map_insert(acc.read_only_params_index, entry.name, read_only)
     }
   )
 }
@@ -2444,7 +2442,12 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
   let filled_args = fill_default_args(ordered: ordered_args, callee: callee, registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let is_rt = map_contains_key(rt_functions(), func)
   let is_rt_ref_map = map_contains_key(rt_ref_map_functions(), func)
-  let callee_read_only = match map_get(emit_info.read_only_params_index, func) {
+  // Build qualified key from callee's module_name for ownership index lookup.
+  let callee_qualified = match callee {
+    Some { value: info } => concat(info.module_name, ".", func)
+    None => func
+  }
+  let callee_read_only = match map_get(emit_info.read_only_params_index, callee_qualified) {
     Some { value: m } => m
     None => empty_map()
   }
@@ -4733,19 +4736,10 @@ fn emit_shell_return(inferred: Node, source_indices: Map<String, NewlineIndex>) 
         let lines = if stderr_line != "" { concat(stderr_line, "\n") } else { "" }
         concat(lines, "Ok((", field_exprs |> join(separator: ", "), "))")
       } else {
-        // No from annotation, single field: legacy fallback paths.
-        let is_bool = is_coproduct_type(n: effective) && effective.children |> count == 2
-        if is_bool {
-          "Ok(output.status.success())"
-        } else {
-          let __eff_is_container = node_is_element_collection(n: effective, source_indices: source_indices)
-          if __eff_is_container {
-            "Ok(Rc::new(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()))"
-          } else {
-            let is_optional = effective.return_cardinality == CardOptional
-            if is_optional { "Ok(Some(stdout))" } else { "Ok(stdout)" }
-          }
-        }
+        // Single field without from annotation — default to stdout.
+        // All shell operations should declare `from` (ShellOutputChannel).
+        let is_optional = effective.return_cardinality == CardOptional
+        emit_shell_channel_expr(channel: "stdout", is_optional: is_optional)
       }
   }
 }
@@ -4993,19 +4987,36 @@ fn emit_mock_prop_setup(mock_prop: Node, depth: Int, source_indices: Map<String,
 // Generates a minimal Cargo.toml for the emitted crate.
 // =========================================================================
 
+// Render a single Cargo.toml dependency line from structured data.
+fn emit_cargo_dep(name: String, version: String, features: List<String>) -> String {
+  if features |> count > 0 {
+    let feat_strs = features |> map(f => concat("\"", f, "\""))
+    concat(name, " = { version = \"", version, "\", features = [", feat_strs |> join(separator: ", "), "] }\n")
+  } else {
+    concat(name, " = \"", version, "\"\n")
+  }
+}
+
 fn emit_cargo_toml(crate_name: String, has_services: Bool) -> TextFile {
   let header = concat("[package]\nname = \"", crate_name, "\"\nversion = \"0.1.0\"\nedition = \"2021\"\n")
   // [workspace] makes the crate standalone so it can be built inside a parent workspace dir.
   let workspace = "\n[workspace]\n"
-  let deps = "\n[dependencies]\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\n"
-  let cli_dep = "clap = { version = \"4\", features = [\"derive\"] }\n"
+  let base_deps = [
+    emit_cargo_dep(name: "serde", version: "1", features: ["derive", "rc"]),
+    emit_cargo_dep(name: "serde_json", version: "1", features: []),
+    emit_cargo_dep(name: "stacker", version: "0.1", features: []),
+    emit_cargo_dep(name: "clap", version: "4", features: ["derive"]),
+    emit_cargo_dep(name: "lazy_static", version: "1", features: [])
+  ]
   let async_deps = if has_services {
-    "tokio = { version = \"1\", features = [\"full\"] }\nreqwest = { version = \"0.12\", features = [\"json\"] }\nasync-trait = \"0.1\"\n"
-  } else {
-    ""
-  }
-  let lazy_dep = "lazy_static = \"1\"\n"
-  TextFile { path: "Cargo.toml", content: concat(header, workspace, deps, cli_dep, async_deps, lazy_dep) }
+    [
+      emit_cargo_dep(name: "tokio", version: "1", features: ["full"]),
+      emit_cargo_dep(name: "reqwest", version: "0.12", features: ["json"]),
+      emit_cargo_dep(name: "async-trait", version: "0.1", features: [])
+    ]
+  } else { [] }
+  let all_deps = concat(base_deps, async_deps)
+  TextFile { path: "Cargo.toml", content: concat(header, workspace, "\n[dependencies]\n", all_deps |> join(separator: "")) }
 }
 
 // has_service_items is now shared -- imported from v2.compiler.emit

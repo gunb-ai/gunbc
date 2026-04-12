@@ -107,7 +107,7 @@ data packages: List<WorkspacePackage> = [
 service shell.Codegen {
   operation Check {
     input {}
-    output { needed: Bool }
+    output { needed: Bool from "exit_success" }
     readonly
     // Checks if codegen output files exist / are stale
     transport shell { argv: ["test", "-f", "target/codegen/.stamp"] }
@@ -120,9 +120,9 @@ service shell.Codegen {
   operation Run {
     input {}
     output {
-      success: Bool
-      stdout: String
-      stderr: String
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
     }
     transport shell { argv: ["cargo", "run", "--bin", "gunbc-codegen", "--", "codegen"] }
     exit {

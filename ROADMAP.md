@@ -445,24 +445,23 @@ First target: `gunbc/tools/review.dag` (PR review agent).
 |------|--------|
 | RE-1: Transport emission fidelity (REST, shell) | DONE (21/21) |
 | RE-2: review.dag compiles (dry-run) | DONE |
-| RE-3: review.dag passes live integration | Partial — PR #397 merged (CLI borrow, text responses, shell channels, standalone Cargo.toml). Remaining: emitter heuristics should become structural facts (see below). |
+| RE-3: review.dag passes live integration | DONE — PR #397 (functional), deferred structural items resolved (see below). |
 | RE-4: Anthropic REST API end-to-end | Test added (requires ANTHROPIC_API_KEY) |
 
-**RE-3 deferred architectural items** (PR #397 review feedback, M4/M8 direction):
-- Shell channel contracts: `emit_shell_return` infers field semantics from
-  type shape and field name (Bool→exit code, "stderr"→stderr, String→stdout).
-  Upstream fix: extend `ShellTransportConfig` in `dsl/extdeps/transports/shell.dag`
-  with explicit channel→field mappings. No types exist yet for this.
-- WireFormat structural type: `emit_plain_response_body` infers text vs JSON
-  from output type shape. Upstream fix: add `WireFormat`/`ContentType` type to
-  `std.serialization` or a new module; attach to response blocks so the emitter
-  translates rather than guesses. REST transport has `content_type: String?`
-  but it is not leveraged by the emitter.
-- Qualified identity for `read_only_params_index`: currently keyed by bare
-  `item.name` strings. Should use module-qualified or stable interned identity
-  (Track 3 dependency).
-- Structural Cargo model: `emit_cargo_toml` uses raw string concatenation.
-  `dsl/extdeps/cargo.dag` defines `CargoPackage` but the emitter doesn't use it.
+**RE-3 resolved architectural items** (formerly deferred, now structural):
+- Shell channel contracts: `ShellOutputChannel` type defined in
+  `dsl/extdeps/transports/shell.dag` (POSIX-grounded: Stdout, Stderr,
+  StdoutLines, ExitSuccess). All shell operations across the codebase now
+  declare `from` annotations. Legacy type-shape heuristic deleted.
+- WireFormat structural type: `RestTransportConfig.content_type: String?`
+  replaced with `response_format: WireFormat` (imports from `std.serialization`).
+  Emitter reads structural type via `transport_response_format`.
+- Qualified identity for ownership indexes: `ItemInfo` now carries
+  `module_name`. Ownership/fold/read_only indexes use qualified keys only.
+  Call sites resolve callee module via `ItemInfo` for qualified lookup.
+- Structural Cargo model: `CargoDependency` type added to `dsl/extdeps/cargo.dag`.
+  `emit_cargo_toml` refactored to structured `emit_cargo_dep` helper —
+  each dependency is a discrete data item, not embedded in string literals.
 
 ### Track 6: Algebra field dispatch (Lane A)
 

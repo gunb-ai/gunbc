@@ -162,6 +162,7 @@ fn expand_transitive_services_once(modules: List<TypedModule>, registry: Map<Str
           else {
             map_insert(reg2, item.name, ItemInfo {
               name: info.name,
+              module_name: info.module_name,
               kind: info.kind,
               service_names: merged,
               resource_names: info.resource_names,

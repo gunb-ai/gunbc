@@ -40,6 +40,7 @@ type ItemKind = FnItem | FuncItem | TypeItem | DataItem | ServiceItem | OtherIte
 
 type ItemInfo {
   name: String
+  module_name: String
   kind: ItemKind
   service_names: List<String>
   resource_names: List<String>

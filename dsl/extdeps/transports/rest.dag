@@ -14,6 +14,7 @@
 module extdeps.transports.rest
 
 import std.types { HttpMethod }
+import std.serialization { WireFormat }
 
 // Configuration type for REST transport bindings.
 // The parser validates transport blocks labeled "rest" against this schema.
@@ -23,5 +24,5 @@ type RestTransportConfig {
   auth_token: String?           // RFC 7235 Section 4.2: credentials
   auth_header: String?          // Header field name; default "Authorization" per RFC 7235
   headers: Map<String, String>  // Custom request headers (RFC 9110 Section 6.3)
-  content_type: String?         // RFC 9110 Section 8.3; default "application/json"
+  response_format: WireFormat   // How to parse response body; default Json
 }

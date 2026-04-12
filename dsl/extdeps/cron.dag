@@ -34,7 +34,7 @@ type CronEntry {
 service cron.Tab {
   operation List {
     input {}
-    output { entries: String }
+    output { entries: String from "stdout" }
     readonly
     transport shell { argv: ["crontab", "-l"] }
     exit {

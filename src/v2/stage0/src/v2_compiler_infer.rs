@@ -5539,13 +5539,14 @@ Rc::new(BuildTypeEnvResult {
 }
 }
 
-pub fn build_item_info(item: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<ItemInfo> {
+pub fn build_item_info(item: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>, module_name: String) -> Rc<ItemInfo> {
     {
         let kind = item_kind(&item);
 let res_names = Rc::new({ let mut __result = Vec::new(); for u in item.uses.clone().iter().cloned() { __result.push(resource_use_name_at(u.clone(), source_indices.clone())); } __result });
 match kind.clone() {
     ItemKind::FuncItem => Rc::new(ItemInfo {
     name: item.name.clone(),
+    module_name: module_name,
     kind: kind.clone(),
     service_names: if (item.body.clone() == None) {
             Rc::new(vec![])
@@ -5559,6 +5560,7 @@ match kind.clone() {
 }),
     ItemKind::FnItem => Rc::new(ItemInfo {
     name: item.name.clone(),
+    module_name: module_name,
     kind: kind.clone(),
     service_names: if (item.body.clone() == None) {
             Rc::new(vec![])
@@ -5580,6 +5582,7 @@ match kind.clone() {
 }),
     _ => Rc::new(ItemInfo {
     name: item.name.clone(),
+    module_name: module_name,
     kind: kind.clone(),
     service_names: Rc::new(vec![]),
     resource_names: res_names,
@@ -5591,7 +5594,7 @@ match kind.clone() {
 }
 }
 
-pub fn analyze_item(item: Rc<Node>, env: &Rc<TypeEnv>, module_name: String) -> Rc<ItemContribution> {
+pub fn analyze_item(item: Rc<Node>, env: &Rc<TypeEnv>, module_name: &String) -> Rc<ItemContribution> {
     {
         let resolved = resolve_item_types(&item, &env, &module_name);
 let ritem = resolved.item.clone();
@@ -5634,7 +5637,7 @@ Rc::new(ItemContribution {
     func_sig: func_sig,
     svc_entries: svc_entries,
     svc_local: svc_local,
-    item_info: build_item_info(&ritem, &env.source_indices.clone()),
+    item_info: build_item_info(&ritem, &env.source_indices.clone(), module_name.clone()),
 })
 }
 }
@@ -5782,7 +5785,7 @@ if ((env_errors.len() as i64) > 0) {
     diagnostics: env_diags.clone(),
 })
         }
-let contributions = Rc::new({ let mut __result = Vec::new(); for item in module_items(resolved.module.clone()).iter().cloned() { __result.push(analyze_item(item.clone(), &env, resolved.module.clone().name.clone())); } __result });
+let contributions = Rc::new({ let mut __result = Vec::new(); for item in module_items(resolved.module.clone()).iter().cloned() { __result.push(analyze_item(item.clone(), &env, &resolved.module.clone().name.clone())); } __result });
 let ctx = build_module_context(contributions, parent_index.clone(), &resolved.resolved_imports.clone(), &env, &resolved.module.clone().name.clone());
 let data_locals = ctx.resolved_items.clone().iter().cloned().fold(ctx.locals.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, item: Rc<Node>| if ((((item.body.clone() != None) && ((item.params.clone().len() as i64) == 0)) && (item.inferred.clone() == None)) && (item.type_annotation.clone() != None)) {
             v2_rt::rc_map_insert(acc.clone(), item.name.clone(), Rc::new(TypeBinding {
