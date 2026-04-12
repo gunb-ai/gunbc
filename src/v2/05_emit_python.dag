@@ -141,15 +141,17 @@ import v2.compiler.emit {
 
 fn emit_py_block_stmts(remaining: List<Node>, text: List<String>,
     scope: InferScope, registry: Map<String, ItemInfo>, depth: Int) -> BlockEmitState {
+  let prepend = if language_spec(target: Python).block_syntax.significant_whitespace { false } else { true }
   emit_block_stmts_shared(remaining: remaining, text: text, scope: scope, depth: depth,
-    prepend_indent: false,
+    prepend_indent: prepend,
     emit_expr: (stmt, sc, d) => emit_py_typed_expr(texpr: stmt, registry: registry, scope: sc, depth: d, fuel: 1024))
 }
 
 fn emit_py_init_block_stmts(remaining: List<Node>, text: List<String>,
     scope: InferScope, registry: Map<String, ItemInfo>, depth: Int) -> BlockEmitState {
+  let prepend = if language_spec(target: Python).block_syntax.significant_whitespace { false } else { true }
   emit_init_block_stmts_shared(remaining: remaining, text: text, scope: scope, depth: depth,
-    prepend_indent: false,
+    prepend_indent: prepend,
     emit_expr: (stmt, sc, d) => emit_py_typed_expr(texpr: stmt, registry: registry, scope: sc, depth: d, fuel: 1024))
 }
 
