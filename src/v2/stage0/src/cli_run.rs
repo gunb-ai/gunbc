@@ -148,6 +148,11 @@ fn load_sources(source_roots: &[String]) -> Vec<Rc<v2_compiler_compile::SourceFi
 
 /// Entry point for `dag run`. Called from the generated main.rs.
 pub fn handle_run(source_roots: Vec<String>, function: String) {
+    handle_run_with_options(source_roots, function, false);
+}
+
+/// Entry point with options for dry-run mode.
+pub fn handle_run_with_options(source_roots: Vec<String>, function: String, dry_run: bool) {
     if source_roots.is_empty() {
         eprintln!("error: provide at least one --source-root");
         std::process::exit(1);
@@ -195,7 +200,7 @@ pub fn handle_run(source_roots: Vec<String>, function: String) {
 
     // Run the interpreter
     eprintln!("running {}()...", function);
-    match v2_interpreter::run(graph, result.source_indices.clone(), &function) {
+    match v2_interpreter::run_with_options(graph, result.source_indices.clone(), &function, dry_run) {
         Ok(val) => {
             println!("{}", val);
         }

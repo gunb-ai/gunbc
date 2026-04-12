@@ -1,0 +1,10 @@
+// Shell service dispatch test.
+// Run: dag run --source-root dsl/examples/interp_test --source-root dsl/std --source-root dsl/extdeps --function shell_test
+module examples.shell_test
+
+import extdeps.shell
+
+func shell_test() -> String {
+  result = shell.Exec.Run(script: "echo hello world")
+  result.stdout
+}

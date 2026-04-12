@@ -1,6 +1,6 @@
 // v2_interpreter.rs — Tree-walking interpreter for .dag programs.
 // Hand-written infrastructure (same category as parser, tokenizer, v2_rt).
-// Phase I-1: pure evaluation. Phase I-2 (service dispatch) deferred.
+// I-1: pure evaluation. I-2: shell service dispatch.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -31,8 +31,11 @@ use crate::v2_std_core::{
     slice_base, slice_start, slice_end,
     return_value,
     field_binding_name_at, field_binding_pattern,
+    is_shell_transport, param_node_name_at,
 };
-use crate::v2_compiler_emit::extract_string_interp_parts;
+use crate::v2_compiler_emit::{
+    extract_string_interp_parts, has_mock_prefix,
+};
 use crate::std_syntax::BinOp;
 use crate::std_syntax::LiteralValue;
 use crate::v2_compiler_infer_items::{
@@ -248,6 +251,9 @@ pub type InterpResult<T> = Result<T, InterpError>;
 // Context
 // ---------------------------------------------------------------------------
 
+/// (service_node, operation_node) pair for service dispatch.
+type ServiceOp = (Rc<Node>, Rc<Node>);
+
 pub struct InterpContext {
     /// All typed modules from the compiler pipeline.
     pub modules: Rc<Vec<Rc<TypedModule>>>,
@@ -257,19 +263,49 @@ pub struct InterpContext {
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     /// Function bodies: name → Node.
     fn_nodes: HashMap<String, Rc<Node>>,
+    /// Service registry: "service.Operation" → (service_node, op_node).
+    service_ops: HashMap<String, ServiceOp>,
+    /// Dry-run mode: use mock responses instead of executing services.
+    pub dry_run: bool,
 }
 
 impl InterpContext {
     pub fn new(
         graph: &ResolvedGraph,
         source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+        dry_run: bool,
     ) -> Self {
         let mut fn_nodes = HashMap::new();
+        let mut service_ops = HashMap::new();
         for module in graph.modules.iter() {
             for item in module.items.iter() {
                 let name = authored_name_at(source_indices.clone(), item);
                 if !name.is_empty() {
-                    fn_nodes.insert(name, item.clone());
+                    fn_nodes.insert(name.clone(), item.clone());
+                }
+                // Index service operations by checking ItemInfo kind
+                if let Some(info) = graph.item_registry.get(&name) {
+                    if info.kind == ItemKind::ServiceItem {
+                        for op in item.children.iter() {
+                            let op_name = authored_name_at(source_indices.clone(), op);
+                            if !op_name.is_empty() {
+                                let key = format!("{}.{}", name, op_name);
+                                service_ops.insert(key, (item.clone(), op.clone()));
+                            }
+                        }
+                    }
+                }
+                // Also index via item_registry name (which may differ from authored_name)
+                if let Some(info) = graph.item_registry.get(&item.name) {
+                    if info.kind == ItemKind::ServiceItem && !item.name.is_empty() {
+                        for op in item.children.iter() {
+                            let op_name = authored_name_at(source_indices.clone(), op);
+                            if !op_name.is_empty() {
+                                let key = format!("{}.{}", item.name, op_name);
+                                service_ops.insert(key, (item.clone(), op.clone()));
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -278,6 +314,8 @@ impl InterpContext {
             item_registry: graph.item_registry.clone(),
             source_indices,
             fn_nodes,
+            service_ops,
+            dry_run,
         }
     }
 
@@ -299,7 +337,16 @@ pub fn run(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     entry_fn: &str,
 ) -> InterpResult<Value> {
-    let ctx = InterpContext::new(graph, source_indices);
+    run_with_options(graph, source_indices, entry_fn, false)
+}
+
+pub fn run_with_options(
+    graph: &ResolvedGraph,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    entry_fn: &str,
+    dry_run: bool,
+) -> InterpResult<Value> {
+    let ctx = InterpContext::new(graph, source_indices, dry_run);
 
     // Find the entry function
     let item_node = ctx.lookup_fn(entry_fn)
@@ -850,11 +897,21 @@ fn eval_method_call(
     env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
-    let receiver_val = eval_expr(&method_receiver(node.clone()), env, ctx)?;
     let method_name = expr_method_name_at(node.clone(), ctx.si());
     let semantics = expr_method_call_semantics(node.clone());
-    let extra_args = method_arg_nodes(node.clone());
 
+    // Service calls: skip receiver evaluation (it's a service namespace, not a value).
+    if let Some(MethodSemantics::ServiceMethodSemantics { service_name, .. }) = semantics.as_deref() {
+        let extra_args = method_arg_nodes(node.clone());
+        let args: Vec<Value> = extra_args.iter()
+            .map(|a| eval_expr(&arg_value(a), env, ctx))
+            .collect::<InterpResult<_>>()?;
+        return eval_service_call(service_name, &method_name, &args, env, ctx);
+    }
+
+    // Non-service calls: evaluate receiver and args
+    let receiver_val = eval_expr(&method_receiver(node.clone()), env, ctx)?;
+    let extra_args = method_arg_nodes(node.clone());
     let args: Vec<Value> = extra_args.iter()
         .map(|a| eval_expr(&arg_value(a), env, ctx))
         .collect::<InterpResult<_>>()?;
@@ -863,11 +920,6 @@ fn eval_method_call(
         Some(MethodSemantics::AlgebraMethodSemantics { method_def, .. }) => {
             let mn = authored_name_at(ctx.si(), method_def);
             eval_algebra_method(&mn, receiver_val, &args, env, ctx)
-        }
-        Some(MethodSemantics::ServiceMethodSemantics { service_name, .. }) => {
-            Err(InterpError::Unimplemented {
-                what: format!("service dispatch: {}.{}", service_name, method_name),
-            })
         }
         _ => {
             // Plain method — try as algebra by method name
@@ -1439,6 +1491,200 @@ fn eval_algebra_method(
             what: format!("method '{}'", method),
         }),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Service dispatch (I-2)
+// ---------------------------------------------------------------------------
+
+fn eval_service_call(
+    service_name: &str,
+    op_name: &str,
+    args: &[Value],
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let key = format!("{}.{}", service_name, op_name);
+    let (service_node, op_node) = ctx.service_ops.get(&key)
+        .ok_or_else(|| InterpError::Unimplemented {
+            what: format!("unknown service operation: {}", key),
+        })?;
+
+    // Get effective transport (operation-level overrides service-level)
+    let transport = op_node.transport.as_ref()
+        .or(service_node.transport.as_ref())
+        .ok_or_else(|| InterpError::TypeError {
+            msg: format!("no transport for service {}", key),
+        })?;
+
+    // Bind input params to arg values
+    let param_env = build_service_param_env(op_node, args, env, ctx)?;
+
+    // Dry-run: return mock response
+    if ctx.dry_run {
+        eprintln!("[dry-run] {}.{}", service_name, op_name);
+        return eval_mock_response(op_node, ctx);
+    }
+
+    // Shell transport dispatch
+    if is_shell_transport(transport.clone()) {
+        let result = dispatch_shell(transport, &param_env, ctx)?;
+        return map_shell_outputs(&result, op_node, ctx);
+    }
+
+    Err(InterpError::Unimplemented {
+        what: format!("transport type for {}", key),
+    })
+}
+
+/// Build an environment with service operation params bound to arg values.
+fn build_service_param_env(
+    op_node: &Rc<Node>,
+    args: &[Value],
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Rc<Env>> {
+    let mut bindings = HashMap::new();
+    for (i, param) in op_node.params.iter().enumerate() {
+        let name = param_node_name_at(param.clone(), ctx.si());
+        if let Some(val) = args.get(i) {
+            bindings.insert(name, val.clone());
+        }
+    }
+    Ok(Env::extend(env, bindings))
+}
+
+struct ShellResult {
+    exit_code: i32,
+    stdout: String,
+    stderr: String,
+}
+
+/// Execute a shell transport: evaluate argv template, run command, capture output.
+fn dispatch_shell(
+    transport: &Rc<Node>,
+    param_env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<ShellResult> {
+    // Evaluate argv elements as expressions
+    let argv_nodes = &transport.children;
+    let mut argv: Vec<String> = Vec::new();
+    for node in argv_nodes.iter() {
+        let val = eval_expr(node, param_env, ctx)?;
+        argv.push(format!("{}", val));
+    }
+
+    if argv.is_empty() {
+        return Err(InterpError::TypeError {
+            msg: "shell transport has empty argv".to_string(),
+        });
+    }
+
+    eprintln!("[shell] {}", argv.join(" "));
+
+    let output = std::process::Command::new(&argv[0])
+        .args(&argv[1..])
+        .output()
+        .map_err(|e| InterpError::TypeError {
+            msg: format!("failed to execute '{}': {}", argv[0], e),
+        })?;
+
+    Ok(ShellResult {
+        exit_code: output.status.code().unwrap_or(-1),
+        stdout: String::from_utf8_lossy(&output.stdout).trim_end().to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).trim_end().to_string(),
+    })
+}
+
+/// Map shell stdout/stderr/exit_code to the operation's return type fields.
+fn map_shell_outputs(
+    result: &ShellResult,
+    op_node: &Rc<Node>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    // Get the return type's fields from the inferred type
+    let return_type = match op_node.inferred.as_deref() {
+        Some(crate::v2_std_core::InferredNode::Resolved { node }) => node.clone(),
+        _ => {
+            // No structured return type — return stdout as string
+            return Ok(Value::Str(result.stdout.clone()));
+        }
+    };
+
+    // Single-field or multi-field product type
+    let children = &return_type.children;
+    if children.is_empty() {
+        return Ok(Value::Unit);
+    }
+
+    let mut fields = HashMap::new();
+    for child in children.iter() {
+        let field_name = authored_name_at(ctx.si(), child);
+        // Check from_key property
+        let from_key = extract_from_key(child, ctx);
+        let value = match from_key.as_deref() {
+            Some("stdout") => Value::Str(result.stdout.clone()),
+            Some("stderr") => Value::Str(result.stderr.clone()),
+            Some("exit_success") => Value::Bool(result.exit_code == 0),
+            Some("stdout_lines") => {
+                let lines: Vec<Value> = result.stdout.lines()
+                    .map(|l| Value::Str(l.to_string()))
+                    .collect();
+                Value::List(Rc::new(lines))
+            }
+            _ => {
+                // Default: map by field name
+                match field_name.as_str() {
+                    "success" => Value::Bool(result.exit_code == 0),
+                    "stdout" => Value::Str(result.stdout.clone()),
+                    "stderr" => Value::Str(result.stderr.clone()),
+                    "exists" => Value::Bool(result.exit_code == 0),
+                    _ => Value::Null,
+                }
+            }
+        };
+        fields.insert(field_name, value);
+    }
+
+    // Return as record with the type name
+    Ok(Value::Record {
+        type_name: authored_name_at(ctx.si(), op_node),
+        fields: Rc::new(fields),
+    })
+}
+
+/// Extract the `from` key from a field's properties (e.g., `from "stdout"`).
+fn extract_from_key(field_node: &Rc<Node>, ctx: &InterpContext) -> Option<String> {
+    for prop in field_node.properties.iter() {
+        let prop_name = field_init_node_name_at(prop.clone(), ctx.si());
+        if prop_name == "from_key" || prop_name == "from" {
+            let val_node = field_init_node_value(prop);
+            if let ExprData::ExprLiteral { ref value } = *val_node.expr_data {
+                if let LiteralValue::LitStr { value: s } = value.as_ref() {
+                    return Some(s.clone());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Evaluate mock_response from an operation's properties for dry-run mode.
+fn eval_mock_response(
+    op_node: &Rc<Node>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    // Find first mock_* property
+    for prop in op_node.properties.iter() {
+        let prop_name = field_init_node_name_at(prop.clone(), ctx.si());
+        if has_mock_prefix(&prop_name) {
+            // The mock property value is a record literal
+            let val_node = field_init_node_value(prop);
+            return eval_expr(&val_node, &Env::empty(), ctx);
+        }
+    }
+    // No mock response — return Unit
+    Ok(Value::Unit)
 }
 
 // ---------------------------------------------------------------------------
