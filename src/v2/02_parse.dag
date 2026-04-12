@@ -86,6 +86,10 @@ type ParserState {
 type ParseResult {
   module: Node?
   error: ErrorNode?
+}
+
+type ParseWithTableResult {
+  result: ParseResult
   intern_table: InternTable
 }
 
@@ -879,15 +883,25 @@ fn parse_dotted_ident_rest(tokens: List<Token>, state: ParserState, acc: String,
 // 1. Entry point
 // =========================================================================
 
-fn parse(tokens: List<Token>, source_indices: Map<String, NewlineIndex>) -> ParseResult {
-  let pre_interned = pre_intern_tokens(tokens: tokens, table: empty_intern_table())
+fn parse_with_table(tokens: List<Token>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ParseWithTableResult {
+  let pre_interned = pre_intern_tokens(tokens: tokens, table: intern_table)
   let state = ParserState { pos: 0, source_indices: source_indices, intern_table: pre_interned }
   let r = parse_module(tokens: tokens, state: state)
   if has_err(err: r.err) {
-    ParseResult { module: none, error: r.err, intern_table: r.state.intern_table }
+    ParseWithTableResult {
+      result: ParseResult { module: none, error: r.err },
+      intern_table: r.state.intern_table
+    }
   } else {
-    ParseResult { module: Some { value: r.module }, error: none, intern_table: r.state.intern_table }
+    ParseWithTableResult {
+      result: ParseResult { module: Some { value: r.module }, error: none },
+      intern_table: r.state.intern_table
+    }
   }
+}
+
+fn parse(tokens: List<Token>, source_indices: Map<String, NewlineIndex>) -> ParseResult {
+  parse_with_table(tokens: tokens, source_indices: source_indices, intern_table: empty_intern_table()).result
 }
 
 // =========================================================================

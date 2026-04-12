@@ -192,7 +192,7 @@ mod compiler_tests {
             &"module test\ntype Foo { x: Int }\n".to_string(),
             "test.dag".to_string(),
         );
-        let result = crate::v2_compiler_parse::parse(&tokens, std::rc::Rc::new(std::collections::HashMap::new()));
+        let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
         assert!(
             result.module.is_some(),
             "valid module should parse successfully"
@@ -219,7 +219,7 @@ mod compiler_tests {
                     last.shape
                 );
 
-                let result = crate::v2_compiler_parse::parse(&tokens, std::rc::Rc::new(std::collections::HashMap::new()));
+                let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
 
                 assert!(
                     result.module.is_some(),
@@ -296,7 +296,7 @@ mod compiler_tests {
                         "{} should end with Eof",
                         file
                     );
-                    let result = crate::v2_compiler_parse::parse(&tokens, std::rc::Rc::new(std::collections::HashMap::new()));
+                    let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
                     assert!(
                         result.module.is_some(),
                         "{} should parse successfully, error: {:?}",
@@ -738,10 +738,12 @@ mod compiler_tests {
 
                 let t_stage = Instant::now();
                 let mut modules = Vec::new();
-                let mut intern_tables = Vec::new();
+                let mut intern_table = crate::v2_std_core::empty_intern_table();
                 for (i, tokens) in token_lists.iter().enumerate() {
                     let t = Instant::now();
-                    let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
+                    let parsed = crate::v2_compiler_parse::parse_with_table(tokens, std::rc::Rc::new(std::collections::HashMap::new()), intern_table.clone());
+                    let result = parsed.result.clone();
+                    intern_table = parsed.intern_table.clone();
                     let elapsed = t.elapsed();
                     let ok = result.module.is_some();
                     eprintln!(
@@ -751,9 +753,7 @@ mod compiler_tests {
                     let m = result.module.clone()
                         .unwrap_or_else(|| panic!("parse failed for source {}", sources[i].path));
                     modules.push(m);
-                    intern_tables.push(result.intern_table.clone());
                 }
-                let intern_table = crate::v2_std_core::merge_intern_tables(std::rc::Rc::new(intern_tables));
                 let parse_total = t_stage.elapsed();
                 eprintln!("  PARSE TOTAL:    {:?}\n", parse_total);
 
@@ -838,11 +838,13 @@ mod compiler_tests {
 
                 let t_stage = Instant::now();
                 let mut modules = Vec::new();
-                let mut intern_tables_p = Vec::new();
+                let mut intern_table_p = crate::v2_std_core::empty_intern_table();
                 let mut phase2_diags = 0usize;
                 for (i, tokens) in token_lists.iter().enumerate() {
                     let t = Instant::now();
-                    let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
+                    let parsed = crate::v2_compiler_parse::parse_with_table(tokens, std::rc::Rc::new(std::collections::HashMap::new()), intern_table_p.clone());
+                    let result = parsed.result.clone();
+                    intern_table_p = parsed.intern_table.clone();
                     let elapsed = t.elapsed();
                     let ok = result.module.is_some();
                     if result.error.is_some() {
@@ -855,9 +857,7 @@ mod compiler_tests {
                     let m = result.module.clone()
                         .unwrap_or_else(|| panic!("parse failed for source {}", sources[i].path));
                     modules.push(m);
-                    intern_tables_p.push(result.intern_table.clone());
                 }
-                let intern_table_p = crate::v2_std_core::merge_intern_tables(std::rc::Rc::new(intern_tables_p));
                 let parse_total = t_stage.elapsed();
                 let rss_after_parse = get_rss_bytes();
                 eprintln!(
@@ -992,15 +992,15 @@ mod compiler_tests {
 
                 let t = Instant::now();
                 let mut modules = Vec::new();
-                let mut intern_tables_fp = Vec::new();
+                let mut intern_table_fp = crate::v2_std_core::empty_intern_table();
                 for (i, tokens) in token_lists.iter().enumerate() {
-                    let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
+                    let parsed = crate::v2_compiler_parse::parse_with_table(tokens, std::rc::Rc::new(std::collections::HashMap::new()), intern_table_fp.clone());
+                    let result = parsed.result.clone();
+                    intern_table_fp = parsed.intern_table.clone();
                     let m = result.module.clone()
                         .unwrap_or_else(|| panic!("parse failed for source {}", sources[i].path));
                     modules.push(m);
-                    intern_tables_fp.push(result.intern_table.clone());
                 }
-                let intern_table_fp = crate::v2_std_core::merge_intern_tables(std::rc::Rc::new(intern_tables_fp));
                 let parse_elapsed = t.elapsed();
                 // 1b. Resolve
                 let t = Instant::now();
@@ -1115,19 +1115,19 @@ mod compiler_tests {
 
                 let t0 = Instant::now();
                 let mut modules = Vec::new();
-                let mut intern_tables_r = Vec::new();
+                let mut intern_table = crate::v2_std_core::empty_intern_table();
                 for source in &sources {
                     let tokens = crate::v2_compiler_tokenize::tokenize(
                         &source.content.clone(),
                         source.path.clone(),
                     );
-                    let result = crate::v2_compiler_parse::parse(&tokens, std::rc::Rc::new(std::collections::HashMap::new()));
+                    let parsed = crate::v2_compiler_parse::parse_with_table(&tokens, std::rc::Rc::new(std::collections::HashMap::new()), intern_table.clone());
+                    let result = parsed.result.clone();
+                    intern_table = parsed.intern_table.clone();
                     let m = result.module.clone()
                         .unwrap_or_else(|| panic!("parse failed for source {}", source.path));
                     modules.push(m);
-                    intern_tables_r.push(result.intern_table.clone());
                 }
-                let intern_table = crate::v2_std_core::merge_intern_tables(std::rc::Rc::new(intern_tables_r));
                 let resolve_si = sources.iter().fold(
                     crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), &s.content.clone())),

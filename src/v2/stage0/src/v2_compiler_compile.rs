@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, no_span, Connective, Cardinality, resource_use_name_at, resource_use_resource, param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span, module_imports, module_items, import_is_all, import_specific_names_at, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, MethodSemantics, ExprErrorKind, ExprData, MatchPattern, field_binding_name_at, field_binding_pattern, arg_name_at, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name_at, field_init_node_value, LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index, field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at, foreach_variable_at, expr_method_name_at, InternTable, InternResult, empty_intern_table, intern, merge_intern_tables};
+pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, no_span, Connective, Cardinality, resource_use_name_at, resource_use_resource, param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span, module_imports, module_items, import_is_all, import_specific_names_at, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, MethodSemantics, ExprErrorKind, ExprData, MatchPattern, field_binding_name_at, field_binding_pattern, arg_name_at, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name_at, field_init_node_value, LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index, field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at, foreach_variable_at, expr_method_name_at, InternTable, InternResult, empty_intern_table, intern};
 use crate::v2_std_core::CompilerDiagnostic::{InternalError, OwnershipViolation};
 use crate::v2_std_core::Connective::{NoConnective, Arrow};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
@@ -24,7 +24,7 @@ use crate::v2_std_core::BinOp::*;
 use crate::v2_std_core::UnaryOpKind::*;
 use crate::v2_std_core::StringPart::*;
 pub use crate::v2_compiler_tokenize::{tokenize};
-pub use crate::v2_compiler_parse::{parse, ParseResult};
+pub use crate::v2_compiler_parse::{parse_with_table, ParseResult};
 pub use crate::v2_compiler_resolve::{resolve_modules, ModuleGraph};
 pub use crate::v2_compiler_normalize::{normalize_graph, NormalizeResult};
 pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule};
@@ -72,6 +72,7 @@ pub struct FrontendResult {
 pub struct FrontendAccum {
     pub parse_results: Rc<Vec<Rc<ParseResult>>>,
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
+    pub intern_table: Rc<InternTable>,
 }
 
 pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> {
@@ -566,27 +567,29 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
         let acc = sources.iter().cloned().fold(Rc::new(FrontendAccum {
     parse_results: Rc::new(vec![]),
     newline_indices: Rc::new(vec![]),
+    intern_table: empty_intern_table(),
 }), |acc: Rc<FrontendAccum>, s: Rc<SourceFile>| { let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone()); {
             let tokens = tokenize(&s.content.clone(), s.path.clone());
 let si = build_newline_index(s.path.clone(), &s.content.clone());
-let pr = parse(&tokens, v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(), si.file.clone(), si.clone()));
+let parsed = parse_with_table(&tokens, v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(), si.file.clone(), si.clone()), acc.intern_table);
+let pr = parsed.result.clone();
 Rc::new(FrontendAccum {
     parse_results: v2_rt::rc_list_push(acc.parse_results, pr.clone()),
     newline_indices: v2_rt::rc_list_push(acc.newline_indices, si.clone()),
+    intern_table: parsed.intern_table.clone(),
 })
 } });
 let parse_results = acc.parse_results.clone();
 let newline_indices = acc.newline_indices.clone();
+let intern_table = acc.intern_table.clone();
 let parse_diagnostics = collect_diagnostics(parse_results.clone());
 let has_parse_errors = { let mut __found = false; for p in parse_results.clone().iter().cloned() { if (p.error.clone() != None) { __found = true; break; } } __found };
-let intern_tables = Rc::new({ let mut __result = Vec::new(); for p in parse_results.clone().iter().cloned() { __result.push(p.intern_table.clone()); } __result });
-let merged_intern_table = merge_intern_tables(intern_tables);
 if has_parse_errors {
             Rc::new(FrontendResult {
     graph: None,
     diagnostics: parse_diagnostics,
     newline_indices: newline_indices.clone(),
-    intern_table: merged_intern_table,
+    intern_table: intern_table,
 })
         } else {
             {
@@ -597,7 +600,7 @@ Rc::new(FrontendResult {
     graph: Some(graph.clone()),
     diagnostics: v2_rt::concat(parse_diagnostics, graph.diagnostics.clone()),
     newline_indices: newline_indices.clone(),
-    intern_table: merged_intern_table,
+    intern_table: intern_table,
 })
 }
         }

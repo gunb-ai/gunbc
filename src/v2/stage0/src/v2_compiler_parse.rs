@@ -40,6 +40,11 @@ pub struct ParserState {
 pub struct ParseResult {
     pub module: Option<Rc<Node>>,
     pub error: Option<Rc<ErrorNode>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParseWithTableResult {
+    pub result: Rc<ParseResult>,
     pub intern_table: Rc<InternTable>,
 }
 
@@ -1711,9 +1716,9 @@ continue;
 }
 }
 
-pub fn parse(tokens: &Rc<Vec<Rc<Token>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<ParseResult> {
+pub fn parse_with_table(tokens: &Rc<Vec<Rc<Token>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>, intern_table: Rc<InternTable>) -> Rc<ParseWithTableResult> {
     {
-        let pre_interned = pre_intern_tokens(tokens.clone(), empty_intern_table());
+        let pre_interned = pre_intern_tokens(tokens.clone(), intern_table);
 let state = Rc::new(ParserState {
     pos: 0,
     source_indices: source_indices,
@@ -1721,19 +1726,27 @@ let state = Rc::new(ParserState {
 });
 let r = parse_module(&tokens, state);
 if has_err(r.err.clone()) {
-            Rc::new(ParseResult {
+            Rc::new(ParseWithTableResult {
+    result: Rc::new(ParseResult {
     module: None,
     error: r.err.clone(),
+}),
     intern_table: r.state.clone().intern_table.clone(),
 })
         } else {
-            Rc::new(ParseResult {
+            Rc::new(ParseWithTableResult {
+    result: Rc::new(ParseResult {
     module: Some(r.module.clone()),
     error: None,
+}),
     intern_table: r.state.clone().intern_table.clone(),
 })
         }
 }
+}
+
+pub fn parse(tokens: Rc<Vec<Rc<Token>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<ParseResult> {
+    parse_with_table(&tokens, source_indices, empty_intern_table()).result.clone()
 }
 
 pub fn parse_module(tokens: &Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ModuleResult> {
