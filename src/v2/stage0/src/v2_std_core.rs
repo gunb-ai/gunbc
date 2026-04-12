@@ -501,7 +501,7 @@ pub struct DeclaredFuncSig {
     pub params: Rc<Vec<Rc<Node>>>,
     pub inferred: Option<Rc<Node>>,
     pub is_async: bool,
-    pub output_provenance: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    pub output_provenance: Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -695,8 +695,8 @@ pub fn make_resource_use_node(name: &String, resource: Rc<Node>, span: Rc<Source
 })
 }
 
-pub fn resource_use_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index, &n)
+pub fn resource_use_name_at(n: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    authored_name_at(source_indices, &n)
 }
 
 pub fn resource_use_resource(n: &Rc<Node>) -> Rc<Node> {
@@ -750,8 +750,8 @@ pub fn make_field_binding_node(field_name: &String, binding: Rc<MatchPattern>, s
 })
 }
 
-pub fn field_binding_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index, &n)
+pub fn field_binding_name_at(n: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    authored_name_at(source_indices, &n)
 }
 
 pub fn field_binding_pattern(n: Rc<Node>) -> Rc<MatchPattern> {
@@ -837,44 +837,40 @@ Rc::new(Node {
 }
 }
 
-pub fn param_node_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index, &n)
+pub fn param_node_name_at(n: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    authored_name_at(source_indices, &n)
 }
 
-pub fn generic_param_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index, &n)
+pub fn generic_param_name_at(n: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    authored_name_at(source_indices, &n)
 }
 
-pub fn authored_name_at(source_index: Option<Rc<NewlineIndex>>, node: &Rc<Node>) -> String {
+pub fn authored_name_at(source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>, node: &Rc<Node>) -> String {
     match node.ident_span.clone() {
-    Some(span) => match source_index {
-    Some(index) => if (span.file.clone().as_str() == index.file.clone().as_str()) {
-        {
-            let text = source_text_at(index.clone(), &span);
+    Some(span) => match v2_rt::map_get(&source_indices, span.file.clone()) {
+    Some(index) => {
+        let text = source_text_at(index.clone(), &span);
 if (text.clone().as_str() == "".to_string().as_str()) {
-                node.name.clone()
-            } else {
-                text.clone()
-            }
-}
-    } else {
-        node.name.clone()
-    },
+            node.name.clone()
+        } else {
+            text.clone()
+        }
+},
     None => node.name.clone(),
 },
     None => node.name.clone(),
 }
 }
 
-pub fn find_child_named(n: Rc<Node>, name: String, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
-    match Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { if (authored_name_at(source_index.clone(), &c).as_str() == name.clone().as_str()) { __result.push(c); } } __result }).first().cloned() {
+pub fn find_child_named(n: Rc<Node>, name: String, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
+    match Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { if (authored_name_at(source_indices.clone(), &c).as_str() == name.clone().as_str()) { __result.push(c); } } __result }).first().cloned() {
     Some(ch) => Some(ch.clone()),
     None => None,
 }
 }
 
-pub fn has_child_named(n: Rc<Node>, name: String, source_index: Option<Rc<NewlineIndex>>) -> bool {
-    { let mut __found = false; for c in n.children.clone().iter().cloned() { if (authored_name_at(source_index.clone(), &c).as_str() == name.clone().as_str()) { __found = true; break; } } __found }
+pub fn has_child_named(n: Rc<Node>, name: String, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+    { let mut __found = false; for c in n.children.clone().iter().cloned() { if (authored_name_at(source_indices.clone(), &c).as_str() == name.clone().as_str()) { __found = true; break; } } __found }
 }
 
 pub fn param_node_type_expr(n: &Rc<Node>) -> Rc<Node> {
@@ -946,8 +942,8 @@ Rc::new(Node {
 }
 }
 
-pub fn field_node_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index, &n)
+pub fn field_node_name_at(n: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    authored_name_at(source_indices, &n)
 }
 
 pub fn field_node_type_expr(n: &Rc<Node>) -> Rc<Node> {
@@ -1002,8 +998,8 @@ pub fn make_variant_node(name: &String, fields: Rc<Vec<Rc<Node>>>, span: Rc<Sour
 })
 }
 
-pub fn variant_node_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index, &n)
+pub fn variant_node_name_at(n: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    authored_name_at(source_indices, &n)
 }
 
 pub fn variant_node_fields(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
@@ -1155,9 +1151,9 @@ pub fn expr_child_at(texpr: &Rc<Node>, index: i64, role: String) -> Rc<Node> {
 }
 }
 
-pub fn arg_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<String> {
+pub fn arg_name_at(n: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<String> {
     {
-        let name = authored_name_at(source_index, &n);
+        let name = authored_name_at(source_indices, &n);
 if (name.clone().as_str() == "".to_string().as_str()) {
             None
         } else {
@@ -1195,8 +1191,8 @@ pub fn arm_body(n: &Rc<Node>) -> Rc<Node> {
 }
 }
 
-pub fn field_init_node_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index, &n)
+pub fn field_init_node_name_at(n: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    authored_name_at(source_indices, &n)
 }
 
 pub fn field_init_node_value(n: &Rc<Node>) -> Rc<Node> {
@@ -1238,16 +1234,16 @@ pub fn unaryop_operand(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(&texpr, 0, "unaryop operand".to_string())
 }
 
-pub fn expr_var_name_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index, &texpr)
+pub fn expr_var_name_at(texpr: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    authored_name_at(source_indices, &texpr)
 }
 
 pub fn field_access_base(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(&texpr, 0, "field access base".to_string())
 }
 
-pub fn field_access_field_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index, &texpr)
+pub fn field_access_field_at(texpr: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    authored_name_at(source_indices, &texpr)
 }
 
 pub fn expr_field_access_summary(texpr: Rc<Node>) -> Option<Rc<FieldSummary>> {
@@ -1257,8 +1253,8 @@ pub fn expr_field_access_summary(texpr: Rc<Node>) -> Option<Rc<FieldSummary>> {
 }
 }
 
-pub fn expr_call_func_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index, &texpr)
+pub fn expr_call_func_at(texpr: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    authored_name_at(source_indices, &texpr)
 }
 
 pub fn expr_call_descent_evidence(texpr: Rc<Node>) -> Option<Rc<Vec<Rc<SubValueRelation>>>> {
@@ -1276,8 +1272,8 @@ pub fn method_arg_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     Rc::new(texpr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>())
 }
 
-pub fn expr_method_name_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index, &texpr)
+pub fn expr_method_name_at(texpr: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    authored_name_at(source_indices, &texpr)
 }
 
 pub fn expr_method_call_semantics(texpr: Rc<Node>) -> Option<Rc<MethodSemantics>> {
@@ -1291,8 +1287,8 @@ pub fn lambda_body(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(&texpr, 0, "lambda body".to_string())
 }
 
-pub fn lambda_param_names_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<String>> {
-    Rc::new({ let mut __result = Vec::new(); for n in Rc::new(texpr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).iter().cloned() { __result.push(authored_name_at(source_index.clone(), &n)); } __result })
+pub fn lambda_param_names_at(texpr: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<String>> {
+    Rc::new({ let mut __result = Vec::new(); for n in Rc::new(texpr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).iter().cloned() { __result.push(authored_name_at(source_indices.clone(), &n)); } __result })
 }
 
 pub fn let_value(texpr: Rc<Node>) -> Rc<Node> {
@@ -1303,8 +1299,8 @@ pub fn let_body(texpr: Rc<Node>) -> Option<Rc<Node>> {
     texpr.children.clone().get(1 as usize).cloned()
 }
 
-pub fn let_binding_name_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index, &texpr)
+pub fn let_binding_name_at(texpr: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    authored_name_at(source_indices, &texpr)
 }
 
 pub fn cast_expr(texpr: Rc<Node>) -> Rc<Node> {
@@ -1323,8 +1319,8 @@ pub fn foreach_body(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(&texpr, 1, "foreach body".to_string())
 }
 
-pub fn foreach_variable_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
-    authored_name_at(source_index, &texpr)
+pub fn foreach_variable_at(texpr: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    authored_name_at(source_indices, &texpr)
 }
 
 pub fn index_base(texpr: Rc<Node>) -> Rc<Node> {
@@ -1355,9 +1351,9 @@ pub fn block_stmts(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     texpr.children.clone()
 }
 
-pub fn record_lit_type_name_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<String> {
+pub fn record_lit_type_name_at(texpr: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<String> {
     {
-        let name = authored_name_at(source_index, &texpr);
+        let name = authored_name_at(source_indices, &texpr);
 if (name.clone().as_str() == "".to_string().as_str()) {
             None
         } else {
@@ -1585,15 +1581,15 @@ make_transport_node(Rc::new(vec![path_field]), Rc::new(vec![]), None, span)
 }
 }
 
-pub fn find_property(props: Rc<Vec<Rc<Node>>>, prop_name: String, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
-    match Rc::new({ let mut __result = Vec::new(); for p in props.iter().cloned() { if (field_init_node_name_at(p.clone(), source_index.clone()).as_str() == prop_name.clone().as_str()) { __result.push(p); } } __result }).first().cloned() {
+pub fn find_property(props: Rc<Vec<Rc<Node>>>, prop_name: String, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
+    match Rc::new({ let mut __result = Vec::new(); for p in props.iter().cloned() { if (field_init_node_name_at(p.clone(), source_indices.clone()).as_str() == prop_name.clone().as_str()) { __result.push(p); } } __result }).first().cloned() {
     Some(fi) => Some(field_init_node_value(&fi)),
     None => None,
 }
 }
 
-pub fn find_property_string(props: Rc<Vec<Rc<Node>>>, prop_name: String, source_index: Option<Rc<NewlineIndex>>) -> Option<String> {
-    match find_property(props, prop_name, source_index) {
+pub fn find_property_string(props: Rc<Vec<Rc<Node>>>, prop_name: String, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<String> {
+    match find_property(props, prop_name, source_indices) {
     Some(n) => match (*n.expr_data.clone()).clone() {
     ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() }; Some(s.clone()) },
     _ => None,
@@ -1602,33 +1598,33 @@ pub fn find_property_string(props: Rc<Vec<Rc<Node>>>, prop_name: String, source_
 }
 }
 
-pub fn transport_base_path(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
-    find_property(t.properties.clone(), transport_path_key(), source_index)
+pub fn transport_base_path(t: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
+    find_property(t.properties.clone(), transport_path_key(), source_indices)
 }
 
 pub fn transport_has_argv(t: Rc<Node>) -> bool {
     ((t.children.clone().len() as i64) > 0)
 }
 
-pub fn is_rest_transport(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
-    (transport_base_url(t, source_index) != None)
+pub fn is_rest_transport(t: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+    (transport_base_url(t, source_indices) != None)
 }
 
 pub fn is_shell_transport(t: Rc<Node>) -> bool {
     (t.body.clone() != None)
 }
 
-pub fn is_file_transport(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
-    (transport_base_path(t, source_index) != None)
+pub fn is_file_transport(t: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+    (transport_base_path(t, source_indices) != None)
 }
 
-pub fn is_local_transport(t: &Rc<Node>, source_index: &Option<Rc<NewlineIndex>>) -> bool {
-    ((!is_rest_transport(t.clone(), source_index.clone()) && !is_shell_transport(t.clone())) && !is_file_transport(t.clone(), source_index.clone()))
+pub fn is_local_transport(t: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+    ((!is_rest_transport(t.clone(), source_indices.clone()) && !is_shell_transport(t.clone())) && !is_file_transport(t.clone(), source_indices.clone()))
 }
 
-pub fn field_init_operation_modifier(field_init: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<OperationModifier> {
+pub fn field_init_operation_modifier(field_init: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<OperationModifier> {
     {
-        let fi_name = field_init_node_name_at(field_init, source_index);
+        let fi_name = field_init_node_name_at(field_init, source_indices);
 if (fi_name.clone().as_str() == "idempotent".to_string().as_str()) {
             Some(OperationModifier::Idempotent)
         } else {
@@ -1653,59 +1649,59 @@ pub fn operation_modifier_name(modifier: OperationModifier) -> String {
 }
 }
 
-pub fn transport_base_url(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
-    find_property(t.properties.clone(), transport_url_key(), source_index)
+pub fn transport_base_url(t: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
+    find_property(t.properties.clone(), transport_url_key(), source_indices)
 }
 
-pub fn transport_auth_token(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
-    find_property(t.properties.clone(), transport_auth_token_key(), source_index)
+pub fn transport_auth_token(t: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
+    find_property(t.properties.clone(), transport_auth_token_key(), source_indices)
 }
 
-pub fn transport_auth_header_name(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<String> {
-    find_property_string(t.properties.clone(), transport_auth_header_key(), source_index)
+pub fn transport_auth_header_name(t: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<String> {
+    find_property_string(t.properties.clone(), transport_auth_header_key(), source_indices)
 }
 
-pub fn transport_has_auth(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
-    match find_property(t.properties.clone(), transport_auth_token_key(), source_index) {
+pub fn transport_has_auth(t: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+    match find_property(t.properties.clone(), transport_auth_token_key(), source_indices) {
     Some(_) => true,
     None => false,
 }
 }
 
-pub fn transport_method(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
-    find_property(t.properties.clone(), transport_method_key(), source_index)
+pub fn transport_method(t: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
+    find_property(t.properties.clone(), transport_method_key(), source_indices)
 }
 
-pub fn transport_path_template(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
-    find_property(t.properties.clone(), transport_path_template_key(), source_index)
+pub fn transport_path_template(t: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
+    find_property(t.properties.clone(), transport_path_template_key(), source_indices)
 }
 
-pub fn transport_query(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
-    find_property(t.properties.clone(), transport_query_key(), source_index)
+pub fn transport_query(t: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
+    find_property(t.properties.clone(), transport_query_key(), source_indices)
 }
 
-pub fn transport_request_body(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
-    find_property(t.properties.clone(), transport_body_key(), source_index)
+pub fn transport_request_body(t: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
+    find_property(t.properties.clone(), transport_body_key(), source_indices)
 }
 
-pub fn transport_stdin(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
-    find_property(t.properties.clone(), transport_stdin_key(), source_index)
+pub fn transport_stdin(t: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
+    find_property(t.properties.clone(), transport_stdin_key(), source_indices)
 }
 
-pub fn transport_response_format(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
-    find_property(t.properties.clone(), transport_response_format_key(), source_index)
+pub fn transport_response_format(t: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
+    find_property(t.properties.clone(), transport_response_format_key(), source_indices)
 }
 
 pub fn is_config_reserved_key(name: &String) -> bool {
     ((((((((((((name.clone().as_str() == transport_url_key().as_str()) || (name.clone().as_str() == transport_path_key().as_str())) || (name.clone().as_str() == transport_auth_scheme_key().as_str())) || (name.clone().as_str() == transport_auth_header_key().as_str())) || (name.clone().as_str() == transport_auth_token_key().as_str())) || (name.clone().as_str() == transport_method_key().as_str())) || (name.clone().as_str() == transport_path_template_key().as_str())) || (name.clone().as_str() == transport_query_key().as_str())) || (name.clone().as_str() == transport_body_key().as_str())) || (name.clone().as_str() == transport_stdin_key().as_str())) || (name.clone().as_str() == transport_response_format_key().as_str())) || (name.clone().as_str() == transport_headers_key().as_str()))
 }
 
-pub fn transport_headers(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<Rc<Node>>> {
-    Rc::new({ let mut __result = Vec::new(); for p in t.properties.clone().iter().cloned() { if !is_config_reserved_key(&field_init_node_name_at(p.clone(), source_index.clone())) { __result.push(p); } } __result })
+pub fn transport_headers(t: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<Rc<Node>>> {
+    Rc::new({ let mut __result = Vec::new(); for p in t.properties.clone().iter().cloned() { if !is_config_reserved_key(&field_init_node_name_at(p.clone(), source_indices.clone())) { __result.push(p); } } __result })
 }
 
-pub fn transport_env(t: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<Rc<Node>>> {
-    Rc::new({ let mut __result = Vec::new(); for p in t.properties.clone().iter().cloned() { if !is_config_reserved_key(&field_init_node_name_at(p.clone(), source_index.clone())) { __result.push(p); } } __result })
+pub fn transport_env(t: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<Rc<Node>>> {
+    Rc::new({ let mut __result = Vec::new(); for p in t.properties.clone().iter().cloned() { if !is_config_reserved_key(&field_init_node_name_at(p.clone(), source_indices.clone())) { __result.push(p); } } __result })
 }
 
 pub fn map_children(node: &Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node> + Clone) -> Rc<Node> {
@@ -1730,54 +1726,54 @@ pub fn map_children(node: &Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node> + 
 })
 }
 
-pub fn expr_has_self_call(texpr: &Rc<Node>, fn_name: &String, source_index: &Option<Rc<NewlineIndex>>) -> bool {
+pub fn expr_has_self_call(texpr: &Rc<Node>, fn_name: &String, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
-    ExprData::ExprCall { .. } => if (expr_call_func_at(texpr.clone(), source_index.clone()).as_str() == fn_name.clone().as_str()) {
+    ExprData::ExprCall { .. } => if (expr_call_func_at(texpr.clone(), source_indices.clone()).as_str() == fn_name.clone().as_str()) {
             true
         } else {
-            { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_self_call(&child, &fn_name, &source_index) { __found = true; break; } } __found }
+            { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_self_call(&child, &fn_name, &source_indices) { __found = true; break; } } __found }
         },
-    _ => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_self_call(&child, &fn_name, &source_index) { __found = true; break; } } __found },
+    _ => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_self_call(&child, &fn_name, &source_indices) { __found = true; break; } } __found },
 }
     })
 }
 
-pub fn expr_has_non_tail_self_call(texpr: &Rc<Node>, fn_name: &String, in_tail: bool, source_index: &Option<Rc<NewlineIndex>>) -> bool {
+pub fn expr_has_non_tail_self_call(texpr: &Rc<Node>, fn_name: &String, in_tail: bool, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
-    ExprData::ExprCall { .. } => if (expr_call_func_at(texpr.clone(), source_index.clone()).as_str() == fn_name.clone().as_str()) {
+    ExprData::ExprCall { .. } => if (expr_call_func_at(texpr.clone(), source_indices.clone()).as_str() == fn_name.clone().as_str()) {
             if (in_tail.clone() == false) {
                 true
             } else {
-                { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(&child, &fn_name, false, &source_index) { __found = true; break; } } __found }
+                { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(&child, &fn_name, false, &source_indices) { __found = true; break; } } __found }
             }
         } else {
-            { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(&child, &fn_name, false, &source_index) { __found = true; break; } } __found }
+            { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(&child, &fn_name, false, &source_indices) { __found = true; break; } } __found }
         },
     ExprData::ExprError { .. } => false,
     ExprData::ExprVar { .. } => false,
     ExprData::ExprLiteral { .. } => false,
-    ExprData::ExprFieldAccess { .. } => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(&child, &fn_name, false, &source_index) { __found = true; break; } } __found },
-    ExprData::ExprMethodCall { .. } => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(&child, &fn_name, false, &source_index) { __found = true; break; } } __found },
+    ExprData::ExprFieldAccess { .. } => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(&child, &fn_name, false, &source_indices) { __found = true; break; } } __found },
+    ExprData::ExprMethodCall { .. } => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(&child, &fn_name, false, &source_indices) { __found = true; break; } } __found },
     ExprData::ExprIf => {
-            let cond_bad = expr_has_non_tail_self_call(&if_condition(texpr.clone()), &fn_name, false, &source_index);
-let then_bad = expr_has_non_tail_self_call(&if_then_branch(texpr.clone()), &fn_name, in_tail.clone(), &source_index);
+            let cond_bad = expr_has_non_tail_self_call(&if_condition(texpr.clone()), &fn_name, false, &source_indices);
+let then_bad = expr_has_non_tail_self_call(&if_then_branch(texpr.clone()), &fn_name, in_tail.clone(), &source_indices);
 let else_bad = match if_else_branch(texpr.clone()) {
-    Some(e) => expr_has_non_tail_self_call(&e, &fn_name, in_tail.clone(), &source_index),
+    Some(e) => expr_has_non_tail_self_call(&e, &fn_name, in_tail.clone(), &source_indices),
     None => false,
 };
 ((cond_bad || then_bad) || else_bad)
 },
     ExprData::ExprMatch => {
-            let scrut_bad = expr_has_non_tail_self_call(&match_scrutinee(texpr.clone()), &fn_name, false, &source_index);
-let arms_bad = { let mut __found = false; for arm_node in match_arm_nodes(texpr.clone()).iter().cloned() { if expr_has_non_tail_self_call(&arm_body(&arm_node), &fn_name, in_tail.clone(), &source_index) { __found = true; break; } } __found };
+            let scrut_bad = expr_has_non_tail_self_call(&match_scrutinee(texpr.clone()), &fn_name, false, &source_indices);
+let arms_bad = { let mut __found = false; for arm_node in match_arm_nodes(texpr.clone()).iter().cloned() { if expr_has_non_tail_self_call(&arm_body(&arm_node), &fn_name, in_tail.clone(), &source_indices) { __found = true; break; } } __found };
 (scrut_bad || arms_bad)
 },
     ExprData::ExprLet => {
-            let val_bad = expr_has_non_tail_self_call(&let_value(texpr.clone()), &fn_name, false, &source_index);
+            let val_bad = expr_has_non_tail_self_call(&let_value(texpr.clone()), &fn_name, false, &source_indices);
 let body_bad = match let_body(texpr.clone()) {
-    Some(b) => expr_has_non_tail_self_call(&b, &fn_name, in_tail.clone(), &source_index),
+    Some(b) => expr_has_non_tail_self_call(&b, &fn_name, in_tail.clone(), &source_indices),
     None => false,
 };
 (val_bad || body_bad)
@@ -1789,18 +1785,18 @@ if (ss_count.clone() == 0) {
                 false
             } else {
                 {
-                    let init_bad = { let mut __found = false; for p in Rc::new({ let mut __result = Vec::new(); for p in Rc::new(ss.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (p.0.clone() < (ss_count.clone() - 1)) { __result.push(p); } } __result }).iter().cloned() { if expr_has_non_tail_self_call(&p.1.clone(), &fn_name, false, &source_index) { __found = true; break; } } __found };
+                    let init_bad = { let mut __found = false; for p in Rc::new({ let mut __result = Vec::new(); for p in Rc::new(ss.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (p.0.clone() < (ss_count.clone() - 1)) { __result.push(p); } } __result }).iter().cloned() { if expr_has_non_tail_self_call(&p.1.clone(), &fn_name, false, &source_indices) { __found = true; break; } } __found };
 let last_bad = match ss.clone().last().cloned() {
-    Some(last_expr) => expr_has_non_tail_self_call(&last_expr, &fn_name, in_tail.clone(), &source_index),
+    Some(last_expr) => expr_has_non_tail_self_call(&last_expr, &fn_name, in_tail.clone(), &source_indices),
     None => false,
 };
 (init_bad || last_bad)
 }
             }
 },
-    ExprData::ExprReturn => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(&child, &fn_name, true, &source_index) { __found = true; break; } } __found },
-    ExprData::NoExprData => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(&child, &fn_name, in_tail.clone(), &source_index) { __found = true; break; } } __found },
-    _ => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(&child, &fn_name, false, &source_index) { __found = true; break; } } __found },
+    ExprData::ExprReturn => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(&child, &fn_name, true, &source_indices) { __found = true; break; } } __found },
+    ExprData::NoExprData => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(&child, &fn_name, in_tail.clone(), &source_indices) { __found = true; break; } } __found },
+    _ => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(&child, &fn_name, false, &source_indices) { __found = true; break; } } __found },
 }
     })
 }
@@ -1833,32 +1829,32 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(ep_prop, a
 }
 }
 
-pub fn has_service_config(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> bool {
-    { let mut __found = false; for p in n.properties.clone().iter().cloned() { if (field_init_node_name_at(p.clone(), source_index.clone()).as_str() == "svc_endpoint".to_string().as_str()) { __found = true; break; } } __found }
+pub fn has_service_config(n: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+    { let mut __found = false; for p in n.properties.clone().iter().cloned() { if (field_init_node_name_at(p.clone(), source_indices.clone()).as_str() == "svc_endpoint".to_string().as_str()) { __found = true; break; } } __found }
 }
 
-pub fn service_config_endpoint(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
-    find_property(n.properties.clone(), "svc_endpoint".to_string(), source_index)
+pub fn service_config_endpoint(n: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
+    find_property(n.properties.clone(), "svc_endpoint".to_string(), source_indices)
 }
 
-pub fn service_config_auth(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
-    find_property(n.properties.clone(), "svc_auth".to_string(), source_index)
+pub fn service_config_auth(n: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
+    find_property(n.properties.clone(), "svc_auth".to_string(), source_indices)
 }
 
-pub fn service_config_rate_limit(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
-    find_property(n.properties.clone(), "svc_rate_limit".to_string(), source_index)
+pub fn service_config_rate_limit(n: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
+    find_property(n.properties.clone(), "svc_rate_limit".to_string(), source_indices)
 }
 
-pub fn service_config_retry(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
-    find_property(n.properties.clone(), "svc_retry".to_string(), source_index)
+pub fn service_config_retry(n: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
+    find_property(n.properties.clone(), "svc_retry".to_string(), source_indices)
 }
 
-pub fn service_config_auth_input(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
-    find_property(n.properties.clone(), "svc_auth_input".to_string(), source_index)
+pub fn service_config_auth_input(n: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
+    find_property(n.properties.clone(), "svc_auth_input".to_string(), source_indices)
 }
 
-pub fn service_config_auth_source(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Option<Rc<Node>> {
-    find_property(n.properties.clone(), "svc_auth_source".to_string(), source_index)
+pub fn service_config_auth_source(n: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
+    find_property(n.properties.clone(), "svc_auth_source".to_string(), source_indices)
 }
 
 pub fn module_node(name: &String, imports: Rc<Vec<Rc<Node>>>, items: Rc<Vec<Rc<Node>>>, span: &Rc<SourceSpan>) -> Rc<Node> {
@@ -1934,8 +1930,8 @@ pub fn import_is_all(n: Rc<Node>) -> bool {
     (n.body.clone() != None)
 }
 
-pub fn import_specific_names_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<Vec<String>> {
-    Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.push(authored_name_at(source_index.clone(), &c)); } __result })
+pub fn import_specific_names_at(n: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<String>> {
+    Rc::new({ let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.push(authored_name_at(source_indices.clone(), &c)); } __result })
 }
 
 pub fn module_imports(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
@@ -1968,13 +1964,21 @@ pub fn leaf_node_with_span(name: &String, span: &Rc<SourceSpan>) -> Rc<Node> {
 })
 }
 
+pub fn kernel_span(name: &String) -> Rc<SourceSpan> {
+    Rc::new(SourceSpan {
+    file: v2_rt::concat(v2_rt::concat("<kernel:".to_string(), name.clone()), ">".to_string()),
+    start: 0,
+    end: v2_rt::string_length(&name),
+})
+}
+
 pub fn unit_type() -> Rc<Node> {
     thread_local! {
         static CACHED: Rc<Node> = {
             Rc::new(Node {
     name: "Unit".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    span: kernel_span(&"Unit".to_string()),
+    ident_span: Some(kernel_span(&"Unit".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::Conj,
     params: Rc::new(vec![]),
@@ -2000,8 +2004,8 @@ pub fn bool_type() -> Rc<Node> {
         static CACHED: Rc<Node> = {
             Rc::new(Node {
     name: "Bool".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    span: kernel_span(&"Bool".to_string()),
+    ident_span: Some(kernel_span(&"Bool".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -2027,8 +2031,8 @@ pub fn string_type() -> Rc<Node> {
         static CACHED: Rc<Node> = {
             Rc::new(Node {
     name: "String".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    span: kernel_span(&"String".to_string()),
+    ident_span: Some(kernel_span(&"String".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -2054,8 +2058,8 @@ pub fn int_type() -> Rc<Node> {
         static CACHED: Rc<Node> = {
             Rc::new(Node {
     name: "Int".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    span: kernel_span(&"Int".to_string()),
+    ident_span: Some(kernel_span(&"Int".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -2081,8 +2085,8 @@ pub fn float_type() -> Rc<Node> {
         static CACHED: Rc<Node> = {
             Rc::new(Node {
     name: "Float".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    span: kernel_span(&"Float".to_string()),
+    ident_span: Some(kernel_span(&"Float".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -2108,8 +2112,8 @@ pub fn none_type() -> Rc<Node> {
         static CACHED: Rc<Node> = {
             Rc::new(Node {
     name: "None".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    span: kernel_span(&"None".to_string()),
+    ident_span: Some(kernel_span(&"None".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
