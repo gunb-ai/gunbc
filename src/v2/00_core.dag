@@ -376,6 +376,7 @@ type DeclaredFuncEnv {
 
 type Node {
   name: String
+  ident: Int
   span: SourceSpan
   ident_span: SourceSpan?
   // Fractal composition -- operations, capabilities, items are all children

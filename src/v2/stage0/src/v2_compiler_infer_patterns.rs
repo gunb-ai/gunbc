@@ -85,6 +85,7 @@ let value_field = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 });
 let some_node = Rc::new(Node {
     name: "Some".to_string(),
@@ -104,6 +105,7 @@ let some_node = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 });
 some_node
 }

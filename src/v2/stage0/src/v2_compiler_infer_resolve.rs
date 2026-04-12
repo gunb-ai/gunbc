@@ -157,6 +157,7 @@ Rc::new(Node {
     has_non_tail_self_call: child.has_non_tail_self_call.clone(),
     match_pattern: child.match_pattern.clone(),
     expr_data: child.expr_data.clone(),
+    ident: 0,
 })
 }
                     } else {
@@ -186,6 +187,7 @@ Rc::new(Node {
     has_non_tail_self_call: n.has_non_tail_self_call.clone(),
     match_pattern: n.match_pattern.clone(),
     expr_data: n.expr_data.clone(),
+    ident: 0,
 })
 }
             }
@@ -269,6 +271,7 @@ Rc::new(NodeResolveResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 }),
     diagnostics: base_diags,
 })
@@ -312,6 +315,7 @@ Rc::new(NodeResolveResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 }),
     diagnostics: rt_diags.clone(),
 })
@@ -338,6 +342,7 @@ Rc::new(NodeResolveResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 }),
     diagnostics: all_diags,
 })
@@ -400,6 +405,7 @@ Rc::new(NodeResolveResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 }),
     diagnostics: rt_diags.clone(),
 })
@@ -426,6 +432,7 @@ Rc::new(NodeResolveResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 }),
     diagnostics: field_diags.clone(),
 })
@@ -451,6 +458,7 @@ Rc::new(NodeResolveResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 }),
     diagnostics: all_diags,
 })
@@ -517,6 +525,7 @@ let resolved_node = Rc::new(Node {
     has_non_tail_self_call: n.has_non_tail_self_call.clone(),
     match_pattern: n.match_pattern.clone(),
     expr_data: n.expr_data.clone(),
+    ident: 0,
 });
 Rc::new(NodeResolveResult {
     resolved: resolved_node,
@@ -546,6 +555,7 @@ let result = Rc::new(NodeResolveResult {
     has_non_tail_self_call: n.has_non_tail_self_call.clone(),
     match_pattern: n.match_pattern.clone(),
     expr_data: n.expr_data.clone(),
+    ident: 0,
 }),
     diagnostics: v2_rt::concat(arity_diags, arg_diags),
 });
@@ -611,6 +621,7 @@ let resolved_key_child = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 });
 let resolved_val_child = Rc::new(Node {
     name: val_param_name,
@@ -632,6 +643,7 @@ let resolved_val_child = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 });
 Rc::new(NodeResolveResult {
     resolved: Rc::new(Node {
@@ -652,6 +664,7 @@ Rc::new(NodeResolveResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 }),
     diagnostics: v2_rt::concat(key_diags, val_diags),
 })
@@ -694,6 +707,7 @@ let resolved_child = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 });
 Rc::new(NodeResolveResult {
     resolved: Rc::new(Node {
@@ -714,6 +728,7 @@ Rc::new(NodeResolveResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 }),
     diagnostics: el_diags,
 })
@@ -1522,6 +1537,7 @@ let env = tp_names.iter().cloned().fold(env.clone(), |e: Rc<TypeEnv>, tp_name: S
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 }),
     provenance: Rc::new(SubValueRelation::SubValueUnknown),
 })),
@@ -1617,6 +1633,7 @@ Rc::new(ItemResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 }),
     diagnostics: v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(param_diags, ret_diags), use_diags), body_diags), anno_diags), transport_diags), prop_diags), child_diags),
 })
