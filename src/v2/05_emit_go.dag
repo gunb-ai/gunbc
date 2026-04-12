@@ -66,7 +66,7 @@ import v2.std.core {
 }
 
 import v2.compiler.artifact { RenderTarget, Go }
-import extdeps.languages.go.emit { go_reserved, go_reserved_escape_suffix, go_source_extension }
+import extdeps.languages.go.emit { go_reserved, go_reserved_escape_suffix }
 import v2.compiler.languages {
   scaffold_for_target, TestConventions, ItemKeywords, test_conventions_for_target,
   is_string_like, CaseVisibility
@@ -130,7 +130,9 @@ import v2.compiler.emit {
   emit_typed_string_interp_unified, emit_typed_record_lit_unified,
   emit_typed_call_unified, emit_typed_method_call_unified,
   emit_typed_match_unified,
-  emit_unified_typed_expr
+  emit_unified_typed_expr,
+  emit_unified_tco_body, emit_unified_tco_expr,
+  emit_unified_service_def, emit_unified_operation_method, emit_unified_transport_dispatch
 }
 // =========================================================================
 // Go language facts -- from std.languages spec (go_language, go_literals)
@@ -195,6 +197,10 @@ fn emit_go_mod(module_name: String) -> TextFile {
   TextFile { path: manifest_path, content: content }
 }
 
+fn go_source_extension() -> String {
+  scaffold_for_target(target: Go).source_file_extension
+}
+
 fn go_test_file_path(module_name: String) -> String {
   let conventions = test_conventions_for_target(target: Go)
   let file_dir = match conventions.file_dir {
@@ -202,7 +208,7 @@ fn go_test_file_path(module_name: String) -> String {
     None => ""
   }
   let filename = module_to_filename(name: module_name)
-  concat(file_dir, conventions.file_prefix, filename, conventions.file_suffix, go_source_extension)
+  concat(file_dir, conventions.file_prefix, filename, conventions.file_suffix, go_source_extension())
 }
 
 fn go_test_name(projection: TestProjection) -> String {
@@ -299,7 +305,7 @@ fn emit_go_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) ->
     "// Source module: ", m.name, "\n\n",
     pkg_decl, imports_section, "\n\n",
     items_str, "\n")
-  TextFile { path: concat(filename, go_source_extension), content: content }
+  TextFile { path: concat(filename, go_source_extension()), content: content }
 }
 
 // Derive the Go package name from a module path.
@@ -615,45 +621,31 @@ fn emit_go_typed_func_body(body: Node, registry: Map<String, ItemInfo>, scope: I
 }
 
 // =========================================================================
-// TCO -- Go rendering
+// TCO match rendering -- Go
 //
-// Typed versions of the TCO functions that work directly on Node,
-// reading inferred from sub-expressions instead of cache lookups.
+// Match/switch-case are language-specific (pattern rendering).
+// All other TCO logic is in emit_unified_tco_expr (05_emit.dag).
 // =========================================================================
 
 fn emit_go_typed_tco_body(texpr: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let inner = emit_go_typed_tco_expr(texpr: texpr, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 1)
-  shared_tco_body(inner: inner, depth: depth, spec: language_spec(target: Go))
-}
-
-fn emit_go_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>) -> String {
-  shared_tco_non_self_call(
-    frame: frame,
-    target: Go,
-    spec: language_spec(target: Go),
-    recurse_call: (f, args, scope, depth) => emit_typed_call_unified(func: f, args: args, target: Go, registry: registry, scope: scope,
-      recurse: n => emit_go_typed_expr(texpr: n, registry: registry, scope: scope, depth: depth, fuel: 1024)))
-}
-
-fn emit_go_tco_if(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>) -> String {
-  shared_tco_if(
-    frame: frame,
-    fn_name: fn_name,
-    params: params,
-    target: Go,
-    spec: language_spec(target: Go),
+  emit_unified_tco_body(
+    texpr: texpr, fn_name: fn_name, params: params, target: Go, registry: registry, scope: scope, depth: depth,
     recurse_expr: (expr, scope, depth) => emit_go_typed_expr(texpr: expr, registry: registry, scope: scope, depth: depth, fuel: 1024),
-    recurse_tco: (expr, scope, depth) => emit_go_typed_tco_expr(texpr: expr, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth))
+    render_match: frame => emit_go_tco_match(frame: frame, fn_name: fn_name, params: params, registry: registry,
+      render_init_stmts: (stmts, scope, depth) => emit_go_init_block_stmts(remaining: stmts, text: [], scope: scope, registry: registry, depth: depth)),
+    render_init_stmts: (stmts, scope, depth) => emit_go_init_block_stmts(remaining: stmts, text: [], scope: scope, registry: registry, depth: depth))
 }
 
-fn emit_go_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>) -> String {
+fn emit_go_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>,
+    render_init_stmts: fn(List<Node>, InferScope, Int) -> BlockEmitState) -> String {
   match frame.expr.expr_data {
     ExprMatch =>
       let s = match_scrutinee(texpr: frame.expr)
       let arm_list = match_arm_nodes(texpr: frame.expr)
       let scrut_str = emit_go_typed_expr(texpr: s, registry: registry, scope: frame.scope, depth: frame.depth, fuel: 1024)
       let arm_strs = arm_list |> map(arm =>
-        emit_go_typed_tco_switch_case(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth))
+        emit_go_typed_tco_switch_case(arm: arm, fn_name: fn_name, params: params, registry: registry,
+          scope: frame.scope, depth: frame.depth, render_init_stmts: render_init_stmts))
       let arms_str = arm_strs |> join(separator: "\n")
       let bs = language_spec(target: Go).block_syntax
       concat(bs.match_keyword, scrut_str, bs.block_open, arms_str, "\n", bs.block_close)
@@ -661,53 +653,19 @@ fn emit_go_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, regis
   }
 }
 
-fn emit_go_tco_let(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>) -> String {
-  shared_tco_let(
-    frame: frame,
-    fn_name: fn_name,
-    params: params,
-    target: Go,
-    recurse_expr: (expr, scope, depth) => emit_go_typed_expr(texpr: expr, registry: registry, scope: scope, depth: depth, fuel: 1024),
-    recurse_tco: (expr, scope, depth) => emit_go_typed_tco_expr(texpr: expr, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth))
-}
-
-fn emit_go_tco_block(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>) -> String {
-  shared_tco_block(
-    frame: frame,
-    fn_name: fn_name,
-    params: params,
-    target: Go,
-    spec: language_spec(target: Go),
-    emit_init_stmts: (stmts, scope, depth) => emit_go_init_block_stmts(remaining: stmts, text: [], scope: scope, registry: registry, depth: depth),
-    recurse_tco: (expr, scope, depth) => emit_go_typed_tco_expr(texpr: expr, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth))
-}
-
-fn emit_go_tco_default_return(frame: TcoFrame, registry: Map<String, ItemInfo>) -> String {
-  shared_tco_default_return(
-    frame: frame,
-    spec: language_spec(target: Go),
-    recurse_expr: (expr, scope, depth) => emit_go_typed_expr(texpr: expr, registry: registry, scope: scope, depth: depth, fuel: 1024))
-}
-
-fn emit_go_typed_tco_expr(texpr: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_shared_tco_expr(
-    frame: TcoFrame { expr: texpr, scope: scope, depth: depth },
-    fn_name: fn_name,
-    emit_self_call_reassign: input => emit_go_typed_tco_reassign(args: input.args, params: params, registry: registry, scope: input.scope, depth: input.depth),
-    emit_non_self_call: frame => emit_go_tco_non_self_call(frame: frame, registry: registry),
-    emit_if: frame => emit_go_tco_if(frame: frame, fn_name: fn_name, params: params, registry: registry),
-    emit_match: frame => emit_go_tco_match(frame: frame, fn_name: fn_name, params: params, registry: registry),
-    emit_let: frame => emit_go_tco_let(frame: frame, fn_name: fn_name, params: params, registry: registry),
-    emit_block: frame => emit_go_tco_block(frame: frame, fn_name: fn_name, params: params, registry: registry),
-    emit_default_return: frame => emit_go_tco_default_return(frame: frame, registry: registry))
-}
-
-fn emit_go_typed_tco_switch_case(arm: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+fn emit_go_typed_tco_switch_case(arm: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>,
+    scope: InferScope, depth: Int,
+    render_init_stmts: fn(List<Node>, InferScope, Int) -> BlockEmitState) -> String {
   let spec = language_spec(target: Go)
   let bs = spec.block_syntax
   let es = spec.expression_semantics
   let pat = arm_pattern(n: arm)
-  let body_str = emit_go_typed_tco_expr(texpr: arm_body(n: arm), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 1)
+  let body_str = emit_unified_tco_expr(
+    frame: TcoFrame { expr: arm_body(n: arm), scope: scope, depth: depth + 1 },
+    fn_name: fn_name, params: params, target: Go, registry: registry,
+    recurse_expr: (expr, scope, depth) => emit_go_typed_expr(texpr: expr, registry: registry, scope: scope, depth: depth, fuel: 1024),
+    render_match: frame => emit_go_tco_match(frame: frame, fn_name: fn_name, params: params, registry: registry, render_init_stmts: render_init_stmts),
+    render_init_stmts: render_init_stmts)
   let case_kw = match pat {
     Wildcard => match es.wildcard_case {
       Some { value: wc } => wc
@@ -719,36 +677,29 @@ fn emit_go_typed_tco_switch_case(arm: Node, fn_name: String, params: List<Node>,
     make_indent(level: depth + 1), body_str)
 }
 
-fn emit_go_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  emit_typed_tco_reassign_shared(args: args, params: params, target: Go,
-    recurse: child => emit_go_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, fuel: 1024),
-    source_indices: scope.type_env.source_indices)
+// =========================================================================
+// Service definition — Go
+//
+// Orchestration is in emit_unified_service_def (05_emit.dag).
+// This file provides: struct rendering + transport implementations.
+// =========================================================================
+
+fn emit_go_transport_body(transport: Node, op_name: String, source_indices: Map<String, NewlineIndex>, depth: Int) -> String {
+  emit_unified_transport_dispatch(
+    transport: transport, op_name: op_name, source_indices: source_indices, depth: depth, target: Go,
+    render_rest: (n, t, d, si) => emit_go_rest_call(op_name: n, transport: t, depth: d, source_indices: si),
+    render_shell: (n, t, d, si) => emit_go_shell_call(op_name: n, transport: t, depth: d, source_indices: si),
+    render_file: (n, d) => emit_go_file_call(op_name: n, depth: d),
+    render_local: (n, d) => emit_go_local_call(op_name: n, depth: d))
 }
 
-// =========================================================================
-// Service definition emission
-//
-// Each service becomes:
-//   - A client struct with config fields
-//   - Methods on the struct for each operation
-//   - net/http for REST transport
-//   - Multi-return (result, error) for all operations
-// =========================================================================
-
-fn emit_go_service_def(
-  item: Node,
-  registry: Map<String, ItemInfo>,
-  env: TypeEnv
-) -> String {
-  let safe_name = sanitize_service_name(name: authored_name(env: env, node: item))
-  let transport = service_fallback_transport(item: item)
-  let op_children = item.children
-  let struct_def = emit_go_service_struct(name: safe_name, fallback_transport: transport, op_children: op_children, source_indices: env.source_indices)
-  let methods = op_children |> map(op_node =>
-    emit_go_operation_method(service_name: safe_name, transport: transport, op_node: op_node, registry: registry, env: env)
-  )
-  let methods_str = methods |> join(separator: "\n\n")
-  concat(struct_def, "\n\n", methods_str)
+fn emit_go_service_def(item: Node, registry: Map<String, ItemInfo>, env: TypeEnv) -> String {
+  emit_unified_service_def(
+    item: item, target: Go, registry: registry, env: env,
+    render_service_fields: (name, transport, ops, si) =>
+      emit_go_service_struct(name: name, fallback_transport: transport, op_children: ops, source_indices: si),
+    render_transport_body: (transport, op_name, si, depth) =>
+      emit_go_transport_body(transport: transport, op_name: op_name, source_indices: si, depth: depth))
 }
 
 fn emit_go_service_struct(name: String, fallback_transport: Node, op_children: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
@@ -759,29 +710,6 @@ fn emit_go_service_struct(name: String, fallback_transport: Node, op_children: L
   } else {
     concat(language_spec(target: Go).items.type_alias_keyword, " ", name, " ", language_spec(target: Go).items.struct_keyword, " {\n", decls |> join(separator: "\n"), "\n}")
   }
-}
-
-fn emit_go_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, env: TypeEnv) -> String {
-  let op_text = authored_name(env: env, node: op_node)
-  let input_params = op_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Go), " ", emit_node_type(n: param_node_type_expr(n: p), target: Go, source_indices: env.source_indices))
-  )
-  let params_str = input_params |> join(separator: ", ")
-  let receiver = concat("(c *", service_name, ")")
-  // After dissolution, inferred on the child node IS the output type
-  let ret_type = emit_node_type(n: resolved_type(n: op_node), target: Go, source_indices: env.source_indices)
-  let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
-  let body = emit_go_transport_call(transport: eff_transport, op_name: op_text, registry: registry, depth: 1, source_indices: env.source_indices)
-  concat(language_spec(target: Go).items.func_keyword, " ", receiver, " ", go_export_ident(name: op_text),
-    "(", params_str, ") (", ret_type, ", error) {\n",
-    body, "\n}")
-}
-
-fn emit_go_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, source_indices: Map<String, NewlineIndex>) -> String {
-  if is_rest_transport(t: transport, source_indices: source_indices) { emit_go_rest_call(op_name: op_name, transport: transport, depth: depth, source_indices: source_indices) }
-  else if is_shell_transport(t: transport) { emit_go_shell_call(op_name: op_name, transport: transport, depth: depth, source_indices: source_indices) }
-  else if is_file_transport(t: transport, source_indices: source_indices) { emit_go_file_call(op_name: op_name, depth: depth) }
-  else { emit_go_local_call(op_name: op_name, depth: depth) }
 }
 
 fn emit_go_rest_call(op_name: String, transport: Node, depth: Int, source_indices: Map<String, NewlineIndex>) -> String {

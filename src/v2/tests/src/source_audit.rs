@@ -136,12 +136,23 @@ fn emit_has_tco_support() {
 
     let python_source = read_v2_file("src/v2/05_emit_python.dag");
     assert!(
-        python_source.contains("emit_py_typed_tco_body"),
-        "05_emit_python.dag should contain emit_py_typed_tco_body"
+        python_source.contains("emit_unified_tco_body"),
+        "05_emit_python.dag should call emit_unified_tco_body"
     );
     assert!(
-        python_source.contains("shared_tco_body"),
-        "05_emit_python.dag should use shared_tco_body"
+        python_source.contains("emit_py_tco_match"),
+        "05_emit_python.dag should contain emit_py_tco_match (language-specific)"
+    );
+
+    // Unified TCO dispatcher lives in the shared emitter.
+    let shared_source = read_v2_file("src/v2/05_emit.dag");
+    assert!(
+        shared_source.contains("fn emit_unified_tco_expr"),
+        "05_emit.dag should contain emit_unified_tco_expr"
+    );
+    assert!(
+        shared_source.contains("fn emit_unified_tco_body"),
+        "05_emit.dag should contain emit_unified_tco_body"
     );
 
     // TCO syntax tokens live in LanguageSpec spec values, not backend emitters.

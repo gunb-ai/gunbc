@@ -282,6 +282,57 @@ type TcoSyntax {
   temp_assign_op: String      // " = " (Rust/Python), " := " (Go)
 }
 
+// Service method strategy — structural dispatch, not string templates.
+// Follows the VisibilitySpec/ErrorHandlingSyntax coproduct pattern.
+type ServiceMethodStrategy
+  = SelfInParams { self_param: String }       // Python: def m(self, ...); Rust: fn m(&self, ...)
+  | ExternalReceiver { var_name: String }     // Go: func (c *Name) m(...)
+
+type ServiceReturnStrategy
+  = ArrowReturn                               // Python/Rust: -> T (uses items.return_arrow)
+  | ErrorTupleReturn { error_type: String }   // Go: (T, error)
+
+// Service method accessors — emitter reads these instead of importing
+// the coproduct types directly (avoids stage0 bootstrap import gap).
+fn service_self_param(spec: LanguageSpec) -> String {
+  match spec.service_method {
+    SelfInParams { self_param: sp } => sp
+    ExternalReceiver { var_name: _ } => ""
+  }
+}
+
+// TODO: receiver_template on LanguageSpec — Go receiver syntax "(c *Name) "
+// is hardcoded here. Phase 5: move to a data-driven rendering template.
+fn service_receiver_str(spec: LanguageSpec, service_name: String) -> String {
+  match spec.service_method {
+    SelfInParams { self_param: _ } => ""
+    ExternalReceiver { var_name: v } => concat("(", v, " *", service_name, ") ")
+  }
+}
+
+fn service_method_depth(spec: LanguageSpec) -> Int {
+  match spec.service_method {
+    SelfInParams { self_param: _ } => 1
+    ExternalReceiver { var_name: _ } => 0
+  }
+}
+
+fn service_methods_inside_class(spec: LanguageSpec) -> Bool {
+  match spec.service_method {
+    SelfInParams { self_param: _ } => true
+    ExternalReceiver { var_name: _ } => false
+  }
+}
+
+// TODO: return_template on LanguageSpec — error tuple format "(T, error)"
+// is hardcoded here. Phase 5: move to fully data-driven rendering.
+fn service_return_str(spec: LanguageSpec, ret_type: String) -> String {
+  match spec.service_return {
+    ArrowReturn => concat(spec.items.return_arrow, ret_type)
+    ErrorTupleReturn { error_type: et } => concat(" (", ret_type, ", ", et, ")")
+  }
+}
+
 // Item definition facts — individual tokens the emitter composes.
 // Not templates: each field is one language fact.
 //
@@ -360,6 +411,9 @@ type LanguageSpec {
   bridge_method_overrides: Map<String, String>  // {"with": "with_update"} (Python) or {} (Go)
   // Record literal syntax.
   record_lit: RecordLitSyntax
+  // Service method strategy — structural coproducts for method + return shape.
+  service_method: ServiceMethodStrategy
+  service_return: ServiceReturnStrategy
 }
 
 type TupleSyntax {
@@ -545,7 +599,9 @@ fn rust_spec() -> LanguageSpec {
       named_field_sep: ": ", named_field_join: ", ",
       anon_empty: "\{\}", anon_prefix: "\{\n", anon_suffix: "\}",
       anon_field_indent: "    "
-    }
+    },
+    service_method: SelfInParams { self_param: "&self" },
+    service_return: ArrowReturn
   }
 }
 
@@ -682,7 +738,9 @@ fn python_spec() -> LanguageSpec {
       named_field_sep: "=", named_field_join: ", ",
       anon_empty: "\{\}", anon_prefix: "\{\n", anon_suffix: "\}",
       anon_field_indent: "    "
-    }
+    },
+    service_method: SelfInParams { self_param: "self" },
+    service_return: ArrowReturn
   }
 }
 
@@ -696,7 +754,7 @@ fn go_spec() -> LanguageSpec {
     scaffold: ProjectScaffold {
       manifest_file: "go.mod",
       module_init_file: null,
-      source_file_extension: go_source_extension,
+      source_file_extension: ".go",
       source_dir: null
     },
     serialization: SerializationSpec {
@@ -819,7 +877,9 @@ fn go_spec() -> LanguageSpec {
       named_field_sep: ": ", named_field_join: ", ",
       anon_empty: "map[string]interface\{\}\{\}", anon_prefix: "map[string]interface\{\}\{\n", anon_suffix: "\}",
       anon_field_indent: "\t"
-    }
+    },
+    service_method: ExternalReceiver { var_name: "c" },
+    service_return: ErrorTupleReturn { error_type: "error" }
   }
 }
 
@@ -959,7 +1019,9 @@ fn dag_spec() -> LanguageSpec {
       named_field_sep: ": ", named_field_join: ", ",
       anon_empty: "\{\}", anon_prefix: "\{\n", anon_suffix: "\}",
       anon_field_indent: "    "
-    }
+    },
+    service_method: SelfInParams { self_param: "" },
+    service_return: ArrowReturn
   }
 }
 

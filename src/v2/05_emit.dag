@@ -52,7 +52,7 @@ import v2.std.core {
   index_base, index_expr, slice_base, slice_start, slice_end, unaryop_operand,
   expr_has_self_call, expr_has_non_tail_self_call,
   local_transport_node,
-  is_rest_transport, is_shell_transport, is_file_transport,
+  is_rest_transport, is_shell_transport, is_file_transport, is_local_transport,
   transport_has_auth,
   field_init_operation_modifier, operation_modifier_name,
   with_required_cardinality,
@@ -62,7 +62,7 @@ import v2.std.core {
   CardOptional
 }
 
-import v2.compiler.infer_env { TypeEnv, TypeBinding }
+import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
 import std.induction { InductiveField, SubValueUnknown }
 // NamingCase, PascalCase, SnakeCase imported via v2.compiler.languages (bootstrap-local mirror)
 import v2.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node }
@@ -96,7 +96,9 @@ import v2.compiler.languages {
   language_spec_for_target, is_string_like,
   test_conventions_for_target,
   target_keyword, binop_symbol,
-  wrap_shared_type
+  wrap_shared_type,
+  service_self_param, service_receiver_str, service_method_depth,
+  service_methods_inside_class, service_return_str
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -1315,6 +1317,97 @@ fn service_field_ctors(fs: ServiceFieldSet, t: ServiceFieldTemplates) -> List<St
 }
 
 // =========================================================================
+// Unified service/transport rendering — Python and Go call these directly.
+// Transport implementations (REST/shell/file/local) are injected via
+// callbacks. Rust service emission stays backend-specific (ownership).
+// =========================================================================
+
+fn emit_unified_transport_dispatch(
+  transport: Node,
+  op_name: String,
+  source_indices: Map<String, NewlineIndex>,
+  depth: Int,
+  target: RenderTarget,
+  render_rest: fn(String, Node, Int, Map<String, NewlineIndex>) -> String,
+  render_shell: fn(String, Node, Int, Map<String, NewlineIndex>) -> String,
+  render_file: fn(String, Int) -> String,
+  render_local: fn(String, Int) -> String
+) -> String {
+  if is_rest_transport(t: transport, source_indices: source_indices) { render_rest(op_name, transport, depth, source_indices) }
+  else if is_shell_transport(t: transport) { render_shell(op_name, transport, depth, source_indices) }
+  else if is_file_transport(t: transport, source_indices: source_indices) { render_file(op_name, depth) }
+  else if is_local_transport(t: transport, source_indices: source_indices) { render_local(op_name, depth) }
+  else { emit_error_expr(message: "unrecognized transport kind", target: target) }
+}
+
+fn emit_unified_operation_method(
+  service_name: String,
+  fallback_transport: Node,
+  op_node: Node,
+  target: RenderTarget,
+  registry: Map<String, ItemInfo>,
+  env: TypeEnv,
+  render_transport_body: fn(Node, String, Map<String, NewlineIndex>, Int) -> String
+) -> String {
+  let spec = language_spec(target: target)
+  let si = env.source_indices
+  let op_text = authored_name(env: env, node: op_node)
+  let params_str = emit_params_shared(params: op_node.params, target: target, source_indices: si)
+  // Read service method facts via accessor functions (languages.dag).
+  let sp = service_self_param(spec: spec)
+  let all_params = if sp == "" { params_str }
+    else if params_str == "" { sp }
+    else { concat(sp, ", ", params_str) }
+  let receiver_str = service_receiver_str(spec: spec, service_name: service_name)
+  let method_depth = service_method_depth(spec: spec)
+  let ret_type = emit_node_type(n: resolved_type(n: op_node), target: target, source_indices: si)
+  let ret_str = service_return_str(spec: spec, ret_type: ret_type)
+  let method_name = match spec.visibility {
+    CaseVisibility { export_case: _ } => emit_export_ident(name: op_text, target: target)
+    _ => emit_ident(name: op_text, target: target)
+  }
+  let eff_transport = effective_operation_transport(op_node: op_node, fallback: fallback_transport)
+  let body = render_transport_body(eff_transport, op_text, si, method_depth + 1)
+  let sig = concat(spec.items.async_prefix, spec.items.func_keyword, " ", receiver_str, method_name,
+    "(", all_params, ")", ret_str)
+  if spec.block_syntax.significant_whitespace {
+    concat(sig, spec.block_syntax.block_open,
+      make_indent(level: method_depth + 1), body)
+  } else {
+    concat(sig, spec.block_syntax.block_open,
+      body, "\n", make_indent(level: method_depth), spec.block_syntax.block_close)
+  }
+}
+
+fn emit_unified_service_def(
+  item: Node,
+  target: RenderTarget,
+  registry: Map<String, ItemInfo>,
+  env: TypeEnv,
+  render_service_fields: fn(String, Node, List<Node>, Map<String, NewlineIndex>) -> String,
+  render_transport_body: fn(Node, String, Map<String, NewlineIndex>, Int) -> String
+) -> String {
+  let spec = language_spec(target: target)
+  let safe_name = sanitize_service_name(name: authored_name(env: env, node: item))
+  let transport = service_fallback_transport(item: item)
+  let op_children = item.children
+  let fields_str = render_service_fields(safe_name, transport, op_children, env.source_indices)
+  let methods = op_children |> map(op_node =>
+    emit_unified_operation_method(
+      service_name: safe_name, fallback_transport: transport, op_node: op_node,
+      target: target, registry: registry, env: env,
+      render_transport_body: render_transport_body))
+  let methods_str = methods |> join(separator: "\n\n")
+  if service_methods_inside_class(spec: spec) {
+    concat(spec.items.struct_keyword, " ", safe_name, ":\n",
+      make_indent(level: 1), fields_str, "\n\n",
+      make_indent(level: 1), methods_str)
+  } else {
+    concat(fields_str, "\n\n", methods_str)
+  }
+}
+
+// =========================================================================
 // Item structural predicates — shared boolean queries on Node fields.
 // No taxonomy enum (CM: consumers compose the predicates they need).
 // Each predicate reads one structural fact from the Node.
@@ -1723,6 +1816,89 @@ fn shared_tco_reassign(
     temp_assign_op: spec.tco.temp_assign_op, stmt_terminator: spec.block_syntax.stmt_terminator,
     continue_str: spec.tco.continue_str, line_prefix: "")
   all_lines |> join(separator: "\n")
+}
+
+// =========================================================================
+// Unified TCO entry points — Python and Go call these directly.
+// Language-specific logic is injected via render_match + render_init_stmts
+// callbacks. Rust TCO stays backend-specific (ownership analysis).
+// =========================================================================
+
+fn unified_tco_recurse(expr: Node, scope: InferScope, depth: Int,
+    fn_name: String, params: List<Node>, target: RenderTarget, registry: Map<String, ItemInfo>,
+    recurse_expr: fn(Node, InferScope, Int) -> String,
+    render_match: fn(TcoFrame) -> String,
+    render_init_stmts: fn(List<Node>, InferScope, Int) -> BlockEmitState) -> String {
+  emit_unified_tco_expr(
+    frame: TcoFrame { expr: expr, scope: scope, depth: depth },
+    fn_name: fn_name, params: params, target: target, registry: registry,
+    recurse_expr: recurse_expr, render_match: render_match, render_init_stmts: render_init_stmts)
+}
+
+fn emit_unified_tco_expr(
+  frame: TcoFrame,
+  fn_name: String,
+  params: List<Node>,
+  target: RenderTarget,
+  registry: Map<String, ItemInfo>,
+  recurse_expr: fn(Node, InferScope, Int) -> String,
+  render_match: fn(TcoFrame) -> String,
+  render_init_stmts: fn(List<Node>, InferScope, Int) -> BlockEmitState
+) -> String {
+  let spec = language_spec(target: target)
+  emit_shared_tco_expr(
+    frame: frame,
+    fn_name: fn_name,
+    emit_self_call_reassign: input => emit_typed_tco_reassign_shared(
+      args: input.args, params: params, target: target,
+      recurse: child => recurse_expr(child, input.scope, input.depth),
+      source_indices: input.scope.type_env.source_indices),
+    emit_non_self_call: frame => shared_tco_non_self_call(
+      frame: frame, target: target, spec: spec,
+      recurse_call: (f, args, scope, depth) => emit_typed_call_unified(
+        func: f, args: args, target: target, registry: registry, scope: scope,
+        recurse: n => recurse_expr(n, scope, depth))),
+    emit_if: frame => shared_tco_if(
+      frame: frame, fn_name: fn_name, params: params, target: target, spec: spec,
+      recurse_expr: recurse_expr,
+      recurse_tco: (expr, scope, depth) => unified_tco_recurse(expr: expr, scope: scope, depth: depth,
+        fn_name: fn_name, params: params, target: target, registry: registry,
+        recurse_expr: recurse_expr, render_match: render_match, render_init_stmts: render_init_stmts)),
+    emit_match: render_match,
+    emit_let: frame => shared_tco_let(
+      frame: frame, fn_name: fn_name, params: params, target: target,
+      recurse_expr: recurse_expr,
+      recurse_tco: (expr, scope, depth) => unified_tco_recurse(expr: expr, scope: scope, depth: depth,
+        fn_name: fn_name, params: params, target: target, registry: registry,
+        recurse_expr: recurse_expr, render_match: render_match, render_init_stmts: render_init_stmts)),
+    emit_block: frame => shared_tco_block(
+      frame: frame, fn_name: fn_name, params: params, target: target, spec: spec,
+      emit_init_stmts: render_init_stmts,
+      recurse_tco: (expr, scope, depth) => unified_tco_recurse(expr: expr, scope: scope, depth: depth,
+        fn_name: fn_name, params: params, target: target, registry: registry,
+        recurse_expr: recurse_expr, render_match: render_match, render_init_stmts: render_init_stmts)),
+    emit_default_return: frame => shared_tco_default_return(
+      frame: frame, spec: spec, recurse_expr: recurse_expr))
+}
+
+fn emit_unified_tco_body(
+  texpr: Node,
+  fn_name: String,
+  params: List<Node>,
+  target: RenderTarget,
+  registry: Map<String, ItemInfo>,
+  scope: InferScope,
+  depth: Int,
+  recurse_expr: fn(Node, InferScope, Int) -> String,
+  render_match: fn(TcoFrame) -> String,
+  render_init_stmts: fn(List<Node>, InferScope, Int) -> BlockEmitState
+) -> String {
+  let spec = language_spec(target: target)
+  let inner = emit_unified_tco_expr(
+    frame: TcoFrame { expr: texpr, scope: scope, depth: depth + 1 },
+    fn_name: fn_name, params: params, target: target, registry: registry,
+    recurse_expr: recurse_expr, render_match: render_match, render_init_stmts: render_init_stmts)
+  shared_tco_body(inner: inner, depth: depth, spec: spec)
 }
 
 fn is_tco_candidate(texpr: Node, func_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
