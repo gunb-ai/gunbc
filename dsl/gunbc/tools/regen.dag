@@ -49,7 +49,10 @@ func regenerate(cycle: SelfHostingCycle) -> RegenResult {
   }
 
   // Step 3: Copy pass 1 output to stage0
-  let _ = shell.Exec.Run(script: copy_output_command(from_dir: ".regen-pass1", cycle: cycle))
+  let copy = shell.Exec.Run(script: copy_output_command(from_dir: ".regen-pass1", cycle: cycle))
+  if copy.success == false {
+    return Failed { stage: Compile, stderr: copy.stderr }
+  }
 
   // Step 4: Verify stage0 compiles with new generated code
   let check = shell.Exec.Run(script: check_command(cycle: cycle))

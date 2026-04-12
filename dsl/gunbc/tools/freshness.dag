@@ -33,7 +33,8 @@ func check_freshness(cycle: SelfHostingCycle) -> FreshnessCheckResult {
     return Failed { stderr: build.stderr }
   }
 
-  // Compile .dag source to temp dir
+  // Clear any stale output from prior runs, then compile to temp dir
+  let _ = shell.Exec.Run(script: "rm -rf .freshness-check")
   let compile = shell.Exec.Run(script: compile_command(cycle: cycle, output_dir: ".freshness-check"))
   if compile.success == false {
     return Failed { stderr: compile.stderr }

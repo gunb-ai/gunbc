@@ -86,12 +86,22 @@ type ConvergenceResult
   | Diverged { differing_files: List<FilePath> }
 
 fn check_convergence(pass1: PassOutput, pass2: PassOutput) -> ConvergenceResult {
-  let diffs = pass1.files |> flat_map(fh =>
+  // Files with different hashes
+  let changed = pass1.files |> flat_map(fh =>
     pass2.files
       |> filter(fh2 => fh2.path == fh.path && fh2.hash != fh.hash)
       |> map(fh2 => fh2.path)
   )
-  if diffs |> is_empty { FixedPoint } else { Diverged { differing_files: diffs } }
+  // Files in pass1 but not in pass2 (removed)
+  let removed = pass1.files
+    |> filter(fh => pass2.files |> filter(fh2 => fh2.path == fh.path) |> is_empty)
+    |> map(fh => fh.path)
+  // Files in pass2 but not in pass1 (added)
+  let added = pass2.files
+    |> filter(fh => pass1.files |> filter(fh2 => fh2.path == fh.path) |> is_empty)
+    |> map(fh => fh.path)
+  let all_diffs = concat(changed, concat(removed, added))
+  if all_diffs |> is_empty { FixedPoint } else { Diverged { differing_files: all_diffs } }
 }
 
 fn is_converged(result: ConvergenceResult) -> Bool {
@@ -111,12 +121,22 @@ type FreshnessResult
   | Stale { differing_files: List<FilePath> }
 
 fn check_freshness(committed: PassOutput, generated: PassOutput) -> FreshnessResult {
-  let diffs = committed.files |> flat_map(fh =>
+  // Files with different hashes
+  let changed = committed.files |> flat_map(fh =>
     generated.files
       |> filter(fh2 => fh2.path == fh.path && fh2.hash != fh.hash)
       |> map(fh2 => fh2.path)
   )
-  if diffs |> is_empty { Fresh } else { Stale { differing_files: diffs } }
+  // Files in committed but not in generated (removed)
+  let removed = committed.files
+    |> filter(fh => generated.files |> filter(fh2 => fh2.path == fh.path) |> is_empty)
+    |> map(fh => fh.path)
+  // Files in generated but not in committed (added)
+  let added = generated.files
+    |> filter(fh => committed.files |> filter(fh2 => fh2.path == fh.path) |> is_empty)
+    |> map(fh => fh.path)
+  let all_diffs = concat(changed, concat(removed, added))
+  if all_diffs |> is_empty { Fresh } else { Stale { differing_files: all_diffs } }
 }
 
 fn is_fresh(result: FreshnessResult) -> Bool {
