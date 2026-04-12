@@ -166,13 +166,13 @@ if same_count.clone() {
                 } else {
                     v2_rt::rc_map_insert(reg2.clone(), item.name.clone(), Rc::new(ItemInfo {
     name: info.name.clone(),
+    module_name: info.module_name.clone(),
     kind: info.kind.clone(),
     service_names: merged.clone(),
     resource_names: info.resource_names.clone(),
     params: info.params.clone(),
     is_self_recursive: info.is_self_recursive.clone(),
     has_non_tail_self_call: info.has_non_tail_self_call.clone(),
-    module_name: "".to_string(),
 }))
                 }
 }
