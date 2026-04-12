@@ -289,7 +289,7 @@ fn lookup_structural_method(receiver_type: Node, method_name: String, source_ind
     // (add, mul, compare, concat, etc.) for Int/Float/Bool/String.
     // The enriched node is NOT the type binding — it's a side table
     // so that type nodes in the graph stay as bare leaves.
-    let enriched = enrich_kernel_type(name: authored_name_at(source_indices: source_indices, node: receiver_type), base: receiver_type)
+    let enriched = enrich_kernel_type(name: authored_name_at(source_indices: source_indices, node: receiver_type), base: receiver_type, source_indices: source_indices)
     if enriched.connective == Conj && enriched.children |> count > 0 {
       let base_result = lookup_field_in_product(product: enriched, method_name: method_name, source_indices: source_indices)
       // Enrich with size_effect/cost_shape from the EXACT profile for this receiver type.

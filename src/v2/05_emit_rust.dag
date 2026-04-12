@@ -2600,7 +2600,7 @@ fn emit_nested_rt_concat(remaining: List<String>, acc: String, shared_types: Map
 fn emit_typed_for_each(variable: String, collection: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let sharing = language_spec(target: Rust).sharing
   let coll_str = emit_typed_expr(texpr: collection, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-  let elem_type = for_each_element_type_node(n: resolved_type(n: collection))
+  let elem_type = for_each_element_type_node(n: resolved_type(n: collection), source_indices: scope.type_env.source_indices)
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type, provenance: SubValueUnknown)
   let body_str = emit_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 2, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let ind1 = make_indent(level: depth + 1)
@@ -2885,7 +2885,7 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
   let elem_type_str = match receiver.inferred {
     Some { value: Resolved { node: rt } } =>
       let resolved = rt
-      let elem = for_each_element_type_node(n: resolved)
+      let elem = for_each_element_type_node(n: resolved, source_indices: scope.type_env.source_indices)
       let elem_is_type_var = if elem.inferred != none { is_type_variable(inferred: elem.inferred.value) } else { false }
       if elem.ident_span != none && !elem_is_type_var {
         render_rust_type(n: elem, shared_types: shared_types, source_indices: scope.type_env.source_indices)

@@ -1186,7 +1186,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           Some { value: first_arg } =>
             let first_result = infer_expr(texpr: arg_value(n: first_arg), scope: scope, expected: none)
             let first_type = resolved_type(n: first_result.typed)
-            let elem_type = for_each_element_type_node(n: first_type)
+            let elem_type = for_each_element_type_node(n: first_type, source_indices: scope.type_env.source_indices)
             let call_elem_provenance = derive_element_provenance(coll_expr: first_result.typed, elem_type: elem_type, scope: scope)
             let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, scope: scope)
             concat(
@@ -1274,7 +1274,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                     if template_return_has_variables(template: t) || !is_fully_resolved(n: base_result_type, source_indices: scope.type_env.source_indices) {
                       let call_arg_types = remaining |> map(a => resolved_type(n: arg_value(n: a)))
                       let fold_overrides = if call_fold_info != none { fold_override_map(key: "FoldAccumulator", value: refined_call_fold_acc_type) } else { empty_override_map() }
-                      resolve_type_variables_from_template(template: t, arg_types: call_arg_types, receiver_type: first_arg_type, overrides: fold_overrides)
+                      resolve_type_variables_from_template(template: t, arg_types: call_arg_types, receiver_type: first_arg_type, overrides: fold_overrides, source_indices: scope.type_env.source_indices)
                     } else { base_result_type }
                   None => base_result_type
                 }
@@ -1471,7 +1471,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       // Type lambda args from receiver's element type instead of type variables.
       // For fold: also infer init arg to type accumulator param.
       let recv_rt = resolved_type(n: recv_typed)
-      let recv_elem_type = for_each_element_type_node(n: recv_rt)
+      let recv_elem_type = for_each_element_type_node(n: recv_rt, source_indices: scope.type_env.source_indices)
       // Use method name string directly for dispatch.
       let mc_method_name = Some { value: method_name }
       let fold_info = extract_fold_init_info(method_name: mc_method_name, method_args: mc_args, min_args: 2, scope: scope, expected: expected)
@@ -1526,7 +1526,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                 if template_return_has_variables(template: t) || !is_fully_resolved(n: base_result_type, source_indices: scope.type_env.source_indices) {
                   let mc_arg_types = typed_mc_args |> map(a => resolved_type(n: arg_value(n: a)))
                   let mc_fold_overrides = if fold_info != none { fold_override_map(key: "FoldAccumulator", value: refined_fold_acc_type) } else { empty_override_map() }
-                  resolve_type_variables_from_template(template: t, arg_types: mc_arg_types, receiver_type: recv_rt, overrides: mc_fold_overrides)
+                  resolve_type_variables_from_template(template: t, arg_types: mc_arg_types, receiver_type: recv_rt, overrides: mc_fold_overrides, source_indices: scope.type_env.source_indices)
                 } else { base_result_type }
               None => base_result_type
             }
@@ -2036,7 +2036,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let coll_result = infer_expr(texpr: coll, scope: scope, expected: none)
       let coll_typed = coll_result.typed
       let coll_diags = coll_result.diagnostics
-      let elem_type_node = for_each_element_type_node(n: resolved_type(n: coll_typed))
+      let elem_type_node = for_each_element_type_node(n: resolved_type(n: coll_typed), source_indices: scope.type_env.source_indices)
       let elem_provenance = derive_element_provenance(coll_expr: coll_typed, elem_type: elem_type_node, scope: scope)
       let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type_node, provenance: elem_provenance)
       let body_result = infer_expr(texpr: body_expr, scope: body_scope, expected: none)
