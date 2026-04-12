@@ -1134,10 +1134,11 @@ Not invariant violations by themselves:
 
 - Roadmap/docs drift (`A7 full retirement`, `P1b done`, acceptance text
   that still names future work).
-- Loose ratchets (`SELF_COMPILE_ERROR_RATCHET == 2700`) and unlanded
-  StageMetrics/performance-contract work. These are backlog/test debt,
-  not direct invariant violations until a concrete boundary or algorithm
-  violates a stated rule.
+- Loose ratchets and unlanded StageMetrics/performance-contract work.
+  Current checked-in values: `SELF_COMPILE_ERROR_RATCHET = 2700`,
+  `CLONE_RATCHET = 21000` (pipeline.rs:7845). These are backlog/test
+  debt, not direct invariant violations until a concrete boundary or
+  algorithm violates a stated rule.
 
 ---
 
@@ -1146,17 +1147,25 @@ Not invariant violations by themselves:
 Three root causes account for ~50 individual sites. Fixing the root causes
 eliminates the symptoms; fixing symptoms individually is whack-a-mole.
 
-### Status After Final Cleanup
+### Status (2026-04-12)
 
-This workboard is complete in this branch.
+Root causes are ADDRESSED (design decided, infrastructure landed) but
+not fully CLOSED. Live violations remain in the semantic-boundary
+review (2026-03-21) and the Root Cause A/B/C tables describe work
+that is partially done, not complete.
 
-Closed in this branch:
-- Root Cause A: A-1, A-2, A-3, A-4, A-5, A-6, A-7, A-8, A-9, A-10
-- Root Cause B: B-1, B-2, B-3, B-4, B-5, B-6
-- Root Cause C: C-1, C-2, C-3, C-4, C-5, C-6, C-7, C-8, C-9, C-10
+- Root Cause A: Infrastructure landed (EmitContext, RefKind, ParamSource).
+  Migration underway. A-4 (function-as-value) and A-8/A-9 (Dynamic)
+  still have live violations.
+- Root Cause B: Partially addressed. B-1 (transport kind) and B-2
+  (item kind) structurally dispatched. B-3 through B-6 still use
+  string dispatch in some paths.
+- Root Cause C: Mostly addressed. Remaining duplication is being
+  dissolved by M4 Phase 2 (expression dispatch unification).
 
-The root-cause tables below are preserved as the historical problem statement
-that motivated the refactor, not as a live backlog.
+The root-cause tables below are the historical problem statement.
+Items marked "done" in the tables are genuinely complete; unmarked
+items are still live.
 
 ---
 
