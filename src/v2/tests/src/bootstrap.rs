@@ -75,7 +75,12 @@ fn stage0_cargo_check() {
 // 2026-04-11: 421→423 — per-field output provenance (+3: compose_callee_provenance,
 //   classify_body_per_field, classify_terminal_per_field calling recursive
 //   classify_body_provenance — inherent self-analysis cost).
-const DIAG_RATCHET: usize = 423;
+// 2026-04-12: 423→364 — branching guard fix: any→all for arithmetic-only check.
+//   PropertyContraction calls (with_required_cardinality) no longer poison
+//   tree-walking functions into arithmetic mode. Dissolves render_node_type
+//   and composed violations across emit files. Per-field provenance re-annotation
+//   pass added (infrastructure for Stream D).
+const DIAG_RATCHET: usize = 353;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)

@@ -5807,13 +5807,37 @@ let typed_item_results = infer_items(ctx.resolved_items.clone(), infer_scope);
 let typed_items = Rc::new({ let mut __result = Vec::new(); for tir in typed_item_results.clone().iter().cloned() { __result.push(tir.item.clone()); } __result });
 let infer_diags = Rc::new({ let mut __result = Vec::new(); for tir in typed_item_results.clone().iter().cloned() { __result.extend((*tir.diagnostics.clone()).iter().cloned()); } __result });
 let updated_func_env = populate_output_provenance(typed_items.clone(), ctx.func_env.clone(), env.clone(), data_locals.clone());
+let reannotated_items = Rc::new({ let mut __result = Vec::new(); for item in typed_items.clone().iter().cloned() { __result.push(if (item.is_self_recursive.clone() && (item.body.clone() != None)) {
+            Rc::new(Node {
+    name: item.name.clone(),
+    span: item.span.clone(),
+    ident_span: item.ident_span.clone(),
+    children: item.children.clone(),
+    params: item.params.clone(),
+    inferred: item.inferred.clone(),
+    return_cardinality: item.return_cardinality.clone(),
+    uses: item.uses.clone(),
+    body: Some(annotate_descent_evidence(item.body.clone().clone().unwrap(), item.name.clone(), &item.params.clone(), &env, data_locals.clone(), updated_func_env.signatures.clone())),
+    connective: item.connective.clone(),
+    transport: item.transport.clone(),
+    properties: item.properties.clone(),
+    type_annotation: item.type_annotation.clone(),
+    is_self_recursive: item.is_self_recursive.clone(),
+    has_non_tail_self_call: item.has_non_tail_self_call.clone(),
+    match_pattern: item.match_pattern.clone(),
+    expr_data: item.expr_data.clone(),
+    ident: 0,
+})
+        } else {
+            item.clone()
+        }); } __result });
 let typed_module = module_node(&resolved.module.clone().name.clone(), module_imports(resolved.module.clone()), ctx.resolved_items.clone(), &resolved.module.clone().span.clone());
 Rc::new(TypecheckModuleResult {
     typed: Rc::new(TypedModule {
     module: typed_module,
-    items: typed_items.clone(),
+    items: reannotated_items,
     type_env: env.clone(),
-    func_env: updated_func_env,
+    func_env: updated_func_env.clone(),
     item_registry: ctx.item_registry.clone(),
 }),
     diagnostics: v2_rt::concat(v2_rt::concat(env_diags.clone(), ctx.diagnostics.clone()), infer_diags),

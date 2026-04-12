@@ -2174,6 +2174,58 @@ fn cx_bound_child_descent_is_tree_size() {
 }
 
 #[test]
+fn cx_bound_nested_variant_optional_descent() {
+    // Nested variant match: Optional field wraps an enum whose variant
+    // contains the recursive type. The chain is:
+    //   o.detail → Inner? (OptionalRecursion)
+    //     Some { value: Resolved { node: x } } → nested destructure
+    //       x is a structural sub-value of o
+    // This tests that annotate_descent composes through both levels.
+    let source = r#"module cx_nested_variant
+
+type Inner
+  = Resolved { node: Outer }
+  | Unresolved
+
+type Outer {
+  children: List<Outer>
+  detail: Inner?
+}
+
+fn walk(o: Outer) -> Int {
+  let from_detail = match o.detail {
+    Some { value: Resolved { node: x } } => walk(o: x)
+    _ => 0
+  }
+  from_detail + (o.children |> map(c => walk(o: c)) |> fold(init: 0, f: (a, x) => a + x))
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn cx_bound_property_contraction_with_tree_descent() {
+    // Property contraction (with_required_cardinality) mixed with tree descent.
+    // The contraction call passes the parameter through a known property
+    // contraction function. The tree descent call iterates over children.
+    // Both should produce evidence: ArithmeticDescent (contraction) and
+    // IteratedSubValue (children map). CX should accept this combination.
+    let source = r#"module cx_prop_contract
+import std.core { with_required_cardinality }
+
+fn walk_type(n: Node) -> String {
+  let inner = walk_type(n: with_required_cardinality(n: n))
+  let child_strs = n.children |> map(c => walk_type(n: c))
+  inner
+}
+"#;
+    let result = compile_dag_with_complexity(source);
+    assert!(result.violations.is_empty(),
+        "property contraction + tree descent should produce 0 violations, got {}", result.violations.len());
+}
+
+#[test]
 fn cx_bound_list_shrink_is_collection_size() {
     // Recursion via skip(1) on a list → bounded by CollectionSize.
     let source = "module cx_list\n\nfn sum_list(items: List<Int>) -> Int {\n  match items |> first {\n    None => 0\n    Some { value: head } => head + sum_list(items: items |> skip(1))\n  }\n}\n";
