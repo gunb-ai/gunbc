@@ -1,0 +1,243 @@
+// gunbc/tools/review_codex.dag -- Codex CLI PR review workflow.
+//
+// Replaces ctrl/scripts/review-agent (900-line bash script) with a
+// .dag specification. Uses Codex CLI as the LLM backend (gpt-5.4,
+// included in OpenAI subscription — no per-token cost).
+//
+// Auth model:
+//   GITHUB_TOKEN  — env var, used for GitHub API (list PRs, post reviews)
+//   OPENAI_API_KEY — env var, used by codex CLI internally
+//
+// Both are read from environment via std.credentials.EnvVar.
+// The .dag model declares the dependency; the emitter generates
+// the acquisition code.
+//
+// Entrypoints:
+//   review_cycle(owner, repo)       — scan + review all open PRs
+//   review_pr(owner, repo, number)  — review a single PR (idempotent)
+
+module gunbc.tools.review_codex
+
+import extdeps.cron
+import extdeps.github.pulls
+import extdeps.llm.cli
+import extdeps.shell
+import std.credentials { CredentialSource, EnvVar }
+
+// ── Configuration ─────────────────────────────────────────────
+
+data default_model: String = "gpt-5.4"
+data default_reasoning_effort: String = "xhigh"
+data cron_schedule: String = "*/20 * * * *"
+data cron_tag: String = "review-agent"
+data owner: String = "gunb-ai"
+data repo: String = "gunbc"
+
+// Auth sources — declared, not hardcoded. The emitter reads these
+// from environment at runtime.
+data github_auth: CredentialSource = EnvVar { name: "GITHUB_TOKEN" }
+data openai_auth: CredentialSource = EnvVar { name: "OPENAI_API_KEY" }
+
+// ── Review prompt ─────────────────────────────────────────────
+// The prompt template. References THESIS.md, INVARIANTS.md, MODELING.md,
+// and std/ files by path — the codex CLI reads them from the working
+// directory (the repo checkout).
+
+data review_instructions: String = "You are a code reviewer for a DAG compiler project.
+
+FIRST: Read THESIS.md — it defines the project's core thesis (\"zero bugs by construction\").
+All review feedback should be grounded in this thesis and its implications.
+
+Review the PR diff on three axes:
+
+AXIS 1: INVARIANT VIOLATIONS (rules)
+Check the diff against INVARIANTS.md. Report actual violations you can see in the changed code.
+
+AXIS 2: COMPOSITIONAL MODELING (style)
+For any new or modified .dag types, services, or data declarations, evaluate:
+- Accuracy: Does it faithfully model the domain?
+- Harmony: Does it compose correctly from existing primitives?
+- Layering: Does it sit at the right level? (L0 std, L2 provider-agnostic, L3 provider-specific)
+- Improvement: What could make the model more compositional or more faithful?
+Skip axis 2 if the PR has no .dag file changes.
+
+AXIS 2b: ALGEBRAIC GROUNDING (M9 from MODELING.md)
+For any new TYPE DEFINITION, check if it reinvents a standard algebraic structure
+already in std/algebra.dag. Skip if no type definitions.
+
+AXIS 3: ROADMAP ALIGNMENT (direction)
+If the diff modifies ROADMAP.md, verify claims against code changes.
+Skip if no ROADMAP.md changes.
+
+IMPORTANT CONSTRAINTS:
+- ROOT-CAUSE DEPTH: trace problems upstream. The best fix is always the most
+  fundamental root cause.
+- Only flag violations PRESENT in the + lines (new/current code).
+- Do not repeat a violation already flagged in prior comments.
+
+OUTPUT FORMAT (strict, no markdown, this order):
+
+RESOLVED|comment_id|one sentence explaining how it was fixed
+
+VIOLATION|file_path|line_number|one sentence, reference the invariant
+ROOT_CAUSE|file_path|upstream gap and suggested fix
+
+MODEL|file_path|GOOD|one sentence on what composes well
+MODEL|file_path|IMPROVE|one sentence on what could be more compositional
+
+ROADMAP|VERIFIED|milestone|one sentence confirming the code supports the claim
+ROADMAP|INCOMPLETE|milestone|one sentence on what's missing
+
+If you found 0 violations or 0 modeling observations, note that explicitly.
+
+SUMMARY|one sentence overall assessment
+
+Nothing else. No headers, no preamble.
+
+--- Reference files (read from repo as needed) ---
+THESIS.md — project thesis. Read this FIRST.
+INVARIANTS.md — project invariants.
+MODELING.md — M1-M9 modeling principles.
+dsl/std/algebra.dag — Semiring, Lattice, Monoid, FreeMonoid, etc.
+dsl/std/termination.dag — DescentEvidence, RankingDimension
+dsl/std/types.dag — kernel types, container types
+dsl/extdeps/extdeps.md — layer model and fidelity invariant"
+
+// ── Pure functions ────────────────────────────────────────────
+
+fn has_review_at_sha(reviews: List<PullReview>, sha: String) -> Bool {
+  any(reviews, r => r.commit_id == sha && contains(r.body, "INVARIANTS"))
+}
+
+fn build_prompt(
+  pr_title: String,
+  pr_number: Int,
+  branch: String,
+  base_ref: String,
+  prior_comments: String
+) -> String {
+  let header = review_instructions
+  let pr_context = "Start by fetching the diff with: gh pr diff {pr_number} --repo {owner}/{repo}\nThen read whichever reference files are relevant to the changes you see.\nDon't read everything — be selective."
+  let pr_meta = "--- PR #{pr_number}: {pr_title} ---\nBranch: {branch} -> {base_ref}"
+  let prior = "--- Already flagged (do not repeat these) ---\n{prior_comments}"
+  "{header}\n\n{pr_context}\n\n{pr_meta}\n\n{prior}"
+}
+
+fn format_review_header(
+  backend: String,
+  model: String,
+  sha: String,
+  body: String
+) -> String {
+  "<!-- [codex-review] sha:{sha} -->\n`{backend}` · `{model}` · `{sha}`\n\n{body}"
+}
+
+// ── Review a single PR ────────────────────────────────────────
+// Idempotent: checks ListReviews before posting.
+
+func review_pr(
+  pr_owner: String = owner,
+  pr_repo: String = repo,
+  pr_number: Int,
+  model: String = default_model,
+  reasoning_effort: String = default_reasoning_effort
+) -> { reviewed: Bool } {
+
+  // Step 1: Get PR metadata
+  pr = github.Pulls.Get(
+    auth_token: github_auth,
+    owner: pr_owner,
+    repo: pr_repo,
+    pull_number: pr_number
+  )
+
+  // Step 2: Dedup — check if already reviewed at this SHA
+  existing = github.Pulls.ListReviews(
+    auth_token: github_auth,
+    owner: pr_owner,
+    repo: pr_repo,
+    pull_number: pr_number
+  )
+  already_done = has_review_at_sha(reviews: existing.reviews, sha: pr.pr.head.sha)
+
+  // Step 3: Fetch prior line comments for dedup + resolution
+  prior_comments_raw = github.Pulls.ListComments(
+    auth_token: github_auth,
+    owner: pr_owner,
+    repo: pr_repo,
+    issue_number: pr_number
+  )
+
+  // Step 4: Build prompt (codex will fetch the diff itself via gh CLI)
+  prompt = build_prompt(
+    pr_title: pr.pr.title,
+    pr_number: pr_number,
+    branch: pr.pr.head.ref,
+    base_ref: pr.pr.base.ref,
+    prior_comments: "none"
+  )
+
+  // Step 5: Invoke Codex CLI
+  llm_result = llm.Codex.Review(
+    prompt: prompt,
+    cwd: "/Users/briansrls/gunbc",
+    model: model,
+    reasoning_effort: reasoning_effort
+  )
+
+  // Step 6: Format and post review
+  review_body = format_review_header(
+    backend: "codex",
+    model: model,
+    sha: pr.pr.head.sha,
+    body: llm_result.stdout
+  )
+
+  posted = github.Pulls.CreateReview(
+    auth_token: github_auth,
+    owner: pr_owner,
+    repo: pr_repo,
+    pull_number: pr_number,
+    commit_id: pr.pr.head.sha,
+    body: review_body,
+    comments: "[]"
+  )
+
+  return { reviewed: true }
+}
+
+// ── Review cycle ──────────────────────────────────────────────
+// Scans all open PRs and reviews each. Self-registers cron.
+
+func review_cycle(
+  cycle_owner: String = owner,
+  cycle_repo: String = repo
+) -> { reviewed_count: Int } {
+
+  // Upsert cron — idempotent, converges on every run
+  cron.Tab.Upsert(
+    tag: cron_tag,
+    schedule: cron_schedule,
+    command: "dag run --source-root dsl --function gunbc.tools.review_codex.review_cycle",
+    log_path: "/Users/briansrls/.local/share/gunbc-review/logs/cron.log"
+  )
+
+  // List open PRs
+  open_prs = github.Pulls.List(
+    auth_token: github_auth,
+    owner: cycle_owner,
+    repo: cycle_repo,
+    state: "open"
+  )
+
+  // Review each (review_pr handles dedup internally)
+  results = for pr in open_prs.pulls {
+    review_pr(
+      pr_owner: cycle_owner,
+      pr_repo: cycle_repo,
+      pr_number: pr.number
+    )
+  }
+
+  return { reviewed_count: count(results) }
+}
