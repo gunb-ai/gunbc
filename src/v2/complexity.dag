@@ -328,23 +328,33 @@ fn method_size_effect(method_semantics: MethodSemantics?) -> CollectionSizeEffec
   }
 }
 
+// S7: Extract callback_element_position from method semantics.
+// Returns the declared 0-indexed position within the CallableOf params
+// that receives IteratedSubValue of the receiver collection,
+// or none for methods without a callback element contract.
+fn method_callback_element_position(method_semantics: MethodSemantics?) -> Int? {
+  match method_semantics {
+    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: at } } =>
+      match at {
+        Some { value: template } => template.callback_element_position
+        None => none
+      }
+    _ => none
+  }
+}
+
 // Extract the element parameter name from a lambda argument using the
-// algebra template. Finds the CallableOf in the template's param_types,
-// locates ReceiverElement, and returns the lambda param name at that index.
-// Falls back to last lambda param when no template info is available.
-// Element variable is the last lambda parameter for all current algebra
-// iteration methods. This is confirmed by the algebra template declarations:
-// fold CallableOf params: [FoldAccumulator, ReceiverElement],
-// map/filter/flat_map CallableOf params: [ReceiverElement].
-// ReceiverElement is always last. The structural fact lives in std/algebra.dag;
-// direct template lookup is deferred until the emitter supports cross-module
-// type imports (AlgebraTypeTemplate variants inline into the caller module).
-// REVIEW #11: Positional heuristic (last param). Correct for all current
-// algebra methods but relies on convention, not structural dispatch.
-// Fix: cross-module template lookup (ROADMAP CG-2/CG-3). When available,
-// replace with: template.callable_of.param_types |> find_index(ReceiverElement).
+// algebra template's callback_element_position. The template declares
+// which CallableOf param receives IteratedSubValue of the receiver —
+// this function reads that declared position and indexes into the
+// lambda's params via skip(position). Fail-closed: returns none when
+// no template declares a position (no heuristic guessing).
 fn iteration_element_name(method_semantics: MethodSemantics?, lambda: Node, si: Map<String, NewlineIndex>) -> String? {
-  lambda_param_names_at(texpr: lambda, source_indices: si) |> last
+  let params = lambda_param_names_at(texpr: lambda, source_indices: si)
+  match method_callback_element_position(method_semantics: method_semantics) {
+    Some { value: pos } => params |> skip(pos) |> first
+    None => none
+  }
 }
 
 
@@ -2270,8 +2280,7 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
           let arg_val = arg_value(n: arg_node)
           match arg_val.expr_data {
             ExprLambda { semantics: _ } =>
-              // Element variable derived from algebra template's CallableOf
-              // (ReceiverElement position), falling back to last lambda param.
+              // S7: element variable from algebra template's callback_element_position.
               match iteration_element_name(method_semantics: ms, lambda: arg_val, si: si) {
                 Some { value: iter_name } =>
                   let ext_vars = map_insert(vars, iter_name, true)
@@ -2664,7 +2673,7 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
           let arg_val = arg_value(n: arg_node)
           let ev = match arg_val.expr_data {
             ExprLambda { semantics: _ } =>
-              // Element variable derived from algebra template's CallableOf.
+              // S7: element variable from algebra template's callback_element_position.
               match iteration_element_name(method_semantics: ms, lambda: arg_val, si: si) {
                 Some { value: iter_name } =>
                   let ext_vars = map_insert(vars, iter_name, true)
@@ -3205,7 +3214,7 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
           let arg_val = arg_value(n: arg_node)
           match arg_val.expr_data {
             ExprLambda { semantics: _ } =>
-              // Element variable derived from algebra template's CallableOf.
+              // S7: element variable from algebra template's callback_element_position.
               match iteration_element_name(method_semantics: ms, lambda: arg_val, si: si) {
                 Some { value: iter_name } =>
                   let ext_vars = map_insert(descent_vars, iter_name, true)
