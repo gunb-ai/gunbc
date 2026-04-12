@@ -71,6 +71,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 })
 }
 
@@ -3639,7 +3640,43 @@ let field_val = if needs_wrap.clone() {
                             };
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    ".to_string(), emit_ident(f_name.clone(), RenderTarget::Rust)), ": ".to_string()), field_val.clone()), ",".to_string())
 }); } __result });
-let all_field_strs = field_strs;
+let provided_names = Rc::new({ let mut __result = Vec::new(); for f in fields.clone().iter().cloned() { __result.push(field_init_node_name_at(f.clone(), scope.type_env.clone().source_indices.clone())); } __result });
+let provided_set = provided_names.iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, n: String| v2_rt::rc_map_insert(acc.clone(), n.clone(), true));
+let summary = lookup_emit_type_summary(emit_info.clone(), tn.clone());
+let default_strs = match summary {
+    Some(s) => {
+                            let fs = s.field_summaries.clone();
+let ftm = s.field_type_map.clone();
+let missing = Rc::new({ let mut __result = Vec::new(); for k in Rc::new(v2_rt::map_keys(&fs)).iter().cloned() { if !emit_map_has(provided_set.clone(), k.clone()) { __result.push(k); } } __result });
+let all_defaultable = { let mut __all = true; for fname in missing.clone().iter().cloned() { if !({
+                                let has_zv = match v2_rt::map_get(&ftm, fname.clone()) {
+    Some(ft) => match rust_zero_value(&ft) {
+    Some(_) => true,
+    None => false,
+},
+    None => false,
+};
+(has_zv.clone() || is_optional_struct_field(emit_info.clone(), tn.clone(), fname.clone()))
+}) { __all = false; break; } } __all };
+if all_defaultable {
+                                Rc::new({ let mut __result = Vec::new(); for fname in missing.clone().iter().cloned() { __result.extend((*if is_optional_struct_field(emit_info.clone(), tn.clone(), fname.clone()) {
+                                    Rc::new(vec![v2_rt::concat(v2_rt::concat("    ".to_string(), emit_ident(fname.clone(), RenderTarget::Rust)), ": None,".to_string())])
+                                } else {
+                                    match v2_rt::map_get(&ftm, fname.clone()) {
+    Some(ft) => match rust_zero_value(&ft) {
+    Some(zv) => Rc::new(vec![v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    ".to_string(), emit_ident(fname.clone(), RenderTarget::Rust)), ": ".to_string()), zv.clone()), ",".to_string())]),
+    None => Rc::new(vec![]),
+},
+    None => Rc::new(vec![]),
+}
+                                }).iter().cloned()); } __result })
+                            } else {
+                                Rc::new(vec![])
+                            }
+},
+    None => Rc::new(vec![]),
+};
+let all_field_strs = v2_rt::concat(field_strs, default_strs);
 let fields_str = all_field_strs.join(&"\n".to_string());
 let raw = v2_rt::concat(v2_rt::concat(v2_rt::concat(display_tn, " {\n".to_string()), fields_str), "\n}".to_string());
 raw
@@ -3649,6 +3686,22 @@ raw
 },
 }
 }
+}
+
+pub fn rust_zero_value(type_name: &String) -> Option<String> {
+    if (type_name.clone().as_str() == "Int".to_string().as_str()) {
+        Some("0".to_string())
+    } else {
+        if (type_name.clone().as_str() == "Bool".to_string().as_str()) {
+            Some("false".to_string())
+        } else {
+            if (type_name.clone().as_str() == "String".to_string().as_str()) {
+                Some(v2_rt::concat("\"\"".to_string(), ".to_string()".to_string()))
+            } else {
+                None
+            }
+        }
+    }
 }
 
 pub fn emit_typed_bin_op(op: &BinOp, algebra_field: Option<AlgebraFieldKind>, left: &Rc<Node>, right: &Rc<Node>, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64, shared_types: &Rc<HashMap<String, bool>>, emit_info: &Rc<EmitGraphInfo>) -> String {

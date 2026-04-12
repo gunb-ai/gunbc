@@ -740,7 +740,7 @@ mod compiler_tests {
                 let mut modules = Vec::new();
                 for (i, tokens) in token_lists.iter().enumerate() {
                     let t = Instant::now();
-                    let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
+                    let result = crate::v2_compiler_parse::parse(&tokens, std::rc::Rc::new(std::collections::HashMap::new()));
                     let elapsed = t.elapsed();
                     let ok = result.module.is_some();
                     eprintln!(
@@ -838,7 +838,7 @@ mod compiler_tests {
                 let mut phase2_diags = 0usize;
                 for (i, tokens) in token_lists.iter().enumerate() {
                     let t = Instant::now();
-                    let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
+                    let result = crate::v2_compiler_parse::parse(&tokens, std::rc::Rc::new(std::collections::HashMap::new()));
                     let elapsed = t.elapsed();
                     let ok = result.module.is_some();
                     if result.error.is_some() {
@@ -987,7 +987,7 @@ mod compiler_tests {
                 let t = Instant::now();
                 let mut modules = Vec::new();
                 for (i, tokens) in token_lists.iter().enumerate() {
-                    let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
+                    let result = crate::v2_compiler_parse::parse(&tokens, std::rc::Rc::new(std::collections::HashMap::new()));
                     let m = result.module.clone()
                         .unwrap_or_else(|| panic!("parse failed for source {}", sources[i].path));
                     modules.push(m);

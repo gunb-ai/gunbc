@@ -569,7 +569,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
 }), |acc: Rc<FrontendAccum>, s: Rc<SourceFile>| { let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone()); {
             let tokens = tokenize(&s.content.clone(), s.path.clone());
 let si = build_newline_index(s.path.clone(), &s.content.clone());
-let pr = parse(tokens.clone(), v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<NewlineIndex>>(), si.file.clone(), si.clone()));
+let pr = parse(&tokens, v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<NewlineIndex>>(), si.file.clone(), si.clone()));
 Rc::new(FrontendAccum {
     parse_results: v2_rt::rc_list_push(acc.parse_results, pr.clone()),
     newline_indices: v2_rt::rc_list_push(acc.newline_indices, si.clone()),
