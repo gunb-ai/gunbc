@@ -2372,8 +2372,16 @@ pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> 
     }))
 }
 
+pub fn is_internable_token(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShIdent => true,
+    TokenShape::ShKeyword => true,
+    _ => false,
+}
+}
+
 pub fn pre_intern_tokens(tokens: Rc<Vec<Rc<Token>>>, table: Rc<InternTable>) -> Rc<InternTable> {
-    tokens.iter().cloned().fold(table.clone(), |t: Rc<InternTable>, tok: Rc<Token>| if (tok.text.clone().as_str() != "".to_string().as_str()) {
+    tokens.iter().cloned().fold(table.clone(), |t: Rc<InternTable>, tok: Rc<Token>| if is_internable_token(tok.shape.clone()) {
         intern(&t, &tok.text.clone()).table.clone()
     } else {
         t.clone()

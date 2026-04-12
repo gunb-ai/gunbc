@@ -1654,9 +1654,15 @@ fn merge_intern_tables(tables: List<InternTable>) -> InternTable {
   )
 }
 
+fn is_internable_token(shape: TokenShape) -> Bool {
+  match shape { ShIdent => true  ShKeyword => true  _ => false }
+}
+
 fn pre_intern_tokens(tokens: List<Token>, table: InternTable) -> InternTable {
   fold(tokens, init: table, f: (t, tok) =>
-    if tok.text != "" { intern(table: t, s: tok.text).table } else { t }
+    if is_internable_token(shape: tok.shape) {
+      intern(table: t, s: tok.text).table
+    } else { t }
   )
 }
 
