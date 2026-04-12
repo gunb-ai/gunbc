@@ -259,6 +259,18 @@ type IfValueForm
 type ExpressionSemantics {
   if_value_form: IfValueForm
   wildcard_case: String?        // Go: "default", Rust/Python: none (use pattern)
+  variant_pattern: VariantPatternSyntax?  // None → type-name only (Go type switch)
+}
+
+// Variant pattern syntax — how match arms destructure variant constructors.
+// Python: Name(field=binding, ...)   → open="(", close=")", binding_sep="=", empty_suffix="()"
+// Rust:   Name { field: binding, ... } → open=" { ", close=" }", binding_sep=": ", empty_suffix=""
+// Go:     just Name (no destructuring) → None
+type VariantPatternSyntax {
+  open: String             // "(" or " { "
+  close: String            // ")" or " }"
+  binding_sep: String      // "=" (Python) or ": " (Rust)
+  empty_suffix: String     // "()" (Python) or "" (Rust)
 }
 
 // Naming case — bootstrap-local mirror of std.languages.NamingCase.
@@ -563,7 +575,8 @@ fn rust_spec() -> LanguageSpec {
     },
     expression_semantics: ExpressionSemantics {
       if_value_form: IfExpression,
-      wildcard_case: None
+      wildcard_case: None,
+      variant_pattern: Some { value: VariantPatternSyntax { open: " { ", close: " }", binding_sep: ": ", empty_suffix: "" } }
     },
     lambda_template: rust_lambda_template,
     error_expr_template: rust_error_expr_template,
@@ -702,7 +715,8 @@ fn python_spec() -> LanguageSpec {
     },
     expression_semantics: ExpressionSemantics {
       if_value_form: ConditionalTernary,
-      wildcard_case: None
+      wildcard_case: None,
+      variant_pattern: Some { value: VariantPatternSyntax { open: "(", close: ")", binding_sep: "=", empty_suffix: "()" } }
     },
     lambda_template: python_lambda_template,
     error_expr_template: python_error_expr_template,
@@ -841,7 +855,8 @@ fn go_spec() -> LanguageSpec {
     },
     expression_semantics: ExpressionSemantics {
       if_value_form: IfStatement,
-      wildcard_case: Some { value: "default" }
+      wildcard_case: Some { value: "default" },
+      variant_pattern: None
     },
     lambda_template: go_lambda_template,
     error_expr_template: go_error_expr_template,
@@ -983,7 +998,8 @@ fn dag_spec() -> LanguageSpec {
     },
     expression_semantics: ExpressionSemantics {
       if_value_form: IfExpression,
-      wildcard_case: None
+      wildcard_case: None,
+      variant_pattern: Some { value: VariantPatternSyntax { open: " { ", close: " }", binding_sep: ": ", empty_suffix: "" } }
     },
     lambda_template: dag_lambda_template,
     error_expr_template: dag_error_expr_template,

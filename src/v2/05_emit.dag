@@ -36,7 +36,8 @@ import v2.std.core {
   BinOp, UnaryOpKind, NullCoalesce, AlgebraFieldKind,
   DeclaredFuncSig,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
-  MatchPattern, Wildcard,
+  MatchPattern, Wildcard, Bind, LitPattern, VariantPattern,
+  field_binding_name_at, field_binding_pattern,
   FieldSummary, TupleFirst, TupleSecond,
   expr_method_name_at, method_arg_nodes, expr_method_call_semantics, expr_field_access_summary,
   lambda_param_names_at, record_lit_type_name_at,
@@ -83,7 +84,7 @@ import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 import v2.compiler.languages {
   SnakeCaseTestNames, PascalCaseTestNames,
   LanguageSpec, TestConventions, ServiceFieldTemplates,
-  BlockSyntax, TcoSyntax, ExpressionSemantics,
+  BlockSyntax, TcoSyntax, ExpressionSemantics, VariantPatternSyntax,
   IfValueForm, IfExpression, ConditionalTernary, IfStatement,
   VisibilitySpec, KeywordVisibility, CaseVisibility,
   NamingCase, PascalCase, SnakeCase, CamelCase, AsAuthored,
@@ -1901,6 +1902,104 @@ fn emit_unified_tco_body(
   shared_tco_body(inner: inner, depth: depth, spec: spec)
 }
 
+// =========================================================================
+// Phase 3: Fully unified TCO + block-stmt entry points.
+//
+// These replace per-language wrappers in emit_python.dag / emit_go.dag.
+// Only callback remaining: render_pattern (per-language pattern rendering).
+// =========================================================================
+
+// Unified init-block-stmts — replaces emit_py_init_block_stmts / emit_go_init_block_stmts.
+fn emit_unified_init_block_stmts(
+    remaining: List<Node>, text: List<String>,
+    scope: InferScope, depth: Int,
+    target: RenderTarget, registry: Map<String, ItemInfo>,
+    render_pattern: fn(MatchPattern) -> String) -> BlockEmitState {
+  let prepend = if language_spec(target: target).block_syntax.significant_whitespace { false } else { true }
+  emit_init_block_stmts_shared(remaining: remaining, text: text, scope: scope, depth: depth,
+    prepend_indent: prepend,
+    emit_expr: (stmt, sc, d) => emit_unified_typed_expr(texpr: stmt, target: target, registry: registry, scope: sc, depth: d, fuel: 1024, render_pattern: render_pattern))
+}
+
+// Unified TCO match — replaces emit_py_tco_match / emit_go_tco_match.
+// Mirrors emit_typed_match_unified but calls emit_unified_tco_expr for arm bodies.
+fn emit_unified_tco_match(
+    frame: TcoFrame, fn_name: String, params: List<Node>,
+    target: RenderTarget, registry: Map<String, ItemInfo>,
+    render_pattern: fn(MatchPattern) -> String,
+    render_init_stmts: fn(List<Node>, InferScope, Int) -> BlockEmitState) -> String {
+  match frame.expr.expr_data {
+    ExprMatch =>
+      let s = match_scrutinee(texpr: frame.expr)
+      let arm_list = match_arm_nodes(texpr: frame.expr)
+      let scrut_str = emit_unified_typed_expr(texpr: s, target: target, registry: registry, scope: frame.scope, depth: frame.depth, fuel: 1024, render_pattern: render_pattern)
+      let arm_strs = arm_list |> map(arm =>
+        emit_unified_tco_match_arm(arm: arm, fn_name: fn_name, params: params,
+          target: target, registry: registry, scope: frame.scope, depth: frame.depth,
+          render_pattern: render_pattern, render_init_stmts: render_init_stmts))
+      let arms_str = arm_strs |> join(separator: "\n")
+      let bs = language_spec(target: target).block_syntax
+      if bs.block_close == "" {
+        concat(bs.match_keyword, scrut_str, bs.block_open, arms_str)
+      } else {
+        concat(bs.match_keyword, scrut_str, bs.block_open, arms_str, "\n", bs.block_close)
+      }
+    _ => emit_error_expr(message: "emit_unified_tco_match expected ExprMatch", target: target)
+  }
+}
+
+// Unified TCO match arm — replaces emit_py_typed_tco_match_arm / emit_go_typed_tco_switch_case.
+// Indent model follows emit_typed_match_unified: significant_whitespace → depth+1/depth+2,
+// brace languages → depth/depth+1.
+fn emit_unified_tco_match_arm(
+    arm: Node, fn_name: String, params: List<Node>,
+    target: RenderTarget, registry: Map<String, ItemInfo>,
+    scope: InferScope, depth: Int,
+    render_pattern: fn(MatchPattern) -> String,
+    render_init_stmts: fn(List<Node>, InferScope, Int) -> BlockEmitState) -> String {
+  let spec = language_spec(target: target)
+  let bs = spec.block_syntax
+  let es = spec.expression_semantics
+  let case_depth = if bs.significant_whitespace { depth + 1 } else { depth }
+  let body_depth = case_depth + 1
+  let pat = arm_pattern(n: arm)
+  let guard_str = match arm_guard(n: arm) {
+    Some { value: g } => concat(" if ", emit_unified_typed_expr(texpr: g, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern))
+    None => ""
+  }
+  let body_str = emit_unified_tco_expr(
+    frame: TcoFrame { expr: arm_body(n: arm), scope: scope, depth: body_depth },
+    fn_name: fn_name, params: params, target: target, registry: registry,
+    recurse_expr: (expr, scope, depth) => emit_unified_typed_expr(texpr: expr, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern),
+    render_match: frame => emit_unified_tco_match(frame: frame, fn_name: fn_name, params: params, target: target, registry: registry, render_pattern: render_pattern, render_init_stmts: render_init_stmts),
+    render_init_stmts: render_init_stmts)
+  let case_kw = match pat {
+    Wildcard => match es.wildcard_case {
+      Some { value: wc } => wc
+      None => concat(bs.case_keyword, render_pattern(pat))
+    }
+    _ => concat(bs.case_keyword, render_pattern(pat))
+  }
+  concat(make_indent(level: case_depth), case_kw, guard_str, ":\n",
+    make_indent(level: body_depth), body_str)
+}
+
+// Fully unified TCO body — replaces emit_py_typed_tco_body / emit_go_typed_tco_body.
+// Wires all callbacks (init-block-stmts, match, expr) via unified functions.
+// Per-language files only supply render_pattern.
+fn emit_tco_unified(
+    texpr: Node, fn_name: String, params: List<Node>,
+    target: RenderTarget, registry: Map<String, ItemInfo>,
+    scope: InferScope, depth: Int,
+    render_pattern: fn(MatchPattern) -> String) -> String {
+  emit_unified_tco_body(
+    texpr: texpr, fn_name: fn_name, params: params, target: target, registry: registry, scope: scope, depth: depth,
+    recurse_expr: (expr, scope, depth) => emit_unified_typed_expr(texpr: expr, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern),
+    render_match: frame => emit_unified_tco_match(frame: frame, fn_name: fn_name, params: params, target: target, registry: registry, render_pattern: render_pattern,
+      render_init_stmts: (stmts, scope, depth) => emit_unified_init_block_stmts(remaining: stmts, text: [], scope: scope, depth: depth, target: target, registry: registry, render_pattern: render_pattern)),
+    render_init_stmts: (stmts, scope, depth) => emit_unified_init_block_stmts(remaining: stmts, text: [], scope: scope, depth: depth, target: target, registry: registry, render_pattern: render_pattern))
+}
+
 fn is_tco_candidate(texpr: Node, func_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
   match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } => expr_call_func_at(texpr: texpr, source_indices: source_indices) == func_name
@@ -2601,6 +2700,41 @@ fn emit_typed_method_call_unified(receiver: Node, method: String, args: List<Nod
     } else {
       emit_plain_method_call_unified(receiver: receiver, method: method, args: args, target: target, recurse: recurse)
     }
+  }
+}
+
+// =========================================================================
+// Unified pattern rendering (Phase 3.5)
+//
+// Reads VariantPatternSyntax from ExpressionSemantics.
+// Python: Name(field=binding), Go: just Name, Rust: Name { field: binding }.
+// Replaces emit_py_pattern, emit_go_pattern.
+// =========================================================================
+
+fn emit_unified_pattern(pattern: MatchPattern, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
+  match pattern {
+    Bind { name: n } => emit_ident(name: n, target: target)
+    LitPattern { value: v } => emit_literal(value: v, target: target)
+    VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
+      emit_unified_variant_pattern(name: n, field_bindings: fbs, target: target, source_indices: source_indices)
+    Wildcard => "_"
+  }
+}
+
+fn emit_unified_variant_pattern(name: String, field_bindings: List<Node>, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
+  let es = language_spec(target: target).expression_semantics
+  match es.variant_pattern {
+    Some { value: vps } =>
+      if field_bindings |> count == 0 {
+        concat(name, vps.empty_suffix)
+      } else {
+        let binding_strs = field_bindings |> map(fb =>
+          let pat_str = emit_unified_pattern(pattern: field_binding_pattern(n: fb), target: target, source_indices: source_indices)
+          concat(emit_ident(name: field_binding_name_at(n: fb, source_indices: source_indices), target: target), vps.binding_sep, pat_str)
+        )
+        concat(name, vps.open, binding_strs |> join(separator: ", "), vps.close)
+      }
+    None => name
   }
 }
 

@@ -134,14 +134,13 @@ fn emit_has_tco_support() {
         "05_emit_rust.dag should contain 'break '"
     );
 
+    // Phase 3: Python and Go call emit_tco_unified (fully parameterized).
+    // Per-language tco_match/tco_match_arm are unified into emit_unified_tco_match
+    // in the shared emitter.
     let python_source = read_v2_file("src/v2/05_emit_python.dag");
     assert!(
-        python_source.contains("emit_unified_tco_body"),
-        "05_emit_python.dag should call emit_unified_tco_body"
-    );
-    assert!(
-        python_source.contains("emit_py_tco_match"),
-        "05_emit_python.dag should contain emit_py_tco_match (language-specific)"
+        python_source.contains("emit_tco_unified"),
+        "05_emit_python.dag should call emit_tco_unified"
     );
 
     // Unified TCO dispatcher lives in the shared emitter.
@@ -153,6 +152,14 @@ fn emit_has_tco_support() {
     assert!(
         shared_source.contains("fn emit_unified_tco_body"),
         "05_emit.dag should contain emit_unified_tco_body"
+    );
+    assert!(
+        shared_source.contains("fn emit_unified_tco_match"),
+        "05_emit.dag should contain emit_unified_tco_match (Phase 3)"
+    );
+    assert!(
+        shared_source.contains("fn emit_tco_unified"),
+        "05_emit.dag should contain emit_tco_unified (Phase 3 entry point)"
     );
 
     // TCO syntax tokens live in LanguageSpec spec values, not backend emitters.
