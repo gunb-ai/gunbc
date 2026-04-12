@@ -109,7 +109,7 @@ Current dimensions and status:
 | Ownership | ownership.dag | Not yet | Not yet (separate pass) | Partial (SharedError blocks) |
 | Side effects | std/behavioral.dag | Not yet | Not yet | No (declared, not consumed) |
 | Purity | (not declared) | — | — | No |
-| Idempotence | std/behavioral.dag | Not yet | Not yet | No (declared, not consumed) |
+| Idempotence | std/effects.dag | Lattice (derived from EffectShape) | Not yet | No (algebra declared, not consumed) |
 | Space bounds | (not declared) | — | — | No |
 
 The architecture is: **as dimensions move from "separate pass" to
@@ -208,6 +208,7 @@ checking, and structural descent proofs make them unrepresentable.
 | Cross-target drift | Single `.dag` declaration → all targets | DONE |
 | Diamond dependency divergence | Module graph deduplicates imports | DONE |
 | Non-termination | Structural descent proof (CX gate) | **421 violations → 0, then blocking** |
+| Non-idempotent workflow | Effect algebra composition (std/effects.dag) | **not started** — algebra declared, compiler consumption not wired |
 | Record literal completeness | Missing-field diagnostic | **partial** |
 | Coercion completeness | Fail-closed inhabitant lookup; coercion = emission (not a separate mechanism) | **partial** — schema + dispatch + per-language data done; single emitter (Lane C) not started |
 
@@ -356,6 +357,43 @@ memoized by the emitter. The compiler already knows:
 
 Once these facts flow through bindings, the emitter can insert
 memoization for expensive pure functions automatically.
+
+### Idempotency by construction
+
+An operation is idempotent when applying it twice produces the same
+result as applying it once: `f(f(x)) = f(x)`. This is the
+**lattice meet law** — already declared in `std/algebra.dag`.
+
+The compiler derives idempotency from the operation's effect shape,
+not from an annotation. Operations that modify keyed state (upsert,
+delete) form lattice meets on `Map<K, V>` — idempotent by the
+algebra. Operations that append to unkeyed collections form monoid
+concatenation on `List<T>` — not idempotent.
+
+The programmer's job is to model their external systems honestly.
+The compiler does the math:
+
+- PUT /secrets/{name} → Map upsert → lattice meet → **idempotent**
+- DELETE /instances/{id} → Map delete → lattice meet with ⊥ → **idempotent**
+- POST /logs (no key) → List append → monoid → **not idempotent**
+
+For workflows (infrastructure bringup, CI pipelines, deployment),
+the compiler composes effects across operations. A workflow is
+idempotent iff all its operations have lattice effects. If one
+breaks the chain, the compiler shows which one and why — same
+diagnostic pattern as complexity (show the composition chain and
+where it fails).
+
+Three verification layers:
+1. **Compile time:** prove idempotency from effect algebra
+   (lattice composition)
+2. **Generated test:** emit `f(f(x)) == f(x)` tests that verify
+   the model against reality
+3. **Runtime receipt:** log convergence evidence when operations
+   are no-ops ("already exists, no state change")
+
+Effect algebra: `std/effects.dag`. Dissolves the `idempotent: Bool`
+flag on `OperationBehavior` in `std/behavioral.dag`.
 
 ### Space bound proofs
 
