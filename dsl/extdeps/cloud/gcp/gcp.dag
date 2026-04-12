@@ -164,10 +164,10 @@ service oauth2.Google {
 service shell.OAuth2 {
   operation RefreshToken {
     input { refresh_token: Secret }
+    // BRIDGE: stdout is raw JSON; access_token should use JSON extraction
+    // or callers should use oauth2.Google.Refresh (REST) instead.
     output { access_token: Secret from "stdout", valid: Bool from "exit_success" }
-    // jq -r extracts the access_token field from the JSON response so
-    // stdout carries only the token string, not the entire JSON body.
-    transport shell { argv: ["sh", "-c", "curl -s -X POST https://oauth2.googleapis.com/token -d 'grant_type=refresh_token&refresh_token=\{refresh_token\}' | jq -r '.access_token'"] }
+    transport shell { argv: ["curl", "-s", "-X", "POST", "https://oauth2.googleapis.com/token", "-d", "grant_type=refresh_token&refresh_token=\{refresh_token\}"] }
     exit {
       0 => Unit
       nonzero => String "Token refresh failed"
