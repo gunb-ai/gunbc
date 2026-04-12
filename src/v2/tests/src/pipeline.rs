@@ -5719,6 +5719,127 @@ func ask_rest(api_key: Secret, prompt: String) -> String {
     );
 }
 
+// ── RE-4: Live Anthropic API integration ────────────────────────────────
+// Exploratory integration probe: compiles a workflow function that calls
+// the Anthropic Messages API, builds, and runs it against the real API.
+// This is NOT an L4 semantic correctness test — it checks process exit
+// and non-empty output, not declared contract fields.
+// Full L4 tests require Track 12 (verification from structure).
+// Requires ANTHROPIC_API_KEY in the environment.
+#[test]
+#[ignore] // Expensive: builds binary, calls real Anthropic API
+fn anthropic_live_e2e() {
+    if std::env::var("ANTHROPIC_API_KEY").is_err() {
+        eprintln!("Skipping live test: ANTHROPIC_API_KEY not set");
+        return;
+    }
+
+    // Compile a workflow function that calls the Anthropic service.
+    // Bare anthropic.dag has no workflow functions (only a service def),
+    // so the emitter generates no CLI subcommands. This wrapper provides
+    // the func → subcommand that the test can invoke.
+    let wrapper_source = r#"module test_live_anthropic
+
+import extdeps.llm.anthropic
+
+data test_messages: String = "[{\"role\": \"user\", \"content\": \"Say hello in exactly 3 words.\"}]"
+
+func ask_claude(
+  model: String = "claude-haiku-4-5-20251001",
+  max_tokens: Int = 50
+) -> { content: String } {
+  response = llm.Anthropic.Messages(
+    api_key: "",
+    model: model,
+    messages: test_messages,
+    max_tokens: max_tokens,
+    temperature: none,
+    system: none
+  )
+  return { content: response.content }
+}
+"#;
+
+    let result = compile_dag_named(
+        "test_live_anthropic.dag",
+        wrapper_source,
+        RenderTarget::Rust,
+    );
+
+    let hard_diags: Vec<_> = diagnostic_messages(&result)
+        .into_iter()
+        .filter(|d| !d.contains("complexity:"))
+        .collect();
+    assert!(
+        hard_diags.is_empty(),
+        "RE-4 live: test wrapper has hard diagnostics:\n{}",
+        hard_diags.join("\n")
+    );
+    assert!(
+        !result.files.is_empty(),
+        "RE-4 live: test wrapper produced no emitted files"
+    );
+
+    // Write files to temp dir
+    let out_dir = std::env::temp_dir().join("v2-re4-live");
+    let _ = std::fs::remove_dir_all(&out_dir);
+    std::fs::create_dir_all(&out_dir).expect("failed to create temp dir");
+
+    for file in result.files.iter() {
+        let file_path = out_dir.join(&file.path);
+        if let Some(parent) = file_path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+        std::fs::write(&file_path, &file.content)
+            .unwrap_or_else(|e| panic!("failed to write {}: {}", file.path, e));
+    }
+
+    // Build
+    let build = std::process::Command::new("cargo")
+        .arg("build")
+        .current_dir(&out_dir)
+        .env("CARGO_BUILD_JOBS", "2")
+        .output()
+        .expect("failed to run cargo build");
+
+    if !build.status.success() {
+        let stderr = String::from_utf8_lossy(&build.stderr);
+        panic!("RE-4 live: cargo build failed:\n{}", stderr);
+    }
+
+    // Derive binary name from Cargo.toml (single authority, not hardcoded)
+    let cargo_toml_content = std::fs::read_to_string(out_dir.join("Cargo.toml"))
+        .expect("failed to read generated Cargo.toml");
+    let binary_name = cargo_toml_content
+        .lines()
+        .find(|l| l.starts_with("name = "))
+        .and_then(|l| l.strip_prefix("name = \""))
+        .and_then(|l| l.strip_suffix('"'))
+        .expect("failed to parse binary name from Cargo.toml");
+    let binary_path = out_dir.join("target/debug").join(binary_name);
+
+    // Invoke the workflow function subcommand (ask_claude → ask-claude)
+    let run = std::process::Command::new(&binary_path)
+        .arg("ask-claude")
+        .env("ANTHROPIC_API_KEY", std::env::var("ANTHROPIC_API_KEY").unwrap())
+        .output()
+        .expect("failed to run binary");
+
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    let stderr = String::from_utf8_lossy(&run.stderr);
+
+    assert!(
+        run.status.success(),
+        "RE-4 live: binary exited with error:\nstdout: {}\nstderr: {}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.trim().is_empty(),
+        "RE-4 live: expected non-empty response from Anthropic API, got empty.\nstderr: {}",
+        stderr
+    );
+}
+
 // ── CX-L3: Structural complexity bound regression tests ─────────────────
 //
 // End-to-end: compile .dag source → CX-L1 (InductiveField) → CX-L2
