@@ -2715,61 +2715,54 @@ fn node_to_name_str(n: Node) -> String {
 
 // Parse exit block entries: code => Type optional_description
 // Produces Node properties: { name: "exit_<code>", value: type_name_as_var }
-fn parse_exit_entries(tokens: List<Token>, state: ParserState) -> ExitEntriesResult {
-  parse_exit_entries_acc(tokens: tokens, state: state, acc: [])
+fn parse_exit_entries(tokens: List<Token>, ctx: ParseContext) -> ExitEntriesResult {
+  parse_exit_entries_acc(tokens: tokens, ctx: ctx, acc: [])
 }
 
-fn parse_exit_entries_acc(tokens: List<Token>, state: ParserState, acc: List<Node>) -> ExitEntriesResult {
-  let s = skip_newlines(tokens: tokens, state: state)
-  if tok_is_rbrace(tok: peek(tokens: tokens, state: s)) || at_end(tokens: tokens, state: s) {
-    ExitEntriesResult { entries: acc, state: s, err: none }
+fn parse_exit_entries_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) -> ExitEntriesResult {
+  let tokens = skip_newlines(tokens: tokens)
+  if tok_is_rbrace(tok: tokens |> first) || tok_is_eof(tok: tokens |> first) {
+    ExitEntriesResult { entries: acc, tokens: tokens, ctx: ctx, err: none }
   } else {
-    let r = parse_status_pattern(tokens: tokens, state: s)
-    if has_err(err: r.err) { return ExitEntriesResult { entries: [], state: r.state, err: r.err } }
+    let r = parse_status_pattern(tokens: tokens, ctx: ctx)
+    if has_err(err: r.err) { return ExitEntriesResult { entries: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let code = r.expr
-    let r2 = expect(tokens: tokens, state: r.state, expected: ExpectFatArrow)
-    if has_err(err: r2.err) { return ExitEntriesResult { entries: [], state: r2.state, err: r2.err } }
-    let r3 = parse_type_expr(tokens: tokens, state: r2.state)
-    if has_err(err: r3.err) { return ExitEntriesResult { entries: [], state: r3.state, err: r3.err } }
+    let r2 = expect(tokens: r.tokens, expected: ExpectFatArrow)
+    if has_err(err: r2.err) { return ExitEntriesResult { entries: [], tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
+    let r3 = parse_type_expr(tokens: r2.tokens, ctx: r.ctx)
+    if has_err(err: r3.err) { return ExitEntriesResult { entries: [], tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
     // Optional description string after type
-    let desc_tok = peek(tokens: tokens, state: r3.state)
+    let desc_tok = r3.tokens |> first
     let desc_sh = match desc_tok { Some { value: t } => Some { value: t.shape }  None => none }
-    let desc_r = match desc_sh {
-      Some { value: ShLitStr } => {
-        let d = desc_tok.value.text
-        let adv = advance(tokens: tokens, state: r3.state)
-        DescResult { desc: Some { value: d }, state: adv.state }
-      }
-      _ => DescResult { desc: none, state: r3.state }
+    let desc_tokens = match desc_sh {
+      Some { value: ShLitStr } => r3.tokens |> skip(1)
+      _ => r3.tokens
     }
     // Convert to property: exit_<code> = type_name
-    let code_str = status_expr_to_str(expr: code, source_indices: state.source_indices)
+    let code_str = status_expr_to_str(expr: code, source_indices: ctx.source_indices)
     let type_name = node_to_name_str(n: r3.type_expr)
     let prop_name = concat("exit_", code_str)
     let entry = make_field_init_node(name: prop_name, value: make_named_expr_node(name: type_name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: r3.type_expr.span, name_span: r3.type_expr.span), span: r3.type_expr.span, name_span: no_span())
-    let e = eat(tokens: tokens, state: desc_r.state, expected: ExpectComma)
-    let s2 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { desc_r.state })
-    parse_exit_entries_acc(tokens: tokens, state: s2, acc: list_push(acc, entry))
+    let e = eat(tokens: desc_tokens, expected: ExpectComma)
+    let tokens = skip_newlines(tokens: if e.consumed { e.tokens } else { desc_tokens })
+    parse_exit_entries_acc(tokens: tokens, ctx: r3.ctx, acc: list_push(acc, entry))
   }
 }
 
-fn parse_operation_modifiers(tokens: List<Token>, state: ParserState) -> ModsResult {
-  parse_operation_modifiers_acc(tokens: tokens, state: state, acc: [])
+fn parse_operation_modifiers(tokens: List<Token>, ctx: ParseContext) -> ModsResult {
+  parse_operation_modifiers_acc(tokens: tokens, ctx: ctx, acc: [])
 }
 
-fn parse_operation_modifiers_acc(tokens: List<Token>, state: ParserState, acc: List<OperationModifier>) -> ModsResult {
-  let kw = tok_keyword_text(tok: peek(tokens: tokens, state: state))
+fn parse_operation_modifiers_acc(tokens: List<Token>, ctx: ParseContext, acc: List<OperationModifier>) -> ModsResult {
+  let kw = tok_keyword_text(tok: tokens |> first)
   if kw == "idempotent" {
-    let adv = advance(tokens: tokens, state: state)
-    parse_operation_modifiers_acc(tokens: tokens, state: adv.state, acc: list_push(acc, Idempotent))
+    parse_operation_modifiers_acc(tokens: tokens |> skip(1), ctx: ctx, acc: list_push(acc, Idempotent))
   } else if kw == "readonly" {
-    let adv = advance(tokens: tokens, state: state)
-    parse_operation_modifiers_acc(tokens: tokens, state: adv.state, acc: list_push(acc, Readonly))
+    parse_operation_modifiers_acc(tokens: tokens |> skip(1), ctx: ctx, acc: list_push(acc, Readonly))
   } else if kw == "hermetic" {
-    let adv = advance(tokens: tokens, state: state)
-    parse_operation_modifiers_acc(tokens: tokens, state: adv.state, acc: list_push(acc, Hermetic))
+    parse_operation_modifiers_acc(tokens: tokens |> skip(1), ctx: ctx, acc: list_push(acc, Hermetic))
   } else {
-    ModsResult { modifiers: acc, state: state, err: none }
+    ModsResult { modifiers: acc, tokens: tokens, ctx: ctx, err: none }
   }
 }
 
@@ -2779,159 +2772,137 @@ fn parse_operation_modifiers_acc(tokens: List<Token>, state: ParserState, acc: L
 
 // Parse a status/exit code pattern: integer, Nxx wildcard (5xx), or identifier (nonzero).
 // Nxx: tokenizer produces LitInt(N) + Ident("xx") -- combine into LitStr("Nxx").
-fn parse_status_pattern(tokens: List<Token>, state: ParserState) -> ExprResult {
-  let tok = peek(tokens: tokens, state: state)
+fn parse_status_pattern(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
+  let tok = tokens |> first
   let sh = match tok { Some { value: t } => Some { value: t.shape }  None => none }
+  let span = token_span(tok: tok)
   match sh {
     Some { value: ShLitInt } => {
       let n_opt = parse_int(s: tok.value.text)
-      let n = match n_opt { Some { value: v } => v  None => { return ExprResult { expr: make_expr_error_node(kind: InternalExprError, message: concat("internal: ShLitInt token text not parseable as int: '", tok.value.text, "'"), span: current_span(tokens: tokens, state: state)), state: state, err: none } } }
+      let n = match n_opt { Some { value: v } => v  None => { return ExprResult { expr: make_expr_error_node(kind: InternalExprError, message: concat("internal: ShLitInt token text not parseable as int: '", tok.value.text, "'"), span: span), tokens: tokens, ctx: ctx, err: none } } }
       // Check if next token is Ident("xx") -> wildcard like 5xx
-      if state.pos + 1 < count(tokens) {
-        let next_tok = tokens |> skip(state.pos + 1) |> first
-        match next_tok {
-          Some { value: t } => {
-            if is_ident_shape(shape: t.shape) && t.text == "xx" {
-              let span = current_span(tokens: tokens, state: state)
-              let adv = advance(tokens: tokens, state: state)
-              let adv2 = advance(tokens: tokens, state: adv.state)
-              ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "{n}xx" } }, children: [], inferred: none, span: span), state: adv2.state, err: none }
-            } else {
-              let span = current_span(tokens: tokens, state: state)
-              let adv = advance(tokens: tokens, state: state)
-              ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitInt { value: n } }, children: [], inferred: none, span: span), state: adv.state, err: none }
-            }
-          }
-          None => {
-            let span = current_span(tokens: tokens, state: state)
-            let adv = advance(tokens: tokens, state: state)
-            ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitInt { value: n } }, children: [], inferred: none, span: span), state: adv.state, err: none }
+      let next_tok = tokens |> skip(1) |> first
+      match next_tok {
+        Some { value: t } => {
+          if is_ident_shape(shape: t.shape) && t.text == "xx" {
+            ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "{n}xx" } }, children: [], inferred: none, span: span), tokens: tokens |> skip(2), ctx: ctx, err: none }
+          } else {
+            ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitInt { value: n } }, children: [], inferred: none, span: span), tokens: tokens |> skip(1), ctx: ctx, err: none }
           }
         }
-      } else {
-        let span = current_span(tokens: tokens, state: state)
-        let adv = advance(tokens: tokens, state: state)
-        ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitInt { value: n } }, children: [], inferred: none, span: span), state: adv.state, err: none }
+        None => {
+          ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitInt { value: n } }, children: [], inferred: none, span: span), tokens: tokens |> skip(1), ctx: ctx, err: none }
+        }
       }
     }
     Some { value: ShIdent } => {
       let id = tok.value.text
-      let span = current_span(tokens: tokens, state: state)
-      let adv = advance(tokens: tokens, state: state)
-      ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: id } }, children: [], inferred: none, span: span), state: adv.state, err: none }
+      ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: id } }, children: [], inferred: none, span: span), tokens: tokens |> skip(1), ctx: ctx, err: none }
     }
     _ => {
-      let span = current_span(tokens: tokens, state: state)
-      let adv = advance(tokens: tokens, state: state)
-      ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "_" } }, children: [], inferred: none, span: span), state: adv.state, err: none }
+      ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "_" } }, children: [], inferred: none, span: span), tokens: tokens |> skip(1), ctx: ctx, err: none }
     }
   }
 }
 
 // Parse optional response { 200 => Type, ... } block.
-fn parse_optional_response_block(tokens: List<Token>, state: ParserState) -> ResponsesResult {
-  let tok = peek(tokens: tokens, state: state)
+fn parse_optional_response_block(tokens: List<Token>, ctx: ParseContext) -> ResponsesResult {
+  let tok = tokens |> first
   let is_response = match tok {
     Some { value: t } => is_ident_shape(shape: t.shape) && t.text == "response"
     None => false
   }
   if is_response {
-    let adv = advance(tokens: tokens, state: state)
-    let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
-    if has_err(err: r.err) { return ResponsesResult { responses: [], state: r.state, err: r.err } }
-    let r2 = parse_response_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-    if has_err(err: r2.err) { return ResponsesResult { responses: [], state: r2.state, err: r2.err } }
-    let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
-    if has_err(err: r3.err) { return ResponsesResult { responses: [], state: r3.state, err: r3.err } }
-    ResponsesResult { responses: r2.entries, state: r3.state, err: none }
+    let r = expect(tokens: tokens |> skip(1), expected: ExpectLBrace)
+    if has_err(err: r.err) { return ResponsesResult { responses: [], tokens: r.tokens, ctx: ctx, err: r.err } }
+    let r2 = parse_response_entries(tokens: skip_newlines(tokens: r.tokens), ctx: ctx)
+    if has_err(err: r2.err) { return ResponsesResult { responses: [], tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
+    let r3 = expect(tokens: skip_newlines(tokens: r2.tokens), expected: ExpectRBrace)
+    if has_err(err: r3.err) { return ResponsesResult { responses: [], tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
+    ResponsesResult { responses: r2.entries, tokens: r3.tokens, ctx: r2.ctx, err: none }
   } else {
-    ResponsesResult { responses: [], state: state, err: none }
+    ResponsesResult { responses: [], tokens: tokens, ctx: ctx, err: none }
   }
 }
 
-fn parse_response_entries(tokens: List<Token>, state: ParserState) -> RespEntriesResult {
-  parse_response_entries_acc(tokens: tokens, state: state, acc: [])
+fn parse_response_entries(tokens: List<Token>, ctx: ParseContext) -> RespEntriesResult {
+  parse_response_entries_acc(tokens: tokens, ctx: ctx, acc: [])
 }
 
-fn parse_response_entries_acc(tokens: List<Token>, state: ParserState, acc: List<Node>) -> RespEntriesResult {
-  let s = skip_newlines(tokens: tokens, state: state)
-  if tok_is_rbrace(tok: peek(tokens: tokens, state: s)) || at_end(tokens: tokens, state: s) {
-    RespEntriesResult { entries: acc, state: s, err: none }
+fn parse_response_entries_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) -> RespEntriesResult {
+  let tokens = skip_newlines(tokens: tokens)
+  if tok_is_rbrace(tok: tokens |> first) || tok_is_eof(tok: tokens |> first) {
+    RespEntriesResult { entries: acc, tokens: tokens, ctx: ctx, err: none }
   } else {
-    let r = parse_status_pattern(tokens: tokens, state: s)
-    if has_err(err: r.err) { return RespEntriesResult { entries: [], state: r.state, err: r.err } }
+    let r = parse_status_pattern(tokens: tokens, ctx: ctx)
+    if has_err(err: r.err) { return RespEntriesResult { entries: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let status = r.expr
-    let r2 = expect(tokens: tokens, state: r.state, expected: ExpectFatArrow)
-    if has_err(err: r2.err) { return RespEntriesResult { entries: [], state: r2.state, err: r2.err } }
-    let r3 = parse_type_expr(tokens: tokens, state: r2.state)
-    if has_err(err: r3.err) { return RespEntriesResult { entries: [], state: r3.state, err: r3.err } }
+    let r2 = expect(tokens: r.tokens, expected: ExpectFatArrow)
+    if has_err(err: r2.err) { return RespEntriesResult { entries: [], tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
+    let r3 = parse_type_expr(tokens: r2.tokens, ctx: r.ctx)
+    if has_err(err: r3.err) { return RespEntriesResult { entries: [], tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
     // Convert to property: response_<status> = type_name
-    let status_str = status_expr_to_str(expr: status, source_indices: state.source_indices)
+    let status_str = status_expr_to_str(expr: status, source_indices: ctx.source_indices)
     let type_name = node_to_name_str(n: r3.type_expr)
     let prop_name = concat("response_", status_str)
     let entry = make_field_init_node(name: prop_name, value: make_named_expr_node(name: type_name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: r3.type_expr.span, name_span: r3.type_expr.span), span: r3.type_expr.span, name_span: no_span())
-    let e = eat(tokens: tokens, state: r3.state, expected: ExpectComma)
-    let s2 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { r3.state })
-    parse_response_entries_acc(tokens: tokens, state: s2, acc: list_push(acc, entry))
+    let e = eat(tokens: r3.tokens, expected: ExpectComma)
+    let tokens = skip_newlines(tokens: if e.consumed { e.tokens } else { r3.tokens })
+    parse_response_entries_acc(tokens: tokens, ctx: r3.ctx, acc: list_push(acc, entry))
   }
 }
 
 // Parse optional mock_response { 200 => expr "description", ... } block.
-fn parse_optional_mock_response_block(tokens: List<Token>, state: ParserState) -> MocksResult {
-  let tok = peek(tokens: tokens, state: state)
+fn parse_optional_mock_response_block(tokens: List<Token>, ctx: ParseContext) -> MocksResult {
+  let tok = tokens |> first
   let is_mock = match tok {
     Some { value: t } => is_ident_shape(shape: t.shape) && t.text == "mock_response"
     None => false
   }
   if is_mock {
-    let adv = advance(tokens: tokens, state: state)
-    let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
-    if has_err(err: r.err) { return MocksResult { mocks: [], state: r.state, err: r.err } }
-    let r2 = parse_mock_response_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-    if has_err(err: r2.err) { return MocksResult { mocks: [], state: r2.state, err: r2.err } }
-    let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
-    if has_err(err: r3.err) { return MocksResult { mocks: [], state: r3.state, err: r3.err } }
-    MocksResult { mocks: r2.entries, state: r3.state, err: none }
+    let r = expect(tokens: tokens |> skip(1), expected: ExpectLBrace)
+    if has_err(err: r.err) { return MocksResult { mocks: [], tokens: r.tokens, ctx: ctx, err: r.err } }
+    let r2 = parse_mock_response_entries(tokens: skip_newlines(tokens: r.tokens), ctx: ctx)
+    if has_err(err: r2.err) { return MocksResult { mocks: [], tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
+    let r3 = expect(tokens: skip_newlines(tokens: r2.tokens), expected: ExpectRBrace)
+    if has_err(err: r3.err) { return MocksResult { mocks: [], tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
+    MocksResult { mocks: r2.entries, tokens: r3.tokens, ctx: r2.ctx, err: none }
   } else {
-    MocksResult { mocks: [], state: state, err: none }
+    MocksResult { mocks: [], tokens: tokens, ctx: ctx, err: none }
   }
 }
 
-fn parse_mock_response_entries(tokens: List<Token>, state: ParserState) -> MockEntriesResult {
-  parse_mock_response_entries_acc(tokens: tokens, state: state, acc: [])
+fn parse_mock_response_entries(tokens: List<Token>, ctx: ParseContext) -> MockEntriesResult {
+  parse_mock_response_entries_acc(tokens: tokens, ctx: ctx, acc: [])
 }
 
-fn parse_mock_response_entries_acc(tokens: List<Token>, state: ParserState, acc: List<Node>) -> MockEntriesResult {
-  let s = skip_newlines(tokens: tokens, state: state)
-  if tok_is_rbrace(tok: peek(tokens: tokens, state: s)) || at_end(tokens: tokens, state: s) {
-    MockEntriesResult { entries: acc, state: s, err: none }
+fn parse_mock_response_entries_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) -> MockEntriesResult {
+  let tokens = skip_newlines(tokens: tokens)
+  if tok_is_rbrace(tok: tokens |> first) || tok_is_eof(tok: tokens |> first) {
+    MockEntriesResult { entries: acc, tokens: tokens, ctx: ctx, err: none }
   } else {
-    let r = parse_status_pattern(tokens: tokens, state: s)
-    if has_err(err: r.err) { return MockEntriesResult { entries: [], state: r.state, err: r.err } }
+    let r = parse_status_pattern(tokens: tokens, ctx: ctx)
+    if has_err(err: r.err) { return MockEntriesResult { entries: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let status = r.expr
-    let r2 = expect(tokens: tokens, state: r.state, expected: ExpectFatArrow)
-    if has_err(err: r2.err) { return MockEntriesResult { entries: [], state: r2.state, err: r2.err } }
-    let r3 = parse_expr(tokens: tokens, state: r2.state)
-    if has_err(err: r3.err) { return MockEntriesResult { entries: [], state: r3.state, err: r3.err } }
+    let r2 = expect(tokens: r.tokens, expected: ExpectFatArrow)
+    if has_err(err: r2.err) { return MockEntriesResult { entries: [], tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
+    let r3 = parse_expr(tokens: r2.tokens, ctx: r.ctx)
+    if has_err(err: r3.err) { return MockEntriesResult { entries: [], tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
     let body = r3.expr
     // Optional description string
-    let desc_tok = peek(tokens: tokens, state: r3.state)
+    let desc_tok = r3.tokens |> first
     let desc_sh = match desc_tok { Some { value: t } => Some { value: t.shape }  None => none }
-    let desc_r = match desc_sh {
-      Some { value: ShLitStr } => {
-        let d = desc_tok.value.text
-        let adv = advance(tokens: tokens, state: r3.state)
-        DescResult { desc: Some { value: d }, state: adv.state }
-      }
-      _ => DescResult { desc: none, state: r3.state }
+    let desc_tokens = match desc_sh {
+      Some { value: ShLitStr } => r3.tokens |> skip(1)
+      _ => r3.tokens
     }
     // Convert to property: mock_<status> = body_expr
-    let status_str = status_expr_to_str(expr: status, source_indices: state.source_indices)
+    let status_str = status_expr_to_str(expr: status, source_indices: ctx.source_indices)
     let prop_name = concat("mock_", status_str)
     let entry = make_field_init_node(name: prop_name, value: body, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
-    let e = eat(tokens: tokens, state: desc_r.state, expected: ExpectComma)
-    let s2 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { desc_r.state })
-    parse_mock_response_entries_acc(tokens: tokens, state: s2, acc: list_push(acc, entry))
+    let e = eat(tokens: desc_tokens, expected: ExpectComma)
+    let tokens = skip_newlines(tokens: if e.consumed { e.tokens } else { desc_tokens })
+    parse_mock_response_entries_acc(tokens: tokens, ctx: r3.ctx, acc: list_push(acc, entry))
   }
 }
 
