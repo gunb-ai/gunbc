@@ -23,7 +23,7 @@ use crate::v2_std_core::CompilerDiagnostic::{ParseError};
 pub use crate::v2_compiler_languages::{ItemForm, ItemFormKind, BodyKind, OperatorSpec, SyntaxSpec};
 use crate::v2_compiler_languages::ItemFormKind::{OtherForm};
 use crate::v2_compiler_languages::BodyKind::{ExprBody, BlockBody, TypeBody, ValueBody, NoBody, ServiceBody, ResourceBody};
-pub use crate::extdeps_languages_dag_syntax::{dag_syntax_spec};
+pub use crate::extdeps_languages_dag_syntax::{dag_syntax_spec, dag_non_name_keywords};
 use ExpectedToken::*;
 use ParserHelperIdentity::*;
 use ParserCallIdentity::*;
@@ -1441,13 +1441,9 @@ Rc::new(NameResult {
 
 pub fn is_name_keyword(token: &Rc<Token>) -> bool {
     if is_keyword_shape(token.shape.clone()) {
-        {
-            let is_literal = match v2_rt::lookup(&dag_syntax_spec().keyword_literals.clone(), token.text.clone()) {
-    Some(_) => true,
-    None => false,
-};
-let is_lifecycle = ((token.text.clone().as_str() == "acquire".to_string().as_str()) || (token.text.clone().as_str() == "release".to_string().as_str()));
-(!is_literal && !is_lifecycle)
+        match v2_rt::lookup(&dag_non_name_keywords(), token.text.clone()) {
+    Some(_) => false,
+    None => true,
 }
     } else {
         false

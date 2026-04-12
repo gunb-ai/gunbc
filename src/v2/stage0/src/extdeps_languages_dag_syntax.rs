@@ -155,6 +155,22 @@ pub fn dag_keyword_set() -> Rc<HashMap<String, bool>> {
     CACHED.with(|c| c.clone())
 }
 
+pub fn dag_non_name_keywords() -> Rc<HashMap<String, bool>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, bool>> = {
+            let mut __m = HashMap::new();
+            __m.insert("true".to_string(), true);
+            __m.insert("false".to_string(), true);
+            __m.insert("none".to_string(), true);
+            __m.insert("null".to_string(), true);
+            __m.insert("acquire".to_string(), true);
+            __m.insert("release".to_string(), true);
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
 pub fn dag_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<OperatorSpec>>> = {

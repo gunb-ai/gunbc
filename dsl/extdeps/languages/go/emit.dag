@@ -70,6 +70,7 @@ data go_import_from_keyword: String = ""
 // -- Project scaffold ----------------------------------------------------
 // Ref: Go modules reference (go.dev/ref/mod)
 data go_manifest_file: String = "go.mod"
+data go_source_extension: String = ".go"
 
 // -- String-like types ------------------------------------------------------
 // Types that use string comparison/indexing semantics in Go.

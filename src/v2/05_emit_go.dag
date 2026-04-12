@@ -66,7 +66,7 @@ import v2.std.core {
 }
 
 import v2.compiler.artifact { RenderTarget, Go }
-import extdeps.languages.go.emit { go_reserved, go_reserved_escape_suffix }
+import extdeps.languages.go.emit { go_reserved, go_reserved_escape_suffix, go_source_extension }
 import v2.compiler.languages {
   scaffold_for_target, TestConventions, ItemKeywords, test_conventions_for_target,
   is_string_like, CaseVisibility
@@ -195,10 +195,6 @@ fn emit_go_mod(module_name: String) -> TextFile {
   TextFile { path: manifest_path, content: content }
 }
 
-fn go_source_extension() -> String {
-  scaffold_for_target(target: Go).source_file_extension
-}
-
 fn go_test_file_path(module_name: String) -> String {
   let conventions = test_conventions_for_target(target: Go)
   let file_dir = match conventions.file_dir {
@@ -206,7 +202,7 @@ fn go_test_file_path(module_name: String) -> String {
     None => ""
   }
   let filename = module_to_filename(name: module_name)
-  concat(file_dir, conventions.file_prefix, filename, conventions.file_suffix, go_source_extension())
+  concat(file_dir, conventions.file_prefix, filename, conventions.file_suffix, go_source_extension)
 }
 
 fn go_test_name(projection: TestProjection) -> String {
@@ -303,7 +299,7 @@ fn emit_go_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) ->
     "// Source module: ", m.name, "\n\n",
     pkg_decl, imports_section, "\n\n",
     items_str, "\n")
-  TextFile { path: concat(filename, go_source_extension()), content: content }
+  TextFile { path: concat(filename, go_source_extension), content: content }
 }
 
 // Derive the Go package name from a module path.

@@ -635,3 +635,47 @@ fn gist_transitive_closure_parse() {
         assert_parses_strict(path);
     }
 }
+
+// ── keyword-as-name regression (dag_non_name_keywords authority) ───────
+
+/// Keywords that ARE valid as field/type names should parse.
+/// Authority: any keyword NOT in dag_non_name_keywords (dag/syntax.dag).
+#[test]
+fn keyword_as_field_name_allowed() {
+    // Representative sample: item keywords, control flow, resource terms
+    let keywords = [
+        "type", "fn", "func", "module", "import", "service", "resource",
+        "data", "interface", "pipeline", "pattern", "profile",
+        "let", "return", "match", "if", "else", "for", "in",
+        "where", "with", "capability", "operation",
+        "input", "output", "idempotent", "readonly", "hermetic",
+    ];
+    for kw in &keywords {
+        let source = format!("module test\ntype Rec {{ {}: String }}", kw);
+        let result = parse_source(&source);
+        assert!(
+            result.error.is_none(),
+            "keyword '{}' should be allowed as field name, got error: {:?}",
+            kw,
+            result.error.as_ref().map(|e| {
+                v2_compiler::v2_std_core::diagnostic_to_message(e.diagnostic.clone())
+            })
+        );
+    }
+}
+
+/// Keywords that are NOT valid as names should fail to parse as field names.
+/// Authority: dag_non_name_keywords in dag/syntax.dag.
+#[test]
+fn keyword_as_field_name_forbidden() {
+    let forbidden = ["true", "false", "none", "null", "acquire", "release"];
+    for kw in &forbidden {
+        let source = format!("module test\ntype Rec {{ {}: String }}", kw);
+        let result = parse_source(&source);
+        assert!(
+            result.error.is_some(),
+            "keyword '{}' should NOT be allowed as field name, but parse succeeded",
+            kw,
+        );
+    }
+}

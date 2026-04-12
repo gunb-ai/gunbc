@@ -76,6 +76,7 @@ import extdeps.languages.go.emit {
   go_keywords,
   go_reserved, go_reserved_escape_suffix,
   go_manifest_file,
+  go_source_extension,
   go_method_templates,
   go_string_types,
   go_func_keyword, go_async_prefix, go_struct_keyword,
@@ -695,7 +696,7 @@ fn go_spec() -> LanguageSpec {
     scaffold: ProjectScaffold {
       manifest_file: "go.mod",
       module_init_file: null,
-      source_file_extension: ".go",
+      source_file_extension: go_source_extension,
       source_dir: null
     },
     serialization: SerializationSpec {
