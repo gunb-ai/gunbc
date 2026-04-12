@@ -1545,8 +1545,8 @@ pub fn parser_helper_state_arg_expr(call_node: Rc<Node>, source_indices: Rc<Hash
             let idx = pair.0.clone();
 let arg_node = pair.1.clone();
 let matches_state = match arg_name_at(arg_node.clone(), source_indices.clone()) {
-    Some(name) => (name.clone().as_str() == "state".to_string().as_str()),
-    None => (idx.clone() == 1),
+    Some(name) => ((name.clone().as_str() == "state".to_string().as_str()) || (name.clone().as_str() == "tokens".to_string().as_str())),
+    None => (idx.clone() == 0),
 };
 if matches_state.clone() {
                 Some(arg_value(&arg_node))
