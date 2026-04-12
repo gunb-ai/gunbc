@@ -707,3 +707,97 @@ Rc::new(PipelineResult {
 }
 }
 }
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ResolvedPipelineResult {
+    pub graph: Option<Rc<ResolvedGraph>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub complexity: Rc<ComplexityReport>,
+    pub ownership: Rc<Vec<Rc<OwnershipProof>>>,
+    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
+}
+
+pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipelineResult> {
+    {
+        let frontend = front_end_sources(sources);
+let newline_indices = frontend.newline_indices.clone();
+match frontend.graph.clone() {
+    None => Rc::new(ResolvedPipelineResult {
+    graph: None,
+    diagnostics: frontend.diagnostics.clone(),
+    source_indices: v2_rt::rc_empty_map::<Rc<NewlineIndex>>(),
+    complexity: empty_complexity_report(),
+    ownership: Rc::new(vec![]),
+    newline_indices: newline_indices.clone(),
+}),
+    Some(graph) => {
+            let graph_diags = graph.diagnostics.clone();
+let resolve_errors = Rc::new({ let mut __result = Vec::new(); for d in graph_diags.iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
+if ((resolve_errors.len() as i64) > 0) {
+                return Rc::new(ResolvedPipelineResult {
+    graph: None,
+    diagnostics: frontend.diagnostics.clone(),
+    source_indices: v2_rt::rc_empty_map::<Rc<NewlineIndex>>(),
+    complexity: empty_complexity_report(),
+    ownership: Rc::new(vec![]),
+    newline_indices: newline_indices.clone(),
+})
+            }
+let source_indices = newline_indices.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<NewlineIndex>>(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| v2_rt::rc_map_insert(acc.clone(), index.file.clone(), index.clone()));
+let norm = normalize_graph(&graph, source_indices.clone());
+let norm_diags = norm.diagnostics.clone();
+let norm_errors = Rc::new({ let mut __result = Vec::new(); for d in norm_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
+if ((norm_errors.len() as i64) > 0) {
+                return Rc::new(ResolvedPipelineResult {
+    graph: None,
+    diagnostics: v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()),
+    source_indices: source_indices.clone(),
+    complexity: empty_complexity_report(),
+    ownership: Rc::new(vec![]),
+    newline_indices: newline_indices.clone(),
+})
+            }
+let typed = reconcile(norm.graph.clone(), source_indices.clone());
+let typed_diags = typed.diagnostics.clone();
+let func_entries = extract_func_entries(typed.clone());
+let recursion_ctx = build_recursion_context(typed.clone());
+let complexity = build_complexity_report(&func_entries, recursion_ctx, source_indices.clone());
+let complexity_diags = complexity_diagnostics(complexity.clone());
+let all_diags = v2_rt::concat(typed_diags.clone(), complexity_diags);
+let type_errors = Rc::new({ let mut __result = Vec::new(); for d in typed_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
+if ((type_errors.len() as i64) > 0) {
+                return Rc::new(ResolvedPipelineResult {
+    graph: None,
+    diagnostics: v2_rt::concat(v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), all_diags.clone()),
+    source_indices: source_indices.clone(),
+    complexity: complexity.clone(),
+    ownership: Rc::new(vec![]),
+    newline_indices: newline_indices.clone(),
+})
+            }
+let ownership = extract_ownership_proofs(typed.clone());
+let ownership_diags = ownership_diagnostics(ownership.clone());
+let ownership_errors = Rc::new({ let mut __result = Vec::new(); for d in ownership_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
+if ((ownership_errors.len() as i64) > 0) {
+                return Rc::new(ResolvedPipelineResult {
+    graph: None,
+    diagnostics: v2_rt::concat(v2_rt::concat(v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), all_diags.clone()), ownership_diags.clone()),
+    source_indices: source_indices.clone(),
+    complexity: complexity.clone(),
+    ownership: ownership.clone(),
+    newline_indices: newline_indices.clone(),
+})
+            }
+Rc::new(ResolvedPipelineResult {
+    graph: Some(typed.clone()),
+    diagnostics: v2_rt::concat(v2_rt::concat(v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), all_diags.clone()), ownership_diags.clone()),
+    source_indices: source_indices.clone(),
+    complexity: complexity.clone(),
+    ownership: ownership.clone(),
+    newline_indices: newline_indices.clone(),
+})
+},
+}
+}
+}
