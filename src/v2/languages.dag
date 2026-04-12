@@ -754,7 +754,7 @@ fn go_spec() -> LanguageSpec {
     scaffold: ProjectScaffold {
       manifest_file: "go.mod",
       module_init_file: null,
-      source_file_extension: go_source_extension,
+      source_file_extension: ".go",
       source_dir: null
     },
     serialization: SerializationSpec {

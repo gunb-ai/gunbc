@@ -738,7 +738,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     scaffold: Rc::new(ProjectScaffold {
     manifest_file: Some("go.mod".to_string()),
     module_init_file: None,
-    source_file_extension: go_source_extension(),
+    source_file_extension: ".go".to_string(),
     source_dir: None,
 }),
     serialization: Rc::new(SerializationSpec {
