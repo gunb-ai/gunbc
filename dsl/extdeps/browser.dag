@@ -1,0 +1,142 @@
+// extdeps/browser.dag -- Playwright browser automation transport.
+//
+// Models headless/headed browser interaction for web automation.
+// Primary consumer: chatgpt_reviewer.dag (ChatGPT Pro browser automation).
+//
+// Transport: Playwright (Node.js) — the interpreter dispatches operations
+// to a persistent browser context via the Playwright API.
+//
+// This is the most complex transport in the system: it manages a stateful
+// browser session with navigation, DOM queries, file uploads, and text
+// extraction. The operations are designed to be composable — higher-level
+// workflows (like chatgpt_reviewer.dag) compose these into multi-step
+// interactions.
+
+module extdeps.browser
+
+import std.types { FilePath, Url }
+
+// -- Browser lifecycle ------------------------------------------------
+
+type BrowserConfig {
+  headless: Bool = false
+  profile_path: FilePath
+  viewport_width: Int = 1280
+  viewport_height: Int = 900
+}
+
+// Opaque handles — the interpreter manages the actual Playwright objects.
+// These are passed between operations but never inspected by .dag code.
+type BrowserContext
+type Page
+type Element
+
+// -- Services ---------------------------------------------------------
+
+// Browser operations dispatch via shell to a Playwright runner.
+// The runner manages a persistent browser context and executes
+// actions as JSON commands. This keeps the transport within what
+// the compiler supports today (shell). A native playwright transport
+// can replace this later without changing the .dag interface.
+
+service browser.Context {
+  operation Launch {
+    input { headless: String = "false", profile_path: FilePath }
+    output { context_id: String from "stdout" }
+    transport shell { argv: ["playwright-runner", "launch", "--headless", "{headless}", "--profile", "{profile_path}"] }
+  }
+
+  operation Close {
+    input { context_id: String }
+    output {}
+    transport shell { argv: ["playwright-runner", "close", "{context_id}"] }
+  }
+}
+
+service browser.Page {
+  operation Goto {
+    input { url: String, wait_until: String = "domcontentloaded" }
+    output { final_url: String from "stdout" }
+    transport shell { argv: ["playwright-runner", "goto", "{url}", "--wait-until", "{wait_until}"] }
+  }
+
+  operation CurrentUrl {
+    input {}
+    output { url: String from "stdout" }
+    transport shell { argv: ["playwright-runner", "url"] }
+  }
+
+  operation Title {
+    input {}
+    output { title: String from "stdout" }
+    transport shell { argv: ["playwright-runner", "title"] }
+  }
+
+  operation WaitForSelector {
+    input { selector: String, timeout_ms: Int = 30000 }
+    output { found: String from "stdout" }
+    transport shell { argv: ["playwright-runner", "wait-for", "{selector}", "--timeout", "{timeout_ms}"] }
+  }
+
+  operation QueryAll {
+    input { selector: String }
+    output { count: String from "stdout" }
+    transport shell { argv: ["playwright-runner", "query-all", "{selector}"] }
+  }
+
+  operation Click {
+    input { selector: String }
+    output {}
+    transport shell { argv: ["playwright-runner", "click", "{selector}"] }
+  }
+
+  operation Fill {
+    input { selector: String, text: String }
+    output {}
+    transport shell { argv: ["playwright-runner", "fill", "{selector}", "{text}"] }
+  }
+
+  operation Evaluate {
+    input { expression: String }
+    output { result: String from "stdout" }
+    transport shell { argv: ["playwright-runner", "evaluate", "{expression}"] }
+  }
+
+  operation UploadFile {
+    input { selector: String, path: FilePath }
+    output {}
+    transport shell { argv: ["playwright-runner", "upload", "{selector}", "{path}"] }
+  }
+
+  operation Screenshot {
+    input { path: FilePath }
+    output {}
+    transport shell { argv: ["playwright-runner", "screenshot", "{path}"] }
+  }
+
+  operation Wait {
+    input { ms: Int }
+    output {}
+    transport shell { argv: ["playwright-runner", "wait", "{ms}"] }
+  }
+}
+
+service browser.Element {
+  operation IsVisible {
+    input { selector: String }
+    output { visible: String from "stdout" }
+    transport shell { argv: ["playwright-runner", "is-visible", "{selector}"] }
+  }
+
+  operation InnerText {
+    input { selector: String }
+    output { text: String from "stdout" }
+    transport shell { argv: ["playwright-runner", "inner-text", "{selector}"] }
+  }
+
+  operation EvaluateOn {
+    input { selector: String, expression: String }
+    output { result: String from "stdout" }
+    transport shell { argv: ["playwright-runner", "evaluate-on", "{selector}", "{expression}"] }
+  }
+}
