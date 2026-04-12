@@ -2106,36 +2106,36 @@ fn parse_optional_inferred(tokens: List<Token>, ctx: ParseContext) -> OptRetResu
 // 10. parse_service_def
 // =========================================================================
 
-fn parse_service_def(tokens: List<Token>, state: ParserState) -> ItemResult {
-  let start_span = current_span(tokens: tokens, state: state)
+fn parse_service_def(tokens: List<Token>, ctx: ParseContext) -> ItemResult {
+  let start_span = token_span(tok: tokens |> first)
   let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "service" })
-  if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
-  parse_service_after_kw(tokens: tokens, state: r.state, start_span: start_span)
+  let r = expect(tokens: tokens, expected: ExpectKeyword { text: "service" })
+  if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
+  parse_service_after_kw(tokens: r.tokens, ctx: ctx, start_span: start_span)
 }
 
-fn parse_service_after_kw(tokens: List<Token>, state: ParserState, start_span: SourceSpan) -> ItemResult {
+fn parse_service_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {
   let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
-  let r_ns = expect_name(tokens: tokens, state: state)
-  if has_err(err: r_ns.err) { return ItemResult { item: dummy, state: r_ns.state, err: r_ns.err } }
+  let r_ns = expect_name(tokens: tokens)
+  if has_err(err: r_ns.err) { return ItemResult { item: dummy, tokens: r_ns.tokens, ctx: ctx, err: r_ns.err } }
   let namespace_root = r_ns.name
   let name_span = r_ns.span
-  let r = parse_dotted_ident_rest(tokens: tokens, state: r_ns.state, acc: namespace_root, span: name_span)
+  let r = parse_dotted_ident_rest(tokens: r_ns.tokens, acc: namespace_root, span: name_span)
   let name = r.name
   let named_dummy = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
-  let r = expect(tokens: tokens, state: r.state, expected: ExpectLBrace)
-  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
-  let s = skip_newlines(tokens: tokens, state: r.state)
+  let r = expect(tokens: r.tokens, expected: ExpectLBrace)
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
+  let tokens = skip_newlines(tokens: r.tokens)
 
   // Parse service body: config, transport, operations
-  let r = parse_service_body(tokens: tokens, state: s)
-  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
+  let r = parse_service_body(tokens: tokens, ctx: ctx)
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
 
-  let s = skip_newlines(tokens: tokens, state: r.state)
-  let r2 = expect(tokens: tokens, state: s, expected: ExpectRBrace)
-  if has_err(err: r2.err) { return ItemResult { item: named_dummy, state: r2.state, err: r2.err } }
+  let tokens = skip_newlines(tokens: r.tokens)
+  let r2 = expect(tokens: tokens, expected: ExpectRBrace)
+  if has_err(err: r2.err) { return ItemResult { item: named_dummy, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
 
   // Operations are already Nodes (D2d dissolution) -- use directly as children
   // Preserve namespace root as a structural property so downstream stages
@@ -2151,71 +2151,70 @@ fn parse_service_after_kw(tokens: List<Token>, state: ParserState, start_span: S
     transport: Some { value: r.transport }, properties: concat([ns_prop], svc_props),
     type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r2.state), err: none }
+  ItemResult { item: item, tokens: skip_newlines(tokens: r2.tokens), ctx: r.ctx, err: none }
 }
 
-fn parse_service_body(tokens: List<Token>, state: ParserState) -> ServiceBodyResult {
+fn parse_service_body(tokens: List<Token>, ctx: ParseContext) -> ServiceBodyResult {
   // Parse all entries in the service block
   parse_service_entries(
-    tokens: tokens, state: state,
+    tokens: tokens, ctx: ctx,
     config: none,
-    transport: local_transport_node(span: current_span(tokens: tokens, state: state)),
+    transport: local_transport_node(span: token_span(tok: tokens |> first)),
     operations: []
   )
 }
 
-fn parse_service_entries(tokens: List<Token>, state: ParserState, config: ServiceConfig?, transport: Node, operations: List<Node>) -> ServiceBodyResult {
-  let s = skip_newlines(tokens: tokens, state: state)
-  if tok_is_rbrace(tok: peek(tokens: tokens, state: s)) || at_end(tokens: tokens, state: s) {
-    ServiceBodyResult { config: config, transport: transport, operations: operations, state: s, err: none }
+fn parse_service_entries(tokens: List<Token>, ctx: ParseContext, config: ServiceConfig?, transport: Node, operations: List<Node>) -> ServiceBodyResult {
+  let tokens = skip_newlines(tokens: tokens)
+  let tok = tokens |> first
+  if tok_is_rbrace(tok: tok) || tok_is_eof(tok: tok) {
+    ServiceBodyResult { config: config, transport: transport, operations: operations, tokens: tokens, ctx: ctx, err: none }
   } else {
-    let tok = peek(tokens: tokens, state: s)
     let sh = match tok { Some { value: t } => Some { value: t.shape }  None => none }
+    let span = token_span(tok: tok)
     match sh {
       Some { value: ShIdent } => {
         let id = tok.value.text
         if id == "config" {
-          let adv = advance(tokens: tokens, state: s)
-          let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
-          if has_err(err: r.err) { return ServiceBodyResult { config: config, transport: transport, operations: operations, state: r.state, err: r.err } }
-          let r2 = parse_service_config_block(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-          if has_err(err: r2.err) { return ServiceBodyResult { config: config, transport: transport, operations: operations, state: r2.state, err: r2.err } }
-          let s2 = skip_newlines(tokens: tokens, state: r2.state)
-          let r3 = expect(tokens: tokens, state: s2, expected: ExpectRBrace)
-          if has_err(err: r3.err) { return ServiceBodyResult { config: config, transport: transport, operations: operations, state: r3.state, err: r3.err } }
-          parse_service_entries(tokens: tokens, state: r3.state, config: Some { value: r2.config }, transport: transport, operations: operations)
+          let r = expect(tokens: tokens |> skip(1), expected: ExpectLBrace)
+          if has_err(err: r.err) { return ServiceBodyResult { config: config, transport: transport, operations: operations, tokens: r.tokens, ctx: ctx, err: r.err } }
+          let r2 = parse_service_config_block(tokens: skip_newlines(tokens: r.tokens), ctx: ctx)
+          if has_err(err: r2.err) { return ServiceBodyResult { config: config, transport: transport, operations: operations, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
+          let tokens = skip_newlines(tokens: r2.tokens)
+          let r3 = expect(tokens: tokens, expected: ExpectRBrace)
+          if has_err(err: r3.err) { return ServiceBodyResult { config: config, transport: transport, operations: operations, tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
+          parse_service_entries(tokens: r3.tokens, ctx: r2.ctx, config: Some { value: r2.config }, transport: transport, operations: operations)
         } else if id == "transport" {
-          let adv = advance(tokens: tokens, state: s)
-          let r = parse_transport_binding(tokens: tokens, state: adv.state)
-          if has_err(err: r.err) { return ServiceBodyResult { config: config, transport: transport, operations: operations, state: r.state, err: r.err } }
-          parse_service_entries(tokens: tokens, state: r.state, config: config, transport: r.transport, operations: operations)
+          let r = parse_transport_binding(tokens: tokens |> skip(1), ctx: ctx)
+          if has_err(err: r.err) { return ServiceBodyResult { config: config, transport: transport, operations: operations, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+          parse_service_entries(tokens: r.tokens, ctx: r.ctx, config: config, transport: r.transport, operations: operations)
         } else {
-          ServiceBodyResult { config: config, transport: transport, operations: operations, state: s, err: Some { value: parse_error(msg: "expected config, transport, or operation in service block", span: current_span(tokens: tokens, state: s)) } }
+          ServiceBodyResult { config: config, transport: transport, operations: operations, tokens: tokens, ctx: ctx, err: Some { value: parse_error(msg: "expected config, transport, or operation in service block", span: span) } }
         }
       }
       Some { value: ShKeyword } => {
         let kw_text = tok.value.text
         if kw_text == "operation" {
-          let r = parse_operation_def(tokens: tokens, state: s)
-          if has_err(err: r.err) { return ServiceBodyResult { config: config, transport: transport, operations: operations, state: r.state, err: r.err } }
-          parse_service_entries(tokens: tokens, state: r.state, config: config, transport: transport, operations: list_push(operations, r.operation))
+          let r = parse_operation_def(tokens: tokens, ctx: ctx)
+          if has_err(err: r.err) { return ServiceBodyResult { config: config, transport: transport, operations: operations, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+          parse_service_entries(tokens: r.tokens, ctx: r.ctx, config: config, transport: transport, operations: list_push(operations, r.operation))
         } else {
-          ServiceBodyResult { config: config, transport: transport, operations: operations, state: s, err: Some { value: parse_error(msg: "expected config, transport, or operation in service block", span: current_span(tokens: tokens, state: s)) } }
+          ServiceBodyResult { config: config, transport: transport, operations: operations, tokens: tokens, ctx: ctx, err: Some { value: parse_error(msg: "expected config, transport, or operation in service block", span: span) } }
         }
       }
-      _ => ServiceBodyResult { config: config, transport: transport, operations: operations, state: s, err: Some { value: parse_error(msg: "expected config, transport, or operation in service block", span: current_span(tokens: tokens, state: s)) } }
+      _ => ServiceBodyResult { config: config, transport: transport, operations: operations, tokens: tokens, ctx: ctx, err: Some { value: parse_error(msg: "expected config, transport, or operation in service block", span: span) } }
     }
   }
 }
 
-fn parse_service_config_block(tokens: List<Token>, state: ParserState) -> ConfigResult {
+fn parse_service_config_block(tokens: List<Token>, ctx: ParseContext) -> ConfigResult {
   // Parse key: value pairs for config
-  parse_config_fields(tokens: tokens, state: state, endpoint: none, auth: none, auth_input: none, auth_source: none, rate_limit: none, retry: none)
+  parse_config_fields(tokens: tokens, ctx: ctx, endpoint: none, auth: none, auth_input: none, auth_source: none, rate_limit: none, retry: none)
 }
 
-fn parse_config_fields(tokens: List<Token>, state: ParserState, endpoint: Node?, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node?) -> ConfigResult {
-  let s = skip_newlines(tokens: tokens, state: state)
-  if tok_is_rbrace(tok: peek(tokens: tokens, state: s)) || at_end(tokens: tokens, state: s) {
+fn parse_config_fields(tokens: List<Token>, ctx: ParseContext, endpoint: Node?, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node?) -> ConfigResult {
+  let tokens = skip_newlines(tokens: tokens)
+  if tok_is_rbrace(tok: tokens |> first) || tok_is_eof(tok: tokens |> first) {
     let cfg = ServiceConfig {
       endpoint: match endpoint {
         Some { value: e } => e
@@ -2227,75 +2226,73 @@ fn parse_config_fields(tokens: List<Token>, state: ParserState, endpoint: Node?,
       rate_limit: rate_limit,
       retry: retry
     }
-    ConfigResult { config: cfg, state: s, err: none }
+    ConfigResult { config: cfg, tokens: tokens, ctx: ctx, err: none }
   } else {
     let dummy_cfg = ServiceConfig { endpoint: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)), auth: none, auth_input: none, auth_source: none, rate_limit: none, retry: none }
-    let r = expect_ident(tokens: tokens, state: s)
-    if has_err(err: r.err) { return ConfigResult { config: dummy_cfg, state: r.state, err: r.err } }
+    let r = expect_ident(tokens: tokens)
+    if has_err(err: r.err) { return ConfigResult { config: dummy_cfg, tokens: r.tokens, ctx: ctx, err: r.err } }
     let fname = r.name
-    let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
-    if has_err(err: r2.err) { return ConfigResult { config: dummy_cfg, state: r2.state, err: r2.err } }
-    let r3 = parse_expr(tokens: tokens, state: r2.state)
-    if has_err(err: r3.err) { return ConfigResult { config: dummy_cfg, state: r3.state, err: r3.err } }
-    let s2 = r3.state
-    let e = eat(tokens: tokens, state: s2, expected: ExpectComma)
-    let s3 = if e.consumed { e.state } else { s2 }
+    let r2 = expect(tokens: r.tokens, expected: ExpectColon)
+    if has_err(err: r2.err) { return ConfigResult { config: dummy_cfg, tokens: r2.tokens, ctx: ctx, err: r2.err } }
+    let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
+    if has_err(err: r3.err) { return ConfigResult { config: dummy_cfg, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
+    let tokens = r3.tokens
+    let ctx = r3.ctx
+    let e = eat(tokens: tokens, expected: ExpectComma)
+    let tokens = if e.consumed { e.tokens } else { tokens }
 
     match fname {
-      "endpoint" => parse_config_fields(tokens: tokens, state: s3, endpoint: Some { value: r3.expr }, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
-      "auth" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: Some { value: r3.expr }, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
-      "auth_input" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: Some { value: r3.expr }, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
-      "auth_source" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: Some { value: r3.expr }, rate_limit: rate_limit, retry: retry)
-      "rate_limit" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: Some { value: r3.expr }, retry: retry)
-      "retry" => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: Some { value: r3.expr })
-      _ => parse_config_fields(tokens: tokens, state: s3, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
+      "endpoint" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: Some { value: r3.expr }, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
+      "auth" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: Some { value: r3.expr }, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
+      "auth_input" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: Some { value: r3.expr }, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
+      "auth_source" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: Some { value: r3.expr }, rate_limit: rate_limit, retry: retry)
+      "rate_limit" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: Some { value: r3.expr }, retry: retry)
+      "retry" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: Some { value: r3.expr })
+      _ => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
     }
   }
 }
 
-fn parse_transport_binding(tokens: List<Token>, state: ParserState) -> TransportResult {
-  let span = current_span(tokens: tokens, state: state)
+fn parse_transport_binding(tokens: List<Token>, ctx: ParseContext) -> TransportResult {
+  let span = token_span(tok: tokens |> first)
   let dummy = local_transport_node(span: span)
-  let tok = peek(tokens: tokens, state: state)
+  let tok = tokens |> first
   let tok_text = match tok { Some { value: t } => t.text  None => "" }
   let sh = match tok { Some { value: t } => Some { value: t.shape }  None => none }
   match sh {
     Some { value: ShIdent } => {
       if tok_text == "rest" {
-        let adv = advance(tokens: tokens, state: state)
-        let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
-        if has_err(err: r.err) { return TransportResult { transport: dummy, state: r.state, err: r.err } }
-        let r2 = parse_rest_binding_body(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-        if has_err(err: r2.err) { return TransportResult { transport: r2.transport, state: r2.state, err: r2.err } }
-        let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
-        if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
-        TransportResult { transport: r2.transport, state: r3.state, err: none }
+        let r = expect(tokens: tokens |> skip(1), expected: ExpectLBrace)
+        if has_err(err: r.err) { return TransportResult { transport: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
+        let r2 = parse_rest_binding_body(tokens: skip_newlines(tokens: r.tokens), ctx: ctx)
+        if has_err(err: r2.err) { return TransportResult { transport: r2.transport, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
+        let r3 = expect(tokens: skip_newlines(tokens: r2.tokens), expected: ExpectRBrace)
+        if has_err(err: r3.err) { return TransportResult { transport: dummy, tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
+        TransportResult { transport: r2.transport, tokens: r3.tokens, ctx: r2.ctx, err: none }
       } else if tok_text == "shell" {
-        let adv = advance(tokens: tokens, state: state)
-        let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
-        if has_err(err: r.err) { return TransportResult { transport: dummy, state: r.state, err: r.err } }
-        let r2 = parse_shell_binding_body(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-        if has_err(err: r2.err) { return TransportResult { transport: r2.transport, state: r2.state, err: r2.err } }
-        let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
-        if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
-        TransportResult { transport: r2.transport, state: r3.state, err: none }
+        let r = expect(tokens: tokens |> skip(1), expected: ExpectLBrace)
+        if has_err(err: r.err) { return TransportResult { transport: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
+        let r2 = parse_shell_binding_body(tokens: skip_newlines(tokens: r.tokens), ctx: ctx)
+        if has_err(err: r2.err) { return TransportResult { transport: r2.transport, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
+        let r3 = expect(tokens: skip_newlines(tokens: r2.tokens), expected: ExpectRBrace)
+        if has_err(err: r3.err) { return TransportResult { transport: dummy, tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
+        TransportResult { transport: r2.transport, tokens: r3.tokens, ctx: r2.ctx, err: none }
       } else if tok_text == "file" {
-        let adv = advance(tokens: tokens, state: state)
-        let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
-        if has_err(err: r.err) { return TransportResult { transport: dummy, state: r.state, err: r.err } }
-        let r2 = parse_file_binding_body(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-        if has_err(err: r2.err) { return TransportResult { transport: r2.transport, state: r2.state, err: r2.err } }
-        let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
-        if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
-        TransportResult { transport: r2.transport, state: r3.state, err: none }
+        let r = expect(tokens: tokens |> skip(1), expected: ExpectLBrace)
+        if has_err(err: r.err) { return TransportResult { transport: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
+        let r2 = parse_file_binding_body(tokens: skip_newlines(tokens: r.tokens), ctx: ctx)
+        if has_err(err: r2.err) { return TransportResult { transport: r2.transport, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
+        let r3 = expect(tokens: skip_newlines(tokens: r2.tokens), expected: ExpectRBrace)
+        if has_err(err: r3.err) { return TransportResult { transport: dummy, tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
+        TransportResult { transport: r2.transport, tokens: r3.tokens, ctx: r2.ctx, err: none }
       } else {
         // Default: local binding
-        TransportResult { transport: dummy, state: state, err: none }
+        TransportResult { transport: dummy, tokens: tokens, ctx: ctx, err: none }
       }
     }
     // Default: local binding (reuse dummy which already holds local_transport_node(span))
     _ =>
-      TransportResult { transport: dummy, state: state, err: none }
+      TransportResult { transport: dummy, tokens: tokens, ctx: ctx, err: none }
   }
 }
 
