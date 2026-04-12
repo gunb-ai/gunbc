@@ -90,6 +90,20 @@ Known unifications:
   be 1: the spec file. If it's more, there's a parallel list
   somewhere that will drift and break.
 
+- **Idempotency + cancellation + redundancy = algebraic
+  simplification.** These appear to be three distinct concepts:
+  - Idempotency: `f ∘ f = f` (doing it twice = doing it once)
+  - Cancellation: `f ∘ f⁻¹ = id` (doing and undoing = nothing)
+  - Redundancy: `f₁ ∘ ... ∘ fₙ = g` where `cost(g) < cost(f₁∘...∘fₙ)`
+  
+  They are all instances of **one mechanism**: the compiler knows the
+  algebraic laws on operations (group, monoid, lattice, involution)
+  and simplifies compositions symbolically. Three right turns = one
+  left turn is not a special case — it's the rotation group Z₄.
+  `serialize ∘ deserialize = id` is not a special case — it's an
+  inverse pair. The compiler has the algebra; simplification falls
+  out. See `std/effects.dag` and `std/algebra.dag`.
+
 **The test:** if adding a new concept requires a new mechanism rather
 than being an instance of an existing mechanism, investigate whether
 the new concept is really distinct. In a closed system, new concepts
@@ -399,42 +413,45 @@ memoized by the emitter. The compiler already knows:
 Once these facts flow through bindings, the emitter can insert
 memoization for expensive pure functions automatically.
 
-### Idempotency by construction
+### Algebraic simplification (idempotency, cancellation, redundancy)
 
-An operation is idempotent when applying it twice produces the same
-result as applying it once: `f(f(x)) = f(x)`. This is the
-**lattice meet law** — already declared in `std/algebra.dag`.
+The compiler knows the algebraic laws on operations. From those
+laws, three properties emerge without separate mechanisms:
 
-The compiler derives idempotency from the operation's effect shape,
-not from an annotation. Operations that modify keyed state (upsert,
-delete) form lattice meets on `Map<K, V>` — idempotent by the
-algebra. Operations that append to unkeyed collections form monoid
-concatenation on `List<T>` — not idempotent.
-
-The programmer's job is to model their external systems honestly.
-The compiler does the math:
+**Idempotency** — `f ∘ f = f`. An operation whose effect is a
+lattice meet on state is idempotent by the algebra. The compiler
+derives this from the effect shape (`std/effects.dag`), not from
+an annotation. `idempotent: Bool` on `OperationBehavior` dissolves.
 
 - PUT /secrets/{name} → Map upsert → lattice meet → **idempotent**
 - DELETE /instances/{id} → Map delete → lattice meet with ⊥ → **idempotent**
 - POST /logs (no key) → List append → monoid → **not idempotent**
 
-For workflows (infrastructure bringup, CI pipelines, deployment),
-the compiler composes effects across operations. A workflow is
-idempotent iff all its operations have lattice effects. If one
-breaks the chain, the compiler shows which one and why — same
-diagnostic pattern as complexity (show the composition chain and
-where it fails).
+For workflows (infrastructure bringup, CI, deployment), the
+compiler composes effects. A workflow is idempotent iff all its
+operations have lattice effects. If one breaks the chain, the
+compiler shows which one and why.
 
-Three verification layers:
-1. **Compile time:** prove idempotency from effect algebra
-   (lattice composition)
-2. **Generated test:** emit `f(f(x)) == f(x)` tests that verify
-   the model against reality
-3. **Runtime receipt:** log convergence evidence when operations
-   are no-ops ("already exists, no state change")
+**Cancellation** — `f ∘ f⁻¹ = id`. Operations that are declared
+inverses cancel. The compiler detects this from the algebraic
+structure (group inverse, involution). Compile error: "these two
+operations cancel — the result is equivalent to doing nothing."
 
-Effect algebra: `std/effects.dag`. Dissolves the `idempotent: Bool`
-flag on `OperationBehavior` in `std/behavioral.dag`.
+**Redundant work** — `f₁ ∘ ... ∘ fₙ = g` where `cost(g) <
+cost(f₁∘...∘fₙ)`. The compiler simplifies the composition using
+algebraic laws and compares costs. If a cheaper equivalent exists,
+compile error: "this sequence is equivalent to X, which costs less."
+
+All three use the same mechanism: symbolic composition of operations
+under their declared algebraic laws, followed by simplification.
+The GPS analogy: three right turns = one left turn. The compiler
+knows the rotation group and simplifies.
+
+Three verification layers (same for all three):
+1. **Compile time:** prove the property from algebraic laws
+2. **Generated test:** verify the law holds against reality
+   (e.g., `f(f(x)) == f(x)` for idempotency)
+3. **Runtime receipt:** log when operations are no-ops
 
 ### Space bound proofs
 
@@ -455,6 +472,61 @@ can choose target-specific strategies:
 - Rust: inline small folds, parallelize large ones via Rayon
 - Go: emit goroutines for parallel descents
 - Python: emit multiprocessing for CPU-bound folds
+
+---
+
+## What .dag catches that normal compilers don't
+
+These are concrete examples of bugs and inefficiencies that .dag
+rejects at compile time. A normal compiler (Rust, Go, Python, etc.)
+would compile every one of these without complaint. .dag catches
+them because the closed system gives the compiler enough algebraic
+structure to prove they are wrong.
+
+### Structural bugs (impossible to write)
+
+| What .dag catches | What a normal compiler does | How .dag catches it |
+|---|---|---|
+| Non-terminating recursion (`check_type(resolve(name))` where resolved type is recursive) | Compiles fine. Stack overflow at runtime. Real bug in TypeScript, Rust, Haskell compilers. | CX demands structural descent proof. `resolve(name)` is a lookup, not descent — `SubValueUnknown`. Rejected. |
+| Accidentally quadratic (`process(items)` inside `items |> map(...)`) | Compiles fine. O(n²) at runtime. | CX tracks cost composition. `fold(n, fold(n, ...))` = O(n²). If a cheaper equivalent exists (single fold), compile error. |
+| Infinite mutual recursion (`f(n) → g(n) → f(n)`) | Compiles fine. Stack overflow at runtime. | CX analyzes SCCs. Neither call shows descent. Both rejected. |
+| Recursion on sibling instead of child (`process(node)` instead of `process(child)`) | Compiles fine. Infinite loop at runtime. | CX sees `PreservedValue` (same node), not `StrictSubValue`. Rejected. |
+| Work-list that grows unboundedly | Compiles fine. OOM or infinite loop at runtime. | `repeat(N)` requires explicit bound. No unbounded iteration primitive exists. |
+
+### Redundant work (wasteful but compiles)
+
+| What .dag catches | What a normal compiler does | How .dag catches it |
+|---|---|---|
+| `list |> reverse |> reverse` | Compiles fine. Wastes O(n) work. | `reverse` is an involution (`f ∘ f = id`). Composition simplifies to identity. Compile error: "equivalent to doing nothing." |
+| `data |> serialize |> deserialize` | Compiles fine. Wastes serialization cost. | Declared inverse pair. Composition = identity. |
+| `map(f) |> map(g)` (two passes) | Compiles fine. Two traversals where one suffices. | Map fusion law: `map(f) ∘ map(g) = map(f ∘ g)`. One pass is cheaper. |
+| Clone a value used only once | Compiles fine (Rust requires it in some contexts). Wastes allocation + copy. | Ownership analysis: fan-out = 1. Last use can move. Clone is redundant. |
+| Infrastructure bringup that re-provisions already-running services | Compiles fine. Wastes API calls and time. | Effect algebra: all operations are lattice meets (upsert). Workflow is idempotent — re-running is benign but the compiler can flag the redundancy. |
+
+### Effect safety (silent bugs at runtime)
+
+| What .dag catches | What a normal compiler does | How .dag catches it |
+|---|---|---|
+| Non-idempotent workflow marked as safe to retry | Compiles fine. Duplicates data on retry. | Effect algebra derives idempotency from effect shape. `POST /logs` (List append) is not idempotent. Compiler shows which operation breaks it. |
+| Write-then-overwrite (dead effect) | Compiles fine. First write is wasted. | Effect composition: `upsert(k, v1) ∘ upsert(k, v2) = upsert(k, v2)`. First effect is subsumed. |
+| `create_resource()` in a retry loop | Compiles fine. Creates duplicates on retry. | `POST` without key = `CreateEffect` = not idempotent. Compile error inside `repeat()` or retry context. |
+
+### Complexity violations (wrong algorithm)
+
+| What .dag catches | What a normal compiler does | How .dag catches it |
+|---|---|---|
+| O(n²) where O(n) suffices | Compiles fine. Slow at runtime. | CX proves cost. Algebraic simplification finds cheaper equivalent. KF-2 rejects. |
+| Unbounded recursion depth | Compiles fine. Stack overflow at runtime on deep inputs. | CX proves depth bound from structural descent. No bound = rejected. |
+| `fib(n-1) + fib(n-2)` (O(2ⁿ)) | Compiles fine. Exponential at runtime. | CX branching guard: multiple recursive calls with arithmetic descent = exponential. Rejected unless memoized or reformulated. |
+
+### The common pattern
+
+Every row in every table above is the same mechanism: the compiler
+has the algebraic structure (descent proofs, effect shapes, cost
+algebra, inverse declarations), composes operations symbolically,
+and checks whether the composition satisfies the required property.
+No special-case analysis. No lint rules. No opt-in annotations.
+The algebra does the work.
 
 ---
 
