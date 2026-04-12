@@ -264,8 +264,24 @@ pub fn method_size_effect(method_semantics: Option<Rc<MethodSemantics>>) -> Opti
 }
 }
 
+pub fn method_callback_element_position(method_semantics: Option<Rc<MethodSemantics>>) -> Option<i64> {
+    match method_semantics.as_deref().cloned() {
+    Some(MethodSemantics::AlgebraMethodSemantics { algebra_template: at, .. }) => match at.clone() {
+    Some(template) => template.callback_element_position.clone(),
+    None => None,
+},
+    _ => None,
+}
+}
+
 pub fn iteration_element_name(method_semantics: Option<Rc<MethodSemantics>>, lambda: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<String> {
-    lambda_param_names_at(lambda, si).last().cloned()
+    {
+        let params = lambda_param_names_at(lambda, si);
+match method_callback_element_position(method_semantics) {
+    Some(pos) => params.get(pos.clone() as usize).cloned(),
+    None => params.last().cloned(),
+}
+}
 }
 
 pub fn proof_has_non_descending_cycle(proof: Rc<TerminationProof>, members: Rc<Vec<String>>, edges: Rc<Vec<Rc<ProofEdge>>>) -> bool {
