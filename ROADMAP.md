@@ -693,6 +693,89 @@ Source of truth: `.dag` files. Stage0 `.rs` is a derived artifact.
 
 ---
 
+## PERF: Eliminate unnecessary work
+
+**Status: URGENT.** Self-compile 70s (was 30s). CI 15min (was 5min).
+Growing with every PR. The target is not a time number — the target
+is zero unnecessary work.
+
+Root causes (measured, not speculative):
+
+| Root cause | Metric | Fix | Depends on |
+|-----------|--------|-----|-----------|
+| 23,733 Rc::clone() on immutable data | `grep -c .clone() stage0` | Stream B clone elision | Node.name deletion (for Layer 1) |
+| String allocation per Node (node.name) | Every Node constructs a heap String | Delete Node.name, use ident:Int | authored_name_at fix (Step 1) |
+| 8 stages run on 60+ data-only files | 113 files × 8 stages | Skip CX/ownership for data-only modules | Nothing (unblocked) |
+| Fact re-derivation | construct-discard-reconstruct pattern | Track 1 (provenance on bindings) | Stream D |
+
+Execution order:
+
+```
+P1: Skip CX/ownership for data-only modules     ← fastest win, unblocked
+P2: Fix authored_name_at fallbacks (3 lines)     ← unblocks Node.name deletion
+P3: Wire InternTable to TypeEnv                  ← unblocks registry migration
+P4: Migrate registry maps String→Int (~30 sites) ← unblocks Node.name deletion
+P5: Delete Node.name field                       ← eliminates String allocs
+P6: Clone elision Layer 1 (last-use moves)       ← needs P5
+P7: Clone elision Layer 2 (post-TCO ownership)   ← independent, do anytime
+P8: Pipeline profiling                           ← do early for signal
+```
+
+Guide: `/tmp/perf-lane-guide.md`
+
+Success criteria (work elimination, not time):
+
+| Metric | Current | Target |
+|--------|---------|--------|
+| node.name reads in compiler | 107 | 0 |
+| Rc::clone() in stage0 | 23,733 | <1,000 |
+| Stages run on data-only files | 8 | 3 |
+
+---
+
+## Experimental
+
+### Work orchestration (OaaS)
+
+**Vision:** The management plane — tracking parallel work lanes,
+spawning sessions, detecting blockers, escalating decisions — as a
+`.dag` workflow running on cloud infrastructure.
+
+**Why now:** Automated PR review (review.dag) already reduces daily
+cognitive load. CI modeling (ci.dag) prevents forgotten gates.
+Orchestration is the next level: an agent manages routine
+coordination and escalates only what needs human judgment.
+
+**Composition model:**
+```
+Level 0: Worker     → does implementation → produces PR
+Level 1: Orchestrator → spawns workers → monitors → escalates unknowns
+Level 2: User       → sets strategy → orchestrator handles execution
+Level 3: Company    → executives → managers → orchestrators → workers
+```
+
+Each level reduces cognitive load for the level above by handling
+everything it CAN handle and escalating what it CAN'T. Same .dag
+workflow, stacked. The escalation path composes.
+
+**Technology/features needed:**
+- Cloud/VPS worker provisioning (`dsl/extdeps/compute/`)
+- Agent session as a service transport (Claude Code, Codex as shell transports)
+- Sandboxed environments (git worktrees, Docker)
+- Observability dashboard (status of all managed work)
+- Escalation protocol (structured questions with context)
+- Risk analysis (expected progress vs actual, blocker detection)
+
+**Inspired by:** OaaS from gunb.ai repo. Validated by: ctrl/ automated
+review work (low effort, high yield, daily cognitive load reduction).
+
+**Status:** Experimental. Tracking technology needs. Invest
+incrementally — each piece (review automation, CI modeling, worker
+provisioning) delivers standalone value while building toward the
+full orchestration model.
+
+---
+
 ## Killer features
 
 These are capabilities that do not exist in any production system
