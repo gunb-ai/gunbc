@@ -158,18 +158,131 @@ Meta-process modeling asks it to transform declarations about itself.
 The YAML shim is no different from an HTTP route handler — it's the
 platform's required entry point, generated once and stable.
 
-## Phasing
+## The Interpreter: Execution as an Emission Target
 
-### Phase 1: Bootstrap modeling (unblocked, immediate value)
+The v2 compiler has no interpreter — it's a pure compiler that emits
+text files. v1 had one (archived). For meta-processes, this creates
+a bootstrapping problem: running bootstrap.dag or ci.dag requires
+compiling to Rust, building with cargo, then executing. That's
+blocked on M3 (working end-to-end emission).
+
+**The fix: bring back execution as an emission target.**
+
+The compiler already has a `Dag` render target that serializes the
+typed graph as JSON (`emit_dag_artifact` in `compile.dag`). The
+interpreter extends this: instead of serializing the validated IR,
+evaluate it directly.
+
+```
+.dag source → tokenize → parse → resolve → infer → CX → ownership → emit
+                                                                      ↓
+                                                       ┌──────────────┼───────────┐
+                                                       ↓              ↓           ↓
+                                                   emit_rust     emit_python   emit_eval
+                                                   (text files)  (text files)  (evaluate)
+```
+
+### Why this is tractable
+
+.dag's bounded kernel makes interpretation safe by construction:
+
+- **All programs terminate** — decidable, bounded iteration
+- **All data is finite** — Bit/Word64, no unbounded allocation
+- **No mutation** — pure values, reference counting sufficient
+- **No side effects** — except through declared service boundaries
+- **Three iteration primitives** — fold, descend, repeat have
+  clear operational semantics
+
+The core evaluator is a tree-walker over the post-validation IR:
+
+1. Function calls — resolve function, evaluate arguments, evaluate body
+2. Match expressions — pattern match on Conj/Disj values
+3. Let bindings, literals, field access, constructors
+4. fold/descend/repeat — bounded iteration over values
+5. Service dispatch — shell, REST, etc. via existing transports
+6. Pipe expressions — `x |> f(y)` desugars to `f(x, y)`
+
+No GC needed (immutable values, RC). No infinite loop risk.
+No mutation semantics. Straightforward.
+
+### What this means for users
+
+Most users don't care about omni-emission. They want:
+
+```
+dag compile foo.dag    # validate (type-check, CX, ownership)
+dag run foo.dag        # execute directly
+```
+
+Emission to Rust/Python/Go is a **performance optimization** for
+production deployment — not the primary development workflow. The
+interpreter is the default execution path.
+
+### What this means for M5
+
+The interpreter **unblocks all meta-process phases**:
+
+| Without interpreter | With interpreter |
+|--------------------|-----------------|
+| bootstrap.dag → compile to Rust → cargo build → run | `dag run bootstrap.dag` |
+| ci.dag → compile + build + emit YAML + build binary | `dag run ci.dag` |
+| Blocked on M3/M4 emission quality | Unblocked immediately |
+
+The thin YAML shim (Domain 2) still makes sense for production CI,
+but development and iteration use the interpreter directly.
+
+### Architectural location
+
+The interpreter lives alongside other emission targets:
+
+- `dsl/extdeps/languages/dag/` — already exists (syntax, types,
+  emit data for debug output)
+- The evaluator is a Rust module in the compiler binary (not .dag —
+  it's infrastructure, like the parser)
+- Entry point: `RenderTarget::Dag` already dispatches to
+  `emit_dag_artifact`. Extend or add `RenderTarget::Eval` that
+  invokes the evaluator instead of serializing to JSON
+- Service dispatch: evaluate service calls by routing to the
+  appropriate transport handler (shell → subprocess, REST → HTTP
+  client, etc.)
+
+### Interpreter phases
+
+**I-1: Pure evaluation** — evaluate pure .dag functions (no services).
+Covers data declarations, type functions, pure computation. Already
+enough to validate meta-process models.
+
+**I-2: Shell service dispatch** — evaluate shell.Exec, cargo.Build,
+etc. by invoking subprocesses. Enough for bootstrap.dag and ci.dag.
+
+**I-3: REST service dispatch** — evaluate REST operations by making
+HTTP calls. Enough for review.dag and service integration.
+
+**I-4: Full transport coverage** — all declared transports dispatch
+to runtime handlers.
+
+## Phasing (revised)
+
+### Phase 0: Interpreter (new, highest priority)
+
+Build the .dag interpreter as `I-1` (pure eval) + `I-2` (shell
+dispatch). This unblocks all subsequent phases — meta-processes
+can run without compiling to Rust.
+
+Depends on: nothing. The validated IR already exists post-ownership.
+The evaluator is a Rust module reading the existing Node/Conj/Disj
+representation.
+
+### Phase 1: Bootstrap modeling (unblocked with interpreter)
 
 Model stage0 compilation stages in `dsl/gunbc/bootstrap.dag`.
 Declare field propagation rules. Automatic default values for
 additive fields. Target: adding a field to Node requires only the
 .dag change.
 
-Depends on: nothing (emitter default-value support already landing).
+Depends on: Phase 0 I-2 (shell dispatch for cargo/regen commands).
 
-### Phase 2: CI pipeline as multi-artifact emission (after Phase 1)
+### Phase 2: CI pipeline as multi-artifact emission
 
 Two sub-phases:
 
@@ -180,15 +293,16 @@ matrix strategies. Pure data modeling, same as existing REST/shell
 extdeps.
 
 **2b: CI intent + emission** — declare CI gates in
-`dsl/gunbc/ci.dag`. Emit the thin YAML shim + .dag-compiled binary.
-The binary reads gate declarations, runs checks, reports results
-via the GH Actions logging extdep.
+`dsl/gunbc/ci.dag`. For development: `dag run ci.dag` executes
+gates directly via the interpreter. For production: emit a thin
+YAML shim + compiled binary (deferred until M4 multi-artifact
+lands).
 
 Target: adding a new .dag module type automatically creates CI
-obligations. The YAML shim never changes.
+obligations.
 
-Depends on: Phase 1 (establishes the pattern), M4 partially
-(multi-artifact emission), Track 14 direction (artifact planning).
+Depends on: Phase 0 (interpreter), Phase 1 (establishes the
+pattern). Production YAML emission deferred to M4.
 
 ### Phase 3: Process modeling (future, after Phases 1-2)
 
@@ -201,26 +315,30 @@ Depends on: Phases 1-2 (established meta-modeling pattern).
 
 | Existing work | Enables |
 |--------------|---------|
-| M4 single emitter | Meta-processes as emission targets |
+| `RenderTarget::Dag` + `emit_dag_artifact` | Interpreter extends existing Dag target from JSON dump to evaluation |
+| `dsl/extdeps/languages/dag/` (existing) | Syntax, types, emit data already modeled for Dag target |
+| M4 single emitter | Production CI binary (Phase 2b, deferred) |
 | PR #404 emitter default values | Additive bootstrap (Phase 1) |
-| Track 13 Phase 7 (.dag as target) | Meta-processes validated by the compiler |
 | Track 14 (omni-emission) | Multi-artifact: YAML shim + binary from one source |
 | KF-3 verification from structure | Meta-process invariants verified automatically |
 | `dsl/extdeps/github/` (existing) | REST API model; actions.dag extends to CI platform |
-| `dsl/extdeps/shell.dag` (existing) | Shell transport for bootstrap scripts |
+| `dsl/extdeps/shell.dag` (existing) | Shell transport for interpreter service dispatch |
+| `dsl/extdeps/cargo.dag` (existing) | Build/Test/Clippy already modeled for shell transport |
 | the-gunbai / gunb.ai (prior repos) | Proven pattern: thin YAML shim → .dag binary |
 
 ## Done Criterion
 
-**Phase 1:** `scripts/bootstrap.sh` is generated from
-`dsl/gunbc/bootstrap.dag`. Adding a field to Node requires zero
-manual stage0 edits.
+**Phase 0:** `dag run hello.dag` executes a pure .dag program.
+`dag run bootstrap.dag` runs the bootstrap pipeline via shell
+dispatch. No Rust compilation of the .dag program needed.
 
-**Phase 2:** `.github/workflows/ci.yml` is a stable thin shim
-(< 30 lines) that calls a .dag-compiled CI binary. Adding a new
-emission target creates a CI gate in the binary. The YAML never
-changes. `dsl/extdeps/github/actions.dag` models the GH Actions
-platform.
+**Phase 1:** `dag run bootstrap.dag` manages stage0 regeneration.
+Adding a field to Node requires only the .dag change.
+
+**Phase 2:** `dag run ci.dag` executes CI gates locally during
+development. Production CI uses a thin YAML shim (< 30 lines)
+calling the interpreter or a compiled binary.
+`dsl/extdeps/github/actions.dag` models the GH Actions platform.
 
 **Phase 3:** Track dependencies and milestone readiness are computed
 from `dsl/gunbc/process.dag`. ROADMAP.md status sections are

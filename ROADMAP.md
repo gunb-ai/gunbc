@@ -251,8 +251,18 @@ M5: Meta-process modeling (bootstrap, CI, dev process)
       declarations in dsl/gunbc/. Upsert semantics — adding a
       declared fact automatically produces the corresponding process
       step. Can't "forget" to update CI.
-    Phase 1 (bootstrap): unblocked, immediate value
-    Phase 2 (CI gates): after Phase 1, benefits from M4
+    Enabler: .dag interpreter (Phase 0). Execution as an emission
+      target — the Dag RenderTarget already exists (emit_dag_artifact
+      serializes to JSON). Extend to direct evaluation. The bounded
+      kernel (decidable, finite, pure) makes interpretation safe by
+      construction. Tree-walker over post-validation IR + service
+      dispatch for shell/REST/etc. `dag run foo.dag` is the primary
+      development workflow; Rust/Go/Python emission is a production
+      deployment optimization.
+    Phase 0 (interpreter): unblocked, highest priority — unblocks
+      all subsequent phases
+    Phase 1 (bootstrap): unblocked with interpreter
+    Phase 2 (CI gates): after Phase 1, production YAML deferred to M4
     Phase 3 (dev process): future
     Design: docs/meta-process-design.md
 ```
@@ -672,14 +682,21 @@ structure, not maintained in parallel.
 
 | Phase | Scope | Status | Depends on |
 |-------|-------|--------|-----------|
-| 1. Bootstrap modeling | `dsl/gunbc/bootstrap.dag` — stage deps, field propagation, change classification | 🟢 Unblocked | Emitter default-value support (landing) |
-| 2. CI as multi-artifact | `dsl/extdeps/github/actions.dag` (platform model) + `dsl/gunbc/ci.dag` (intent) → thin YAML shim + .dag binary | 🟡 | Phase 1, M4, Track 14 direction |
+| 0. Interpreter | Tree-walker over post-validation IR. `dag run foo.dag`. I-1 (pure eval) + I-2 (shell dispatch) | 🟢 Unblocked | Nothing — validated IR exists |
+| 1. Bootstrap modeling | `dsl/gunbc/bootstrap.dag` — stage deps, field propagation, change classification | 🟢 With Phase 0 | Phase 0 I-2 (shell dispatch) |
+| 2. CI as multi-artifact | `dsl/extdeps/github/actions.dag` (platform) + `dsl/gunbc/ci.dag` (intent) | 🟡 | Phase 0-1; production YAML deferred to M4 |
 | 3. Dev process | `dsl/gunbc/process.dag` — track deps, readiness, milestones | 🔴 | Phases 1-2 |
+
+**Interpreter architecture:** The `Dag` RenderTarget already exists
+(`emit_dag_artifact` serializes to JSON). Extend to direct evaluation.
+The bounded kernel (decidable, finite, pure) makes interpretation safe
+by construction. `dag run` is the primary development workflow;
+Rust/Go/Python emission is a production deployment optimization.
 
 CI architecture: YAML is a transport constraint (GitHub requires it),
 not the CI logic. Emit a thin shim (< 30 lines, stable) that calls
-a .dag-compiled binary. The binary runs gates and reports via GH
-Actions logging extdep. Pattern proven in the-gunbai / gunb.ai repos.
+the interpreter or a compiled binary. Pattern proven in the-gunbai /
+gunb.ai repos.
 
 **Design:** [docs/meta-process-design.md](docs/meta-process-design.md)
 
@@ -788,6 +805,23 @@ Compile error if a function's complexity exceeds a declared bound.
 
 **Status:** Deferred. Needs structural CostBound comparison (not
 lossy ranking).
+
+### KF-9: Direct execution (interpreter)
+
+`dag run foo.dag` — compile, validate, execute in one step. No
+target language build needed. The bounded kernel makes this safe:
+all programs terminate, all data is finite, no mutation. A
+tree-walker over the post-validation IR with service dispatch for
+shell/REST/etc.
+
+Most users want: validate → run. Emission to Rust/Go/Python is a
+deployment optimization, not the development workflow. The
+interpreter proves the validated IR is a complete computational
+description.
+
+**Status:** Phase 0 of M5. `RenderTarget::Dag` exists
+(`emit_dag_artifact` serializes to JSON). Extend to evaluation.
+See [docs/meta-process-design.md](docs/meta-process-design.md).
 
 ---
 
