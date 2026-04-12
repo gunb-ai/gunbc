@@ -3699,12 +3699,174 @@ fn resolved_type_name(n: Node) -> String {
 // fail-closed: returns empty_map() for any body shape we can't analyze.
 // =========================================================================
 
-// Stub: output provenance inference is not yet active.
-// The infrastructure (data structure, threading, consumption in classify_let_value)
-// is in place. Inference requires recursive body walking that currently generates
-// CX violations; enable when the descent analysis can verify its own termination.
+// Infer output provenance from a non-recursive function body.
+// Walks the body expression top-down, classifying the return value's
+// SubValueRelation to each parameter. Handles: variable refs, function
+// calls (compose with callee provenance), match/if (meet across branches),
+// let chains (track bindings), field access (inductive field lookup).
+// Returns single-element list for scalar provenance, empty list if unknown.
 fn infer_output_provenance(body: Node, params: List<Node>, type_env: TypeEnv, scope_locals: Map<String, TypeBinding>, func_sigs: Map<String, ResolvedFuncSig>) -> List<Map<String, SubValueRelation>> {
-  []
+  let param_names = params |> map(p => param_node_name_at(n: p, source_index: type_env.source_index))
+  let param_types = fold(params, init: empty_map(), f: (acc, p) =>
+    let pname = param_node_name_at(n: p, source_index: type_env.source_index)
+    let ptype = resolved_type_name(n: p)
+    if pname != "" && ptype != "" { map_insert(acc, pname, ptype) } else { acc }
+  )
+  let result = classify_body_provenance(
+    expr: body, param_names: param_names, param_types: param_types,
+    type_env: type_env, func_sigs: func_sigs, let_prov: empty_map()
+  )
+  if map_keys(result) |> count > 0 { [result] } else { [] }
+}
+
+// Classify a body expression's return value provenance relative to params.
+// Returns Map<param_name, SubValueRelation> for params with known relationships.
+fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
+  match expr.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let vname = expr_var_name_at(texpr: expr, source_index: type_env.source_index)
+      if param_names |> any(pn => pn == vname) {
+        map_insert(empty_map(), vname, PreservedValue)
+      } else {
+        match map_get(let_prov, vname) {
+          Some { value: prov } => prov
+          None => empty_map()
+        }
+      }
+
+    ExprFieldAccess { summary: _ } =>
+      let base = field_access_base(texpr: expr)
+      let field = field_access_field_at(texpr: expr, source_index: type_env.source_index)
+      let base_prov = classify_body_provenance(expr: base, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+      fold(base_prov |> map_keys, init: empty_map(), f: (acc, pname) =>
+        match map_get(base_prov, pname) {
+          Some { value: base_rel } =>
+            let type_for_lookup = match base_rel {
+              PreservedValue => match map_get(param_types, pname) { Some { value: t } => t  None => "" }
+              StrictSubValue { field: f, factor: _ } => f.element_type
+              IteratedSubValue { field: f } => f.element_type
+              _ => ""
+            }
+            if type_for_lookup != "" {
+              let fields = inductive_fields_for(env: type_env, type_name: type_for_lookup)
+              let matching = fields |> filter(f => f.field_name == field) |> first
+              match matching {
+                Some { value: ind_field } => map_insert(acc, pname, compose_sub_value(base: base_rel, field: ind_field))
+                None => acc
+              }
+            } else { acc }
+          None => acc
+        }
+      )
+
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      let callee = expr_call_func_at(texpr: expr, source_index: type_env.source_index)
+      match map_get(func_sigs, callee) {
+        Some { value: sig } =>
+          match sig.output_provenance |> first {
+            Some { value: callee_prov } =>
+              let call_args = expr.children
+              let arg_by_name = fold(call_args, init: empty_map(), f: (arg_acc, arg_node) =>
+                match arg_name_at(n: arg_node, source_index: type_env.source_index) {
+                  Some { value: aname } => map_insert(arg_acc, aname, arg_value(n: arg_node))
+                  None => arg_acc
+                }
+              )
+              fold(callee_prov |> map_keys, init: empty_map(), f: (acc, callee_pname) =>
+                match map_get(callee_prov, callee_pname) {
+                  Some { value: callee_rel } =>
+                    match map_get(arg_by_name, callee_pname) {
+                      Some { value: arg } =>
+                        let arg_prov = classify_body_provenance(expr: arg, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+                        fold(arg_prov |> map_keys, init: acc, f: (inner, pname) =>
+                          match map_get(arg_prov, pname) {
+                            Some { value: arg_rel } =>
+                              let composed = compose_sub_value_relations(arg_rel: arg_rel, callee_rel: callee_rel)
+                              match composed { SubValueUnknown => inner  _ =>
+                                match map_get(inner, pname) {
+                                  Some { value: existing } => map_insert(inner, pname, meet_sub_value(a: existing, b: composed))
+                                  None => map_insert(inner, pname, composed)
+                                }
+                              }
+                            None => inner
+                          }
+                        )
+                      None => acc
+                    }
+                  None => acc
+                }
+              )
+            None => empty_map()
+          }
+        None => empty_map()
+      }
+
+    ExprMatch =>
+      let arms = match_arm_nodes(texpr: expr)
+      let arm_provs = arms |> map(arm =>
+        classify_body_provenance(expr: arm_body(n: arm), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+      )
+      meet_body_provenance_maps(provs: arm_provs)
+
+    ExprIf =>
+      let then_prov = classify_body_provenance(expr: if_then_branch(texpr: expr), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+      match if_else_branch(texpr: expr) {
+        Some { value: else_expr } =>
+          let else_prov = classify_body_provenance(expr: else_expr, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+          meet_body_provenance_maps(provs: [then_prov, else_prov])
+        None => then_prov
+      }
+
+    ExprLet =>
+      let value = let_value(texpr: expr)
+      let bname = let_binding_name_at(texpr: expr, source_index: type_env.source_index)
+      let value_prov = classify_body_provenance(expr: value, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+      let updated = map_insert(let_prov, bname, value_prov)
+      match let_body(texpr: expr) {
+        Some { value: body } =>
+          classify_body_provenance(expr: body, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: updated)
+        None => empty_map()
+      }
+
+    ExprBlock =>
+      match expr.children |> last {
+        Some { value: last_stmt } =>
+          classify_body_provenance(expr: last_stmt, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+        None => empty_map()
+      }
+
+    _ => empty_map()
+  }
+}
+
+// Typed empty provenance map — avoids type inference ambiguity in nested folds.
+fn empty_prov_map() -> Map<String, SubValueRelation> { empty_map() }
+
+// Meet provenance maps across branches (match arms, if branches).
+// For each param, keep it only if present in ALL maps, with met relation.
+fn meet_body_provenance_maps(provs: List<Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
+  match provs |> first {
+    None => empty_prov_map()
+    Some { value: first_prov } =>
+      provs |> skip(1) |> fold(init: first_prov, f: (acc, prov) =>
+        intersect_prov_maps(a: acc, b: prov)
+      )
+  }
+}
+
+// Intersect two provenance maps: keep only keys present in both, meet values.
+fn intersect_prov_maps(a: Map<String, SubValueRelation>, b: Map<String, SubValueRelation>) -> Map<String, SubValueRelation> {
+  fold(map_keys(a), init: empty_prov_map(), f: (result, key) =>
+    match map_get(b, key) {
+      Some { value: b_rel } =>
+        match map_get(a, key) {
+          Some { value: a_rel } =>
+            map_insert(result, key, meet_sub_value(a: a_rel, b: b_rel))
+          None => result
+        }
+      None => result
+    }
+  )
 }
 
 // Compose two sub-value relations across a function call boundary.
@@ -3715,8 +3877,8 @@ fn compose_output_relations(arg_rel: SubValueRelation, callee_rel: SubValueRelat
 }
 
 // Populate output provenance on resolved function signatures after body typing.
-// Lifts existing hardcoded knowledge from expr_child_roles, wrapper_child_roles,
-// and function_size_effects into output_provenance entries. Non-recursive (flat fold).
+// Two sources: (1) hardcoded tables (expr_child_roles, wrapper_child_roles,
+// function_size_effects), (2) body inference for non-recursive functions.
 fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv, type_env: TypeEnv, locals: Map<String, TypeBinding>) -> ResolvedFuncEnv {
   let updated_sigs = fold(typed_items, init: func_env.signatures, f: (acc, item) =>
     if item.params |> count > 0 {
@@ -3745,7 +3907,26 @@ fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv
             } else { acc }
           None => acc
         }
-      } else { acc }
+      } else {
+        // Body inference for non-recursive functions
+        match item.body {
+          Some { value: body } =>
+            if !expr_has_self_call(texpr: body, fn_name: fn_name, source_index: type_env.source_index) {
+              let provenance = infer_output_provenance(body: body, params: item.params, type_env: type_env, scope_locals: locals, func_sigs: acc)
+              if provenance |> count > 0 {
+                match map_get(acc, fn_name) {
+                  Some { value: sig } =>
+                    map_insert(acc, fn_name, ResolvedFuncSig {
+                      name: sig.name, params: sig.params, inferred: sig.inferred,
+                      is_async: sig.is_async, output_provenance: provenance
+                    })
+                  None => acc
+                }
+              } else { acc }
+            } else { acc }
+          None => acc
+        }
+      }
     } else { acc }
   )
   ResolvedFuncEnv { signatures: updated_sigs }

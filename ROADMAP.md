@@ -196,7 +196,7 @@ Bootstrap D ├─ Lane B: Emission ──────────────�
 Four concrete goals, in priority order. Each has a clear done-criterion.
 
 ```
-M1: CX gate → 0 violations (currently 421, ratchet 424)
+M1: CX gate → 0 violations (currently 421, ratchet 421)
     Done when: strict_compile_diagnostic_count = 0, gate is blocking
     Key blocker: OUTPUT PROVENANCE on function signatures.
       Same SubValueRelation already on input bindings (S1-S6),
