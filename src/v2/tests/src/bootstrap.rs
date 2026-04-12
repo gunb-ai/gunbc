@@ -486,8 +486,12 @@ fn bootstrap_fixed_point() {
     let stage1_src = stage1_dir.join("src");
     let stage2_src = stage2_dir.join("src");
 
+    // Exclude hand-maintained files from diff (copied into stage1 but
+    // not generated into stage2 — expected, not a divergence).
     let diff = std::process::Command::new("diff")
         .arg("-r")
+        .arg("--exclude=v2_interpreter.rs")
+        .arg("--exclude=cli_run.rs")
         .arg(&stage1_src)
         .arg(&stage2_src)
         .output()
