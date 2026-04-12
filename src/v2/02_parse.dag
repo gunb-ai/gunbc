@@ -2339,7 +2339,11 @@ fn parse_rest_fields(tokens: List<Token>, state: ParserState, base_url: Node?, m
     } else if fname == transport_response_format_key {
       parse_rest_fields(tokens: tokens, state: s2, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: Some { value: r3.expr }, headers: headers)
     } else if fname == transport_headers_key {
-      parse_rest_fields(tokens: tokens, state: s2, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: r3.expr.children)
+      let h = match r3.expr.expr_data {
+        ExprRecordLit => r3.expr.children
+        _ => return TransportResult { transport: dummy, state: s2, err: Some { value: make_error_node(diagnostic: InternalError { message: "transport headers must be a record literal { \"Name\": value, ... }", span: current_span(tokens: tokens, state: s2) }, module_name: "") } }
+      }
+      parse_rest_fields(tokens: tokens, state: s2, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: h)
     } else {
       parse_rest_fields(tokens: tokens, state: s2, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: headers)
     }

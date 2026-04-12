@@ -120,10 +120,8 @@ service llm.Anthropic {
     transport rest {
       method: POST,
       path: "/v1/messages",
-      // BRIDGE: temperature and system omitted — when None they serialize as null,
-      // which the API rejects. Needs conditional body field emission (nullable omit).
-      body: { model: model, messages: messages, max_tokens: max_tokens },
-      headers: { "anthropic-version": "2023-06-01" }
+      body: { model: model, messages: messages, max_tokens: max_tokens, temperature: temperature, system: system },
+      headers: { "anthropic-version": current_api_version.version }
     }
     response {
       200 => Json

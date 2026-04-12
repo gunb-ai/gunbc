@@ -5252,7 +5252,7 @@ let s2 = if e.consumed.clone() {
             };
 if (fname.clone().as_str() == transport_url_key().as_str()) {
                 {
-                    let __tco_0 = s2;
+                    let __tco_0 = s2.clone();
 let __tco_1 = Some(r3.expr.clone());
 state = __tco_0;
 base_url = __tco_1;
@@ -5261,7 +5261,7 @@ continue;
 } else {
                 if (fname.clone().as_str() == transport_method_key().as_str()) {
                     {
-                        let __tco_0 = s2;
+                        let __tco_0 = s2.clone();
 let __tco_1 = Some(r3.expr.clone());
 state = __tco_0;
 method = __tco_1;
@@ -5270,7 +5270,7 @@ continue;
 } else {
                     if (fname.clone().as_str() == transport_path_template_key().as_str()) {
                         {
-                            let __tco_0 = s2;
+                            let __tco_0 = s2.clone();
 let __tco_1 = Some(r3.expr.clone());
 state = __tco_0;
 path_template = __tco_1;
@@ -5279,7 +5279,7 @@ continue;
 } else {
                         if (fname.clone().as_str() == transport_query_key().as_str()) {
                             {
-                                let __tco_0 = s2;
+                                let __tco_0 = s2.clone();
 let __tco_1 = Some(r3.expr.clone());
 state = __tco_0;
 query = __tco_1;
@@ -5288,7 +5288,7 @@ continue;
 } else {
                             if (fname.clone().as_str() == transport_body_key().as_str()) {
                                 {
-                                    let __tco_0 = s2;
+                                    let __tco_0 = s2.clone();
 let __tco_1 = Some(r3.expr.clone());
 state = __tco_0;
 request_body = __tco_1;
@@ -5297,7 +5297,7 @@ continue;
 } else {
                                 if (fname.clone().as_str() == transport_response_format_key().as_str()) {
                                     {
-                                        let __tco_0 = s2;
+                                        let __tco_0 = s2.clone();
 let __tco_1 = Some(r3.expr.clone());
 state = __tco_0;
 response_format = __tco_1;
@@ -5305,16 +5305,27 @@ continue;
 }
 } else {
                                     if (fname.clone().as_str() == transport_headers_key().as_str()) {
-                                        {
-                                            let __tco_0 = s2;
-let __tco_1 = r3.expr.clone().children.clone();
+                                        let h = match (*r3.expr.clone().expr_data.clone()).clone() {
+    ExprData::ExprRecordLit { .. } => r3.expr.clone().children.clone(),
+    _ => return Rc::new(TransportResult {
+    transport: dummy.clone(),
+    state: s2.clone(),
+    err: Some(make_error_node(Rc::new(CompilerDiagnostic::InternalError {
+    message: "transport headers must be a record literal { \"Name\": value, ... }".to_string(),
+    span: current_span(tokens.clone(), s2.clone()),
+}), "".to_string())),
+}),
+};
+{
+                                            let __tco_0 = s2.clone();
+let __tco_1 = h;
 state = __tco_0;
 headers = __tco_1;
 continue;
 }
 } else {
                                         {
-                                            let __tco_0 = s2;
+                                            let __tco_0 = s2.clone();
 state = __tco_0;
 continue;
 }

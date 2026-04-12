@@ -241,7 +241,28 @@ fn emit_simple_expr(expr: Node, target: RenderTarget, source_indices: Map<String
           None => concat(emit_simple_expr(expr: b, target: target, source_indices: source_indices), ".", emit_ident(name: f, target: target))
         }
       } else {
-        concat(emit_simple_expr(expr: b, target: target, source_indices: source_indices), ".", emit_ident(name: f, target: target))
+        // Data declarations emit as functions in Rust; field access on a
+        // data reference needs base().field, not base.field.
+        // In transport contexts (the primary consumer of emit_simple_expr),
+        // there are no local let-bindings, so LocalValueBinding is a data
+        // reference. FunctionValueBinding and None (uninferred) are also
+        // module-level references. Only MatchBoundBinding and
+        // VariantValueBinding should NOT get ().
+        let base_is_fn = match b.expr_data {
+          ExprVar { binding_kind: bk } => match bk {
+            Some { value: MatchBoundBinding } => false
+            Some { value: VariantValueBinding { parent_enum: _ } } => false
+            _ => true
+          }
+          _ => false
+        }
+        let base_str = emit_simple_expr(expr: b, target: target, source_indices: source_indices)
+        let base_call = if base_is_fn { concat(base_str, "()") } else { base_str }
+        // Clone the field value — data references return Rc<Struct> and
+        // field access on Rc needs .clone() for non-Copy types.
+        let field_str = concat(base_call, ".", emit_ident(name: f, target: target))
+        let needs_clone = base_is_fn && match target { Rust => true  _ => false }
+        if needs_clone { concat(field_str, ".clone()") } else { field_str }
       }
     ExprStringInterp =>
       let ps = expr.children |> map(child => match child.expr_data {
