@@ -354,7 +354,7 @@ type DeclaredFuncSig {
   params: List<Node>
   inferred: Node?
   is_async: Bool
-  output_provenance: Map<String, Map<String, SubValueRelation>>
+  output_provenance: List<Map<String, SubValueRelation>>
 }
 
 type DeclaredFuncEnv {
