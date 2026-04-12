@@ -635,21 +635,29 @@ emits both from the same source.
 
 **Thesis claim:** emission is mechanical translation.
 
-**Current state:** Phase 1 complete, Phase 2 (expression dispatch) complete.
-The shared emitter (`05_emit.dag`) has zero language-decision `match target`
-branches. Python and Go expression rendering is unified into a single
-`emit_unified_typed_expr` dispatcher that reads LanguageSpec data — ~50
-per-language functions deleted, CX ratchet 421→416. Per-language emitter
-files retain: pattern rendering, TCO, func body, type defs, service defs.
+**Current state:** Phases 1–4 complete. Python and Go per-language files
+have zero language-decision branches for expressions, patterns, TCO,
+or block statements. 18 per-language functions deleted (Phase 3+3.5),
+replaced by 7 shared functions that read LanguageSpec data. Pattern
+rendering unified via `VariantPatternSyntax` on `ExpressionSemantics`.
+Service/transport orchestration fully callback-based (Phase 4).
+Per-language files retain: func body, type defs, func/workflow defs,
+entry point/module rendering, transport implementations.
 Rust emitter is untouched (ownership logic, Phase 6).
 
-**Progress:** Phase 1 ✓, Phase 2 ✓, Phase 3-4 ready, Phase 5-6 blocked on LS-4.
+**Progress:** Phase 1 ✓, Phase 2 ✓, Phase 3 ✓, Phase 3.5 ✓, Phase 4 ✓,
+Phase 5-6 blocked on LS-4.
+
+**Line counts:** Python 742, Go 768, shared 2924, Rust 5863.
 
 **Target:** one emitter that reads `LanguageSpec` + `InhabitantDecl`
 data per target. Adding a new target language means adding a new
 `dsl/extdeps/languages/<lang>/` directory, not touching the compiler.
 
-**Next:** Phase 3 (TCO/block unification), Phase 4 (service/transport).
+**Next:** Phase 5 requires LanguageSpec design work — return model
+(Go multi-return vs Python single), type definition syntax, async
+model, module system. The unification pattern is proven; what remains
+is modeling the remaining language differences as data.
 **Blocked on (for Phase 5-6):** Track 2 LS-4 (borrow model design).
 
 ### Track 14: Omni-emission
