@@ -183,11 +183,13 @@ pub fn compose_sub_value_relations(arg_rel: Rc<SubValueRelation>, callee_rel: Rc
     SubValueRelation::IteratedSubValue { .. } => match (*arg_rel).clone() {
     SubValueRelation::PreservedValue => callee_rel.clone(),
     SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-    SubValueRelation::StrictSubValue { field: f, .. } => Rc::new(SubValueRelation::IteratedSubValue {
+    SubValueRelation::StrictSubValue { field: f, .. } => Rc::new(SubValueRelation::StrictSubValue {
     field: f.clone(),
+    factor: Rc::new(ShrinkFactor::UnitShrink),
 }),
-    SubValueRelation::IteratedSubValue { field: f, .. } => Rc::new(SubValueRelation::IteratedSubValue {
+    SubValueRelation::IteratedSubValue { field: f, .. } => Rc::new(SubValueRelation::StrictSubValue {
     field: f.clone(),
+    factor: Rc::new(ShrinkFactor::UnitShrink),
 }),
     SubValueRelation::ArithmeticDescent { .. } => Rc::new(SubValueRelation::SubValueUnknown),
 },

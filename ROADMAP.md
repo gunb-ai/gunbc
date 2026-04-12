@@ -203,13 +203,20 @@ M1: CX gate → 0 violations (currently 421, ratchet 421)
       mirrored to outputs. Not a new system — completes the
       existing pattern. 3 touch points: infer from body, store
       on signature, consumers read at call sites.
-    Done: infrastructure (#398), seed data (e61d199), type
-      correction Map<String,…>→List (positional by return child),
-      classify_argument reads provenance before hardcoded fallback.
-    Next: body inference for non-recursive functions (no bootstrap
-      problem). compose_output_relations is too conservative
-      (StrictSubValue∘StrictSubValue→Unknown) but this should
-      emerge from proper sub-value algebra, not be hand-patched.
+    Done: infrastructure (#398), seed data (e61d199),
+      classify_argument reads provenance before hardcoded fallback,
+      compose_sub_value_relations in std/induction.dag (single
+      authority for cross-call composition, conservative on
+      IteratedSubValue — identity only). Body inference active
+      for non-recursive functions (classify_body_provenance).
+    Limitation: output_provenance is List but consumers only
+      read |> first (scalar). Per-field consumption not wired.
+      Param identity still string-keyed (needs Track 3 ident:Int).
+      Body walker is a bootstrap parallel authority — should
+      derive from InferScope/TypeBinding.provenance pipeline
+      in topo/SCC order once that path exists.
+    Next: per-field provenance consumption for product returns
+      (Step 3). Wire child-indexed lookup in classify_let_value.
     Unlocks: Stream D (-132), body-inferred categories (-196),
       arithmetic refinement (-44), C3-C6 deletion, tokenizer (-22)
     Remaining ~10 (graph DFS) needs language primitive

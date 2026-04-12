@@ -308,9 +308,11 @@ fn compose_sub_value(base: SubValueRelation, field: InductiveField) -> SubValueR
 //
 // PreservedValue is the identity element (callee returns its param
 // unchanged). SubValueUnknown is absorbing. Structural composed with
-// structural stays structural — descending into a child of a child is
-// still descent. The outer field (arg_rel) is the authority since it's
-// relative to the recursive param.
+// structural produces StrictSubValue — descending into a child of a
+// child is still descent, with the outer field as authority.
+// IteratedSubValue only survives composition with PreservedValue
+// (identity), because cross-composition cannot verify that the outer
+// field's shape supports iteration (ListRecursion vs OptionalRecursion).
 fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRelation) -> SubValueRelation {
   match callee_rel {
     PreservedValue => arg_rel
@@ -327,8 +329,12 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
       match arg_rel {
         PreservedValue => callee_rel
         SubValueUnknown => SubValueUnknown
-        StrictSubValue { field: f, factor: _ } => IteratedSubValue { field: f }
-        IteratedSubValue { field: f } => IteratedSubValue { field: f }
+        // Conservative: StrictSubValue, not IteratedSubValue. The outer
+        // field may be OptionalRecursion (not iterable). Iteration evidence
+        // is only valid at the site that observes the list, not through
+        // cross-call composition.
+        StrictSubValue { field: f, factor: _ } => StrictSubValue { field: f, factor: UnitShrink }
+        IteratedSubValue { field: f } => StrictSubValue { field: f, factor: UnitShrink }
         ArithmeticDescent { param: _, factor: _ } => SubValueUnknown
       }
     ArithmeticDescent { param: p, factor: f } =>
