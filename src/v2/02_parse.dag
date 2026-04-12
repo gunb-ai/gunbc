@@ -3299,61 +3299,51 @@ fn parse_stmt(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   }
 }
 
-// Peek two tokens: is pos+1 an Eq (=) token? Used for bare assignment detection.
-fn peek_is_eq_after_ident(tokens: List<Token>, state: ParserState) -> Bool {
-  if state.pos + 1 < count(tokens) {
-    let next_tok = tokens |> skip(state.pos + 1) |> first
-    match next_tok {
-      Some { value: t } => is_eq_shape(shape: t.shape)
-      None => false
-    }
-  } else {
-    false
+// Peek two tokens: is second token an Eq (=)? Used for bare assignment detection.
+fn peek_is_eq_after_ident(tokens: List<Token>) -> Bool {
+  match tokens |> skip(1) |> first {
+    Some { value: t } => is_eq_shape(shape: t.shape)
+    None => false
   }
 }
 
 // Check if "node <name> :" or "node <name> [" pattern (node declaration, not variable use).
-fn peek_is_node_decl(tokens: List<Token>, state: ParserState) -> Bool {
-  // pos is at "node", pos+1 should be name (ident), pos+2 should be : or [
-  if state.pos + 2 < count(tokens) {
-    let t1 = tokens |> skip(state.pos + 1) |> first
-    let t2 = tokens |> skip(state.pos + 2) |> first
-    let name_ok = match t1 {
-      Some { value: t } => is_ident_shape(shape: t.shape) || is_name_keyword(token: t)
-      None => false
-    }
-    let decl_ok = match t2 {
-      Some { value: t } => is_colon_shape(shape: t.shape) || is_lbracket_shape(shape: t.shape) || is_eq_shape(shape: t.shape)
-      None => false
-    }
-    name_ok && decl_ok
-  } else { false }
+fn peek_is_node_decl(tokens: List<Token>) -> Bool {
+  // tokens[0] is at "node", tokens[1] should be name (ident), tokens[2] should be : or [
+  let t1 = tokens |> skip(1) |> first
+  let t2 = tokens |> skip(2) |> first
+  let name_ok = match t1 {
+    Some { value: t } => is_ident_shape(shape: t.shape) || is_name_keyword(token: t)
+    None => false
+  }
+  let decl_ok = match t2 {
+    Some { value: t } => is_colon_shape(shape: t.shape) || is_lbracket_shape(shape: t.shape) || is_eq_shape(shape: t.shape)
+    None => false
+  }
+  name_ok && decl_ok
 }
 
 // Check if ident [after/when ...] = ... pattern (constraint before assignment)
-fn is_constraint_bracket_after_ident(tokens: List<Token>, state: ParserState) -> Bool {
-  if state.pos + 1 < count(tokens) {
-    let t1 = tokens |> skip(state.pos + 1) |> first
-    match t1 {
-      Some { value: t } => is_lbracket_shape(shape: t.shape) && is_constraint_bracket(tokens: tokens, state: ParserState { pos: state.pos + 1, source_indices: state.source_indices, intern_table: state.intern_table })
-      None => false
-    }
-  } else { false }
+fn is_constraint_bracket_after_ident(tokens: List<Token>) -> Bool {
+  match tokens |> skip(1) |> first {
+    Some { value: t } => is_lbracket_shape(shape: t.shape) && is_constraint_bracket(tokens: tokens |> skip(1))
+    None => false
+  }
 }
 
 // Parse: name [constraints] = expr
-fn parse_constrained_assignment(tokens: List<Token>, state: ParserState) -> ExprResult {
-  let span = current_span(tokens: tokens, state: state)
+fn parse_constrained_assignment(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
+  let span = token_span(tok: tokens |> first)
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect_name(tokens: tokens, state: state)
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let r = expect_name(tokens: tokens)
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
-  let cr = try_constraint_annotations(tokens: tokens, state: r.state)
-  if has_err(err: cr.err) { return ExprResult { expr: dummy_expr, state: cr.state, err: cr.err } }
-  let r2 = expect(tokens: tokens, state: cr.state, expected: ExpectEq)
-  if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
-  let r3 = parse_expr(tokens: tokens, state: r2.state)
+  let cr = try_constraint_annotations(tokens: r.tokens, ctx: ctx)
+  if has_err(err: cr.err) { return ExprResult { expr: dummy_expr, tokens: cr.tokens, ctx: cr.ctx, err: cr.err } }
+  let r2 = expect(tokens: cr.tokens, expected: ExpectEq)
+  if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: cr.ctx, err: r2.err } }
+  let r3 = parse_expr(tokens: r2.tokens, ctx: cr.ctx)
   if has_err(err: r3.err) { return r3 }
   let node = make_named_expr_node(name: name, expr_data: ExprLet, children: [r3.expr], inferred: none, span: span, name_span: name_span)
   let node = Node { name: node.name, span: node.span, ident_span: node.ident_span, children: node.children,
@@ -3363,13 +3353,12 @@ fn parse_constrained_assignment(tokens: List<Token>, state: ParserState) -> Expr
     type_annotation: node.type_annotation, is_self_recursive: node.is_self_recursive,
     has_non_tail_self_call: node.has_non_tail_self_call, match_pattern: node.match_pattern,
     expr_data: node.expr_data }
-  ExprResult { expr: node, state: r3.state, err: none }
+  ExprResult { expr: node, tokens: r3.tokens, ctx: r3.ctx, err: none }
 }
 
 // Check if current token is an identifier with a specific text.
-fn peek_text_is(tokens: List<Token>, state: ParserState, expected: String) -> Bool {
-  let tok = peek(tokens: tokens, state: state)
-  match tok {
+fn peek_text_is(tokens: List<Token>, expected: String) -> Bool {
+  match tokens |> first {
     Some { value: t } => is_ident_shape(shape: t.shape) && t.text == expected
     None => false
   }
