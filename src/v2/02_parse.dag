@@ -3661,32 +3661,34 @@ fn parse_primary(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
 // Lambda body -- single expression OR implicit block (let/return start)
 // =========================================================================
 
-fn parse_lambda_body(tokens: List<Token>, state: ParserState) -> ExprResult {
-  let s = skip_newlines(tokens: tokens, state: state)
-  let is_block = tok_is_keyword(tok: peek(tokens: tokens, state: s), kw: "let") || tok_is_keyword(tok: peek(tokens: tokens, state: s), kw: "return")
+fn parse_lambda_body(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
+  let tokens = skip_newlines(tokens: tokens)
+  let tok = tokens |> first
+  let is_block = tok_is_keyword(tok: tok, kw: "let") || tok_is_keyword(tok: tok, kw: "return")
   if is_block {
-    let r = parse_lambda_stmts(tokens: tokens, state: s, acc: [])
-    if has_err(err: r.err) { return ExprResult { expr: parse_recovery_placeholder(), state: r.state, err: r.err } }
-    let span = current_span(tokens: tokens, state: s)
+    let r = parse_lambda_stmts(tokens: tokens, ctx: ctx, acc: [])
+    if has_err(err: r.err) { return ExprResult { expr: parse_recovery_placeholder(), tokens: r.tokens, ctx: r.ctx, err: r.err } }
+    let span = token_span(tok: tokens |> first)
     if count(r.stmts) == 1 {
-      ExprResult { expr: first(r.stmts).value, state: r.state, err: none }
+      ExprResult { expr: first(r.stmts).value, tokens: r.tokens, ctx: r.ctx, err: none }
     } else {
-      ExprResult { expr: make_expr_node(expr_data: ExprBlock, children: r.stmts, inferred: none, span: span), state: r.state, err: none }
+      ExprResult { expr: make_expr_node(expr_data: ExprBlock, children: r.stmts, inferred: none, span: span), tokens: r.tokens, ctx: r.ctx, err: none }
     }
   } else {
-    parse_expr(tokens: tokens, state: s)
+    parse_expr(tokens: tokens, ctx: ctx)
   }
 }
 
 // Collect statements for implicit lambda block, stopping at ) or } or EOF.
-fn parse_lambda_stmts(tokens: List<Token>, state: ParserState, acc: List<Node>) -> StmtsResult {
-  let s = skip_newlines(tokens: tokens, state: state)
-  if tok_is_rparen(tok: peek(tokens: tokens, state: s)) || tok_is_rbrace(tok: peek(tokens: tokens, state: s)) || at_end(tokens: tokens, state: s) || tok_is_eof(tok: peek(tokens: tokens, state: s)) {
-    StmtsResult { stmts: acc, state: s, err: none }
+fn parse_lambda_stmts(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) -> StmtsResult {
+  let tokens = skip_newlines(tokens: tokens)
+  let tok = tokens |> first
+  if tok_is_rparen(tok: tok) || tok_is_rbrace(tok: tok) || tok_is_eof(tok: tok) {
+    StmtsResult { stmts: acc, tokens: tokens, ctx: ctx, err: none }
   } else {
-    let r = parse_stmt(tokens: tokens, state: s)
-    if has_err(err: r.err) { return StmtsResult { stmts: acc, state: r.state, err: r.err } }
-    parse_lambda_stmts(tokens: tokens, state: r.state, acc: list_push(acc, r.expr))
+    let r = parse_stmt(tokens: tokens, ctx: ctx)
+    if has_err(err: r.err) { return StmtsResult { stmts: acc, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+    parse_lambda_stmts(tokens: r.tokens, ctx: r.ctx, acc: list_push(acc, r.expr))
   }
 }
 
@@ -3694,22 +3696,20 @@ fn parse_lambda_stmts(tokens: List<Token>, state: ParserState, acc: List<Node>) 
 // Identifier-initiated expressions
 // =========================================================================
 
-fn parse_ident_expr(tokens: List<Token>, state: ParserState, name: String) -> ExprResult {
-  let span = current_span(tokens: tokens, state: state)
-  let adv = advance(tokens: tokens, state: state)
-  let s = adv.state
+fn parse_ident_expr(tokens: List<Token>, ctx: ParseContext, name: String) -> ExprResult {
+  let span = token_span(tok: tokens |> first)
+  let tokens = tokens |> skip(1)
 
   // Check for lambda: name => body (may be multi-line: name =>\n  body)
-  if tok_is_fat_arrow(tok: peek(tokens: tokens, state: s)) {
-    let adv2 = advance(tokens: tokens, state: s)
-    let r = parse_lambda_body(tokens: tokens, state: adv2.state)
+  if tok_is_fat_arrow(tok: tokens |> first) {
+    let r = parse_lambda_body(tokens: tokens |> skip(1), ctx: ctx)
     if has_err(err: r.err) { return r }
-    ExprResult { expr: make_expr_node(expr_data: ExprLambda { semantics: none }, children: concat([r.expr], [parsed_name_leaf(name: name, span: span)]), inferred: none, span: span), state: r.state, err: none }
+    ExprResult { expr: make_expr_node(expr_data: ExprLambda { semantics: none }, children: concat([r.expr], [parsed_name_leaf(name: name, span: span)]), inferred: none, span: span), tokens: r.tokens, ctx: r.ctx, err: none }
   } else {
-    if is_uppercase_start(name: name) && tok_is_lbrace(tok: peek(tokens: tokens, state: s)) {
-      parse_record_literal(tokens: tokens, state: s, name: name, span: span)
+    if is_uppercase_start(name: name) && tok_is_lbrace(tok: tokens |> first) {
+      parse_record_literal(tokens: tokens, ctx: ctx, name: name, span: span)
     } else {
-      ExprResult { expr: make_named_expr_node(name: name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: span, name_span: span), state: s, err: none }
+      ExprResult { expr: make_named_expr_node(name: name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: span, name_span: span), tokens: tokens, ctx: ctx, err: none }
     }
   }
 }
@@ -3723,87 +3723,83 @@ fn is_uppercase_start(name: String) -> Bool {
 // 18. try_postfix -- .field, (args), as Type, ?
 // =========================================================================
 
-fn try_postfix(tokens: List<Token>, state: ParserState, lhs: Node, min_bp: Int) -> PostfixResult {
-  let tok = peek(tokens: tokens, state: state)
+fn try_postfix(tokens: List<Token>, ctx: ParseContext, lhs: Node, min_bp: Int) -> PostfixResult {
+  let tok = tokens |> first
   let sh = match tok { Some { value: t } => Some { value: t.shape }  None => none }
-  let span = current_span(tokens: tokens, state: state)
+  let span = token_span(tok: tok)
   match sh {
     Some { value: ShLParen } => {
       if 14 < min_bp {
-        PostfixResult { expr: lhs, changed: false, state: state, err: none }
+        PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
       } else {
-        let r = parse_call_args(tokens: tokens, state: state)
-        if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, state: r.state, err: r.err } }
-        let call_expr = make_call_expr(lhs: lhs, args: r.args, span: span, source_indices: state.source_indices)
-        PostfixResult { expr: call_expr, changed: true, state: r.state, err: none }
+        let r = parse_call_args(tokens: tokens, ctx: ctx)
+        if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+        let call_expr = make_call_expr(lhs: lhs, args: r.args, span: span, source_indices: ctx.source_indices)
+        PostfixResult { expr: call_expr, changed: true, tokens: r.tokens, ctx: r.ctx, err: none }
       }
     }
     Some { value: ShIdent } => {
       if tok.value.text == "as" {
         if 13 < min_bp {
-          PostfixResult { expr: lhs, changed: false, state: state, err: none }
+          PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
         } else {
-          let adv = advance(tokens: tokens, state: state)
-          let r = parse_type_expr(tokens: tokens, state: adv.state)
-          if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, state: r.state, err: r.err } }
-          PostfixResult { expr: make_expr_node(expr_data: ExprCast, children: [lhs, r.type_expr], inferred: none, span: span), changed: true, state: r.state, err: none }
+          let r = parse_type_expr(tokens: tokens |> skip(1), ctx: ctx)
+          if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+          PostfixResult { expr: make_expr_node(expr_data: ExprCast, children: [lhs, r.type_expr], inferred: none, span: span), changed: true, tokens: r.tokens, ctx: r.ctx, err: none }
         }
       } else {
-        PostfixResult { expr: lhs, changed: false, state: state, err: none }
+        PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
       }
     }
     Some { value: ShLBracket } => {
       if 14 < min_bp {
-        PostfixResult { expr: lhs, changed: false, state: state, err: none }
+        PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
       } else {
         // Bail if this is a constraint annotation [after ...] or [when ...]
-        if is_constraint_bracket(tokens: tokens, state: state) {
-          PostfixResult { expr: lhs, changed: false, state: state, err: none }
+        if is_constraint_bracket(tokens: tokens) {
+          PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
         } else {
-          let r = parse_index_or_slice(tokens: tokens, state: state, base: lhs, span: span)
-          if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, state: r.state, err: r.err } }
-          PostfixResult { expr: r.expr, changed: true, state: r.state, err: none }
+          let r = parse_index_or_slice(tokens: tokens, ctx: ctx, base: lhs, span: span)
+          if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+          PostfixResult { expr: r.expr, changed: true, tokens: r.tokens, ctx: r.ctx, err: none }
         }
       }
     }
     Some { value: ShLBrace } => {
       match lhs.expr_data {
         ExprVar { binding_kind: _ } => {
-          let n = expr_var_name_at(texpr: lhs, source_indices: state.source_indices)
+          let n = expr_var_name_at(texpr: lhs, source_indices: ctx.source_indices)
           if is_uppercase_start(name: n) && 14 <= min_bp {
-            PostfixResult { expr: lhs, changed: false, state: state, err: none }
+            PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
           } else {
             if is_uppercase_start(name: n) {
-              let r = parse_record_literal(tokens: tokens, state: state, name: n, span: lhs.span)
-              if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, state: r.state, err: r.err } }
-              PostfixResult { expr: r.expr, changed: true, state: r.state, err: none }
+              let r = parse_record_literal(tokens: tokens, ctx: ctx, name: n, span: lhs.span)
+              if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+              PostfixResult { expr: r.expr, changed: true, tokens: r.tokens, ctx: r.ctx, err: none }
             } else {
-              PostfixResult { expr: lhs, changed: false, state: state, err: none }
+              PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
             }
           }
         }
-        _ => PostfixResult { expr: lhs, changed: false, state: state, err: none }
+        _ => PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
       }
     }
-    _ => PostfixResult { expr: lhs, changed: false, state: state, err: none }
+    _ => PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
   }
 }
 
 // Check if `[` starts a constraint annotation ([after ...] or [when ...])
 // by peeking at the token after `[`.
-fn is_constraint_bracket(tokens: List<Token>, state: ParserState) -> Bool {
-  // state is at `[`, check token at pos+1
-  if state.pos + 1 < count(tokens) {
-    let next_tok = tokens |> skip(state.pos + 1) |> first
-    match next_tok {
-      Some { value: t } => {
-        if is_ident_shape(shape: t.shape) {
-          t.text == "after" || t.text == "when"
-        } else { false }
-      }
-      None => false
+fn is_constraint_bracket(tokens: List<Token>) -> Bool {
+  // tokens[0] is at `[`, check tokens[1]
+  match tokens |> skip(1) |> first {
+    Some { value: t } => {
+      if is_ident_shape(shape: t.shape) {
+        t.text == "after" || t.text == "when"
+      } else { false }
     }
-  } else { false }
+    None => false
+  }
 }
 
 // Parse constraint annotations: [after X, when Y, ...]
