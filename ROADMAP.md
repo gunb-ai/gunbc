@@ -76,6 +76,7 @@ LAYER 6: Full vision (depends on Layer 5)
 | Stream B (clone elision) | Tier 1 (ownership) | 🟢/🟡 | Layers 1-2 🟢, Layer 3 needs LS-4 |
 | Track 5 (real program) | End-to-end validation | 🟢 | Track 4 |
 | Track 10 (extdeps) | Data quality | 🟢 | Nothing |
+| **Track 15 (CLI tool modeling)** | **M5 Phase 2** | **🟢** | **Nothing — immediate follow-up to #418** |
 | Track 13 (single emitter) | Emission is mechanical | 🟡 | Track 2 + 7 |
 | Track 11 (runtime safety) | Tier 2 | 🟡 | Design phase |
 | Track 12 (verification) | Tier 3 | 🟡 | Track 5 |
@@ -279,7 +280,8 @@ M4: Single emitter reads data, never decides
 
 M5: Meta-process modeling (bootstrap, CI, dev process)
     Done when: adding a Node field requires zero manual stage0 edits;
-      CI gates derived from .dag declarations
+      CI gates derived from .dag declarations; `dag run` is the
+      primary way to execute repo processes across all environments
     Enabler: .dag interpreter (Phase 0). `dag run foo.dag` is the
       primary development workflow; emission is a deployment optimization.
     Phase 0 (interpreter): DONE (PR #409)
@@ -287,9 +289,22 @@ M5: Meta-process modeling (bootstrap, CI, dev process)
       I-2: shell service dispatch (std::process::Command)
       I-3: REST service dispatch (ureq, auth, JSON path extraction)
       Verified: `dag run review.dag` end-to-end against live APIs
-    Phase 1 (bootstrap modeling): unblocked with Phase 0
-    Phase 2 (CI as multi-artifact): after Phase 1
-    Phase 3 (dev process): future
+    Phase 1 (bootstrap modeling): DONE (PR #418)
+      compiler.dag as single authority for self-hosting cycle
+      ci.dag gates derived from compiler.dag (zero hardcoded crate names)
+      tools/regen.dag, tools/freshness.dag, tools/ratchet.dag built
+      is_error_diagnostic fixed: CX/ownership non-fatal for interpreter
+      Proven: `dag run check_l1_ratchet` end-to-end
+    Phase 2 (tool modeling): NEXT — see Track 15
+      Without this, Phase 1 only works in environments where bare
+      command names (`cargo`, `grep`, `diff`) resolve correctly via
+      PATH. Track 15 replaces PATH-based resolution with explicit
+      tool registry + upsert (pattern from gunb.ai/tools/toolpaths).
+    Phase 3 (CI as multi-artifact): after Phase 2
+      Once tool modeling lands, `dag run ci_pipeline` works in any
+      environment. Then ci.dag gates switch from script paths to
+      `dag run` invocations and the YAML shim shrinks.
+    Phase 4 (dev process): future
     Design: docs/meta-process-design.md
     Hand-maintained Rust: v2_interpreter.rs (bootstrap), cli_run.rs
       (convertible once interpreter exposed as transport/built-in)
@@ -593,6 +608,99 @@ audit (2026-04-10):
 | OpenAI string-path extraction | extdeps/llm/openai.dag | Structural field access (M8) |
 | Policy defaults in `CloudSecretConfig` | std/types.dag | **DONE** — dead type deleted; operations define own inputs |
 | `ProjectId` vs `GcpProjectId` | std/types.dag | **DONE** — renamed to `GcpProjectId`; 5 dead types deleted |
+
+---
+
+### Track 15: Holistic CLI tool modeling (Lane D, M5 Phase 2)
+
+**Thesis:** Every external CLI binary is a hidden PATH dependency.
+`.dag` programs that shell out to `cargo`, `grep`, `diff`, `cp`, etc.
+rely on the environment resolving bare command names. This is exactly
+the kind of implicit dependency the closed-model philosophy rejects:
+the environment is an unmodeled input.
+
+**Current state (post PR #418):** `gunbc.compiler` is the single authority
+for the self-hosting cycle (source roots, crate names, command derivation).
+`dag run check_l1_ratchet` executes end-to-end via the interpreter.
+**BUT** every command derivation function emits bare command names
+(`"cargo build"`, `"grep -rqE"`, etc.) that depend on PATH. `shell.Which.Check`
+exists in `extdeps/shell.dag` with **zero consumers**. The `cargo`/colima
+issue where `sh -lc` picks up the cargo alias inside the container and
+fails is a direct symptom — bare `cargo` resolves to the wrong binary.
+
+**Design reference:** `gunb.ai/tools/toolpaths/` — the sibling repo has
+a proven pattern for holistic tool management. Key ideas:
+1. `Tool { name, path, version, source, install_cmd }` — single source
+   of truth registry
+2. `InstallSource` enum — `Container | Rustup | Apt | Brew | Builtin`
+   tells *how* to get the tool
+3. `Ensure(tool) -> path` upsert — check expected path → check PATH →
+   self-heal if source is self-healing → fail with actionable hint
+4. Command strings use resolved absolute paths, not bare names
+5. Platform/arch mappings are declared data, not inline detection logic
+
+**Target state for gunbc:**
+
+```dag
+// dsl/extdeps/tools.dag (new)
+type InstallSource
+  = SourceBuiltin                            // POSIX tools: cp, rm, sh, grep
+  | SourceRustup                             // cargo, rustc
+  | SourceApt { package: NonEmptyStr }
+  | SourceBrew { package: NonEmptyStr }
+  | SourceContainer { image_ref: NonEmptyStr }
+
+type CliTool {
+  name: NonEmptyStr
+  min_version: String?
+  source: InstallSource
+}
+
+type ResolvedTool { tool: CliTool, path: FilePath }
+type ResolveResult = Resolved { resolved: ResolvedTool } | NotFound { tool: CliTool, hint: String }
+
+func resolve(tool: CliTool) -> ResolveResult uses sh: Shell { ... }
+
+// dsl/gunbc/compiler.dag (extend)
+data cargo_tool: CliTool = { name: "cargo", min_version: Some { value: "1.93.0" }, source: SourceRustup }
+data grep_tool: CliTool = { name: "grep", min_version: None, source: SourceBuiltin }
+data diff_tool, cp_tool, rm_tool, sh_tool: CliTool = ...
+
+data required_tools: List<CliTool> = [cargo_tool, grep_tool, diff_tool, cp_tool, rm_tool, sh_tool]
+
+// Command derivation takes resolved paths
+fn build_command(cargo_path: FilePath, cycle: SelfHostingCycle) -> String {
+  concat(cargo_path, " build -p ", cycle.generated.package_name, " --release")
+}
+```
+
+**Every tool starts with resolution:**
+```dag
+func regenerate(cycle: SelfHostingCycle) -> RegenResult uses sh: Shell {
+  let resolved = resolve_all(tools: required_tools)
+  match resolved {
+    Failed { missing: m } => return ToolsMissing { tools: m }
+    Ok { cargo: c, ... } => { ... use c, not "cargo" ... }
+  }
+}
+```
+
+**Done when:**
+- `dsl/extdeps/tools.dag` exists with `CliTool`, `InstallSource`, `ResolvedTool`
+- `compiler.dag` declares all tools the compiler cycle depends on
+- Every command derivation function takes resolved paths instead of building strings from bare names
+- `regen.dag`, `freshness.dag`, `ratchet.dag` call `resolve_all` before dispatching
+- `dag run regenerate_stage0` works inside colima without hitting the cargo alias
+- Zero bare command names in any .dag file under `dsl/gunbc/`
+
+**Blocked on:** nothing — immediate follow-up to PR #418. Everything
+#418 built stays; this is additive.
+
+**Why urgent:** without this, the meta-process modeling is architecturally
+clean but practically broken in any environment where the PATH resolution
+of `cargo`/`grep`/`diff` differs from expectation. The current code only
+works because CI runs on a specific environment where bare names happen
+to resolve correctly. That's a hidden dependency, not a verified one.
 
 ---
 
