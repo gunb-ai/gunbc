@@ -42,7 +42,7 @@ import v2.std.core {
   StringPart, Text, Interpolation,
   local_transport_node, rest_transport_node, shell_transport_node, file_transport_node,
   transport_url_key, transport_path_key,
-  transport_method_key, transport_path_template_key, transport_query_key, transport_body_key, transport_stdin_key, transport_response_format_key,
+  transport_method_key, transport_path_template_key, transport_query_key, transport_body_key, transport_stdin_key, transport_response_format_key, transport_headers_key,
   service_config_properties,
   OperationModifier, Idempotent, Readonly, Hermetic,
   Token, TokenShape,
