@@ -1,0 +1,218 @@
+// extdeps/github/actions.dag -- GitHub Actions platform model.
+//
+// Models the GitHub Actions CI/CD platform as external dependency facts:
+// workflows, jobs, steps, runners, logging annotations, artifacts, and
+// matrix strategies. These are platform constraints -- what GH Actions
+// provides and requires -- not CI logic (that lives in gunbc/ci.dag).
+//
+// Spec: https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions
+//
+// Consumers:
+//   gunbc/ci.dag -- CI intent declarations that compile against these types
+
+module extdeps.github.actions
+
+import extdeps.github.github { Repository }
+
+// -- Workflows --------------------------------------------------------
+// A workflow is the top-level unit: trigger + jobs.
+
+type Workflow {
+  name: String
+  on: List<WorkflowTrigger>
+  jobs: List<Job>
+  env: Map<String, String>
+  permissions: WorkflowPermissions?
+}
+
+type WorkflowPermissions {
+  contents: PermissionLevel
+  pull_requests: PermissionLevel
+  issues: PermissionLevel
+  actions: PermissionLevel
+}
+
+type PermissionLevel = PermRead | PermWrite | PermNone
+
+// -- Triggers ---------------------------------------------------------
+// Events that cause a workflow to run.
+
+type WorkflowTrigger
+  = Push { branches: List<String>, paths: List<String> }
+  | PullRequest { branches: List<String>, types: List<PullRequestActivity> }
+  | Schedule { cron: String }
+  | WorkflowDispatch { inputs: List<DispatchInput> }
+  | WorkflowCall { inputs: List<DispatchInput> }
+
+type PullRequestActivity
+  = Opened
+  | Synchronize
+  | Reopened
+  | Closed
+
+type DispatchInput {
+  name: String
+  description: String?
+  required: Bool
+  default: String?
+  type: DispatchInputType
+}
+
+type DispatchInputType = InputString | InputBoolean | InputChoice | InputEnvironment
+
+// -- Jobs -------------------------------------------------------------
+// A job runs on a runner, has steps, and may depend on other jobs.
+
+type Job {
+  id: String
+  name: String?
+  runner: RunnerSpec
+  steps: List<Step>
+  needs: List<String>
+  env: Map<String, String>
+  if_condition: String?
+  strategy: MatrixStrategy?
+  timeout_minutes: Int?
+  continue_on_error: Bool
+  concurrency: ConcurrencySpec?
+}
+
+type ConcurrencySpec {
+  group: String
+  cancel_in_progress: Bool
+}
+
+// -- Runners ----------------------------------------------------------
+// The execution environment for a job.
+
+type RunnerSpec
+  = HostedRunner { label: RunnerLabel }
+  | SelfHosted { labels: List<String> }
+
+type RunnerLabel
+  = UbuntuLatest
+  | Ubuntu2404
+  | Ubuntu2204
+  | MacosLatest
+  | Macos14
+  | WindowsLatest
+
+// -- Steps ------------------------------------------------------------
+// Each step either runs a shell command or uses a published action.
+
+type Step
+  = RunStep {
+      name: String?,
+      run: String,
+      shell: ShellType,
+      env: Map<String, String>,
+      working_directory: String?,
+      if_condition: String?,
+      continue_on_error: Bool,
+      timeout_minutes: Int?
+    }
+  | UsesStep {
+      name: String?,
+      uses: ActionRef,
+      with: Map<String, String>,
+      env: Map<String, String>,
+      if_condition: String?,
+      continue_on_error: Bool,
+      timeout_minutes: Int?
+    }
+
+type ShellType = Bash | Sh | Pwsh | Python | Cmd
+
+type ActionRef {
+  owner: String
+  repo: String
+  ref: String
+}
+
+// -- Logging annotations ----------------------------------------------
+// Workflow commands that the runner interprets from stdout.
+// Spec: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions
+
+type LogAnnotation
+  = AnnotationError { message: String, file: String?, line: Int?, col: Int? }
+  | AnnotationWarning { message: String, file: String?, line: Int?, col: Int? }
+  | AnnotationNotice { message: String, file: String?, line: Int?, col: Int? }
+  | AnnotationGroup { title: String }
+  | AnnotationEndGroup
+  | SetOutput { name: String, value: String }
+  | AddMask { value: String }
+  | StopCommands { token: String }
+
+// Log annotation wire format: these are stdout line protocols.
+data annotation_error_prefix: String = "::error "
+data annotation_warning_prefix: String = "::warning "
+data annotation_notice_prefix: String = "::notice "
+data annotation_group_prefix: String = "::group::"
+data annotation_endgroup: String = "::endgroup::"
+data annotation_set_output_prefix: String = "::set-output name="
+data annotation_add_mask_prefix: String = "::add-mask::"
+data annotation_stop_commands_prefix: String = "::stop-commands::"
+
+// -- Artifacts --------------------------------------------------------
+// Upload/download operations for build artifacts.
+// Spec: https://docs.github.com/en/actions/using-workflows/storing-workflow-data-as-artifacts
+
+type ArtifactOp
+  = Upload { name: String, path: String, retention_days: Int?, if_no_files_found: MissingFilesBehavior }
+  | Download { name: String, path: String? }
+
+type MissingFilesBehavior = Warn | ErrorOut | Ignore
+
+// Standard action refs for artifact operations.
+data upload_artifact_action: ActionRef = ActionRef {
+  owner: "actions", repo: "upload-artifact", ref: "v4"
+}
+
+data download_artifact_action: ActionRef = ActionRef {
+  owner: "actions", repo: "download-artifact", ref: "v4"
+}
+
+// -- Matrix strategy --------------------------------------------------
+// Parameterized job execution across multiple configurations.
+
+type MatrixStrategy {
+  dimensions: Map<String, List<String>>
+  include: List<Map<String, String>>
+  exclude: List<Map<String, String>>
+  fail_fast: Bool
+  max_parallel: Int?
+}
+
+// -- Check conclusions ------------------------------------------------
+// Terminal states for a workflow run, job, or step.
+
+type CheckConclusion
+  = Success
+  | Failure
+  | Cancelled
+  | Skipped
+  | TimedOut
+  | ActionRequired
+
+// -- Common action refs -----------------------------------------------
+// Well-known actions referenced by CI workflows.
+
+data checkout_action: ActionRef = ActionRef {
+  owner: "actions", repo: "checkout", ref: "v4"
+}
+
+data setup_rust_action: ActionRef = ActionRef {
+  owner: "dtolnay", repo: "rust-toolchain", ref: "stable"
+}
+
+data cache_action: ActionRef = ActionRef {
+  owner: "actions", repo: "cache", ref: "v4"
+}
+
+// -- Platform constants -----------------------------------------------
+
+data max_job_timeout_minutes: Int = 360
+
+data default_job_timeout_minutes: Int = 360
+
+data max_matrix_combinations: Int = 256
