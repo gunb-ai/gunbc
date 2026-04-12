@@ -411,6 +411,17 @@ fn bootstrap_fixed_point() {
         String::from_utf8_lossy(&s1.stderr)
     );
 
+    // Copy hand-maintained files into stage1 (not generated, but declared in lib.rs)
+    let stage0_src = ws.join("src/v2/stage0/src");
+    for name in &["v2_interpreter.rs", "cli_run.rs"] {
+        let src = stage0_src.join(name);
+        if src.exists() {
+            let dst = stage1_dir.join("src").join(name);
+            std::fs::copy(&src, &dst).unwrap_or_else(|e|
+                panic!("failed to copy {} to stage1: {}", name, e));
+        }
+    }
+
     // Build stage1 binary
     let build1 = std::process::Command::new("cargo")
         .arg("build")
