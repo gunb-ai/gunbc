@@ -6,13 +6,13 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name_at, param_node_type_expr, param_node_default_value, NewlineIndex, authored_name_at, expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at, ExprData, VarBindingKind, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, AlgebraFieldKind, DeclaredFuncSig, MethodSemantics, MatchPattern, FieldSummary, expr_method_name_at, method_arg_nodes, expr_method_call_semantics, expr_field_access_summary, lambda_param_names_at, record_lit_type_name_at, arm_body, arm_pattern, arm_guard, arg_name_at, arg_value, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, cast_target, return_value, binop_left, binop_right, foreach_variable_at, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, is_local_transport, transport_has_auth, field_init_operation_modifier, operation_modifier_name, with_required_cardinality, tuple_type_name, find_child_named, Connective, FieldAccessStyle, Cardinality};
+pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, is_compiler_error, module_imports, module_items, param_node_name_at, param_node_type_expr, param_node_default_value, NewlineIndex, authored_name_at, expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at, ExprData, VarBindingKind, StringPart, LiteralValue, TextFile, SourceSpan, BinOp, UnaryOpKind, AlgebraFieldKind, DeclaredFuncSig, MethodSemantics, MatchPattern, field_binding_name_at, field_binding_pattern, FieldSummary, expr_method_name_at, method_arg_nodes, expr_method_call_semantics, expr_field_access_summary, lambda_param_names_at, record_lit_type_name_at, arm_body, arm_pattern, arm_guard, arg_name_at, arg_value, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, method_receiver, lambda_body, cast_expr, cast_target, return_value, binop_left, binop_right, foreach_variable_at, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, unaryop_operand, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport, is_file_transport, is_local_transport, transport_has_auth, field_init_operation_modifier, operation_modifier_name, with_required_cardinality, tuple_type_name, find_child_named, Connective, FieldAccessStyle, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
 use crate::v2_std_core::BinOp::{NullCoalesce};
 use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics};
-use crate::v2_std_core::MatchPattern::{Wildcard};
+use crate::v2_std_core::MatchPattern::{Wildcard, Bind, LitPattern, VariantPattern};
 use crate::v2_std_core::FieldAccessStyle::{TupleFirst, TupleSecond};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
 use crate::v2_std_core::Cardinality::{CardOptional};
@@ -23,7 +23,7 @@ use crate::v2_std_core::AlgebraFieldKind::*;
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 use crate::std_induction::SubValueRelation::{SubValueUnknown};
-pub use crate::v2_compiler_infer_types::{resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node};
+pub use crate::v2_compiler_infer_types::{resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node, is_unit_like};
 pub use crate::std_types::{is_container_type, container_to_algebra_name};
 pub use crate::v2_compiler_coercion::{coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
@@ -33,7 +33,7 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope}
 pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo};
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
-pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, BlockSyntax, TcoSyntax, ExpressionSemantics, IfValueForm, VisibilitySpec, NamingCase, ReservedWordStrategy, StringInterpSyntax, InterpStyle, EscapePair, RecordLitSyntax, ImportRule, language_spec_for_target, is_string_like, test_conventions_for_target, target_keyword, binop_symbol, wrap_shared_type, service_self_param, service_receiver_str, service_method_depth, service_methods_inside_class, service_return_str, TestNameStyle, ImportTrigger};
+pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, BlockSyntax, TcoSyntax, ExpressionSemantics, VariantPatternSyntax, IfValueForm, VisibilitySpec, NamingCase, ReservedWordStrategy, StringInterpSyntax, InterpStyle, EscapePair, RecordLitSyntax, ImportRule, language_spec_for_target, is_string_like, test_conventions_for_target, target_keyword, binop_symbol, wrap_shared_type, service_self_param, service_receiver_str, service_method_depth, service_methods_inside_class, service_return_str, TestNameStyle, ImportTrigger};
 use crate::v2_compiler_languages::TestNameStyle::{SnakeCaseTestNames, PascalCaseTestNames};
 use crate::v2_compiler_languages::IfValueForm::{IfExpression, ConditionalTernary, IfStatement};
 use crate::v2_compiler_languages::VisibilitySpec::{KeywordVisibility, CaseVisibility};
@@ -678,6 +678,18 @@ pascal_parts.join(&"".to_string())
 
 pub fn service_var_name(service_name: String) -> String {
     to_snake(sanitize_service_name(service_name))
+}
+
+pub fn test_file_path(module_name: String, target: &RenderTarget) -> String {
+    {
+        let conventions = test_conventions_for_target(target.clone());
+let file_dir = match conventions.file_dir.clone() {
+    Some(dir) => dir.clone(),
+    None => "".to_string(),
+};
+let filename = module_to_filename(module_name);
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(file_dir, conventions.file_prefix.clone()), filename), conventions.file_suffix.clone()), language_spec(target.clone()).scaffold.clone().source_file_extension.clone())
+}
 }
 
 pub fn test_function_name(projection: &Rc<TestProjection>, target: RenderTarget) -> String {
@@ -1768,6 +1780,110 @@ shared_tco_body(inner, depth.clone(), &spec)
 }
 }
 
+pub fn emit_unified_init_block_stmts(remaining: Rc<Vec<Rc<Node>>>, text: Rc<Vec<String>>, scope: Rc<InferScope>, depth: i64, target: &RenderTarget, registry: Rc<HashMap<String, Rc<ItemInfo>>>, render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone) -> Rc<BlockEmitState> {
+    {
+        let prepend = if language_spec(target.clone()).block_syntax.clone().significant_whitespace.clone() {
+            false
+        } else {
+            true
+        };
+emit_init_block_stmts_shared(remaining, text, scope, depth, prepend, |stmt, sc, d| emit_unified_typed_expr(stmt.clone(), &target, registry.clone(), &sc, d.clone(), 1024, render_pattern.clone()))
+}
+}
+
+pub fn emit_unified_tco_match(frame: &Rc<TcoFrame>, fn_name: String, params: Rc<Vec<Rc<Node>>>, target: &RenderTarget, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone, render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone) -> String {
+    match (*frame.expr.clone().expr_data.clone()).clone() {
+    ExprData::ExprMatch => {
+        let s = match_scrutinee(frame.expr.clone());
+let arm_list = match_arm_nodes(frame.expr.clone());
+let scrut_str = emit_unified_typed_expr(s, &target, registry.clone(), &frame.scope.clone(), frame.depth.clone(), 1024, render_pattern.clone());
+let arm_strs = Rc::new({ let mut __result = Vec::new(); for arm in arm_list.iter().cloned() { __result.push(emit_unified_tco_match_arm(&arm, &fn_name, &params, &target, &registry, &frame.scope.clone(), frame.depth.clone(), render_pattern.clone(), render_init_stmts.clone())); } __result });
+let arms_str = arm_strs.join(&"\n".to_string());
+let bs = language_spec(target.clone()).block_syntax.clone();
+if (bs.block_close.clone().as_str() == "".to_string().as_str()) {
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(bs.match_keyword.clone(), scrut_str), bs.block_open.clone()), arms_str)
+        } else {
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(bs.match_keyword.clone(), scrut_str), bs.block_open.clone()), arms_str), "\n".to_string()), bs.block_close.clone())
+        }
+},
+    _ => emit_error_expr("emit_unified_tco_match expected ExprMatch".to_string(), target.clone()),
+}
+}
+
+pub fn emit_unified_tco_match_arm(arm: &Rc<Node>, fn_name: &String, params: &Rc<Vec<Rc<Node>>>, target: &RenderTarget, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64, render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone, render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone) -> String {
+    {
+        let bs = language_spec(target.clone()).block_syntax.clone();
+let case_depth = if bs.significant_whitespace.clone() {
+            (depth.clone() + 1)
+        } else {
+            depth.clone()
+        };
+let body_depth = (case_depth.clone() + 1);
+let guard_str = emit_arm_guard(arm.clone(), &target, |g| emit_unified_typed_expr(g.clone(), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone()));
+let body_str = emit_unified_tco_expr(&Rc::new(TcoFrame {
+    expr: arm_body(&arm),
+    scope: scope.clone(),
+    depth: body_depth.clone(),
+}), &fn_name, params.clone(), &target, registry.clone(), |expr, scope, depth| emit_unified_typed_expr(expr.clone(), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone()), |frame| emit_unified_tco_match(&frame, fn_name.clone(), params.clone(), &target, &registry, render_pattern.clone(), render_init_stmts.clone()), render_init_stmts.clone());
+emit_match_arm_line(arm.clone(), target.clone(), case_depth.clone(), body_depth.clone(), body_str, guard_str, render_pattern.clone())
+}
+}
+
+pub fn emit_tco_unified(texpr: Rc<Node>, fn_name: &String, params: &Rc<Vec<Rc<Node>>>, target: &RenderTarget, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64, render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone) -> String {
+    emit_unified_tco_body(texpr, fn_name.clone(), params.clone(), &target, registry.clone(), scope.clone(), depth.clone(), |expr, scope, depth| emit_unified_typed_expr(expr.clone(), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone()), |frame| emit_unified_tco_match(&frame, fn_name.clone(), params.clone(), &target, &registry, render_pattern.clone(), |stmts, scope, depth| emit_unified_init_block_stmts(stmts.clone(), Rc::new(vec![]), scope.clone(), depth.clone(), &target, registry.clone(), render_pattern.clone())), |stmts, scope, depth| emit_unified_init_block_stmts(stmts.clone(), Rc::new(vec![]), scope.clone(), depth.clone(), &target, registry.clone(), render_pattern.clone()))
+}
+
+pub fn emit_unified_typed_func_body(body: &Rc<Node>, target: &RenderTarget, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        {
+            let es = language_spec(target.clone()).expression_semantics.clone();
+let bs = language_spec(target.clone()).block_syntax.clone();
+let si = scope.type_env.clone().source_indices.clone();
+let prefix = if bs.significant_whitespace.clone() {
+                "".to_string()
+            } else {
+                make_indent(depth.clone())
+            };
+match (*body.expr_data.clone()).clone() {
+    ExprData::ExprLet => {
+                let n = let_binding_name_at(body.clone(), si.clone());
+let ch = body.children.clone();
+let v = let_value(body.clone());
+let inner = let_body(body.clone());
+let val_str = emit_unified_typed_expr(v.clone(), &target, registry.clone(), &scope, depth.clone(), 1024, |pat| emit_unified_pattern(pat.clone(), target.clone(), si.clone()));
+let let_line = v2_rt::concat(prefix, emit_let_binding(n.clone(), val_str, &target));
+let next_scope = extend_scope(&scope, &n, resolved_type(v.clone()), Rc::new(SubValueRelation::SubValueUnknown));
+match inner {
+    Some(bd) => v2_rt::concat(v2_rt::concat(let_line, "\n".to_string()), emit_unified_typed_func_body(&bd, &target, &registry, &next_scope, depth.clone())),
+    None => let_line,
+}
+},
+    ExprData::ExprBlock => {
+                let ss = body.children.clone();
+if ((ss.clone().len() as i64) == 0) {
+                    v2_rt::concat(v2_rt::concat(prefix, "return ".to_string()), es.empty_return_value.clone())
+                } else {
+                    {
+                        let init_state = emit_unified_init_block_stmts(ss.clone(), Rc::new(vec![]), scope.clone(), depth.clone(), &target, registry.clone(), |pat| emit_unified_pattern(pat.clone(), target.clone(), si.clone()));
+let last_stmt = ss.clone().last().cloned();
+let last_str = match last_stmt {
+    Some(s) => v2_rt::concat(v2_rt::concat(v2_rt::concat(prefix, "return ".to_string()), emit_unified_typed_expr(s.clone(), &target, registry.clone(), &init_state.scope.clone(), depth.clone(), 1024, |pat| emit_unified_pattern(pat.clone(), target.clone(), si.clone()))), es.return_suffix.clone()),
+    None => v2_rt::concat(v2_rt::concat(prefix, "return ".to_string()), es.empty_return_value.clone()),
+};
+if ((init_state.text.clone().len() as i64) == 0) {
+                            last_str
+                        } else {
+                            v2_rt::concat(v2_rt::concat(init_state.text.clone().join(&"\n".to_string()), "\n".to_string()), last_str)
+                        }
+}
+                }
+},
+    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(prefix, "return ".to_string()), emit_unified_typed_expr(body.clone(), &target, registry.clone(), &scope, depth.clone(), 1024, |pat| emit_unified_pattern(pat.clone(), target.clone(), si.clone()))), es.return_suffix.clone()),
+}
+}
+    })
+}
+
 pub fn is_tco_candidate(texpr: &Rc<Node>, func_name: &String, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
@@ -2218,8 +2334,16 @@ strs.join(&language_spec(target.clone()).items.clone().param_separator.clone())
 }
 }
 
-pub fn emit_inferred_shared(inferred: Rc<Node>, target: &RenderTarget, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    v2_rt::concat(language_spec(target.clone()).items.clone().return_arrow.clone(), emit_node_type(inferred, target.clone(), source_indices))
+pub fn emit_inferred_shared(inferred: &Rc<Node>, target: &RenderTarget, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    if language_spec(target.clone()).expression_semantics.clone().suppress_unit_return.clone() {
+        if is_unit_like(&inferred) {
+            "".to_string()
+        } else {
+            v2_rt::concat(language_spec(target.clone()).items.clone().return_arrow.clone(), emit_node_type(inferred.clone(), target.clone(), source_indices))
+        }
+    } else {
+        v2_rt::concat(language_spec(target.clone()).items.clone().return_arrow.clone(), emit_node_type(inferred.clone(), target.clone(), source_indices))
+    }
 }
 
 pub fn emit_typed_block_join(stmts: Rc<Vec<Rc<Node>>>, scope: Rc<InferScope>, depth: i64, emit_block_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone) -> String {
@@ -2443,24 +2567,45 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 }
 }
 
-pub fn emit_typed_match_unified(scrutinee_str: String, arms: Rc<Vec<Rc<Node>>>, target: RenderTarget, depth: i64, recurse: impl Fn(Rc<Node>, i64) -> String + Clone, render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+pub fn emit_unified_pattern(pattern: Rc<MatchPattern>, target: RenderTarget, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    match (*pattern).clone() {
+    MatchPattern::Bind { name: n, .. } => emit_ident(n.clone(), target),
+    MatchPattern::LitPattern { value: v, .. } => emit_literal(v.clone(), &target),
+    MatchPattern::VariantPattern { name: n, field_bindings: fbs, .. } => emit_unified_variant_pattern(n.clone(), &fbs, &target, source_indices),
+    MatchPattern::Wildcard => "_".to_string(),
+}
+}
+
+pub fn emit_unified_variant_pattern(name: String, field_bindings: &Rc<Vec<Rc<Node>>>, target: &RenderTarget, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    {
+        let es = language_spec(target.clone()).expression_semantics.clone();
+match es.variant_pattern.clone() {
+    Some(vps) => if ((field_bindings.clone().len() as i64) == 0) {
+            v2_rt::concat(name, vps.empty_suffix.clone())
+        } else {
+            {
+                let binding_strs = Rc::new({ let mut __result = Vec::new(); for fb in field_bindings.clone().iter().cloned() { __result.push({
+                    let pat_str = emit_unified_pattern(field_binding_pattern(fb.clone()), target.clone(), source_indices.clone());
+v2_rt::concat(v2_rt::concat(emit_ident(field_binding_name_at(fb.clone(), source_indices.clone()), target.clone()), vps.binding_sep.clone()), pat_str.clone())
+}); } __result });
+v2_rt::concat(v2_rt::concat(v2_rt::concat(name, vps.open.clone()), binding_strs.join(&", ".to_string())), vps.close.clone())
+}
+        },
+    None => if ((field_bindings.clone().len() as i64) > 0) {
+            emit_error_expr(v2_rt::concat("variant pattern has bindings but target has no destructuring syntax: ".to_string(), name), target.clone())
+        } else {
+            name
+        },
+}
+}
+}
+
+pub fn emit_match_arm_line(arm: Rc<Node>, target: RenderTarget, case_depth: i64, body_depth: i64, body_str: String, guard_str: String, render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone) -> String {
     {
         let spec = language_spec(target);
 let bs = spec.block_syntax.clone();
 let es = spec.expression_semantics.clone();
-let case_depth = if bs.significant_whitespace.clone() {
-            (depth.clone() + 1)
-        } else {
-            depth.clone()
-        };
-let body_depth = (case_depth.clone() + 1);
-let arm_strs = Rc::new({ let mut __result = Vec::new(); for arm in arms.iter().cloned() { __result.push({
-            let pat = arm_pattern(arm.clone());
-let body_str = recurse(arm_body(&arm), body_depth.clone());
-let guard_str = match arm_guard(&arm) {
-    Some(g) => v2_rt::concat(" if ".to_string(), recurse(g.clone(), depth.clone())),
-    None => "".to_string(),
-};
+let pat = arm_pattern(arm);
 let case_kw = match (*pat.clone()).clone() {
     MatchPattern::Wildcard => match es.wildcard_case.clone() {
     Some(wc) => wc.clone(),
@@ -2468,7 +2613,36 @@ let case_kw = match (*pat.clone()).clone() {
 },
     _ => v2_rt::concat(bs.case_keyword.clone(), render_pattern(pat.clone())),
 };
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(make_indent(case_depth.clone()), case_kw.clone()), guard_str.clone()), ":\n".to_string()), make_indent(body_depth.clone())), body_str.clone())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(make_indent(case_depth), case_kw), guard_str), ":\n".to_string()), make_indent(body_depth)), body_str)
+}
+}
+
+pub fn emit_arm_guard(arm: Rc<Node>, target: &RenderTarget, render_guard_expr: impl Fn(Rc<Node>) -> String + Clone) -> String {
+    {
+        let es = language_spec(target.clone()).expression_semantics.clone();
+match arm_guard(&arm) {
+    Some(g) => match es.guard_prefix.clone() {
+    Some(prefix) => v2_rt::concat(prefix.clone(), render_guard_expr(g.clone())),
+    None => emit_error_expr("target does not support pattern guards".to_string(), target.clone()),
+},
+    None => "".to_string(),
+}
+}
+}
+
+pub fn emit_typed_match_unified(scrutinee_str: String, arms: Rc<Vec<Rc<Node>>>, target: &RenderTarget, depth: i64, recurse: impl Fn(Rc<Node>, i64) -> String + Clone, render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    {
+        let bs = language_spec(target.clone()).block_syntax.clone();
+let case_depth = if bs.significant_whitespace.clone() {
+            (depth.clone() + 1)
+        } else {
+            depth.clone()
+        };
+let body_depth = (case_depth.clone() + 1);
+let arm_strs = Rc::new({ let mut __result = Vec::new(); for arm in arms.iter().cloned() { __result.push({
+            let body_str = recurse(arm_body(&arm), body_depth.clone());
+let guard_str = emit_arm_guard(arm.clone(), &target, |g| recurse(g.clone(), depth.clone()));
+emit_match_arm_line(arm.clone(), target.clone(), case_depth.clone(), body_depth.clone(), body_str.clone(), guard_str.clone(), render_pattern.clone())
 }); } __result });
 let arms_str = arm_strs.join(&"\n".to_string());
 if (bs.block_close.clone().as_str() == "".to_string().as_str()) {
@@ -2516,7 +2690,7 @@ emit_field_access_unified(base_str.clone(), field_access_field_at(expr.clone(), 
                 }
 }, |expr| emit_typed_call_unified(&expr_call_func_at(expr.clone(), si.clone()), expr.children.clone(), &target, registry.clone(), scope.clone(), |n| emit_unified_typed_expr(n.clone(), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone())), |expr| emit_typed_method_call_unified(&method_receiver(expr.clone()), expr_method_name_at(expr.clone(), si.clone()), &method_arg_nodes(expr.clone()), &expr_method_call_semantics(expr.clone()), &target, registry.clone(), scope.clone(), depth.clone(), |n| emit_unified_typed_expr(n.clone(), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone())), |expr| {
                 let scrut_str = emit_unified_typed_expr(match_scrutinee(expr.clone()), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone());
-emit_typed_match_unified(scrut_str.clone(), match_arm_nodes(expr.clone()), target.clone(), depth.clone(), |node, d| emit_unified_typed_expr(node.clone(), &target, registry.clone(), &scope, d.clone(), 1024, render_pattern.clone()), render_pattern.clone(), si.clone())
+emit_typed_match_unified(scrut_str.clone(), match_arm_nodes(expr.clone()), &target, depth.clone(), |node, d| emit_unified_typed_expr(node.clone(), &target, registry.clone(), &scope, d.clone(), 1024, render_pattern.clone()), render_pattern.clone(), si.clone())
 }, |expr| {
                 let cond_str = emit_unified_typed_expr(if_condition(expr.clone()), &target, registry.clone(), &scope, depth.clone(), 1024, render_pattern.clone());
 let if_result_type = match spec.expression_semantics.clone().if_value_form.clone() {

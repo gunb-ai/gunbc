@@ -635,20 +635,25 @@ emits both from the same source.
 
 **Thesis claim:** emission is mechanical translation.
 
-**Current state:** Phases 1–4 complete. Python and Go per-language files
-have zero language-decision branches for expressions, patterns, TCO,
-or block statements. 18 per-language functions deleted (Phase 3+3.5),
-replaced by 7 shared functions that read LanguageSpec data. Pattern
-rendering unified via `VariantPatternSyntax` on `ExpressionSemantics`.
-Service/transport orchestration fully callback-based (Phase 4).
-Per-language files retain: func body, type defs, func/workflow defs,
-entry point/module rendering, transport implementations.
+**Current state:** Phases 1–3.5 complete, Phase 4 verified (no code
+change needed — orchestration was already callback-based), Phase 5
+in progress. Python and Go per-language files have zero language-decision
+branches for expressions, patterns, TCO, block statements, or func bodies.
+31 per-language functions deleted, replaced by shared functions that read
+LanguageSpec data. Match arm rendering uses shared `emit_match_arm_line`
++ `emit_arm_guard` (single authority for both TCO and non-TCO paths).
+Pattern rendering unified via `VariantPatternSyntax`; guard syntax via
+`guard_prefix` on `ExpressionSemantics` (fails closed when target has
+no guard form). Return model (`empty_return_value`, `return_suffix`,
+`suppress_unit_return`) drives func body unification.
+Per-language files retain: type defs, func/workflow defs, entry
+point/module rendering, transport implementations, sum type encoding.
 Rust emitter is untouched (ownership logic, Phase 6).
 
-**Progress:** Phase 1 ✓, Phase 2 ✓, Phase 3 ✓, Phase 3.5 ✓, Phase 4 ✓,
-Phase 5-6 blocked on LS-4.
+**Progress:** Phase 1 ✓, Phase 2 ✓, Phase 3 ✓, Phase 3.5 ✓,
+Phase 4 verified ✓, Phase 5 in progress, Phase 6 blocked on LS-4.
 
-**Line counts:** Python 742, Go 768, shared 2924, Rust 5863.
+**Line counts:** Python 666, Go 689, shared 2983, Rust 5863.
 
 **Target:** one emitter that reads `LanguageSpec` + `InhabitantDecl`
 data per target. Adding a new target language means adding a new
