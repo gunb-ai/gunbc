@@ -957,3 +957,105 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
     }
   }
 }
+
+// Result of compiling through validation (no emission).
+// Used by the interpreter and tooling that need the typed graph
+// without generating target-language files.
+type ResolvedPipelineResult {
+  graph: ResolvedGraph?
+  diagnostics: List<ErrorNode>
+  source_indices: Map<String, NewlineIndex>
+  complexity: ComplexityReport
+  ownership: List<OwnershipProof>
+  newline_indices: List<NewlineIndex>
+}
+
+// Compile through validation: front-end → normalize → infer → complexity → ownership.
+// Stops before emission. Returns the typed graph for interpretation or tooling.
+fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {
+  let frontend = front_end_sources(sources: sources)
+  let newline_indices = frontend.newline_indices
+  match frontend.graph {
+    None =>
+      ResolvedPipelineResult {
+        graph: none,
+        diagnostics: frontend.diagnostics,
+        source_indices: empty_map(),
+        complexity: empty_complexity_report(),
+        ownership: [],
+        newline_indices: newline_indices
+      }
+    Some { value: graph } => {
+      let graph_diags = graph.diagnostics
+      let resolve_errors = graph_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      if resolve_errors |> count > 0 {
+        return ResolvedPipelineResult {
+          graph: none,
+          diagnostics: frontend.diagnostics,
+          source_indices: empty_map(),
+          complexity: empty_complexity_report(),
+          ownership: [],
+          newline_indices: newline_indices
+        }
+      }
+
+      let source_indices = fold(newline_indices, init: empty_map(), f: (acc, index) => map_insert(acc, index.file, index))
+      let norm = normalize_graph(graph: graph, source_indices: source_indices)
+      let norm_diags = norm.diagnostics
+      let norm_errors = norm_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      if norm_errors |> count > 0 {
+        return ResolvedPipelineResult {
+          graph: none,
+          diagnostics: concat(frontend.diagnostics, norm_diags),
+          source_indices: source_indices,
+          complexity: empty_complexity_report(),
+          ownership: [],
+          newline_indices: newline_indices
+        }
+      }
+
+      let typed = reconcile(graph: norm.graph, source_indices: source_indices)
+      let typed_diags = typed.diagnostics
+      let func_entries = extract_func_entries(typed: typed)
+      let recursion_ctx = build_recursion_context(typed: typed)
+      let complexity = build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx, source_indices: source_indices)
+      let complexity_diags = complexity_diagnostics(complexity: complexity)
+      let all_diags = concat(typed_diags, complexity_diags)
+
+      let type_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      if type_errors |> count > 0 {
+        return ResolvedPipelineResult {
+          graph: none,
+          diagnostics: concat(frontend.diagnostics, norm_diags, all_diags),
+          source_indices: source_indices,
+          complexity: complexity,
+          ownership: [],
+          newline_indices: newline_indices
+        }
+      }
+
+      let ownership = extract_ownership_proofs(typed: typed)
+      let ownership_diags = ownership_diagnostics(proofs: ownership)
+      let ownership_errors = ownership_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      if ownership_errors |> count > 0 {
+        return ResolvedPipelineResult {
+          graph: none,
+          diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags),
+          source_indices: source_indices,
+          complexity: complexity,
+          ownership: ownership,
+          newline_indices: newline_indices
+        }
+      }
+
+      ResolvedPipelineResult {
+        graph: typed,
+        diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags),
+        source_indices: source_indices,
+        complexity: complexity,
+        ownership: ownership,
+        newline_indices: newline_indices
+      }
+    }
+  }
+}

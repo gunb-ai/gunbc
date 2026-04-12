@@ -12,9 +12,9 @@ use v2_compiler::v2_compiler_artifact;
 use v2_compiler::v2_std_core::{
     diagnostic_to_message, diagnostic_to_span,
     byte_to_line_col, source_line_at, NewlineIndex,
-    CompilerDiagnostic, is_error_diagnostic,
+    CompilerDiagnostic,
 };
-use v2_compiler::v2_interpreter;
+use v2_compiler::cli_run;
 
 #[derive(Parser)]
 #[command(name = "v2-compiled", about = "Generated CLI from DAG compiler")]
@@ -43,7 +43,7 @@ enum Commands {
         #[arg(long, default_value = "rust")]
         target: String,
     },
-    /// Execute a .dag program directly (interpreter)
+/// Execute a .dag program directly (interpreter)
     Run {
         /// Source root directories (searched recursively for .dag files)
         #[arg(long = "source-root")]
@@ -275,102 +275,7 @@ let _result = match cli.command {
         },
 
         Commands::Run { source_roots, function } => {
-            if source_roots.is_empty() {
-                eprintln!("error: provide at least one --source-root");
-                std::process::exit(1);
-            }
-
-            // Resolve sources (same as Compile path)
-            let index = build_module_index(&source_roots);
-            let first_root = std::path::Path::new(&source_roots[0]);
-            let mut entry_files = Vec::new();
-            if first_root.is_dir() {
-                let mut dag_paths = Vec::new();
-                collect_dag_files(first_root, &mut dag_paths);
-                for path in dag_paths {
-                    let content = std::fs::read_to_string(&path)
-                        .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
-                    entry_files.push((path.to_string_lossy().to_string(), content));
-                }
-            }
-
-            let mut seen: HashMap<String, Rc<v2_compiler_compile::SourceFile>> = HashMap::new();
-            let mut entry_for_queue = Vec::new();
-            for (path, content) in &entry_files {
-                if let Some(mod_path) = extract_module_path(content) {
-                    let source = Rc::new(v2_compiler_compile::SourceFile {
-                        path: path.clone(),
-                        content: content.clone(),
-                    });
-                    seen.insert(mod_path, source);
-                }
-                entry_for_queue.push((path.clone(), content.clone()));
-            }
-
-            let mut sources = resolve_transitively_with_seen(entry_for_queue, &index, seen);
-            for (path, content) in entry_files {
-                if !sources.iter().any(|s| s.path == path) {
-                    sources.push(Rc::new(v2_compiler_compile::SourceFile { path, content }));
-                }
-            }
-            eprintln!("resolved {} sources", sources.len());
-
-            // Run the front-end (tokenize + parse + resolve)
-            let frontend = v2_compiler_compile::front_end_sources(Rc::new(sources));
-            let graph = match frontend.graph.clone() {
-                Some(g) => g,
-                None => {
-                    // Parse/resolve errors — render and exit
-                    for d in frontend.diagnostics.iter() {
-                        eprintln!("error: {}", diagnostic_to_message(d.diagnostic.clone()));
-                    }
-                    std::process::exit(1);
-                }
-            };
-
-            // Build source_indices for name resolution
-            let source_indices: Rc<HashMap<String, Rc<NewlineIndex>>> = {
-                let mut si = HashMap::new();
-                for idx in frontend.newline_indices.iter() {
-                    si.insert(idx.file.clone(), idx.clone());
-                }
-                Rc::new(si)
-            };
-
-            // Normalize + reconcile (type inference) → ResolvedGraph
-            let norm = v2_compiler_compile::normalize_graph(&graph, source_indices.clone());
-            let typed = v2_compiler_compile::reconcile(norm.graph.clone(), source_indices.clone());
-
-            // Check for type errors
-            let has_type_errors = typed.diagnostics.iter().any(|d| {
-                is_error_diagnostic(d.diagnostic.clone())
-            });
-            if has_type_errors {
-                for d in typed.diagnostics.iter() {
-                    let span = diagnostic_to_span(d.diagnostic.clone());
-                    let loc = match source_indices.get(&span.file) {
-                        Some(idx) => {
-                            let lc = byte_to_line_col(idx, span.start);
-                            format!("{}:{}:{}", span.file, lc.line, lc.col)
-                        }
-                        None => span.file.clone(),
-                    };
-                    eprintln!("{}: error: {}", loc, diagnostic_to_message(d.diagnostic.clone()));
-                }
-                std::process::exit(1);
-            }
-
-            // Run the interpreter
-            eprintln!("running {}()...", function);
-            match v2_interpreter::run(&typed, source_indices, &function) {
-                Ok(val) => {
-                    println!("{}", val);
-                }
-                Err(e) => {
-                    eprintln!("runtime error: {}", e);
-                    std::process::exit(1);
-                }
-            }
+            cli_run::handle_run(source_roots, function);
         },
     };
 }
