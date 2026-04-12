@@ -302,6 +302,7 @@ fn bootstrap_stage0_to_stage1() {
 
     // Copy hand-maintained files into stage1 (not generated, but declared
     // in lib.rs via 05_emit_rust.dag hand_maintained_mods).
+    // Also patch Cargo.toml with dependencies they need.
     let stage0_src = ws.join("src/v2/stage0/src");
     for name in &["v2_interpreter.rs", "cli_run.rs"] {
         let src = stage0_src.join(name);
@@ -309,6 +310,17 @@ fn bootstrap_stage0_to_stage1() {
             let dst = stage1_dir.join("src").join(name);
             std::fs::copy(&src, &dst).unwrap_or_else(|e|
                 panic!("failed to copy {} to stage1: {}", name, e));
+        }
+    }
+    let cargo_toml = stage1_dir.join("Cargo.toml");
+    if cargo_toml.exists() {
+        let contents = std::fs::read_to_string(&cargo_toml).unwrap();
+        if !contents.contains("ureq") {
+            let patched = contents.replace(
+                "\n[dependencies]\n",
+                "\n[dependencies]\nureq = { version = \"2\", features = [\"json\"] }\n",
+            );
+            std::fs::write(&cargo_toml, patched).unwrap();
         }
     }
 
@@ -411,7 +423,8 @@ fn bootstrap_fixed_point() {
         String::from_utf8_lossy(&s1.stderr)
     );
 
-    // Copy hand-maintained files into stage1 (not generated, but declared in lib.rs)
+    // Copy hand-maintained files into stage1 (not generated, but declared in lib.rs).
+    // Also patch Cargo.toml with dependencies they need (ureq for REST dispatch).
     let stage0_src = ws.join("src/v2/stage0/src");
     for name in &["v2_interpreter.rs", "cli_run.rs"] {
         let src = stage0_src.join(name);
@@ -419,6 +432,17 @@ fn bootstrap_fixed_point() {
             let dst = stage1_dir.join("src").join(name);
             std::fs::copy(&src, &dst).unwrap_or_else(|e|
                 panic!("failed to copy {} to stage1: {}", name, e));
+        }
+    }
+    let cargo_toml = stage1_dir.join("Cargo.toml");
+    if cargo_toml.exists() {
+        let contents = std::fs::read_to_string(&cargo_toml).unwrap();
+        if !contents.contains("ureq") {
+            let patched = contents.replace(
+                "\n[dependencies]\n",
+                "\n[dependencies]\nureq = { version = \"2\", features = [\"json\"] }\n",
+            );
+            std::fs::write(&cargo_toml, patched).unwrap();
         }
     }
 
