@@ -9,8 +9,11 @@
 // would mislabel a real diff failure (unreadable dir, bad invocation)
 // as ordinary drift. Now diff errors surface as Failed instead.
 //
-// Entry point: check_stage0_freshness()
-// Run via:     dag run --source-root dsl --function check_stage0_freshness
+// Entry points:
+//   run_freshness_check()      → ProcessExit, for dag run / CI
+//   check_stage0_freshness()   → FreshnessCheckResult, composable internal
+//
+// Run via: dag run --source-root dsl --function run_freshness_check
 
 module gunbc.tools.freshness
 
@@ -19,6 +22,7 @@ import gunbc.compiler {
   resolve_compiler_tools, ToolsReady, ToolsMissing,
   build_command, compile_command, diff_exclude_args
 }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_code_general_error }
 import extdeps.shell
 
 // ── Result type ─────────────────────────────────────────────────────
@@ -95,4 +99,29 @@ func check_freshness(cycle: SelfHostingCycle) -> FreshnessCheckResult {
 
 func check_stage0_freshness() -> FreshnessCheckResult {
   check_freshness(cycle: compiler_cycle)
+}
+
+// ── ProcessExit entry point ─────────────────────────────────────────
+// Wraps check_stage0_freshness so the host can map result → exit code.
+
+fn freshness_to_exit(result: FreshnessCheckResult) -> ProcessExit {
+  match result {
+    Fresh => ExitSuccess
+    Stale { diff: d } => ExitFailure {
+      code: exit_code_general_error,
+      reason: concat("Stage0 stale:\n", d)
+    }
+    Failed { stderr: e } => ExitFailure {
+      code: exit_code_general_error,
+      reason: concat("Freshness check failed:\n", e)
+    }
+    FreshnessToolsMissing { tool: t, hint: h } => ExitFailure {
+      code: exit_code_general_error,
+      reason: concat("Freshness check: required tool missing: ", t, " (", h, ")")
+    }
+  }
+}
+
+func run_freshness_check() -> ProcessExit {
+  freshness_to_exit(result: check_stage0_freshness())
 }

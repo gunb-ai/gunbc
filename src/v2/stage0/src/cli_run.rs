@@ -203,13 +203,31 @@ pub fn handle_run_with_options(source_roots: Vec<String>, function: String, dry_
     match v2_interpreter::run_with_options(graph, result.source_indices.clone(), &function, dry_run) {
         Ok(val) => {
             println!("{}", val);
-            // Structural contract: if the function returned a ProcessExit
-            // (std/process.dag), translate it to a process exit code.
-            // No substring matching, no naming conventions — the type
-            // and variant names must match exactly.
-            if let Some(code) = process_exit_code(&val) {
-                if code != 0 {
-                    std::process::exit(code);
+            // FAIL-CLOSED EXIT CODE CONTRACT
+            //
+            // Functions invoked via `dag run` MUST return std/process.dag's
+            // ProcessExit variant. The host translates ExitSuccess → 0 and
+            // ExitFailure { code } → code. Any other return value is a
+            // programmer error: the host cannot tell whether the function
+            // succeeded or failed, so it exits 2 with a clear diagnostic.
+            //
+            // This makes silent failure IMPOSSIBLE: a function whose result
+            // type isn't structurally ProcessExit cannot accidentally exit 0
+            // when its rich result represents failure. Compose internal
+            // helpers (check_l1_ratchet → L1RatchetResult) freely; entry
+            // points must wrap their result in ProcessExit explicitly.
+            match classify_exit(&val) {
+                ExitClass::Success => {} // exit 0 (default)
+                ExitClass::Failure(code) => std::process::exit(code),
+                ExitClass::NotProcessExit { type_name } => {
+                    eprintln!(
+                        "error: function `{}` returned `{}`, not `ProcessExit`. \
+                         Functions invoked via `dag run` must return std/process.dag's \
+                         ProcessExit so the host can map success/failure to an exit code. \
+                         Wrap your rich result type in ExitSuccess / ExitFailure.",
+                        function, type_name
+                    );
+                    std::process::exit(2);
                 }
             }
         }
@@ -220,32 +238,45 @@ pub fn handle_run_with_options(source_roots: Vec<String>, function: String, dry_
     }
 }
 
-/// Translate a ProcessExit value (std/process.dag) into a process exit code.
-/// Returns None for any value that is not a ProcessExit — those produce
-/// exit 0 by default (the function returned successfully even if the
-/// runtime semantics weren't expressed as ProcessExit).
+/// Classification of a `dag run` return value for exit-code mapping.
+enum ExitClass {
+    Success,
+    Failure(i32),
+    /// The value is not a ProcessExit variant. Carries the actual type
+    /// for the diagnostic.
+    NotProcessExit { type_name: String },
+}
+
+/// Map a Value to its exit-code class. Structural — checks the specific
+/// type and variant names from std/process.dag, never substrings or
+/// naming conventions.
 ///
-/// Structural contract:
-///   ProcessExit::ExitSuccess              → 0
-///   ProcessExit::ExitFailure { code, .. } → code
-fn process_exit_code(val: &v2_interpreter::Value) -> Option<i32> {
+///   ProcessExit::ExitSuccess              → Success
+///   ProcessExit::ExitFailure { code, .. } → Failure(code)
+///   anything else                         → NotProcessExit (fail-closed at host)
+fn classify_exit(val: &v2_interpreter::Value) -> ExitClass {
     match val {
         v2_interpreter::Value::Variant { type_name, variant_name, fields } => {
             if type_name != "ProcessExit" {
-                return None;
+                return ExitClass::NotProcessExit {
+                    type_name: type_name.clone(),
+                };
             }
             match variant_name.as_str() {
-                "ExitSuccess" => Some(0),
+                "ExitSuccess" => ExitClass::Success,
                 "ExitFailure" => {
-                    // Read the `code` field from the ExitFailure record
                     match fields.get("code") {
-                        Some(v2_interpreter::Value::Int(n)) => Some(*n as i32),
-                        _ => Some(1),
+                        Some(v2_interpreter::Value::Int(n)) => ExitClass::Failure(*n as i32),
+                        _ => ExitClass::Failure(1),
                     }
                 }
-                _ => None,
+                _ => ExitClass::NotProcessExit {
+                    type_name: format!("ProcessExit::{}", variant_name),
+                },
             }
         }
-        _ => None,
+        _ => ExitClass::NotProcessExit {
+            type_name: "<non-variant>".to_string(),
+        },
     }
 }

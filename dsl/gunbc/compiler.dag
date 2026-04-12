@@ -150,7 +150,17 @@ data rm_tool: CliTool = {
   ]
 }
 
-data required_tools: List<CliTool> = [cargo_tool, grep_tool, diff_tool, cp_tool, rm_tool]
+data find_tool: CliTool = {
+  name: "find",
+  min_version: None,
+  installable_via: [
+    SourceCoreutils,
+    SourceBrew { formula: formula_coreutils },
+    SourceApt { package: package_coreutils }
+  ]
+}
+
+data required_tools: List<CliTool> = [cargo_tool, grep_tool, diff_tool, cp_tool, rm_tool, find_tool]
 
 // ── Resolved tool set ───────────────────────────────────────────────
 
@@ -164,6 +174,7 @@ type ResolvedCompilerTools {
   diff: FilePath
   cp: FilePath
   rm: FilePath
+  find: FilePath
 }
 
 type ToolResolveResult
@@ -193,13 +204,20 @@ func resolve_compiler_tools() -> ToolResolveResult {
                   let rm_r = resolve(tool: rm_tool)
                   match rm_r {
                     NotFound { tool: t, hint: h } => ToolsMissing { tool: t.name, hint: h }
-                    Resolved { resolved: rm_rt } => ToolsReady {
-                      tools: {
-                        cargo: cargo_rt.path,
-                        grep: grep_rt.path,
-                        diff: diff_rt.path,
-                        cp: cp_rt.path,
-                        rm: rm_rt.path
+                    Resolved { resolved: rm_rt } => {
+                      let find_r = resolve(tool: find_tool)
+                      match find_r {
+                        NotFound { tool: t, hint: h } => ToolsMissing { tool: t.name, hint: h }
+                        Resolved { resolved: find_rt } => ToolsReady {
+                          tools: {
+                            cargo: cargo_rt.path,
+                            grep: grep_rt.path,
+                            diff: diff_rt.path,
+                            cp: cp_rt.path,
+                            rm: rm_rt.path,
+                            find: find_rt.path
+                          }
+                        }
                       }
                     }
                   }
@@ -246,14 +264,15 @@ fn compile_command(cargo: FilePath, cycle: SelfHostingCycle, output_dir: String)
 // Build a `find ... -delete` predicate that excludes hand-maintained
 // files. Used to clean stage0 of stale generated .rs files BEFORE
 // copying pass output, so files the compiler stopped emitting don't
-// linger in the committed authority.
-fn clean_stage0_generated_command(rm: FilePath, cycle: SelfHostingCycle) -> String {
+// linger in the committed authority. Takes the resolved find binary
+// path so the command has no PATH dependency.
+fn clean_stage0_generated_command(find: FilePath, cycle: SelfHostingCycle) -> String {
   // Build `! -name X ! -name Y ...` filter from hand_maintained_src
   let exclude_filter = cycle.generated.hand_maintained_src |> fold(init: "", f: (acc, f) =>
     concat(acc, " ! -name ", f)
   )
-  // find SRCDIR -maxdepth 1 -type f -name '*.rs' ! -name cli_run.rs ! -name v2_interpreter.rs -delete
-  concat("find ", cycle.generated.source_dir,
+  // <find_path> SRCDIR -maxdepth 1 -type f -name '*.rs' ! -name cli_run.rs ! -name v2_interpreter.rs -delete
+  concat(find, " ", cycle.generated.source_dir,
          " -maxdepth 1 -type f -name '*.rs'", exclude_filter,
          " -delete")
 }

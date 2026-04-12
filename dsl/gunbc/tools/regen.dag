@@ -4,8 +4,11 @@
 // commands derive entirely from gunbc.compiler facts and whose tools
 // are resolved to absolute paths before dispatch.
 //
-// Entry point: regenerate_stage0()
-// Run via:     dag run --source-root dsl --function regenerate_stage0
+// Entry points:
+//   run_regenerate_stage0()  → ProcessExit, for dag run / CI
+//   regenerate_stage0()      → RegenResult, composable internal
+//
+// Run via: dag run --source-root dsl --function run_regenerate_stage0
 
 module gunbc.tools.regen
 
@@ -15,6 +18,7 @@ import gunbc.compiler {
   build_command, check_command, compile_command, copy_generated_command,
   clean_stage0_generated_command
 }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_code_general_error }
 import extdeps.shell
 
 // ── Result types ────────────────────────────────────────────────────
@@ -74,10 +78,11 @@ func regenerate(cycle: SelfHostingCycle) -> RegenResult {
       }
 
       // Step 3a: Delete stale generated files from stage0 (those the
-      // compiler stopped emitting). Hand-maintained files are excluded.
-      // Without this, removed modules would linger as committed orphans.
+      // compiler stopped emitting). Hand-maintained files are excluded
+      // by the find filter. Without this, removed modules would linger
+      // as committed orphans.
       let clean = shell.Exec.Run(
-        script: clean_stage0_generated_command(rm: t.rm, cycle: cycle)
+        script: clean_stage0_generated_command(find: t.find, cycle: cycle)
       )
       if clean.success == false {
         return Failed { stage: Copy, stderr: clean.stderr }
@@ -131,7 +136,32 @@ func regenerate(cycle: SelfHostingCycle) -> RegenResult {
   }
 }
 
-// Entry point: regenerate using the compiler's own self-hosting cycle.
+// Composable internal helper: returns rich result type.
 func regenerate_stage0() -> RegenResult {
   regenerate(cycle: compiler_cycle)
+}
+
+// ── ProcessExit entry point ─────────────────────────────────────────
+// Wraps regenerate_stage0 so the host can map result → exit code.
+
+fn regen_to_exit(result: RegenResult) -> ProcessExit {
+  match result {
+    Converged => ExitSuccess
+    Diverged => ExitFailure {
+      code: exit_code_general_error,
+      reason: "Regen diverged: pass 1 != pass 2 (fixed point not reached)"
+    }
+    Failed { stage: s, stderr: e } => ExitFailure {
+      code: exit_code_general_error,
+      reason: concat("Regen failed at stage: ", e)
+    }
+    RegenToolsMissing { tool: t, hint: h } => ExitFailure {
+      code: exit_code_general_error,
+      reason: concat("Regen: required tool missing: ", t, " (", h, ")")
+    }
+  }
+}
+
+func run_regenerate_stage0() -> ProcessExit {
+  regen_to_exit(result: regenerate_stage0())
 }
