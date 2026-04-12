@@ -98,7 +98,7 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
           let malformed_diags = [access_error(message: "malformed keyed collection type in index access", span: span, module_name: module_name)]
           access_result(inferred: unit_type, diagnostics: malformed_diags, span: span, fallback_message: "malformed keyed collection type in index access")
         } else if is_ordered_element_collection(name: authored_name_at(source_indices: source_indices, node: normed)) && node_is_element_collection(n: normed, source_indices: source_indices) && index_is_int {
-          let elem = for_each_element_type_node(n: normed)
+          let elem = for_each_element_type_node(n: normed, source_indices: source_indices)
           access_result(inferred: with_optional_cardinality(n: elem), diagnostics: [], span: span, fallback_message: "list index access")
         } else {
           let diags = [access_error(message: "indexing is only supported for String, keyed collection, and list values", span: span, module_name: module_name)]
