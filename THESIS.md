@@ -63,9 +63,32 @@ Known unifications:
   code. Whether that code is "a Rust struct" or "a SPICE subcircuit"
   or "an HTTP client" is determined by the spec, not by a separate
   coercion engine.
-- **Target language spec = transport spec.** A REST API spec and a
-  Rust language spec serve the same role: they declare what the
-  target can express, and the compiler generates the glue.
+- **Target language spec = transport spec = interpreter runtime.**
+  A Rust language spec, a REST transport spec, and the interpreter's
+  execution model serve the same role: they declare **what the
+  target is** — its primitives, its syntax, its capabilities — and
+  the compiler translates mechanically. The emitter doesn't "know
+  Rust" or "know REST." It reads the spec and translates.
+
+  This unification has a concrete sustainability consequence: the
+  interpreter does not have per-transport handlers. It reads the
+  same transport specs as the emitter (`extdeps/transports/`). The
+  transport spec says "shell means: construct argv, invoke subprocess,
+  map stdout/stderr/exit to output fields." The emitter renders this
+  as Rust source code. The interpreter renders this as a direct
+  call to one of three platform primitives (process, HTTP, file).
+  Adding a new transport (gRPC, WebSocket, etc.) means adding a
+  spec in `extdeps/transports/` — zero compiler changes, zero
+  emitter changes, zero interpreter changes.
+
+  The same applies to language specs. Adding a new emission target
+  (Swift, Kotlin, etc.) means adding a spec in `extdeps/languages/`
+  — zero compiler changes. The spec IS the implementation.
+
+  **The sustainability test:** when the system grows by one transport
+  or one language, how many files need editing? The answer should
+  be 1: the spec file. If it's more, there's a parallel list
+  somewhere that will drift and break.
 
 **The test:** if adding a new concept requires a new mechanism rather
 than being an instance of an existing mechanism, investigate whether
@@ -298,6 +321,24 @@ causal consistency, and the IR captures all the structure, then
 the frontend and backend are just projections of the same graph.
 `.dag` syntax is one frontend. Rust/Python/Go are three backends.
 The set is open in both directions.
+
+### Direct execution (interpreter)
+
+`dag run foo.dag` — compile, validate, execute in one step. The
+bounded kernel makes this safe: all programs terminate, all data
+is finite, no mutation. A tree-walker over the post-validation IR.
+
+Most users want: validate → run. Emission to Rust/Go/Python is a
+**deployment optimization**, not the development workflow. The
+interpreter proves that the validated IR is a complete computational
+description — emission to other languages is a performance choice.
+
+Service calls (shell, REST, file) execute via the same transport
+specs the emitter reads. The interpreter doesn't have per-transport
+handlers — it reads the spec and calls one of three platform
+primitives (process, HTTP, file). This is the spec unification
+in action: one declaration, two consumers (emitter and interpreter),
+zero parallel code.
 
 ### Omni-emission: one intent graph, many artifacts
 
