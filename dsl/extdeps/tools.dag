@@ -8,23 +8,30 @@
 // Consumers build command strings from resolved ResolvedTool.path values
 // instead of bare names, eliminating hidden PATH dependencies.
 //
+// InstallSource only contains variants we actually use today. Adding a
+// new install source means modeling that source completely first
+// (e.g., `dsl/extdeps/apt.dag` before `SourceApt`).
+//
 // Pattern reference: gunb.ai/tools/toolpaths/toolpaths.go (Ensure upsert).
 
 module extdeps.tools
 
 import std.types { FilePath, NonEmptyStr }
 import extdeps.shell
+import extdeps.coreutils
+import extdeps.rustup { rustup_install_url }
 
 // ── Install source ──────────────────────────────────────────────────
 
-// How a required CLI tool gets onto the system. Closed set — each
-// variant has a specific recovery story when the tool is missing.
+// How a required CLI tool gets onto the system. Closed set — only
+// variants whose backing extdeps file exists. Don't add a variant
+// for an install source we haven't modeled.
+//
+//   SourceCoreutils → extdeps/coreutils.dag (grep, diff, cp, rm, ...)
+//   SourceRustup    → extdeps/rustup.dag    (cargo, rustc)
 type InstallSource
-  = SourceBuiltin                            // POSIX standard: cp, rm, grep, diff, find
-  | SourceRustup                             // cargo, rustc, rustup
-  | SourceApt { package: NonEmptyStr }       // apt install {package}
-  | SourceBrew { package: NonEmptyStr }      // brew install {package}
-  | SourceContainer { image_ref: NonEmptyStr }  // baked into a specific container image
+  = SourceCoreutils
+  | SourceRustup
 
 // ── Tool declaration and resolution ────────────────────────────────
 
@@ -54,15 +61,11 @@ type ResolveResult
 // ── Install hints ──────────────────────────────────────────────────
 
 // Human-readable recovery instruction when a tool is missing.
-// Closed match on InstallSource — adding a new variant is a compile-time
-// obligation to provide a hint.
+// Each variant references the documented dependency in its extdeps file.
 fn install_hint(source: InstallSource) -> String {
   match source {
-    SourceBuiltin => "expected POSIX tool — verify your system provides it"
-    SourceRustup => "install rustup from https://rustup.rs"
-    SourceApt { package: p } => concat("apt install ", p)
-    SourceBrew { package: p } => concat("brew install ", p)
-    SourceContainer { image_ref: i } => concat("available only inside image: ", i)
+    SourceCoreutils => "expected GNU/BSD coreutils — see extdeps/coreutils.dag for the documented dependency"
+    SourceRustup => concat("install rustup from ", rustup_install_url)
   }
 }
 
@@ -72,10 +75,6 @@ fn install_hint(source: InstallSource) -> String {
 // Resolved with the absolute path if found, NotFound with an install
 // hint if not. This is the single authority for "where does this tool
 // live on this system."
-//
-// Workflows that need multiple tools should call resolve once per tool
-// and pattern-match; the resolved paths then flow through command
-// builders as FilePath arguments, eliminating bare-name commands.
 func resolve(tool: CliTool) -> ResolveResult {
   let check = shell.Which.Check(command: tool.name)
   match check.path {

@@ -30,7 +30,7 @@
 module gunbc.compiler
 
 import std.types { FilePath, NonEmptyStr }
-import extdeps.tools { CliTool, InstallSource, SourceBuiltin, SourceRustup }
+import extdeps.tools { CliTool, InstallSource, SourceCoreutils, SourceRustup }
 
 // ── Source roots ────────────────────────────────────────────────────
 
@@ -98,10 +98,10 @@ data compiler_cycle: SelfHostingCycle = {
 // present); SourceRustup covers cargo via the Rust toolchain.
 
 data cargo_tool: CliTool = { name: "cargo", min_version: None, source: SourceRustup }
-data grep_tool:  CliTool = { name: "grep",  min_version: None, source: SourceBuiltin }
-data diff_tool:  CliTool = { name: "diff",  min_version: None, source: SourceBuiltin }
-data cp_tool:    CliTool = { name: "cp",    min_version: None, source: SourceBuiltin }
-data rm_tool:    CliTool = { name: "rm",    min_version: None, source: SourceBuiltin }
+data grep_tool:  CliTool = { name: "grep",  min_version: None, source: SourceCoreutils }
+data diff_tool:  CliTool = { name: "diff",  min_version: None, source: SourceCoreutils }
+data cp_tool:    CliTool = { name: "cp",    min_version: None, source: SourceCoreutils }
+data rm_tool:    CliTool = { name: "rm",    min_version: None, source: SourceCoreutils }
 
 data required_tools: List<CliTool> = [cargo_tool, grep_tool, diff_tool, cp_tool, rm_tool]
 
