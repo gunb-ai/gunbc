@@ -3023,82 +3023,79 @@ fn skip_until_rbrace(tokens: List<Token>) -> UnitResult {
 }
 
 // Parse capability in v1 block or v2 inline form.
-fn parse_capability(tokens: List<Token>, state: ParserState) -> CapResult {
-  let start_span = current_span(tokens: tokens, state: state)
-  let dummy_cap = make_capability_node(name: "", ident_span: none, inputs: [], outputs: [], span: start_span, source_indices: state.source_indices)
-  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "capability" })
-  if has_err(err: r.err) { return CapResult { capability: dummy_cap, state: r.state, err: r.err } }
+fn parse_capability(tokens: List<Token>, ctx: ParseContext) -> CapResult {
+  let start_span = token_span(tok: tokens |> first)
+  let dummy_cap = make_capability_node(name: "", ident_span: none, inputs: [], outputs: [], span: start_span, source_indices: ctx.source_indices)
+  let r = expect(tokens: tokens, expected: ExpectKeyword { text: "capability" })
+  if has_err(err: r.err) { return CapResult { capability: dummy_cap, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  let r = expect_ident(tokens: tokens, state: r.state)
-  if has_err(err: r.err) { return CapResult { capability: dummy_cap, state: r.state, err: r.err } }
+  let r = expect_ident(tokens: r.tokens)
+  if has_err(err: r.err) { return CapResult { capability: dummy_cap, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
-  let s = r.state
+  let tokens = r.tokens
 
   // Dispatch: LBrace = v1 block, LParen = v2 inline
-  if tok_is_lbrace(tok: peek(tokens: tokens, state: s)) {
-    let r2 = expect(tokens: tokens, state: s, expected: ExpectLBrace)
-    if has_err(err: r2.err) { return CapResult { capability: dummy_cap, state: r2.state, err: r2.err } }
-    let io = parse_input_output_blocks(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state))
-    if has_err(err: io.err) { return CapResult { capability: dummy_cap, state: io.state, err: io.err } }
-    let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: io.state), expected: ExpectRBrace)
-    if has_err(err: r3.err) { return CapResult { capability: dummy_cap, state: r3.state, err: r3.err } }
-    let cap = make_capability_node(name: name, ident_span: Some { value: name_span }, inputs: io.inputs, outputs: io.outputs, span: start_span, source_indices: state.source_indices)
-    CapResult { capability: cap, state: skip_newlines(tokens: tokens, state: r3.state), err: none }
-  } else if tok_is_lparen(tok: peek(tokens: tokens, state: s)) {
-    let r2 = expect(tokens: tokens, state: s, expected: ExpectLParen)
-    if has_err(err: r2.err) { return CapResult { capability: dummy_cap, state: r2.state, err: r2.err } }
-    let r3 = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state))
-    if has_err(err: r3.err) { return CapResult { capability: dummy_cap, state: r3.state, err: r3.err } }
+  if tok_is_lbrace(tok: tokens |> first) {
+    let r2 = expect(tokens: tokens, expected: ExpectLBrace)
+    if has_err(err: r2.err) { return CapResult { capability: dummy_cap, tokens: r2.tokens, ctx: ctx, err: r2.err } }
+    let io = parse_input_output_blocks(tokens: skip_newlines(tokens: r2.tokens), ctx: ctx)
+    if has_err(err: io.err) { return CapResult { capability: dummy_cap, tokens: io.tokens, ctx: io.ctx, err: io.err } }
+    let r3 = expect(tokens: skip_newlines(tokens: io.tokens), expected: ExpectRBrace)
+    if has_err(err: r3.err) { return CapResult { capability: dummy_cap, tokens: r3.tokens, ctx: io.ctx, err: r3.err } }
+    let cap = make_capability_node(name: name, ident_span: Some { value: name_span }, inputs: io.inputs, outputs: io.outputs, span: start_span, source_indices: ctx.source_indices)
+    CapResult { capability: cap, tokens: skip_newlines(tokens: r3.tokens), ctx: io.ctx, err: none }
+  } else if tok_is_lparen(tok: tokens |> first) {
+    let r2 = expect(tokens: tokens, expected: ExpectLParen)
+    if has_err(err: r2.err) { return CapResult { capability: dummy_cap, tokens: r2.tokens, ctx: ctx, err: r2.err } }
+    let r3 = parse_field_list(tokens: skip_newlines(tokens: r2.tokens), ctx: ctx)
+    if has_err(err: r3.err) { return CapResult { capability: dummy_cap, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
     let inputs = r3.fields
-    let r4 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r3.state), expected: ExpectRParen)
-    if has_err(err: r4.err) { return CapResult { capability: dummy_cap, state: r4.state, err: r4.err } }
-    let ret = parse_optional_inferred(tokens: tokens, state: r4.state)
-    if has_err(err: ret.err) { return CapResult { capability: dummy_cap, state: ret.state, err: ret.err } }
+    let r4 = expect(tokens: skip_newlines(tokens: r3.tokens), expected: ExpectRParen)
+    if has_err(err: r4.err) { return CapResult { capability: dummy_cap, tokens: r4.tokens, ctx: r3.ctx, err: r4.err } }
+    let ret = parse_optional_inferred(tokens: r4.tokens, ctx: r3.ctx)
+    if has_err(err: ret.err) { return CapResult { capability: dummy_cap, tokens: ret.tokens, ctx: ret.ctx, err: ret.err } }
     let outputs = match ret.inferred {
       Some { value: Resolved { node: rt } } => node_inferred_to_outputs(rt: rt)
       _ => []
     }
-    let cap = make_capability_node(name: name, ident_span: Some { value: name_span }, inputs: inputs, outputs: outputs, span: start_span, source_indices: state.source_indices)
-    CapResult { capability: cap, state: skip_newlines(tokens: tokens, state: ret.state), err: none }
+    let cap = make_capability_node(name: name, ident_span: Some { value: name_span }, inputs: inputs, outputs: outputs, span: start_span, source_indices: ctx.source_indices)
+    CapResult { capability: cap, tokens: skip_newlines(tokens: ret.tokens), ctx: ret.ctx, err: none }
   } else {
-    let cap = make_capability_node(name: name, ident_span: Some { value: name_span }, inputs: [], outputs: [], span: start_span, source_indices: state.source_indices)
-    CapResult { capability: cap, state: skip_newlines(tokens: tokens, state: s), err: none }
+    let cap = make_capability_node(name: name, ident_span: Some { value: name_span }, inputs: [], outputs: [], span: start_span, source_indices: ctx.source_indices)
+    CapResult { capability: cap, tokens: skip_newlines(tokens: tokens), ctx: ctx, err: none }
   }
 }
 
 // Parse v1 input { fields } output { fields } blocks (used in capabilities and operations).
-fn parse_input_output_blocks(tokens: List<Token>, state: ParserState) -> IOResult {
-  parse_io_blocks_acc(tokens: tokens, state: state, inputs: [], outputs: [])
+fn parse_input_output_blocks(tokens: List<Token>, ctx: ParseContext) -> IOResult {
+  parse_io_blocks_acc(tokens: tokens, ctx: ctx, inputs: [], outputs: [])
 }
 
-fn parse_io_blocks_acc(tokens: List<Token>, state: ParserState, inputs: List<Node>, outputs: List<Node>) -> IOResult {
-  let s = skip_newlines(tokens: tokens, state: state)
-  if tok_is_rbrace(tok: peek(tokens: tokens, state: s)) || at_end(tokens: tokens, state: s) {
-    IOResult { inputs: inputs, outputs: outputs, state: s, err: none }
+fn parse_io_blocks_acc(tokens: List<Token>, ctx: ParseContext, inputs: List<Node>, outputs: List<Node>) -> IOResult {
+  let tokens = skip_newlines(tokens: tokens)
+  if tok_is_rbrace(tok: tokens |> first) || tok_is_eof(tok: tokens |> first) {
+    IOResult { inputs: inputs, outputs: outputs, tokens: tokens, ctx: ctx, err: none }
   } else {
-    let kw = tok_keyword_text(tok: peek(tokens: tokens, state: s))
+    let kw = tok_keyword_text(tok: tokens |> first)
     if kw == "input" {
-      let adv = advance(tokens: tokens, state: s)
-      let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
-      if has_err(err: r.err) { return IOResult { inputs: inputs, outputs: outputs, state: r.state, err: r.err } }
-      let r2 = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-      if has_err(err: r2.err) { return IOResult { inputs: inputs, outputs: outputs, state: r2.state, err: r2.err } }
-      let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
-      if has_err(err: r3.err) { return IOResult { inputs: inputs, outputs: outputs, state: r3.state, err: r3.err } }
-      parse_io_blocks_acc(tokens: tokens, state: r3.state, inputs: r2.fields, outputs: outputs)
+      let r = expect(tokens: tokens |> skip(1), expected: ExpectLBrace)
+      if has_err(err: r.err) { return IOResult { inputs: inputs, outputs: outputs, tokens: r.tokens, ctx: ctx, err: r.err } }
+      let r2 = parse_field_list(tokens: skip_newlines(tokens: r.tokens), ctx: ctx)
+      if has_err(err: r2.err) { return IOResult { inputs: inputs, outputs: outputs, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
+      let r3 = expect(tokens: skip_newlines(tokens: r2.tokens), expected: ExpectRBrace)
+      if has_err(err: r3.err) { return IOResult { inputs: inputs, outputs: outputs, tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
+      parse_io_blocks_acc(tokens: r3.tokens, ctx: r2.ctx, inputs: r2.fields, outputs: outputs)
     } else if kw == "output" {
-      let adv = advance(tokens: tokens, state: s)
-      let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
-      if has_err(err: r.err) { return IOResult { inputs: inputs, outputs: outputs, state: r.state, err: r.err } }
-      let r2 = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-      if has_err(err: r2.err) { return IOResult { inputs: inputs, outputs: outputs, state: r2.state, err: r2.err } }
-      let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
-      if has_err(err: r3.err) { return IOResult { inputs: inputs, outputs: outputs, state: r3.state, err: r3.err } }
-      parse_io_blocks_acc(tokens: tokens, state: r3.state, inputs: inputs, outputs: r2.fields)
+      let r = expect(tokens: tokens |> skip(1), expected: ExpectLBrace)
+      if has_err(err: r.err) { return IOResult { inputs: inputs, outputs: outputs, tokens: r.tokens, ctx: ctx, err: r.err } }
+      let r2 = parse_field_list(tokens: skip_newlines(tokens: r.tokens), ctx: ctx)
+      if has_err(err: r2.err) { return IOResult { inputs: inputs, outputs: outputs, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
+      let r3 = expect(tokens: skip_newlines(tokens: r2.tokens), expected: ExpectRBrace)
+      if has_err(err: r3.err) { return IOResult { inputs: inputs, outputs: outputs, tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
+      parse_io_blocks_acc(tokens: r3.tokens, ctx: r2.ctx, inputs: inputs, outputs: r2.fields)
     } else {
-      let result = IOResult { inputs: inputs, outputs: outputs, state: s, err: none }
-      result
+      IOResult { inputs: inputs, outputs: outputs, tokens: tokens, ctx: ctx, err: none }
     }
   }
 }
@@ -3107,126 +3104,125 @@ fn parse_io_blocks_acc(tokens: List<Token>, state: ParserState, inputs: List<Nod
 // 12. parse_data_def: data name: Type = value
 // =========================================================================
 
-fn parse_data_def(tokens: List<Token>, state: ParserState) -> ItemResult {
-  let start_span = current_span(tokens: tokens, state: state)
+fn parse_data_def(tokens: List<Token>, ctx: ParseContext) -> ItemResult {
+  let start_span = token_span(tok: tokens |> first)
   let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "data" })
-  if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
-  parse_data_after_kw(tokens: tokens, state: r.state, start_span: start_span)
+  let r = expect(tokens: tokens, expected: ExpectKeyword { text: "data" })
+  if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
+  parse_data_after_kw(tokens: r.tokens, ctx: ctx, start_span: start_span)
 }
 
-fn parse_data_after_kw(tokens: List<Token>, state: ParserState, start_span: SourceSpan) -> ItemResult {
+fn parse_data_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {
   let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
-  let r = expect_ident(tokens: tokens, state: state)
-  if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  let r = expect_ident(tokens: tokens)
+  if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
   let named_dummy = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
-  let r = expect(tokens: tokens, state: r.state, expected: ExpectColon)
-  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
+  let r = expect(tokens: r.tokens, expected: ExpectColon)
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  let r = parse_type_expr(tokens: tokens, state: r.state)
-  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
+  let r = parse_type_expr(tokens: r.tokens, ctx: ctx)
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let te = r.type_expr
 
-  let r = expect(tokens: tokens, state: r.state, expected: ExpectEq)
-  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
+  let r = expect(tokens: r.tokens, expected: ExpectEq)
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  let r = parse_expr(tokens: tokens, state: r.state)
-  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
+  let r = parse_expr(tokens: r.tokens, ctx: ctx)
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
 
   let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: [],
     inferred: none, return_cardinality: Required, uses: [],
     body: Some { value: r.expr }, connective: NoConnective, transport: none,
     properties: [], type_annotation: Some { value: te },
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r.state), err: none }
+  ItemResult { item: item, tokens: skip_newlines(tokens: r.tokens), ctx: r.ctx, err: none }
 }
 
 // =========================================================================
 // 13. parse_params: (name: Type, name2: Type)
 // =========================================================================
 
-fn parse_params(tokens: List<Token>, state: ParserState) -> ParamsResult {
-  let r = expect(tokens: tokens, state: state, expected: ExpectLParen)
-  if has_err(err: r.err) { return ParamsResult { params: [], state: r.state, err: r.err } }
-  let s = skip_newlines(tokens: tokens, state: r.state)
+fn parse_params(tokens: List<Token>, ctx: ParseContext) -> ParamsResult {
+  let r = expect(tokens: tokens, expected: ExpectLParen)
+  if has_err(err: r.err) { return ParamsResult { params: [], tokens: r.tokens, ctx: ctx, err: r.err } }
+  let tokens = skip_newlines(tokens: r.tokens)
 
-  if tok_is_rparen(tok: peek(tokens: tokens, state: s)) {
-    let adv = advance(tokens: tokens, state: s)
-    ParamsResult { params: [], state: adv.state, err: none }
+  if tok_is_rparen(tok: tokens |> first) {
+    ParamsResult { params: [], tokens: tokens |> skip(1), ctx: ctx, err: none }
   } else {
-    let r = parse_param_list(tokens: tokens, state: s)
+    let r = parse_param_list(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return r }
-    let s = skip_newlines(tokens: tokens, state: r.state)
-    let r2 = expect(tokens: tokens, state: s, expected: ExpectRParen)
-    if has_err(err: r2.err) { return ParamsResult { params: [], state: r2.state, err: r2.err } }
-    ParamsResult { params: r.params, state: r2.state, err: none }
+    let tokens = skip_newlines(tokens: r.tokens)
+    let r2 = expect(tokens: tokens, expected: ExpectRParen)
+    if has_err(err: r2.err) { return ParamsResult { params: [], tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
+    ParamsResult { params: r.params, tokens: r2.tokens, ctx: r.ctx, err: none }
   }
 }
 
-fn parse_param_list(tokens: List<Token>, state: ParserState) -> ParamsResult {
-  parse_param_list_acc(tokens: tokens, state: state, acc: [])
+fn parse_param_list(tokens: List<Token>, ctx: ParseContext) -> ParamsResult {
+  parse_param_list_acc(tokens: tokens, ctx: ctx, acc: [])
 }
 
-fn parse_param_list_acc(tokens: List<Token>, state: ParserState, acc: List<Node>) -> ParamsResult {
-  let r = parse_param(tokens: tokens, state: state)
-  if has_err(err: r.err) { return ParamsResult { params: [], state: r.state, err: r.err } }
+fn parse_param_list_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) -> ParamsResult {
+  let r = parse_param(tokens: tokens, ctx: ctx)
+  if has_err(err: r.err) { return ParamsResult { params: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let acc = list_push(acc, r.param)
-  let s = r.state
 
-  let e = eat(tokens: tokens, state: s, expected: ExpectComma)
+  let e = eat(tokens: r.tokens, expected: ExpectComma)
   if e.consumed {
-    let s2 = skip_newlines(tokens: tokens, state: e.state)
-    if tok_is_rparen(tok: peek(tokens: tokens, state: s2)) {
+    let tokens = skip_newlines(tokens: e.tokens)
+    if tok_is_rparen(tok: tokens |> first) {
       // Trailing comma
-      ParamsResult { params: acc, state: s2, err: none }
+      ParamsResult { params: acc, tokens: tokens, ctx: r.ctx, err: none }
     } else {
-      parse_param_list_acc(tokens: tokens, state: s2, acc: acc)
+      parse_param_list_acc(tokens: tokens, ctx: r.ctx, acc: acc)
     }
   } else {
-    ParamsResult { params: acc, state: s, err: none }
+    ParamsResult { params: acc, tokens: r.tokens, ctx: r.ctx, err: none }
   }
 }
 
-fn parse_param(tokens: List<Token>, state: ParserState) -> ParamResult {
-  let start_span = current_span(tokens: tokens, state: state)
+fn parse_param(tokens: List<Token>, ctx: ParseContext) -> ParamResult {
+  let start_span = token_span(tok: tokens |> first)
   let dummy_param = make_param_node(name: "", type_expr: leaf_type_node(name: "", span: start_span), default_value: none, span: start_span, name_span: start_span)
-  let r = expect_name(tokens: tokens, state: state)
-  if has_err(err: r.err) { return ParamResult { param: dummy_param, state: r.state, err: r.err } }
+  let r = expect_name(tokens: tokens)
+  if has_err(err: r.err) { return ParamResult { param: dummy_param, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
 
-  let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
-  if has_err(err: r2.err) { return ParamResult { param: dummy_param, state: r2.state, err: r2.err } }
+  let r2 = expect(tokens: r.tokens, expected: ExpectColon)
+  if has_err(err: r2.err) { return ParamResult { param: dummy_param, tokens: r2.tokens, ctx: ctx, err: r2.err } }
 
-  let r3 = parse_type_expr(tokens: tokens, state: r2.state)
-  if has_err(err: r3.err) { return ParamResult { param: dummy_param, state: r3.state, err: r3.err } }
+  let r3 = parse_type_expr(tokens: r2.tokens, ctx: ctx)
+  if has_err(err: r3.err) { return ParamResult { param: dummy_param, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
 
   // Optional where clause: param: Type where range(min: 1, max: 100)
-  let wr = try_where_clause(tokens: tokens, state: r3.state, base_te: r3.type_expr, start_span: start_span)
-  if has_err(err: wr.err) { return ParamResult { param: dummy_param, state: wr.state, err: wr.err } }
+  let wr = try_where_clause(tokens: r3.tokens, ctx: r3.ctx, base_te: r3.type_expr, start_span: start_span)
+  if has_err(err: wr.err) { return ParamResult { param: dummy_param, tokens: wr.tokens, ctx: wr.ctx, err: wr.err } }
   let type_expr = wr.type_expr
-  let s = wr.state
+  let tokens = wr.tokens
+  let ctx = wr.ctx
 
   // Optional default value
-  let e = eat(tokens: tokens, state: s, expected: ExpectEq)
+  let e = eat(tokens: tokens, expected: ExpectEq)
   if e.consumed {
-    let r4 = parse_expr(tokens: tokens, state: e.state)
-    if has_err(err: r4.err) { return ParamResult { param: dummy_param, state: r4.state, err: r4.err } }
+    let r4 = parse_expr(tokens: e.tokens, ctx: ctx)
+    if has_err(err: r4.err) { return ParamResult { param: dummy_param, tokens: r4.tokens, ctx: r4.ctx, err: r4.err } }
     let p = make_param_node(
       name: name, type_expr: type_expr,
       default_value: Some { value: r4.expr }, span: start_span, name_span: name_span
     )
-    ParamResult { param: p, state: r4.state, err: none }
+    ParamResult { param: p, tokens: r4.tokens, ctx: r4.ctx, err: none }
   } else {
     let p = make_param_node(
       name: name, type_expr: type_expr,
       default_value: none, span: start_span, name_span: name_span
     )
-    ParamResult { param: p, state: s, err: none }
+    ParamResult { param: p, tokens: tokens, ctx: ctx, err: none }
   }
 }
 
@@ -3234,71 +3230,72 @@ fn parse_param(tokens: List<Token>, state: ParserState) -> ParamResult {
 // 14. parse_block: { stmt1 \n stmt2 \n result_expr }
 // =========================================================================
 
-fn parse_block(tokens: List<Token>, state: ParserState) -> ExprResult {
+fn parse_block(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, expected: ExpectLBrace)
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
-  let s = skip_newlines(tokens: tokens, state: r.state)
+  let block_span = token_span(tok: tokens |> first)
+  let r = expect(tokens: tokens, expected: ExpectLBrace)
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
+  let tokens = skip_newlines(tokens: r.tokens)
 
-  let r = parse_stmts(tokens: tokens, state: s)
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let r = parse_stmts(tokens: tokens, ctx: ctx)
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let stmts = r.stmts
-  let s = skip_newlines(tokens: tokens, state: r.state)
+  let tokens = skip_newlines(tokens: r.tokens)
 
-  let r = expect(tokens: tokens, state: s, expected: ExpectRBrace)
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let r = expect(tokens: tokens, expected: ExpectRBrace)
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
 
   // If only one statement, unwrap from Block
   if count(stmts) == 1 {
-    ExprResult { expr: first(stmts).value, state: r.state, err: none }
+    ExprResult { expr: first(stmts).value, tokens: r.tokens, ctx: ctx, err: none }
   } else {
-    let span = current_span(tokens: tokens, state: state)
-    ExprResult { expr: make_expr_node(expr_data: ExprBlock, children: stmts, inferred: none, span: span), state: r.state, err: none }
+    ExprResult { expr: make_expr_node(expr_data: ExprBlock, children: stmts, inferred: none, span: block_span), tokens: r.tokens, ctx: ctx, err: none }
   }
 }
 
-fn parse_stmts(tokens: List<Token>, state: ParserState) -> StmtsResult {
+fn parse_stmts(tokens: List<Token>, ctx: ParseContext) -> StmtsResult {
   // Iterative -- avoids O(statements) recursion depth per block.
-  parse_stmts_acc(tokens: tokens, state: state, acc: [])
+  parse_stmts_acc(tokens: tokens, ctx: ctx, acc: [])
 }
 
-fn parse_stmts_acc(tokens: List<Token>, state: ParserState, acc: List<Node>) -> StmtsResult {
-  let s = skip_newlines(tokens: tokens, state: state)
-  if tok_is_rbrace(tok: peek(tokens: tokens, state: s)) || at_end(tokens: tokens, state: s) || tok_is_eof(tok: peek(tokens: tokens, state: s)) {
-    StmtsResult { stmts: acc, state: s, err: none }
+fn parse_stmts_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) -> StmtsResult {
+  let tokens = skip_newlines(tokens: tokens)
+  if tok_is_rbrace(tok: tokens |> first) || tok_is_eof(tok: tokens |> first) {
+    StmtsResult { stmts: acc, tokens: tokens, ctx: ctx, err: none }
   } else {
-    let r = parse_stmt(tokens: tokens, state: s)
-    if has_err(err: r.err) { return StmtsResult { stmts: acc, state: r.state, err: r.err } }
-    parse_stmts_acc(tokens: tokens, state: r.state, acc: list_push(acc, r.expr))
+    let r = parse_stmt(tokens: tokens, ctx: ctx)
+    if has_err(err: r.err) { return StmtsResult { stmts: acc, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+    parse_stmts_acc(tokens: r.tokens, ctx: r.ctx, acc: list_push(acc, r.expr))
   }
 }
 
-fn parse_stmt(tokens: List<Token>, state: ParserState) -> ExprResult {
-  let sh = peek_shape(tokens: tokens, state: state)
+fn parse_stmt(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
+  let tok = tokens |> first
+  let sh = match tok { Some { value: t } => Some { value: t.shape }  None => none }
   match sh {
     Some { value: ShKeyword } => {
-      let kw_text = tok_keyword_text(tok: peek(tokens: tokens, state: state))
-      if kw_text == "let" { parse_let(tokens: tokens, state: state) }
-      else if kw_text == "return" { parse_return(tokens: tokens, state: state) }
-      else if peek_is_eq_after_ident(tokens: tokens, state: state) {
+      let kw_text = tok_keyword_text(tok: tok)
+      if kw_text == "let" { parse_let(tokens: tokens, ctx: ctx) }
+      else if kw_text == "return" { parse_return(tokens: tokens, ctx: ctx) }
+      else if peek_is_eq_after_ident(tokens: tokens) {
         // Keywords used as binding names: `hermetic = ...` etc.
-        parse_bare_assignment(tokens: tokens, state: state)
+        parse_bare_assignment(tokens: tokens, ctx: ctx)
       } else {
-        parse_expr(tokens: tokens, state: state)
+        parse_expr(tokens: tokens, ctx: ctx)
       }
     }
     Some { value: ShIdent } => {
-      if peek_text_is(tokens: tokens, state: state, expected: "node") && peek_is_node_decl(tokens: tokens, state: state) {
-        parse_node_decl(tokens: tokens, state: state)
-      } else if peek_is_eq_after_ident(tokens: tokens, state: state) {
-        parse_bare_assignment(tokens: tokens, state: state)
-      } else if is_constraint_bracket_after_ident(tokens: tokens, state: state) {
-        parse_constrained_assignment(tokens: tokens, state: state)
+      if peek_text_is(tokens: tokens, expected: "node") && peek_is_node_decl(tokens: tokens) {
+        parse_node_decl(tokens: tokens, ctx: ctx)
+      } else if peek_is_eq_after_ident(tokens: tokens) {
+        parse_bare_assignment(tokens: tokens, ctx: ctx)
+      } else if is_constraint_bracket_after_ident(tokens: tokens) {
+        parse_constrained_assignment(tokens: tokens, ctx: ctx)
       } else {
-        parse_expr(tokens: tokens, state: state)
+        parse_expr(tokens: tokens, ctx: ctx)
       }
     }
-    _ => parse_expr(tokens: tokens, state: state)
+    _ => parse_expr(tokens: tokens, ctx: ctx)
   }
 }
 
