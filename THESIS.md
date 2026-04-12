@@ -519,6 +519,12 @@ structure to prove they are wrong.
 | Unbounded recursion depth | Compiles fine. Stack overflow at runtime on deep inputs. | CX proves depth bound from structural descent. No bound = rejected. |
 | `fib(n-1) + fib(n-2)` (O(2ⁿ)) | Compiles fine. Exponential at runtime. | CX branching guard: multiple recursive calls with arithmetic descent = exponential. Rejected unless memoized or reformulated. |
 
+Concrete `.dag` code examples with compiler errors:
+[docs/error-examples.md](docs/error-examples.md) — serves as TDD
+targets for the compiler. Each example is a test case: the .dag
+code should compile today, and the error message is the acceptance
+criterion for when the feature lands.
+
 ### The common pattern
 
 Every row in every table above is the same mechanism: the compiler
@@ -543,6 +549,7 @@ docs/ (project-wide design — read for understanding)
   architecture.md ........ substrate design (Node + Edge)
   algebraic-type-spec.md . type system semantics
   coercion-design.md ..... type coercion algebra (Tier 1, DONE)
+  error-examples.md ...... concrete .dag code + expected errors (TDD targets)
 
 src/v2/ (compiler implementation — read when working)
   DESIGN.md .............. compiler design principles
