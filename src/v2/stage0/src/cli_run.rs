@@ -203,10 +203,31 @@ pub fn handle_run_with_options(source_roots: Vec<String>, function: String, dry_
     match v2_interpreter::run_with_options(graph, result.source_indices.clone(), &function, dry_run) {
         Ok(val) => {
             println!("{}", val);
+            // Convention: variant names containing Fail/Missing/Stale/Diverged
+            // signal a non-zero exit. This maps .dag result types to process
+            // exit codes so CI can act on the outcome.
+            if is_failure_value(&val) {
+                std::process::exit(1);
+            }
         }
         Err(e) => {
             eprintln!("runtime error: {}", e);
             std::process::exit(1);
         }
+    }
+}
+
+/// Check if a Value represents a failure outcome by inspecting the variant name.
+/// Convention: PipelineFail, ToolsMissing, Stale, Diverged, L1Failed, Failed → exit 1.
+/// PipelinePass, Fresh, Converged, L1Passed, Resolved → exit 0.
+fn is_failure_value(val: &v2_interpreter::Value) -> bool {
+    match val {
+        v2_interpreter::Value::Variant { variant_name, .. } => {
+            variant_name.contains("Fail")
+                || variant_name.contains("Missing")
+                || variant_name.contains("Stale")
+                || variant_name.contains("Diverged")
+        }
+        _ => false,
     }
 }
