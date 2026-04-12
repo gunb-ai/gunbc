@@ -279,7 +279,7 @@ pub fn iteration_element_name(method_semantics: Option<Rc<MethodSemantics>>, lam
         let params = lambda_param_names_at(lambda, si);
 match method_callback_element_position(method_semantics) {
     Some(pos) => params.get(pos.clone() as usize).cloned(),
-    None => params.last().cloned(),
+    None => None,
 }
 }
 }

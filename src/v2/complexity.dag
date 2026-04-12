@@ -347,14 +347,13 @@ fn method_callback_element_position(method_semantics: MethodSemantics?) -> Int? 
 // algebra template's callback_element_position. The template declares
 // which CallableOf param receives IteratedSubValue of the receiver —
 // this function reads that declared position and indexes into the
-// lambda's params via skip(position). Falls back to last lambda param
-// when no template declares a position (preserves correctness for
-// methods without algebra templates).
+// lambda's params via skip(position). Fail-closed: returns none when
+// no template declares a position (no heuristic guessing).
 fn iteration_element_name(method_semantics: MethodSemantics?, lambda: Node, si: Map<String, NewlineIndex>) -> String? {
   let params = lambda_param_names_at(texpr: lambda, source_indices: si)
   match method_callback_element_position(method_semantics: method_semantics) {
     Some { value: pos } => params |> skip(pos) |> first
-    None => params |> last
+    None => none
   }
 }
 
