@@ -243,9 +243,25 @@ fn compile_command(cargo: FilePath, cycle: SelfHostingCycle, output_dir: String)
          " --output-dir ", output_dir)
 }
 
-// Copy pass 1 output to stage0. The compiler doesn't emit
-// hand_maintained_src files, so `cp *.rs` is safe — any file in the
-// pass output IS a generated file that should replace the committed one.
+// Build a `find ... -delete` predicate that excludes hand-maintained
+// files. Used to clean stage0 of stale generated .rs files BEFORE
+// copying pass output, so files the compiler stopped emitting don't
+// linger in the committed authority.
+fn clean_stage0_generated_command(rm: FilePath, cycle: SelfHostingCycle) -> String {
+  // Build `! -name X ! -name Y ...` filter from hand_maintained_src
+  let exclude_filter = cycle.generated.hand_maintained_src |> fold(init: "", f: (acc, f) =>
+    concat(acc, " ! -name ", f)
+  )
+  // find SRCDIR -maxdepth 1 -type f -name '*.rs' ! -name cli_run.rs ! -name v2_interpreter.rs -delete
+  concat("find ", cycle.generated.source_dir,
+         " -maxdepth 1 -type f -name '*.rs'", exclude_filter,
+         " -delete")
+}
+
+// Copy pass 1 output to stage0. Combined with clean_stage0_generated_command
+// (which runs first), this synchronizes deletions: pass output replaces
+// committed files, removed files are pruned, hand_maintained_src files
+// are preserved on both sides.
 fn copy_generated_command(cp: FilePath, from_dir: String, cycle: SelfHostingCycle) -> String {
   concat(cp, " ", from_dir, "/src/*.rs ", cycle.generated.source_dir, "/")
 }

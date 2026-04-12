@@ -1673,6 +1673,7 @@ fn map_shell_outputs(
             Some("stdout") => Value::Str(result.stdout.clone()),
             Some("stderr") => Value::Str(result.stderr.clone()),
             Some("exit_success") => Value::Bool(result.exit_code == 0),
+            Some("exit_code") => Value::Int(result.exit_code as i64),
             Some("stdout_lines") => {
                 let lines: Vec<Value> = result.stdout.lines()
                     .map(|l| Value::Str(l.to_string()))
@@ -1683,6 +1684,7 @@ fn map_shell_outputs(
                 // Default: map by field name
                 match field_name.as_str() {
                     "success" => Value::Bool(result.exit_code == 0),
+                    "exit_code" => Value::Int(result.exit_code as i64),
                     "stdout" => Value::Str(result.stdout.clone()),
                     "stderr" => Value::Str(result.stderr.clone()),
                     "exists" => Value::Bool(result.exit_code == 0),

@@ -1,7 +1,9 @@
 // gunbc/tools/ratchet.dag — L1 type knowledge ratchet check.
 //
 // Replaces scripts/l1-ratchet.sh with a .dag program. Uses
-// resolve_compiler_tools() for the grep path.
+// resolve_compiler_tools() for the grep path and matches on the actual
+// grep exit code (tri-state: match / no-match / error) instead of the
+// boolean success flag, which would conflate "no match" with "tool error".
 //
 // Entry point: check_l1_ratchet()
 // Run via:     dag run --source-root dsl --function check_l1_ratchet
@@ -25,16 +27,41 @@ data l1_typename_pattern: String = "\\.name == \"(Optional|Map|List|Set|Dynamic|
 type L1RatchetResult
   = L1Passed
   | L1Failed { report: String }
+  | L1GrepError { stderr: String }
   | RatchetToolsMissing { tool: String, hint: String }
 
+// ── grep tri-state ──────────────────────────────────────────────────
+// grep exit codes (POSIX, GNU/BSD compatible):
+//   0 = match found
+//   1 = no match found
+//   2 = error (unreadable file, bad pattern, etc.)
+// Earlier versions of this file collapsed exit 1 and 2 into "no match",
+// which made the L1 ratchet false-pass on real grep errors. We now
+// match on exit_code structurally so a real grep failure surfaces as
+// L1GrepError instead of being silently ignored.
+
+type GrepOutcome
+  = GrepMatch
+  | GrepNoMatch
+  | GrepError { stderr: String }
+
+fn classify_grep_exit(exit_code: Int, stderr: String) -> GrepOutcome {
+  if exit_code == 0 { GrepMatch }
+  else if exit_code == 1 { GrepNoMatch }
+  else { GrepError { stderr: stderr } }
+}
+
 // ── Command derivation ──────────────────────────────────────────────
+// Commands take the resolved grep path. We do NOT silence stderr — real
+// errors must surface so classify_grep_exit can distinguish them from
+// no-match.
 
 fn has_pattern_command(grep: String, pattern: String, dir: String) -> String {
-  concat(grep, " -rqE '", pattern, "' ", dir, "/*.dag 2>/dev/null")
+  concat(grep, " -rqE '", pattern, "' ", dir, "/*.dag")
 }
 
 fn find_violations_command(grep: String, pattern: String, dir: String) -> String {
-  concat(grep, " -rnE '", pattern, "' ", dir, "/*.dag 2>/dev/null || true")
+  concat(grep, " -rnE '", pattern, "' ", dir, "/*.dag")
 }
 
 // ── Ratchet workflow ────────────────────────────────────────────────
@@ -45,23 +72,40 @@ func check_l1_ratchet() -> L1RatchetResult {
     ToolsReady { tools: t } => {
       let dir = compiler_source.path
 
-      let has_constructors = shell.Exec.Run(
+      let constructors_run = shell.Exec.Run(
         script: has_pattern_command(grep: t.grep, pattern: l1_constructor_pattern, dir: dir)
       )
-      let has_typenames = shell.Exec.Run(
+      let typenames_run = shell.Exec.Run(
         script: has_pattern_command(grep: t.grep, pattern: l1_typename_pattern, dir: dir)
       )
 
-      if has_constructors.success || has_typenames.success {
-        let constructor_detail = shell.Exec.Run(
-          script: find_violations_command(grep: t.grep, pattern: l1_constructor_pattern, dir: dir)
-        )
-        let typename_detail = shell.Exec.Run(
-          script: find_violations_command(grep: t.grep, pattern: l1_typename_pattern, dir: dir)
-        )
-        L1Failed { report: concat(constructor_detail.stdout, typename_detail.stdout) }
-      } else {
-        L1Passed
+      let constructors = classify_grep_exit(exit_code: constructors_run.exit_code, stderr: constructors_run.stderr)
+      let typenames = classify_grep_exit(exit_code: typenames_run.exit_code, stderr: typenames_run.stderr)
+
+      // Fail closed on any grep error — never silently treat it as no-match.
+      match constructors {
+        GrepError { stderr: e } => L1GrepError { stderr: e }
+        _ => match typenames {
+          GrepError { stderr: e } => L1GrepError { stderr: e }
+          _ => {
+            // Both grep calls succeeded structurally. Did either find matches?
+            let has_violations = match constructors {
+              GrepMatch => true
+              _ => match typenames { GrepMatch => true, _ => false }
+            }
+            if has_violations {
+              let constructor_detail = shell.Exec.Run(
+                script: find_violations_command(grep: t.grep, pattern: l1_constructor_pattern, dir: dir)
+              )
+              let typename_detail = shell.Exec.Run(
+                script: find_violations_command(grep: t.grep, pattern: l1_typename_pattern, dir: dir)
+              )
+              L1Failed { report: concat(constructor_detail.stdout, typename_detail.stdout) }
+            } else {
+              L1Passed
+            }
+          }
+        }
       }
     }
   }

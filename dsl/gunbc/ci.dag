@@ -50,10 +50,19 @@ type RatchetMetric
 // category of gate with its own invariant. Consumers that need to
 // reason about gate category (e.g., "how many ratchet gates are there?")
 // pattern-match on this rather than parsing command strings.
+//
+// RatchetGate intentionally does NOT carry a threshold value. The
+// numeric threshold is enforced by whatever runs the gate (a Rust test
+// const, a shell script comparison). Duplicating it here would create
+// a second authority that drifts (the original ci.dag had 424, while
+// the bootstrap test had 354 — exactly the kind of dual-authority
+// problem the invariants forbid). The structural fact is "this is a
+// ratchet on metric M with direction D"; the threshold value is
+// operational data that lives with the enforcer.
 type GateSource
   = LintGate
   | TestSuiteGate { test_name: String }  // empty means run all tests
-  | RatchetGate { metric: RatchetMetric, direction: RatchetDirection, threshold: Int }
+  | RatchetGate { metric: RatchetMetric, direction: RatchetDirection }
   | FreshnessGate                        // proves committed stage0 == compile(source)
   | FixedPointGate                       // proves regen(regen(source)) == regen(source)
 
@@ -101,7 +110,7 @@ data diagnostic_ratchet_gate: CIGate = {
   name: "Diagnostic Ratchet",
   command: ignored_test_command(cargo: "cargo", package: test_package, test_name: "strict_compile_diagnostic_count"),
   blocking: false,
-  source: RatchetGate { metric: DiagnosticCount, direction: Down, threshold: 424 }
+  source: RatchetGate { metric: DiagnosticCount, direction: Down }
 }
 
 // Script gates — will become `dag run` invocations once the tool
@@ -111,7 +120,7 @@ data l1_gate: CIGate = {
   name: "L1 Type Knowledge Ratchet",
   command: "scripts/l1-ratchet.sh --check",
   blocking: true,
-  source: RatchetGate { metric: L1TypeKnowledge, direction: Stable, threshold: 0 }
+  source: RatchetGate { metric: L1TypeKnowledge, direction: Stable }
 }
 
 data stage0_freshness_gate: CIGate = {
@@ -127,7 +136,7 @@ data performance_ratchet_gate: CIGate = {
   name: "Performance Ratchet",
   command: ignored_test_command(cargo: "cargo", package: test_package, test_name: "performance_ratchet"),
   blocking: true,
-  source: RatchetGate { metric: Performance, direction: Stable, threshold: 120 }
+  source: RatchetGate { metric: Performance, direction: Stable }
 }
 
 data bootstrap_fixed_point_gate: CIGate = {

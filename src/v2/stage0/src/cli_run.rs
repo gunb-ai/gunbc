@@ -203,11 +203,14 @@ pub fn handle_run_with_options(source_roots: Vec<String>, function: String, dry_
     match v2_interpreter::run_with_options(graph, result.source_indices.clone(), &function, dry_run) {
         Ok(val) => {
             println!("{}", val);
-            // Convention: variant names containing Fail/Missing/Stale/Diverged
-            // signal a non-zero exit. This maps .dag result types to process
-            // exit codes so CI can act on the outcome.
-            if is_failure_value(&val) {
-                std::process::exit(1);
+            // Structural contract: if the function returned a ProcessExit
+            // (std/process.dag), translate it to a process exit code.
+            // No substring matching, no naming conventions — the type
+            // and variant names must match exactly.
+            if let Some(code) = process_exit_code(&val) {
+                if code != 0 {
+                    std::process::exit(code);
+                }
             }
         }
         Err(e) => {
@@ -217,17 +220,32 @@ pub fn handle_run_with_options(source_roots: Vec<String>, function: String, dry_
     }
 }
 
-/// Check if a Value represents a failure outcome by inspecting the variant name.
-/// Convention: PipelineFail, ToolsMissing, Stale, Diverged, L1Failed, Failed → exit 1.
-/// PipelinePass, Fresh, Converged, L1Passed, Resolved → exit 0.
-fn is_failure_value(val: &v2_interpreter::Value) -> bool {
+/// Translate a ProcessExit value (std/process.dag) into a process exit code.
+/// Returns None for any value that is not a ProcessExit — those produce
+/// exit 0 by default (the function returned successfully even if the
+/// runtime semantics weren't expressed as ProcessExit).
+///
+/// Structural contract:
+///   ProcessExit::ExitSuccess              → 0
+///   ProcessExit::ExitFailure { code, .. } → code
+fn process_exit_code(val: &v2_interpreter::Value) -> Option<i32> {
     match val {
-        v2_interpreter::Value::Variant { variant_name, .. } => {
-            variant_name.contains("Fail")
-                || variant_name.contains("Missing")
-                || variant_name.contains("Stale")
-                || variant_name.contains("Diverged")
+        v2_interpreter::Value::Variant { type_name, variant_name, fields } => {
+            if type_name != "ProcessExit" {
+                return None;
+            }
+            match variant_name.as_str() {
+                "ExitSuccess" => Some(0),
+                "ExitFailure" => {
+                    // Read the `code` field from the ExitFailure record
+                    match fields.get("code") {
+                        Some(v2_interpreter::Value::Int(n)) => Some(*n as i32),
+                        _ => Some(1),
+                    }
+                }
+                _ => None,
+            }
         }
-        _ => false,
+        _ => None,
     }
 }

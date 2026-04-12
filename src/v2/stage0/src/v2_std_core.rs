@@ -491,7 +491,6 @@ pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
 pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d).clone() {
     CompilerDiagnostic::ComplexityUnknown { .. } => false,
-    CompilerDiagnostic::OwnershipViolation { .. } => false,
     _ => true,
 }
 }

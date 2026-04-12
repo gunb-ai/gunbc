@@ -14,6 +14,7 @@
 module gunbc.tools.ci_runner
 
 import gunbc.ci { ci_pipeline, CIGate, CIPipeline }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_code_general_error }
 import extdeps.shell
 
 // ── Result types ────────────────────────────────────────────────────
@@ -44,7 +45,8 @@ func run_gate(gate: CIGate) -> GateOutcome {
 
 // ── Pipeline execution ──────────────────────────────────────────────
 
-func run_ci_pipeline() -> PipelineResult {
+// Internal: walks gates, returns rich result with pass/fail counts.
+func compute_pipeline_result() -> PipelineResult {
   let outcomes = ci_pipeline.gates |> map(g => run_gate(gate: g))
 
   let total = ci_pipeline.gates |> fold(init: 0, f: (acc, _) => acc + 1)
@@ -61,4 +63,23 @@ func run_ci_pipeline() -> PipelineResult {
   } else {
     PipelineFail { passed: passed, failed: failed, total: total, blocking_failures: blocking_failures }
   }
+}
+
+// Convert PipelineResult to ProcessExit for the host runtime.
+// Structural contract: only ExitFailure causes process exit 1.
+fn pipeline_to_exit(result: PipelineResult) -> ProcessExit {
+  match result {
+    PipelinePass { passed: _, total: _ } => ExitSuccess
+    PipelineFail { passed: p, failed: f, total: t, blocking_failures: b } =>
+      ExitFailure {
+        code: exit_code_general_error,
+        reason: concat("CI pipeline: ", to_string(value: f), " of ", to_string(value: t), " gates failed")
+      }
+  }
+}
+
+// Entry point: run the pipeline and return ProcessExit so the host
+// can set the process exit code structurally (no substring matching).
+func run_ci_pipeline() -> ProcessExit {
+  pipeline_to_exit(result: compute_pipeline_result())
 }

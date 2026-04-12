@@ -344,14 +344,19 @@ fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
   true
 }
 
-// Scoped to the `dag run` path only. The interpreter can safely execute
-// programs whose complexity or ownership analysis is incomplete — those
-// are proof limitations, not correctness errors. Compile and test paths
-// still use is_error_diagnostic (all diagnostics are real errors).
+// Scoped to the `dag run` path only. The interpreter carves out exactly
+// one diagnostic class — ComplexityUnknown — because the CX analysis is
+// documented as partial in ROADMAP M1 (active reduction, currently
+// non-blocking compile gate). OwnershipViolation is a real semantic
+// error (the repo explicitly promoted it from warning); the interpreter
+// must not execute programs that violate ownership.
+//
+// Adding more carve-outs requires upstream justification: a structural
+// reason the diagnostic class is non-fatal at the interpreter boundary
+// specifically, not a convenience to make `dag run` not fail.
 fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
-    ComplexityUnknown  { func_name: _, reason: _, span: _ } => false
-    OwnershipViolation { binding: _, fn_name: _, consumers: _, span: _ } => false
+    ComplexityUnknown { func_name: _, reason: _, span: _ } => false
     _ => true
   }
 }
