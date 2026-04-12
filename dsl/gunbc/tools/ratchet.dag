@@ -1,0 +1,71 @@
+// gunbc/tools/ratchet.dag — L1 type knowledge ratchet check.
+//
+// Replaces scripts/l1-ratchet.sh with a .dag program.
+// Counts type constructors and name comparisons that should live in
+// dsl/std/ but are hardcoded in the compiler source.
+//
+// The search directory derives from compiler.dag (compiler_source.path).
+// Adding or removing a violation pattern is one edit in this file.
+//
+// Entry point: check_l1_ratchet()
+// Future:      dag run --source-root dsl --function check_l1_ratchet
+
+module gunbc.tools.ratchet
+
+import gunbc.compiler { compiler_source }
+import extdeps.shell
+
+// ── Violation patterns ──────────────────────────────────────────────
+// These are the specific patterns that constitute L1 violations:
+// type-world knowledge the compiler should not have.
+
+// Type constructors (leaf_node, container_node, etc.)
+data l1_constructor_pattern: String = "\\b(leaf_node|optional_node|container_node|tuple_node|pair_node|callable_node|error_type_node)\\b"
+
+// Type-name string comparisons (.name == "Optional", .name == "Map", etc.)
+data l1_typename_pattern: String = "\\.name == \"(Optional|Map|List|Set|Dynamic|Error|Int|String|Bool|Float|Unit|Bytes|Json|Secret|Tuple|Callable|None|Some)\""
+
+// ── Result type ─────────────────────────────────────────────────────
+
+type L1RatchetResult
+  = L1Passed
+  | L1Failed { report: String }
+
+// ── Command derivation ──────────────────────────────────────────────
+
+// grep -q exits 0 if match found (violation exists), 1 if not.
+fn has_pattern_command(pattern: String, dir: String) -> String {
+  concat("grep -rqE '", pattern, "' ", dir, "/*.dag 2>/dev/null")
+}
+
+// grep -n shows matching lines with file:line context for debugging.
+fn find_violations_command(pattern: String, dir: String) -> String {
+  concat("grep -rnE '", pattern, "' ", dir, "/*.dag 2>/dev/null || true")
+}
+
+// ── Ratchet workflow ────────────────────────────────────────────────
+
+func check_l1_ratchet() -> L1RatchetResult {
+  let dir = compiler_source.path
+
+  // grep -q: success=true means matches found (violations exist)
+  let has_constructors = shell.Exec.Run(
+    script: has_pattern_command(pattern: l1_constructor_pattern, dir: dir)
+  )
+  let has_typenames = shell.Exec.Run(
+    script: has_pattern_command(pattern: l1_typename_pattern, dir: dir)
+  )
+
+  if has_constructors.success || has_typenames.success {
+    // Collect violation details for debugging
+    let constructor_detail = shell.Exec.Run(
+      script: find_violations_command(pattern: l1_constructor_pattern, dir: dir)
+    )
+    let typename_detail = shell.Exec.Run(
+      script: find_violations_command(pattern: l1_typename_pattern, dir: dir)
+    )
+    L1Failed { report: concat(constructor_detail.stdout, typename_detail.stdout) }
+  } else {
+    L1Passed
+  }
+}

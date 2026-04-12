@@ -1,113 +1,93 @@
-// gunbc/ci.dag -- CI gate declarations for the gunbc project.
+// gunbc/ci.dag — CI gate declarations derived from compiler.dag.
 //
-// Models the CI pipeline as .dag declarations so that adding a new
-// feature automatically produces CI coverage (upsert semantics).
-// YAML is a transport constraint (GitHub requires it), not the CI
-// logic. This file IS the CI logic.
+// Every gate command traces back to gunbc.compiler facts. Changing the
+// crate name or source roots in compiler.dag updates all gates
+// automatically. No hardcoded crate names in this file.
 //
-// M5 Phase 2b: CI intent declarations.
+// The two script gates (l1, freshness) will become dag run invocations
+// once tools/ratchet.dag and tools/freshness.dag are proven.
 //
 // Consumers:
 //   .github/workflows/ci.yml     -- current transport (hand-maintained shim)
-//   future: dag run ci.dag       -- interpreter execution of gates
+//   future: dag run ci_pipeline  -- interpreter execution of gates
 
 module gunbc.ci
 
-// -- Gate source: what a gate checks ------------------------------------
+import gunbc.compiler {
+  compiler_cycle, test_package,
+  lint_command, test_command, ignored_test_command
+}
 
-type RatchetDirection = Down | Stable
-
-type GateSource
-  = LintGate
-  | TestSuiteGate { test_pattern: String }
-  | RatchetGate {
-      metric: String
-      direction: RatchetDirection
-      threshold: Int
-    }
-  | FreshnessGate { generated_files: List<String> }
-
-// -- Gate result --------------------------------------------------------
-
-type GateResult
-  = Pass
-  | Fail { detail: String }
-
-// -- Gate declaration ---------------------------------------------------
+// ── Gate types ──────────────────────────────────────────────────────
 
 type CIGate {
   name: String
   command: String
   blocking: Bool
-  source: GateSource
 }
-
-// -- Pipeline -----------------------------------------------------------
 
 type CIPipeline {
   name: String
   gates: List<CIGate>
 }
 
-// -- Declared gates -----------------------------------------------------
+// ── Gates ───────────────────────────────────────────────────────────
+// Commands derive from compiler.dag. Sustainability test: change
+// package_name in compiler.dag → every gate picks it up.
 
 data lint_gate: CIGate = {
   name: "Lint",
-  command: "cargo clippy --workspace -- -D warnings",
-  blocking: true,
-  source: LintGate
+  command: lint_command(),
+  blocking: true
 }
 
 data test_gate: CIGate = {
   name: "Tests",
-  command: "cargo test -p v2-compiler-tests",
-  blocking: true,
-  source: TestSuiteGate { test_pattern: "" }
+  command: test_command(package: test_package),
+  blocking: true
 }
 
 data full_dsl_gate: CIGate = {
   name: "Full DSL Compiles",
-  command: "cargo test -p v2-compiler-tests full_dsl_compiles -- --ignored --nocapture",
-  blocking: true,
-  source: TestSuiteGate { test_pattern: "full_dsl_compiles" }
+  command: ignored_test_command(package: test_package, test_name: "full_dsl_compiles"),
+  blocking: true
 }
 
 data diagnostic_ratchet_gate: CIGate = {
   name: "Diagnostic Ratchet",
-  command: "cargo test -p v2-compiler-tests strict_compile_diagnostic_count -- --ignored --nocapture",
-  blocking: false,
-  source: RatchetGate { metric: "diagnostics", direction: Down, threshold: 424 }
+  command: ignored_test_command(package: test_package, test_name: "strict_compile_diagnostic_count"),
+  blocking: false
 }
+
+// Script gates — will become dag run invocations when tools are proven.
 
 data l1_gate: CIGate = {
   name: "L1 Type Knowledge Ratchet",
   command: "scripts/l1-ratchet.sh --check",
-  blocking: true,
-  source: RatchetGate { metric: "l1_type_knowledge", direction: Stable, threshold: 0 }
+  blocking: true
 }
 
 data stage0_freshness_gate: CIGate = {
   name: "Stage0 Freshness",
   command: "scripts/check-stage0-freshness.sh",
-  blocking: true,
-  source: FreshnessGate { generated_files: ["src/v2/stage0/src/"] }
+  blocking: true
 }
+
+// Test gates derived from compiler.dag.
 
 data performance_ratchet_gate: CIGate = {
   name: "Performance Ratchet",
-  command: "cargo test -p v2-compiler-tests performance_ratchet -- --ignored --nocapture",
-  blocking: true,
-  source: RatchetGate { metric: "performance", direction: Stable, threshold: 0 }
+  command: ignored_test_command(package: test_package, test_name: "performance_ratchet"),
+  blocking: true
 }
 
 data bootstrap_fixed_point_gate: CIGate = {
   name: "Bootstrap Fixed Point",
-  command: "cargo test -p v2-compiler-tests bootstrap_fixed_point -- --ignored --nocapture",
-  blocking: true,
-  source: TestSuiteGate { test_pattern: "bootstrap_fixed_point" }
+  command: ignored_test_command(package: test_package, test_name: "bootstrap_fixed_point"),
+  blocking: true
 }
 
-// -- Pipeline assembly --------------------------------------------------
+// ── Pipeline assembly ───────────────────────────────────────────────
 
 data ci_pipeline: CIPipeline = {
   name: "gunbc-ci",

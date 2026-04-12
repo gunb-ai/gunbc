@@ -1,0 +1,56 @@
+// gunbc/tools/freshness.dag — Stage0 freshness check.
+//
+// Replaces scripts/check-stage0-freshness.sh with a .dag program.
+// Verifies that committed stage0 matches what the compiler would
+// currently produce from .dag source.
+//
+// Simpler than regen: one compile pass + diff (no two-pass convergence).
+//
+// Entry point: check_stage0_freshness()
+// Future:      dag run --source-root dsl --function check_stage0_freshness
+
+module gunbc.tools.freshness
+
+import gunbc.compiler {
+  compiler_cycle, SelfHostingCycle,
+  build_command, compile_command
+}
+import extdeps.shell
+
+// ── Result type ─────────────────────────────────────────────────────
+
+type FreshnessCheckResult
+  = Fresh
+  | Stale { diff: String }
+  | Failed { stderr: String }
+
+// ── Freshness workflow ──────────────────────────────────────────────
+
+func check_freshness(cycle: SelfHostingCycle) -> FreshnessCheckResult {
+  // Build current compiler
+  let build = shell.Exec.Run(script: build_command(cycle: cycle))
+  if build.success == false {
+    return Failed { stderr: build.stderr }
+  }
+
+  // Compile .dag source to temp dir
+  let compile = shell.Exec.Run(script: compile_command(cycle: cycle, output_dir: ".freshness-check"))
+  if compile.success == false {
+    return Failed { stderr: compile.stderr }
+  }
+
+  // Compare generated output against committed stage0
+  let diff = shell.Exec.Run(
+    script: concat("diff -rq .freshness-check/src/ ", cycle.generated.source_dir, "/")
+  )
+
+  // Cleanup
+  let _ = shell.Exec.Run(script: "rm -rf .freshness-check")
+
+  if diff.success { Fresh } else { Stale { diff: diff.stdout } }
+}
+
+// Entry point: check freshness of the compiler's own stage0.
+func check_stage0_freshness() -> FreshnessCheckResult {
+  check_freshness(cycle: compiler_cycle)
+}

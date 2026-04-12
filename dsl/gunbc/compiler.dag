@@ -1,0 +1,177 @@
+// gunbc/compiler.dag — Self-hosting dependency cycle of the gunbc compiler.
+//
+// The compiler reads .dag source, produces Rust, and that Rust compiles
+// to the binary that IS the compiler. This file names the participants
+// in that cycle and the structural properties that must hold.
+//
+//   source_roots ──(compile)──▶ generated_crate ──(cargo build)──▶ binary
+//       ▲                                                            │
+//       └────────────────────(reads)─────────────────────────────────┘
+//
+// Convergence: compile(compile(source)) == compile(source)
+// Freshness:   committed stage0 == compile(source)
+//
+// What this file is NOT:
+//   - Internal pipeline (Tokenize → Parse → ...) — see src/v2/compile.dag
+//   - Executable regen process — see future tools/regen.dag
+//   - CI gate declarations — those derive from this model
+
+module gunbc.compiler
+
+import std.types { ContentHash, FilePath, NonEmptyStr }
+
+// ── Source roots ─────────────────────────────────────────────────────
+
+// A directory the compiler searches for .dag modules.
+// The compiler treats all source roots equally: it builds a module
+// index from every root, then compiles modules reachable via imports.
+type SourceRoot {
+  path: FilePath
+}
+
+data compiler_source: SourceRoot = { path: "src/v2" }
+data dsl_root: SourceRoot = { path: "dsl" }
+
+// ── Generated crate ─────────────────────────────────────────────────
+
+// The Rust crate whose source files are entirely emitted by the compiler.
+// Every .rs file in source_dir is generated — none are hand-maintained.
+type GeneratedCrate {
+  package_name: NonEmptyStr
+  source_dir: FilePath
+}
+
+data stage0: GeneratedCrate = {
+  package_name: "v2-compiler",
+  source_dir: "src/v2/stage0/src"
+}
+
+// ── Self-hosting cycle ──────────────────────────────────────────────
+
+// The structural fact that the compiler derives its own implementation.
+// source_roots provide .dag source; generated is the Rust crate the
+// compiler produces from that source. The crate builds to the binary
+// that does the compilation — closing the cycle.
+type SelfHostingCycle {
+  source_roots: List<SourceRoot>
+  generated: GeneratedCrate
+}
+
+data compiler_cycle: SelfHostingCycle = {
+  source_roots: [compiler_source, dsl_root],
+  generated: stage0
+}
+
+// ── File identity ───────────────────────────────────────────────────
+
+// A generated file identified by its content hash.
+// Used by convergence and freshness checks to compare outputs.
+type FileHash {
+  path: FilePath
+  hash: ContentHash
+}
+
+// The output of a single compiler pass.
+type PassOutput {
+  files: List<FileHash>
+}
+
+// ── Convergence ─────────────────────────────────────────────────────
+
+// Fixed point: running the compiler on its own source twice produces
+// identical output. pass1 = compile(source), pass2 = compile(source)
+// using the binary built from pass1.
+type ConvergenceResult
+  = FixedPoint
+  | Diverged { differing_files: List<FilePath> }
+
+fn check_convergence(pass1: PassOutput, pass2: PassOutput) -> ConvergenceResult {
+  let diffs = pass1.files |> flat_map(fh =>
+    pass2.files
+      |> filter(fh2 => fh2.path == fh.path && fh2.hash != fh.hash)
+      |> map(fh2 => fh2.path)
+  )
+  if diffs |> is_empty { FixedPoint } else { Diverged { differing_files: diffs } }
+}
+
+fn is_converged(result: ConvergenceResult) -> Bool {
+  match result {
+    FixedPoint => true
+    _ => false
+  }
+}
+
+// ── Freshness ───────────────────────────────────────────────────────
+
+// Whether committed stage0 files match what the compiler would produce.
+// Distinct from convergence: freshness compares committed vs generated,
+// convergence compares two consecutive passes.
+type FreshnessResult
+  = Fresh
+  | Stale { differing_files: List<FilePath> }
+
+fn check_freshness(committed: PassOutput, generated: PassOutput) -> FreshnessResult {
+  let diffs = committed.files |> flat_map(fh =>
+    generated.files
+      |> filter(fh2 => fh2.path == fh.path && fh2.hash != fh.hash)
+      |> map(fh2 => fh2.path)
+  )
+  if diffs |> is_empty { Fresh } else { Stale { differing_files: diffs } }
+}
+
+fn is_fresh(result: FreshnessResult) -> Bool {
+  match result {
+    Fresh => true
+    _ => false
+  }
+}
+
+// ── Queries ─────────────────────────────────────────────────────────
+
+fn source_root_paths(cycle: SelfHostingCycle) -> List<FilePath> {
+  cycle.source_roots |> map(root => root.path)
+}
+
+// ── Command derivation ──────────────────────────────────────────────
+// Derive shell commands from cycle data. Pure string construction —
+// no side effects. tools/regen.dag and tools/freshness.dag use these
+// with shell.Exec to run the actual processes.
+
+fn build_command(cycle: SelfHostingCycle) -> String {
+  concat("cargo build -p ", cycle.generated.package_name, " --release")
+}
+
+fn check_command(cycle: SelfHostingCycle) -> String {
+  concat("cargo check -p ", cycle.generated.package_name)
+}
+
+fn compile_command(cycle: SelfHostingCycle, output_dir: String) -> String {
+  let root_args = cycle.source_roots |> fold(init: "", f: (acc, root) =>
+    concat(acc, " --source-root ", root.path)
+  )
+  concat("cargo run -p ", cycle.generated.package_name,
+         " --release -- compile", root_args,
+         " --output-dir ", output_dir)
+}
+
+fn copy_output_command(from_dir: String, cycle: SelfHostingCycle) -> String {
+  concat("cp ", from_dir, "/src/*.rs ", cycle.generated.source_dir, "/")
+}
+
+// ── Test infrastructure ─────────────────────────────────────────────
+// The test crate validates the compiler. Part of the same workspace
+// but not part of the self-hosting cycle (not regenerated).
+
+data test_package: NonEmptyStr = "v2-compiler-tests"
+
+fn lint_command() -> String {
+  "cargo clippy --workspace -- -D warnings"
+}
+
+fn test_command(package: NonEmptyStr) -> String {
+  concat("cargo test -p ", package)
+}
+
+fn ignored_test_command(package: NonEmptyStr, test_name: String) -> String {
+  concat("cargo test -p ", package, " ", test_name, " -- --ignored --nocapture")
+}
