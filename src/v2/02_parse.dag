@@ -4338,35 +4338,36 @@ fn parse_variant_bindings_brace_acc(tokens: List<Token>, ctx: ParseContext, acc:
 // 22. parse_if
 // =========================================================================
 
-fn parse_if(tokens: List<Token>, state: ParserState) -> ExprResult {
-  let span = current_span(tokens: tokens, state: state)
+fn parse_if(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
+  let span = token_span(tok: tokens |> first)
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "if" })
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let r = expect(tokens: tokens, expected: ExpectKeyword { text: "if" })
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  let r = parse_expr_no_brace(tokens: tokens, state: r.state)
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let r = parse_expr_no_brace(tokens: r.tokens, ctx: ctx)
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let condition = r.expr
 
-  let r = parse_block(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let r = parse_block(tokens: skip_newlines(tokens: r.tokens), ctx: r.ctx)
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let then_branch = r.expr
-  let s = skip_newlines(tokens: tokens, state: r.state)
+  let tokens = skip_newlines(tokens: r.tokens)
+  let ctx = r.ctx
 
-  let e = eat(tokens: tokens, state: s, expected: ExpectKeyword { text: "else" })
+  let e = eat(tokens: tokens, expected: ExpectKeyword { text: "else" })
   if e.consumed {
-    let s = skip_newlines(tokens: tokens, state: e.state)
-    if tok_is_keyword(tok: peek(tokens: tokens, state: s), kw: "if") {
-      let r2 = parse_if(tokens: tokens, state: s)
-      if has_err(err: r2.err) { return ExprResult { expr: r2.expr, state: r2.state, err: r2.err } }
-      ExprResult { expr: make_expr_node(expr_data: ExprIf, children: [condition, then_branch, r2.expr], inferred: none, span: span), state: r2.state, err: none }
+    let tokens = skip_newlines(tokens: e.tokens)
+    if tok_is_keyword(tok: tokens |> first, kw: "if") {
+      let r2 = parse_if(tokens: tokens, ctx: ctx)
+      if has_err(err: r2.err) { return ExprResult { expr: r2.expr, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
+      ExprResult { expr: make_expr_node(expr_data: ExprIf, children: [condition, then_branch, r2.expr], inferred: none, span: span), tokens: r2.tokens, ctx: r2.ctx, err: none }
     } else {
-      let r2 = parse_block(tokens: tokens, state: s)
-      if has_err(err: r2.err) { return ExprResult { expr: r2.expr, state: r2.state, err: r2.err } }
-      ExprResult { expr: make_expr_node(expr_data: ExprIf, children: [condition, then_branch, r2.expr], inferred: none, span: span), state: r2.state, err: none }
+      let r2 = parse_block(tokens: tokens, ctx: ctx)
+      if has_err(err: r2.err) { return ExprResult { expr: r2.expr, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
+      ExprResult { expr: make_expr_node(expr_data: ExprIf, children: [condition, then_branch, r2.expr], inferred: none, span: span), tokens: r2.tokens, ctx: r2.ctx, err: none }
     }
   } else {
-    ExprResult { expr: make_expr_node(expr_data: ExprIf, children: [condition, then_branch], inferred: none, span: span), state: s, err: none }
+    ExprResult { expr: make_expr_node(expr_data: ExprIf, children: [condition, then_branch], inferred: none, span: span), tokens: tokens, ctx: ctx, err: none }
   }
 }
 
@@ -4374,93 +4375,93 @@ fn parse_if(tokens: List<Token>, state: ParserState) -> ExprResult {
 // 23. parse_let: let name = value
 // =========================================================================
 
-fn parse_let(tokens: List<Token>, state: ParserState) -> ExprResult {
-  let span = current_span(tokens: tokens, state: state)
+fn parse_let(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
+  let span = token_span(tok: tokens |> first)
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "let" })
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let r = expect(tokens: tokens, expected: ExpectKeyword { text: "let" })
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  let r = expect_name(tokens: tokens, state: r.state)
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let r = expect_name(tokens: r.tokens)
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
 
-  let r = expect(tokens: tokens, state: r.state, expected: ExpectEq)
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let r = expect(tokens: r.tokens, expected: ExpectEq)
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  let r = parse_expr(tokens: tokens, state: r.state)
+  let r = parse_expr(tokens: r.tokens, ctx: ctx)
   if has_err(err: r.err) { return r }
 
-  ExprResult { expr: make_named_expr_node(name: name, expr_data: ExprLet, children: [r.expr], inferred: none, span: span, name_span: name_span), state: r.state, err: none }
+  ExprResult { expr: make_named_expr_node(name: name, expr_data: ExprLet, children: [r.expr], inferred: none, span: span, name_span: name_span), tokens: r.tokens, ctx: r.ctx, err: none }
 }
 
 // =========================================================================
 // Return: return expr or return { field: val }
 // =========================================================================
 
-fn parse_return(tokens: List<Token>, state: ParserState) -> ExprResult {
-  let span = current_span(tokens: tokens, state: state)
+fn parse_return(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
+  let span = token_span(tok: tokens |> first)
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "return" })
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let r = expect(tokens: tokens, expected: ExpectKeyword { text: "return" })
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  let r = parse_expr(tokens: tokens, state: r.state)
+  let r = parse_expr(tokens: r.tokens, ctx: ctx)
   if has_err(err: r.err) { return r }
-  ExprResult { expr: make_expr_node(expr_data: ExprReturn, children: [r.expr], inferred: none, span: span), state: r.state, err: none }
+  ExprResult { expr: make_expr_node(expr_data: ExprReturn, children: [r.expr], inferred: none, span: span), tokens: r.tokens, ctx: r.ctx, err: none }
 }
 
 // =========================================================================
 // 24. parse_for: for x in collection { body }
 // =========================================================================
 
-fn parse_for(tokens: List<Token>, state: ParserState) -> ExprResult {
-  let span = current_span(tokens: tokens, state: state)
+fn parse_for(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
+  let span = token_span(tok: tokens |> first)
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "for" })
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let r = expect(tokens: tokens, expected: ExpectKeyword { text: "for" })
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  let r = expect_name(tokens: tokens, state: r.state)
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let r = expect_name(tokens: r.tokens)
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
   let var_name = r.name
   let var_name_span = r.span
 
-  let r = expect(tokens: tokens, state: r.state, expected: ExpectKeyword { text: "in" })
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let r = expect(tokens: r.tokens, expected: ExpectKeyword { text: "in" })
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  let r = parse_expr_no_brace(tokens: tokens, state: r.state)
-  if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
+  let r = parse_expr_no_brace(tokens: r.tokens, ctx: ctx)
+  if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let collection = r.expr
 
-  let r = parse_block(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-  if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
+  let r = parse_block(tokens: skip_newlines(tokens: r.tokens), ctx: r.ctx)
+  if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let body = r.expr
 
   let for_expr = make_named_expr_node(name: var_name, expr_data: ExprForEach, children: [collection, body], inferred: none, span: span, name_span: var_name_span)
-  ExprResult { expr: for_expr, state: r.state, err: none }
+  ExprResult { expr: for_expr, tokens: r.tokens, ctx: r.ctx, err: none }
 }
 
 // =========================================================================
 // 26. parse_record_literal: Name { field: val, field2: val2 }
 // =========================================================================
 
-fn parse_record_literal(tokens: List<Token>, state: ParserState, name: String, span: SourceSpan) -> ExprResult {
+fn parse_record_literal(tokens: List<Token>, ctx: ParseContext, name: String, span: SourceSpan) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, expected: ExpectLBrace)
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
-  let s = skip_newlines(tokens: tokens, state: r.state)
+  let r = expect(tokens: tokens, expected: ExpectLBrace)
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
+  let tokens = skip_newlines(tokens: r.tokens)
 
-  let r = parse_field_init_list(tokens: tokens, state: s)
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let r = parse_field_init_list(tokens: tokens, ctx: ctx)
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
 
-  let s = skip_newlines(tokens: tokens, state: r.state)
-  let r2 = expect(tokens: tokens, state: s, expected: ExpectRBrace)
-  if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
+  let tokens = skip_newlines(tokens: r.tokens)
+  let r2 = expect(tokens: tokens, expected: ExpectRBrace)
+  if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
 
-  ExprResult { expr: make_named_expr_node(name: name, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span, name_span: span), state: r2.state, err: none }
+  ExprResult { expr: make_named_expr_node(name: name, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span, name_span: span), tokens: r2.tokens, ctx: r.ctx, err: none }
 }
 
-fn parse_field_init_list(tokens: List<Token>, state: ParserState) -> FieldInitsResult {
-  parse_field_init_list_acc(tokens: tokens, state: state, acc: [])
+fn parse_field_init_list(tokens: List<Token>, ctx: ParseContext) -> FieldInitsResult {
+  parse_field_init_list_acc(tokens: tokens, ctx: ctx, acc: [])
 }
 
 fn parse_field_init_list_acc(tokens: List<Token>, state: ParserState, acc: List<Node>) -> FieldInitsResult {
