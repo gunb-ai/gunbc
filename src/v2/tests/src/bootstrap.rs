@@ -72,7 +72,10 @@ fn stage0_cargo_check() {
 //   488→469 after merge with main.
 // 2026-04-11: 424→421 — output provenance body inference for non-recursive
 //   functions. compose_sub_value_relations fixes structural∘structural.
-const DIAG_RATCHET: usize = 421;
+// 2026-04-11: 421→423 — per-field output provenance (+3: compose_callee_provenance,
+//   classify_body_per_field, classify_terminal_per_field calling recursive
+//   classify_body_provenance — inherent self-analysis cost).
+const DIAG_RATCHET: usize = 423;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)

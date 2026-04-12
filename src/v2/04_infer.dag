@@ -2322,6 +2322,10 @@ type DescentContext {
   size_aliases: Map<String, SizeExpr>
   scope_locals: Map<String, TypeBinding>  // C2: binding provenance from inference
   func_sigs: Map<String, ResolvedFuncSig>
+  // Per-field provenance for variables bound to call results with multi-field
+  // output_provenance. Maps var_name → (field_name → SubValueRelation).
+  // When classify_let_value sees r.field, checks this map before inductive fields.
+  per_field_vars: Map<String, Map<String, SubValueRelation>>
 }
 
 // Classify a let-value as a size expression for ProportionalShrink tracking.
@@ -2470,6 +2474,85 @@ type BlockAnnotateAcc {
   children: List<Node>
 }
 
+// Extract callback_element_position from method semantics.
+// Returns the declared position if the method's algebra template declares
+// which callback parameter receives collection elements.
+fn method_callback_element_position(semantics: MethodSemantics?) -> Int? {
+  match semantics {
+    Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: at } } =>
+      match at {
+        Some { value: template } => template.callback_element_position
+        None => none
+      }
+    _ => none
+  }
+}
+
+// Build per-field provenance for a let-binding whose value is a call with
+// multi-field output_provenance. Maps field names from the return type to
+// composed SubValueRelation. Returns ctx.per_field_vars with the new entry
+// added (or unchanged if not applicable).
+fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext) -> Map<String, Map<String, SubValueRelation>> {
+  match val.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
+      match map_get(ctx.func_sigs, callee) {
+        Some { value: sig } =>
+          if sig.output_provenance |> count > 1 {
+            // Multi-field: build field_name → composed SubValueRelation
+            let return_type = sig.inferred
+            let field_map = return_type.children |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
+              let idx = pair.first
+              let field_node = pair.second
+              let fname = authored_name_at(source_indices: ctx.type_env.source_indices, node: field_node)
+              match sig.output_provenance |> skip(idx) |> first {
+                Some { value: param_map } =>
+                  let composed = classify_call_via_provenance(call: val, param_map: param_map, ctx: ctx)
+                  match composed {
+                    Some { value: rel } =>
+                      match rel { SubValueUnknown => acc  _ => map_insert(acc, fname, rel) }
+                    None => acc
+                  }
+                None => acc
+              }
+            )
+            if map_keys(field_map) |> count > 0 {
+              map_insert(ctx.per_field_vars, binding_name, field_map)
+            } else { ctx.per_field_vars }
+          } else { ctx.per_field_vars }
+        None => ctx.per_field_vars
+      }
+    ExprMethodCall { method_semantics: _ } =>
+      let callee = expr_method_name_at(texpr: val, source_indices: ctx.type_env.source_indices)
+      match map_get(ctx.func_sigs, callee) {
+        Some { value: sig } =>
+          if sig.output_provenance |> count > 1 {
+            let return_type = sig.inferred
+            let field_map = return_type.children |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
+              let idx = pair.first
+              let field_node = pair.second
+              let fname = authored_name_at(source_indices: ctx.type_env.source_indices, node: field_node)
+              match sig.output_provenance |> skip(idx) |> first {
+                Some { value: param_map } =>
+                  let composed = classify_call_via_provenance(call: val, param_map: param_map, ctx: ctx)
+                  match composed {
+                    Some { value: rel } =>
+                      match rel { SubValueUnknown => acc  _ => map_insert(acc, fname, rel) }
+                    None => acc
+                  }
+                None => acc
+              }
+            )
+            if map_keys(field_map) |> count > 0 {
+              map_insert(ctx.per_field_vars, binding_name, field_map)
+            } else { ctx.per_field_vars }
+          } else { ctx.per_field_vars }
+        None => ctx.per_field_vars
+      }
+    _ => ctx.per_field_vars
+  }
+}
+
 // Resolve an expression to a ListRecursion InductiveField, if it represents
 // a collection of recursive sub-values. Handles field access on known types
 // (n.children), variables bound to list sub-values, and enumerate unwrapping.
@@ -2574,27 +2657,37 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
       match base.expr_data {
         ExprVar { binding_kind: _ } =>
           let bname = expr_var_name_at(texpr: base, source_indices: ctx.type_env.source_indices)
-          let type_name = match map_get(ctx.param_names, bname) {
-            Some { value: t } => t
-            None =>
-              match map_get(ctx.sub_value_vars, bname) {
-                Some { value: rel } =>
-                  match rel {
-                    StrictSubValue { field: f, factor: _ } => f.element_type
-                    IteratedSubValue { field: f } => f.element_type
-                    _ => ""
-                  }
-                None => ""
-              }
+          // Per-field provenance: check if base was bound to a call with multi-field output
+          let from_per_field = match map_get(ctx.per_field_vars, bname) {
+            Some { value: field_map } => map_get(field_map, field)
+            None => none
           }
-          if type_name != "" {
-            let fields = inductive_fields_for(env: ctx.type_env, type_name: type_name)
-            let matching = fields |> filter(f => f.field_name == field) |> first
-            match matching {
-              Some { value: ind_field } => Some { value: StrictSubValue { field: ind_field, factor: UnitShrink } }
-              None => none
-            }
-          } else { none }
+          match from_per_field {
+            Some { value: rel } => Some { value: rel }
+            None =>
+              // Fall through to inductive field lookup
+              let type_name = match map_get(ctx.param_names, bname) {
+                Some { value: t } => t
+                None =>
+                  match map_get(ctx.sub_value_vars, bname) {
+                    Some { value: rel } =>
+                      match rel {
+                        StrictSubValue { field: f, factor: _ } => f.element_type
+                        IteratedSubValue { field: f } => f.element_type
+                        _ => ""
+                      }
+                    None => ""
+                  }
+              }
+              if type_name != "" {
+                let fields = inductive_fields_for(env: ctx.type_env, type_name: type_name)
+                let matching = fields |> filter(f => f.field_name == field) |> first
+                match matching {
+                  Some { value: ind_field } => Some { value: StrictSubValue { field: ind_field, factor: UnitShrink } }
+                  None => none
+                }
+              } else { none }
+          }
         _ => none
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
@@ -3190,7 +3283,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   else { map_insert(ctx.sub_value_vars, p1, rel) }
                 } else { ctx.sub_value_vars },
                 size_aliases: ctx.size_aliases,
-                scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs
+                scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs,
+                per_field_vars: ctx.per_field_vars
               }
               make_arg_node(name: arg_name_at(n: child, source_indices: ctx.type_env.source_indices), value: annotate_descent(body: arg_val, ctx: lambda_ctx), span: child.span, name_span: child.span)
             } else {
@@ -3291,7 +3385,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                             param_order: c.param_order, type_env: c.type_env,
                             sub_value_vars: map_insert(c.sub_value_vars, bname, StrictSubValue { field: ind_field, factor: UnitShrink }),
                             size_aliases: c.size_aliases,
-                            scope_locals: c.scope_locals, func_sigs: c.func_sigs
+                            scope_locals: c.scope_locals, func_sigs: c.func_sigs,
+                            per_field_vars: c.per_field_vars
                           }
                         VariantPattern { name: inner_vname, parent_enum: _, field_bindings: inner_bindings } =>
                           // Nested destructuring: Some { value: Resolved { node: rt } }
@@ -3313,7 +3408,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                                     param_order: ic.param_order, type_env: ic.type_env,
                                     sub_value_vars: map_insert(ic.sub_value_vars, inner_bind_name, StrictSubValue { field: inner_ind_field, factor: UnitShrink }),
                                     size_aliases: ic.size_aliases,
-                                    scope_locals: ic.scope_locals, func_sigs: ic.func_sigs
+                                    scope_locals: ic.scope_locals, func_sigs: ic.func_sigs,
+                                    per_field_vars: ic.per_field_vars
                                   }
                                 } else { ic }
                               None => ic
@@ -3340,7 +3436,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                             fn_name: c.fn_name, param_names: c.param_names, param_order: c.param_order, type_env: c.type_env,
                             sub_value_vars: map_insert(c.sub_value_vars, bind_name, StrictSubValue { field: ind_field, factor: UnitShrink }),
                             size_aliases: c.size_aliases,
-                            scope_locals: c.scope_locals, func_sigs: c.func_sigs
+                            scope_locals: c.scope_locals, func_sigs: c.func_sigs,
+                            per_field_vars: c.per_field_vars
                           }
                         } else { c }
                       None => c
@@ -3358,7 +3455,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   param_order: ctx.param_order, type_env: ctx.type_env,
                   sub_value_vars: map_insert(ctx.sub_value_vars, bname, PreservedValue),
                   size_aliases: ctx.size_aliases,
-                  scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs
+                  scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs,
+                  per_field_vars: ctx.per_field_vars
                 }
               } else {
                 match scrut_inducing_field {
@@ -3369,7 +3467,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                       param_order: ctx.param_order, type_env: ctx.type_env,
                       sub_value_vars: map_insert(ctx.sub_value_vars, bname, StrictSubValue { field: ind_field, factor: UnitShrink }),
                       size_aliases: ctx.size_aliases,
-                      scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs
+                      scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs,
+                      per_field_vars: ctx.per_field_vars
                     }
                   None => ctx
                 }
@@ -3405,6 +3504,9 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         Some { value: se } => map_insert(ctx.size_aliases, binding_name, se)
         None => ctx.size_aliases
       }
+      // Per-field provenance: if the value is a call to a function with multi-field
+      // output_provenance, build field_name → SubValueRelation map for this binding.
+      let inner_per_field = build_per_field_for_let(val: val, binding_name: binding_name, ctx: ctx)
       let inner_ctx = match val_relation {
         Some { value: rel } =>
           // Register sub-value type in param_names so downstream field access works
@@ -3419,14 +3521,16 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: map_insert(ctx.sub_value_vars, binding_name, rel),
             size_aliases: inner_size_aliases,
-            scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs
+            scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs,
+            per_field_vars: inner_per_field
           }
         None =>
           DescentContext {
             fn_name: ctx.fn_name, param_names: ctx.param_names, param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: ctx.sub_value_vars,
             size_aliases: inner_size_aliases,
-            scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs
+            scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs,
+            per_field_vars: inner_per_field
           }
       }
       // Lexical scope: value initializer sees OUTER context (binding not yet in scope),
@@ -3476,14 +3580,16 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   param_order: acc.ctx.param_order, type_env: acc.ctx.type_env,
                   sub_value_vars: map_insert(acc.ctx.sub_value_vars, bname, rel),
                   size_aliases: new_sa,
-                  scope_locals: acc.ctx.scope_locals, func_sigs: acc.ctx.func_sigs
+                  scope_locals: acc.ctx.scope_locals, func_sigs: acc.ctx.func_sigs,
+                  per_field_vars: acc.ctx.per_field_vars
                 }
               None =>
                 DescentContext {
                   fn_name: acc.ctx.fn_name, param_names: acc.ctx.param_names, param_order: acc.ctx.param_order, type_env: acc.ctx.type_env,
                   sub_value_vars: acc.ctx.sub_value_vars,
                   size_aliases: new_sa,
-                  scope_locals: acc.ctx.scope_locals, func_sigs: acc.ctx.func_sigs
+                  scope_locals: acc.ctx.scope_locals, func_sigs: acc.ctx.func_sigs,
+                  per_field_vars: acc.ctx.per_field_vars
                 }
             }
           _ => acc.ctx
@@ -3503,10 +3609,13 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
     // Method calls on collections: thread descent context into fold/map/filter
     // lambda bodies. The lambda element parameter is an IteratedSubValue of
     // the receiver's collection field.
-    ExprMethodCall { method_semantics: _ } =>
+    // S7: Read callback_element_position from algebra template instead of
+    // hardcoding method names. The template declares which callback param
+    // receives collection elements — no heuristic needed.
+    ExprMethodCall { method_semantics: ms } =>
       let mname = expr_method_name_at(texpr: body, source_indices: ctx.type_env.source_indices)
-      let is_iteration = mname == "fold" || mname == "map" || mname == "filter" || mname == "flat_map" || mname == "any" || mname == "all"
-      if is_iteration {
+      let elem_position = method_callback_element_position(semantics: ms)
+      if elem_position != none {
         // Check if receiver is a collection sub-value (field access or bound variable).
         // Unwrap shape-preserving methods (enumerate) to reach the underlying collection.
         let raw_receiver = method_receiver(texpr: body)
@@ -3571,10 +3680,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
           Some { value: la } =>
             let lambda_node = arg_value(n: la)
             let lparams = lambda_param_names_at(texpr: lambda_node, source_indices: ctx.type_env.source_indices)
-            match lparams |> skip(lparams |> count - 1) |> first {
-              Some { value: n } => Some { value: n }
-              None => none
-            }
+            // S7: read declared position from template instead of assuming last param
+            lparams |> skip(elem_position.value) |> first
           None => none
         }
         // Fold has an accumulator — captured sub_value_vars can alias it,
@@ -3582,7 +3689,9 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         // is T(n) = 2T(n-1) = O(2^n), not O(n).)
         // Map/filter/any/all have no accumulator — each invocation is independent,
         // so captured sub_value_vars remain valid descent evidence.
-        let is_fold = mname == "fold"
+        // S7: detect fold structurally — element at position > 0 means earlier params
+        // are accumulators, which implies fold semantics.
+        let is_fold = elem_position.value > 0
         let inner_ctx = match lambda_elem_info {
           Some { value: elem_name } =>
             match receiver_field {
@@ -3594,7 +3703,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   sub_value_vars: if is_fold { map_insert(empty_map(), elem_name, IteratedSubValue { field: ind_field }) }
                     else { map_insert(ctx.sub_value_vars, elem_name, IteratedSubValue { field: ind_field }) },
                   size_aliases: ctx.size_aliases,
-                  scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs
+                  scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs,
+                  per_field_vars: ctx.per_field_vars
                 }
               None =>
                 DescentContext {
@@ -3602,7 +3712,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   param_order: ctx.param_order, type_env: ctx.type_env,
                   sub_value_vars: if is_fold { empty_map() } else { ctx.sub_value_vars },
                   size_aliases: ctx.size_aliases,
-                  scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs
+                  scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs,
+                  per_field_vars: ctx.per_field_vars
                 }
             }
           None => ctx
@@ -3647,7 +3758,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: map_insert(empty_map(), fe_var, IteratedSubValue { field: ind_field }),
             size_aliases: ctx.size_aliases,
-            scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs
+            scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs,
+            per_field_vars: ctx.per_field_vars
           }
         None =>
           DescentContext {
@@ -3655,7 +3767,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: empty_map(),
             size_aliases: ctx.size_aliases,
-            scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs
+            scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs,
+            per_field_vars: ctx.per_field_vars
           }
       }
       let annotated_coll = annotate_descent(body: coll, ctx: ctx)
@@ -3701,11 +3814,12 @@ fn resolved_type_name(n: Node, source_indices: Map<String, NewlineIndex>) -> Str
 // =========================================================================
 
 // Infer output provenance from a non-recursive function body.
-// Walks the body expression top-down, classifying the return value's
-// SubValueRelation to each parameter. Handles: variable refs, function
-// calls (compose with callee provenance), match/if (meet across branches),
-// let chains (track bindings), field access (inductive field lookup).
-// Returns single-element list for scalar provenance, empty list if unknown.
+// Two modes:
+//   Scalar: single-element list — overall return value's relation to params.
+//   Per-field: multi-element list — one map per return type child (record field).
+// Per-field provenance enables CX to see through struct returns: when a function
+// returns { tokens: sub_list, expr: parsed }, field-level access r.tokens
+// carries the tokens field's specific provenance, not the whole struct's.
 fn infer_output_provenance(body: Node, params: List<Node>, type_env: TypeEnv, scope_locals: Map<String, TypeBinding>, func_sigs: Map<String, ResolvedFuncSig>) -> List<Map<String, SubValueRelation>> {
   let param_names = params |> map(p => param_node_name_at(n: p, source_indices: type_env.source_indices))
   let param_types = fold(params, init: empty_map(), f: (acc, p) =>
@@ -3713,11 +3827,23 @@ fn infer_output_provenance(body: Node, params: List<Node>, type_env: TypeEnv, sc
     let ptype = resolved_type_name(n: p, source_indices: type_env.source_indices)
     if pname != "" && ptype != "" { map_insert(acc, pname, ptype) } else { acc }
   )
-  let result = classify_body_provenance(
+  // Try scalar provenance first (preserves existing consumer compatibility).
+  // Only use per-field when scalar is empty — per-field captures struct-return
+  // provenance that scalar can't express.
+  let scalar = classify_body_provenance(
     expr: body, param_names: param_names, param_types: param_types,
     type_env: type_env, func_sigs: func_sigs, let_prov: empty_map()
   )
-  if map_keys(result) |> count > 0 { [result] } else { [] }
+  if map_keys(scalar) |> count > 0 { [scalar] }
+  else {
+    let per_field = classify_body_per_field(
+      expr: body, param_names: param_names, param_types: param_types,
+      type_env: type_env, func_sigs: func_sigs, let_prov: empty_map()
+    )
+    if per_field |> count > 0 && per_field |> any(m => map_keys(m) |> count > 0) {
+      per_field
+    } else { [] }
+  }
 }
 
 // Classify a body expression's return value provenance relative to params.
@@ -3762,45 +3888,11 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
 
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: expr, source_indices: type_env.source_indices)
-      match map_get(func_sigs, callee) {
-        Some { value: sig } =>
-          match sig.output_provenance |> first {
-            Some { value: callee_prov } =>
-              let call_args = expr.children
-              let arg_by_name = fold(call_args, init: empty_map(), f: (arg_acc, arg_node) =>
-                match arg_name_at(n: arg_node, source_indices: type_env.source_indices) {
-                  Some { value: aname } => map_insert(arg_acc, aname, arg_value(n: arg_node))
-                  None => arg_acc
-                }
-              )
-              fold(callee_prov |> map_keys, init: empty_map(), f: (acc, callee_pname) =>
-                match map_get(callee_prov, callee_pname) {
-                  Some { value: callee_rel } =>
-                    match map_get(arg_by_name, callee_pname) {
-                      Some { value: arg } =>
-                        let arg_prov = classify_body_provenance(expr: arg, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
-                        fold(arg_prov |> map_keys, init: acc, f: (inner, pname) =>
-                          match map_get(arg_prov, pname) {
-                            Some { value: arg_rel } =>
-                              let composed = compose_sub_value_relations(arg_rel: arg_rel, callee_rel: callee_rel)
-                              match composed { SubValueUnknown => inner  _ =>
-                                match map_get(inner, pname) {
-                                  Some { value: existing } => map_insert(inner, pname, meet_sub_value(a: existing, b: composed))
-                                  None => map_insert(inner, pname, composed)
-                                }
-                              }
-                            None => inner
-                          }
-                        )
-                      None => acc
-                    }
-                  None => acc
-                }
-              )
-            None => empty_map()
-          }
-        None => empty_map()
-      }
+      compose_callee_provenance(callee: callee, arg_by_name: call_args_by_name(call: expr, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+
+    ExprMethodCall { method_semantics: _ } =>
+      let mname = expr_method_name_at(texpr: expr, source_indices: type_env.source_indices)
+      compose_callee_provenance(callee: mname, arg_by_name: method_call_args_by_name(call: expr, func_sigs: func_sigs, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
 
     ExprMatch =>
       let arms = match_arm_nodes(texpr: expr)
@@ -3837,6 +3929,183 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
       }
 
     _ => empty_map()
+  }
+}
+
+// Build named-arg map for ExprCall: all children are named arg nodes.
+fn call_args_by_name(call: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {
+  fold(call.children, init: empty_map(), f: (acc, arg_node) =>
+    match arg_name_at(n: arg_node, source_indices: source_indices) {
+      Some { value: aname } => map_insert(acc, aname, arg_value(n: arg_node))
+      None => acc
+    }
+  )
+}
+
+// Build named-arg map for ExprMethodCall: receiver maps to callee's first
+// param (positional), remaining children are named arg nodes.
+fn method_call_args_by_name(call: Node, func_sigs: Map<String, ResolvedFuncSig>, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {
+  let mname = expr_method_name_at(texpr: call, source_indices: source_indices)
+  let recv = method_receiver(texpr: call)
+  let mc_args = method_arg_nodes(texpr: call)
+  // Map receiver to callee's first param name
+  let base = match map_get(func_sigs, mname) {
+    Some { value: sig } =>
+      match sig.params |> first {
+        Some { value: first_p } =>
+          let first_pname = param_node_name_at(n: first_p, source_indices: source_indices)
+          if first_pname != "" { map_insert(empty_map(), first_pname, recv) } else { empty_map() }
+        None => empty_map()
+      }
+    None => empty_map()
+  }
+  // Add remaining named args
+  fold(mc_args, init: base, f: (acc, arg_node) =>
+    match arg_name_at(n: arg_node, source_indices: source_indices) {
+      Some { value: aname } => map_insert(acc, aname, arg_value(n: arg_node))
+      None => acc
+    }
+  )
+}
+
+// Compose callee output provenance with argument provenance.
+// Shared by ExprCall and ExprMethodCall in classify_body_provenance.
+fn compose_callee_provenance(callee: String, arg_by_name: Map<String, Node>, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
+  match map_get(func_sigs, callee) {
+    Some { value: sig } =>
+      match sig.output_provenance |> first {
+        Some { value: callee_prov } =>
+          fold(callee_prov |> map_keys, init: empty_map(), f: (acc, callee_pname) =>
+            match map_get(callee_prov, callee_pname) {
+              Some { value: callee_rel } =>
+                match map_get(arg_by_name, callee_pname) {
+                  Some { value: arg } =>
+                    let arg_prov = classify_body_provenance(expr: arg, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+                    fold(arg_prov |> map_keys, init: acc, f: (inner, pname) =>
+                      match map_get(arg_prov, pname) {
+                        Some { value: arg_rel } =>
+                          let composed = compose_sub_value_relations(arg_rel: arg_rel, callee_rel: callee_rel)
+                          match composed { SubValueUnknown => inner  _ =>
+                            match map_get(inner, pname) {
+                              Some { value: existing } => map_insert(inner, pname, meet_sub_value(a: existing, b: composed))
+                              None => map_insert(inner, pname, composed)
+                            }
+                          }
+                        None => inner
+                      }
+                    )
+                  None => acc
+                }
+              None => acc
+            }
+          )
+        None => empty_map()
+      }
+    None => empty_map()
+  }
+}
+
+// Walk body to find record literal returns and classify each field's provenance.
+// Non-recursive: walks through ExprLet/ExprBlock chains to find the terminal
+// expression, then checks one level of ExprMatch/ExprIf for record arms.
+// Returns empty list if no record literal found (fail-closed to scalar mode).
+fn classify_body_per_field(expr: Node, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>) -> List<Map<String, SubValueRelation>> {
+  // Walk through let/block to find terminal, accumulating let_prov context
+  let unwrapped = unwrap_body_terminal(expr: expr, let_prov: let_prov, type_env: type_env)
+  let terminal = unwrapped.expr
+  let terminal_prov = unwrapped.let_prov
+  classify_terminal_per_field(expr: terminal, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: terminal_prov)
+}
+
+// Classify a terminal expression (after let/block unwrapping) for per-field provenance.
+// Handles ExprRecordLit directly, and one level of ExprMatch/ExprIf.
+fn classify_terminal_per_field(expr: Node, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>) -> List<Map<String, SubValueRelation>> {
+  match expr.expr_data {
+    ExprRecordLit { parent_enum: _ } =>
+      expr.children |> map(fi =>
+        classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+      )
+    ExprMatch =>
+      let arm_results = match_arm_nodes(texpr: expr) |> map(arm =>
+        let arm_unwrapped = unwrap_body_terminal(expr: arm_body(n: arm), let_prov: let_prov, type_env: type_env)
+        match arm_unwrapped.expr.expr_data {
+          ExprRecordLit { parent_enum: _ } =>
+            arm_unwrapped.expr.children |> map(fi =>
+              classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: arm_unwrapped.let_prov)
+            )
+          _ => []
+        }
+      )
+      meet_per_field_results(results: arm_results)
+    ExprIf =>
+      let then_unwrapped = unwrap_body_terminal(expr: if_then_branch(texpr: expr), let_prov: let_prov, type_env: type_env)
+      let then_result = match then_unwrapped.expr.expr_data {
+        ExprRecordLit { parent_enum: _ } =>
+          then_unwrapped.expr.children |> map(fi =>
+            classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: then_unwrapped.let_prov)
+          )
+        _ => []
+      }
+      match if_else_branch(texpr: expr) {
+        Some { value: else_expr } =>
+          let else_unwrapped = unwrap_body_terminal(expr: else_expr, let_prov: let_prov, type_env: type_env)
+          let else_result = match else_unwrapped.expr.expr_data {
+            ExprRecordLit { parent_enum: _ } =>
+              else_unwrapped.expr.children |> map(fi =>
+                classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: else_unwrapped.let_prov)
+              )
+            _ => []
+          }
+          meet_per_field_results(results: [then_result, else_result])
+        None => then_result
+      }
+    _ => []
+  }
+}
+
+type BodyTerminal {
+  expr: Node
+  let_prov: Map<String, Map<String, SubValueRelation>>
+}
+
+// Walk through ExprLet/ExprBlock chains to find the terminal expression,
+// accumulating let_prov context. Non-recursive for CX.
+fn unwrap_body_terminal(expr: Node, let_prov: Map<String, Map<String, SubValueRelation>>, type_env: TypeEnv) -> BodyTerminal {
+  match expr.expr_data {
+    ExprBlock =>
+      match expr.children |> last {
+        Some { value: last_stmt } => BodyTerminal { expr: last_stmt, let_prov: let_prov }
+        None => BodyTerminal { expr: expr, let_prov: let_prov }
+      }
+    _ => BodyTerminal { expr: expr, let_prov: let_prov }
+  }
+}
+
+// Meet per-field provenance across branches (match arms, if branches).
+// All branches must have the same field count. Per-field, intersect param maps.
+fn meet_per_field_results(results: List<List<Map<String, SubValueRelation>>>) -> List<Map<String, SubValueRelation>> {
+  match results |> first {
+    None => []
+    Some { value: first_result } =>
+      if first_result |> count == 0 { [] }
+      else {
+        // All branches must have same field count
+        let all_same_count = results |> all(r => r |> count == first_result |> count)
+        if !all_same_count { [] }
+        else {
+          // Per-field: meet each position across branches
+          first_result |> enumerate |> map(pair =>
+            let idx = pair.first
+            let field_provs = results |> map(r =>
+              match r |> skip(idx) |> first {
+                Some { value: m } => m
+                None => empty_prov_map()
+              }
+            )
+            meet_body_provenance_maps(provs: field_provs)
+          )
+        }
+      }
   }
 }
 
@@ -3949,7 +4218,8 @@ fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, ty
     sub_value_vars: empty_map(),
     size_aliases: empty_map(),
     scope_locals: scope_locals,
-    func_sigs: func_sigs
+    func_sigs: func_sigs,
+    per_field_vars: empty_map()
   }
   annotate_descent(body: body, ctx: ctx)
 }
