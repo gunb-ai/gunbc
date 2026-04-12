@@ -76,7 +76,8 @@ LAYER 6: Full vision (depends on Layer 5)
 | Stream B (clone elision) | Tier 1 (ownership) | 🟢/🟡 | Layers 1-2 🟢, Layer 3 needs LS-4 |
 | Track 5 (real program) | End-to-end validation | 🟢 | Track 4 |
 | Track 10 (extdeps) | Data quality | 🟢 | Nothing |
-| **Track 15 (CLI tool modeling)** | **M5 Phase 2** | **🟢** | **Nothing — immediate follow-up to #418** |
+| **Track 15 (CLI tool modeling)** | **M5 Phase 2** | **🟢** | **Nothing — landed in #418** |
+| **Track 16 (CI YAML emission via .dag)** | **M5 Phase 3** | **🟢** | **Nothing — follow-up to #418** |
 | Track 13 (single emitter) | Emission is mechanical | 🟡 | Track 2 + 7 |
 | Track 11 (runtime safety) | Tier 2 | 🟡 | Design phase |
 | Track 12 (verification) | Tier 3 | 🟡 | Track 5 |
@@ -300,10 +301,12 @@ M5: Meta-process modeling (bootstrap, CI, dev process)
       command names (`cargo`, `grep`, `diff`) resolve correctly via
       PATH. Track 15 replaces PATH-based resolution with explicit
       tool registry + upsert (pattern from gunb.ai/tools/toolpaths).
-    Phase 3 (CI as multi-artifact): after Phase 2
-      Once tool modeling lands, `dag run ci_pipeline` works in any
-      environment. Then ci.dag gates switch from script paths to
-      `dag run` invocations and the YAML shim shrinks.
+    Phase 3 (CI as multi-artifact): after Phase 2 — see Track 16
+      ci.yml becomes a generated artifact rendered from a typed
+      Workflow declaration in ci.dag using extdeps/github/actions.dag
+      types. The renderer is a .dag program (Shape B), not a compiler
+      render target (Shape A) — YAML is data manipulation, not a
+      programming language. See Track 16 for the full design.
     Phase 4 (dev process): future
     Design: docs/meta-process-design.md
     Hand-maintained Rust: v2_interpreter.rs (bootstrap), cli_run.rs
@@ -701,6 +704,156 @@ clean but practically broken in any environment where the PATH resolution
 of `cargo`/`grep`/`diff` differs from expectation. The current code only
 works because CI runs on a specific environment where bare names happen
 to resolve correctly. That's a hidden dependency, not a verified one.
+
+---
+
+### Track 16: GitHub Actions YAML emission via .dag program (Lane D, M5 Phase 3)
+
+**Thesis:** The CI workflow YAML should be **generated** from a typed
+`Workflow` declaration that uses the `extdeps/github/actions.dag`
+schema, not hand-maintained. The hand-maintained `.github/workflows/ci.yml`
+is a parallel representation of what `gunbc/ci.dag` already declares
+structurally — same risk we fixed for stage0.
+
+**Current state (post Track 15):** `dsl/extdeps/github/actions.dag`
+models the full GH Actions platform (Workflow, Job, Step, RunnerSpec,
+LogAnnotation, ActionRef, MatrixStrategy) per the spec. **Zero
+consumers.** `dsl/gunbc/ci.dag` declares 8 gates and a `ci_pipeline`
+but NOT the surrounding workflow shape (triggers, runner, job, env,
+permissions). `.github/workflows/ci.yml` is hand-maintained YAML that
+calls `dag run run_ci_pipeline` — it's now a thin shim, but still
+hand-maintained. ci_runner.dag executes the pipeline once invoked.
+
+**Key architectural decision: Shape B (.dag program emits YAML), not
+Shape A (compiler render target).**
+
+The compiler emits real programming languages — Rust, Python, Go — via
+its render targets. YAML is a configuration format, not a programming
+language. Treating YAML as a compiler render target would be a category
+error: it would grow the compiler core for a concern that belongs in
+user code. Instead, a `.dag` program walks a `Workflow` value and
+constructs a YAML string via `concat`/`fold`/`match`. The interpreter
+runs the program; the program writes the file via `shell.Exec.Run`.
+
+This is parallel to how `tools/ratchet.dag` produces grep commands —
+data manipulation in a .dag program, not a compiler concern. It also
+exercises the interpreter as the primary execution path (M5 thesis:
+`dag run` is the development workflow).
+
+**Target file layout:**
+
+```
+dsl/extdeps/github/actions.dag       Workflow/Job/Step types (exists)
+dsl/gunbc/ci.dag                      data ci_workflow: Workflow (NEW)
+dsl/gunbc/tools/yaml_emitter.dag      func render_workflow(wf) -> String (NEW)
+dsl/gunbc/tools/ci_codegen.dag        func gen_ci_yml() (NEW)
+                                      — calls render_workflow + writes file
+dsl/gunbc/tools/freshness.dag         extended to also check ci.yml freshness
+.github/workflows/ci.yml              becomes a generated artifact
+```
+
+**Workflow declaration shape (in ci.dag):**
+
+```dag
+import extdeps.github.actions {
+  Workflow, Job, Step, RunnerSpec, HostedRunner, UbuntuLatest,
+  WorkflowTrigger, Push, PullRequest, ActionRef, RunStep, UsesStep,
+  PermissionLevel, PermRead, WorkflowPermissions, checkout_action,
+  setup_rust_action, cache_action
+}
+
+data ci_workflow: Workflow = {
+  name: "ci",
+  on: [
+    Push { branches: ["main"], paths: [] },
+    PullRequest { branches: ["main"], types: [Opened, Synchronize, Reopened] }
+  ],
+  permissions: WorkflowPermissions { contents: PermRead, ... },
+  env: { CARGO_TERM_COLOR: "always", RUSTFLAGS: "-D warnings" },
+  jobs: [
+    Job {
+      id: "ci",
+      runner: HostedRunner { label: UbuntuLatest },
+      timeout_minutes: 45,
+      steps: [
+        UsesStep { uses: checkout_action, with: { fetch-depth: "1" } },
+        UsesStep { uses: setup_rust_action, with: { toolchain: "1.93.0" } },
+        UsesStep { uses: cache_action, with: { ... } },
+        RunStep { name: "Build Compiler", run: build_command(...) },
+        RunStep { name: "CI Pipeline", run: dag_run_command(...) }
+      ]
+    }
+  ]
+}
+```
+
+**YAML emitter shape (in tools/yaml_emitter.dag):**
+
+```dag
+func render_workflow(wf: Workflow) -> String {
+  let header = "# GENERATED — do not edit. Regenerate via dag run gen_ci_yml.\n"
+  concat(
+    header,
+    "name: ", wf.name, "\n",
+    "on:\n", render_triggers(wf.on),
+    "permissions:\n", render_permissions(wf.permissions),
+    "env:\n", render_env_map(wf.env),
+    "jobs:\n", render_jobs(wf.jobs)
+  )
+}
+
+// ... render_triggers, render_jobs, render_steps with manual indent tracking
+```
+
+**Pure .dag string concatenation. No new compiler features needed.**
+
+**Generator and freshness check:**
+
+```dag
+// tools/ci_codegen.dag
+func gen_ci_yml() -> CodegenResult {
+  match resolve_compiler_tools() {
+    ToolsMissing { ... } => ...
+    ToolsReady { tools: t } => {
+      let yaml_text = render_workflow(wf: ci_workflow)
+      let write = shell.Exec.Run(script: concat("cat > .github/workflows/ci.yml <<'EOF'\n", yaml_text, "\nEOF"))
+      // ...
+    }
+  }
+}
+
+// tools/freshness.dag (extended)
+//   reads committed ci.yml
+//   compares to render_workflow(ci_workflow)
+//   returns Stale if drift
+```
+
+**Done when:**
+- `dsl/extdeps/github/actions.dag` has at least one structural consumer (`ci_workflow` data in `gunbc/ci.dag`)
+- `dsl/gunbc/tools/yaml_emitter.dag` exists and produces byte-identical output to the current hand-maintained `ci.yml`
+- `dsl/gunbc/tools/ci_codegen.dag` provides `gen_ci_yml()` entry point
+- `dag run gen_ci_yml` regenerates `.github/workflows/ci.yml` and the result matches the committed file
+- `dag run check_stage0_freshness` (or new equivalent) verifies the YAML matches the declaration
+- A new CI gate proves the YAML is up-to-date (in CI, regenerate to a temp dir, diff against committed)
+
+**Blocked on:** nothing — follow-up to PR #418. The schema (actions.dag),
+the interpreter (`dag run`), and tool resolution (Track 15) are all in
+place. This is the wire-up step.
+
+**Why this is the next step:** with this, the meta-process modeling
+chain is complete end-to-end. Every CI gate command, every workflow
+trigger, every runner spec, every action ref traces back to typed
+.dag declarations. The only hand-maintained content is the data
+declarations themselves (which are the source of truth). Everything
+else — gate commands, YAML, regen process, freshness checks — is
+derived. Adding a CI gate is one .dag edit; the YAML regenerates
+automatically.
+
+**Open design question (resolve in PR):** should `gen_ci_yml()` write
+the file via `cat > FILE <<EOF` (heredoc) or via a dedicated file-write
+service in `extdeps/shell.dag`? The latter is more honest to the
+extdeps modeling philosophy — `shell.Write.WriteFile` would be a
+proper service operation, not a heredoc workaround.
 
 ---
 
