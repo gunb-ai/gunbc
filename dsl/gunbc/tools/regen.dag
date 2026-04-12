@@ -2,8 +2,7 @@
 //
 // Replaces scripts/regenerate-stage0.sh with a .dag program whose
 // commands derive entirely from gunbc.compiler facts and whose tools
-// are resolved to absolute paths before dispatch (no bare command
-// names leak into shell strings).
+// are resolved to absolute paths before dispatch.
 //
 // Entry point: regenerate_stage0()
 // Run via:     dag run --source-root dsl --function regenerate_stage0
@@ -11,23 +10,21 @@
 module gunbc.tools.regen
 
 import gunbc.compiler {
-  compiler_cycle, cargo_tool, cp_tool, diff_tool, rm_tool,
-  SelfHostingCycle,
+  compiler_cycle, SelfHostingCycle, ResolvedCompilerTools,
+  resolve_compiler_tools, ToolsReady, ToolsMissing,
   build_command, check_command, compile_command, copy_generated_command
 }
-import extdeps.tools { CliTool, resolve, Resolved, NotFound }
 import extdeps.shell
 
 // ── Result types ────────────────────────────────────────────────────
 
-// Where in the regen process a failure occurred.
 type RegenStage = Build | Compile | Copy | Check | Rebuild | Recompile
 
 type RegenResult
   = Converged
   | Diverged
   | Failed { stage: RegenStage, stderr: String }
-  | ToolsMissing { tool: String, hint: String }
+  | RegenToolsMissing { tool: String, hint: String }
 
 // ── Regen workflow ──────────────────────────────────────────────────
 //
@@ -37,97 +34,66 @@ type RegenResult
 //   3. Copy output to stage0, verify it compiles
 //   4. Rebuild compiler with new stage0
 //   5. Compile again (pass 2), verify pass1 == pass2
-//
-// Every command is built from resolved tool paths (cargo, cp, diff, rm)
-// so nothing leaks to ambient PATH.
 
 func regenerate(cycle: SelfHostingCycle) -> RegenResult {
-  // Resolve cargo
-  let cargo_r = resolve(tool: cargo_tool)
-  match cargo_r {
-    NotFound { tool: t, hint: h } => return ToolsMissing { tool: t.name, hint: h }
-    Resolved { resolved: cargo_rt } => {
-      let cargo = cargo_rt.path
+  // Resolve all tools once — one level of match, not four.
+  match resolve_compiler_tools() {
+    ToolsMissing { tool: t, hint: h } => RegenToolsMissing { tool: t, hint: h }
+    ToolsReady { tools: t } => {
+      // Clear stale output from prior runs
+      let _ = shell.Exec.Run(script: concat(t.rm, " -rf .regen-pass1 .regen-pass2"))
 
-      // Resolve cp
-      let cp_r = resolve(tool: cp_tool)
-      match cp_r {
-        NotFound { tool: t, hint: h } => return ToolsMissing { tool: t.name, hint: h }
-        Resolved { resolved: cp_rt } => {
-          let cp_path = cp_rt.path
-
-          // Resolve diff
-          let diff_r = resolve(tool: diff_tool)
-          match diff_r {
-            NotFound { tool: t, hint: h } => return ToolsMissing { tool: t.name, hint: h }
-            Resolved { resolved: diff_rt } => {
-              let diff_path = diff_rt.path
-
-              // Resolve rm
-              let rm_r = resolve(tool: rm_tool)
-              match rm_r {
-                NotFound { tool: t, hint: h } => return ToolsMissing { tool: t.name, hint: h }
-                Resolved { resolved: rm_rt } => {
-                  let rm_path = rm_rt.path
-
-                  // Step 1: Build current compiler from committed stage0
-                  let build = shell.Exec.Run(script: build_command(cargo: cargo, cycle: cycle))
-                  if build.success == false {
-                    return Failed { stage: Build, stderr: build.stderr }
-                  }
-
-                  // Step 2: Clear stale output, then compile .dag source → Rust (pass 1)
-                  let _ = shell.Exec.Run(script: concat(rm_path, " -rf .regen-pass1 .regen-pass2"))
-                  let pass1 = shell.Exec.Run(
-                    script: compile_command(cargo: cargo, cycle: cycle, output_dir: ".regen-pass1")
-                  )
-                  if pass1.success == false {
-                    return Failed { stage: Compile, stderr: pass1.stderr }
-                  }
-
-                  // Step 3: Copy pass 1 output to stage0
-                  let copy = shell.Exec.Run(
-                    script: copy_generated_command(cp: cp_path, from_dir: ".regen-pass1", cycle: cycle)
-                  )
-                  if copy.success == false {
-                    return Failed { stage: Copy, stderr: copy.stderr }
-                  }
-
-                  // Step 4: Verify stage0 compiles with new generated code
-                  let check = shell.Exec.Run(script: check_command(cargo: cargo, cycle: cycle))
-                  if check.success == false {
-                    return Failed { stage: Check, stderr: check.stderr }
-                  }
-
-                  // Step 5: Rebuild compiler with new stage0
-                  let rebuild = shell.Exec.Run(script: build_command(cargo: cargo, cycle: cycle))
-                  if rebuild.success == false {
-                    return Failed { stage: Rebuild, stderr: rebuild.stderr }
-                  }
-
-                  // Step 6: Compile again with rebuilt compiler (pass 2)
-                  let pass2 = shell.Exec.Run(
-                    script: compile_command(cargo: cargo, cycle: cycle, output_dir: ".regen-pass2")
-                  )
-                  if pass2.success == false {
-                    return Failed { stage: Recompile, stderr: pass2.stderr }
-                  }
-
-                  // Step 7: Fixed-point check — pass 1 output == pass 2 output
-                  let diff = shell.Exec.Run(
-                    script: concat(diff_path, " -r .regen-pass1 .regen-pass2")
-                  )
-
-                  // Step 8: Cleanup
-                  let _ = shell.Exec.Run(script: concat(rm_path, " -rf .regen-pass1 .regen-pass2"))
-
-                  if diff.success { Converged } else { Diverged }
-                }
-              }
-            }
-          }
-        }
+      // Step 1: Build current compiler from committed stage0
+      let build = shell.Exec.Run(script: build_command(cargo: t.cargo, cycle: cycle))
+      if build.success == false {
+        return Failed { stage: Build, stderr: build.stderr }
       }
+
+      // Step 2: Compile .dag source → generated Rust (pass 1)
+      let pass1 = shell.Exec.Run(
+        script: compile_command(cargo: t.cargo, cycle: cycle, output_dir: ".regen-pass1")
+      )
+      if pass1.success == false {
+        return Failed { stage: Compile, stderr: pass1.stderr }
+      }
+
+      // Step 3: Copy pass 1 output to stage0
+      let copy = shell.Exec.Run(
+        script: copy_generated_command(cp: t.cp, from_dir: ".regen-pass1", cycle: cycle)
+      )
+      if copy.success == false {
+        return Failed { stage: Copy, stderr: copy.stderr }
+      }
+
+      // Step 4: Verify stage0 compiles with new generated code
+      let check = shell.Exec.Run(script: check_command(cargo: t.cargo, cycle: cycle))
+      if check.success == false {
+        return Failed { stage: Check, stderr: check.stderr }
+      }
+
+      // Step 5: Rebuild compiler with new stage0
+      let rebuild = shell.Exec.Run(script: build_command(cargo: t.cargo, cycle: cycle))
+      if rebuild.success == false {
+        return Failed { stage: Rebuild, stderr: rebuild.stderr }
+      }
+
+      // Step 6: Compile again with rebuilt compiler (pass 2)
+      let pass2 = shell.Exec.Run(
+        script: compile_command(cargo: t.cargo, cycle: cycle, output_dir: ".regen-pass2")
+      )
+      if pass2.success == false {
+        return Failed { stage: Recompile, stderr: pass2.stderr }
+      }
+
+      // Step 7: Fixed-point check — pass 1 output == pass 2 output
+      let diff_result = shell.Exec.Run(
+        script: concat(t.diff, " -r .regen-pass1 .regen-pass2")
+      )
+
+      // Step 8: Cleanup
+      let _ = shell.Exec.Run(script: concat(t.rm, " -rf .regen-pass1 .regen-pass2"))
+
+      if diff_result.success { Converged } else { Diverged }
     }
   }
 }

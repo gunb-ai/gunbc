@@ -2,10 +2,7 @@
 //
 // Replaces scripts/check-stage0-freshness.sh with a .dag program.
 // Verifies that committed stage0 matches what the compiler would
-// currently produce, EXCLUDING hand_maintained_src files (which
-// survive regen and aren't in the emitter output).
-//
-// Simpler than regen: one compile pass + diff (no two-pass convergence).
+// currently produce, EXCLUDING hand_maintained_src files.
 //
 // Entry point: check_stage0_freshness()
 // Run via:     dag run --source-root dsl --function check_stage0_freshness
@@ -13,11 +10,10 @@
 module gunbc.tools.freshness
 
 import gunbc.compiler {
-  compiler_cycle, cargo_tool, diff_tool, rm_tool,
-  SelfHostingCycle,
+  compiler_cycle, SelfHostingCycle,
+  resolve_compiler_tools, ToolsReady, ToolsMissing,
   build_command, compile_command, diff_exclude_args
 }
-import extdeps.tools { CliTool, resolve, Resolved, NotFound }
 import extdeps.shell
 
 // ── Result type ─────────────────────────────────────────────────────
@@ -26,70 +22,47 @@ type FreshnessCheckResult
   = Fresh
   | Stale { diff: String }
   | Failed { stderr: String }
-  | ToolsMissing { tool: String, hint: String }
+  | FreshnessToolsMissing { tool: String, hint: String }
 
 // ── Freshness workflow ──────────────────────────────────────────────
 
 func check_freshness(cycle: SelfHostingCycle) -> FreshnessCheckResult {
-  // Resolve cargo
-  let cargo_r = resolve(tool: cargo_tool)
-  match cargo_r {
-    NotFound { tool: t, hint: h } => return ToolsMissing { tool: t.name, hint: h }
-    Resolved { resolved: cargo_rt } => {
-      let cargo = cargo_rt.path
-
-      // Resolve diff
-      let diff_r = resolve(tool: diff_tool)
-      match diff_r {
-        NotFound { tool: t, hint: h } => return ToolsMissing { tool: t.name, hint: h }
-        Resolved { resolved: diff_rt } => {
-          let diff_path = diff_rt.path
-
-          // Resolve rm
-          let rm_r = resolve(tool: rm_tool)
-          match rm_r {
-            NotFound { tool: t, hint: h } => return ToolsMissing { tool: t.name, hint: h }
-            Resolved { resolved: rm_rt } => {
-              let rm_path = rm_rt.path
-
-              // Build current compiler
-              let build = shell.Exec.Run(script: build_command(cargo: cargo, cycle: cycle))
-              if build.success == false {
-                return Failed { stderr: build.stderr }
-              }
-
-              // Clear any stale temp dir from a prior run
-              let _ = shell.Exec.Run(script: concat(rm_path, " -rf .freshness-check"))
-
-              // Compile .dag source to temp dir
-              let compile = shell.Exec.Run(
-                script: compile_command(cargo: cargo, cycle: cycle, output_dir: ".freshness-check")
-              )
-              if compile.success == false {
-                return Failed { stderr: compile.stderr }
-              }
-
-              // Compare generated output against committed stage0, excluding
-              // hand-maintained files. diff -rq reports differences only.
-              let exclude = diff_exclude_args(cycle: cycle)
-              let diff = shell.Exec.Run(
-                script: concat(diff_path, " -rq", exclude,
-                               " .freshness-check/src/ ", cycle.generated.source_dir, "/")
-              )
-
-              // Cleanup
-              let _ = shell.Exec.Run(script: concat(rm_path, " -rf .freshness-check"))
-
-              if diff.success { Fresh } else { Stale { diff: diff.stdout } }
-            }
-          }
-        }
+  match resolve_compiler_tools() {
+    ToolsMissing { tool: t, hint: h } => FreshnessToolsMissing { tool: t, hint: h }
+    ToolsReady { tools: t } => {
+      // Build current compiler
+      let build = shell.Exec.Run(script: build_command(cargo: t.cargo, cycle: cycle))
+      if build.success == false {
+        return Failed { stderr: build.stderr }
       }
+
+      // Clear any stale temp dir from a prior run
+      let _ = shell.Exec.Run(script: concat(t.rm, " -rf .freshness-check"))
+
+      // Compile .dag source to temp dir
+      let compile = shell.Exec.Run(
+        script: compile_command(cargo: t.cargo, cycle: cycle, output_dir: ".freshness-check")
+      )
+      if compile.success == false {
+        return Failed { stderr: compile.stderr }
+      }
+
+      // Compare generated output against committed stage0, excluding
+      // hand-maintained files.
+      let exclude = diff_exclude_args(cycle: cycle)
+      let diff_result = shell.Exec.Run(
+        script: concat(t.diff, " -rq", exclude,
+                       " .freshness-check/src/ ", cycle.generated.source_dir, "/")
+      )
+
+      // Cleanup
+      let _ = shell.Exec.Run(script: concat(t.rm, " -rf .freshness-check"))
+
+      if diff_result.success { Fresh } else { Stale { diff: diff_result.stdout } }
     }
   }
 }
 
-// Entry point: check freshness of the compiler's own stage0.
 func check_stage0_freshness() -> FreshnessCheckResult {
   check_freshness(cycle: compiler_cycle)
 }

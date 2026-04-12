@@ -1,0 +1,64 @@
+// gunbc/tools/ci_runner.dag — Execute the CI pipeline via the interpreter.
+//
+// Walks the gates declared in gunbc.ci, runs each command, tracks
+// pass/fail with blocking semantics. Returns PipelinePass or
+// PipelineFail so the caller (YAML shim or local dev) can act on
+// the result.
+//
+// Entry point: run_ci_pipeline()
+// Run via:     dag run --source-root dsl --function run_ci_pipeline
+//
+// Target YAML shim (replaces 8 steps with 1):
+//   - run: cargo run -p v2-compiler --release -- run --source-root dsl --function run_ci_pipeline
+
+module gunbc.tools.ci_runner
+
+import gunbc.ci { ci_pipeline, CIGate, CIPipeline }
+import extdeps.shell
+
+// ── Result types ────────────────────────────────────────────────────
+
+type GateOutcome {
+  name: String
+  passed: Bool
+  blocking: Bool
+  output: String
+}
+
+type PipelineResult
+  = PipelinePass { passed: Int, total: Int }
+  | PipelineFail { passed: Int, failed: Int, total: Int, blocking_failures: List<String> }
+
+// ── Gate execution ──────────────────────────────────────────────────
+
+func run_gate(gate: CIGate) -> GateOutcome {
+  let result = shell.Exec.Run(script: gate.command)
+  if result.success {
+    let _ = shell.Exec.Run(script: concat("echo '[PASS] ", gate.name, "'"))
+    { name: gate.name, passed: true, blocking: gate.blocking, output: result.stdout }
+  } else {
+    let _ = shell.Exec.Run(script: concat("echo '[FAIL] ", gate.name, "'"))
+    { name: gate.name, passed: false, blocking: gate.blocking, output: result.stderr }
+  }
+}
+
+// ── Pipeline execution ──────────────────────────────────────────────
+
+func run_ci_pipeline() -> PipelineResult {
+  let outcomes = ci_pipeline.gates |> map(g => run_gate(gate: g))
+
+  let total = ci_pipeline.gates |> fold(init: 0, f: (acc, _) => acc + 1)
+  let passed = outcomes |> filter(o => o.passed) |> fold(init: 0, f: (acc, _) => acc + 1)
+  let failed = total - passed
+
+  let blocking_failures = outcomes
+    |> filter(o => o.passed == false && o.blocking)
+    |> map(o => o.name)
+
+  let blocking_count = blocking_failures |> fold(init: 0, f: (acc, _) => acc + 1)
+  if blocking_count == 0 {
+    PipelinePass { passed: passed, total: total }
+  } else {
+    PipelineFail { passed: passed, failed: failed, total: total, blocking_failures: blocking_failures }
+  }
+}

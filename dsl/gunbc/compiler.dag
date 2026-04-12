@@ -119,6 +119,53 @@ type ResolvedCompilerTools {
   rm: FilePath
 }
 
+type ToolResolveResult
+  = ToolsReady { tools: ResolvedCompilerTools }
+  | ToolsMissing { tool: String, hint: String }
+
+// Resolve all required compiler tools in one call. Workflows call
+// this once at the top and pattern-match — one level deep, not nested.
+// Adding a new tool = edit this function + ResolvedCompilerTools.
+func resolve_compiler_tools() -> ToolResolveResult {
+  let cargo_r = resolve(tool: cargo_tool)
+  match cargo_r {
+    NotFound { tool: t, hint: h } => ToolsMissing { tool: t.name, hint: h }
+    Resolved { resolved: cargo_rt } => {
+      let grep_r = resolve(tool: grep_tool)
+      match grep_r {
+        NotFound { tool: t, hint: h } => ToolsMissing { tool: t.name, hint: h }
+        Resolved { resolved: grep_rt } => {
+          let diff_r = resolve(tool: diff_tool)
+          match diff_r {
+            NotFound { tool: t, hint: h } => ToolsMissing { tool: t.name, hint: h }
+            Resolved { resolved: diff_rt } => {
+              let cp_r = resolve(tool: cp_tool)
+              match cp_r {
+                NotFound { tool: t, hint: h } => ToolsMissing { tool: t.name, hint: h }
+                Resolved { resolved: cp_rt } => {
+                  let rm_r = resolve(tool: rm_tool)
+                  match rm_r {
+                    NotFound { tool: t, hint: h } => ToolsMissing { tool: t.name, hint: h }
+                    Resolved { resolved: rm_rt } => ToolsReady {
+                      tools: {
+                        cargo: cargo_rt.path,
+                        grep: grep_rt.path,
+                        diff: diff_rt.path,
+                        cp: cp_rt.path,
+                        rm: rm_rt.path
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 // ── Test infrastructure ─────────────────────────────────────────────
 // The test crate validates the compiler. Part of the same workspace
 // but not part of the self-hosting cycle (not regenerated).

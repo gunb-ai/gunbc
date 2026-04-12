@@ -1,29 +1,23 @@
 // gunbc/tools/ratchet.dag — L1 type knowledge ratchet check.
 //
-// Replaces scripts/l1-ratchet.sh with a .dag program. Uses the
-// resolved grep path (via extdeps.tools.resolve) so no bare command
-// names leak into shell strings.
-//
-// The search directory derives from compiler.dag (compiler_source.path).
-// Adding or removing a violation pattern is one edit in this file.
+// Replaces scripts/l1-ratchet.sh with a .dag program. Uses
+// resolve_compiler_tools() for the grep path.
 //
 // Entry point: check_l1_ratchet()
 // Run via:     dag run --source-root dsl --function check_l1_ratchet
 
 module gunbc.tools.ratchet
 
-import gunbc.compiler { compiler_source, grep_tool }
-import extdeps.tools { CliTool, resolve, Resolved, NotFound }
+import gunbc.compiler {
+  compiler_source,
+  resolve_compiler_tools, ToolsReady, ToolsMissing
+}
 import extdeps.shell
 
 // ── Violation patterns ──────────────────────────────────────────────
-// Specific patterns that constitute L1 violations: type-world knowledge
-// the compiler should not have.
 
-// Type constructors (leaf_node, container_node, etc.)
 data l1_constructor_pattern: String = "\\b(leaf_node|optional_node|container_node|tuple_node|pair_node|callable_node|error_type_node)\\b"
 
-// Type-name string comparisons (.name == "Optional", .name == "Map", etc.)
 data l1_typename_pattern: String = "\\.name == \"(Optional|Map|List|Set|Dynamic|Error|Int|String|Bool|Float|Unit|Bytes|Json|Secret|Tuple|Callable|None|Some)\""
 
 // ── Result type ─────────────────────────────────────────────────────
@@ -31,17 +25,14 @@ data l1_typename_pattern: String = "\\.name == \"(Optional|Map|List|Set|Dynamic|
 type L1RatchetResult
   = L1Passed
   | L1Failed { report: String }
-  | ToolsMissing { tool: String, hint: String }
+  | RatchetToolsMissing { tool: String, hint: String }
 
 // ── Command derivation ──────────────────────────────────────────────
-// Commands take the resolved grep path as input, not a bare "grep".
 
-// grep -q exits 0 if match found (violation exists), 1 if not.
 fn has_pattern_command(grep: String, pattern: String, dir: String) -> String {
   concat(grep, " -rqE '", pattern, "' ", dir, "/*.dag 2>/dev/null")
 }
 
-// grep -n shows matching lines with file:line context for debugging.
 fn find_violations_command(grep: String, pattern: String, dir: String) -> String {
   concat(grep, " -rnE '", pattern, "' ", dir, "/*.dag 2>/dev/null || true")
 }
@@ -49,29 +40,24 @@ fn find_violations_command(grep: String, pattern: String, dir: String) -> String
 // ── Ratchet workflow ────────────────────────────────────────────────
 
 func check_l1_ratchet() -> L1RatchetResult {
-  // Resolve grep
-  let grep_r = resolve(tool: grep_tool)
-  match grep_r {
-    NotFound { tool: t, hint: h } => ToolsMissing { tool: t.name, hint: h }
-    Resolved { resolved: grep_rt } => {
-      let grep = grep_rt.path
+  match resolve_compiler_tools() {
+    ToolsMissing { tool: t, hint: h } => RatchetToolsMissing { tool: t, hint: h }
+    ToolsReady { tools: t } => {
       let dir = compiler_source.path
 
-      // grep -q: success=true means matches found (violations exist)
       let has_constructors = shell.Exec.Run(
-        script: has_pattern_command(grep: grep, pattern: l1_constructor_pattern, dir: dir)
+        script: has_pattern_command(grep: t.grep, pattern: l1_constructor_pattern, dir: dir)
       )
       let has_typenames = shell.Exec.Run(
-        script: has_pattern_command(grep: grep, pattern: l1_typename_pattern, dir: dir)
+        script: has_pattern_command(grep: t.grep, pattern: l1_typename_pattern, dir: dir)
       )
 
       if has_constructors.success || has_typenames.success {
-        // Collect violation details for debugging
         let constructor_detail = shell.Exec.Run(
-          script: find_violations_command(grep: grep, pattern: l1_constructor_pattern, dir: dir)
+          script: find_violations_command(grep: t.grep, pattern: l1_constructor_pattern, dir: dir)
         )
         let typename_detail = shell.Exec.Run(
-          script: find_violations_command(grep: grep, pattern: l1_typename_pattern, dir: dir)
+          script: find_violations_command(grep: t.grep, pattern: l1_typename_pattern, dir: dir)
         )
         L1Failed { report: concat(constructor_detail.stdout, typename_detail.stdout) }
       } else {
