@@ -21,7 +21,7 @@ import v2.std.core {
   Node, ErrorNode, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   module_imports, module_items,
   param_node_name_at, param_node_type_expr, param_node_default_value,
-  NewlineIndex, authored_name_at,
+  NewlineIndex, authored_name_at, empty_intern_table,
   expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at,
   ExprData, NoExprData,
   VarBindingKind,
@@ -336,7 +336,7 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, sour
 
 fn empty_emit_scope() -> InferScope {
   InferScope {
-    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: empty_map() },
+    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: empty_map(), intern_table: empty_intern_table() },
     func_env: ResolvedFuncEnv { signatures: empty_map() },
     locals: empty_map(),
     match_bound_names: empty_map(),

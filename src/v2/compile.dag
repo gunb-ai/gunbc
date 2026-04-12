@@ -88,17 +88,19 @@ type FrontendAccum {
 // Extract FuncEntry list from a ResolvedGraph for complexity analysis.
 // A function is any item Node with a non-None body.
 fn extract_func_entries(typed: ResolvedGraph) -> List<FuncEntry> {
-  typed.modules |> flat_map(m =>
-    m.items |> filter(item => item.body != None) |> map(item =>
-      FuncEntry {
-        name: item.name,
-        body: item.body.value,
-        params: item.params,
-        span: item.span,
-        is_tail_recursive: item.is_self_recursive && item.has_non_tail_self_call == false
-      }
+  typed.modules
+    |> filter(m => m.items |> any(item => item.body != None))
+    |> flat_map(m =>
+      m.items |> filter(item => item.body != None) |> map(item =>
+        FuncEntry {
+          name: item.name,
+          body: item.body.value,
+          params: item.params,
+          span: item.span,
+          is_tail_recursive: item.is_self_recursive && item.has_non_tail_self_call == false
+        }
+      )
     )
-  )
 }
 
 // Build module-owned recursion context from compiled modules.
@@ -111,11 +113,13 @@ fn build_recursion_context(typed: ResolvedGraph) -> RecursionContext {
 // Uses the same body-bearing item filter as complexity so the pipeline analyses
 // stay aligned over the same compilation boundary.
 fn extract_ownership_proofs(typed: ResolvedGraph) -> List<OwnershipProof> {
-  typed.modules |> flat_map(m =>
-    m.items |> filter(item => item.body != None) |> map(item =>
-      analyze_ownership(func_name: item.name, params: item.params, body: item.body.value, si: m.type_env.source_indices)
+  typed.modules
+    |> filter(m => m.items |> any(item => item.body != None))
+    |> flat_map(m =>
+      m.items |> filter(item => item.body != None) |> map(item =>
+        analyze_ownership(func_name: item.name, params: item.params, body: item.body.value, si: m.type_env.source_indices)
+      )
     )
-  )
 }
 
 fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
@@ -883,7 +887,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       // Stage 4: Reconcile namespaces and infer the module graph.
       // The env-error gate inside reconcile() prevents unresolved type
       // references from reaching emit.
-      let typed = reconcile(graph: norm.graph, source_indices: source_indices)
+      let typed = reconcile(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table)
       let typed_diags = typed.diagnostics
 
       // Stage 5: Complexity analysis.

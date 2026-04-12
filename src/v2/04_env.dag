@@ -6,7 +6,7 @@
 //
 module v2.compiler.infer_env
 
-import v2.std.core { Node, NewlineIndex, source_text_at, authored_name_at }
+import v2.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, source_text_at, authored_name_at }
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 
 // =========================================================================
@@ -19,6 +19,7 @@ type TypeEnv {
   recursive_type_set: Map<String, Bool>
   inductive_fields: Map<String, List<InductiveField>>
   source_indices: Map<String, NewlineIndex>
+  intern_table: InternTable
 }
 
 type TypeBinding {
@@ -121,5 +122,12 @@ fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
   let merged_recursive_set = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
   let merged_inductive_fields = fold(envs, init: empty_map(), f: (acc, env) => merge_inductive_fields(left: acc, right: env.inductive_fields))
   let merged_source_indices = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.source_indices))
-  TypeEnv { bindings: merged_bindings, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_indices: merged_source_indices }
+  // All envs in a merge share the same intern_table (threaded from the
+  // frontend result), so we take the first one rather than re-interning
+  // every string, which would be O(N*M) per merge and dominate compile time.
+  let merged_intern_table = match envs |> first {
+    Some { value: first_env } => first_env.intern_table
+    None => empty_intern_table()
+  }
+  TypeEnv { bindings: merged_bindings, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_indices: merged_source_indices, intern_table: merged_intern_table }
 }

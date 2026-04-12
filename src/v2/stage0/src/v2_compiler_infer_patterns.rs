@@ -7,7 +7,7 @@ use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, find_child_named, NewlineIndex, authored_name_at, ExprData, InferredNode, is_compiler_error, Cardinality, Connective, ErrorNode, make_error_node, MatchPattern, arm_pattern, LiteralValue, with_optional_cardinality, none_type, error_type, no_span, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, find_child_named, NewlineIndex, authored_name_at, ExprData, InferredNode, is_compiler_error, Cardinality, Connective, ErrorNode, make_error_node, MatchPattern, arm_pattern, LiteralValue, with_optional_cardinality, none_type, error_type, no_span, kernel_span, CompilerDiagnostic};
 use crate::v2_std_core::ExprData::{NoExprData};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
@@ -68,7 +68,7 @@ pub fn synthesize_optional_some_variant(scrut: &Rc<Node>) -> Rc<Node> {
 let value_field = Rc::new(Node {
     name: "value".to_string(),
     span: scrut.span.clone(),
-    ident_span: Some(no_span()),
+    ident_span: Some(kernel_span(&"value".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -90,7 +90,7 @@ let value_field = Rc::new(Node {
 let some_node = Rc::new(Node {
     name: "Some".to_string(),
     span: scrut.span.clone(),
-    ident_span: Some(no_span()),
+    ident_span: Some(kernel_span(&"Some".to_string())),
     children: Rc::new(vec![value_field]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
