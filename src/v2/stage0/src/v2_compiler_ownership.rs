@@ -103,7 +103,7 @@ pub struct UsageAccum {
 
 pub fn empty_usage_accum() -> Rc<UsageAccum> {
     Rc::new(UsageAccum {
-    bindings: v2_rt::rc_empty_map::<Rc<BindingUsage>>(),
+    bindings: v2_rt::rc_empty_map::<String, Rc<BindingUsage>>(),
     fold_call_nodes: Rc::new(vec![]),
 })
 }
@@ -372,7 +372,7 @@ pub fn is_owned_local(kind: Option<Rc<VarBindingKind>>) -> bool {
 }
 
 pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Rc<HashMap<String, bool>> {
-    Rc::new({ let mut __result = Vec::new(); for usage in Rc::new(v2_rt::map_values(&proof.bindings.clone())).iter().cloned() { if ((binding_fan_out(usage.clone()) == 1) && is_owned_local(usage.binding_kind.clone())) { __result.push(usage); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, usage: Rc<BindingUsage>| v2_rt::rc_map_insert(acc.clone(), usage.name.clone(), true))
+    Rc::new({ let mut __result = Vec::new(); for usage in Rc::new(v2_rt::map_values(&proof.bindings.clone())).iter().cloned() { if ((binding_fan_out(usage.clone()) == 1) && is_owned_local(usage.binding_kind.clone())) { __result.push(usage); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, usage: Rc<BindingUsage>| v2_rt::rc_map_insert(acc.clone(), usage.name.clone(), true))
 }
 
 pub fn build_read_only_params(proof: Rc<OwnershipProof>, param_names: Rc<HashMap<String, bool>>) -> Rc<HashMap<String, bool>> {
@@ -381,7 +381,7 @@ pub fn build_read_only_params(proof: Rc<OwnershipProof>, param_names: Rc<HashMap
     EdgeKind::Projected => true,
     EdgeKind::Threaded => true,
     _ => false,
-}) { __all = false; break; } } __all }) { __result.push(usage); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, usage: Rc<BindingUsage>| v2_rt::rc_map_insert(acc.clone(), usage.name.clone(), true))
+}) { __all = false; break; } } __all }) { __result.push(usage); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, usage: Rc<BindingUsage>| v2_rt::rc_map_insert(acc.clone(), usage.name.clone(), true))
 }
 
 pub fn collect_callable_refs(texpr: &Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<HashMap<String, bool>> {
@@ -390,13 +390,13 @@ pub fn collect_callable_refs(texpr: &Rc<Node>, si: &Rc<HashMap<String, Rc<Newlin
     ExprData::ExprVar { binding_kind: bk, .. } => match bk.clone().as_deref().cloned() {
     Some(VarBindingKind::FunctionValueBinding) => {
             let n = expr_var_name_at(texpr.clone(), si.clone());
-v2_rt::rc_map_insert(v2_rt::rc_empty_map::<bool>(), n, true)
+v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String, bool>(), n, true)
 },
-    _ => v2_rt::rc_empty_map::<bool>(),
+    _ => v2_rt::rc_empty_map::<String, bool>(),
 },
-    ExprData::ExprLiteral { .. } => v2_rt::rc_empty_map::<bool>(),
+    ExprData::ExprLiteral { .. } => v2_rt::rc_empty_map::<String, bool>(),
     ExprData::ExprFieldAccess { .. } => collect_callable_refs(&field_access_base(texpr.clone()), &si),
-    ExprData::ExprCall { .. } => texpr.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, a: Rc<Node>| v2_rt::rc_map_merge(acc.clone(), collect_callable_refs(&arg_value(&a), &si))),
+    ExprData::ExprCall { .. } => texpr.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, a: Rc<Node>| v2_rt::rc_map_merge(acc.clone(), collect_callable_refs(&arg_value(&a), &si))),
     ExprData::ExprMethodCall { .. } => {
             let recv = collect_callable_refs(&method_receiver(texpr.clone()), &si);
 method_arg_nodes(texpr.clone()).iter().cloned().fold(recv.clone(), |acc: Rc<HashMap<String, bool>>, a: Rc<Node>| v2_rt::rc_map_merge(acc.clone(), collect_callable_refs(&arg_value(&a), &si)))
@@ -406,7 +406,7 @@ method_arg_nodes(texpr.clone()).iter().cloned().fold(recv.clone(), |acc: Rc<Hash
 let then_br = collect_callable_refs(&if_then_branch(texpr.clone()), &si);
 let else_br = match if_else_branch(texpr.clone()) {
     Some(eb) => collect_callable_refs(&eb, &si),
-    None => v2_rt::rc_empty_map::<bool>(),
+    None => v2_rt::rc_empty_map::<String, bool>(),
 };
 v2_rt::rc_map_merge(v2_rt::rc_map_merge(cond, then_br), else_br)
 },
@@ -421,18 +421,18 @@ match let_body(texpr.clone()) {
     None => val,
 }
 },
-    ExprData::ExprBlock => texpr.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, child: Rc<Node>| v2_rt::rc_map_merge(acc.clone(), collect_callable_refs(&child, &si))),
+    ExprData::ExprBlock => texpr.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, child: Rc<Node>| v2_rt::rc_map_merge(acc.clone(), collect_callable_refs(&child, &si))),
     ExprData::ExprReturn => match texpr.children.clone().first().cloned() {
     Some(child) => collect_callable_refs(&child, &si),
-    None => v2_rt::rc_empty_map::<bool>(),
+    None => v2_rt::rc_empty_map::<String, bool>(),
 },
     ExprData::ExprLambda { .. } => collect_callable_refs(&lambda_body(texpr.clone()), &si),
     ExprData::ExprForEach => {
             let col = collect_callable_refs(&foreach_collection(texpr.clone()), &si);
 v2_rt::rc_map_merge(col, collect_callable_refs(&foreach_body(texpr.clone()), &si))
 },
-    ExprData::ExprRecordLit { .. } => texpr.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, field: Rc<Node>| v2_rt::rc_map_merge(acc.clone(), collect_callable_refs(&arg_value(&field), &si))),
-    _ => v2_rt::rc_empty_map::<bool>(),
+    ExprData::ExprRecordLit { .. } => texpr.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, field: Rc<Node>| v2_rt::rc_map_merge(acc.clone(), collect_callable_refs(&arg_value(&field), &si))),
+    _ => v2_rt::rc_empty_map::<String, bool>(),
 }
     })
 }
@@ -500,7 +500,7 @@ pub fn fold_body_safe_field_moves(lambda_node: &Rc<Node>, acc_name: String, si: 
     ExprData::ExprLambda { .. } => {
         let body = lambda_body(lambda_node.clone());
 let moves = collect_acc_field_moves(&body, &acc_name, &si);
-let deduped = moves.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |seen: Rc<HashMap<String, bool>>, field: String| v2_rt::rc_map_insert(seen.clone(), field.clone(), true));
+let deduped = moves.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |seen: Rc<HashMap<String, bool>>, field: String| v2_rt::rc_map_insert(seen.clone(), field.clone(), true));
 ((Rc::new(v2_rt::map_keys(&deduped)).len() as i64) == (moves.clone().len() as i64))
 },
     _ => true,

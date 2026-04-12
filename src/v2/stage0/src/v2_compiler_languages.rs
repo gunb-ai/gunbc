@@ -184,19 +184,6 @@ pub enum IfValueForm {
 pub struct ExpressionSemantics {
     pub if_value_form: IfValueForm,
     pub wildcard_case: Option<String>,
-    pub variant_pattern: Option<Rc<VariantPatternSyntax>>,
-    pub guard_prefix: Option<String>,
-    pub empty_return_value: String,
-    pub return_suffix: String,
-    pub suppress_unit_return: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct VariantPatternSyntax {
-    pub open: String,
-    pub close: String,
-    pub binding_sep: String,
-    pub empty_suffix: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -520,16 +507,6 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     expression_semantics: Rc::new(ExpressionSemantics {
     if_value_form: IfValueForm::IfExpression,
     wildcard_case: None,
-    variant_pattern: Some(Rc::new(VariantPatternSyntax {
-    open: " { ".to_string(),
-    close: " }".to_string(),
-    binding_sep: ": ".to_string(),
-    empty_suffix: "".to_string(),
-})),
-    guard_prefix: Some(" if ".to_string()),
-    empty_return_value: "()".to_string(),
-    return_suffix: "".to_string(),
-    suppress_unit_return: false,
 }),
     lambda_template: rust_lambda_template(),
     error_expr_template: rust_error_expr_template(),
@@ -567,7 +544,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     async_call_prefix: "".to_string(),
     bridge_method_prefix: "".to_string(),
     bridge_method_case: NamingCase::SnakeCase,
-    bridge_method_overrides: v2_rt::rc_empty_map::<String>(),
+    bridge_method_overrides: v2_rt::rc_empty_map::<String, String>(),
     record_lit: Rc::new(RecordLitSyntax {
     named_open: " {".to_string(),
     named_close: "}".to_string(),
@@ -695,16 +672,6 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     expression_semantics: Rc::new(ExpressionSemantics {
     if_value_form: IfValueForm::ConditionalTernary,
     wildcard_case: None,
-    variant_pattern: Some(Rc::new(VariantPatternSyntax {
-    open: "(".to_string(),
-    close: ")".to_string(),
-    binding_sep: "=".to_string(),
-    empty_suffix: "()".to_string(),
-})),
-    guard_prefix: Some(" if ".to_string()),
-    empty_return_value: "None".to_string(),
-    return_suffix: "".to_string(),
-    suppress_unit_return: false,
 }),
     lambda_template: python_lambda_template(),
     error_expr_template: python_error_expr_template(),
@@ -740,7 +707,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     async_call_prefix: "await ".to_string(),
     bridge_method_prefix: "".to_string(),
     bridge_method_case: NamingCase::SnakeCase,
-    bridge_method_overrides: v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String>(), "with".to_string(), "with_update".to_string()),
+    bridge_method_overrides: v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String, String>(), "with".to_string(), "with_update".to_string()),
     record_lit: Rc::new(RecordLitSyntax {
     named_open: "(".to_string(),
     named_close: ")".to_string(),
@@ -868,11 +835,6 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     expression_semantics: Rc::new(ExpressionSemantics {
     if_value_form: IfValueForm::IfStatement,
     wildcard_case: Some("default".to_string()),
-    variant_pattern: None,
-    guard_prefix: None,
-    empty_return_value: "struct{}{}, nil".to_string(),
-    return_suffix: ", nil".to_string(),
-    suppress_unit_return: true,
 }),
     lambda_template: go_lambda_template(),
     error_expr_template: go_error_expr_template(),
@@ -907,7 +869,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     async_call_prefix: "".to_string(),
     bridge_method_prefix: "v2rt.".to_string(),
     bridge_method_case: NamingCase::PascalCase,
-    bridge_method_overrides: v2_rt::rc_empty_map::<String>(),
+    bridge_method_overrides: v2_rt::rc_empty_map::<String, String>(),
     record_lit: Rc::new(RecordLitSyntax {
     named_open: "{".to_string(),
     named_close: "}".to_string(),
@@ -1035,16 +997,6 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
     expression_semantics: Rc::new(ExpressionSemantics {
     if_value_form: IfValueForm::IfExpression,
     wildcard_case: None,
-    variant_pattern: Some(Rc::new(VariantPatternSyntax {
-    open: " { ".to_string(),
-    close: " }".to_string(),
-    binding_sep: ": ".to_string(),
-    empty_suffix: "".to_string(),
-})),
-    guard_prefix: Some(" if ".to_string()),
-    empty_return_value: "()".to_string(),
-    return_suffix: "".to_string(),
-    suppress_unit_return: false,
 }),
     lambda_template: dag_lambda_template(),
     error_expr_template: dag_error_expr_template(),
@@ -1080,7 +1032,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
     async_call_prefix: "".to_string(),
     bridge_method_prefix: "".to_string(),
     bridge_method_case: NamingCase::SnakeCase,
-    bridge_method_overrides: v2_rt::rc_empty_map::<String>(),
+    bridge_method_overrides: v2_rt::rc_empty_map::<String, String>(),
     record_lit: Rc::new(RecordLitSyntax {
     named_open: " {".to_string(),
     named_close: "}".to_string(),
