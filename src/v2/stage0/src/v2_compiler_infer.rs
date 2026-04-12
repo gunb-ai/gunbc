@@ -8,7 +8,7 @@ use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
 pub use crate::std_types::{SourceSpan, container_param_name};
 pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
-pub use crate::v2_std_core::{Node, authored_name_at, NewlineIndex, has_child_named, build_newline_index, module_node, module_imports, module_items, import_is_all, make_param_node, param_node_name_at, param_node_type_expr, field_node_type_expr, Connective, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name_at, field_access_base, field_access_field_at, expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at, lambda_param_names_at, record_lit_type_name_at, make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_text_part_node, make_interp_part_node, map_children, arg_value, arg_name_at, has_inferred, is_compiler_error, InferredNode, Cardinality, ErrorNode, make_error_node, is_error_diagnostic, resource_use_name_at, resource_use_resource, kernel_type_set, is_kernel_type, is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, LambdaSemantics, ExprErrorKind, BinOp, UnaryOpKind, unaryop_operand, MatchPattern, StringPart, make_field_binding_node, field_binding_name_at, field_binding_pattern, let_value, let_body, lambda_body, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, make_transport_node, local_transport_node, with_optional_cardinality, with_required_cardinality, no_span, make_span, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, is_container_type, container_expected_arity, default_ident_span, node_name_span, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, InternTable, authored_name_at, NewlineIndex, has_child_named, build_newline_index, module_node, module_imports, module_items, import_is_all, make_param_node, param_node_name_at, param_node_type_expr, field_node_type_expr, Connective, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name_at, field_access_base, field_access_field_at, expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at, lambda_param_names_at, record_lit_type_name_at, make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_text_part_node, make_interp_part_node, map_children, arg_value, arg_name_at, has_inferred, is_compiler_error, InferredNode, Cardinality, ErrorNode, make_error_node, is_error_diagnostic, resource_use_name_at, resource_use_resource, kernel_type_set, is_kernel_type, is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, LambdaSemantics, ExprErrorKind, BinOp, UnaryOpKind, unaryop_operand, MatchPattern, StringPart, make_field_binding_node, field_binding_name_at, field_binding_pattern, let_value, let_body, lambda_body, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, make_transport_node, local_transport_node, with_optional_cardinality, with_required_cardinality, no_span, make_span, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, is_container_type, container_expected_arity, default_ident_span, node_name_span, CompilerDiagnostic};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
@@ -295,7 +295,7 @@ continue;
 }
 
 pub fn nominal_leaf_type(name: String) -> Rc<Node> {
-    nominal_type_ref(name)
+    nominal_type_ref(&name)
 }
 
 pub fn nominal_type_binding(name: &String) -> Rc<TypeBinding> {
@@ -2237,8 +2237,8 @@ if (type_name.clone() == None) {
             {
                 let child_nodes = Rc::new({ let mut __result = Vec::new(); for fir in fi_infer_results.clone().iter().cloned() { __result.push(Rc::new(Node {
     name: field_init_node_name_at(fir.typed_field.clone(), scope.type_env.clone().source_indices.clone()),
-    span: no_span(),
-    ident_span: default_ident_span(field_init_node_name_at(fir.typed_field.clone(), scope.type_env.clone().source_indices.clone()), no_span()),
+    span: fir.typed_field.clone().span.clone(),
+    ident_span: fir.typed_field.clone().ident_span.clone(),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -4953,7 +4953,7 @@ pub fn kernel_span(name: &String) -> Rc<SourceSpan> {
 })
 }
 
-pub fn build_type_env(module: &Rc<ResolvedModule>, parent_index: &Rc<HashMap<String, Rc<TypedModule>>>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<BuildTypeEnvResult> {
+pub fn build_type_env(module: &Rc<ResolvedModule>, parent_index: &Rc<HashMap<String, Rc<TypedModule>>>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>, intern_table: &Rc<InternTable>) -> Rc<BuildTypeEnvResult> {
     {
         let source_indices = Rc::new(v2_rt::map_keys(&kernel_type_set())).iter().cloned().fold(source_indices.clone(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, name: String| v2_rt::rc_map_insert(acc.clone(), v2_rt::concat(v2_rt::concat("<kernel:".to_string(), name.clone()), ">".to_string()), build_newline_index(v2_rt::concat(v2_rt::concat("<kernel:".to_string(), name.clone()), ">".to_string()), &name)));
 let source_indices = Rc::new(vec!["Optional".to_string(), "Some".to_string(), "None".to_string(), "value".to_string(), "none".to_string()]).iter().cloned().fold(source_indices.clone(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, name: String| v2_rt::rc_map_insert(acc.clone(), v2_rt::concat(v2_rt::concat("<kernel:".to_string(), name.clone()), ">".to_string()), build_newline_index(v2_rt::concat(v2_rt::concat("<kernel:".to_string(), name.clone()), ">".to_string()), &name)));
@@ -5080,6 +5080,7 @@ let kernel = Rc::new(TypeEnv {
     recursive_type_set: compiler_recursive_types(),
     inductive_fields: node_fields,
     source_indices: source_indices.clone(),
+    intern_table: intern_table.clone(),
 });
 let imports_std_types = { let mut __found = false; for imp in module.resolved_imports.clone().iter().cloned() { if (imp.module_path.clone().as_str() == "std.types".to_string().as_str()) { __found = true; break; } } __found };
 let std_types_parent_env = if ((module.module.clone().name.clone().as_str() != "std.types".to_string().as_str()) && (imports_std_types == false)) {
@@ -5120,6 +5121,7 @@ let import_env = Rc::new(TypeEnv {
     recursive_type_set: import_recursive_set,
     inductive_fields: import_inductive_fields,
     source_indices: source_indices.clone(),
+    intern_table: intern_table.clone(),
 });
 let import_diags = Rc::new({ let mut __result = Vec::new(); for imp in module.resolved_imports.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&parent_index, imp.module_path.clone()) {
     Some(_) => Rc::new(vec![]),
@@ -5259,6 +5261,7 @@ let pre_local_env = Rc::new(TypeEnv {
     recursive_type_set: v2_rt::rc_empty_map::<bool>(),
     inductive_fields: v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(),
     source_indices: source_indices.clone(),
+    intern_table: intern_table.clone(),
 });
 let merged = merge_envs(&Rc::new(vec![kernel, import_env, pre_local_env]));
 let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc.clone(), b.name.clone(), node_type_deps(&b.resolved.clone(), &source_indices)));
@@ -5273,6 +5276,7 @@ let unresolved_env = Rc::new(TypeEnv {
     recursive_type_set: cross_type_set.clone(),
     inductive_fields: merged_inductive_fields,
     source_indices: source_indices.clone(),
+    intern_table: intern_table.clone(),
 });
 let resolved = resolve_env_bindings(&unresolved_env, module.module.clone().name.clone(), &local_name_set, all_deps_map.clone());
 let resolved_env_out = resolved.env.clone();
@@ -5283,6 +5287,7 @@ let final_env = Rc::new(TypeEnv {
     recursive_type_set: resolved_env_out.recursive_type_set.clone(),
     inductive_fields: resolved_env_out.inductive_fields.clone(),
     source_indices: resolved_env_out.source_indices.clone(),
+    intern_table: intern_table.clone(),
 });
 Rc::new(BuildTypeEnvResult {
     env: final_env,
@@ -5291,15 +5296,15 @@ Rc::new(BuildTypeEnvResult {
 }
 }
 
-pub fn build_type_env_unresolved(module: &Rc<ResolvedModule>, parent_index: &Rc<HashMap<String, Rc<TypedModule>>>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<BuildTypeEnvResult> {
+pub fn build_type_env_unresolved(module: &Rc<ResolvedModule>, parent_index: &Rc<HashMap<String, Rc<TypedModule>>>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>, intern_table: &Rc<InternTable>) -> Rc<BuildTypeEnvResult> {
     {
         let zero_span = make_span(0, 0);
 let kernel_bindings = Rc::new(v2_rt::map_keys(&kernel_type_set())).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<TypeBinding>>(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), Rc::new(TypeBinding {
     name: name.clone(),
     resolved: Rc::new(Node {
     name: name.clone(),
-    span: no_span(),
-    ident_span: default_ident_span(name.clone(), no_span()),
+    span: kernel_span(&name),
+    ident_span: Some(kernel_span(&name)),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -5320,8 +5325,8 @@ let kernel_bindings = Rc::new(v2_rt::map_keys(&kernel_type_set())).iter().cloned
 })));
 let some_value_field = Rc::new(Node {
     name: "value".to_string(),
-    span: zero_span.clone(),
-    ident_span: Some(zero_span.clone()),
+    span: kernel_span(&"value".to_string()),
+    ident_span: Some(kernel_span(&"value".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -5342,8 +5347,8 @@ let some_value_field = Rc::new(Node {
 });
 let some_variant = Rc::new(Node {
     name: "Some".to_string(),
-    span: zero_span.clone(),
-    ident_span: Some(zero_span.clone()),
+    span: kernel_span(&"Some".to_string()),
+    ident_span: Some(kernel_span(&"Some".to_string())),
     children: Rc::new(vec![some_value_field]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -5362,8 +5367,8 @@ let some_variant = Rc::new(Node {
 });
 let kernel_optional = Rc::new(Node {
     name: "Optional".to_string(),
-    span: zero_span.clone(),
-    ident_span: Some(zero_span.clone()),
+    span: kernel_span(&"Optional".to_string()),
+    ident_span: Some(kernel_span(&"Optional".to_string())),
     children: Rc::new(vec![some_variant, none_type()]),
     connective: Connective::Disj,
     params: Rc::new(vec![]),
@@ -5391,6 +5396,7 @@ let kernel = Rc::new(TypeEnv {
     recursive_type_set: v2_rt::rc_empty_map::<bool>(),
     inductive_fields: v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(),
     source_indices: source_indices.clone(),
+    intern_table: intern_table.clone(),
 });
 let imports_std_types = { let mut __found = false; for imp in module.resolved_imports.clone().iter().cloned() { if (imp.module_path.clone().as_str() == "std.types".to_string().as_str()) { __found = true; break; } } __found };
 let std_types_parent_env = if ((module.module.clone().name.clone().as_str() != "std.types".to_string().as_str()) && (imports_std_types == false)) {
@@ -5431,6 +5437,7 @@ let import_env = Rc::new(TypeEnv {
     recursive_type_set: import_recursive_set,
     inductive_fields: import_inductive_fields,
     source_indices: source_indices.clone(),
+    intern_table: intern_table.clone(),
 });
 let local_bindings = module_items(module.module.clone()).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<TypeBinding>>(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, item: Rc<Node>| {
             let has_structure = (item.connective.clone() != Connective::NoConnective);
@@ -5517,6 +5524,7 @@ let pre_local_env = Rc::new(TypeEnv {
     recursive_type_set: v2_rt::rc_empty_map::<bool>(),
     inductive_fields: v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(),
     source_indices: source_indices.clone(),
+    intern_table: intern_table.clone(),
 });
 let merged = merge_envs(&Rc::new(vec![kernel, import_env, pre_local_env]));
 let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc.clone(), b.name.clone(), node_type_deps(&b.resolved.clone(), &source_indices)));
@@ -5531,6 +5539,7 @@ let unresolved_env = Rc::new(TypeEnv {
     recursive_type_set: cross_type_set.clone(),
     inductive_fields: merged_inductive_fields,
     source_indices: source_indices.clone(),
+    intern_table: intern_table.clone(),
 });
 Rc::new(BuildTypeEnvResult {
     env: unresolved_env,
@@ -5765,9 +5774,9 @@ pub struct TypecheckModuleResult {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn typecheck_module(resolved: &Rc<ResolvedModule>, parent_index: &Rc<HashMap<String, Rc<TypedModule>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<TypecheckModuleResult> {
+pub fn typecheck_module(resolved: &Rc<ResolvedModule>, parent_index: &Rc<HashMap<String, Rc<TypedModule>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>, intern_table: Rc<InternTable>) -> Rc<TypecheckModuleResult> {
     {
-        let env_result = build_type_env(&resolved, &parent_index, &source_indices);
+        let env_result = build_type_env(&resolved, &parent_index, &source_indices, &intern_table);
 let env = env_result.env.clone();
 let env_diags = env_result.diagnostics.clone();
 let env_errors = Rc::new({ let mut __result = Vec::new(); for d in env_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
@@ -5912,6 +5921,7 @@ return Rc::new(EnvResolveResult {
     recursive_type_set: env.recursive_type_set.clone(),
     inductive_fields: env.inductive_fields.clone(),
     source_indices: env.source_indices.clone(),
+    intern_table: env.intern_table.clone(),
 }),
     diagnostics: v2_rt::concat(diagnostics.clone(), stuck_accum.diagnostics.clone()),
 })
@@ -5944,6 +5954,7 @@ let __tco_1 = Rc::new(TypeEnv {
     recursive_type_set: env.recursive_type_set.clone(),
     inductive_fields: env.inductive_fields.clone(),
     source_indices: env.source_indices.clone(),
+    intern_table: env.intern_table.clone(),
 });
 let __tco_2 = v2_rt::concat(diagnostics, ready_accum.diagnostics.clone());
 let __tco_3 = (fuel - 1);
@@ -6036,11 +6047,11 @@ Rc::new(EmitGraphInfo {
 }
 }
 
-pub fn typecheck(graph: Rc<ModuleGraph>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<TypedGraph> {
-    typecheck_modules(graph.modules.clone(), Rc::new(vec![]), v2_rt::rc_empty_map::<Rc<TypedModule>>(), v2_rt::rc_empty_map::<Rc<ItemInfo>>(), Rc::new(vec![]), source_indices)
+pub fn typecheck(graph: Rc<ModuleGraph>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>, intern_table: Rc<InternTable>) -> Rc<TypedGraph> {
+    typecheck_modules(graph.modules.clone(), Rc::new(vec![]), v2_rt::rc_empty_map::<Rc<TypedModule>>(), v2_rt::rc_empty_map::<Rc<ItemInfo>>(), Rc::new(vec![]), source_indices, intern_table)
 }
 
-pub fn typecheck_modules(mut remaining: Rc<Vec<Rc<ResolvedModule>>>, mut modules: Rc<Vec<Rc<TypedModule>>>, mut module_index: Rc<HashMap<String, Rc<TypedModule>>>, mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>>, mut diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>, mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<TypedGraph> {
+pub fn typecheck_modules(mut remaining: Rc<Vec<Rc<ResolvedModule>>>, mut modules: Rc<Vec<Rc<TypedModule>>>, mut module_index: Rc<HashMap<String, Rc<TypedModule>>>, mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>>, mut diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>, mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>, mut intern_table: Rc<InternTable>) -> Rc<TypedGraph> {
     loop {
         match remaining.clone().first().cloned() {
     None => { let expanded_registry = expand_transitive_services(modules.clone(), item_registry, 5);
@@ -6050,7 +6061,7 @@ break Rc::new(TypedGraph {
     diagnostics: Rc::new({ let mut __result = Vec::new(); for c in diag_chunks.iter().cloned() { __result.extend((*c.clone()).iter().cloned()); } __result }),
 }); },
     Some(resolved) => { let parent_result = collect_parent_envs(&resolved, module_index.clone());
-let tc_result = typecheck_module(&resolved, &module_index, source_indices.clone());
+let tc_result = typecheck_module(&resolved, &module_index, source_indices.clone(), intern_table.clone());
 let typed = tc_result.typed.clone();
 let tc_diags = tc_result.diagnostics.clone();
 {
@@ -6070,9 +6081,9 @@ continue;
 }
 }
 
-pub fn reconcile(graph: Rc<ModuleGraph>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<ResolvedGraph> {
+pub fn reconcile(graph: Rc<ModuleGraph>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>, intern_table: Rc<InternTable>) -> Rc<ResolvedGraph> {
     {
-        let typed = typecheck(graph, source_indices);
+        let typed = typecheck(graph, source_indices, intern_table);
 let emit_info = build_emit_graph_info(&typed.modules.clone());
 Rc::new(ResolvedGraph {
     modules: typed.modules.clone(),

@@ -959,7 +959,7 @@ fn compile_dag_with_complexity(source: &str) -> Rc<v2_compiler::v2_compiler_comp
     let graph = frontend.graph.clone().expect("frontend must produce a graph");
     let norm = normalize_graph(&graph, Rc::new(HashMap::new()));
     let source_indices = Rc::new(HashMap::new());
-    let typed = reconcile(norm.graph.clone(), source_indices);
+    let typed = reconcile(norm.graph.clone(), source_indices, frontend.intern_table.clone());
 
     let func_entries = extract_func_entries(typed.clone());
     let recursion_ctx = build_recursion_context(typed);
@@ -1781,7 +1781,7 @@ fn diag_parser_scc_edges() {
     let frontend = front_end_sources(Rc::new(sources));
     let graph = frontend.graph.clone().expect("frontend must produce a graph");
     let norm = normalize_graph(&graph, Rc::new(HashMap::new()));
-    let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()));
+    let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()), frontend.intern_table.clone());
     let func_entries = extract_func_entries(typed);
 
     let func_index: HashMap<String, Rc<FuncEntry>> =
@@ -1858,7 +1858,7 @@ fn diag_parse_node_decl_env() {
     let frontend = front_end_sources(Rc::new(sources));
     let graph = frontend.graph.clone().expect("frontend must produce a graph");
     let norm = normalize_graph(&graph, Rc::new(HashMap::new()));
-    let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()));
+    let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()), frontend.intern_table.clone());
     let func_entries = extract_func_entries(typed.clone());
 
     let func_index: HashMap<String, Rc<FuncEntry>> =
@@ -7097,7 +7097,7 @@ fn diag_render_node_type_evidence() {
     let frontend = front_end_sources(Rc::new(sources));
     let graph = frontend.graph.clone().expect("frontend must produce a graph");
     let norm = normalize_graph(&graph, Rc::new(HashMap::new()));
-    let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()));
+    let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()), frontend.intern_table.clone());
     let func_entries = extract_func_entries(typed.clone());
 
     let entry = func_entries.iter().find(|e| e.name == "render_node_type");
@@ -7149,7 +7149,7 @@ fn diag_emitter_scc() {
     let frontend = front_end_sources(Rc::new(sources));
     let graph = frontend.graph.clone().expect("frontend must produce a graph");
     let norm = normalize_graph(&graph, Rc::new(HashMap::new()));
-    let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()));
+    let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()), frontend.intern_table.clone());
     let func_entries = extract_func_entries(typed.clone());
 
     // Build func_index

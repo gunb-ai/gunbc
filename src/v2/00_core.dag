@@ -627,10 +627,20 @@ fn authored_name_at(source_indices: Map<String, NewlineIndex>, node: Node) -> St
       match map_get(source_indices, span.file) {
         Some { value: index } =>
           let text = source_text_at(index: index, span: span)
-          if text == "" { node.name } else { text }
-        None => node.name
+          if text == "" { "" } else { text }
+        None =>
+          // Kernel spans encode the name in the file key: "<kernel:Name>".
+          // Extract the name directly without requiring pre-registration
+          // in source_indices for every possible synthesized name.
+          if string_length(s: span.file) > 8 && substring(s: span.file, start: 0, end: 8) == "<kernel:" {
+            substring(s: span.file, start: 8, end: string_length(s: span.file) - 1)
+          } else {
+            // Remaining fallback for parser-synthesized spans with file "".
+            // These will migrate to kernel_span in a follow-up PR.
+            node.name
+          }
       }
-    None => node.name
+    None => ""
   }
 }
 

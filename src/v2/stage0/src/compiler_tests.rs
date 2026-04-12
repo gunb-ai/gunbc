@@ -738,6 +738,7 @@ mod compiler_tests {
 
                 let t_stage = Instant::now();
                 let mut modules = Vec::new();
+                let mut intern_tables = Vec::new();
                 for (i, tokens) in token_lists.iter().enumerate() {
                     let t = Instant::now();
                     let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
@@ -750,7 +751,9 @@ mod compiler_tests {
                     let m = result.module.clone()
                         .unwrap_or_else(|| panic!("parse failed for source {}", sources[i].path));
                     modules.push(m);
+                    intern_tables.push(result.intern_table.clone());
                 }
+                let intern_table = crate::v2_std_core::merge_intern_tables(std::rc::Rc::new(intern_tables));
                 let parse_total = t_stage.elapsed();
                 eprintln!("  PARSE TOTAL:    {:?}\n", parse_total);
 
@@ -835,6 +838,7 @@ mod compiler_tests {
 
                 let t_stage = Instant::now();
                 let mut modules = Vec::new();
+                let mut intern_tables_p = Vec::new();
                 let mut phase2_diags = 0usize;
                 for (i, tokens) in token_lists.iter().enumerate() {
                     let t = Instant::now();
@@ -851,7 +855,9 @@ mod compiler_tests {
                     let m = result.module.clone()
                         .unwrap_or_else(|| panic!("parse failed for source {}", sources[i].path));
                     modules.push(m);
+                    intern_tables_p.push(result.intern_table.clone());
                 }
+                let intern_table_p = crate::v2_std_core::merge_intern_tables(std::rc::Rc::new(intern_tables_p));
                 let parse_total = t_stage.elapsed();
                 let rss_after_parse = get_rss_bytes();
                 eprintln!(
@@ -895,7 +901,7 @@ mod compiler_tests {
                         acc
                     },
                 );
-                let typed = crate::v2_compiler_infer::reconcile(graph, std::rc::Rc::new(source_indices));
+                let typed = crate::v2_compiler_infer::reconcile(graph, std::rc::Rc::new(source_indices), intern_table_p.clone());
                 let reconcile_total = t_stage.elapsed();
                 let phase4_diags: usize = typed
                     .diagnostics
@@ -986,12 +992,15 @@ mod compiler_tests {
 
                 let t = Instant::now();
                 let mut modules = Vec::new();
+                let mut intern_tables_fp = Vec::new();
                 for (i, tokens) in token_lists.iter().enumerate() {
                     let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
                     let m = result.module.clone()
                         .unwrap_or_else(|| panic!("parse failed for source {}", sources[i].path));
                     modules.push(m);
+                    intern_tables_fp.push(result.intern_table.clone());
                 }
+                let intern_table_fp = crate::v2_std_core::merge_intern_tables(std::rc::Rc::new(intern_tables_fp));
                 let parse_elapsed = t.elapsed();
                 // 1b. Resolve
                 let t = Instant::now();
@@ -1031,7 +1040,7 @@ mod compiler_tests {
 
                 // 3. Reconcile
                 let t = Instant::now();
-                let typed = crate::v2_compiler_infer::reconcile(norm.graph.clone(), source_indices.clone());
+                let typed = crate::v2_compiler_infer::reconcile(norm.graph.clone(), source_indices.clone(), intern_table_fp.clone());
                 let reconcile_elapsed = t.elapsed();
                 let type_errors: usize = typed.diagnostics.iter()
                     .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
@@ -1106,6 +1115,7 @@ mod compiler_tests {
 
                 let t0 = Instant::now();
                 let mut modules = Vec::new();
+                let mut intern_tables_r = Vec::new();
                 for source in &sources {
                     let tokens = crate::v2_compiler_tokenize::tokenize(
                         &source.content.clone(),
@@ -1115,7 +1125,9 @@ mod compiler_tests {
                     let m = result.module.clone()
                         .unwrap_or_else(|| panic!("parse failed for source {}", source.path));
                     modules.push(m);
+                    intern_tables_r.push(result.intern_table.clone());
                 }
+                let intern_table = crate::v2_std_core::merge_intern_tables(std::rc::Rc::new(intern_tables_r));
                 let resolve_si = sources.iter().fold(
                     crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), &s.content.clone())),
@@ -1163,6 +1175,7 @@ mod compiler_tests {
                         &resolved.clone(),
                         &module_index.clone(),
                         &source_indices.clone(),
+                        &intern_table.clone(),
                     );
                     let unres_elapsed = t_unres.elapsed();
                     let rss_after_unres = get_rss_bytes();
@@ -1188,6 +1201,7 @@ mod compiler_tests {
                         &resolved.clone(),
                         &module_index.clone(),
                         &source_indices.clone(),
+                        &intern_table.clone(),
                     );
                     let env_elapsed = t_env.elapsed();
                     let rss_after_env = get_rss_bytes();
@@ -1223,6 +1237,7 @@ mod compiler_tests {
                         &resolved.clone(),
                         &module_index,
                         source_indices.clone(),
+                        intern_table.clone(),
                     );
                     let full_elapsed = t_full.elapsed();
                     let rss_after = get_rss_bytes();

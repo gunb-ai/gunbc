@@ -75,7 +75,7 @@ pub struct FrontendAccum {
 }
 
 pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> {
-    Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned() { __result.push(Rc::new(FuncEntry {
+    Rc::new({ let mut __result = Vec::new(); for m in Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { if { let mut __found = false; for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __found = true; break; } } __found } { __result.push(m); } } __result }).iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned() { __result.push(Rc::new(FuncEntry {
     name: item.name.clone(),
     body: item.body.clone().clone().unwrap(),
     params: item.params.clone(),
@@ -89,7 +89,7 @@ pub fn build_recursion_context(typed: Rc<ResolvedGraph>) -> RecursionContext {
 }
 
 pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<OwnershipProof>>> {
-    Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned() { __result.push(analyze_ownership(item.name.clone(), item.params.clone(), item.body.clone().clone().unwrap(), &m.type_env.clone().source_indices.clone())); } __result })).iter().cloned()); } __result })
+    Rc::new({ let mut __result = Vec::new(); for m in Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { if { let mut __found = false; for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __found = true; break; } } __found } { __result.push(m); } } __result }).iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned() { __result.push(analyze_ownership(item.name.clone(), item.params.clone(), item.body.clone().clone().unwrap(), &m.type_env.clone().source_indices.clone())); } __result })).iter().cloned()); } __result })
 }
 
 pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<ErrorNode>>> {
@@ -654,7 +654,7 @@ if ((norm_errors.len() as i64) > 0) {
     newline_indices: newline_indices.clone(),
 })
             }
-let typed = reconcile(norm.graph.clone(), source_indices.clone());
+let typed = reconcile(norm.graph.clone(), source_indices.clone(), frontend.intern_table.clone());
 let typed_diags = typed.diagnostics.clone();
 let func_entries = extract_func_entries(typed.clone());
 let recursion_ctx = build_recursion_context(typed.clone());
@@ -758,7 +758,7 @@ if ((norm_errors.len() as i64) > 0) {
     newline_indices: newline_indices.clone(),
 })
             }
-let typed = reconcile(norm.graph.clone(), source_indices.clone());
+let typed = reconcile(norm.graph.clone(), source_indices.clone(), frontend.intern_table.clone());
 let typed_diags = typed.diagnostics.clone();
 let func_entries = extract_func_entries(typed.clone());
 let recursion_ctx = build_recursion_context(typed.clone());

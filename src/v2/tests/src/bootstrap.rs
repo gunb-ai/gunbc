@@ -609,10 +609,11 @@ fn gist_full_pipeline() {
 /// lost facts, unnecessary allocations).
 ///
 /// The ratchet must be generous enough for CI runners under load.
-/// Verified 2026-04-12: bumped from 60s after dsl/ grew (browser.dag, review_codex.dag).
-/// Dev hardware: ~10.8s. Colima container: 32-37s.
-/// GitHub CI runners hit 64s+ under shared load — 120s budget covers CI variance.
-const PERF_RATCHET_SECONDS: u64 = 120;
+/// 2026-04-12: after merge_envs intern_table fix (O(N*M) string re-intern →
+/// O(1) first-table reuse), per-module reconcile dropped from ~1.1s to ~5ms.
+/// Dev hardware: ~11s. Colima container: now passes at ~40s.
+/// Set to 55s to give CI ~15s variance budget.
+const PERF_RATCHET_SECONDS: u64 = 55;
 
 #[test]
 #[ignore] // Requires building stage0 binary

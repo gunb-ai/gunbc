@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{Node, NewlineIndex, source_text_at, authored_name_at};
+pub use crate::v2_std_core::{Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, source_text_at, authored_name_at};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, OptionalRecursion};
 use crate::std_induction::SubValueRelation::{SubValueUnknown, PreservedValue};
@@ -18,6 +18,7 @@ pub struct TypeEnv {
     pub recursive_type_set: Rc<HashMap<String, bool>>,
     pub inductive_fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub intern_table: Rc<InternTable>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -129,12 +130,17 @@ let merged_recursive = envs.clone().iter().cloned().fold(Rc::new(vec![]), |acc: 
 let merged_recursive_set = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.recursive_type_set.clone()));
 let merged_inductive_fields = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, env: Rc<TypeEnv>| merge_inductive_fields(acc.clone(), &env.inductive_fields.clone()));
 let merged_source_indices = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<NewlineIndex>>(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.source_indices.clone()));
+let merged_intern_table = match envs.clone().first().cloned() {
+    Some(first_env) => first_env.intern_table.clone(),
+    None => empty_intern_table(),
+};
 Rc::new(TypeEnv {
     bindings: merged_bindings,
     recursive_types: merged_recursive,
     recursive_type_set: merged_recursive_set,
     inductive_fields: merged_inductive_fields,
     source_indices: merged_source_indices,
+    intern_table: merged_intern_table,
 })
 }
 }
