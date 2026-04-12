@@ -38,7 +38,9 @@ pub fn parse_source(source: &str) -> Rc<ParseResult> {
 pub fn parse_source_named(filename: &str, source: &str) -> Rc<ParseResult> {
     let tokens = v2_compiler::v2_compiler_tokenize::tokenize(&source.to_string(), filename.to_string());
     let source_index = v2_compiler::v2_std_core::build_newline_index(filename.to_string(), &source.to_string());
-    v2_compiler::v2_compiler_parse::parse(tokens, Some(source_index))
+    let mut source_indices = std::collections::HashMap::new();
+    source_indices.insert(filename.to_string(), source_index);
+    v2_compiler::v2_compiler_parse::parse(tokens, Rc::new(source_indices))
 }
 
 pub fn assert_parses(source: &str, label: &str) {

@@ -65,10 +65,10 @@ type CallEdge {
 
 // Collect call edges from function body ASTs.
 // Only includes edges where the callee is a local function (in local_func_set).
-fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>, source_index: NewlineIndex?) -> List<CallEdge> {
+fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> List<CallEdge> {
   flat_map(items, item =>
     if item.params |> count > 0 && item.body != none {
-      collect_calls_in_expr(caller: item.name, texpr: item.body.value, local_func_set: local_func_set, source_index: source_index)
+      collect_calls_in_expr(caller: item.name, texpr: item.body.value, local_func_set: local_func_set, source_indices: source_indices)
     } else {
       []
     }
@@ -76,18 +76,18 @@ fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>,
 }
 
 // Walk a Node expression tree to find ExprCall nodes whose func is a local function.
-fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String, Bool>, source_index: NewlineIndex?) -> List<CallEdge> {
+fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> List<CallEdge> {
   // Per-node logic: detect local function calls and produce call edges.
   let this_edges = match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
-      let f = expr_call_func_at(texpr: texpr, source_index: source_index)
+      let f = expr_call_func_at(texpr: texpr, source_indices: source_indices)
       if emit_map_has(m: local_func_set, key: f) { [CallEdge { caller: caller, callee: f }] }
       else { [] }
     _ => []
   }
   // Structural recursion into all child expressions.
   let child_edges = texpr.children |> flat_map(child =>
-    collect_calls_in_expr(caller: caller, texpr: child, local_func_set: local_func_set, source_index: source_index)
+    collect_calls_in_expr(caller: caller, texpr: child, local_func_set: local_func_set, source_indices: source_indices)
   )
   let result = concat(this_edges, child_edges)
   result
@@ -239,7 +239,7 @@ fn resolve_func_sigs(
     declared_sigs: Map<String, DeclaredFuncSig>,
     items: List<Node>,
     module_name: String,
-    source_index: NewlineIndex?
+    source_indices: Map<String, NewlineIndex>
 ) -> ResolveFuncSigsResult {
   // Filter to functions only: items with params AND a body.
   // Bare generic type declarations (type List<element>) have params but no body.
@@ -247,7 +247,7 @@ fn resolve_func_sigs(
     |> filter(item => item.params |> count > 0 && item.body != none)
     |> map(item => item.name)
   let local_func_set = build_name_set(names: local_func_names)
-  let call_edges = collect_func_call_edges(items: items, local_func_set: local_func_set, source_index: source_index)
+  let call_edges = collect_func_call_edges(items: items, local_func_set: local_func_set, source_indices: source_indices)
   let parent_resolved = collect_parent_resolved_sigs(declared_sigs: declared_sigs, local_func_set: local_func_set)
   topo_resolve_loop(
     remaining: local_func_names,

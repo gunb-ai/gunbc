@@ -18,7 +18,7 @@ type TypeEnv {
   recursive_types: List<String>
   recursive_type_set: Map<String, Bool>
   inductive_fields: Map<String, List<InductiveField>>
-  source_index: NewlineIndex?
+  source_indices: Map<String, NewlineIndex>
 }
 
 type TypeBinding {
@@ -47,18 +47,17 @@ fn lookup_type(env: TypeEnv, name: String) -> Node? {
 }
 
 fn authored_name(env: TypeEnv, node: Node) -> String {
-  authored_name_at(source_index: env.source_index, node: node)
+  authored_name_at(source_indices: env.source_indices, node: node)
 }
 
 // Node-based lookup accessors — encapsulate identity extraction so
-// resolve callers use node-based API, not string-based. When
-// Node.name is deleted (D6), only these functions change.
+// resolve callers use node-based API, not string-based.
 fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
-  lookup_type(env: env, name: node.name)
+  lookup_type(env: env, name: authored_name(env: env, node: node))
 }
 
 fn is_recursive_type_for(env: TypeEnv, node: Node) -> Bool {
-  is_recursive_type(env: env, name: node.name)
+  is_recursive_type(env: env, name: authored_name(env: env, node: node))
 }
 
 fn inductive_fields_for(env: TypeEnv, type_name: String) -> List<InductiveField> {
@@ -121,8 +120,6 @@ fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
   let merged_recursive = fold(envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let merged_recursive_set = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
   let merged_inductive_fields = fold(envs, init: empty_map(), f: (acc, env) => merge_inductive_fields(left: acc, right: env.inductive_fields))
-  let source_index = fold(envs, init: none, f: (acc, env) =>
-    if env.source_index != none { env.source_index } else { acc }
-  )
-  TypeEnv { bindings: merged_bindings, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_index: source_index }
+  let merged_source_indices = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.source_indices))
+  TypeEnv { bindings: merged_bindings, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_indices: merged_source_indices }
 }

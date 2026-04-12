@@ -17,7 +17,7 @@ pub struct TypeEnv {
     pub recursive_types: Rc<Vec<String>>,
     pub recursive_type_set: Rc<HashMap<String, bool>>,
     pub inductive_fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
-    pub source_index: Option<Rc<NewlineIndex>>,
+    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -45,15 +45,15 @@ match v2_rt::map_get(&env.bindings.clone(), canonical) {
 }
 
 pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
-    authored_name_at(env.source_index.clone(), &node)
+    authored_name_at(env.source_indices.clone(), &node)
 }
 
-pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
-    lookup_type(env, node.name.clone())
+pub fn lookup_type_for(env: &Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
+    lookup_type(env.clone(), authored_name(env.clone(), node))
 }
 
-pub fn is_recursive_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> bool {
-    is_recursive_type(env, node.name.clone())
+pub fn is_recursive_type_for(env: &Rc<TypeEnv>, node: Rc<Node>) -> bool {
+    is_recursive_type(env.clone(), authored_name(env.clone(), node))
 }
 
 pub fn inductive_fields_for(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<InductiveField>>> {
@@ -128,17 +128,13 @@ pub fn merge_envs(envs: &Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
 let merged_recursive = envs.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc.clone(), env.recursive_types.clone()));
 let merged_recursive_set = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.recursive_type_set.clone()));
 let merged_inductive_fields = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<Vec<Rc<InductiveField>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, env: Rc<TypeEnv>| merge_inductive_fields(acc.clone(), &env.inductive_fields.clone()));
-let source_index = envs.clone().iter().cloned().fold(None, |acc: _, env: Rc<TypeEnv>| if (env.source_index.clone() != None) {
-            env.source_index.clone()
-        } else {
-            acc.clone()
-        });
+let merged_source_indices = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<NewlineIndex>>(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.source_indices.clone()));
 Rc::new(TypeEnv {
     bindings: merged_bindings,
     recursive_types: merged_recursive,
     recursive_type_set: merged_recursive_set,
     inductive_fields: merged_inductive_fields,
-    source_index: source_index,
+    source_indices: merged_source_indices,
 })
 }
 }

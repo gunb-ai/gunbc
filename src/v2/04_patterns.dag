@@ -11,7 +11,7 @@ module v2.compiler.infer_patterns
 import std.types { SourceSpan }
 import v2.std.core {
   Node,
-  find_child_named, NewlineIndex,
+  find_child_named, NewlineIndex, authored_name_at,
   ExprData, NoExprData,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   Cardinality, Required,
@@ -128,7 +128,7 @@ fn variant_not_found_result(scrut: Node, variant_name: String, module_name: Stri
   )
 }
 
-fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String, source_index: NewlineIndex?) -> NodeLookupResult {
+fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String, source_indices: Map<String, NewlineIndex>) -> NodeLookupResult {
   match scrut {
     PatternLookupBlocked =>
       node_lookup_failed(diagnostics: [])
@@ -140,7 +140,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
         // Non-variant leaf type (Unit, Int, etc.): suppress cascade diagnostics.
         node_lookup_failed(diagnostics: [])
       } else {
-        let direct_match = find_child_named(n: scrut_node, name: variant_name, source_index: source_index)
+        let direct_match = find_child_named(n: scrut_node, name: variant_name, source_indices: source_indices)
         let fallback = if scrut_opt && variant_name == "Some" {
           node_lookup_resolved(node: synthesize_optional_some_variant(scrut: scrut_node))
         } else if scrut_opt && variant_name == "None" {
@@ -156,18 +156,18 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
   }
 }
 
-fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_name: String, source_index: NewlineIndex?) -> NodeLookupResult {
+fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_name: String, source_indices: Map<String, NewlineIndex>) -> NodeLookupResult {
   match variant {
     PatternLookupBlocked =>
       node_lookup_failed(diagnostics: [])
     PatternDynamic { span: dynamic_span } =>
       node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: "unresolved", span: dynamic_span }, module_name: module_name)])
     PatternResolved { node: variant_node } =>
-      match find_child_named(n: variant_node, name: field_name, source_index: source_index) {
+      match find_child_named(n: variant_node, name: field_name, source_indices: source_indices) {
         Some { value: field_child } =>
           let resolved = child_type_node(ch: field_child)
           node_lookup_resolved(node: resolved)
-        None => node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: variant_node.name, span: variant_node.span }, module_name: module_name)])
+        None => node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: authored_name_at(source_indices: source_indices, node: variant_node), span: variant_node.span }, module_name: module_name)])
       }
   }
 }

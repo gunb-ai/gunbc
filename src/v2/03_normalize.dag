@@ -12,9 +12,10 @@
 module v2.compiler.normalize
 
 import v2.std.core {
-  Node, ErrorNode,
+  Node, ErrorNode, NewlineIndex,
   InferredNode, Resolved, CompilerError,
-  make_error_node, module_items,
+  ExprData, NoExprData,
+  make_error_node, module_items, authored_name_at,
   NoConnective, ArityMismatch
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule }
@@ -33,26 +34,28 @@ type NormalizeResult {
 // Bare container detection
 // =========================================================================
 
-fn check_bare_containers(n: Node, module_name: String) -> List<ErrorNode> {
+fn check_bare_containers(n: Node, module_name: String, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
   let has_structure = match n.body { Some { value: _ } => true  None => false } || (n.uses |> count) > 0 || (n.properties |> count) > 0
-  let self_diags = match container_expected_arity(name: n.name) {
+  let is_expr = match n.expr_data { NoExprData => false  _ => true }
+  let nname = authored_name_at(source_indices: source_indices, node: n)
+  let self_diags = if is_expr { [] } else { match container_expected_arity(name: nname) {
     Some { value: expected } =>
       if (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective && !has_structure {
         [make_error_node(
-          diagnostic: ArityMismatch { name: n.name, expected: expected, got: 0, span: n.span },
+          diagnostic: ArityMismatch { name: nname, expected: expected, got: 0, span: n.span },
           module_name: module_name
         )]
       } else { [] }
     None => []
-  }
-  let child_diags = flat_map(n.children, c => check_bare_containers(n: c, module_name: module_name))
-  let param_diags = flat_map(n.params, p => check_bare_containers(n: p, module_name: module_name))
+  } }
+  let child_diags = flat_map(n.children, c => check_bare_containers(n: c, module_name: module_name, source_indices: source_indices))
+  let param_diags = flat_map(n.params, p => check_bare_containers(n: p, module_name: module_name, source_indices: source_indices))
   let type_ann_diags = match n.type_annotation {
-    Some { value: ta } => check_bare_containers(n: ta, module_name: module_name)
+    Some { value: ta } => check_bare_containers(n: ta, module_name: module_name, source_indices: source_indices)
     None => []
   }
   let body_diags = match n.body {
-    Some { value: b } => check_bare_containers(n: b, module_name: module_name)
+    Some { value: b } => check_bare_containers(n: b, module_name: module_name, source_indices: source_indices)
     None => []
   }
   let inferred_diags = if (n.params |> count) > 0 {
@@ -61,14 +64,14 @@ fn check_bare_containers(n: Node, module_name: String) -> List<ErrorNode> {
   } else {
     match n.inferred {
       Some { value: inf } => match inf {
-        Resolved { node: rn } => check_bare_containers(n: rn, module_name: module_name)
+        Resolved { node: rn } => check_bare_containers(n: rn, module_name: module_name, source_indices: source_indices)
         _ => []
       }
       None => []
     }
   }
-  let uses_diags = flat_map(n.uses, u => check_bare_containers(n: u, module_name: module_name))
-  let prop_diags = flat_map(n.properties, p => check_bare_containers(n: p, module_name: module_name))
+  let uses_diags = flat_map(n.uses, u => check_bare_containers(n: u, module_name: module_name, source_indices: source_indices))
+  let prop_diags = flat_map(n.properties, p => check_bare_containers(n: p, module_name: module_name, source_indices: source_indices))
   flat_map([self_diags, child_diags, param_diags, type_ann_diags, inferred_diags, body_diags, uses_diags, prop_diags], d => d)
 }
 
@@ -76,10 +79,10 @@ fn check_bare_containers(n: Node, module_name: String) -> List<ErrorNode> {
 // Normalization entry point
 // =========================================================================
 
-fn normalize_graph(graph: ModuleGraph) -> NormalizeResult {
+fn normalize_graph(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>) -> NormalizeResult {
   let diags = flat_map(graph.modules, m => {
     let items = module_items(n: m.module)
-    flat_map(items, item => check_bare_containers(n: item, module_name: m.module.name))
+    flat_map(items, item => check_bare_containers(n: item, module_name: m.module.name, source_indices: source_indices))
   })
   NormalizeResult {
     graph: graph,

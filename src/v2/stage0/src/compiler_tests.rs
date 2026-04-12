@@ -192,7 +192,7 @@ mod compiler_tests {
             &"module test\ntype Foo { x: Int }\n".to_string(),
             "test.dag".to_string(),
         );
-        let result = crate::v2_compiler_parse::parse(tokens, None);
+        let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
         assert!(
             result.module.is_some(),
             "valid module should parse successfully"
@@ -219,7 +219,7 @@ mod compiler_tests {
                     last.shape
                 );
 
-                let result = crate::v2_compiler_parse::parse(tokens, None);
+                let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
 
                 assert!(
                     result.module.is_some(),
@@ -296,7 +296,7 @@ mod compiler_tests {
                         "{} should end with Eof",
                         file
                     );
-                    let result = crate::v2_compiler_parse::parse(tokens, None);
+                    let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
                     assert!(
                         result.module.is_some(),
                         "{} should parse successfully, error: {:?}",
@@ -740,7 +740,7 @@ mod compiler_tests {
                 let mut modules = Vec::new();
                 for (i, tokens) in token_lists.iter().enumerate() {
                     let t = Instant::now();
-                    let result = crate::v2_compiler_parse::parse(tokens.clone(), None);
+                    let result = crate::v2_compiler_parse::parse(tokens.clone(), std::rc::Rc::new(std::collections::HashMap::new()));
                     let elapsed = t.elapsed();
                     let ok = result.module.is_some();
                     eprintln!(
@@ -838,7 +838,7 @@ mod compiler_tests {
                 let mut phase2_diags = 0usize;
                 for (i, tokens) in token_lists.iter().enumerate() {
                     let t = Instant::now();
-                    let result = crate::v2_compiler_parse::parse(tokens.clone(), None);
+                    let result = crate::v2_compiler_parse::parse(tokens.clone(), std::rc::Rc::new(std::collections::HashMap::new()));
                     let elapsed = t.elapsed();
                     let ok = result.module.is_some();
                     if result.error.is_some() {
@@ -987,7 +987,7 @@ mod compiler_tests {
                 let t = Instant::now();
                 let mut modules = Vec::new();
                 for (i, tokens) in token_lists.iter().enumerate() {
-                    let result = crate::v2_compiler_parse::parse(tokens.clone(), None);
+                    let result = crate::v2_compiler_parse::parse(tokens.clone(), std::rc::Rc::new(std::collections::HashMap::new()));
                     let m = result.module.clone()
                         .unwrap_or_else(|| panic!("parse failed for source {}", sources[i].path));
                     modules.push(m);
@@ -1021,17 +1021,17 @@ mod compiler_tests {
 
                 // 2. Normalize
                 let t = Instant::now();
-                let norm = crate::v2_compiler_normalize::normalize_graph(&graph);
-                let normalize_elapsed = t.elapsed();
-                eprintln!("  Normalize:                    {:>8.2?}", normalize_elapsed);
-
-                // 3. Reconcile
                 let source_indices = newline_indices.iter().cloned().fold(
                     crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, index| crate::v2_rt::rc_map_insert(acc, index.file.clone(), index.clone()),
                 );
+                let norm = crate::v2_compiler_normalize::normalize_graph(&graph, source_indices.clone());
+                let normalize_elapsed = t.elapsed();
+                eprintln!("  Normalize:                    {:>8.2?}", normalize_elapsed);
+
+                // 3. Reconcile
                 let t = Instant::now();
-                let typed = crate::v2_compiler_infer::reconcile(norm.graph.clone(), source_indices);
+                let typed = crate::v2_compiler_infer::reconcile(norm.graph.clone(), source_indices.clone());
                 let reconcile_elapsed = t.elapsed();
                 let type_errors: usize = typed.diagnostics.iter()
                     .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
@@ -1044,7 +1044,7 @@ mod compiler_tests {
                 let func_count = func_entries.len();
                 let recursion_ctx = crate::v2_compiler_compile::build_recursion_context(typed.clone());
                 let complexity = crate::v2_compiler_complexity::build_complexity_report(
-                    &func_entries, recursion_ctx,
+                    &func_entries, recursion_ctx, source_indices.clone(),
                 );
                 let complexity_elapsed = t.elapsed();
                 let cx_diags = crate::v2_compiler_compile::complexity_diagnostics(complexity.clone());
@@ -1111,7 +1111,7 @@ mod compiler_tests {
                         &source.content.clone(),
                         source.path.clone(),
                     );
-                    let result = crate::v2_compiler_parse::parse(tokens, None);
+                    let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
                     let m = result.module.clone()
                         .unwrap_or_else(|| panic!("parse failed for source {}", source.path));
                     modules.push(m);
@@ -1162,7 +1162,7 @@ mod compiler_tests {
                     let _unres = crate::v2_compiler_infer::build_type_env_unresolved(
                         &resolved.clone(),
                         &module_index.clone(),
-                        source_indices.clone(),
+                        &source_indices.clone(),
                     );
                     let unres_elapsed = t_unres.elapsed();
                     let rss_after_unres = get_rss_bytes();
@@ -1187,7 +1187,7 @@ mod compiler_tests {
                     let env_result = crate::v2_compiler_infer::build_type_env(
                         &resolved.clone(),
                         &module_index.clone(),
-                        source_indices.clone(),
+                        &source_indices.clone(),
                     );
                     let env_elapsed = t_env.elapsed();
                     let rss_after_env = get_rss_bytes();
