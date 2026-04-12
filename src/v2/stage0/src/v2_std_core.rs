@@ -485,6 +485,10 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
 }
 
 pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
+    true
+}
+
+pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d).clone() {
     CompilerDiagnostic::ComplexityUnknown { .. } => false,
     CompilerDiagnostic::OwnershipViolation { .. } => false,

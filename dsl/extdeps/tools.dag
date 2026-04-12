@@ -1,0 +1,85 @@
+// extdeps/tools.dag — Holistic CLI tool modeling.
+//
+// Every .dag program that shells out depends on external CLI binaries
+// (cargo, grep, diff, cp, ...). This file models those binaries as
+// explicit declared facts with install sources, and provides a
+// fail-closed upsert that resolves tool → absolute path via `which`.
+//
+// Consumers build command strings from resolved ResolvedTool.path values
+// instead of bare names, eliminating hidden PATH dependencies.
+//
+// Pattern reference: gunb.ai/tools/toolpaths/toolpaths.go (Ensure upsert).
+
+module extdeps.tools
+
+import std.types { FilePath, NonEmptyStr }
+import extdeps.shell
+
+// ── Install source ──────────────────────────────────────────────────
+
+// How a required CLI tool gets onto the system. Closed set — each
+// variant has a specific recovery story when the tool is missing.
+type InstallSource
+  = SourceBuiltin                            // POSIX standard: cp, rm, grep, diff, find
+  | SourceRustup                             // cargo, rustc, rustup
+  | SourceApt { package: NonEmptyStr }       // apt install {package}
+  | SourceBrew { package: NonEmptyStr }      // brew install {package}
+  | SourceContainer { image_ref: NonEmptyStr }  // baked into a specific container image
+
+// ── Tool declaration and resolution ────────────────────────────────
+
+// A required external CLI tool. The name is what the workflow would
+// invoke; min_version is an optional version floor; source tells the
+// resolver how the tool gets installed.
+type CliTool {
+  name: NonEmptyStr
+  min_version: String?
+  source: InstallSource
+}
+
+// A resolved tool: the declared CliTool paired with its actual absolute
+// filesystem path (from `which`). Workflows build command strings from
+// resolved.path, never from the bare name.
+type ResolvedTool {
+  tool: CliTool
+  path: FilePath
+}
+
+// The outcome of attempting to resolve a tool. Fail-closed: if the
+// tool isn't found, the hint tells the user exactly how to install it.
+type ResolveResult
+  = Resolved { resolved: ResolvedTool }
+  | NotFound { tool: CliTool, hint: String }
+
+// ── Install hints ──────────────────────────────────────────────────
+
+// Human-readable recovery instruction when a tool is missing.
+// Closed match on InstallSource — adding a new variant is a compile-time
+// obligation to provide a hint.
+fn install_hint(source: InstallSource) -> String {
+  match source {
+    SourceBuiltin => "expected POSIX tool — verify your system provides it"
+    SourceRustup => "install rustup from https://rustup.rs"
+    SourceApt { package: p } => concat("apt install ", p)
+    SourceBrew { package: p } => concat("brew install ", p)
+    SourceContainer { image_ref: i } => concat("available only inside image: ", i)
+  }
+}
+
+// ── Resolution workflow ─────────────────────────────────────────────
+
+// Fail-closed upsert: check if the tool is on PATH via `which`, return
+// Resolved with the absolute path if found, NotFound with an install
+// hint if not. This is the single authority for "where does this tool
+// live on this system."
+//
+// Workflows that need multiple tools should call resolve once per tool
+// and pattern-match; the resolved paths then flow through command
+// builders as FilePath arguments, eliminating bare-name commands.
+func resolve(tool: CliTool) -> ResolveResult {
+  let check = shell.Which.Check(command: tool.name)
+  match check.path {
+    Some { value: p } => Resolved { resolved: { tool: tool, path: p } }
+    None => NotFound { tool: tool, hint: install_hint(source: tool.source) }
+  }
+}

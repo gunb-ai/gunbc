@@ -8,7 +8,7 @@ use std::rc::Rc;
 use crate::v2_compiler_compile;
 use crate::v2_std_core::{
     diagnostic_to_message, diagnostic_to_span,
-    byte_to_line_col, is_error_diagnostic, NewlineIndex,
+    byte_to_line_col, is_interpreter_blocking_diagnostic, NewlineIndex,
 };
 use crate::v2_interpreter;
 
@@ -166,14 +166,14 @@ pub fn handle_run_with_options(source_roots: Vec<String>, function: String, dry_
 
     // Check for errors
     let has_errors = result.diagnostics.iter().any(|d| {
-        is_error_diagnostic(d.diagnostic.clone())
+        is_interpreter_blocking_diagnostic(d.diagnostic.clone())
     });
     if has_errors {
         let si: HashMap<String, Rc<NewlineIndex>> = result.newline_indices.iter()
             .map(|idx| (idx.file.clone(), idx.clone()))
             .collect();
         for d in result.diagnostics.iter() {
-            if !is_error_diagnostic(d.diagnostic.clone()) {
+            if !is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
                 continue;
             }
             let span = diagnostic_to_span(d.diagnostic.clone());

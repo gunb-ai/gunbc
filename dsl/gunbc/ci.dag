@@ -1,11 +1,22 @@
-// gunbc/ci.dag — CI gate declarations derived from compiler.dag.
+// gunbc/ci.dag — CI gate declarations with structural gate kind.
 //
-// Every gate command traces back to gunbc.compiler facts. Changing the
-// crate name or source roots in compiler.dag updates all gates
-// automatically. No hardcoded crate names in this file.
+// Every gate command derives from gunbc.compiler facts. Commands are
+// still string-typed (that's the transport) but each gate carries a
+// structural GateSource variant that names what the gate actually
+// proves — lint / test / ratchet / freshness / fixed-point. The closed
+// GateSource coproduct makes it possible to reason about gate kind
+// without parsing command strings.
+//
+// Tool resolution: gate commands are constructed with resolved cargo
+// path as input. A future dag run of the pipeline would resolve tools
+// once at the top, then build gate commands from the resolved set.
+// For the current CI transport (ci.yml shim), commands are assembled
+// lazily inside the interpreter or pre-rendered with `cargo` bare name
+// since CI runners have cargo on PATH by convention.
 //
 // The two script gates (l1, freshness) will become dag run invocations
-// once tools/ratchet.dag and tools/freshness.dag are proven.
+// once tools/ratchet.dag and tools/freshness.dag execute reliably in
+// any environment (blocked on tool upsert landing end-to-end).
 //
 // Consumers:
 //   .github/workflows/ci.yml     -- current transport (hand-maintained shim)
@@ -18,12 +29,39 @@ import gunbc.compiler {
   lint_command, test_command, ignored_test_command
 }
 
-// ── Gate types ──────────────────────────────────────────────────────
+// ── Ratchet kind ────────────────────────────────────────────────────
+
+// Direction of a ratchet gate. Down = monotonically decreasing (we
+// track regressions); Stable = must remain at the threshold value.
+type RatchetDirection = Down | Stable
+
+// Closed set of ratchet metrics — no opaque strings. Each corresponds
+// to a specific measurement the compiler produces or a script computes.
+// Adding a new ratchet is a new variant, not a new string.
+type RatchetMetric
+  = DiagnosticCount       // total compile-time diagnostics (CX)
+  | L1TypeKnowledge       // type constructors and name comparisons in .dag
+  | Performance           // self-compile pipeline duration
+  | FixedPointConvergence // bootstrap stage1 == stage2
+
+// ── Gate kind ───────────────────────────────────────────────────────
+
+// What a gate is structurally. Closed coproduct — every variant is a
+// category of gate with its own invariant. Consumers that need to
+// reason about gate category (e.g., "how many ratchet gates are there?")
+// pattern-match on this rather than parsing command strings.
+type GateSource
+  = LintGate
+  | TestSuiteGate { test_name: String }  // empty means run all tests
+  | RatchetGate { metric: RatchetMetric, direction: RatchetDirection, threshold: Int }
+  | FreshnessGate                        // proves committed stage0 == compile(source)
+  | FixedPointGate                       // proves regen(regen(source)) == regen(source)
 
 type CIGate {
   name: String
   command: String
   blocking: Bool
+  source: GateSource
 }
 
 type CIPipeline {
@@ -32,59 +70,71 @@ type CIPipeline {
 }
 
 // ── Gates ───────────────────────────────────────────────────────────
-// Commands derive from compiler.dag. Sustainability test: change
-// package_name in compiler.dag → every gate picks it up.
+// Commands are derived from compiler.dag; commands use bare "cargo"
+// because CI runners always have cargo on PATH. For local dag run,
+// tools/*.dag workflows resolve the absolute path via extdeps.tools.
+// Sustainability test: changing package_name in compiler.dag updates
+// all gate commands automatically.
 
 data lint_gate: CIGate = {
   name: "Lint",
-  command: lint_command(),
-  blocking: true
+  command: lint_command(cargo: "cargo"),
+  blocking: true,
+  source: LintGate
 }
 
 data test_gate: CIGate = {
   name: "Tests",
-  command: test_command(package: test_package),
-  blocking: true
+  command: test_command(cargo: "cargo", package: test_package),
+  blocking: true,
+  source: TestSuiteGate { test_name: "" }
 }
 
 data full_dsl_gate: CIGate = {
   name: "Full DSL Compiles",
-  command: ignored_test_command(package: test_package, test_name: "full_dsl_compiles"),
-  blocking: true
+  command: ignored_test_command(cargo: "cargo", package: test_package, test_name: "full_dsl_compiles"),
+  blocking: true,
+  source: TestSuiteGate { test_name: "full_dsl_compiles" }
 }
 
 data diagnostic_ratchet_gate: CIGate = {
   name: "Diagnostic Ratchet",
-  command: ignored_test_command(package: test_package, test_name: "strict_compile_diagnostic_count"),
-  blocking: false
+  command: ignored_test_command(cargo: "cargo", package: test_package, test_name: "strict_compile_diagnostic_count"),
+  blocking: false,
+  source: RatchetGate { metric: DiagnosticCount, direction: Down, threshold: 424 }
 }
 
-// Script gates — will become dag run invocations when tools are proven.
+// Script gates — will become `dag run` invocations once the tool
+// workflows execute reliably in any environment.
 
 data l1_gate: CIGate = {
   name: "L1 Type Knowledge Ratchet",
   command: "scripts/l1-ratchet.sh --check",
-  blocking: true
+  blocking: true,
+  source: RatchetGate { metric: L1TypeKnowledge, direction: Stable, threshold: 0 }
 }
 
 data stage0_freshness_gate: CIGate = {
   name: "Stage0 Freshness",
   command: "scripts/check-stage0-freshness.sh",
-  blocking: true
+  blocking: true,
+  source: FreshnessGate
 }
 
 // Test gates derived from compiler.dag.
 
 data performance_ratchet_gate: CIGate = {
   name: "Performance Ratchet",
-  command: ignored_test_command(package: test_package, test_name: "performance_ratchet"),
-  blocking: true
+  command: ignored_test_command(cargo: "cargo", package: test_package, test_name: "performance_ratchet"),
+  blocking: true,
+  source: RatchetGate { metric: Performance, direction: Stable, threshold: 120 }
 }
 
 data bootstrap_fixed_point_gate: CIGate = {
   name: "Bootstrap Fixed Point",
-  command: ignored_test_command(package: test_package, test_name: "bootstrap_fixed_point"),
-  blocking: true
+  command: ignored_test_command(cargo: "cargo", package: test_package, test_name: "bootstrap_fixed_point"),
+  blocking: true,
+  source: FixedPointGate
 }
 
 // ── Pipeline assembly ───────────────────────────────────────────────

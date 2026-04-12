@@ -2,29 +2,45 @@
 //
 // The compiler reads .dag source, produces Rust, and that Rust compiles
 // to the binary that IS the compiler. This file names the participants
-// in that cycle and the structural properties that must hold.
+// in that cycle — source roots, generated crate, required tools — and
+// provides command derivation functions that take resolved tool paths
+// (not bare names) to keep the model free of hidden PATH dependencies.
 //
 //   source_roots ──(compile)──▶ generated_crate ──(cargo build)──▶ binary
 //       ▲                                                            │
 //       └────────────────────(reads)─────────────────────────────────┘
 //
-// Convergence: compile(compile(source)) == compile(source)
-// Freshness:   committed stage0 == compile(source)
+// Faithfulness: stage0 has two hand-maintained .rs files
+// (cli_run.rs, v2_interpreter.rs) that survive regen and are excluded
+// from the fixed-point diff. The GeneratedCrate type names them
+// explicitly. Cargo.toml is also hand-maintained but lives outside
+// source_dir and is never part of the src/ fixed-point — it's noted
+// here but not modeled as a structural field.
+//
+// Tool modeling: the compiler cycle depends on cargo, grep, diff, cp, rm.
+// Each is declared as a CliTool with an InstallSource. Workflows resolve
+// these via extdeps.tools.resolve before dispatching commands, so every
+// shell string uses absolute paths from `which`, not bare names.
 //
 // What this file is NOT:
 //   - Internal pipeline (Tokenize → Parse → ...) — see src/v2/compile.dag
-//   - Executable regen process — see future tools/regen.dag
-//   - CI gate declarations — those derive from this model
+//   - Executable regen/freshness/ratchet — see dsl/gunbc/tools/*.dag
+//   - CI gate declarations — those derive from this model, see gunbc/ci.dag
 
 module gunbc.compiler
 
-import std.types { ContentHash, FilePath, NonEmptyStr }
+import std.types { FilePath, NonEmptyStr }
+import extdeps.tools { CliTool, InstallSource, SourceBuiltin, SourceRustup }
 
-// ── Source roots ─────────────────────────────────────────────────────
+// ── Source roots ────────────────────────────────────────────────────
 
-// A directory the compiler searches for .dag modules.
-// The compiler treats all source roots equally: it builds a module
-// index from every root, then compiles modules reachable via imports.
+// A directory the compiler searches for .dag modules. The compiler's
+// CLI API is --source-root <path> [--source-root <path> ...], and the
+// roots are NOT symmetric: the first root is the entry root (all its
+// .dag files compiled), subsequent roots are dependency pools (resolved
+// transitively via imports). SelfHostingCycle captures this order as
+// a product type so reordering in data is a type error.
+
 type SourceRoot {
   path: FilePath
 }
@@ -34,148 +50,73 @@ data dsl_root: SourceRoot = { path: "dsl" }
 
 // ── Generated crate ─────────────────────────────────────────────────
 
-// The Rust crate whose source files are entirely emitted by the compiler.
-// Every .rs file in source_dir is generated — none are hand-maintained.
+// The Rust crate that the compiler produces. hand_maintained_src names
+// the basenames (relative to source_dir) that are NOT emitted: they
+// survive regeneration and must be excluded from the fixed-point diff.
+//
+// Note: Cargo.toml is also hand-maintained but lives outside source_dir,
+// never changes as part of regen, and is never in the fixed-point diff.
+// Not modeled as a field — overhead for zero current benefit.
+
 type GeneratedCrate {
   package_name: NonEmptyStr
   source_dir: FilePath
+  hand_maintained_src: List<FilePath>
 }
 
 data stage0: GeneratedCrate = {
   package_name: "v2-compiler",
-  source_dir: "src/v2/stage0/src"
+  source_dir: "src/v2/stage0/src",
+  hand_maintained_src: ["cli_run.rs", "v2_interpreter.rs"]
 }
 
 // ── Self-hosting cycle ──────────────────────────────────────────────
 
 // The structural fact that the compiler derives its own implementation.
-// source_roots provide .dag source; generated is the Rust crate the
-// compiler produces from that source. The crate builds to the binary
-// that does the compilation — closing the cycle.
+// entry_root + dependency_roots matches the compiler's actual CLI:
+//   --source-root <entry> --source-root <dep1> --source-root <dep2> ...
+// Reversing or reordering is semantically significant, so the model
+// encodes the distinction instead of flattening to a list.
+
 type SelfHostingCycle {
-  source_roots: List<SourceRoot>
+  entry_root: SourceRoot
+  dependency_roots: List<SourceRoot>
   generated: GeneratedCrate
 }
 
 data compiler_cycle: SelfHostingCycle = {
-  source_roots: [compiler_source, dsl_root],
+  entry_root: compiler_source,
+  dependency_roots: [dsl_root],
   generated: stage0
 }
 
-// ── File identity ───────────────────────────────────────────────────
+// ── Tool registry ───────────────────────────────────────────────────
 
-// A generated file identified by its content hash.
-// Used by convergence and freshness checks to compare outputs.
-type FileHash {
-  path: FilePath
-  hash: ContentHash
-}
+// The CLI tools the compiler cycle depends on. Each is declared with
+// its install source so the resolver can produce a precise hint if a
+// tool is missing. SourceBuiltin tools are POSIX-standard (assumed
+// present); SourceRustup covers cargo via the Rust toolchain.
 
-// The output of a single compiler pass.
-type PassOutput {
-  files: List<FileHash>
-}
+data cargo_tool: CliTool = { name: "cargo", min_version: None, source: SourceRustup }
+data grep_tool:  CliTool = { name: "grep",  min_version: None, source: SourceBuiltin }
+data diff_tool:  CliTool = { name: "diff",  min_version: None, source: SourceBuiltin }
+data cp_tool:    CliTool = { name: "cp",    min_version: None, source: SourceBuiltin }
+data rm_tool:    CliTool = { name: "rm",    min_version: None, source: SourceBuiltin }
 
-// ── Convergence ─────────────────────────────────────────────────────
+data required_tools: List<CliTool> = [cargo_tool, grep_tool, diff_tool, cp_tool, rm_tool]
 
-// Fixed point: running the compiler on its own source twice produces
-// identical output. pass1 = compile(source), pass2 = compile(source)
-// using the binary built from pass1.
-type ConvergenceResult
-  = FixedPoint
-  | Diverged { differing_files: List<FilePath> }
+// ── Resolved tool set ───────────────────────────────────────────────
 
-fn check_convergence(pass1: PassOutput, pass2: PassOutput) -> ConvergenceResult {
-  // Files with different hashes
-  let changed = pass1.files |> flat_map(fh =>
-    pass2.files
-      |> filter(fh2 => fh2.path == fh.path && fh2.hash != fh.hash)
-      |> map(fh2 => fh2.path)
-  )
-  // Files in pass1 but not in pass2 (removed)
-  let removed = pass1.files
-    |> filter(fh => pass2.files |> filter(fh2 => fh2.path == fh.path) |> is_empty)
-    |> map(fh => fh.path)
-  // Files in pass2 but not in pass1 (added)
-  let added = pass2.files
-    |> filter(fh => pass1.files |> filter(fh2 => fh2.path == fh.path) |> is_empty)
-    |> map(fh => fh.path)
-  let all_diffs = concat(changed, concat(removed, added))
-  if all_diffs |> is_empty { FixedPoint } else { Diverged { differing_files: all_diffs } }
-}
+// After resolution, workflows pass a typed record of absolute paths
+// instead of accessing the bare list. This is the "tools are ready"
+// state — every field is a FilePath from `which`.
 
-fn is_converged(result: ConvergenceResult) -> Bool {
-  match result {
-    FixedPoint => true
-    _ => false
-  }
-}
-
-// ── Freshness ───────────────────────────────────────────────────────
-
-// Whether committed stage0 files match what the compiler would produce.
-// Distinct from convergence: freshness compares committed vs generated,
-// convergence compares two consecutive passes.
-type FreshnessResult
-  = Fresh
-  | Stale { differing_files: List<FilePath> }
-
-fn check_freshness(committed: PassOutput, generated: PassOutput) -> FreshnessResult {
-  // Files with different hashes
-  let changed = committed.files |> flat_map(fh =>
-    generated.files
-      |> filter(fh2 => fh2.path == fh.path && fh2.hash != fh.hash)
-      |> map(fh2 => fh2.path)
-  )
-  // Files in committed but not in generated (removed)
-  let removed = committed.files
-    |> filter(fh => generated.files |> filter(fh2 => fh2.path == fh.path) |> is_empty)
-    |> map(fh => fh.path)
-  // Files in generated but not in committed (added)
-  let added = generated.files
-    |> filter(fh => committed.files |> filter(fh2 => fh2.path == fh.path) |> is_empty)
-    |> map(fh => fh.path)
-  let all_diffs = concat(changed, concat(removed, added))
-  if all_diffs |> is_empty { Fresh } else { Stale { differing_files: all_diffs } }
-}
-
-fn is_fresh(result: FreshnessResult) -> Bool {
-  match result {
-    Fresh => true
-    _ => false
-  }
-}
-
-// ── Queries ─────────────────────────────────────────────────────────
-
-fn source_root_paths(cycle: SelfHostingCycle) -> List<FilePath> {
-  cycle.source_roots |> map(root => root.path)
-}
-
-// ── Command derivation ──────────────────────────────────────────────
-// Derive shell commands from cycle data. Pure string construction —
-// no side effects. tools/regen.dag and tools/freshness.dag use these
-// with shell.Exec to run the actual processes.
-
-fn build_command(cycle: SelfHostingCycle) -> String {
-  concat("cargo build -p ", cycle.generated.package_name, " --release")
-}
-
-fn check_command(cycle: SelfHostingCycle) -> String {
-  concat("cargo check -p ", cycle.generated.package_name)
-}
-
-fn compile_command(cycle: SelfHostingCycle, output_dir: String) -> String {
-  let root_args = cycle.source_roots |> fold(init: "", f: (acc, root) =>
-    concat(acc, " --source-root ", root.path)
-  )
-  concat("cargo run -p ", cycle.generated.package_name,
-         " --release -- compile", root_args,
-         " --output-dir ", output_dir)
-}
-
-fn copy_output_command(from_dir: String, cycle: SelfHostingCycle) -> String {
-  concat("cp ", from_dir, "/src/*.rs ", cycle.generated.source_dir, "/")
+type ResolvedCompilerTools {
+  cargo: FilePath
+  grep: FilePath
+  diff: FilePath
+  cp: FilePath
+  rm: FilePath
 }
 
 // ── Test infrastructure ─────────────────────────────────────────────
@@ -184,14 +125,57 @@ fn copy_output_command(from_dir: String, cycle: SelfHostingCycle) -> String {
 
 data test_package: NonEmptyStr = "v2-compiler-tests"
 
-fn lint_command() -> String {
-  "cargo clippy --workspace -- -D warnings"
+// ── Command derivation ──────────────────────────────────────────────
+// Every builder takes a resolved cargo/grep/diff/cp/rm path instead of
+// a bare name, so emitted shell commands have no hidden PATH dependency.
+// Tool workflows call resolve() for each required tool, pattern-match
+// on ResolveResult, then pass the FilePath into these builders.
+
+fn build_command(cargo: FilePath, cycle: SelfHostingCycle) -> String {
+  concat(cargo, " build -p ", cycle.generated.package_name, " --release")
 }
 
-fn test_command(package: NonEmptyStr) -> String {
-  concat("cargo test -p ", package)
+fn check_command(cargo: FilePath, cycle: SelfHostingCycle) -> String {
+  concat(cargo, " check -p ", cycle.generated.package_name)
 }
 
-fn ignored_test_command(package: NonEmptyStr, test_name: String) -> String {
-  concat("cargo test -p ", package, " ", test_name, " -- --ignored --nocapture")
+fn compile_command(cargo: FilePath, cycle: SelfHostingCycle, output_dir: String) -> String {
+  let entry_arg = concat(" --source-root ", cycle.entry_root.path)
+  let dep_args = cycle.dependency_roots |> fold(init: "", f: (acc, r) =>
+    concat(acc, " --source-root ", r.path)
+  )
+  concat(cargo, " run -p ", cycle.generated.package_name,
+         " --release -- compile", entry_arg, dep_args,
+         " --output-dir ", output_dir)
+}
+
+// Copy pass 1 output to stage0. The compiler doesn't emit
+// hand_maintained_src files, so `cp *.rs` is safe — any file in the
+// pass output IS a generated file that should replace the committed one.
+fn copy_generated_command(cp: FilePath, from_dir: String, cycle: SelfHostingCycle) -> String {
+  concat(cp, " ", from_dir, "/src/*.rs ", cycle.generated.source_dir, "/")
+}
+
+// Diff exclusion args for hand-maintained files. Applied in freshness
+// and fixed-point checks so committed hand-maintained files don't
+// register as "stale" (they're not supposed to be regenerated).
+fn diff_exclude_args(cycle: SelfHostingCycle) -> String {
+  cycle.generated.hand_maintained_src |> fold(init: "", f: (acc, f) =>
+    concat(acc, " --exclude=", f)
+  )
+}
+
+// ── Test/lint commands ──────────────────────────────────────────────
+// CI-facing commands derived from the test package name and cargo path.
+
+fn lint_command(cargo: FilePath) -> String {
+  concat(cargo, " clippy --workspace -- -D warnings")
+}
+
+fn test_command(cargo: FilePath, package: NonEmptyStr) -> String {
+  concat(cargo, " test -p ", package)
+}
+
+fn ignored_test_command(cargo: FilePath, package: NonEmptyStr, test_name: String) -> String {
+  concat(cargo, " test -p ", package, " ", test_name, " -- --ignored --nocapture")
 }
