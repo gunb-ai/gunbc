@@ -220,8 +220,8 @@ let has_interpolations = { let mut __found = false; for p in parts.clone().iter(
     StringPart::Interpolation { .. } => true,
     _ => false,
 } { __found = true; break; } } __found };
-match interp.style.clone() {
-    InterpStyle::FormatArgs => {
+match (*interp.style.clone()).clone() {
+    InterpStyle::FormatArgs { placeholder: ph, .. } => {
             let fmt_parts = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(match (*p.clone()).clone() {
     StringPart::Text { value: v, .. } => {
                 let base = escape_string_literal_body(v.clone());
@@ -236,7 +236,7 @@ Rc::new(InterpPart {
 })
 },
     StringPart::Interpolation { expr: e, .. } => Rc::new(InterpPart {
-    format_segment: interp.placeholder.clone(),
+    format_segment: ph.clone(),
     arg_expr: emit_simple_expr(&e, &target, &source_index),
 }),
 }); } __result });
@@ -1713,9 +1713,9 @@ if is_reserved {
 }
 }
 
-pub fn apply_bridge_method_overrides(name: String, overrides: Rc<Vec<Rc<EscapePair>>>) -> String {
-    match Rc::new({ let mut __result = Vec::new(); for o in overrides.iter().cloned() { if (o.from.clone().as_str() == name.clone().as_str()) { __result.push(o); } } __result }).first().cloned() {
-    Some(r#override) => r#override.to.clone(),
+pub fn apply_bridge_method_overrides(name: String, overrides: Rc<HashMap<String, String>>) -> String {
+    match v2_rt::lookup(&overrides, name.clone()) {
+    Some(replacement) => replacement.clone(),
     None => name.clone(),
 }
 }
@@ -2136,8 +2136,8 @@ let has_interpolations = { let mut __found = false; for p in parts.clone().iter(
     StringPart::Interpolation { .. } => true,
     _ => false,
 } { __found = true; break; } } __found };
-match interp.style.clone() {
-    InterpStyle::FormatArgs => {
+match (*interp.style.clone()).clone() {
+    InterpStyle::FormatArgs { placeholder: ph, .. } => {
             let fmt_parts = Rc::new({ let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(match (*p.clone()).clone() {
     StringPart::Text { value: v, .. } => {
                 let base = escape_string_literal_body(v.clone());
@@ -2152,7 +2152,7 @@ Rc::new(InterpPart {
 })
 },
     StringPart::Interpolation { expr: e, .. } => Rc::new(InterpPart {
-    format_segment: interp.placeholder.clone(),
+    format_segment: ph.clone(),
     arg_expr: recurse(e.clone()),
 }),
 }); } __result });
@@ -2310,7 +2310,7 @@ let arg_strs = Rc::new({ let mut __result = Vec::new(); for a in args.clone().it
 let args_str = arg_strs.join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(spec.async_call_prefix.clone(), var_name), ".".to_string()), emit_export_ident(method, &target)), "(".to_string()), args_str), ")".to_string())
 },
-    None => spec.service_error_fallback.clone(),
+    None => emit_error_expr("unsupported service receiver".to_string(), target.clone()),
 }
             } else {
                 emit_plain_method_call_unified(receiver.clone(), method, args.clone(), target.clone(), recurse.clone())

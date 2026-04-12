@@ -276,14 +276,14 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, sour
   let interp = spec.string_interp
   let has_interpolations = parts |> any(p => match p { Interpolation { expr: _ } => true  _ => false })
   match interp.style {
-    FormatArgs =>
+    FormatArgs { placeholder: ph } =>
       let fmt_parts = parts |> map(p => match p {
         Text { value: v } =>
           let base = escape_string_literal_body(s: v)
           let escaped = if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
           InterpPart { format_segment: escaped, arg_expr: "" }
         Interpolation { expr: e } =>
-          InterpPart { format_segment: interp.placeholder, arg_expr: emit_simple_expr(expr: e, target: target, source_index: source_index) }
+          InterpPart { format_segment: ph, arg_expr: emit_simple_expr(expr: e, target: target, source_index: source_index) }
       })
       let fmt_str = fmt_parts |> map(p => p.format_segment) |> join(separator: "")
       let args = fmt_parts
@@ -1774,9 +1774,9 @@ fn emit_export_ident(name: String, target: RenderTarget) -> String {
 }
 
 // Apply bridge method overrides — resolves method name conflicts (e.g. Python "with" → "with_update").
-fn apply_bridge_method_overrides(name: String, overrides: List<EscapePair>) -> String {
-  match overrides |> filter(o => o.from == name) |> first {
-    Some { value: override } => override.to
+fn apply_bridge_method_overrides(name: String, overrides: Map<String, String>) -> String {
+  match lookup(overrides, key: name) {
+    Some { value: replacement } => replacement
     None => name
   }
 }
@@ -2260,14 +2260,14 @@ fn emit_typed_string_interp_unified(parts: List<StringPart>, target: RenderTarge
   let interp = spec.string_interp
   let has_interpolations = parts |> any(p => match p { Interpolation { expr: _ } => true  _ => false })
   match interp.style {
-    FormatArgs =>
+    FormatArgs { placeholder: ph } =>
       let fmt_parts = parts |> map(p => match p {
         Text { value: v } =>
           let base = escape_string_literal_body(s: v)
           let escaped = if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
           InterpPart { format_segment: escaped, arg_expr: "" }
         Interpolation { expr: e } =>
-          InterpPart { format_segment: interp.placeholder, arg_expr: recurse(e) }
+          InterpPart { format_segment: ph, arg_expr: recurse(e) }
       })
       let fmt_str = fmt_parts |> map(p => p.format_segment) |> join(separator: "")
       let args = fmt_parts |> map(p => p.arg_expr) |> filter(a => a != "")
@@ -2399,7 +2399,7 @@ fn emit_typed_method_call_unified(receiver: Node, method: String, args: List<Nod
           let arg_strs = args |> map(a => recurse(arg_value(n: a)))
           let args_str = arg_strs |> join(separator: ", ")
           concat(spec.async_call_prefix, var_name, ".", emit_export_ident(name: method, target: target), "(", args_str, ")")
-        None => spec.service_error_fallback
+        None => emit_error_expr(message: "unsupported service receiver", target: target)
       }
     } else {
       emit_plain_method_call_unified(receiver: receiver, method: method, args: args, target: target, recurse: recurse)

@@ -356,9 +356,7 @@ type LanguageSpec {
   // Bridge method rendering — how algebra method fallbacks render.
   bridge_method_prefix: String              // "" (Python) or "v2rt." (Go)
   bridge_method_case: NamingCase            // SnakeCase (Python) or PascalCase (Go)
-  bridge_method_overrides: List<EscapePair>  // [{from: "with", to: "with_update"}] (Python) or [] (Go)
-  // Error fallback for unsupported service receivers.
-  service_error_fallback: String            // 'raise NotImplementedError("...")' or error marker
+  bridge_method_overrides: Map<String, String>  // {"with": "with_update"} (Python) or {} (Go)
   // Record literal syntax.
   record_lit: RecordLitSyntax
 }
@@ -391,7 +389,10 @@ type RecordLitSyntax {
 //   FormatArgs: format function + positional args (Rust format!, Go fmt.Sprintf)
 //   InlineExpr: inline interpolation (Python f-strings)
 // C-1: dissolves `match target` in emit_simple_string_interp.
-type InterpStyle = FormatArgs | InlineExpr
+// InterpStyle: FormatArgs carries its placeholder; InlineExpr has none.
+type InterpStyle
+  = FormatArgs { placeholder: String }   // "{}" (Rust) or "%v" (Go)
+  | InlineExpr
 
 type EscapePair {
   from: String
@@ -401,7 +402,6 @@ type EscapePair {
 type StringInterpSyntax {
   style: InterpStyle
   format_template: String          // FormatArgs: "format!(\"{0}\", {1})"; InlineExpr: "f\"{0}\""
-  placeholder: String              // FormatArgs: "{}" or "%v"; InlineExpr: unused
   plain_template: String           // no-interpolation fallback: "\"{0}\".to_string()" / "\"{0}\""
   escape_pairs: List<EscapePair>   // interp-specific escaping applied after standard string escape
 }
@@ -528,9 +528,8 @@ fn rust_spec() -> LanguageSpec {
       second_accessor: ".1"
     },
     string_interp: StringInterpSyntax {
-      style: FormatArgs,
+      style: FormatArgs { placeholder: "{}" },
       format_template: "format!(\"{0}\", {1})",
-      placeholder: "{}",
       plain_template: "\"{0}\".to_string()",
       escape_pairs: [EscapePair { from: "{", to: "{{" }, EscapePair { from: "}", to: "}}" }]
     },
@@ -539,8 +538,7 @@ fn rust_spec() -> LanguageSpec {
     async_call_prefix: "",
     bridge_method_prefix: "",
     bridge_method_case: SnakeCase,
-    bridge_method_overrides: [],
-    service_error_fallback: "compile_error!(\"unsupported service receiver\")",
+    bridge_method_overrides: empty_map(),
     record_lit: RecordLitSyntax {
       named_open: " \{", named_close: "\}", named_empty: " \{\}",
       named_field_sep: ": ", named_field_join: ", ",
@@ -669,7 +667,6 @@ fn python_spec() -> LanguageSpec {
     string_interp: StringInterpSyntax {
       style: InlineExpr,
       format_template: "f\"{0}\"",
-      placeholder: "",
       plain_template: "f\"{0}\"",
       escape_pairs: [EscapePair { from: "{", to: "{{" }, EscapePair { from: "}", to: "}}" }]
     },
@@ -678,8 +675,7 @@ fn python_spec() -> LanguageSpec {
     async_call_prefix: "await ",
     bridge_method_prefix: "",
     bridge_method_case: SnakeCase,
-    bridge_method_overrides: [EscapePair { from: "with", to: "with_update" }],
-    service_error_fallback: "raise NotImplementedError(\"unsupported service receiver\")",
+    bridge_method_overrides: map_insert(empty_map(), "with", "with_update"),
     record_lit: RecordLitSyntax {
       named_open: "(", named_close: ")", named_empty: "()",
       named_field_sep: "=", named_field_join: ", ",
@@ -806,9 +802,8 @@ fn go_spec() -> LanguageSpec {
       second_accessor: ".Second"
     },
     string_interp: StringInterpSyntax {
-      style: FormatArgs,
+      style: FormatArgs { placeholder: "%v" },
       format_template: "fmt.Sprintf(\"{0}\", {1})",
-      placeholder: "%v",
       plain_template: "\"{0}\"",
       escape_pairs: [EscapePair { from: "%", to: "%%" }]
     },
@@ -817,8 +812,7 @@ fn go_spec() -> LanguageSpec {
     async_call_prefix: "",
     bridge_method_prefix: "v2rt.",
     bridge_method_case: PascalCase,
-    bridge_method_overrides: [],
-    service_error_fallback: "panic(\"unsupported service receiver\")",
+    bridge_method_overrides: empty_map(),
     record_lit: RecordLitSyntax {
       named_open: "\{", named_close: "\}", named_empty: "\{\}",
       named_field_sep: ": ", named_field_join: ", ",
@@ -950,7 +944,6 @@ fn dag_spec() -> LanguageSpec {
     string_interp: StringInterpSyntax {
       style: InlineExpr,
       format_template: "\"\{0\}\"",
-      placeholder: "",
       plain_template: "\"\{0\}\"",
       escape_pairs: [EscapePair { from: "{", to: "\\{" }, EscapePair { from: "}", to: "\\}" }]
     },
@@ -959,8 +952,7 @@ fn dag_spec() -> LanguageSpec {
     async_call_prefix: "",
     bridge_method_prefix: "",
     bridge_method_case: SnakeCase,
-    bridge_method_overrides: [],
-    service_error_fallback: "compile_error!(\"unsupported service receiver\")",
+    bridge_method_overrides: empty_map(),
     record_lit: RecordLitSyntax {
       named_open: " \{", named_close: "\}", named_empty: " \{\}",
       named_field_sep: ": ", named_field_join: ", ",

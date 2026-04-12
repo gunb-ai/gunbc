@@ -273,8 +273,7 @@ pub struct LanguageSpec {
     pub async_call_prefix: String,
     pub bridge_method_prefix: String,
     pub bridge_method_case: NamingCase,
-    pub bridge_method_overrides: Rc<Vec<Rc<EscapePair>>>,
-    pub service_error_fallback: String,
+    pub bridge_method_overrides: Rc<HashMap<String, String>>,
     pub record_lit: Rc<RecordLitSyntax>,
 }
 
@@ -301,11 +300,21 @@ pub struct RecordLitSyntax {
     pub anon_field_indent: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum InterpStyle {
-    FormatArgs,
+    FormatArgs {
+        placeholder: String,
+    },
     InlineExpr,
+}
+impl InterpStyle {
+    pub fn placeholder(&self) -> String {
+        match self {
+            InterpStyle::FormatArgs { placeholder: __val, .. } => __val.clone(),
+            InterpStyle::InlineExpr => panic!("no placeholder on unit variant"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -316,9 +325,8 @@ pub struct EscapePair {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StringInterpSyntax {
-    pub style: InterpStyle,
+    pub style: Rc<InterpStyle>,
     pub format_template: String,
-    pub placeholder: String,
     pub plain_template: String,
     pub escape_pairs: Rc<Vec<Rc<EscapePair>>>,
 }
@@ -451,9 +459,10 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     second_accessor: ".1".to_string(),
 }),
     string_interp: Rc::new(StringInterpSyntax {
-    style: InterpStyle::FormatArgs,
-    format_template: "format!(\"{0}\", {1})".to_string(),
+    style: Rc::new(InterpStyle::FormatArgs {
     placeholder: "{}".to_string(),
+}),
+    format_template: "format!(\"{0}\", {1})".to_string(),
     plain_template: "\"{0}\".to_string()".to_string(),
     escape_pairs: Rc::new(vec![Rc::new(EscapePair {
     from: "{".to_string(),
@@ -468,8 +477,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     async_call_prefix: "".to_string(),
     bridge_method_prefix: "".to_string(),
     bridge_method_case: NamingCase::SnakeCase,
-    bridge_method_overrides: Rc::new(vec![]),
-    service_error_fallback: "compile_error!(\"unsupported service receiver\")".to_string(),
+    bridge_method_overrides: v2_rt::rc_empty_map::<String>(),
     record_lit: Rc::new(RecordLitSyntax {
     named_open: " {".to_string(),
     named_close: "}".to_string(),
@@ -612,9 +620,8 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     second_accessor: "[1]".to_string(),
 }),
     string_interp: Rc::new(StringInterpSyntax {
-    style: InterpStyle::InlineExpr,
+    style: Rc::new(InterpStyle::InlineExpr),
     format_template: "f\"{0}\"".to_string(),
-    placeholder: "".to_string(),
     plain_template: "f\"{0}\"".to_string(),
     escape_pairs: Rc::new(vec![Rc::new(EscapePair {
     from: "{".to_string(),
@@ -629,11 +636,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     async_call_prefix: "await ".to_string(),
     bridge_method_prefix: "".to_string(),
     bridge_method_case: NamingCase::SnakeCase,
-    bridge_method_overrides: Rc::new(vec![Rc::new(EscapePair {
-    from: "with".to_string(),
-    to: "with_update".to_string(),
-})]),
-    service_error_fallback: "raise NotImplementedError(\"unsupported service receiver\")".to_string(),
+    bridge_method_overrides: v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String>(), "with".to_string(), "with_update".to_string()),
     record_lit: Rc::new(RecordLitSyntax {
     named_open: "(".to_string(),
     named_close: ")".to_string(),
@@ -776,9 +779,10 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     second_accessor: ".Second".to_string(),
 }),
     string_interp: Rc::new(StringInterpSyntax {
-    style: InterpStyle::FormatArgs,
-    format_template: "fmt.Sprintf(\"{0}\", {1})".to_string(),
+    style: Rc::new(InterpStyle::FormatArgs {
     placeholder: "%v".to_string(),
+}),
+    format_template: "fmt.Sprintf(\"{0}\", {1})".to_string(),
     plain_template: "\"{0}\"".to_string(),
     escape_pairs: Rc::new(vec![Rc::new(EscapePair {
     from: "%".to_string(),
@@ -790,8 +794,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     async_call_prefix: "".to_string(),
     bridge_method_prefix: "v2rt.".to_string(),
     bridge_method_case: NamingCase::PascalCase,
-    bridge_method_overrides: Rc::new(vec![]),
-    service_error_fallback: "panic(\"unsupported service receiver\")".to_string(),
+    bridge_method_overrides: v2_rt::rc_empty_map::<String>(),
     record_lit: Rc::new(RecordLitSyntax {
     named_open: "{".to_string(),
     named_close: "}".to_string(),
@@ -932,9 +935,8 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
     second_accessor: ".1".to_string(),
 }),
     string_interp: Rc::new(StringInterpSyntax {
-    style: InterpStyle::InlineExpr,
+    style: Rc::new(InterpStyle::InlineExpr),
     format_template: "\"{0}\"".to_string(),
-    placeholder: "".to_string(),
     plain_template: "\"{0}\"".to_string(),
     escape_pairs: Rc::new(vec![Rc::new(EscapePair {
     from: "{".to_string(),
@@ -949,8 +951,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
     async_call_prefix: "".to_string(),
     bridge_method_prefix: "".to_string(),
     bridge_method_case: NamingCase::SnakeCase,
-    bridge_method_overrides: Rc::new(vec![]),
-    service_error_fallback: "compile_error!(\"unsupported service receiver\")".to_string(),
+    bridge_method_overrides: v2_rt::rc_empty_map::<String>(),
     record_lit: Rc::new(RecordLitSyntax {
     named_open: " {".to_string(),
     named_close: "}".to_string(),
