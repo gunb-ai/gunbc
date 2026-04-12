@@ -32,6 +32,7 @@ use crate::v2_std_core::{
     return_value,
     field_binding_name_at, field_binding_pattern,
     is_shell_transport, is_rest_transport, param_node_name_at,
+    param_node_default_value,
     find_property, find_property_string,
 };
 use crate::v2_compiler_emit::{
@@ -407,6 +408,17 @@ fn call_function(
             } else if positional_idx < param_names.len() {
                 bindings.insert(param_names[positional_idx].clone(), val.clone());
                 positional_idx += 1;
+            }
+        }
+    }
+
+    // Fill default values for unbound parameters
+    for param in fn_node.params.iter() {
+        let pname = authored_name_at(ctx.si(), param);
+        if !bindings.contains_key(&pname) {
+            if let Some(default_node) = param_node_default_value(param) {
+                let default_val = eval_expr(&default_node, env, ctx)?;
+                bindings.insert(pname, default_val);
             }
         }
     }
@@ -902,12 +914,17 @@ fn eval_method_call(
     let semantics = expr_method_call_semantics(node.clone());
 
     // Service calls: skip receiver evaluation (it's a service namespace, not a value).
+    // Preserve named args for correct param binding (positional misaligns with defaults).
     if let Some(MethodSemantics::ServiceMethodSemantics { service_name, .. }) = semantics.as_deref() {
         let extra_args = method_arg_nodes(node.clone());
-        let args: Vec<Value> = extra_args.iter()
-            .map(|a| eval_expr(&arg_value(a), env, ctx))
+        let named_args: Vec<(Option<String>, Value)> = extra_args.iter()
+            .map(|a| {
+                let name = arg_name_at(a.clone(), ctx.si());
+                let val = eval_expr(&arg_value(a), env, ctx)?;
+                Ok((name, val))
+            })
             .collect::<InterpResult<_>>()?;
-        return eval_service_call(service_name, &method_name, &args, env, ctx);
+        return eval_service_call(service_name, &method_name, &named_args, env, ctx);
     }
 
     // Non-service calls: evaluate receiver and args
@@ -1501,7 +1518,7 @@ fn eval_algebra_method(
 fn eval_service_call(
     service_name: &str,
     op_name: &str,
-    args: &[Value],
+    args: &[(Option<String>, Value)],
     env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
@@ -1538,19 +1555,49 @@ fn eval_service_call(
 }
 
 /// Build an environment with service operation params bound to arg values.
+/// Uses named matching, with positional fallback + default values.
 fn build_service_param_env(
     op_node: &Rc<Node>,
-    args: &[Value],
+    args: &[(Option<String>, Value)],
     env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Rc<Env>> {
     let mut bindings = HashMap::new();
-    for (i, param) in op_node.params.iter().enumerate() {
-        let name = param_node_name_at(param.clone(), ctx.si());
-        if let Some(val) = args.get(i) {
-            bindings.insert(name, val.clone());
+
+    // First pass: bind named args by name
+    for (opt_name, val) in args {
+        if let Some(name) = opt_name {
+            bindings.insert(name.clone(), val.clone());
         }
     }
+
+    // Second pass: bind remaining positional args to unbound params
+    let mut positional_idx = 0;
+    let positional_args: Vec<&Value> = args.iter()
+        .filter(|(name, _)| name.is_none())
+        .map(|(_, v)| v)
+        .collect();
+    for param in op_node.params.iter() {
+        let name = param_node_name_at(param.clone(), ctx.si());
+        if !bindings.contains_key(&name) {
+            if positional_idx < positional_args.len() {
+                bindings.insert(name, positional_args[positional_idx].clone());
+                positional_idx += 1;
+            }
+        }
+    }
+
+    // Third pass: fill defaults for any remaining unbound params
+    for param in op_node.params.iter() {
+        let name = param_node_name_at(param.clone(), ctx.si());
+        if !bindings.contains_key(&name) {
+            if let Some(default_node) = param_node_default_value(param) {
+                let default_val = eval_expr(&default_node, env, ctx)?;
+                bindings.insert(name, default_val);
+            }
+        }
+    }
+
     Ok(Env::extend(env, bindings))
 }
 
@@ -1687,12 +1734,12 @@ fn dispatch_rest(
     let base_url = find_service_config_string(service_node, "svc_endpoint", &si)
         .unwrap_or_default();
 
-    // 2. Path template — evaluate as expression (handles string interpolation)
-    // find_property returns the value node directly (already unwrapped).
+    // 2. Path template — evaluate as expression, then substitute {param} placeholders
     let path = match find_property(transport.properties.clone(), "path".to_string(), si.clone()) {
         Some(path_node) => {
             let path_val = eval_expr(&path_node, param_env, ctx)?;
-            format!("{}", path_val)
+            let path_str = format!("{}", path_val);
+            substitute_template(&path_str, param_env)
         }
         None => String::new(),
     };
@@ -1722,14 +1769,16 @@ fn dispatch_rest(
     // 4. Auth header
     let (auth_header_name, auth_token) = resolve_auth(service_node, transport, &si);
 
-    // 5. Custom headers from transport
-    // find_property returns the headers record node; its children are field-init nodes.
+    // 5. Custom headers from transport properties.
+    // Non-reserved properties on the transport node are custom headers.
+    let reserved_props = ["base_url", "method", "path", "body", "query",
+        "response_format", "auth_token", "auth_header", "stdin"];
     let mut headers: Vec<(String, String)> = Vec::new();
-    if let Some(hdrs_record) = find_property(transport.properties.clone(), "headers".to_string(), si.clone()) {
-        for child in hdrs_record.children.iter() {
-            let hname = field_init_node_name_at(child.clone(), si.clone());
-            let hval = eval_expr(&field_init_node_value(child), param_env, ctx)?;
-            headers.push((hname, format!("{}", hval)));
+    for prop in transport.properties.iter() {
+        let pname = field_init_node_name_at(prop.clone(), si.clone());
+        if !reserved_props.contains(&pname.as_str()) {
+            let pval = eval_expr(&field_init_node_value(prop), param_env, ctx)?;
+            headers.push((pname, format!("{}", pval)));
         }
     }
 
@@ -1837,44 +1886,71 @@ fn dispatch_rest(
 /// Resolve auth header name and token from service config + environment.
 fn resolve_auth(
     service_node: &Rc<Node>,
-    transport: &Rc<Node>,
+    _transport: &Rc<Node>,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> (String, Option<String>) {
-    // Check service config for auth scheme and source
-    let auth_scheme = find_service_config_string(service_node, "svc_auth", si);
-    let auth_source = find_service_config_string(service_node, "svc_auth_source", si);
+    let mut header_name = "Authorization".to_string();
+    let mut env_var_name: Option<String> = None;
 
-    // Determine header name
-    let header_name = if let Some(ref scheme) = auth_scheme {
-        if scheme.starts_with("Header(") {
-            // Header("x-api-key") → extract the header name
-            scheme.trim_start_matches("Header(\"")
-                .trim_end_matches("\")")
-                .to_string()
-        } else {
-            "Authorization".to_string()
+    // Walk service config properties looking for auth-related declarations
+    for prop in service_node.properties.iter() {
+        let name = field_init_node_name_at(prop.clone(), si.clone());
+        let val_node = field_init_node_value(prop);
+
+        match name.as_str() {
+            "svc_auth" => {
+                // Auth scheme: Bearer, Header("x-api-key"), etc.
+                let scheme = authored_name_at(si.clone(), &val_node);
+                if scheme == "Bearer" {
+                    header_name = "Authorization".to_string();
+                } else if scheme == "Header" || val_node.name == "Header" {
+                    // Header("x-api-key") — extract the header name from children
+                    // The string arg is in the first child (or its nested value)
+                    for child in val_node.children.iter() {
+                        if let Some(s) = extract_string_value(child) {
+                            header_name = s;
+                        } else {
+                            // Might be an arg node with a child
+                            for grandchild in child.children.iter() {
+                                if let Some(s) = extract_string_value(grandchild) {
+                                    header_name = s;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            "svc_auth_source" => {
+                // Auth source: EnvVar { name: "GITHUB_TOKEN" } — extract the env var name
+                // The value is a record node. Look for the "name" field in its children.
+                for child in val_node.children.iter() {
+                    let field_name = field_init_node_name_at(child.clone(), si.clone());
+                    if field_name == "name" {
+                        let field_val = field_init_node_value(child);
+                        env_var_name = extract_string_value(&field_val);
+                    }
+                }
+                // Fallback: try the node's own name or literal value
+                if env_var_name.is_none() {
+                    env_var_name = extract_string_value(&val_node);
+                }
+            }
+            _ => {}
         }
-    } else {
-        // Check transport-level auth header
-        find_property_string(transport.properties.clone(), "auth_header".to_string(), si.clone())
-            .unwrap_or_else(|| "Authorization".to_string())
-    };
+    }
 
-    // Resolve token from environment
-    let token = if let Some(ref source) = auth_source {
-        // Parse EnvVar { name: "VAR_NAME" } or just use as env var name
-        let env_var = if source.contains('{') {
-            // Extract name from "EnvVar { name: \"GITHUB_TOKEN\" }"
-            source.split('"').nth(1).unwrap_or(source).to_string()
-        } else {
-            source.clone()
-        };
-        std::env::var(&env_var).ok()
-    } else {
-        None
-    };
-
+    let token = env_var_name.and_then(|var| std::env::var(&var).ok());
     (header_name, token)
+}
+
+/// Extract a string value from a node (literal or authored name).
+fn extract_string_value(node: &Rc<Node>) -> Option<String> {
+    if let ExprData::ExprLiteral { ref value } = *node.expr_data {
+        if let LiteralValue::LitStr { value: s } = value.as_ref() {
+            return Some(s.clone());
+        }
+    }
+    None
 }
 
 /// Find a string value from a service's config properties.
@@ -1903,6 +1979,32 @@ fn find_service_config_string(
     None
 }
 
+/// Substitute `{param}` placeholders in a template string with values from the environment.
+fn substitute_template(template: &str, env: &Rc<Env>) -> String {
+    let mut result = String::new();
+    let mut chars = template.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '{' {
+            let mut var_name = String::new();
+            for c2 in chars.by_ref() {
+                if c2 == '}' { break; }
+                var_name.push(c2);
+            }
+            if let Some(val) = env.lookup(&var_name) {
+                result.push_str(&format!("{}", val));
+            } else {
+                // Leave unresolved placeholders as-is
+                result.push('{');
+                result.push_str(&var_name);
+                result.push('}');
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
 /// Convert a Value to serde_json::Value for request bodies.
 fn value_to_json(val: &Value) -> serde_json::Value {
     match val {
@@ -1910,7 +2012,15 @@ fn value_to_json(val: &Value) -> serde_json::Value {
         Value::Bool(b) => serde_json::Value::Bool(*b),
         Value::Int(n) => serde_json::json!(*n),
         Value::Float(f) => serde_json::json!(*f),
-        Value::Str(s) => serde_json::Value::String(s.clone()),
+        Value::Str(s) => {
+            // If the string contains JSON, parse it (bridge for Json-typed params)
+            if (s.starts_with('[') || s.starts_with('{')) {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s) {
+                    return parsed;
+                }
+            }
+            serde_json::Value::String(s.clone())
+        }
         Value::List(items) => {
             serde_json::Value::Array(items.iter().map(value_to_json).collect())
         }
@@ -1978,10 +2088,22 @@ fn map_response_to_value_json(
         return Ok(json_to_value(json));
     }
 
-    // If the return type is a List, the response is an array
+    // If the return type itself is a List (not a record), return the JSON directly
     let type_name = authored_name_at(ctx.si(), &return_type);
-    if type_name == "List" || json.is_array() {
+    if type_name == "List" && children.is_empty() {
         return Ok(json_to_value(json));
+    }
+
+    // If response is an array but return type is a record with a list field,
+    // wrap the array in that field.
+    if json.is_array() && !children.is_empty() {
+        let mut fields = HashMap::new();
+        let first_field = authored_name_at(ctx.si(), &children[0]);
+        fields.insert(first_field, json_to_value(json));
+        return Ok(Value::Record {
+            type_name: authored_name_at(ctx.si(), op_node),
+            fields: Rc::new(fields),
+        });
     }
 
     // Multi-field record: extract fields via from_key JSON paths
@@ -2002,7 +2124,16 @@ fn map_response_to_value_json(
                 // Try direct field name as JSON key
                 match json.get(&field_name) {
                     Some(v) => json_to_value(v),
-                    None => Value::Null,
+                    None => {
+                        // Single-field output wrapping: if the return type has
+                        // exactly one field and the JSON doesn't have that key,
+                        // wrap the entire response in that field.
+                        if children.len() == 1 {
+                            json_to_value(json)
+                        } else {
+                            Value::Null
+                        }
+                    }
                 }
             }
         };
