@@ -5154,12 +5154,37 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     typed_items: typed_items, func_env: ctx.func_env,
     type_env: env, locals: data_locals
   )
+  // Re-annotate recursive function bodies now that output provenance is
+  // populated. The first annotation pass (inside infer_items) ran before
+  // populate_output_provenance, so same-module callee sigs had empty
+  // output_provenance. Re-running with updated_func_env lets per-field
+  // struct provenance flow into descent evidence.
+  let reannotated_items = map(typed_items, item =>
+    if item.is_self_recursive && item.body != none {
+      Node {
+        name: item.name, span: item.span, ident_span: item.ident_span,
+        children: item.children, params: item.params,
+        inferred: item.inferred, return_cardinality: item.return_cardinality,
+        uses: item.uses,
+        body: Some { value: annotate_descent_evidence(
+          body: item.body.value, fn_name: item.name, params: item.params,
+          type_env: env, scope_locals: data_locals,
+          func_sigs: updated_func_env.signatures
+        ) },
+        connective: item.connective, transport: item.transport,
+        properties: item.properties, type_annotation: item.type_annotation,
+        is_self_recursive: item.is_self_recursive,
+        has_non_tail_self_call: item.has_non_tail_self_call,
+        match_pattern: item.match_pattern, expr_data: item.expr_data
+      }
+    } else { item }
+  )
   let typed_module = module_node(name: resolved.module.name, imports: module_imports(n: resolved.module), items: ctx.resolved_items, span: resolved.module.span)
 
   TypecheckModuleResult {
     typed: TypedModule {
       module: typed_module,
-      items: typed_items,
+      items: reannotated_items,
       type_env: env,
       func_env: updated_func_env,
       item_registry: ctx.item_registry

@@ -2340,7 +2340,7 @@ let all_structural = (has_evidence && { let mut __all = true; for call_ev in all
 } { __found = true; break; } } __found }) { __all = false; break; } } __all });
 if all_structural {
                     {
-                        let any_call_arithmetic_only = { let mut __found = false; for call_ev in all_evidence.clone().iter().cloned() { if {
+                        let all_calls_arithmetic_only = { let mut __all = true; for call_ev in all_evidence.clone().iter().cloned() { if !({
                             let has_tree = { let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
     SubValueRelation::StrictSubValue { .. } => true,
     SubValueRelation::IteratedSubValue { .. } => true,
@@ -2351,8 +2351,8 @@ let has_arith = { let mut __found = false; for rel in call_ev.clone().iter().clo
     _ => false,
 } { __found = true; break; } } __found };
 (has_arith.clone() && !has_tree.clone())
-} { __found = true; break; } } __found };
-let first_call = if any_call_arithmetic_only {
+}) { __all = false; break; } } __all };
+let first_call = if all_calls_arithmetic_only {
                             Rc::new({ let mut __result = Vec::new(); for call_ev in all_evidence.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
     SubValueRelation::ArithmeticDescent { .. } => true,
     _ => false,
