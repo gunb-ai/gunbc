@@ -765,7 +765,7 @@ P7: Clone elision Layer 2 (post-TCO ownership)   ← independent, do anytime
 P8: Pipeline profiling                           ← do early for signal
 ```
 
-Design: [docs/perf-borrow-design.md](docs/perf-borrow-design.md)
+Design: [docs/perf/clone-elimination.md](docs/perf/clone-elimination.md)
 
 Current state: 21,211 `.clone()` sites across 59 stage0 files.
 Selective borrowing is already landed via `read_only_params_index`
