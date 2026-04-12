@@ -31,7 +31,8 @@ use crate::v2_std_core::{
     slice_base, slice_start, slice_end,
     return_value,
     field_binding_name_at, field_binding_pattern,
-    is_shell_transport, param_node_name_at,
+    is_shell_transport, is_rest_transport, param_node_name_at,
+    find_property, find_property_string,
 };
 use crate::v2_compiler_emit::{
     extract_string_interp_parts, has_mock_prefix,
@@ -1532,9 +1533,8 @@ fn eval_service_call(
         return map_shell_outputs(&result, op_node, ctx);
     }
 
-    Err(InterpError::Unimplemented {
-        what: format!("transport type for {}", key),
-    })
+    // REST transport dispatch (any non-shell transport with service config endpoint)
+    return dispatch_rest(service_node, op_node, transport, &param_env, ctx);
 }
 
 /// Build an environment with service operation params bound to arg values.
@@ -1667,6 +1667,377 @@ fn extract_from_key(field_node: &Rc<Node>, ctx: &InterpContext) -> Option<String
         }
     }
     None
+}
+
+// ---------------------------------------------------------------------------
+// REST transport dispatch (I-3)
+// ---------------------------------------------------------------------------
+
+/// Execute a REST transport: build URL, set headers/auth, send request, parse response.
+fn dispatch_rest(
+    service_node: &Rc<Node>,
+    op_node: &Rc<Node>,
+    transport: &Rc<Node>,
+    param_env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let si = ctx.si();
+
+    // 1. Base URL from service config
+    let base_url = find_service_config_string(service_node, "svc_endpoint", &si)
+        .unwrap_or_default();
+
+    // 2. Path template — evaluate as expression (handles string interpolation)
+    // find_property returns the value node directly (already unwrapped).
+    let path = match find_property(transport.properties.clone(), "path".to_string(), si.clone()) {
+        Some(path_node) => {
+            let path_val = eval_expr(&path_node, param_env, ctx)?;
+            format!("{}", path_val)
+        }
+        None => String::new(),
+    };
+
+    let url = if path.is_empty() {
+        base_url
+    } else {
+        format!("{}{}", base_url, path)
+    };
+
+    // 3. HTTP method — try string literal, fall back to authored name
+    let method = match find_property(transport.properties.clone(), "method".to_string(), si.clone()) {
+        Some(m_node) => {
+            if let ExprData::ExprLiteral { ref value } = *m_node.expr_data {
+                if let LiteralValue::LitStr { value: s } = value.as_ref() {
+                    s.clone().to_uppercase()
+                } else {
+                    authored_name_at(si.clone(), &m_node).to_uppercase()
+                }
+            } else {
+                authored_name_at(si.clone(), &m_node).to_uppercase()
+            }
+        }
+        None => "GET".to_string(),
+    };
+
+    // 4. Auth header
+    let (auth_header_name, auth_token) = resolve_auth(service_node, transport, &si);
+
+    // 5. Custom headers from transport
+    // find_property returns the headers record node; its children are field-init nodes.
+    let mut headers: Vec<(String, String)> = Vec::new();
+    if let Some(hdrs_record) = find_property(transport.properties.clone(), "headers".to_string(), si.clone()) {
+        for child in hdrs_record.children.iter() {
+            let hname = field_init_node_name_at(child.clone(), si.clone());
+            let hval = eval_expr(&field_init_node_value(child), param_env, ctx)?;
+            headers.push((hname, format!("{}", hval)));
+        }
+    }
+
+    // 6. Query params
+    let mut query_params: Vec<(String, String)> = Vec::new();
+    if let Some(query_record) = find_property(transport.properties.clone(), "query".to_string(), si.clone()) {
+        for child in query_record.children.iter() {
+            let qname = field_init_node_name_at(child.clone(), si.clone());
+            let qval = eval_expr(&field_init_node_value(child), param_env, ctx)?;
+            match &qval {
+                Value::Null => {} // skip null query params
+                _ => query_params.push((qname, format!("{}", qval))),
+            }
+        }
+    }
+
+    // 7. Request body
+    let body_json = match find_property(transport.properties.clone(), "body".to_string(), si.clone()) {
+        Some(body_node) => {
+            let body_val = eval_expr(&body_node, param_env, ctx)?;
+            Some(value_to_json(&body_val))
+        }
+        None => None,
+    };
+
+    // 8. Response format
+    let response_format = find_property_string(
+        transport.properties.clone(), "response_format".to_string(), si.clone(),
+    ).unwrap_or_else(|| "Json".to_string());
+
+    // Build and send request
+    eprintln!("[rest] {} {}", method, url);
+
+    let mut request = match method.as_str() {
+        "GET" => ureq::get(&url),
+        "POST" => ureq::post(&url),
+        "PUT" => ureq::put(&url),
+        "DELETE" => ureq::delete(&url),
+        "PATCH" => ureq::patch(&url),
+        _ => return Err(InterpError::TypeError {
+            msg: format!("unsupported HTTP method: {}", method),
+        }),
+    };
+
+    // Set auth
+    if let Some(token) = &auth_token {
+        if !token.is_empty() {
+            let header_val = if auth_header_name == "Authorization" {
+                format!("Bearer {}", token)
+            } else {
+                token.clone()
+            };
+            request = request.set(&auth_header_name, &header_val);
+        }
+    }
+
+    // Set custom headers
+    for (name, val) in &headers {
+        request = request.set(name, val);
+    }
+
+    // Set query params
+    for (name, val) in &query_params {
+        request = request.query(name, val);
+    }
+
+    // Send
+    let response = if let Some(json) = body_json {
+        request.set("Content-Type", "application/json")
+            .send_string(&json.to_string())
+    } else {
+        request.call()
+    };
+
+    match response {
+        Ok(resp) => {
+            let status = resp.status();
+            if status >= 400 {
+                let body = resp.into_string().unwrap_or_default();
+                return Err(InterpError::TypeError {
+                    msg: format!("HTTP {}: {}", status, body),
+                });
+            }
+            if response_format == "Text" {
+                let body = resp.into_string().unwrap_or_default();
+                return map_response_to_value(&body, None, op_node, ctx);
+            }
+            let body = resp.into_string().unwrap_or_default();
+            let json: serde_json::Value = serde_json::from_str(&body)
+                .unwrap_or(serde_json::Value::String(body));
+            map_response_to_value_json(&json, op_node, ctx)
+        }
+        Err(ureq::Error::Status(status, resp)) => {
+            let body = resp.into_string().unwrap_or_default();
+            Err(InterpError::TypeError {
+                msg: format!("HTTP {}: {}", status, body),
+            })
+        }
+        Err(e) => Err(InterpError::TypeError {
+            msg: format!("HTTP request failed: {}", e),
+        }),
+    }
+}
+
+/// Resolve auth header name and token from service config + environment.
+fn resolve_auth(
+    service_node: &Rc<Node>,
+    transport: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> (String, Option<String>) {
+    // Check service config for auth scheme and source
+    let auth_scheme = find_service_config_string(service_node, "svc_auth", si);
+    let auth_source = find_service_config_string(service_node, "svc_auth_source", si);
+
+    // Determine header name
+    let header_name = if let Some(ref scheme) = auth_scheme {
+        if scheme.starts_with("Header(") {
+            // Header("x-api-key") → extract the header name
+            scheme.trim_start_matches("Header(\"")
+                .trim_end_matches("\")")
+                .to_string()
+        } else {
+            "Authorization".to_string()
+        }
+    } else {
+        // Check transport-level auth header
+        find_property_string(transport.properties.clone(), "auth_header".to_string(), si.clone())
+            .unwrap_or_else(|| "Authorization".to_string())
+    };
+
+    // Resolve token from environment
+    let token = if let Some(ref source) = auth_source {
+        // Parse EnvVar { name: "VAR_NAME" } or just use as env var name
+        let env_var = if source.contains('{') {
+            // Extract name from "EnvVar { name: \"GITHUB_TOKEN\" }"
+            source.split('"').nth(1).unwrap_or(source).to_string()
+        } else {
+            source.clone()
+        };
+        std::env::var(&env_var).ok()
+    } else {
+        None
+    };
+
+    (header_name, token)
+}
+
+/// Find a string value from a service's config properties.
+fn find_service_config_string(
+    service_node: &Rc<Node>,
+    key: &str,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    for prop in service_node.properties.iter() {
+        let name = field_init_node_name_at(prop.clone(), si.clone());
+        if name == key {
+            let val_node = field_init_node_value(prop);
+            // Try literal string
+            if let ExprData::ExprLiteral { ref value } = *val_node.expr_data {
+                if let LiteralValue::LitStr { value: s } = value.as_ref() {
+                    return Some(s.clone());
+                }
+            }
+            // Try authored name (for enum-like values)
+            let authored = authored_name_at(si.clone(), &val_node);
+            if !authored.is_empty() {
+                return Some(authored);
+            }
+        }
+    }
+    None
+}
+
+/// Convert a Value to serde_json::Value for request bodies.
+fn value_to_json(val: &Value) -> serde_json::Value {
+    match val {
+        Value::Null => serde_json::Value::Null,
+        Value::Bool(b) => serde_json::Value::Bool(*b),
+        Value::Int(n) => serde_json::json!(*n),
+        Value::Float(f) => serde_json::json!(*f),
+        Value::Str(s) => serde_json::Value::String(s.clone()),
+        Value::List(items) => {
+            serde_json::Value::Array(items.iter().map(value_to_json).collect())
+        }
+        Value::Map(m) => {
+            let obj: serde_json::Map<String, serde_json::Value> = m.iter()
+                .map(|(k, v)| (k.clone(), value_to_json(v)))
+                .collect();
+            serde_json::Value::Object(obj)
+        }
+        Value::Record { fields, .. } | Value::Variant { fields, .. } => {
+            let obj: serde_json::Map<String, serde_json::Value> = fields.iter()
+                .filter(|(_, v)| !matches!(v, Value::Null))
+                .map(|(k, v)| (k.clone(), value_to_json(v)))
+                .collect();
+            serde_json::Value::Object(obj)
+        }
+        Value::Unit => serde_json::Value::Null,
+        Value::Closure { .. } => serde_json::Value::String("<closure>".to_string()),
+    }
+}
+
+/// Map a text response to the operation's return type.
+fn map_response_to_value(
+    text: &str,
+    _json: Option<&serde_json::Value>,
+    op_node: &Rc<Node>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let return_type = match op_node.inferred.as_deref() {
+        Some(crate::v2_std_core::InferredNode::Resolved { node }) => node.clone(),
+        _ => return Ok(Value::Str(text.to_string())),
+    };
+    let children = &return_type.children;
+    if children.is_empty() {
+        return Ok(Value::Str(text.to_string()));
+    }
+    // Single field → return text
+    if children.len() == 1 {
+        return Ok(Value::Str(text.to_string()));
+    }
+    // Multi-field: map by from_key, defaulting to text for "text" and "body" fields
+    let mut fields = HashMap::new();
+    for child in children.iter() {
+        let field_name = authored_name_at(ctx.si(), child);
+        fields.insert(field_name, Value::Str(text.to_string()));
+    }
+    Ok(Value::Record {
+        type_name: authored_name_at(ctx.si(), op_node),
+        fields: Rc::new(fields),
+    })
+}
+
+/// Map a JSON response to the operation's return type using from_key paths.
+fn map_response_to_value_json(
+    json: &serde_json::Value,
+    op_node: &Rc<Node>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let return_type = match op_node.inferred.as_deref() {
+        Some(crate::v2_std_core::InferredNode::Resolved { node }) => node.clone(),
+        _ => return Ok(json_to_value(json)),
+    };
+    let children = &return_type.children;
+    if children.is_empty() {
+        return Ok(json_to_value(json));
+    }
+
+    // If the return type is a List, the response is an array
+    let type_name = authored_name_at(ctx.si(), &return_type);
+    if type_name == "List" || json.is_array() {
+        return Ok(json_to_value(json));
+    }
+
+    // Multi-field record: extract fields via from_key JSON paths
+    let mut fields = HashMap::new();
+    for child in children.iter() {
+        let field_name = authored_name_at(ctx.si(), child);
+        let from_key = extract_from_key(child, ctx);
+        let val = match from_key {
+            Some(path) => {
+                // Convert "content/0/text" to JSON pointer "/content/0/text"
+                let pointer = format!("/{}", path);
+                match json.pointer(&pointer) {
+                    Some(v) => json_to_value(v),
+                    None => Value::Null,
+                }
+            }
+            None => {
+                // Try direct field name as JSON key
+                match json.get(&field_name) {
+                    Some(v) => json_to_value(v),
+                    None => Value::Null,
+                }
+            }
+        };
+        fields.insert(field_name, val);
+    }
+
+    Ok(Value::Record {
+        type_name: authored_name_at(ctx.si(), op_node),
+        fields: Rc::new(fields),
+    })
+}
+
+/// Convert serde_json::Value to interpreter Value.
+fn json_to_value(json: &serde_json::Value) -> Value {
+    match json {
+        serde_json::Value::Null => Value::Null,
+        serde_json::Value::Bool(b) => Value::Bool(*b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Value::Int(i)
+            } else {
+                Value::Float(n.as_f64().unwrap_or(0.0))
+            }
+        }
+        serde_json::Value::String(s) => Value::Str(s.clone()),
+        serde_json::Value::Array(arr) => {
+            Value::List(Rc::new(arr.iter().map(json_to_value).collect()))
+        }
+        serde_json::Value::Object(obj) => {
+            let fields: HashMap<String, Value> = obj.iter()
+                .map(|(k, v)| (k.clone(), json_to_value(v)))
+                .collect();
+            Value::Map(Rc::new(fields))
+        }
+    }
 }
 
 /// Evaluate mock_response from an operation's properties for dry-run mode.
