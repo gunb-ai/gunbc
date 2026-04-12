@@ -406,6 +406,10 @@ type AlgebraFieldTemplate {
   return_type: AlgebraTypeTemplate
   size_effect: CollectionSizeEffect?
   cost_shape: CostShape?
+  // Callback element contract: 0-indexed position within the CallableOf
+  // params that receives IteratedSubValue of the receiver collection.
+  // Declared fact — CX and inference read this instead of guessing.
+  callback_element_position: Int?
 }
 
 data kernel_algebra_profile: Map<String, AlgebraProfile> = {
@@ -420,36 +424,36 @@ data kernel_algebra_profile: Map<String, AlgebraProfile> = {
 
 fn ordered_ring_templates() -> List<AlgebraFieldTemplate> {
   [
-    { name: "add", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "zero", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "negate", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "mul", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "one", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "compare", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Ordering" }, size_effect: none, cost_shape: none },
-    { name: "quotient", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "remainder", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none }
+    { name: "add", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "zero", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "negate", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "mul", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "one", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "compare", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Ordering" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "quotient", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "remainder", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none }
   ]
 }
 
 fn approximate_field_templates() -> List<AlgebraFieldTemplate> {
   [
-    { name: "add", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "zero", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "negate", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "mul", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "one", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "reciprocal", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "compare", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Ordering" }, size_effect: none, cost_shape: none }
+    { name: "add", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "zero", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "negate", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "mul", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "one", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "reciprocal", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "compare", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Ordering" }, size_effect: none, cost_shape: none, callback_element_position: none }
   ]
 }
 
 fn boolean_algebra_templates() -> List<AlgebraFieldTemplate> {
   [
-    { name: "meet", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "join", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "complement", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "top", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "bottom", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none }
+    { name: "meet", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "join", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "complement", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "top", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "bottom", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none }
   ]
 }
 
@@ -459,86 +463,86 @@ fn boolean_algebra_templates() -> List<AlgebraFieldTemplate> {
 // (append, sort_by, enumerate, reverse) — only algebraic + iteration ops.
 fn boolean_algebra_collection_templates() -> List<AlgebraFieldTemplate> {
   [
-    { name: "union", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "intersect", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "diff", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "member", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none },
-    { name: "contains", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none },
-    { name: "filter", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: ReceiverSelf, size_effect: Some { value: IdentityEffect }, cost_shape: Some { value: ShapeIterateBody } },
-    { name: "map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: AlgebraTypeVariable { id: "MappedElement" } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
-    { name: "flat_map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
-    { name: "fold", param_types: [AlgebraTypeVariable { id: "FoldAccumulator" }, CallableOf { params: [AlgebraTypeVariable { id: "FoldAccumulator" }, ReceiverElement], return_type: AlgebraTypeVariable { id: "FoldAccumulator" } }], return_type: AlgebraTypeVariable { id: "FoldAccumulator" }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
-    { name: "any", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
-    { name: "all", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
-    { name: "count", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: Some { value: ShapeLinearScan } },
-    { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: Some { value: ShapeLinearScan } }
+    { name: "union", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "intersect", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "diff", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "member", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "contains", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "filter", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: ReceiverSelf, size_effect: Some { value: IdentityEffect }, cost_shape: Some { value: ShapeIterateBody }, callback_element_position: Some { value: 0 } },
+    { name: "map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: AlgebraTypeVariable { id: "MappedElement" } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Some { value: ShapeIterateBody }, callback_element_position: Some { value: 0 } },
+    { name: "flat_map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Some { value: ShapeIterateBody }, callback_element_position: Some { value: 0 } },
+    { name: "fold", param_types: [AlgebraTypeVariable { id: "FoldAccumulator" }, CallableOf { params: [AlgebraTypeVariable { id: "FoldAccumulator" }, ReceiverElement], return_type: AlgebraTypeVariable { id: "FoldAccumulator" } }], return_type: AlgebraTypeVariable { id: "FoldAccumulator" }, size_effect: none, cost_shape: Some { value: ShapeIterateBody }, callback_element_position: Some { value: 1 } },
+    { name: "any", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Some { value: ShapeIterateBody }, callback_element_position: Some { value: 0 } },
+    { name: "all", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Some { value: ShapeIterateBody }, callback_element_position: Some { value: 0 } },
+    { name: "count", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none },
+    { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none }
   ]
 }
 
 fn free_monoid_scalar_templates() -> List<AlgebraFieldTemplate> {
   [
-    { name: "concat", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "empty", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: none },
-    { name: "chars", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "Int" } }, size_effect: none, cost_shape: Some { value: ShapeLinearScan } },
-    { name: "split", param_types: [ReceiverSelf, ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverSelf }, size_effect: none, cost_shape: Some { value: ShapeLinearScan } },
-    { name: "join", param_types: [ContainerOf { source: Named { name: "List" }, element: ReceiverSelf }, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "contains", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none },
-    { name: "starts_with", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none },
-    { name: "ends_with", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none },
-    { name: "trim", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "to_lower", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "to_upper", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "replace", param_types: [ReceiverSelf, ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "substring", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }, NamedTemplate { name: "Int" }], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "to_int", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: none },
-    { name: "to_string", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "reverse", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none }
+    { name: "concat", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "empty", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "chars", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "Int" } }, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none },
+    { name: "split", param_types: [ReceiverSelf, ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverSelf }, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none },
+    { name: "join", param_types: [ContainerOf { source: Named { name: "List" }, element: ReceiverSelf }, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "contains", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "starts_with", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "ends_with", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "trim", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "to_lower", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "to_upper", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "replace", param_types: [ReceiverSelf, ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "substring", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }, NamedTemplate { name: "Int" }], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "to_int", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "to_string", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "reverse", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none }
   ]
 }
 
 fn free_monoid_collection_templates() -> List<AlgebraFieldTemplate> {
   [
-    { name: "map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: AlgebraTypeVariable { id: "MappedElement" } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
-    { name: "filter", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: ReceiverSelf, size_effect: Some { value: IdentityEffect }, cost_shape: Some { value: ShapeIterateBody } },
-    { name: "flat_map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
-    { name: "fold", param_types: [AlgebraTypeVariable { id: "FoldAccumulator" }, CallableOf { params: [AlgebraTypeVariable { id: "FoldAccumulator" }, ReceiverElement], return_type: AlgebraTypeVariable { id: "FoldAccumulator" } }], return_type: AlgebraTypeVariable { id: "FoldAccumulator" }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
-    { name: "any", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
-    { name: "all", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
-    { name: "count", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: Some { value: ShapeLinearScan } },
-    { name: "first", param_types: [ReceiverSelf], return_type: OptionalOf { inner: ReceiverElement }, size_effect: Some { value: ProjectionEffect }, cost_shape: Some { value: ShapeLinearScan } },
-    { name: "last", param_types: [ReceiverSelf], return_type: OptionalOf { inner: ReceiverElement }, size_effect: Some { value: ProjectionEffect }, cost_shape: Some { value: ShapeLinearScan } },
-    { name: "skip", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: ReceiverSelf, size_effect: Some { value: ShrinkEffect }, cost_shape: Some { value: ShapeIterateBody } },
-    { name: "take", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: ReceiverSelf, size_effect: none, cost_shape: Some { value: ShapeIterateBody } },
-    { name: "sort_by", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: Some { value: IdentityEffect }, cost_shape: Some { value: ShapeSortBody } },
-    { name: "append", param_types: [ReceiverSelf, ReceiverElement], return_type: ReceiverSelf, size_effect: none, cost_shape: Some { value: ShapeConstant } },
-    { name: "contains", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none },
-    { name: "enumerate", param_types: [ReceiverSelf], return_type: ContainerOf { source: SameAsReceiver, element: TupleOf { first: NamedTemplate { name: "Int" }, second: ReceiverElement } }, size_effect: Some { value: IdentityEffect }, cost_shape: Some { value: ShapeIterateBody } },
-    { name: "reverse", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: Some { value: IdentityEffect }, cost_shape: Some { value: ShapeLinearScan } },
-    { name: "join", param_types: [ReceiverSelf, NamedTemplate { name: "String" }], return_type: NamedTemplate { name: "String" }, size_effect: none, cost_shape: Some { value: ShapeLinearScan } },
-    { name: "concat", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: Some { value: ShapeLinearScan } },
-    { name: "list_push", param_types: [ReceiverSelf, ReceiverElement], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: Some { value: ShapeLinearScan } }
+    { name: "map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: AlgebraTypeVariable { id: "MappedElement" } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Some { value: ShapeIterateBody }, callback_element_position: Some { value: 0 } },
+    { name: "filter", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: ReceiverSelf, size_effect: Some { value: IdentityEffect }, cost_shape: Some { value: ShapeIterateBody }, callback_element_position: Some { value: 0 } },
+    { name: "flat_map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Some { value: ShapeIterateBody }, callback_element_position: Some { value: 0 } },
+    { name: "fold", param_types: [AlgebraTypeVariable { id: "FoldAccumulator" }, CallableOf { params: [AlgebraTypeVariable { id: "FoldAccumulator" }, ReceiverElement], return_type: AlgebraTypeVariable { id: "FoldAccumulator" } }], return_type: AlgebraTypeVariable { id: "FoldAccumulator" }, size_effect: none, cost_shape: Some { value: ShapeIterateBody }, callback_element_position: Some { value: 1 } },
+    { name: "any", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Some { value: ShapeIterateBody }, callback_element_position: Some { value: 0 } },
+    { name: "all", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Some { value: ShapeIterateBody }, callback_element_position: Some { value: 0 } },
+    { name: "count", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none },
+    { name: "first", param_types: [ReceiverSelf], return_type: OptionalOf { inner: ReceiverElement }, size_effect: Some { value: ProjectionEffect }, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none },
+    { name: "last", param_types: [ReceiverSelf], return_type: OptionalOf { inner: ReceiverElement }, size_effect: Some { value: ProjectionEffect }, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none },
+    { name: "skip", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: ReceiverSelf, size_effect: Some { value: ShrinkEffect }, cost_shape: Some { value: ShapeIterateBody }, callback_element_position: none },
+    { name: "take", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: ReceiverSelf, size_effect: none, cost_shape: Some { value: ShapeIterateBody }, callback_element_position: none },
+    { name: "sort_by", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: Some { value: IdentityEffect }, cost_shape: Some { value: ShapeSortBody }, callback_element_position: none },
+    { name: "append", param_types: [ReceiverSelf, ReceiverElement], return_type: ReceiverSelf, size_effect: none, cost_shape: Some { value: ShapeConstant }, callback_element_position: none },
+    { name: "contains", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "enumerate", param_types: [ReceiverSelf], return_type: ContainerOf { source: SameAsReceiver, element: TupleOf { first: NamedTemplate { name: "Int" }, second: ReceiverElement } }, size_effect: Some { value: IdentityEffect }, cost_shape: Some { value: ShapeIterateBody }, callback_element_position: none },
+    { name: "reverse", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: Some { value: IdentityEffect }, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none },
+    { name: "join", param_types: [ReceiverSelf, NamedTemplate { name: "String" }], return_type: NamedTemplate { name: "String" }, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none },
+    { name: "concat", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none },
+    { name: "list_push", param_types: [ReceiverSelf, ReceiverElement], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none }
   ]
 }
 
 fn partial_function_templates() -> List<AlgebraFieldTemplate> {
   [
-    { name: "get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none },
-    { name: "map_get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none },
-    { name: "lookup", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none },
-    { name: "map_insert", param_types: [ReceiverSelf, ReceiverKey, ReceiverValue], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "map_merge", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "has", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none },
-    { name: "map_has", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none },
-    { name: "map_contains_key", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none },
-    { name: "keys", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverKey }, size_effect: none, cost_shape: none },
-    { name: "map_keys", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverKey }, size_effect: none, cost_shape: none },
-    { name: "values", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverValue }, size_effect: none, cost_shape: none },
-    { name: "map_values", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverValue }, size_effect: none, cost_shape: none },
-    { name: "with", param_types: [ReceiverSelf, ReceiverKey, ReceiverValue], return_type: ReceiverSelf, size_effect: none, cost_shape: none },
-    { name: "contains", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none },
-    { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: none }
+    { name: "get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "map_get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "lookup", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "map_insert", param_types: [ReceiverSelf, ReceiverKey, ReceiverValue], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "map_merge", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "has", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "map_has", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "map_contains_key", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "keys", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverKey }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "map_keys", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverKey }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "values", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "map_values", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "with", param_types: [ReceiverSelf, ReceiverKey, ReceiverValue], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "contains", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: none, callback_element_position: none }
   ]
 }
 

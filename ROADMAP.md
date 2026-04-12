@@ -19,7 +19,6 @@ Architecture: [docs/architecture.md](docs/architecture.md)
 Compiler laws and coercion model: [src/v2/compiler-laws.md](src/v2/compiler-laws.md)
 Coercion design (algebra-keyed inhabitants): [docs/coercion-design.md](docs/coercion-design.md)
 Testing strategy: [src/v2/tests/testing-strategy.md](src/v2/tests/testing-strategy.md)
-Meta-process design (bootstrap, CI, dev process): [docs/meta-process-design.md](docs/meta-process-design.md)
 Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 Modeling guidelines: [MODELING.md](MODELING.md)
 
@@ -60,8 +59,7 @@ LAYER 5: Thesis completion (depends on Layer 4)
   Track 11 (runtime safety)        🟡 ── needs design (refinement types or total ops)
   Track 12 (verification)          🟡 ── depends on Track 5 (need working emission)
 
-LAYER 6: Meta + full vision (depends on Layer 5)
-  Track 15 (meta-processes)        🟢 ── Phase 1 unblocked; Phases 2-3 depend on Track 13
+LAYER 6: Full vision (depends on Layer 5)
   Track 14 (omni-emission)         🔴 ── depends on Track 13; needs vision
   Free consequences (parallelism)  🔴 ── blocked on Tier 1 + ownership + purity
 ```
@@ -81,7 +79,6 @@ LAYER 6: Meta + full vision (depends on Layer 5)
 | Track 13 (single emitter) | Emission is mechanical | 🟡 | Track 2 + 7 |
 | Track 11 (runtime safety) | Tier 2 | 🟡 | Design phase |
 | Track 12 (verification) | Tier 3 | 🟡 | Track 5 |
-| Track 15 (meta-processes) | Process modeling | 🟢/🟡 | Phase 1 unblocked; Phases 2-3 need Track 13 |
 | Track 14 (omni-emission) | Omni-emission | 🔴 | Track 13 + vision |
 
 ---
@@ -196,30 +193,29 @@ Bootstrap D ├─ Lane B: Emission ──────────────�
 
 ## Milestones to Gate 1
 
-Five concrete goals, in priority order. Each has a clear done-criterion.
+Four concrete goals, in priority order. Each has a clear done-criterion.
 
 ```
-M1: CX gate → 0 violations (currently 421, ratchet 421)
+M1: CX gate → 0 violations (currently 420, ratchet 420)
     Done when: strict_compile_diagnostic_count = 0, gate is blocking
     Key blocker: OUTPUT PROVENANCE on function signatures.
       Same SubValueRelation already on input bindings (S1-S6),
       mirrored to outputs. Not a new system — completes the
       existing pattern. 3 touch points: infer from body, store
       on signature, consumers read at call sites.
-    Done: infrastructure (#398), seed data (e61d199),
+    Done: infrastructure (#398), seed data (e61d199), type
+      correction Map<String,…>→List (positional by return child),
       classify_argument reads provenance before hardcoded fallback,
-      compose_sub_value_relations in std/induction.dag (single
-      authority for cross-call composition, conservative on
-      IteratedSubValue — identity only). Body inference active
-      for non-recursive functions (classify_body_provenance).
-    Limitation: output_provenance is List but consumers only
-      read |> first (scalar). Per-field consumption not wired.
-      Param identity still string-keyed (needs Track 3 ident:Int).
-      Body walker is a bootstrap parallel authority — should
-      derive from InferScope/TypeBinding.provenance pipeline
-      in topo/SCC order once that path exists.
-    Next: per-field provenance consumption for product returns
-      (Step 3). Wire child-indexed lookup in classify_let_value.
+      composition algebra (compose_sub_value_relations in std/),
+      body inference for non-recursive functions (#402),
+      ExprMethodCall in body inference (pipe |> composes via func_sigs).
+    Next: lambda transparency (S7), per-field struct provenance.
+      Violation landscape: 104 parse_type_expr + 89 render_node_type
+      + 48 to_string = 241/420 (57%), all lambda transparency.
+      Body inference is complete for scalar returns. Remaining
+      violations need: (a) lambda param provenance from callee
+      contracts (map/fold callbacks), (b) per-field provenance on
+      struct returns (parser helper return.tokens).
     Unlocks: Stream D (-132), body-inferred categories (-196),
       arithmetic refinement (-44), C3-C6 deletion, tokenizer (-22)
     Remaining ~10 (graph DFS) needs language primitive
@@ -243,28 +239,6 @@ M4: Single emitter reads data, never decides
     How: Lane C (coercion = emission, language plugins)
     Blocked on: M1 + M2 substantially complete
     Design: docs/single-emitter-design.md
-
-M5: Meta-process modeling (bootstrap, CI, dev process)
-    Done when: adding a Node field requires zero manual stage0 edits;
-      CI gates derived from .dag declarations
-    How: model bootstrap stages, CI gates, and dev process as .dag
-      declarations in dsl/gunbc/. Upsert semantics — adding a
-      declared fact automatically produces the corresponding process
-      step. Can't "forget" to update CI.
-    Enabler: .dag interpreter (Phase 0). Execution as an emission
-      target — the Dag RenderTarget already exists (emit_dag_artifact
-      serializes to JSON). Extend to direct evaluation. The bounded
-      kernel (decidable, finite, pure) makes interpretation safe by
-      construction. Tree-walker over post-validation IR + service
-      dispatch for shell/REST/etc. `dag run foo.dag` is the primary
-      development workflow; Rust/Go/Python emission is a production
-      deployment optimization.
-    Phase 0 (interpreter): unblocked, highest priority — unblocks
-      all subsequent phases
-    Phase 1 (bootstrap): unblocked with interpreter
-    Phase 2 (CI gates): after Phase 1, production YAML deferred to M4
-    Phase 3 (dev process): future
-    Design: docs/meta-process-design.md
 ```
 
 ---
@@ -493,11 +467,6 @@ Additional duplication surfaced by review (PR #371, external audit):
   Resolved: duplicate deleted (PR #394).
 - `keyword_to_name` in 02_parse.dag duplicates the tokenizer keyword
   table. Reconcile to single authority.
-  *Partial:* local hardcoded strings removed from `is_name_keyword`
-  (PR #403); now reads `dag_non_name_keywords` in dag/syntax.dag.
-  Remaining: `dag_non_name_keywords` is a manually maintained subset,
-  not derived from the keyword table. Full fix: derive name-validity
-  from one keyword record so adding a keyword cannot drift.
 - ~~HashMap vs BTreeMap disagreement: `map_template` in std/languages.dag
   says `HashMap<{0},{1}>` but `empty_map` in rust/emit.dag uses
   `BTreeMap::new()`. Pick one, delete the other.~~
@@ -669,47 +638,15 @@ projection of the validated intent onto a specific target.
 **Blocked on:** Track 13 (single emitter — need target-agnostic
 emission before multi-target is meaningful).
 
-### Track 15: Meta-process modeling (M5)
-
-**Thesis claim:** .dag models compositional facts. The compiler's own
-processes — bootstrap, CI, testing, release — are compositional facts.
-Model them in .dag.
-
-**Core principle: upsert semantics.** Adding a declared fact (a type,
-a field, a target) automatically produces the corresponding process
-step. You can't "forget" to update CI because CI is derived from
-structure, not maintained in parallel.
-
-| Phase | Scope | Status | Depends on |
-|-------|-------|--------|-----------|
-| 0. Interpreter | Tree-walker over post-validation IR. `dag run foo.dag`. I-1 (pure eval) + I-2 (shell dispatch) | 🟢 Unblocked | Nothing — validated IR exists |
-| 1. Bootstrap modeling | `dsl/gunbc/bootstrap.dag` — stage deps, field propagation, change classification | 🟢 With Phase 0 | Phase 0 I-2 (shell dispatch) |
-| 2. CI as multi-artifact | `dsl/extdeps/github/actions.dag` (platform) + `dsl/gunbc/ci.dag` (intent) | 🟡 | Phase 0-1; production YAML deferred to M4 |
-| 3. Dev process | `dsl/gunbc/process.dag` — track deps, readiness, milestones | 🔴 | Phases 1-2 |
-
-**Interpreter architecture:** The `Dag` RenderTarget already exists
-(`emit_dag_artifact` serializes to JSON). Extend to direct evaluation.
-The bounded kernel (decidable, finite, pure) makes interpretation safe
-by construction. `dag run` is the primary development workflow;
-Rust/Go/Python emission is a production deployment optimization.
-
-CI architecture: YAML is a transport constraint (GitHub requires it),
-not the CI logic. Emit a thin shim (< 30 lines, stable) that calls
-the interpreter or a compiled binary. Pattern proven in the-gunbai /
-gunb.ai repos.
-
-**Design:** [docs/meta-process-design.md](docs/meta-process-design.md)
-
 ---
 
 ## Bootstrap
 
-**Status: COMPLETE (basic), ACTIVE (modeling).**
-
-Stage0 content is generated from .dag source. One non-generated file
-remains: `compiler_tests.rs` (test harness, `#[cfg(test)]` only — not
-part of the compiler binary). Regenerated binary produces identical
-output when it self-compiles (fixed-point convergence).
+**Status: COMPLETE.** Stage0 content is generated from .dag source.
+One non-generated file remains: `compiler_tests.rs` (test harness,
+`#[cfg(test)]` only — not part of the compiler binary). Regenerated
+binary produces identical output when it self-compiles (fixed-point
+convergence).
 
 ```
 .dag source ──(v2-compiler)──▶ stage0 .rs ──(cargo/rustc)──▶ v2-compiler binary
@@ -718,15 +655,6 @@ output when it self-compiles (fixed-point convergence).
 ```
 
 Source of truth: `.dag` files. Stage0 `.rs` is a derived artifact.
-
-**Next: model the pipeline itself in .dag (Track 15, M5 Phase 1).**
-The bootstrap pipeline is currently implicit — adding structural
-changes (new Node fields) requires manual stage0 edits and multi-phase
-coordination. PR #404's `ident: Int` chicken-and-egg is the canonical
-example. Target: `dsl/gunbc/bootstrap.dag` declares stage dependencies,
-field propagation rules, and change classification so that adding a
-field requires only the .dag change. See
-[docs/meta-process-design.md](docs/meta-process-design.md).
 
 ---
 
@@ -806,23 +734,6 @@ Compile error if a function's complexity exceeds a declared bound.
 **Status:** Deferred. Needs structural CostBound comparison (not
 lossy ranking).
 
-### KF-9: Direct execution (interpreter)
-
-`dag run foo.dag` — compile, validate, execute in one step. No
-target language build needed. The bounded kernel makes this safe:
-all programs terminate, all data is finite, no mutation. A
-tree-walker over the post-validation IR with service dispatch for
-shell/REST/etc.
-
-Most users want: validate → run. Emission to Rust/Go/Python is a
-deployment optimization, not the development workflow. The
-interpreter proves the validated IR is a complete computational
-description.
-
-**Status:** Phase 0 of M5. `RenderTarget::Dag` exists
-(`emit_dag_artifact` serializes to JSON). Extend to evaluation.
-See [docs/meta-process-design.md](docs/meta-process-design.md).
-
 ---
 
 ## Public release gates
@@ -879,7 +790,6 @@ Track 11 (runtime safety) ──────────────────
                                                           │
 Track 12 (verification) ────────────────────────────→ Gate 3 (tests)
 Track 13 (single emitter) ──→ Track 14 (omni-emit)       │
-Track 15 (meta-processes) ──→ CI/bootstrap automation     │
                                                           │
                                     Gate 1 + Gate 2 + Gate 3 ──→ Gate 4 ──→ Release
 ```
