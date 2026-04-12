@@ -118,25 +118,26 @@ through the pipeline, immediately delete any downstream code
 that used to reconstruct it locally. If you don't delete it,
 it becomes the next perf bug.
 
-### Lesson 4: This is KF-2 we're committing against ourselves
+### Lesson 4: This is a boundary/fact-flow violation
 
-KF-2 in the roadmap is "reject suboptimal algorithms" — the
-compiler refuses to compile code when a provably cheaper
-equivalent exists. Three right turns equals one left turn.
-Redundant work is a compile error.
+INVARIANTS.md names this pattern: **Facts Flow Forward** and
+**Boundary sufficiency.** When an upstream authority establishes
+a fact (single InternTable), every downstream boundary must
+preserve it. `merge_envs` violated this: it sat at a boundary
+between upstream (single table) and downstream (merged env)
+and re-derived the fact instead of reading the authority.
 
-**`merge_envs` is a KF-2 violation.** It computes `merge(a, a, a)`
-when the algebra says `merge(a, a, a) = a` (idempotency of
-merge on identical inputs). The compiler should reject this
-code. The only reason it doesn't is we haven't built KF-2 yet.
+The fix was boundary discipline (Rule 3 below): delete the
+reconstruction code when the upstream fact makes it redundant.
+This is NOT a missing optimizer pass — it's a boundary that
+didn't know its input already carried the authoritative answer.
 
-**We keep committing this same bug** because we're writing a
-compiler that should catch it, but the compiler isn't complete.
-Every perf regression that turns out to be "we did the same
-work twice" is evidence that KF-2 would have saved us. The
-perf crisis is partially a thesis crisis — we're living in a
-half-built causal engine that doesn't yet enforce the rules
-the rest of the codebase documents.
+**Secondary KF-2 connection:** `merge(a, a, a) = a` is
+algebraically true by idempotency, so a sufficiently complete
+KF-2 would ALSO catch this. Every such case is evidence for
+KF-2's value. But the primary classification is boundary/
+fact-flow — the fix is upstream discipline, not a downstream
+optimizer.
 
 ## The meta-principle: no redundant/duplicate work
 
@@ -147,17 +148,20 @@ unification in [THESIS.md](../../THESIS.md#algebraic-simplification-idempotency-
 > redundant work (`f₁ ∘ ... ∘ fₙ = g` where `cost(g) < cost(...)`)
 > are all instances of **algebraic simplification**.
 
-`merge_envs` was algebraic simplification failing:
-- `merge(x, x, x) = x` (idempotency of merge on identical inputs)
-- The compiler had the algebra (meet is idempotent)
-- But no mechanism enforced the simplification
-- So the runtime did the wasted work
+`merge_envs` was a boundary that failed to preserve an
+upstream fact:
+- The upstream authority (single InternTable) was established
+- The boundary (merge_envs) didn't read the authority — it
+  re-derived the fact from parts
+- Algebraically, `merge(x, x, x) = x` by idempotency, so
+  KF-2 would ALSO catch this as a cheaper-equivalent violation
 
-**The deeper fix is not just "don't write redundant code."
-It's building KF-2 so the compiler catches redundant work
-structurally.** Every perf bug we hit that's "we recomputed X"
-is advance payment on KF-2's value. If KF-2 existed, those
-bugs would be compile errors, not latent hot spots.
+**The immediate fix is boundary discipline:** when a fact is
+threaded forward, delete downstream reconstruction (Rule 3).
+**The structural fix is KF-2:** the compiler catches redundant
+work by algebraic simplification. Both are needed — boundary
+discipline prevents the bug, KF-2 detects it when discipline
+fails.
 
 ## Revised investigation methodology
 
@@ -207,21 +211,31 @@ The check: after threading X, grep for "recompute X,"
 
 ### Rule 4: Watch for fact-flow violations in reviews
 
-When reviewing a PR that adds a function taking N structured
-inputs and producing one output, ask: **"could the output
-be read from any single input instead of computed from all
-of them?"**
+When reviewing a function that combines inputs, the test is
+NOT arity ("it takes N inputs, suspect!") — legitimate folds
+and merges share that shape. Arity cannot be the authority.
 
-If yes, the function is a re-derivation hazard. Either delete
-it or document why the inputs genuinely differ.
+The structural test is: **"does any single input already carry
+the authoritative fact for the output?"** Per INVARIANTS.md
+"No duplicate representations" and "Minimal information per
+interface": if one input IS the authority, the function should
+return that input, not rebuild from all of them.
 
-### Rule 5: This is KF-2 territory — don't just fix, document
+If the output duplicates a fact already present in one input,
+the function is a re-derivation hazard. Either delete it or
+document why the inputs genuinely differ (i.e., the merge is
+computing new information, not reconstructing existing facts).
 
-Every merge_envs-class bug we find is evidence for KF-2. Log
-it as a case study. When KF-2 eventually lands (catalog of
-cheaper equivalents in `std/optimization.dag`), these logged
-cases become the test suite. The compiler must reject code
-the test suite contains.
+### Rule 5: Log every case — boundary fix now, KF-2 test later
+
+Every merge_envs-class bug has two fixes: (1) the immediate
+boundary/fact-flow fix (delete the reconstruction), and (2)
+the eventual KF-2 detection (the compiler rejects the
+redundant code structurally). Fix (1) now. Log for (2).
+
+When KF-2 eventually lands (catalog of cheaper equivalents in
+`std/optimization.dag`), these logged cases become its test
+suite. The compiler must reject code the test suite contains.
 
 ## Remaining clone work
 

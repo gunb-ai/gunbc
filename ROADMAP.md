@@ -744,20 +744,21 @@ Source of truth: `.dag` files. Stage0 `.rs` is a derived artifact.
 
 ## PERF: Eliminate unnecessary work
 
-**Status (2026-04-12 post-dark-emu):** Self-compile 60-75s →
-**37.6s** (~50% faster). Perf ratchet 120s → 55s. The urgent
-perf crisis is resolved. But the LESSON from how it got
-resolved is more important than the speedup.
+**Status (2026-04-12):** Profiling identified fact re-derivation
+(not clones) as the dominant bottleneck. PR #422 contains the
+fix (merge_envs + data-only skip + InternTable wiring), measured
+at ~50% self-compile speedup. Pending merge. The LESSON from
+this investigation is more important than the speedup.
 
 ### What actually happened
 
 The biggest win was NOT clone elimination. It was a 6-line fix
-to `merge_envs` that eliminated fact re-derivation. After PR2
-threaded a single `InternTable` through `TypeEnv`, every env in
-the pipeline shared the same table — but `merge_envs` still
-iterated and rebuilt a fresh table from the merged envs. Per
-module × 2 merges × 3 envs × every string = ~20 seconds of
-pure waste.
+to `merge_envs` that eliminated fact re-derivation (PR #422,
+pending merge). After PR #378 threaded a single `InternTable`
+through `TypeEnv`, every env in the pipeline shared the same
+table — but `merge_envs` still iterated and rebuilt a fresh
+table from the merged envs. Per module × 2 merges × 3 envs ×
+every string = ~20 seconds of pure waste.
 
 **Impact breakdown (gist test pipeline):**
 
@@ -779,10 +780,12 @@ problem! But most clones are `Rc::clone` (refcount++, cheap).
 **The actual bottleneck was one function doing O(n²) work on
 data it could have read in O(1).**
 
-This is a KF-2 violation we committed against ourselves:
-`merge(a, a, a) = a` by idempotency, but the compiler doesn't
-enforce this yet, so the runtime did the wasted work. Every
-merge_envs-class bug is evidence that KF-2 would have saved us.
+This is a boundary/fact-flow violation: the upstream authority
+(single InternTable) existed, but `merge_envs` sat at a
+boundary and re-derived the fact instead of reading it.
+Algebraically, `merge(a, a, a) = a` by idempotency — so KF-2
+would also catch this — but the primary fix is boundary
+discipline (Rule 3), not a missing optimizer.
 
 ### The 5 rules (from docs/perf/clone-elimination.md)
 
@@ -796,9 +799,9 @@ merge_envs-class bug is evidence that KF-2 would have saved us.
 3. **When you thread a fact forward, DELETE the old reconstruction.**
    PR2 threaded `InternTable` but didn't delete `merge_envs`'s
    reconstruction. That IS the bug.
-4. **Watch for fact-flow violations in reviews.** Functions that
-   take N structured inputs and produce one output are
-   re-derivation hazards.
+4. **Watch for fact-flow violations in reviews.** Not arity
+   ("N inputs → suspect") — legitimate folds share that shape.
+   The test: does one input already carry the authoritative fact?
 5. **Log every case as a KF-2 target.** When KF-2 lands, these
    become its test suite.
 
@@ -811,8 +814,8 @@ merge_envs-class bug is evidence that KF-2 would have saved us.
 | `.clone()` in stage0 | 13,724 | Not the priority metric anymore |
 | `name.clone()` (heap alloc) | ~1,188 | 0 (via M2 ident:Int — modeling value) |
 | node.name reads in compiler | 107 | 0 |
-| Stages run on data-only files | 3 (was 8) | Done — 82 of 143 files skip CX/ownership |
-| merge_envs re-derivation | 0 (was 20s) | Done |
+| Stages run on data-only files | 3 (was 8) | PR #422 (pending merge) — 82 of 143 files skip CX/ownership |
+| merge_envs re-derivation | 0 (was 20s) | PR #422 (pending merge) |
 | Other re-derivation hotspots | Unknown | **Audit needed** |
 
 ### What's next
@@ -916,16 +919,16 @@ equivalent exists. Requires cost ordering + equivalence catalog in
 **Status:** Not built. Infrastructure close (CostShape per method,
 CostExpr composition). Blocked by KF-1 (needs working cost algebra).
 
-**Priority elevated (2026-04-12):** we keep committing KF-2
-violations against ourselves. The `merge_envs` perf bug was
-`merge(a, a, a)` on identical inputs — by idempotency, the
-result equals any input, but the compiler didn't enforce it,
-so the runtime wasted ~20 seconds per self-compile. Every
-such perf regression is a KF-2 bug we'd catch at compile time
-if KF-2 existed. The perf crisis is partly a thesis crisis —
-we're running a half-built causal engine that doesn't yet
-catch its own redundant work. Logged cases become KF-2's
-test suite. See [docs/perf/clone-elimination.md](docs/perf/clone-elimination.md).
+**Priority elevated (2026-04-12):** the `merge_envs` perf bug
+was primarily a boundary/fact-flow violation (the boundary
+re-derived a fact the upstream authority already provided).
+The immediate fix is boundary discipline. But the algebraic
+identity `merge(a, a, a) = a` IS a KF-2 case — a sufficiently
+complete KF-2 would detect this as a cheaper equivalent. Every
+boundary/fact-flow bug we find that also has an algebraic
+simplification becomes a KF-2 test case. The immediate fix is
+discipline; the structural fix is KF-2.
+See [docs/perf/clone-elimination.md](docs/perf/clone-elimination.md).
 
 ### KF-3: Verification from structure (free)
 
