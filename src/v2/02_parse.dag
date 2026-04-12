@@ -3806,50 +3806,49 @@ fn is_constraint_bracket(tokens: List<Token>) -> Bool {
 // Returns list of Node where name is "after" or "when" and value is the expression.
 type ConstraintsResult { constraints: List<Node>, tokens: List<Token>, ctx: ParseContext, err: ErrorNode? }
 
-fn parse_constraint_annotations(tokens: List<Token>, state: ParserState) -> ConstraintsResult {
-  let e = eat(tokens: tokens, state: state, expected: ExpectLBracket)
+fn parse_constraint_annotations(tokens: List<Token>, ctx: ParseContext) -> ConstraintsResult {
+  let e = eat(tokens: tokens, expected: ExpectLBracket)
   if e.consumed {
-    let r = parse_constraint_list(tokens: tokens, state: e.state, acc: [])
+    let r = parse_constraint_list(tokens: e.tokens, ctx: ctx, acc: [])
     if has_err(err: r.err) { return r }
-    let r2 = expect(tokens: tokens, state: r.state, expected: ExpectRBracket)
-    if has_err(err: r2.err) { return ConstraintsResult { constraints: [], state: r2.state, err: r2.err } }
-    ConstraintsResult { constraints: r.constraints, state: r2.state, err: none }
+    let r2 = expect(tokens: r.tokens, expected: ExpectRBracket)
+    if has_err(err: r2.err) { return ConstraintsResult { constraints: [], tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
+    ConstraintsResult { constraints: r.constraints, tokens: r2.tokens, ctx: r.ctx, err: none }
   } else {
-    ConstraintsResult { constraints: [], state: state, err: none }
+    ConstraintsResult { constraints: [], tokens: tokens, ctx: ctx, err: none }
   }
 }
 
-fn parse_constraint_list(tokens: List<Token>, state: ParserState, acc: List<Node>) -> ConstraintsResult {
-  let s = skip_newlines(tokens: tokens, state: state)
+fn parse_constraint_list(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) -> ConstraintsResult {
+  let tokens = skip_newlines(tokens: tokens)
   // Expect "after" or "when" identifier
-  let tok = peek(tokens: tokens, state: s)
+  let tok = tokens |> first
   let is_constraint_kw = match tok {
     Some { value: t } => is_ident_shape(shape: t.shape) && (t.text == "after" || t.text == "when")
     None => false
   }
   if !is_constraint_kw {
-    return ConstraintsResult { constraints: acc, state: s, err: none }
+    return ConstraintsResult { constraints: acc, tokens: tokens, ctx: ctx, err: none }
   }
   let kw_name = tok.value.text
-  let adv = advance(tokens: tokens, state: s)
-  let r = parse_expr(tokens: tokens, state: adv.state)
-  if has_err(err: r.err) { return ConstraintsResult { constraints: [], state: r.state, err: r.err } }
+  let r = parse_expr(tokens: tokens |> skip(1), ctx: ctx)
+  if has_err(err: r.err) { return ConstraintsResult { constraints: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let fi = make_field_init_node(name: kw_name, value: r.expr, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
   let acc = list_push(acc, fi)
-  let ec = eat(tokens: tokens, state: r.state, expected: ExpectComma)
+  let ec = eat(tokens: r.tokens, expected: ExpectComma)
   if ec.consumed {
-    parse_constraint_list(tokens: tokens, state: ec.state, acc: acc)
+    parse_constraint_list(tokens: ec.tokens, ctx: r.ctx, acc: acc)
   } else {
-    ConstraintsResult { constraints: acc, state: r.state, err: none }
+    ConstraintsResult { constraints: acc, tokens: r.tokens, ctx: r.ctx, err: none }
   }
 }
 
 // Try to parse optional constraint annotations if next token starts [after/when.
-fn try_constraint_annotations(tokens: List<Token>, state: ParserState) -> ConstraintsResult {
-  if is_constraint_bracket(tokens: tokens, state: state) {
-    parse_constraint_annotations(tokens: tokens, state: state)
+fn try_constraint_annotations(tokens: List<Token>, ctx: ParseContext) -> ConstraintsResult {
+  if is_constraint_bracket(tokens: tokens) {
+    parse_constraint_annotations(tokens: tokens, ctx: ctx)
   } else {
-    ConstraintsResult { constraints: [], state: state, err: none }
+    ConstraintsResult { constraints: [], tokens: tokens, ctx: ctx, err: none }
   }
 }
 
@@ -3867,33 +3866,31 @@ fn make_call_expr(lhs: Node, args: List<Node>, span: SourceSpan, source_indices:
 // Index/Slice parsing: base[index] or base[start..end]
 // =========================================================================
 
-fn parse_index_or_slice(tokens: List<Token>, state: ParserState, base: Node, span: SourceSpan) -> ExprResult {
+fn parse_index_or_slice(tokens: List<Token>, ctx: ParseContext, base: Node, span: SourceSpan) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, expected: ExpectLBracket)
-  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
-  let s = r.state
+  let r = expect(tokens: tokens, expected: ExpectLBracket)
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
 
   // Parse the first expression (index or slice start)
-  let r = parse_expr(tokens: tokens, state: s)
-  if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
+  let r = parse_expr(tokens: r.tokens, ctx: ctx)
+  if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let first_expr = r.expr
-  let s = r.state
+  let tokens = r.tokens
+  let ctx = r.ctx
 
   // Check for DotDot -> slice
-  if tok_is_dot_dot(tok: peek(tokens: tokens, state: s)) {
-    let adv = advance(tokens: tokens, state: s)
-    let r = parse_expr(tokens: tokens, state: adv.state)
-    if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
+  if tok_is_dot_dot(tok: tokens |> first) {
+    let r = parse_expr(tokens: tokens |> skip(1), ctx: ctx)
+    if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let end_expr = r.expr
-    let s = r.state
-    let r = expect(tokens: tokens, state: s, expected: ExpectRBracket)
-    if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
-    ExprResult { expr: make_expr_node(expr_data: ExprSlice, children: [base, first_expr, end_expr], inferred: none, span: span), state: r.state, err: none }
+    let r = expect(tokens: r.tokens, expected: ExpectRBracket)
+    if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
+    ExprResult { expr: make_expr_node(expr_data: ExprSlice, children: [base, first_expr, end_expr], inferred: none, span: span), tokens: r.tokens, ctx: ctx, err: none }
   } else {
     // Index
-    let r = expect(tokens: tokens, state: s, expected: ExpectRBracket)
-    if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
-    ExprResult { expr: make_expr_node(expr_data: ExprIndex, children: [base, first_expr], inferred: none, span: span), state: r.state, err: none }
+    let r = expect(tokens: tokens, expected: ExpectRBracket)
+    if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
+    ExprResult { expr: make_expr_node(expr_data: ExprIndex, children: [base, first_expr], inferred: none, span: span), tokens: r.tokens, ctx: ctx, err: none }
   }
 }
 
@@ -3901,21 +3898,20 @@ fn parse_index_or_slice(tokens: List<Token>, state: ParserState, base: Node, spa
 // 25. parse_call_args: (arg: val, arg2: val2)
 // =========================================================================
 
-fn parse_call_args(tokens: List<Token>, state: ParserState) -> ArgsResult {
-  let r = expect(tokens: tokens, state: state, expected: ExpectLParen)
-  if has_err(err: r.err) { return ArgsResult { args: [], state: r.state, err: r.err } }
-  let s = skip_newlines(tokens: tokens, state: r.state)
+fn parse_call_args(tokens: List<Token>, ctx: ParseContext) -> ArgsResult {
+  let r = expect(tokens: tokens, expected: ExpectLParen)
+  if has_err(err: r.err) { return ArgsResult { args: [], tokens: r.tokens, ctx: ctx, err: r.err } }
+  let tokens = skip_newlines(tokens: r.tokens)
 
-  if tok_is_rparen(tok: peek(tokens: tokens, state: s)) {
-    let adv = advance(tokens: tokens, state: s)
-    ArgsResult { args: [], state: adv.state, err: none }
+  if tok_is_rparen(tok: tokens |> first) {
+    ArgsResult { args: [], tokens: tokens |> skip(1), ctx: ctx, err: none }
   } else {
-    let r = parse_arg_list(tokens: tokens, state: s)
+    let r = parse_arg_list(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return r }
-    let s = skip_newlines(tokens: tokens, state: r.state)
-    let r2 = expect(tokens: tokens, state: s, expected: ExpectRParen)
-    if has_err(err: r2.err) { return ArgsResult { args: [], state: r2.state, err: r2.err } }
-    ArgsResult { args: r.args, state: r2.state, err: none }
+    let tokens = skip_newlines(tokens: r.tokens)
+    let r2 = expect(tokens: tokens, expected: ExpectRParen)
+    if has_err(err: r2.err) { return ArgsResult { args: [], tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
+    ArgsResult { args: r.args, tokens: r2.tokens, ctx: r.ctx, err: none }
   }
 }
 
