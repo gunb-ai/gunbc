@@ -4106,7 +4106,7 @@ if ((pname.clone().as_str() != "".to_string().as_str()) && (ptype.clone().as_str
                 acc.clone()
             }
 });
-let scalar = classify_body_provenance(&body, param_names.clone(), &param_types, &type_env, &func_sigs, v2_rt::rc_empty_map::<Rc<HashMap<String, Rc<SubValueRelation>>>>());
+let scalar = classify_body_provenance(&body, &param_names, &param_types, &type_env, &func_sigs, &v2_rt::rc_empty_map::<Rc<HashMap<String, Rc<SubValueRelation>>>>());
 if ((Rc::new(v2_rt::map_keys(&scalar)).len() as i64) > 0) {
             Rc::new(vec![scalar.clone()])
         } else {
@@ -4122,24 +4122,24 @@ if (((per_field.clone().len() as i64) > 0) && { let mut __found = false; for m i
 }
 }
 
-pub fn classify_body_provenance(expr: &Rc<Node>, param_names: Rc<Vec<String>>, param_types: &Rc<HashMap<String, String>>, type_env: &Rc<TypeEnv>, func_sigs: &Rc<HashMap<String, Rc<ResolvedFuncSig>>>, let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
+pub fn classify_body_provenance(expr: &Rc<Node>, param_names: &Rc<Vec<String>>, param_types: &Rc<HashMap<String, String>>, type_env: &Rc<TypeEnv>, func_sigs: &Rc<HashMap<String, Rc<ResolvedFuncSig>>>, let_prov: &Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
             let vname = expr_var_name_at(expr.clone(), type_env.source_indices.clone());
-if { let mut __found = false; for pn in param_names.clone().iter().cloned() { if (pn.clone().as_str() == vname.clone().as_str()) { __found = true; break; } } __found } {
+match v2_rt::map_get(&let_prov, vname.clone()) {
+    Some(prov) => prov.clone(),
+    None => if { let mut __found = false; for pn in param_names.clone().iter().cloned() { if (pn.clone().as_str() == vname.clone().as_str()) { __found = true; break; } } __found } {
                 v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<SubValueRelation>>(), vname.clone(), Rc::new(SubValueRelation::PreservedValue))
             } else {
-                match v2_rt::map_get(&let_prov, vname.clone()) {
-    Some(prov) => prov.clone(),
-    None => v2_rt::rc_empty_map::<Rc<SubValueRelation>>(),
+                v2_rt::rc_empty_map::<Rc<SubValueRelation>>()
+            },
 }
-            }
 },
     ExprData::ExprFieldAccess { .. } => {
             let base = field_access_base(expr.clone());
 let field = field_access_field_at(expr.clone(), type_env.source_indices.clone());
-let base_prov = classify_body_provenance(&base, param_names.clone(), &param_types, &type_env, &func_sigs, let_prov.clone());
+let base_prov = classify_body_provenance(&base, &param_names, &param_types, &type_env, &func_sigs, &let_prov);
 Rc::new(v2_rt::map_keys(&base_prov)).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<SubValueRelation>>(), |acc: Rc<HashMap<String, Rc<SubValueRelation>>>, pname: String| match v2_rt::map_get(&base_prov, pname.clone()) {
     Some(base_rel) => {
                 let type_for_lookup = match (*base_rel.clone()).clone() {
@@ -4176,15 +4176,63 @@ compose_callee_provenance(callee, call_args_by_name(expr.clone(), type_env.sourc
 compose_callee_provenance(mname, method_call_args_by_name(&expr, func_sigs.clone(), &type_env.source_indices.clone()), param_names.clone(), param_types.clone(), type_env.clone(), &func_sigs, let_prov.clone())
 },
     ExprData::ExprMatch => {
-            let arms = match_arm_nodes(expr.clone());
-let arm_provs = Rc::new({ let mut __result = Vec::new(); for arm in arms.iter().cloned() { __result.push(classify_body_provenance(&arm_body(&arm), param_names.clone(), &param_types, &type_env, &func_sigs, let_prov.clone())); } __result });
+            let scrut = match_scrutinee(expr.clone());
+let scrut_prov = classify_body_provenance(&scrut, &param_names, &param_types, &type_env, &func_sigs, &let_prov);
+let arms = match_arm_nodes(expr.clone());
+let arm_provs = Rc::new({ let mut __result = Vec::new(); for arm in arms.iter().cloned() { __result.push({
+                let arm_let_prov = match (*arm_pattern(arm.clone())).clone() {
+    MatchPattern::VariantPattern { name: vname, field_bindings: bindings, .. } => bindings.clone().iter().cloned().fold(let_prov.clone(), |acc: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>, binding: Rc<Node>| {
+                    let field_label = field_binding_name_at(binding.clone(), type_env.source_indices.clone());
+let bind_name = match (*field_binding_pattern(binding.clone())).clone() {
+    MatchPattern::Bind { name: bn, .. } => bn.clone(),
+    _ => "".to_string(),
+};
+if ((bind_name.clone().as_str() != "".to_string().as_str()) && (field_label.clone().as_str() != "".to_string().as_str())) {
+                        {
+                            let field_prov = Rc::new(v2_rt::map_keys(&scrut_prov)).iter().cloned().fold(empty_prov_map(), |fp_acc: Rc<HashMap<String, Rc<SubValueRelation>>>, pname: String| match v2_rt::map_get(&scrut_prov, pname.clone()) {
+    Some(scrut_rel) => {
+                                let lookup_type = match (*scrut_rel.clone()).clone() {
+    SubValueRelation::PreservedValue => match v2_rt::map_get(&param_types, pname.clone()) {
+    Some(t) => t.clone(),
+    None => "".to_string(),
+},
+    SubValueRelation::StrictSubValue { field: f, .. } => f.element_type.clone(),
+    SubValueRelation::IteratedSubValue { field: f, .. } => f.element_type.clone(),
+    _ => "".to_string(),
+};
+if (lookup_type.clone().as_str() != "".to_string().as_str()) {
+                                    {
+                                        let ind_fields = inductive_fields_for(type_env.clone(), lookup_type.clone());
+let matching = Rc::new({ let mut __result = Vec::new(); for f in ind_fields.clone().iter().cloned() { if ((f.field_name.clone().as_str() == field_label.clone().as_str()) && ((f.variant_name.clone().as_str() == vname.clone().as_str()) || (f.variant_name.clone().as_str() == "".to_string().as_str()))) { __result.push(f); } } __result }).first().cloned();
+match matching.clone() {
+    Some(ind_field) => v2_rt::rc_map_insert(fp_acc.clone(), pname.clone(), compose_sub_value(scrut_rel.clone(), ind_field.clone())),
+    None => fp_acc.clone(),
+}
+}
+                                } else {
+                                    fp_acc.clone()
+                                }
+},
+    None => fp_acc.clone(),
+});
+v2_rt::rc_map_insert(acc.clone(), bind_name.clone(), field_prov.clone())
+}
+                    } else {
+                        acc.clone()
+                    }
+}),
+    MatchPattern::Bind { name: bname, .. } => v2_rt::rc_map_insert(let_prov.clone(), bname.clone(), scrut_prov.clone()),
+    _ => let_prov.clone(),
+};
+classify_body_provenance(&arm_body(&arm), &param_names, &param_types, &type_env, &func_sigs, &arm_let_prov)
+}); } __result });
 meet_body_provenance_maps(&arm_provs)
 },
     ExprData::ExprIf => {
-            let then_prov = classify_body_provenance(&if_then_branch(expr.clone()), param_names.clone(), &param_types, &type_env, &func_sigs, let_prov.clone());
+            let then_prov = classify_body_provenance(&if_then_branch(expr.clone()), &param_names, &param_types, &type_env, &func_sigs, &let_prov);
 match if_else_branch(expr.clone()) {
     Some(else_expr) => {
-                let else_prov = classify_body_provenance(&else_expr, param_names.clone(), &param_types, &type_env, &func_sigs, let_prov.clone());
+                let else_prov = classify_body_provenance(&else_expr, &param_names, &param_types, &type_env, &func_sigs, &let_prov);
 meet_body_provenance_maps(&Rc::new(vec![then_prov, else_prov]))
 },
     None => then_prov,
@@ -4193,20 +4241,55 @@ meet_body_provenance_maps(&Rc::new(vec![then_prov, else_prov]))
     ExprData::ExprLet => {
             let value = let_value(expr.clone());
 let bname = let_binding_name_at(expr.clone(), type_env.source_indices.clone());
-let value_prov = classify_body_provenance(&value, param_names.clone(), &param_types, &type_env, &func_sigs, let_prov.clone());
-let updated = v2_rt::rc_map_insert(let_prov.clone(), bname, value_prov);
+let value_prov = classify_body_provenance(&value, &param_names, &param_types, &type_env, &func_sigs, &let_prov);
+let updated = v2_rt::rc_map_insert(let_prov.clone(), bname.clone(), value_prov.clone());
 match let_body(expr.clone()) {
-    Some(body) => classify_body_provenance(&body, param_names.clone(), &param_types, &type_env, &func_sigs, updated),
+    Some(body) => classify_body_provenance(&body, &param_names, &param_types, &type_env, &func_sigs, &updated),
     None => v2_rt::rc_empty_map::<Rc<SubValueRelation>>(),
 }
 },
-    ExprData::ExprBlock => match expr.children.clone().last().cloned() {
-    Some(last_stmt) => classify_body_provenance(&last_stmt, param_names.clone(), &param_types, &type_env, &func_sigs, let_prov.clone()),
+    ExprData::ExprBlock => {
+            let block_result = expr.children.clone().iter().cloned().fold(Rc::new(BlockProvFoldState {
+    prov: let_prov.clone(),
+    last: empty_prov_map(),
+}), |state: Rc<BlockProvFoldState>, stmt: Rc<Node>| match (*stmt.expr_data.clone()).clone() {
+    ExprData::ExprLet => {
+                let bname = let_binding_name_at(stmt.clone(), type_env.source_indices.clone());
+let value = let_value(stmt.clone());
+let value_prov = classify_body_provenance(&value, &param_names, &param_types, &type_env, &func_sigs, &state.prov.clone());
+let updated_prov = v2_rt::rc_map_insert(state.prov.clone(), bname.clone(), value_prov.clone());
+match let_body(stmt.clone()) {
+    Some(body) => Rc::new(BlockProvFoldState {
+    prov: state.prov.clone(),
+    last: classify_body_provenance(&body, &param_names, &param_types, &type_env, &func_sigs, &updated_prov),
+}),
+    None => Rc::new(BlockProvFoldState {
+    prov: updated_prov.clone(),
+    last: value_prov.clone(),
+}),
+}
+},
+    _ => Rc::new(BlockProvFoldState {
+    prov: state.prov.clone(),
+    last: classify_body_provenance(&stmt, &param_names, &param_types, &type_env, &func_sigs, &state.prov.clone()),
+}),
+});
+block_result.last.clone()
+},
+    ExprData::ExprCast => classify_body_provenance(&cast_expr(expr.clone()), &param_names, &param_types, &type_env, &func_sigs, &let_prov),
+    ExprData::ExprReturn => match expr.children.clone().first().cloned() {
+    Some(inner) => classify_body_provenance(&inner, &param_names, &param_types, &type_env, &func_sigs, &let_prov),
     None => v2_rt::rc_empty_map::<Rc<SubValueRelation>>(),
 },
     _ => v2_rt::rc_empty_map::<Rc<SubValueRelation>>(),
 }
     })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BlockProvFoldState {
+    pub prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    pub last: Rc<HashMap<String, Rc<SubValueRelation>>>,
 }
 
 pub fn call_args_by_name(call: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<HashMap<String, Rc<Node>>> {
@@ -4248,7 +4331,7 @@ pub fn compose_callee_provenance(callee: String, arg_by_name: Rc<HashMap<String,
     Some(callee_prov) => Rc::new(v2_rt::map_keys(&callee_prov)).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<SubValueRelation>>(), |acc: Rc<HashMap<String, Rc<SubValueRelation>>>, callee_pname: String| match v2_rt::map_get(&callee_prov, callee_pname.clone()) {
     Some(callee_rel) => match v2_rt::map_get(&arg_by_name, callee_pname.clone()) {
     Some(arg) => {
-        let arg_prov = classify_body_provenance(&arg, param_names.clone(), &param_types, &type_env, &func_sigs, let_prov.clone());
+        let arg_prov = classify_body_provenance(&arg, &param_names, &param_types, &type_env, &func_sigs, &let_prov);
 Rc::new(v2_rt::map_keys(&arg_prov)).iter().cloned().fold(acc.clone(), |inner: Rc<HashMap<String, Rc<SubValueRelation>>>, pname: String| match v2_rt::map_get(&arg_prov, pname.clone()) {
     Some(arg_rel) => {
             let composed = compose_sub_value_relations(arg_rel.clone(), callee_rel.clone());
@@ -4284,12 +4367,12 @@ classify_terminal_per_field(&terminal, param_names, param_types, &type_env, func
 
 pub fn classify_terminal_per_field(expr: &Rc<Node>, param_names: Rc<Vec<String>>, param_types: Rc<HashMap<String, String>>, type_env: &Rc<TypeEnv>, func_sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>) -> Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>> {
     match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprRecordLit { .. } => Rc::new({ let mut __result = Vec::new(); for fi in expr.children.clone().iter().cloned() { __result.push(classify_body_provenance(&field_init_node_value(&fi), param_names.clone(), &param_types, &type_env, &func_sigs, let_prov.clone())); } __result }),
+    ExprData::ExprRecordLit { .. } => Rc::new({ let mut __result = Vec::new(); for fi in expr.children.clone().iter().cloned() { __result.push(classify_body_provenance(&field_init_node_value(&fi), &param_names, &param_types, &type_env, &func_sigs, &let_prov)); } __result }),
     ExprData::ExprMatch => {
         let arm_results = Rc::new({ let mut __result = Vec::new(); for arm in match_arm_nodes(expr.clone()).iter().cloned() { __result.push({
             let arm_unwrapped = unwrap_body_terminal(&arm_body(&arm), let_prov.clone(), type_env.clone());
 match (*arm_unwrapped.expr.clone().expr_data.clone()).clone() {
-    ExprData::ExprRecordLit { .. } => Rc::new({ let mut __result = Vec::new(); for fi in arm_unwrapped.expr.clone().children.clone().iter().cloned() { __result.push(classify_body_provenance(&field_init_node_value(&fi), param_names.clone(), &param_types, &type_env, &func_sigs, arm_unwrapped.let_prov.clone())); } __result }),
+    ExprData::ExprRecordLit { .. } => Rc::new({ let mut __result = Vec::new(); for fi in arm_unwrapped.expr.clone().children.clone().iter().cloned() { __result.push(classify_body_provenance(&field_init_node_value(&fi), &param_names, &param_types, &type_env, &func_sigs, &arm_unwrapped.let_prov.clone())); } __result }),
     _ => Rc::new(vec![]),
 }
 }); } __result });
@@ -4298,14 +4381,14 @@ meet_per_field_results(&arm_results)
     ExprData::ExprIf => {
         let then_unwrapped = unwrap_body_terminal(&if_then_branch(expr.clone()), let_prov.clone(), type_env.clone());
 let then_result = match (*then_unwrapped.expr.clone().expr_data.clone()).clone() {
-    ExprData::ExprRecordLit { .. } => Rc::new({ let mut __result = Vec::new(); for fi in then_unwrapped.expr.clone().children.clone().iter().cloned() { __result.push(classify_body_provenance(&field_init_node_value(&fi), param_names.clone(), &param_types, &type_env, &func_sigs, then_unwrapped.let_prov.clone())); } __result }),
+    ExprData::ExprRecordLit { .. } => Rc::new({ let mut __result = Vec::new(); for fi in then_unwrapped.expr.clone().children.clone().iter().cloned() { __result.push(classify_body_provenance(&field_init_node_value(&fi), &param_names, &param_types, &type_env, &func_sigs, &then_unwrapped.let_prov.clone())); } __result }),
     _ => Rc::new(vec![]),
 };
 match if_else_branch(expr.clone()) {
     Some(else_expr) => {
             let else_unwrapped = unwrap_body_terminal(&else_expr, let_prov.clone(), type_env.clone());
 let else_result = match (*else_unwrapped.expr.clone().expr_data.clone()).clone() {
-    ExprData::ExprRecordLit { .. } => Rc::new({ let mut __result = Vec::new(); for fi in else_unwrapped.expr.clone().children.clone().iter().cloned() { __result.push(classify_body_provenance(&field_init_node_value(&fi), param_names.clone(), &param_types, &type_env, &func_sigs, else_unwrapped.let_prov.clone())); } __result }),
+    ExprData::ExprRecordLit { .. } => Rc::new({ let mut __result = Vec::new(); for fi in else_unwrapped.expr.clone().children.clone().iter().cloned() { __result.push(classify_body_provenance(&field_init_node_value(&fi), &param_names, &param_types, &type_env, &func_sigs, &else_unwrapped.let_prov.clone())); } __result }),
     _ => Rc::new(vec![]),
 };
 meet_per_field_results(&Rc::new(vec![then_result, else_result]))
