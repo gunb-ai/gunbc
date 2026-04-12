@@ -1338,6 +1338,9 @@ fn emit_unified_operation_method(
       else { concat(sp, ", ", params_str) }
     ExternalReceiver { var_name: _ } => params_str
   }
+  // TODO: receiver_template on LanguageSpec — the Go receiver syntax
+  // "(c *Name) " is hardcoded here. Phase 5: move to a data-driven
+  // rendering template so the shared emitter reads, never decides.
   let receiver_str = match spec.service_method {
     SelfInParams { self_param: _ } => ""
     ExternalReceiver { var_name: v } => concat("(", v, " *", service_name, ") ")
@@ -1346,7 +1349,9 @@ fn emit_unified_operation_method(
     SelfInParams { self_param: _ } => 1
     ExternalReceiver { var_name: _ } => 0
   }
-  // Structural dispatch on return strategy — ArrowReturn vs ErrorTupleReturn
+  // Structural dispatch on return strategy — ArrowReturn vs ErrorTupleReturn.
+  // TODO: error tuple format "(T, error)" is hardcoded below. Phase 5:
+  // move to a return_template on LanguageSpec for fully data-driven rendering.
   let ret_type = emit_node_type(n: resolved_type(n: op_node), target: target, source_indices: si)
   let ret_str = match spec.service_return {
     ArrowReturn => concat(spec.items.return_arrow, ret_type)

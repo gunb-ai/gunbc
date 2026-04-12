@@ -33,6 +33,9 @@ pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope}
 pub use crate::v2_compiler_infer_emit_info::{TypeSummary, EmitGraphInfo};
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
+// Bootstrap: ServiceMethodStrategy + ServiceReturnStrategy imports are added
+// manually because the .dag compiler does not yet generate `use` statements
+// for coproduct types used in match arms (tracked as M5 codegen gap).
 pub use crate::v2_compiler_languages::{LanguageSpec, TestConventions, ServiceFieldTemplates, BlockSyntax, TcoSyntax, ExpressionSemantics, IfValueForm, VisibilitySpec, NamingCase, ReservedWordStrategy, StringInterpSyntax, InterpStyle, EscapePair, RecordLitSyntax, ImportRule, language_spec_for_target, is_string_like, test_conventions_for_target, target_keyword, binop_symbol, wrap_shared_type, TestNameStyle, ImportTrigger, ServiceMethodStrategy, ServiceReturnStrategy};
 use crate::v2_compiler_languages::ServiceMethodStrategy::{SelfInParams, ExternalReceiver};
 use crate::v2_compiler_languages::ServiceReturnStrategy::{ArrowReturn, ErrorTupleReturn};
