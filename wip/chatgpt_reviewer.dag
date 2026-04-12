@@ -1,0 +1,442 @@
+// gunbc/tools/chatgpt_reviewer.dag -- ChatGPT Pro browser review bot.
+//
+// Automates ChatGPT Pro via Playwright to review PRs. Free (subscription),
+// no per-token API cost. State lives entirely in GitHub PR comments as
+// HTML markers:
+//   <!-- [chatgpt-review] sha:abc123 status:pending url:https://... -->
+//   <!-- [chatgpt-review] sha:abc123 status:complete url:https://... -->
+//   <!-- [chatgpt-review] sha:abc123 status:failed url:https://... -->
+//
+// Two-phase loop:
+//   FEED    — find PRs needing review, send diffs to ChatGPT
+//   HARVEST — check pending conversations, scrape responses
+//
+// Entrypoints:
+//   run_cycle(page)        — one feed+harvest cycle
+//   run_loop(config)       — polling loop (3-min interval)
+//   explore(page)          — exploratory codebase analysis
+//   reflect(page)          — 3-day integration retrospective
+
+module gunbc.tools.chatgpt_reviewer
+
+import extdeps.browser
+import extdeps.github.pulls
+import extdeps.shell
+
+// ── Configuration ─────────────────────────────────────────────
+
+data chatgpt_project_url: String = "https://chatgpt.com/g/g-p-69d1a39d61e88191835a38f9eba3ec9b/project"
+data poll_interval_ms: Int = 180000
+data max_diff_chars: Int = 600000
+data dead_conversation_minutes: Int = 45
+data max_messages_per_thread: Int = 3
+
+// ChatGPT DOM selectors (stable as of 2026-04)
+data sel_textarea: String = "#prompt-textarea"
+data sel_send_btn: String = "[data-testid=\"send-button\"]"
+data sel_stop_btn: String = "[data-testid=\"stop-button\"]"
+data sel_assistant_msg: String = "[data-message-author-role=\"assistant\"]"
+
+// ── Review marker types ───────────────────────────────────────
+
+// Status and action use strings — the compiler doesn't yet support
+// enum variant comparison with ==. These become sum types once M5 lands.
+type ReviewMarker {
+  sha: String
+  status: String    // "pending" | "complete" | "failed"
+  url: String?
+}
+
+type ReviewAction {
+  action: String    // "feed" | "harvest" | "skip" | "wait"
+  comment_id: Int?
+  chat_url: String?
+}
+
+type PendingReview {
+  comment_id: Int
+  chat_url: String
+  sha: String
+  created_at: String
+}
+
+type UploadFile {
+  name: String
+  content: String
+}
+
+// ── Pure functions: marker parsing ────────────────────────────
+// These are the core state machine — all logic, no side effects.
+
+fn parse_review_marker(body: String) -> ReviewMarker? {
+  let sha = extract_between(body, "sha:", " ")
+  let status = extract_between(body, "status:", " ")
+  if sha == "" { return none }
+  if status != "pending" && status != "complete" && status != "failed" { return none }
+  let url = extract_between(body, "url:", " ")
+  { sha: sha, status: status, url: if url != "" { url } else { none } }
+}
+
+fn classify_pr(comments: List<IssueComment>, current_sha: String) -> ReviewAction {
+  let any_pending = false
+  for comment in comments {
+    let marker = parse_review_marker(body: comment.body)
+    if marker == none { continue }
+    if marker.status == "pending" { any_pending = true }
+    if marker.sha != current_sha { continue }
+    if marker.status == "complete" {
+      return { action: "skip", comment_id: none, chat_url: none }
+    }
+    if marker.status == "pending" && marker.url != none {
+      return { action: "harvest", comment_id: comment.id, chat_url: marker.url }
+    }
+  }
+  if any_pending {
+    return { action: "wait", comment_id: none, chat_url: none }
+  }
+  { action: "feed", comment_id: none, chat_url: none }
+}
+
+fn find_pending_comments(comments: List<IssueComment>) -> List<PendingReview> {
+  let pending = []
+  for comment in comments {
+    let marker = parse_review_marker(body: comment.body)
+    if marker != none && marker.status == "pending" && marker.url != none {
+      pending = append(pending, {
+        comment_id: comment.id,
+        chat_url: marker.url,
+        sha: marker.sha,
+        created_at: comment.created_at
+      })
+    }
+  }
+  pending
+}
+
+fn find_last_conversation_url(
+  comments: List<IssueComment>,
+  max_messages: Int = max_messages_per_thread
+) -> String? {
+  let last_url = none
+  for comment in comments {
+    let marker = parse_review_marker(body: comment.body)
+    if marker != none && marker.status == "complete" && marker.url != none {
+      last_url = marker.url
+    }
+  }
+  if last_url == none { return none }
+  // Count how many reviews used this conversation
+  let uses = 0
+  for comment in comments {
+    let marker = parse_review_marker(body: comment.body)
+    if marker != none && marker.url == last_url { uses = uses + 1 }
+  }
+  if uses >= max_messages { return none }
+  last_url
+}
+
+// ── Pure functions: comment body construction ──────────────────
+
+fn make_pending_comment(sha: String, chat_url: String) -> String {
+  "<!-- [chatgpt-review] sha:{sha} status:pending url:{chat_url} -->\n\n**ChatGPT review in progress...** ([view conversation]({chat_url}))\n\n_Check back in ~30 minutes for the full review._"
+}
+
+fn make_complete_comment(sha: String, chat_url: String, response: String) -> String {
+  "<!-- [chatgpt-review] sha:{sha} status:complete url:{chat_url} -->\n\n## ChatGPT Review\n\n{response}\n\n---\n[View conversation]({chat_url})"
+}
+
+fn make_failed_comment(sha: String, chat_url: String, reason: String) -> String {
+  "<!-- [chatgpt-review] sha:{sha} status:failed url:{chat_url} -->\n\n:warning: **ChatGPT review abandoned** — {reason}\n\nThe bot will start a fresh conversation on the next cycle.\n\n[View conversation]({chat_url})"
+}
+
+// ── Pure functions: prompt construction ────────────────────────
+
+fn build_review_prompt(
+  pr_number: Int,
+  pr_title: String,
+  pr_url: String
+) -> String {
+  "#{pr_number} Review: {pr_title}\n\nFIRST: Read the attached THESIS.md — it defines the project's core thesis (\"zero bugs by construction\"). Ground all feedback in this thesis.\n\nReview this pull request diff. Check for:\n1. Invariant violations (reference the attached INVARIANTS.md)\n2. Compositional modeling quality for any .dag changes (reference std-library.dag for existing patterns)\n3. Roadmap alignment if ROADMAP.md is modified\n4. General code review — bugs, edge cases, concerns\n\nThe attached context files (std library, compiler source, docs) are for reference only — stay focused on the PR diff. Use them to understand existing patterns and conventions, not to flag issues outside the diff.\n\n{pr_url}"
+}
+
+fn truncate_diff(diff: String, max_chars: Int = max_diff_chars) -> String {
+  if length(diff) > max_chars {
+    substring(diff, 0, max_chars) + "\n\n... (truncated)"
+  } else {
+    diff
+  }
+}
+
+// ── Browser interaction: ChatGPT ──────────────────────────────
+// These functions compose browser.Page shell operations into
+// ChatGPT-specific workflows. The playwright-runner manages a
+// persistent browser session — these just send commands.
+
+func ensure_logged_in() -> { logged_in: Bool, reason: String? } {
+  // uses: browser.Page
+
+  browser.Page.Goto(url: chatgpt_project_url)
+  browser.Page.Wait(ms: 5000)
+
+  let url = browser.Page.CurrentUrl()
+
+  if contains(url.url, "/auth/login") {
+    return { logged_in: false, reason: "logged_out" }
+  }
+
+  let textarea = browser.Page.WaitForSelector(selector: sel_textarea, timeout_ms: 20000)
+
+  if textarea.found == "" {
+    if contains(url.url, "/auth/login") {
+      return { logged_in: false, reason: "logged_out" }
+    }
+    return { logged_in: false, reason: "project_unavailable" }
+  }
+
+  { logged_in: true, reason: none }
+}
+
+func send_to_chatgpt(
+  prompt_text: String,
+  files: List<UploadFile>,
+  existing_chat_url: String?
+) -> { chat_url: String } {
+  // uses: browser.Page, shell.Exec
+
+  // Navigate to existing conversation or project page
+  let target_url = if existing_chat_url != none { existing_chat_url }
+                   else { chatgpt_project_url }
+  browser.Page.Goto(url: target_url)
+  browser.Page.Wait(ms: 3000)
+
+  // Upload files
+  for file in files {
+    let tmp_path = "/tmp/chatgpt-review-{file.name}"
+    shell.Exec.Run(script: "cat > {tmp_path} << 'FILEEOF'\n{file.content}\nFILEEOF")
+    browser.Page.UploadFile(selector: "input[type='file']", path: tmp_path)
+    browser.Page.Wait(ms: 2000)
+  }
+
+  // Fill prompt via JS (handles contenteditable)
+  browser.Page.Click(selector: sel_textarea)
+  browser.Page.Evaluate(expression: "(() => { const el = document.querySelector('{sel_textarea}'); const p = document.createElement('p'); p.textContent = `{prompt_text}`; el.innerHTML = ''; el.appendChild(p); el.dispatchEvent(new Event('input', { bubbles: true })); })()")
+  browser.Page.Wait(ms: 1000)
+
+  // Send
+  browser.Page.WaitForSelector(selector: sel_send_btn, timeout_ms: 10000)
+  browser.Page.Wait(ms: 1000)
+  browser.Page.Click(selector: sel_send_btn)
+
+  // Poll for conversation URL
+  let chat_url = ""
+  for _i in range(0, 60) {
+    browser.Page.Wait(ms: 2000)
+    let current = browser.Page.CurrentUrl()
+    if contains(current.url, "/c/") {
+      chat_url = split(current.url, "?")[0]
+      break
+    }
+  }
+
+  { chat_url: chat_url }
+}
+
+func check_response_complete(chat_url: String) -> {
+  complete: Bool,
+  logged_out: Bool,
+  conversation_unavailable: Bool
+} {
+  // uses: browser.Page, browser.Element
+
+  browser.Page.Goto(url: chat_url)
+
+  // Wait for content to render
+  let content_selector = "{sel_assistant_msg}, {sel_stop_btn}"
+  let content = browser.Page.WaitForSelector(selector: content_selector, timeout_ms: 30000)
+
+  if content.found == "" {
+    let url = browser.Page.CurrentUrl()
+    if contains(url.url, "/auth/login") {
+      return { complete: false, logged_out: true, conversation_unavailable: false }
+    }
+    return { complete: false, logged_out: false, conversation_unavailable: true }
+  }
+
+  // Stabilization wait
+  browser.Page.Wait(ms: 3000)
+
+  // Check stop button
+  let stop_visible = browser.Element.IsVisible(selector: sel_stop_btn)
+  if stop_visible.visible == "true" {
+    return { complete: false, logged_out: false, conversation_unavailable: false }
+  }
+
+  // Check for assistant messages
+  let msg_count = browser.Page.QueryAll(selector: sel_assistant_msg)
+  if msg_count.count == "0" {
+    return { complete: false, logged_out: false, conversation_unavailable: false }
+  }
+
+  { complete: true, logged_out: false, conversation_unavailable: false }
+}
+
+func scrape_response() -> { text: String } {
+  // uses: browser.Element
+
+  // Extract markdown from the last assistant message via JS
+  let result = browser.Element.EvaluateOn(
+    selector: "{sel_assistant_msg}:last-child",
+    expression: "((el) => { const root = el.querySelector('.markdown, .prose') || el; return root.innerText; })(el)"
+  )
+
+  { text: result.result }
+}
+
+// ── Workflow: feed + harvest cycle ────────────────────────────
+
+func feed_phase(
+  owner: String,
+  repo: String
+) -> { fed_pr: Int? } {
+  // uses: browser.Page, github.Pulls
+
+  let open_prs = github.Pulls.List(
+    auth_token: "",
+    owner: owner,
+    repo: repo,
+    state: "open"
+  )
+
+  // Sort oldest-first to prevent starvation
+  let prs = sort_by(open_prs.pulls, pr => pr.number)
+
+  for pr in prs {
+    let comments = github.Pulls.ListComments(
+      auth_token: "",
+      owner: owner,
+      repo: repo,
+      issue_number: pr.number
+    )
+
+    let action = classify_pr(comments: comments.comments, current_sha: pr.head.sha)
+
+    if action.action != "feed" { continue }
+
+    // action == Feed — send to ChatGPT
+    let diff = github.Pulls.Diff(
+      auth_token: "",
+      owner: owner,
+      repo: repo,
+      pull_number: pr.number
+    )
+
+    let prompt_text = build_review_prompt(
+      pr_number: pr.number,
+      pr_title: pr.title,
+      pr_url: pr.html_url
+    )
+
+    let files = [{ name: "pr-{pr.number}.diff", content: truncate_diff(diff: diff.diff) }]
+
+    let last_url = find_last_conversation_url(comments: comments.comments)
+    let result = send_to_chatgpt(
+      prompt_text: prompt_text,
+      files: files,
+      existing_chat_url: last_url
+    )
+
+    // Post pending marker
+    github.Pulls.CreateComment(
+      auth_token: "",
+      owner: owner,
+      repo: repo,
+      issue_number: pr.number,
+      body: make_pending_comment(sha: pr.head.sha, chat_url: result.chat_url)
+    )
+
+    // One feed per cycle
+    return { fed_pr: pr.number }
+  }
+
+  { fed_pr: none }
+}
+
+func harvest_phase(
+  owner: String,
+  repo: String
+) {
+  // uses: browser.Page, github.Pulls
+
+  let open_prs = github.Pulls.List(
+    auth_token: "",
+    owner: owner,
+    repo: repo,
+    state: "open"
+  )
+
+  for pr in open_prs.pulls {
+    let comments = github.Pulls.ListComments(
+      auth_token: "",
+      owner: owner,
+      repo: repo,
+      issue_number: pr.number
+    )
+
+    let pending = find_pending_comments(comments: comments.comments)
+    if length(pending) == 0 { continue }
+
+    for p in pending {
+      let age_min = minutes_since(p.created_at)
+
+      let result = check_response_complete(chat_url: p.chat_url)
+
+      // Unified timeout: any pending older than dead_conversation_minutes gets failed
+      if !result.complete && age_min >= dead_conversation_minutes {
+        let reason = if result.conversation_unavailable { "conversation unavailable" }
+                     else { "still generating" }
+        github.Pulls.EditComment(
+          auth_token: "",
+          comment_id: p.comment_id,
+          body: make_failed_comment(sha: p.sha, chat_url: p.chat_url, reason: "{reason} after {age_min} minutes")
+        )
+        continue
+      }
+
+      if !result.complete { continue }
+
+      // Scrape response
+      let response = scrape_response()
+
+      if length(response.text) < 1500 {
+        if age_min >= dead_conversation_minutes {
+          github.Pulls.EditComment(
+            auth_token: "",
+            comment_id: p.comment_id,
+            body: make_failed_comment(sha: p.sha, chat_url: p.chat_url, reason: "only {length(response.text)} chars after {age_min} minutes")
+          )
+        }
+        continue
+      }
+
+      // Post complete review
+      github.Pulls.EditComment(
+        auth_token: "",
+        comment_id: p.comment_id,
+        body: make_complete_comment(sha: p.sha, chat_url: p.chat_url, response: response.text)
+      )
+
+      // Release page memory
+      browser.Page.Goto(url: "about:blank")
+    }
+  }
+}
+
+// ── Top-level entrypoint ──────────────────────────────────────
+
+func run_cycle(
+  owner: String = "gunb-ai",
+  repo: String = "gunbc"
+) {
+  feed_phase(owner: owner, repo: repo)
+  harvest_phase(owner: owner, repo: repo)
+}
