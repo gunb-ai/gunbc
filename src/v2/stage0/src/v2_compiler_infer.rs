@@ -444,6 +444,7 @@ pub fn nominal_ref_node(name: &String, span: Rc<SourceSpan>, ident_span: Option<
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 })
 }
 
@@ -589,6 +590,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 })
 }
 
@@ -947,6 +949,7 @@ let fold_callable = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 });
 let lam_value = arg_value(&a);
 let prov_map = match (*elem_provenance.clone()).clone() {
@@ -1332,6 +1335,7 @@ let final_receiver = if ((returns_receiver_self && is_fully_resolved(&bridge_res
     has_non_tail_self_call: receiver.has_non_tail_self_call.clone(),
     match_pattern: receiver.match_pattern.clone(),
     expr_data: receiver.expr_data.clone(),
+    ident: 0,
 })
                             } else {
                                 receiver.clone()
@@ -2249,6 +2253,7 @@ if (type_name.clone() == None) {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 })); } __result });
 let anon_node = Rc::new(Node {
     name: "".to_string(),
@@ -2268,6 +2273,7 @@ let anon_node = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 });
 let typed_field_nodes = typed_fields;
 let texpr = make_expr_node(Rc::new(ExprData::ExprRecordLit {
@@ -3498,6 +3504,7 @@ Rc::new(Node {
     call_semantics: cs.clone(),
     descent_evidence: Some(evidence),
 }),
+    ident: 0,
 })
 },
     ExprData::ExprMatch => {
@@ -3704,6 +3711,7 @@ Rc::new(Node {
     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
     match_pattern: body.match_pattern.clone(),
     expr_data: body.expr_data.clone(),
+    ident: 0,
 })
 },
     ExprData::ExprLet => {
@@ -3774,6 +3782,7 @@ Rc::new(Node {
     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
     match_pattern: body.match_pattern.clone(),
     expr_data: body.expr_data.clone(),
+    ident: 0,
 })
 },
     ExprData::ExprBlock => {
@@ -3853,6 +3862,7 @@ Rc::new(Node {
     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
     match_pattern: body.match_pattern.clone(),
     expr_data: body.expr_data.clone(),
+    ident: 0,
 })
 },
     ExprData::ExprMethodCall { method_semantics: ms, .. } => {
@@ -4008,6 +4018,7 @@ Rc::new(Node {
     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
     match_pattern: body.match_pattern.clone(),
     expr_data: body.expr_data.clone(),
+    ident: 0,
 })
 }
             } else {
@@ -4065,6 +4076,7 @@ Rc::new(Node {
     has_non_tail_self_call: body.has_non_tail_self_call.clone(),
     match_pattern: body.match_pattern.clone(),
     expr_data: body.expr_data.clone(),
+    ident: 0,
 })
 },
     _ => map_children(&body, |child| annotate_descent(&child, &ctx)),
@@ -4517,6 +4529,7 @@ let val_result = infer_expr(&val, &scope, &None);
     has_non_tail_self_call: p.has_non_tail_self_call.clone(),
     match_pattern: p.match_pattern.clone(),
     expr_data: p.expr_data.clone(),
+    ident: 0,
 }), val_result.diagnostics.clone())
 }); } __result });
 Rc::new(InferPropertiesResult {
@@ -4550,6 +4563,7 @@ let val_result = infer_expr(&val, &scope, &None);
     has_non_tail_self_call: p.has_non_tail_self_call.clone(),
     match_pattern: p.match_pattern.clone(),
     expr_data: p.expr_data.clone(),
+    ident: 0,
 }), val_result.diagnostics.clone())
 }
         } else {
@@ -4589,6 +4603,7 @@ Rc::new(InferTransportResult {
     has_non_tail_self_call: t.has_non_tail_self_call.clone(),
     match_pattern: t.match_pattern.clone(),
     expr_data: t.expr_data.clone(),
+    ident: 0,
 })),
     diagnostics: prop_result.diagnostics.clone(),
 })
@@ -4633,6 +4648,7 @@ if ((item.connective.clone() != Connective::NoConnective) && (item.transport.clo
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 }),
     diagnostics: v2_rt::concat(transport_diags, props_diags),
 })
@@ -4679,6 +4695,7 @@ Rc::new(TypedItemResult {
     has_non_tail_self_call: expr_has_non_tail_self_call(&body_typed, &item.name.clone(), true, &scope.type_env.clone().source_indices.clone()),
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 }),
     diagnostics: v2_rt::concat(v2_rt::concat(transport_diags, props_diags), body_diags),
 })
@@ -4709,6 +4726,7 @@ Rc::new(TypedItemResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 }),
     diagnostics: v2_rt::concat(v2_rt::concat(transport_diags, props_diags), body_diags),
 })
@@ -4750,6 +4768,7 @@ Rc::new(TypedItemResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 }),
     diagnostics: v2_rt::concat(v2_rt::concat(transport_diags, props_diags), val_diags),
 })
@@ -4781,6 +4800,7 @@ Rc::new(TypedItemResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 }),
     diagnostics: v2_rt::concat(transport_diags, props_diags),
 })
@@ -4810,6 +4830,7 @@ Rc::new(TypedItemResult {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 }),
     diagnostics: v2_rt::concat(transport_diags, props_diags),
 })
@@ -4873,6 +4894,7 @@ let kernel_bindings_base = Rc::new(v2_rt::map_keys(&kernel_type_set())).iter().c
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 }),
     provenance: Rc::new(SubValueRelation::SubValueUnknown),
 })));
@@ -4897,6 +4919,7 @@ let kernel_bindings = v2_rt::rc_map_insert(kernel_bindings_base, "Unit".to_strin
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 }),
     provenance: Rc::new(SubValueRelation::SubValueUnknown),
 }));
@@ -4920,6 +4943,7 @@ let some_value_field = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 });
 let some_variant = Rc::new(Node {
     name: "Some".to_string(),
@@ -4939,6 +4963,7 @@ let some_variant = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 });
 let kernel_optional = Rc::new(Node {
     name: "Optional".to_string(),
@@ -4958,6 +4983,7 @@ let kernel_optional = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 });
 let kernel_bindings = v2_rt::rc_map_insert(kernel_bindings.clone(), "Optional".to_string(), Rc::new(TypeBinding {
     name: "Optional".to_string(),
@@ -5041,6 +5067,7 @@ if has_structure.clone() {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 });
 v2_rt::rc_map_insert(acc.clone(), item.name.clone(), Rc::new(TypeBinding {
     name: item.name.clone(),
@@ -5069,6 +5096,7 @@ v2_rt::rc_map_insert(acc.clone(), item.name.clone(), Rc::new(TypeBinding {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 });
 v2_rt::rc_map_insert(acc.clone(), item.name.clone(), Rc::new(TypeBinding {
     name: item.name.clone(),
@@ -5107,6 +5135,7 @@ v2_rt::rc_map_insert(acc.clone(), item.name.clone(), Rc::new(TypeBinding {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 });
 v2_rt::rc_map_insert(acc.clone(), item.name.clone(), Rc::new(TypeBinding {
     name: item.name.clone(),
@@ -5202,6 +5231,7 @@ let kernel_bindings = Rc::new(v2_rt::map_keys(&kernel_type_set())).iter().cloned
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 }),
     provenance: Rc::new(SubValueRelation::SubValueUnknown),
 })));
@@ -5225,6 +5255,7 @@ let some_value_field = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 });
 let some_variant = Rc::new(Node {
     name: "Some".to_string(),
@@ -5244,6 +5275,7 @@ let some_variant = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 });
 let kernel_optional = Rc::new(Node {
     name: "Optional".to_string(),
@@ -5263,6 +5295,7 @@ let kernel_optional = Rc::new(Node {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 });
 let kernel_bindings = v2_rt::rc_map_insert(kernel_bindings.clone(), "Optional".to_string(), Rc::new(TypeBinding {
     name: "Optional".to_string(),
@@ -5338,6 +5371,7 @@ if has_structure.clone() {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 });
 v2_rt::rc_map_insert(acc.clone(), item.name.clone(), Rc::new(TypeBinding {
     name: item.name.clone(),
@@ -5366,6 +5400,7 @@ v2_rt::rc_map_insert(acc.clone(), item.name.clone(), Rc::new(TypeBinding {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
+    ident: 0,
 });
 v2_rt::rc_map_insert(acc.clone(), item.name.clone(), Rc::new(TypeBinding {
     name: item.name.clone(),
