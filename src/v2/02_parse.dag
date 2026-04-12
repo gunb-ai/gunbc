@@ -2421,98 +2421,102 @@ fn parse_file_fields(tokens: List<Token>, ctx: ParseContext, base_path: Node?) -
   }
 }
 
-fn parse_operation_def(tokens: List<Token>, state: ParserState) -> OpResult {
-  let start_span = current_span(tokens: tokens, state: state)
-  let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span, source_indices: state.source_indices)
-  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "operation" })
-  if has_err(err: r.err) { return OpResult { operation: dummy_op, state: r.state, err: r.err } }
+fn parse_operation_def(tokens: List<Token>, ctx: ParseContext) -> OpResult {
+  let start_span = token_span(tok: tokens |> first)
+  let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span, source_indices: ctx.source_indices)
+  let r = expect(tokens: tokens, expected: ExpectKeyword { text: "operation" })
+  if has_err(err: r.err) { return OpResult { operation: dummy_op, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  let r = expect_ident(tokens: tokens, state: r.state)
-  if has_err(err: r.err) { return OpResult { operation: dummy_op, state: r.state, err: r.err } }
+  let r = expect_ident(tokens: r.tokens)
+  if has_err(err: r.err) { return OpResult { operation: dummy_op, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
-  let s = skip_newlines(tokens: tokens, state: r.state)
+  let tokens = skip_newlines(tokens: r.tokens)
 
   // Dispatch: LBrace = v1 block style, otherwise = v2 inline style
-  if tok_is_lbrace(tok: peek(tokens: tokens, state: s)) {
-    parse_operation_v1_body(tokens: tokens, state: s, name: name, name_span: name_span, start_span: start_span)
+  if tok_is_lbrace(tok: tokens |> first) {
+    parse_operation_v1_body(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span)
   } else {
-    parse_operation_v2_inline(tokens: tokens, state: s, name: name, name_span: name_span, start_span: start_span)
+    parse_operation_v2_inline(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span)
   }
 }
 
 // v2 inline: operation Name modifiers? (params) -> RetType response? mock_response?
-fn parse_operation_v2_inline(tokens: List<Token>, state: ParserState, name: String, name_span: SourceSpan, start_span: SourceSpan) -> OpResult {
-  let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span, source_indices: state.source_indices)
-  let mods_r = parse_operation_modifiers(tokens: tokens, state: state)
+fn parse_operation_v2_inline(tokens: List<Token>, ctx: ParseContext, name: String, name_span: SourceSpan, start_span: SourceSpan) -> OpResult {
+  let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span, source_indices: ctx.source_indices)
+  let mods_r = parse_operation_modifiers(tokens: tokens, ctx: ctx)
   let modifiers = mods_r.modifiers
   let mod_props = modifiers_to_props(modifiers: modifiers, span: start_span)
-  let s = mods_r.state
+  let tokens = mods_r.tokens
+  let ctx = mods_r.ctx
 
-  let r = expect(tokens: tokens, state: s, expected: ExpectLParen)
-  if has_err(err: r.err) { return OpResult { operation: dummy_op, state: r.state, err: r.err } }
-  let r = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-  if has_err(err: r.err) { return OpResult { operation: dummy_op, state: r.state, err: r.err } }
+  let r = expect(tokens: tokens, expected: ExpectLParen)
+  if has_err(err: r.err) { return OpResult { operation: dummy_op, tokens: r.tokens, ctx: ctx, err: r.err } }
+  let r = parse_field_list(tokens: skip_newlines(tokens: r.tokens), ctx: ctx)
+  if has_err(err: r.err) { return OpResult { operation: dummy_op, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let inputs = r.fields
-  let r = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), expected: ExpectRParen)
-  if has_err(err: r.err) { return OpResult { operation: dummy_op, state: r.state, err: r.err } }
-  let s = r.state
+  let r = expect(tokens: skip_newlines(tokens: r.tokens), expected: ExpectRParen)
+  if has_err(err: r.err) { return OpResult { operation: dummy_op, tokens: r.tokens, ctx: ctx, err: r.err } }
+  let tokens = r.tokens
 
-  let ret = parse_optional_inferred(tokens: tokens, state: s)
-  if has_err(err: ret.err) { return OpResult { operation: dummy_op, state: ret.state, err: ret.err } }
-  let s = ret.state
+  let ret = parse_optional_inferred(tokens: tokens, ctx: ctx)
+  if has_err(err: ret.err) { return OpResult { operation: dummy_op, tokens: ret.tokens, ctx: ret.ctx, err: ret.err } }
+  let tokens = ret.tokens
+  let ctx = ret.ctx
   let outputs = match ret.inferred {
     Some { value: Resolved { node: rt } } => node_inferred_to_outputs(rt: rt)
     _ => []
   }
-  let s = skip_newlines(tokens: tokens, state: s)
+  let tokens = skip_newlines(tokens: tokens)
 
-  let resp_r = parse_optional_response_block(tokens: tokens, state: s)
-  if has_err(err: resp_r.err) { return OpResult { operation: dummy_op, state: resp_r.state, err: resp_r.err } }
-  let s = skip_newlines(tokens: tokens, state: resp_r.state)
-  let mock_r = parse_optional_mock_response_block(tokens: tokens, state: s)
-  if has_err(err: mock_r.err) { return OpResult { operation: dummy_op, state: mock_r.state, err: mock_r.err } }
-  let s = skip_newlines(tokens: tokens, state: mock_r.state)
+  let resp_r = parse_optional_response_block(tokens: tokens, ctx: ctx)
+  if has_err(err: resp_r.err) { return OpResult { operation: dummy_op, tokens: resp_r.tokens, ctx: resp_r.ctx, err: resp_r.err } }
+  let tokens = skip_newlines(tokens: resp_r.tokens)
+  let ctx = resp_r.ctx
+  let mock_r = parse_optional_mock_response_block(tokens: tokens, ctx: ctx)
+  if has_err(err: mock_r.err) { return OpResult { operation: dummy_op, tokens: mock_r.tokens, ctx: mock_r.ctx, err: mock_r.err } }
+  let tokens = skip_newlines(tokens: mock_r.tokens)
+  let ctx = mock_r.ctx
 
   let op = make_operation_node(
     name: name, ident_span: Some { value: name_span }, inputs: inputs, outputs: outputs,
     response_props: resp_r.responses, mock_props: mock_r.mocks,
     exit_props: [], modifier_props: mod_props, transport: none, span: start_span,
-    source_indices: state.source_indices
+    source_indices: ctx.source_indices
   )
-  OpResult { operation: op, state: s, err: none }
+  OpResult { operation: op, tokens: tokens, ctx: ctx, err: none }
 }
 
 // v1 block: operation Name { input {} output {} modifiers transport exit response mock_response }
-fn parse_operation_v1_body(tokens: List<Token>, state: ParserState, name: String, name_span: SourceSpan, start_span: SourceSpan) -> OpResult {
-  let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span, source_indices: state.source_indices)
-  let r = expect(tokens: tokens, state: state, expected: ExpectLBrace)
-  if has_err(err: r.err) { return OpResult { operation: dummy_op, state: r.state, err: r.err } }
-  let s = skip_newlines(tokens: tokens, state: r.state)
+fn parse_operation_v1_body(tokens: List<Token>, ctx: ParseContext, name: String, name_span: SourceSpan, start_span: SourceSpan) -> OpResult {
+  let dummy_op = make_operation_node(name: "", ident_span: none, inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span, source_indices: ctx.source_indices)
+  let r = expect(tokens: tokens, expected: ExpectLBrace)
+  if has_err(err: r.err) { return OpResult { operation: dummy_op, tokens: r.tokens, ctx: ctx, err: r.err } }
+  let tokens = skip_newlines(tokens: r.tokens)
 
   let r2 = parse_op_body_entries(
-    tokens: tokens, state: s, inputs: [], outputs: [], modifier_props: [],
+    tokens: tokens, ctx: ctx, inputs: [], outputs: [], modifier_props: [],
     transport: none, exit_props: [], response_props: [], mock_props: []
   )
-  if has_err(err: r2.err) { return OpResult { operation: dummy_op, state: r2.state, err: r2.err } }
+  if has_err(err: r2.err) { return OpResult { operation: dummy_op, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
 
-  let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
-  if has_err(err: r3.err) { return OpResult { operation: dummy_op, state: r3.state, err: r3.err } }
+  let r3 = expect(tokens: skip_newlines(tokens: r2.tokens), expected: ExpectRBrace)
+  if has_err(err: r3.err) { return OpResult { operation: dummy_op, tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
 
   let op = make_operation_node(
     name: name, ident_span: Some { value: name_span }, inputs: r2.inputs, outputs: r2.outputs,
     response_props: r2.response_props, mock_props: r2.mock_props,
     exit_props: r2.exit_props, modifier_props: r2.modifier_props,
     transport: r2.transport, span: start_span,
-    source_indices: state.source_indices
+    source_indices: ctx.source_indices
   )
-  OpResult { operation: op, state: skip_newlines(tokens: tokens, state: r3.state), err: none }
+  OpResult { operation: op, tokens: skip_newlines(tokens: r3.tokens), ctx: r2.ctx, err: none }
 }
 
 // Parse entries inside a v1 operation body block.
 // Modifiers, responses, exits, mocks are collected as Node properties.
 fn parse_op_body_entries(
-  tokens: List<Token>, state: ParserState,
+  tokens: List<Token>, ctx: ParseContext,
   inputs: List<Node>, outputs: List<Node>,
   modifier_props: List<Node>, transport: Node?,
   exit_props: List<Node>, response_props: List<Node>, mock_props: List<Node>
