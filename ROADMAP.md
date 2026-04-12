@@ -183,11 +183,64 @@ Bootstrap D ├─ Lane B: Emission ──────────────�
 | Gate | Command | Status |
 |------|---------|--------|
 | Lint | `cargo clippy --workspace -- -D warnings` | GREEN |
-| Tests | `cargo test -p v2-compiler-tests` | GREEN (388 pass) |
+| Tests | `cargo test -p v2-compiler-tests` | GREEN (394 pass) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN |
 | Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 424 (honest, non-blocking) |
 | L1 gate | `scripts/l1-ratchet.sh --check` | GREEN (0, hard gate) |
 | Stage0 freshness | `scripts/check-stage0-freshness.sh` | GREEN (blocking) |
+
+---
+
+## Milestones to Gate 1
+
+Four concrete goals, in priority order. Each has a clear done-criterion.
+
+```
+M1: CX gate → 0 violations (currently 421, ratchet 421)
+    Done when: strict_compile_diagnostic_count = 0, gate is blocking
+    Key blocker: OUTPUT PROVENANCE on function signatures.
+      Same SubValueRelation already on input bindings (S1-S6),
+      mirrored to outputs. Not a new system — completes the
+      existing pattern. 3 touch points: infer from body, store
+      on signature, consumers read at call sites.
+    Done: infrastructure (#398), seed data (e61d199),
+      classify_argument reads provenance before hardcoded fallback,
+      compose_sub_value_relations in std/induction.dag (single
+      authority for cross-call composition, conservative on
+      IteratedSubValue — identity only). Body inference active
+      for non-recursive functions (classify_body_provenance).
+    Limitation: output_provenance is List but consumers only
+      read |> first (scalar). Per-field consumption not wired.
+      Param identity still string-keyed (needs Track 3 ident:Int).
+      Body walker is a bootstrap parallel authority — should
+      derive from InferScope/TypeBinding.provenance pipeline
+      in topo/SCC order once that path exists.
+    Next: per-field provenance consumption for product returns
+      (Step 3). Wire child-indexed lookup in classify_let_value.
+    Unlocks: Stream D (-132), body-inferred categories (-196),
+      arithmetic refinement (-44), C3-C6 deletion, tokenizer (-22)
+    Remaining ~10 (graph DFS) needs language primitive
+    Note: Stream D parser restructuring is DONE mechanically but
+      CX can't see through helper returns without output provenance.
+      Shelved until provenance lands.
+
+M2: Node.name deleted
+    Done when: Node.name field removed, l1-ratchet = 0
+    How: fix authored_name_at fallback, eliminate ~15 remaining reads
+    Active: quick-owl-889
+    Unblocks: Stream B Layer 1 (last-use clone elision)
+
+M3: review.dag runs end-to-end
+    Done when: review.dag compiles, builds, runs live against real APIs
+    How: fix remaining RE-3 serde gaps
+    Mostly done (RE-1/2/4 complete)
+
+M4: Single emitter reads data, never decides
+    Done when: 05_emit_rust/python/go.dag deleted, all emission from specs
+    How: Lane C (coercion = emission, language plugins)
+    Blocked on: M1 + M2 substantially complete
+    Design: docs/single-emitter-design.md
+```
 
 ---
 
@@ -217,20 +270,22 @@ Layer 3 (O6-O10, borrow propagation) is a separate design phase
 blocked on LS-4.
 
 **Stream C: std/ foundation** (std/induction.dag, std/algebra.dag, std/termination.dag)
-C1 (direct SubValueRelation→LoweringTarget) and S8 (lattice
-inhabitant declarations). Both small, both unblocked. C1 enables
-better bounds when C2 lands. S8 dissolves ad-hoc merge functions.
+C1 DONE. S8 Phase 1 DONE (DescentEvidence lattice inhabitants).
+Phase 2 blocked on user-defined generic emission.
 
-### What to start now
-
-| Stream | Items | Files |
-|--------|-------|-------|
-| A: Provenance infra | S1, S2, S3, S4, S5 | 04_env.dag, 04_infer.dag |
-| B: Clone elision | O1-O5 | ownership.dag, 05_emit_rust.dag |
-| C: std/ foundation | C1, S8 (Phase 1 done, Phase 2 blocked on generic emission) | std/induction.dag, std/algebra.dag, std/termination.dag |
-
-Zero file overlap between streams. After Stream A (S1-S5), CX
-consumer items C2-C6 can start (same files as Stream A, sequential).
+**Stream D: Structural parser** (02_parse.dag, compile.dag)
+Restructure parser from integer position indexing to list consumption.
+Target: eliminate 132 CX violations (Category B) by construction.
+Design: [src/v2/parser-design.md](src/v2/parser-design.md).
+**Current state:** Mechanical restructuring DONE (0 ParserState
+references, fixed-point verified, 392/393 tests pass). BUT CX
+violations did not decrease — the CX analyzer can't see that helper
+return values (e.g. `expect(tokens).tokens`) are sub-lists of the
+input. **Blocked on output provenance** (SubValueRelation on function
+signatures). Shelved until that lands.
+Performance note: `tokens |> skip(1)` on `Rc<Vec<>>` is O(n) per
+step (O(n²) total). Needs runtime representation design — not a
+parser-specific fix.
 
 ### Active workboards
 
@@ -343,7 +398,7 @@ instead of derived from structural authorities.
 | Item | Status |
 |------|--------|
 | CG-1: Authority consolidation (type rendering, sharing, ownership) | DONE |
-| CG-2: Expression-level gaps (TLC-1..4) | TLC-1/2/3 done, TLC-4 partial |
+| CG-2: Expression-level gaps (TLC-1..4) | TLC-1/2/3 done, TLC-4 partial (Rust REST body only) |
 | CG-3: Parameterization (3 backends → 1 homomorphism) | Phases 1-3 done, 4-6 deferred |
 
 ### Track 5: Real-program emission (Lane B + D)
@@ -355,8 +410,24 @@ First target: `gunbc/tools/review.dag` (PR review agent).
 |------|--------|
 | RE-1: Transport emission fidelity (REST, shell) | DONE (21/21) |
 | RE-2: review.dag compiles (dry-run) | DONE |
-| RE-3: review.dag passes live integration | Partial |
-| RE-4: Anthropic REST API end-to-end | Not started |
+| RE-3: review.dag passes live integration | Partial — PR #397 merged (CLI borrow, text responses, shell channels, standalone Cargo.toml). Remaining: emitter heuristics should become structural facts (see below). |
+| RE-4: Anthropic REST API end-to-end | Test added (requires ANTHROPIC_API_KEY) |
+
+**RE-3 deferred architectural items** (PR #397 review feedback, M4/M8 direction):
+- Shell channel contracts: `emit_shell_return` infers field semantics from
+  type shape and field name (Bool→exit code, "stderr"→stderr, String→stdout).
+  Upstream fix: extend `ShellTransportConfig` in `dsl/extdeps/transports/shell.dag`
+  with explicit channel→field mappings. No types exist yet for this.
+- WireFormat structural type: `emit_plain_response_body` infers text vs JSON
+  from output type shape. Upstream fix: add `WireFormat`/`ContentType` type to
+  `std.serialization` or a new module; attach to response blocks so the emitter
+  translates rather than guesses. REST transport has `content_type: String?`
+  but it is not leveraged by the emitter.
+- Qualified identity for `read_only_params_index`: currently keyed by bare
+  `item.name` strings. Should use module-qualified or stable interned identity
+  (Track 3 dependency).
+- Structural Cargo model: `emit_cargo_toml` uses raw string concatenation.
+  `dsl/extdeps/cargo.dag` defines `CargoPackage` but the emitter doesn't use it.
 
 ### Track 6: Algebra field dispatch (Lane A)
 
@@ -387,16 +458,27 @@ These dissolve as types move to `std/` and carry structural facts
 metadata or annotations.
 
 Additional duplication surfaced by review (PR #371, external audit):
-- `emit_rust_default_value` (05_emit_rust.dag) is a hand-written
-  if-forest over type names. `TypeCheckpoint.default_expr` already
-  carries the same defaults. Fix: read from checkpoint data.
-- `rust_type_map` (extdeps/languages/rust/emit.dag) duplicates the
-  primitive mapping in `rust_type_checkpoints`. Same for Go/Python.
-  Fix: derive from TypeCheckpoint only.
-- `go_source_extension` in extdeps/languages/go/emit.dag duplicates
-  `go_scaffold.source_file_extension` in std/languages.dag.
+- ~~`emit_rust_default_value`~~ DISSOLVED (PR #377) — reads from
+  `TypeCheckpoint.default_expr` instead of hand-coded type dispatch.
+- ~~`rust_type_map` / `python_type_map` / `go_type_map`~~ DISSOLVED
+  (PR #377) — dead code deleted, all three had zero callers after
+  migration to `*_type_checkpoints`.
+- ~~`go_source_extension` in extdeps/languages/go/emit.dag duplicates
+  `go_scaffold.source_file_extension` in std/languages.dag.~~
+  Resolved: duplicate deleted (PR #394).
 - `keyword_to_name` in 02_parse.dag duplicates the tokenizer keyword
   table. Reconcile to single authority.
+- ~~HashMap vs BTreeMap disagreement: `map_template` in std/languages.dag
+  says `HashMap<{0},{1}>` but `empty_map` in rust/emit.dag uses
+  `BTreeMap::new()`. Pick one, delete the other.~~
+  Resolved: standardized on HashMap; BTreeMap declarations in runtime.dag
+  were dead code (PR #394).
+- ~~`rt_function_registry` mirrors in rust/emit.dag: `rt_functions` and
+  `rt_bridge_function_names` are hand-maintained copies of data already
+  in the registry. Comments acknowledge the debt.~~
+  Resolved: both converted from `data` to computed `fn` using
+  filter/fold over `rt_function_registry`, matching the existing
+  pattern of `rt_ref_map_functions` and `rt_wraps_result`.
 - CallableOf coverage: `filter`, `any`, `all` now have CallableOf
   in their param_types (PR #379). `sort_by` deferred — its callback
   semantics are unresolved (key-extractor in primitives.dag vs
@@ -441,8 +523,8 @@ described but not structurally modeled in .dag:
 
 | Item | Current state | Fix |
 |------|--------------|-----|
-| Encoding lattice | `dsl/std/encoding.dag` names the lattice but delegates to Rust's `ContentEncoding` | Model join/meet in .dag; reconcile `Encoding` and `ContentEncoding` to one authority |
-| Stack<T> → FreeMonoid | `dsl/std/stack.dag` defines bespoke push/pop/fold_stack instead of attaching to FreeMonoid | Import algebra.dag; Stack IS FreeMonoid |
+| Encoding lattice | **DONE** — consolidated to `Encoding` in encoding.dag with BoundedLattice meet/join; `ContentEncoding` deleted; `FileClassification` moved to filesystem.dag | — |
+| Stack\<T\> → FreeMonoid | **DONE** — imports algebra.dag; operations aligned to FreeMonoid vocabulary; inhabitation declared | — |
 | User-defined generic emission | Generic functions (T, V, K params) parse and type-check but emit unresolved type variables in Rust | Emitter needs monomorphization or generic Rust output |
 
 ### Track 10: Extdeps modeling fidelity (Lane D)
@@ -452,13 +534,13 @@ audit (2026-04-10):
 
 | Item | File | Fix |
 |------|------|-----|
-| `GitHubAuthToken.scopes: List<String>` | extdeps/github/github.dag | Use existing `GitHubScope` enum in same file |
-| `ThinkingConfig.type: String` | extdeps/llm/anthropic.dag | Structural coproduct |
-| `LlmMessage.content: String` | extdeps/llm/llm.dag | Richer multimodal block structure (M1) |
-| `Gist.files: List<GistFile>` | extdeps/github/gists.dag | `Map<String, GistFile>` per API shape |
+| `GitHubAuthToken.scopes: List<String>` | extdeps/github/github.dag | **Previously done** — uses `GitHubScope` enum |
+| `ThinkingConfig.type: String` | extdeps/llm/anthropic.dag | **DONE** — `ThinkingMode = Enabled \| Disabled` |
+| `LlmMessage.content: String` | extdeps/llm/llm.dag | **DONE** — `List<ContentBlock>` with `TextContent \| ImageContent` |
+| `Gist.files: List<GistFile>` | extdeps/github/gists.dag | **Previously done** — `Map<String, GistFile>` |
 | OpenAI string-path extraction | extdeps/llm/openai.dag | Structural field access (M8) |
-| Policy defaults in `CloudSecretConfig` | std/types.dag | Move `"latest"`, `"sigstore"`, `Bearer` to call sites |
-| `ProjectId` vs `GcpProjectId` | std/types.dag | Reconcile to one branded type |
+| Policy defaults in `CloudSecretConfig` | std/types.dag | **DONE** — dead type deleted; operations define own inputs |
+| `ProjectId` vs `GcpProjectId` | std/types.dag | **DONE** — renamed to `GcpProjectId`; 5 dead types deleted |
 
 ---
 
@@ -519,18 +601,22 @@ emits both from the same source.
 
 **Thesis claim:** emission is mechanical translation.
 
-**Current state:** 6,857 lines of language-specific code in three
-separate emitter files (`05_emit_rust.dag`, `05_emit_python.dag`,
-`05_emit_go.dag`) with 632 language mentions across 12 compiler files.
-The emitter decides instead of reading from data.
+**Current state:** Phase 1 complete, Phase 2 (expression dispatch) complete.
+The shared emitter (`05_emit.dag`) has zero language-decision `match target`
+branches. Python and Go expression rendering is unified into a single
+`emit_unified_typed_expr` dispatcher that reads LanguageSpec data — ~50
+per-language functions deleted, CX ratchet 421→416. Per-language emitter
+files retain: pattern rendering, TCO, func body, type defs, service defs.
+Rust emitter is untouched (ownership logic, Phase 6).
+
+**Progress:** Phase 1 ✓, Phase 2 ✓, Phase 3-4 ready, Phase 5-6 blocked on LS-4.
 
 **Target:** one emitter that reads `LanguageSpec` + `InhabitantDecl`
 data per target. Adding a new target language means adding a new
 `dsl/extdeps/languages/<lang>/` directory, not touching the compiler.
 
-**Blocked on:** Track 2 (LanguageSpec modeling), Track 7 (core table
-dissolution). Conceptually: the coercion engine must be complete
-enough that no inline language knowledge is needed.
+**Next:** Phase 3 (TCO/block unification), Phase 4 (service/transport).
+**Blocked on (for Phase 5-6):** Track 2 LS-4 (borrow model design).
 
 ### Track 14: Omni-emission
 

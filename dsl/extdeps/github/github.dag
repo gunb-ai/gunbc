@@ -11,11 +11,15 @@
 
 module extdeps.github.github
 
+import std.serialization { VariantEncoding, StringVariant, VariantNaming, AsAuthored }
 import std.types { Timestamp }
+
+// Wire contract: GitHub API returns enum values as plain strings ("User", "Bot").
+data wire_contract: VariantEncoding = StringVariant { naming: AsAuthored }
 
 // -- Users ---------------------------------------------------------
 
-type UserType = HumanUser | Bot | Organization
+type UserType = User | Bot | Organization
 
 type GitHubUser {
   login: String

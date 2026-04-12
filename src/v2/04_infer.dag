@@ -108,7 +108,7 @@ import std.induction {
   InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
   SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown,
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
-  sub_value_to_evidence, meet_sub_value, compose_sub_value
+  sub_value_to_evidence, meet_sub_value, compose_sub_value, compose_sub_value_relations
 }
 import v2.compiler.infer_resolve {
   resolve_node, resolve_item_types,
@@ -336,7 +336,8 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
             map_insert(acc, sig_key, DeclaredFuncSig {
               name: sig_key, params: sig_params,
               inferred: Some { value: sig_rt },
-              is_async: sig_async
+              is_async: sig_async,
+              output_provenance: rsig.output_provenance
             })
           )
           // svc_registry + svc_locals from parent items
@@ -434,9 +435,7 @@ fn classify_field_recursion(field_node: Node, parent_name: String, recursive_typ
       let elem = if value_type == parent_name { parent_name } else { value_type }
       match field_type_name {
         "List" => Some { value: FieldRecursionResult { shape: ListRecursion, element_type: elem } }
-        "NonEmptyList" => Some { value: FieldRecursionResult { shape: ListRecursion, element_type: elem } }
         "Set" => Some { value: FieldRecursionResult { shape: SetRecursion, element_type: elem } }
-        "NonEmptySet" => Some { value: FieldRecursionResult { shape: SetRecursion, element_type: elem } }
         "Map" => Some { value: FieldRecursionResult { shape: MapValueRecursion, element_type: elem } }
         _ => none
       }
@@ -2322,6 +2321,7 @@ type DescentContext {
   sub_value_vars: Map<String, SubValueRelation>
   size_aliases: Map<String, SizeExpr>
   scope_locals: Map<String, TypeBinding>  // C2: binding provenance from inference
+  func_sigs: Map<String, ResolvedFuncSig>
 }
 
 // Classify a let-value as a size expression for ProportionalShrink tracking.
@@ -2599,40 +2599,55 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      if is_child_accessor_in_model(name: callee) || is_tree_size_reducing(func_name: callee) {
-        let call_args = val.children
-        match call_args |> first {
-          Some { value: first_arg } =>
-            let inner = arg_value(n: first_arg)
-            match inner.expr_data {
-              ExprVar { binding_kind: _ } =>
-                let iname = expr_var_name_at(texpr: inner, source_indices: ctx.type_env.source_indices)
-                let inner_type = match map_get(ctx.param_names, iname) {
-                  Some { value: t } => t
-                  None =>
-                    match map_get(ctx.sub_value_vars, iname) {
-                      Some { value: rel } =>
-                        match rel {
-                          StrictSubValue { field: f, factor: _ } => f.element_type
-                          IteratedSubValue { field: f } => f.element_type
-                          _ => ""
+      // Check output provenance from func_sigs first
+      let from_provenance = match map_get(ctx.func_sigs, callee) {
+        Some { value: sig } =>
+          match sig.output_provenance |> first {
+            Some { value: param_map } =>
+              classify_call_via_provenance(call: val, param_map: param_map, ctx: ctx)
+            None => none
+          }
+        None => none
+      }
+      match from_provenance {
+        Some { value: _ } => from_provenance
+        None =>
+          // Fall back to hardcoded child accessor / tree-size-reducing table
+          if is_child_accessor_in_model(name: callee) || is_tree_size_reducing(func_name: callee) {
+            let call_args = val.children
+            match call_args |> first {
+              Some { value: first_arg } =>
+                let inner = arg_value(n: first_arg)
+                match inner.expr_data {
+                  ExprVar { binding_kind: _ } =>
+                    let iname = expr_var_name_at(texpr: inner, source_indices: ctx.type_env.source_indices)
+                    let inner_type = match map_get(ctx.param_names, iname) {
+                      Some { value: t } => t
+                      None =>
+                        match map_get(ctx.sub_value_vars, iname) {
+                          Some { value: rel } =>
+                            match rel {
+                              StrictSubValue { field: f, factor: _ } => f.element_type
+                              IteratedSubValue { field: f } => f.element_type
+                              _ => ""
+                            }
+                          None => ""
                         }
-                      None => ""
                     }
+                    if inner_type != "" {
+                      let fields = inductive_fields_for(env: ctx.type_env, type_name: inner_type)
+                      let cf = fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
+                      match cf {
+                        Some { value: ind_field } => Some { value: StrictSubValue { field: ind_field, factor: UnitShrink } }
+                        None => none
+                      }
+                    } else { none }
+                  _ => none
                 }
-                if inner_type != "" {
-                  let fields = inductive_fields_for(env: ctx.type_env, type_name: inner_type)
-                  let cf = fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
-                  match cf {
-                    Some { value: ind_field } => Some { value: StrictSubValue { field: ind_field, factor: UnitShrink } }
-                    None => none
-                  }
-                } else { none }
-              _ => none
+              None => none
             }
-          None => none
-        }
-      } else { none }
+          } else { none }
+      }
     // Type-based collection detection: if the inferred type is List<T> where T is a
     // recursive type, the result is a ListRecursion collection. This covers function
     // calls like match_arm_nodes(texpr) → List<Node> without naming specific functions.
@@ -2756,6 +2771,53 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
   }
 }
 
+// Classify a function call's output via the callee's output provenance.
+// Merges all matching param entries via meet_sub_value (deterministic
+// regardless of map iteration order).
+fn classify_call_via_provenance(call: Node, param_map: Map<String, SubValueRelation>, ctx: DescentContext) -> SubValueRelation? {
+  let call_args = call.children
+  let arg_by_name = fold(call_args, init: empty_map(), f: (acc, arg_node) =>
+    match arg_name_at(n: arg_node, source_indices: ctx.type_env.source_indices) {
+      Some { value: aname } => map_insert(acc, aname, arg_value(n: arg_node))
+      None => acc
+    }
+  )
+  fold(param_map |> map_keys, init: none, f: (result, callee_pname) =>
+    match map_get(param_map, callee_pname) {
+      Some { value: callee_rel } =>
+        match map_get(arg_by_name, callee_pname) {
+          Some { value: arg_expr } =>
+            let arg_rel = classify_call_arg_provenance(arg_expr: arg_expr, ctx: ctx)
+            match arg_rel {
+              Some { value: arel } =>
+                let composed = compose_output_relations(arg_rel: arel, callee_rel: callee_rel)
+                match result {
+                  Some { value: prev } => Some { value: meet_sub_value(a: prev, b: composed) }
+                  None => Some { value: composed }
+                }
+              None => result
+            }
+          None => result
+        }
+      None => result
+    }
+  )
+}
+
+// Classify an argument expression's sub-value relation in the caller's context.
+fn classify_call_arg_provenance(arg_expr: Node, ctx: DescentContext) -> SubValueRelation? {
+  match arg_expr.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let name = expr_var_name_at(texpr: arg_expr, source_indices: ctx.type_env.source_indices)
+      if map_get(ctx.param_names, name) != none {
+        Some { value: PreservedValue }
+      } else {
+        map_get(ctx.sub_value_vars, name)
+      }
+    _ => classify_let_value(val: arg_expr, ctx: ctx)
+  }
+}
+
 // Merge SubValueRelations across branches using the structural lattice
 // meet from std/induction.dag. No lossy projection — meet_sub_value is
 // the single authority for SubValueRelation lattice operations.
@@ -2829,25 +2891,35 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
             StrictSubValue { field: _, factor: _ } => inner_rel
             IteratedSubValue { field: _ } => inner_rel
             ArithmeticDescent { param: _, factor: _ } => inner_rel
-            // Accessor applied to the parameter itself: if it's a child accessor,
-            // the result is a strict sub-value (extracts from Node.children).
+            // Accessor applied to the parameter itself: check output provenance
+            // first, fall back to hardcoded child accessor tables.
             PreservedValue =>
               let callee = expr_call_func_at(texpr: arg_expr, source_indices: ctx.type_env.source_indices)
-              if is_child_accessor_in_model(name: callee) || is_tree_size_reducing(func_name: callee) {
-                let type_name = match map_get(ctx.param_names, param_name) { Some { value: t } => t  None => "" }
-                let fields = inductive_fields_for(env: ctx.type_env, type_name: type_name)
-                let cf = fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
-                match cf {
-                  Some { value: ind_field } => StrictSubValue { field: ind_field, factor: UnitShrink }
-                  None => PreservedValue
-                }
-              } else if is_property_contraction(func_name: callee) {
-                // PropertyContraction: the function changes a finite-domain property
-                // (e.g., with_required_cardinality strips optional). The domain has
-                // bounded size, so this recursion path fires at most domain_size times.
-                // Model as ArithmeticDescent — the property domain acts as a counter.
-                ArithmeticDescent { param: param_name, factor: ConstantShrink { amount: 1 } }
-              } else { PreservedValue }
+              let from_provenance = match map_get(ctx.func_sigs, callee) {
+                Some { value: sig } =>
+                  match sig.output_provenance |> first {
+                    Some { value: param_map } =>
+                      classify_call_via_provenance(call: arg_expr, param_map: param_map, ctx: ctx)
+                    None => none
+                  }
+                None => none
+              }
+              match from_provenance {
+                Some { value: prov_rel } => prov_rel
+                None =>
+                  // Fall back to hardcoded child accessor / tree-size-reducing table
+                  if is_child_accessor_in_model(name: callee) || is_tree_size_reducing(func_name: callee) {
+                    let type_name = match map_get(ctx.param_names, param_name) { Some { value: t } => t  None => "" }
+                    let fields = inductive_fields_for(env: ctx.type_env, type_name: type_name)
+                    let cf = fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
+                    match cf {
+                      Some { value: ind_field } => StrictSubValue { field: ind_field, factor: UnitShrink }
+                      None => PreservedValue
+                    }
+                  } else if is_property_contraction(func_name: callee) {
+                    ArithmeticDescent { param: param_name, factor: ConstantShrink { amount: 1 } }
+                  } else { PreservedValue }
+              }
             SubValueUnknown => SubValueUnknown
           }
         None => SubValueUnknown
@@ -3118,7 +3190,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   else { map_insert(ctx.sub_value_vars, p1, rel) }
                 } else { ctx.sub_value_vars },
                 size_aliases: ctx.size_aliases,
-                scope_locals: ctx.scope_locals
+                scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs
               }
               make_arg_node(name: arg_name_at(n: child, source_indices: ctx.type_env.source_indices), value: annotate_descent(body: arg_val, ctx: lambda_ctx), span: child.span, name_span: child.span)
             } else {
@@ -3219,7 +3291,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                             param_order: c.param_order, type_env: c.type_env,
                             sub_value_vars: map_insert(c.sub_value_vars, bname, StrictSubValue { field: ind_field, factor: UnitShrink }),
                             size_aliases: c.size_aliases,
-                            scope_locals: c.scope_locals
+                            scope_locals: c.scope_locals, func_sigs: c.func_sigs
                           }
                         VariantPattern { name: inner_vname, parent_enum: _, field_bindings: inner_bindings } =>
                           // Nested destructuring: Some { value: Resolved { node: rt } }
@@ -3241,7 +3313,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                                     param_order: ic.param_order, type_env: ic.type_env,
                                     sub_value_vars: map_insert(ic.sub_value_vars, inner_bind_name, StrictSubValue { field: inner_ind_field, factor: UnitShrink }),
                                     size_aliases: ic.size_aliases,
-                                    scope_locals: ic.scope_locals
+                                    scope_locals: ic.scope_locals, func_sigs: ic.func_sigs
                                   }
                                 } else { ic }
                               None => ic
@@ -3268,7 +3340,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                             fn_name: c.fn_name, param_names: c.param_names, param_order: c.param_order, type_env: c.type_env,
                             sub_value_vars: map_insert(c.sub_value_vars, bind_name, StrictSubValue { field: ind_field, factor: UnitShrink }),
                             size_aliases: c.size_aliases,
-                            scope_locals: c.scope_locals
+                            scope_locals: c.scope_locals, func_sigs: c.func_sigs
                           }
                         } else { c }
                       None => c
@@ -3286,7 +3358,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   param_order: ctx.param_order, type_env: ctx.type_env,
                   sub_value_vars: map_insert(ctx.sub_value_vars, bname, PreservedValue),
                   size_aliases: ctx.size_aliases,
-                  scope_locals: ctx.scope_locals
+                  scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs
                 }
               } else {
                 match scrut_inducing_field {
@@ -3297,7 +3369,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                       param_order: ctx.param_order, type_env: ctx.type_env,
                       sub_value_vars: map_insert(ctx.sub_value_vars, bname, StrictSubValue { field: ind_field, factor: UnitShrink }),
                       size_aliases: ctx.size_aliases,
-                      scope_locals: ctx.scope_locals
+                      scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs
                     }
                   None => ctx
                 }
@@ -3347,14 +3419,14 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: map_insert(ctx.sub_value_vars, binding_name, rel),
             size_aliases: inner_size_aliases,
-            scope_locals: ctx.scope_locals
+            scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs
           }
         None =>
           DescentContext {
             fn_name: ctx.fn_name, param_names: ctx.param_names, param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: ctx.sub_value_vars,
             size_aliases: inner_size_aliases,
-            scope_locals: ctx.scope_locals
+            scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs
           }
       }
       // Lexical scope: value initializer sees OUTER context (binding not yet in scope),
@@ -3404,14 +3476,14 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   param_order: acc.ctx.param_order, type_env: acc.ctx.type_env,
                   sub_value_vars: map_insert(acc.ctx.sub_value_vars, bname, rel),
                   size_aliases: new_sa,
-                  scope_locals: acc.ctx.scope_locals
+                  scope_locals: acc.ctx.scope_locals, func_sigs: acc.ctx.func_sigs
                 }
               None =>
                 DescentContext {
                   fn_name: acc.ctx.fn_name, param_names: acc.ctx.param_names, param_order: acc.ctx.param_order, type_env: acc.ctx.type_env,
                   sub_value_vars: acc.ctx.sub_value_vars,
                   size_aliases: new_sa,
-                  scope_locals: acc.ctx.scope_locals
+                  scope_locals: acc.ctx.scope_locals, func_sigs: acc.ctx.func_sigs
                 }
             }
           _ => acc.ctx
@@ -3522,7 +3594,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   sub_value_vars: if is_fold { map_insert(empty_map(), elem_name, IteratedSubValue { field: ind_field }) }
                     else { map_insert(ctx.sub_value_vars, elem_name, IteratedSubValue { field: ind_field }) },
                   size_aliases: ctx.size_aliases,
-                  scope_locals: ctx.scope_locals
+                  scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs
                 }
               None =>
                 DescentContext {
@@ -3530,7 +3602,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   param_order: ctx.param_order, type_env: ctx.type_env,
                   sub_value_vars: if is_fold { empty_map() } else { ctx.sub_value_vars },
                   size_aliases: ctx.size_aliases,
-                  scope_locals: ctx.scope_locals
+                  scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs
                 }
             }
           None => ctx
@@ -3575,7 +3647,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: map_insert(empty_map(), fe_var, IteratedSubValue { field: ind_field }),
             size_aliases: ctx.size_aliases,
-            scope_locals: ctx.scope_locals
+            scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs
           }
         None =>
           DescentContext {
@@ -3583,7 +3655,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: empty_map(),
             size_aliases: ctx.size_aliases,
-            scope_locals: ctx.scope_locals
+            scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs
           }
       }
       let annotated_coll = annotate_descent(body: coll, ctx: ctx)
@@ -3617,8 +3689,252 @@ fn resolved_type_name(n: Node, source_indices: Map<String, NewlineIndex>) -> Str
   }
 }
 
+// =========================================================================
+// Output provenance inference
+//
+// Determine the structural relationship between a function's return value
+// and its parameters by walking the typed body. This enables the descent
+// analysis to see through helper function calls: if f(x) returns a
+// sub-value of x, then `let r = f(p)` registers r as a sub-value of p.
+//
+// fail-closed: returns empty_map() for any body shape we can't analyze.
+// =========================================================================
+
+// Infer output provenance from a non-recursive function body.
+// Walks the body expression top-down, classifying the return value's
+// SubValueRelation to each parameter. Handles: variable refs, function
+// calls (compose with callee provenance), match/if (meet across branches),
+// let chains (track bindings), field access (inductive field lookup).
+// Returns single-element list for scalar provenance, empty list if unknown.
+fn infer_output_provenance(body: Node, params: List<Node>, type_env: TypeEnv, scope_locals: Map<String, TypeBinding>, func_sigs: Map<String, ResolvedFuncSig>) -> List<Map<String, SubValueRelation>> {
+  let param_names = params |> map(p => param_node_name_at(n: p, source_indices: type_env.source_indices))
+  let param_types = fold(params, init: empty_map(), f: (acc, p) =>
+    let pname = param_node_name_at(n: p, source_indices: type_env.source_indices)
+    let ptype = resolved_type_name(n: p, source_indices: type_env.source_indices)
+    if pname != "" && ptype != "" { map_insert(acc, pname, ptype) } else { acc }
+  )
+  let result = classify_body_provenance(
+    expr: body, param_names: param_names, param_types: param_types,
+    type_env: type_env, func_sigs: func_sigs, let_prov: empty_map()
+  )
+  if map_keys(result) |> count > 0 { [result] } else { [] }
+}
+
+// Classify a body expression's return value provenance relative to params.
+// Returns Map<param_name, SubValueRelation> for params with known relationships.
+fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
+  match expr.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let vname = expr_var_name_at(texpr: expr, source_indices: type_env.source_indices)
+      if param_names |> any(pn => pn == vname) {
+        map_insert(empty_map(), vname, PreservedValue)
+      } else {
+        match map_get(let_prov, vname) {
+          Some { value: prov } => prov
+          None => empty_map()
+        }
+      }
+
+    ExprFieldAccess { summary: _ } =>
+      let base = field_access_base(texpr: expr)
+      let field = field_access_field_at(texpr: expr, source_indices: type_env.source_indices)
+      let base_prov = classify_body_provenance(expr: base, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+      fold(base_prov |> map_keys, init: empty_map(), f: (acc, pname) =>
+        match map_get(base_prov, pname) {
+          Some { value: base_rel } =>
+            let type_for_lookup = match base_rel {
+              PreservedValue => match map_get(param_types, pname) { Some { value: t } => t  None => "" }
+              StrictSubValue { field: f, factor: _ } => f.element_type
+              IteratedSubValue { field: f } => f.element_type
+              _ => ""
+            }
+            if type_for_lookup != "" {
+              let fields = inductive_fields_for(env: type_env, type_name: type_for_lookup)
+              let matching = fields |> filter(f => f.field_name == field) |> first
+              match matching {
+                Some { value: ind_field } => map_insert(acc, pname, compose_sub_value(base: base_rel, field: ind_field))
+                None => acc
+              }
+            } else { acc }
+          None => acc
+        }
+      )
+
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      let callee = expr_call_func_at(texpr: expr, source_indices: type_env.source_indices)
+      match map_get(func_sigs, callee) {
+        Some { value: sig } =>
+          match sig.output_provenance |> first {
+            Some { value: callee_prov } =>
+              let call_args = expr.children
+              let arg_by_name = fold(call_args, init: empty_map(), f: (arg_acc, arg_node) =>
+                match arg_name_at(n: arg_node, source_indices: type_env.source_indices) {
+                  Some { value: aname } => map_insert(arg_acc, aname, arg_value(n: arg_node))
+                  None => arg_acc
+                }
+              )
+              fold(callee_prov |> map_keys, init: empty_map(), f: (acc, callee_pname) =>
+                match map_get(callee_prov, callee_pname) {
+                  Some { value: callee_rel } =>
+                    match map_get(arg_by_name, callee_pname) {
+                      Some { value: arg } =>
+                        let arg_prov = classify_body_provenance(expr: arg, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+                        fold(arg_prov |> map_keys, init: acc, f: (inner, pname) =>
+                          match map_get(arg_prov, pname) {
+                            Some { value: arg_rel } =>
+                              let composed = compose_sub_value_relations(arg_rel: arg_rel, callee_rel: callee_rel)
+                              match composed { SubValueUnknown => inner  _ =>
+                                match map_get(inner, pname) {
+                                  Some { value: existing } => map_insert(inner, pname, meet_sub_value(a: existing, b: composed))
+                                  None => map_insert(inner, pname, composed)
+                                }
+                              }
+                            None => inner
+                          }
+                        )
+                      None => acc
+                    }
+                  None => acc
+                }
+              )
+            None => empty_map()
+          }
+        None => empty_map()
+      }
+
+    ExprMatch =>
+      let arms = match_arm_nodes(texpr: expr)
+      let arm_provs = arms |> map(arm =>
+        classify_body_provenance(expr: arm_body(n: arm), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+      )
+      meet_body_provenance_maps(provs: arm_provs)
+
+    ExprIf =>
+      let then_prov = classify_body_provenance(expr: if_then_branch(texpr: expr), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+      match if_else_branch(texpr: expr) {
+        Some { value: else_expr } =>
+          let else_prov = classify_body_provenance(expr: else_expr, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+          meet_body_provenance_maps(provs: [then_prov, else_prov])
+        None => then_prov
+      }
+
+    ExprLet =>
+      let value = let_value(texpr: expr)
+      let bname = let_binding_name_at(texpr: expr, source_indices: type_env.source_indices)
+      let value_prov = classify_body_provenance(expr: value, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+      let updated = map_insert(let_prov, bname, value_prov)
+      match let_body(texpr: expr) {
+        Some { value: body } =>
+          classify_body_provenance(expr: body, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: updated)
+        None => empty_map()
+      }
+
+    ExprBlock =>
+      match expr.children |> last {
+        Some { value: last_stmt } =>
+          classify_body_provenance(expr: last_stmt, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+        None => empty_map()
+      }
+
+    _ => empty_map()
+  }
+}
+
+// Typed empty provenance map — avoids type inference ambiguity in nested folds.
+fn empty_prov_map() -> Map<String, SubValueRelation> { empty_map() }
+
+// Meet provenance maps across branches (match arms, if branches).
+// For each param, keep it only if present in ALL maps, with met relation.
+fn meet_body_provenance_maps(provs: List<Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
+  match provs |> first {
+    None => empty_prov_map()
+    Some { value: first_prov } =>
+      provs |> skip(1) |> fold(init: first_prov, f: (acc, prov) =>
+        intersect_prov_maps(a: acc, b: prov)
+      )
+  }
+}
+
+// Intersect two provenance maps: keep only keys present in both, meet values.
+fn intersect_prov_maps(a: Map<String, SubValueRelation>, b: Map<String, SubValueRelation>) -> Map<String, SubValueRelation> {
+  fold(map_keys(a), init: empty_prov_map(), f: (result, key) =>
+    match map_get(b, key) {
+      Some { value: b_rel } =>
+        match map_get(a, key) {
+          Some { value: a_rel } =>
+            map_insert(result, key, meet_sub_value(a: a_rel, b: b_rel))
+          None => result
+        }
+      None => result
+    }
+  )
+}
+
+// Compose two sub-value relations across a function call boundary.
+// Delegates to std/induction.dag's compose_sub_value_relations — the
+// single authority for SubValueRelation sequential composition.
+fn compose_output_relations(arg_rel: SubValueRelation, callee_rel: SubValueRelation) -> SubValueRelation {
+  compose_sub_value_relations(arg_rel: arg_rel, callee_rel: callee_rel)
+}
+
+// Populate output provenance on resolved function signatures after body typing.
+// Two sources: (1) hardcoded tables (expr_child_roles, wrapper_child_roles,
+// function_size_effects), (2) body inference for non-recursive functions.
+fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv, type_env: TypeEnv, locals: Map<String, TypeBinding>) -> ResolvedFuncEnv {
+  let updated_sigs = fold(typed_items, init: func_env.signatures, f: (acc, item) =>
+    if item.params |> count > 0 {
+      let fn_name = item.name
+      if is_child_accessor_in_model(name: fn_name) || is_tree_size_reducing(func_name: fn_name) {
+        match item.params |> first {
+          Some { value: first_param } =>
+            let pname = param_node_name_at(n: first_param, source_indices: type_env.source_indices)
+            let ptype = resolved_type_name(n: first_param, source_indices: type_env.source_indices)
+            if ptype != "" && pname != "" {
+              let fields = inductive_fields_for(env: type_env, type_name: ptype)
+              let list_field = fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
+              match list_field {
+                Some { value: ind_field } =>
+                  let provenance = [map_insert(empty_map(), pname, StrictSubValue { field: ind_field, factor: UnitShrink })]
+                  match map_get(acc, fn_name) {
+                    Some { value: sig } =>
+                      map_insert(acc, fn_name, ResolvedFuncSig {
+                        name: sig.name, params: sig.params, inferred: sig.inferred,
+                        is_async: sig.is_async, output_provenance: provenance
+                      })
+                    None => acc
+                  }
+                None => acc
+              }
+            } else { acc }
+          None => acc
+        }
+      } else {
+        // Body inference for non-recursive functions
+        match item.body {
+          Some { value: body } =>
+            if !expr_has_self_call(texpr: body, fn_name: fn_name, source_indices: type_env.source_indices) {
+              let provenance = infer_output_provenance(body: body, params: item.params, type_env: type_env, scope_locals: locals, func_sigs: acc)
+              if provenance |> count > 0 {
+                match map_get(acc, fn_name) {
+                  Some { value: sig } =>
+                    map_insert(acc, fn_name, ResolvedFuncSig {
+                      name: sig.name, params: sig.params, inferred: sig.inferred,
+                      is_async: sig.is_async, output_provenance: provenance
+                    })
+                  None => acc
+                }
+              } else { acc }
+            } else { acc }
+          None => acc
+        }
+      }
+    } else { acc }
+  )
+  ResolvedFuncEnv { signatures: updated_sigs }
+}
+
 // Top-level: annotate a self-recursive function body with descent evidence.
-fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, type_env: TypeEnv, scope_locals: Map<String, TypeBinding>) -> Node {
+fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, type_env: TypeEnv, scope_locals: Map<String, TypeBinding>, func_sigs: Map<String, ResolvedFuncSig>) -> Node {
   let param_name_map = params |> fold(init: empty_map(), f: (acc, p) =>
     let pname = param_node_name_at(n: p, source_indices: type_env.source_indices)
     let ptype = resolved_type_name(n: p, source_indices: type_env.source_indices)
@@ -3632,7 +3948,8 @@ fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, ty
     type_env: type_env,
     sub_value_vars: empty_map(),
     size_aliases: empty_map(),
-    scope_locals: scope_locals
+    scope_locals: scope_locals,
+    func_sigs: func_sigs
   }
   annotate_descent(body: body, ctx: ctx)
 }
@@ -3774,7 +4091,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     // CX-L2: annotate self-call sites with descent evidence
     let is_recursive = expr_has_self_call(texpr: body_typed, fn_name: item.name, source_indices: scope.type_env.source_indices)
     let annotated_body = if is_recursive {
-      annotate_descent_evidence(body: body_typed, fn_name: item.name, params: item.params, type_env: scope.type_env, scope_locals: scope.locals)
+      annotate_descent_evidence(body: body_typed, fn_name: item.name, params: item.params, type_env: scope.type_env, scope_locals: scope.locals, func_sigs: scope.func_env.signatures)
     } else { body_typed }
     TypedItemResult {
       item: Node {
@@ -4254,7 +4571,8 @@ fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContributi
       name: ritem.name,
       params: ritem.params,
       inferred: declared_rt,
-      is_async: ritem.uses |> count > 0
+      is_async: ritem.uses |> count > 0,
+      output_provenance: []
     } }
   } else {
     none
@@ -4482,6 +4800,12 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   let typed_item_results = infer_items(items: ctx.resolved_items, scope: infer_scope)
   let typed_items = map(typed_item_results, tir => tir.item)
   let infer_diags = flat_map(typed_item_results, tir => tir.diagnostics)
+  // Populate output provenance on non-recursive function signatures.
+  // Must happen after body typing so we can analyze typed expressions.
+  let updated_func_env = populate_output_provenance(
+    typed_items: typed_items, func_env: ctx.func_env,
+    type_env: env, locals: data_locals
+  )
   let typed_module = module_node(name: resolved.module.name, imports: module_imports(n: resolved.module), items: ctx.resolved_items, span: resolved.module.span)
 
   TypecheckModuleResult {
@@ -4489,7 +4813,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       module: typed_module,
       items: typed_items,
       type_env: env,
-      func_env: ctx.func_env,
+      func_env: updated_func_env,
       item_registry: ctx.item_registry
     },
     diagnostics: concat(env_diags, ctx.diagnostics, infer_diags)
@@ -4686,7 +5010,9 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     variant_to_enum: vtoe,
     owned_bindings: empty_map(),
     fold_eligible_index: empty_map(),
-    fold_eligible: empty_map()
+    fold_eligible: empty_map(),
+    read_only_params_index: empty_map(),
+    read_only_params: empty_map()
   }
 }
 

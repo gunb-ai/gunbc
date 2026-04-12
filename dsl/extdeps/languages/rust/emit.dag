@@ -30,7 +30,6 @@ data rust_keywords: Map<String, String> = {
 // templates and the rc_types predicate.
 data rust_container_templates: Map<String, String> = {
   "list": "Vec<\{0\}>", "set": "std::collections::BTreeSet<\{0\}>",
-  "non_empty_list": "NonEmptyVec<\{0\}>", "non_empty_set": "NonEmptyBTreeSet<\{0\}>",
   "optional": "Option<\{0\}>", "map": "HashMap<\{0\}, \{1\}>",
   "free_monoid": "Vec<\{0\}>", "partial_function": "HashMap<\{0\}, \{1\}>",
   "boolean_algebra": "bool"
@@ -128,6 +127,29 @@ data rust_module_keyword: String = "mod"
 data rust_import_keyword: String = "use"
 data rust_import_from_keyword: String = ""
 
+// -- Expression syntax templates ------------------------------------------
+// {0} = params, {1} = body. Ref: Rust Reference §8.2.2 "Closure expressions"
+data rust_lambda_template: String = "|{0}| {1}"
+// {0} = message string
+data rust_error_expr_template: String = "panic!({0})"
+// {0} = comma-separated elements
+data rust_list_literal_empty: String = "Rc::new(vec![])"
+data rust_list_literal_template: String = "Rc::new(vec![{0}])"
+// {0} = left expr, {1} = right expr
+data rust_null_coalesce_template: String = "{0}.unwrap_or_else(|| {1})"
+// {0} = error label
+data rust_error_type_template: String = "compile_error!(\"{0}\")"
+// -- Type argument brackets -----------------------------------------------
+data rust_type_arg_open: String = "<"
+data rust_type_arg_close: String = ">"
+// -- Void type ------------------------------------------------------------
+data rust_void_type: String = "()"
+// -- Tuple syntax ---------------------------------------------------------
+data rust_tuple_empty: String = "()"
+data rust_tuple_pair_template: String = "({0}, {1})"
+data rust_tuple_multi_template: String = "({0})"
+data rust_tuple_separator: String = ", "
+
 // -- Project scaffold ----------------------------------------------------
 // Ref: Cargo Reference (doc.rust-lang.org/cargo/reference)
 // Mirrors rust_scaffold from std.languages.
@@ -186,34 +208,11 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "count",              bridge_name: "count",            passes_by_ref: false, wraps_result: false }
 ]
 
-// Helper functions: O(1) lookup via indexed maps built from the registry.
-// The registry is the single hand-maintained authority. These maps are
-// the DERIVED index — their content must match the registry. If you add
-// a runtime function, add it to rt_function_registry above; then update
-// the maps below to match.
-//
-// Why not derive programmatically? The .dag data syntax only supports
-// literal map/list initializers, not computed expressions. When the
-// language gains computed data declarations, these maps should become
-// `rt_function_registry |> fold(...)`.
+// Derived indexes from rt_function_registry — all computed, single authority.
 
-// Derived indexes from rt_function_registry. Hand-maintained mirrors —
-// content must match the registry. When .dag gains computed data
-// declarations, these become rt_function_registry |> fold(...).
-
-data rt_functions: Map<String, Bool> = {
-  "concat": true, "char_at": true, "string_length": true,
-  "substring": true, "string_contains": true, "scan_while": true,
-  "skip_horizontal_ws": true, "scan_to_eol": true, "scan_string_end": true,
-  "code_point": true, "from_code_point": true, "lookup": true,
-  "index_by": true, "empty_map": true, "map_insert": true,
-  "map_merge": true, "list_concat": true, "str_eq": true,
-  "filesystem_read": true, "list_push": true, "map_get": true,
-  "map_keys": true, "map_values": true,
-  "parse_int": true, "map_contains_key": true, "map_has": true,
-  "reverse": true, "replace": true,
-  "chars_to_string": true, "append": true,
-  "contains": true, "count": true
+fn rt_functions() -> Map<String, Bool> {
+  rt_function_registry
+    |> fold(init: empty_map(), f: (acc, entry) => map_insert(acc, entry.name, true))
 }
 
 fn rt_ref_map_functions() -> Map<String, Bool> {
@@ -222,29 +221,24 @@ fn rt_ref_map_functions() -> Map<String, Bool> {
     |> fold(init: empty_map(), f: (acc, entry) => map_insert(acc, entry.name, true))
 }
 
-// Derived: runtime functions whose result needs Rc wrapping.
-// Single authority: RuntimeFunction.wraps_result field on the registry.
 fn rt_wraps_result() -> Map<String, Bool> {
   rt_function_registry
     |> filter(f => f.wraps_result)
     |> fold(init: empty_map(), f: (acc, entry) => map_insert(acc, entry.name, true))
 }
 
-data rt_bridge_function_names: Map<String, String> = {
-  "empty_map": "rc_empty_map",
-  "index_by": "rc_index_by",
-  "list_concat": "rc_list_concat",
-  "list_push": "rc_list_push",
-  "map_insert": "rc_map_insert",
-  "map_merge": "rc_map_merge"
+fn rt_bridge_function_names() -> Map<String, String> {
+  rt_function_registry
+    |> filter(f => f.name != f.bridge_name)
+    |> fold(init: empty_map(), f: (acc, entry) => map_insert(acc, entry.name, entry.bridge_name))
 }
 
 fn is_rt_function(name: String) -> Bool {
-  map_contains_key(rt_functions, name)
+  map_contains_key(rt_functions(), name)
 }
 
 fn rt_bridge_name(name: String) -> String {
-  match map_get(rt_bridge_function_names, name) {
+  match map_get(rt_bridge_function_names(), name) {
     Some { value: bridge } => bridge
     None => name
   }

@@ -45,7 +45,12 @@ import extdeps.languages.rust.emit {
   rust_enum_keyword, rust_type_alias_keyword,
   rust_param_separator, rust_return_arrow,
   rust_param_type_sep,
-  rust_module_keyword, rust_import_keyword, rust_import_from_keyword
+  rust_module_keyword, rust_import_keyword, rust_import_from_keyword,
+  rust_lambda_template, rust_error_expr_template,
+  rust_list_literal_empty, rust_list_literal_template,
+  rust_null_coalesce_template, rust_error_type_template,
+  rust_type_arg_open, rust_type_arg_close, rust_void_type,
+  rust_tuple_empty, rust_tuple_pair_template, rust_tuple_multi_template, rust_tuple_separator
 }
 
 import extdeps.languages.python.emit {
@@ -59,7 +64,12 @@ import extdeps.languages.python.emit {
   python_enum_keyword, python_type_alias_keyword,
   python_param_separator, python_return_arrow,
   python_param_type_sep,
-  python_module_keyword, python_import_keyword, python_import_from_keyword
+  python_module_keyword, python_import_keyword, python_import_from_keyword,
+  python_lambda_template, python_error_expr_template,
+  python_list_literal_empty, python_list_literal_template,
+  python_null_coalesce_template, python_error_type_template,
+  python_type_arg_open, python_type_arg_close, python_void_type,
+  python_tuple_empty, python_tuple_pair_template, python_tuple_multi_template, python_tuple_separator
 }
 
 import extdeps.languages.go.emit {
@@ -72,7 +82,29 @@ import extdeps.languages.go.emit {
   go_enum_keyword, go_type_alias_keyword,
   go_param_separator, go_return_arrow,
   go_param_type_sep,
-  go_module_keyword, go_import_keyword, go_import_from_keyword
+  go_module_keyword, go_import_keyword, go_import_from_keyword,
+  go_lambda_template, go_error_expr_template,
+  go_list_literal_empty, go_list_literal_template,
+  go_null_coalesce_template, go_error_type_template,
+  go_type_arg_open, go_type_arg_close, go_void_type,
+  go_tuple_empty, go_tuple_pair_template, go_tuple_multi_template, go_tuple_separator
+}
+
+import extdeps.languages.dag.emit {
+  dag_keywords, dag_container_templates,
+  dag_reserved,
+  dag_string_types,
+  dag_func_keyword, dag_async_prefix, dag_struct_keyword,
+  dag_enum_keyword, dag_type_alias_keyword,
+  dag_param_separator, dag_return_arrow,
+  dag_param_type_sep,
+  dag_module_keyword, dag_import_keyword, dag_import_from_keyword,
+  dag_source_extension,
+  dag_lambda_template, dag_error_expr_template,
+  dag_list_literal_empty, dag_list_literal_template,
+  dag_null_coalesce_template, dag_error_type_template,
+  dag_type_arg_open, dag_type_arg_close, dag_void_type,
+  dag_tuple_empty, dag_tuple_pair_template, dag_tuple_multi_template, dag_tuple_separator
 }
 
 type ReservedWordStrategy
@@ -138,6 +170,10 @@ type SharingStrategy {
   field_clone: String       // owned copy of a field: Rust "{0}.{1}.clone()", Python/Go "{0}.{1}"
   iter_owned: String        // owned iterator from shared collection: Rust "{0}.iter().cloned()"
   clone_suffix: String      // appended for owned element access: Rust ".cloned()", Python/Go ""
+  // Borrow templates: {0}=type (param) or {0}=expr (arg).
+  // Rust: "&{0}" wraps both types and expressions. GC languages: identity (no borrows needed).
+  borrow_param_template: String  // wraps param type: Rust "&Rc<T>", Go/Python identity
+  borrow_arg_template: String    // wraps call-site arg: Rust "&x", Go/Python identity
 }
 
 // -- Indexing semantics: per-collection-type rendering templates ------------
@@ -225,8 +261,9 @@ type ExpressionSemantics {
 }
 
 // Naming case — bootstrap-local mirror of std.languages.NamingCase.
-// Only PascalCase is used by current visibility rendering.
-type NamingCase = PascalCase | SnakeCase
+// PascalCase: visibility rendering. SnakeCase/CamelCase: identifier rendering.
+// AsAuthored: pass through unchanged (Dag target).
+type NamingCase = PascalCase | SnakeCase | CamelCase | AsAuthored
 
 // Visibility specification — how each language controls export/access.
 // Ref: Rust Reference §6.1 "Visibility", Go Spec "Exported identifiers".
@@ -296,6 +333,77 @@ type LanguageSpec {
   tco: TcoSyntax
   items: ItemKeywords
   expression_semantics: ExpressionSemantics
+  // C-1 extraction fields: expression syntax templates
+  lambda_template: String              // {0} = params, {1} = body
+  error_expr_template: String          // {0} = message string
+  list_literal_empty: String           // empty list literal
+  list_literal_template: String        // {0} = comma-separated elements
+  null_coalesce_template: String       // {0} = left, {1} = right
+  error_type_template: String          // {0} = error label
+  type_arg_open: String                // "<" or "["
+  type_arg_close: String               // ">" or "]"
+  void_type: String                    // "()" / "None" / ""
+  tuple_syntax: TupleSyntax
+  string_interp: StringInterpSyntax
+  // Callable type rendering: non-null overrides CallableRepr.template entirely.
+  // Rust: "Rc<dyn Fn({params}) -> {return}>". Others: null (use CallableRepr).
+  callable_type_template: String?
+  // Identifier case conversion for local variable names.
+  naming_case: NamingCase
+  // Async call prefix — prepended to effectful calls (service/resource).
+  // Python: "await ". Go/Rust/Dag: "".
+  async_call_prefix: String
+  // Bridge method rendering — how algebra method fallbacks render.
+  bridge_method_prefix: String              // "" (Python) or "v2rt." (Go)
+  bridge_method_case: NamingCase            // SnakeCase (Python) or PascalCase (Go)
+  bridge_method_overrides: Map<String, String>  // {"with": "with_update"} (Python) or {} (Go)
+  // Record literal syntax.
+  record_lit: RecordLitSyntax
+}
+
+type TupleSyntax {
+  empty: String              // "()" / "Tuple" / "struct{}"
+  pair_template: String      // "({0}, {1})" — {0} = first, {1} = second
+  multi_template: String     // "({0})" — {0} = joined parts
+  separator: String          // ", " / "; "
+  first_accessor: String     // "[0]" (Python) / ".First" (Go)
+  second_accessor: String    // "[1]" (Python) / ".Second" (Go)
+}
+
+// Record literal syntax — how named and anonymous records render.
+// Python: TypeName(field=val, ...) / {"key": val}
+// Go: TypeName{Field: val, ...} / map[string]interface{}{"key": val}
+type RecordLitSyntax {
+  named_open: String           // "(" (Python) or "{" (Go)
+  named_close: String          // ")" (Python) or "}" (Go)
+  named_empty: String          // "()" (Python) or "{}" (Go) — appended to type name
+  named_field_sep: String      // "=" (Python) or ": " (Go)
+  named_field_join: String     // ", " (both)
+  anon_empty: String           // "{}" (Python) or "map[string]interface{}{}" (Go)
+  anon_prefix: String          // "{\n" (Python) or "map[string]interface{}{\n" (Go)
+  anon_suffix: String          // "}" (both)
+  anon_field_indent: String    // "    " (Python) or "\t" (Go)
+}
+
+// String interpolation — three structurally different models:
+//   FormatArgs: format function + positional args (Rust format!, Go fmt.Sprintf)
+//   InlineExpr: inline interpolation (Python f-strings)
+// C-1: dissolves `match target` in emit_simple_string_interp.
+// InterpStyle: FormatArgs carries its placeholder; InlineExpr has none.
+type InterpStyle
+  = FormatArgs { placeholder: String }   // "{}" (Rust) or "%v" (Go)
+  | InlineExpr
+
+type EscapePair {
+  from: String
+  to: String
+}
+
+type StringInterpSyntax {
+  style: InterpStyle
+  format_template: String          // FormatArgs: "format!(\"{0}\", {1})"; InlineExpr: "f\"{0}\""
+  plain_template: String           // no-interpolation fallback: "\"{0}\".to_string()" / "\"{0}\""
+  escape_pairs: List<EscapePair>   // interp-specific escaping applied after standard string escape
 }
 
 // =========================================================================
@@ -342,7 +450,9 @@ fn rust_spec() -> LanguageSpec {
       deref_clone: "(*{0}).clone()",
       field_clone: "{0}.{1}.clone()",
       iter_owned: "{0}.iter().cloned()",
-      clone_suffix: ".cloned()"
+      clone_suffix: ".cloned()",
+      borrow_param_template: "&{0}",
+      borrow_arg_template: "&{0}"
     },
     indexing: IndexingSemantics {
       list_index: "{0}[({1}) as usize].clone()",
@@ -399,6 +509,41 @@ fn rust_spec() -> LanguageSpec {
     expression_semantics: ExpressionSemantics {
       if_value_form: IfExpression,
       wildcard_case: None
+    },
+    lambda_template: rust_lambda_template,
+    error_expr_template: rust_error_expr_template,
+    list_literal_empty: rust_list_literal_empty,
+    list_literal_template: rust_list_literal_template,
+    null_coalesce_template: rust_null_coalesce_template,
+    error_type_template: rust_error_type_template,
+    type_arg_open: rust_type_arg_open,
+    type_arg_close: rust_type_arg_close,
+    void_type: rust_void_type,
+    tuple_syntax: TupleSyntax {
+      empty: rust_tuple_empty,
+      pair_template: rust_tuple_pair_template,
+      multi_template: rust_tuple_multi_template,
+      separator: rust_tuple_separator,
+      first_accessor: ".0",
+      second_accessor: ".1"
+    },
+    string_interp: StringInterpSyntax {
+      style: FormatArgs { placeholder: "{}" },
+      format_template: "format!(\"{0}\", {1})",
+      plain_template: "\"{0}\".to_string()",
+      escape_pairs: [EscapePair { from: "{", to: "{{" }, EscapePair { from: "}", to: "}}" }]
+    },
+    callable_type_template: "Rc<dyn Fn(\{params\}) -> \{return\}>",
+    naming_case: SnakeCase,
+    async_call_prefix: "",
+    bridge_method_prefix: "",
+    bridge_method_case: SnakeCase,
+    bridge_method_overrides: empty_map(),
+    record_lit: RecordLitSyntax {
+      named_open: " \{", named_close: "\}", named_empty: " \{\}",
+      named_field_sep: ": ", named_field_join: ", ",
+      anon_empty: "\{\}", anon_prefix: "\{\n", anon_suffix: "\}",
+      anon_field_indent: "    "
     }
   }
 }
@@ -442,7 +587,9 @@ fn python_spec() -> LanguageSpec {
       deref_clone: "{0}",
       field_clone: "{0}.{1}",
       iter_owned: "{0}",
-      clone_suffix: ""
+      clone_suffix: "",
+      borrow_param_template: "{0}",
+      borrow_arg_template: "{0}"
     },
     indexing: IndexingSemantics {
       list_index: "{0}[{1}]",
@@ -499,6 +646,41 @@ fn python_spec() -> LanguageSpec {
     expression_semantics: ExpressionSemantics {
       if_value_form: ConditionalTernary,
       wildcard_case: None
+    },
+    lambda_template: python_lambda_template,
+    error_expr_template: python_error_expr_template,
+    list_literal_empty: python_list_literal_empty,
+    list_literal_template: python_list_literal_template,
+    null_coalesce_template: python_null_coalesce_template,
+    error_type_template: python_error_type_template,
+    type_arg_open: python_type_arg_open,
+    type_arg_close: python_type_arg_close,
+    void_type: python_void_type,
+    tuple_syntax: TupleSyntax {
+      empty: python_tuple_empty,
+      pair_template: python_tuple_pair_template,
+      multi_template: python_tuple_multi_template,
+      separator: python_tuple_separator,
+      first_accessor: "[0]",
+      second_accessor: "[1]"
+    },
+    string_interp: StringInterpSyntax {
+      style: InlineExpr,
+      format_template: "f\"{0}\"",
+      plain_template: "f\"{0}\"",
+      escape_pairs: [EscapePair { from: "{", to: "{{" }, EscapePair { from: "}", to: "}}" }]
+    },
+    callable_type_template: null,
+    naming_case: SnakeCase,
+    async_call_prefix: "await ",
+    bridge_method_prefix: "",
+    bridge_method_case: SnakeCase,
+    bridge_method_overrides: map_insert(empty_map(), "with", "with_update"),
+    record_lit: RecordLitSyntax {
+      named_open: "(", named_close: ")", named_empty: "()",
+      named_field_sep: "=", named_field_join: ", ",
+      anon_empty: "\{\}", anon_prefix: "\{\n", anon_suffix: "\}",
+      anon_field_indent: "    "
     }
   }
 }
@@ -542,7 +724,9 @@ fn go_spec() -> LanguageSpec {
       deref_clone: "{0}",
       field_clone: "{0}.{1}",
       iter_owned: "{0}",
-      clone_suffix: ""
+      clone_suffix: "",
+      borrow_param_template: "{0}",
+      borrow_arg_template: "{0}"
     },
     indexing: IndexingSemantics {
       list_index: "{0}[{1}]",
@@ -599,6 +783,181 @@ fn go_spec() -> LanguageSpec {
     expression_semantics: ExpressionSemantics {
       if_value_form: IfStatement,
       wildcard_case: Some { value: "default" }
+    },
+    lambda_template: go_lambda_template,
+    error_expr_template: go_error_expr_template,
+    list_literal_empty: go_list_literal_empty,
+    list_literal_template: go_list_literal_template,
+    null_coalesce_template: go_null_coalesce_template,
+    error_type_template: go_error_type_template,
+    type_arg_open: go_type_arg_open,
+    type_arg_close: go_type_arg_close,
+    void_type: go_void_type,
+    tuple_syntax: TupleSyntax {
+      empty: go_tuple_empty,
+      pair_template: go_tuple_pair_template,
+      multi_template: go_tuple_multi_template,
+      separator: go_tuple_separator,
+      first_accessor: ".First",
+      second_accessor: ".Second"
+    },
+    string_interp: StringInterpSyntax {
+      style: FormatArgs { placeholder: "%v" },
+      format_template: "fmt.Sprintf(\"{0}\", {1})",
+      plain_template: "\"{0}\"",
+      escape_pairs: [EscapePair { from: "%", to: "%%" }]
+    },
+    callable_type_template: null,
+    naming_case: CamelCase,
+    async_call_prefix: "",
+    bridge_method_prefix: "v2rt.",
+    bridge_method_case: PascalCase,
+    bridge_method_overrides: empty_map(),
+    record_lit: RecordLitSyntax {
+      named_open: "\{", named_close: "\}", named_empty: "\{\}",
+      named_field_sep: ": ", named_field_join: ", ",
+      anon_empty: "map[string]interface\{\}\{\}", anon_prefix: "map[string]interface\{\}\{\n", anon_suffix: "\}",
+      anon_field_indent: "\t"
+    }
+  }
+}
+
+fn dag_spec() -> LanguageSpec {
+  // Dag target is used for debug output and pretty-printing.
+  // Preserves rust_spec() values for existing fields to maintain behavior;
+  // new extraction fields (C-1) get Dag-specific values.
+  LanguageSpec {
+    target_name: "dag",
+    reserved_words: ReservedWords {
+      keywords: dag_reserved,
+      strategy: NoEscape
+    },
+    scaffold: ProjectScaffold {
+      manifest_file: null,
+      module_init_file: null,
+      source_file_extension: dag_source_extension,
+      source_dir: null
+    },
+    serialization: SerializationSpec {
+      struct_derives: null,
+      struct_derives_copy: null,
+      enum_derives: null,
+      enum_derives_copy: null,
+      tag_attribute: null,
+      rename_attribute_template: null,
+      derive_attribute: null,
+      default_value: null
+    },
+    test_conventions: TestConventions {
+      file_prefix: "test_",
+      file_suffix: "",
+      file_dir: "tests/",
+      function_prefix: "test_",
+      name_style: SnakeCaseTestNames,
+      async_decorator: null
+    },
+    visibility: KeywordVisibility { prefix: "" },
+    sharing: SharingStrategy {
+      needs_sharing: true,
+      wrap_template: "Rc<{0}>",
+      clone_value: "{0}.clone()",
+      deref_clone: "(*{0}).clone()",
+      field_clone: "{0}.{1}.clone()",
+      iter_owned: "{0}.iter().cloned()",
+      clone_suffix: ".cloned()",
+      borrow_param_template: "&{0}",
+      borrow_arg_template: "&{0}"
+    },
+    indexing: IndexingSemantics {
+      list_index: "{0}[({1}) as usize].clone()",
+      map_index: "({0}).get(&{1}).cloned()",
+      string_index: "v2_rt::char_at(&{0}, {1})",
+      list_slice: null,
+      string_slice: "v2_rt::substring(&{0}, {1}, {2})"
+    },
+    annotations: AnnotationRequirements {
+      let_binding_inferred: "let {0} = {1}",
+      let_binding_annotated: "let {0}: {1} = {2}",
+      lambda_param_typed: "{0}: {1}",
+      lambda_param_untyped: "{0}"
+    },
+    method_templates: rust_method_templates(),
+    service_fields: ServiceFieldTemplates {
+      rest_decl: "    pub base_url: String,\n",
+      auth_decl: "    pub auth_token: String,\n",
+      shell_decl: "    pub working_dir: Option<String>,\n",
+      file_decl: "    pub base_path: String,\n",
+      rest_ctor: "        base_url: \"{0}\".to_string(),\n",
+      auth_ctor: "        auth_token: String::new(),\n",
+      shell_ctor: "        working_dir: None,\n",
+      file_ctor: "        base_path: \".\".to_string(),\n"
+    },
+    block_syntax: BlockSyntax {
+      block_open: " \{\n", block_close: "\}",
+      else_clause: "\} else \{\n",
+      match_keyword: "match ", case_keyword: "",
+      arm_separator: ",", stmt_terminator: ";",
+      significant_whitespace: false
+    },
+    for_each_syntax: ForEachSyntax { prefix: "for ", separator: " in " },
+    tco: TcoSyntax {
+      loop_keyword: "loop",
+      break_return: "break",
+      continue_str: "continue;",
+      temp_var_prefix: "__tco_",
+      temp_decl_prefix: "let ",
+      temp_assign_op: " = "
+    },
+    items: ItemKeywords {
+      func_keyword: dag_func_keyword,
+      async_prefix: dag_async_prefix,
+      struct_keyword: dag_struct_keyword,
+      enum_keyword: dag_enum_keyword,
+      type_alias_keyword: dag_type_alias_keyword,
+      param_separator: dag_param_separator, return_arrow: dag_return_arrow,
+      param_type_sep: dag_param_type_sep,
+      module_keyword: dag_module_keyword,
+      import_keyword: dag_import_keyword,
+      import_from_keyword: dag_import_from_keyword
+    },
+    expression_semantics: ExpressionSemantics {
+      if_value_form: IfExpression,
+      wildcard_case: None
+    },
+    lambda_template: dag_lambda_template,
+    error_expr_template: dag_error_expr_template,
+    list_literal_empty: dag_list_literal_empty,
+    list_literal_template: dag_list_literal_template,
+    null_coalesce_template: dag_null_coalesce_template,
+    error_type_template: dag_error_type_template,
+    type_arg_open: dag_type_arg_open,
+    type_arg_close: dag_type_arg_close,
+    void_type: dag_void_type,
+    tuple_syntax: TupleSyntax {
+      empty: dag_tuple_empty,
+      pair_template: dag_tuple_pair_template,
+      multi_template: dag_tuple_multi_template,
+      separator: dag_tuple_separator,
+      first_accessor: ".0",
+      second_accessor: ".1"
+    },
+    string_interp: StringInterpSyntax {
+      style: InlineExpr,
+      format_template: "\"\{0\}\"",
+      plain_template: "\"\{0\}\"",
+      escape_pairs: [EscapePair { from: "{", to: "\\{" }, EscapePair { from: "}", to: "\\}" }]
+    },
+    callable_type_template: null,
+    naming_case: AsAuthored,
+    async_call_prefix: "",
+    bridge_method_prefix: "",
+    bridge_method_case: SnakeCase,
+    bridge_method_overrides: empty_map(),
+    record_lit: RecordLitSyntax {
+      named_open: " \{", named_close: "\}", named_empty: " \{\}",
+      named_field_sep: ": ", named_field_join: ", ",
+      anon_empty: "\{\}", anon_prefix: "\{\n", anon_suffix: "\}",
+      anon_field_indent: "    "
     }
   }
 }
@@ -608,7 +967,7 @@ fn language_spec_for_target(target: RenderTarget) -> LanguageSpec {
     Rust => rust_spec()
     Go => go_spec()
     Python => python_spec()
-    Dag => rust_spec()
+    Dag => dag_spec()
   }
 }
 

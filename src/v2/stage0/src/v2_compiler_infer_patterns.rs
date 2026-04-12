@@ -62,9 +62,9 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 }
 }
 
-pub fn synthesize_optional_some_variant(scrut: Rc<Node>) -> Rc<Node> {
+pub fn synthesize_optional_some_variant(scrut: &Rc<Node>) -> Rc<Node> {
     {
-        let inner = extract_optional_inner_node(scrut.clone());
+        let inner = extract_optional_inner_node(&scrut);
 let value_field = Rc::new(Node {
     name: "value".to_string(),
     span: scrut.span.clone(),
@@ -109,7 +109,7 @@ some_node
 }
 }
 
-pub fn pattern_subject_from_node(n: Rc<Node>) -> Rc<PatternSubject> {
+pub fn pattern_subject_from_node(n: &Rc<Node>) -> Rc<PatternSubject> {
     {
         let is_error = if (n.inferred.clone() != None) {
             is_compiler_error(n.inferred.clone().clone().unwrap())
@@ -128,7 +128,7 @@ if is_error {
 
 pub fn pattern_subject_from_inferred(n: Option<Rc<InferredNode>>) -> Rc<PatternSubject> {
     match n.as_deref().cloned() {
-    Some(InferredNode::Resolved { node: resolved, .. }) => pattern_subject_from_node(resolved.clone()),
+    Some(InferredNode::Resolved { node: resolved, .. }) => pattern_subject_from_node(&resolved),
     _ => Rc::new(PatternSubject::PatternLookupBlocked),
 }
 }
@@ -151,7 +151,7 @@ pub fn node_lookup_failed(diagnostics: Rc<Vec<Rc<ErrorNode>>>) -> Rc<NodeLookupR
 
 pub fn lookup_result_subject(result: Rc<NodeLookupResult>) -> Rc<PatternSubject> {
     match (*result.status.clone()).clone() {
-    NodeLookupStatus::LookupResolved { node: resolved, .. } => pattern_subject_from_node(resolved.clone()),
+    NodeLookupStatus::LookupResolved { node: resolved, .. } => pattern_subject_from_node(&resolved),
     NodeLookupStatus::LookupFailed => Rc::new(PatternSubject::PatternLookupBlocked),
 }
 }
@@ -164,7 +164,7 @@ pub fn pattern_binding_type(subject: Rc<PatternSubject>) -> Rc<Node> {
 }
 }
 
-pub fn variant_not_found_result(scrut: Rc<Node>, variant_name: String, module_name: String) -> Rc<NodeLookupResult> {
+pub fn variant_not_found_result(scrut: &Rc<Node>, variant_name: String, module_name: String) -> Rc<NodeLookupResult> {
     node_lookup_failed(Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::VariantNotFound {
     variant: variant_name,
     type_name: scrut.name.clone(),
@@ -172,7 +172,7 @@ pub fn variant_not_found_result(scrut: Rc<Node>, variant_name: String, module_na
 }), module_name)]))
 }
 
-pub fn lookup_variant_in_type(scrut: Rc<PatternSubject>, variant_name: String, module_name: String, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<NodeLookupResult> {
+pub fn lookup_variant_in_type(scrut: Rc<PatternSubject>, variant_name: &String, module_name: String, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<NodeLookupResult> {
     match (*scrut).clone() {
     PatternSubject::PatternLookupBlocked => node_lookup_failed(Rc::new(vec![])),
     PatternSubject::PatternDynamic { span: dynamic_span, .. } => node_lookup_failed(Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::VariantNotFound {
@@ -188,12 +188,12 @@ if (((scrut_node.connective.clone() == Connective::NoConnective) && ((scrut_node
             {
                 let direct_match = find_child_named(scrut_node.clone(), variant_name.clone(), source_indices);
 let fallback = if (scrut_opt.clone() && (variant_name.clone().as_str() == "Some".to_string().as_str())) {
-                    node_lookup_resolved(synthesize_optional_some_variant(scrut_node.clone()))
+                    node_lookup_resolved(synthesize_optional_some_variant(&scrut_node))
                 } else {
                     if (scrut_opt.clone() && (variant_name.clone().as_str() == "None".to_string().as_str())) {
                         node_lookup_resolved(none_type())
                     } else {
-                        variant_not_found_result(scrut_node.clone(), variant_name.clone(), module_name)
+                        variant_not_found_result(&scrut_node, variant_name.clone(), module_name)
                     }
                 };
 match direct_match {
@@ -206,7 +206,7 @@ match direct_match {
 }
 }
 
-pub fn lookup_field_in_variant(variant: Rc<PatternSubject>, field_name: String, module_name: String, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<NodeLookupResult> {
+pub fn lookup_field_in_variant(variant: Rc<PatternSubject>, field_name: &String, module_name: String, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<NodeLookupResult> {
     match (*variant).clone() {
     PatternSubject::PatternLookupBlocked => node_lookup_failed(Rc::new(vec![])),
     PatternSubject::PatternDynamic { span: dynamic_span, .. } => node_lookup_failed(Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::FieldNotFound {
@@ -216,19 +216,19 @@ pub fn lookup_field_in_variant(variant: Rc<PatternSubject>, field_name: String, 
 }), module_name)])),
     PatternSubject::PatternResolved { node: variant_node, .. } => match find_child_named(variant_node.clone(), field_name.clone(), source_indices.clone()) {
     Some(field_child) => {
-        let resolved = child_type_node(field_child.clone());
+        let resolved = child_type_node(&field_child);
 node_lookup_resolved(resolved)
 },
     None => node_lookup_failed(Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::FieldNotFound {
     field: field_name.clone(),
-    type_name: authored_name_at(source_indices.clone(), variant_node.clone()),
+    type_name: authored_name_at(source_indices.clone(), &variant_node),
     span: variant_node.span.clone(),
 }), module_name)])),
 },
 }
 }
 
-pub fn check_match_exhaustiveness(scrutinee_type: Rc<Node>, arms: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>, span: Rc<SourceSpan>, module_name: String) -> Rc<Vec<Rc<ErrorNode>>> {
+pub fn check_match_exhaustiveness(scrutinee_type: &Rc<Node>, arms: &Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>, span: Rc<SourceSpan>, module_name: String) -> Rc<Vec<Rc<ErrorNode>>> {
     {
         let scrut_is_optional = (scrutinee_type.return_cardinality.clone() == Cardinality::CardOptional);
 let has_structure = (scrutinee_type.connective.clone() != Connective::NoConnective);
@@ -241,7 +241,7 @@ let resolved_raw = if has_structure {
 }
         };
 let resolved = if scrut_is_optional {
-            with_optional_cardinality(resolved_raw)
+            with_optional_cardinality(&resolved_raw)
         } else {
             resolved_raw
         };

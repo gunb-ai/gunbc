@@ -30,8 +30,6 @@ pub fn go_container_templates() -> Rc<HashMap<String, String>> {
             let mut __m = HashMap::new();
             __m.insert("list".to_string(), "[]{0}".to_string());
             __m.insert("set".to_string(), "map[{0}]struct{}".to_string());
-            __m.insert("non_empty_list".to_string(), "[]{0}".to_string());
-            __m.insert("non_empty_set".to_string(), "map[{0}]struct{}".to_string());
             __m.insert("optional".to_string(), "*{0}".to_string());
             __m.insert("map".to_string(), "map[{0}]{1}".to_string());
             __m.insert("free_monoid".to_string(), "[]{0}".to_string());
@@ -160,15 +158,6 @@ pub fn go_import_from_keyword() -> String {
     CACHED.with(|c| c.clone())
 }
 
-pub fn go_source_extension() -> String {
-    thread_local! {
-        static CACHED: String = {
-            ".go".to_string()
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
 pub fn go_manifest_file() -> String {
     thread_local! {
         static CACHED: String = {
@@ -207,6 +196,123 @@ pub fn go_method_templates() -> Rc<HashMap<String, String>> {
             __m.insert("sort_by".to_string(), "v2rt.SortBy({recv}, {arg})".to_string());
             __m.insert("append".to_string(), "append({recv}, {arg})".to_string());
             Rc::new(__m)
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_lambda_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "func({0}) interface{} { return {1} }".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_error_expr_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "panic({0})".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_list_literal_empty() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "[]interface{}{}".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_list_literal_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "[]interface{}{{0}}".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_null_coalesce_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "func() interface{} { if {0} != nil { return {0} }; return {1} }()".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_error_type_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "__EMIT_BUG_{0}__".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_type_arg_open() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "<".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_type_arg_close() -> String {
+    thread_local! {
+        static CACHED: String = {
+            ">".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_void_type() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_tuple_empty() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "struct{}".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_tuple_pair_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "struct{ First {0}; Second {1} }".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_tuple_multi_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "struct{ {0} }".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn go_tuple_separator() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "; ".to_string()
         };
     }
     CACHED.with(|c| c.clone())

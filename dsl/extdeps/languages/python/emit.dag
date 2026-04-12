@@ -25,7 +25,6 @@ data python_keywords: Map<String, String> = {
 // Ref: typing module (PEP 585)
 data python_container_templates: Map<String, String> = {
   "list": "list[\{0\}]", "set": "set[\{0\}]",
-  "non_empty_list": "list[\{0\}]", "non_empty_set": "set[\{0\}]",
   "optional": "Optional[\{0\}]", "map": "dict[\{0\}, \{1\}]",
   "free_monoid": "list[\{0\}]", "partial_function": "dict[\{0\}, \{1\}]",
   "boolean_algebra": "bool"
@@ -106,3 +105,18 @@ data python_method_templates: Map<String, String> = {
   "sort_by": "sorted(\{recv\}, key=\{arg\})",
   "append": "\{recv\} + [\{arg\}]"
 }
+
+// -- Expression syntax templates ------------------------------------------
+data python_lambda_template: String = "lambda {0}: {1}"
+data python_error_expr_template: String = "raise RuntimeError({0})"
+data python_list_literal_empty: String = "[]"
+data python_list_literal_template: String = "[{0}]"
+data python_null_coalesce_template: String = "({0} if {0} is not None else {1})"
+data python_error_type_template: String = "__EMIT_BUG_{0}__"
+data python_type_arg_open: String = "["
+data python_type_arg_close: String = "]"
+data python_void_type: String = "None"
+data python_tuple_empty: String = "Tuple"
+data python_tuple_pair_template: String = "Tuple[{0}, {1}]"
+data python_tuple_multi_template: String = "Tuple[{0}]"
+data python_tuple_separator: String = ", "

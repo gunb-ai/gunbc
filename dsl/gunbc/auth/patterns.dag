@@ -7,12 +7,12 @@
 module gunbc.auth.patterns
 
 import std.resources { Filesystem, Network, AuthContext }
+import std.cloud { CloudRuntime }
 import std.types {
   AccessToken,
   AuthScheme,
-  CloudRuntime,
   NonEmptyStr,
-  ProjectId,
+  GcpProjectId,
   ServiceAccountEmail
 }
 import extdeps.cloud.gcp.gcp
@@ -72,7 +72,7 @@ pattern credential_chain(
   audience: NonEmptyStr,
   service_account: ServiceAccountEmail?,
   secret_name: NonEmptyStr,
-  project_id: ProjectId,
+  project_id: GcpProjectId,
   scheme: String = "Bearer",
   header_name: String?,
   source_id: NonEmptyStr,

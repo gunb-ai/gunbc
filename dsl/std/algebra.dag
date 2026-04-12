@@ -415,8 +415,6 @@ data kernel_algebra_profile: Map<String, AlgebraProfile> = {
   "String": FreeMonoidScalarProfile,
   "List": FreeMonoidCollectionProfile,
   "Set": BooleanAlgebraCollectionProfile,
-  "NonEmptyList": FreeMonoidCollectionProfile,
-  "NonEmptySet": BooleanAlgebraCollectionProfile,
   "Map": PartialFunctionProfile
 }
 

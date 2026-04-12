@@ -18,7 +18,7 @@ module v2.compiler.coercion
 
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 import std.coercion { TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax }
-import std.types { container_to_algebra_name, container_to_algebra }
+import std.types { container_to_algebra_name, container_to_algebra, canonical_container_names }
 import extdeps.languages.rust.types {
   rust_type_checkpoints, rust_algebra_inhabitants, rust_callable,
   rust_optional_template, rust_cast_syntax
@@ -31,6 +31,7 @@ import extdeps.languages.go.types {
   go_type_checkpoints, go_algebra_inhabitants, go_callable,
   go_optional_template, go_cast_syntax
 }
+import extdeps.languages.dag.types { dag_type_checkpoints }
 
 // =========================================================================
 // Per-target dispatch
@@ -41,7 +42,7 @@ fn target_checkpoints(target: RenderTarget) -> List<TypeCheckpoint> {
     Rust => rust_type_checkpoints
     Python => python_type_checkpoints
     Go => go_type_checkpoints
-    Dag => []
+    Dag => dag_type_checkpoints
   }
 }
 
@@ -215,11 +216,9 @@ fn checkpoint_tests(target: RenderTarget) -> List<CoercionTestEntry> {
 }
 
 // Generate container test: coerce_container_template(target, name) == Some(template)
-// Tests canonical container names from container_to_algebra (std/types.dag).
-// Ordered deterministically for fixed-point convergence (map_keys is unordered).
+// Derived from canonical_container_names (std/types.dag) — single authority.
 fn inhabitant_test_names() -> List<String> {
-  ["BooleanAlgebra", "FreeMonoid", "List", "Map", "NonEmptyList", "NonEmptySet",
-   "PartialFunction", "Set"]
+  canonical_container_names()
 }
 
 fn inhabitant_tests(target: RenderTarget) -> List<CoercionTestEntry> {

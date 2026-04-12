@@ -68,7 +68,7 @@ fn full_dsl_compiles() {
                 .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
             let result =
                 v2_compiler::v2_compiler_parse::parse(v2_compiler::v2_compiler_tokenize::tokenize(
-                    content,
+                    &content,
                     path.to_string_lossy().to_string(),
                 ), Rc::new(HashMap::new()));
             if let Some(ref err) = result.error {
@@ -957,13 +957,13 @@ fn compile_dag_with_complexity(source: &str) -> Rc<v2_compiler::v2_compiler_comp
     let sources = resolve_imports_transitively("test.dag", source);
     let frontend = front_end_sources(Rc::new(sources));
     let graph = frontend.graph.clone().expect("frontend must produce a graph");
-    let norm = normalize_graph(graph, Rc::new(HashMap::new()));
+    let norm = normalize_graph(&graph, Rc::new(HashMap::new()));
     let source_indices = Rc::new(HashMap::new());
     let typed = reconcile(norm.graph.clone(), source_indices);
 
     let func_entries = extract_func_entries(typed.clone());
     let recursion_ctx = build_recursion_context(typed);
-    build_complexity_report(func_entries, recursion_ctx, Rc::new(HashMap::new()))
+    build_complexity_report(&func_entries, recursion_ctx, Rc::new(HashMap::new()))
 }
 
 #[test]
@@ -1780,7 +1780,7 @@ fn diag_parser_scc_edges() {
     let sources = crate::helpers::resolve_imports_transitively("src/v2/02_parse.dag", &content);
     let frontend = front_end_sources(Rc::new(sources));
     let graph = frontend.graph.clone().expect("frontend must produce a graph");
-    let norm = normalize_graph(graph, Rc::new(HashMap::new()));
+    let norm = normalize_graph(&graph, Rc::new(HashMap::new()));
     let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()));
     let func_entries = extract_func_entries(typed);
 
@@ -1788,7 +1788,7 @@ fn diag_parser_scc_edges() {
         func_entries.iter().cloned().map(|e| (e.name.clone(), e)).collect();
     let func_index_rc = Rc::new(func_index);
 
-    let scc_result = build_scc_index(func_entries, func_index_rc.clone(), Rc::new(HashMap::new()));
+    let scc_result = build_scc_index(&func_entries, func_index_rc.clone(), &Rc::new(HashMap::new()));
 
     // Find the large parser SCC (the one containing parse_type_expr)
     let scc_info = scc_result.index.get("parse_type_expr")
@@ -1799,10 +1799,10 @@ fn diag_parser_scc_edges() {
     let scc_name_set: HashMap<String, bool> = scc_info.members.iter()
         .cloned().map(|n| (n, true)).collect();
     let edges = collect_parser_edges_for_scc(
-        scc_info.members.clone(),
-        func_index_rc.clone(),
+        &scc_info.members,
+        &func_index_rc,
         Rc::new(scc_name_set),
-        Rc::new(HashMap::new()),
+        &Rc::new(HashMap::new()),
     );
 
     eprintln!("Total edges: {}", edges.len());
@@ -1835,7 +1835,7 @@ fn diag_parser_scc_edges() {
     }
 
     let has_cycle = same_progress_subgraph_has_cycle(
-        scc_info.members.clone(), edges.clone(),
+        &scc_info.members, edges.clone(),
     );
     eprintln!("\n  Same-subgraph has cycle: {}", has_cycle);
 }
@@ -1857,7 +1857,7 @@ fn diag_parse_node_decl_env() {
     let sources = crate::helpers::resolve_imports_transitively("src/v2/02_parse.dag", &content);
     let frontend = front_end_sources(Rc::new(sources));
     let graph = frontend.graph.clone().expect("frontend must produce a graph");
-    let norm = normalize_graph(graph, Rc::new(HashMap::new()));
+    let norm = normalize_graph(&graph, Rc::new(HashMap::new()));
     let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()));
     let func_entries = extract_func_entries(typed.clone());
 
@@ -1869,15 +1869,16 @@ fn diag_parse_node_decl_env() {
     let state_param = parser_state_param(pnd.params.clone(), Rc::new(HashMap::new())).expect("must have state param");
 
     // Build parser_always_advancing exactly as the SCC analysis does
+    let si = Rc::new(HashMap::new());
     let parser_always_advancing = infer_parser_always_advancing_members(
-        parser_function_names(func_index_rc.clone(), Rc::new(HashMap::new())),
-        func_index_rc.clone(),
-        Rc::new(HashMap::new()),
+        &parser_function_names(&func_index_rc, Rc::new(HashMap::new())),
+        &func_index_rc,
+        &si,
     );
 
     // Build scc_name_set for the parser SCC containing parse_node_decl
     use v2_compiler::v2_compiler_complexity::build_scc_index;
-    let scc_result = build_scc_index(func_entries.clone(), func_index_rc.clone(), Rc::new(HashMap::new()));
+    let scc_result = build_scc_index(&func_entries, func_index_rc.clone(), &si);
     let scc_info = scc_result.index.get("parse_node_decl")
         .expect("parse_node_decl must be in SCC index");
     let scc_name_set: Rc<HashMap<String, bool>> = Rc::new(
@@ -1890,14 +1891,14 @@ fn diag_parse_node_decl_env() {
 
     // Call exactly what the SCC analysis calls
     let edges = collect_parser_progress_edges(
-        "parse_node_decl".to_string(),
-        pnd.body.clone(),
-        state_param.clone(),
-        scc_name_set.clone(),
-        empty_parser_progress_env(),
-        parser_always_advancing.clone(),
-        Rc::new(HashMap::new()),
-        Rc::new(HashMap::new()),
+        &"parse_node_decl".to_string(),
+        &pnd.body,
+        &state_param,
+        &scc_name_set,
+        &empty_parser_progress_env(),
+        &parser_always_advancing,
+        &Rc::new(HashMap::new()),
+        &Rc::new(HashMap::new()),
     );
 
     eprintln!("Edges from collect_parser_progress_edges: {}", edges.len());
@@ -4113,7 +4114,7 @@ type Bar<K, V> {
 
 fn test_leaf_node(name: &str) -> Rc<v2_compiler::v2_std_core::Node> {
     use v2_compiler::v2_std_core::{leaf_node_with_span, SourceSpan};
-    leaf_node_with_span(name.to_string(), Rc::new(SourceSpan { file: "test".to_string(), start: 0, end: 0 }))
+    leaf_node_with_span(&name.to_string(), &Rc::new(SourceSpan { file: "test".to_string(), start: 0, end: 0 }))
 }
 
 #[test]
@@ -4123,7 +4124,7 @@ fn type_rendering_bare_list_not_map() {
     let list_node = test_leaf_node("List");
     let shared_types = Rc::new(HashMap::from([("List".to_string(), true)]));
 
-    let rendered = render_node_type(list_node, RenderTarget::Rust, shared_types, Rc::new(HashMap::new()));
+    let rendered = render_node_type(&list_node, &RenderTarget::Rust, &shared_types, &Rc::new(HashMap::new()));
 
     assert!(rendered.contains("Vec"), "bare List rendered as {:?}, expected Vec<_>", rendered);
     assert!(!rendered.contains("HashMap"), "bare List incorrectly rendered as HashMap: {:?}", rendered);
@@ -4136,7 +4137,7 @@ fn type_rendering_bare_map_stays_hashmap() {
     let map_node = test_leaf_node("Map");
     let shared_types = Rc::new(HashMap::from([("Map".to_string(), true)]));
 
-    let rendered = render_node_type(map_node, RenderTarget::Rust, shared_types, Rc::new(HashMap::new()));
+    let rendered = render_node_type(&map_node, &RenderTarget::Rust, &shared_types, &Rc::new(HashMap::new()));
 
     assert!(rendered.contains("HashMap"), "bare Map rendered as {:?}, expected HashMap<_, _>", rendered);
 }
@@ -4154,7 +4155,7 @@ fn type_rendering_named_conj_with_container_template() {
     });
     let shared_types = Rc::new(HashMap::from([("FreeMonoid".to_string(), true)]));
 
-    let rendered = render_node_type(free_monoid_conj, RenderTarget::Rust, shared_types, Rc::new(HashMap::new()));
+    let rendered = render_node_type(&free_monoid_conj, &RenderTarget::Rust, &shared_types, &Rc::new(HashMap::new()));
 
     assert!(rendered.contains("Vec"), "FreeMonoid Conj rendered as {:?}, expected Vec<_> via container template", rendered);
     assert!(!rendered.contains("FreeMonoid"), "FreeMonoid Conj rendered bare name instead of container template: {:?}", rendered);
@@ -4200,7 +4201,7 @@ fn apply_named_template_does_not_rescan_substituted_values() {
     let mut bindings = HashMap::new();
     bindings.insert("recv".to_string(), "expr_with_{arg}_literal".to_string());
     bindings.insert("arg".to_string(), "sep".to_string());
-    let result = apply_named_template(template, Rc::new(bindings));
+    let result = apply_named_template(template, &Rc::new(bindings));
 
     assert_eq!(
         result, "expr_with_{arg}_literal.join(&sep)",
@@ -4217,7 +4218,7 @@ fn apply_named_template_arg_value_containing_recv_placeholder() {
     let mut bindings = HashMap::new();
     bindings.insert("recv".to_string(), "receiver".to_string());
     bindings.insert("arg".to_string(), "has_{recv}_inside".to_string());
-    let result = apply_named_template(template, Rc::new(bindings));
+    let result = apply_named_template(template, &Rc::new(bindings));
 
     assert_eq!(
         result, "receiver.call(has_{recv}_inside)",
@@ -6922,7 +6923,7 @@ fn diag_render_node_type_evidence() {
     let sources = crate::helpers::resolve_imports_transitively("src/v2/05_emit.dag", &content);
     let frontend = front_end_sources(Rc::new(sources));
     let graph = frontend.graph.clone().expect("frontend must produce a graph");
-    let norm = normalize_graph(graph, Rc::new(HashMap::new()));
+    let norm = normalize_graph(&graph, Rc::new(HashMap::new()));
     let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()));
     let func_entries = extract_func_entries(typed.clone());
 
@@ -6974,7 +6975,7 @@ fn diag_emitter_scc() {
     let sources = crate::helpers::resolve_imports_transitively("src/v2/05_emit_rust.dag", &content);
     let frontend = front_end_sources(Rc::new(sources));
     let graph = frontend.graph.clone().expect("frontend must produce a graph");
-    let norm = normalize_graph(graph, Rc::new(HashMap::new()));
+    let norm = normalize_graph(&graph, Rc::new(HashMap::new()));
     let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()));
     let func_entries = extract_func_entries(typed.clone());
 
@@ -6984,9 +6985,9 @@ fn diag_emitter_scc() {
     let func_index = Rc::new(func_index);
 
     let scc_result = build_scc_index(
-        Rc::new(func_entries.to_vec()),
+        &Rc::new(func_entries.to_vec()),
         func_index.clone(),
-        Rc::new(HashMap::new()),
+        &Rc::new(HashMap::new()),
     );
 
     // Find the SCC containing emit_typed_expr
@@ -7000,10 +7001,10 @@ fn diag_emitter_scc() {
 
         // Collect CX-L2 tree edges
         let edges = collect_scc_cx_l2_tree_edges(
-            info.members.clone(),
-            func_index.clone(),
+            &info.members,
+            &func_index,
             Rc::new(info.member_set.as_ref().clone()),
-            Rc::new(HashMap::new()),
+            &Rc::new(HashMap::new()),
         );
         eprintln!("\n  CX-L2 tree edges ({}):", edges.len());
         for e in edges.iter() {

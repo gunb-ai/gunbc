@@ -8,8 +8,6 @@ use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
 pub use crate::std_algebra::{FreeMonoid, PartialFunction, kernel_algebra_profile, algebra_type_param_names};
 use Bool::*;
-use WarningPolicy::*;
-use CloudRuntime::*;
 use Platform::*;
 use TopologyNodeKind::*;
 use DocSourceKind::*;
@@ -22,7 +20,6 @@ use AbiEnv::*;
 use ExecutionEnv::*;
 use EntryKind::*;
 use SymlinkTarget::*;
-use ContentEncoding::*;
 use HttpMethod::*;
 use AuthScheme::*;
 use CodegenBackend::*;
@@ -58,8 +55,6 @@ pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), 1);
             __m.insert("Set".to_string(), 1);
-            __m.insert("NonEmptyList".to_string(), 1);
-            __m.insert("NonEmptySet".to_string(), 1);
             __m.insert("Map".to_string(), 2);
             Rc::new(__m)
         };
@@ -95,7 +90,7 @@ match Rc::new({ let mut __result = Vec::new(); for pair in Rc::new({ let mut __r
 }
 }
 
-pub fn container_param_name_required(kind_name: String, index: i64) -> String {
+pub fn container_param_name_required(kind_name: &String, index: i64) -> String {
     match container_param_name(kind_name.clone(), index) {
     Some(n) => n.clone(),
     None => v2_rt::concat("__BUG_NO_PROFILE_".to_string(), kind_name.clone()),
@@ -107,7 +102,6 @@ pub fn ordered_element_collections() -> Rc<HashMap<String, bool>> {
         static CACHED: Rc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), true);
-            __m.insert("NonEmptyList".to_string(), true);
             Rc::new(__m)
         };
     }
@@ -124,14 +118,10 @@ pub fn container_to_algebra() -> Rc<HashMap<String, String>> {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), "FreeMonoid".to_string());
             __m.insert("list".to_string(), "FreeMonoid".to_string());
-            __m.insert("NonEmptyList".to_string(), "FreeMonoid".to_string());
-            __m.insert("non_empty_list".to_string(), "FreeMonoid".to_string());
             __m.insert("FreeMonoid".to_string(), "FreeMonoid".to_string());
             __m.insert("free_monoid".to_string(), "FreeMonoid".to_string());
             __m.insert("Set".to_string(), "BooleanAlgebra".to_string());
             __m.insert("set".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("NonEmptySet".to_string(), "BooleanAlgebra".to_string());
-            __m.insert("non_empty_set".to_string(), "BooleanAlgebra".to_string());
             __m.insert("BooleanAlgebra".to_string(), "BooleanAlgebra".to_string());
             __m.insert("boolean_algebra".to_string(), "BooleanAlgebra".to_string());
             __m.insert("Map".to_string(), "PartialFunction".to_string());
@@ -146,6 +136,10 @@ pub fn container_to_algebra() -> Rc<HashMap<String, String>> {
 
 pub fn container_to_algebra_name(name: String) -> Option<String> {
     v2_rt::map_get(&container_to_algebra(), name)
+}
+
+pub fn canonical_container_names() -> Rc<Vec<String>> {
+    Rc::new(vec!["BooleanAlgebra".to_string(), "FreeMonoid".to_string(), "List".to_string(), "Map".to_string(), "PartialFunction".to_string(), "Set".to_string()])
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -258,36 +252,9 @@ pub type ContentHash = String;
 
 pub type GitRef = String;
 
-pub type ProjectId = String;
+pub type GcpProjectId = String;
 
 pub type ServiceAccountEmail = String;
-
-pub type GcpSecretId = String;
-
-pub type GcpServiceAccountEmail = String;
-
-pub type GcpSubjectToken = String;
-
-pub type OidcAudience = String;
-
-pub type OidcSubjectToken = String;
-
-pub type WifAudience = String;
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum WarningPolicy {
-    DenyAll,
-    Default,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum CloudRuntime {
-    GitHubActions,
-    Metadata,
-    LocalDev,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -439,28 +406,9 @@ pub enum SymlinkTarget {
     Broken,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum ContentEncoding {
-    UTF8,
-    ASCII,
-    Latin1,
-    Binary,
-}
-
 pub type TextFilePath = String;
 
 pub type BinaryFilePath = String;
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct FileClassification {
-    pub path: String,
-    pub kind: EntryKind,
-    pub encoding: Option<ContentEncoding>,
-    pub symlink_target: Option<SymlinkTarget>,
-    pub size: i64,
-    pub mime: Option<String>,
-}
 
 pub type MimeType = String;
 
@@ -494,19 +442,6 @@ pub struct AccessToken {
     pub token: String,
     pub scheme: Rc<AuthScheme>,
     pub expires_at: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CloudSecretConfig {
-    pub project_id: String,
-    pub secret: String,
-    pub version: String,
-    pub service_account: Option<String>,
-    pub audience: String,
-    pub scheme: Rc<AuthScheme>,
-    pub header_name: Option<String>,
-    pub source_id: String,
-    pub required_scopes: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

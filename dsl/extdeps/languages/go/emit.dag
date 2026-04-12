@@ -25,7 +25,6 @@ data go_keywords: Map<String, String> = {
 // Ref: Go Spec, Composite literals
 data go_container_templates: Map<String, String> = {
   "list": "[]\{0\}", "set": "map[\{0\}]struct{}",
-  "non_empty_list": "[]\{0\}", "non_empty_set": "map[\{0\}]struct{}",
   "optional": "*\{0\}", "map": "map[\{0\}]\{1\}",
   "free_monoid": "[]\{0\}", "partial_function": "map[\{0\}]\{1\}",
   "boolean_algebra": "bool"
@@ -70,8 +69,6 @@ data go_import_from_keyword: String = ""
 
 // -- Project scaffold ----------------------------------------------------
 // Ref: Go modules reference (go.dev/ref/mod)
-// Mirrors go_scaffold from std.languages.
-data go_source_extension: String = ".go"
 data go_manifest_file: String = "go.mod"
 
 // -- String-like types ------------------------------------------------------
@@ -99,3 +96,18 @@ data go_method_templates: Map<String, String> = {
   "sort_by": "v2rt.SortBy(\{recv\}, \{arg\})",
   "append": "append(\{recv\}, \{arg\})"
 }
+
+// -- Expression syntax templates ------------------------------------------
+data go_lambda_template: String = "func({0}) interface\{\} \{ return {1} \}"
+data go_error_expr_template: String = "panic({0})"
+data go_list_literal_empty: String = "[]interface\{\}\{\}"
+data go_list_literal_template: String = "[]interface\{\}\{{0}\}"
+data go_null_coalesce_template: String = "func() interface\{\} \{ if {0} != nil \{ return {0} \}; return {1} \}()"
+data go_error_type_template: String = "__EMIT_BUG_{0}__"
+data go_type_arg_open: String = "<"
+data go_type_arg_close: String = ">"
+data go_void_type: String = ""
+data go_tuple_empty: String = "struct\{\}"
+data go_tuple_pair_template: String = "struct\{ First {0}; Second {1} \}"
+data go_tuple_multi_template: String = "struct\{ {0} \}"
+data go_tuple_separator: String = "; "

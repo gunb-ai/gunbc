@@ -13,13 +13,33 @@
 
 module extdeps.llm.llm
 
+import std.serialization { VariantEncoding, StringVariant, VariantNaming, SnakeCase }
+
+// Wire contract: LLM APIs return enum values as snake_case strings ("user", "end_turn").
+data wire_contract: VariantEncoding = StringVariant { naming: SnakeCase }
+
 // -- Message protocol ----------------------------------------------
 
-type Role = LlmSystem | LlmUser | LlmAssistant | LlmTool
+// Variant names match API wire strings under SnakeCase:
+// System → "system", User → "user", Assistant → "assistant", Tool → "tool"
+type Role = System | User | Assistant | Tool
+
+// -- Content blocks (shared across providers) ----------------------
+// Both Anthropic and OpenAI support rich multimodal content.
+// Provider-specific block types (tool use, etc.) live in
+// anthropic.dag / openai.dag.
+
+type ImageSource
+  = Base64Image { media_type: String, data: String }
+  | UrlImage { url: String }
+
+type ContentBlock
+  = TextContent { text: String }
+  | ImageContent { source: ImageSource }
 
 type LlmMessage {
   role: Role
-  content: String
+  content: List<ContentBlock>
 }
 
 // -- Token accounting ----------------------------------------------

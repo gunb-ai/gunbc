@@ -1,6 +1,6 @@
 // std/unicode.dag -- Unicode domain model for character classification.
 //
-// Follows the same modelling pattern as ContentEncoding + @file_types:
+// Follows the same modelling pattern as Encoding (std/encoding.dag) + @file_types:
 // structured types for the domain, `data` for lookup tables, `fn` for
 // classification.  Everything here is reusable -- other modules can
 // import `char_display_width` for terminal layout, `in_block` for

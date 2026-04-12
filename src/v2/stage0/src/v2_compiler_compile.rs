@@ -89,7 +89,7 @@ pub fn build_recursion_context(typed: Rc<ResolvedGraph>) -> RecursionContext {
 }
 
 pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<OwnershipProof>>> {
-    Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned() { __result.push(analyze_ownership(item.name.clone(), item.params.clone(), item.body.clone().clone().unwrap(), m.type_env.clone().source_indices.clone())); } __result })).iter().cloned()); } __result })
+    Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned() { __result.push(analyze_ownership(item.name.clone(), item.params.clone(), item.body.clone().clone().unwrap(), &m.type_env.clone().source_indices.clone())); } __result })).iter().cloned()); } __result })
 }
 
 pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<ErrorNode>>> {
@@ -128,10 +128,10 @@ pub fn compile_bundle_error(message: String) -> Rc<ErrorNode> {
 
 pub fn emit_artifact(typed: Rc<ResolvedGraph>, artifact: Rc<Artifact>) -> Rc<EmitResult> {
     match artifact.target.clone() {
-    RenderTarget::Rust => emit_rust(typed),
-    RenderTarget::Python => emit_python(typed),
-    RenderTarget::Go => emit_go(typed),
-    RenderTarget::Dag => emit_dag_artifact(typed),
+    RenderTarget::Rust => emit_rust(&typed),
+    RenderTarget::Python => emit_python(&typed),
+    RenderTarget::Go => emit_go(&typed),
+    RenderTarget::Dag => emit_dag_artifact(&typed),
 }
 }
 
@@ -152,7 +152,7 @@ pub fn json_optional_string(value: Option<String>) -> String {
 
 pub fn json_optional_node(value: Option<Rc<Node>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
     match value {
-    Some(inner) => serialize_node(inner.clone(), source_indices),
+    Some(inner) => serialize_node(&inner, &source_indices),
     None => "null".to_string(),
 }
 }
@@ -166,7 +166,7 @@ pub fn json_optional_inferred_node(value: Option<Rc<InferredNode>>, source_indic
 
 pub fn json_optional_span(value: Option<Rc<SourceSpan>>) -> String {
     match value {
-    Some(inner) => serialize_span(inner.clone()),
+    Some(inner) => serialize_span(&inner),
     None => "null".to_string(),
 }
 }
@@ -262,22 +262,22 @@ pub fn unary_op_name(value: UnaryOpKind) -> String {
 }
 }
 
-pub fn serialize_span(span: Rc<SourceSpan>) -> String {
+pub fn serialize_span(span: &Rc<SourceSpan>) -> String {
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"start\": ".to_string(), (span.start.clone()).to_string()), ", \"end\": ".to_string()), (span.end.clone()).to_string()), "}".to_string())
 }
 
-pub fn serialize_import_node(imp: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+pub fn serialize_import_node(imp: &Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
     {
         let names_json = if import_is_all(imp.clone()) {
             "{\"kind\": \"ImportAll\"}".to_string()
         } else {
             v2_rt::concat(v2_rt::concat("{\"kind\": \"ImportSpecific\", \"names\": ".to_string(), json_list(Rc::new({ let mut __result = Vec::new(); for v in import_specific_names_at(imp.clone(), source_indices).iter().cloned() { __result.push(json_quote(v.clone())); } __result }))), "}".to_string())
         };
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"module_path\": ".to_string(), json_quote(imp.name.clone())), ", \"names\": ".to_string()), names_json), ", \"span\": ".to_string()), serialize_span(imp.span.clone())), "}".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"module_path\": ".to_string(), json_quote(imp.name.clone())), ", \"names\": ".to_string()), names_json), ", \"span\": ".to_string()), serialize_span(&imp.span.clone())), "}".to_string())
 }
 }
 
-pub fn serialize_field_summary(summary: Rc<FieldSummary>) -> String {
+pub fn serialize_field_summary(summary: &Rc<FieldSummary>) -> String {
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"access_style\": ".to_string(), json_quote(field_access_style_name(summary.access_style.clone()))), ", \"value_shape\": ".to_string()), json_quote(field_value_shape_name(summary.value_shape.clone()))), "}".to_string())
 }
 
@@ -291,7 +291,7 @@ pub fn serialize_literal(value: Rc<LiteralValue>) -> String {
 }
 }
 
-pub fn serialize_field_binding(binding: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+pub fn serialize_field_binding(binding: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"field_name\": ".to_string(), json_quote(field_binding_name_at(binding.clone(), source_indices.clone()))), ", \"binding\": ".to_string()), serialize_match_pattern(field_binding_pattern(binding.clone()), source_indices.clone())), "}".to_string())
 }
 
@@ -299,27 +299,27 @@ pub fn serialize_match_pattern(pattern: Rc<MatchPattern>, source_indices: Rc<Has
     match (*pattern).clone() {
     MatchPattern::Bind { name: inner, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"Bind\", \"name\": ".to_string(), json_quote(inner.clone())), "}".to_string()),
     MatchPattern::LitPattern { value: inner, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"LitPattern\", \"value\": ".to_string(), serialize_literal(inner.clone())), "}".to_string()),
-    MatchPattern::VariantPattern { name: inner, parent_enum, field_bindings, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"VariantPattern\", \"name\": ".to_string(), json_quote(inner.clone())), ", \"parent_enum\": ".to_string()), json_optional_string(parent_enum.clone())), ", \"field_bindings\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for fb in field_bindings.clone().iter().cloned() { __result.push(serialize_field_binding(fb.clone(), source_indices.clone())); } __result }))), "}".to_string()),
+    MatchPattern::VariantPattern { name: inner, parent_enum, field_bindings, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"VariantPattern\", \"name\": ".to_string(), json_quote(inner.clone())), ", \"parent_enum\": ".to_string()), json_optional_string(parent_enum.clone())), ", \"field_bindings\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for fb in field_bindings.clone().iter().cloned() { __result.push(serialize_field_binding(&fb, &source_indices)); } __result }))), "}".to_string()),
     MatchPattern::Wildcard => "{\"kind\": \"Wildcard\"}".to_string(),
 }
 }
 
-pub fn serialize_named_arg(arg: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_optional_string(arg_name_at(arg.clone(), source_indices.clone()))), ", \"value\": ".to_string()), serialize_node(arg_value(arg.clone()), source_indices.clone())), "}".to_string())
+pub fn serialize_named_arg(arg: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_optional_string(arg_name_at(arg.clone(), source_indices.clone()))), ", \"value\": ".to_string()), serialize_node(&arg_value(&arg), &source_indices)), "}".to_string())
 }
 
-pub fn serialize_match_arm(arm: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"pattern\": ".to_string(), serialize_match_pattern(arm_pattern(arm.clone()), source_indices.clone())), ", \"guard\": ".to_string()), json_optional_node(arm_guard(arm.clone()), source_indices.clone())), ", \"body\": ".to_string()), serialize_node(arm_body(arm.clone()), source_indices.clone())), "}".to_string())
+pub fn serialize_match_arm(arm: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"pattern\": ".to_string(), serialize_match_pattern(arm_pattern(arm.clone()), source_indices.clone())), ", \"guard\": ".to_string()), json_optional_node(arm_guard(&arm), source_indices.clone())), ", \"body\": ".to_string()), serialize_node(&arm_body(&arm), &source_indices)), "}".to_string())
 }
 
-pub fn serialize_field_init(field_init: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(field_init_node_name_at(field_init.clone(), source_indices.clone()))), ", \"value\": ".to_string()), serialize_node(field_init_node_value(field_init.clone()), source_indices.clone())), "}".to_string())
+pub fn serialize_field_init(field_init: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(field_init_node_name_at(field_init.clone(), source_indices.clone()))), ", \"value\": ".to_string()), serialize_node(&field_init_node_value(&field_init), &source_indices)), "}".to_string())
 }
 
 pub fn serialize_string_part(part: Rc<StringPart>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
     match (*part).clone() {
     StringPart::Text { value: inner, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"Text\", \"value\": ".to_string(), json_quote(inner.clone())), "}".to_string()),
-    StringPart::Interpolation { expr: inner, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"Interpolation\", \"expr\": ".to_string(), serialize_node(inner.clone(), source_indices)), "}".to_string()),
+    StringPart::Interpolation { expr: inner, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"Interpolation\", \"expr\": ".to_string(), serialize_node(&inner, &source_indices)), "}".to_string()),
 }
 }
 
@@ -332,7 +332,7 @@ pub fn serialize_call_semantics(value: Option<CallSemantics>) -> String {
 
 pub fn serialize_lambda_semantics(value: Option<Rc<LambdaSemantics>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
     match value {
-    Some(inner) => v2_rt::concat(v2_rt::concat("{\"param_types\": ".to_string(), json_list(Rc::new({ let mut __result = Vec::new(); for p in inner.param_types.clone().iter().cloned() { __result.push(serialize_node(p.clone(), source_indices.clone())); } __result }))), "}".to_string()),
+    Some(inner) => v2_rt::concat(v2_rt::concat("{\"param_types\": ".to_string(), json_list(Rc::new({ let mut __result = Vec::new(); for p in inner.param_types.clone().iter().cloned() { __result.push(serialize_node(&p, &source_indices)); } __result }))), "}".to_string()),
     None => "null".to_string(),
 }
 }
@@ -344,7 +344,7 @@ pub fn serialize_method_semantics(value: Option<Rc<MethodSemantics>>, source_ind
         let mn = method_def.name.clone();
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"AlgebraMethodSemantics\", \"method_name\": ".to_string(), json_quote(mn)), ", \"fold_accumulator_type\": ".to_string()), json_optional_node(fold_accumulator_type.clone(), source_indices.clone())), "}".to_string())
 },
-    Some(MethodSemantics::ServiceMethodSemantics { service_name, op_params, .. }) => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ServiceMethodSemantics\", \"service_name\": ".to_string(), json_quote(service_name.clone())), ", \"op_params\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for p in op_params.clone().iter().cloned() { __result.push(serialize_param(p.clone(), source_indices.clone())); } __result }))), "}".to_string()),
+    Some(MethodSemantics::ServiceMethodSemantics { service_name, op_params, .. }) => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ServiceMethodSemantics\", \"service_name\": ".to_string(), json_quote(service_name.clone())), ", \"op_params\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for p in op_params.clone().iter().cloned() { __result.push(serialize_param(&p, &source_indices)); } __result }))), "}".to_string()),
     None => "null".to_string(),
 }
 }
@@ -359,7 +359,7 @@ pub fn serialize_recursion_shape(shape: RecursionShape) -> String {
 }
 }
 
-pub fn serialize_inductive_field(field: Rc<InductiveField>) -> String {
+pub fn serialize_inductive_field(field: &Rc<InductiveField>) -> String {
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"type_name\": ".to_string(), json_quote(field.type_name.clone())), ", \"variant_name\": ".to_string()), json_quote(field.variant_name.clone())), ", \"field_name\": ".to_string()), json_quote(field.field_name.clone())), ", \"shape\": ".to_string()), serialize_recursion_shape(field.shape.clone())), "}".to_string())
 }
 
@@ -373,8 +373,8 @@ pub fn serialize_shrink_factor(factor: Rc<ShrinkFactor>) -> String {
 
 pub fn serialize_sub_value_relation(rel: Rc<SubValueRelation>) -> String {
     match (*rel).clone() {
-    SubValueRelation::StrictSubValue { field: f, factor: fac, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"_variant\": \"StrictSubValue\", \"field\": ".to_string(), serialize_inductive_field(f.clone())), ", \"factor\": ".to_string()), serialize_shrink_factor(fac.clone())), "}".to_string()),
-    SubValueRelation::IteratedSubValue { field: f, .. } => v2_rt::concat(v2_rt::concat("{\"_variant\": \"IteratedSubValue\", \"field\": ".to_string(), serialize_inductive_field(f.clone())), "}".to_string()),
+    SubValueRelation::StrictSubValue { field: f, factor: fac, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"_variant\": \"StrictSubValue\", \"field\": ".to_string(), serialize_inductive_field(&f)), ", \"factor\": ".to_string()), serialize_shrink_factor(fac.clone())), "}".to_string()),
+    SubValueRelation::IteratedSubValue { field: f, .. } => v2_rt::concat(v2_rt::concat("{\"_variant\": \"IteratedSubValue\", \"field\": ".to_string(), serialize_inductive_field(&f)), "}".to_string()),
     SubValueRelation::ArithmeticDescent { param: p, factor: fac, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"_variant\": \"ArithmeticDescent\", \"param\": ".to_string(), json_quote(p.clone())), ", \"factor\": ".to_string()), serialize_shrink_factor(fac.clone())), "}".to_string()),
     SubValueRelation::PreservedValue => "{\"_variant\": \"PreservedValue\"}".to_string(),
     SubValueRelation::SubValueUnknown => "{\"_variant\": \"SubValueUnknown\"}".to_string(),
@@ -388,10 +388,10 @@ pub fn serialize_descent_evidence(de: Option<Rc<Vec<Rc<SubValueRelation>>>>) -> 
 }
 }
 
-pub fn serialize_expr_data(expr_node: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+pub fn serialize_expr_data(expr_node: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
     {
         let ch = expr_node.children.clone();
-let name = authored_name_at(source_indices.clone(), expr_node.clone());
+let name = authored_name_at(source_indices.clone(), &expr_node);
 match (*expr_node.expr_data.clone()).clone() {
     ExprData::NoExprData => "{\"kind\": \"NoExprData\"}".to_string(),
     ExprData::ExprLiteral { value, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprLiteral\", \"value\": ".to_string(), serialize_literal(value.clone())), "}".to_string()),
@@ -406,102 +406,102 @@ match (*expr_node.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { summary, .. } => {
             let field = field_access_field_at(expr_node.clone(), source_indices.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprFieldAccess\", \"field\": ".to_string(), json_quote(field)), ", \"summary\": ".to_string()), match summary.clone() {
-    Some(inner) => serialize_field_summary(inner.clone()),
+    Some(inner) => serialize_field_summary(&inner),
     None => "null".to_string(),
-}), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_indices.clone())); } __result }))), "}".to_string())
+}), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string())
 },
     ExprData::ExprCall { call_semantics, descent_evidence: de, .. } => {
             let func = expr_call_func_at(expr_node.clone(), source_indices.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprCall\", \"func\": ".to_string(), json_quote(func)), ", \"call_semantics\": ".to_string()), serialize_call_semantics(call_semantics.clone())), ", \"descent_evidence\": ".to_string()), serialize_descent_evidence(de.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_indices.clone())); } __result }))), "}".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprCall\", \"func\": ".to_string(), json_quote(func)), ", \"call_semantics\": ".to_string()), serialize_call_semantics(call_semantics.clone())), ", \"descent_evidence\": ".to_string()), serialize_descent_evidence(de.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string())
 },
     ExprData::ExprMethodCall { method_semantics, .. } => {
             let method = expr_method_name_at(expr_node.clone(), source_indices.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprMethodCall\", \"method\": ".to_string(), json_quote(method)), ", \"method_semantics\": ".to_string()), serialize_method_semantics(method_semantics.clone(), source_indices.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_indices.clone())); } __result }))), "}".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprMethodCall\", \"method\": ".to_string(), json_quote(method)), ", \"method_semantics\": ".to_string()), serialize_method_semantics(method_semantics.clone(), source_indices.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string())
 },
     ExprData::ExprBinOp { op, algebra_field: af, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprBinOp\", \"op\": ".to_string(), json_quote(bin_op_name(op.clone()))), ", \"algebra_field\": ".to_string()), match af.clone() {
     Some(f) => json_quote(algebra_field_kind_name(f.clone())),
     None => "null".to_string(),
-}), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_indices.clone())); } __result }))), "}".to_string()),
-    ExprData::ExprUnaryOp { op, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprUnaryOp\", \"op\": ".to_string(), json_quote(unary_op_name(op.clone()))), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_indices.clone())); } __result }))), "}".to_string()),
+}), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string()),
+    ExprData::ExprUnaryOp { op, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprUnaryOp\", \"op\": ".to_string(), json_quote(unary_op_name(op.clone()))), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string()),
     ExprData::ExprLambda { semantics, .. } => {
             let params = lambda_param_names_at(expr_node.clone(), source_indices.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprLambda\", \"params\": ".to_string(), json_list(Rc::new({ let mut __result = Vec::new(); for p in params.iter().cloned() { __result.push(json_quote(p.clone())); } __result }))), ", \"semantics\": ".to_string()), serialize_lambda_semantics(semantics.clone(), source_indices.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_indices.clone())); } __result }))), "}".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprLambda\", \"params\": ".to_string(), json_list(Rc::new({ let mut __result = Vec::new(); for p in params.iter().cloned() { __result.push(json_quote(p.clone())); } __result }))), ", \"semantics\": ".to_string()), serialize_lambda_semantics(semantics.clone(), source_indices.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string())
 },
-    ExprData::ExprLet => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprLet\", \"name\": ".to_string(), json_quote(name)), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_indices.clone())); } __result }))), "}".to_string()),
+    ExprData::ExprLet => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprLet\", \"name\": ".to_string(), json_quote(name)), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string()),
     ExprData::ExprRecordLit { parent_enum, .. } => {
             let type_name = record_lit_type_name_at(expr_node.clone(), source_indices.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprRecordLit\", \"type_name\": ".to_string(), json_optional_string(type_name)), ", \"parent_enum\": ".to_string()), json_optional_string(parent_enum.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_indices.clone())); } __result }))), "}".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprRecordLit\", \"type_name\": ".to_string(), json_optional_string(type_name)), ", \"parent_enum\": ".to_string()), json_optional_string(parent_enum.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string())
 },
     ExprData::ExprForEach => {
             let variable = foreach_variable_at(expr_node.clone(), source_indices.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprForEach\", \"variable\": ".to_string(), json_quote(variable)), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_indices.clone())); } __result }))), "}".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprForEach\", \"variable\": ".to_string(), json_quote(variable)), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string())
 },
-    ExprData::ExprMatch => v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprMatch\"".to_string(), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_indices.clone())); } __result }))), "}".to_string()),
-    ExprData::ExprIf => v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprIf\"".to_string(), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_indices.clone())); } __result }))), "}".to_string()),
-    ExprData::ExprListLit => v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprListLit\"".to_string(), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_indices.clone())); } __result }))), "}".to_string()),
-    ExprData::ExprStringInterp => v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprStringInterp\"".to_string(), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_indices.clone())); } __result }))), "}".to_string()),
-    ExprData::ExprBlock => v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprBlock\"".to_string(), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_indices.clone())); } __result }))), "}".to_string()),
-    ExprData::ExprCast => v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprCast\"".to_string(), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_indices.clone())); } __result }))), "}".to_string()),
-    ExprData::ExprIndex => v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprIndex\"".to_string(), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_indices.clone())); } __result }))), "}".to_string()),
-    ExprData::ExprSlice => v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprSlice\"".to_string(), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_indices.clone())); } __result }))), "}".to_string()),
-    ExprData::ExprReturn => v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprReturn\"".to_string(), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(c.clone(), source_indices.clone())); } __result }))), "}".to_string()),
+    ExprData::ExprMatch => v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprMatch\"".to_string(), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string()),
+    ExprData::ExprIf => v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprIf\"".to_string(), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string()),
+    ExprData::ExprListLit => v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprListLit\"".to_string(), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string()),
+    ExprData::ExprStringInterp => v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprStringInterp\"".to_string(), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string()),
+    ExprData::ExprBlock => v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprBlock\"".to_string(), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string()),
+    ExprData::ExprCast => v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprCast\"".to_string(), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string()),
+    ExprData::ExprIndex => v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprIndex\"".to_string(), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string()),
+    ExprData::ExprSlice => v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprSlice\"".to_string(), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string()),
+    ExprData::ExprReturn => v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprReturn\"".to_string(), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string()),
 }
 }
 }
 
 pub fn serialize_inferred_node(inferred: Rc<InferredNode>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
     match (*inferred).clone() {
-    InferredNode::Resolved { node, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"Resolved\", \"node\": ".to_string(), serialize_node(node.clone(), source_indices)), "}".to_string()),
-    InferredNode::CompilerError { message, span, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"CompilerError\", \"message\": ".to_string(), json_quote(message.clone())), ", \"span\": ".to_string()), serialize_span(span.clone())), "}".to_string()),
+    InferredNode::Resolved { node, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"Resolved\", \"node\": ".to_string(), serialize_node(&node, &source_indices)), "}".to_string()),
+    InferredNode::CompilerError { message, span, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"CompilerError\", \"message\": ".to_string(), json_quote(message.clone())), ", \"span\": ".to_string()), serialize_span(&span)), "}".to_string()),
     InferredNode::TypeVariable { id, .. } => v2_rt::concat(v2_rt::concat("{\"kind\": \"TypeVariable\", \"id\": ".to_string(), json_quote(id.clone())), "}".to_string()),
 }
 }
 
-pub fn serialize_resource_use(resource_use: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(resource_use_name_at(resource_use.clone(), source_indices.clone()))), ", \"resource\": ".to_string()), serialize_node(resource_use_resource(resource_use.clone()), source_indices.clone())), ", \"span\": ".to_string()), serialize_span(resource_use.span.clone())), "}".to_string())
+pub fn serialize_resource_use(resource_use: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(resource_use_name_at(resource_use.clone(), source_indices.clone()))), ", \"resource\": ".to_string()), serialize_node(&resource_use_resource(&resource_use), &source_indices)), ", \"span\": ".to_string()), serialize_span(&resource_use.span.clone())), "}".to_string())
 }
 
-pub fn serialize_field(field: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(field_node_name_at(field.clone(), source_indices.clone()))), ", \"type_expr\": ".to_string()), serialize_node(field_node_type_expr(field.clone()), source_indices.clone())), ", \"cardinality\": ".to_string()), json_quote(cardinality_name(field_node_cardinality(field.clone())))), ", \"default_value\": ".to_string()), json_optional_node(field_node_default_value(field.clone()), source_indices.clone())), ", \"from_key\": ".to_string()), json_optional_string(field_node_from_key(field.clone()))), ", \"span\": ".to_string()), serialize_span(field_node_span(field.clone()))), "}".to_string())
+pub fn serialize_field(field: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(field_node_name_at(field.clone(), source_indices.clone()))), ", \"type_expr\": ".to_string()), serialize_node(&field_node_type_expr(&field), &source_indices)), ", \"cardinality\": ".to_string()), json_quote(cardinality_name(field_node_cardinality(field.clone())))), ", \"default_value\": ".to_string()), json_optional_node(field_node_default_value(&field), source_indices.clone())), ", \"from_key\": ".to_string()), json_optional_string(field_node_from_key(field.clone()))), ", \"span\": ".to_string()), serialize_span(&field_node_span(field.clone()))), "}".to_string())
 }
 
-pub fn serialize_param(param: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(param_node_name_at(param.clone(), source_indices.clone()))), ", \"type_expr\": ".to_string()), serialize_node(param_node_type_expr(param.clone()), source_indices.clone())), ", \"default_value\": ".to_string()), json_optional_node(param_node_default_value(param.clone()), source_indices.clone())), ", \"span\": ".to_string()), serialize_span(param_node_span(param.clone()))), "}".to_string())
+pub fn serialize_param(param: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(param_node_name_at(param.clone(), source_indices.clone()))), ", \"type_expr\": ".to_string()), serialize_node(&param_node_type_expr(&param), &source_indices)), ", \"default_value\": ".to_string()), json_optional_node(param_node_default_value(&param), source_indices.clone())), ", \"span\": ".to_string()), serialize_span(&param_node_span(param.clone()))), "}".to_string())
 }
 
-pub fn serialize_node(node: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+pub fn serialize_node(node: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(authored_name_at(source_indices.clone(), node.clone()))), ", \"span\": ".to_string()), serialize_span(node.span.clone())), ", \"ident_span\": ".to_string()), json_optional_span(node.ident_span.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for child in node.children.clone().iter().cloned() { __result.push(serialize_node(child.clone(), source_indices.clone())); } __result }))), ", \"connective\": ".to_string()), match node.connective.clone() {
+        v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(authored_name_at(source_indices.clone(), &node))), ", \"span\": ".to_string()), serialize_span(&node.span.clone())), ", \"ident_span\": ".to_string()), json_optional_span(node.ident_span.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for child in node.children.clone().iter().cloned() { __result.push(serialize_node(&child, &source_indices)); } __result }))), ", \"connective\": ".to_string()), match node.connective.clone() {
     Connective::Conj => json_quote(connective_name(Connective::Conj)),
     Connective::Disj => json_quote(connective_name(Connective::Disj)),
     Connective::NoConnective => "null".to_string(),
     Connective::Arrow => json_quote(connective_name(Connective::Arrow)),
-}), ", \"params\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for param in node.params.clone().iter().cloned() { __result.push(serialize_param(param.clone(), source_indices.clone())); } __result }))), ", \"inferred\": ".to_string()), json_optional_inferred_node(node.inferred.clone(), source_indices.clone())), ", \"return_cardinality\": ".to_string()), json_quote(cardinality_name(node.return_cardinality.clone()))), ", \"uses\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for item in node.uses.clone().iter().cloned() { __result.push(serialize_resource_use(item.clone(), source_indices.clone())); } __result }))), ", \"body\": ".to_string()), json_optional_node(node.body.clone(), source_indices.clone())), ", \"transport\": ".to_string()), json_optional_node(node.transport.clone(), source_indices.clone())), ", \"properties\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for prop in node.properties.clone().iter().cloned() { __result.push(serialize_field_init(prop.clone(), source_indices.clone())); } __result }))), ", \"type_annotation\": ".to_string()), json_optional_node(node.type_annotation.clone(), source_indices.clone())), ", \"is_self_recursive\": ".to_string()), json_bool(node.is_self_recursive.clone())), ", \"has_non_tail_self_call\": ".to_string()), json_bool(node.has_non_tail_self_call.clone())), ", \"expr_data\": ".to_string()), serialize_expr_data(node.clone(), source_indices.clone())), "}".to_string())
+}), ", \"params\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for param in node.params.clone().iter().cloned() { __result.push(serialize_param(&param, &source_indices)); } __result }))), ", \"inferred\": ".to_string()), json_optional_inferred_node(node.inferred.clone(), source_indices.clone())), ", \"return_cardinality\": ".to_string()), json_quote(cardinality_name(node.return_cardinality.clone()))), ", \"uses\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for item in node.uses.clone().iter().cloned() { __result.push(serialize_resource_use(&item, &source_indices)); } __result }))), ", \"body\": ".to_string()), json_optional_node(node.body.clone(), source_indices.clone())), ", \"transport\": ".to_string()), json_optional_node(node.transport.clone(), source_indices.clone())), ", \"properties\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for prop in node.properties.clone().iter().cloned() { __result.push(serialize_field_init(&prop, &source_indices)); } __result }))), ", \"type_annotation\": ".to_string()), json_optional_node(node.type_annotation.clone(), source_indices.clone())), ", \"is_self_recursive\": ".to_string()), json_bool(node.is_self_recursive.clone())), ", \"has_non_tail_self_call\": ".to_string()), json_bool(node.has_non_tail_self_call.clone())), ", \"expr_data\": ".to_string()), serialize_expr_data(&node, &source_indices)), "}".to_string())
     })
 }
 
-pub fn serialize_module(module: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(module.name.clone())), ", \"imports\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for imp in module_imports(module.clone()).iter().cloned() { __result.push(serialize_import_node(imp.clone(), source_indices.clone())); } __result }))), ", \"span\": ".to_string()), serialize_span(module.span.clone())), "}".to_string())
+pub fn serialize_module(module: &Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(module.name.clone())), ", \"imports\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for imp in module_imports(module.clone()).iter().cloned() { __result.push(serialize_import_node(&imp, source_indices.clone())); } __result }))), ", \"span\": ".to_string()), serialize_span(&module.span.clone())), "}".to_string())
 }
 
-pub fn serialize_typed_module(module: Rc<TypedModule>) -> String {
+pub fn serialize_typed_module(module: &Rc<TypedModule>) -> String {
     {
         let si = module.type_env.clone().source_indices.clone();
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"module\": ".to_string(), serialize_module(module.module.clone(), si.clone())), ", \"items\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for item in module.items.clone().iter().cloned() { __result.push(serialize_node(item.clone(), si.clone())); } __result }))), ", \"item_registry_keys\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for k in Rc::new(v2_rt::map_keys(&module.item_registry.clone())).iter().cloned() { __result.push(json_quote(k.clone())); } __result }))), "}".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"module\": ".to_string(), serialize_module(&module.module.clone(), si.clone())), ", \"items\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for item in module.items.clone().iter().cloned() { __result.push(serialize_node(&item, &si)); } __result }))), ", \"item_registry_keys\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for k in Rc::new(v2_rt::map_keys(&module.item_registry.clone())).iter().cloned() { __result.push(json_quote(k.clone())); } __result }))), "}".to_string())
 }
 }
 
-pub fn serialize_diagnostic(diagnostic: Rc<ErrorNode>) -> String {
+pub fn serialize_diagnostic(diagnostic: &Rc<ErrorNode>) -> String {
     {
         let severity = "error".to_string();
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"severity\": ".to_string(), json_quote(severity)), ", \"message\": ".to_string()), json_quote(diagnostic_to_message(diagnostic.diagnostic.clone()))), ", \"span\": ".to_string()), serialize_span(diagnostic_to_span(diagnostic.diagnostic.clone()))), ", \"module_name\": ".to_string()), json_optional_string(Some(diagnostic.module_name.clone()))), ", \"category\": ".to_string()), "null".to_string()), "}".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"severity\": ".to_string(), json_quote(severity)), ", \"message\": ".to_string()), json_quote(diagnostic_to_message(diagnostic.diagnostic.clone()))), ", \"span\": ".to_string()), serialize_span(&diagnostic_to_span(diagnostic.diagnostic.clone()))), ", \"module_name\": ".to_string()), json_optional_string(Some(diagnostic.module_name.clone()))), ", \"category\": ".to_string()), "null".to_string()), "}".to_string())
 }
 }
 
-pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
+pub fn emit_dag_artifact(typed: &Rc<ResolvedGraph>) -> Rc<EmitResult> {
     {
-        let modules_json = Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.push(serialize_typed_module(m.clone())); } __result }).join(&", ".to_string());
-let diagnostics_json = Rc::new({ let mut __result = Vec::new(); for d in typed.diagnostics.clone().iter().cloned() { __result.push(serialize_diagnostic(d.clone())); } __result }).join(&", ".to_string());
+        let modules_json = Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.push(serialize_typed_module(&m)); } __result }).join(&", ".to_string());
+let diagnostics_json = Rc::new({ let mut __result = Vec::new(); for d in typed.diagnostics.clone().iter().cloned() { __result.push(serialize_diagnostic(&d)); } __result }).join(&", ".to_string());
 let item_registry_json = Rc::new({ let mut __result = Vec::new(); for k in Rc::new(v2_rt::map_keys(&typed.item_registry.clone())).iter().cloned() { __result.push(json_quote(k.clone())); } __result }).join(&", ".to_string());
 let json = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\n  \"version\": \"0.1.0\",\n  \"modules\": [".to_string(), modules_json), "],\n  \"item_registry_keys\": [".to_string()), item_registry_json), "],\n  \"diagnostics\": [".to_string()), diagnostics_json), "],\n  \"files\": []\n}".to_string());
 Rc::new(EmitResult {
@@ -514,7 +514,7 @@ Rc::new(EmitResult {
 }
 }
 
-pub fn boundary_ref_error(names: Rc<Vec<String>>, ref_name: String) -> Rc<Vec<Rc<ErrorNode>>> {
+pub fn boundary_ref_error(names: Rc<Vec<String>>, ref_name: &String) -> Rc<Vec<Rc<ErrorNode>>> {
     if { let mut __found = false; for n in names.iter().cloned() { if (n.clone().as_str() == ref_name.clone().as_str()) { __found = true; break; } } __found } {
         Rc::new(vec![])
     } else {
@@ -522,14 +522,14 @@ pub fn boundary_ref_error(names: Rc<Vec<String>>, ref_name: String) -> Rc<Vec<Rc
     }
 }
 
-pub fn validate_boundaries(plan: Rc<ArtifactPlan>) -> Rc<Vec<Rc<ErrorNode>>> {
+pub fn validate_boundaries(plan: &Rc<ArtifactPlan>) -> Rc<Vec<Rc<ErrorNode>>> {
     {
         let names = Rc::new({ let mut __result = Vec::new(); for a in plan.artifacts.clone().iter().cloned() { __result.push(a.name.clone()); } __result });
-Rc::new({ let mut __result = Vec::new(); for b in plan.boundaries.clone().iter().cloned() { __result.extend((*v2_rt::concat(boundary_ref_error(names.clone(), b.from_artifact.clone()), boundary_ref_error(names.clone(), b.to_artifact.clone()))).iter().cloned()); } __result })
+Rc::new({ let mut __result = Vec::new(); for b in plan.boundaries.clone().iter().cloned() { __result.extend((*v2_rt::concat(boundary_ref_error(names.clone(), &b.from_artifact.clone()), boundary_ref_error(names.clone(), &b.to_artifact.clone()))).iter().cloned()); } __result })
 }
 }
 
-pub fn emit_from_artifact_plan(typed: Rc<ResolvedGraph>, artifact_plan: Rc<ArtifactPlan>) -> Rc<EmitResult> {
+pub fn emit_from_artifact_plan(typed: Rc<ResolvedGraph>, artifact_plan: &Rc<ArtifactPlan>) -> Rc<EmitResult> {
     {
         if ((artifact_plan.artifacts.clone().len() as i64) == 0) {
             return Rc::new(EmitResult {
@@ -537,7 +537,7 @@ pub fn emit_from_artifact_plan(typed: Rc<ResolvedGraph>, artifact_plan: Rc<Artif
     diagnostics: Rc::new(vec![compile_bundle_error("compile_sources planned no artifacts".to_string())]),
 })
         }
-let boundary_diags = validate_boundaries(artifact_plan.clone());
+let boundary_diags = validate_boundaries(&artifact_plan);
 if ((boundary_diags.clone().len() as i64) > 0) {
             return Rc::new(EmitResult {
     files: Rc::new(vec![]),
@@ -567,8 +567,8 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
     parse_results: Rc::new(vec![]),
     newline_indices: Rc::new(vec![]),
 }), |acc: Rc<FrontendAccum>, s: Rc<SourceFile>| { let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone()); {
-            let tokens = tokenize(s.content.clone(), s.path.clone());
-let si = build_newline_index(s.path.clone(), s.content.clone());
+            let tokens = tokenize(&s.content.clone(), s.path.clone());
+let si = build_newline_index(s.path.clone(), &s.content.clone());
 let pr = parse(tokens.clone(), v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<NewlineIndex>>(), si.file.clone(), si.clone()));
 Rc::new(FrontendAccum {
     parse_results: v2_rt::rc_list_push(acc.parse_results, pr.clone()),
@@ -592,7 +592,7 @@ if has_parse_errors {
             {
                 let modules = Rc::new({ let mut __result = Vec::new(); for p in parse_results.clone().iter().cloned() { __result.push(p.module.clone().clone().unwrap()); } __result });
 let source_indices = newline_indices.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<NewlineIndex>>(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, si: Rc<NewlineIndex>| v2_rt::rc_map_insert(acc.clone(), si.file.clone(), si.clone()));
-let graph = resolve_modules(modules, source_indices);
+let graph = resolve_modules(&modules, source_indices);
 Rc::new(FrontendResult {
     graph: Some(graph.clone()),
     diagnostics: v2_rt::concat(parse_diagnostics, graph.diagnostics.clone()),
@@ -641,7 +641,7 @@ if ((resolve_errors.len() as i64) > 0) {
 })
             }
 let source_indices = newline_indices.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<NewlineIndex>>(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| v2_rt::rc_map_insert(acc.clone(), index.file.clone(), index.clone()));
-let norm = normalize_graph(graph.clone(), source_indices.clone());
+let norm = normalize_graph(&graph, source_indices.clone());
 let norm_diags = norm.diagnostics.clone();
 let norm_errors = Rc::new({ let mut __result = Vec::new(); for d in norm_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
 if ((norm_errors.len() as i64) > 0) {
@@ -658,7 +658,7 @@ let typed = reconcile(norm.graph.clone(), source_indices.clone());
 let typed_diags = typed.diagnostics.clone();
 let func_entries = extract_func_entries(typed.clone());
 let recursion_ctx = build_recursion_context(typed.clone());
-let complexity = build_complexity_report(func_entries, recursion_ctx, source_indices.clone());
+let complexity = build_complexity_report(&func_entries, recursion_ctx, source_indices.clone());
 let complexity_diags = complexity_diagnostics(complexity.clone());
 let all_diags = v2_rt::concat(typed_diags.clone(), complexity_diags);
 let type_errors = Rc::new({ let mut __result = Vec::new(); for d in typed_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
@@ -686,7 +686,7 @@ if ((ownership_errors.len() as i64) > 0) {
 })
             }
 let artifact_plan = default_artifact_plan(Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.push(m.module.clone().name.clone()); } __result }), target);
-let emit_result = emit_from_artifact_plan(typed.clone(), artifact_plan.clone());
+let emit_result = emit_from_artifact_plan(typed.clone(), &artifact_plan);
 let emit_files = emit_result.files.clone();
 let emit_diags = emit_result.diagnostics.clone();
 let emit_errors = Rc::new({ let mut __result = Vec::new(); for d in emit_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });

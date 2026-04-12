@@ -301,6 +301,50 @@ fn compose_sub_value(base: SubValueRelation, field: InductiveField) -> SubValueR
   }
 }
 
+// Compose two sub-value relations across a function call boundary.
+// If the caller passes arg_rel to the callee, and the callee's output
+// has callee_rel relative to that param, the composed result is the
+// output's relation to the caller's recursive param.
+//
+// PreservedValue is the identity element (callee returns its param
+// unchanged). SubValueUnknown is absorbing. Structural composed with
+// structural produces StrictSubValue — descending into a child of a
+// child is still descent, with the outer field as authority.
+// IteratedSubValue only survives composition with PreservedValue
+// (identity), because cross-composition cannot verify that the outer
+// field's shape supports iteration (ListRecursion vs OptionalRecursion).
+fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRelation) -> SubValueRelation {
+  match callee_rel {
+    PreservedValue => arg_rel
+    SubValueUnknown => SubValueUnknown
+    StrictSubValue { field: _, factor: _ } =>
+      match arg_rel {
+        PreservedValue => callee_rel
+        SubValueUnknown => SubValueUnknown
+        StrictSubValue { field: f, factor: _ } => StrictSubValue { field: f, factor: UnitShrink }
+        IteratedSubValue { field: f } => StrictSubValue { field: f, factor: UnitShrink }
+        ArithmeticDescent { param: _, factor: _ } => SubValueUnknown
+      }
+    IteratedSubValue { field: _ } =>
+      match arg_rel {
+        PreservedValue => callee_rel
+        SubValueUnknown => SubValueUnknown
+        // Conservative: StrictSubValue, not IteratedSubValue. The outer
+        // field may be OptionalRecursion (not iterable). Iteration evidence
+        // is only valid at the site that observes the list, not through
+        // cross-call composition.
+        StrictSubValue { field: f, factor: _ } => StrictSubValue { field: f, factor: UnitShrink }
+        IteratedSubValue { field: f } => StrictSubValue { field: f, factor: UnitShrink }
+        ArithmeticDescent { param: _, factor: _ } => SubValueUnknown
+      }
+    ArithmeticDescent { param: p, factor: f } =>
+      match arg_rel {
+        PreservedValue => ArithmeticDescent { param: p, factor: f }
+        _ => SubValueUnknown
+      }
+  }
+}
+
 
 // =========================================================================
 // SubValueRelation → CallPattern

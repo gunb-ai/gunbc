@@ -118,7 +118,7 @@ service gcp.ResourceManager {
   config { endpoint: "https://cloudresourcemanager.googleapis.com", auth: Bearer, auth_input: access_token }
 
   operation GetIamPolicy {
-    input { access_token: Secret, project_id: ProjectId }
+    input { access_token: Secret, project_id: GcpProjectId }
     output { bindings: Json, etag: String }
     readonly
     transport rest { method: POST, path: "/v1/projects/\{project_id\}:getIamPolicy" }
@@ -138,7 +138,7 @@ service gcp.ResourceManager {
   operation SetIamPolicy {
     input {
       access_token: Secret
-      project_id: ProjectId
+      project_id: GcpProjectId
       bindings: Json
       etag: NonEmptyStr
     }

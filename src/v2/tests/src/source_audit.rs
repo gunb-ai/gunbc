@@ -691,13 +691,23 @@ fn testgen_emits_valid_rust() {
         emit_source.contains("TestProjection"),
         "05_emit.dag should contain TestProjection"
     );
-    assert!(
-        emit_source.contains("Rc<dyn ") && emit_source.contains("Fn("),
-        "05_emit.dag should render Rust callable types as Rc<dyn Fn(...)> via CallableRepr"
+    // Callable wrapping is data-driven: template lives in languages.dag,
+    // emitter reads callable_type_template from LanguageSpec.
+    let lang_source = read_v2_file("src/v2/languages.dag");
+    assert_live_contains(
+        &lang_source,
+        "Rc<dyn Fn(",
+        "languages.dag should declare Rust callable_type_template with Rc<dyn Fn(...)>"
     );
-    assert!(
-        !emit_source.contains("Rust => concat(\"impl Fn("),
-        "05_emit.dag should not render Rust callable types as impl Fn in shared emit"
+    assert_live_contains(
+        &lang_source,
+        "callable_type_template",
+        "languages.dag should contain callable_type_template field"
+    );
+    assert_live_contains(
+        &emit_source,
+        "callable_type_template",
+        "05_emit.dag should read callable_type_template from LanguageSpec"
     );
 }
 
@@ -903,43 +913,46 @@ fn no_expr_data_before_catch_all_in_core() {
 }
 
 #[test]
-fn rt_functions_map_consistent_with_registry() {
-    let source = read_v2_file("dsl/extdeps/languages/rust/emit.dag");
+fn rt_functions_derived_from_registry() {
+    // rt_functions() is now derived from rt_function_registry via fold.
+    // Verify exact parity: every registry entry appears, and no extras.
+    use v2_compiler::extdeps_languages_rust_emit::{rt_function_registry, rt_functions};
 
-    let registry_names: Vec<&str> = source
-        .lines()
-        .filter(|l| l.contains("name:") && l.contains("bridge_name:"))
-        .filter_map(|l| {
-            let start = l.find("name: \"")?;
-            let rest = &l[start + 7..];
-            let end = rest.find('"')?;
-            Some(&rest[..end])
-        })
-        .collect();
+    let registry = rt_function_registry();
+    let funcs = rt_functions();
 
-    let rt_section_start = source.find("data rt_functions:").expect("rt_functions must exist");
-    let rt_section = &source[rt_section_start..];
-    let rt_end = rt_section.find('}').unwrap_or(rt_section.len());
-    let rt_body = &rt_section[..rt_end];
-    let rt_names: Vec<&str> = rt_body
-        .match_indices("\": true")
-        .filter_map(|(pos, _)| {
-            let before = &rt_body[..pos];
-            let quote_start = before.rfind('"')?;
-            Some(&rt_body[quote_start + 1..pos])
-        })
-        .collect();
+    assert_eq!(registry.len(), funcs.len(),
+        "registry count ({}) != rt_functions count ({})", registry.len(), funcs.len());
 
-    assert!(!registry_names.is_empty(), "rt_function_registry should have entries");
-    assert!(!rt_names.is_empty(), "rt_functions map should have entries");
-
-    for name in &registry_names {
-        assert!(rt_names.contains(name),
-            "rt_function_registry entry '{}' missing from rt_functions map", name);
+    for f in registry.iter() {
+        assert!(funcs.contains_key(&f.name),
+            "registry entry '{}' missing from rt_functions()", f.name);
     }
-    for name in &rt_names {
-        assert!(registry_names.contains(name),
-            "rt_functions map entry '{}' has no corresponding rt_function_registry entry", name);
+}
+
+#[test]
+fn rt_bridge_function_names_derived_from_registry() {
+    // rt_bridge_function_names() is derived from rt_function_registry,
+    // filtering entries where name != bridge_name.
+    use v2_compiler::extdeps_languages_rust_emit::{rt_function_registry, rt_bridge_function_names};
+
+    let registry = rt_function_registry();
+    let bridge = rt_bridge_function_names();
+
+    let expected: Vec<_> = registry.iter()
+        .filter(|f| f.name != f.bridge_name)
+        .collect();
+
+    assert!(!expected.is_empty(), "registry should have bridge_name overrides");
+    assert_eq!(expected.len(), bridge.len(),
+        "expected {} bridge entries, got {}", expected.len(), bridge.len());
+
+    for f in &expected {
+        match bridge.get(&f.name) {
+            Some(bn) => assert_eq!(*bn, f.bridge_name,
+                "bridge mismatch for '{}': expected '{}', got '{}'", f.name, f.bridge_name, bn),
+            None => panic!("registry entry '{}' (bridge '{}') missing from rt_bridge_function_names()", f.name, f.bridge_name),
+        }
     }
 }
 

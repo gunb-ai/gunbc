@@ -30,8 +30,6 @@ pub fn rust_container_templates() -> Rc<HashMap<String, String>> {
             let mut __m = HashMap::new();
             __m.insert("list".to_string(), "Vec<{0}>".to_string());
             __m.insert("set".to_string(), "std::collections::BTreeSet<{0}>".to_string());
-            __m.insert("non_empty_list".to_string(), "NonEmptyVec<{0}>".to_string());
-            __m.insert("non_empty_set".to_string(), "NonEmptyBTreeSet<{0}>".to_string());
             __m.insert("optional".to_string(), "Option<{0}>".to_string());
             __m.insert("map".to_string(), "HashMap<{0}, {1}>".to_string());
             __m.insert("free_monoid".to_string(), "Vec<{0}>".to_string());
@@ -248,6 +246,123 @@ pub fn rust_import_from_keyword() -> String {
     CACHED.with(|c| c.clone())
 }
 
+pub fn rust_lambda_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "|{0}| {1}".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_error_expr_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "panic!({0})".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_list_literal_empty() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Rc::new(vec![])".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_list_literal_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Rc::new(vec![{0}])".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_null_coalesce_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "{0}.unwrap_or_else(|| {1})".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_error_type_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "compile_error!(\"{0}\")".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_type_arg_open() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "<".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_type_arg_close() -> String {
+    thread_local! {
+        static CACHED: String = {
+            ">".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_void_type() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "()".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_tuple_empty() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "()".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_tuple_pair_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "({0}, {1})".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_tuple_multi_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "({0})".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
+pub fn rust_tuple_separator() -> String {
+    thread_local! {
+        static CACHED: String = {
+            ", ".to_string()
+        };
+    }
+    CACHED.with(|c| c.clone())
+}
+
 pub fn rust_source_extension() -> String {
     thread_local! {
         static CACHED: String = {
@@ -294,45 +409,7 @@ pub fn rt_function_registry() -> Rc<Vec<Rc<RuntimeFunction>>> {
 }
 
 pub fn rt_functions() -> Rc<HashMap<String, bool>> {
-    thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
-            let mut __m = HashMap::new();
-            __m.insert("concat".to_string(), true);
-            __m.insert("char_at".to_string(), true);
-            __m.insert("string_length".to_string(), true);
-            __m.insert("substring".to_string(), true);
-            __m.insert("string_contains".to_string(), true);
-            __m.insert("scan_while".to_string(), true);
-            __m.insert("skip_horizontal_ws".to_string(), true);
-            __m.insert("scan_to_eol".to_string(), true);
-            __m.insert("scan_string_end".to_string(), true);
-            __m.insert("code_point".to_string(), true);
-            __m.insert("from_code_point".to_string(), true);
-            __m.insert("lookup".to_string(), true);
-            __m.insert("index_by".to_string(), true);
-            __m.insert("empty_map".to_string(), true);
-            __m.insert("map_insert".to_string(), true);
-            __m.insert("map_merge".to_string(), true);
-            __m.insert("list_concat".to_string(), true);
-            __m.insert("str_eq".to_string(), true);
-            __m.insert("filesystem_read".to_string(), true);
-            __m.insert("list_push".to_string(), true);
-            __m.insert("map_get".to_string(), true);
-            __m.insert("map_keys".to_string(), true);
-            __m.insert("map_values".to_string(), true);
-            __m.insert("parse_int".to_string(), true);
-            __m.insert("map_contains_key".to_string(), true);
-            __m.insert("map_has".to_string(), true);
-            __m.insert("reverse".to_string(), true);
-            __m.insert("replace".to_string(), true);
-            __m.insert("chars_to_string".to_string(), true);
-            __m.insert("append".to_string(), true);
-            __m.insert("contains".to_string(), true);
-            __m.insert("count".to_string(), true);
-            Rc::new(__m)
-        };
-    }
-    CACHED.with(|c| c.clone())
+    rt_function_registry().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), true))
 }
 
 pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
@@ -344,19 +421,7 @@ pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
 }
 
 pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
-    thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
-            let mut __m = HashMap::new();
-            __m.insert("empty_map".to_string(), "rc_empty_map".to_string());
-            __m.insert("index_by".to_string(), "rc_index_by".to_string());
-            __m.insert("list_concat".to_string(), "rc_list_concat".to_string());
-            __m.insert("list_push".to_string(), "rc_list_push".to_string());
-            __m.insert("map_insert".to_string(), "rc_map_insert".to_string());
-            __m.insert("map_merge".to_string(), "rc_map_merge".to_string());
-            Rc::new(__m)
-        };
-    }
-    CACHED.with(|c| c.clone())
+    Rc::new({ let mut __result = Vec::new(); for f in rt_function_registry().iter().cloned() { if (f.name.clone().as_str() != f.bridge_name.clone().as_str()) { __result.push(f); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, entry: Rc<RuntimeFunction>| v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), entry.bridge_name.clone()))
 }
 
 pub fn is_rt_function(name: String) -> bool {

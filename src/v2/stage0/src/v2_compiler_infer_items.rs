@@ -65,7 +65,7 @@ pub struct ResolvedGraph {
     pub emit_graph_info: Rc<EmitGraphInfo>,
 }
 
-pub fn inferred_to_outputs(inferred: Option<Rc<InferredNode>>, span: Rc<SourceSpan>) -> Rc<Vec<Rc<Node>>> {
+pub fn inferred_to_outputs(inferred: &Option<Rc<InferredNode>>, span: Rc<SourceSpan>) -> Rc<Vec<Rc<Node>>> {
     if (inferred.clone() == None) {
         Rc::new(vec![])
     } else {
@@ -80,21 +80,21 @@ if has_structure {
 if is_product {
                         if (rt.ident_span.clone() == None) {
                             Rc::new({ let mut __result = Vec::new(); for child in rt.children.clone().iter().cloned() { __result.push({
-                                let child_type = child_type_node(child.clone());
-make_field_node(child.name.clone(), child_type.clone(), Cardinality::Required, None, None, span.clone(), node_name_span(child.clone()))
+                                let child_type = child_type_node(&child);
+make_field_node(&child.name.clone(), child_type.clone(), Cardinality::Required, None, None, span.clone(), node_name_span(&child))
 }); } __result })
                         } else {
-                            Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone(), no_span())])
+                            Rc::new(vec![make_field_node(&"value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone(), no_span())])
                         }
                     } else {
-                        Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone(), no_span())])
+                        Rc::new(vec![make_field_node(&"value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone(), no_span())])
                     }
 }
             } else {
                 if ((rt.connective.clone() == Connective::Conj) && ((rt.children.clone().len() as i64) == 0)) {
                     Rc::new(vec![])
                 } else {
-                    Rc::new(vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone(), no_span())])
+                    Rc::new(vec![make_field_node(&"value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone(), no_span())])
                 }
             }
 },
@@ -102,7 +102,7 @@ make_field_node(child.name.clone(), child_type.clone(), Cardinality::Required, N
     }
 }
 
-pub fn item_kind(item: Rc<Node>) -> ItemKind {
+pub fn item_kind(item: &Rc<Node>) -> ItemKind {
     {
         let kind = if ((item.connective.clone() != Connective::NoConnective) && (item.transport.clone() == None)) {
             ItemKind::TypeItem

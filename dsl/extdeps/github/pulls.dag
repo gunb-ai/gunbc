@@ -19,6 +19,7 @@ import extdeps.github.github { GitHubUser }
 import std.types { Timestamp, Url, HttpMethod, AuthScheme }
 import std.errors { GitHubErrorShape }
 import std.credentials { CredentialSource, EnvVar }
+import std.serialization { WireFormat, Text }
 
 // -- Pull request model -----------------------------------------------
 
@@ -97,7 +98,7 @@ service github.Pulls {
           body: "Implements widget rendering",
           state: "open",
           html_url: "https://github.com/mock-owner/mock-repo/pull/42",
-          user: { login: "mock-user", id: 1, type: { _variant: "HumanUser" } },
+          user: { login: "mock-user", id: 1, type: "User" },
           head: { ref: "feature-widgets", sha: "abc1234def5678", label: "mock-user:feature-widgets" },
           base: { ref: "main", sha: "000aaa111bbb", label: "mock-owner:main" },
           created_at: "2026-03-01T10:00:00Z",
@@ -137,7 +138,7 @@ service github.Pulls {
         body: "Implements widget rendering",
         state: "open",
         html_url: "https://github.com/mock-owner/mock-repo/pull/42",
-        user: { login: "mock-user", id: 1, type: { _variant: "HumanUser" } },
+        user: { login: "mock-user", id: 1, type: "User" },
         head: { ref: "feature-widgets", sha: "abc1234def5678", label: "mock-user:feature-widgets" },
         base: { ref: "main", sha: "000aaa111bbb", label: "mock-owner:main" },
         created_at: "2026-03-01T10:00:00Z",
@@ -162,7 +163,8 @@ service github.Pulls {
     transport rest {
       method: GET,
       path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}",
-      headers: { "Accept": "application/vnd.github.diff" }
+      headers: { "Accept": "application/vnd.github.diff" },
+      response_format: Text
     }
     response {
       200 => String

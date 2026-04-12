@@ -1840,7 +1840,7 @@ dependency depth. Start at the roots and follow imports.
 **Missing links (to be added):**
 - `algebra.dag` should note conceptual dependency on `logic.dag` and `constructors.dag`
 - `iteration.dag` should note that `fold` is a catamorphism over `FreeMonoid` from `algebra.dag`
-- `stack.dag` should import `algebra.dag` (Stack is a FreeMonoid)
+- ~~`stack.dag` should import `algebra.dag`~~ — DONE: imports FreeMonoid, operations aligned to FreeMonoid vocabulary
 - `containers.dag` should import `algebra.dag` or merge into it (documentation-only today)
 
 ---
@@ -1878,13 +1878,13 @@ dependency depth. Start at the roots and follow imports.
 ### dsl/std/
 
 **types.dag** — 7.5/10
-- M2: GCP types duplicated (`ProjectId` vs `GcpProjectId`)
-- M1: `CloudSecretConfig` embeds policy defaults — policy belongs at call sites
-- M2: `ContentEncoding` may overlap with `encoding.dag` — reconcile to one authority
+- M2: ~~GCP types duplicated (`ProjectId` vs `GcpProjectId`)~~ — DONE: renamed to `GcpProjectId`; deleted 5 dead types (GcpSecretId, GcpServiceAccountEmail, GcpSubjectToken, OidcAudience, OidcSubjectToken, WifAudience)
+- M1: ~~`CloudSecretConfig` embeds policy defaults~~ — DONE: dead type deleted; operations define own typed inputs
+- M2: ~~`ContentEncoding` may overlap with `encoding.dag`~~ — DONE: consolidated to `Encoding` in encoding.dag with BoundedLattice (meet/join); ContentEncoding deleted from types.dag; FileClassification moved to filesystem.dag
 
-**encoding.dag** — part of foundation chain
-- Authority for `Encoding` type (imported by `string_type.dag`)
-- Reconcile with any `ContentEncoding` in `types.dag` — one definition only
+**encoding.dag** — 9/10 (foundation chain)
+- Single authority for `Encoding` type with BoundedLattice (meet/join)
+- ~~Reconcile with `ContentEncoding` in `types.dag`~~ — DONE: one definition only
 
 **containers.dag** — 4/10
 - Skeletal, no type definitions — either define container types or delete
@@ -1948,17 +1948,18 @@ dependency depth. Start at the roots and follow imports.
 - Hardcoded regions data will go stale (GCP adds regions)
 - Good: dual identity, precise service account model, real scope URIs
 
-**llm/anthropic.dag** — 8/10
-- M4: `ThinkingConfig.type` as String — should be enum
+**llm/anthropic.dag** — 9/10
+- M4: ~~`ThinkingConfig.type` as String~~ — DONE: `ThinkingMode = Enabled | Disabled`
+- M4: `CacheControl.type` as String — should be enum (same pattern)
 - Good: ContentBlock tagged union, cache_control, precise token budgets
 
 **llm/openai.dag** — 8/10
 - Nested destructuring via string paths (`"content/0/text"`) is fragile
 - Good: ResponseFormat tagged union, ToolChoice tagged union
 
-**llm/llm.dag** — 7/10
+**llm/llm.dag** — 9/10
 - `Role`, `StopReason`, `TokenUsage` are shared concepts documented by both providers — valid
-- M1: `LlmMessage.content` as String — doesn't model multimodal content (both providers support richer content)
+- M1: ~~`LlmMessage.content` as String~~ — DONE: `List<ContentBlock>` with `TextContent | ImageContent`; provider-specific blocks in anthropic.dag/openai.dag
 
 ### src/v2/ (compiler)
 
@@ -2089,9 +2090,9 @@ independent `module?` and `error?` — should be sum `Ok | Err`.
 
 - `github.dag`: should import Git types for shared concepts (branches, commits)
 - `github/auth.dag`: minimal, magic string, no composition
-- `llm/llm.dag`: `LlmMessage.content` as String — doesn't model multimodal
-- String fields that should be enums: `AuthConfig.scheme`, `ThinkingConfig.type`,
-  `GitRemote.fetch_refspec`, pagination cursors, `GistFile.language`
+- ~~`llm/llm.dag`: `LlmMessage.content` as String~~ — DONE: `List<ContentBlock>` with multimodal blocks
+- String fields that should be enums: `AuthConfig.scheme`, ~~`ThinkingConfig.type`~~ (DONE),
+  `CacheControl.type`, `GitRemote.fetch_refspec`, pagination cursors, `GistFile.language`
 - Stale hardcoded data: model lists (anthropic, openai), GCP regions
 
 ### Accepted debt (dies with self-hosting)
@@ -2776,14 +2777,7 @@ type AuthConfig {
 }
 
 // In extdeps/llm/anthropic.dag — ThinkingConfig:
-// CURRENT:  type: String  (always "enabled")
-// PREFERRED:
-type ThinkingMode = Enabled | Disabled
-
-type ThinkingConfig {
-  mode: ThinkingMode
-  budget_tokens: Int?
-}
+// DONE: ThinkingMode = Enabled | Disabled, mode: ThinkingMode, budget_tokens: Int?
 
 // In extdeps/github/github.dag — scopes:
 // CURRENT:  scopes: List<String>

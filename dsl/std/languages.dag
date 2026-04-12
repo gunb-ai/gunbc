@@ -308,9 +308,9 @@ type StringOps {
 }
 
 // "How does a language operate on maps?"
-// Ref: Rust HashMap/BTreeMap, Python dict, Go map
+// Ref: Rust HashMap, Python dict, Go map
 type MapOps {
-  empty_map: String              // e.g. "BTreeMap::new()" or "{}" or "map[K]V{}"
+  empty_map: String              // e.g. "HashMap::new()" or "{}" or "map[K]V{}"
   map_insert: String             // e.g. "\{recv\}.insert(\{key\}, \{value\})" or "\{recv\}[\{key\}] = \{value\}"
   map_get: String                // e.g. "\{recv\}.get(&\{key\}).cloned()" or "\{recv\}.get(\{key\})"
   map_contains: String           // e.g. "\{recv\}.contains_key(&\{key\})" or "\{key\} in \{recv\}"
@@ -1012,7 +1012,7 @@ data rust_string_ops: StringOps = {
 }
 
 data rust_map_ops: MapOps = {
-  empty_map: "BTreeMap::new()",
+  empty_map: "HashMap::new()",
   map_insert: "\{recv\}.insert(\{key\}, \{value\})",
   map_get: "\{recv\}.get(&\{key\}).cloned()",
   map_contains: "\{recv\}.contains_key(&\{key\})"

@@ -16,7 +16,7 @@ import std.types { FilePath, NonEmptyStr }
 service shell.Find {
   operation ListDirs {
     input { path: FilePath, max_depth: Int = 1, min_depth: Int = 1 }
-    output { dirs: List<FilePath> }
+    output { dirs: List<FilePath> from "stdout_lines" }
     readonly
     transport shell { argv: ["find", "{path}", "-maxdepth", "{max_depth}", "-mindepth", "{min_depth}", "-type", "d"] }
     exit {
@@ -32,7 +32,7 @@ service shell.Find {
 service shell.Env {
   operation Get {
     input { name: NonEmptyStr }
-    output { value: String? }
+    output { value: String? from "stdout" }
     readonly
     transport shell { argv: ["printenv", "{name}"] }
     exit {
@@ -48,7 +48,7 @@ service shell.Env {
 service shell.Which {
   operation Check {
     input { command: NonEmptyStr }
-    output { exists: Bool, path: FilePath? }
+    output { exists: Bool from "exit_success", path: FilePath? from "stdout" }
     readonly
     transport shell { argv: ["which", "{command}"] }
     exit {
@@ -56,7 +56,7 @@ service shell.Which {
       1 => Unit "Command not found"
     }
     mock_response {
-      0 => { exists: true, path: "/usr/bin/mock" } "Mock command found"
+      0 => { exit_success: true, stdout: "/usr/bin/mock" } "Mock command found"
     }
   }
 }
@@ -64,20 +64,20 @@ service shell.Which {
 service shell.Exec {
   operation Run {
     input { script: String }
-    output { success: Bool, stdout: String, stderr: String }
+    output { success: Bool from "exit_success", stdout: String from "stdout", stderr: String from "stderr" }
     transport shell { argv: ["sh", "-lc", "{script}"] }
     exit {
       0 => Unit
       nonzero => String "Script failed"
     }
     mock_response {
-      0 => { success: true, stdout: "(mock)", stderr: "" } "Mock shell execution"
+      0 => { exit_success: true, stdout: "(mock)", stderr: "" } "Mock shell execution"
     }
   }
 
   operation Check {
     input { command: String }
-    output { exists: Bool }
+    output { exists: Bool from "exit_success" }
     readonly
     transport shell { argv: ["sh", "-lc", "{command}"] }
     exit {

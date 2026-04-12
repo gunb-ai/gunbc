@@ -28,7 +28,7 @@ pub fn read_v2_file(relative_path: &str) -> String {
 // ── Tokenize + Parse ─────────────────────────────────────────────────────
 
 pub fn tokenize(source: &str) -> Rc<Vec<Rc<Token>>> {
-    v2_compiler::v2_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
+    v2_compiler::v2_compiler_tokenize::tokenize(&source.to_string(), "test.dag".to_string())
 }
 
 pub fn parse_source(source: &str) -> Rc<ParseResult> {
@@ -36,8 +36,8 @@ pub fn parse_source(source: &str) -> Rc<ParseResult> {
 }
 
 pub fn parse_source_named(filename: &str, source: &str) -> Rc<ParseResult> {
-    let tokens = v2_compiler::v2_compiler_tokenize::tokenize(source.to_string(), filename.to_string());
-    let source_index = v2_compiler::v2_std_core::build_newline_index(filename.to_string(), source.to_string());
+    let tokens = v2_compiler::v2_compiler_tokenize::tokenize(&source.to_string(), filename.to_string());
+    let source_index = v2_compiler::v2_std_core::build_newline_index(filename.to_string(), &source.to_string());
     let mut source_indices = std::collections::HashMap::new();
     source_indices.insert(filename.to_string(), source_index);
     v2_compiler::v2_compiler_parse::parse(tokens, Rc::new(source_indices))

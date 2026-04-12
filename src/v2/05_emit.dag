@@ -35,6 +35,10 @@ import v2.std.core {
   TextFile, SourceSpan,
   BinOp, UnaryOpKind, NullCoalesce, AlgebraFieldKind,
   DeclaredFuncSig,
+  MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
+  MatchPattern, Wildcard,
+  FieldSummary, TupleFirst, TupleSecond,
+  expr_method_name_at, method_arg_nodes, expr_method_call_semantics, expr_field_access_summary,
   lambda_param_names_at, record_lit_type_name_at,
   arm_body, arm_pattern, arm_guard,
   arg_name_at, arg_value,
@@ -43,8 +47,9 @@ import v2.std.core {
   match_scrutinee, match_arm_nodes,
   let_value, let_body,
   field_access_base, method_receiver,
-  lambda_body, cast_expr, return_value, binop_left, binop_right,
-  slice_start, slice_end, unaryop_operand,
+  lambda_body, cast_expr, cast_target, return_value, binop_left, binop_right,
+  foreach_variable_at, foreach_collection, foreach_body,
+  index_base, index_expr, slice_base, slice_start, slice_end, unaryop_operand,
   expr_has_self_call, expr_has_non_tail_self_call,
   local_transport_node,
   is_rest_transport, is_shell_transport, is_file_transport,
@@ -81,8 +86,10 @@ import v2.compiler.languages {
   BlockSyntax, TcoSyntax, ExpressionSemantics,
   IfValueForm, IfExpression, ConditionalTernary, IfStatement,
   VisibilitySpec, KeywordVisibility, CaseVisibility,
-  NamingCase, PascalCase, SnakeCase,
+  NamingCase, PascalCase, SnakeCase, CamelCase, AsAuthored,
   ReservedWordStrategy, PrefixEscape, SuffixEscape, NoEscape,
+  StringInterpSyntax, InterpStyle, FormatArgs, InlineExpr, EscapePair,
+  RecordLitSyntax,
   ImportRule,
   TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger,
   ContainerUsageTrigger, AsyncUsageTrigger,
@@ -242,58 +249,61 @@ fn emit_simple_expr(expr: Node, target: RenderTarget, source_indices: Map<String
         _ => Interpolation { expr: arg_value(n: child) }
       })
       emit_simple_string_interp(parts: ps, target: target, source_indices: source_indices)
+    ExprListLit =>
+      // Target-aware: JSON array syntax is valid inside Rust serde_json::json!
+      // and as Python list literals. Go needs separate handling.
+      match target {
+        Go => emit_error_expr(message: "list literal in simple expr not yet supported for Go", target: target)
+        _ =>
+          let el_strs = expr.children |> map(e => emit_simple_expr(expr: e, target: target, source_indices: source_indices))
+          concat("[", el_strs |> join(separator: ", "), "]")
+      }
+    ExprRecordLit { parent_enum: _ } =>
+      match target {
+        Go => emit_error_expr(message: "record literal in simple expr not yet supported for Go", target: target)
+        _ =>
+          let field_strs = expr.children |> map(f =>
+            concat("\"", field_init_node_name_at(n: f, source_indices: source_indices), "\": ",
+              emit_simple_expr(expr: field_init_node_value(n: f), target: target, source_indices: source_indices)))
+          concat("{", field_strs |> join(separator: ", "), "}")
+      }
     _ => emit_error_expr(message: "unsupported simple expr in test/mock binding", target: target)
   }
 }
 
 fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
+  let spec = language_spec(target: target)
+  let interp = spec.string_interp
   let has_interpolations = parts |> any(p => match p { Interpolation { expr: _ } => true  _ => false })
-  match target {
-    Rust =>
+  match interp.style {
+    FormatArgs { placeholder: ph } =>
       let fmt_parts = parts |> map(p => match p {
         Text { value: v } =>
-          let escaped = if has_interpolations { escape_rust_interp_text(s: v) } else { escape_string_literal_body(s: v) }
+          let base = escape_string_literal_body(s: v)
+          let escaped = if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
           InterpPart { format_segment: escaped, arg_expr: "" }
         Interpolation { expr: e } =>
-          InterpPart { format_segment: "{}", arg_expr: emit_simple_expr(expr: e, target: target, source_indices: source_indices) }
+          InterpPart { format_segment: ph, arg_expr: emit_simple_expr(expr: e, target: target, source_indices: source_indices) }
       })
       let fmt_str = fmt_parts |> map(p => p.format_segment) |> join(separator: "")
       let args = fmt_parts
         |> map(p => p.arg_expr)
         |> filter(a => a != "")
       if args |> count == 0 {
-        concat("\"", fmt_str, "\".to_string()")
+        apply_type_template1(template: interp.plain_template, arg0: fmt_str)
       } else {
         let args_str = args |> join(separator: ", ")
-        concat("format!(\"", fmt_str, "\", ", args_str, ")")
+        apply_type_template2(template: interp.format_template, arg0: fmt_str, arg1: args_str)
       }
-    Go =>
-      let fmt_parts = parts |> map(p => match p {
-        Text { value: v } =>
-          let escaped = if has_interpolations { escape_go_interp_text(s: v) } else { escape_string_literal_body(s: v) }
-          InterpPart { format_segment: escaped, arg_expr: "" }
-        Interpolation { expr: e } =>
-          InterpPart { format_segment: "%v", arg_expr: emit_simple_expr(expr: e, target: target, source_indices: source_indices) }
-      })
-      let fmt_str = fmt_parts |> map(p => p.format_segment) |> join(separator: "")
-      let args = fmt_parts
-        |> map(p => p.arg_expr)
-        |> filter(a => a != "")
-      if args |> count == 0 {
-        concat("\"", fmt_str, "\"")
-      } else {
-        let args_str = args |> join(separator: ", ")
-        concat("fmt.Sprintf(\"", fmt_str, "\", ", args_str, ")")
-      }
-    Python =>
+    InlineExpr =>
       let segments = parts |> map(p => match p {
         Text { value: v } =>
-          if has_interpolations { escape_python_interp_text(s: v) } else { escape_string_literal_body(s: v) }
+          let base = escape_string_literal_body(s: v)
+          if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
         Interpolation { expr: e } =>
           concat("{", emit_simple_expr(expr: e, target: target, source_indices: source_indices), "}")
       })
-      concat("f\"", segments |> join(separator: ""), "\"")
-    _ => emit_error_expr(message: "unsupported simple string interpolation target", target: target)
+      apply_type_template1(template: interp.format_template, arg0: segments |> join(separator: ""))
   }
 }
 
@@ -567,6 +577,22 @@ fn to_screaming_snake(name: String) -> String {
   snake |> chars |> map(ch => to_upper_char(ch: ch)) |> join(separator: "")
 }
 
+// Convert a snake_case name to camelCase.
+fn to_camel(name: String) -> String {
+  let parts = name |> split(delimiter: "_")
+  if parts |> count == 0 { name }
+  else {
+    let first_part = match parts |> first {
+      Some { value: p } => p |> chars |> map(c => to_lower_char(ch: c)) |> join(separator: "")
+      None => ""
+    }
+    let rest_parts = parts |> enumerate
+      |> filter(pair => pair.first > 0)
+      |> map(pair => capitalize_first(s: pair.second))
+    concat(first_part, rest_parts |> join(separator: ""))
+  }
+}
+
 // Check if a character is uppercase.
 fn is_upper(ch: Int) -> Bool {
   ch >= 65 && ch <= 90
@@ -640,6 +666,8 @@ fn apply_naming_case(name: String, case_style: NamingCase) -> String {
       pascal_parts |> join(separator: "")
     }
     SnakeCase => to_snake(name: name)
+    CamelCase => to_camel(name: name)
+    AsAuthored => name
   }
 }
 
@@ -807,6 +835,12 @@ fn escape_python_interp_text(s: String) -> String {
     |> split(delimiter: "}") |> join(separator: "}}")
 }
 
+// Generic escape-pair application: folds over pairs, applying split/join for each.
+// Replaces per-language escape_*_interp_text functions for new data-driven callers.
+fn apply_escape_pairs(s: String, pairs: List<EscapePair>) -> String {
+  pairs |> fold(init: s, f: (acc, pair) => acc |> split(delimiter: pair.from) |> join(separator: pair.to))
+}
+
 // Emit a string literal with language-specific suffix (e.g. ".to_string()" for Rust).
 fn emit_string_literal(s: String, suffix: String) -> String {
   concat("\"", escape_string_literal_body(s: s), "\"", suffix)
@@ -855,14 +889,12 @@ fn emit_keyword(key: String, target: RenderTarget) -> String {
 fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
   match value {
     LitStr { value: s } =>
+      // String literal suffix from TypeCheckpoint (e.g. ".to_string()" for Rust).
+      // Fail-closed: missing TypeCheckpoint emits error marker.
+      // All targets (including Dag) must declare String in their TypeCheckpoints.
       let suffix = match literal_suffix(target: target, dag_name: "String") {
         Some { value: sfx } => sfx
-        // Dag target has no TypeCheckpoints — suffix is always empty.
-        // For real targets, missing checkpoint is fail-closed via emit_error_expr.
-        None => match target {
-          Dag => ""
-          _ => emit_error_expr(message: "missing TypeCheckpoint for String literal suffix", target: target)
-        }
+        None => emit_error_expr(message: "missing TypeCheckpoint for String literal suffix", target: target)
       }
       emit_string_literal(s: s, suffix: suffix)
     LitInt { value: i } => to_string(value: i)
@@ -888,10 +920,8 @@ fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {
     match coerce_container_template(target: target, container_name: kind) {
       Some { value: template } => apply_type_template1(template: template, arg0: inner)
       None =>
-        match target {
-          Python => concat(kind, "[", inner, "]")
-          _ => concat(kind, "<", inner, ">")
-        }
+        let spec = language_spec(target: target)
+        concat(kind, spec.type_arg_open, inner, spec.type_arg_close)
     }
   }
 }
@@ -928,10 +958,8 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
   // Error / unresolved type variable
   if (n_is_type_var || n_is_error) && n.children |> count == 0 {
     let label = if n_is_error { "CompilerError" } else { "TypeVariable" }
-    let err_str = match target {
-      Rust => concat("compile_error!(\"unresolved ", label, " type reached emit\")")
-      _ => concat("__EMIT_BUG_UNRESOLVED_", label, "__")
-    }
+    let spec = language_spec(target: target)
+    let err_str = apply_type_template1(template: spec.error_type_template, arg0: concat("UNRESOLVED_", label))
     return err_str
   }
 
@@ -943,18 +971,22 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
     let param_str = param_strs |> join(separator: repr.param_separator)
     let ret_str = match n.inferred {
       Some { value: Resolved { node: rt } } => render_node_type(n: rt, target: target, shared_types: shared_types, source_indices: source_indices)
-      _ => match target {
-        Go => ""
-        Python => "None"
-        _ => "()"
-      }
+      _ => language_spec(target: target).void_type
     }
-    let callable_str = replace(replace(repr.template, "\{params\}", param_str), "\{return\}", ret_str)
-    let go_callable_str = if ret_str == "" { concat("func(", param_str, ")") } else { callable_str }
-    let result = match target {
-      Rust => concat("Rc<dyn ", replace(callable_str, "fn(", "Fn("), ">")
-      Go => go_callable_str
-      _ => callable_str
+    let spec = language_spec(target: target)
+    // Single authority: callable_type_template overrides CallableRepr entirely.
+    // When null, CallableRepr is the sole authority (including return_separator).
+    let result = match spec.callable_type_template {
+      Some { value: t } =>
+        replace(replace(t, "\{params\}", param_str), "\{return\}", ret_str)
+      None =>
+        if ret_str == "" {
+          // Void return: strip return_separator + {return} from CallableRepr template.
+          let void_template = replace(repr.template, concat(repr.return_separator, "\{return\}"), "")
+          replace(void_template, "\{params\}", param_str)
+        } else {
+          replace(replace(repr.template, "\{params\}", param_str), "\{return\}", ret_str)
+        }
     }
     return result
   }
@@ -976,10 +1008,8 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
     let base = if n.ident_span != none {
       coerce_primitive_type(target: target, dag_name: tn)
     } else {
-      match target {
-        Rust => "compile_error!(\"unresolved anonymous coproduct type reached emit\")"
-        _ => "__EMIT_BUG_ANONYMOUS_COPRODUCT__"
-      }
+      let spec = language_spec(target: target)
+      apply_type_template1(template: spec.error_type_template, arg0: "ANONYMOUS_COPRODUCT")
     }
     let disj_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
     return disj_str
@@ -1085,10 +1115,8 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
       emit_container(kind: to_snake(name: tn), inner: child_str, target: target)
     } else {
       let type_base = coerce_primitive_type(target: target, dag_name: tn)
-      match target {
-        Python => concat(type_base, "[", child_str, "]")
-        _ => concat(type_base, "<", child_str, ">")
-      }
+      let spec = language_spec(target: target)
+      concat(type_base, spec.type_arg_open, child_str, spec.type_arg_close)
     }
     let single_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
     return single_str
@@ -1101,35 +1129,28 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Map<String, Boo
   }
   let type_base = coerce_primitive_type(target: target, dag_name: tn)
   let args_joined = child_strs |> join(separator: ", ")
-  let base = match target {
-    Python => concat(type_base, "[", args_joined, "]")
-    _ => concat(type_base, "<", args_joined, ">")
-  }
+  let spec = language_spec(target: target)
+  let base = concat(type_base, spec.type_arg_open, args_joined, spec.type_arg_close)
   if shared { wrap_shared_type(target: target, inner: base) } else { base }
 }
 
 fn render_tuple_parts(parts: List<String>, target: RenderTarget) -> String {
+  let spec = language_spec(target: target)
+  let ts = spec.tuple_syntax
   if parts |> count > 0 {
-    let joined = parts |> join(separator: ", ")
-    match target {
-      Go => if parts |> count == 2 {
-        match parts |> first {
-          Some { value: first_part } => match parts |> skip(1) |> first {
-            Some { value: second_part } => concat("struct{ First ", first_part, "; Second ", second_part, " }")
-            None => concat("struct{ ", parts |> join(separator: "; "), " }")
-          }
-          None => concat("struct{ ", parts |> join(separator: "; "), " }")
+    if parts |> count == 2 {
+      match parts |> first {
+        Some { value: p0 } => match parts |> skip(1) |> first {
+          Some { value: p1 } => apply_type_template2(template: ts.pair_template, arg0: p0, arg1: p1)
+          None => apply_type_template1(template: ts.multi_template, arg0: parts |> join(separator: ts.separator))
         }
-      } else { concat("struct{ ", parts |> join(separator: "; "), " }") }
-      Python => concat("Tuple[", joined, "]")
-      _ => concat("(", joined, ")")
+        None => apply_type_template1(template: ts.multi_template, arg0: parts |> join(separator: ts.separator))
+      }
+    } else {
+      apply_type_template1(template: ts.multi_template, arg0: parts |> join(separator: ts.separator))
     }
   } else {
-    match target {
-      Python => "Tuple"
-      Go => "struct{}"
-      _ => "()"
-    }
+    ts.empty
   }
 }
 
@@ -1711,64 +1732,68 @@ fn is_tco_candidate(texpr: Node, func_name: String, source_indices: Map<String, 
 // P4.1: Shared identifier and statement rendering
 // =========================================================================
 
-// Target-dispatched identifier rendering.
-// Rust: snake_case + r#keyword escape. Go: camelCase + _suffix escape.
-// Python: snake_case + _suffix escape.
+// Data-driven identifier rendering: reads naming_case and reserved_words from LanguageSpec.
 fn emit_ident(name: String, target: RenderTarget) -> String {
-  match target {
-    Rust =>
-      let snake = to_snake(name: name)
-      if language_spec(target: Rust).reserved_words.keywords |> any(r => r == snake) { concat(reserved_prefix(target: Rust), snake) }
-      else { snake }
-    Go =>
-      let parts = name |> split(delimiter: "_")
-      if parts |> count == 0 { name }
-      else {
-        let first_part = match parts |> first {
-          Some { value: p } => p |> chars |> map(c => to_lower_char(ch: c)) |> join(separator: "")
-          None => ""
+  let spec = language_spec(target: target)
+  let converted = match spec.naming_case {
+    SnakeCase => to_snake(name: name)
+    CamelCase => to_camel(name: name)
+    PascalCase => capitalize_first(s: to_camel(name: name))
+    AsAuthored => name
+  }
+  let is_reserved = spec.reserved_words.keywords |> any(r => r == converted)
+  if is_reserved {
+    match spec.reserved_words.strategy {
+      PrefixEscape { prefix: p } => concat(p, converted)
+      SuffixEscape { suffix: s } => concat(converted, s)
+      NoEscape => converted
+    }
+  } else {
+    converted
+  }
+}
+
+// Export-context identifier rendering: for function names, type names, struct fields.
+// CaseVisibility languages (Go): PascalCase. KeywordVisibility languages: same as emit_ident.
+fn emit_export_ident(name: String, target: RenderTarget) -> String {
+  let spec = language_spec(target: target)
+  match spec.visibility {
+    CaseVisibility { export_case: ec } =>
+      let result = apply_naming_case(name: name, case_style: ec)
+      let is_reserved = spec.reserved_words.keywords |> any(r => r == result)
+      if is_reserved {
+        match spec.reserved_words.strategy {
+          SuffixEscape { suffix: s } => concat(result, s)
+          PrefixEscape { prefix: p } => concat(p, result)
+          NoEscape => result
         }
-        let rest_parts = parts |> enumerate
-          |> filter(pair => pair.first > 0)
-          |> map(pair => capitalize_first(s: pair.second))
-        let camel = concat(first_part, rest_parts |> join(separator: ""))
-        if language_spec(target: Go).reserved_words.keywords |> any(r => r == camel) { concat(camel, reserved_suffix(target: Go)) }
-        else { camel }
-      }
-    Python =>
-      let snake = to_snake(name: name)
-      if language_spec(target: Python).reserved_words.keywords |> any(r => r == snake) { concat(snake, reserved_suffix(target: Python)) }
-      else { snake }
-    Dag => name
+      } else { result }
+    KeywordVisibility { prefix: _ } =>
+      emit_ident(name: name, target: target)
+  }
+}
+
+// Apply bridge method overrides — resolves method name conflicts (e.g. Python "with" → "with_update").
+fn apply_bridge_method_overrides(name: String, overrides: Map<String, String>) -> String {
+  match lookup(overrides, key: name) {
+    Some { value: replacement } => replacement
+    None => name
   }
 }
 
 fn emit_let_binding(name: String, value: String, target: RenderTarget) -> String {
-  match target {
-    Dag => concat("let ", name, " = ", value)
-    _ =>
-      let spec = language_spec(target: target)
-      apply_type_template2(template: spec.annotations.let_binding_inferred, arg0: emit_ident(name: name, target: target), arg1: value)
-  }
+  let spec = language_spec(target: target)
+  apply_type_template2(template: spec.annotations.let_binding_inferred, arg0: emit_ident(name: name, target: target), arg1: value)
 }
 
 fn emit_let_binding_annotated(name: String, type_str: String, value: String, target: RenderTarget) -> String {
-  match target {
-    Dag => concat("let ", name, ": ", type_str, " = ", value)
-    _ =>
-      let spec = language_spec(target: target)
-      apply_type_template3(template: spec.annotations.let_binding_annotated, arg0: emit_ident(name: name, target: target), arg1: type_str, arg2: value)
-  }
+  let spec = language_spec(target: target)
+  apply_type_template3(template: spec.annotations.let_binding_annotated, arg0: emit_ident(name: name, target: target), arg1: type_str, arg2: value)
 }
 
 
 fn emit_return(value: String, target: RenderTarget) -> String {
-  match target {
-    Rust => concat("return ", value)
-    Go => concat("return ", value)
-    Python => concat("return ", value)
-    Dag => concat("return ", value)
-  }
+  concat("return ", value)
 }
 
 // =========================================================================
@@ -1785,22 +1810,14 @@ fn emit_unary_op(op: UnaryOpKind, operand_str: String, target: RenderTarget) -> 
 }
 
 fn emit_lambda(params_str: String, body_str: String, target: RenderTarget) -> String {
-  match target {
-    Rust => concat("|", params_str, "| ", body_str)
-    Go => concat("func(", params_str, ") interface{} { return ", body_str, " }")
-    Python => concat("lambda ", params_str, ": ", body_str)
-    Dag => concat("(", params_str, ") => ", body_str)
-  }
+  let spec = language_spec(target: target)
+  apply_type_template2(template: spec.lambda_template, arg0: params_str, arg1: body_str)
 }
 
 fn emit_error_expr(message: String, target: RenderTarget) -> String {
   let msg = emit_string_literal(s: message, suffix: "")
-  match target {
-    Rust => concat("panic!(", msg, ")")
-    Go => concat("panic(", msg, ")")
-    Python => concat("raise RuntimeError(", msg, ")")
-    Dag => concat("error(", msg, ")")
-  }
+  let spec = language_spec(target: target)
+  apply_type_template1(template: spec.error_expr_template, arg0: msg)
 }
 
 fn emit_lambda_params(param_names: List<String>, target: RenderTarget) -> String {
@@ -1812,31 +1829,18 @@ fn emit_lambda_params(param_names: List<String>, target: RenderTarget) -> String
 }
 
 fn emit_list_lit_expr(element_strs: List<String>, target: RenderTarget) -> String {
+  let spec = language_spec(target: target)
   if element_strs |> count == 0 {
-    match target {
-      Rust => "Rc::new(vec![])"
-      Python => "[]"
-      Go => "[]interface{}{}"
-      Dag => "[]"
-    }
+    spec.list_literal_empty
   } else {
     let els_str = element_strs |> join(separator: ", ")
-    match target {
-      Rust => concat("Rc::new(vec![", els_str, "])")
-      Python => concat("[", els_str, "]")
-      Go => concat("[]interface{}{", els_str, "}")
-      Dag => concat("[", els_str, "]")
-    }
+    apply_type_template1(template: spec.list_literal_template, arg0: els_str)
   }
 }
 
 fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) -> String {
-  match target {
-    Rust => concat(l_str, ".unwrap_or_else(|| ", r_str, ")")
-    Python => concat("(", l_str, " if ", l_str, " is not None else ", r_str, ")")
-    Go => concat("func() interface{} { if ", l_str, " != nil { return ", l_str, " }; return ", r_str, " }()")
-    Dag => concat(l_str, " ?? ", r_str)
-  }
+  let spec = language_spec(target: target)
+  apply_type_template2(template: spec.null_coalesce_template, arg0: l_str, arg1: r_str)
 }
 
 
@@ -2238,6 +2242,319 @@ fn emit_typed_first_arg_shared(args: List<Node>, target: RenderTarget, recurse: 
     Some { value: a } => recurse(arg_value(n: a))
     None => emit_error_expr(message: "missing method argument", target: target)
   }
+}
+
+// =========================================================================
+// Unified typed expression handlers (Phase 2)
+//
+// These replace per-language typed_* functions. Each reads LanguageSpec
+// data instead of branching on target. The `recurse` callback is the
+// caller's expression entry point (emit_py_typed_expr / emit_go_typed_expr
+// during transition; emit_unified_typed_expr once fully unified).
+// =========================================================================
+
+// Unified typed string interpolation — reads StringInterpSyntax from LanguageSpec.
+// Same model as emit_simple_string_interp but uses `recurse` for expression rendering.
+fn emit_typed_string_interp_unified(parts: List<StringPart>, target: RenderTarget, recurse: fn(Node) -> String) -> String {
+  let spec = language_spec(target: target)
+  let interp = spec.string_interp
+  let has_interpolations = parts |> any(p => match p { Interpolation { expr: _ } => true  _ => false })
+  match interp.style {
+    FormatArgs { placeholder: ph } =>
+      let fmt_parts = parts |> map(p => match p {
+        Text { value: v } =>
+          let base = escape_string_literal_body(s: v)
+          let escaped = if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
+          InterpPart { format_segment: escaped, arg_expr: "" }
+        Interpolation { expr: e } =>
+          InterpPart { format_segment: ph, arg_expr: recurse(e) }
+      })
+      let fmt_str = fmt_parts |> map(p => p.format_segment) |> join(separator: "")
+      let args = fmt_parts |> map(p => p.arg_expr) |> filter(a => a != "")
+      if args |> count == 0 {
+        apply_type_template1(template: interp.plain_template, arg0: fmt_str)
+      } else {
+        let args_str = args |> join(separator: ", ")
+        apply_type_template2(template: interp.format_template, arg0: fmt_str, arg1: args_str)
+      }
+    InlineExpr =>
+      let segments = parts |> map(p => match p {
+        Text { value: v } =>
+          let base = escape_string_literal_body(s: v)
+          if has_interpolations { apply_escape_pairs(s: base, pairs: interp.escape_pairs) } else { base }
+        Interpolation { expr: e } =>
+          concat("{", recurse(e), "}")
+      })
+      apply_type_template1(template: interp.format_template, arg0: segments |> join(separator: ""))
+  }
+}
+
+// Unified typed record literal — reads RecordLitSyntax from LanguageSpec.
+fn emit_typed_record_lit_unified(type_name: String?, fields: List<Node>, target: RenderTarget, source_indices: Map<String, NewlineIndex>, recurse: fn(Node) -> String) -> String {
+  let rls = language_spec(target: target).record_lit
+  match type_name {
+    None => {
+      if fields |> count == 0 {
+        rls.anon_empty
+      } else {
+        let field_strs = fields |> map(f =>
+          concat(rls.anon_field_indent, "\"", field_init_node_name_at(n: f, source_indices: source_indices), "\": ", recurse(field_init_node_value(n: f)), ",")
+        )
+        let fields_str = field_strs |> join(separator: "\n")
+        concat(rls.anon_prefix, fields_str, "\n", rls.anon_suffix)
+      }
+    }
+    Some { value: tn } =>
+      if fields |> count == 0 {
+        concat(tn, rls.named_empty)
+      } else {
+        let field_strs = fields |> map(f =>
+          concat(emit_export_ident(name: field_init_node_name_at(n: f, source_indices: source_indices), target: target), rls.named_field_sep, recurse(field_init_node_value(n: f)))
+        )
+        let fields_str = field_strs |> join(separator: rls.named_field_join)
+        concat(tn, rls.named_open, fields_str, rls.named_close)
+      }
+  }
+}
+
+// Unified typed call — reads async_call_prefix from LanguageSpec, uses emit_export_ident.
+fn emit_typed_call_unified(func: String, args: List<Node>, target: RenderTarget, registry: Map<String, ItemInfo>, scope: InferScope, recurse: fn(Node) -> String) -> String {
+  let spec = language_spec(target: target)
+  let ordered_args = order_typed_call_args(args: args, func: func, scope: scope)
+  let arg_strs = ordered_args |> map(a => recurse(arg_value(n: a)))
+  let callee = lookup_item(registry: registry, name: func)
+  let extra_args = match callee {
+    Some { value: info } =>
+      let has_effects = info.service_names |> count > 0 || info.resource_names |> count > 0
+      if has_effects {
+        let resource_args = info.resource_names |> map(rn => emit_ident(name: rn, target: target))
+        let service_args = info.service_names |> map(sn => service_var_name(service_name: sn))
+        concat(resource_args, service_args)
+      } else { [] }
+    None => []
+  }
+  let all_args = concat(arg_strs, extra_args)
+  let args_str = all_args |> join(separator: ", ")
+  let call_str = concat(emit_export_ident(name: func, target: target), "(", args_str, ")")
+  match callee {
+    Some { value: info } =>
+      let has_effects = info.service_names |> count > 0 || info.resource_names |> count > 0
+      if has_effects { concat(spec.async_call_prefix, call_str) } else { call_str }
+    None => call_str
+  }
+}
+
+// Unified bridge method name: applies case conversion + overrides from LanguageSpec.
+fn bridge_method_name_unified(method_name: String, target: RenderTarget) -> String {
+  let spec = language_spec(target: target)
+  let overridden = apply_bridge_method_overrides(name: method_name, overrides: spec.bridge_method_overrides)
+  apply_naming_case(name: overridden, case_style: spec.bridge_method_case)
+}
+
+// Unified algebra method call — tries template, falls back to bridge function.
+fn emit_algebra_method_call_unified(method_name: String, receiver: Node, args: List<Node>, target: RenderTarget, first_arg_str: String, recurse: fn(Node) -> String) -> String {
+  let spec = language_spec(target: target)
+  let recv_str = recurse(receiver)
+  match emit_algebra_method_template(method_name: method_name, recv_str: recv_str, first_arg_str: first_arg_str, target: target) {
+    Some { value: result } => result
+    None =>
+      let function_name = bridge_method_name_unified(method_name: method_name, target: target)
+      let arg_strs = args |> map(a => recurse(arg_value(n: a)))
+      let all_args = concat([recv_str], arg_strs)
+      concat(spec.bridge_method_prefix, emit_export_ident(name: function_name, target: target), "(", all_args |> join(separator: ", "), ")")
+  }
+}
+
+// Unified plain method call.
+fn emit_plain_method_call_unified(receiver: Node, method: String, args: List<Node>, target: RenderTarget, recurse: fn(Node) -> String) -> String {
+  let recv_str = recurse(receiver)
+  let arg_strs = args |> map(a => recurse(arg_value(n: a)))
+  let args_str = arg_strs |> join(separator: ", ")
+  concat(recv_str, ".", emit_export_ident(name: method, target: target), "(", args_str, ")")
+}
+
+// Unified typed method call — dispatches on MethodSemantics, reads LanguageSpec.
+fn emit_typed_method_call_unified(receiver: Node, method: String, args: List<Node>, method_semantics: MethodSemantics?, target: RenderTarget, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, recurse: fn(Node) -> String) -> String {
+  let spec = language_spec(target: target)
+  let source_indices = scope.type_env.source_indices
+  if method_semantics != none { match method_semantics.value {
+    ServiceMethodSemantics { service_name: svc_name } => {
+      let var_name = service_var_name(service_name: svc_name)
+      let arg_strs = args |> map(a => recurse(arg_value(n: a)))
+      let args_str = arg_strs |> join(separator: ", ")
+      concat(spec.async_call_prefix, var_name, ".", emit_export_ident(name: method, target: target), "(", args_str, ")")
+    }
+    AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: _ } =>
+      let mn = method_def.name
+      let first_arg_str = emit_typed_first_arg_shared(args: args, target: target, recurse: recurse)
+      emit_algebra_method_call_unified(method_name: mn, receiver: receiver, args: args, target: target, first_arg_str: first_arg_str, recurse: recurse)
+    PlainMethodSemantics =>
+      emit_plain_method_call_unified(receiver: receiver, method: method, args: args, target: target, recurse: recurse)
+  } }
+  else {
+    if is_typed_service_call_receiver(receiver: receiver, source_indices: source_indices) {
+      match extract_typed_service_name(receiver: receiver, source_indices: source_indices) {
+        Some { value: svc_name } =>
+          let var_name = service_var_name(service_name: svc_name)
+          let arg_strs = args |> map(a => recurse(arg_value(n: a)))
+          let args_str = arg_strs |> join(separator: ", ")
+          concat(spec.async_call_prefix, var_name, ".", emit_export_ident(name: method, target: target), "(", args_str, ")")
+        None => emit_error_expr(message: "unsupported service receiver", target: target)
+      }
+    } else {
+      emit_plain_method_call_unified(receiver: receiver, method: method, args: args, target: target, recurse: recurse)
+    }
+  }
+}
+
+// Unified typed match — reads BlockSyntax, takes pattern renderer as callback.
+// Indent model: significant_whitespace languages indent case arms (depth+1/depth+2),
+// brace languages keep arms at depth level (depth/depth+1).
+fn emit_typed_match_unified(scrutinee_str: String, arms: List<Node>, target: RenderTarget, depth: Int, recurse: fn(Node, Int) -> String, render_pattern: fn(MatchPattern) -> String, source_indices: Map<String, NewlineIndex>) -> String {
+  let spec = language_spec(target: target)
+  let bs = spec.block_syntax
+  let es = spec.expression_semantics
+  let case_depth = if bs.significant_whitespace { depth + 1 } else { depth }
+  let body_depth = case_depth + 1
+  let arm_strs = arms |> map(arm =>
+    let pat = arm_pattern(n: arm)
+    let body_str = recurse(arm_body(n: arm), body_depth)
+    let guard_str = match arm_guard(n: arm) {
+      Some { value: g } => concat(" if ", recurse(g, depth))
+      None => ""
+    }
+    let case_kw = match pat {
+      Wildcard => match es.wildcard_case {
+        Some { value: wc } => wc
+        None => concat(bs.case_keyword, render_pattern(pat))
+      }
+      _ => concat(bs.case_keyword, render_pattern(pat))
+    }
+    concat(make_indent(level: case_depth), case_kw, guard_str, ":\n",
+      make_indent(level: body_depth), body_str)
+  )
+  let arms_str = arm_strs |> join(separator: "\n")
+  if bs.block_close == "" {
+    concat(bs.match_keyword, scrutinee_str, bs.block_open, arms_str)
+  } else {
+    concat(bs.match_keyword, scrutinee_str, bs.block_open, arms_str, "\n", make_indent(level: depth), bs.block_close)
+  }
+}
+
+// Unified field access — reads TupleSyntax accessors + emit_export_ident from LanguageSpec.
+fn emit_field_access_unified(base_str: String, field: String, summary: FieldSummary?, target: RenderTarget) -> String {
+  let ts = language_spec(target: target).tuple_syntax
+  match summary {
+    Some { value: fs } =>
+      match fs.access_style {
+        TupleFirst => concat(base_str, ts.first_accessor)
+        TupleSecond => concat(base_str, ts.second_accessor)
+        _ => concat(base_str, ".", emit_export_ident(name: field, target: target))
+      }
+    None => concat(base_str, ".", emit_export_ident(name: field, target: target))
+  }
+}
+
+// =========================================================================
+// Unified typed expression entry point (Phase 2)
+//
+// Single dispatcher for Python and Go expression rendering. Reads all
+// language facts from LanguageSpec. Takes one callback: render_pattern
+// (per-language pattern rendering, not yet unified — Phase 5).
+//
+// Rust uses its own entry point (05_emit_rust.dag) due to ownership
+// logic. When Phase 6 unifies Rust, it can call this function.
+// =========================================================================
+
+fn emit_unified_typed_expr(texpr: Node, target: RenderTarget, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, fuel: Int, render_pattern: fn(MatchPattern) -> String) -> String {
+  let si = scope.type_env.source_indices
+  let spec = language_spec(target: target)
+  emit_shared_expr(
+    texpr: texpr,
+    target: target,
+    source_indices: si,
+    wrap_result: result => result,
+    recurse: child => emit_unified_typed_expr(texpr: child, target: target, registry: registry, scope: scope, depth: depth, fuel: fuel - 1, render_pattern: render_pattern),
+    emit_var: expr => emit_expr_var_shared(expr: expr, target: target, source_indices: si),
+    emit_field_access: expr => {
+      let fa_si = scope.type_env.source_indices
+      if is_typed_service_call_receiver(receiver: expr, source_indices: fa_si) {
+        match extract_typed_service_name(receiver: expr, source_indices: fa_si) {
+          Some { value: svc_name } => service_var_name(service_name: svc_name)
+          None =>
+            let base_str = emit_unified_typed_expr(texpr: field_access_base(texpr: expr), target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)
+            emit_field_access_unified(base_str: base_str, field: field_access_field_at(texpr: expr, source_indices: fa_si), summary: expr_field_access_summary(texpr: expr), target: target)
+        }
+      } else {
+        let base_str = emit_unified_typed_expr(texpr: field_access_base(texpr: expr), target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)
+        emit_field_access_unified(base_str: base_str, field: field_access_field_at(texpr: expr, source_indices: fa_si), summary: expr_field_access_summary(texpr: expr), target: target)
+      }
+    },
+    emit_call: expr =>
+      emit_typed_call_unified(func: expr_call_func_at(texpr: expr, source_indices: si), args: expr.children, target: target, registry: registry, scope: scope,
+        recurse: n => emit_unified_typed_expr(texpr: n, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)),
+    emit_method_call: expr =>
+      emit_typed_method_call_unified(receiver: method_receiver(texpr: expr), method: expr_method_name_at(texpr: expr, source_indices: si), args: method_arg_nodes(texpr: expr), method_semantics: expr_method_call_semantics(texpr: expr), target: target, registry: registry, scope: scope, depth: depth,
+        recurse: n => emit_unified_typed_expr(texpr: n, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)),
+    emit_match: expr => {
+      let scrut_str = emit_unified_typed_expr(texpr: match_scrutinee(texpr: expr), target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)
+      emit_typed_match_unified(scrutinee_str: scrut_str, arms: match_arm_nodes(texpr: expr), target: target, depth: depth, source_indices: si,
+        recurse: (node, d) => emit_unified_typed_expr(texpr: node, target: target, registry: registry, scope: scope, depth: d, fuel: 1024, render_pattern: render_pattern),
+        render_pattern: render_pattern)
+    },
+    emit_if: expr => {
+      let cond_str = emit_unified_typed_expr(texpr: if_condition(texpr: expr), target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)
+      let if_result_type = match spec.expression_semantics.if_value_form {
+        IfStatement => Some { value: resolved_type(n: expr) }
+        _ => none
+      }
+      emit_typed_if_shared(cond_str: cond_str, then_branch: if_then_branch(texpr: expr), else_branch: if_else_branch(texpr: expr),
+        if_result_type: if_result_type, depth: depth, target: target, source_indices: si,
+        recurse: (node, d) => emit_unified_typed_expr(texpr: node, target: target, registry: registry, scope: scope, depth: d, fuel: 1024, render_pattern: render_pattern))
+    },
+    emit_let: expr => {
+      let val_str = emit_unified_typed_expr(texpr: let_value(texpr: expr), target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)
+      emit_typed_let_shared(name: let_binding_name_at(texpr: expr, source_indices: si), value_str: val_str, body: let_body(texpr: expr), target: target,
+        recurse: (bd, sc) => emit_unified_typed_expr(texpr: bd, target: target, registry: registry, scope: sc, depth: depth, fuel: 1024, render_pattern: render_pattern),
+        scope: scope, value_node: let_value(texpr: expr))
+    },
+    emit_record_lit: expr =>
+      emit_typed_record_lit_unified(type_name: record_lit_type_name_at(texpr: expr, source_indices: si), fields: expr.children, target: target, source_indices: si,
+        recurse: n => emit_unified_typed_expr(texpr: n, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)),
+    emit_string_interp: expr =>
+      emit_typed_string_interp_unified(parts: extract_string_interp_parts(expr: expr), target: target,
+        recurse: e => emit_unified_typed_expr(texpr: e, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern)),
+    emit_block: expr =>
+      emit_typed_block_join(stmts: expr.children, scope: scope, depth: depth,
+        emit_block_stmts: (remaining, sc, d) => {
+          let prepend = if spec.block_syntax.significant_whitespace { false } else { true }
+          emit_block_stmts_shared(remaining: remaining, text: [], scope: sc, depth: d, prepend_indent: prepend,
+            emit_expr: (stmt, s, dd) => emit_unified_typed_expr(texpr: stmt, target: target, registry: registry, scope: s, depth: dd, fuel: 1024, render_pattern: render_pattern))
+        }),
+    emit_cast: expr =>
+      emit_typed_cast_shared(expr: cast_expr(texpr: expr), cast_target_node: cast_target(texpr: expr), target: target,
+        recurse: child => emit_unified_typed_expr(texpr: child, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern),
+        source_indices: si),
+    emit_for_each: expr =>
+      emit_typed_for_each_shared(
+        variable: foreach_variable_at(texpr: expr, source_indices: si),
+        collection: foreach_collection(texpr: expr),
+        body: foreach_body(texpr: expr),
+        target: target, depth: depth, source_indices: si,
+        recurse: (child, s, d) => emit_unified_typed_expr(texpr: child, target: target, registry: registry, scope: s, depth: d, fuel: 1024, render_pattern: render_pattern),
+        scope: scope),
+    emit_index: expr =>
+      emit_typed_index_shared(base: index_base(texpr: expr), index: index_expr(texpr: expr), target: target,
+        recurse: child => emit_unified_typed_expr(texpr: child, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern),
+        source_indices: si),
+    emit_slice: expr =>
+      emit_typed_slice_shared(base: slice_base(texpr: expr), start: slice_start(texpr: expr), end: slice_end(texpr: expr), target: target,
+        recurse: child => emit_unified_typed_expr(texpr: child, target: target, registry: registry, scope: scope, depth: depth, fuel: 1024, render_pattern: render_pattern),
+        source_indices: si),
+    emit_bin_op: expr =>
+      emit_default_bin_op(texpr: expr, target: target, source_indices: si,
+        recurse: child => emit_unified_typed_expr(texpr: child, target: target, registry: registry, scope: scope, depth: depth, fuel: fuel - 1, render_pattern: render_pattern),
+        wrap_result: result => result))
 }
 
 // Check if a TCO self-call argument is an identity pass-through: `f(param: param)`.

@@ -77,7 +77,7 @@ fn is_kernel_type(name: String) -> Bool {
 // Container types: parameterized types that stay unexpanded at resolve time.
 // Value is the expected type-parameter arity (element collections: 1, keyed: 2).
 data container_type_arity: Map<String, Int> = {
-  "List": 1, "Set": 1, "NonEmptyList": 1, "NonEmptySet": 1, "Map": 2
+  "List": 1, "Set": 1, "Map": 2
 }
 
 fn is_container_type(name: String) -> Bool {
@@ -123,7 +123,7 @@ fn container_param_name_required(kind_name: String, index: Int) -> String {
 // FreeMonoid-based collections preserve insertion order.
 // Set-based collections are unordered — no positional access.
 data ordered_element_collections: Map<String, Bool> = {
-  "List": true, "NonEmptyList": true
+  "List": true
 }
 
 fn is_ordered_element_collection(name: String) -> Bool {
@@ -139,14 +139,10 @@ fn is_ordered_element_collection(name: String) -> Bool {
 data container_to_algebra: Map<String, String> = {
   "List": "FreeMonoid",
   "list": "FreeMonoid",
-  "NonEmptyList": "FreeMonoid",
-  "non_empty_list": "FreeMonoid",
   "FreeMonoid": "FreeMonoid",
   "free_monoid": "FreeMonoid",
   "Set": "BooleanAlgebra",
   "set": "BooleanAlgebra",
-  "NonEmptySet": "BooleanAlgebra",
-  "non_empty_set": "BooleanAlgebra",
   "BooleanAlgebra": "BooleanAlgebra",
   "boolean_algebra": "BooleanAlgebra",
   "Map": "PartialFunction",
@@ -157,6 +153,14 @@ data container_to_algebra: Map<String, String> = {
 
 fn container_to_algebra_name(name: String) -> String? {
   map_get(container_to_algebra, name)
+}
+
+// Ordered canonical container/algebra names (PascalCase).
+// Single authority for deterministic test generation — coercion.dag
+// imports this instead of maintaining a parallel list.
+// Alphabetically sorted for fixed-point convergence.
+fn canonical_container_names() -> List<String> {
+  ["BooleanAlgebra", "FreeMonoid", "List", "Map", "PartialFunction", "Set"]
 }
 
 // Bool: two-valued coproduct. Structurally: Disj + 2 unit variants.
@@ -303,14 +307,8 @@ type GitRef       = String where non_empty
 // but a ref is not always a SHA (e.g., "main", "HEAD~1").
 
 // --- GCP / OIDC types (refinements for cloud identifiers) ----------------
-type ProjectId    = String where non_empty, pattern("^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
+type GcpProjectId = String where non_empty, pattern("^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
 type ServiceAccountEmail = String where pattern("^[a-z][a-z0-9-]*@[a-z0-9-]+\\.iam\\.gserviceaccount\\.com$")
-type GcpSecretId            = String where non_empty
-type GcpServiceAccountEmail = String where non_empty
-type GcpSubjectToken        = String where non_empty
-type OidcAudience           = String where non_empty
-type OidcSubjectToken       = String where non_empty
-type WifAudience            = String where non_empty
 
 // Refinement chain example (transitive subtyping):
 //   [Url] < [NonEmptyStr] < [String] < [Json]
@@ -320,8 +318,6 @@ type WifAudience            = String where non_empty
 
 // --- Domain enums (Level 4: Finite Coproducts) ------------------------
 
-type WarningPolicy = DenyAll | Default                    // |[WarningPolicy]| = 2
-type CloudRuntime = GitHubActions | Metadata | LocalDev  // |[CloudRuntime]| = 3
 type Platform     = Linux | Macos | Windows              // aligned with canonical Os tokens
 
 // --- Extracted enums (WS1-2: stringly-typed -> sum types) ---------------
@@ -367,7 +363,7 @@ type RuntimePlatform {
 }
 
 // Simple enums are finite sets. Pattern matching must be exhaustive
-// (cover the full |). CloudRuntime <: Json (by injection into String).
+// (cover the full |).
 
 // --- Filesystem entry kinds (Level 4: Finite Coproducts) ----------------
 // "What can a path point to?" -- exhaustive over POSIX entry types.
@@ -386,32 +382,7 @@ type SymlinkTarget
   | TargetDir
   | Broken                       // dangling symlink
 
-// --- Content encoding (Level 4+1: Coproduct with lattice structure) ----
-// Content encodings classify what a file path's referent contains.
-// This is NOT a property of the path string -- it's a property of the
-// content at that path. The lattice enables compile-time narrowing:
-//
-//            Unknown (T)
-//           /       \
-//        Text      Binary
-//       /    \
-//    UTF8   Latin1
-//       \    /
-//       ASCII
-//
-// Set meaning: [ContentEncoding] = {UTF8, ASCII, Latin1, Binary}
-// Lattice: UTF8 | Binary = Unknown, ASCII <: UTF8, ASCII <: Latin1
-//
-// The compiler uses ContentEncoding to:
-//   1. Verify domain compatibility at I/O boundaries (compile-time)
-//   2. Generate coproduct branch scenarios in tests (text vs binary)
-//   3. Produce diverse mock file lists from @file_types rules
-
-type ContentEncoding
-  = UTF8                        // valid Unicode (Sigma* decodable)
-  | ASCII                       // 7-bit subset (ASCII <: UTF8 & ASCII <: Latin1)
-  | Latin1                      // ISO 8859-1
-  | Binary                      // opaque byte sequence ({0..255}*)
+// --- Content encoding: see std/encoding.dag (single authority) --------
 
 // --- File content types (Level 1+4: Refinement x Coproduct) -----------
 // Model BOTH sides of the file I/O equation:
@@ -432,18 +403,8 @@ type ContentEncoding
 type TextFilePath   = FilePath where content(Text)
 type BinaryFilePath = FilePath where content(Binary)
 
-// What Filesystem.probe returns -- classifies a path's referent.
-// Now includes entry kind (regular file, directory, symlink, etc.)
-// and symlink target resolution. The encoding field is optional
-// because directories, missing paths, and special files have no encoding.
-type FileClassification {
-  path: FilePath
-  kind: EntryKind
-  encoding: ContentEncoding?     // null for dirs/missing/other
-  symlink_target: SymlinkTarget? // null unless kind = Symlink
-  size: Int
-  mime: MimeType?
-}
+// FileClassification: moved to std/filesystem.dag (co-located with
+// FileEntry and Encoding import from std/encoding.dag).
 
 type MimeType = String where pattern("^[a-z]+/[a-z0-9.+-]+$")
 
@@ -482,18 +443,6 @@ type AccessToken {
   token: Secret
   scheme: AuthScheme
   expires_at: Timestamp?       // Level 5: Optional -- [Timestamp] U {none}
-}
-
-type CloudSecretConfig {
-  project_id: String
-  secret: String
-  version: String
-  service_account: String?
-  audience: String
-  scheme: AuthScheme
-  header_name: String?
-  source_id: String
-  required_scopes: List<String>
 }
 
 type Credential {

@@ -708,6 +708,43 @@ reference. If the definition changes, the edge follows. The escape
 hatch is `String`-typed fact storage; the fix is `Node`-typed
 (edge-based) fact storage.
 
+### Minimal information per interface
+
+Every function, helper, and modeling unit should receive the minimum
+information it needs — nothing more. Passing an entire collection to a
+function that only inspects one element couples the function to state
+it doesn't use, creates ambiguity about which instance of the state is
+current, and hides the function's true dependency.
+
+**The test:** if a function takes a parameter and immediately projects
+one field or element from it, the function should take the projection
+directly. `fn check_token(tokens: List<Token>)` that does `tokens |>
+first` should be `fn check_token(tok: Token?)`.
+
+**Subtle examples:**
+- `peek_is_newline(tokens: List<Token>)` → only needs `Token?`
+  (the current token). Passing the list creates ambiguity about
+  WHICH list when the caller has multiple remaining lists in scope.
+- `function_size_effects(name: String)` → only needs the function's
+  structural contract, not a string key into a lookup table. The
+  string forces the caller to know the name; a direct reference to
+  the contract would be unambiguous.
+- `classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext)` →
+  DescentContext bundles 7 fields, but most call sites only need 2-3.
+  The bundling hides which facts the function actually depends on.
+
+**Structural prevention:** Design function signatures from the
+function's body outward: what does it READ? Pass exactly that. When a
+helper only inspects a single value, take that value — not the
+collection it came from, not the struct it's embedded in, not the
+context that happens to carry it.
+
+**Escape hatch:** convenience structs that bundle unrelated state
+("context" objects, "environment" bags). These make it easy to pass
+everything and hard to see what matters. Prefer explicit parameters
+over context bundles; group into a bundle only when 3+ consumers need
+the exact same set of fields.
+
 ### No case enumeration for open sets
 
 When behavior varies by type, variant, or category, prefer a single
@@ -1097,10 +1134,11 @@ Not invariant violations by themselves:
 
 - Roadmap/docs drift (`A7 full retirement`, `P1b done`, acceptance text
   that still names future work).
-- Loose ratchets (`SELF_COMPILE_ERROR_RATCHET == 2700`) and unlanded
-  StageMetrics/performance-contract work. These are backlog/test debt,
-  not direct invariant violations until a concrete boundary or algorithm
-  violates a stated rule.
+- Loose ratchets and unlanded StageMetrics/performance-contract work.
+  Current checked-in values: `SELF_COMPILE_ERROR_RATCHET = 2700`,
+  `CLONE_RATCHET = 21000` (pipeline.rs:7845). These are backlog/test
+  debt, not direct invariant violations until a concrete boundary or
+  algorithm violates a stated rule.
 
 ---
 
@@ -1109,17 +1147,25 @@ Not invariant violations by themselves:
 Three root causes account for ~50 individual sites. Fixing the root causes
 eliminates the symptoms; fixing symptoms individually is whack-a-mole.
 
-### Status After Final Cleanup
+### Status (2026-04-12)
 
-This workboard is complete in this branch.
+Root causes are ADDRESSED (design decided, infrastructure landed) but
+not fully CLOSED. Live violations remain in the semantic-boundary
+review (2026-03-21) and the Root Cause A/B/C tables describe work
+that is partially done, not complete.
 
-Closed in this branch:
-- Root Cause A: A-1, A-2, A-3, A-4, A-5, A-6, A-7, A-8, A-9, A-10
-- Root Cause B: B-1, B-2, B-3, B-4, B-5, B-6
-- Root Cause C: C-1, C-2, C-3, C-4, C-5, C-6, C-7, C-8, C-9, C-10
+- Root Cause A: Infrastructure landed (EmitContext, RefKind, ParamSource).
+  Migration underway. A-4 (function-as-value) and A-8/A-9 (Dynamic)
+  still have live violations.
+- Root Cause B: Partially addressed. B-1 (transport kind) and B-2
+  (item kind) structurally dispatched. B-3 through B-6 still use
+  string dispatch in some paths.
+- Root Cause C: Mostly addressed. Remaining duplication is being
+  dissolved by M4 Phase 2 (expression dispatch unification).
 
-The root-cause tables below are preserved as the historical problem statement
-that motivated the refactor, not as a live backlog.
+The root-cause tables below are the historical problem statement.
+Items marked "done" in the tables are genuinely complete; unmarked
+items are still live.
 
 ---
 

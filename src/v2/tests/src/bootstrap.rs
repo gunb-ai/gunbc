@@ -70,7 +70,9 @@ fn stage0_cargo_check() {
 //   collection element extraction (match list |> first), lambda boundary fix.
 //   render_node_type dissolved (140). make_indent dissolved (44).
 //   488→469 after merge with main.
-const DIAG_RATCHET: usize = 424;
+// 2026-04-11: 424→421 — output provenance body inference for non-recursive
+//   functions. compose_sub_value_relations fixes structural∘structural.
+const DIAG_RATCHET: usize = 421;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)
