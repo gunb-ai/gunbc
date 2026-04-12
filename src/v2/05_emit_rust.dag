@@ -4736,10 +4736,9 @@ fn emit_shell_return(inferred: Node, source_indices: Map<String, NewlineIndex>) 
         let lines = if stderr_line != "" { concat(stderr_line, "\n") } else { "" }
         concat(lines, "Ok((", field_exprs |> join(separator: ", "), "))")
       } else {
-        // Single field without from annotation — default to stdout
-        // (all shell operations should declare from; this is a fallback).
-        let is_optional = effective.return_cardinality == CardOptional
-        emit_shell_channel_expr(channel: "stdout", is_optional: is_optional)
+        // Single field without from annotation — fail closed.
+        // All shell output fields must declare `from` (ShellOutputChannel).
+        "compile_error!(\"shell output field missing `from` channel annotation\")"
       }
   }
 }

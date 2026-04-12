@@ -4873,10 +4873,7 @@ let lines = if (stderr_line.clone().as_str() != "".to_string().as_str()) {
 v2_rt::concat(v2_rt::concat(v2_rt::concat(lines, "Ok((".to_string()), field_exprs.join(&", ".to_string())), "))".to_string())
 }
         } else {
-            {
-                let is_optional = (effective.return_cardinality.clone() == Cardinality::CardOptional);
-emit_shell_channel_expr(&"stdout".to_string(), is_optional.clone())
-}
+            "compile_error!(\"shell output field missing `from` channel annotation\")".to_string()
         },
 }
 }
