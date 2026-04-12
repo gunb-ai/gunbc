@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{Node, InferredNode, VarBindingKind, import_is_all, module_imports, module_items, param_node_type_expr, authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, expr_method_name_at, let_binding_name_at, param_node_name_at, resource_use_name_at, MatchPattern, LiteralValue, field_binding_pattern, TextFile, SourceSpan, resource_use_resource, BinOp, UnaryOpKind, StringPart, DeclaredFuncSig, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, FieldAccessStyle, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, field_access_field_at, method_receiver, expr_field_access_summary, expr_method_call_semantics, record_lit_type_name_at, lambda_body, cast_expr, cast_target, return_value, foreach_variable_at, foreach_collection, foreach_body, method_arg_nodes, index_base, index_expr, slice_base, slice_start, slice_end, with_required_cardinality, Connective, is_rest_transport, is_shell_transport, is_file_transport, Cardinality};
+pub use crate::v2_std_core::{Node, InferredNode, VarBindingKind, import_is_all, module_imports, module_items, param_node_type_expr, authored_name_at, NewlineIndex, expr_var_name_at, expr_call_func_at, expr_method_name_at, let_binding_name_at, param_node_name_at, resource_use_name_at, MatchPattern, LiteralValue, TextFile, SourceSpan, resource_use_resource, BinOp, UnaryOpKind, StringPart, DeclaredFuncSig, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, FieldAccessStyle, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, field_access_field_at, method_receiver, expr_field_access_summary, expr_method_call_semantics, record_lit_type_name_at, lambda_body, cast_expr, cast_target, return_value, foreach_variable_at, foreach_collection, foreach_body, method_arg_nodes, index_base, index_expr, slice_base, slice_start, slice_end, with_required_cardinality, Connective, is_rest_transport, is_shell_transport, is_file_transport, Cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::VarBindingKind::{FunctionValueBinding};
 use crate::v2_std_core::BinOp::{NullCoalesce};
@@ -25,36 +25,14 @@ pub use crate::extdeps_languages_go_emit::{go_reserved, go_reserved_escape_suffi
 pub use crate::v2_compiler_languages::{scaffold_for_target, TestConventions, ItemKeywords, test_conventions_for_target, is_string_like, VisibilitySpec};
 use crate::v2_compiler_languages::VisibilitySpec::{CaseVisibility};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
-pub use crate::v2_compiler_infer_types::{resolved_type, normalize_access_type_node, node_is_keyed_collection, is_unit_like};
+pub use crate::v2_compiler_infer_types::{resolved_type, normalize_access_type_node, node_is_keyed_collection};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo};
 pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, expr_span};
 pub use crate::std_induction::{SubValueRelation};
 use crate::std_induction::SubValueRelation::{SubValueUnknown};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, emit_literal, emit_bin_op_symbol, emit_keyword, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_go_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, unique_strings, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, has_nested_records_node, is_service_item, typed_named_arg_matches, order_typed_call_args, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, shared_tco_body, shared_tco_default_return, shared_tco_non_self_call, shared_tco_if, shared_tco_let, shared_tco_block, shared_tco_reassign, tco_reassign_core, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, seed_bindings, emit_expr_var_shared, emit_expr_field_access_shared, extract_string_interp_parts, emit_typed_cast_shared, emit_typed_for_each_shared, emit_typed_index_shared, emit_typed_slice_shared, emit_block_stmts_shared, emit_init_block_stmts_shared, emit_typed_if_shared, emit_typed_let_shared, emit_param_shared, emit_params_shared, apply_naming_case, emit_inferred_shared, emit_typed_block_join, emit_typed_first_arg_shared, emit_typed_tco_reassign_shared, emit_algebra_method_template, emit_typed_string_interp_unified, emit_typed_record_lit_unified, emit_typed_call_unified, emit_typed_method_call_unified, emit_typed_match_unified, emit_unified_typed_expr, emit_unified_tco_body, emit_unified_tco_expr, emit_unified_service_def, emit_unified_operation_method, emit_unified_transport_dispatch};
-
-pub fn emit_go_block_stmts(remaining: Rc<Vec<Rc<Node>>>, text: Rc<Vec<String>>, scope: Rc<InferScope>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64) -> Rc<BlockEmitState> {
-    {
-        let prepend = if language_spec(RenderTarget::Go).block_syntax.clone().significant_whitespace.clone() {
-            false
-        } else {
-            true
-        };
-emit_block_stmts_shared(remaining, text, scope, depth, prepend, |stmt, sc, d| emit_go_typed_expr(stmt.clone(), registry.clone(), sc.clone(), d.clone(), 1024))
-}
-}
-
-pub fn emit_go_init_block_stmts(remaining: Rc<Vec<Rc<Node>>>, text: Rc<Vec<String>>, scope: Rc<InferScope>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, depth: i64) -> Rc<BlockEmitState> {
-    {
-        let prepend = if language_spec(RenderTarget::Go).block_syntax.clone().significant_whitespace.clone() {
-            false
-        } else {
-            true
-        };
-emit_init_block_stmts_shared(remaining, text, scope, depth, prepend, |stmt, sc, d| emit_go_typed_expr(stmt.clone(), registry.clone(), sc.clone(), d.clone(), 1024))
-}
-}
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, emit_literal, emit_bin_op_symbol, emit_keyword, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op, emit_string_literal, escape_go_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, unique_strings, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, has_nested_records_node, is_service_item, typed_named_arg_matches, order_typed_call_args, is_type_def_item, is_type_alias_item, is_type_decl_item, is_function_item, is_data_def_item, is_service_def_item, is_resource_def_item, extract_test_projections, is_tco_eligible, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, seed_bindings, emit_expr_var_shared, emit_expr_field_access_shared, extract_string_interp_parts, emit_typed_cast_shared, emit_typed_for_each_shared, emit_typed_index_shared, emit_typed_slice_shared, emit_unified_init_block_stmts, emit_typed_if_shared, emit_typed_let_shared, emit_param_shared, emit_params_shared, apply_naming_case, emit_inferred_shared, emit_typed_block_join, emit_typed_first_arg_shared, emit_algebra_method_template, emit_typed_string_interp_unified, emit_typed_record_lit_unified, emit_typed_call_unified, emit_typed_method_call_unified, emit_typed_match_unified, emit_unified_typed_expr, emit_tco_unified, emit_unified_pattern, test_file_path, emit_unified_typed_func_body, emit_unified_service_def, emit_unified_operation_method, emit_unified_transport_dispatch};
 
 pub fn emit_go(typed: &Rc<ResolvedGraph>) -> Rc<EmitResult> {
     {
@@ -83,26 +61,6 @@ Rc::new(TextFile {
     content: content,
 })
 }
-}
-
-pub fn go_source_extension() -> String {
-    scaffold_for_target(RenderTarget::Go).source_file_extension.clone()
-}
-
-pub fn go_test_file_path(module_name: String) -> String {
-    {
-        let conventions = test_conventions_for_target(RenderTarget::Go);
-let file_dir = match conventions.file_dir.clone() {
-    Some(dir) => dir.clone(),
-    None => "".to_string(),
-};
-let filename = module_to_filename(module_name);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(file_dir, conventions.file_prefix.clone()), filename), conventions.file_suffix.clone()), go_source_extension())
-}
-}
-
-pub fn go_test_name(projection: Rc<TestProjection>) -> String {
-    test_function_name(&projection, RenderTarget::Go)
 }
 
 pub fn go_mock_expr_uses_fmt(expr: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
@@ -142,7 +100,7 @@ pub fn emit_go_test_file(module_name: &String, projections: &Rc<Vec<Rc<TestProje
 let tests_str = Rc::new({ let mut __result = Vec::new(); for p in projections.clone().iter().cloned() { __result.push(emit_go_operation_test(&p, 0)); } __result }).join(&"\n\n".to_string());
 let content = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("// Generated tests -- do not edit.\n".to_string(), "// Source module: ".to_string()), module_name.clone()), "\n\n".to_string()), language_spec(RenderTarget::Go).items.clone().module_keyword.clone()), " ".to_string()), package_name), "\n\n".to_string()), go_test_import_block(projections.clone())), tests_str), "\n".to_string());
 Rc::new(TextFile {
-    path: go_test_file_path(module_name.clone()),
+    path: test_file_path(module_name.clone(), &RenderTarget::Go),
     content: content,
 })
 }
@@ -151,7 +109,7 @@ Rc::new(TextFile {
 
 pub fn emit_go_operation_test(projection: &Rc<TestProjection>, depth: i64) -> String {
     {
-        let test_name = go_test_name(projection.clone());
+        let test_name = test_function_name(&projection, RenderTarget::Go);
 let struct_name = sanitize_service_name(projection.service_name.clone());
 let indent = make_indent((depth.clone() + 1));
 let mock_setup = Rc::new({ let mut __result = Vec::new(); for mp in projection.mock_field_inits.clone().iter().cloned() { __result.push(emit_go_mock_prop_setup(&mp, (depth.clone() + 1), &projection.source_indices.clone())); } __result }).join(&"\n".to_string());
@@ -179,7 +137,7 @@ let items_str = Rc::new({ let mut __result = Vec::new(); for item in typed_modul
 let filename = module_to_filename(m.name.clone());
 let content = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("// Generated by v2 compiler -- do not edit.\n".to_string(), "// Source module: ".to_string()), m.name.clone()), "\n\n".to_string()), pkg_decl), imports_section), "\n\n".to_string()), items_str), "\n".to_string());
 Rc::new(TextFile {
-    path: v2_rt::concat(filename, go_source_extension()),
+    path: v2_rt::concat(filename, scaffold_for_target(RenderTarget::Go).source_file_extension.clone()),
     content: content,
 })
 }
@@ -358,18 +316,18 @@ pub fn emit_go_type_alias(name: String, base: Rc<Node>, source_indices: Rc<HashM
 pub fn emit_go_fn_def(name: &String, params: &Rc<Vec<Rc<Node>>>, inferred: Rc<Node>, body: &Rc<Node>, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
-let params_str = emit_go_params(params.clone(), si.clone());
-let ret_str = emit_go_inferred(&inferred, si.clone());
+let params_str = emit_params_shared(params.clone(), &RenderTarget::Go, si.clone());
+let ret_str = emit_inferred_shared(&inferred, &RenderTarget::Go, si.clone());
 let body_scope = build_params_scope(&scope, params.clone());
 let use_tco = is_tco_eligible(&name, &body, registry.clone(), &si);
 if use_tco {
             {
-                let body_str = emit_go_typed_tco_body(body.clone(), &name, &params, &registry, &body_scope, 1);
+                let body_str = emit_tco_unified(body.clone(), &name, &params, &RenderTarget::Go, &registry, &body_scope, 1, |pat| emit_unified_pattern(pat.clone(), RenderTarget::Go, si.clone()));
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(language_spec(RenderTarget::Go).items.clone().func_keyword.clone(), " ".to_string()), go_export_ident(name.clone())), "(".to_string()), params_str), ")".to_string()), ret_str), " {\n".to_string()), body_str), "\n}".to_string())
 }
         } else {
             {
-                let body_str = emit_go_typed_expr(body.clone(), registry.clone(), body_scope, 1, 1024);
+                let body_str = emit_go_typed_expr(body.clone(), registry.clone(), &body_scope, 1, 1024);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(language_spec(RenderTarget::Go).items.clone().func_keyword.clone(), " ".to_string()), go_export_ident(name.clone())), "(".to_string()), params_str), ")".to_string()), ret_str), " {\n".to_string()), make_indent(1)), "return ".to_string()), body_str), "\n}".to_string())
 }
         }
@@ -387,14 +345,14 @@ let ret_type = emit_node_type(inferred, RenderTarget::Go, scope.type_env.clone()
 let body_scope = build_params_scope(&scope, params.clone());
 let si = scope.type_env.clone().source_indices.clone();
 let body_scope = uses.clone().iter().cloned().fold(body_scope, |s: Rc<InferScope>, u: Rc<Node>| extend_scope(&s, &resource_use_name_at(u.clone(), si.clone()), resource_use_resource(&u), Rc::new(SubValueRelation::SubValueUnknown)));
-let body_str = emit_go_typed_func_body(&body, &registry, &body_scope, 1);
+let body_str = emit_unified_typed_func_body(&body, &RenderTarget::Go, &registry, &body_scope, 1);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(language_spec(RenderTarget::Go).items.clone().func_keyword.clone(), " ".to_string()), go_export_ident(name.clone())), "(".to_string()), params_str), ") (".to_string()), ret_type), ", error) {\n".to_string()), body_str), "\n}".to_string())
 }
 }
 
 pub fn emit_go_func_params(params: Rc<Vec<Rc<Node>>>, uses: Rc<Vec<Rc<Node>>>, service_names: Rc<Vec<String>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
     {
-        let param_strs = Rc::new({ let mut __result = Vec::new(); for p in params.iter().cloned() { __result.push(emit_go_param(p.clone(), source_indices.clone())); } __result });
+        let param_strs = Rc::new({ let mut __result = Vec::new(); for p in params.iter().cloned() { __result.push(emit_param_shared(&p, &RenderTarget::Go, &source_indices)); } __result });
 let resource_strs = Rc::new({ let mut __result = Vec::new(); for u in uses.iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(resource_use_name_at(u.clone(), source_indices.clone()), RenderTarget::Go), " ".to_string()), emit_node_type(resource_use_resource(&u), RenderTarget::Go, source_indices.clone()))); } __result });
 let service_strs = Rc::new({ let mut __result = Vec::new(); for sn in service_names.iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(service_var_name(sn.clone()), " *".to_string()), sanitize_service_name(sn.clone()))); } __result });
 let all_params = v2_rt::concat(v2_rt::concat(param_strs, resource_strs), service_strs);
@@ -402,123 +360,8 @@ all_params.join(&", ".to_string())
 }
 }
 
-pub fn emit_go_params(params: Rc<Vec<Rc<Node>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    emit_params_shared(params, &RenderTarget::Go, source_indices)
-}
-
-pub fn emit_go_param(param: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    emit_param_shared(&param, &RenderTarget::Go, &source_indices)
-}
-
-pub fn emit_go_inferred(inferred: &Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    if is_unit_like(&inferred) {
-        "".to_string()
-    } else {
-        emit_inferred_shared(inferred.clone(), &RenderTarget::Go, source_indices)
-    }
-}
-
-pub fn emit_go_pattern(pattern: Rc<MatchPattern>) -> String {
-    match (*pattern).clone() {
-    MatchPattern::Bind { name: n, .. } => emit_ident(n.clone(), RenderTarget::Go),
-    MatchPattern::LitPattern { value: v, .. } => emit_literal(v.clone(), &RenderTarget::Go),
-    MatchPattern::VariantPattern { name: n, field_bindings: fbs, .. } => emit_go_variant_pattern(n.clone(), fbs.clone()),
-    MatchPattern::Wildcard => "_".to_string(),
-}
-}
-
-pub fn emit_go_variant_pattern(name: String, field_bindings: Rc<Vec<Rc<Node>>>) -> String {
-    name
-}
-
-pub fn emit_go_typed_expr(texpr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, fuel: i64) -> String {
-    emit_unified_typed_expr(texpr, &RenderTarget::Go, registry, &scope, depth, fuel, |pat| emit_go_pattern(pat.clone()))
-}
-
-pub fn emit_go_typed_func_body(body: &Rc<Node>, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        {
-            let prefix = make_indent(depth.clone());
-let si = scope.type_env.clone().source_indices.clone();
-match (*body.expr_data.clone()).clone() {
-    ExprData::ExprLet => {
-                let n = let_binding_name_at(body.clone(), si);
-let ch = body.children.clone();
-let v = let_value(body.clone());
-let inner = let_body(body.clone());
-let val_str = emit_go_typed_expr(v.clone(), registry.clone(), scope.clone(), depth.clone(), 1024);
-let let_line = v2_rt::concat(prefix, emit_let_binding(n.clone(), val_str, &RenderTarget::Go));
-let next_scope = extend_scope(&scope, &n, resolved_type(v.clone()), Rc::new(SubValueRelation::SubValueUnknown));
-match inner {
-    Some(bd) => v2_rt::concat(v2_rt::concat(let_line, "\n".to_string()), emit_go_typed_func_body(&bd, &registry, &next_scope, depth.clone())),
-    None => let_line,
-}
-},
-    ExprData::ExprBlock => {
-                let ss = body.children.clone();
-if ((ss.clone().len() as i64) == 0) {
-                    v2_rt::concat(prefix, "return struct{}{}, nil".to_string())
-                } else {
-                    {
-                        let init_state = emit_go_init_block_stmts(ss.clone(), Rc::new(vec![]), scope.clone(), registry.clone(), depth.clone());
-let last_stmt = ss.clone().last().cloned();
-let last_str = match last_stmt {
-    Some(s) => v2_rt::concat(v2_rt::concat(v2_rt::concat(prefix, "return ".to_string()), emit_go_typed_expr(s.clone(), registry.clone(), init_state.scope.clone(), depth.clone(), 1024)), ", nil".to_string()),
-    None => v2_rt::concat(prefix, "return struct{}{}, nil".to_string()),
-};
-if ((init_state.text.clone().len() as i64) == 0) {
-                            last_str
-                        } else {
-                            v2_rt::concat(v2_rt::concat(init_state.text.clone().join(&"\n".to_string()), "\n".to_string()), last_str)
-                        }
-}
-                }
-},
-    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(prefix, "return ".to_string()), emit_go_typed_expr(body.clone(), registry.clone(), scope.clone(), depth.clone(), 1024)), ", nil".to_string()),
-}
-}
-    })
-}
-
-pub fn emit_go_typed_tco_body(texpr: Rc<Node>, fn_name: &String, params: &Rc<Vec<Rc<Node>>>, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64) -> String {
-    emit_unified_tco_body(texpr, fn_name.clone(), params.clone(), &RenderTarget::Go, registry.clone(), scope.clone(), depth.clone(), |expr, scope, depth| emit_go_typed_expr(expr.clone(), registry.clone(), scope.clone(), depth.clone(), 1024), |frame| emit_go_tco_match(&frame, fn_name.clone(), params.clone(), &registry, |stmts, scope, depth| emit_go_init_block_stmts(stmts.clone(), Rc::new(vec![]), scope.clone(), registry.clone(), depth.clone())), |stmts, scope, depth| emit_go_init_block_stmts(stmts.clone(), Rc::new(vec![]), scope.clone(), registry.clone(), depth.clone()))
-}
-
-pub fn emit_go_tco_match(frame: &Rc<TcoFrame>, fn_name: String, params: Rc<Vec<Rc<Node>>>, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone) -> String {
-    match (*frame.expr.clone().expr_data.clone()).clone() {
-    ExprData::ExprMatch => {
-        let s = match_scrutinee(frame.expr.clone());
-let arm_list = match_arm_nodes(frame.expr.clone());
-let scrut_str = emit_go_typed_expr(s, registry.clone(), frame.scope.clone(), frame.depth.clone(), 1024);
-let arm_strs = Rc::new({ let mut __result = Vec::new(); for arm in arm_list.iter().cloned() { __result.push(emit_go_typed_tco_switch_case(&arm, &fn_name, &params, &registry, &frame.scope.clone(), frame.depth.clone(), render_init_stmts.clone())); } __result });
-let arms_str = arm_strs.join(&"\n".to_string());
-let bs = language_spec(RenderTarget::Go).block_syntax.clone();
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(bs.match_keyword.clone(), scrut_str), bs.block_open.clone()), arms_str), "\n".to_string()), bs.block_close.clone())
-},
-    _ => emit_error_expr("emit_go_tco_match expected ExprMatch".to_string(), RenderTarget::Go),
-}
-}
-
-pub fn emit_go_typed_tco_switch_case(arm: &Rc<Node>, fn_name: &String, params: &Rc<Vec<Rc<Node>>>, registry: &Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64, render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone) -> String {
-    {
-        let spec = language_spec(RenderTarget::Go);
-let bs = spec.block_syntax.clone();
-let es = spec.expression_semantics.clone();
-let pat = arm_pattern(arm.clone());
-let body_str = emit_unified_tco_expr(&Rc::new(TcoFrame {
-    expr: arm_body(&arm),
-    scope: scope.clone(),
-    depth: (depth.clone() + 1),
-}), &fn_name, params.clone(), &RenderTarget::Go, registry.clone(), |expr, scope, depth| emit_go_typed_expr(expr.clone(), registry.clone(), scope.clone(), depth.clone(), 1024), |frame| emit_go_tco_match(&frame, fn_name.clone(), params.clone(), &registry, render_init_stmts.clone()), render_init_stmts.clone());
-let case_kw = match (*pat.clone()).clone() {
-    MatchPattern::Wildcard => match es.wildcard_case.clone() {
-    Some(wc) => wc.clone(),
-    None => v2_rt::concat(bs.case_keyword.clone(), emit_go_pattern(pat.clone())),
-},
-    _ => v2_rt::concat(bs.case_keyword.clone(), emit_go_pattern(pat.clone())),
-};
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(make_indent(depth.clone()), case_kw), ":\n".to_string()), make_indent((depth.clone() + 1))), body_str)
-}
+pub fn emit_go_typed_expr(texpr: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64, fuel: i64) -> String {
+    emit_unified_typed_expr(texpr, &RenderTarget::Go, registry, &scope, depth, fuel, |pat| emit_unified_pattern(pat.clone(), RenderTarget::Go, scope.type_env.clone().source_indices.clone()))
 }
 
 pub fn emit_go_transport_body(transport: Rc<Node>, op_name: String, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>, depth: i64) -> String {
@@ -619,7 +462,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 pub fn emit_go_data_def(name: String, type_node: Rc<Node>, value: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64) -> String {
     {
         let ty_str = emit_node_type(type_node, RenderTarget::Go, scope.type_env.clone().source_indices.clone());
-let val_str = emit_go_typed_expr(value, registry, scope.clone(), depth, 1024);
+let val_str = emit_go_typed_expr(value, registry, &scope, depth, 1024);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("var ".to_string(), go_export_ident(name)), " ".to_string()), ty_str), " = ".to_string()), val_str)
 }
 }

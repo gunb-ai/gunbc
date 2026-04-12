@@ -259,6 +259,25 @@ type IfValueForm
 type ExpressionSemantics {
   if_value_form: IfValueForm
   wildcard_case: String?        // Go: "default", Rust/Python: none (use pattern)
+  variant_pattern: VariantPatternSyntax?  // None → type-name only (Go type switch)
+  guard_prefix: String?          // " if " (Python/Rust) / None (Go: no pattern guards)
+  // Return model — rendering convention for function return statements.
+  // The .dag source says `fn foo() -> Order`; the target language's convention
+  // determines how returns are rendered (single vs multi-return+error).
+  empty_return_value: String    // "None" (Python) / "struct{}{}, nil" (Go) / "()" (Rust)
+  return_suffix: String         // "" (Python/Rust) / ", nil" (Go)
+  suppress_unit_return: Bool    // false (Python/Rust) / true (Go: omit struct{} from sigs)
+}
+
+// Variant pattern syntax — how match arms destructure variant constructors.
+// Python: Name(field=binding, ...)   → open="(", close=")", binding_sep="=", empty_suffix="()"
+// Rust:   Name { field: binding, ... } → open=" { ", close=" }", binding_sep=": ", empty_suffix=""
+// Go:     just Name (no destructuring) → None
+type VariantPatternSyntax {
+  open: String             // "(" or " { "
+  close: String            // ")" or " }"
+  binding_sep: String      // "=" (Python) or ": " (Rust)
+  empty_suffix: String     // "()" (Python) or "" (Rust)
 }
 
 // Naming case — bootstrap-local mirror of std.languages.NamingCase.
@@ -563,7 +582,12 @@ fn rust_spec() -> LanguageSpec {
     },
     expression_semantics: ExpressionSemantics {
       if_value_form: IfExpression,
-      wildcard_case: None
+      wildcard_case: None,
+      variant_pattern: Some { value: VariantPatternSyntax { open: " { ", close: " }", binding_sep: ": ", empty_suffix: "" } },
+      guard_prefix: Some { value: " if " },
+      empty_return_value: "()",
+      return_suffix: "",
+      suppress_unit_return: false
     },
     lambda_template: rust_lambda_template,
     error_expr_template: rust_error_expr_template,
@@ -702,7 +726,12 @@ fn python_spec() -> LanguageSpec {
     },
     expression_semantics: ExpressionSemantics {
       if_value_form: ConditionalTernary,
-      wildcard_case: None
+      wildcard_case: None,
+      variant_pattern: Some { value: VariantPatternSyntax { open: "(", close: ")", binding_sep: "=", empty_suffix: "()" } },
+      guard_prefix: Some { value: " if " },
+      empty_return_value: "None",
+      return_suffix: "",
+      suppress_unit_return: false
     },
     lambda_template: python_lambda_template,
     error_expr_template: python_error_expr_template,
@@ -841,7 +870,12 @@ fn go_spec() -> LanguageSpec {
     },
     expression_semantics: ExpressionSemantics {
       if_value_form: IfStatement,
-      wildcard_case: Some { value: "default" }
+      wildcard_case: Some { value: "default" },
+      variant_pattern: None,
+      guard_prefix: None,
+      empty_return_value: "struct{}{}, nil",
+      return_suffix: ", nil",
+      suppress_unit_return: true
     },
     lambda_template: go_lambda_template,
     error_expr_template: go_error_expr_template,
@@ -983,7 +1017,12 @@ fn dag_spec() -> LanguageSpec {
     },
     expression_semantics: ExpressionSemantics {
       if_value_form: IfExpression,
-      wildcard_case: None
+      wildcard_case: None,
+      variant_pattern: Some { value: VariantPatternSyntax { open: " { ", close: " }", binding_sep: ": ", empty_suffix: "" } },
+      guard_prefix: Some { value: " if " },
+      empty_return_value: "()",
+      return_suffix: "",
+      suppress_unit_return: false
     },
     lambda_template: dag_lambda_template,
     error_expr_template: dag_error_expr_template,

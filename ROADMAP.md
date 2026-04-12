@@ -635,21 +635,34 @@ emits both from the same source.
 
 **Thesis claim:** emission is mechanical translation.
 
-**Current state:** Phase 1 complete, Phase 2 (expression dispatch) complete.
-The shared emitter (`05_emit.dag`) has zero language-decision `match target`
-branches. Python and Go expression rendering is unified into a single
-`emit_unified_typed_expr` dispatcher that reads LanguageSpec data — ~50
-per-language functions deleted, CX ratchet 421→416. Per-language emitter
-files retain: pattern rendering, TCO, func body, type defs, service defs.
+**Current state:** Phases 1–3.5 complete, Phase 4 verified (no code
+change needed — orchestration was already callback-based), Phase 5
+in progress. Python and Go per-language files have zero language-decision
+branches for expressions, patterns, TCO, block statements, or func bodies.
+31 per-language functions deleted, replaced by shared functions that read
+LanguageSpec data. Match arm rendering uses shared `emit_match_arm_line`
++ `emit_arm_guard` (single authority for both TCO and non-TCO paths).
+Pattern rendering unified via `VariantPatternSyntax`; guard syntax via
+`guard_prefix` on `ExpressionSemantics` (fails closed when target has
+no guard form). Return model (`empty_return_value`, `return_suffix`,
+`suppress_unit_return`) drives func body unification.
+Per-language files retain: type defs, func/workflow defs, entry
+point/module rendering, transport implementations, sum type encoding.
 Rust emitter is untouched (ownership logic, Phase 6).
 
-**Progress:** Phase 1 ✓, Phase 2 ✓, Phase 3-4 ready, Phase 5-6 blocked on LS-4.
+**Progress:** Phase 1 ✓, Phase 2 ✓, Phase 3 ✓, Phase 3.5 ✓,
+Phase 4 verified ✓, Phase 5 in progress, Phase 6 blocked on LS-4.
+
+**Line counts:** Python 666, Go 689, shared 2983, Rust 5863.
 
 **Target:** one emitter that reads `LanguageSpec` + `InhabitantDecl`
 data per target. Adding a new target language means adding a new
 `dsl/extdeps/languages/<lang>/` directory, not touching the compiler.
 
-**Next:** Phase 3 (TCO/block unification), Phase 4 (service/transport).
+**Next:** Phase 5 requires LanguageSpec design work — return model
+(Go multi-return vs Python single), type definition syntax, async
+model, module system. The unification pattern is proven; what remains
+is modeling the remaining language differences as data.
 **Blocked on (for Phase 5-6):** Track 2 LS-4 (borrow model design).
 
 ### Track 14: Omni-emission
