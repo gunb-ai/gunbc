@@ -215,14 +215,14 @@ fn go_test_name(projection: TestProjection) -> String {
   test_function_name(projection: projection, target: Go)
 }
 
-fn go_mock_expr_uses_fmt(expr: Node, source_index: NewlineIndex?) -> Bool {
-  let rendered = emit_simple_expr(expr: expr, target: Go, source_index: source_index)
+fn go_mock_expr_uses_fmt(expr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let rendered = emit_simple_expr(expr: expr, target: Go, source_indices: source_indices)
   rendered |> split(delimiter: "fmt.Sprintf(") |> count > 1
 }
 
 fn go_test_import_block(projections: List<TestProjection>) -> String {
   let needs_fmt = projections |> any(p =>
-    p.mock_field_inits |> any(mp => go_mock_expr_uses_fmt(expr: field_init_node_value(n: mp), source_index: p.source_index))
+    p.mock_field_inits |> any(mp => go_mock_expr_uses_fmt(expr: field_init_node_value(n: mp), source_indices: p.source_indices))
   )
   if needs_fmt {
     "import (\n\t\"fmt\"\n\t\"testing\"\n)\n\n"
@@ -233,7 +233,7 @@ fn go_test_import_block(projections: List<TestProjection>) -> String {
 
 fn go_test_signature_comment(projection: TestProjection) -> String {
   let params_str = projection.params
-    |> map(p => concat(param_node_name_at(n: p, source_index: projection.source_index), " ", emit_node_type(n: param_node_type_expr(n: p), target: Go, source_index: projection.source_index)))
+    |> map(p => concat(param_node_name_at(n: p, source_indices: projection.source_indices), " ", emit_node_type(n: param_node_type_expr(n: p), target: Go, source_indices: projection.source_indices)))
     |> join(separator: ", ")
   concat(
     "// Signature: ",
@@ -242,7 +242,7 @@ fn go_test_signature_comment(projection: TestProjection) -> String {
     "(",
     params_str,
     ") ",
-    emit_node_type(n: projection.inferred, target: Go, source_index: projection.source_index))
+    emit_node_type(n: projection.inferred, target: Go, source_indices: projection.source_indices))
 }
 
 fn emit_go_test_file(module_name: String, projections: List<TestProjection>) -> TextFile {
@@ -268,7 +268,7 @@ fn emit_go_operation_test(projection: TestProjection, depth: Int) -> String {
   let struct_name = sanitize_service_name(name: projection.service_name)
   let indent = make_indent(level: depth + 1)
   let mock_setup = projection.mock_field_inits
-    |> map(mp => emit_go_mock_prop_setup(mock_prop: mp, depth: depth + 1, source_index: projection.source_index))
+    |> map(mp => emit_go_mock_prop_setup(mock_prop: mp, depth: depth + 1, source_indices: projection.source_indices))
     |> join(separator: "\n")
   concat(
     language_spec(target: Go).items.func_keyword, " ", test_name, "(t *testing.T) {\n",
@@ -279,11 +279,11 @@ fn emit_go_operation_test(projection: TestProjection, depth: Int) -> String {
     "}")
 }
 
-fn emit_go_mock_prop_setup(mock_prop: Node, depth: Int, source_index: NewlineIndex?) -> String {
+fn emit_go_mock_prop_setup(mock_prop: Node, depth: Int, source_indices: Map<String, NewlineIndex>) -> String {
   concat(
-    emit_ident(name: field_init_node_name_at(n: mock_prop, source_index: source_index), target: Go),
+    emit_ident(name: field_init_node_name_at(n: mock_prop, source_indices: source_indices), target: Go),
     " := ",
-    emit_simple_expr(expr: field_init_node_value(n: mock_prop), target: Go, source_index: source_index))
+    emit_simple_expr(expr: field_init_node_value(n: mock_prop), target: Go, source_indices: source_indices))
 }
 
 // =========================================================================
@@ -363,9 +363,9 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
   // Structural dispatch via shared predicates (CM: no taxonomy enum).
   if is_type_def_item(item: item) {
     emit_go_type_def_from_connective(item: item, env: env)
-  } else if is_type_alias_item(item: item, source_index: env.source_index) {
-    emit_go_type_alias(name: item_text, base: resolved_type(n: item), source_index: env.source_index)
-  } else if is_type_decl_item(item: item, source_index: env.source_index) {
+  } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
+    emit_go_type_alias(name: item_text, base: resolved_type(n: item), source_indices: env.source_indices)
+  } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
     ""
   } else if is_function_item(item: item) {
     if item.uses |> count > 0 {
@@ -413,7 +413,7 @@ fn emit_go_struct_from_children(name: String, children: List<Node>, env: TypeEnv
 
 fn emit_go_struct_field_from_child(child: Node, env: TypeEnv) -> String {
   let child_text = authored_name(env: env, node: child)
-  let ty = emit_node_type(n: resolved_type(n: child), target: Go, source_index: env.source_index)
+  let ty = emit_node_type(n: resolved_type(n: child), target: Go, source_indices: env.source_indices)
   let json_tag = concat(" `json:\"", to_snake(name: child_text), "\"`")
   concat("\t", go_export_ident(name: child_text), " ", ty, json_tag)
 }
@@ -460,8 +460,8 @@ fn emit_go_variant_struct(parent_name: String, child: Node, env: TypeEnv) -> Str
   }
 }
 
-fn emit_go_type_alias(name: String, base: Node, source_index: NewlineIndex?) -> String {
-  concat(language_spec(target: Go).items.type_alias_keyword, " ", name, " = ", emit_node_type(n: base, target: Go, source_index: source_index))
+fn emit_go_type_alias(name: String, base: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  concat(language_spec(target: Go).items.type_alias_keyword, " ", name, " = ", emit_node_type(n: base, target: Go, source_indices: source_indices))
 }
 
 // =========================================================================
@@ -482,10 +482,10 @@ fn emit_go_type_alias(name: String, base: Node, source_index: NewlineIndex?) -> 
 
 fn emit_go_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let si = scope.type_env.source_index
-  let params_str = emit_go_params(params: params, source_index: si)
-  let ret_str = emit_go_inferred(inferred: inferred, source_index: si)
+  let params_str = emit_go_params(params: params, source_indices: si)
+  let ret_str = emit_go_inferred(inferred: inferred, source_indices: si)
   let body_scope = build_params_scope(scope: scope, params: params)
-  let use_tco = is_tco_eligible(name: name, body: body, registry: registry, source_index: si)
+  let use_tco = is_tco_eligible(name: name, body: body, registry: registry, source_indices: si)
   if use_tco {
     let body_str = emit_go_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope, depth: 1)
     concat(language_spec(target: Go).items.func_keyword, " ", go_export_ident(name: name), "(", params_str, ")", ret_str, " {\n",
@@ -517,22 +517,22 @@ fn emit_go_func_def(
     Some { value: info } => info.service_names
     None => []
   }
-  let params_str = emit_go_func_params(params: params, uses: uses, service_names: service_names, source_index: scope.type_env.source_index)
-  let ret_type = emit_node_type(n: inferred, target: Go, source_index: scope.type_env.source_index)
+  let params_str = emit_go_func_params(params: params, uses: uses, service_names: service_names, source_indices: scope.type_env.source_indices)
+  let ret_type = emit_node_type(n: inferred, target: Go, source_indices: scope.type_env.source_indices)
   let body_scope = build_params_scope(scope: scope, params: params)
   let si = scope.type_env.source_index
   let body_scope = fold(uses, init: body_scope, f: (s, u) =>
-    extend_scope(scope: s, name: resource_use_name_at(n: u, source_index: si), resolved: resource_use_resource(n: u), provenance: SubValueUnknown)
+    extend_scope(scope: s, name: resource_use_name_at(n: u, source_indices: si), resolved: resource_use_resource(n: u), provenance: SubValueUnknown)
   )
   let body_str = emit_go_typed_func_body(body: body, registry: registry, scope: body_scope, depth: 1)
   concat(language_spec(target: Go).items.func_keyword, " ", go_export_ident(name: name), "(", params_str, ") (", ret_type, ", error) {\n",
     body_str, "\n}")
 }
 
-fn emit_go_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, source_index: NewlineIndex?) -> String {
-  let param_strs = params |> map(p => emit_go_param(param: p, source_index: source_index))
+fn emit_go_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  let param_strs = params |> map(p => emit_go_param(param: p, source_indices: source_indices))
   let resource_strs = uses |> map(u =>
-    concat(emit_ident(name: resource_use_name_at(n: u, source_index: source_index), target: Go), " ", emit_node_type(n: resource_use_resource(n: u), target: Go, source_index: source_index))
+    concat(emit_ident(name: resource_use_name_at(n: u, source_indices: source_indices), target: Go), " ", emit_node_type(n: resource_use_resource(n: u), target: Go, source_indices: source_indices))
   )
   let service_strs = service_names |> map(sn =>
     concat(service_var_name(service_name: sn), " *", sanitize_service_name(name: sn))
@@ -546,18 +546,18 @@ fn emit_go_func_params(params: List<Node>, uses: List<Node>, service_names: List
 // Go: name type (not name: type)
 // =========================================================================
 
-fn emit_go_params(params: List<Node>, source_index: NewlineIndex?) -> String {
-  emit_params_shared(params: params, target: Go, source_index: source_index)
+fn emit_go_params(params: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+  emit_params_shared(params: params, target: Go, source_indices: source_indices)
 }
 
-fn emit_go_param(param: Node, source_index: NewlineIndex?) -> String {
-  emit_param_shared(param: param, target: Go, source_index: source_index)
+fn emit_go_param(param: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  emit_param_shared(param: param, target: Go, source_indices: source_indices)
 }
 
-fn emit_go_inferred(inferred: Node, source_index: NewlineIndex?) -> String {
+fn emit_go_inferred(inferred: Node, source_indices: Map<String, NewlineIndex>) -> String {
   // Go suppresses void return type annotations (Unit → "struct{}").
   if is_unit_like(n: inferred) { "" }
-  else { emit_inferred_shared(inferred: inferred, target: Go, source_index: source_index) }
+  else { emit_inferred_shared(inferred: inferred, target: Go, source_indices: source_indices) }
 }
 fn emit_go_pattern(pattern: MatchPattern) -> String {
   match pattern {
@@ -588,7 +588,7 @@ fn emit_go_typed_func_body(body: Node, registry: Map<String, ItemInfo>, scope: I
   let si = scope.type_env.source_index
   match body.expr_data {
     ExprLet => {
-      let n = let_binding_name_at(texpr: body, source_index: si)
+      let n = let_binding_name_at(texpr: body, source_indices: si)
       let ch = body.children
       let v = let_value(texpr: body)
       let inner = let_body(texpr: body)
@@ -684,11 +684,11 @@ fn emit_go_typed_tco_switch_case(arm: Node, fn_name: String, params: List<Node>,
 // This file provides: struct rendering + transport implementations.
 // =========================================================================
 
-fn emit_go_transport_body(transport: Node, op_name: String, registry: Map<String, ItemInfo>, source_index: NewlineIndex?, depth: Int) -> String {
+fn emit_go_transport_body(transport: Node, op_name: String, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>, depth: Int) -> String {
   emit_unified_transport_dispatch(
-    transport: transport, op_name: op_name, registry: registry, source_index: source_index, depth: depth,
-    render_rest: (n, t, d, si) => emit_go_rest_call(op_name: n, transport: t, depth: d, source_index: si),
-    render_shell: (n, t, d, si) => emit_go_shell_call(op_name: n, transport: t, depth: d, source_index: si),
+    transport: transport, op_name: op_name, registry: registry, source_indices: source_indices, depth: depth,
+    render_rest: (n, t, d, si) => emit_go_rest_call(op_name: n, transport: t, depth: d, source_indices: si),
+    render_shell: (n, t, d, si) => emit_go_shell_call(op_name: n, transport: t, depth: d, source_indices: si),
     render_file: (n, d) => emit_go_file_call(op_name: n, depth: d),
     render_local: (n, d) => emit_go_local_call(op_name: n, depth: d))
 }
@@ -697,13 +697,13 @@ fn emit_go_service_def(item: Node, registry: Map<String, ItemInfo>, env: TypeEnv
   emit_unified_service_def(
     item: item, target: Go, registry: registry, env: env,
     render_service_fields: (name, transport, ops, si) =>
-      emit_go_service_struct(name: name, fallback_transport: transport, op_children: ops, source_index: si),
+      emit_go_service_struct(name: name, fallback_transport: transport, op_children: ops, source_indices: si),
     render_transport_body: (transport, op_name, reg, si, depth) =>
-      emit_go_transport_body(transport: transport, op_name: op_name, registry: reg, source_index: si, depth: depth))
+      emit_go_transport_body(transport: transport, op_name: op_name, registry: reg, source_indices: si, depth: depth))
 }
 
-fn emit_go_service_struct(name: String, fallback_transport: Node, op_children: List<Node>, source_index: NewlineIndex?) -> String {
-  let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children, source_index: source_index)
+fn emit_go_service_struct(name: String, fallback_transport: Node, op_children: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+  let fs = compute_service_fields(fallback_transport: fallback_transport, op_children: op_children, source_indices: source_indices)
   let decls = service_field_decls(fs: fs, t: language_spec(target: Go).service_fields)
   if decls |> count == 0 {
     concat(language_spec(target: Go).items.type_alias_keyword, " ", name, " ", language_spec(target: Go).items.struct_keyword, "{}")
@@ -712,22 +712,22 @@ fn emit_go_service_struct(name: String, fallback_transport: Node, op_children: L
   }
 }
 
-fn emit_go_rest_call(op_name: String, transport: Node, depth: Int, source_index: NewlineIndex?) -> String {
+fn emit_go_rest_call(op_name: String, transport: Node, depth: Int, source_indices: Map<String, NewlineIndex>) -> String {
   let prefix = make_indent(level: depth)
   let url_line = concat(prefix, "url := fmt.Sprintf(\"%s/", to_snake(name: op_name), "\", c.BaseURL)")
   let body_line = concat(prefix, "reqBody := bytes.NewBuffer(nil)")
   let req_line = concat(prefix, "req, err := http.NewRequest(\"POST\", url, reqBody)\n",
     "if err != nil {\n\treturn nil, fmt.Errorf(\"creating request: %w\", err)\n}")
-  let auth_line = if transport_has_auth(t: transport, source_index: source_index) {
-    let header_name = match transport_auth_header_name(t: transport, source_index: source_index) {
+  let auth_line = if transport_has_auth(t: transport, source_indices: source_indices) {
+    let header_name = match transport_auth_header_name(t: transport, source_indices: source_indices) {
       Some { value: h } => h
       None => "Authorization"
     }
     concat(prefix, "req.Header.Set(\"", header_name, "\", c.AuthToken)")
   } else { "" }
-  let hdrs = transport_headers(t: transport, source_index: source_index)
+  let hdrs = transport_headers(t: transport, source_indices: source_indices)
   let header_lines = hdrs |> map(h =>
-    concat(prefix, "req.Header.Set(\"", h.name, "\", ", emit_simple_expr(expr: field_init_node_value(n: h), target: Go, source_index: source_index), ")")
+    concat(prefix, "req.Header.Set(\"", h.name, "\", ", emit_simple_expr(expr: field_init_node_value(n: h), target: Go, source_indices: source_indices), ")")
   )
   let send_lines = concat(
     prefix, "resp, err := http.DefaultClient.Do(req)\n",
@@ -746,13 +746,13 @@ fn emit_go_rest_call(op_name: String, transport: Node, depth: Int, source_index:
   all_lines |> join(separator: "\n")
 }
 
-fn emit_go_shell_call(op_name: String, transport: Node, depth: Int, source_index: NewlineIndex?) -> String {
+fn emit_go_shell_call(op_name: String, transport: Node, depth: Int, source_indices: Map<String, NewlineIndex>) -> String {
   let prefix = make_indent(level: depth)
   let cmd_line = concat(prefix, "cmd := exec.Command(\"", to_snake(name: op_name), "\")")
   let dir_line = concat(prefix, "cmd.Dir = c.WorkingDir")
-  let envs = transport_env(t: transport, source_index: source_index)
+  let envs = transport_env(t: transport, source_indices: source_indices)
   let env_lines = envs |> map(e =>
-    concat(prefix, "cmd.Env = append(cmd.Env, \"", e.name, "=\" + ", emit_simple_expr(expr: field_init_node_value(n: e), target: Go, source_index: source_index), ")")
+    concat(prefix, "cmd.Env = append(cmd.Env, \"", e.name, "=\" + ", emit_simple_expr(expr: field_init_node_value(n: e), target: Go, source_indices: source_indices), ")")
   )
   let run_lines = concat(
     prefix, "output, err := cmd.Output()\n",
@@ -798,11 +798,11 @@ fn emit_go_resource_def(item: Node, env: TypeEnv) -> String {
 
 fn emit_go_capability_method(cap_node: Node, depth: Int, env: TypeEnv) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name_at(n: p, source_index: env.source_index), target: Go), " ", emit_node_type(n: param_node_type_expr(n: p), target: Go, source_index: env.source_index))
+    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Go), " ", emit_node_type(n: param_node_type_expr(n: p), target: Go, source_indices: env.source_indices))
   )
   let params_str = input_params |> join(separator: ", ")
   // After dissolution, inferred on the child node IS the output type
-  let ret = emit_node_type(n: resolved_type(n: cap_node), target: Go, source_index: env.source_index)
+  let ret = emit_node_type(n: resolved_type(n: cap_node), target: Go, source_indices: env.source_indices)
   concat(make_indent(level: depth), go_export_ident(name: authored_name(env: env, node: cap_node)), "(", params_str, ") (", ret, ", error)")
 }
 
@@ -813,7 +813,7 @@ fn emit_go_capability_method(cap_node: Node, depth: Int, env: TypeEnv) -> String
 // =========================================================================
 
 fn emit_go_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let ty_str = emit_node_type(n: type_node, target: Go, source_index: scope.type_env.source_index)
+  let ty_str = emit_node_type(n: type_node, target: Go, source_indices: scope.type_env.source_indices)
   let val_str = emit_go_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, fuel: 1024)
   concat("var ", go_export_ident(name: name), " ", ty_str, " = ", val_str)
 }

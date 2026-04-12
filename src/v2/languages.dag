@@ -282,16 +282,15 @@ type TcoSyntax {
   temp_assign_op: String      // " = " (Rust/Python), " := " (Go)
 }
 
-// Service method rendering — how service operations are emitted.
-// Captures the method signature shape: receiver, self param, error return.
-type ServiceSyntax {
-  self_param: String            // "self" (Python), "" (Go), "&self" (Rust)
-  receiver_prefix: String       // "" (Python) or "(c *" (Go)
-  receiver_suffix: String       // "" (Python) or ") " (Go)
-  return_open: String           // " -> " (Python) or " (" (Go)
-  return_close: String          // "" (Python) or ", error)" (Go)
-  methods_inside_class: Bool    // true (Python) or false (Go)
-}
+// Service method strategy — structural dispatch, not string templates.
+// Follows the VisibilitySpec/ErrorHandlingSyntax coproduct pattern.
+type ServiceMethodStrategy
+  = SelfInParams { self_param: String }       // Python: def m(self, ...); Rust: fn m(&self, ...)
+  | ExternalReceiver { var_name: String }     // Go: func (c *Name) m(...)
+
+type ServiceReturnStrategy
+  = ArrowReturn                               // Python/Rust: -> T (uses items.return_arrow)
+  | ErrorTupleReturn { error_type: String }   // Go: (T, error)
 
 // Item definition facts — individual tokens the emitter composes.
 // Not templates: each field is one language fact.
@@ -371,8 +370,9 @@ type LanguageSpec {
   bridge_method_overrides: Map<String, String>  // {"with": "with_update"} (Python) or {} (Go)
   // Record literal syntax.
   record_lit: RecordLitSyntax
-  // Service method syntax — receiver, self param, error return wrapping.
-  service_syntax: ServiceSyntax
+  // Service method strategy — structural coproducts for method + return shape.
+  service_method: ServiceMethodStrategy
+  service_return: ServiceReturnStrategy
 }
 
 type TupleSyntax {
@@ -559,14 +559,8 @@ fn rust_spec() -> LanguageSpec {
       anon_empty: "\{\}", anon_prefix: "\{\n", anon_suffix: "\}",
       anon_field_indent: "    "
     },
-    service_syntax: ServiceSyntax {
-      self_param: "&self",
-      receiver_prefix: "",
-      receiver_suffix: "",
-      return_open: " -> Result<",
-      return_close: ", Box<dyn std::error::Error>>",
-      methods_inside_class: false
-    }
+    service_method: SelfInParams { self_param: "&self" },
+    service_return: ArrowReturn
   }
 }
 
@@ -704,14 +698,8 @@ fn python_spec() -> LanguageSpec {
       anon_empty: "\{\}", anon_prefix: "\{\n", anon_suffix: "\}",
       anon_field_indent: "    "
     },
-    service_syntax: ServiceSyntax {
-      self_param: "self",
-      receiver_prefix: "",
-      receiver_suffix: "",
-      return_open: " -> ",
-      return_close: "",
-      methods_inside_class: true
-    }
+    service_method: SelfInParams { self_param: "self" },
+    service_return: ArrowReturn
   }
 }
 
@@ -849,14 +837,8 @@ fn go_spec() -> LanguageSpec {
       anon_empty: "map[string]interface\{\}\{\}", anon_prefix: "map[string]interface\{\}\{\n", anon_suffix: "\}",
       anon_field_indent: "\t"
     },
-    service_syntax: ServiceSyntax {
-      self_param: "",
-      receiver_prefix: "(c *",
-      receiver_suffix: ") ",
-      return_open: " (",
-      return_close: ", error)",
-      methods_inside_class: false
-    }
+    service_method: ExternalReceiver { var_name: "c" },
+    service_return: ErrorTupleReturn { error_type: "error" }
   }
 }
 
@@ -997,14 +979,8 @@ fn dag_spec() -> LanguageSpec {
       anon_empty: "\{\}", anon_prefix: "\{\n", anon_suffix: "\}",
       anon_field_indent: "    "
     },
-    service_syntax: ServiceSyntax {
-      self_param: "",
-      receiver_prefix: "",
-      receiver_suffix: "",
-      return_open: " -> ",
-      return_close: "",
-      methods_inside_class: false
-    }
+    service_method: SelfInParams { self_param: "" },
+    service_return: ArrowReturn
   }
 }
 
