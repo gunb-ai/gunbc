@@ -371,11 +371,10 @@ proofs.iter().cloned().fold(Rc::new(OwnershipBuildResult {
             };
 let movable = build_movable_set(entry.proof.clone());
 let fold_eligible = build_fold_eligible_set(entry.proof.clone());
-let bare = entry.proof.clone().func_name.clone();
 Rc::new(OwnershipBuildResult {
-    ownership_index: v2_rt::rc_map_insert(v2_rt::rc_map_insert(acc.ownership_index, bare.clone(), movable.clone()), entry.name.clone(), movable.clone()),
-    fold_eligible_index: v2_rt::rc_map_insert(v2_rt::rc_map_insert(acc.fold_eligible_index, bare.clone(), fold_eligible.clone()), entry.name.clone(), fold_eligible.clone()),
-    read_only_params_index: v2_rt::rc_map_insert(v2_rt::rc_map_insert(acc.read_only_params_index, bare.clone(), read_only.clone()), entry.name.clone(), read_only.clone()),
+    ownership_index: v2_rt::rc_map_insert(acc.ownership_index, entry.name.clone(), movable.clone()),
+    fold_eligible_index: v2_rt::rc_map_insert(acc.fold_eligible_index, entry.name.clone(), fold_eligible.clone()),
+    read_only_params_index: v2_rt::rc_map_insert(acc.read_only_params_index, entry.name.clone(), read_only.clone()),
 })
 } })
 }
@@ -2361,7 +2360,11 @@ let callee = lookup_item(registry.clone(), func.clone());
 let filled_args = fill_default_args(&ordered_args, callee.clone(), registry.clone(), collection_scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone());
 let is_rt = v2_rt::map_contains_key(&rt_functions(), func.clone());
 let is_rt_ref_map = v2_rt::map_contains_key(&rt_ref_map_functions(), func.clone());
-let callee_read_only = match v2_rt::map_get(&emit_info.read_only_params_index.clone(), func.clone()) {
+let callee_qualified = match callee.clone() {
+    Some(info) => v2_rt::concat(v2_rt::concat(info.module_name.clone(), ".".to_string()), func.clone()),
+    None => func.clone(),
+};
+let callee_read_only = match v2_rt::map_get(&emit_info.read_only_params_index.clone(), callee_qualified) {
     Some(m) => m.clone(),
     None => v2_rt::rc_empty_map::<bool>(),
 };
@@ -4876,26 +4879,8 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(lines, "Ok((".to_string()), field_expr
 }
         } else {
             {
-                let is_bool = (is_coproduct_type(effective.clone()) && ((effective.children.clone().len() as i64) == 2));
-if is_bool {
-                    "Ok(output.status.success())".to_string()
-                } else {
-                    {
-                        let __eff_is_container = node_is_element_collection(&effective, source_indices.clone());
-if __eff_is_container {
-                            "Ok(Rc::new(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()))".to_string()
-                        } else {
-                            {
-                                let is_optional = (effective.return_cardinality.clone() == Cardinality::CardOptional);
-if is_optional.clone() {
-                                    "Ok(Some(stdout))".to_string()
-                                } else {
-                                    "Ok(stdout)".to_string()
-                                }
-}
-                        }
-}
-                }
+                let is_optional = (effective.return_cardinality.clone() == Cardinality::CardOptional);
+emit_shell_channel_expr(&"stdout".to_string(), is_optional.clone())
 }
         },
 }
@@ -5136,21 +5121,31 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let ".to_string(), fiel
 }
 }
 
+pub fn emit_cargo_dep(name: String, version: String, features: &Rc<Vec<String>>) -> String {
+    if ((features.clone().len() as i64) > 0) {
+        {
+            let feat_strs = Rc::new({ let mut __result = Vec::new(); for f in features.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat("\"".to_string(), f.clone()), "\"".to_string())); } __result });
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(name, " = { version = \"".to_string()), version), "\", features = [".to_string()), feat_strs.join(&", ".to_string())), "] }\n".to_string())
+}
+    } else {
+        v2_rt::concat(v2_rt::concat(v2_rt::concat(name, " = \"".to_string()), version), "\"\n".to_string())
+    }
+}
+
 pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Rc<TextFile> {
     {
         let header = v2_rt::concat(v2_rt::concat("[package]\nname = \"".to_string(), crate_name), "\"\nversion = \"0.1.0\"\nedition = \"2021\"\n".to_string());
 let workspace = "\n[workspace]\n".to_string();
-let deps = "\n[dependencies]\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\n".to_string();
-let cli_dep = "clap = { version = \"4\", features = [\"derive\"] }\n".to_string();
+let base_deps = Rc::new(vec![emit_cargo_dep("serde".to_string(), "1".to_string(), &Rc::new(vec!["derive".to_string(), "rc".to_string()])), emit_cargo_dep("serde_json".to_string(), "1".to_string(), &Rc::new(vec![])), emit_cargo_dep("stacker".to_string(), "0.1".to_string(), &Rc::new(vec![])), emit_cargo_dep("clap".to_string(), "4".to_string(), &Rc::new(vec!["derive".to_string()])), emit_cargo_dep("lazy_static".to_string(), "1".to_string(), &Rc::new(vec![]))]);
 let async_deps = if has_services {
-            "tokio = { version = \"1\", features = [\"full\"] }\nreqwest = { version = \"0.12\", features = [\"json\"] }\nasync-trait = \"0.1\"\n".to_string()
+            Rc::new(vec![emit_cargo_dep("tokio".to_string(), "1".to_string(), &Rc::new(vec!["full".to_string()])), emit_cargo_dep("reqwest".to_string(), "0.12".to_string(), &Rc::new(vec!["json".to_string()])), emit_cargo_dep("async-trait".to_string(), "0.1".to_string(), &Rc::new(vec![]))])
         } else {
-            "".to_string()
+            Rc::new(vec![])
         };
-let lazy_dep = "lazy_static = \"1\"\n".to_string();
+let all_deps = v2_rt::concat(base_deps, async_deps);
 Rc::new(TextFile {
     path: "Cargo.toml".to_string(),
-    content: v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(header, workspace), deps), cli_dep), async_deps), lazy_dep),
+    content: v2_rt::concat(v2_rt::concat(v2_rt::concat(header, workspace), "\n[dependencies]\n".to_string()), all_deps.join(&"".to_string())),
 })
 }
 }

@@ -80,7 +80,9 @@ fn stage0_cargo_check() {
 //   tree-walking functions into arithmetic mode. Dissolves render_node_type
 //   and composed violations across emit files. Per-field provenance re-annotation
 //   pass added (infrastructure for Stream D).
-const DIAG_RATCHET: usize = 353;
+// 2026-04-12: 353→354 — compile_to_resolved added (M5 Phase 0 interpreter).
+//   Same complexity warning as compile_sources (same call chain).
+const DIAG_RATCHET: usize = 354;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)
