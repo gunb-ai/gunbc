@@ -1693,17 +1693,24 @@ if e.consumed.clone() {
 if has_err(r.err.clone()) {
                 return r.clone()
             }
+let extended = Rc::new(SourceSpan {
+    file: span.file.clone(),
+    start: span.start.clone(),
+    end: r.span.clone().end.clone(),
+});
 {
                 let __tco_0 = r.state.clone();
 let __tco_1 = v2_rt::concat(v2_rt::concat(acc, ".".to_string()), r.name.clone());
+let __tco_2 = extended;
 state = __tco_0;
 acc = __tco_1;
+span = __tco_2;
 continue;
 }
 } else {
             break Rc::new(NameResult {
     name: acc,
-    span: span,
+    span: span.clone(),
     state: state.clone(),
     err: None,
 });
@@ -1760,6 +1767,7 @@ if has_err(r.err.clone()) {
 })
         }
 let mod_name = r.name.clone();
+let mod_name_span = r.span.clone();
 let s = skip_newlines(tokens.clone(), r.state.clone());
 let r = parse_imports(tokens.clone(), s.clone());
 if has_err(r.err.clone()) {
@@ -1783,10 +1791,29 @@ let items = r.items.clone();
 let s = r.state.clone();
 let mod_ir = intern(&s.intern_table.clone(), &mod_name);
 let s = Rc::new(ParserState { intern_table: mod_ir.table.clone(), ..(*s.clone()).clone() });
-let r#mod = module_node(&mod_name, imports, items, &start_span);
-let r#mod = Rc::new(Node { ident: Some(mod_ir.id.clone()), ..(*r#mod.clone()).clone() });
+let base_mod = Rc::new(Node {
+    name: mod_name.clone(),
+    span: start_span.clone(),
+    ident_span: Some(mod_name_span),
+    children: items,
+    connective: Connective::NoConnective,
+    params: imports,
+    inferred: None,
+    return_cardinality: Cardinality::Required,
+    uses: Rc::new(vec![]),
+    body: None,
+    transport: None,
+    properties: Rc::new(vec![]),
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::NoExprData),
+    ident: None,
+});
+let r#mod = Rc::new(Node { ident: Some(mod_ir.id.clone()), ..(*base_mod).clone() });
 Rc::new(ModuleResult {
-    module: r#mod.clone(),
+    module: r#mod,
     state: s.clone(),
     err: None,
 })

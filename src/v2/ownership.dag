@@ -227,7 +227,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
             }
           None => accum
         }
-        let non_init = texpr.children |> filter(a => a.name != "init")
+        let non_init = texpr.children |> filter(a => authored_name_at(source_indices: si, node: a) != "init")
         non_init |> fold(init: threaded_accum, f: (acc, a) =>
           walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si)
         )
@@ -244,7 +244,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
       let mname = expr_method_name_at(texpr: texpr, source_indices: si)
       if mname == "fold" {
         let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false, si: si)
-        let init_arg = mc_args |> filter(a => a.name == "init") |> first
+        let init_arg = mc_args |> filter(a => authored_name_at(source_indices: si, node: a) == "init") |> first
         let threaded_accum = match init_arg {
           Some { value: ia } =>
             let ia_val = arg_value(n: ia)
@@ -256,7 +256,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
             }
           None => recv_accum
         }
-        let non_init = mc_args |> filter(a => a.name != "init")
+        let non_init = mc_args |> filter(a => authored_name_at(source_indices: si, node: a) != "init")
         let walked = non_init |> fold(init: threaded_accum, f: (acc, a) =>
           walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si)
         )
@@ -515,13 +515,13 @@ fn fold_terminal_expr(body: Node) -> Node {
 }
 
 // Does the fold lambda's terminal expression construct a record literal of the accumulator type?
-fn fold_body_constructs_acc_struct(lambda_node: Node, acc_type_name: String) -> Bool {
+fn fold_body_constructs_acc_struct(lambda_node: Node, acc_type_name: String, si: Map<String, NewlineIndex>) -> Bool {
   match lambda_node.expr_data {
     ExprLambda { semantics: _ } =>
       let body = lambda_body(texpr: lambda_node)
       let terminal = fold_terminal_expr(body: body)
       match terminal.expr_data {
-        ExprRecordLit { parent_enum: _ } => terminal.name == acc_type_name
+        ExprRecordLit { parent_enum: _ } => authored_name_at(source_indices: si, node: terminal) == acc_type_name
         _ => false
       }
     _ => false
@@ -582,7 +582,7 @@ fn analyze_single_fold(method_call: Node, si: Map<String, NewlineIndex>) -> Fold
     ExprLambda { semantics: _ } =>
       let terminal = fold_terminal_expr(body: lambda_body(texpr: fold_lambda_node))
       match terminal.expr_data {
-        ExprRecordLit { parent_enum: _ } => terminal.name
+        ExprRecordLit { parent_enum: _ } => authored_name_at(source_indices: si, node: terminal)
         _ => ""
       }
     _ => ""
@@ -592,7 +592,7 @@ fn analyze_single_fold(method_call: Node, si: Map<String, NewlineIndex>) -> Fold
     Some { value: Resolved { node: type_node } } => type_node.return_cardinality == Required
     _ => false
   }
-  let cond_body = fold_body_constructs_acc_struct(lambda_node: fold_lambda_node, acc_type_name: acc_type_name)
+  let cond_body = fold_body_constructs_acc_struct(lambda_node: fold_lambda_node, acc_type_name: acc_type_name, si: si)
   let cond_safe = fold_body_safe_field_moves(lambda_node: fold_lambda_node, acc_name: acc_param_name, si: si)
   let eligible = cond_required && cond_body && cond_safe && acc_type_name != ""
   FoldAccUnwrapProof {
@@ -614,8 +614,9 @@ fn analyze_ownership(func_name: String, params: List<Node>, body: Node, si: Map<
   // Seed the accumulator with parameter names so they appear in bindings.
   // binding_kind is none here; it will be set from ExprVar during the walk.
   let initial = params |> fold(init: empty_usage_accum(), f: (acc, p) =>
+    let p_name = authored_name_at(source_indices: si, node: p)
     UsageAccum {
-      bindings: map_insert(acc.bindings, p.name, BindingUsage { name: p.name, binding_kind: none, consumers: [] }),
+      bindings: map_insert(acc.bindings, p_name, BindingUsage { name: p_name, binding_kind: none, consumers: [] }),
       fold_call_nodes: acc.fold_call_nodes
     }
   )
