@@ -67,25 +67,43 @@ change. The bootstrap pipeline knows what to do.
 `.github/workflows/` and ROADMAP.md. Adding a new emission target,
 test category, or .dag module requires manual CI updates. The current
 CI gate table (ROADMAP.md) is already drift-prone — ratchet values
-get stale, new gates get forgotten.
+get stale, new gates get forgotten. Generated YAML is hard to debug.
 
-**Target state:** CI gates are derived from .dag declarations:
+**Key insight (from the-gunbai / gunb.ai):** YAML is a transport
+constraint — GitHub Actions requires it — not the CI logic itself.
+The same pattern as REST: you don't generate HTTP, you generate code
+that speaks HTTP. The design:
+
+1. **Model GitHub Actions as extdeps** — runners, steps, logging
+   commands, artifact upload/download, matrix strategies. These are
+   external platform facts, same category as REST endpoints or
+   shell transports. Lives in `dsl/extdeps/github/actions.dag`.
+
+2. **Declare CI intent in .dag** — the meta-process code declares
+   what gates exist, what they check, when they run. This is the
+   actual CI logic, compiled like any other .dag program.
+
+3. **Emit a thin YAML shim** — the minimum YAML that GitHub requires
+   (workflow trigger, runner spec, checkout step). The shim calls a
+   .dag-compiled binary that IS the CI runner.
+
+4. **The binary does the work** — runs gates, emits GitHub Actions
+   logging annotations (`::error::`, `::group::`, etc.) via the
+   actions extdep, reports results. Debugging happens in .dag code,
+   not in generated YAML.
 
 ```
-dsl/gunbc/ci.dag
+dsl/extdeps/github/actions.dag    -- GH Actions platform model
+dsl/gunbc/ci.dag                  -- CI intent declarations
 
-type CIGate {
-  name: String
-  command: String
-  blocking: Bool
-  derives_from: CIGateSource
-}
-
-type CIGateSource =
-  | RatchetGate { metric: String, direction: RatchetDirection }
-  | TestSuiteGate { test_pattern: String }
-  | FreshnessGate { generated_from: List<SourceFile> }
+Emitted artifacts (multi-artifact):
+  .github/workflows/ci.yml        -- thin YAML shim (< 30 lines)
+  target/ci-runner                 -- .dag-compiled binary
 ```
+
+This is a **multi-artifact emission** (Track 14 direction): one .dag
+source produces both the YAML shim and the binary, coordinated by
+the artifact plan.
 
 - Each .dag file type has declared testing requirements
 - Each emission target has declared cross-language equivalence
@@ -95,8 +113,8 @@ type CIGateSource =
 - Adding a feature produces CI coverage automatically
 
 **Concrete outcome:** Adding a new emission target language creates
-the cross-language equivalence test gate. Adding a new ratchet
-metric creates the CI check. No YAML editing.
+the cross-language equivalence test gate. The binary gains the gate
+logic. The YAML shim doesn't change. No YAML editing ever.
 
 ### Domain 3: Development Process (future)
 
@@ -109,24 +127,36 @@ compiler models everything, including its own development.
 
 ## Architecture
 
-Meta-processes live in `dsl/gunbc/`:
+Meta-processes use two layers: **extdeps** (platform facts) and
+**gunbc/** (compiler-specific process declarations).
 
 ```
+dsl/extdeps/github/actions.dag   -- GH Actions platform model (runners,
+                                     logging annotations, artifact ops)
 dsl/gunbc/
-  bootstrap.dag    -- stage compilation pipeline
-  ci.dag           -- CI gate derivation
-  process.dag      -- development track modeling (future)
+  bootstrap.dag                  -- stage compilation pipeline
+  ci.dag                         -- CI intent declarations
+  process.dag                    -- development track modeling (future)
 ```
 
-These files compile with the same compiler. They produce:
-- Shell scripts (bootstrap automation, CI steps)
-- Configuration (GitHub Actions YAML — eventually)
-- Validation (is the CI config complete? are bootstrap stages
-  consistent?)
+These files compile with the same compiler. The CI pipeline is a
+**multi-artifact emission**:
+
+```
+dsl/gunbc/ci.dag ──(compile)──▶ .github/workflows/ci.yml  (thin shim)
+                               + target/ci-runner           (binary)
+```
+
+The shim is a transport artifact (GitHub requires YAML). The binary
+is the actual CI logic. This is the same pattern as REST services:
+the .dag code declares intent, the emitter produces both the
+transport glue and the implementation.
 
 **Key insight:** meta-processes are another emission target. The
 compiler already transforms .dag declarations into mechanical output.
 Meta-process modeling asks it to transform declarations about itself.
+The YAML shim is no different from an HTTP route handler — it's the
+platform's required entry point, generated once and stable.
 
 ## Phasing
 
@@ -139,14 +169,26 @@ additive fields. Target: adding a field to Node requires only the
 
 Depends on: nothing (emitter default-value support already landing).
 
-### Phase 2: CI gate derivation (after Phase 1)
+### Phase 2: CI pipeline as multi-artifact emission (after Phase 1)
 
-Model CI gates as declared facts. Derive gate commands from project
-structure. Target: adding a new .dag module type automatically
-creates CI obligations.
+Two sub-phases:
+
+**2a: GitHub Actions extdeps** — model the platform in
+`dsl/extdeps/github/actions.dag`. Runners, step types, logging
+annotations (`::error::`, `::group::`), artifact upload/download,
+matrix strategies. Pure data modeling, same as existing REST/shell
+extdeps.
+
+**2b: CI intent + emission** — declare CI gates in
+`dsl/gunbc/ci.dag`. Emit the thin YAML shim + .dag-compiled binary.
+The binary reads gate declarations, runs checks, reports results
+via the GH Actions logging extdep.
+
+Target: adding a new .dag module type automatically creates CI
+obligations. The YAML shim never changes.
 
 Depends on: Phase 1 (establishes the pattern), M4 partially
-(emit to shell for gate scripts).
+(multi-artifact emission), Track 14 direction (artifact planning).
 
 ### Phase 3: Process modeling (future, after Phases 1-2)
 
@@ -162,7 +204,11 @@ Depends on: Phases 1-2 (established meta-modeling pattern).
 | M4 single emitter | Meta-processes as emission targets |
 | PR #404 emitter default values | Additive bootstrap (Phase 1) |
 | Track 13 Phase 7 (.dag as target) | Meta-processes validated by the compiler |
+| Track 14 (omni-emission) | Multi-artifact: YAML shim + binary from one source |
 | KF-3 verification from structure | Meta-process invariants verified automatically |
+| `dsl/extdeps/github/` (existing) | REST API model; actions.dag extends to CI platform |
+| `dsl/extdeps/shell.dag` (existing) | Shell transport for bootstrap scripts |
+| the-gunbai / gunb.ai (prior repos) | Proven pattern: thin YAML shim → .dag binary |
 
 ## Done Criterion
 
@@ -170,9 +216,11 @@ Depends on: Phases 1-2 (established meta-modeling pattern).
 `dsl/gunbc/bootstrap.dag`. Adding a field to Node requires zero
 manual stage0 edits.
 
-**Phase 2:** `.github/workflows/ci.yml` gates are derived from
-`dsl/gunbc/ci.dag`. Adding a new emission target creates a CI gate
-with no YAML editing.
+**Phase 2:** `.github/workflows/ci.yml` is a stable thin shim
+(< 30 lines) that calls a .dag-compiled CI binary. Adding a new
+emission target creates a CI gate in the binary. The YAML never
+changes. `dsl/extdeps/github/actions.dag` models the GH Actions
+platform.
 
 **Phase 3:** Track dependencies and milestone readiness are computed
 from `dsl/gunbc/process.dag`. ROADMAP.md status sections are

@@ -673,8 +673,13 @@ structure, not maintained in parallel.
 | Phase | Scope | Status | Depends on |
 |-------|-------|--------|-----------|
 | 1. Bootstrap modeling | `dsl/gunbc/bootstrap.dag` — stage deps, field propagation, change classification | 🟢 Unblocked | Emitter default-value support (landing) |
-| 2. CI gate derivation | `dsl/gunbc/ci.dag` — gates derived from .dag declarations | 🟡 | Phase 1, M4 partially |
+| 2. CI as multi-artifact | `dsl/extdeps/github/actions.dag` (platform model) + `dsl/gunbc/ci.dag` (intent) → thin YAML shim + .dag binary | 🟡 | Phase 1, M4, Track 14 direction |
 | 3. Dev process | `dsl/gunbc/process.dag` — track deps, readiness, milestones | 🔴 | Phases 1-2 |
+
+CI architecture: YAML is a transport constraint (GitHub requires it),
+not the CI logic. Emit a thin shim (< 30 lines, stable) that calls
+a .dag-compiled binary. The binary runs gates and reports via GH
+Actions logging extdep. Pattern proven in the-gunbai / gunb.ai repos.
 
 **Design:** [docs/meta-process-design.md](docs/meta-process-design.md)
 
