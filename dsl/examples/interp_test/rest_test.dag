@@ -1,0 +1,25 @@
+// REST service dispatch test.
+// Tests I-3 with httpbin.org (public, no auth).
+module examples.rest_test
+
+service test.Http {
+  config {
+    endpoint: "https://httpbin.org"
+  }
+
+  operation GetJson {
+    input {}
+    output {
+      url: String
+    }
+    transport rest {
+      method: GET,
+      path: "/get"
+    }
+  }
+}
+
+func rest_test() -> String {
+  result = test.Http.GetJson()
+  result.url
+}
