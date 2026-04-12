@@ -95,7 +95,12 @@ type ParseResult {
 
 // Helper result types — tokens only, no ctx.
 // Callers use ctx from their own scope.
-type AdvanceResult { token: Token, tokens: List<Token> }
+// Sum type: AdvanceOk carries the strictly shorter tokens (one consumed);
+// AdvanceEof signals empty input. Callers match-destructure, making the
+// structural consume-one-token relationship visible to CX.
+type AdvanceResult
+  = AdvanceOk { token: Token, tokens: List<Token> }
+  | AdvanceEof
 type EatResult { consumed: Bool, tokens: List<Token>, token: Token? }
 
 // Typed PR replacements (flat -- r.val.X becomes r.X)
@@ -248,8 +253,8 @@ fn token_span(tok: Token?) -> SourceSpan {
 
 fn advance(tokens: List<Token>) -> AdvanceResult {
   match tokens |> first {
-    Some { value: t } => AdvanceResult { token: t, tokens: tokens |> skip(1) }
-    None => AdvanceResult { token: Token { text: "", span: make_span(start: 0, end: 0), shape: ShEof }, tokens: tokens }
+    Some { value: t } => AdvanceOk { token: t, tokens: tokens |> skip(1) }
+    None => AdvanceEof
   }
 }
 
@@ -1347,12 +1352,15 @@ fn parse_type_body_after_eq(tokens: List<Token>, ctx: ParseContext, name: String
 // wrap the base type in a Refined Node. Otherwise, return the base type unchanged.
 fn try_where_clause(tokens: List<Token>, ctx: ParseContext, base_te: Node, start_span: SourceSpan) -> TypeResult {
   if tok_is_keyword(tok: tokens |> first, kw: "where") {
-    let adv = advance(tokens: tokens)
-    let r = parse_predicates(tokens: adv.tokens, ctx: ctx)
-    if has_err(err: r.err) { return TypeResult { type_expr: base_te, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    let predicate_node = Node { name: "", span: start_span, ident_span: none, children: r.predicates, connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-    let refined = Node { name: "", span: start_span, ident_span: none, children: [base_te], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: Some { value: predicate_node }, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-    TypeResult { type_expr: refined, tokens: r.tokens, ctx: r.ctx, err: none }
+    match advance(tokens: tokens) {
+      AdvanceOk { token: _, tokens: rest } =>
+        let r = parse_predicates(tokens: rest, ctx: ctx)
+        if has_err(err: r.err) { return TypeResult { type_expr: base_te, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+        let predicate_node = Node { name: "", span: start_span, ident_span: none, children: r.predicates, connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+        let refined = Node { name: "", span: start_span, ident_span: none, children: [base_te], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: Some { value: predicate_node }, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+        TypeResult { type_expr: refined, tokens: r.tokens, ctx: r.ctx, err: none }
+      AdvanceEof => TypeResult { type_expr: base_te, tokens: tokens, ctx: ctx, err: none }
+    }
   } else {
     TypeResult { type_expr: base_te, tokens: tokens, ctx: ctx, err: none }
   }
@@ -3479,30 +3487,33 @@ fn parse_expr_loop(tokens: List<Token>, ctx: ParseContext, lhs: Node, min_bp: In
           if bps.left < min_bp {
             ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
           } else {
-            let adv = advance(tokens: tokens)
-            let op_shape = adv.token.shape
-            // Special case: dot is field access
-            if is_dot_shape(shape: op_shape) {
-              let r = expect_name(tokens: adv.tokens)
-              if has_err(err: r.err) { return ExprResult { expr: lhs, tokens: r.tokens, ctx: ctx, err: r.err } }
-              let new_lhs = make_named_expr_node(name: r.name, expr_data: ExprFieldAccess { summary: none }, children: [lhs], inferred: none, span: loop_span, name_span: r.span)
-              parse_expr_loop(tokens: r.tokens, ctx: ctx, lhs: new_lhs, min_bp: min_bp)
-            } else if is_pipe_arrow_shape(shape: op_shape) {
-              let r = parse_pipe_rhs(tokens: adv.tokens, ctx: ctx, receiver: lhs, span: loop_span)
-              if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-              parse_expr_loop(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, min_bp: min_bp)
-            } else {
-              let tokens = skip_newlines(tokens: adv.tokens)
-              let r = parse_expr_bp(tokens: tokens, ctx: ctx, min_bp: bps.right)
-              if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-              let binop_opt = find_operator_binop(ops: dag_syntax_spec.operators, symbol: adv.token.text)
-              match binop_opt {
-                Some { value: binop } => {
-                  let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, algebra_field: none }, children: [lhs, r.expr], inferred: none, span: loop_span)
-                  parse_expr_loop(tokens: r.tokens, ctx: r.ctx, lhs: new_lhs, min_bp: min_bp)
+            match advance(tokens: tokens) {
+              AdvanceOk { token: op_tok, tokens: rest } =>
+                let op_shape = op_tok.shape
+                // Special case: dot is field access
+                if is_dot_shape(shape: op_shape) {
+                  let r = expect_name(tokens: rest)
+                  if has_err(err: r.err) { return ExprResult { expr: lhs, tokens: r.tokens, ctx: ctx, err: r.err } }
+                  let new_lhs = make_named_expr_node(name: r.name, expr_data: ExprFieldAccess { summary: none }, children: [lhs], inferred: none, span: loop_span, name_span: r.span)
+                  parse_expr_loop(tokens: r.tokens, ctx: ctx, lhs: new_lhs, min_bp: min_bp)
+                } else if is_pipe_arrow_shape(shape: op_shape) {
+                  let r = parse_pipe_rhs(tokens: rest, ctx: ctx, receiver: lhs, span: loop_span)
+                  if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+                  parse_expr_loop(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, min_bp: min_bp)
+                } else {
+                  let tokens = skip_newlines(tokens: rest)
+                  let r = parse_expr_bp(tokens: tokens, ctx: ctx, min_bp: bps.right)
+                  if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+                  let binop_opt = find_operator_binop(ops: dag_syntax_spec.operators, symbol: op_tok.text)
+                  match binop_opt {
+                    Some { value: binop } => {
+                      let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, algebra_field: none }, children: [lhs, r.expr], inferred: none, span: loop_span)
+                      parse_expr_loop(tokens: r.tokens, ctx: r.ctx, lhs: new_lhs, min_bp: min_bp)
+                    }
+                    None => ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: Some { value: parse_error(msg: concat("unknown binary operator: ", op_tok.text), span: loop_span) } }
+                  }
                 }
-                None => ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: Some { value: parse_error(msg: concat("unknown binary operator: ", adv.token.text), span: loop_span) } }
-              }
+              AdvanceEof => ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
             }
           }
         }
@@ -4043,29 +4054,32 @@ fn parse_expr_loop_no_brace(tokens: List<Token>, ctx: ParseContext, lhs: Node, m
           if bps.left < min_bp {
             ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
           } else {
-            let adv = advance(tokens: tokens)
-            let op_shape = adv.token.shape
-            if is_dot_shape(shape: op_shape) {
-              let r = expect_name(tokens: adv.tokens)
-              if has_err(err: r.err) { return ExprResult { expr: lhs, tokens: r.tokens, ctx: ctx, err: r.err } }
-              let new_lhs = make_named_expr_node(name: r.name, expr_data: ExprFieldAccess { summary: none }, children: [lhs], inferred: none, span: loop_span, name_span: r.span)
-              parse_expr_loop_no_brace(tokens: r.tokens, ctx: ctx, lhs: new_lhs, min_bp: min_bp)
-            } else if is_pipe_arrow_shape(shape: op_shape) {
-              let r = parse_pipe_rhs(tokens: adv.tokens, ctx: ctx, receiver: lhs, span: loop_span)
-              if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-              parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, min_bp: min_bp)
-            } else {
-              let tokens = skip_newlines(tokens: adv.tokens)
-              let r = parse_expr_bp_no_brace(tokens: tokens, ctx: ctx, min_bp: bps.right)
-              if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-              let binop_opt = find_operator_binop(ops: dag_syntax_spec.operators, symbol: adv.token.text)
-              match binop_opt {
-                Some { value: binop } => {
-                  let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, algebra_field: none }, children: [lhs, r.expr], inferred: none, span: loop_span)
-                  parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: new_lhs, min_bp: min_bp)
+            match advance(tokens: tokens) {
+              AdvanceOk { token: op_tok, tokens: rest } =>
+                let op_shape = op_tok.shape
+                if is_dot_shape(shape: op_shape) {
+                  let r = expect_name(tokens: rest)
+                  if has_err(err: r.err) { return ExprResult { expr: lhs, tokens: r.tokens, ctx: ctx, err: r.err } }
+                  let new_lhs = make_named_expr_node(name: r.name, expr_data: ExprFieldAccess { summary: none }, children: [lhs], inferred: none, span: loop_span, name_span: r.span)
+                  parse_expr_loop_no_brace(tokens: r.tokens, ctx: ctx, lhs: new_lhs, min_bp: min_bp)
+                } else if is_pipe_arrow_shape(shape: op_shape) {
+                  let r = parse_pipe_rhs(tokens: rest, ctx: ctx, receiver: lhs, span: loop_span)
+                  if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+                  parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, min_bp: min_bp)
+                } else {
+                  let tokens = skip_newlines(tokens: rest)
+                  let r = parse_expr_bp_no_brace(tokens: tokens, ctx: ctx, min_bp: bps.right)
+                  if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+                  let binop_opt = find_operator_binop(ops: dag_syntax_spec.operators, symbol: op_tok.text)
+                  match binop_opt {
+                    Some { value: binop } => {
+                      let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, algebra_field: none }, children: [lhs, r.expr], inferred: none, span: loop_span)
+                      parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: new_lhs, min_bp: min_bp)
+                    }
+                    None => ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: Some { value: parse_error(msg: concat("unknown binary operator: ", op_tok.text), span: loop_span) } }
+                  }
                 }
-                None => ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: Some { value: parse_error(msg: concat("unknown binary operator: ", adv.token.text), span: loop_span) } }
-              }
+              AdvanceEof => ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
             }
           }
         }

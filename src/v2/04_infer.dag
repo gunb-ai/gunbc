@@ -337,7 +337,8 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
               name: sig_key, params: sig_params,
               inferred: Some { value: sig_rt },
               is_async: sig_async,
-              output_provenance: rsig.output_provenance
+              output_provenance: rsig.output_provenance,
+              variant_provenance: rsig.variant_provenance
             })
           )
           // svc_registry + svc_locals from parent items
@@ -4246,7 +4247,8 @@ fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv
                     Some { value: sig } =>
                       map_insert(acc, fn_name, ResolvedFuncSig {
                         name: sig.name, params: sig.params, inferred: sig.inferred,
-                        is_async: sig.is_async, output_provenance: provenance
+                        is_async: sig.is_async, output_provenance: provenance,
+                        variant_provenance: sig.variant_provenance
                       })
                     None => acc
                   }
@@ -4266,7 +4268,8 @@ fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv
                   Some { value: sig } =>
                     map_insert(acc, fn_name, ResolvedFuncSig {
                       name: sig.name, params: sig.params, inferred: sig.inferred,
-                      is_async: sig.is_async, output_provenance: provenance
+                      is_async: sig.is_async, output_provenance: provenance,
+                      variant_provenance: sig.variant_provenance
                     })
                   None => acc
                 }
@@ -4924,7 +4927,8 @@ fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContributi
       params: ritem.params,
       inferred: declared_rt,
       is_async: ritem.uses |> count > 0,
-      output_provenance: []
+      output_provenance: [],
+      variant_provenance: empty_map()
     } }
   } else {
     none

@@ -372,6 +372,11 @@ type DeclaredFuncSig {
   inferred: Node?
   is_async: Bool
   output_provenance: List<Map<String, SubValueRelation>>
+  // Per-variant per-field provenance for sum-type returns.
+  // Outer key: variant name (e.g., "AdvanceOk"). Inner list: one map per
+  // field of that variant. Inner map: caller param name → SubValueRelation.
+  // Empty for struct returns (use output_provenance instead).
+  variant_provenance: Map<String, List<Map<String, SubValueRelation>>>
 }
 
 type DeclaredFuncEnv {
