@@ -549,10 +549,10 @@ fn gist_full_pipeline() {
 /// lost facts, unnecessary allocations).
 ///
 /// The ratchet must be generous enough for CI runners under load.
-/// Verified 2026-04-11: no regression from source_indices merge.
+/// Verified 2026-04-12: bumped from 60s after dsl/ grew (browser.dag, review_codex.dag).
 /// Dev hardware: ~10.8s. Colima container: 32-37s.
-/// GitHub CI runners hit 50s+ under shared load — 60s budget covers CI variance.
-const PERF_RATCHET_SECONDS: u64 = 60;
+/// GitHub CI runners hit 64s under shared load — 75s budget covers CI variance.
+const PERF_RATCHET_SECONDS: u64 = 75;
 
 #[test]
 #[ignore] // Requires building stage0 binary
