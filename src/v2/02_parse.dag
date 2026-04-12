@@ -61,7 +61,7 @@ import v2.std.core {
   error_type, is_compiler_error,
   node_name_span, no_span,
   NewlineIndex,
-  InternTable, InternResult, empty_intern_table, intern
+  InternTable, InternResult, empty_intern_table, intern, intern_find_or_empty, pre_intern_tokens
 }
 
 import v2.compiler.languages {
@@ -880,7 +880,8 @@ fn parse_dotted_ident_rest(tokens: List<Token>, state: ParserState, acc: String,
 // =========================================================================
 
 fn parse(tokens: List<Token>, source_indices: Map<String, NewlineIndex>) -> ParseResult {
-  let state = ParserState { pos: 0, source_indices: source_indices, intern_table: empty_intern_table() }
+  let pre_interned = pre_intern_tokens(tokens: tokens, table: empty_intern_table())
+  let state = ParserState { pos: 0, source_indices: source_indices, intern_table: pre_interned }
   let r = parse_module(tokens: tokens, state: state)
   if has_err(err: r.err) {
     ParseResult { module: none, error: r.err, intern_table: r.state.intern_table }
@@ -923,6 +924,7 @@ fn parse_module(tokens: List<Token>, state: ParserState) -> ModuleResult {
   let mod_ir = intern(table: s.intern_table, s: mod_name)
   let s = with(s, { intern_table: mod_ir.table })
   let mod = module_node(name: mod_name, imports: imports, items: items, span: start_span)
+  let mod = with(mod, { ident: mod_ir.id })
   ModuleResult { module: mod, state: s, err: none }
 }
 
@@ -986,11 +988,17 @@ fn parse_import(tokens: List<Token>, state: ParserState) -> ImportResult {
     if has_err(err: r.err) { return ImportResult { import: err_import, state: r.state, err: r.err } }
     let s = skip_newlines(tokens: tokens, state: r.state)
     let imp = import_node(module_path: mod_path, is_all: false, specific_names: names, span: start_span)
+    let imp_ir = intern(table: s.intern_table, s: mod_path)
+    let s = with(s, { intern_table: imp_ir.table })
+    let imp = with(imp, { ident: imp_ir.id })
     ImportResult { import: imp, state: s, err: none }
   } else {
     // Bare import (no braces): import all from module.
     let s = skip_newlines(tokens: tokens, state: s)
     let imp = import_node(module_path: mod_path, is_all: true, specific_names: [], span: start_span)
+    let imp_ir = intern(table: s.intern_table, s: mod_path)
+    let s = with(s, { intern_table: imp_ir.table })
+    let imp = with(imp, { ident: imp_ir.id })
     ImportResult { import: imp, state: s, err: none }
   }
 }
