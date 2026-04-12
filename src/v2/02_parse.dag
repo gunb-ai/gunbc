@@ -2910,31 +2910,31 @@ fn parse_mock_response_entries_acc(tokens: List<Token>, ctx: ParseContext, acc: 
 // 11. parse_resource_def
 // =========================================================================
 
-fn parse_resource_def(tokens: List<Token>, state: ParserState) -> ItemResult {
-  let start_span = current_span(tokens: tokens, state: state)
+fn parse_resource_def(tokens: List<Token>, ctx: ParseContext) -> ItemResult {
+  let start_span = token_span(tok: tokens |> first)
   let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "resource" })
-  if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
-  parse_resource_after_kw(tokens: tokens, state: r.state, start_span: start_span)
+  let r = expect(tokens: tokens, expected: ExpectKeyword { text: "resource" })
+  if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
+  parse_resource_after_kw(tokens: r.tokens, ctx: ctx, start_span: start_span)
 }
 
-fn parse_resource_after_kw(tokens: List<Token>, state: ParserState, start_span: SourceSpan) -> ItemResult {
+fn parse_resource_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {
   let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
-  let r = expect_ident(tokens: tokens, state: state)
-  if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  let r = expect_ident(tokens: tokens)
+  if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
   let named_dummy = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
-  let r = expect(tokens: tokens, state: r.state, expected: ExpectLBrace)
-  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
+  let r = expect(tokens: r.tokens, expected: ExpectLBrace)
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
 
-  let r = parse_resource_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), properties: [], capabilities: [])
-  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
+  let r = parse_resource_entries(tokens: skip_newlines(tokens: r.tokens), ctx: ctx, properties: [], capabilities: [])
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
 
-  let r2 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), expected: ExpectRBrace)
-  if has_err(err: r2.err) { return ItemResult { item: named_dummy, state: r2.state, err: r2.err } }
+  let r2 = expect(tokens: skip_newlines(tokens: r.tokens), expected: ExpectRBrace)
+  if has_err(err: r2.err) { return ItemResult { item: named_dummy, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
 
   // Capabilities are already Nodes (D2e dissolution) -- use directly as children
   let item = Node { name: name, span: start_span, ident_span: Some { value: name_span },
@@ -2943,81 +2943,80 @@ fn parse_resource_after_kw(tokens: List<Token>, state: ParserState, start_span: 
     transport: none, properties: r.properties,
     type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r2.state), err: none }
+  ItemResult { item: item, tokens: skip_newlines(tokens: r2.tokens), ctx: r.ctx, err: none }
 }
 
 // Parse resource block entries: properties, acquire/release, capabilities.
-fn parse_resource_entries(tokens: List<Token>, state: ParserState, properties: List<Node>, capabilities: List<Node>) -> ResPropResult {
-  let s = skip_newlines(tokens: tokens, state: state)
-  if tok_is_rbrace(tok: peek(tokens: tokens, state: s)) || at_end(tokens: tokens, state: s) {
-    ResPropResult { properties: properties, capabilities: capabilities, state: s, err: none }
+fn parse_resource_entries(tokens: List<Token>, ctx: ParseContext, properties: List<Node>, capabilities: List<Node>) -> ResPropResult {
+  let tokens = skip_newlines(tokens: tokens)
+  let tok = tokens |> first
+  let span = token_span(tok: tok)
+  if tok_is_rbrace(tok: tok) || tok_is_eof(tok: tok) {
+    ResPropResult { properties: properties, capabilities: capabilities, tokens: tokens, ctx: ctx, err: none }
   } else {
-    let sh = peek_shape(tokens: tokens, state: s)
+    let sh = match tok { Some { value: t } => Some { value: t.shape }  None => none }
     match sh {
       Some { value: ShKeyword } => {
-        let kw_text = tok_keyword_text(tok: peek(tokens: tokens, state: s))
+        let kw_text = tok_keyword_text(tok: tok)
         if kw_text == "capability" {
-          let r = parse_capability(tokens: tokens, state: s)
-          if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r.state, err: r.err } }
-          parse_resource_entries(tokens: tokens, state: r.state, properties: properties, capabilities: list_push(capabilities, r.capability))
+          let r = parse_capability(tokens: tokens, ctx: ctx)
+          if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+          parse_resource_entries(tokens: r.tokens, ctx: r.ctx, properties: properties, capabilities: list_push(capabilities, r.capability))
         } else if kw_text == "acquire" {
-          let adv = advance(tokens: tokens, state: s)
-          let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
-          if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r.state, err: r.err } }
-          let r2 = skip_until_rbrace(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-          let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRBrace)
-          if has_err(err: r3.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r3.state, err: r3.err } }
-          parse_resource_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r3.state), properties: properties, capabilities: capabilities)
+          let r = expect(tokens: tokens |> skip(1), expected: ExpectLBrace)
+          if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, tokens: r.tokens, ctx: ctx, err: r.err } }
+          let r2 = skip_until_rbrace(tokens: skip_newlines(tokens: r.tokens))
+          let r3 = expect(tokens: r2.tokens, expected: ExpectRBrace)
+          if has_err(err: r3.err) { return ResPropResult { properties: properties, capabilities: capabilities, tokens: r3.tokens, ctx: ctx, err: r3.err } }
+          parse_resource_entries(tokens: skip_newlines(tokens: r3.tokens), ctx: ctx, properties: properties, capabilities: capabilities)
         } else if kw_text == "release" {
-          let adv = advance(tokens: tokens, state: s)
-          let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
-          if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r.state, err: r.err } }
-          let r2 = skip_until_rbrace(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-          let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRBrace)
-          if has_err(err: r3.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r3.state, err: r3.err } }
-          parse_resource_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r3.state), properties: properties, capabilities: capabilities)
+          let r = expect(tokens: tokens |> skip(1), expected: ExpectLBrace)
+          if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, tokens: r.tokens, ctx: ctx, err: r.err } }
+          let r2 = skip_until_rbrace(tokens: skip_newlines(tokens: r.tokens))
+          let r3 = expect(tokens: r2.tokens, expected: ExpectRBrace)
+          if has_err(err: r3.err) { return ResPropResult { properties: properties, capabilities: capabilities, tokens: r3.tokens, ctx: ctx, err: r3.err } }
+          parse_resource_entries(tokens: skip_newlines(tokens: r3.tokens), ctx: ctx, properties: properties, capabilities: capabilities)
         } else {
-          ResPropResult { properties: properties, capabilities: capabilities, state: s, err: Some { value: parse_error(msg: "unexpected keyword in resource block", span: current_span(tokens: tokens, state: s)) } }
+          ResPropResult { properties: properties, capabilities: capabilities, tokens: tokens, ctx: ctx, err: Some { value: parse_error(msg: "unexpected keyword in resource block", span: span) } }
         }
       }
       Some { value: ShIdent } => {
-        if peek_is_colon_after_ident(tokens: tokens, state: s) {
-          let r = expect_ident(tokens: tokens, state: s)
-          if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r.state, err: r.err } }
+        if peek_is_colon_after_ident(tokens: tokens) {
+          let r = expect_ident(tokens: tokens)
+          if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, tokens: r.tokens, ctx: ctx, err: r.err } }
           let fname = r.name
-          let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
-          if has_err(err: r2.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r2.state, err: r2.err } }
-          let r3 = parse_expr(tokens: tokens, state: r2.state)
-          if has_err(err: r3.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r3.state, err: r3.err } }
+          let r2 = expect(tokens: r.tokens, expected: ExpectColon)
+          if has_err(err: r2.err) { return ResPropResult { properties: properties, capabilities: capabilities, tokens: r2.tokens, ctx: ctx, err: r2.err } }
+          let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
+          if has_err(err: r3.err) { return ResPropResult { properties: properties, capabilities: capabilities, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
           let fi = make_field_init_node(name: fname, value: r3.expr, span: make_span(start: 0, end: 0), name_span: r.span)
-          parse_resource_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r3.state), properties: list_push(properties, fi), capabilities: capabilities)
+          parse_resource_entries(tokens: skip_newlines(tokens: r3.tokens), ctx: r3.ctx, properties: list_push(properties, fi), capabilities: capabilities)
         } else {
-          ResPropResult { properties: properties, capabilities: capabilities, state: s, err: Some { value: parse_error(msg: "unexpected token in resource block", span: current_span(tokens: tokens, state: s)) } }
+          ResPropResult { properties: properties, capabilities: capabilities, tokens: tokens, ctx: ctx, err: Some { value: parse_error(msg: "unexpected token in resource block", span: span) } }
         }
       }
-      _ => ResPropResult { properties: properties, capabilities: capabilities, state: s, err: Some { value: parse_error(msg: "expected capability, acquire, release, or property in resource block", span: current_span(tokens: tokens, state: s)) } }
+      _ => ResPropResult { properties: properties, capabilities: capabilities, tokens: tokens, ctx: ctx, err: Some { value: parse_error(msg: "expected capability, acquire, release, or property in resource block", span: span) } }
     }
   }
 }
 
 // Skip tokens until matching RBrace (handles nested brace blocks).
-fn skip_until_rbrace(tokens: List<Token>, state: ParserState) -> UnitResult {
-  let s = skip_newlines(tokens: tokens, state: state)
-  if tok_is_rbrace(tok: peek(tokens: tokens, state: s)) || at_end(tokens: tokens, state: s) {
-    UnitResult { state: s, err: none }
+fn skip_until_rbrace(tokens: List<Token>) -> UnitResult {
+  let tokens = skip_newlines(tokens: tokens)
+  let tok = tokens |> first
+  if tok_is_rbrace(tok: tok) || tok_is_eof(tok: tok) {
+    UnitResult { tokens: tokens, err: none }
   } else {
-    let sh = peek_shape(tokens: tokens, state: s)
+    let sh = match tok { Some { value: t } => Some { value: t.shape }  None => none }
     match sh {
       Some { value: ShLBrace } => {
-        let adv = advance(tokens: tokens, state: s)
-        let inner = skip_until_rbrace(tokens: tokens, state: adv.state)
-        let r = expect(tokens: tokens, state: inner.state, expected: ExpectRBrace)
-        if has_err(err: r.err) { return UnitResult { state: r.state, err: r.err } }
-        skip_until_rbrace(tokens: tokens, state: r.state)
+        let inner = skip_until_rbrace(tokens: tokens |> skip(1))
+        let r = expect(tokens: inner.tokens, expected: ExpectRBrace)
+        if has_err(err: r.err) { return UnitResult { tokens: r.tokens, err: r.err } }
+        skip_until_rbrace(tokens: r.tokens)
       }
       _ => {
-        let adv = advance(tokens: tokens, state: s)
-        skip_until_rbrace(tokens: tokens, state: adv.state)
+        skip_until_rbrace(tokens: tokens |> skip(1))
       }
     }
   }
