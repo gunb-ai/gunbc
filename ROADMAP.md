@@ -767,19 +767,27 @@ P8: Pipeline profiling                           ← do early for signal
 
 Design: [docs/perf-borrow-design.md](docs/perf-borrow-design.md)
 
-Root cause: the Rust emitter translates pure .dag parameters as
-owned `Rc<T>`, forcing every call site to clone. .dag is pure — all
-params are read-only. Emit `&Rc<T>` (borrow) instead. 3 emitter
-decisions account for all 13,694 clones. This IS the LS-4 borrow
-model — trivially solved by .dag purity.
+Current state: 21,211 `.clone()` sites across 59 stage0 files.
+Selective borrowing is already landed via `read_only_params_index`
+(05_emit_rust.dag:471) — most functions emit borrowed params.
+Remaining clones cluster in excluded categories: higher-order
+callables (can't change signature), TCO functions (reassign params
+in loop), parser state threading (Stream D target), and String
+field clones (M2 Node.name target).
+
+Priority: resume M2 Node.name deletion — `name.clone()` is
+`String::clone` (malloc+memcpy), the highest heap-allocation
+source still unresolved. Profile self-compile to identify actual
+wall-clock hot spots before chasing refcount clones (which are
+atomic increments, much cheaper).
 
 Success criteria (work elimination, not time):
 
 | Metric | Current | Target |
 |--------|---------|--------|
-| .clone() in stage0 | 13,694 | <1,000 |
+| `.clone()` in stage0 | 21,211 | measured heap-alloc reduction |
+| `name.clone()` (String heap alloc) | ~1,188 | 0 (via M2 ident:Int) |
 | node.name reads in compiler | 107 | 0 |
-| Rc::clone() in stage0 | 23,733 | <1,000 |
 | Stages run on data-only files | 8 | 3 |
 
 ---
