@@ -694,12 +694,19 @@ fn testgen_emits_valid_rust() {
     // Callable wrapping is data-driven: template lives in languages.dag,
     // emitter reads callable_type_template from LanguageSpec.
     let lang_source = read_v2_file("src/v2/languages.dag");
-    assert!(
-        lang_source.contains("Rc<dyn Fn(") && lang_source.contains("callable_type_template"),
-        "languages.dag should declare Rust callable_type_template as Rc<dyn Fn(...)>"
+    assert_live_contains(
+        &lang_source,
+        "Rc<dyn Fn(",
+        "languages.dag should declare Rust callable_type_template with Rc<dyn Fn(...)>"
     );
-    assert!(
-        emit_source.contains("callable_type_template"),
+    assert_live_contains(
+        &lang_source,
+        "callable_type_template",
+        "languages.dag should contain callable_type_template field"
+    );
+    assert_live_contains(
+        &emit_source,
+        "callable_type_template",
         "05_emit.dag should read callable_type_template from LanguageSpec"
     );
 }
