@@ -61,7 +61,7 @@ import v2.std.core {
   with_required_cardinality,
   error_type, is_compiler_error,
   node_name_span, no_span,
-  NewlineIndex,
+  NewlineIndex, authored_name_at,
   InternTable, InternResult, empty_intern_table, intern, intern_find_or_empty, pre_intern_tokens
 }
 
@@ -2682,34 +2682,35 @@ fn last_child_or_self(n: Node) -> Node {
 // Recursion is structurally bounded: all self-calls pass a strict child of n.
 // Optional handling uses with_required_cardinality (TreeSizePreserving wrapper);
 // the CX analyzer sees through this via wrapper transparency in SCC edge classification.
-fn node_to_name_str(n: Node) -> String {
+fn node_to_name_str(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let is_optional = n.return_cardinality == CardOptional
   let effective_n = if is_optional { with_required_cardinality(n: n) } else { n }
   let opt_prefix = if is_optional { "Optional_" } else { "" }
-  let is_keyed_container = is_container_type(name: effective_n.name) && effective_n.children |> count == 2
+  let effective_name = authored_name_at(source_indices: source_indices, node: effective_n)
+  let is_keyed_container = is_container_type(name: effective_name) && effective_n.children |> count == 2
   if is_keyed_container {
     match effective_n.children |> last {
-      Some { value: ch } => concat(opt_prefix, effective_n.name, "_", node_to_name_str(n: ch))
-      None => concat(opt_prefix, effective_n.name)
+      Some { value: ch } => concat(opt_prefix, effective_name, "_", node_to_name_str(n: ch, source_indices: source_indices))
+      None => concat(opt_prefix, effective_name)
     }
   } else if effective_n.type_annotation != none {
     match effective_n.children |> first {
-      Some { value: ch } => concat(opt_prefix, node_to_name_str(n: ch))
-      None => concat(opt_prefix, effective_n.name)
+      Some { value: ch } => concat(opt_prefix, node_to_name_str(n: ch, source_indices: source_indices))
+      None => concat(opt_prefix, effective_name)
     }
-  } else if is_container_type(name: effective_n.name) {
+  } else if is_container_type(name: effective_name) {
     match effective_n.children |> first {
-      Some { value: ch } => concat(opt_prefix, "List_", node_to_name_str(n: ch))
-      None => concat(opt_prefix, effective_n.name)
+      Some { value: ch } => concat(opt_prefix, "List_", node_to_name_str(n: ch, source_indices: source_indices))
+      None => concat(opt_prefix, effective_name)
     }
   } else if effective_n.ident_span == none {
     let is_conj = effective_n.connective == Conj
     let is_disj = effective_n.connective == Disj
     if is_conj { concat(opt_prefix, "Record") }
     else if is_disj { concat(opt_prefix, "Union") }
-    else { concat(opt_prefix, effective_n.name) }
+    else { concat(opt_prefix, effective_name) }
   } else {
-    concat(opt_prefix, effective_n.name)
+    concat(opt_prefix, effective_name)
   }
 }
 
@@ -2740,7 +2741,7 @@ fn parse_exit_entries_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node
     }
     // Convert to property: exit_<code> = type_name
     let code_str = status_expr_to_str(expr: code, source_indices: ctx.source_indices)
-    let type_name = node_to_name_str(n: r3.type_expr)
+    let type_name = node_to_name_str(n: r3.type_expr, source_indices: ctx.source_indices)
     let prop_name = concat("exit_", code_str)
     let entry = make_field_init_node(name: prop_name, value: make_named_expr_node(name: type_name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: r3.type_expr.span, name_span: r3.type_expr.span), span: r3.type_expr.span, name_span: no_span())
     let e = eat(tokens: desc_tokens, expected: ExpectComma)
@@ -2843,7 +2844,7 @@ fn parse_response_entries_acc(tokens: List<Token>, ctx: ParseContext, acc: List<
     if has_err(err: r3.err) { return RespEntriesResult { entries: [], tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
     // Convert to property: response_<status> = type_name
     let status_str = status_expr_to_str(expr: status, source_indices: ctx.source_indices)
-    let type_name = node_to_name_str(n: r3.type_expr)
+    let type_name = node_to_name_str(n: r3.type_expr, source_indices: ctx.source_indices)
     let prop_name = concat("response_", status_str)
     let entry = make_field_init_node(name: prop_name, value: make_named_expr_node(name: type_name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: r3.type_expr.span, name_span: r3.type_expr.span), span: r3.type_expr.span, name_span: no_span())
     let e = eat(tokens: r3.tokens, expected: ExpectComma)

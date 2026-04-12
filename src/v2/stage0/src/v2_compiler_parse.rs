@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{module_node, import_node, Node, InferredNode, Connective, is_container_type, Cardinality, make_param_node, param_node_type_expr, param_node_default_value, make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, make_variant_node, variant_node_name_at, variant_node_fields, leaf_node_with_span, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name_at, field_access_field_at, expr_call_func_at, make_arg_node, arg_name_at, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, MatchPattern, make_field_binding_node, field_binding_pattern, LiteralValue, ExprErrorKind, BinOp, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, transport_url_key, transport_path_key, transport_method_key, transport_path_template_key, transport_query_key, transport_body_key, transport_stdin_key, transport_response_format_key, transport_headers_key, service_config_properties, OperationModifier, Token, TokenShape, SourceSpan, make_span, ErrorNode, make_error_node, with_required_cardinality, error_type, is_compiler_error, node_name_span, no_span, NewlineIndex, InternTable, InternResult, empty_intern_table, intern, intern_find_or_empty, pre_intern_tokens, CompilerDiagnostic};
+pub use crate::v2_std_core::{module_node, import_node, Node, InferredNode, Connective, is_container_type, Cardinality, make_param_node, param_node_type_expr, param_node_default_value, make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, make_variant_node, variant_node_name_at, variant_node_fields, leaf_node_with_span, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name_at, field_access_field_at, expr_call_func_at, make_arg_node, arg_name_at, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, MatchPattern, make_field_binding_node, field_binding_pattern, LiteralValue, ExprErrorKind, BinOp, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, transport_url_key, transport_path_key, transport_method_key, transport_path_template_key, transport_query_key, transport_body_key, transport_stdin_key, transport_response_format_key, transport_headers_key, service_config_properties, OperationModifier, Token, TokenShape, SourceSpan, make_span, ErrorNode, make_error_node, with_required_cardinality, error_type, is_compiler_error, node_name_span, no_span, NewlineIndex, authored_name_at, InternTable, InternResult, empty_intern_table, intern, intern_find_or_empty, pre_intern_tokens, CompilerDiagnostic};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
@@ -6184,7 +6184,7 @@ pub fn last_child_or_self(n: Rc<Node>) -> Rc<Node> {
 }
 }
 
-pub fn node_to_name_str(n: &Rc<Node>) -> String {
+pub fn node_to_name_str(n: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
@@ -6198,23 +6198,24 @@ let opt_prefix = if is_optional.clone() {
             } else {
                 "".to_string()
             };
-let is_keyed_container = (is_container_type(effective_n.name.clone()) && ((effective_n.children.clone().len() as i64) == 2));
+let effective_name = authored_name_at(source_indices.clone(), &effective_n);
+let is_keyed_container = (is_container_type(effective_name.clone()) && ((effective_n.children.clone().len() as i64) == 2));
 if is_keyed_container {
                 match effective_n.children.clone().last().cloned() {
-    Some(ch) => v2_rt::concat(v2_rt::concat(v2_rt::concat(opt_prefix, effective_n.name.clone()), "_".to_string()), node_to_name_str(&ch)),
-    None => v2_rt::concat(opt_prefix, effective_n.name.clone()),
+    Some(ch) => v2_rt::concat(v2_rt::concat(v2_rt::concat(opt_prefix, effective_name.clone()), "_".to_string()), node_to_name_str(&ch, &source_indices)),
+    None => v2_rt::concat(opt_prefix, effective_name.clone()),
 }
             } else {
                 if (effective_n.type_annotation.clone() != None) {
                     match effective_n.children.clone().first().cloned() {
-    Some(ch) => v2_rt::concat(opt_prefix, node_to_name_str(&ch)),
-    None => v2_rt::concat(opt_prefix, effective_n.name.clone()),
+    Some(ch) => v2_rt::concat(opt_prefix, node_to_name_str(&ch, &source_indices)),
+    None => v2_rt::concat(opt_prefix, effective_name.clone()),
 }
                 } else {
-                    if is_container_type(effective_n.name.clone()) {
+                    if is_container_type(effective_name.clone()) {
                         match effective_n.children.clone().first().cloned() {
-    Some(ch) => v2_rt::concat(v2_rt::concat(opt_prefix, "List_".to_string()), node_to_name_str(&ch)),
-    None => v2_rt::concat(opt_prefix, effective_n.name.clone()),
+    Some(ch) => v2_rt::concat(v2_rt::concat(opt_prefix, "List_".to_string()), node_to_name_str(&ch, &source_indices)),
+    None => v2_rt::concat(opt_prefix, effective_name.clone()),
 }
                     } else {
                         if (effective_n.ident_span.clone() == None) {
@@ -6227,12 +6228,12 @@ if is_conj {
                                     if is_disj {
                                         v2_rt::concat(opt_prefix, "Union".to_string())
                                     } else {
-                                        v2_rt::concat(opt_prefix, effective_n.name.clone())
+                                        v2_rt::concat(opt_prefix, effective_name.clone())
                                     }
                                 }
 }
                         } else {
-                            v2_rt::concat(opt_prefix, effective_n.name.clone())
+                            v2_rt::concat(opt_prefix, effective_name.clone())
                         }
                     }
                 }
@@ -6300,7 +6301,7 @@ Rc::new(DescResult {
 }),
 };
 let code_str = status_expr_to_str(&code, state.source_indices.clone());
-let type_name = node_to_name_str(&r3.type_expr.clone());
+let type_name = node_to_name_str(&r3.type_expr.clone(), &state.source_indices.clone());
 let prop_name = v2_rt::concat("exit_".to_string(), code_str);
 let entry = make_field_init_node(&prop_name, make_named_expr_node(&type_name, Rc::new(ExprData::ExprVar {
     binding_kind: None,
@@ -6574,7 +6575,7 @@ if has_err(r3.err.clone()) {
 })
             }
 let status_str = status_expr_to_str(&status, state.source_indices.clone());
-let type_name = node_to_name_str(&r3.type_expr.clone());
+let type_name = node_to_name_str(&r3.type_expr.clone(), &state.source_indices.clone());
 let prop_name = v2_rt::concat("response_".to_string(), status_str);
 let entry = make_field_init_node(&prop_name, make_named_expr_node(&type_name, Rc::new(ExprData::ExprVar {
     binding_kind: None,
