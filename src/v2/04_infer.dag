@@ -4282,41 +4282,25 @@ fn arm_ctx_from_variant_provenance(arm_node: Node, sig: ResolvedFuncSig, scrut: 
   match arm_pattern(n: arm_node) {
     VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
       match map_get(sig.variant_provenance, vname) {
-        Some { value: variant_fields } =>
-          let rt_name = authored_name_at(source_indices: ctx.type_env.source_indices, node: sig.inferred)
-          let variant_type_node = match lookup_type(env: ctx.type_env, name: rt_name) {
-            Some { value: td } =>
-              td.children |> filter(v => authored_name_at(source_indices: ctx.type_env.source_indices, node: v) == vname) |> first
-            None => none
-          }
-          let field_name_to_idx = match variant_type_node {
-            Some { value: vt } =>
-              vt.children |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
-                map_insert(acc, authored_name_at(source_indices: ctx.type_env.source_indices, node: pair.second), pair.first)
-              )
-            None => empty_map()
-          }
+        Some { value: variant_field_map } =>
           let call_args = call_args_by_name(call: scrut, source_indices: ctx.type_env.source_indices)
           let extended = bindings |> fold(init: ctx, f: (c, fb) =>
             let field_label = field_binding_name_at(n: fb, source_indices: ctx.type_env.source_indices)
             let bind_name = match field_binding_pattern(n: fb) { Bind { name: bn } => bn  _ => "" }
             if bind_name == "" || field_label == "" { c }
             else {
-              match map_get(field_name_to_idx, field_label) {
-                Some { value: idx } =>
-                  match variant_fields |> skip(idx) |> first {
-                    Some { value: param_map } =>
-                      let composed = compose_callee_param_map(callee_prov: param_map, arg_by_name: call_args, param_names: c.param_order, param_types: c.param_names, type_env: c.type_env, func_sigs: c.func_sigs, let_prov: empty_map())
-                      match map_keys(composed) |> first {
-                        Some { value: fk } =>
-                          match map_get(composed, fk) {
-                            Some { value: rel } =>
-                              DescentContext { fn_name: c.fn_name, param_names: c.param_names, param_order: c.param_order, type_env: c.type_env, sub_value_vars: map_insert(c.sub_value_vars, bind_name, rel), size_aliases: c.size_aliases, scope_locals: c.scope_locals, func_sigs: c.func_sigs, per_field_vars: c.per_field_vars }
-                            None => c
-                          }
-                        None => c
-                      }
-                    None => c
+              // Look up by field name (not position) in the name-keyed provenance map.
+              match map_get(variant_field_map, field_label) {
+                Some { value: param_map } =>
+                  let composed = compose_callee_param_map(callee_prov: param_map, arg_by_name: call_args, param_names: c.param_order, param_types: c.param_names, type_env: c.type_env, func_sigs: c.func_sigs, let_prov: empty_map())
+                  // Meet ALL composed relations — don't drop any.
+                  // The composed map is keyed by caller param name. Meet gives
+                  // the conservative relation across all contributing params.
+                  let all_rels = map_keys(composed) |> map(k => match map_get(composed, k) { Some { value: r } => r  None => SubValueUnknown })
+                  let best = merge_argument_relations(rels: all_rels)
+                  match best {
+                    SubValueUnknown => c
+                    _ => DescentContext { fn_name: c.fn_name, param_names: c.param_names, param_order: c.param_order, type_env: c.type_env, sub_value_vars: map_insert(c.sub_value_vars, bind_name, best), size_aliases: c.size_aliases, scope_locals: c.scope_locals, func_sigs: c.func_sigs, per_field_vars: c.per_field_vars }
                   }
                 None => c
               }
@@ -4362,7 +4346,7 @@ fn compose_output_relations(arg_rel: SubValueRelation, callee_rel: SubValueRelat
 // For each variant constructor (ExprRecordLit) in the body, classifies its
 // field values. Returns Map<variant_name, List<Map<param_name, SubValueRelation>>>.
 // Empty if the return type isn't a sum type or no variant constructors found.
-fn compute_variant_provenance(body: Node, return_type: Node, params: List<Node>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>) -> Map<String, List<Map<String, SubValueRelation>>> {
+fn compute_variant_provenance(body: Node, return_type: Node, params: List<Node>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>) -> Map<String, Map<String, Map<String, SubValueRelation>>> {
   // return_type from item.inferred is a reference node (NoConnective).
   // Look up the actual type definition to check for Disj connective.
   let rt_name = authored_name_at(source_indices: type_env.source_indices, node: return_type)
@@ -4384,76 +4368,108 @@ fn compute_variant_provenance(body: Node, return_type: Node, params: List<Node>,
   }
 }
 
-// Walk a body collecting ExprRecordLit nodes whose parent_enum matches, and
-// classify each variant's field values. Merges across multiple branches
-// producing the same variant via join (optimistic — CX checker validates).
-fn collect_variant_constructors(body: Node, parent_enum: String, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>, acc: Map<String, List<Map<String, SubValueRelation>>>) -> Map<String, List<Map<String, SubValueRelation>>> {
+// Walk return-position expressions collecting ExprRecordLit nodes whose
+// parent_enum matches. Only recurses into return positions: match arm bodies,
+// if then/else branches, let bodies, block last statements. Does NOT recurse
+// into match scrutinees, if conditions, or let values — those are not return
+// positions and could fabricate contracts from temporary same-enum literals.
+fn collect_variant_constructors(body: Node, parent_enum: String, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>, acc: Map<String, Map<String, Map<String, SubValueRelation>>>) -> Map<String, Map<String, Map<String, SubValueRelation>>> {
   match body.expr_data {
     ExprRecordLit { parent_enum: pe } =>
       match pe {
         Some { value: enum_name } =>
           if enum_name == parent_enum {
             let variant_name = body.name
-            let field_provs = body.children |> map(fi =>
-              classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+            // Build name-keyed provenance map (not position-dependent).
+            let field_prov_map = body.children |> fold(init: empty_map(), f: (m, fi) =>
+              let fname = field_init_node_name_at(n: fi, source_indices: type_env.source_indices)
+              let fprov = classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+              if fname != "" { map_insert(m, fname, fprov) } else { m }
             )
-            // Merge with existing entry for this variant using join (optimistic)
             match map_get(acc, variant_name) {
               Some { value: existing } =>
-                let merged = join_per_field_pair(a: existing, b: field_provs)
+                let merged = merge_field_prov_maps(a: existing, b: field_prov_map)
                 map_insert(acc, variant_name, merged)
-              None => map_insert(acc, variant_name, field_provs)
+              None => map_insert(acc, variant_name, field_prov_map)
             }
           } else { acc }
         None => acc
       }
     ExprMatch =>
-      let scrut_acc = collect_variant_constructors(body: match_scrutinee(texpr: body), parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov, acc: acc)
-      match_arm_nodes(texpr: body) |> fold(init: scrut_acc, f: (a, arm) =>
+      // Only recurse into arm bodies (return positions), not the scrutinee.
+      match_arm_nodes(texpr: body) |> fold(init: acc, f: (a, arm) =>
         collect_variant_constructors(body: arm_body(n: arm), parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov, acc: a)
       )
     ExprIf =>
-      let cond_acc = collect_variant_constructors(body: if_condition(texpr: body), parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov, acc: acc)
-      let then_acc = collect_variant_constructors(body: if_then_branch(texpr: body), parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov, acc: cond_acc)
+      // Only recurse into then/else branches (return positions), not the condition.
+      let then_acc = collect_variant_constructors(body: if_then_branch(texpr: body), parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov, acc: acc)
       match if_else_branch(texpr: body) {
         Some { value: eb } =>
           collect_variant_constructors(body: eb, parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov, acc: then_acc)
         None => then_acc
       }
     ExprLet =>
-      let value_acc = collect_variant_constructors(body: let_value(texpr: body), parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov, acc: acc)
+      // Only recurse into the let body (return position), not the let value.
+      // But still track let bindings for provenance composition.
       match let_body(texpr: body) {
         Some { value: b } =>
-          // Extend let_prov with value's scalar provenance for subsequent body processing
           let bname = let_binding_name_at(texpr: body, source_indices: type_env.source_indices)
           let value_prov = classify_body_provenance(expr: let_value(texpr: body), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
           let new_lp = map_insert(let_prov, bname, value_prov)
-          collect_variant_constructors(body: b, parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: new_lp, acc: value_acc)
-        None => value_acc
+          collect_variant_constructors(body: b, parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: new_lp, acc: acc)
+        None => acc
       }
     ExprBlock =>
-      body.children |> fold(init: acc, f: (a, stmt) =>
-        collect_variant_constructors(body: stmt, parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov, acc: a)
-      )
+      // Only the last statement in a block is the return position.
+      // But track let bindings from earlier statements.
+      let stmts = body.children
+      let stmt_count = stmts |> count
+      if stmt_count == 0 { acc }
+      else {
+        // Accumulate let_prov from non-terminal statements
+        let final_lp = stmts |> take(stmt_count - 1) |> fold(init: let_prov, f: (lp, stmt) =>
+          match stmt.expr_data {
+            ExprLet =>
+              let bname = let_binding_name_at(texpr: stmt, source_indices: type_env.source_indices)
+              let vprov = classify_body_provenance(expr: let_value(texpr: stmt), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: lp)
+              map_insert(lp, bname, vprov)
+            _ => lp
+          }
+        )
+        // Recurse into only the last statement
+        match stmts |> skip(stmt_count - 1) |> first {
+          Some { value: last } =>
+            collect_variant_constructors(body: last, parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: final_lp, acc: acc)
+          None => acc
+        }
+      }
     _ => acc
   }
 }
 
-// Join (optimistic) two per-field provenance lists element-wise.
-// Used when multiple branches produce the same variant with potentially
-// different field provenance; the join keeps the best evidence per field.
-fn join_per_field_pair(a: List<Map<String, SubValueRelation>>, b: List<Map<String, SubValueRelation>>) -> List<Map<String, SubValueRelation>> {
-  if a |> count != b |> count { a }  // fail closed on mismatch
-  else {
-    a |> enumerate |> map(pair =>
-      let idx = pair.first
-      let a_map = pair.second
-      match b |> skip(idx) |> first {
-        Some { value: b_map } => union_prov_maps(a: a_map, b: b_map)
-        None => a_map
+// Merge two field-level provenance maps (field_name → Map<param_name, SubValueRelation>).
+// For fields present in both, join the inner provenance maps. Fields in only one
+// side are kept. Used when multiple branches produce the same variant.
+fn merge_field_prov_maps(a: Map<String, Map<String, SubValueRelation>>, b: Map<String, Map<String, SubValueRelation>>) -> Map<String, Map<String, SubValueRelation>> {
+  let from_a = fold(map_keys(a), init: empty_map(), f: (result, fname) =>
+    match map_get(a, fname) {
+      Some { value: a_prov } =>
+        match map_get(b, fname) {
+          Some { value: b_prov } => map_insert(result, fname, union_prov_maps(a: a_prov, b: b_prov))
+          None => map_insert(result, fname, a_prov)
+        }
+      None => result
+    }
+  )
+  fold(map_keys(b), init: from_a, f: (result, fname) =>
+    if map_get(result, fname) != none { result }
+    else {
+      match map_get(b, fname) {
+        Some { value: b_prov } => map_insert(result, fname, b_prov)
+        None => result
       }
-    )
-  }
+    }
+  )
 }
 
 // Union two provenance maps: keep keys present in either, join values.

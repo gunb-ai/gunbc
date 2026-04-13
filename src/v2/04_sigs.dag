@@ -36,7 +36,7 @@ type ResolvedFuncSig {
   is_async: Bool
   output_provenance: List<Map<String, SubValueRelation>>
   // Per-variant per-field provenance for sum-type returns. See DeclaredFuncSig.
-  variant_provenance: Map<String, List<Map<String, SubValueRelation>>>
+  variant_provenance: Map<String, Map<String, Map<String, SubValueRelation>>>
 }
 
 type ResolvedFuncEnv {
