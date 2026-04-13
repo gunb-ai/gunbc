@@ -835,7 +835,10 @@ fn parse_dotted_ident_rest(tokens: List<Token>, acc: String, span: SourceSpan) -
   if e.consumed {
     let r = expect_name(tokens: e.tokens)
     if has_err(err: r.err) { return r }
-    parse_dotted_ident_rest(tokens: r.tokens, acc: concat(acc, ".", r.name), span: span)
+    // Extend span to cover the full dotted path so authored_name_at
+    // reads "shell.Codegen", not just "shell".
+    let extended = SourceSpan { file: span.file, start: span.start, end: r.span.end }
+    parse_dotted_ident_rest(tokens: r.tokens, acc: concat(acc, ".", r.name), span: extended)
   } else {
     NameResult { name: acc, span: span, tokens: tokens, err: none }
   }
