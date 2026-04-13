@@ -24,7 +24,7 @@ pub fn re_export_check_modifier(op: Rc<DerivedOpEffect>, declared_idempotent: bo
 }
 
 pub fn re_export_parse_path_template(raw: String) -> Rc<PathTemplate> {
-    parse_path_template(raw)
+    parse_path_template(&raw)
 }
 
 pub fn re_export_has_path_params(template: Rc<PathTemplate>) -> bool {

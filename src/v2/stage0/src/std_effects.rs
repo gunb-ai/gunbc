@@ -250,7 +250,7 @@ pub fn derive_op_effect(operation_name: String, method_str: String, path_str: St
     match parse_http_method(&method_str) {
     None => None,
     Some(method) => {
-        let path = parse_path_template(path_str);
+        let path = parse_path_template(&path_str);
 let shape = derive_effect_shape(method.clone(), &path, input_fields);
 Some(Rc::new(DerivedOpEffect {
     operation_name: operation_name,
