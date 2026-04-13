@@ -436,7 +436,8 @@ fn ordered_ring_templates() -> List<AlgebraFieldTemplate> {
     { name: "one", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "compare", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Ordering" }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "quotient", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
-    { name: "remainder", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none }
+    { name: "remainder", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "clamp", param_types: [ReceiverSelf, ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: Some { value: ShapeConstant }, callback_element_position: none }
   ]
 }
 
