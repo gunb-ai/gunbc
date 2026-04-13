@@ -255,16 +255,14 @@ M1: CX gate → 0 violations (currently 420, ratchet 420)
       Graph DFS (needs language primitive or work-list
       RankingDimension), arithmetic refinement.
 
-    Violation landscape (420 total):
-      104 parse_type_expr + 89 render_node_type + 48 to_string
-      = 241 (57%) from recursive functions with multi-param
-      descent patterns (lexicographic, Steps 2-3).
-      132 from parser struct returns (per-field, Step 1).
-      ~47 from other patterns (arithmetic, graph DFS, Step 4-5).
+    Violation landscape (354 total, down from 420):
+      Parser SCC: 139 violations. Descent chains break at
+      expect/expect_name (product-type returns without per-field
+      output_provenance).
+      Remaining ~215 from multi-param descent, arithmetic, graph DFS.
 
-    Note: Stream D parser restructuring is DONE mechanically but
-      CX can't see through helper returns without output provenance.
-      Shelved until Step 1 lands.
+    Note: Stream D parser restructuring is DONE mechanically.
+      Sum-type migration in progress — see Stream D below.
 
 M2: Node.name deleted
     Done when: Node.name field removed, l1-ratchet = 0
@@ -410,14 +408,42 @@ Phase 2 blocked on user-defined generic emission.
 
 **Stream D: Structural parser** (02_parse.dag, compile.dag)
 Restructure parser from integer position indexing to list consumption.
-Target: eliminate 132 CX violations (Category B) by construction.
+Target: eliminate 132+ CX violations (Category B) by construction.
 Design: [src/v2/parser-design.md](src/v2/parser-design.md).
-**Current state:** Mechanical restructuring DONE (0 ParserState
-references, fixed-point verified, 392/393 tests pass). BUT CX
-violations did not decrease — the CX analyzer can't see that helper
-return values (e.g. `expect(tokens).tokens`) are sub-lists of the
-input. **Blocked on output provenance** (SubValueRelation on function
-signatures). Shelved until that lands.
+
+Phase 1 — Mechanical restructuring: DONE (0 ParserState references).
+Phase 2 — Sum-type migration: IN PROGRESS.
+
+  Parser helpers migrated from product-with-flag returns to sum types:
+  - `eat` → `EatConsumed { token, tokens } | EatUnchanged { tokens }`
+  - `advance` → `AdvanceOk { token, tokens } | AdvanceEof`
+  - 47 eat callers + 3 advance callers migrated to match-destructure.
+
+  `variant_provenance` field on function signatures carries per-variant
+  per-field SubValueRelation. Inference populates by walking function
+  bodies; CX-L2 consumer reads it in annotate_descent match arms.
+  Pipeline fires end-to-end: 17 call sites consume eat's provenance,
+  2 functions resolved.
+
+  **Root cause fixed:** compute_variant_provenance was checking
+  return_type.connective on a reference node (NoConnective); needed
+  lookup_type to resolve the Disj definition. Also: DeclaredFuncSig
+  in stage0 was missing the variant_provenance field.
+
+  PRs:
+  - #424 (free-owl-375): CX-R bridges, 350→340. Temporary heuristics.
+  - #428 (sum-type-advance-pilot): Sum-type migration + pipeline. 354.
+
+  Next steps (next PR):
+  1. expect_name/expect output_provenance — 15 eat-consumer functions
+     have descent chains that break at r.tokens (product return without
+     per-field provenance). Closing this gap should resolve most of them.
+  2. Clean up __ec/__eu match binding names (migration artifacts).
+  3. Reconcile with PR #424 — variant_provenance makes some CX-R
+     bridges redundant. Determine which bridges to keep vs delete.
+  4. Stage0 regeneration + fixed-point verification.
+  5. Gate: net reduction below 340 before merge to main.
+
 Performance note: `tokens |> skip(1)` on `Rc<Vec<>>` is O(n) per
 step (O(n²) total). Needs runtime representation design — not a
 parser-specific fix.
@@ -1468,16 +1494,12 @@ discipline (Rule 3), not a missing optimizer.
 2. **M2 Node.name deletion** — still valuable for modeling
    (stable binding identity → Stream B Layer 1), but no longer
    the critical perf path.
-3. **M1 Step 3 — thread SubValueRelation outputs.** The existing
-   chain (`SubValueRelation` in std/induction.dag →
-   `TerminationProof` in std/termination.dag → `read_only_params_index`
-   in 05_emit_rust.dag) already has the authorities needed to
-   compose per-param evidence across function boundaries. Stream
-   D's -3 gap is because helper outputs don't carry provenance —
-   threading that through the call-site boundary is the M1 plan
-   that already exists. The "side-table unification" insight
-   is useful, but it's a composition of these existing
-   authorities, not a replacement umbrella.
+3. **M1 Step 1 — per-field provenance on function signatures.**
+   `variant_provenance` (Map<String, List<Map<String, SubValueRelation>>>)
+   now populates for sum-type returns (PR #428). Infrastructure works
+   end-to-end. Next: per-field `output_provenance` for product-type
+   returns (expect_name, expect) to close descent chains in the
+   parser SCC. See Stream D above for full status.
 4. **Elevate KF-2.** We keep committing these bugs against
    ourselves. Building KF-2 catches the next merge_envs before
    it ships. This should move up in priority given how often
