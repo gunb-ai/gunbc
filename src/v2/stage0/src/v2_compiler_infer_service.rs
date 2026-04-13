@@ -214,7 +214,7 @@ pub fn check_service_field_access_node(base_type: &Rc<Node>, field: String, serv
         {
             let path = v2_rt::concat(v2_rt::concat(base_type.name.clone(), ".".to_string()), field);
 match v2_rt::map_get(&service_registry, path.clone()) {
-    Some(_) => Some(nominal_type_ref(path.clone())),
+    Some(_) => Some(nominal_type_ref(&path)),
     None => None,
 }
 }

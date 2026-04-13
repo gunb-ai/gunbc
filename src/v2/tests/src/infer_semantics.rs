@@ -297,6 +297,7 @@ fn optional_match_exhaustiveness_reports_missing_none() {
             recursive_type_set: Rc::new(std::collections::HashMap::new()),
             inductive_fields: Rc::new(std::collections::HashMap::new()),
             source_indices: Rc::new(std::collections::HashMap::new()),
+            intern_table: v2_compiler::v2_std_core::empty_intern_table(),
         }),
         zero_span(),
         "test".to_string(),
@@ -319,6 +320,7 @@ fn optional_match_exhaustiveness_accepts_some_and_none() {
             recursive_type_set: Rc::new(std::collections::HashMap::new()),
             inductive_fields: Rc::new(std::collections::HashMap::new()),
             source_indices: Rc::new(std::collections::HashMap::new()),
+            intern_table: v2_compiler::v2_std_core::empty_intern_table(),
         }),
         zero_span(),
         "test".to_string(),
@@ -366,6 +368,7 @@ fn resolve_node_uses_node_name_for_lookup() {
         recursive_type_set: Rc::new(std::collections::HashMap::new()),
         inductive_fields: Rc::new(std::collections::HashMap::new()),
         source_indices: Rc::new(std::collections::HashMap::new()),
+        intern_table: v2_compiler::v2_std_core::empty_intern_table(),
     });
 
     let result = resolve_node(node_ref, env, "test".to_string());

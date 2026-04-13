@@ -870,14 +870,18 @@ pub fn authored_name_at(source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>, n
     Some(index) => {
         let text = source_text_at(index.clone(), &span);
 if (text.clone().as_str() == "".to_string().as_str()) {
-            node.name.clone()
+            "".to_string()
         } else {
             text.clone()
         }
 },
-    None => node.name.clone(),
+    None => if ((v2_rt::string_length(&span.file.clone()) > 8) && (v2_rt::substring(&span.file.clone(), 0, 8).as_str() == "<kernel:".to_string().as_str())) {
+        v2_rt::substring(&span.file.clone(), 8, (v2_rt::string_length(&span.file.clone()) - 1))
+    } else {
+        node.name.clone()
+    },
 },
-    None => node.name.clone(),
+    None => "".to_string(),
 }
 }
 

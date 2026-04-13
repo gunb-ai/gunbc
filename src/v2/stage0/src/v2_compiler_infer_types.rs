@@ -11,7 +11,7 @@ pub use crate::std_algebra::{AlgebraProfile, AlgebraTypeTemplate, ContainerSourc
 use crate::std_algebra::AlgebraProfile::{OrderedRingProfile, ApproximateFieldProfile, BooleanAlgebraProfile, BooleanAlgebraCollectionProfile, FreeMonoidScalarProfile, FreeMonoidCollectionProfile, PartialFunctionProfile};
 use crate::std_algebra::AlgebraTypeTemplate::{ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue, NamedTemplate, ContainerOf, OptionalOf, TupleOf, AlgebraTypeVariable};
 use crate::std_algebra::ContainerSource::{SameAsReceiver, Named};
-pub use crate::v2_std_core::{Node, make_param_node, param_node_type_expr, find_child_named, NewlineIndex, Connective, Cardinality, ExprErrorKind, make_expr_node, make_expr_error_node, LiteralValue, is_kernel_type, BinOp, AlgebraFieldKind, InferredNode, has_inferred, is_compiler_error, leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, default_ident_span, authored_name_at, ExprData};
+pub use crate::v2_std_core::{Node, make_param_node, param_node_type_expr, find_child_named, NewlineIndex, Connective, Cardinality, ExprErrorKind, make_expr_node, make_expr_error_node, LiteralValue, is_kernel_type, BinOp, AlgebraFieldKind, InferredNode, has_inferred, is_compiler_error, leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, default_ident_span, kernel_span, authored_name_at, ExprData};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral};
@@ -205,12 +205,12 @@ pub fn make_container_type(kind_name: &String, element: Rc<Node>) -> Rc<Node> {
         let param_name = container_param_name_required(&kind_name, 0);
 Rc::new(Node {
     name: kind_name.clone(),
-    span: make_span(0, 0),
-    ident_span: default_ident_span(kind_name.clone(), make_span(0, 0)),
+    span: kernel_span(&kind_name),
+    ident_span: Some(kernel_span(&kind_name)),
     children: Rc::new(vec![Rc::new(Node {
     name: param_name.clone(),
-    span: make_span(0, 0),
-    ident_span: default_ident_span(param_name.clone(), make_span(0, 0)),
+    span: kernel_span(&param_name),
+    ident_span: Some(kernel_span(&param_name)),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -253,12 +253,12 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
 let val_name = container_param_name_required(&"Map".to_string(), 1);
 Rc::new(Node {
     name: "Map".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    span: kernel_span(&"Map".to_string()),
+    ident_span: Some(kernel_span(&"Map".to_string())),
     children: Rc::new(vec![Rc::new(Node {
-    name: key_name,
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    name: key_name.clone(),
+    span: kernel_span(&key_name),
+    ident_span: Some(kernel_span(&key_name)),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -277,9 +277,9 @@ Rc::new(Node {
     expr_data: Rc::new(ExprData::NoExprData),
     ident: 0,
 }), Rc::new(Node {
-    name: val_name,
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    name: val_name.clone(),
+    span: kernel_span(&val_name),
+    ident_span: Some(kernel_span(&val_name)),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -319,8 +319,8 @@ Rc::new(Node {
 pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
     name: "Callable".to_string(),
-    span: make_span(0, 0),
-    ident_span: Some(make_span(0, 0)),
+    span: kernel_span(&"Callable".to_string()),
+    ident_span: Some(kernel_span(&"Callable".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::Arrow,
     params: func_params,
@@ -348,8 +348,8 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     ident_span: None,
     children: Rc::new(vec![Rc::new(Node {
     name: "first".to_string(),
-    span: make_span(0, 0),
-    ident_span: None,
+    span: kernel_span(&"first".to_string()),
+    ident_span: Some(kernel_span(&"first".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -369,8 +369,8 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     ident: 0,
 }), Rc::new(Node {
     name: "second".to_string(),
-    span: make_span(0, 0),
-    ident_span: None,
+    span: kernel_span(&"second".to_string()),
+    ident_span: Some(kernel_span(&"second".to_string())),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -409,8 +409,8 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
 pub fn algebra_value_field(name: &String, type_node: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
     name: name.clone(),
-    span: no_span(),
-    ident_span: default_ident_span(name.clone(), no_span()),
+    span: kernel_span(&name),
+    ident_span: Some(kernel_span(&name)),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -437,8 +437,8 @@ pub fn algebra_method_field(name: &String, param_types: Rc<Vec<Rc<Node>>>, retur
 let callable = make_callable_type(params, return_type);
 Rc::new(Node {
     name: name.clone(),
-    span: no_span(),
-    ident_span: default_ident_span(name.clone(), no_span()),
+    span: kernel_span(&name),
+    ident_span: Some(kernel_span(&name)),
     children: Rc::new(vec![]),
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),
@@ -484,11 +484,11 @@ pub fn enrich_base_with_fields(name: String, base: &Rc<Node>, fields: Rc<Vec<Rc<
 }
 
 pub fn placeholder_type_node(name: String) -> Rc<Node> {
-    nominal_type_ref(name)
+    nominal_type_ref(&name)
 }
 
-pub fn nominal_type_ref(name: String) -> Rc<Node> {
-    leaf_node_with_span(&name, &make_span(0, 0))
+pub fn nominal_type_ref(name: &String) -> Rc<Node> {
+    leaf_node_with_span(&name, &kernel_span(&name))
 }
 
 pub fn algebra_child_or_placeholder(base: Rc<Node>, child_index: i64, placeholder: String) -> Rc<Node> {
@@ -509,7 +509,7 @@ match (*template).clone() {
     AlgebraTypeTemplate::ReceiverElement => elem,
     AlgebraTypeTemplate::ReceiverKey => key_node,
     AlgebraTypeTemplate::ReceiverValue => val_node,
-    AlgebraTypeTemplate::NamedTemplate { name: n, .. } => nominal_type_ref(n.clone()),
+    AlgebraTypeTemplate::NamedTemplate { name: n, .. } => nominal_type_ref(&n),
     AlgebraTypeTemplate::AlgebraTypeVariable { id: var_id, .. } => type_variable_node(var_id.clone()),
     AlgebraTypeTemplate::ContainerOf { source: src, element: inner, .. } => {
                 let kind_name = match (*src.clone()).clone() {
@@ -721,7 +721,7 @@ make_map_type(key.clone(), val)
     None => type_variable_node(container_param_name_required(&receiver.name.clone(), 1)),
 },
 },
-    AlgebraTypeTemplate::NamedTemplate { name: n, .. } => nominal_type_ref(n.clone()),
+    AlgebraTypeTemplate::NamedTemplate { name: n, .. } => nominal_type_ref(&n),
     AlgebraTypeTemplate::ContainerOf { source: src, element: inner, .. } => {
             let kind_name = match (*src.clone()).clone() {
     ContainerSource::SameAsReceiver => receiver.name.clone(),

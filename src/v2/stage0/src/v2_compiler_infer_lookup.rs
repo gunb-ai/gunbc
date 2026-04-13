@@ -143,7 +143,7 @@ match normed.inferred.clone().as_deref().cloned() {
 }
                     } else {
                         if ((canonical.clone().as_str() != "".to_string().as_str()) && emit_map_has(seen.clone(), canonical.clone())) {
-                            nominal_type_ref(canonical.clone())
+                            nominal_type_ref(&canonical)
                         } else {
                             {
                                 let next_seen = if (canonical.clone().as_str() == "".to_string().as_str()) {

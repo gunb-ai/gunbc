@@ -37,7 +37,7 @@ import v2.std.core {
   leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality,
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
-  default_ident_span,
+  default_ident_span, kernel_span,
   authored_name_at
 }
 
@@ -158,28 +158,28 @@ fn bare_map_node() -> Node {
 
 fn make_container_type(kind_name: String, element: Node) -> Node {
   let param_name = container_param_name_required(kind_name: kind_name, index: 0)
-  Node { name: kind_name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: kind_name, span: make_span(start: 0, end: 0)), children: [
-    Node { name: param_name, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: param_name, span: make_span(start: 0, end: 0)), children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: element } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: kind_name, span: kernel_span(name: kind_name), ident_span: Some { value: kernel_span(name: kind_name) }, children: [
+    Node { name: param_name, span: kernel_span(name: param_name), ident_span: Some { value: kernel_span(name: param_name) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: element } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn make_map_type(key: Node, value: Node) -> Node {
   let key_name = container_param_name_required(kind_name: "Map", index: 0)
   let val_name = container_param_name_required(kind_name: "Map", index: 1)
-  Node { name: "Map", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [
-    Node { name: key_name, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-    Node { name: val_name, span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: value } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "Map", span: kernel_span(name: "Map"), ident_span: Some { value: kernel_span(name: "Map") }, children: [
+    Node { name: key_name, span: kernel_span(name: key_name), ident_span: Some { value: kernel_span(name: key_name) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    Node { name: val_name, span: kernel_span(name: val_name), ident_span: Some { value: kernel_span(name: val_name) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: value } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn make_callable_type(func_params: List<Node>, ret: Node) -> Node {
-  Node { name: "Callable", span: make_span(start: 0, end: 0), ident_span: Some { value: make_span(start: 0, end: 0) }, children: [], connective: Arrow, params: func_params, inferred: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "Callable", span: kernel_span(name: "Callable"), ident_span: Some { value: kernel_span(name: "Callable") }, children: [], connective: Arrow, params: func_params, inferred: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn make_tuple_type(first: Node, second: Node) -> Node {
   Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [
-    Node { name: "first", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: first } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-    Node { name: "second", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    Node { name: "first", span: kernel_span(name: "first"), ident_span: Some { value: kernel_span(name: "first") }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: first } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    Node { name: "second", span: kernel_span(name: "second"), ident_span: Some { value: kernel_span(name: "second") }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
@@ -206,7 +206,7 @@ fn make_tuple_type(first: Node, second: Node) -> Node {
 
 // Build a value field (e.g., zero: Int, identity: String).
 fn algebra_value_field(name: String, type_node: Node) -> Node {
-  Node { name: name, span: no_span(), ident_span: default_ident_span(name: name, span: no_span()), children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: type_node } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: name, span: kernel_span(name: name), ident_span: Some { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: type_node } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 // Build a callable field (e.g., add: fn(Int, Int) -> Int).
@@ -216,7 +216,7 @@ fn algebra_value_field(name: String, type_node: Node) -> Node {
 fn algebra_method_field(name: String, param_types: List<Node>, return_type: Node) -> Node {
   let params = param_types |> map(t => make_param_node(name: "_", type_expr: t, default_value: none, span: no_span(), name_span: no_span()))
   let callable = make_callable_type(func_params: params, ret: return_type)
-  Node { name: name, span: no_span(), ident_span: default_ident_span(name: name, span: no_span()), children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: callable } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: name, span: kernel_span(name: name), ident_span: Some { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: callable } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 // Apply algebra fields to a base node, producing a Conj product.
@@ -231,7 +231,7 @@ fn placeholder_type_node(name: String) -> Node {
 // Parametric placeholder names in algebra templates. These represent
 // unbound type variables in the algebra declaration, NOT concrete types.
 fn nominal_type_ref(name: String) -> Node {
-  leaf_node_with_span(name: name, span: make_span(start: 0, end: 0))
+  leaf_node_with_span(name: name, span: kernel_span(name: name))
 }
 
 fn algebra_child_or_placeholder(base: Node, child_index: Int, placeholder: String) -> Node {
