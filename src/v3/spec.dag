@@ -415,6 +415,253 @@ type NodeContract {
 // data that parameterize the translation. Not separate emitter code.
 
 // =========================================================================
+// NON-CONSENSUAL OPTIONALITY
+// =========================================================================
+//
+// The developer doesn't opt into optionality. The system enforces it.
+// If an operation can fail (map lookup, optional field, service call),
+// the return carrier IS Optional<T>. The developer MUST Branch before
+// accessing the inner value. There is no unwrap. There is no null.
+// There is no sentinel value. There is no forgetting to check.
+//
+// This is the same philosophy as termination: you don't opt into
+// termination proofs — you can't write a non-terminating program.
+// You don't opt into optionality handling — you can't access an
+// optional value without branching.
+//
+// Why this matters at scale: in large codebases, the #1 source of
+// bugs is different developers representing absence differently.
+// One uses null, one uses empty string, one uses -1, one forgets
+// to check. In v3, absence is structural. Optional<T> is the ONLY
+// way to represent "might not be there." The compiler enforces
+// handling. The developer doesn't choose how — the system does.
+//
+// For clones/elision: Branch doesn't clone to unwrap. It destructs
+// — the Optional wrapper goes away, the inner value transfers.
+// Zero-cost unwrap. The ownership lens sees: the Optional port has
+// fan-out = 1 (into the Branch). The inner value in the Some arm
+// has fan-out = however many times it's used. Move or reference
+// based on that fan-out. No defensive cloning.
+//
+// For test generation: the compiler knows every Optional boundary.
+// It generates tests for both arms:
+//   - For every map_get: test with key present AND key absent
+//   - For every Optional<T> field: test with Some and None
+//   - For every Branch: verify both arms produce correct results
+// These tests fall out of the carrier types. No hand-writing.
+
+// =========================================================================
+// E2E SCENARIOS
+// =========================================================================
+//
+// Each scenario walks: what the developer writes → what the DAG
+// looks like → what each lens sees → what gets emitted → what
+// tests are generated. If the story isn't clear at any stage,
+// the design has a gap.
+
+// ---------------------------------------------------------------------------
+// Scenario 1: Nested optional map lookup
+// ---------------------------------------------------------------------------
+//
+// FRONTEND (what the developer writes):
+//
+//   type Address { street: String, city: String, zip: String? }
+//   type Person { name: String, address: Address? }
+//   let people: Map<String, Person> = { ... }
+//   let zip = people |> map_get("alice")?.address?.zip
+//
+// DAG (what the compiler builds):
+//
+//   Transform(MapGet, [people, "alice"]) → Port<Optional<Person>>
+//   Branch(person_port, [
+//     Some { p: Person } →
+//       Transform(FieldAccess("address"), [p]) → Port<Optional<Address>>
+//       Branch(address_port, [
+//         Some { addr: Address } →
+//           Transform(FieldAccess("zip"), [addr]) → Port<Optional<String>>
+//         None → Value(None) → Port<Optional<String>>
+//       ])
+//     None → Value(None) → Port<Optional<String>>
+//   ])
+//
+// LENSES:
+//   Cost: cost(MapGet) + cost(Branch) + cost(FieldAccess) + cost(Branch) + cost(FieldAccess)
+//   Ownership: person_port fan-out=1 (into Branch), p fan-out=1 (into FieldAccess) → all move, zero clones
+//   Effect: all Pure
+//   Cardinality: read each port's carrier. Optional<Person> → optional. Address → required. Trivial.
+//
+// EMISSION (Rust):
+//   people.get("alice").and_then(|p| p.address.as_ref()).and_then(|a| a.zip.clone())
+//
+// EMISSION (Go):
+//   if p, ok := people["alice"]; ok { if p.Address != nil { return p.Address.Zip } }
+//
+// GENERATED TESTS:
+//   - map_get with existing key → Some path fires, zip extracted
+//   - map_get with missing key → None path fires, result is None
+//   - existing key, address is None → second Branch takes None path
+//   - existing key, address exists, zip is None → innermost None
+//   - existing key, address exists, zip exists → full extraction
+
+// ---------------------------------------------------------------------------
+// Scenario 2: Mutual recursion → Loop lowering → TCO
+// ---------------------------------------------------------------------------
+//
+// FRONTEND:
+//
+//   fn is_even(n: Int) -> Bool {
+//     if n == 0 then true
+//     else is_odd(n - 1)
+//   }
+//   fn is_odd(n: Int) -> Bool {
+//     if n == 0 then false
+//     else is_even(n - 1)
+//   }
+//
+// DAG CONSTRUCTION:
+//   The compiler sees mutual recursion: is_even → is_odd → is_even.
+//   Both calls use n-1 (arithmetic descent). Both are tail calls.
+//
+//   Lowering: the mutual recursion forms a cycle in the call graph.
+//   The compiler detects the SCC {is_even, is_odd} and lowers to:
+//
+//   Loop {
+//     bound: Explicit(n)           // n decreases by 1 each cycle
+//     body: Branch(phase, [        // alternate between even/odd
+//       Even → Branch(n == 0, [True → return true, False → continue with (n-1, Odd)])
+//       Odd  → Branch(n == 0, [True → return false, False → continue with (n-1, Even)])
+//     ])
+//   }
+//
+//   The mutual recursion became a single Loop with a phase tag.
+//   No stack frames. No call overhead. TCO is automatic because
+//   Loop IS the TCO'd form — there's no separate TCO pass.
+//
+// LENSES:
+//   Cost: O(n) — Loop with bound n, body is O(1) Branch
+//   Termination: trivially bounded — Loop has Explicit(n) bound
+//   Effect: Pure
+//   Ownership: n is a Value (Int), copied. No Rc, no clone.
+//
+// EMISSION (Rust):
+//   let mut n = n;
+//   let mut phase = Phase::Even;
+//   loop {
+//     match phase {
+//       Phase::Even => { if n == 0 { return true; } n -= 1; phase = Phase::Odd; }
+//       Phase::Odd  => { if n == 0 { return false; } n -= 1; phase = Phase::Even; }
+//     }
+//   }
+//
+// EMISSION (Go):
+//   Similar loop with phase enum.
+//
+// GENERATED TESTS:
+//   - is_even(0) → true, is_even(1) → false, is_even(4) → true
+//   - is_odd(0) → false, is_odd(1) → true, is_odd(3) → true
+//   - Boundary: is_even(max_int) terminates (Loop bound guarantees it)
+
+// ---------------------------------------------------------------------------
+// Scenario 3: Imperative loop → raised to Map → parallelism
+// ---------------------------------------------------------------------------
+//
+// FRONTEND:
+//
+//   let results = items |> map(item => process(item))
+//
+// DAG CONSTRUCTION:
+//   Developer writes map (or equivalently a for-loop that builds a list).
+//   The compiler builds:
+//
+//   Loop {
+//     source: items
+//     bound: CollectionSize(items)
+//     body: Transform(Call(process), [element])
+//     output: collected results
+//   }
+//
+//   The compiler inspects the DAG: does the body have edges to the
+//   accumulator? No — each Transform(process, [element]) only connects
+//   to its element, not to any prior result. Elements are independent.
+//
+//   The compiler RAISES to Map (L2): elementwise-independent, parallelizable.
+//
+// LENSES:
+//   Cost: |items| × cost(process)
+//   Effect: effect(process) — if Pure, the whole Map is Pure
+//   Ownership: each element consumed once by its Transform. No sharing.
+//   Algebra: if process is associative+commutative (from algebra lens)
+//     → can partition and MapReduce
+//
+// EMISSION (Rust, process is Pure):
+//   items.par_iter().map(|item| process(item)).collect()    // Rayon parallel
+//
+// EMISSION (Rust, process has ServiceCall effect):
+//   items.iter().map(|item| process(item)).collect()        // sequential (effects may not commute)
+//
+// EMISSION (Go, process is Pure):
+//   // goroutine per element, WaitGroup, collect results
+//
+// GENERATED TESTS:
+//   - Empty items → empty results
+//   - Single item → process called once
+//   - Multiple items → all processed, order preserved (or unordered if commutative)
+//   - Parallel and sequential execution produce same results (wave test)
+
+// ---------------------------------------------------------------------------
+// Scenario 4: Clone/elision through a function pipeline
+// ---------------------------------------------------------------------------
+//
+// FRONTEND:
+//
+//   fn transform_person(p: Person) -> Summary {
+//     let name = p.name
+//     let upper = name |> to_upper
+//     let age_str = p.age |> to_string
+//     Summary { display_name: upper, age: age_str }
+//   }
+//
+// DAG:
+//   Bind(p, param_port<Person>)
+//   Transform(FieldAccess("name"), [p]) → name_port<String>
+//   Transform(Call(to_upper), [name_port]) → upper_port<String>
+//   Transform(FieldAccess("age"), [p]) → age_port<Int>
+//   Transform(Call(to_string), [age_port]) → age_str_port<String>
+//   Transform(Construct("Summary"), [upper_port, age_str_port]) → output<Summary>
+//
+// OWNERSHIP LENS reads fan-out:
+//   p: fan-out = 2 (FieldAccess("name") + FieldAccess("age"))
+//     → both are read-only (FieldAccess doesn't mutate)
+//     → BORROW, not clone
+//   name_port: fan-out = 1 (to_upper) → MOVE
+//   upper_port: fan-out = 1 (Summary construct) → MOVE
+//   age_port: fan-out = 1 (to_string) → MOVE
+//   age_str_port: fan-out = 1 (Summary construct) → MOVE
+//
+//   Result: p is borrowed twice. Everything else moves. ZERO clones.
+//
+// EMISSION (Rust):
+//   fn transform_person(p: &Person) -> Summary {   // borrow, not owned
+//     let upper = p.name.to_uppercase();            // borrow field, call moves
+//     let age_str = p.age.to_string();              // borrow field, call moves
+//     Summary { display_name: upper, age: age_str } // moves into struct
+//   }
+//
+// EMISSION (Python):
+//   def transform_person(p):  # reference semantics, no clone issue
+//     return Summary(display_name=p.name.upper(), age=str(p.age))
+//
+// EMISSION (Go):
+//   func TransformPerson(p *Person) Summary {  // pointer for large struct
+//     return Summary{DisplayName: strings.ToUpper(p.Name), Age: strconv.Itoa(p.Age)}
+//   }
+//
+// The ownership lens produces: p should be borrowed, everything else
+// moves. The emitter reads this + LanguageSpec (Rust: &T for borrow,
+// Go: *T for pointer, Python: no-op) and renders. No defensive cloning.
+// No "emit Rc<T> everywhere then try to optimize."
+
+// =========================================================================
 // HARD RULES
 // =========================================================================
 //
