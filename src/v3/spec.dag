@@ -662,6 +662,68 @@ type NodeContract {
 // No "emit Rc<T> everywhere then try to optimize."
 
 // =========================================================================
+// DIAGNOSTICS = CORRECTIONS, NOT ERROR MESSAGES
+// =========================================================================
+//
+// In a closed system with complete structural knowledge, the compiler
+// knows the fix — not just the error. A diagnostic is not "error on
+// line 42." It is: what's wrong, why it's wrong, and the corrected code.
+//
+// This is emission. The compiler emits corrected .dag code to the
+// terminal the same way it emits Rust code to a file. Same mechanism,
+// different LanguageSpec. A diagnostic IS an artifact.
+//
+// Levels of correction (progressive, not all-or-nothing):
+//
+// Level 0: SHOW the error.
+//   "Type mismatch: expected Int, got String"
+//   This is what most compilers do. Necessary but insufficient.
+//
+// Level 1: SHOW the fix.
+//   "Type mismatch: expected Int, got String.
+//    Fix: change return type to String, or wrap in to_int()"
+//   The compiler enumerates all structurally valid repairs.
+//   In a closed system, this set is finite.
+//
+// Level 2: EMIT the fix.
+//   The compiler outputs the corrected .dag source code.
+//   The developer reviews and applies it.
+//   This is how NonExhaustiveMatch already works in v2 —
+//   the compiler shows the missing arms with placeholder bodies.
+//
+// Level 3: APPLY the fix (non-consensual correction).
+//   If exactly one repair is structurally valid, the compiler
+//   applies it. The developer sees the corrected code.
+//   Future: the developer doesn't even see the error — the
+//   compiler just fixes it during DAG construction.
+//
+// This applies to ALL lenses, not just types:
+//
+// | Lens | What it catches | What it shows/fixes |
+// |------|----------------|---------------------|
+// | Types | Type mismatch | The valid type options or coercions |
+// | Cardinality | Missing None handling | The Branch with both arms |
+// | Termination | Missing bound | "Rewrite as repeat(N, ...)" |
+// | Cost | O(n²) where O(n) exists | The O(n) version of the code |
+// | Ownership | Unnecessary clone | Which clones to remove |
+// | Exhaustiveness | Missing Branch arms | The missing patterns |
+// | Effect | Non-idempotent in retry | Which operation breaks it |
+//
+// The cost lens is particularly interesting: if the compiler sees
+// Loop(items, Loop(items, ...)) = O(n²) and there exists a single
+// Loop that produces the same result = O(n), it can:
+// - Level 1: "This is O(n²). An O(n) equivalent exists."
+// - Level 2: Show the O(n) code.
+// - Level 3: Just use the O(n) code. The developer wrote intent;
+//   the compiler finds the optimal realization. Same as raising
+//   a for-loop to Map for parallelism — the developer doesn't
+//   need to know.
+//
+// The principle: the developer declares WHAT. The compiler decides
+// HOW — including fixing the developer's non-optimal HOW when a
+// better structural equivalent exists.
+
+// =========================================================================
 // HARD RULES
 // =========================================================================
 //
