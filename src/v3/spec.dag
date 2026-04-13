@@ -3,11 +3,9 @@ module v3.spec
 data max_value: Int = 9223372036854775807
 
 type NodeId = Int
-type Span { file: String, start: Int, end: Int }
 
 type Node {
   id: NodeId
-  span: Span
   edges: List<Edge>
 }
 
@@ -78,6 +76,8 @@ fn compose_shapes(a: EffectShape, b: EffectShape) -> EffectShape {
     IdentityEffect => b
   }
 }
+
+type Span { file: String, start: Int, end: Int }
 
 type Diagnostic {
   span: Span
