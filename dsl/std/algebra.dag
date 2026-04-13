@@ -331,6 +331,11 @@ type Ordering = Less | Equal | Greater
 //   less_than(a, b) = compare(a, b) == Less
 //   greater_than(a, b) = compare(a, b) == Greater
 //
+// From Lattice:
+//   meet(a, b) = greatest lower bound
+//   join(a, b) = least upper bound
+//   For total orders like FermiDepth, meet == min and join == max.
+//
 // From Field:
 //   divide(a, b) = mul(a, reciprocal(b))
 //
