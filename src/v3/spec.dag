@@ -1,506 +1,334 @@
-// v3 Causal Kernel Specification
+// v3 Specification
 //
-// The DAG is not just the IR. It is the closed physical world in which
-// all conserved quantities live. Complexity, ownership, cardinality,
-// and verification are not extra systems layered on top. They are
-// different readouts of the same bounded causal object.
+// The compiler is a DAG processor. Programs desugar to a small set of
+// behaviors that compose. Properties like cost, ownership, and effects
+// are contract dimensions — not separate passes.
 //
-// This spec defines the causal kernel: which node kinds exist, what
-// each one conserves, and how surface constructs lower into the kernel.
+// Design principle: keep behaviors intuitive enough that you can
+// explain each one in a sentence. Composition handles complexity.
 
 module v3.spec
 
 // =========================================================================
-// 1. THE CAUSAL KERNEL
+// L1: FUNDAMENTAL BEHAVIORS
 // =========================================================================
 //
-// The kernel has three parts:
+// These cannot be decomposed further. Everything in the language
+// desugars to compositions of these five.
 //
-//   TOPOLOGY  — ports, edges, fork/join shape, bounded motifs
-//   CARRIER   — type/cardinality/state space on each edge
-//   LAW       — local monotonic facts: size effect, cost shape,
-//               fan-out, consumption, boundary obligations
-//
-// Surface constructs (let, if, match, fn, lambda, fold, etc.) are
-// sugar that lowers into a small family of bounded causal motifs.
-// The compiler operates on the kernel, not on surface syntax.
-//
-// The test: can we add an arbitrary analysis lane (like complexity)
-// by folding local laws over the kernel? If yes, the kernel is right.
-// If we need heuristics, we missed a motif or a law.
-
-// =========================================================================
-// 2. CAUSAL MOTIFS
-// =========================================================================
-//
-// Every expression in the language lowers to one of these motifs.
-// There are no others. A motif is a node in the causal DAG with
-// typed input ports, typed output ports, and local laws.
-//
-// The number of motifs is SMALL. v2 had 21 ExprData variants.
-// The kernel has 5 motifs. The difference between a field access
-// and a function call is DATA on the interaction motif, not a
-// separate structural pattern.
+// The test: can you explain each one to someone who doesn't know
+// compilers? If you need jargon, the name is wrong.
 
 // ---------------------------------------------------------------------------
-// 2a. Constant — a leaf node with known bits
+// Value — a known thing
 // ---------------------------------------------------------------------------
+// A literal, a constant, data that just exists.
+// No inputs. One output. Cost = 0.
 //
-// No inputs. One output. Cost = 0. No causal predecessors.
-// Literals, data declarations, known values.
-//
-// Topology:  () → out
-// Carrier:   out has a known type and a known value
-// Laws:      cost = 0, fan-out = number of consumers of out
+//   3
+//   "hello"
+//   true
 
-type Constant {
+type Value {
   id: NodeId
-  value: Value                       // the known bits
-  carrier: TypeShape                 // the type of those bits
+  data: LiteralValue
+  carrier: TypeShape              // the type of this value
 }
 
 // ---------------------------------------------------------------------------
-// 2b. Interaction — inputs transform to output via a known reaction
+// Transform — do something to inputs, get an output
 // ---------------------------------------------------------------------------
+// The workhorse. Takes inputs, produces output via a known rule.
+// Field access, function call, binary op, record construction,
+// list construction, string interpolation, type cast — all transforms.
+// They differ in WHAT rule applies, not in shape.
 //
-// The general-purpose motif. Covers:
-//   function call, method call, field access, index, slice,
-//   binary op, unary op, cast, record construction, list construction,
-//   string interpolation, lambda application
+//   x + y               rule: Add
+//   f(x)                rule: Call(f)
+//   person.name         rule: FieldAccess("name")
+//   Record { a: 1 }     rule: Construct("Record")
+//   items[i]            rule: Index
+//   x => x + 1          rule: Define (a transform you can pass around)
 //
-// All of these are the same DAG shape: edges in, reaction occurs,
-// edge out. They differ in WHAT reaction — that's data (ReactionKind),
-// not structure.
-//
-// Topology:  (in_1, in_2, ..., in_n) → out
-// Carrier:   each in_i has a type; out has a type determined by reaction
-// Laws:
-//   cost = reaction_cost(kind) + sum(cost(in_i))
-//   size_effect = reaction_size_effect(kind)  // preserving, reducing, expanding
-//   each in_i is consumed once by this interaction
-//   fan-out of out = number of downstream consumers
+// The rule is DATA, not structure. Adding a new kind of transform
+// means adding a rule to the table, not a new behavior.
 
-type Interaction {
+type Transform {
   id: NodeId
-  kind: ReactionKind                 // what happens (data, not structure)
-  inputs: List<Port>                 // causal predecessors
-  output: Port                       // causal result
+  rule: TransformRule             // what this transform does
+  inputs: List<Port>              // what goes in
+  output: Port                    // what comes out
 }
 
-// ReactionKind is DATA. Adding a new kind of reaction does not change
-// the compiler's traversal, cost model, ownership model, or emission
-// pattern. It adds a value to this enum and a row to the reaction table.
-type ReactionKind =
-    // Navigation — accessing sub-structure
+type TransformRule =
+    // access
     FieldAccess { field: FieldRef }
   | IndexAccess
   | SliceAccess
 
-    // Application — applying a known reaction
-  | FunctionCall { target: NodeRef }
-  | MethodCall { method: MethodRef }
-  | BuiltinCall { builtin: BuiltinKind }
+    // apply
+  | Call { target: NodeRef }
+  | Method { method: MethodRef }
+  | Builtin { builtin: BuiltinKind }
 
-    // Arithmetic/logic — primitive operations
+    // arithmetic / logic
   | BinaryOp { op: BinOp, algebra: AlgebraRef? }
   | UnaryOp { op: UnaryOpKind }
-  | TypeCast { target_type: TypeShape }
+  | Cast { target_type: TypeShape }
 
-    // Construction — building structure from parts
-  | RecordConstruct { type_ref: TypeRef }
-  | ListConstruct
-  | StringBuild                      // interpolation
+    // construct
+  | Construct { type_ref: TypeRef }       // record, list, string
+  | ListBuild
+  | StringBuild
 
-// Every ReactionKind has an entry in the reaction table:
-//
-// | Kind | Cost | Size Effect | Inputs | Output Rule |
-// |------|------|-------------|--------|-------------|
-// | FieldAccess | O(1) | sub-value | 1 (receiver) | field type |
-// | FunctionCall | cost(target) | from target sig | n (args) | return type |
-// | BinaryOp | O(1) | preserving | 2 (left, right) | result type |
-// | RecordConstruct | O(fields) | constructing | n (field values) | record type |
-// | ... | ... | ... | ... | ... |
-//
-// The reaction table IS the spec. The compiler reads it. Adding a new
-// reaction means adding a row, not a new match arm in every consumer.
+    // define (a deferred transform — lambda / function body)
+  | Define { params: List<ParamPort>, body: NodeRef }
 
 // ---------------------------------------------------------------------------
-// 2c. Fork — branch on input, both branches are real structure
+// Branch — look at something, take a path
 // ---------------------------------------------------------------------------
+// Inspect a value, choose one of several paths. Both paths are real
+// structure. At runtime, one fires.
 //
-// The input determines which of several subgraphs activates. Both
-// subgraphs exist in the causal DAG. At runtime, one path fires.
-// The compiler sees both paths (for cost: max, for ownership:
-// exclusive consumers).
+//   if x > 0 then a else b
+//   match status { Pending => ..., Done => ... }
 //
-// Topology:  (scrutinee) → select → { branch_1, branch_2, ..., branch_n } → join → out
-// Carrier:   scrutinee determines which branch; all branches produce same type
-// Laws:
-//   cost = cost(scrutinee) + max(cost(branch_i))
-//   ownership: branches are exclusive — fan-out from scrutinee into
-//     branches does NOT mean the value is consumed multiple times
-//   exhaustiveness: all possible values of scrutinee must be covered
+// `if` is just Branch on Bool with two paths.
+// `match` is Branch on any type with N paths.
+// Same behavior.
 //
-// NOTE: ExprIf is just Fork with a Bool scrutinee and 2 branches.
-// ExprMatch is Fork with a general scrutinee and n branches.
-// They are the SAME motif. v2 had them as separate variants.
-
-type Fork {
-  id: NodeId
-  scrutinee: Port                    // the value being branched on
-  branches: List<Branch>             // possible causal futures
-  output: Port                       // joined result
-}
+// Cost = cost(scrutinee) + max(cost per path).
+// Ownership: paths are exclusive — value is consumed once, not N times.
 
 type Branch {
-  pattern: Pattern                   // what scrutinee value activates this branch
-  bindings: List<Binding>            // values extracted by the pattern
-  body: NodeRef                      // the subgraph for this branch
+  id: NodeId
+  scrutinee: Port                 // what we're looking at
+  paths: List<Path>               // possible outcomes
+  output: Port                    // result (from whichever path fires)
+}
+
+type Path {
+  pattern: Pattern                // what activates this path
+  bindings: List<Bind>            // values extracted by the pattern
+  body: NodeRef                   // what happens on this path
 }
 
 // ---------------------------------------------------------------------------
-// 2d. Chain — compressed repeated interaction with known bound
+// Loop — repeat something, bounded
 // ---------------------------------------------------------------------------
+// Apply a body repeatedly, with a known bound on repetitions.
+// fold, descend, repeat, for-each, map, filter — all Loops.
+// They differ in the bound source and what the body does.
 //
-// A causal chain of N interactions, represented as (body, bound).
-// The body is one link in the chain. The bound is the chain length.
-// The compiler doesn't unroll — it reads the compressed structure.
+//   items |> fold(init: 0, step)     bound = |items|
+//   tree |> descend(base, combine)   bound = |tree|
+//   repeat(100, init, step)          bound = 100
+//   items |> map(f)                  bound = |items|, body = f
+//   items |> filter(p)              bound = |items|, body = branch on p
+//   "forever" server                 bound = system limit
 //
-// Topology:  (source, init) → [body × N] → out
-// Carrier:   source provides elements; init provides accumulator;
-//            body transforms (accumulator, element) → accumulator
-// Laws:
-//   cost = bound × cost(body)
-//   bound is a structural fact: |collection| for fold, |tree| for descend, N for repeat
-//   body's inputs are consumed once per iteration
-//   accumulator threads through: fan-out = 1 per step (ownership: movable)
-//
-// fold, descend, repeat are all Chains with different bound sources:
-//   fold:    bound = |collection|, element = collection[i]
-//   descend: bound = |tree|, element = tree.children[i]
-//   repeat:  bound = N, element = step index
-//
-// A "forever" loop is Chain with bound = Omega (system limit).
-// Structurally identical to bound = 5. Just longer.
+// Cost = bound × cost(body).
+// A "forever" loop has bound = system limit (largest representable value).
+// Structurally identical to bound = 5. Just larger.
 
-type Chain {
+type Loop {
   id: NodeId
-  source: Port                       // what provides elements/iterations
-  init: Port                         // initial accumulator
-  body: NodeRef                      // one link of the chain (a subgraph)
-  bound: Bound                       // how many times the chain repeats
-  output: Port                       // final accumulator value
+  source: Port                    // what provides elements
+  init: Port                      // starting accumulator
+  body: NodeRef                   // one iteration (a subgraph)
+  bound: Bound                    // how many times
+  output: Port                    // final result
 }
 
 type Bound =
-    CollectionSize { collection: Port }   // |collection| — fold
+    CollectionSize { collection: Port }   // |items| — fold, map, filter
   | TreeSize { tree: Port }               // |tree| — descend
   | Explicit { count: Port }              // N — repeat
-  | SystemLimit                           // Omega — "forever"
+  | SystemLimit                           // "forever" — largest finite value
 
 // ---------------------------------------------------------------------------
-// 2e. Binding — names a causal step for reference
+// Bind — give something a name
 // ---------------------------------------------------------------------------
+// Name a value so other nodes can reference it. Not computation —
+// just wiring. Cost = 0.
 //
-// Not a computation — structural. It attaches a name to a node's
-// output so other nodes can reference it. In the DAG, this is just
-// an edge label.
+//   let x = f(y)        name "x" points to the output of Transform(f, [y])
+//   fn add(a, b) { ... } name "add" points to a Define transform
 //
-// let x = f(y) → the interaction f(y) produces an output; the
-// binding names that output "x" so downstream nodes can connect to it.
-//
-// Lambda is ALSO a binding: it names a subgraph (the function body)
-// as a value that can be passed around and applied later. A lambda
-// and a named function are the same motif — a subgraph with input
-// ports and output ports, bound to a name (explicit for fn, implicit
-// for lambda).
-//
-// Topology:  (value) → named_out
-// Carrier:   value's type flows to named_out unchanged
-// Laws:
-//   cost = 0 (binding is structural, not computational)
-//   fan-out of named_out = number of references to this binding
+// Lambda and named function are the same: both are a Define transform
+// pointed to by a Bind. The only difference is whether the Bind has
+// a user-visible name.
 
-type Binding {
+type Bind {
   id: NodeId
-  name: BindingId                    // how other nodes reference this
-  value: Port                        // what this binding names
-  scope: NodeRef?                    // body where this binding is visible
-}
-
-// ---------------------------------------------------------------------------
-// 2f. Subgraph — a reusable causal structure (functions, lambdas)
-// ---------------------------------------------------------------------------
-//
-// A subgraph is a bounded piece of the causal DAG with input ports
-// (parameters) and an output port (return value). Functions and
-// lambdas are the SAME motif — both are subgraphs. The difference
-// is surface syntax only:
-//   fn add(a: Int, b: Int) -> Int { a + b }     → named subgraph
-//   x => x + 1                                   → anonymous subgraph
-//
-// The compiler treats them identically. Cost, ownership, emission
-// all see the same structure.
-//
-// Topology:  (param_1, ..., param_n) → body_nodes → out
-// Carrier:   params have declared types; out has return type
-// Laws:
-//   cost = cost(body)
-//   calling this subgraph = Interaction with kind = FunctionCall
-
-type Subgraph {
-  id: NodeId
-  params: List<ParamPort>            // input ports with types
-  body: NodeRef                      // the causal structure
-  output: Port                       // return value
-}
-
-type ParamPort {
-  id: BindingId
-  carrier: TypeShape                 // parameter type
+  name: BindingId                 // how other nodes reference this
+  value: Port                     // what this name points to
+  scope: NodeRef?                 // where this name is visible
 }
 
 // =========================================================================
-// 3. PORTS AND EDGES
+// PORTS — typed connections between behaviors
 // =========================================================================
 //
-// Ports are the connection points. Edges connect output ports to
-// input ports. Every edge carries a typed value forward in time.
-// No back-edges. No cycles. The DAG is causal.
+// Every input and output is a Port. A Port carries a typed value
+// forward in time. No back-edges. No cycles.
 
 type Port {
   id: PortId
-  carrier: TypeShape                 // what type flows through this port
-  provenance: Provenance             // where this value came from
+  carrier: TypeShape              // what type flows here
+  provenance: Provenance          // where this value came from
 }
 
-// Provenance tracks the causal history of a value. Not reconstructed
-// downstream — computed when the port is created.
 type Provenance =
-    Source                           // original value (literal, parameter)
-  | SubValue { parent: PortId, relation: SubValueRelation }  // derived from parent
-  | Computed { reaction: NodeId }    // result of an interaction
-  | Branched { fork: NodeId }        // result of a fork (one of several branches)
-  | Accumulated { chain: NodeId }    // result of a chain (threaded accumulator)
+    Origin                        // parameter, literal — first appearance
+  | SubValue { parent: PortId, relation: SubValueRelation }
+  | Computed { by: NodeId }       // output of a Transform
+  | Selected { from: NodeId }     // output of a Branch
+  | Accumulated { over: NodeId }  // output of a Loop
 
 // =========================================================================
-// 4. LOCAL LAWS (conserved quantities)
+// CONTRACTS — what each node provides and requires
 // =========================================================================
 //
-// Every motif has local laws — facts that are determined by the
-// motif's structure and can be read without global analysis.
+// Every node has a contract. The compiler validates contracts the same
+// way gunb.ai/pkg/dag validates them: every import must be exported
+// by a prior node (wave-aware).
 //
-// Complexity, ownership, effects are FOLDS of local laws over the
-// kernel. The fold is uniform. The laws are per-motif. Adding a new
-// analysis = defining a new fold over the same laws.
+// Cost, ownership, and effects are CONTRACT DIMENSIONS — not separate
+// passes. They're declared/derived per node, and the compiler validates
+// them as part of contract checking.
 
-// Cost law: what does this motif cost?
-fn motif_cost(node: KernelNode) -> CostExpr {
-  match node {
-    Constant { .. }     => O_1                        // free
-    Interaction { kind, inputs, .. } =>
-      reaction_cost(kind) + sum(inputs |> map(cost))  // reaction + inputs
-    Fork { scrutinee, branches, .. } =>
-      cost(scrutinee) + max(branches |> map(b => cost(b.body)))  // max branch
-    Chain { body, bound, .. } =>
-      bound_value(bound) * cost(body)                 // bound × body
-    Binding { .. }      => O_1                        // structural, free
-    Subgraph { body, .. } => cost(body)               // body cost
-  }
+type NodeContract {
+  // data flow
+  exports: List<DataRef>          // typed data this node produces
+  imports: List<DataRef>          // typed data this node requires
+
+  // cost
+  cost: CostExpr                  // how expensive this node is
+
+  // effect
+  effect: EffectShape             // what side effects this node has
+
+  // ownership
+  consumption: ConsumptionKind    // how this node uses its inputs
+
+  // provenance
+  provenance: Provenance          // where this node's output came from
+
+  // algebra (for simplification)
+  algebra: AlgebraProperty?       // algebraic laws this transform obeys
 }
 
-// Size law: what happens to the size of the input?
-fn motif_size_effect(node: KernelNode) -> SizeEffect {
-  match node {
-    Constant { .. }     => Constructing               // creates new value
-    Interaction { kind, .. } => reaction_size_effect(kind)  // from table
-    Fork { .. }         => Preserving                 // output ≤ input
-    Chain { .. }        => BoundedBy { bound: bound } // output bounded by chain length
-    Binding { .. }      => Preserving                 // pass-through
-    Subgraph { .. }     => body_size_effect            // from body
-  }
-}
-
-// Ownership law: how are inputs consumed?
-fn motif_consumption(node: KernelNode) -> List<ConsumptionFact> {
-  match node {
-    Constant { .. }     => []                         // no inputs
-    Interaction { inputs, .. } =>
-      inputs |> map(i => Consumed { port: i })        // each input consumed once
-    Fork { scrutinee, branches, .. } =>
-      [Inspected { port: scrutinee }]                 // scrutinee inspected, not consumed
-      ++ branches |> flat_map(b => consumption(b.body))  // branches exclusive
-    Chain { source, init, body, .. } =>
-      [Iterated { port: source },                     // source iterated
-       Threaded { port: init }]                        // accumulator threaded (movable)
-    Binding { value, .. } =>
-      [PassThrough { port: value }]                   // naming, not consuming
-    Subgraph { .. } => []                             // deferred, not executed here
-  }
-}
+// Contract derivation per behavior (no heuristics — structural):
+//
+// | Behavior | Cost | Effect | Consumption |
+// |----------|------|--------|-------------|
+// | Value | 0 | Pure | — (no inputs) |
+// | Transform | rule_cost(rule) | rule_effect(rule) | each input consumed once |
+// | Branch | cost(scrutinee) + max(path costs) | join(path effects) | scrutinee inspected, not consumed |
+// | Loop | bound × cost(body) | body effect | source iterated, init threaded |
+// | Bind | 0 | Pure | pass-through |
 
 // =========================================================================
-// 5. SURFACE LOWERING
+// L2: COMPOSED BEHAVIORS
 // =========================================================================
 //
-// Every surface construct lowers to kernel motifs. This is where the
-// 21 ExprData variants collapse. The lowering is NOT interpretation —
-// it's structural translation. The surface syntax is sugar; the kernel
-// is the physical reality.
+// L2 behaviors are compositions of L1. They do not add new primitive
+// shapes. They're common patterns that get names for readability.
+//
+// The test: every L2 can be written as L1 composition. If it can't,
+// it belongs in L1.
 
-// let x = f(y) in body
-//   → Binding { name: x, value: Interaction { kind: FunctionCall, inputs: [y] }, scope: body }
+// Map = Loop where body is Transform
+//   items |> map(f) = Loop(source: items, init: [], body: append(acc, f(elem)))
 
-// if P then A else B
-//   → Fork { scrutinee: P, branches: [{pattern: True, body: A}, {pattern: False, body: B}] }
+// Filter = Loop where body is Branch
+//   items |> filter(p) = Loop(source: items, init: [], body: if p(elem) then append(acc, elem) else acc)
 
-// match x { A => a, B => b }
-//   → Fork { scrutinee: x, branches: [{pattern: A, body: a}, {pattern: B, body: b}] }
+// Fold = Loop (directly — fold IS the L1 Loop)
+//   items |> fold(init: z, step: f) = Loop(source: items, init: z, body: f(acc, elem))
 
-// items |> fold(init: z, fn: f)
-//   → Chain { source: items, init: z, body: f, bound: CollectionSize { collection: items } }
+// Pipeline = sequential Bind → Transform → Bind → Transform
+//   fetch(id) |> parse |> validate = Bind(raw, fetch(id)) → Transform(parse, raw) → Transform(validate, parsed)
 
-// items |> map(f)
-//   → Chain { source: items, init: [], body: append(acc, f(elem)), bound: CollectionSize { collection: items } }
+// Retry = Loop where body is Branch on error
+//   retry(3, action) = Loop(bound: 3, body: Branch(try action, [Ok → LoopSuccess, Err → LoopContinue]))
 
-// items |> filter(f)
-//   → Chain { source: items, init: [], body: if f(elem) then append(acc, elem) else acc, bound: CollectionSize { collection: items } }
+// MapReduce = Loop whose accumulator Transform is associative + commutative
+//   → can be partitioned and parallelized (the compiler reads algebra from contract)
 
-// x.field
-//   → Interaction { kind: FieldAccess { field }, inputs: [x] }
-
-// f(x, y)
-//   → Interaction { kind: FunctionCall { target: f }, inputs: [x, y] }
-
-// x + y
-//   → Interaction { kind: BinaryOp { op: Add }, inputs: [x, y] }
-
-// fn add(a, b) { a + b }
-//   → Subgraph { params: [a, b], body: Interaction { kind: BinaryOp, inputs: [a, b] } }
-
-// x => x + 1
-//   → Subgraph { params: [x], body: Interaction { kind: BinaryOp, inputs: [x, 1] } }
-//   (SAME motif as named fn — lambda desugars to anonymous Subgraph)
-
-// Record { a: 1, b: 2 }
-//   → Interaction { kind: RecordConstruct { type: Record }, inputs: [1, 2] }
-
-// [1, 2, 3]
-//   → Interaction { kind: ListConstruct, inputs: [1, 2, 3] }
+// Recursive function = Loop with structural descent bound
+//   fn f(tree) { ... f(child) ... } = Loop(source: tree, bound: TreeSize, body: Transform(f, child))
 
 // =========================================================================
-// 6. READINGS (not passes — folds over the kernel)
+// PROPERTIES AS CONTRACT READINGS
 // =========================================================================
 //
-// Complexity = fold of cost laws over the kernel
-// Ownership = reading of fan-out + consumption facts from the graph
-// Effects = fold of effect laws over the kernel
-// Termination = structural fact: the DAG is acyclic + all chains bounded
+// Every thesis property is a reading of contracts. Not a pass.
 //
-// None of these are "passes." They are readings of the causal structure.
-// Adding a new reading means defining a new fold over the same local
-// laws. No heuristics. No reconstruction. The structure already has
-// the information.
+// Complexity = fold of node.contract.cost over the DAG
+// Ownership = reading of port fan-out (edge count) + node.contract.consumption
+// Purity = every node.contract.effect == Pure
+// Idempotence = every node.contract.algebra == LatticeMeet
+// Termination = every Loop has a Bound, DAG has no cycles
+// Parallelism = nodes with no shared edges are independent (waves)
+// Space bounds = fold of node.contract.cost with allocation tracking
 
 // =========================================================================
-// 7. EMISSION (translation of kernel to target syntax)
+// EMISSION
 // =========================================================================
 //
-// Emission is translation: (kernel motif, LanguageSpec) → text.
-// The emitter has one case per motif (5), not one case per surface
-// construct (21). The target-specific variation is in LanguageSpec
-// (data), not in the emitter (code).
+// Emission translates behaviors to target syntax using LanguageSpec data.
 //
-// | Motif | Rust | Python | Go |
-// |-------|------|--------|-----|
-// | Constant | `const`/`static` | module-level | `var` |
-// | Interaction | `callee(args)` | `callee(args)` | `callee(args)` |
-// | Fork | `match` | `match` | `switch` |
-// | Chain | `iter().fold()` | `functools.reduce` | `for range` |
-// | Binding | `let x = ...` | `x = ...` | `x := ...` |
-// | Subgraph | `fn`/closure | `def`/`lambda` | `func` |
+// | Behavior | Rust | Python | Go |
+// |----------|------|--------|-----|
+// | Value | `const`/`static` | module-level | `var` |
+// | Transform | `f(args)` | `f(args)` | `f(args)` |
+// | Branch | `match` | `match` | `switch` |
+// | Loop | `.iter().fold()` | `functools.reduce` | `for range` |
+// | Bind | `let x = ...` | `x = ...` | `x := ...` |
 //
-// Differences between targets (Rc vs GC, &T vs pointer, async syntax)
-// are LanguageSpec data that parameterize the translation, not separate
-// emitter code paths.
+// Differences between targets (Rc, &T, async, GC) are LanguageSpec
+// data that parameterize the translation. Not separate emitter code.
 
 // =========================================================================
-// 8. HARD RULES
+// HARD RULES
 // =========================================================================
 //
-// MUST:
-//   - every surface construct lowers to a kernel motif
-//   - every motif has local laws for cost, size, and consumption
-//   - every analysis is a fold over local laws (no global heuristics)
-//   - every emission is a translation of motifs (no semantic decisions)
-//   - every new reaction is a row in the reaction table, not a new motif
-//
-// MUST NOT:
-//   - add a new motif without proving existing motifs can't express it
-//   - add an analysis that walks the graph and reconstructs structure
-//   - add an emission path with target-specific semantic decisions
-//   - treat lambdas differently from named functions
-//   - treat if differently from match
+// 1. Every expression desugars to L1 behaviors. No exceptions.
+// 2. L2 behaviors compose L1. They never add new shapes.
+// 3. Properties are contract readings. Never separate passes.
+// 4. New transforms add a rule to the table. Not a new behavior.
+// 5. Lambda = Bind + Define transform. Not a special behavior.
+// 6. if = Branch on Bool. match = Branch on any. Same behavior.
+// 7. Contracts are validated wave-aware (same as gunb.ai/pkg/dag).
+// 8. Emitter reads behaviors + LanguageSpec. Never decides semantics.
 
 // =========================================================================
-// 9. ACCEPTANCE TESTS
+// ACCEPTANCE TESTS
 // =========================================================================
 //
-// T1: New reaction test
-//     Adding a new builtin operation requires: one ReactionKind value,
-//     one row in the reaction table. Zero changes to complexity,
-//     ownership, or emission code.
+// T1: New transform test
+//     Adding a new builtin requires one TransformRule value.
+//     Zero changes to cost, ownership, emission, or any consumer.
 //
-// T2: New analysis test
-//     Adding a new analysis lane (e.g., purity, security classification)
-//     requires: defining a fold over local laws. Zero heuristics. Zero
-//     reconstruction.
+// T2: L2 decomposition test
+//     Every L2 behavior can be rewritten as explicit L1 composition
+//     with identical semantics.
 //
-// T3: Lambda = function test
-//     All tests pass when lambda syntax is replaced with equivalent
-//     named function + reference. The kernel does not distinguish them.
+// T3: Contract sufficiency test
+//     Every property the thesis claims (cost, ownership, effects,
+//     termination, purity, idempotence) is derivable from contracts
+//     alone. No graph walk. No heuristic. No reconstruction.
 //
-// T4: Fork uniformity test
-//     All tests pass when if/else is replaced with equivalent match on
-//     Bool. The kernel does not distinguish them.
+// T4: Lambda = function test
+//     Replace any lambda with an equivalent named function + Bind.
+//     All tests pass. The compiler doesn't distinguish them.
 //
-// T5: Cost accounting test
-//     For any subgraph, total_cost = fold of motif_cost over all nodes.
-//     No separate complexity pass needed. The result matches the current
-//     CX analyzer (where it doesn't have violations).
+// T5: Wave parallelism test
+//     Nodes in the same wave produce the same result whether
+//     executed sequentially or concurrently.
 //
-// T6: Ownership accounting test
-//     For any binding, fan_out = count of edges from that port.
-//     last_use = edge with latest topological position.
-//     No separate ownership pass needed.
-//
-// T7: No ungrounded control
-//     Every branch lowers to Fork with explicit join.
-//     Every loop lowers to Chain with explicit bound.
-//     Every recursion lowers to Chain (descent over tree structure).
-//     No unbounded control flow is representable.
-
-// =========================================================================
-// 10. V2 EMBRYOS
-// =========================================================================
-//
-// v2 already has pieces of this kernel, partially realized:
-//
-// - Node.children IS causal structure (topology)
-// - ExprData IS the motif tag (but 21 variants instead of 5)
-// - expr_child_roles / wrapper_child_roles = child layout as data
-//   (the reaction table, but hardcoded as a map instead of structural)
-// - node_field_roles = which fields carry causal structure vs metadata
-//   (topology vs carrier distinction)
-// - function_size_effects = local monotonic laws
-//   (size law, but hardcoded instead of structural)
-// - ExprCall.descent_evidence = provenance on interactions
-//   (carrier law, but only on one motif instead of all)
-// - MethodSemantics.size_effect, cost_shape = laws on reactions
-//   (reaction table entries, but only for methods)
-// - map_children() = generic kernel walker
-//   (fold over topology, but only for one level)
-//
-// The gap: these are scattered, incomplete, and not unified. The kernel
-// makes them ONE system: motifs + laws + fold. v2's 21 variants, 33
-// heuristics, and 665 match arms are the cost of not having the kernel.
+// T6: Name scramble test
+//     Rename all user identifiers. Semantic and emission decisions
+//     don't change. Names are provenance, not authority.
