@@ -197,10 +197,11 @@ theory, abstraction calculus.
 | Epistemic stacking | definitely-not-agi | L1 → L2 → properties. Each layer self-contained. |
 | Intersubjectivity | definitely-not-agi | Models are shared facts. Compiler validates consistency. |
 
-**The v3 test (sustainability):** can we add a lens we didn't
-think of at design time, and what does it cost? Answer: define
-what you're measuring, define how it composes, done. Zero compiler
-changes. Zero heuristics. Because the physics is complete.
+**The v3 test (sustainability):** can we add an observational
+lens we didn't think of at design time, and what does it cost?
+Answer: define what you're measuring, define how it composes,
+done. Zero compiler changes for observation/validation lenses.
+Lenses that influence optimization or emission need more design.
 
 ---
 

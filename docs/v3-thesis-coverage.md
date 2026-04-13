@@ -11,7 +11,7 @@ are covered and which have gaps. See the spec for the design.
 | Thesis claim | How the spec covers it | Gap? |
 |---|---|---|
 | **Type safety** | Carrier type on every Port | None |
-| **Termination** | Loop requires a Bound. Recursion = Loop. Non-termination is unrepresentable. | None |
+| **Termination** | Loop requires a Bound. Recursion = Loop. Once DAG is built, termination is structural. | Lowering boundary: classifying recursion, determining bounds is real work |
 | **Complexity (cost)** | Cost lens reads per-behavior cost from rule table, composes structurally | None |
 | **Ownership** | Ownership lens reads fan-out from Port edges. Exclusive branches don't double-count. | None |
 | **Side effects** | Effect lens reads per-behavior effect, composes as lattice join | None |

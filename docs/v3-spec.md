@@ -308,13 +308,13 @@ type Port {
 //   Measures: does every Loop have a Bound? Are all bounds finite?
 //   Composes: structural — the DAG is acyclic, Loops have bounds
 //
-//   In a well-formed DAG with the right physics, this lens should
-//   be TRIVIAL. Termination is guaranteed by construction — you
-//   can't represent a non-terminating program because the only
-//   iteration primitive (Loop) requires a Bound. The lens just
-//   confirms the structural invariant holds. If this lens needs
-//   complex analysis (like v2's 5,000-line complexity.dag), the
-//   physics is wrong — iteration is escaping the Loop primitive.
+//   Once the DAG is built, this lens is straightforward: every
+//   Loop has a Bound, the DAG has no cycles, done. But the hard
+//   part is BUILDING the DAG: classifying recursion as Loop,
+//   determining bounds, recognizing independence. That work lives
+//   at the lowering boundary (surface syntax → DAG), not in this
+//   lens. If the lens itself needs complex analysis (like v2's
+//   5,000-line complexity.dag), the physics is wrong.
 
 // ALGEBRA lens — "can this be simplified?"
 //   Looks at: adjacent transforms
