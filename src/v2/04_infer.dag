@@ -110,6 +110,7 @@ import std.induction {
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   sub_value_to_evidence, meet_sub_value, join_sub_value, compose_sub_value, compose_sub_value_relations
 }
+import std.algebra { CollectionSizeEffect, ShrinkEffect }
 import v2.compiler.infer_resolve {
   resolve_node, resolve_item_types,
   NodeResolveResult, ItemResult
@@ -3918,9 +3919,40 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
       let callee = expr_call_func_at(texpr: expr, source_indices: type_env.source_indices)
       compose_callee_provenance(callee: callee, arg_by_name: call_args_by_name(call: expr, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
 
-    ExprMethodCall { method_semantics: _ } =>
+    ExprMethodCall { method_semantics: ms } =>
       let mname = expr_method_name_at(texpr: expr, source_indices: type_env.source_indices)
-      compose_callee_provenance(callee: mname, arg_by_name: method_call_args_by_name(call: expr, func_sigs: func_sigs, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+      let callee_result = compose_callee_provenance(callee: mname, arg_by_name: method_call_args_by_name(call: expr, func_sigs: func_sigs, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+      if map_keys(callee_result) |> count > 0 { callee_result }
+      else {
+        // Kernel algebra methods (skip, etc.) aren't in func_sigs.
+        // Check for ShrinkEffect: receiver |> skip(N) with N > 0 → StrictSubValue.
+        let is_shrink = match ms {
+          Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: _, algebra_template: _ } } =>
+            match se { Some { value: ShrinkEffect } => true  _ => false }
+          _ => false
+        }
+        if is_shrink
+          && match method_arg_nodes(texpr: expr) |> first {
+            Some { value: arg_node } =>
+              match arg_value(n: arg_node).expr_data {
+                ExprLiteral { value: LitInt { value: n } } => n > 0
+                _ => false
+              }
+            None => false
+          }
+        {
+          let recv = method_receiver(texpr: expr)
+          let recv_prov = classify_body_provenance(expr: recv, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+          fold(map_keys(recv_prov), init: empty_map(), f: (acc, pname) =>
+            match map_get(recv_prov, pname) {
+              Some { value: recv_rel } =>
+                let synth_field = InductiveField { type_name: pname, variant_name: "", field_name: mname, shape: ListRecursion, element_type: pname }
+                map_insert(acc, pname, compose_sub_value(base: recv_rel, field: synth_field))
+              None => acc
+            }
+          )
+        } else { empty_map() }
+      }
 
     ExprMatch =>
       let scrut = match_scrutinee(texpr: expr)
