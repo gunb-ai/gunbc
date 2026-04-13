@@ -1,20 +1,29 @@
 module v3.spec
 
-// PART I: WORLD MODEL
+// The DAG is a causal system. Nodes are events. Edges are causal links.
+// Values flow forward through edges. The system is finite and closed.
+//
+// Conservation laws fall out of this structure:
+//   - No perpetual motion (termination)
+//   - No duplication of matter (ownership)
+//   - No effect before cause (causality)
+//   - No opaque interaction (complexity)
+//   - No contradiction (type safety)
+//
+// A program with contradictions cannot be constructed — the causal
+// structure won't admit it, the same way a physics engine can't
+// produce a trajectory that violates conservation of energy.
+//
+// The compiler is a physics engine: it simulates signal flow through
+// the DAG and rejects graphs that violate conservation.
 
-// Layer 0: Truth + Finiteness
-type Classical = True | False
-data max_inhabitants: Int = 9223372036854775807
 
-// Layer 1: Function (A → B) — language primitive, not a declared type.
+// === THE SUBSTRATE ===
 
-// Layer 2: Type structure — emerges from Classical + Function.
-//   { fields } → product,  = V1 | V2 → coproduct,  fn(A) -> B → function
-//   {} → unit (1),  (no variants) → void (0),  A + Unit → optional (T?)
+// The bound. All signals are finite. Closed system.
+data max_signal: Int = 9223372036854775807
 
-// Layer 3: Self-reference — cycles in the graph. Observable, not declared.
-
-// Layer 4: The Graph
+// An event in the causal graph.
 type NodeId = Int
 type Span { file: String, start: Int, end: Int }
 
@@ -24,128 +33,109 @@ type Node {
   edges: List<Edge>
 }
 
+// A causal link. Carries a value from source to target.
+// The force (SVR) describes how the value transforms along this link.
 type Edge {
   target: NodeId
-  svr: SubValueRelation
+  force: Force
 }
 
-// Layer 5: Edge Vocabulary
-type ShrinkFactor
-  = UnitShrink
-  | ConstantShrink { amount: Int }
-  | ProportionalShrink { divisor: Int }
+// The force on an edge: how the target value relates to the source.
+// This is the fundamental property that determines everything downstream:
+// whether cycles terminate, who owns what, what can run in parallel.
+//
+// Dissipative:  target is strictly smaller than source (energy lost)
+// Conservative: target preserves source (energy conserved)
+// Unknown:      unmeasured (fail-closed: assume worst case)
+type Force
+  = Dissipative { kind: DissipationKind }
+  | Conservative
+  | Unmeasured
 
-type SubValueRelation
-  = StrictSubValue { field: FieldRef, factor: ShrinkFactor }
-  | IteratedSubValue { field: FieldRef }
-  | ArithmeticDescent { param: ParamRef, factor: ShrinkFactor }
-  | PreservedValue
-  | Unknown
+// How dissipation happens — observable from the causal structure.
+type DissipationKind
+  = StructuralShrink { field: FieldRef, rate: ShrinkRate }
+  | CollectionElement { field: FieldRef }
+  | ArithmeticReduction { param: ParamRef, rate: ShrinkRate }
 
-fn meet_svr(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
-  match a {
-    Unknown => Unknown
-    PreservedValue => match b {
-      Unknown => Unknown
-      _ => PreservedValue
-    }
-    _ => match b {
-      Unknown => Unknown
-      PreservedValue => PreservedValue
-      _ => a
-    }
-  }
-}
+// How fast energy dissipates. Determines complexity: O(n) vs O(log n).
+type ShrinkRate
+  = Linear                        // decrease by 1 per step
+  | StepK { amount: Int }         // decrease by k per step
+  | Logarithmic { divisor: Int }  // decrease by factor per step
 
-fn compose_svr(outer: SubValueRelation, inner: SubValueRelation) -> SubValueRelation {
-  match outer {
-    Unknown => Unknown
-    PreservedValue => inner
-    _ => match inner {
-      Unknown => Unknown
-      PreservedValue => outer
-      _ => inner
-    }
-  }
-}
-
-type UsageEdge
-  = Consumed
-  | Read
-  | Projected
-  | Threaded
-
+// References into the causal graph.
 type FieldRef { type_id: NodeId, field_name: String }
 type ParamRef { func_id: NodeId, index: Int }
 
-// Layer 6: Dimensions
 
-type BoundedLattice<T> {
-  bottom: T
-  top: T
-  meet: fn(T, T) -> T
-  join: fn(T, T) -> T
-}
+// === CONSERVATION LAWS ===
+//
+// These are not "checks" the compiler performs. They are properties
+// that HOLD when the causal structure is well-formed. The compiler
+// verifies well-formedness — the laws follow.
 
-type Dimension<T> {
-  lattice: BoundedLattice<T>
-  compute: fn(SubValueRelation, T) -> T
-  enforce: fn(T, NodeId) -> Diagnostic?
-}
+// LAW 1: NO PERPETUAL MOTION (termination)
+//
+// Every cycle in the causal graph must have net dissipation.
+// If every edge in a cycle is Conservative or Unmeasured, the cycle
+// could run forever — perpetual motion. At least one edge must be
+// Dissipative, proving the cycle will eventually halt.
+//
+// This is conservation of energy: you can't sustain a cycle without
+// spending energy. The energy budget is the input size, and each
+// Dissipative edge spends some of it.
+//
+// The compiler detects cycles (SCCs in the call graph) and checks
+// that each cycle has net dissipation. That's termination.
 
-type Diagnostic {
-  span: Span
-  message: String
-  fix: SuggestedFix?
-}
-
-type SuggestedFix {
-  description: String
-  replacement: String
-  span: Span
-}
-
-// Provenance: SVR IS the dimension. bottom = Unknown, top = StrictSubValue.
-
-// Ownership
+// LAW 2: NO DUPLICATION (ownership)
+//
+// A value produced at a node flows out through edges. Each value is
+// produced once. If multiple edges consume the same value, it must
+// be explicitly shared (copied) — you can't have two consumers of
+// the same physical thing without acknowledging the copy.
+//
+// This is conservation of matter: matter can't be in two places.
+// The compiler counts how many edges consume each value (fan-out).
+// Fan-out = 1: sole owner, can move. Fan-out > 1: must copy.
 type OwnershipKind = Owned | Borrowed | Shared
 
-fn ownership_meet(a: OwnershipKind, b: OwnershipKind) -> OwnershipKind {
-  match a {
-    Shared => Shared
-    Borrowed => match b { Shared => Shared  _ => Borrowed }
-    Owned => b
+fn ownership_from_force(f: Force) -> OwnershipKind {
+  match f {
+    Dissipative { kind: _ } => Borrowed
+    Conservative => Owned
+    Unmeasured => Shared
   }
 }
 
-fn ownership_from_svr(svr: SubValueRelation) -> OwnershipKind {
-  match svr {
-    StrictSubValue { field: _, factor: _ } => Borrowed
-    IteratedSubValue { field: _ } => Owned
-    ArithmeticDescent { param: _, factor: _ } => Owned
-    PreservedValue => Owned
-    Unknown => Shared
-  }
-}
-
-// Effects
+// LAW 3: NO EFFECT BEFORE CAUSE (causality)
+//
+// Edges are directed. A node can only depend on nodes that precede
+// it in the causal order. The graph is a DAG (or cycles with proven
+// termination). Effects can't precede their causes.
+//
+// This gives us effect ordering for free: if node A has an effect
+// and node B depends on A, B's effect comes after A's. Independent
+// nodes (no causal link) can execute in any order — parallelism
+// falls out of the absence of causal constraint.
 type EffectLevel
-  = Pure
-  | ReadsLocal
-  | WritesLocal
-  | ReadsExternal
-  | WritesExternal
+  = Inert                 // no effect on the outside world
+  | Observes              // reads external state
+  | Modifies              // writes external state
 
-fn effect_meet(a: EffectLevel, b: EffectLevel) -> EffectLevel {
+fn effect_join(a: EffectLevel, b: EffectLevel) -> EffectLevel {
   match a {
-    WritesExternal => WritesExternal
-    ReadsExternal => match b { WritesExternal => WritesExternal  _ => ReadsExternal }
-    WritesLocal => match b { WritesExternal => WritesExternal  ReadsExternal => ReadsExternal  _ => WritesLocal }
-    ReadsLocal => match b { Pure => ReadsLocal  _ => b }
-    Pure => b
+    Modifies => Modifies
+    Observes => match b { Modifies => Modifies  _ => Observes }
+    Inert => b
   }
 }
 
+// Effect shape: determines if a causal chain is idempotent.
+// Lattice operations (upsert, delete) are idempotent — repeating
+// them doesn't change the result. Monoid operations (append, create)
+// are not — repeating them accumulates.
 type EffectShape
   = LatticeEffect
   | MonoidEffect
@@ -163,84 +153,85 @@ fn compose_shapes(a: EffectShape, b: EffectShape) -> EffectShape {
   }
 }
 
+// LAW 4: NO OPAQUE INTERACTION (complexity)
+//
+// Every edge has a measurable force. Every node's cost is the
+// composition of its incoming edge costs. Nothing is hidden from
+// the compiler — the causal graph IS the complete description of
+// the computation. There is no "runtime magic" or "external oracle."
+//
+// This means complexity is ALWAYS known. A function's cost is the
+// product of the dissipation rates along its causal path. The
+// compiler reads the forces and computes the bound.
+//
+// O(n) = one Dissipative edge with Linear rate in a cycle
+// O(n log n) = nested: Linear outer × Logarithmic inner
+// O(n²) = nested: Linear outer × Linear inner (the compiler flags this)
+//
+// No separate "complexity pass" needed. The forces on edges
+// already encode the cost. The compiler just reads them.
 
-// PART II: COMPILER OBSERVATIONS
+// LAW 5: NO CONTRADICTION (type safety)
+//
+// Every edge connects compatible types. A node that produces an
+// Integer can't feed into a node that expects a String — the
+// causal link would be incoherent, like connecting a water pipe
+// to an electrical socket. The compiler verifies that every edge
+// connects compatible endpoints.
+//
+// Exhaustiveness is a special case: a coproduct (tagged signal)
+// must have every tag handled. Missing a tag = a signal with no
+// handler = energy with no drain = violation of conservation.
 
-// Layer 7: Proof Strategies
 
-type ProofStrategy<N, E, R> {
-  nodes: List<N>
-  edges_from: fn(N) -> List<ProofEdge<N, E>>
-  compose: fn(E, E) -> E
-  identity: E
-  gate: fn(N, E) -> ProofResult<R>
+// === WHAT FALLS OUT ===
+//
+// From these 5 laws + the causal structure:
+//
+// Parallelism:
+//   Nodes with no causal link are independent → can execute in any
+//   order → parallelism is the DEFAULT. Sequential execution requires
+//   a causal link to justify it.
+//
+// Memoization:
+//   An Inert node with known cost and deterministic inputs → the
+//   same input always produces the same output → cacheable.
+//
+// Algebraic simplification:
+//   f followed by f⁻¹ = no net effect (like a wave reflecting).
+//   f followed by f = f if LatticeEffect (idempotent).
+//   The compiler reads the effect shapes and simplifies.
+//
+// Space bounds:
+//   If complexity is known (Law 4) and all data is finite (max_signal),
+//   maximum memory = computed from the cost bound. Stack depth =
+//   maximum cycle depth. All derivable.
+//
+// Verification:
+//   Every node's inputs and outputs are known. The compiler can
+//   generate test inputs (finite types are enumerable) and verify
+//   that actual behavior matches declared behavior.
+
+
+// === COMPILER OBSERVATIONS ===
+//
+// Labels the compiler assigns for communication (diagnostics, emission).
+// These don't change the physics — they name what the laws already guarantee.
+
+type Diagnostic {
+  span: Span
+  message: String
+  fix: SuggestedFix?
 }
 
-type ProofEdge<N, E> { target: N, evidence: E }
-
-type ProofResult<R>
-  = ProofSuccess { proof: R }
-  | ProofFailure { diagnostic: Diagnostic }
-
-// Termination
-type DescentEvidence
-  = Strict
-  | NonIncreasing
-  | DescentUnknown
-
-fn merge_descent(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
-  match a {
-    Strict => match b { Strict => Strict  NonIncreasing => NonIncreasing  DescentUnknown => DescentUnknown }
-    NonIncreasing => match b { DescentUnknown => DescentUnknown  _ => NonIncreasing }
-    DescentUnknown => DescentUnknown
-  }
+type SuggestedFix {
+  description: String
+  replacement: String
+  span: Span
 }
 
-type RankingDimension
-  = TreeSize { param: ParamRef }
-  | ListLength { param: ParamRef }
-  | ArithmeticValue { param: ParamRef }
-  | TokenPosition { param: ParamRef }
-  | SetCardinality { param: ParamRef }
-
-type TerminationProof { dimensions: List<RankingDimension> }
-
-type CallEdgeEvidence {
-  caller: NodeId
-  callee: NodeId
-  per_dimension: List<DescentEvidence>
-}
-
-fn is_lexicographic_descent(evidence: List<DescentEvidence>) -> Bool {
-  fold(evidence, init: false, f: (found_strict, e) =>
-    if found_strict { true }
-    else { match e { Strict => true  _ => false } }
-  )
-}
-
-// Ownership
-type OwnershipProof {
-  binding_id: NodeId
-  kind: OwnershipKind
-  fan_out: Int
-  last_use: NodeId?
-}
-
-type OwnershipResult
-  = SoleOwner
-  | LastUseIdentified { last: NodeId }
-  | SharedOwnership
-
-// Effects
-type WorkflowProof {
-  workflow_id: NodeId
-  composed_effect: EffectLevel
-  composed_shape: EffectShape
-  is_idempotent: Bool
-}
-
-// Layer 8: Surface Forms (side table: Map<NodeId, SurfaceForm>)
-
+// Surface forms: what the parser observed about syntax.
+// Side table: Map<NodeId, SurfaceForm>. Not on Node itself.
 type SurfaceForm
   = FormModule { name: String }
   | FormImport { path: String, names: List<String> }
@@ -293,7 +284,8 @@ type PatternForm
   | PatVariant { name: String, parent: String?, bindings: List<String> }
   | PatWildcard
 
-// Layer 9: Pipeline
+
+// === PIPELINE ===
 
 type Source { path: String, text: String }
 
@@ -324,7 +316,7 @@ type ResolvedGraph {
 type TypeBinding {
   id: NodeId
   resolved_type: TypeRef
-  provenance: SubValueRelation
+  force: Force
 }
 
 type InductiveField {
@@ -337,7 +329,7 @@ type FuncSig {
   params: List<FuncParam>
   return_type: TypeRef
   is_async: Bool
-  output_provenance: Map<String, SubValueRelation>
+  output_forces: Map<String, Force>
 }
 
 type FuncParam { name: String, id: NodeId, type_ref: TypeRef }
@@ -354,12 +346,8 @@ type ProvenGraph {
   call_graph: Map<NodeId, List<NodeId>>
   bindings: Map<NodeId, TypeBinding>
   func_sigs: Map<NodeId, FuncSig>
-  provenance: Map<NodeId, SubValueRelation>
   ownership: Map<NodeId, OwnershipKind>
   effects: Map<NodeId, EffectLevel>
-  termination_proofs: Map<NodeId, TerminationProof>
-  ownership_proofs: Map<NodeId, OwnershipProof>
-  workflow_proofs: Map<NodeId, WorkflowProof>
   diagnostics: List<Diagnostic>
 }
 
