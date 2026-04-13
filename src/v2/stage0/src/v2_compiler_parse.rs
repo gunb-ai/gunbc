@@ -1657,7 +1657,7 @@ pub fn child_inferred_or_empty(ch: Rc<Node>) -> Rc<Node> {
 }
 }
 
-pub fn node_inferred_to_outputs(rt: &Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+pub fn node_inferred_to_outputs(rt: &Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<Rc<Node>>> {
     if is_conj_with_children(&rt) {
         {
             let all_children_typed = { let mut __all = true; for ch in rt.children.clone().iter().cloned() { if !(match ch.inferred.clone().as_deref().cloned() {
@@ -1665,7 +1665,7 @@ pub fn node_inferred_to_outputs(rt: &Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     _ => false,
 }) { __all = false; break; } } __all };
 if all_children_typed {
-                Rc::new({ let mut __result = Vec::new(); for ch in rt.children.clone().iter().cloned() { __result.push(make_field_node(&ch.name.clone(), child_inferred_or_empty(ch.clone()), Cardinality::Required, ch.body.clone(), None, ch.span.clone(), node_name_span(&ch))); } __result })
+                Rc::new({ let mut __result = Vec::new(); for ch in rt.children.clone().iter().cloned() { __result.push(make_field_node(&authored_name_at(source_indices.clone(), &ch), child_inferred_or_empty(ch.clone()), Cardinality::Required, ch.body.clone(), None, ch.span.clone(), node_name_span(&ch))); } __result })
             } else {
                 Rc::new(vec![])
             }
@@ -2253,10 +2253,10 @@ parse_no_body_from_prefix(&prefix, start_span.clone())
 }
 }
 
-pub fn field_to_child_node(field: &Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Node> {
+pub fn field_to_child_node(field: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Node> {
     {
         let ret_type = field_node_type_expr(&field);
-let props = match field_node_from_key(field.clone()) {
+let props = match field_node_from_key(field.clone(), source_indices.clone()) {
     Some(key) => Rc::new(vec![make_field_init_node(&"from_key".to_string(), make_expr_node(Rc::new(ExprData::ExprLiteral {
     value: Rc::new(LiteralValue::LitStr {
     value: key.clone(),
@@ -2265,7 +2265,7 @@ let props = match field_node_from_key(field.clone()) {
     None => Rc::new(vec![]),
 };
 Rc::new(Node {
-    name: field_node_name_at(field.clone(), source_indices),
+    name: field_node_name_at(field.clone(), source_indices.clone()),
     span: field.span.clone(),
     ident_span: field.ident_span.clone(),
     children: Rc::new(vec![]),
@@ -2292,7 +2292,7 @@ Rc::new(Node {
 pub fn variant_to_child_node(variant: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Node> {
     {
         let fields = variant_node_fields(variant.clone());
-let children = Rc::new({ let mut __result = Vec::new(); for f in fields.clone().iter().cloned() { __result.push(field_to_child_node(&f, source_indices.clone())); } __result });
+let children = Rc::new({ let mut __result = Vec::new(); for f in fields.clone().iter().cloned() { __result.push(field_to_child_node(&f, &source_indices)); } __result });
 Rc::new(Node {
     name: variant_node_name_at(variant.clone(), source_indices.clone()),
     span: variant.span.clone(),
@@ -2327,7 +2327,7 @@ pub fn outputs_to_inferred(outputs: &Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>, so
     name: "".to_string(),
     span: span,
     ident_span: None,
-    children: Rc::new({ let mut __result = Vec::new(); for f in outputs.clone().iter().cloned() { __result.push(field_to_child_node(&f, source_indices.clone())); } __result }),
+    children: Rc::new({ let mut __result = Vec::new(); for f in outputs.clone().iter().cloned() { __result.push(field_to_child_node(&f, &source_indices)); } __result }),
     connective: Connective::Conj,
     params: Rc::new(vec![]),
     inferred: None,
@@ -2510,7 +2510,7 @@ if has_err(r2.err.clone()) {
     err: r2.err.clone(),
 })
                 }
-let type_children = Rc::new({ let mut __result = Vec::new(); for f in r.fields.clone().iter().cloned() { __result.push(field_to_child_node(&f, state.source_indices.clone())); } __result });
+let type_children = Rc::new({ let mut __result = Vec::new(); for f in r.fields.clone().iter().cloned() { __result.push(field_to_child_node(&f, &state.source_indices.clone())); } __result });
 let item = Rc::new(Node {
     name: name.clone(),
     span: start_span.clone(),
@@ -2627,7 +2627,7 @@ if has_err(r2.err.clone()) {
     err: r2.err.clone(),
 })
                 }
-let type_children = Rc::new({ let mut __result = Vec::new(); for f in r.fields.clone().iter().cloned() { __result.push(field_to_child_node(&f, prefix.state.clone().source_indices.clone())); } __result });
+let type_children = Rc::new({ let mut __result = Vec::new(); for f in r.fields.clone().iter().cloned() { __result.push(field_to_child_node(&f, &prefix.state.clone().source_indices.clone())); } __result });
 let item = Rc::new(Node {
     name: name.clone(),
     span: start_span.clone(),
@@ -3437,7 +3437,7 @@ let te = Rc::new(Node {
     name: "".to_string(),
     span: span,
     ident_span: None,
-    children: Rc::new({ let mut __result = Vec::new(); for f in r.fields.clone().iter().cloned() { __result.push(field_to_child_node(&f, state.source_indices.clone())); } __result }),
+    children: Rc::new({ let mut __result = Vec::new(); for f in r.fields.clone().iter().cloned() { __result.push(field_to_child_node(&f, &state.source_indices.clone())); } __result }),
     connective: Connective::Conj,
     params: Rc::new(vec![]),
     inferred: None,
@@ -5685,7 +5685,7 @@ if has_err(ret.err.clone()) {
         }
 let s = ret.state.clone();
 let outputs = match ret.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => node_inferred_to_outputs(&rt),
+    Some(InferredNode::Resolved { node: rt, .. }) => node_inferred_to_outputs(&rt, state.source_indices.clone()),
     _ => Rc::new(vec![]),
 };
 let s = skip_newlines(tokens.clone(), s.clone());
@@ -7176,7 +7176,7 @@ if has_err(ret.err.clone()) {
 })
                     }
 let outputs = match ret.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => node_inferred_to_outputs(&rt),
+    Some(InferredNode::Resolved { node: rt, .. }) => node_inferred_to_outputs(&rt, state.source_indices.clone()),
     _ => Rc::new(vec![]),
 };
 let cap = make_capability_node(name, Some(name_span), inputs, outputs, &start_span, &state.source_indices.clone());

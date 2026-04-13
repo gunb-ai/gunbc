@@ -2534,7 +2534,7 @@ pub fn emit_typed_for_each(variable: &String, collection: &Rc<Node>, body: Rc<No
     {
         let sharing = language_spec(RenderTarget::Rust).sharing.clone();
 let coll_str = emit_typed_expr(collection.clone(), registry.clone(), &scope, depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
-let elem_type = for_each_element_type_node(resolved_type(collection.clone()));
+let elem_type = for_each_element_type_node(resolved_type(collection.clone()), scope.type_env.clone().source_indices.clone());
 let body_scope = extend_scope(&scope, &variable, elem_type, Rc::new(SubValueRelation::SubValueUnknown));
 let body_str = emit_typed_expr(body, registry.clone(), &body_scope, (depth.clone() + 2), shared_types.clone(), emit_info.clone(), 1024);
 let ind1 = make_indent((depth.clone() + 1));
@@ -2850,7 +2850,7 @@ pub fn emit_rust_sort_by_method_call(receiver: &Rc<Node>, args: Rc<Vec<Rc<Node>>
 let elem_type_str = match receiver.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => {
             let resolved = rt.clone();
-let elem = for_each_element_type_node(resolved);
+let elem = for_each_element_type_node(resolved, scope.type_env.clone().source_indices.clone());
 let elem_is_type_var = if (elem.inferred.clone() != None) {
                 is_type_variable(elem.inferred.clone().clone().unwrap())
             } else {

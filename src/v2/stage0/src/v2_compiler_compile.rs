@@ -462,7 +462,7 @@ pub fn serialize_resource_use(resource_use: &Rc<Node>, source_indices: &Rc<HashM
 }
 
 pub fn serialize_field(field: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(field_node_name_at(field.clone(), source_indices.clone()))), ", \"type_expr\": ".to_string()), serialize_node(&field_node_type_expr(&field), &source_indices)), ", \"cardinality\": ".to_string()), json_quote(cardinality_name(field_node_cardinality(field.clone())))), ", \"default_value\": ".to_string()), json_optional_node(field_node_default_value(&field), source_indices.clone())), ", \"from_key\": ".to_string()), json_optional_string(field_node_from_key(field.clone()))), ", \"span\": ".to_string()), serialize_span(&field_node_span(field.clone()))), "}".to_string())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(field_node_name_at(field.clone(), source_indices.clone()))), ", \"type_expr\": ".to_string()), serialize_node(&field_node_type_expr(&field), &source_indices)), ", \"cardinality\": ".to_string()), json_quote(cardinality_name(field_node_cardinality(field.clone())))), ", \"default_value\": ".to_string()), json_optional_node(field_node_default_value(&field), source_indices.clone())), ", \"from_key\": ".to_string()), json_optional_string(field_node_from_key(field.clone(), source_indices.clone()))), ", \"span\": ".to_string()), serialize_span(&field_node_span(field.clone()))), "}".to_string())
 }
 
 pub fn serialize_param(param: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
@@ -592,7 +592,7 @@ if has_parse_errors {
             {
                 let modules = Rc::new({ let mut __result = Vec::new(); for p in parse_results.clone().iter().cloned() { __result.push(p.module.clone().clone().unwrap()); } __result });
 let source_indices = newline_indices.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, si: Rc<NewlineIndex>| v2_rt::rc_map_insert(acc.clone(), si.file.clone(), si.clone()));
-let graph = resolve_modules(&modules, source_indices);
+let graph = resolve_modules(&modules, &source_indices);
 Rc::new(FrontendResult {
     graph: Some(graph.clone()),
     diagnostics: v2_rt::concat(parse_diagnostics, graph.diagnostics.clone()),
