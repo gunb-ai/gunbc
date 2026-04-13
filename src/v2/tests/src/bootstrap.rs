@@ -412,7 +412,6 @@ fn bootstrap_fixed_point() {
     let build1 = std::process::Command::new("cargo")
         .arg("build")
         .arg("--release")
-        .env("CARGO_BUILD_JOBS", "2")
         .current_dir(&stage1_dir)
         .output()
         .expect("stage1 build failed");
@@ -582,6 +581,8 @@ struct Pass1Output {
     output_dir: std::path::PathBuf,
     stderr: String,
     elapsed: std::time::Duration,
+    /// Freshness check computed here (before CI_PASS2 can modify workspace).
+    freshness: Result<(), String>,
 }
 
 /// Output from pass 2: build stage1 from pass 1 output, self-compile again.
@@ -591,6 +592,7 @@ struct Pass2Output {
 
 static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
     let stage0_bin = build_stage0();
+    let ws = crate::helpers::workspace_root();
 
     let output_dir = std::env::temp_dir().join("v2-ci-pass1");
     let _ = std::fs::remove_dir_all(&output_dir);
@@ -607,26 +609,38 @@ static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
         stderr
     );
 
-    Pass1Output { output_dir, stderr, elapsed }
+    // Freshness: diff pass 1 output against committed stage0.
+    // Must be computed HERE, before CI_PASS2 copies pass1 files into stage0.
+    let pass1_src = output_dir.join("src");
+    let committed_src = ws.join("src/v2/stage0/src");
+    let freshness = diff_excluding_hand_maintained(&pass1_src, &committed_src);
+
+    Pass1Output { output_dir, stderr, elapsed, freshness }
 });
 
 static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
     let pass1 = &*CI_PASS1;
     let ws = crate::helpers::workspace_root();
+    let stage0_src = ws.join("src/v2/stage0/src");
 
-    // Prepare stage1: copy hand-maintained files + patch Cargo.toml.
-    // We work on a copy so pass1.output_dir stays pristine for freshness checks.
-    let stage1_dir = std::env::temp_dir().join("v2-ci-stage1");
-    let _ = std::fs::remove_dir_all(&stage1_dir);
-    copy_dir_recursive(&pass1.output_dir, &stage1_dir);
-    prepare_stage1_for_build(&stage1_dir, &ws);
+    // Copy pass1 generated .rs files into the workspace's stage0 source.
+    // Hand-maintained files (v2_interpreter.rs, cli_run.rs) are NOT in pass1
+    // output and stay untouched. If freshness passes, this is a no-op.
+    let pass1_src = pass1.output_dir.join("src");
+    for entry in std::fs::read_dir(&pass1_src).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if path.extension().map(|e| e == "rs").unwrap_or(false) {
+            std::fs::copy(&path, stage0_src.join(entry.file_name())).unwrap();
+        }
+    }
 
-    // Build stage1 binary
+    // Rebuild workspace binary — incremental, all deps already compiled.
     let build1 = std::process::Command::new("cargo")
         .arg("build")
+        .arg("-p")
+        .arg("v2-compiler")
         .arg("--release")
-        .env("CARGO_BUILD_JOBS", "2")
-        .current_dir(&stage1_dir)
         .output()
         .expect("stage1 build failed");
     assert!(
@@ -634,9 +648,7 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
         "stage1 build failed:\n{}",
         String::from_utf8_lossy(&build1.stderr)
     );
-    // stage0 binary is v2-compiler (hyphen, workspace build);
-    // stage1 binary is v2_compiler (underscore, self-compiled crate name).
-    let stage1_bin = stage1_dir.join("target/release/v2_compiler");
+    let stage1_bin = ws.join("target/release/v2-compiler");
 
     // Self-compile pass 2
     let output_dir = std::env::temp_dir().join("v2-ci-pass2");
@@ -650,21 +662,6 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
 
     Pass2Output { output_dir }
 });
-
-/// Recursive directory copy (for making a stage1 working copy).
-fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) {
-    std::fs::create_dir_all(dst).unwrap();
-    for entry in std::fs::read_dir(src).unwrap() {
-        let entry = entry.unwrap();
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-        if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path);
-        } else {
-            std::fs::copy(&src_path, &dst_path).unwrap();
-        }
-    }
-}
 
 #[test]
 #[ignore] // CI: cargo test -p v2-compiler-tests ci_ -- --ignored
@@ -743,10 +740,9 @@ fn ci_performance_ratchet() {
 #[ignore] // CI: cargo test -p v2-compiler-tests ci_ -- --ignored
 fn ci_freshness() {
     let pass1 = &*CI_PASS1;
-    let ws = crate::helpers::workspace_root();
-    let pass1_src = pass1.output_dir.join("src");
-    let committed_src = ws.join("src/v2/stage0/src");
-    if let Err(diff) = diff_excluding_hand_maintained(&pass1_src, &committed_src) {
+    // Freshness was precomputed in CI_PASS1 init — before CI_PASS2 can
+    // copy pass1 files into the workspace (which would mask staleness).
+    if let Err(ref diff) = pass1.freshness {
         panic!(
             "Stage0 is STALE — does not match self-compile output.\n\
              Run ./scripts/regenerate-stage0.sh to update.\n\
