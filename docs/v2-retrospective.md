@@ -559,7 +559,180 @@ dimension SecurityLevel: Dimension<SecLevel> {
 
 ---
 
-## 8. Summary: the three lessons
+## 8. Exhaustive inventory: what stays, what goes
+
+### 8a. By the numbers
+
+| Metric | Value |
+|--------|-------|
+| Total .dag files in src/v2/ | 32 |
+| Total .dag lines | 38,075 |
+| Generated Rust (stage0/) | 55,632 lines across 62 files |
+| Structural lines (keep) | ~17,500 (46%) |
+| Reconstruction heuristic lines (rewrite) | ~20,575 (54%) |
+| Distinct reconstruction sites | 60+ |
+
+### 8b. Per-file breakdown
+
+| File | Lines | Structural | Reconstruction | Keep % |
+|------|-------|-----------|----------------|--------|
+| 00_core.dag | 1,702 | 1,702 | 0 | 100% |
+| complexity.dag | 5,489 | ~390 | ~5,099 | 8% |
+| 04_infer.dag | 5,470 | ~2,200 | ~3,270 | 46% |
+| 05_emit_rust.dag | 5,894 | ~4,125 | ~1,769 | 70% |
+| 05_emit.dag | 3,003 | ~2,100 | ~900 | 70% |
+| 02_parse.dag | 4,824 | ~1,930 | ~2,894 | 40% |
+| ownership.dag | 635 | 635 | 0 | 100% |
+| compile.dag | 1,065 | 1,065 | 0 | 100% |
+| languages.dag | 1,163 | ~1,047 | ~116 | 90% |
+| 04_types.dag | 992 | ~694 | ~298 | 70% |
+| 04_resolve.dag | 992 | ~595 | ~397 | 60% |
+| All other .dag | ~6,846 | ~5,017 | ~1,832 | ~73% |
+
+### 8c. Reconstruction anti-pattern inventory
+
+**Hardcoded lookup tables (8 maps + 6 query functions):**
+- `expr_child_roles` — 50 lines mapping ExprData variants to child positions
+- `wrapper_child_roles` — 12 lines mapping wrapper node children
+- `function_size_effects` — 9 lines mapping function names to tree-size effects
+- `node_field_roles` — 7 lines mapping field names to structural roles
+- `is_child_accessor_in_model()`, `child_roles_for_variant()`,
+  `is_tree_size_preserving()`, `is_tree_size_reducing()`,
+  `is_property_contraction()`, `is_sub_value_field()` — query wrappers
+
+**String-based name matching (45+ sites):**
+- complexity.dag: `param_node_type_expr(n: param).name == "ParserState"`,
+  field name checks for `"state"`, `"tokens"`, method name checks
+- 04_infer.dag: `func_name == "empty_map"`, `func_name == "lookup"`,
+  `method_name == "map_keys"`, `mname == "count"`, `mname == "skip"`,
+  `type_name.value == "Some"`, `field_type_name == "List"/"Set"/"Map"`
+- ownership.dag: `fname == "fold"`, `authored_name_at(...) == "init"`
+- 05_emit_rust.dag: field name matches for `"naming"`, `"from_key"`,
+  `"exit_nonzero"`, variant name `"SnakeCase"`, method name `"skip"`
+
+**Classification/reconstruction functions (30+ major functions):**
+- complexity.dag: `classify_recursion_pattern()` (35+ lines),
+  `classify_self_call_evidence()`, `classify_scc_recursion_pattern()`,
+  `classify_parser_scc_recursion_pattern()`, `is_child_descent_expr()`,
+  `is_tree_size_preserving_wrapper()`, `is_sub_value_extractor()`,
+  `is_list_shrink_expr()`, `is_tokens_consuming_call()`,
+  `is_tokens_input_expr()`, `is_descent_arg()`
+- 04_infer.dag: `classify_field_recursion()`, `classify_argument()` (80+ lines),
+  `classify_binding_provenance()`, `classify_let_value()`,
+  `classify_call_via_provenance()`, `classify_call_arg_provenance()`,
+  `classify_body_provenance()` (60+ lines), `annotate_descent()`,
+  `annotate_pattern_parent_enums()`
+
+### 8d. The worst offenders
+
+1. **complexity.dag** — 92% reconstruction. The cost algebra (SizeExpr,
+   CostExpr, composition rules) is 390 lines of real domain logic.
+   The other 5,099 lines are heuristic dimension guessing, pattern
+   matching on expressions, and fallback searches. Line 2861:
+   "Unknown type: fallback to trying all dimensions."
+
+2. **04_infer.dag classify_argument()** — 80+ lines that walk expression
+   trees to reconstruct descent evidence that was available at the
+   binding site. This single function embodies the construct-discard-
+   reconstruct pattern: inference computed the SubValueRelation,
+   TypeBinding discarded it, classify_argument() reconstructs it.
+
+3. **02_parse.dag** — 60% heuristic. Integer position indexing creates
+   opaque tokens that CX can't prove terminate. 132 CX violations
+   exist purely because the parser representation defeats structural
+   descent proofs. Stream D (list consumption) is mechanically done
+   but CX can't see through helper returns without output provenance.
+
+---
+
+## 9. Strategic question: refactor v2 or redesign v3?
+
+Two paths to the same goal. The question is cost.
+
+### Path A: Incremental refactor (current plan)
+
+Continue Track 1 (provenance on bindings) → ownership on bindings →
+extract generic dimension mechanism → single emitter → Node cleanup.
+
+**Pros:**
+- Working compiler throughout. No bootstrap gap.
+- Each step is testable against the 393-test suite.
+- Hard-won edge cases (service reconciliation, pattern coverage,
+  variant disambiguation) are preserved.
+- 46% of the code (17,500 lines) stays as-is.
+
+**Cons:**
+- Track 1 has been in progress for months. S1-S7 partially done.
+  Refactoring while maintaining backward compatibility is slow.
+- Each step touches multiple stages simultaneously (infer creates
+  bindings, CX reads them, emit consumes them). Cross-cutting changes
+  in a 38K-line self-hosted compiler are expensive.
+- The "refactor while running" constraint means you can never make
+  a breaking substrate change — you must maintain both old and new
+  paths until the migration is complete.
+- Risk of permanent incrementalism: always refactoring, never arriving.
+
+**Estimated cost:** Track 1 alone was estimated at ~1,500 lines net
+dissolution. At current velocity, that's weeks of agent sessions.
+Full path (through single emitter) is months.
+
+### Path B: Clean redesign (spec-first)
+
+Write src/v3/spec.dag as a complete specification. Design the
+substrate (Node, TypeBinding, DimensionSet, CompilerTable) with all
+known concerns from day one. Then implement the pipeline against
+the spec, porting the 17,500 structural lines and rewriting the
+20,575 reconstruction lines as clean consumers.
+
+**Pros:**
+- No backward compatibility constraint. Breaking substrate changes
+  are free.
+- The spec can be reviewed and validated before implementation.
+  Design mistakes are caught in the spec, not in the 10th refactor
+  session.
+- Complexity, ownership, effects are designed in from the start.
+  No reconstruction heuristics. No classify_argument().
+- 46% port + 54% clean rewrite of ~20K lines may be faster than
+  incrementally migrating ~20K lines while keeping them working.
+- The spec IS the documentation. No divergence between design docs
+  and implementation.
+
+**Cons:**
+- Bootstrap gap: v2 must compile v3's first stage0, then v3 must
+  self-host. The transition is a project.
+- Risk of losing hard-won edge cases that aren't documented but are
+  encoded in the 20K lines of heuristics. Some of those heuristics
+  capture real complexity that a clean design must also handle.
+- Risk of over-design: spending weeks on a spec that turns out to
+  need revision once implementation starts.
+- The 17,500 "structural" lines may not port cleanly if the substrate
+  changes enough.
+
+**Estimated cost:** Spec design (1-2 weeks of focused sessions).
+Implementation (~3-4 weeks porting structural code + writing clean
+dimension consumers). Bootstrap (~1 week).
+
+### Path B.1: Hybrid — spec then implement inside v2
+
+Write the spec (the thinking work). But implement it as a v2
+refactor, not a separate codebase. The spec guides which substrate
+changes to make and in what order. But the changes land in v2,
+preserving the test suite and bootstrap.
+
+This gets the design clarity of Path B with the continuity of Path A.
+The spec answers "what is the target state?" The implementation is
+still incremental, but now each increment knows exactly where it's
+going.
+
+**This may be the right path.** The problem with Track 1 wasn't
+incrementalism — it was incrementalism without a complete target
+spec. Each step discovered new design questions that weren't
+answered yet. A spec that resolves all design questions up front
+makes the incremental path predictable.
+
+---
+
+## 10. Summary: the three lessons
 
 1. **Design concerns into the substrate, don't bolt them on.**
    Complexity, ownership, effects — each was a correct insight
