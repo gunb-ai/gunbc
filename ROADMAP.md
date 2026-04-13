@@ -66,6 +66,9 @@ LAYER 6: Full vision (depends on Layer 5)
 
 | Track | Thesis tier | Readiness | Blocked on |
 |-------|------------|-----------|-----------|
+| **Track 10 boundary wiring** | **Tier 1 (typed boundaries)** | **🟢 STAFF NOW** | **Nothing — trivial field changes** |
+| **Track 9 record dedup** | **Tier 1 (no dup representations)** | **🟢 STAFF NOW** | **Nothing — merge identical types** |
+| **Track 8 lattice (FermiDepth, Set)** | **Tier 1 (algebra)** | **🟢 STAFF NOW** | **Nothing — small** |
 | Stream C / Track 8 / 9 | Tier 1 (structural facts) | 🟢 | Nothing |
 | Track 6 | Tier 1 (string dispatch) | 🟢 | Nothing |
 | **Track 1 (provenance)** | **Tier 1 (CX gate)** | **🟢** | **S4 in progress** |
@@ -627,6 +630,18 @@ Additional duplication surfaced by review (PR #371, external audit):
 `std/algebra.dag` defines `Lattice<T>` and `BoundedLattice<T>` as
 types, but no concrete type declares that it inhabits them.
 
+**Surfaced by ChatGPT Pro audit (2026-04-12):**
+- `FermiDepth` in `std/fermi.dag:18-46` manually reimplements a
+  lattice join (`fermi_ordinal`, `fermi_gt`, `fermi_max`).
+  `fermi_max` IS `Lattice<FermiDepth>.join`. Should declare as
+  `Lattice<FermiDepth>` and fold the manual functions into the
+  algebra vocabulary.
+- `Set<T>` is mapped to `BooleanAlgebra` in a string lookup table
+  (`std/types.dag:144`) but NOT structurally composed like
+  `List<T> = FreeMonoid<T>` or `Map<K,V> = PartialFunction<K,V>`.
+  The algebra membership is in comments and string tables, not in
+  the type declaration.
+
 **Status: Phase 1 DONE.** DescentEvidence declared as BoundedLattice
 inhabitant with `evidence_rank`, `merge_evidence` (meet),
 `join_evidence` (join), `optional_evidence_meet`, and
@@ -663,6 +678,15 @@ described but not structurally modeled in .dag:
 | Stack\<T\> → FreeMonoid | **DONE** — imports algebra.dag; operations aligned to FreeMonoid vocabulary; inhabitation declared | — |
 | User-defined generic emission | Generic functions (T, V, K params) parse and type-check but emit unresolved type variables in Rust | Emitter needs monomorphization or generic Rust output |
 
+**Surfaced by ChatGPT Pro audit (2026-04-12) — record shape duplicates:**
+
+| Pair | Files | Fix |
+|------|-------|-----|
+| `CargoDependency` / `CrateDep` | `extdeps/cargo.dag:25` / `extdeps/languages/rust/imports.dag:76` | Identical fields (name, version, features). Merge to one type. |
+| `TransportResponse` / `HttpResponse` | `std/types.dag:472` / `std/types.dag:496` | Identical fields (status, headers, body). Merge to one. |
+| `ShellResponse` / `CliResult` | `std/types.dag:484` / `std/types.dag:502` | Same 3 fields, different order. Merge. |
+| Dual `Credential` | `std/types.dag:448` / `extdeps/cloud/cloud.dag:43` | Same concept name, DIFFERENT schemas. Rename cloud one to `CloudCredential` or unify. |
+
 ### Track 10: Extdeps modeling fidelity (Lane D)
 
 Stringly-typed fields that should be structural, surfaced by external
@@ -677,6 +701,49 @@ audit (2026-04-10):
 | OpenAI string-path extraction | extdeps/llm/openai.dag | Structural field access (M8) |
 | Policy defaults in `CloudSecretConfig` | std/types.dag | **DONE** — dead type deleted; operations define own inputs |
 | `ProjectId` vs `GcpProjectId` | std/types.dag | **DONE** — renamed to `GcpProjectId`; 5 dead types deleted |
+
+**Surfaced by ChatGPT Pro audit (2026-04-12) — typed enums bypassed
+at service boundary:**
+
+These are the highest-leverage Track 10 items: the closed type
+EXISTS but the service I/O uses String/Bool instead. Each is a
+single-field type change — no inference, no derivation, no new
+modeling needed.
+
+| Item | Declared type | Actual field | Fix |
+|------|-------------|-------------|-----|
+| Gist visibility | `GistVisibility = Public \| GistSecret` (gists.dag:18) | `Gist.public: Bool`, `Create.public: Bool` | Change to `visibility: GistVisibility` |
+| PR state | `PullRequestState = PrOpen \| PrClosed \| PrMerged` (pulls.dag:26) | `PullRequest.state: String`, `List.state: String` | Change to `state: PullRequestState` |
+| LLM stop reason | `StopReason = EndTurn \| MaxTokens \| StopSequence \| ToolUse` (llm.dag:55) | `anthropic Create.stop_reason: String`, `openai Create.finish_reason: String` | Change to typed enums |
+| LLM model | `AnthropicModel` / `OpenAiModel` enum + spec tables | `model: String` at both service boundaries | Change to typed model enums |
+| Review state | `PullReview.state: String` (pulls.dag:310) | — | Change to typed `ReviewState` enum (declare if missing) |
+
+**Also surfaced — constant duplication:**
+
+| Item | Authority | Duplicated at | Fix |
+|------|-----------|-------------|-----|
+| API base URL | `github.dag:70` `default_api_base` | `gists.dag:42`, `pulls.dag:60` hardcode `"https://api.github.com"` | Reference the constant |
+| Per-page default | `github.dag:72` `default_per_page` | `pulls.dag:75` hardcodes `30` | Reference the constant |
+
+**Also surfaced — semantic drift:**
+
+| Item | Conflict | Fix |
+|------|---------|-----|
+| Rust `chars` | `std/languages.dag:1006` returns strings (`.to_string()`), `extdeps/languages/rust/emit.dag:60` returns ints (`c as i64`). `Char = Int` in types.dag. | Decide which is authority; delete the other. emit.dag (ints) matches the type declaration. |
+| Python `chars` | `extdeps/languages/python/runtime.dag:43` returns string chars (`list()`), `emit.dag:94` returns ints (`ord()`). | Same decision — pick one. |
+
+**Also surfaced — fabrication sentinels:**
+
+| Item | File | What it emits | Fix |
+|------|------|-------------|-----|
+| `error_type_template` | go/emit.dag:107, python/emit.dag:115, rust/emit.dag:141 | `__EMIT_BUG_{0}__` / `compile_error!("{0}")` — fabrication string flows into emitted code | Should be a compile-time diagnostic, not a runtime string. Track 18 (ErrorClass). |
+| `container_param_name_required` | std/types.dag:115 | `__BUG_NO_PROFILE_` string when container profile missing | Should fail closed, not fabricate. Track 18. |
+
+**Also surfaced — test infrastructure:**
+
+| Item | Files | Fix |
+|------|-------|-----|
+| Dual `source_roots()` | `bootstrap.rs:16` returns `(src/v2, dsl)` tuple; `helpers.rs:95` returns `[dsl, src/v2]` vec — different types AND different order | Consolidate to one function |
 
 ---
 
