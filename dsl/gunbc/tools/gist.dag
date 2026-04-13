@@ -9,7 +9,7 @@ module gunbc.tools.gist
 
 import extdeps.git
 import extdeps.github.auth { github_token }
-import extdeps.github.gists
+import extdeps.github.gists { GistSecret, Public }
 import std.resources { Network }
 import std.types { CommitSha, Url }
 
@@ -99,7 +99,7 @@ func gist(public: Bool = false) -> { url: Url }
   gist_result = github.Gist.Create(
     description: branch_info.branch,
     content: content,
-    public: public,
+    visibility: if public { Public } else { GistSecret },
     auth_token: token.token
   )
   return { url: gist_result.html_url as Url }
@@ -115,7 +115,7 @@ func gist_diff(base_ref: CommitSha = "HEAD~1", public: Bool = false) -> { url: U
   result = github.Gist.Create(
     description: current.branch,
     content: markdown,
-    public: public,
+    visibility: if public { Public } else { GistSecret },
     auth_token: token.token
   )
   return { url: result.html_url as Url }
@@ -136,7 +136,7 @@ func gist_recent(since: String = "3.days.ago", public: Bool = false) -> { url: U
   result = github.Gist.Create(
     description: current.branch,
     content: markdown,
-    public: public,
+    visibility: if public { Public } else { GistSecret },
     auth_token: token.token
   )
   return { url: result.html_url as Url }

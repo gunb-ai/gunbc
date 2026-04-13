@@ -9,7 +9,7 @@
 
 module extdeps.github.gists
 
-import extdeps.github.github { GitHubUser }
+import extdeps.github.github { GitHubUser, default_api_base }
 import std.types { Timestamp, GistId, Url, HttpMethod, AuthScheme }
 import std.errors { GitHubErrorShape }
 
@@ -27,7 +27,7 @@ type GistFile {
 type Gist {
   id: String
   description: String?
-  public: Bool
+  visibility: GistVisibility
   files: Map<String, GistFile>
   owner: GitHubUser
   created_at: Timestamp
@@ -39,7 +39,7 @@ type Gist {
 
 service github.Gist {
   config {
-    endpoint: "https://api.github.com"
+    endpoint: default_api_base
     auth: Bearer
     auth_input: auth_token
     // GitHub API rate limits: 5000 requests/hour for authenticated users
@@ -52,7 +52,7 @@ service github.Gist {
     input {
       description: String
       content: String
-      public: Bool = false
+      visibility: GistVisibility = GistSecret
       auth_token: Secret
     }
     output {
@@ -64,7 +64,7 @@ service github.Gist {
       path: "/gists",
       body: {
         description: description,
-        public: public,
+        public: visibility == Public,
         files: { "snapshot.md": { content: content } }
       }
     }
@@ -79,7 +79,7 @@ service github.Gist {
       201 => {
         id: "gist-abc123",
         description: "Mock gist",
-        public: false,
+        visibility: GistSecret,
         files: { "snippet.rs": { filename: "snippet.rs", content: "fn main() {}", language: "Rust", size: 12 } },
         owner: { login: "mock-user", id: 12345, type: User },
         html_url: "https://gist.github.com/mock-user/gist-abc123",

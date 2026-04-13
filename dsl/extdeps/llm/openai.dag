@@ -42,6 +42,17 @@ data models: List<OpenAiModelSpec> = [
   { model: O4Mini, model_id: "o4-mini", context_window: 200000, max_output_tokens: 100000 }
 ]
 
+fn openai_model_id(model: OpenAiModel) -> String {
+  match model {
+    Gpt4o => "gpt-4o"
+    Gpt4oMini => "gpt-4o-mini"
+    O1 => "o1"
+    O3 => "o3"
+    O3Mini => "o3-mini"
+    O4Mini => "o4-mini"
+  }
+}
+
 // -- Response format -----------------------------------------------
 
 type ResponseFormat
@@ -92,19 +103,23 @@ service llm.OpenAI {
   operation ChatCompletion {
     input {
       api_key: Secret
-      model: String
+      model: OpenAiModel
       messages: Json
       temperature: Float?
       max_tokens: Int?
     }
     output {
       content: String from "choices/0/message/content"
-      model: String from "model"
-      finish_reason: String from "choices/0/finish_reason"
+      model: OpenAiModel from "model"
+      finish_reason: OpenAiFinishReason from "choices/0/finish_reason"
       prompt_tokens: Int from "usage/prompt_tokens"
       completion_tokens: Int from "usage/completion_tokens"
     }
-    transport rest { method: POST, path: "/v1/chat/completions" }
+    transport rest {
+      method: POST,
+      path: "/v1/chat/completions",
+      body: { model: openai_model_id(model: model), messages: messages, temperature: temperature, max_tokens: max_tokens }
+    }
     response {
       200 => Json
       400 => OpenAiErrorShape
@@ -125,18 +140,22 @@ service llm.OpenAI {
   operation Responses {
     input {
       api_key: Secret
-      model: String
+      model: OpenAiModel
       input: Json
       instructions: String?
       max_output_tokens: Int?
     }
     output {
       content: String from "output/0/content/0/text"
-      model: String from "model"
+      model: OpenAiModel from "model"
       output_tokens: Int from "usage/output_tokens"
       input_tokens: Int from "usage/input_tokens"
     }
-    transport rest { method: POST, path: "/v1/responses" }
+    transport rest {
+      method: POST,
+      path: "/v1/responses",
+      body: { model: openai_model_id(model: model), input: input, instructions: instructions, max_output_tokens: max_output_tokens }
+    }
     response {
       200 => Json
       400 => OpenAiErrorShape
