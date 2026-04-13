@@ -211,17 +211,15 @@ type Provenance =
   | Accumulated { over: NodeId }  // output of a Loop
 
 // =========================================================================
-// CONTRACTS — what each node provides and requires
+// CONTRACTS = DERIVED FROM PORTS (not a separate structure)
 // =========================================================================
 //
-// Every node has a contract (same idea as gunb.ai/pkg/dag): what data
-// it exports and what data it imports. The compiler validates that
-// every import is exported by a prior node (wave-aware).
-
-type NodeContract {
-  exports: List<DataRef>          // typed data this node produces
-  imports: List<DataRef>          // typed data this node requires
-}
+// Ports ARE the contracts. A behavior's input ports are its imports.
+// Its output port is its export. The compiler validates that every
+// input port connects to a prior behavior's output port (wave-aware).
+// Same idea as gunb.ai/pkg/dag contracts, but derived from the DAG
+// structure rather than declared separately. No NodeContract type —
+// that would be a duplicate representation of what ports already say.
 
 // =========================================================================
 // LENSES — lightweight views over the physics
@@ -313,6 +311,14 @@ type NodeContract {
 //   reverse |> reverse = identity (involution)
 //   serialize |> deserialize = identity (inverse pair)
 //   map(f) |> map(g) = map(f.g) (functor fusion)
+//
+//   NOTE: simplification is normalization during DAG CONSTRUCTION,
+//   not a post-hoc rewrite pass. When the compiler builds
+//   Transform(reverse) → Transform(reverse), it reads the algebra
+//   table, sees involution, and produces identity — the redundant
+//   nodes never enter the DAG. Same as how the compiler raises
+//   for-loops to Map during construction. The DAG is built
+//   normalized; no separate optimizer rewrites it afterward.
 
 // SPACE lens — "how much memory does this need?"
 //   Looks at: each behavior node
