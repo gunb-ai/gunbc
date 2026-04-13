@@ -947,9 +947,10 @@ fn parse_items_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) -> I
 // 3. parse_import
 // =========================================================================
 
+<<<<<<< HEAD
 fn parse_import(tokens: List<Token>, ctx: ParseContext) -> ImportResult {
   let start_span = token_span(tok: tokens |> first)
-  let err_import = import_node(module_path: "", is_all: false, specific_names: [], span: start_span)
+  let err_import = import_node(module_path: "", is_all: false, specific_names: [], span: start_span, name_span: start_span)
   let r = expect(tokens: tokens, expected: ExpectKeyword { text: "import" })
   if has_err(err: r.err) { return ImportResult { import: err_import, tokens: r.tokens, ctx: ctx, err: r.err } }
   let tokens = r.tokens
@@ -957,6 +958,8 @@ fn parse_import(tokens: List<Token>, ctx: ParseContext) -> ImportResult {
   let r = parse_dotted_ident(tokens: tokens)
   if has_err(err: r.err) { return ImportResult { import: err_import, tokens: r.tokens, ctx: ctx, err: r.err } }
   let mod_path = r.name
+  let tokens = r.tokens
+  let mod_path_span = r.span
   let tokens = r.tokens
 
   // Optional binding list: { Name1, Name2 }
@@ -970,18 +973,18 @@ fn parse_import(tokens: List<Token>, ctx: ParseContext) -> ImportResult {
     let r = expect(tokens: tokens, expected: ExpectRBrace)
     if has_err(err: r.err) { return ImportResult { import: err_import, tokens: r.tokens, ctx: ctx, err: r.err } }
     let tokens = skip_newlines(tokens: r.tokens)
-    let imp = import_node(module_path: mod_path, is_all: false, specific_names: names, span: start_span)
+    let base_imp = import_node(module_path: mod_path, is_all: false, specific_names: names, span: start_span, name_span: mod_path_span)
     let imp_ir = intern(table: ctx.intern_table, s: mod_path)
     let ctx = with(ctx, { intern_table: imp_ir.table })
-    let imp = with(imp, { ident: Some { value: imp_ir.id } })
+    let imp = with(base_imp, { ident: Some { value: imp_ir.id } })
     ImportResult { import: imp, tokens: tokens, ctx: ctx, err: none }
   } else {
     // Bare import (no braces): import all from module.
     let tokens = skip_newlines(tokens: tokens)
-    let imp = import_node(module_path: mod_path, is_all: true, specific_names: [], span: start_span)
+    let base_imp = import_node(module_path: mod_path, is_all: true, specific_names: [], span: start_span, name_span: mod_path_span)
     let imp_ir = intern(table: ctx.intern_table, s: mod_path)
     let ctx = with(ctx, { intern_table: imp_ir.table })
-    let imp = with(imp, { ident: Some { value: imp_ir.id } })
+    let imp = with(base_imp, { ident: Some { value: imp_ir.id } })
     ImportResult { import: imp, tokens: tokens, ctx: ctx, err: none }
   }
 }

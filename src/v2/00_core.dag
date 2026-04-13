@@ -1472,14 +1472,14 @@ fn module_node(name: String, imports: List<Node>, items: List<Node>, span: Sourc
   }
 }
 
-fn import_node(module_path: String, is_all: Bool, specific_names: List<Node>, span: SourceSpan) -> Node {
+fn import_node(module_path: String, is_all: Bool, specific_names: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
   // Wildcard imports set body to a marker node so they're structurally
   // distinguishable from empty specific imports (import foo {}).
   let wildcard_marker = if is_all {
     Some { value: Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } }
   } else { none }
   Node {
-    name: module_path, span: span, ident_span: default_ident_span(name: module_path, span: span), children: specific_names, connective: NoConnective,
+    name: module_path, span: span, ident_span: Some { value: name_span }, children: specific_names, connective: NoConnective,
 
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: wildcard_marker, transport: none, properties: [],
