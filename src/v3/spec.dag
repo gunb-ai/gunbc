@@ -60,6 +60,14 @@ type Value {
 //
 // The rule is DATA, not structure. Adding a new kind of transform
 // means adding a rule to the table, not a new behavior.
+//
+// GENERICS: a generic type (List<T>, Tree<T>, Config<T>) is a
+// type-level Define — give it a type parameter, get a concrete type.
+// Instantiation (List<Int>) is a type-level Transform — substitute
+// the parameter, get the result. Recursive generics (Tree<T> where
+// children: List<Tree<T>>) follow the same bounded law as recursive
+// functions: self-reference is detected and not expanded. Same
+// mechanism at both levels. No special generics system.
 
 type Transform {
   id: NodeId
@@ -164,11 +172,14 @@ type Loop {
   output: Port                    // final result
 }
 
-type Bound =
-    CollectionSize { collection: Port }   // |items| — fold, map, filter
-  | TreeSize { tree: Port }               // |tree| — descend
-  | Explicit { count: Port }              // N — repeat
-  | SystemLimit                           // "forever" — largest finite value
+// Bound: how many times does the Loop repeat?
+// Just a port carrying an Int. The compiler determines the bound
+// during DAG construction (from collection length, tree depth,
+// explicit N, or system limit). The Loop doesn't care WHERE the
+// bound came from — it just needs the number.
+type Bound {
+  count: Port                     // carries an Int — the iteration count
+}
 
 // ---------------------------------------------------------------------------
 // Bind — give something a name
@@ -203,12 +214,14 @@ type Port {
   provenance: Provenance          // where this value came from
 }
 
-type Provenance =
-    Origin                        // parameter, literal — first appearance
-  | SubValue { parent: PortId, relation: SubValueRelation }
-  | Computed { by: NodeId }       // output of a Transform
-  | Selected { from: NodeId }     // output of a Branch
-  | Accumulated { over: NodeId }  // output of a Loop
+// Provenance: where did this value come from?
+// Just a pointer back to the node that produced it (if any).
+// Origin values (parameters, literals) have no source.
+// The structural relationship (sub-value, computed, selected,
+// accumulated) is readable from the source node's behavior type.
+type Provenance {
+  source: NodeId?                 // None = origin (parameter, literal)
+}
 
 // =========================================================================
 // CONTRACTS = DERIVED FROM PORTS (not a separate structure)
@@ -216,10 +229,9 @@ type Provenance =
 //
 // Ports ARE the contracts. A behavior's input ports are its imports.
 // Its output port is its export. The compiler validates that every
-// input port connects to a prior behavior's output port (wave-aware).
-// Same idea as gunb.ai/pkg/dag contracts, but derived from the DAG
-// structure rather than declared separately. No NodeContract type —
-// that would be a duplicate representation of what ports already say.
+// input port connects to a prior behavior's output port — each
+// dependency must be satisfied before the dependent can execute.
+// No separate contract type — that would duplicate what ports say.
 
 // =========================================================================
 // LENSES — lightweight views over the physics
@@ -396,7 +408,7 @@ type Provenance =
 // Purity        = effect lens → check if result is Pure
 // Idempotence   = algebra lens → check if all operations are lattice meets
 // Termination   = termination lens → check all Loops have bounds
-// Parallelism   = wave computation from dependency structure
+// Parallelism   = independence from DAG structure (no shared edges)
 // Space bounds  = space lens pointed at the DAG
 // Security (v3.1) = user-defined lens pointed at the DAG
 //
@@ -917,7 +929,7 @@ type Provenance =
 // 4. New transforms add a rule to the table. Not a new behavior.
 // 5. Lambda = Bind + Define transform. Not a special behavior.
 // 6. if = Branch on Bool. match = Branch on any. Same behavior.
-// 7. Contracts are validated wave-aware (same as gunb.ai/pkg/dag).
+// 7. Every input port must connect to a prior output port.
 // 8. Emitter reads behaviors + LanguageSpec. Never decides semantics.
 
 // =========================================================================
