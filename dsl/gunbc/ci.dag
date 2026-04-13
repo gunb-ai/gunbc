@@ -128,10 +128,13 @@ data compile_gates_gate: CIGate = {
 
 data ci_pipeline: CIPipeline = {
   name: "gunbc-ci",
+  // compile_gates first: build_stage0() hits the clean release cache
+  // from ci.yml's Build Compiler step. Running clippy before this would
+  // invalidate cargo's release fingerprints, forcing a full rebuild.
   gates: [
+    compile_gates_gate,
     lint_gate,
     test_gate,
-    l1_gate,
-    compile_gates_gate
+    l1_gate
   ]
 }
