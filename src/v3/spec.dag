@@ -1,48 +1,45 @@
 // v3/spec.dag — Minimal compiler specification.
 //
-// This file IS the spec. It defines every type the v3 compiler operates on,
-// building up from first principles to pipeline contracts. Each layer is
-// derived from prior layers. Nothing is axiomatic that can be derived.
-// Nothing is named before it emerges from structure.
+// The spec is split into two halves:
 //
-// THESIS (from THESIS.md): gunbc is a causal engine. Its job is to validate
-// that a program has a consistent cause-and-effect flow from source to drain.
-// A .dag program IS a dependency graph. All data is finite. All iteration is
-// bounded. Correctness dimensions (termination, ownership, effects, user-defined)
-// are lattice values carried on edges. If the proof constructs, emission is
-// mechanical translation.
+//   WORLD MODEL (Layers 0-6): The physics. Nodes, edges, truth, finiteness.
+//   Pure structure — no names for patterns that emerge from the structure.
+//   A physics engine doesn't have a type called "Collision." Neither does
+//   the world model have types called "FunctionCall" or "MatchExpression."
 //
-// Layers (each derived from prior layers):
+//   COMPILER OBSERVATIONS (Layers 7-9): The labels. Where the compiler
+//   names patterns it observes in the world model for practical reasons:
+//   diagnostics, emission, optimization. These labels are DERIVED from
+//   reading the world model. They don't change the physics.
 //
-//   0  Truth + Finiteness    — the primitive and the axiom
-//   1  Function              — the sole computation primitive (implication)
-//   2  Type structure        — emerges from Classical + Function
-//   3  Self-reference        — observable graph property, not a declared type
-//   4  Observed patterns     — BoundedLattice, Monoid (named regularities)
-//   5  The DAG IR            — Node, Edge (two designs explored)
-//   6  Edge vocabulary       — SubValueRelation, UsageEdge
-//   7  Dimension mechanism   — Dimension<T>, built-in dimensions
-//   8  Proof strategies      — fold + lattice + gate
-//   9  Pipeline contracts    — parse / resolve / prove / emit
+// The test: if you remove all compiler observation types, the world model
+// still stands. Properties (termination, ownership, effects) are still
+// consequences of the structure. The labels just make them nameable.
 
 module v3.spec
+
+
+// *************************************************************************
+//
+//   PART I: WORLD MODEL
+//
+//   The physics. Everything here is structural — derivable from truth,
+//   finiteness, and function. No pattern is named before it emerges.
+//
+// *************************************************************************
 
 
 // =========================================================================
 // LAYER 0: TRUTH + FINITENESS
 //
-// The single primitive and the single axiom. Everything else derives.
+// The single primitive and the single axiom.
 //
-// Classical: a proposition holds or doesn't. The smallest unambiguous
-// unit of meaning in digital computing. Bit, Bool, and all integers
-// are composed from this.
+// Classical: a proposition holds or doesn't. Everything else composes
+// from this — Bit, Byte, Word64, Int, all of it.
 //
-// Finiteness: all data is representable in a finite number of bits.
-// The largest value is Word64. There is no infinity. This makes every
-// property decidable, every computation bounded, every proof constructive.
-//
-// Together: truth + finiteness = a closed system. This is what makes
-// the causal engine possible.
+// Finiteness: all data fits in a finite number of bits. This makes
+// every property decidable, every computation bounded, every type
+// enumerable. The causal engine is possible because the system is closed.
 // =========================================================================
 
 type Classical = True | False
@@ -53,471 +50,103 @@ data max_inhabitants: Int = 9223372036854775807
 // =========================================================================
 // LAYER 1: FUNCTION
 //
-// The sole computation primitive. A → B: "given A, produce B."
+// A → B: given A, produce B. Implication. The directed edge. The sole
+// computation primitive. Without this, nothing computes.
 //
-// Function is implication. It is the directed edge in the causal graph.
-// Without it, there is no causation, no computation, no dependencies.
-// The program IS a graph of function applications.
-//
-// Function is a language primitive — it exists before any type can be
-// defined, because type definitions themselves use functions (a
-// constructor IS a function from field values to the constructed type).
-//
-// The syntax:
-//   fn(A) -> B       (named function)
-//   (a) => expr      (anonymous function / lambda)
+// A function is a language primitive, not a declared type.
 // =========================================================================
-
-// (Function is built-in, not a declared type. This layer exists to mark
-// its position in the derivation: after truth, before type structure.)
 
 
 // =========================================================================
 // LAYER 2: TYPE STRUCTURE
 //
-// Given Classical (Layer 0) and Function (Layer 1), type structure
-// EMERGES. We don't declare Product and Coproduct as opaque axioms —
-// we observe how they arise from combining truth values.
+// Emerges from Classical + Function. Not declared — observed.
 //
-// A type definition says: "here are the values that inhabit this type."
-// There are exactly three structural shapes a type definition can take,
-// corresponding to the three ways truth values compose:
+// A type definition has one of three shapes, corresponding to how truth
+// values compose. The compiler reads the shape from the syntax:
 //
-// PRODUCT (conjunction, ×):
-//   type Pair { first: A, second: B }
-//   "first holds AND second holds." All fields are present.
-//   The cardinality: |Pair| = |A| · |B|
-//   The compiler SEES this shape when a type has named fields.
+//   { fields }     → product  (all hold)      |A × B| = |A| · |B|
+//   = V1 | V2      → coproduct (one holds)    |A + B| = |A| + |B|
+//   fn(A) -> B     → function  (mapping)      |A → B| = |B|^|A|
 //
-// COPRODUCT (disjunction, +):
-//   type Either = Left { value: A } | Right { value: B }
-//   "Left holds OR Right holds." Exactly one variant is selected.
-//   The tag that identifies which variant is active is a bounded
-//   selector composed from Classical bits — log2(N) bits for N variants.
-//   Classical itself is the simplest coproduct: 2 variants, 1-bit tag.
-//   The cardinality: |Either| = |A| + |B|
-//   The compiler SEES this shape when a type has variants separated by |.
+// Boundary cases:
+//   {} (no fields)   → unit: 1 inhabitant (empty product)
+//   (no variants)    → void: 0 inhabitants (empty coproduct)
+//   A + Unit         → optional: |A| + 1 (sugar: T?)
 //
-// FUNCTION (implication, →):
-//   fn(A) -> B
-//   "Given A, produce B." A mapping from inputs to outputs.
-//   The cardinality: |A → B| = |B|^|A|
-//   Already defined in Layer 1.
-//
-// These are NOT separate types to declare. They are structural shapes
-// that the compiler recognizes in type definitions:
-//   { fields }     → product (all hold)
-//   = V1 | V2 | V3 → coproduct (one holds, tagged)
-//   fn(A) -> B     → function (mapping)
-//
-// The boundary cases complete the arithmetic:
-//
-// UNIT (1): the product of zero fields. One inhabitant (the empty record).
-//   type Unit {}
-//   Identity for product: A × 1 = A.
-//   In logic: trivial truth (⊤). In set theory: singleton set {∗}.
-//
-// VOID (0): the coproduct of zero variants. Zero inhabitants.
-//   type Void = (nothing — no variants)
-//   Identity for coproduct: A + 0 = A.
-//   Annihilator for product: A × 0 = 0.
-//   In logic: absurdity (⊥). In set theory: empty set ∅.
-//
-// OPTIONAL: not a separate concept. A + Unit = A + 1.
-//   type Maybe<A> = Present { value: A } | Absent
-//   "Either A is present, or it's absent (Unit)."
-//   The T? syntax is sugar for this coproduct.
-//
-// WHY THIS MATTERS for emission: product/coproduct/function are
-// cardinality arithmetic (×, +, ^). Every target has arithmetic:
-//   Verilog gates = AND/OR. SQL = JOIN/UNION. REST = request/alternatives.
-//   SPICE = parallel/switched paths. The structure is universal.
-//
-// The compiler doesn't need `type Product` or `type Coproduct` as
-// declared types. It reads the shape from the syntax of each type
-// definition. The shape IS the definition.
+// These are cardinality arithmetic — ×, +, ^ on natural numbers.
+// Universal across all targets (Verilog, SQL, SPICE, REST, English).
 // =========================================================================
-
-// (No types declared here — product, coproduct, unit, void, optional
-// are structural shapes that the compiler recognizes, not types to define.
-// Classical from Layer 0 is itself the simplest coproduct: True + False.)
 
 
 // =========================================================================
 // LAYER 3: SELF-REFERENCE
 //
 // Types can reference themselves. Functions can call themselves.
-// These are structural facts in the definition graph — CYCLES.
-// The compiler detects them by walking the graph. No separate types
-// needed to name sub-categories.
+// These are cycles in the definition graph — observable, not declared.
+// All cycles are finite (Layer 0: closure axiom).
 //
-// SELF-REFERENTIAL TYPES:
-//   type List<T> = Cons { head: T, tail: List<T> } | Nil
-//   The field `tail` has type `List<T>` — the same type being defined.
-//   The compiler sees the cycle in the type definition graph.
-//   All instances are finite (closure axiom: max_inhabitants elements).
-//
-// SELF-CALLING FUNCTIONS:
-//   fn length(xs: List<T>) -> Int {
-//     match xs { Nil => 0  Cons { head: _, tail: rest } => 1 + length(rest) }
-//   }
-//   The function `length` calls `length`. The compiler sees the cycle
-//   in the call graph.
-//
-// The compiler observes HOW the recursive argument changes at each
-// self-call. This is not a type to declare — it is structural analysis
-// of the call expression:
-//
-//   length(rest) where rest = xs.tail
-//     → argument is a FIELD of the input → structurally smaller
-//
-//   sum(skip(1, xs))
-//     → argument is input with one element removed → collection shrink
-//
-//   factorial(n - 1)
-//     → argument is input reduced by arithmetic → arithmetic descent
-//
-//   loop(same_arg)
-//     → argument unchanged → bounded by max_inhabitants (the closure axiom)
-//
-// The compiler doesn't need `RecursionShape` or `IterationPrimitive`
-// enums. It reads the call expression, compares the argument to the
-// parameter, and classifies the relationship. That classification IS
-// the SubValueRelation (Layer 6) — the same type used for all edges.
-//
-// Similarly, the RATE of decrease (by 1, by k, by factor n/k) is
-// observable from the call expression:
-//   skip(1, xs)  → decrease by 1
-//   skip(k, xs)  → decrease by k
-//   n / 2        → decrease by factor 2
-// The compiler reads the literal or expression and records the rate.
-// No `ShrinkFactor` type needed until the compiler needs to represent
-// this observation internally (Layer 6, as part of SubValueRelation).
+// The compiler detects cycles and observes HOW the recursive argument
+// changes. That observation IS the SubValueRelation (Layer 5).
 // =========================================================================
-
-// (No types declared here. Self-reference and recursion are observable
-// graph properties. The compiler detects cycles and classifies how
-// arguments change. The classification vocabulary is SubValueRelation,
-// defined in Layer 6 where it serves as the edge vocabulary.)
 
 
 // =========================================================================
-// LAYER 4: OBSERVED PATTERNS (algebraic structures)
+// LAYER 4: THE GRAPH
 //
-// Given Layers 0-3, certain patterns recur across many concrete types.
-// These are not primitives — they are REGULARITIES that the compiler
-// discovers. Naming them lets the compiler reason generically:
-// "this operation is associative with an identity" enables fold
-// optimization, parallel reduction, and algebraic simplification —
-// regardless of what the specific type is.
+// A .dag program IS a dependency graph. This is the world model's
+// substance — the thing that exists, that the compiler reads.
 //
-// BoundedLattice is the pattern most critical to the compiler:
-// every correctness dimension exhibits lattice structure. But the
-// lattice is not a foundation — it is something the compiler DISCOVERS
-// in std/ declarations. User-defined dimensions that declare a lattice
-// get the same treatment as built-in ones. No special compiler support.
+// A Node produces a value. An Edge carries a value from one node to
+// another. That's the entire ontology. What a node "is" (a function
+// call, a match, a let-binding) is determined by the shape of its
+// edges — not by a discriminator tag. The same way a particle's
+// behavior is determined by its mass and charge, not by a label
+// saying "this is a collision participant."
+//
+// Identity is structural (integer), not stringly-typed. No Node.name.
 // =========================================================================
 
-// BoundedLattice: the pattern for merging at join points.
-// Any finite partial order has meets and joins (finiteness guarantees this).
-// The lattice structure is a CONSEQUENCE of finiteness + order.
-type BoundedLattice<T> {
-  bottom: T
-  top: T
-  meet: fn(T, T) -> T
-  join: fn(T, T) -> T
-}
-
-// Monoid: the pattern for sequential composition.
-// "This operation is associative with an identity element."
-// Enables algebraic simplification: (A then B) then C = A then (B then C).
-type Monoid<T> {
-  identity: T
-  op: fn(T, T) -> T
-}
-
-// Ordering: three-valued comparison.
-// The total order on natural numbers (Layer 0 + finiteness).
-type Ordering = Less | Equal | Greater
-
-
-// =========================================================================
-// LAYER 5: THE DAG IR
-//
-// The graph substrate. A .dag program IS a dependency graph. The IR must
-// make every dependency an explicit edge, every binding an explicit site
-// with structural identity, and every value relationship classifiable.
-//
-// v2's Node has 18 fields — most unused on most nodes. The IR carries
-// compiler state (is_self_recursive, has_non_tail_self_call), parallel
-// representations (connective vs Product/Coproduct, VarBindingKind vs
-// edge position), and stringly-typed identity (Node.name). This layer
-// explores two clean-room alternatives.
-//
-// SHARED PRIMITIVES (both designs use these):
-// =========================================================================
-
-// Structural identity. Integer, not string. No Node.name field.
-// The InternTable maps names to ids at parse time; downstream stages
-// never touch strings for identity.
 type NodeId = Int
-
-// Source location for diagnostics. Every node knows where it came from.
 type Span { file: String, start: Int, end: Int }
 
-// Literal values — the leaves of computation.
-type LiteralValue
-  = LitInt { value: Int }
-  | LitFloat { value: Float }
-  | LitString { value: String }
-  | LitBool { value: Bool }
-
-// Binary operators — algebraic operations on values.
-type BinOp
-  = Add | Sub | Mul | Div | Mod
-  | Eq | Neq | Lt | Gt | Lte | Gte
-  | And | Or
-  | Concat
-
-// Reference to a binding. Structural, not stringly-typed.
-// The NodeId points to the binding site (parameter, let, match arm).
-// Scope resolution produces these from parsed names.
-type BindingRef { id: NodeId }
-
-// Reference to a field within a product type.
-type FieldRef { type_id: NodeId, field_name: String }
-
-// Reference to a function parameter by position (not name).
-type ParamRef { func_id: NodeId, index: Int }
-
-
-// =========================================================================
-// DESIGN A: LEAN UNIVERSAL NODE (Layer 5a)
-//
-// One node type. All structural relationships are edges. Uniform traversal
-// is trivial: walk node.edges. The NodeKind discriminator carries only
-// per-kind data (no shared unused fields).
-//
-// Tradeoff: edge labels must encode structural roles ("which child is the
-// scrutinee?"). The node itself doesn't know — the edge knows.
-//
-// This is the v2 philosophy (universal carrier) cleaned up: 4 fields
-// instead of 18, edges instead of bare child lists, integer identity
-// instead of string names.
-// =========================================================================
-
-type UnivNode {
+type Node {
   id: NodeId
-  kind: NodeKind
   span: Span
-  edges: List<UnivEdge>
+  edges: List<Edge>
 }
 
-// Edges in the universal design carry a structural role label.
-// The label says "I am the scrutinee of a match" or "I am the 2nd argument."
-// SVR (Layer 3) lives here too — every edge classifies the value relationship.
-type UnivEdge {
-  role: EdgeRole
+type Edge {
   target: NodeId
+  svr: SubValueRelation
 }
 
-// What role does this child play in its parent?
-// Finite enum — one variant per structural position across all node kinds.
-// This replaces v2's params/body/children/transport/properties split.
-type EdgeRole
-  = Child { index: Int }       // positional child (e.g., list elements)
-  | Param { index: Int }       // function/lambda parameter declaration
-  | Arg { index: Int }         // call-site argument value
-  | Body                       // function/lambda/let body
-  | Scrutinee                  // match/if condition
-  | Arm { index: Int }         // match arm (pattern + body)
-  | ArmPattern                 // pattern within a match arm
-  | ArmBody                    // body within a match arm
-  | TypeAnnotation             // declared type on a binding
-  | Receiver                   // method call receiver
-  | Init                       // initial value (fold accumulator, let value)
-  | Collection                 // collection being iterated (fold, for-each)
-  | FieldTarget                // target of field access
-  | Left                       // left operand of binary op
-  | Right                      // right operand of binary op
-  | Operand                    // unary op operand
-  | Element { index: Int }     // record/list literal element
-  | ImportTarget               // module being imported
-  | Transport                  // external execution strategy
-
-// What kind of node is this? Each variant carries ONLY its specific data.
-// No shared fields — those live on UnivNode itself (id, span, edges).
-type NodeKind
-  // --- Declarations ---
-  = ModuleDecl { name: String }
-  | ImportDecl { path: String, names: List<String> }
-  | TypeDecl { name: String }
-  | FuncDecl { name: String, is_async: Bool }
-  | DataDecl { name: String }
-  | ServiceDecl { name: String }
-  // --- Expressions ---
-  | Literal { value: LiteralValue }
-  | Var { ref: BindingRef }
-  | Call
-  | MethodCall { method: String }
-  | Match
-  | If
-  | Let { name: String }
-  | Lambda
-  | Block
-  | FieldAccess { field: String }
-  | BinaryOp { op: BinOp }
-  | UnaryOp { op: UnaryOpKind }
-  | RecordLit { type_name: String }
-  | ListLit
-  | StringInterp
-  | ForEach { binding: String }
-  | Index
-  | Return
-  // --- Structural ---
-  | ParamNode { name: String }
-  | ArgNode { name: String }
-  | ArmNode
-  | FieldInitNode { name: String }
-  | VariantDecl { name: String }
-  | FieldDecl { name: String }
-
-type UnaryOpKind = Not | Neg
-
-// No TypeShape enum. Whether a type is product or coproduct is visible
-// from its definition: fields → product, variants (|) → coproduct.
-// The compiler reads the children of a TypeDecl node to determine this.
-
 
 // =========================================================================
-// DESIGN B: TYPED NODES (Layer 5b)
+// LAYER 5: EDGE VOCABULARY (SubValueRelation)
 //
-// Each syntactic form is its own type. No unused fields. Precise types
-// enable exhaustive pattern matching on the IR without runtime checks.
+// Every edge carries a value relationship: how does the target value
+// relate to the source value? This is the fundamental property on
+// edges — like charge on a particle. It determines how dimensions
+// propagate, how termination is proven, how ownership flows.
 //
-// Tradeoff: uniform traversal requires either (a) a top-level Expr
-// coproduct that wraps everything, or (b) a generic children_of function
-// per type. Pattern matching is exhaustive but verbose.
+// The compiler reads SVR from the structure of the computation:
+//   x.field          → StrictSubValue (field is smaller than whole)
+//   fold element     → IteratedSubValue (element of a collection)
+//   n - 1, n / 2     → ArithmeticDescent (reduced by arithmetic)
+//   passed unchanged → PreservedValue (identity)
+//   can't determine  → Unknown (fail-closed to bottom)
 //
-// This is the "typed AST" philosophy used by most production compilers
-// (Rust's HIR, TypeScript's AST, etc.).
+// ShrinkFactor records the rate of decrease the compiler observes.
+// It's part of the edge vocabulary because it's a property of the
+// relationship, not a label — O(n) vs O(log n) is structural.
 // =========================================================================
 
-// Top-level declaration — what a module contains.
-type Decl
-  = DeclType { name: String, fields: List<TypedFieldDecl>, variants: List<Decl>, span: Span }
-  | DeclFunc { name: String, params: List<TypedParam>, body: Expr, return_type: TypeRef?, is_async: Bool, span: Span }
-  | DeclData { name: String, body: Expr, span: Span }
-  | DeclService { name: String, operations: List<Decl>, span: Span }
-  | DeclImport { path: String, names: List<String>, span: Span }
-
-type TypedFieldDecl { name: String, type_ref: TypeRef, span: Span }
-type TypedParam { name: String, type_ref: TypeRef, span: Span }
-
-// Type references — what appears in type annotations (surface syntax).
-// OptionalType is sugar: T? = T + Unit (coproduct with unit).
-// The resolve stage lowers it to a named coproduct.
-type TypeRef
-  = NamedType { name: String, args: List<TypeRef> }
-  | FuncType { params: List<TypeRef>, result: TypeRef }
-  | OptionalType { inner: TypeRef }
-
-// Expressions — the computation.
-type Expr
-  = ExprLiteral { value: LiteralValue, span: Span }
-  | ExprVar { ref: BindingRef, span: Span }
-  | ExprCall { func: Expr, args: List<CallArg>, span: Span }
-  | ExprMethodCall { receiver: Expr, method: String, args: List<CallArg>, span: Span }
-  | ExprMatch { scrutinee: Expr, arms: List<MatchArm>, span: Span }
-  | ExprIf { condition: Expr, then_branch: Expr, else_branch: Expr?, span: Span }
-  | ExprLet { name: String, type_ann: TypeRef?, value: Expr, span: Span }
-  | ExprLambda { params: List<TypedParam>, body: Expr, span: Span }
-  | ExprBlock { stmts: List<Expr>, span: Span }
-  | ExprFieldAccess { target: Expr, field: String, span: Span }
-  | ExprBinOp { op: BinOp, left: Expr, right: Expr, span: Span }
-  | ExprUnaryOp { op: UnaryOpKind, operand: Expr, span: Span }
-  | ExprRecordLit { type_name: String, fields: List<FieldInit>, span: Span }
-  | ExprListLit { elements: List<Expr>, span: Span }
-  | ExprStringInterp { parts: List<StringPart>, span: Span }
-  | ExprForEach { binding: String, collection: Expr, body: Expr, span: Span }
-  | ExprIndex { target: Expr, index: Expr, span: Span }
-  | ExprReturn { value: Expr?, span: Span }
-
-type CallArg { name: String?, value: Expr }
-type FieldInit { name: String, value: Expr }
-type StringPart = TextPart { text: String } | InterpPart { expr: Expr }
-
-type MatchArm { pattern: Pattern, guard: Expr?, body: Expr, span: Span }
-
-type Pattern
-  = PatternBind { name: String }
-  | PatternLiteral { value: LiteralValue }
-  | PatternVariant { name: String, parent: String?, bindings: List<FieldPattern> }
-  | PatternWildcard
-
-type FieldPattern { name: String, binding: String }
-
-
-// =========================================================================
-// DESIGN COMPARISON
-//
-// Cost of adding a new expression kind:
-//   Design A: 1 NodeKind variant + its EdgeRole usage (if new roles needed)
-//   Design B: 1 Expr variant + update children_of traversal function
-//
-// Cost of uniform traversal:
-//   Design A: walk node.edges — O(1) code, works for any node kind
-//   Design B: match on Expr — one arm per variant, must be exhaustive
-//
-// Cost of "which child is the scrutinee?":
-//   Design A: find edge with role == Scrutinee — O(edges) lookup
-//   Design B: expr.scrutinee — O(1) field access, type-checked
-//
-// Cost of dimension attachment:
-//   Design A: dimension values on UnivEdge — uniform, every edge has them
-//   Design B: dimension values in side tables keyed by NodeId — separate
-//
-// Recommendation for v3: Design A for the compiler IR (uniform traversal
-// is critical for the generic proof mechanism), with Design B's type
-// precision used for the SURFACE AST that the parser produces. The
-// resolve stage lowers Design B → Design A. This gives both:
-//   - Precise, exhaustive parsing (Design B)
-//   - Uniform proof/dimension/emit traversal (Design A)
-// =========================================================================
-
-
-// =========================================================================
-// LAYER 6: EDGE VOCABULARY
-//
-// How a target value relates to a source value along an edge. This is
-// the key insight from the v2 branch analysis: SubValueRelation already
-// IS the edge vocabulary. It classifies every dependency relationship
-// in the program. The compiler's job is to attach an SVR to every edge
-// and then read it downstream — no reconstruction, no heuristics.
-//
-// Authority: induction.dag (std/), binding-model-proposal.md
-// Depends on: Layer 5 (NodeId, FieldRef, ParamRef)
-// =========================================================================
-
-// ShrinkFactor: the rate of decrease the compiler observes at a
-// self-call. Distinguishes O(n) from O(log n). This is the compiler's
-// internal representation of what it reads from call expressions
-// (Layer 3: skip(1) → UnitShrink, n/2 → ProportionalShrink).
 type ShrinkFactor
-  = UnitShrink                           // decrease by 1
-  | ConstantShrink { amount: Int }       // decrease by k
-  | ProportionalShrink { divisor: Int }  // decrease by factor n/k
+  = UnitShrink
+  | ConstantShrink { amount: Int }
+  | ProportionalShrink { divisor: Int }
 
-// SubValueRelation: how the target value relates to the source value
-// along an edge. This IS the provenance dimension AND the structural
-// edge classifier. Already a BoundedLattice (meet/join defined).
-//
-// Every edge in the DAG carries one of these:
-//   StrictSubValue:      target is structurally smaller (field of source)
-//   IteratedSubValue:    target is an element of a collection in source
-//   ArithmeticDescent:   target is source reduced by arithmetic (n-1, n/2)
-//   PreservedValue:      target IS source (passed through unchanged)
-//   Unknown:             relationship not determined (fail-closed to bottom)
 type SubValueRelation
   = StrictSubValue { field: FieldRef, factor: ShrinkFactor }
   | IteratedSubValue { field: FieldRef }
@@ -525,18 +154,12 @@ type SubValueRelation
   | PreservedValue
   | Unknown
 
-// SVR lattice operations. Bottom = Unknown (fail-closed: no information).
-// Top = StrictSubValue (strongest: provably smaller).
-// meet = conservative merge (weaker wins at branch join points).
 fn meet_svr(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
   match a {
     Unknown => Unknown
     PreservedValue => match b {
-      StrictSubValue { field: _, factor: _ } => PreservedValue
-      IteratedSubValue { field: _ } => PreservedValue
-      ArithmeticDescent { param: _, factor: _ } => PreservedValue
-      PreservedValue => PreservedValue
       Unknown => Unknown
+      _ => PreservedValue
     }
     _ => match b {
       Unknown => Unknown
@@ -546,11 +169,6 @@ fn meet_svr(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
   }
 }
 
-// SVR composition: if A →svr1→ B →svr2→ C, what is A → C?
-// StrictSubValue composes: field of field is still strictly sub.
-// IteratedSubValue of StrictSubValue: element of a field — still sub.
-// Anything composed with Unknown → Unknown.
-// Anything composed with PreservedValue → unchanged.
 fn compose_svr(outer: SubValueRelation, inner: SubValueRelation) -> SubValueRelation {
   match outer {
     Unknown => Unknown
@@ -563,198 +181,78 @@ fn compose_svr(outer: SubValueRelation, inner: SubValueRelation) -> SubValueRela
   }
 }
 
-
-// UsageEdge: what happens to the value at each use site.
-// Orthogonal to SVR (which describes the relationship along the edge,
-// not what the consumer does with the value).
-//
-// This is the ONLY genuinely new type identified in the v2 vocabulary
-// reconciliation. Everything else collapsed into SVR.
+// What the consumer does with the value. Orthogonal to SVR.
 type UsageEdge
-  = Consumed     // moved / ownership transferred (last use candidate)
-  | Read         // read but not consumed (borrow candidate)
-  | Projected    // accessed via field / index (structural borrow)
-  | Threaded     // passed through unchanged (fold accumulator)
+  = Consumed
+  | Read
+  | Projected
+  | Threaded
+
+// References into the graph. Structural, not stringly-typed.
+type FieldRef { type_id: NodeId, field_name: String }
+type ParamRef { func_id: NodeId, index: Int }
 
 
 // =========================================================================
-// The SVR-keyed dimension table.
+// LAYER 6: DIMENSIONS
 //
-// Every correctness dimension computes a value from the SubValueRelation
-// on the binding's edge. This table is the architectural bet: one row
-// per SVR variant, one column per dimension.
+// Every edge carries dimension values — correctness properties that
+// propagate through the graph like physical quantities propagate
+// through space. The compiler doesn't have separate "passes" for
+// different properties. It has ONE mechanism: read the dimension's
+// lattice, compose along edges, check the gate.
 //
-// Adding a dimension = adding a column.
-// Adding a value relationship = adding a row.
-// Cost of change: O(1).
+// A dimension is a pattern (Layer 4 of old spec — BoundedLattice)
+// observed across the graph. The compiler discovers dimensions from
+// std/ declarations. User-defined dimensions get identical treatment.
 //
-// The boundary-crossing question ("is this a parameter?") determines
-// WHO provides the SVR, not what the SVR is:
-//   Parameter:   caller provides SVR (read from call site)
-//   Let-binding: derive SVR from the expression
-//
-// This replaces v2's triple/quadruple classification system:
-//   classify_binding_provenance, classify_let_value,
-//   classify_argument, classify_body_provenance,
-//   classify_self_call_evidence — all deleted.
+// The dimension mechanism:
+//   DECLARE: a lattice (vocabulary — meet/join/top/bottom)
+//   COMPUTE: at each node, from incoming edge SVRs
+//   CARRY:   on edges through the graph
+//   ENFORCE: at consumption points (gate → diagnostic)
 // =========================================================================
 
-// The table itself is conceptual — each dimension defines its own
-// mapping from SVR → dimension value. But the structure is uniform:
-//
-//   | SVR                | Provenance       | Ownership | Descent        |
-//   |--------------------|------------------|-----------|----------------|
-//   | StrictSubValue     | StrictSubValue   | Borrowed  | Strict         |
-//   | IteratedSubValue   | IteratedSubValue | Owned     | Strict         |
-//   | ArithmeticDescent  | ArithDescent     | Owned     | Strict         |
-//   | PreservedValue     | PreservedValue   | source    | NonIncreasing  |
-//   | Unknown            | Unknown          | Shared    | DescentUnknown |
-//
-// The "source" entry for PreservedValue ownership means: inherit from
-// the source binding. If the source is Owned, the preserved value is
-// Owned. If Borrowed, Borrowed. PreservedValue is identity for ownership.
-
-// Iteration contracts: which SVR each bounded primitive provides.
-// fold/descend/repeat are not special types — they're call sites that
-// provide specific SubValueRelations to their body parameters.
-//
-//   | Primitive                              | Param   | SVR provided     |
-//   |----------------------------------------|---------|------------------|
-//   | fold(coll, init, (acc, elem) => ...)   | acc     | PreservedValue   |
-//   | fold(coll, init, (acc, elem) => ...)   | elem    | IteratedSubValue |
-//   | descend(node, (child) => ...)          | child   | StrictSubValue   |
-//   | repeat(n, init, (i, acc) => ...)       | acc     | PreservedValue   |
-//   | repeat(n, init, (i, acc) => ...)       | i       | Unknown          |
-//
-// No IterationBinding type needed. The contract is: "what SVR does this
-// call site attach to each parameter edge?"
-
-
-// =========================================================================
-// LAYER 7: DIMENSION MECHANISM
-//
-// The generic DECLARE / COMPUTE / CARRY / ENFORCE pattern.
-//
-// Every correctness dimension — built-in or user-defined — follows the
-// same architecture. The compiler doesn't have "a complexity pass" and
-// "an ownership pass." It has ONE mechanism that reads whatever dimensions
-// std/ declares and enforces them all uniformly.
-//
-// Adding a dimension = declaring a lattice in std/ + its binding-site rule.
-// The compiler carries it generically. Cost of change: one file.
-//
-// Authority: dimensions-design.md (src/v2/), THESIS.md §Correctness dimensions
-// Depends on: Layer 4 (BoundedLattice), Layer 6 (SVR, UsageEdge)
-// =========================================================================
-
-// The dimension contract. Any type T that satisfies this contract can be
-// carried through the compiler as a correctness dimension.
-//
-// 1. DECLARE: the lattice (vocabulary)
-// 2. COMPUTE: at each binding site (producer rule)
-// 3. CARRY:   through the IR on edges (transport)
-// 4. ENFORCE: at consumption points (consumer rule)
-type Dimension<T> {
-  lattice: BoundedLattice<T>
-  compute_at_binding: fn(AccessShape, T) -> T
-  enforce: fn(T, EnforcementContext) -> Diagnostic?
+// The observed pattern that every dimension exhibits.
+type BoundedLattice<T> {
+  bottom: T
+  top: T
+  meet: fn(T, T) -> T
+  join: fn(T, T) -> T
 }
 
-// How a binding accesses its source value. Determines how each dimension
-// computes its value at the binding site.
-type AccessShape
-  = FieldAccess { field: FieldRef }      // x.foo — structural projection
-  | Iteration { element: FieldRef }      // element of a collection
-  | Arithmetic { op: BinOp, by: Int }    // n - 1, n / 2
-  | Construction                         // new value (record literal, etc.)
-  | Identity                             // passed through unchanged
-  | UnknownAccess                        // can't determine — fail-closed
+// The dimension contract. Any type T with a lattice can be carried.
+type Dimension<T> {
+  lattice: BoundedLattice<T>
+  compute: fn(SubValueRelation, T) -> T
+  enforce: fn(T, NodeId) -> Diagnostic?
+}
 
-// Where enforcement happens. Dimensions read this to decide
-// whether to gate (compile error), optimize (emit decision),
-// or report (non-blocking info).
-type EnforcementContext
-  = GateContext { binding_id: NodeId }   // compile-time rejection
-  | EmitContext { target: String }       // emit-time optimization decision
-  | ReportContext                        // non-blocking diagnostic
-
-// A diagnostic — what the compiler produces when enforcement fails.
+// Diagnostics — what enforcement produces when a gate fails.
 type Diagnostic {
-  kind: DiagnosticKind
   span: Span
   message: String
   fix: SuggestedFix?
 }
 
-type DiagnosticKind = Error | Warning | Info
-
-// The thesis: "show the correct code." A diagnostic carries a fix
-// because the compiler knows the finite set of valid corrections.
 type SuggestedFix {
   description: String
   replacement: String
   span: Span
 }
 
+// --- Provenance (termination dimension) ---
+// SVR IS the provenance dimension. Its lattice:
+//   bottom = Unknown, top = StrictSubValue, meet = meet_svr.
+// Enforcement: every cycle in the call graph must show descent.
 
-// =========================================================================
-// BUILT-IN DIMENSION 1: PROVENANCE (termination)
-//
-// SubValueRelation IS the provenance dimension. It's already defined
-// in Layer 6. The lattice:
-//   bottom = Unknown (fail-closed, no information)
-//   top    = StrictSubValue (provably smaller)
-//   meet   = meet_svr (conservative merge)
-//
-// Binding-site computation: derive SVR from the access shape.
-// Enforcement: every recursive call must show structural descent.
-//
-// This dimension is what CX reads. When provenance flows on every edge,
-// the 340 CX violations → 0 because the heuristic classify_* functions
-// are replaced by reading binding.provenance.
-// =========================================================================
-
-fn provenance_from_access(access: AccessShape, source: SubValueRelation) -> SubValueRelation {
-  match access {
-    FieldAccess { field: f } => StrictSubValue { field: f, factor: UnitShrink }
-    Iteration { element: f } => IteratedSubValue { field: f }
-    Arithmetic { op: _, by: k } => match source {
-      PreservedValue => ArithmeticDescent { param: ParamRef { func_id: 0, index: 0 }, factor: ConstantShrink { amount: k } }
-      _ => Unknown
-    }
-    Construction => Unknown
-    Identity => source
-    UnknownAccess => Unknown
-  }
-}
-
-
-// =========================================================================
-// BUILT-IN DIMENSION 2: OWNERSHIP
-//
-// Who can use a value, and how. Prevents aliased mutation in emitted code.
-//
-// Lattice:
-//   bottom = Shared  (most restrictive — multiple readers, no mutation)
-//   top    = Owned   (most permissive — sole owner, can move/mutate)
-//   meet   = min     (more-shared wins at join points)
-//
-// Binding-site computation: derive from SVR (see dimension table).
-// Enforcement: fan-out > 1 without last-use identification → SharedError.
-//
-// This replaces v2's separate ownership pass (ownership.dag, 635 lines)
-// with a dimension computed during inference like everything else.
-// =========================================================================
-
+// --- Ownership dimension ---
 type OwnershipKind = Owned | Borrowed | Shared
 
 fn ownership_meet(a: OwnershipKind, b: OwnershipKind) -> OwnershipKind {
   match a {
     Shared => Shared
-    Borrowed => match b {
-      Shared => Shared
-      _ => Borrowed
-    }
+    Borrowed => match b { Shared => Shared  _ => Borrowed }
     Owned => b
   }
 }
@@ -769,243 +267,122 @@ fn ownership_from_svr(svr: SubValueRelation) -> OwnershipKind {
   }
 }
 
-
-// =========================================================================
-// BUILT-IN DIMENSION 3: EFFECTS
-//
-// What external interactions a computation may perform. Enables the
-// compiler to prove idempotency, purity, and safe parallelism.
-//
-// Lattice:
-//   bottom = Pure           (no effects — safe to parallelize, memoize)
-//   top    = WritesExternal (most effectful — constrains ordering)
-//   meet   = max            (more-effectful wins at join points)
-//
-// Binding-site computation: function calls mark effectful; pure code
-// stays pure; composition via monoid (sequential) or lattice (branching).
-//
-// Enforcement: effectful code can't appear in a pure context.
-// Idempotency = all effects are lattice meets (upsert/delete, not append).
-//
-// Authority: effects.dag, behavioral.dag (std/)
-// =========================================================================
-
+// --- Effects dimension ---
 type EffectLevel
-  = Pure              // no effects — safe to parallelize, memoize, reorder
-  | ReadsLocal        // reads local state (no external I/O)
-  | WritesLocal       // writes local state (accumulator mutation)
-  | ReadsExternal     // reads external state (file read, HTTP GET)
-  | WritesExternal    // writes external state (file write, HTTP POST)
+  = Pure
+  | ReadsLocal
+  | WritesLocal
+  | ReadsExternal
+  | WritesExternal
 
 fn effect_meet(a: EffectLevel, b: EffectLevel) -> EffectLevel {
   match a {
     WritesExternal => WritesExternal
-    ReadsExternal => match b {
-      WritesExternal => WritesExternal
-      _ => ReadsExternal
-    }
-    WritesLocal => match b {
-      WritesExternal => WritesExternal
-      ReadsExternal => ReadsExternal
-      _ => WritesLocal
-    }
-    ReadsLocal => match b {
-      Pure => ReadsLocal
-      _ => b
-    }
+    ReadsExternal => match b { WritesExternal => WritesExternal  _ => ReadsExternal }
+    WritesLocal => match b { WritesExternal => WritesExternal  ReadsExternal => ReadsExternal  _ => WritesLocal }
+    ReadsLocal => match b { Pure => ReadsLocal  _ => b }
     Pure => b
   }
 }
 
-// Effect composition for sequential operations (monoid).
-// Sequential composition takes the max — the combined effect is at least
-// as effectful as the most effectful sub-operation.
-fn compose_effects(a: EffectLevel, b: EffectLevel) -> EffectLevel {
-  effect_meet(a: a, b: b)
-}
-
-// Effect algebra: classify effect shapes for idempotency analysis.
-// A lattice-meet effect (upsert, delete) is idempotent.
-// A monoid-append effect (create, log) is not.
+// Effect shape — determines idempotency.
 type EffectShape
-  = LatticeEffect       // upsert, delete — idempotent (f . f = f)
-  | MonoidEffect         // append, create — not idempotent
-  | IdentityEffect       // read, no-op — trivially idempotent
+  = LatticeEffect
+  | MonoidEffect
+  | IdentityEffect
 
 fn is_idempotent(shape: EffectShape) -> Bool {
-  match shape {
-    LatticeEffect => true
-    IdentityEffect => true
-    MonoidEffect => false
+  match shape { LatticeEffect => true  IdentityEffect => true  MonoidEffect => false }
+}
+
+fn compose_shapes(a: EffectShape, b: EffectShape) -> EffectShape {
+  match a {
+    MonoidEffect => MonoidEffect
+    LatticeEffect => match b { MonoidEffect => MonoidEffect  _ => LatticeEffect }
+    IdentityEffect => b
   }
 }
 
 
+// *************************************************************************
+//
+//   PART II: COMPILER OBSERVATIONS
+//
+//   Labels the compiler derives from reading the world model.
+//   These exist for diagnostics, emission, and optimization.
+//   Removing them doesn't change the physics — just the compiler's
+//   ability to report and emit.
+//
+// *************************************************************************
+
+
 // =========================================================================
-// LAYER 8: PROOF STRATEGIES
+// LAYER 7: PROOF STRATEGIES
 //
-// The compiler constructs proofs. It doesn't know WHAT it's proving — it
-// reads proof strategies from std/ and executes them generically.
+// The compiler constructs proofs by traversing the graph (world model)
+// and composing dimension values (Layer 6) along edges. A proof
+// strategy is the compiler's way of READING the world model to
+// determine whether a property holds.
 //
-// A proof strategy is three things:
-//   1. A GRAPH to traverse (call graph, use-site graph, workflow graph)
-//   2. A COMPOSITION ALGEBRA to apply along edges (lattice, monoid)
-//   3. A GATE to check (does the composed value satisfy the property?)
-//
-// Execution: fold over the graph, compose with the algebra, check gate.
-// One mechanism. The compiler calls it — doesn't contain it.
-//
-// This is the architectural bet: if this mechanism works for termination,
-// ownership, and effects, it works for any dimension — including
-// user-defined ones (security classification, regulatory compliance, etc.).
-//
-// Authority: compiler-ideal-vs-actual.md, THESIS.md §Concept unification
-// Depends on: Layer 3 (self-reference/cycles), Layer 4 (BoundedLattice, Monoid),
-//             Layer 6 (SVR), Layer 7 (dimensions)
+// The strategy is: fold over a graph, compose with an algebra, check
+// a gate. One mechanism, applied to every dimension.
 // =========================================================================
 
-// A graph to traverse. The proof mechanism doesn't know what nodes and
-// edges mean — it just walks them and composes.
-type GraphTraversal<N, E> {
-  nodes: List<N>
-  edges_from: fn(N) -> List<GraphEdge<N, E>>
-}
-
-type GraphEdge<N, E> {
-  target: N
-  evidence: E
-}
-
-// A proof strategy: traverse + compose + gate.
-// Parameterized by:
-//   N = node type in the graph (e.g., function id for call graph)
-//   E = evidence type on edges (e.g., DescentEvidence)
-//   R = result type (e.g., TerminationProof)
+// Generic proof mechanism — the compiler's "simulation loop."
 type ProofStrategy<N, E, R> {
-  graph: GraphTraversal<N, E>
-  compose: fn(E, E) -> E            // algebra: how evidence combines
-  identity: E                        // algebra: identity element
-  gate: fn(N, E) -> ProofResult<R>  // check: is composed evidence sufficient?
+  nodes: List<N>
+  edges_from: fn(N) -> List<ProofEdge<N, E>>
+  compose: fn(E, E) -> E
+  identity: E
+  gate: fn(N, E) -> ProofResult<R>
 }
+
+type ProofEdge<N, E> { target: N, evidence: E }
 
 type ProofResult<R>
   = ProofSuccess { proof: R }
   | ProofFailure { diagnostic: Diagnostic }
 
-// Execute a proof strategy: fold over SCCs, compose evidence along
-// cycle edges, check gate on each SCC.
-//
-// The key insight: SCC decomposition + fold is the universal proof
-// structure. Every cycle in the graph must satisfy the gate. Acyclic
-// portions are trivially satisfied (no cycle = no descent needed).
-//
-// fn execute_proof<N, E, R>(strategy: ProofStrategy<N, E, R>) -> List<ProofResult<R>> {
-//   let sccs = tarjan_scc(strategy.graph)
-//   sccs |> map(scc =>
-//     let composed = fold(
-//       scc.cycle_edges,
-//       init: strategy.identity,
-//       f: (acc, edge) => strategy.compose(acc, edge.evidence)
-//     )
-//     strategy.gate(scc.representative, composed)
-//   )
-// }
-//
-// This is pseudocode — the actual implementation uses whatever SCC
-// algorithm the target language provides. The point: the compiler
-// contains ONE generic proof executor, not per-dimension proof code.
+// --- Termination proof (observation: does every cycle descend?) ---
 
-
-// =========================================================================
-// PROOF STRATEGY 1: TERMINATION
-//
-// Every recursive function (or SCC of mutually recursive functions)
-// must terminate. Proof: at least one ranking dimension strictly
-// decreases across every cycle in the call graph.
-//
-// graph:   call graph decomposed into SCCs
-// compose: merge descent evidence (lattice meet across branches)
-// gate:    every cycle has lexicographic descent
-//
-// Authority: termination.dag (std/)
-// =========================================================================
-
-// Descent evidence at a single call edge.
 type DescentEvidence
-  = Strict           // value provably decreases (Less)
-  | NonIncreasing    // value does not increase (Equal or Less)
-  | DescentUnknown   // cannot determine (fail-closed)
+  = Strict
+  | NonIncreasing
+  | DescentUnknown
 
 fn merge_descent(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
   match a {
-    Strict => match b {
-      Strict => Strict
-      NonIncreasing => NonIncreasing
-      DescentUnknown => DescentUnknown
-    }
-    NonIncreasing => match b {
-      Strict => NonIncreasing
-      NonIncreasing => NonIncreasing
-      DescentUnknown => DescentUnknown
-    }
+    Strict => match b { Strict => Strict  NonIncreasing => NonIncreasing  DescentUnknown => DescentUnknown }
+    NonIncreasing => match b { DescentUnknown => DescentUnknown  _ => NonIncreasing }
     DescentUnknown => DescentUnknown
   }
 }
 
-// What is decreasing — the ranking dimension.
+// The compiler observes which parameters decrease and how.
+// RankingDimension is a LABEL the compiler assigns after reading SVR.
 type RankingDimension
-  = TreeSize { param: ParamRef }         // |subtree| via child accessor
-  | ListLength { param: ParamRef }       // |list| via skip/tail
-  | ArithmeticValue { param: ParamRef }  // integer via n-1, n/2
-  | TokenPosition { param: ParamRef }    // parser position
-  | SetCardinality { param: ParamRef }   // |set| via remove
+  = TreeSize { param: ParamRef }
+  | ListLength { param: ParamRef }
+  | ArithmeticValue { param: ParamRef }
+  | TokenPosition { param: ParamRef }
+  | SetCardinality { param: ParamRef }
 
-// A termination proof: lexicographic ordering over ranking dimensions.
-// At each recursive call edge, the FIRST dimension that changes must
-// strictly decrease. Higher dimensions must not increase.
-type TerminationProof {
-  dimensions: List<RankingDimension>
-}
+type TerminationProof { dimensions: List<RankingDimension> }
 
-// Evidence at one call edge: how each dimension changes.
 type CallEdgeEvidence {
   caller: NodeId
   callee: NodeId
   per_dimension: List<DescentEvidence>
 }
 
-// The gate: is the proof valid? Every cycle in the SCC must have
-// lexicographic descent — at least one dimension strictly decreases
-// while all higher dimensions are non-increasing.
 fn is_lexicographic_descent(evidence: List<DescentEvidence>) -> Bool {
-  // Walk dimensions in order. First Strict found = descent proven.
-  // Any DescentUnknown before a Strict = proof fails.
   fold(evidence, init: false, f: (found_strict, e) =>
     if found_strict { true }
-    else {
-      match e {
-        Strict => true
-        NonIncreasing => false
-        DescentUnknown => false
-      }
-    }
+    else { match e { Strict => true  _ => false } }
   )
 }
 
-
-// =========================================================================
-// PROOF STRATEGY 2: OWNERSHIP
-//
-// No aliased mutation in emitted code. For each binding: if fan-out > 1
-// (multiple consumers), the binding must be Shared (cloned) or the
-// compiler must identify the last use (move semantics).
-//
-// graph:   use-site graph (per-binding: which expressions reference it)
-// compose: ownership_meet (more-shared wins)
-// gate:    no binding has fan-out > 1 with Owned kind (would be aliased)
-//
-// Authority: binding-model-proposal.md, ownership-design.md
-// =========================================================================
+// --- Ownership proof (observation: is any value aliased?) ---
 
 type OwnershipProof {
   binding_id: NodeId
@@ -1015,33 +392,11 @@ type OwnershipProof {
 }
 
 type OwnershipResult
-  = SoleOwner                                // fan-out = 1: move
-  | LastUseIdentified { last: NodeId }       // fan-out > 1 but last use known: move last, clone rest
-  | SharedOwnership                          // fan-out > 1, no last use: clone all
+  = SoleOwner
+  | LastUseIdentified { last: NodeId }
+  | SharedOwnership
 
-fn check_ownership(binding_id: NodeId, kind: OwnershipKind, fan_out: Int, last_use: NodeId?) -> OwnershipResult {
-  if fan_out <= 1 { SoleOwner }
-  else {
-    match last_use {
-      Some { value: last } => LastUseIdentified { last: last }
-      None => SharedOwnership
-    }
-  }
-}
-
-
-// =========================================================================
-// PROOF STRATEGY 3: EFFECTS (idempotency + safety)
-//
-// Workflow composition: is the composed effect of a sequence of operations
-// idempotent? Safe to parallelize? Safe to retry?
-//
-// graph:   workflow DAG (operations connected by data flow)
-// compose: compose_effects (monoid: sequential max)
-// gate:    composed effect satisfies declared property (idempotent, pure, etc.)
-//
-// Authority: effects.dag (std/)
-// =========================================================================
+// --- Workflow proof (observation: is the composition idempotent?) ---
 
 type WorkflowProof {
   workflow_id: NodeId
@@ -1050,157 +405,133 @@ type WorkflowProof {
   is_idempotent: Bool
 }
 
-// Compose effect shapes across a workflow.
-// Lattice effects compose to lattice. Monoid poisons the chain.
-// Identity is absorbed.
-fn compose_shapes(a: EffectShape, b: EffectShape) -> EffectShape {
-  match a {
-    MonoidEffect => MonoidEffect
-    LatticeEffect => match b {
-      MonoidEffect => MonoidEffect
-      _ => LatticeEffect
-    }
-    IdentityEffect => b
-  }
-}
 
-// The gate: does the workflow satisfy its declared property?
-fn check_workflow_effect(composed: EffectShape, declared_idempotent: Bool) -> ProofResult<WorkflowProof> {
-  if declared_idempotent && !is_idempotent(shape: composed) {
-    ProofFailure { diagnostic: Diagnostic {
-      kind: Error,
-      span: Span { file: "", start: 0, end: 0 },
-      message: "workflow declared idempotent but contains non-idempotent operation",
-      fix: none
-    }}
-  } else {
-    ProofSuccess { proof: WorkflowProof {
-      workflow_id: 0,
-      composed_effect: Pure,
-      composed_shape: composed,
-      is_idempotent: is_idempotent(shape: composed)
-    }}
-  }
-}
+// =========================================================================
+// LAYER 8: SURFACE FORMS
+//
+// Labels the compiler assigns to nodes for parsing and emission.
+// These are the "collision" and "orbit" labels of the physics engine —
+// useful for communication, not part of the force equations.
+//
+// The parser produces these labels from source syntax. The emitter
+// reads them to produce target-language code. The prove stage
+// (Layer 7) does NOT read them — it reads only the graph + SVR.
+//
+// These labels live in a side table keyed by NodeId, not on Node itself.
+// The world model (Node, Edge, SVR) stays clean.
+// =========================================================================
+
+// What the parser observed about a node's surface syntax.
+// Stored in a side table: Map<NodeId, SurfaceForm>
+type SurfaceForm
+  // --- declarations (introduce a name) ---
+  = FormModule { name: String }
+  | FormImport { path: String, names: List<String> }
+  | FormType { name: String }
+  | FormFunc { name: String, is_async: Bool }
+  | FormData { name: String }
+  | FormService { name: String }
+  // --- expressions (produce a value) ---
+  | FormLiteral { value: LiteralValue }
+  | FormVar { name: String }
+  | FormCall
+  | FormMethodCall { method: String }
+  | FormMatch
+  | FormIf
+  | FormLet { name: String }
+  | FormLambda
+  | FormBlock
+  | FormFieldAccess { field: String }
+  | FormBinOp { op: BinOp }
+  | FormUnaryOp { op: UnaryOp }
+  | FormRecordLit { type_name: String }
+  | FormListLit
+  | FormStringInterp
+  | FormForEach { binding: String }
+  | FormIndex
+  | FormReturn
+  // --- structural (parts of larger forms) ---
+  | FormParam { name: String }
+  | FormArg { name: String }
+  | FormArm
+  | FormFieldInit { name: String }
+  | FormVariant { name: String }
+  | FormField { name: String }
+
+type LiteralValue
+  = LitInt { value: Int }
+  | LitFloat { value: Float }
+  | LitString { value: String }
+  | LitBool { value: Bool }
+
+type BinOp
+  = Add | Sub | Mul | Div | Mod
+  | Eq | Neq | Lt | Gt | Lte | Gte
+  | And | Or
+  | Concat
+
+type UnaryOp = Not | Neg
+
+// Pattern labels — what the parser saw in match arms.
+type PatternForm
+  = PatBind { name: String }
+  | PatLiteral { value: LiteralValue }
+  | PatVariant { name: String, parent: String?, bindings: List<String> }
+  | PatWildcard
 
 
 // =========================================================================
-// LAYER 9: PIPELINE CONTRACTS
+// LAYER 9: PIPELINE
 //
-// Four stages. Each a pure function with a typed contract.
-// The pipeline is a composition: emit(prove(resolve(parse(source)))).
+// How the compiler reads the world model and produces output.
+// Four stages, each a pure function. The world model flows through;
+// each stage enriches it with observations.
 //
-//   Source → PARSE → SurfaceAST → RESOLVE → ModuleGraph → PROVE → ProvenGraph → EMIT → Files
-//
-// Key insight: ProvenGraph = ModuleGraph where every edge carries
-// dimension values. The prove stage ATTACHES them. The emit stage
-// only READS them. No reconstruction, no heuristics, no second pass.
-//
-// Authority: DESIGN.md (src/v2/), compiler-ideal-vs-actual.md
+//   Source → PARSE → Graph + SurfaceForms
+//        → RESOLVE → Graph with resolved references
+//        → PROVE → Graph with dimension values + proofs
+//        → EMIT → Target files
 // =========================================================================
 
+type Source { path: String, text: String }
 
-// ---- STAGE 1: PARSE ----
-// Input:  source text
-// Output: surface AST (Design B typed nodes) + diagnostics
-//
-// The parser produces precisely typed nodes (Expr, Decl, Pattern).
-// No name resolution, no type information, no SVR — just structure
-// with source spans. Parse errors are diagnostics, not exceptions.
-
-type Source {
-  path: String
-  text: String
-}
-
+// Parse: source text → graph + surface labels.
 type ParseResult {
-  module_name: String
-  declarations: List<Decl>
+  nodes: Map<NodeId, Node>
+  surface: Map<NodeId, SurfaceForm>
+  patterns: Map<NodeId, PatternForm>
   diagnostics: List<Diagnostic>
-  intern_table: InternTable
+  intern: InternTable
 }
 
-// String interning: names → integer ids. Happens once during parse.
-// All downstream stages use NodeId, never string comparison for identity.
 type InternTable {
   strings: List<String>
   index: Map<String, Int>
 }
 
-fn intern(table: InternTable, name: String) -> InternResult {
-  match map_get(table.index, name) {
-    Some { value: id } => InternResult { id: id, table: table }
-    None =>
-      let id = table.strings |> count
-      InternResult {
-        id: id,
-        table: InternTable {
-          strings: list_push(table.strings, name),
-          index: map_insert(table.index, name, id)
-        }
-      }
-  }
-}
-
-type InternResult { id: Int, table: InternTable }
-
-
-// ---- STAGE 2: RESOLVE ----
-// Input:  list of parsed modules (Design B ASTs)
-// Output: module graph (Design A universal nodes with resolved names)
-//
-// Resolve does three things:
-//   1. Connect modules: imports, exports, topological sort
-//   2. Resolve names: every Var gets a BindingRef pointing to its definition
-//   3. Lower surface → IR: Design B (typed) → Design A (universal)
-//
-// After resolve, every node has a NodeId, every name is resolved to a
-// binding site, and the graph is ready for dimension attachment.
-
-type ModuleGraph {
-  modules: List<ResolvedModule>
-  call_graph: CallGraph
-  type_env: TypeEnv
-}
-
-type ResolvedModule {
-  name: String
-  nodes: Map<NodeId, UnivNode>
-  root_declarations: List<NodeId>
-}
-
-// Call graph: which functions call which. Needed for SCC decomposition
-// in the termination proof strategy.
-type CallGraph {
-  edges: Map<NodeId, List<NodeId>>
-}
-
-// Type environment: resolved types for all named bindings.
-type TypeEnv {
+// Resolve: connect modules, resolve names, build call graph.
+type ResolvedGraph {
+  nodes: Map<NodeId, Node>
+  surface: Map<NodeId, SurfaceForm>
+  patterns: Map<NodeId, PatternForm>
+  call_graph: Map<NodeId, List<NodeId>>
   bindings: Map<NodeId, TypeBinding>
-  recursive_types: Map<NodeId, Bool>
   inductive_fields: Map<NodeId, List<InductiveField>>
+  func_sigs: Map<NodeId, FuncSig>
+  diagnostics: List<Diagnostic>
 }
 
-// The binding: what a name resolves to, with its type and provenance.
-// This is v2's TypeBinding with NodeId identity instead of string keys,
-// and dimension values on the binding from the start.
 type TypeBinding {
   id: NodeId
   resolved_type: TypeRef
   provenance: SubValueRelation
 }
 
-// Inductive field: a field whose type references the parent type.
-// The compiler DISCOVERS these by comparing each field's type against
-// the type being defined. No RecursionShape enum — the compiler reads
-// the field's resolved type and sees the self-reference directly.
 type InductiveField {
   field: FieldRef
   field_type: TypeRef
 }
 
-// Function signatures: resolved parameter types + return type.
 type FuncSig {
   id: NodeId
   params: List<FuncParam>
@@ -1209,200 +540,44 @@ type FuncSig {
   output_provenance: Map<String, SubValueRelation>
 }
 
-type FuncParam {
-  name: String
-  id: NodeId
-  type_ref: TypeRef
-}
+type FuncParam { name: String, id: NodeId, type_ref: TypeRef }
 
-type FuncEnv {
-  signatures: Map<NodeId, FuncSig>
-}
+type TypeRef
+  = NamedType { name: String, args: List<TypeRef> }
+  | FuncType { params: List<TypeRef>, result: TypeRef }
+  | OptionalType { inner: TypeRef }
 
-
-// ---- STAGE 3: PROVE ----
-// Input:  module graph (resolved names, types, call graph)
-// Output: proven graph (dimension values on EVERY edge) + proof results
-//
-// This is ONE stage, not three. The compiler:
-//   1. Walks the resolved graph
-//   2. At each binding site, computes ALL dimension values using the
-//      dimension's compose function and the SVR on the edge
-//   3. For each proof strategy declared in std/, executes it:
-//      fold over the relevant graph, compose with the algebra, check gate
-//
-// The output is the same ModuleGraph, enriched with dimension values
-// on every edge. Downstream stages (emit) only read — never compute.
-
+// Prove: attach dimension values to every edge, construct proofs.
 type ProvenGraph {
-  modules: List<ResolvedModule>
-  call_graph: CallGraph
-  type_env: TypeEnv
-  func_env: FuncEnv
-  // Dimension values: side tables keyed by edge identity.
-  // Not on the edge struct itself — keeps the IR lean and allows
-  // user-defined dimensions without changing edge types.
+  nodes: Map<NodeId, Node>
+  surface: Map<NodeId, SurfaceForm>
+  patterns: Map<NodeId, PatternForm>
+  call_graph: Map<NodeId, List<NodeId>>
+  bindings: Map<NodeId, TypeBinding>
+  func_sigs: Map<NodeId, FuncSig>
+  // dimension side tables
   provenance: Map<NodeId, SubValueRelation>
   ownership: Map<NodeId, OwnershipKind>
   effects: Map<NodeId, EffectLevel>
-  // Proof results per function/workflow.
+  // proof results
   termination_proofs: Map<NodeId, TerminationProof>
   ownership_proofs: Map<NodeId, OwnershipProof>
   workflow_proofs: Map<NodeId, WorkflowProof>
-  // All diagnostics from proof construction.
   diagnostics: List<Diagnostic>
 }
 
-
-// ---- STAGE 4: EMIT ----
-// Input:  proven graph + language spec
-// Output: target language source files
-//
-// Emission is mechanical translation. The emitter reads:
-//   - The proven graph (types, expressions, dimension values)
-//   - The language spec (syntax, sharing strategy, naming conventions)
-// It never decides. It translates.
-//
-// Adding a new target language = adding a LanguageSpec.
-// Zero compiler changes. The spec IS the implementation.
-
+// Emit: read proven graph + target spec, produce files.
 type LanguageSpec {
   name: String
   file_extension: String
-  // How types map to target syntax
-  type_syntax: TypeSyntaxSpec
-  // How expressions map to target syntax
-  expr_syntax: ExprSyntaxSpec
-  // How ownership maps to target representation
   sharing: SharingStrategy
-  // How modules map to target file structure
-  module_structure: ModuleStructureSpec
 }
 
-// How ownership decisions become target-language code.
 type SharingStrategy
-  = ReferenceCounted       // Rust: Rc<T>
-  | GarbageCollected       // Go/Python/Java: plain T, GC handles it
-  | ValueSemantics         // C: copy everything, manual free
-  | BorrowChecked          // Rust with borrows: &T / &mut T / T
+  = ReferenceCounted
+  | GarbageCollected
+  | ValueSemantics
+  | BorrowChecked
 
-type TypeSyntaxSpec {
-  record_syntax: String       // e.g., "struct" (Rust), "type" (Go), "class" (Python)
-  enum_syntax: String         // e.g., "enum" (Rust), "type ... interface" (Go)
-  optional_syntax: String     // e.g., "Option<T>" (Rust), "*T" (Go), "Optional[T]" (Python)
-  list_syntax: String         // e.g., "Vec<T>" (Rust), "[]T" (Go), "List[T]" (Python)
-  map_syntax: String          // e.g., "HashMap<K,V>", "map[K]V", "Dict[K,V]"
-}
-
-type ExprSyntaxSpec {
-  call_syntax: String         // e.g., "func(args)" vs "func args"
-  match_syntax: String        // e.g., "match" (Rust), "switch" (Go)
-  lambda_syntax: String       // e.g., "|x| x" (Rust), "func(x)" (Go), "lambda x:" (Python)
-  block_syntax: String        // e.g., "{ ... }" vs indentation
-}
-
-type ModuleStructureSpec {
-  one_file_per: String        // "module" | "type" | "package"
-  import_syntax: String       // e.g., "use", "import"
-}
-
-// The output: target language source files.
-type TargetFile {
-  path: String
-  content: String
-  language: String
-}
-
-type EmitResult {
-  files: List<TargetFile>
-  diagnostics: List<Diagnostic>
-}
-
-
-// =========================================================================
-// THE FULL PIPELINE
-//
-// A compiler is the composition of these four stages:
-//
-//   fn compile(sources: List<Source>, target: LanguageSpec) -> EmitResult {
-//     let parsed = sources |> map(s => parse(source: s))
-//     let resolved = resolve(modules: parsed)
-//     let proven = prove(graph: resolved)
-//     emit(graph: proven, spec: target)
-//   }
-//
-// Each stage is pure. No mutation, no global state. The pipeline is
-// a fold over stages with the graph as the accumulator.
-//
-// Error handling: every stage returns diagnostics. The pipeline threads
-// them. If any stage produces blocking diagnostics (Error kind), the
-// pipeline can stop early or continue for maximum error reporting.
-// =========================================================================
-
-
-// =========================================================================
-// SPEC SUMMARY
-//
-// 10 layers, each derived from prior layers:
-//
-//   0  Truth + Finiteness    — Classical, max_inhabitants
-//   1  Function              — A → B (the sole computation primitive)
-//   2  Type structure         — product/coproduct/unit/void EMERGE from syntax
-//   3  Self-reference        — cycles in type/call graphs (no declared types)
-//   4  Observed patterns     — BoundedLattice, Monoid, Ordering
-//   5  The DAG IR            — Node, Edge (Designs A and B)
-//   6  Edge vocabulary       — SubValueRelation, ShrinkFactor, UsageEdge
-//   7  Dimension mechanism   — Dimension<T>, provenance, ownership, effects
-//   8  Proof strategies      — ProofStrategy, termination, ownership, effects
-//   9  Pipeline contracts    — parse / resolve / prove / emit
-//
-// The derivation order encodes the thesis:
-//   - Truth is primitive; function is the sole computation primitive.
-//   - Product/coproduct are not declared types — they are structural
-//     shapes that EMERGE from how type definitions compose truth values.
-//   - Recursion is not a declared concept — it is a cycle in the graph
-//     that the compiler detects.
-//   - Algebraic patterns (lattice, monoid) are not foundations — they
-//     are regularities OBSERVED in finite structures. The compiler
-//     discovers them in std/ declarations, not as built-in knowledge.
-//   - User-defined dimensions work identically to built-in ones
-//     because both are instances of the same Layer 4 patterns.
-//   - Emission to ANY target (Rust, Verilog, SQL, SPICE, English)
-//     works because the composition operators are universal arithmetic.
-//
-// vs v2:
-//   32 .dag files, 38,078 lines, 18-field Node, 22-variant ExprData,
-//   Connective enum, VarBindingKind, separate ownership pass,
-//   triple classification system, string-keyed identity
-//
-// What this spec eliminates:
-//   - Node.name (string identity → NodeId)
-//   - Connective enum (→ structural shape visible in type definition syntax)
-//   - VarBindingKind (→ edge position: parameter vs body)
-//   - Separate ownership pass (→ dimension on bindings)
-//   - classify_binding_provenance, classify_let_value,
-//     classify_argument, classify_body_provenance,
-//     classify_self_call_evidence (→ read SVR from edge)
-//   - Per-dimension proof code (→ generic ProofStrategy executor)
-//   - String-keyed tables (→ NodeId-keyed tables)
-//   - Algebraic axioms in Layer 0 (→ observed patterns in Layer 4)
-//   - RecursionShape enum (→ compiler observes self-reference in type graph)
-//   - IterationPrimitive enum (→ compiler classifies call graph shapes)
-//   - TypeShape enum (→ structural shape visible in definition syntax)
-//
-// What this spec preserves:
-//   - SubValueRelation as the edge vocabulary (from std/induction.dag)
-//   - BoundedLattice as the dimension carrier (from std/algebra.dag)
-//   - fold + lattice + gate as the proof mechanism
-//   - TerminationProof with lexicographic ordering (from std/termination.dag)
-//   - LanguageSpec-driven emission
-//   - The thesis: if it compiles, the intent is sound
-//
-// Open questions for implementation:
-//   1. Design A vs Design B (or hybrid: B for parse, A for prove/emit)
-//   2. Dimension table storage: side tables vs edge fields
-//   3. User-defined dimensions: how they declare composition rules
-//   4. How prove stage discovers strategies from std/ declarations
-//   5. Interpreter: same ProvenGraph, tree-walk evaluation instead of emit
-// =========================================================================
-
+type TargetFile { path: String, content: String }
+type EmitResult { files: List<TargetFile>, diagnostics: List<Diagnostic> }

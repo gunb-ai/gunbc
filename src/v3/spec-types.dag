@@ -1,5 +1,9 @@
 module v3.spec
 
+// *************************************************************************
+
+// *************************************************************************
+
 // LAYER 0: TRUTH + FINITENESS
 type Classical = True | False
 data max_inhabitants: Int = 9223372036854775807
@@ -10,151 +14,24 @@ data max_inhabitants: Int = 9223372036854775807
 
 // LAYER 3: SELF-REFERENCE
 
-// LAYER 4: OBSERVED PATTERNS (algebraic structures)
-type BoundedLattice<T> {
-  bottom: T
-  top: T
-  meet: fn(T, T) -> T
-  join: fn(T, T) -> T
-}
-type Monoid<T> {
-  identity: T
-  op: fn(T, T) -> T
-}
-type Ordering = Less | Equal | Greater
-
-// LAYER 5: THE DAG IR
+// LAYER 4: THE GRAPH
 type NodeId = Int
 type Span { file: String, start: Int, end: Int }
-type LiteralValue
-  = LitInt { value: Int }
-  | LitFloat { value: Float }
-  | LitString { value: String }
-  | LitBool { value: Bool }
-type BinOp
-  = Add | Sub | Mul | Div | Mod
-  | Eq | Neq | Lt | Gt | Lte | Gte
-  | And | Or
-  | Concat
-type BindingRef { id: NodeId }
-type FieldRef { type_id: NodeId, field_name: String }
-type ParamRef { func_id: NodeId, index: Int }
-
-// DESIGN A: LEAN UNIVERSAL NODE (Layer 5a)
-type UnivNode {
+type Node {
   id: NodeId
-  kind: NodeKind
   span: Span
-  edges: List<UnivEdge>
+  edges: List<Edge>
 }
-type UnivEdge {
-  role: EdgeRole
+type Edge {
   target: NodeId
+  svr: SubValueRelation
 }
-type EdgeRole
-  = Child { index: Int }       // positional child (e.g., list elements)
-  | Param { index: Int }       // function/lambda parameter declaration
-  | Arg { index: Int }         // call-site argument value
-  | Body                       // function/lambda/let body
-  | Scrutinee                  // match/if condition
-  | Arm { index: Int }         // match arm (pattern + body)
-  | ArmPattern                 // pattern within a match arm
-  | ArmBody                    // body within a match arm
-  | TypeAnnotation             // declared type on a binding
-  | Receiver                   // method call receiver
-  | Init                       // initial value (fold accumulator, let value)
-  | Collection                 // collection being iterated (fold, for-each)
-  | FieldTarget                // target of field access
-  | Left                       // left operand of binary op
-  | Right                      // right operand of binary op
-  | Operand                    // unary op operand
-  | Element { index: Int }     // record/list literal element
-  | ImportTarget               // module being imported
-  | Transport                  // external execution strategy
-type NodeKind
-  // --- Declarations ---
-  = ModuleDecl { name: String }
-  | ImportDecl { path: String, names: List<String> }
-  | TypeDecl { name: String }
-  | FuncDecl { name: String, is_async: Bool }
-  | DataDecl { name: String }
-  | ServiceDecl { name: String }
-  // --- Expressions ---
-  | Literal { value: LiteralValue }
-  | Var { ref: BindingRef }
-  | Call
-  | MethodCall { method: String }
-  | Match
-  | If
-  | Let { name: String }
-  | Lambda
-  | Block
-  | FieldAccess { field: String }
-  | BinaryOp { op: BinOp }
-  | UnaryOp { op: UnaryOpKind }
-  | RecordLit { type_name: String }
-  | ListLit
-  | StringInterp
-  | ForEach { binding: String }
-  | Index
-  | Return
-  // --- Structural ---
-  | ParamNode { name: String }
-  | ArgNode { name: String }
-  | ArmNode
-  | FieldInitNode { name: String }
-  | VariantDecl { name: String }
-  | FieldDecl { name: String }
-type UnaryOpKind = Not | Neg
 
-// DESIGN B: TYPED NODES (Layer 5b)
-type Decl
-  = DeclType { name: String, fields: List<TypedFieldDecl>, variants: List<Decl>, span: Span }
-  | DeclFunc { name: String, params: List<TypedParam>, body: Expr, return_type: TypeRef?, is_async: Bool, span: Span }
-  | DeclData { name: String, body: Expr, span: Span }
-  | DeclService { name: String, operations: List<Decl>, span: Span }
-  | DeclImport { path: String, names: List<String>, span: Span }
-type TypedFieldDecl { name: String, type_ref: TypeRef, span: Span }
-type TypedParam { name: String, type_ref: TypeRef, span: Span }
-type TypeRef
-  = NamedType { name: String, args: List<TypeRef> }
-  | FuncType { params: List<TypeRef>, result: TypeRef }
-  | OptionalType { inner: TypeRef }
-type Expr
-  = ExprLiteral { value: LiteralValue, span: Span }
-  | ExprVar { ref: BindingRef, span: Span }
-  | ExprCall { func: Expr, args: List<CallArg>, span: Span }
-  | ExprMethodCall { receiver: Expr, method: String, args: List<CallArg>, span: Span }
-  | ExprMatch { scrutinee: Expr, arms: List<MatchArm>, span: Span }
-  | ExprIf { condition: Expr, then_branch: Expr, else_branch: Expr?, span: Span }
-  | ExprLet { name: String, type_ann: TypeRef?, value: Expr, span: Span }
-  | ExprLambda { params: List<TypedParam>, body: Expr, span: Span }
-  | ExprBlock { stmts: List<Expr>, span: Span }
-  | ExprFieldAccess { target: Expr, field: String, span: Span }
-  | ExprBinOp { op: BinOp, left: Expr, right: Expr, span: Span }
-  | ExprUnaryOp { op: UnaryOpKind, operand: Expr, span: Span }
-  | ExprRecordLit { type_name: String, fields: List<FieldInit>, span: Span }
-  | ExprListLit { elements: List<Expr>, span: Span }
-  | ExprStringInterp { parts: List<StringPart>, span: Span }
-  | ExprForEach { binding: String, collection: Expr, body: Expr, span: Span }
-  | ExprIndex { target: Expr, index: Expr, span: Span }
-  | ExprReturn { value: Expr?, span: Span }
-type CallArg { name: String?, value: Expr }
-type FieldInit { name: String, value: Expr }
-type StringPart = TextPart { text: String } | InterpPart { expr: Expr }
-type MatchArm { pattern: Pattern, guard: Expr?, body: Expr, span: Span }
-type Pattern
-  = PatternBind { name: String }
-  | PatternLiteral { value: LiteralValue }
-  | PatternVariant { name: String, parent: String?, bindings: List<FieldPattern> }
-  | PatternWildcard
-type FieldPattern { name: String, binding: String }
-
-// LAYER 6: EDGE VOCABULARY
+// LAYER 5: EDGE VOCABULARY (SubValueRelation)
 type ShrinkFactor
-  = UnitShrink                           // decrease by 1
-  | ConstantShrink { amount: Int }       // decrease by k
-  | ProportionalShrink { divisor: Int }  // decrease by factor n/k
+  = UnitShrink
+  | ConstantShrink { amount: Int }
+  | ProportionalShrink { divisor: Int }
 type SubValueRelation
   = StrictSubValue { field: FieldRef, factor: ShrinkFactor }
   | IteratedSubValue { field: FieldRef }
@@ -165,11 +42,8 @@ fn meet_svr(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
   match a {
     Unknown => Unknown
     PreservedValue => match b {
-      StrictSubValue { field: _, factor: _ } => PreservedValue
-      IteratedSubValue { field: _ } => PreservedValue
-      ArithmeticDescent { param: _, factor: _ } => PreservedValue
-      PreservedValue => PreservedValue
       Unknown => Unknown
+      _ => PreservedValue
     }
     _ => match b {
       Unknown => Unknown
@@ -190,65 +64,44 @@ fn compose_svr(outer: SubValueRelation, inner: SubValueRelation) -> SubValueRela
   }
 }
 type UsageEdge
-  = Consumed     // moved / ownership transferred (last use candidate)
-  | Read         // read but not consumed (borrow candidate)
-  | Projected    // accessed via field / index (structural borrow)
-  | Threaded     // passed through unchanged (fold accumulator)
+  = Consumed
+  | Read
+  | Projected
+  | Threaded
+type FieldRef { type_id: NodeId, field_name: String }
+type ParamRef { func_id: NodeId, index: Int }
 
-// LAYER 7: DIMENSION MECHANISM
+// LAYER 6: DIMENSIONS
+type BoundedLattice<T> {
+  bottom: T
+  top: T
+  meet: fn(T, T) -> T
+  join: fn(T, T) -> T
+}
 type Dimension<T> {
   lattice: BoundedLattice<T>
-  compute_at_binding: fn(AccessShape, T) -> T
-  enforce: fn(T, EnforcementContext) -> Diagnostic?
+  compute: fn(SubValueRelation, T) -> T
+  enforce: fn(T, NodeId) -> Diagnostic?
 }
-type AccessShape
-  = FieldAccess { field: FieldRef }      // x.foo — structural projection
-  | Iteration { element: FieldRef }      // element of a collection
-  | Arithmetic { op: BinOp, by: Int }    // n - 1, n / 2
-  | Construction                         // new value (record literal, etc.)
-  | Identity                             // passed through unchanged
-  | UnknownAccess                        // can't determine — fail-closed
-type EnforcementContext
-  = GateContext { binding_id: NodeId }   // compile-time rejection
-  | EmitContext { target: String }       // emit-time optimization decision
-  | ReportContext                        // non-blocking diagnostic
 type Diagnostic {
-  kind: DiagnosticKind
   span: Span
   message: String
   fix: SuggestedFix?
 }
-type DiagnosticKind = Error | Warning | Info
 type SuggestedFix {
   description: String
   replacement: String
   span: Span
 }
 
-// BUILT-IN DIMENSION 1: PROVENANCE (termination)
-fn provenance_from_access(access: AccessShape, source: SubValueRelation) -> SubValueRelation {
-  match access {
-    FieldAccess { field: f } => StrictSubValue { field: f, factor: UnitShrink }
-    Iteration { element: f } => IteratedSubValue { field: f }
-    Arithmetic { op: _, by: k } => match source {
-      PreservedValue => ArithmeticDescent { param: ParamRef { func_id: 0, index: 0 }, factor: ConstantShrink { amount: k } }
-      _ => Unknown
-    }
-    Construction => Unknown
-    Identity => source
-    UnknownAccess => Unknown
-  }
-}
+// --- Provenance (termination dimension) ---
 
-// BUILT-IN DIMENSION 2: OWNERSHIP
+// --- Ownership dimension ---
 type OwnershipKind = Owned | Borrowed | Shared
 fn ownership_meet(a: OwnershipKind, b: OwnershipKind) -> OwnershipKind {
   match a {
     Shared => Shared
-    Borrowed => match b {
-      Shared => Shared
-      _ => Borrowed
-    }
+    Borrowed => match b { Shared => Shared  _ => Borrowed }
     Owned => b
   }
 }
@@ -262,116 +115,86 @@ fn ownership_from_svr(svr: SubValueRelation) -> OwnershipKind {
   }
 }
 
-// BUILT-IN DIMENSION 3: EFFECTS
+// --- Effects dimension ---
 type EffectLevel
-  = Pure              // no effects — safe to parallelize, memoize, reorder
-  | ReadsLocal        // reads local state (no external I/O)
-  | WritesLocal       // writes local state (accumulator mutation)
-  | ReadsExternal     // reads external state (file read, HTTP GET)
-  | WritesExternal    // writes external state (file write, HTTP POST)
+  = Pure
+  | ReadsLocal
+  | WritesLocal
+  | ReadsExternal
+  | WritesExternal
 fn effect_meet(a: EffectLevel, b: EffectLevel) -> EffectLevel {
   match a {
     WritesExternal => WritesExternal
-    ReadsExternal => match b {
-      WritesExternal => WritesExternal
-      _ => ReadsExternal
-    }
-    WritesLocal => match b {
-      WritesExternal => WritesExternal
-      ReadsExternal => ReadsExternal
-      _ => WritesLocal
-    }
-    ReadsLocal => match b {
-      Pure => ReadsLocal
-      _ => b
-    }
+    ReadsExternal => match b { WritesExternal => WritesExternal  _ => ReadsExternal }
+    WritesLocal => match b { WritesExternal => WritesExternal  ReadsExternal => ReadsExternal  _ => WritesLocal }
+    ReadsLocal => match b { Pure => ReadsLocal  _ => b }
     Pure => b
   }
 }
-fn compose_effects(a: EffectLevel, b: EffectLevel) -> EffectLevel {
-  effect_meet(a: a, b: b)
-}
 type EffectShape
-  = LatticeEffect       // upsert, delete — idempotent (f . f = f)
-  | MonoidEffect         // append, create — not idempotent
-  | IdentityEffect       // read, no-op — trivially idempotent
+  = LatticeEffect
+  | MonoidEffect
+  | IdentityEffect
 fn is_idempotent(shape: EffectShape) -> Bool {
-  match shape {
-    LatticeEffect => true
-    IdentityEffect => true
-    MonoidEffect => false
+  match shape { LatticeEffect => true  IdentityEffect => true  MonoidEffect => false }
+}
+fn compose_shapes(a: EffectShape, b: EffectShape) -> EffectShape {
+  match a {
+    MonoidEffect => MonoidEffect
+    LatticeEffect => match b { MonoidEffect => MonoidEffect  _ => LatticeEffect }
+    IdentityEffect => b
   }
 }
 
-// LAYER 8: PROOF STRATEGIES
-type GraphTraversal<N, E> {
-  nodes: List<N>
-  edges_from: fn(N) -> List<GraphEdge<N, E>>
-}
-type GraphEdge<N, E> {
-  target: N
-  evidence: E
-}
+// *************************************************************************
+
+// *************************************************************************
+
+// LAYER 7: PROOF STRATEGIES
 type ProofStrategy<N, E, R> {
-  graph: GraphTraversal<N, E>
-  compose: fn(E, E) -> E            // algebra: how evidence combines
-  identity: E                        // algebra: identity element
-  gate: fn(N, E) -> ProofResult<R>  // check: is composed evidence sufficient?
+  nodes: List<N>
+  edges_from: fn(N) -> List<ProofEdge<N, E>>
+  compose: fn(E, E) -> E
+  identity: E
+  gate: fn(N, E) -> ProofResult<R>
 }
+type ProofEdge<N, E> { target: N, evidence: E }
 type ProofResult<R>
   = ProofSuccess { proof: R }
   | ProofFailure { diagnostic: Diagnostic }
 
-// PROOF STRATEGY 1: TERMINATION
+// --- Termination proof (observation: does every cycle descend?) ---
 type DescentEvidence
-  = Strict           // value provably decreases (Less)
-  | NonIncreasing    // value does not increase (Equal or Less)
-  | DescentUnknown   // cannot determine (fail-closed)
+  = Strict
+  | NonIncreasing
+  | DescentUnknown
 fn merge_descent(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
   match a {
-    Strict => match b {
-      Strict => Strict
-      NonIncreasing => NonIncreasing
-      DescentUnknown => DescentUnknown
-    }
-    NonIncreasing => match b {
-      Strict => NonIncreasing
-      NonIncreasing => NonIncreasing
-      DescentUnknown => DescentUnknown
-    }
+    Strict => match b { Strict => Strict  NonIncreasing => NonIncreasing  DescentUnknown => DescentUnknown }
+    NonIncreasing => match b { DescentUnknown => DescentUnknown  _ => NonIncreasing }
     DescentUnknown => DescentUnknown
   }
 }
 type RankingDimension
-  = TreeSize { param: ParamRef }         // |subtree| via child accessor
-  | ListLength { param: ParamRef }       // |list| via skip/tail
-  | ArithmeticValue { param: ParamRef }  // integer via n-1, n/2
-  | TokenPosition { param: ParamRef }    // parser position
-  | SetCardinality { param: ParamRef }   // |set| via remove
-type TerminationProof {
-  dimensions: List<RankingDimension>
-}
+  = TreeSize { param: ParamRef }
+  | ListLength { param: ParamRef }
+  | ArithmeticValue { param: ParamRef }
+  | TokenPosition { param: ParamRef }
+  | SetCardinality { param: ParamRef }
+type TerminationProof { dimensions: List<RankingDimension> }
 type CallEdgeEvidence {
   caller: NodeId
   callee: NodeId
   per_dimension: List<DescentEvidence>
 }
 fn is_lexicographic_descent(evidence: List<DescentEvidence>) -> Bool {
-  // Walk dimensions in order. First Strict found = descent proven.
-  // Any DescentUnknown before a Strict = proof fails.
   fold(evidence, init: false, f: (found_strict, e) =>
     if found_strict { true }
-    else {
-      match e {
-        Strict => true
-        NonIncreasing => false
-        DescentUnknown => false
-      }
-    }
+    else { match e { Strict => true  _ => false } }
   )
 }
 
-// PROOF STRATEGY 2: OWNERSHIP
+// --- Ownership proof (observation: is any value aliased?) ---
 type OwnershipProof {
   binding_id: NodeId
   kind: OwnershipKind
@@ -379,105 +202,92 @@ type OwnershipProof {
   last_use: NodeId?
 }
 type OwnershipResult
-  = SoleOwner                                // fan-out = 1: move
-  | LastUseIdentified { last: NodeId }       // fan-out > 1 but last use known: move last, clone rest
-  | SharedOwnership                          // fan-out > 1, no last use: clone all
-fn check_ownership(binding_id: NodeId, kind: OwnershipKind, fan_out: Int, last_use: NodeId?) -> OwnershipResult {
-  if fan_out <= 1 { SoleOwner }
-  else {
-    match last_use {
-      Some { value: last } => LastUseIdentified { last: last }
-      None => SharedOwnership
-    }
-  }
-}
+  = SoleOwner
+  | LastUseIdentified { last: NodeId }
+  | SharedOwnership
 
-// PROOF STRATEGY 3: EFFECTS (idempotency + safety)
+// --- Workflow proof (observation: is the composition idempotent?) ---
 type WorkflowProof {
   workflow_id: NodeId
   composed_effect: EffectLevel
   composed_shape: EffectShape
   is_idempotent: Bool
 }
-fn compose_shapes(a: EffectShape, b: EffectShape) -> EffectShape {
-  match a {
-    MonoidEffect => MonoidEffect
-    LatticeEffect => match b {
-      MonoidEffect => MonoidEffect
-      _ => LatticeEffect
-    }
-    IdentityEffect => b
-  }
-}
-fn check_workflow_effect(composed: EffectShape, declared_idempotent: Bool) -> ProofResult<WorkflowProof> {
-  if declared_idempotent && !is_idempotent(shape: composed) {
-    ProofFailure { diagnostic: Diagnostic {
-      kind: Error,
-      span: Span { file: "", start: 0, end: 0 },
-      message: "workflow declared idempotent but contains non-idempotent operation",
-      fix: none
-    }}
-  } else {
-    ProofSuccess { proof: WorkflowProof {
-      workflow_id: 0,
-      composed_effect: Pure,
-      composed_shape: composed,
-      is_idempotent: is_idempotent(shape: composed)
-    }}
-  }
-}
 
-// LAYER 9: PIPELINE CONTRACTS
+// LAYER 8: SURFACE FORMS
+type SurfaceForm
+  // --- declarations (introduce a name) ---
+  = FormModule { name: String }
+  | FormImport { path: String, names: List<String> }
+  | FormType { name: String }
+  | FormFunc { name: String, is_async: Bool }
+  | FormData { name: String }
+  | FormService { name: String }
+  // --- expressions (produce a value) ---
+  | FormLiteral { value: LiteralValue }
+  | FormVar { name: String }
+  | FormCall
+  | FormMethodCall { method: String }
+  | FormMatch
+  | FormIf
+  | FormLet { name: String }
+  | FormLambda
+  | FormBlock
+  | FormFieldAccess { field: String }
+  | FormBinOp { op: BinOp }
+  | FormUnaryOp { op: UnaryOp }
+  | FormRecordLit { type_name: String }
+  | FormListLit
+  | FormStringInterp
+  | FormForEach { binding: String }
+  | FormIndex
+  | FormReturn
+  // --- structural (parts of larger forms) ---
+  | FormParam { name: String }
+  | FormArg { name: String }
+  | FormArm
+  | FormFieldInit { name: String }
+  | FormVariant { name: String }
+  | FormField { name: String }
+type LiteralValue
+  = LitInt { value: Int }
+  | LitFloat { value: Float }
+  | LitString { value: String }
+  | LitBool { value: Bool }
+type BinOp
+  = Add | Sub | Mul | Div | Mod
+  | Eq | Neq | Lt | Gt | Lte | Gte
+  | And | Or
+  | Concat
+type UnaryOp = Not | Neg
+type PatternForm
+  = PatBind { name: String }
+  | PatLiteral { value: LiteralValue }
+  | PatVariant { name: String, parent: String?, bindings: List<String> }
+  | PatWildcard
 
-// ---- STAGE 1: PARSE ----
-type Source {
-  path: String
-  text: String
-}
+// LAYER 9: PIPELINE
+type Source { path: String, text: String }
 type ParseResult {
-  module_name: String
-  declarations: List<Decl>
+  nodes: Map<NodeId, Node>
+  surface: Map<NodeId, SurfaceForm>
+  patterns: Map<NodeId, PatternForm>
   diagnostics: List<Diagnostic>
-  intern_table: InternTable
+  intern: InternTable
 }
 type InternTable {
   strings: List<String>
   index: Map<String, Int>
 }
-fn intern(table: InternTable, name: String) -> InternResult {
-  match map_get(table.index, name) {
-    Some { value: id } => InternResult { id: id, table: table }
-    None =>
-      let id = table.strings |> count
-      InternResult {
-        id: id,
-        table: InternTable {
-          strings: list_push(table.strings, name),
-          index: map_insert(table.index, name, id)
-        }
-      }
-  }
-}
-type InternResult { id: Int, table: InternTable }
-
-// ---- STAGE 2: RESOLVE ----
-type ModuleGraph {
-  modules: List<ResolvedModule>
-  call_graph: CallGraph
-  type_env: TypeEnv
-}
-type ResolvedModule {
-  name: String
-  nodes: Map<NodeId, UnivNode>
-  root_declarations: List<NodeId>
-}
-type CallGraph {
-  edges: Map<NodeId, List<NodeId>>
-}
-type TypeEnv {
+type ResolvedGraph {
+  nodes: Map<NodeId, Node>
+  surface: Map<NodeId, SurfaceForm>
+  patterns: Map<NodeId, PatternForm>
+  call_graph: Map<NodeId, List<NodeId>>
   bindings: Map<NodeId, TypeBinding>
-  recursive_types: Map<NodeId, Bool>
   inductive_fields: Map<NodeId, List<InductiveField>>
+  func_sigs: Map<NodeId, FuncSig>
+  diagnostics: List<Diagnostic>
 }
 type TypeBinding {
   id: NodeId
@@ -495,76 +305,37 @@ type FuncSig {
   is_async: Bool
   output_provenance: Map<String, SubValueRelation>
 }
-type FuncParam {
-  name: String
-  id: NodeId
-  type_ref: TypeRef
-}
-type FuncEnv {
-  signatures: Map<NodeId, FuncSig>
-}
-
-// ---- STAGE 3: PROVE ----
+type FuncParam { name: String, id: NodeId, type_ref: TypeRef }
+type TypeRef
+  = NamedType { name: String, args: List<TypeRef> }
+  | FuncType { params: List<TypeRef>, result: TypeRef }
+  | OptionalType { inner: TypeRef }
 type ProvenGraph {
-  modules: List<ResolvedModule>
-  call_graph: CallGraph
-  type_env: TypeEnv
-  func_env: FuncEnv
-  // Dimension values: side tables keyed by edge identity.
-  // Not on the edge struct itself — keeps the IR lean and allows
-  // user-defined dimensions without changing edge types.
+  nodes: Map<NodeId, Node>
+  surface: Map<NodeId, SurfaceForm>
+  patterns: Map<NodeId, PatternForm>
+  call_graph: Map<NodeId, List<NodeId>>
+  bindings: Map<NodeId, TypeBinding>
+  func_sigs: Map<NodeId, FuncSig>
+  // dimension side tables
   provenance: Map<NodeId, SubValueRelation>
   ownership: Map<NodeId, OwnershipKind>
   effects: Map<NodeId, EffectLevel>
-  // Proof results per function/workflow.
+  // proof results
   termination_proofs: Map<NodeId, TerminationProof>
   ownership_proofs: Map<NodeId, OwnershipProof>
   workflow_proofs: Map<NodeId, WorkflowProof>
-  // All diagnostics from proof construction.
   diagnostics: List<Diagnostic>
 }
-
-// ---- STAGE 4: EMIT ----
 type LanguageSpec {
   name: String
   file_extension: String
-  // How types map to target syntax
-  type_syntax: TypeSyntaxSpec
-  // How expressions map to target syntax
-  expr_syntax: ExprSyntaxSpec
-  // How ownership maps to target representation
   sharing: SharingStrategy
-  // How modules map to target file structure
-  module_structure: ModuleStructureSpec
 }
 type SharingStrategy
-  = ReferenceCounted       // Rust: Rc<T>
-  | GarbageCollected       // Go/Python/Java: plain T, GC handles it
-  | ValueSemantics         // C: copy everything, manual free
-  | BorrowChecked          // Rust with borrows: &T / &mut T / T
-type TypeSyntaxSpec {
-  record_syntax: String       // e.g., "struct" (Rust), "type" (Go), "class" (Python)
-  enum_syntax: String         // e.g., "enum" (Rust), "type ... interface" (Go)
-  optional_syntax: String     // e.g., "Option<T>" (Rust), "*T" (Go), "Optional[T]" (Python)
-  list_syntax: String         // e.g., "Vec<T>" (Rust), "[]T" (Go), "List[T]" (Python)
-  map_syntax: String          // e.g., "HashMap<K,V>", "map[K]V", "Dict[K,V]"
-}
-type ExprSyntaxSpec {
-  call_syntax: String         // e.g., "func(args)" vs "func args"
-  match_syntax: String        // e.g., "match" (Rust), "switch" (Go)
-  lambda_syntax: String       // e.g., "|x| x" (Rust), "func(x)" (Go), "lambda x:" (Python)
-  block_syntax: String        // e.g., "{ ... }" vs indentation
-}
-type ModuleStructureSpec {
-  one_file_per: String        // "module" | "type" | "package"
-  import_syntax: String       // e.g., "use", "import"
-}
-type TargetFile {
-  path: String
-  content: String
-  language: String
-}
-type EmitResult {
-  files: List<TargetFile>
-  diagnostics: List<Diagnostic>
-}
+  = ReferenceCounted
+  | GarbageCollected
+  | ValueSemantics
+  | BorrowChecked
+type TargetFile { path: String, content: String }
+type EmitResult { files: List<TargetFile>, diagnostics: List<Diagnostic> }
