@@ -155,13 +155,14 @@ type Path {
 // means: if elements don't depend on each other, the compiler sees
 // that from the DAG structure and can parallelize.
 //
-// TERMINATION: In a closed system with bounded iteration, termination
-// is guaranteed by construction. You can't WRITE a non-terminating
-// program — the only iteration primitive (Loop) requires a Bound.
-// There is nothing to "prove." v2's 420 CX violations exist because
-// v2 tries to prove termination after the fact instead of making
-// non-termination unrepresentable. In v3, the physics makes it
-// unrepresentable.
+// TERMINATION: Once something IS a Loop with a Bound, termination
+// is trivial. The hard part is getting there: classifying recursion
+// as Loop, recognizing elementwise independence for Map, proving
+// branch exclusivity for ownership. That's real work — but it's
+// concentrated in ONE place (the lowering boundary from surface
+// syntax to DAG) instead of spread across 33 downstream heuristics.
+// v2's 420 CX violations exist because the classification happens
+// after the fact. In v3, it happens during DAG construction.
 
 type Loop {
   id: NodeId
@@ -249,9 +250,10 @@ type Port {
 //   - what you're measuring (cost, fan-out, effect, etc.)
 //   - how measurements compose (add for cost, max for branches, etc.)
 //
-// The compiler ships with built-in lenses. Users can define their own.
-// A user-defined lens (e.g., security classification) uses the same
-// mechanism as a built-in lens. If it can't, the mechanism is broken.
+// The compiler ships with built-in lenses. Users can define their own
+// OBSERVATIONAL lenses (e.g., security classification that validates
+// and rejects). Lenses that influence optimization or emission
+// strategy are a harder class of extensibility — not claimed yet.
 
 // ---------------------------------------------------------------------------
 // Built-in lenses
@@ -345,8 +347,8 @@ type Port {
 //   - what to check (e.g., Secret can't flow to a PublicAPI service call)
 //
 // The compiler points the lens at the DAG and enforces whatever it reveals.
-// Same mechanism as cost, ownership, effects. No compiler changes needed.
-// If user-defined lenses need special support, the mechanism is broken.
+// Same mechanism as cost, ownership, effects for observation/rejection.
+// Lenses that influence optimization or lowering need more design.
 
 // =========================================================================
 // L2: COMPOSED BEHAVIORS
@@ -883,10 +885,10 @@ type Port {
 //   the compiler shows the missing arms with placeholder bodies.
 //
 // Level 3: APPLY the fix (non-consensual correction).
-//   If exactly one repair is structurally valid, the compiler
-//   applies it. The developer sees the corrected code.
-//   Future: the developer doesn't even see the error — the
-//   compiler just fixes it during DAG construction.
+//   ONLY when exactly one repair is structurally valid AND
+//   semantic equivalence is provable. Otherwise this becomes
+//   fabrication disguised as helpfulness. Start with Level 1-2;
+//   Level 3 earns trust incrementally.
 //
 // This applies to ALL lenses, not just types:
 //
