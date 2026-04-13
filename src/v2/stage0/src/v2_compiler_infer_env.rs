@@ -136,11 +136,11 @@ v2_rt::rc_map_insert(acc.clone(), field.type_name.clone(), v2_rt::concat(existin
 
 pub fn merge_envs(envs: &Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
     {
-        let merged_bindings = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(), |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.bindings.clone()));
-let merged_recursive = envs.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc.clone(), env.recursive_types.clone()));
-let merged_recursive_set = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<i64, bool>(), |acc: Rc<HashMap<i64, bool>>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.recursive_type_set.clone()));
-let merged_inductive_fields = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, env: Rc<TypeEnv>| merge_inductive_fields(acc.clone(), &env.inductive_fields.clone()));
-let merged_source_indices = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.source_indices.clone()));
+        let merged_bindings = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(), |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc, env.bindings.clone()));
+let merged_recursive = envs.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc, env.recursive_types.clone()));
+let merged_recursive_set = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<i64, bool>(), |acc: Rc<HashMap<i64, bool>>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc, env.recursive_type_set.clone()));
+let merged_inductive_fields = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, env: Rc<TypeEnv>| merge_inductive_fields(acc, &env.inductive_fields.clone()));
+let merged_source_indices = envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc, env.source_indices.clone()));
 let merged_intern_table = match envs.clone().first().cloned() {
     Some(first_env) => first_env.intern_table.clone(),
     None => empty_intern_table(),

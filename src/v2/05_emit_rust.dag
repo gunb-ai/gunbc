@@ -110,7 +110,7 @@ import v2.compiler.infer_emit_info {
   lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum
 }
-import v2.compiler.ownership { OwnershipProof, FoldAccUnwrapProof, analyze_ownership, build_movable_set, build_read_only_params, collect_callable_refs }
+import v2.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs }
 import std.induction { SubValueUnknown }
 
 import v2.compiler.emit {
@@ -419,21 +419,25 @@ fn is_type_constant(summary: TypeSummary, recursive_type_set: Map<String, Bool>)
 // all Rc wrapping and cloning become no-ops via identity SharingStrategy templates.
 // For Rust: includes user-defined types (structs, data enums) and built-in
 // collection types. Constant types (fixed-width carriers) skip sharing.
+fn maybe_mark_shared_type(acc: Map<String, Bool>, summary: TypeSummary, recursive_type_set: Map<String, Bool>, target_needs_sharing: Bool) -> Map<String, Bool> {
+  let needs_sharing = target_needs_sharing && match summary.repr {
+    StructRepr => true
+    EnumRepr { unit_only: unit_only } => unit_only == false
+  }
+  if needs_sharing && !is_type_constant(summary: summary, recursive_type_set: recursive_type_set) {
+    map_insert(acc, summary.name, true)
+  } else {
+    acc
+  }
+}
+
 fn build_shared_types(type_summaries: Map<String, TypeSummary>, recursive_type_set: Map<String, Bool>, target: RenderTarget) -> Map<String, Bool> {
   // needs_sharing: Rust=true (ownership), Python/Go=false (GC).
   // When false, both folds produce empty results → identity SharingStrategy
   // templates produce no-op wrapping/cloning.
   let sharing = sharing_for_target(target: target)
   let user_shared = map_values(type_summaries) |> fold(init: empty_map(), f: (acc, summary) =>
-    let needs_sharing = sharing.needs_sharing && match summary.repr {
-      StructRepr => true
-      EnumRepr { unit_only: unit_only } => unit_only == false
-    }
-    if needs_sharing && !is_type_constant(summary: summary, recursive_type_set: recursive_type_set) {
-      map_insert(acc, summary.name, true)
-    } else {
-      acc
-    }
+    maybe_mark_shared_type(acc: acc, summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: sharing.needs_sharing)
   )
   // Collection types: any template key whose bare type has O(n) clone cost.
   // "optional" and "boolean_algebra" excluded. GC languages: sharing.needs_sharing
@@ -458,14 +462,7 @@ type OwnershipProofEntry {
 
 type OwnershipBuildResult {
   ownership_index: Map<String, Map<String, Bool>>
-  fold_eligible_index: Map<String, Map<String, Bool>>
   read_only_params_index: Map<String, Map<String, Bool>>
-}
-
-fn build_fold_eligible_set(proof: OwnershipProof) -> Map<String, Bool> {
-  proof.fold_acc_unwrap |> fold(init: empty_map(), f: (acc, p) =>
-    if p.eligible { map_insert(acc, p.acc_type_name, true) } else { acc }
-  )
 }
 
 fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
@@ -486,18 +483,16 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
       OwnershipProofEntry { name: qualified, proof: analyze_ownership(func_name: item.name, params: item.params, body: item.body.value, si: m.type_env.source_indices), param_names: pnames }
     )
   )
-  proofs |> fold(init: OwnershipBuildResult { ownership_index: empty_map(), fold_eligible_index: empty_map(), read_only_params_index: empty_map() }, f: (acc, entry) =>
+  proofs |> fold(init: OwnershipBuildResult { ownership_index: empty_map(), read_only_params_index: empty_map() }, f: (acc, entry) =>
     // callable_set uses bare names from expression ASTs.
     // Use the bare func_name (not the qualified entry.name) for the check.
     let read_only = if map_contains_key(callable_set, entry.proof.func_name) { empty_map() }
       else { build_read_only_params(proof: entry.proof, param_names: entry.param_names) }
     let movable = build_movable_set(proof: entry.proof)
-    let fold_eligible = build_fold_eligible_set(proof: entry.proof)
     // Store under qualified key only. Call sites resolve the callee's
     // module_name via ItemInfo to build the qualified lookup key.
     OwnershipBuildResult {
       ownership_index: map_insert(acc.ownership_index, entry.name, movable),
-      fold_eligible_index: map_insert(acc.fold_eligible_index, entry.name, fold_eligible),
       read_only_params_index: map_insert(acc.read_only_params_index, entry.name, read_only)
     }
   )
@@ -520,8 +515,6 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     movable: empty_map(),
     variant_to_enum: base_info.variant_to_enum,
     owned_bindings: empty_map(),
-    fold_eligible_index: ownership.fold_eligible_index,
-    fold_eligible: empty_map(),
     read_only_params_index: ownership.read_only_params_index,
     read_only_params: empty_map()
   }
@@ -637,8 +630,6 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     movable: base_info.movable,
     variant_to_enum: base_info.variant_to_enum,
     owned_bindings: empty_map(),
-    fold_eligible_index: base_info.fold_eligible_index,
-    fold_eligible: empty_map(),
     read_only_params_index: base_info.read_only_params_index,
     read_only_params: empty_map()
   }
@@ -878,10 +869,6 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       Some { value: m } => m
       None => empty_map()
     }
-    let fn_fold_eligible = match map_get(emit_info.fold_eligible_index, qualified_name) {
-      Some { value: m } => m
-      None => empty_map()
-    }
     // TCO functions use `mut` params (emit_tco_param), never borrowed.
     let item_is_tco = is_tco_eligible(name: item.name, body: item.body.value, registry: registry, source_indices: env.source_indices)
     let fn_read_only = if item_is_tco { empty_map() } else {
@@ -899,8 +886,6 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       movable: fn_movable,
       variant_to_enum: emit_info.variant_to_enum,
       owned_bindings: empty_map(),
-      fold_eligible_index: emit_info.fold_eligible_index,
-      fold_eligible: fn_fold_eligible,
       read_only_params_index: emit_info.read_only_params_index,
       read_only_params: fn_read_only
     }
@@ -1905,6 +1890,10 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
   if name == "none" || name == "None" { emit_keyword(key: "null", target: Rust) }
   else if name == "true" || name == "false" { emit_keyword(key: name, target: Rust) }
   else {
+    // `movable` is the sole authority for emitting plain variable references
+    // by value. `owned_bindings` is a different concept: bindings already
+    // unwrapped from Rc<T> to owned T for field projection.
+    let moves_by_value = emit_map_has(m: emit_info.movable, key: name)
     let sharing = language_spec(target: Rust).sharing
     let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
     let ref_str = match variant_parent {
@@ -1924,10 +1913,9 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
                 _ => false
               }
               let ident = emit_ident(name: name, target: Rust)
-              let is_movable = emit_map_has(m: emit_info.movable, key: name)
               let ident_str = if is_function_value {
                 ident
-              } else if is_movable {
+              } else if moves_by_value {
                 ident
               } else { match resolved_type {
                 Some { value: _ } => apply_type_template1(template: sharing.clone_value, arg0: ident)
@@ -1937,8 +1925,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
             }
           None =>
             let ident = emit_ident(name: name, target: Rust)
-            let is_movable = emit_map_has(m: emit_info.movable, key: name)
-            let ident_str = if is_movable {
+            let ident_str = if moves_by_value {
               ident
             } else { match resolved_type {
               Some { value: _ } => apply_type_template1(template: sharing.clone_value, arg0: ident)
@@ -2179,7 +2166,7 @@ fn emit_rust_expr_method_call(expr: Node, registry: Map<String, ItemInfo>, scope
       let r = method_receiver(texpr: expr)
       let a = method_arg_nodes(texpr: expr)
       let m = expr_method_name_at(texpr: expr, source_indices: scope.type_env.source_indices)
-      emit_typed_method_call(receiver: r, method: m, args: a, result_type: expr.inferred, method_semantics: method_semantics, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      emit_typed_method_call(method_call_node: expr, receiver: r, method: m, args: a, result_type: expr.inferred, method_semantics: method_semantics, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_method_call expected ExprMethodCall", target: Rust)
   }
 }
@@ -2770,7 +2757,7 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
   }
 }
 
-fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: InferredNode?, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Node?, result_type: InferredNode?, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let elem_type_str = collection_element_type(receiver_type: receiver.inferred, shared_types: shared_types, source_indices: scope.type_env.source_indices)
   let contextual_acc_type = match result_type {
@@ -2816,9 +2803,10 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
     }
     _ => ""
   }
-  // Structural eligibility proven upstream (ownership.dag). Rc guard stays here — it's a Rust rendering concern.
-  let structural_eligible = emit_map_has(m: emit_info.fold_eligible, key: acc_type_name)
-  let acc_unwrap = structural_eligible && emit_map_has(m: shared_types, key: acc_type_name)
+  let fold_proof = analyze_single_fold(method_call: method_call_node, si: scope.type_env.source_indices)
+  let structural_unwrap = fold_proof.eligible && fold_proof.body_constructs_acc && fold_proof.safe_field_moves
+  let structural_move = fold_proof.eligible && fold_proof.whole_acc_single_use
+  let acc_unwrap = structural_unwrap && emit_map_has(m: shared_types, key: acc_type_name)
   let fold_emit_info = if acc_unwrap {
     match fold_lambda_node.expr_data {
       ExprLambda { semantics: _ } =>
@@ -2834,8 +2822,28 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
               movable: emit_info.movable,
               variant_to_enum: emit_info.variant_to_enum,
               owned_bindings: map_insert(emit_info.owned_bindings, acc_name, true),
-              fold_eligible_index: emit_info.fold_eligible_index,
-              fold_eligible: emit_info.fold_eligible,
+              read_only_params_index: emit_info.read_only_params_index,
+              read_only_params: emit_info.read_only_params
+            }
+          None => emit_info
+        }
+      _ => emit_info
+    }
+  } else if structural_move {
+    match fold_lambda_node.expr_data {
+      ExprLambda { semantics: _ } =>
+        let ps = lambda_param_names_at(texpr: fold_lambda_node, source_indices: scope.type_env.source_indices)
+        match ps |> first {
+          Some { value: acc_name } =>
+            EmitGraphInfo {
+              type_summaries: emit_info.type_summaries,
+              recursive_type_set: emit_info.recursive_type_set,
+              fielded_variants: emit_info.fielded_variants,
+              shared_types: emit_info.shared_types,
+              ownership_index: emit_info.ownership_index,
+              movable: map_insert(emit_info.movable, acc_name, true),
+              variant_to_enum: emit_info.variant_to_enum,
+              owned_bindings: emit_info.owned_bindings,
               read_only_params_index: emit_info.read_only_params_index,
               read_only_params: emit_info.read_only_params
             }
@@ -3070,7 +3078,7 @@ fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List
   } else { lowered }
 }
 
-fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, result_type: InferredNode?, method_semantics: MethodSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String, args: List<Node>, result_type: InferredNode?, method_semantics: MethodSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   if method_semantics != none { match method_semantics.value {
     ServiceMethodSemantics { service_name: svc_name, op_params: op_params } => {
       let var_name = service_var_name(service_name: svc_name)
@@ -3110,7 +3118,7 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
       let method_name = method_def.name
       // Procedural methods: require structural inspection beyond template substitution.
       if method_name == "fold" {
-        emit_rust_fold_method_call(fold_accumulator_type: fold_accumulator_type, result_type: result_type, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+        emit_rust_fold_method_call(method_call_node: method_call_node, fold_accumulator_type: fold_accumulator_type, result_type: result_type, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       } else if method_name == "sort_by" {
         emit_rust_sort_by_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       } else if method_name == "map" {

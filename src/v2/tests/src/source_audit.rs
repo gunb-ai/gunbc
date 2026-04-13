@@ -674,6 +674,54 @@ fn compile_gate_keeps_infer_errors_blocking_in_stage0() {
 }
 
 #[test]
+fn parse_boundary_keeps_intern_table_out_of_parse_result() {
+    let parse_source = read_v2_file("src/v2/02_parse.dag");
+    let compile_source = read_v2_file("src/v2/compile.dag");
+    let profile_source = read_v2_file("src/v2/compiler_tests_rust.dag");
+
+    assert_live_contains(
+        &parse_source,
+        "type ParseWithTableResult",
+        "02_parse.dag should define ParseWithTableResult for parser-local intern table threading",
+    );
+    assert_live_not_contains(
+        &parse_source,
+        "type ParseResult {\n  module: Node?\n  error: ErrorNode?\n  intern_table: InternTable\n}",
+        "02_parse.dag ParseResult should not export intern_table across the parse boundary",
+    );
+    assert_live_contains(
+        &compile_source,
+        "intern_table: empty_intern_table()",
+        "compile.dag frontend fold should initialize a single shared intern table",
+    );
+    assert_live_not_contains(
+        &compile_source,
+        "parse_results |> map(p => p.intern_table)",
+        "compile.dag should not fan out per-file parse intern tables and merge them later",
+    );
+    assert_live_not_contains(
+        &compile_source,
+        "merge_intern_tables(tables:",
+        "compile.dag frontend should not merge speculative per-file intern tables",
+    );
+    assert_live_contains(
+        &profile_source,
+        "parse_with_table(",
+        "compiler_tests_rust.dag profiles should thread a single intern table through parse",
+    );
+    assert_live_not_contains(
+        &profile_source,
+        "result.intern_table",
+        "compiler_tests_rust.dag should not read intern_table from ParseResult",
+    );
+    assert_live_not_contains(
+        &profile_source,
+        "merge_intern_tables(",
+        "compiler_tests_rust.dag should not merge per-file parse tables after parse",
+    );
+}
+
+#[test]
 fn testgen_emits_valid_rust() {
     let source = read_v2_file("src/v2/05_emit_rust.dag");
     let shared_source = read_v2_file("src/v2/05_emit.dag");

@@ -6,7 +6,7 @@ use std::rc::Rc;
 use v2_compiler::v2_compiler_artifact::RenderTarget;
 use v2_compiler::v2_compiler_compile::{PipelineResult, SourceFile};
 use v2_compiler::v2_compiler_parse::ParseResult;
-use v2_compiler::v2_std_core::Token;
+use v2_compiler::v2_std_core::{InternTable, Token};
 
 // ── Workspace helpers ────────────────────────────────────────────────────
 
@@ -41,12 +41,28 @@ pub fn parse_source(source: &str) -> Rc<ParseResult> {
     parse_source_named("test.dag", source)
 }
 
+pub fn parse_source_with_table(source: &str) -> (Rc<ParseResult>, Rc<InternTable>) {
+    parse_source_named_with_table("test.dag", source)
+}
+
 pub fn parse_source_named(filename: &str, source: &str) -> Rc<ParseResult> {
+    parse_source_named_with_table(filename, source).0
+}
+
+pub fn parse_source_named_with_table(
+    filename: &str,
+    source: &str,
+) -> (Rc<ParseResult>, Rc<InternTable>) {
     let tokens = v2_compiler::v2_compiler_tokenize::tokenize(&source.to_string(), filename.to_string());
     let source_index = v2_compiler::v2_std_core::build_newline_index(filename.to_string(), &source.to_string());
     let mut source_indices = std::collections::HashMap::new();
     source_indices.insert(filename.to_string(), source_index);
-    v2_compiler::v2_compiler_parse::parse(&tokens, Rc::new(source_indices))
+    let parsed = v2_compiler::v2_compiler_parse::parse_with_table(
+        &tokens,
+        Rc::new(source_indices),
+        v2_compiler::v2_std_core::empty_intern_table(),
+    );
+    (parsed.result.clone(), parsed.intern_table.clone())
 }
 
 pub fn assert_parses(source: &str, label: &str) {

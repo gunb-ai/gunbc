@@ -86,6 +86,10 @@ type ParseContext {
 type ParseResult {
   module: Node?
   error: ErrorNode?
+}
+
+type ParseWithTableResult {
+  result: ParseResult
   intern_table: InternTable
 }
 
@@ -848,15 +852,29 @@ fn parse_dotted_ident_rest(tokens: List<Token>, acc: String, span: SourceSpan) -
 // 1. Entry point
 // =========================================================================
 
-fn parse(tokens: List<Token>, source_indices: Map<String, NewlineIndex>) -> ParseResult {
-  let pre_interned = pre_intern_tokens(tokens: tokens, table: empty_intern_table())
+fn parse_with_table(tokens: List<Token>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ParseWithTableResult {
+  let pre_interned = pre_intern_tokens(tokens: tokens, table: intern_table)
   let ctx = ParseContext { source_indices: source_indices, intern_table: pre_interned }
   let r = parse_module(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) {
-    ParseResult { module: none, error: r.err, intern_table: r.ctx.intern_table }
+    ParseWithTableResult {
+      result: ParseResult { module: none, error: r.err },
+      intern_table: r.ctx.intern_table
+    }
   } else {
-    ParseResult { module: Some { value: r.module }, error: none, intern_table: r.ctx.intern_table }
+    ParseWithTableResult {
+      result: ParseResult { module: Some { value: r.module }, error: none },
+      intern_table: r.ctx.intern_table
+    }
   }
+}
+
+fn parse(tokens: List<Token>, source_indices: Map<String, NewlineIndex>) -> ParseResult {
+  parse_with_table(tokens: tokens, source_indices: source_indices, intern_table: empty_intern_table()).result
+}
+
+fn parse(tokens: List<Token>, source_indices: Map<String, NewlineIndex>) -> ParseResult {
+  parse_with_table(tokens: tokens, source_indices: source_indices, intern_table: empty_intern_table()).result
 }
 
 // =========================================================================
@@ -1005,10 +1023,9 @@ fn parse_import_names_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node
   if tok_is_rbrace(tok: tokens |> first) {
     NamesResult { names: acc, tokens: tokens, ctx: ctx, err: none }
   } else {
-    let name_span = token_span(tok: tokens |> first)
     let r = parse_dotted_ident(tokens: tokens)
     if has_err(err: r.err) { return NamesResult { names: [], tokens: r.tokens, ctx: ctx, err: r.err } }
-    let name_node = parsed_name_leaf(name: r.name, span: name_span)
+    let name_node = parsed_name_leaf(name: r.name, span: r.span)
     let tokens = skip_newlines(tokens: r.tokens)
     let e = eat(tokens: tokens, expected: ExpectComma)
     let tokens = skip_newlines(tokens: if e.consumed { e.tokens } else { tokens })

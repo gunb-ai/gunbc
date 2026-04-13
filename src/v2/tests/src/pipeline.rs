@@ -7,6 +7,55 @@ use std::rc::Rc;
 use v2_compiler::v2_compiler_artifact::RenderTarget;
 use v2_compiler::v2_compiler_compile::SourceFile;
 
+fn count_fold_param_clone_calls(content: &str) -> usize {
+    fn is_ident_char(ch: u8) -> bool {
+        ch.is_ascii_alphanumeric() || ch == b'_'
+    }
+
+    fn count_exact_identifier_clone_calls(line: &str, name: &str) -> usize {
+        if name.is_empty() {
+            return 0;
+        }
+        let needle = format!("{name}.clone()");
+        let bytes = line.as_bytes();
+        let mut start = 0usize;
+        let mut count = 0usize;
+        while let Some(found) = line[start..].find(&needle) {
+            let idx = start + found;
+            let has_ident_prefix = idx > 0 && is_ident_char(bytes[idx - 1]);
+            if !has_ident_prefix {
+                count += 1;
+            }
+            start = idx + 1;
+        }
+        count
+    }
+
+    content
+        .lines()
+        .filter(|line| line.contains(".fold(") && line.contains(".clone()"))
+        .map(|line| {
+            let mut bars = line.match_indices('|').map(|(i, _)| i);
+            let first_bar = match bars.next() {
+                Some(i) => i,
+                None => return 0,
+            };
+            let second_bar = match bars.next() {
+                Some(i) => i,
+                None => return 0,
+            };
+            let params = &line[first_bar + 1..second_bar];
+            let first_param = params.split(',').next().unwrap_or("").trim();
+            let name = first_param.split(':').next().unwrap_or("").trim();
+            if name.is_empty() {
+                0
+            } else {
+                count_exact_identifier_clone_calls(line, name)
+            }
+        })
+        .sum()
+}
+
 // ── Full DSL compilation (non-consensual: all files, no exceptions) ────
 
 /// Scans dsl/ and src/v2/ for all .dag files.
@@ -67,7 +116,7 @@ fn full_dsl_compiles() {
             let content = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
             let result =
-                v2_compiler::v2_compiler_parse::parse(&v2_compiler::v2_compiler_tokenize::tokenize(
+                v2_compiler::v2_compiler_parse::parse(v2_compiler::v2_compiler_tokenize::tokenize(
                     &content,
                     path.to_string_lossy().to_string(),
                 ), Rc::new(HashMap::new()));
@@ -4520,6 +4569,11 @@ fn build(items: List<String>) -> Map<String, Bool> {
         content.contains("HashMap<String, bool>"),
         "architecture ratchet: fold should produce typed HashMap<String, bool>: {content}"
     );
+    assert_eq!(
+        count_fold_param_clone_calls(&content),
+        0,
+        "fold accumulator should move by value instead of cloning in the emitted fold body: {content}"
+    );
 }
 
 #[test]
@@ -4719,6 +4773,39 @@ fn name_set(items: List<Item>) -> Map<String, Bool> {
     assert!(
         content.contains("HashMap<String, bool>"),
         "architecture ratchet: cross-module fold should produce typed HashMap<String, bool>: {content}"
+    );
+    assert_eq!(
+        count_fold_param_clone_calls(&content),
+        0,
+        "cross-module fold should not emit accumulator clones in the fold body: {content}"
+    );
+}
+
+#[test]
+fn fold_helper_returned_accumulator_moves_by_value() {
+    let source = r#"module test_fold_helper
+type StepResult { table: Map<String, Bool> }
+fn step(table: Map<String, Bool>, item: String) -> StepResult {
+  StepResult { table: map_insert(table, item, true) }
+}
+fn build(items: List<String>) -> Map<String, Bool> {
+  items |> fold(init: empty_map(), f: (acc, item) =>
+    let next = step(acc, item)
+    next.table
+  )
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_fold_helper.rs");
+    assert!(
+        content.contains("HashMap<String, bool>"),
+        "helper-returned fold accumulator should stay concretely typed: {content}"
+    );
+    assert_eq!(
+        count_fold_param_clone_calls(&content),
+        0,
+        "helper-returned fold accumulator should move by value instead of cloning: {content}"
     );
 }
 
@@ -7563,4 +7650,67 @@ fn ownership_stage0_census() {
     assert!(total_clones <= CLONE_RATCHET + CLONE_TOLERANCE,
         ".clone() {} > ratchet {} + tolerance {}", total_clones, CLONE_RATCHET, CLONE_TOLERANCE);
     assert!(total_try_unwrap <= TRY_UNWRAP_RATCHET, "try_unwrap {} > ratchet {}", total_try_unwrap, TRY_UNWRAP_RATCHET);
+}
+
+#[test]
+fn ownership_stage0_fold_param_clone_ratchet() {
+    let ws = crate::helpers::workspace_root();
+    let targets = [
+        ("v2_compiler_parse.rs", 0usize),
+        ("v2_compiler_infer.rs", usize::MAX),
+        ("v2_compiler_emit_rust.rs", usize::MAX),
+        ("v2_compiler_resolve.rs", usize::MAX),
+    ];
+
+    let mut observed: Vec<(String, usize)> = Vec::new();
+    for (name, _) in targets {
+        let content = std::fs::read_to_string(ws.join("src/v2/stage0/src").join(name))
+            .unwrap_or_else(|e| panic!("failed to read {name}: {e}"));
+        observed.push((name.to_string(), count_fold_param_clone_calls(&content)));
+    }
+
+    eprintln!("\n=== STAGE0 FOLD PARAM CLONE CENSUS ===\n");
+    for (name, count) in &observed {
+        eprintln!("  {:>30}: {}", name, count);
+    }
+
+    let infer_count = observed
+        .iter()
+        .find(|(name, _)| name == "v2_compiler_infer.rs")
+        .map(|(_, count)| *count)
+        .unwrap_or(usize::MAX);
+    let emit_count = observed
+        .iter()
+        .find(|(name, _)| name == "v2_compiler_emit_rust.rs")
+        .map(|(_, count)| *count)
+        .unwrap_or(usize::MAX);
+    let resolve_count = observed
+        .iter()
+        .find(|(name, _)| name == "v2_compiler_resolve.rs")
+        .map(|(_, count)| *count)
+        .unwrap_or(usize::MAX);
+    let parse_count = observed
+        .iter()
+        .find(|(name, _)| name == "v2_compiler_parse.rs")
+        .map(|(_, count)| *count)
+        .unwrap_or(usize::MAX);
+
+    // 2026-04-12 baseline after generalized fold unwrap for whole-acc builders:
+    // parse=0, infer=3, emit_rust=1, resolve=0
+    assert_eq!(parse_count, 0, "parse fold param clones should stay at 0");
+    assert!(
+        infer_count <= 3,
+        "infer fold param clone count {} exceeds ratchet 3",
+        infer_count
+    );
+    assert!(
+        emit_count <= 1,
+        "emit_rust fold param clone count {} exceeds ratchet 1",
+        emit_count
+    );
+    assert_eq!(
+        resolve_count, 0,
+        "resolve fold param clones should stay at 0, saw {}",
+        resolve_count
+    );
 }

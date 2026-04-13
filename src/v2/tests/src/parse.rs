@@ -202,7 +202,7 @@ fn module_node_ident_is_populated_by_parser() {
 import std.types { String }
 type Foo { value: String }
 "#;
-    let result = parse_source(source);
+    let (result, intern_table) = parse_source_with_table(source);
     assert!(result.error.is_none(), "parse error: {:?}", result.error);
 
     let module = result.module.clone().expect("module");
@@ -210,7 +210,7 @@ type Foo { value: String }
     assert!(module.ident.is_some(), "module ident should be Some after parsing");
     // The intern table should be able to recover the name from the ident
     let recovered_name = v2_compiler::v2_std_core::intern_str(
-        result.intern_table.clone(), module.ident.unwrap());
+        intern_table.clone(), module.ident.unwrap());
     assert_eq!(recovered_name, "my.test.module",
         "intern_str(table, module.ident) should recover the module name");
 
@@ -220,7 +220,7 @@ type Foo { value: String }
     let import_node = imports[0].clone();
     assert!(import_node.ident.is_some(), "import ident should be Some");
     let import_name = v2_compiler::v2_std_core::intern_str(
-        result.intern_table.clone(), import_node.ident.unwrap());
+        intern_table.clone(), import_node.ident.unwrap());
     assert_eq!(import_name, "std.types",
         "intern_str(table, import.ident) should recover the import path");
 }
@@ -497,11 +497,11 @@ fn parser_scales_linearly_with_token_count() {
     let large_tokens = tokenize(&large_source);
 
     let start = Instant::now();
-    let _small_result = v2_compiler::v2_compiler_parse::parse(&small_tokens.clone(), Rc::new(std::collections::HashMap::new()));
+    let _small_result = v2_compiler::v2_compiler_parse::parse(small_tokens.clone(), Rc::new(std::collections::HashMap::new()));
     let small_time = start.elapsed();
 
     let start = Instant::now();
-    let _large_result = v2_compiler::v2_compiler_parse::parse(&large_tokens.clone(), Rc::new(std::collections::HashMap::new()));
+    let _large_result = v2_compiler::v2_compiler_parse::parse(large_tokens.clone(), Rc::new(std::collections::HashMap::new()));
     let large_time = start.elapsed();
 
     let token_ratio = large_tokens.len() as f64 / small_tokens.len() as f64;

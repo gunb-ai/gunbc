@@ -143,7 +143,7 @@ result.result.clone()
 }
 
 pub fn expand_transitive_services_once(modules: Rc<Vec<Rc<TypedModule>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> Rc<HashMap<String, Rc<ItemInfo>>> {
-    modules.iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<ItemInfo>>>, m: Rc<TypedModule>| m.items.clone().iter().cloned().fold(reg.clone(), |reg2: Rc<HashMap<String, Rc<ItemInfo>>>, item: Rc<Node>| {
+    modules.iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<ItemInfo>>>, m: Rc<TypedModule>| m.items.clone().iter().cloned().fold(reg, |reg2: Rc<HashMap<String, Rc<ItemInfo>>>, item: Rc<Node>| {
         let item_name = authored_name_at(m.type_env.clone().source_indices.clone(), &item);
 match v2_rt::map_get(&reg2, item_name.clone()) {
     Some(info) => {
@@ -186,7 +186,7 @@ if same_count.clone() {
 }
 
 pub fn total_service_count(registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> i64 {
-    Rc::new(v2_rt::map_values(&registry)).iter().cloned().fold(0, |acc: i64, info: Rc<ItemInfo>| (acc.clone() + (info.service_names.clone().len() as i64)))
+    Rc::new(v2_rt::map_values(&registry)).iter().cloned().fold(0, |acc: i64, info: Rc<ItemInfo>| (acc + (info.service_names.clone().len() as i64)))
 }
 
 pub fn expand_transitive_services(mut modules: Rc<Vec<Rc<TypedModule>>>, mut registry: Rc<HashMap<String, Rc<ItemInfo>>>, mut remaining_passes: i64) -> Rc<HashMap<String, Rc<ItemInfo>>> {

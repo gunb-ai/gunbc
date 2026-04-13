@@ -40,6 +40,11 @@ pub struct ParserState {
 pub struct ParseResult {
     pub module: Option<Rc<Node>>,
     pub error: Option<Rc<ErrorNode>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParseWithTableResult {
+    pub result: Rc<ParseResult>,
     pub intern_table: Rc<InternTable>,
 }
 
@@ -1718,9 +1723,9 @@ continue;
 }
 }
 
-pub fn parse(tokens: &Rc<Vec<Rc<Token>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<ParseResult> {
+pub fn parse_with_table(tokens: &Rc<Vec<Rc<Token>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>, intern_table: Rc<InternTable>) -> Rc<ParseWithTableResult> {
     {
-        let pre_interned = pre_intern_tokens(tokens.clone(), empty_intern_table());
+        let pre_interned = pre_intern_tokens(tokens.clone(), intern_table);
 let state = Rc::new(ParserState {
     pos: 0,
     source_indices: source_indices,
@@ -1728,19 +1733,27 @@ let state = Rc::new(ParserState {
 });
 let r = parse_module(&tokens, state);
 if has_err(r.err.clone()) {
-            Rc::new(ParseResult {
+            Rc::new(ParseWithTableResult {
+    result: Rc::new(ParseResult {
     module: None,
     error: r.err.clone(),
+}),
     intern_table: r.state.clone().intern_table.clone(),
 })
         } else {
-            Rc::new(ParseResult {
+            Rc::new(ParseWithTableResult {
+    result: Rc::new(ParseResult {
     module: Some(r.module.clone()),
     error: None,
+}),
     intern_table: r.state.clone().intern_table.clone(),
 })
         }
 }
+}
+
+pub fn parse(tokens: Rc<Vec<Rc<Token>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<ParseResult> {
+    parse_with_table(&tokens, source_indices, empty_intern_table()).result.clone()
 }
 
 pub fn parse_module(tokens: &Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ModuleResult> {
@@ -1979,8 +1992,7 @@ if tok_is_rbrace(peek(tokens.clone(), s.clone())) {
     err: None,
 });
 } else {
-            let name_span = current_span(tokens.clone(), s.clone());
-let r = parse_dotted_ident(&tokens, s.clone());
+            let r = parse_dotted_ident(&tokens, s.clone());
 if has_err(r.err.clone()) {
                 return Rc::new(NamesResult {
     names: Rc::new(vec![]),
@@ -1988,7 +2000,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
             }
-let name_node = parsed_name_leaf(r.name.clone(), name_span);
+let name_node = parsed_name_leaf(r.name.clone(), r.span.clone());
 let s = skip_newlines(tokens.clone(), r.state.clone());
 let e = eat(&tokens, &s, Rc::new(ExpectedToken::ExpectComma));
 let s = skip_newlines(tokens.clone(), if e.consumed.clone() {

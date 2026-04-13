@@ -59,11 +59,11 @@ pub fn rust_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
 }
 
 pub fn rust_method_templates() -> Rc<HashMap<String, String>> {
-    rust_simple_method_specs().iter().cloned().fold(v2_rt::rc_empty_map::<String, String>(), |acc: Rc<HashMap<String, String>>, spec: Rc<SimpleMethodSpec>| v2_rt::rc_map_insert(acc.clone(), spec.method_name.clone(), spec.template.clone()))
+    rust_simple_method_specs().iter().cloned().fold(v2_rt::rc_empty_map::<String, String>(), |acc: Rc<HashMap<String, String>>, spec: Rc<SimpleMethodSpec>| v2_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone()))
 }
 
 pub fn rust_method_wraps_result() -> Rc<HashMap<String, bool>> {
-    Rc::new({ let mut __result = Vec::new(); for s in rust_simple_method_specs().iter().cloned() { if s.wraps_result.clone() { __result.push(s); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, spec: Rc<SimpleMethodSpec>| v2_rt::rc_map_insert(acc.clone(), spec.method_name.clone(), true))
+    Rc::new({ let mut __result = Vec::new(); for s in rust_simple_method_specs().iter().cloned() { if s.wraps_result.clone() { __result.push(s); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, spec: Rc<SimpleMethodSpec>| v2_rt::rc_map_insert(acc, spec.method_name.clone(), true))
 }
 
 pub fn rust_reserved() -> Rc<Vec<String>> {
@@ -409,19 +409,19 @@ pub fn rt_function_registry() -> Rc<Vec<Rc<RuntimeFunction>>> {
 }
 
 pub fn rt_functions() -> Rc<HashMap<String, bool>> {
-    rt_function_registry().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), true))
+    rt_function_registry().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| v2_rt::rc_map_insert(acc, entry.name.clone(), true))
 }
 
 pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
-    Rc::new({ let mut __result = Vec::new(); for f in rt_function_registry().iter().cloned() { if f.passes_by_ref.clone() { __result.push(f); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), true))
+    Rc::new({ let mut __result = Vec::new(); for f in rt_function_registry().iter().cloned() { if f.passes_by_ref.clone() { __result.push(f); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| v2_rt::rc_map_insert(acc, entry.name.clone(), true))
 }
 
 pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
-    Rc::new({ let mut __result = Vec::new(); for f in rt_function_registry().iter().cloned() { if f.wraps_result.clone() { __result.push(f); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), true))
+    Rc::new({ let mut __result = Vec::new(); for f in rt_function_registry().iter().cloned() { if f.wraps_result.clone() { __result.push(f); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| v2_rt::rc_map_insert(acc, entry.name.clone(), true))
 }
 
 pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
-    Rc::new({ let mut __result = Vec::new(); for f in rt_function_registry().iter().cloned() { if (f.name.clone().as_str() != f.bridge_name.clone().as_str()) { __result.push(f); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<String, String>(), |acc: Rc<HashMap<String, String>>, entry: Rc<RuntimeFunction>| v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), entry.bridge_name.clone()))
+    Rc::new({ let mut __result = Vec::new(); for f in rt_function_registry().iter().cloned() { if (f.name.clone().as_str() != f.bridge_name.clone().as_str()) { __result.push(f); } } __result }).iter().cloned().fold(v2_rt::rc_empty_map::<String, String>(), |acc: Rc<HashMap<String, String>>, entry: Rc<RuntimeFunction>| v2_rt::rc_map_insert(acc, entry.name.clone(), entry.bridge_name.clone()))
 }
 
 pub fn is_rt_function(name: String) -> bool {

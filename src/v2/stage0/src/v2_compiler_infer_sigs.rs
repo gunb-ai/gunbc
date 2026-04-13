@@ -96,7 +96,7 @@ let callees = Rc::new({ let mut __result = Vec::new(); for e in Rc::new({ let mu
 }
 
 pub fn build_name_set(names: Rc<Vec<String>>) -> Rc<HashMap<String, bool>> {
-    names.iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true))
+    names.iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc, name.clone(), true))
 }
 
 pub fn collect_parent_resolved_sigs(declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>, local_func_set: Rc<HashMap<String, bool>>) -> Rc<HashMap<String, Rc<ResolvedFuncSig>>> {
@@ -207,7 +207,7 @@ let ready_accum = ready.clone().iter().cloned().fold(Rc::new(SigsAccum {
         },
     None => acc.clone(),
 });
-let ready_set = ready.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, fn_name: String| v2_rt::rc_map_insert(acc.clone(), fn_name.clone(), true));
+let ready_set = ready.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, fn_name: String| v2_rt::rc_map_insert(acc, fn_name.clone(), true));
 let next_remaining = Rc::new({ let mut __result = Vec::new(); for fn_name in remaining.clone().iter().cloned() { if (emit_map_has(ready_set.clone(), fn_name.clone()) == false) { __result.push(fn_name); } } __result });
 {
             let __tco_0 = next_remaining;

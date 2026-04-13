@@ -2489,6 +2489,48 @@ fn method_callback_element_position(semantics: MethodSemantics?) -> Int? {
   }
 }
 
+// Keep fold bodies structurally linear so ownership can move accumulators
+// without adding branch-sensitive proof logic.
+fn maybe_insert_composed_field_relation(acc: Map<String, SubValueRelation>, fname: String, composed: SubValueRelation?) -> Map<String, SubValueRelation> {
+  match composed {
+    Some { value: rel } =>
+      match rel {
+        SubValueUnknown => acc
+        _ => map_insert(acc, fname, rel)
+      }
+    None => acc
+  }
+}
+
+fn maybe_insert_output_field_relation(acc: Map<String, SubValueRelation>, idx: Int, fname: String, sig: ResolvedFuncSig, val: Node, ctx: DescentContext) -> Map<String, SubValueRelation> {
+  let composed = match sig.output_provenance |> skip(idx) |> first {
+    Some { value: param_map } => classify_call_via_provenance(call: val, param_map: param_map, ctx: ctx)
+    None => none
+  }
+  maybe_insert_composed_field_relation(acc: acc, fname: fname, composed: composed)
+}
+
+fn maybe_insert_match_field_relation(fp_acc: Map<String, SubValueRelation>, pname: String, field_label: String, vname: String, scrut_rel: SubValueRelation?, param_types: Map<String, String>, type_env: TypeEnv) -> Map<String, SubValueRelation> {
+  match scrut_rel {
+    Some { value: rel } =>
+      let lookup_type = match rel {
+        PreservedValue => match map_get(param_types, pname) { Some { value: t } => t  None => "" }
+        StrictSubValue { field: f, factor: _ } => f.element_type
+        IteratedSubValue { field: f } => f.element_type
+        _ => ""
+      }
+      if lookup_type != "" {
+        let ind_fields = inductive_fields_for(env: type_env, type_name: lookup_type)
+        let matching = ind_fields |> filter(f => f.field_name == field_label && (f.variant_name == vname || f.variant_name == "")) |> first
+        match matching {
+          Some { value: ind_field } => map_insert(fp_acc, pname, compose_sub_value(base: rel, field: ind_field))
+          None => fp_acc
+        }
+      } else { fp_acc }
+    None => fp_acc
+  }
+}
+
 // Build per-field provenance for a let-binding whose value is a call with
 // multi-field output_provenance. Maps field names from the return type to
 // composed SubValueRelation. Returns ctx.per_field_vars with the new entry
@@ -2506,16 +2548,7 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
               let idx = pair.first
               let field_node = pair.second
               let fname = authored_name_at(source_indices: ctx.type_env.source_indices, node: field_node)
-              match sig.output_provenance |> skip(idx) |> first {
-                Some { value: param_map } =>
-                  let composed = classify_call_via_provenance(call: val, param_map: param_map, ctx: ctx)
-                  match composed {
-                    Some { value: rel } =>
-                      match rel { SubValueUnknown => acc  _ => map_insert(acc, fname, rel) }
-                    None => acc
-                  }
-                None => acc
-              }
+              maybe_insert_output_field_relation(acc: acc, idx: idx, fname: fname, sig: sig, val: val, ctx: ctx)
             )
             if map_keys(field_map) |> count > 0 {
               map_insert(ctx.per_field_vars, binding_name, field_map)
@@ -2533,16 +2566,7 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
               let idx = pair.first
               let field_node = pair.second
               let fname = authored_name_at(source_indices: ctx.type_env.source_indices, node: field_node)
-              match sig.output_provenance |> skip(idx) |> first {
-                Some { value: param_map } =>
-                  let composed = classify_call_via_provenance(call: val, param_map: param_map, ctx: ctx)
-                  match composed {
-                    Some { value: rel } =>
-                      match rel { SubValueUnknown => acc  _ => map_insert(acc, fname, rel) }
-                    None => acc
-                  }
-                None => acc
-              }
+              maybe_insert_output_field_relation(acc: acc, idx: idx, fname: fname, sig: sig, val: val, ctx: ctx)
             )
             if map_keys(field_map) |> count > 0 {
               map_insert(ctx.per_field_vars, binding_name, field_map)
@@ -3222,6 +3246,23 @@ fn build_call_evidence(call_node: Node, ctx: DescentContext) -> List<SubValueRel
 // Walk a typed body and annotate self-call ExprCall nodes with descent_evidence.
 // Extends sub_value_vars when entering match arms (variant field bindings)
 // and let-bindings (aliases of known sub-values).
+fn descent_source_type(found: String, arg_node: Node, ctx: DescentContext) -> String {
+  if found != "" { found }
+  else {
+    match arg_value(n: arg_node).expr_data {
+      ExprLambda { semantics: _ } => found
+      _ =>
+        let arg_val = arg_value(n: arg_node)
+        match arg_val.expr_data {
+          ExprVar { binding_kind: _ } =>
+            let vname = expr_var_name_at(texpr: arg_val, source_indices: ctx.type_env.source_indices)
+            match map_get(ctx.param_names, vname) { Some { value: t } => t  None => "" }
+          _ => ""
+        }
+    }
+  }
+}
+
 fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
   match body.expr_data {
     ExprCall { call_semantics: cs, descent_evidence: _ } =>
@@ -3240,20 +3281,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       // The lambda param `child` receives sub-parts of `texpr`.
       // Register child as PreservedValue with texpr's type so inner calls see it.
       let source_type = body.children |> fold(init: "", f: (found, arg_node) =>
-        if found != "" { found }
-        else {
-          match arg_value(n: arg_node).expr_data {
-            ExprLambda { semantics: _ } => found
-            _ =>
-              let arg_val = arg_value(n: arg_node)
-              match arg_val.expr_data {
-                ExprVar { binding_kind: _ } =>
-                  let vname = expr_var_name_at(texpr: arg_val, source_indices: ctx.type_env.source_indices)
-                  match map_get(ctx.param_names, vname) { Some { value: t } => t  None => "" }
-                _ => ""
-              }
-          }
-        }
+        descent_source_type(found: found, arg_node: arg_node, ctx: ctx)
       )
       let annotated_children = body.children |> map(child =>
         let arg_val = arg_value(n: child)
@@ -3916,24 +3944,7 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
               }
               if bind_name != "" && field_label != "" {
                 let field_prov = fold(map_keys(scrut_prov), init: empty_prov_map(), f: (fp_acc, pname) =>
-                  match map_get(scrut_prov, pname) {
-                    Some { value: scrut_rel } =>
-                      let lookup_type = match scrut_rel {
-                        PreservedValue => match map_get(param_types, pname) { Some { value: t } => t  None => "" }
-                        StrictSubValue { field: f, factor: _ } => f.element_type
-                        IteratedSubValue { field: f } => f.element_type
-                        _ => ""
-                      }
-                      if lookup_type != "" {
-                        let ind_fields = inductive_fields_for(env: type_env, type_name: lookup_type)
-                        let matching = ind_fields |> filter(f => f.field_name == field_label && (f.variant_name == vname || f.variant_name == "")) |> first
-                        match matching {
-                          Some { value: ind_field } => map_insert(fp_acc, pname, compose_sub_value(base: scrut_rel, field: ind_field))
-                          None => fp_acc
-                        }
-                      } else { fp_acc }
-                    None => fp_acc
-                  }
+                  maybe_insert_match_field_relation(fp_acc: fp_acc, pname: pname, field_label: field_label, vname: vname, scrut_rel: map_get(scrut_prov, pname), param_types: param_types, type_env: type_env)
                 )
                 map_insert(acc, bind_name, field_prov)
               } else { acc }
@@ -5425,8 +5436,6 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     movable: empty_map(),
     variant_to_enum: vtoe,
     owned_bindings: empty_map(),
-    fold_eligible_index: empty_map(),
-    fold_eligible: empty_map(),
     read_only_params_index: empty_map(),
     read_only_params: empty_map()
   }

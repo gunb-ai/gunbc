@@ -96,12 +96,6 @@ type EmitGraphInfo {
   // bindings use move semantics instead of .clone(). Set for fold
   // accumulators after Rc::try_unwrap.
   owned_bindings: Map<String, Bool>
-  // Per-function fold accumulator unwrap eligibility: func_name → (acc_type_name → true).
-  // Built from structural proofs in ownership.dag. The emitter combines this
-  // with rc_types to decide Rc::try_unwrap rendering.
-  fold_eligible_index: Map<String, Map<String, Bool>>
-  // Current function's eligible fold accumulator types. Set by emit_typed_item.
-  fold_eligible: Map<String, Bool>
   // Per-function read-only params: func_name → (param_name → true).
   // A param is read-only when all usage edges are Read/Projected/Threaded
   // (no Consumed) and fan-out > 1. These can be passed by borrow (&Rc<T>).
@@ -128,8 +122,6 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     movable: empty_map(),
     variant_to_enum: empty_map(),
     owned_bindings: empty_map(),
-    fold_eligible_index: empty_map(),
-    fold_eligible: empty_map(),
     read_only_params_index: empty_map(),
     read_only_params: empty_map()
   }

@@ -140,7 +140,7 @@ pub fn variant_locals_from_items(items: Rc<Vec<Rc<Node>>>, init: Rc<HashMap<Stri
 if is_coproduct.clone() {
             item.children.clone().iter().cloned().fold(acc.clone(), |vacc: Rc<HashMap<String, Rc<TypeBinding>>>, child: Rc<Node>| {
                 let child_name = authored_name_at(source_indices.clone(), &child);
-v2_rt::rc_map_insert(vacc.clone(), child_name.clone(), Rc::new(TypeBinding {
+v2_rt::rc_map_insert(vacc, child_name.clone(), Rc::new(TypeBinding {
     name: child_name.clone(),
     resolved: item.clone(),
     provenance: Rc::new(SubValueRelation::SubValueUnknown),
