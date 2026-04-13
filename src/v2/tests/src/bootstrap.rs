@@ -5,6 +5,113 @@
 
 #![allow(clippy::disallowed_macros)]
 
+// ── Shared helpers ─────────────────────────────────────────────────────
+
+/// Build the stage0 binary via cargo. Returns path to the binary.
+/// On CI, the binary is already cached from the "Build Compiler" step.
+fn build_stage0() -> std::path::PathBuf {
+    let build = std::process::Command::new("cargo")
+        .arg("build")
+        .arg("-p")
+        .arg("v2-compiler")
+        .arg("--release")
+        .output()
+        .expect("failed to build stage0");
+    assert!(
+        build.status.success(),
+        "stage0 build failed:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let ws = crate::helpers::workspace_root();
+    let bin = ws.join("target/release/v2-compiler");
+    assert!(bin.exists(), "stage0 binary not found at {}", bin.display());
+    bin
+}
+
+/// Run a self-compile: `<binary> compile --source-root src/v2 --source-root dsl --output-dir <dir>`.
+/// Does NOT assert success — caller decides how to handle failure.
+fn run_self_compile(binary: &std::path::Path, output_dir: &std::path::Path) -> std::process::Output {
+    let [v2_root, dsl_root] = crate::helpers::source_roots();
+    std::process::Command::new(binary)
+        .arg("compile")
+        .arg("--source-root")
+        .arg(&v2_root)
+        .arg("--source-root")
+        .arg(&dsl_root)
+        .arg("--output-dir")
+        .arg(output_dir)
+        .output()
+        .expect("failed to run self-compile")
+}
+
+/// Parse diagnostic count from compile stderr.
+/// Looks for "compiled: N files emitted, M diagnostics" line.
+fn parse_diagnostic_count(stderr: &str) -> usize {
+    stderr
+        .lines()
+        .find(|l| l.contains("compiled:") && l.contains("diagnostics"))
+        .and_then(|l| {
+            l.split("diagnostics")
+                .next()
+                .and_then(|prefix| prefix.split(',').next_back())
+                .and_then(|s| s.trim().parse::<usize>().ok())
+        })
+        .unwrap_or(usize::MAX)
+}
+
+/// Copy hand-maintained files into a compile output dir and patch Cargo.toml
+/// with the ureq dependency needed by the interpreter.
+fn prepare_stage1_for_build(stage1_dir: &std::path::Path, ws: &std::path::Path) {
+    let stage0_src = ws.join("src/v2/stage0/src");
+    for name in &["v2_interpreter.rs", "cli_run.rs"] {
+        let src = stage0_src.join(name);
+        if src.exists() {
+            let dst = stage1_dir.join("src").join(name);
+            std::fs::copy(&src, &dst)
+                .unwrap_or_else(|e| panic!("failed to copy {} to stage1: {}", name, e));
+        }
+    }
+    let cargo_toml = stage1_dir.join("Cargo.toml");
+    if cargo_toml.exists() {
+        let contents = std::fs::read_to_string(&cargo_toml).unwrap();
+        if !contents.contains("ureq") {
+            let patched = contents.replace(
+                "\n[dependencies]\n",
+                "\n[dependencies]\nureq = { version = \"2\", features = [\"json\"] }\n",
+            );
+            std::fs::write(&cargo_toml, patched).unwrap();
+        }
+    }
+}
+
+/// Diff two src/ directories, excluding hand-maintained files.
+/// Returns Ok(()) if identical, Err(diff output) if different.
+fn diff_excluding_hand_maintained(
+    dir_a: &std::path::Path,
+    dir_b: &std::path::Path,
+) -> Result<(), String> {
+    let diff = std::process::Command::new("diff")
+        .arg("-r")
+        .arg("--exclude=v2_interpreter.rs")
+        .arg("--exclude=cli_run.rs")
+        .arg(dir_a)
+        .arg(dir_b)
+        .output()
+        .expect("diff failed");
+    if diff.status.code() == Some(2) {
+        return Err(format!(
+            "diff -r failed (exit 2):\n{}",
+            String::from_utf8_lossy(&diff.stderr)
+        ));
+    }
+    if diff.status.success() {
+        Ok(())
+    } else {
+        let stdout = String::from_utf8_lossy(&diff.stdout);
+        Err(stdout[..stdout.len().min(2000)].to_string())
+    }
+}
+
 // ── 1. stage0_cargo_check ───────────────────────────────────────────────
 
 #[test]
@@ -98,59 +205,16 @@ const DIAG_RATCHET: usize = 357;
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)
 fn strict_compile_diagnostic_count() {
-    // Build stage0 binary
-    let build = std::process::Command::new("cargo")
-        .arg("build")
-        .arg("-p")
-        .arg("v2-compiler")
-        .arg("--release")
-        .output()
-        .expect("failed to build stage0");
-    assert!(
-        build.status.success(),
-        "stage0 build failed:\n{}",
-        String::from_utf8_lossy(&build.stderr)
-    );
-
-    // Find the binary
-    let ws = crate::helpers::workspace_root();
-    let stage0_bin = ws.join("target/release/v2-compiler");
-    assert!(
-        stage0_bin.exists(),
-        "stage0 binary not found at {}",
-        stage0_bin.display()
-    );
-
-    let [v2_root, dsl_root] = crate::helpers::source_roots();
+    let stage0_bin = build_stage0();
 
     let out_dir = std::env::temp_dir().join("v2-diag-output");
     let _ = std::fs::remove_dir_all(&out_dir);
 
-    let output = std::process::Command::new(&stage0_bin)
-        .arg("compile")
-        .arg("--source-root")
-        .arg(&v2_root)
-        .arg("--source-root")
-        .arg(&dsl_root)
-        .arg("--output-dir")
-        .arg(&out_dir)
-        .output()
-        .expect("failed to run stage0 compile");
-
+    let output = run_self_compile(&stage0_bin, &out_dir);
     let stderr = String::from_utf8_lossy(&output.stderr);
     eprintln!("stage0 compile stderr:\n{}", stderr);
 
-    // Parse diagnostic count from stderr: "compiled: N files emitted, M diagnostics"
-    let diag_count = stderr
-        .lines()
-        .find(|l| l.contains("compiled:") && l.contains("diagnostics"))
-        .and_then(|l| {
-            l.split("diagnostics")
-                .next()
-                .and_then(|prefix| prefix.split(',').next_back())
-                .and_then(|s| s.trim().parse::<usize>().ok())
-        })
-        .unwrap_or(usize::MAX);
+    let diag_count = parse_diagnostic_count(&stderr);
 
     assert!(
         diag_count <= DIAG_RATCHET,
@@ -158,33 +222,13 @@ fn strict_compile_diagnostic_count() {
         diag_count, DIAG_RATCHET
     );
 
-    // Cleanup
     let _ = std::fs::remove_dir_all(&out_dir);
 }
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)
 fn stage0_compile_accepts_dag_target() {
-    let build = std::process::Command::new("cargo")
-        .arg("build")
-        .arg("-p")
-        .arg("v2-compiler")
-        .arg("--release")
-        .output()
-        .expect("failed to build stage0");
-    assert!(
-        build.status.success(),
-        "stage0 build failed:\n{}",
-        String::from_utf8_lossy(&build.stderr)
-    );
-
-    let ws = crate::helpers::workspace_root();
-    let stage0_bin = ws.join("target/release/v2-compiler");
-    assert!(
-        stage0_bin.exists(),
-        "stage0 binary not found at {}",
-        stage0_bin.display()
-    );
+    let stage0_bin = build_stage0();
 
     let source_dir = std::env::temp_dir().join("v2-dag-target-src");
     let _ = std::fs::remove_dir_all(&source_dir);
@@ -266,38 +310,13 @@ const EMITTED_RUST_ERROR_RATCHET: usize = 0;
 #[test]
 #[ignore] // Expensive: builds binary + runs full compile + cargo check
 fn bootstrap_stage0_to_stage1() {
-    // Build stage0 binary from committed seed
-    let build = std::process::Command::new("cargo")
-        .arg("build")
-        .arg("-p")
-        .arg("v2-compiler")
-        .arg("--release")
-        .env("CARGO_BUILD_JOBS", "2")
-        .output()
-        .expect("failed to build stage0");
-    assert!(
-        build.status.success(),
-        "stage0 build failed:\n{}",
-        String::from_utf8_lossy(&build.stderr)
-    );
-
+    let stage0_bin = build_stage0();
     let ws = crate::helpers::workspace_root();
-    let stage0_bin = ws.join("target/release/v2-compiler");
-    let [v2_root, dsl_root] = crate::helpers::source_roots();
 
     // Run stage0 to compile stage1
     let stage1_dir = std::env::temp_dir().join("v2-bootstrap-stage1");
     let _ = std::fs::remove_dir_all(&stage1_dir);
-    let output = std::process::Command::new(&stage0_bin)
-        .arg("compile")
-        .arg("--source-root")
-        .arg(&v2_root)
-        .arg("--source-root")
-        .arg(&dsl_root)
-        .arg("--output-dir")
-        .arg(&stage1_dir)
-        .output()
-        .expect("failed to run stage0 compile");
+    let output = run_self_compile(&stage0_bin, &stage1_dir);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     assert!(
@@ -311,29 +330,7 @@ fn bootstrap_stage0_to_stage1() {
         stage1_dir.display()
     );
 
-    // Copy hand-maintained files into stage1 (not generated, but declared
-    // in lib.rs via 05_emit_rust.dag hand_maintained_mods).
-    // Also patch Cargo.toml with dependencies they need.
-    let stage0_src = ws.join("src/v2/stage0/src");
-    for name in &["v2_interpreter.rs", "cli_run.rs"] {
-        let src = stage0_src.join(name);
-        if src.exists() {
-            let dst = stage1_dir.join("src").join(name);
-            std::fs::copy(&src, &dst).unwrap_or_else(|e|
-                panic!("failed to copy {} to stage1: {}", name, e));
-        }
-    }
-    let cargo_toml = stage1_dir.join("Cargo.toml");
-    if cargo_toml.exists() {
-        let contents = std::fs::read_to_string(&cargo_toml).unwrap();
-        if !contents.contains("ureq") {
-            let patched = contents.replace(
-                "\n[dependencies]\n",
-                "\n[dependencies]\nureq = { version = \"2\", features = [\"json\"] }\n",
-            );
-            std::fs::write(&cargo_toml, patched).unwrap();
-        }
-    }
+    prepare_stage1_for_build(&stage1_dir, &ws);
 
     let check = std::process::Command::new("cargo")
         .arg("check")
@@ -397,65 +394,19 @@ fn bootstrap_stage0_to_stage1() {
 #[ignore] // Expensive: builds two binaries + two full compiles
 fn bootstrap_fixed_point() {
     let ws = crate::helpers::workspace_root();
-
-    // Build stage0
-    let build = std::process::Command::new("cargo")
-        .arg("build")
-        .arg("-p")
-        .arg("v2-compiler")
-        .arg("--release")
-        .env("CARGO_BUILD_JOBS", "2")
-        .output()
-        .expect("failed to build stage0");
-    assert!(
-        build.status.success(),
-        "stage0 build failed:\n{}",
-        String::from_utf8_lossy(&build.stderr)
-    );
-    let stage0_bin = ws.join("target/release/v2-compiler");
-    let [v2_root, dsl_root] = crate::helpers::source_roots();
+    let stage0_bin = build_stage0();
 
     // Stage0 -> stage1
     let stage1_dir = std::env::temp_dir().join("v2-fp-stage1");
     let _ = std::fs::remove_dir_all(&stage1_dir);
-    let s1 = std::process::Command::new(&stage0_bin)
-        .arg("compile")
-        .arg("--source-root")
-        .arg(&v2_root)
-        .arg("--source-root")
-        .arg(&dsl_root)
-        .arg("--output-dir")
-        .arg(&stage1_dir)
-        .output()
-        .expect("stage0 compile failed");
+    let s1 = run_self_compile(&stage0_bin, &stage1_dir);
     assert!(
         s1.status.success(),
         "stage0->1 failed:\n{}",
         String::from_utf8_lossy(&s1.stderr)
     );
 
-    // Copy hand-maintained files into stage1 (not generated, but declared in lib.rs).
-    // Also patch Cargo.toml with dependencies they need (ureq for REST dispatch).
-    let stage0_src = ws.join("src/v2/stage0/src");
-    for name in &["v2_interpreter.rs", "cli_run.rs"] {
-        let src = stage0_src.join(name);
-        if src.exists() {
-            let dst = stage1_dir.join("src").join(name);
-            std::fs::copy(&src, &dst).unwrap_or_else(|e|
-                panic!("failed to copy {} to stage1: {}", name, e));
-        }
-    }
-    let cargo_toml = stage1_dir.join("Cargo.toml");
-    if cargo_toml.exists() {
-        let contents = std::fs::read_to_string(&cargo_toml).unwrap();
-        if !contents.contains("ureq") {
-            let patched = contents.replace(
-                "\n[dependencies]\n",
-                "\n[dependencies]\nureq = { version = \"2\", features = [\"json\"] }\n",
-            );
-            std::fs::write(&cargo_toml, patched).unwrap();
-        }
-    }
+    prepare_stage1_for_build(&stage1_dir, &ws);
 
     // Build stage1 binary
     let build1 = std::process::Command::new("cargo")
@@ -477,54 +428,22 @@ fn bootstrap_fixed_point() {
     // Stage1 -> stage2
     let stage2_dir = std::env::temp_dir().join("v2-fp-stage2");
     let _ = std::fs::remove_dir_all(&stage2_dir);
-    let s2 = std::process::Command::new(&stage1_bin)
-        .arg("compile")
-        .arg("--source-root")
-        .arg(&v2_root)
-        .arg("--source-root")
-        .arg(&dsl_root)
-        .arg("--output-dir")
-        .arg(&stage2_dir)
-        .output()
-        .expect("stage1 compile failed");
+    let s2 = run_self_compile(&stage1_bin, &stage2_dir);
     assert!(
         s2.status.success(),
         "stage1->2 failed:\n{}",
         String::from_utf8_lossy(&s2.stderr)
     );
 
-    // Compare stage1 and stage2 source output
+    // Compare stage1 and stage2 source output (excluding hand-maintained files)
     let stage1_src = stage1_dir.join("src");
     let stage2_src = stage2_dir.join("src");
-
-    // Exclude hand-maintained files from diff (copied into stage1 but
-    // not generated into stage2 — expected, not a divergence).
-    let diff = std::process::Command::new("diff")
-        .arg("-r")
-        .arg("--exclude=v2_interpreter.rs")
-        .arg("--exclude=cli_run.rs")
-        .arg(&stage1_src)
-        .arg(&stage2_src)
-        .output()
-        .expect("diff failed");
-
-    // diff exits 0 (identical), 1 (different), 2 (error).
-    // Check for errors first, then differences.
-    assert!(
-        diff.status.code() != Some(2),
-        "diff -r failed (exit 2):\n{}",
-        String::from_utf8_lossy(&diff.stderr)
-    );
-    if !diff.stdout.is_empty() {
-        eprintln!(
-            "Fixed point NOT reached — diff:\n{}",
-            String::from_utf8_lossy(&diff.stdout)
-        );
+    if let Err(diff) = diff_excluding_hand_maintained(&stage1_src, &stage2_src) {
+        eprintln!("Fixed point NOT reached — diff:\n{}", diff);
+        let _ = std::fs::remove_dir_all(&stage1_dir);
+        let _ = std::fs::remove_dir_all(&stage2_dir);
+        panic!("stage1 != stage2 — fixed point not reached");
     }
-    assert!(
-        diff.status.success(),
-        "stage1 != stage2 — fixed point not reached"
-    );
 
     // Cleanup
     let _ = std::fs::remove_dir_all(&stage1_dir);
@@ -550,23 +469,8 @@ fn gist_full_pipeline() {
         "dsl/gunbc/tools/gist.dag",
     ];
 
-    // Build stage0
-    let build = std::process::Command::new("cargo")
-        .arg("build")
-        .arg("-p")
-        .arg("v2-compiler")
-        .arg("--release")
-        .env("CARGO_BUILD_JOBS", "2")
-        .output()
-        .expect("failed to build stage0");
-    assert!(
-        build.status.success(),
-        "stage0 build failed:\n{}",
-        String::from_utf8_lossy(&build.stderr)
-    );
-
+    let stage0_bin = build_stage0();
     let ws = crate::helpers::workspace_root();
-    let stage0_bin = ws.join("target/release/v2-compiler");
 
     let out_dir = std::env::temp_dir().join("v2-gist-pipeline-out");
     let _ = std::fs::create_dir_all(&out_dir);
@@ -623,36 +527,14 @@ const PERF_RATCHET_SECONDS: u64 = 120;
 #[test]
 #[ignore] // Requires building stage0 binary
 fn performance_ratchet() {
-    let ws = crate::helpers::workspace_root();
-
-    // Build stage0
-    let build = std::process::Command::new("cargo")
-        .arg("build")
-        .arg("-p")
-        .arg("v2-compiler")
-        .arg("--release")
-        .output()
-        .expect("failed to build stage0");
-    assert!(build.status.success(), "stage0 build failed");
-
-    let stage0_bin = ws.join("target/release/v2-compiler");
-    let [v2_root, dsl_root] = crate::helpers::source_roots();
+    let stage0_bin = build_stage0();
 
     let out_dir = std::env::temp_dir().join("v2-perf-output");
     let _ = std::fs::remove_dir_all(&out_dir);
 
     // Time the pipeline
     let start = std::time::Instant::now();
-    let output = std::process::Command::new(&stage0_bin)
-        .arg("compile")
-        .arg("--source-root")
-        .arg(&v2_root)
-        .arg("--source-root")
-        .arg(&dsl_root)
-        .arg("--output-dir")
-        .arg(&out_dir)
-        .output()
-        .expect("failed to run stage0 compile");
+    let output = run_self_compile(&stage0_bin, &out_dir);
     let elapsed = start.elapsed();
 
     assert!(
@@ -670,8 +552,174 @@ fn performance_ratchet() {
         PERF_RATCHET_SECONDS
     );
 
-    // Cleanup
     let _ = std::fs::remove_dir_all(&out_dir);
+}
+
+// ── CI compile gates (shared compilation via LazyLock) ─────────────────
+//
+// Four hermetic tests that share a single compilation via LazyLock.
+// Run together in CI: `cargo test -p v2-compiler-tests ci_ -- --ignored`
+// LazyLock ensures pass 1 compiles exactly once regardless of which test
+// triggers it first. Pass 2 (for fixed-point) depends on pass 1.
+//
+// Each test checks one claim:
+//   ci_diagnostic_ratchet  — diagnostic count <= threshold
+//   ci_performance_ratchet — self-compile within time budget
+//   ci_freshness           — output matches committed stage0
+//   ci_fixed_point         — regen(regen(source)) == regen(source)
+
+use std::sync::LazyLock;
+
+/// Output from pass 1: build stage0, run one self-compile.
+struct Pass1Output {
+    output_dir: std::path::PathBuf,
+    stderr: String,
+    elapsed: std::time::Duration,
+}
+
+/// Output from pass 2: build stage1 from pass 1 output, self-compile again.
+struct Pass2Output {
+    output_dir: std::path::PathBuf,
+}
+
+static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
+    let stage0_bin = build_stage0();
+
+    let output_dir = std::env::temp_dir().join("v2-ci-pass1");
+    let _ = std::fs::remove_dir_all(&output_dir);
+
+    let start = std::time::Instant::now();
+    let output = run_self_compile(&stage0_bin, &output_dir);
+    let elapsed = start.elapsed();
+
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    eprintln!("[ci pass 1] stderr:\n{}", stderr);
+    assert!(
+        output.status.success(),
+        "pass 1 compile failed:\n{}",
+        stderr
+    );
+
+    Pass1Output { output_dir, stderr, elapsed }
+});
+
+static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
+    let pass1 = &*CI_PASS1;
+    let ws = crate::helpers::workspace_root();
+
+    // Prepare stage1: copy hand-maintained files + patch Cargo.toml.
+    // We work on a copy so pass1.output_dir stays pristine for freshness checks.
+    let stage1_dir = std::env::temp_dir().join("v2-ci-stage1");
+    let _ = std::fs::remove_dir_all(&stage1_dir);
+    copy_dir_recursive(&pass1.output_dir, &stage1_dir);
+    prepare_stage1_for_build(&stage1_dir, &ws);
+
+    // Build stage1 binary
+    let build1 = std::process::Command::new("cargo")
+        .arg("build")
+        .arg("--release")
+        .env("CARGO_BUILD_JOBS", "2")
+        .current_dir(&stage1_dir)
+        .output()
+        .expect("stage1 build failed");
+    assert!(
+        build1.status.success(),
+        "stage1 build failed:\n{}",
+        String::from_utf8_lossy(&build1.stderr)
+    );
+    // stage0 binary is v2-compiler (hyphen, workspace build);
+    // stage1 binary is v2_compiler (underscore, self-compiled crate name).
+    let stage1_bin = stage1_dir.join("target/release/v2_compiler");
+
+    // Self-compile pass 2
+    let output_dir = std::env::temp_dir().join("v2-ci-pass2");
+    let _ = std::fs::remove_dir_all(&output_dir);
+    let pass2_output = run_self_compile(&stage1_bin, &output_dir);
+    assert!(
+        pass2_output.status.success(),
+        "pass 2 (stage1->2) compile failed:\n{}",
+        String::from_utf8_lossy(&pass2_output.stderr)
+    );
+
+    Pass2Output { output_dir }
+});
+
+/// Recursive directory copy (for making a stage1 working copy).
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) {
+    std::fs::create_dir_all(dst).unwrap();
+    for entry in std::fs::read_dir(src).unwrap() {
+        let entry = entry.unwrap();
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path);
+        } else {
+            std::fs::copy(&src_path, &dst_path).unwrap();
+        }
+    }
+}
+
+#[test]
+#[ignore] // CI: cargo test -p v2-compiler-tests ci_ -- --ignored
+fn ci_diagnostic_ratchet() {
+    let pass1 = &*CI_PASS1;
+    let diag_count = parse_diagnostic_count(&pass1.stderr);
+    eprintln!(
+        "diagnostic count: {} (ratchet: {})",
+        diag_count, DIAG_RATCHET
+    );
+    assert!(
+        diag_count <= DIAG_RATCHET,
+        "diagnostic count {} exceeds ratchet {}",
+        diag_count, DIAG_RATCHET
+    );
+}
+
+#[test]
+#[ignore] // CI: cargo test -p v2-compiler-tests ci_ -- --ignored
+fn ci_performance_ratchet() {
+    let pass1 = &*CI_PASS1;
+    eprintln!(
+        "pipeline elapsed: {:?} (budget: {}s)",
+        pass1.elapsed, PERF_RATCHET_SECONDS
+    );
+    assert!(
+        pass1.elapsed.as_secs() < PERF_RATCHET_SECONDS,
+        "performance regression: pipeline took {:?}, budget is {}s. \
+         See INVARIANTS.md 'Facts Flow Forward' for diagnosis.",
+        pass1.elapsed,
+        PERF_RATCHET_SECONDS
+    );
+}
+
+#[test]
+#[ignore] // CI: cargo test -p v2-compiler-tests ci_ -- --ignored
+fn ci_freshness() {
+    let pass1 = &*CI_PASS1;
+    let ws = crate::helpers::workspace_root();
+    let pass1_src = pass1.output_dir.join("src");
+    let committed_src = ws.join("src/v2/stage0/src");
+    if let Err(diff) = diff_excluding_hand_maintained(&pass1_src, &committed_src) {
+        panic!(
+            "Stage0 is STALE — does not match self-compile output.\n\
+             Run ./scripts/regenerate-stage0.sh to update.\n\
+             Diff:\n{}",
+            diff
+        );
+    }
+}
+
+#[test]
+#[ignore] // CI: cargo test -p v2-compiler-tests ci_ -- --ignored
+fn ci_fixed_point() {
+    let pass1 = &*CI_PASS1;
+    let pass2 = &*CI_PASS2;
+    let pass1_src = pass1.output_dir.join("src");
+    let pass2_src = pass2.output_dir.join("src");
+    if let Err(diff) = diff_excluding_hand_maintained(&pass1_src, &pass2_src) {
+        eprintln!("Fixed point NOT reached — diff:\n{}", diff);
+        panic!("stage1 != stage2 — fixed point not reached");
+    }
 }
 
 // ── L4: Structural semantic correctness ─────────────────────────────────
