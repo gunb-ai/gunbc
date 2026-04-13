@@ -947,7 +947,6 @@ fn parse_items_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) -> I
 // 3. parse_import
 // =========================================================================
 
-<<<<<<< HEAD
 fn parse_import(tokens: List<Token>, ctx: ParseContext) -> ImportResult {
   let start_span = token_span(tok: tokens |> first)
   let err_import = import_node(module_path: "", is_all: false, specific_names: [], span: start_span, name_span: start_span)
@@ -958,7 +957,6 @@ fn parse_import(tokens: List<Token>, ctx: ParseContext) -> ImportResult {
   let r = parse_dotted_ident(tokens: tokens)
   if has_err(err: r.err) { return ImportResult { import: err_import, tokens: r.tokens, ctx: ctx, err: r.err } }
   let mod_path = r.name
-  let tokens = r.tokens
   let mod_path_span = r.span
   let tokens = r.tokens
 
@@ -2137,10 +2135,10 @@ fn parse_service_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: So
   let r_ns = expect_name(tokens: tokens)
   if has_err(err: r_ns.err) { return ItemResult { item: dummy, tokens: r_ns.tokens, ctx: ctx, err: r_ns.err } }
   let namespace_root = r_ns.name
-  let name_span = r_ns.span
-  let r = parse_dotted_ident_rest(tokens: r_ns.tokens, acc: namespace_root, span: name_span)
+  let r = parse_dotted_ident_rest(tokens: r_ns.tokens, acc: namespace_root, span: r_ns.span)
   let name = r.name
-  let named_dummy = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let svc_name_span = r.span
+  let named_dummy = Node { name: name, span: start_span, ident_span: Some { value: svc_name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   let r = expect(tokens: r.tokens, expected: ExpectLBrace)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -2162,7 +2160,7 @@ fn parse_service_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: So
     Some { value: cfg } => service_config_properties(endpoint: cfg.endpoint, auth: cfg.auth, auth_input: cfg.auth_input, auth_source: cfg.auth_source, rate_limit: cfg.rate_limit, retry: cfg.retry)
     None => []
   }
-  let item = Node { name: name, span: start_span, ident_span: Some { value: name_span },
+  let item = Node { name: name, span: start_span, ident_span: Some { value: svc_name_span },
     children: r.operations,
     params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective,
     transport: Some { value: r.transport }, properties: concat([ns_prop], svc_props),
