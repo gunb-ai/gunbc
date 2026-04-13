@@ -75,6 +75,8 @@ service gcp.STS {
     }
     // Body includes grant_type and token_type fields -- the compiler
     // generates the full OAuth2 token exchange request from these inputs.
+    // Derivation unknown: POST /v1/token has no path key.
+    // Idempotency is spec-declared per RFC 8693 for a given subject_token.
     idempotent
     transport rest { method: POST, path: "/v1/token" }
     response {

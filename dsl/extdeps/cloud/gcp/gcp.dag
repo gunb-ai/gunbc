@@ -145,6 +145,8 @@ service oauth2.Google {
       access_token: Secret from "access_token"
       expires_in: Int from "expires_in"
     }
+    // Derivation unknown: POST /token has no path key.
+    // Idempotency is spec-declared per RFC 6749 §6 for a given refresh_token.
     idempotent
     transport rest { method: POST, path: "/token" }
     response {

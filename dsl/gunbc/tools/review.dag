@@ -1,10 +1,8 @@
 // gunbc/tools/review.dag -- PR review workflow.
 //
-// Reviews open PRs for invariant violations and compositional modeling
-// quality. Every operation is idempotent:
-//   - Cron upsert: tag-based, converges on every run
-//   - Review dedup: checks GitHub for existing review at commit SHA
-//   - Comment resolution: minimizes fixed violations (future)
+// Per-op idempotency is classified by the compiler; see
+// docs/effects-derivation-design.md. CreateReview's externally-guarded
+// idempotency is a known workflow-modeling gap (§Q4 in that doc).
 //
 // Entrypoints:
 //   review_cycle(owner, repo) -- scan and review all open PRs

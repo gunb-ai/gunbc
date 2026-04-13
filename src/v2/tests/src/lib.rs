@@ -23,3 +23,5 @@ mod infer_semantics;
 mod diagnostics;
 #[cfg(test)]
 mod bootstrap;
+#[cfg(test)]
+mod effects;
