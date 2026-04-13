@@ -1,8 +1,9 @@
 // v3/spec.dag — Minimal compiler specification.
 //
 // This file IS the spec. It defines every type the v3 compiler operates on,
-// building up from first principles to pipeline contracts. Each layer
-// depends only on prior layers. Nothing is axiomatic that can be derived.
+// building up from first principles to pipeline contracts. Each layer is
+// derived from prior layers. Nothing is axiomatic that can be derived.
+// Nothing is named before it emerges from structure.
 //
 // THESIS (from THESIS.md): gunbc is a causal engine. Its job is to validate
 // that a program has a consistent cause-and-effect flow from source to drain.
@@ -11,26 +12,18 @@
 // are lattice values carried on edges. If the proof constructs, emission is
 // mechanical translation.
 //
-// This spec captures the MINIMAL type skeleton that accomplishes the thesis.
-// Implementation follows mechanically from these types.
+// Layers (each derived from prior layers):
 //
-// Layers (each depends only on prior layers):
-//
-//   0  Truth + Finiteness    — Classical, the closure axiom
-//   1  Composition           — Function (→), Product (×), Coproduct (+), Unit (1), Void (0)
-//   2  Structure + Iteration — recursive types, fold/descend/repeat
-//   3  Observed patterns     — BoundedLattice, Monoid (named regularities)
-//   4  The DAG IR            — Node, Edge (two designs explored)
-//   5  Edge vocabulary       — SubValueRelation, UsageEdge
-//   6  Dimension mechanism   — Dimension<T>, built-in dimensions
-//   7  Proof strategies      — fold + lattice + gate
-//   8  Pipeline contracts    — parse / resolve / prove / emit
-//
-// The derivation order matters. Product and Coproduct are NOT axioms —
-// they are the two canonical ways to compose truth values. BoundedLattice
-// is NOT a foundation — it is a pattern OBSERVED across many finite
-// structures. Getting this right means user-defined dimensions and
-// emission to Verilog/SPICE/SQL/etc. all fall out of the same derivation.
+//   0  Truth + Finiteness    — the primitive and the axiom
+//   1  Function              — the sole computation primitive (implication)
+//   2  Type structure        — emerges from Classical + Function
+//   3  Self-reference        — observable graph property, not a declared type
+//   4  Observed patterns     — BoundedLattice, Monoid (named regularities)
+//   5  The DAG IR            — Node, Edge (two designs explored)
+//   6  Edge vocabulary       — SubValueRelation, UsageEdge
+//   7  Dimension mechanism   — Dimension<T>, built-in dimensions
+//   8  Proof strategies      — fold + lattice + gate
+//   9  Pipeline contracts    — parse / resolve / prove / emit
 
 module v3.spec
 
@@ -38,245 +31,196 @@ module v3.spec
 // =========================================================================
 // LAYER 0: TRUTH + FINITENESS
 //
-// The single primitive and the single axiom.
+// The single primitive and the single axiom. Everything else derives.
 //
-// Primitive: Classical — a proposition holds or doesn't. Two-valued
-// truth is the smallest unambiguous unit of meaning in digital computing.
-// Everything above it — String, Int, List, services — is explicit
-// composition built on top of this.
+// Classical: a proposition holds or doesn't. The smallest unambiguous
+// unit of meaning in digital computing. Bit, Bool, and all integers
+// are composed from this.
 //
-// Axiom: finiteness (the closure axiom). All data is representable
-// in a finite number of bits. The largest value is Word64. There is
-// no infinity. This is what makes the system decidable — every type
-// has a finite number of inhabitants, every computation has a finite
-// bound, every proof is constructive.
+// Finiteness: all data is representable in a finite number of bits.
+// The largest value is Word64. There is no infinity. This makes every
+// property decidable, every computation bounded, every proof constructive.
 //
-// Together: truth + finiteness = a closed system in which every
-// property is decidable. This is what makes the causal engine possible.
-//
-// Authority: MODELING.md §Foundational primitive, THESIS.md §Why this works
+// Together: truth + finiteness = a closed system. This is what makes
+// the causal engine possible.
 // =========================================================================
 
-// The primitive. A proposition holds (True) or doesn't (False).
-// Isomorphic to Bit, Bool. Everything numeric is composed from this:
-//   Bit = Classical
-//   Byte = (Classical, Classical, Classical, Classical, ...)  (8 times)
-//   Word64 = 64 × Classical
-//   Int = OrderedRing<Word64>
-//
-// The notation "True | False" presupposes the ability to say "one or
-// the other" — but the CONCEPT of one-or-the-other (disjunction) is
-// grounded in truth, not the other way around. We can describe Classical
-// without Coproduct: "there exists exactly one value, or its negation."
-// The syntax borrows from coproduct notation for readability.
 type Classical = True | False
 
-// The closure axiom. Not a type — a constraint on all types.
-// Every type in the system has finitely many inhabitants.
-// The bound is machine-determined: 2^64 for the largest scalar.
-//
-// This is declared as a named constant rather than left implicit,
-// because it is load-bearing: termination proofs, complexity bounds,
-// exhaustive enumeration, and inhabitant generation all depend on it.
 data max_inhabitants: Int = 9223372036854775807
 
 
 // =========================================================================
-// LAYER 1: COMPOSITION
+// LAYER 1: FUNCTION
 //
-// Given truth (Layer 0), how do truths compose?
+// The sole computation primitive. A → B: "given A, produce B."
 //
-// Three irreducible modes, corresponding to the three connectives
-// of classical logic. These are DERIVED from truth — they describe
-// what happens when you have MULTIPLE propositions:
+// Function is implication. It is the directed edge in the causal graph.
+// Without it, there is no causation, no computation, no dependencies.
+// The program IS a graph of function applications.
 //
-//   Function (→):  "if A holds, then B holds" — implication / causation
-//   Product (×):   "A holds AND B holds"      — conjunction
-//   Coproduct (+): "A holds OR B holds"        — disjunction
+// Function is a language primitive — it exists before any type can be
+// defined, because type definitions themselves use functions (a
+// constructor IS a function from field values to the constructed type).
 //
-// These are not arbitrary choices. In any system with truth values
-// and finiteness, the cardinality arithmetic is:
-//   |A → B| = |B|^|A|   (exponential — all possible mappings)
-//   |A × B| = |A| · |B| (multiplication — all combinations)
-//   |A + B| = |A| + |B| (addition — disjoint alternatives)
-//
-// Exponentiation, multiplication, addition on natural numbers.
-// The type constructors ARE the arithmetic of finite cardinalities.
-// This is why they show up in every target: Verilog gates are AND/OR,
-// SQL joins are products, HTTP alternatives are coproducts, SPICE
-// parallel paths are sums. The structure is universal because
-// arithmetic is universal.
-//
-// Authority: MODELING.md §Foundational primitive, constructors.dag (std/)
-// =========================================================================
-
-// Function: A → B. "Given A, produce B." The directed edge in the
-// causal graph. This is the most fundamental composition — without it,
-// there is no causation, no computation, no dependencies.
-//
-// In the DAG IR, every edge IS a function application:
-// the source node produces a value, the edge carries it, the target
-// node consumes it. The program IS a graph of function applications.
-//
-// Function is a language primitive (not a declared type). We note it
-// here for completeness in the derivation. The syntax is:
+// The syntax:
 //   fn(A) -> B       (named function)
-//   (a) => expr      (lambda / anonymous function)
+//   (a) => expr      (anonymous function / lambda)
+// =========================================================================
 
-// Product: all children hold simultaneously.
-// The type of "and" composition.
-//
-// |A × B| = |A| · |B|
-//
-// In concrete terms: a record, a struct, a tuple. Every field holds
-// a value. The product of a 3-field record with fields of cardinality
-// 2, 5, 3 has 2 × 5 × 3 = 30 inhabitants.
-//
-// In Verilog: parallel wires (all carry signals).
-// In SQL: a row (all columns have values).
-// In REST: a request body (all fields present).
-// In SPICE: parallel components (all conduct).
-type Product
-
-// Coproduct: exactly one child holds.
-// The type of "or" composition.
-//
-// |A + B| = |A| + |B|
-//
-// In concrete terms: an enum, a tagged union, a sum type. Exactly one
-// variant is selected. The coproduct of variants with cardinalities
-// 2, 5, 3 has 2 + 5 + 3 = 10 inhabitants.
-//
-// In Verilog: a mux (one input selected).
-// In SQL: a UNION (one source per row).
-// In REST: alternative response types (200 | 404 | 500).
-// In SPICE: switched paths (one active).
-type Coproduct
-
-// Unit: the type with exactly one inhabitant. The identity for Product:
-//   A × 1 = A (having "nothing extra" changes nothing)
-// In set theory: the singleton set {∗}. In logic: trivial truth (⊤).
-// In type theory: the terminal object.
-type Unit
-
-// Void: the type with zero inhabitants. The identity for Coproduct:
-//   A + 0 = A (having "no alternative" changes nothing)
-// And the annihilator for Product:
-//   A × 0 = 0 (if any component is impossible, the whole is impossible)
-// In set theory: the empty set ∅. In logic: absurdity (⊥).
-// In type theory: the initial object.
-type Void
-
-// "Optional" is not a separate concept. It is A + Unit:
-// either a value of type A is present, or the single Unit value
-// (denoting absence) is present. |A + 1| = |A| + 1.
-//
-// The v2 compiler has `Cardinality = Required | Optional` — this
-// dissolves. A field of type A is "required." A field of type A + 1
-// is "optional." The distinction lives in the type, not in a
-// separate annotation.
+// (Function is built-in, not a declared type. This layer exists to mark
+// its position in the derivation: after truth, before type structure.)
 
 
 // =========================================================================
-// LAYER 2: STRUCTURE + ITERATION
+// LAYER 2: TYPE STRUCTURE
 //
-// Given truth (Layer 0) and composition (Layer 1), what structures
-// can we build, and how do we traverse them?
+// Given Classical (Layer 0) and Function (Layer 1), type structure
+// EMERGES. We don't declare Product and Coproduct as opaque axioms —
+// we observe how they arise from combining truth values.
 //
-// Recursive structure: types that reference themselves. List<T> is a
-// coproduct where one variant contains T and another List<T>. Tree<T>
-// is a product where one field is List<Tree<T>>. These are still
-// finite (closure axiom) — a List<T> has at most max_inhabitants
-// elements.
+// A type definition says: "here are the values that inhabit this type."
+// There are exactly three structural shapes a type definition can take,
+// corresponding to the three ways truth values compose:
 //
-// Bounded iteration: the three finite ways to traverse recursive
-// structures. These are the ONLY forms of repetition in the system.
-// There is no while(true), no goto, no unbounded recursion. Every
-// computation terminates because every iteration is bounded by the
-// structure it traverses.
+// PRODUCT (conjunction, ×):
+//   type Pair { first: A, second: B }
+//   "first holds AND second holds." All fields are present.
+//   The cardinality: |Pair| = |A| · |B|
+//   The compiler SEES this shape when a type has named fields.
 //
-//   fold:    traverse a collection (List, Set, Map) — bounded by |collection|
-//   descend: traverse a tree via child accessors    — bounded by |tree|
-//   repeat:  iterate a fixed number of times        — bounded by N (or Word64)
+// COPRODUCT (disjunction, +):
+//   type Either = Left { value: A } | Right { value: B }
+//   "Left holds OR Right holds." Exactly one variant is selected.
+//   The tag that identifies which variant is active is a bounded
+//   selector composed from Classical bits — log2(N) bits for N variants.
+//   Classical itself is the simplest coproduct: 2 variants, 1-bit tag.
+//   The cardinality: |Either| = |A| + |B|
+//   The compiler SEES this shape when a type has variants separated by |.
 //
-// These three + composition cover all computable functions on finite
-// data. The system is Turing-complete up to the Word64 bound (which
-// means: 292 years at 1ns/iteration — "forever" for any practical
-// purpose, but still finite and provably terminating).
+// FUNCTION (implication, →):
+//   fn(A) -> B
+//   "Given A, produce B." A mapping from inputs to outputs.
+//   The cardinality: |A → B| = |B|^|A|
+//   Already defined in Layer 1.
 //
-// Authority: THESIS.md §Why this works, computation.dag (std/)
+// These are NOT separate types to declare. They are structural shapes
+// that the compiler recognizes in type definitions:
+//   { fields }     → product (all hold)
+//   = V1 | V2 | V3 → coproduct (one holds, tagged)
+//   fn(A) -> B     → function (mapping)
+//
+// The boundary cases complete the arithmetic:
+//
+// UNIT (1): the product of zero fields. One inhabitant (the empty record).
+//   type Unit {}
+//   Identity for product: A × 1 = A.
+//   In logic: trivial truth (⊤). In set theory: singleton set {∗}.
+//
+// VOID (0): the coproduct of zero variants. Zero inhabitants.
+//   type Void = (nothing — no variants)
+//   Identity for coproduct: A + 0 = A.
+//   Annihilator for product: A × 0 = 0.
+//   In logic: absurdity (⊥). In set theory: empty set ∅.
+//
+// OPTIONAL: not a separate concept. A + Unit = A + 1.
+//   type Maybe<A> = Present { value: A } | Absent
+//   "Either A is present, or it's absent (Unit)."
+//   The T? syntax is sugar for this coproduct.
+//
+// WHY THIS MATTERS for emission: product/coproduct/function are
+// cardinality arithmetic (×, +, ^). Every target has arithmetic:
+//   Verilog gates = AND/OR. SQL = JOIN/UNION. REST = request/alternatives.
+//   SPICE = parallel/switched paths. The structure is universal.
+//
+// The compiler doesn't need `type Product` or `type Coproduct` as
+// declared types. It reads the shape from the syntax of each type
+// definition. The shape IS the definition.
 // =========================================================================
 
-// Recursive type shapes. A type references itself through these forms.
-// The compiler reads these to know WHERE descent is possible.
-type RecursionShape
-  = DirectRecursion              // field type = parent type (tree child)
-  | ListRecursion                // field type = List<parent type>
-  | OptionalRecursion            // field type = parent type?
-  | SetRecursion                 // field type = Set<parent type>
-  | MapValueRecursion            // field type = Map<K, parent type>
-
-// The three iteration primitives. Every computation lowers to one
-// of these. The compiler proves termination by showing every recursive
-// function is an instance of fold, descend, or repeat.
-type IterationPrimitive
-  = Fold                         // bounded by |collection|
-  | Descend                      // bounded by |tree|
-  | Repeat                       // bounded by explicit N
-
-// Rate of decrease per recursive step. Distinguishes O(n) from O(log n).
-// fold with skip(1) = UnitShrink → O(n).
-// repeat with n/2 = ProportionalShrink → O(log n).
-type ShrinkFactor
-  = UnitShrink                       // decrease by 1 (list skip, tree child)
-  | ConstantShrink { amount: Int }   // decrease by k (skip(k))
-  | ProportionalShrink { divisor: Int }  // decrease by factor (n/k, binary search)
+// (No types declared here — product, coproduct, unit, void, optional
+// are structural shapes that the compiler recognizes, not types to define.
+// Classical from Layer 0 is itself the simplest coproduct: True + False.)
 
 
 // =========================================================================
-// LAYER 3: OBSERVED PATTERNS (algebraic structures)
+// LAYER 3: SELF-REFERENCE
 //
-// Given Layers 0-2, certain patterns recur. A Monoid is not a
-// primitive — it is a REGULARITY observed across many concrete types:
+// Types can reference themselves. Functions can call themselves.
+// These are structural facts in the definition graph — CYCLES.
+// The compiler detects them by walking the graph. No separate types
+// needed to name sub-categories.
 //
-//   (Int, +, 0)           is a monoid
-//   (String, concat, "")  is a monoid
-//   (List, append, [])    is a monoid
-//   (Bool, AND, true)     is a monoid
+// SELF-REFERENTIAL TYPES:
+//   type List<T> = Cons { head: T, tail: List<T> } | Nil
+//   The field `tail` has type `List<T>` — the same type being defined.
+//   The compiler sees the cycle in the type definition graph.
+//   All instances are finite (closure axiom: max_inhabitants elements).
 //
-// Naming these patterns lets the compiler reason generically.
-// "This operation is associative with an identity element" is a
-// structural fact that enables fold optimization, parallel reduction,
-// and algebraic simplification — regardless of what the specific
-// type is.
+// SELF-CALLING FUNCTIONS:
+//   fn length(xs: List<T>) -> Int {
+//     match xs { Nil => 0  Cons { head: _, tail: rest } => 1 + length(rest) }
+//   }
+//   The function `length` calls `length`. The compiler sees the cycle
+//   in the call graph.
+//
+// The compiler observes HOW the recursive argument changes at each
+// self-call. This is not a type to declare — it is structural analysis
+// of the call expression:
+//
+//   length(rest) where rest = xs.tail
+//     → argument is a FIELD of the input → structurally smaller
+//
+//   sum(skip(1, xs))
+//     → argument is input with one element removed → collection shrink
+//
+//   factorial(n - 1)
+//     → argument is input reduced by arithmetic → arithmetic descent
+//
+//   loop(same_arg)
+//     → argument unchanged → bounded by max_inhabitants (the closure axiom)
+//
+// The compiler doesn't need `RecursionShape` or `IterationPrimitive`
+// enums. It reads the call expression, compares the argument to the
+// parameter, and classifies the relationship. That classification IS
+// the SubValueRelation (Layer 6) — the same type used for all edges.
+//
+// Similarly, the RATE of decrease (by 1, by k, by factor n/k) is
+// observable from the call expression:
+//   skip(1, xs)  → decrease by 1
+//   skip(k, xs)  → decrease by k
+//   n / 2        → decrease by factor 2
+// The compiler reads the literal or expression and records the rate.
+// No `ShrinkFactor` type needed until the compiler needs to represent
+// this observation internally (Layer 6, as part of SubValueRelation).
+// =========================================================================
+
+// (No types declared here. Self-reference and recursion are observable
+// graph properties. The compiler detects cycles and classifies how
+// arguments change. The classification vocabulary is SubValueRelation,
+// defined in Layer 6 where it serves as the edge vocabulary.)
+
+
+// =========================================================================
+// LAYER 4: OBSERVED PATTERNS (algebraic structures)
+//
+// Given Layers 0-3, certain patterns recur across many concrete types.
+// These are not primitives — they are REGULARITIES that the compiler
+// discovers. Naming them lets the compiler reason generically:
+// "this operation is associative with an identity" enables fold
+// optimization, parallel reduction, and algebraic simplification —
+// regardless of what the specific type is.
 //
 // BoundedLattice is the pattern most critical to the compiler:
-// every correctness dimension (provenance, ownership, effects,
-// user-defined) exhibits lattice structure. But the lattice is not
-// a foundation — it is something the compiler DISCOVERS in std/
-// declarations. User-defined dimensions that declare a lattice get
-// the same treatment as built-in ones. No special compiler support.
-//
-// This is why these patterns are at Layer 3, not Layer 0: they
-// are consequences of Layers 0-2, not prerequisites. The compiler
-// reads them from data — it does not contain them as axioms.
-//
-// Authority: algebra.dag (std/), THESIS.md §Concept unification
+// every correctness dimension exhibits lattice structure. But the
+// lattice is not a foundation — it is something the compiler DISCOVERS
+// in std/ declarations. User-defined dimensions that declare a lattice
+// get the same treatment as built-in ones. No special compiler support.
 // =========================================================================
 
-// BoundedLattice: the workhorse for dimension composition.
-//
-// Any finite partial order automatically has meets (greatest lower
-// bound) and joins (least upper bound). In a finite set, you can
-// always find them by enumeration. So every finite type with a
-// natural ordering IS a bounded lattice — the lattice structure
-// is a consequence of finiteness + order, not an independent axiom.
-//
-// For the compiler, the lattice operations mean:
-//   meet: conservative merge at control-flow join points (weaker wins)
-//   join: optimistic merge (stronger wins)
-//   top:  most permissive / best evidence / strongest claim
-//   bottom: most restrictive / fail-closed / no information
+// BoundedLattice: the pattern for merging at join points.
+// Any finite partial order has meets and joins (finiteness guarantees this).
+// The lattice structure is a CONSEQUENCE of finiteness + order.
 type BoundedLattice<T> {
   bottom: T
   top: T
@@ -285,28 +229,20 @@ type BoundedLattice<T> {
 }
 
 // Monoid: the pattern for sequential composition.
-//
-// When the compiler composes effects along a path (operation A then
-// operation B), it needs an associative combiner with an identity.
-// This is a monoid. The compiler doesn't know WHAT it's combining —
-// it reads the monoid from the dimension declaration and applies it.
-//
-// Why associativity matters: it means (A then B) then C = A then
-// (B then C). The compiler can regroup without changing meaning.
-// This is what enables algebraic simplification (THESIS §KF-2).
+// "This operation is associative with an identity element."
+// Enables algebraic simplification: (A then B) then C = A then (B then C).
 type Monoid<T> {
   identity: T
   op: fn(T, T) -> T
 }
 
-// Ordering: the three-valued comparison result.
-// Derived from the total order on natural numbers (Layer 0 + finiteness).
-// Used for evidence comparison in termination proofs.
+// Ordering: three-valued comparison.
+// The total order on natural numbers (Layer 0 + finiteness).
 type Ordering = Less | Equal | Greater
 
 
 // =========================================================================
-// LAYER 4: THE DAG IR
+// LAYER 5: THE DAG IR
 //
 // The graph substrate. A .dag program IS a dependency graph. The IR must
 // make every dependency an explicit edge, every binding an explicit site
@@ -356,7 +292,7 @@ type ParamRef { func_id: NodeId, index: Int }
 
 
 // =========================================================================
-// DESIGN A: LEAN UNIVERSAL NODE (Layer 4a)
+// DESIGN A: LEAN UNIVERSAL NODE (Layer 5a)
 //
 // One node type. All structural relationships are edges. Uniform traversal
 // is trivial: walk node.edges. The NodeKind discriminator carries only
@@ -415,7 +351,7 @@ type NodeKind
   // --- Declarations ---
   = ModuleDecl { name: String }
   | ImportDecl { path: String, names: List<String> }
-  | TypeDecl { name: String, shape: TypeShape }
+  | TypeDecl { name: String }
   | FuncDecl { name: String, is_async: Bool }
   | DataDecl { name: String }
   | ServiceDecl { name: String }
@@ -448,17 +384,13 @@ type NodeKind
 
 type UnaryOpKind = Not | Neg
 
-// Product vs Coproduct vs leaf — derivable from TypeDecl's shape.
-// No Connective enum on Node. The type declaration says what it is.
-type TypeShape
-  = ProductShape          // record: all fields hold
-  | CoproductShape        // enum: one variant holds
-  | AliasShape            // type alias (transparent)
-  | OpaqueShape           // primitive / external
+// No TypeShape enum. Whether a type is product or coproduct is visible
+// from its definition: fields → product, variants (|) → coproduct.
+// The compiler reads the children of a TypeDecl node to determine this.
 
 
 // =========================================================================
-// DESIGN B: TYPED NODES (Layer 4b)
+// DESIGN B: TYPED NODES (Layer 5b)
 //
 // Each syntactic form is its own type. No unused fields. Precise types
 // enable exhaustive pattern matching on the IR without runtime checks.
@@ -473,7 +405,7 @@ type TypeShape
 
 // Top-level declaration — what a module contains.
 type Decl
-  = DeclType { name: String, shape: TypeShape, fields: List<TypedFieldDecl>, span: Span }
+  = DeclType { name: String, fields: List<TypedFieldDecl>, variants: List<Decl>, span: Span }
   | DeclFunc { name: String, params: List<TypedParam>, body: Expr, return_type: TypeRef?, is_async: Bool, span: Span }
   | DeclData { name: String, body: Expr, span: Span }
   | DeclService { name: String, operations: List<Decl>, span: Span }
@@ -555,7 +487,7 @@ type FieldPattern { name: String, binding: String }
 
 
 // =========================================================================
-// LAYER 5: EDGE VOCABULARY
+// LAYER 6: EDGE VOCABULARY
 //
 // How a target value relates to a source value along an edge. This is
 // the key insight from the v2 branch analysis: SubValueRelation already
@@ -564,15 +496,23 @@ type FieldPattern { name: String, binding: String }
 // and then read it downstream — no reconstruction, no heuristics.
 //
 // Authority: induction.dag (std/), binding-model-proposal.md
-// Depends on: Layer 2 (ShrinkFactor), Layer 4 (NodeId, FieldRef, ParamRef)
+// Depends on: Layer 5 (NodeId, FieldRef, ParamRef)
 // =========================================================================
 
-// SubValueRelation: the PROVENANCE dimension and the structural edge
-// classifier in one type. Already a BoundedLattice (meet/join defined).
+// ShrinkFactor: the rate of decrease the compiler observes at a
+// self-call. Distinguishes O(n) from O(log n). This is the compiler's
+// internal representation of what it reads from call expressions
+// (Layer 3: skip(1) → UnitShrink, n/2 → ProportionalShrink).
+type ShrinkFactor
+  = UnitShrink                           // decrease by 1
+  | ConstantShrink { amount: Int }       // decrease by k
+  | ProportionalShrink { divisor: Int }  // decrease by factor n/k
+
+// SubValueRelation: how the target value relates to the source value
+// along an edge. This IS the provenance dimension AND the structural
+// edge classifier. Already a BoundedLattice (meet/join defined).
 //
-// Every edge in the DAG carries one of these. It answers: "how does
-// the value at the target relate to the value at the source?"
-//
+// Every edge in the DAG carries one of these:
 //   StrictSubValue:      target is structurally smaller (field of source)
 //   IteratedSubValue:    target is an element of a collection in source
 //   ArithmeticDescent:   target is source reduced by arithmetic (n-1, n/2)
@@ -691,7 +631,7 @@ type UsageEdge
 
 
 // =========================================================================
-// LAYER 6: DIMENSION MECHANISM
+// LAYER 7: DIMENSION MECHANISM
 //
 // The generic DECLARE / COMPUTE / CARRY / ENFORCE pattern.
 //
@@ -704,7 +644,7 @@ type UsageEdge
 // The compiler carries it generically. Cost of change: one file.
 //
 // Authority: dimensions-design.md (src/v2/), THESIS.md §Correctness dimensions
-// Depends on: Layer 3 (BoundedLattice), Layer 5 (SVR, UsageEdge)
+// Depends on: Layer 4 (BoundedLattice), Layer 6 (SVR, UsageEdge)
 // =========================================================================
 
 // The dimension contract. Any type T that satisfies this contract can be
@@ -761,7 +701,7 @@ type SuggestedFix {
 // BUILT-IN DIMENSION 1: PROVENANCE (termination)
 //
 // SubValueRelation IS the provenance dimension. It's already defined
-// in Layer 5. The lattice:
+// in Layer 6. The lattice:
 //   bottom = Unknown (fail-closed, no information)
 //   top    = StrictSubValue (provably smaller)
 //   meet   = meet_svr (conservative merge)
@@ -902,7 +842,7 @@ fn is_idempotent(shape: EffectShape) -> Bool {
 
 
 // =========================================================================
-// LAYER 7: PROOF STRATEGIES
+// LAYER 8: PROOF STRATEGIES
 //
 // The compiler constructs proofs. It doesn't know WHAT it's proving — it
 // reads proof strategies from std/ and executes them generically.
@@ -920,8 +860,8 @@ fn is_idempotent(shape: EffectShape) -> Bool {
 // user-defined ones (security classification, regulatory compliance, etc.).
 //
 // Authority: compiler-ideal-vs-actual.md, THESIS.md §Concept unification
-// Depends on: Layer 2 (fold, iteration), Layer 3 (BoundedLattice, Monoid),
-//             Layer 5 (SVR), Layer 6 (dimensions)
+// Depends on: Layer 3 (self-reference/cycles), Layer 4 (BoundedLattice, Monoid),
+//             Layer 6 (SVR), Layer 7 (dimensions)
 // =========================================================================
 
 // A graph to traverse. The proof mechanism doesn't know what nodes and
@@ -1145,7 +1085,7 @@ fn check_workflow_effect(composed: EffectShape, declared_idempotent: Bool) -> Pr
 
 
 // =========================================================================
-// LAYER 8: PIPELINE CONTRACTS
+// LAYER 9: PIPELINE CONTRACTS
 //
 // Four stages. Each a pure function with a typed contract.
 // The pipeline is a composition: emit(prove(resolve(parse(source)))).
@@ -1251,19 +1191,14 @@ type TypeBinding {
   provenance: SubValueRelation
 }
 
-// Inductive field: a field of a type that carries recursive sub-structure.
-// This is the type-level fact that drives termination proofs.
+// Inductive field: a field whose type references the parent type.
+// The compiler DISCOVERS these by comparing each field's type against
+// the type being defined. No RecursionShape enum — the compiler reads
+// the field's resolved type and sees the self-reference directly.
 type InductiveField {
   field: FieldRef
-  recursion_shape: RecursionShape
+  field_type: TypeRef
 }
-
-type RecursionShape
-  = DirectRecursion              // field type = parent type (tree child)
-  | ListRecursion                // field type = List<parent type>
-  | OptionalRecursion            // field type = parent type?
-  | SetRecursion                 // field type = Set<parent type>
-  | MapValueRecursion            // field type = Map<K, parent type>
 
 // Function signatures: resolved parameter types + return type.
 type FuncSig {
@@ -1408,30 +1343,32 @@ type EmitResult {
 // =========================================================================
 // SPEC SUMMARY
 //
-// 9 layers, each derived from prior layers:
+// 10 layers, each derived from prior layers:
 //
 //   0  Truth + Finiteness    — Classical, max_inhabitants
-//   1  Composition           — Function (→), Product (×), Coproduct (+), Unit (1), Void (0)
-//   2  Structure + Iteration — RecursionShape, fold/descend/repeat, ShrinkFactor
-//   3  Observed patterns     — BoundedLattice, Monoid, Ordering
-//   4  The DAG IR            — Node, Edge (Designs A and B)
-//   5  Edge vocabulary       — SubValueRelation, UsageEdge
-//   6  Dimension mechanism   — Dimension<T>, provenance, ownership, effects
-//   7  Proof strategies      — ProofStrategy, termination, ownership, effects
-//   8  Pipeline contracts    — parse / resolve / prove / emit
+//   1  Function              — A → B (the sole computation primitive)
+//   2  Type structure         — product/coproduct/unit/void EMERGE from syntax
+//   3  Self-reference        — cycles in type/call graphs (no declared types)
+//   4  Observed patterns     — BoundedLattice, Monoid, Ordering
+//   5  The DAG IR            — Node, Edge (Designs A and B)
+//   6  Edge vocabulary       — SubValueRelation, ShrinkFactor, UsageEdge
+//   7  Dimension mechanism   — Dimension<T>, provenance, ownership, effects
+//   8  Proof strategies      — ProofStrategy, termination, ownership, effects
+//   9  Pipeline contracts    — parse / resolve / prove / emit
 //
 // The derivation order encodes the thesis:
-//   - Truth is primitive; composition is derived from truth.
-//   - Product/Coproduct are not axioms — they are truth composition
-//     (cardinality arithmetic: ×, +, ^).
+//   - Truth is primitive; function is the sole computation primitive.
+//   - Product/coproduct are not declared types — they are structural
+//     shapes that EMERGE from how type definitions compose truth values.
+//   - Recursion is not a declared concept — it is a cycle in the graph
+//     that the compiler detects.
 //   - Algebraic patterns (lattice, monoid) are not foundations — they
 //     are regularities OBSERVED in finite structures. The compiler
 //     discovers them in std/ declarations, not as built-in knowledge.
 //   - User-defined dimensions work identically to built-in ones
-//     because both are instances of the same Layer 3 patterns.
+//     because both are instances of the same Layer 4 patterns.
 //   - Emission to ANY target (Rust, Verilog, SQL, SPICE, English)
-//     works because Product/Coproduct/Function are universal — they
-//     are arithmetic, and every target has arithmetic.
+//     works because the composition operators are universal arithmetic.
 //
 // vs v2:
 //   32 .dag files, 38,078 lines, 18-field Node, 22-variant ExprData,
@@ -1440,7 +1377,7 @@ type EmitResult {
 //
 // What this spec eliminates:
 //   - Node.name (string identity → NodeId)
-//   - Connective enum (→ TypeShape on declarations, Layer 1 Product/Coproduct)
+//   - Connective enum (→ structural shape visible in type definition syntax)
 //   - VarBindingKind (→ edge position: parameter vs body)
 //   - Separate ownership pass (→ dimension on bindings)
 //   - classify_binding_provenance, classify_let_value,
@@ -1448,7 +1385,10 @@ type EmitResult {
 //     classify_self_call_evidence (→ read SVR from edge)
 //   - Per-dimension proof code (→ generic ProofStrategy executor)
 //   - String-keyed tables (→ NodeId-keyed tables)
-//   - Algebraic axioms in Layer 0 (→ derived patterns in Layer 3)
+//   - Algebraic axioms in Layer 0 (→ observed patterns in Layer 4)
+//   - RecursionShape enum (→ compiler observes self-reference in type graph)
+//   - IterationPrimitive enum (→ compiler classifies call graph shapes)
+//   - TypeShape enum (→ structural shape visible in definition syntax)
 //
 // What this spec preserves:
 //   - SubValueRelation as the edge vocabulary (from std/induction.dag)
