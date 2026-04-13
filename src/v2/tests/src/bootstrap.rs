@@ -557,8 +557,15 @@ fn performance_ratchet() {
 
 // ── CI compile gates (shared compilation via LazyLock) ─────────────────
 //
-// Four hermetic tests that share a single compilation via LazyLock.
-// Run together in CI: `cargo test -p v2-compiler-tests ci_ -- --ignored`
+// Five hermetic tests run together in CI via prefix match:
+//   `cargo test -p v2-compiler-tests ci_ -- --ignored`
+//
+// ci_full_dsl           — all .dag files compile (library API, independent)
+// ci_diagnostic_ratchet  — diagnostic count <= threshold (reads PASS1)
+// ci_performance_ratchet — self-compile within time budget (reads PASS1)
+// ci_freshness           — output matches committed stage0 (reads PASS1)
+// ci_fixed_point         — regen(regen(source)) == regen(source) (reads PASS2)
+//
 // LazyLock ensures pass 1 compiles exactly once regardless of which test
 // triggers it first. Pass 2 (for fixed-point) depends on pass 1.
 //
@@ -657,6 +664,46 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) {
             std::fs::copy(&src_path, &dst_path).unwrap();
         }
     }
+}
+
+#[test]
+#[ignore] // CI: cargo test -p v2-compiler-tests ci_ -- --ignored
+fn ci_full_dsl() {
+    // Compile ALL .dag files under dsl/ via library API.
+    // The subprocess self-compile (CI_PASS1) only compiles files transitively
+    // imported from src/v2 entry modules — unreferenced .dag files in dsl/
+    // would be missed. This test closes that gap.
+    let ws = crate::helpers::workspace_root();
+    let dsl_dir = ws.join("dsl");
+    let mut dsl_sources: Vec<std::rc::Rc<v2_compiler::v2_compiler_compile::SourceFile>> = Vec::new();
+    crate::pipeline::collect_dag_sources(&ws, &dsl_dir, &mut dsl_sources);
+
+    assert!(
+        !dsl_sources.is_empty(),
+        "no .dag files found in dsl/ — something is wrong"
+    );
+
+    let dsl_result = v2_compiler::v2_compiler_compile::compile_sources(
+        std::rc::Rc::new(dsl_sources.clone()),
+        v2_compiler::v2_compiler_artifact::RenderTarget::Rust,
+    );
+
+    let hard_diags: Vec<_> = crate::helpers::diagnostic_messages(&dsl_result)
+        .into_iter()
+        .filter(|m| !m.starts_with("complexity: "))
+        .collect();
+    assert!(
+        hard_diags.is_empty(),
+        "dsl/ compilation produced {} hard diagnostics (expected 0):\n{}",
+        hard_diags.len(),
+        hard_diags.iter()
+            .enumerate()
+            .map(|(i, m)| format!("  [{}] {}", i, m))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+
+    eprintln!("ci_full_dsl: {} dsl files compiled, 0 hard diagnostics", dsl_sources.len());
 }
 
 #[test]
