@@ -323,7 +323,52 @@ M5: Meta-process modeling (bootstrap, CI, dev process)
       Unify via std/errors.dag with ErrorClass + Retryability.
       Directly folds the three-workflow duplication from PR #418
       into a single authority.
-    Phase 4 (dev process): future
+    Phase 4 (bootstrap verification): after Phase 3.5 (Track 17b)
+      The bootstrap loop today is a black box: regen runs, pass1
+      vs pass2 diff says "converged" or "diverged." When it diverges
+      (dark-emu-36-pr3 hit this: new binary detects a cycle the
+      old didn't), the debug is manual — no visibility into WHICH
+      stage diverged or WHY.
+
+      bootstrap.dag already models the building blocks (195 lines,
+      zero consumers): CompilerStage (8 stages), StageInput/Output,
+      TransformContract (preserved/recomputed fields per transform),
+      FieldPropagation (per-stage per-field), ChangeClassification,
+      BootstrapStrategy (SinglePass/TwoPhase/Additive).
+
+      Three levels, each building on the previous:
+
+      Level 1 — Per-stage structural diffs (Track 17b extension):
+        regen.dag runs old binary + new binary, compares output
+        at EACH stage boundary (not just the final pass). When
+        divergence occurs, the report says "Resolve stage output
+        differs" instead of "fixed-point failed." bootstrap.dag's
+        CompilerStage and ArtifactKind drive the comparison.
+        Directly helps current dark-emu session.
+
+      Level 2 — Stage contracts verified during bootstrap:
+        Each stage declares a TransformContract: "Resolve takes
+        a ParseTree, produces a ModuleGraph. Preserved fields:
+        [ident, span]. Recomputed fields: [module_deps, exports]."
+        The bootstrap loop checks: did the contract hold? If a
+        stage recomputes a field it claims to preserve, the check
+        fires at the stage boundary with a typed diff — not at the
+        end as a cryptic fixed-point failure.
+
+      Level 3 — Automatic strategy selection (M5 "done when"):
+        ChangeClassification (AddField with default → Additive,
+        RemoveField → TwoPhase, etc.) is computed from the diff
+        between old and new .dag source. The bootstrap loop reads
+        the classification, selects the BootstrapStrategy, and
+        iterates automatically. TwoPhase changes get a staged
+        rollout: old compiler produces bridge stage0, bridge
+        stage0 produces final stage0. Zero manual edits.
+
+      Level 3 is the M5 completion criterion: "adding a Node
+      field requires zero manual stage0 edits." Levels 1-2 are
+      the incremental path that makes Level 3 achievable.
+
+    Phase 5 (dev process): future
     Design: docs/meta-process-design.md
     Hand-maintained Rust: v2_interpreter.rs (bootstrap), cli_run.rs
       (convertible once interpreter exposed as transport/built-in)
@@ -939,10 +984,18 @@ before/after benefit):**
     from `bootstrap.dag`, folded over.
   - Each step's input/output derives from `StageInput`/`StageOutput`,
     not bare strings.
+  - **Extension (M5 Phase 4 Level 1):** add per-stage structural
+    diffs to the bootstrap loop. When old and new binary diverge,
+    the report names the STAGE where divergence starts, not just
+    "fixed-point failed." Directly addresses the dark-emu-36-pr3
+    bootstrap regression (new binary detects a dependency cycle
+    the old binary didn't — the diff would localize to the Resolve
+    stage). See M5 Phase 4 for the 3-level plan.
   - **Benefit:** adding a new compiler stage is one edit to
     `bootstrap.dag`, not edits in regen/freshness/ci. Pipeline
-    sequence becomes data.
-  - **Size:** small. ~20 lines of refactor in regen.dag.
+    sequence becomes data. Bootstrap failures become diagnosable.
+  - **Size:** medium (was small — the per-stage diff adds scope,
+    but it's the most valuable part).
 
 - **PR 17c: `gunbc/workflow/types.dag` → `gunbc/tools/review.dag`**
   - `review.dag` currently composes review output as free-form JSON.
