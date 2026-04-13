@@ -61,9 +61,8 @@ src/v1/10_test/generated-tests/src/generated/
 # Not part of this project
 node_modules/
 
-# --- Claude Code worktrees (from claude-code) ---
-# Temporary agent worktrees; not project state
-.claude/worktrees/
+# --- Claude Code (session state, not project state) ---
+.claude/
 
 # --- Stage0 regeneration temp dirs ---
 # Created by scripts/regenerate-stage0.sh; cleaned up on exit
