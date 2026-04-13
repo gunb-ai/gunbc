@@ -24,7 +24,7 @@ import std.types { SourceSpan, container_param_name }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v2.std.core {
   Node, InternTable,
-  intern_find_or_empty, intern_str,
+  intern, intern_str,
   authored_name_at, NewlineIndex, has_child_named, build_newline_index,
   module_node, module_imports, module_items, import_is_all,
   make_param_node, param_node_name_at, param_node_type_expr,
@@ -4605,12 +4605,17 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let source_indices = fold(["Optional", "Some", "None", "value", "none"], init: source_indices, f: (acc, name) =>
     map_insert(acc, concat("<kernel:", name, ">"), build_newline_index(file: concat("<kernel:", name, ">"), source: name))
   )
+  // Pre-intern all kernel names so intern() lookups below are guaranteed
+  // to find them (intern is idempotent for names already in the table).
+  let intern_table = fold(map_keys(kernel_type_set), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
+  let intern_table = fold(["Optional", "Some", "None", "value", "none"], init: intern_table, f: (t, name) => intern(table: t, s: name).table)
+  let intern_table = fold(map_keys(compiler_recursive_types), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
   // Build kernel type bindings. Unit is the terminal object — empty product
   // (Conj + 0 children), structurally unique among kernel types.
   let kernel_bindings_base = fold(
     map_keys(kernel_type_set),
     init: empty_map(),
-    f: (acc, name) => map_insert(acc, intern_find_or_empty(table: intern_table, s: name), TypeBinding {
+    f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding {
       name: name,
       resolved: Node { name: name, span: kernel_span(name: name), ident_span: Some { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
       provenance: SubValueUnknown
@@ -4618,7 +4623,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   )
   // Override Unit with Conj connective (empty product, structurally distinct)
   let unit_span = kernel_span(name: "Unit")
-  let kernel_bindings = map_insert(kernel_bindings_base, intern_find_or_empty(table: intern_table, s: "Unit"), TypeBinding {
+  let kernel_bindings = map_insert(kernel_bindings_base, intern(table: intern_table, s: "Unit").id, TypeBinding {
     name: "Unit",
     resolved: Node { name: "Unit", span: unit_span, ident_span: Some { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
     provenance: SubValueUnknown
@@ -4630,13 +4635,13 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let some_value_field = Node { name: "value", span: kernel_span(name: "value"), ident_span: Some { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: "some_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let some_variant = Node { name: "Some", span: kernel_span(name: "Some"), ident_span: Some { value: kernel_span(name: "Some") }, children: [some_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Some { value: kernel_span(name: "Optional") }, children: [some_variant, none_type], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let kernel_bindings = map_insert(kernel_bindings, intern_find_or_empty(table: intern_table, s: "Optional"), TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
+  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
   // Compiler types' inductive fields are declared in std/node.dag.
   // This provides the structural facts for CX-L2 to prove tree-walk
   // functions are O(n). See ROADMAP CX-NEXT Phase 2.
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
-  let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern_find_or_empty(table: intern_table, s: name))
-  let kernel_recursive_type_set = fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern_find_or_empty(table: intern_table, s: name), true))
+  let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
+  let kernel_recursive_type_set = fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
   let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table }
 
   // Collect imported type bindings from parent modules.
@@ -4693,7 +4698,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // Nodes with capabilities are registered as nominal types so they can be
   // referenced in `uses` clauses (e.g., `uses net: Network`).
   let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
-    let item_ident = intern_find_or_empty(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item))
+    let item_ident = intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id
     let has_structure = item.connective != NoConnective
     if has_structure {
       let type_node = Node {
@@ -4746,10 +4751,10 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // Only register params from items already recognized as type bindings —
   // prevents function params from leaking into the type namespace.
   let param_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
-    let is_type_decl = match map_get(local_bindings, intern_find_or_empty(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item))) { Some { value: _ } => true  None => false }
+    let is_type_decl = match map_get(local_bindings, intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id) { Some { value: _ } => true  None => false }
     if item.params |> count > 0 && is_type_decl {
       let result = fold(item.params, init: acc, f: (pacc, p) =>
-        map_insert(pacc, intern_find_or_empty(table: intern_table, s: authored_name_at(source_indices: source_indices, node: p)), nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: p)))
+        map_insert(pacc, intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: p)).id, nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: p)))
       )
       result
     } else { acc }
@@ -4774,7 +4779,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // Precompute which types participate in cycles. Used by resolve_node
   // to break recursive expansion without threading a growing resolving list.
   let cycle_set_str = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: str_bindings)
-  let cycle_set = cycle_set_str |> map(name => intern_find_or_empty(table: intern_table, s: name))
+  let cycle_set = cycle_set_str |> map(name => intern(table: intern_table, s: name).id)
   let cycle_map = fold(cycle_set_str, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
   // Build recursive variant fields AFTER cycle detection so the structural
   // cycle_map gates which types are considered recursive, replacing the
@@ -4782,7 +4787,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // Merge compiler_recursive_types so cross-type detection finds Node-referencing fields
   // in module-local types (e.g., MatchPattern.VariantPattern.field_bindings: List<Node>).
   let cross_type_set_str = map_merge(cycle_map, compiler_recursive_types)
-  let cross_type_set = fold(map_keys(cross_type_set_str), init: empty_map(), f: (acc, name) => map_insert(acc, intern_find_or_empty(table: intern_table, s: name), true))
+  let cross_type_set = fold(map_keys(cross_type_set_str), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
   let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cross_type_set_str, source_indices: source_indices)
   let merged_inductive_fields = merge_inductive_fields(left: merged.inductive_fields, right: local_inductive_fields)
   let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table }
@@ -4809,16 +4814,19 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
 // Used by the per-module profile test to isolate whether OOM is in
 // merge+cycles vs type resolution.
 fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> BuildTypeEnvResult {
+  // Pre-intern kernel names (mirrors build_type_env).
+  let intern_table = fold(map_keys(kernel_type_set), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
+  let intern_table = fold(["Optional"], init: intern_table, f: (t, name) => intern(table: t, s: name).table)
   let zero_span = make_span(start: 0, end: 0)
   let kernel_bindings = fold(
     map_keys(kernel_type_set),
     init: empty_map(),
-    f: (acc, name) => map_insert(acc, intern_find_or_empty(table: intern_table, s: name), TypeBinding { name: name, resolved: Node { name: name, span: kernel_span(name: name), ident_span: Some { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, provenance: SubValueUnknown })
+    f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding { name: name, resolved: Node { name: name, span: kernel_span(name: name), ident_span: Some { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, provenance: SubValueUnknown })
   )
   let some_value_field = Node { name: "value", span: kernel_span(name: "value"), ident_span: Some { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: "some_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let some_variant = Node { name: "Some", span: kernel_span(name: "Some"), ident_span: Some { value: kernel_span(name: "Some") }, children: [some_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Some { value: kernel_span(name: "Optional") }, children: [some_variant, none_type], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let kernel_bindings = map_insert(kernel_bindings, intern_find_or_empty(table: intern_table, s: "Optional"), TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
+  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
   let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table }
   let imports_std_types = module.resolved_imports |> any(imp => imp.module_path == "std.types")
   // Mirror the same bootstrap bridge in the unresolved path.
@@ -4857,7 +4865,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let import_inductive_fields = fold(parent_envs, init: empty_map(), f: (acc, env) => merge_inductive_fields(left: acc, right: env.inductive_fields))
   let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set, inductive_fields: import_inductive_fields, source_indices: source_indices, intern_table: intern_table }
   let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
-    let item_ident = intern_find_or_empty(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item))
+    let item_ident = intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id
     let has_structure = item.connective != NoConnective
     if has_structure {
       let type_node = Node { name: item.name, span: item.span, ident_span: item.ident_span, children: item.children, connective: item.connective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -4884,12 +4892,12 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     map_insert(acc, b.name, b)
   )
   let cycle_set_str = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: str_bindings)
-  let cycle_set = cycle_set_str |> map(name => intern_find_or_empty(table: intern_table, s: name))
+  let cycle_set = cycle_set_str |> map(name => intern(table: intern_table, s: name).id)
   let cycle_map = fold(cycle_set_str, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
   // Merge compiler_recursive_types so cross-type detection finds Node-referencing fields
   // in module-local types (e.g., MatchPattern.VariantPattern.field_bindings: List<Node>).
   let cross_type_set_str = map_merge(cycle_map, compiler_recursive_types)
-  let cross_type_set = fold(map_keys(cross_type_set_str), init: empty_map(), f: (acc, name) => map_insert(acc, intern_find_or_empty(table: intern_table, s: name), true))
+  let cross_type_set = fold(map_keys(cross_type_set_str), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
   let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cross_type_set_str, source_indices: source_indices)
   let merged_inductive_fields = merge_inductive_fields(left: merged.inductive_fields, right: local_inductive_fields)
   let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table }
@@ -5274,7 +5282,7 @@ fn resolve_env_bindings(env: TypeEnv, module_name: String, local_names: Map<Int,
   // the environment. This is O(N * avg_fields) instead of O(B^D).
   // Extract local binding names as a list.
   let remaining = map(
-    filter(env.bindings |> map_values, b => map_contains_key(local_names, intern_find_or_empty(table: env.intern_table, s: b.name))),
+    filter(env.bindings |> map_values, b => map_contains_key(local_names, intern(table: env.intern_table, s: b.name).id)),
     b => b.name
   )
   topo_resolve_types(remaining: remaining, env: env, module_name: module_name, diagnostics: [], local_names: local_names, deps_map: deps_map, fuel: remaining |> count)
@@ -5313,7 +5321,7 @@ fn topo_resolve_types(
     // Resolve each as-is against current env to collect diagnostics.
     // Single fold calls resolve_node once per name, collecting both bindings and diagnostics.
     let stuck_accum = fold(remaining, init: BindingsAccum { bindings: env.bindings, diagnostics: [] }, f: (acc, name) =>
-      let ident = intern_find_or_empty(table: env.intern_table, s: name)
+      let ident = intern(table: env.intern_table, s: name).id
       match map_get(env.bindings, ident) {
         Some { value: binding } =>
           let result = resolve_node(n: binding.resolved, env: env, module_name: module_name)
@@ -5333,7 +5341,7 @@ fn topo_resolve_types(
   // Resolve ready types against current env -- single pass calls resolve_node
   // once per name, collecting both updated bindings and diagnostics.
   let ready_accum = fold(ready, init: BindingsAccum { bindings: env.bindings, diagnostics: [] }, f: (acc, name) =>
-    let ident = intern_find_or_empty(table: env.intern_table, s: name)
+    let ident = intern(table: env.intern_table, s: name).id
     match map_get(env.bindings, ident) {
       Some { value: binding } =>
         let result = resolve_node(n: binding.resolved, env: env, module_name: module_name)

@@ -7,7 +7,7 @@ use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
 pub use crate::std_types::{SourceSpan, container_param_name};
-pub use crate::v2_std_core::{Node, authored_name_at, NewlineIndex, make_param_node, param_node_name_at, param_node_type_expr, param_node_default_value, make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, InferredNode, is_compiler_error, ErrorNode, make_error_node, Cardinality, StringPart, MatchPattern, ExprData, ExprErrorKind, make_expr_node, make_named_expr_node, make_expr_error_node, map_children, expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at, make_arg_node, arg_name_at, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_resource_use_node, resource_use_name_at, resource_use_resource, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_local_transport, transport_request_body, is_kernel_type, is_container_type, with_optional_cardinality, with_required_cardinality, Connective, no_span, unit_type, string_type, default_ident_span, kernel_span, node_name_span, intern_find_or_empty, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, authored_name_at, NewlineIndex, make_param_node, param_node_name_at, param_node_type_expr, param_node_default_value, make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, InferredNode, is_compiler_error, ErrorNode, make_error_node, Cardinality, StringPart, MatchPattern, ExprData, ExprErrorKind, make_expr_node, make_named_expr_node, make_expr_error_node, map_children, expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at, make_arg_node, arg_name_at, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_resource_use_node, resource_use_name_at, resource_use_resource, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_local_transport, transport_request_body, is_kernel_type, is_container_type, with_optional_cardinality, with_required_cardinality, Connective, no_span, unit_type, string_type, default_ident_span, kernel_span, node_name_span, intern, CompilerDiagnostic};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::CompilerDiagnostic::{InternalError, ArityMismatch, UnresolvedType};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
@@ -1515,7 +1515,7 @@ pub fn resolve_item_types(item: &Rc<Node>, env: &Rc<TypeEnv>, module_name: &Stri
         {
             let tp_names = fn_type_param_names(item.clone(), env.source_indices.clone());
 let env = tp_names.iter().cloned().fold(env.clone(), |e: Rc<TypeEnv>, tp_name: String| Rc::new(TypeEnv {
-    bindings: v2_rt::rc_map_insert(e.bindings.clone(), intern_find_or_empty(e.intern_table.clone(), tp_name.clone()), Rc::new(TypeBinding {
+    bindings: v2_rt::rc_map_insert(e.bindings.clone(), intern(&e.intern_table.clone(), &tp_name).id.clone(), Rc::new(TypeBinding {
     name: tp_name.clone(),
     resolved: Rc::new(Node {
     name: tp_name.clone(),

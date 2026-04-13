@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find_or_empty, intern_str, source_text_at, authored_name_at};
+pub use crate::v2_std_core::{Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 use crate::std_induction::RecursionShape::{DirectRecursion, ListRecursion, OptionalRecursion};
 use crate::std_induction::SubValueRelation::{SubValueUnknown, PreservedValue};
@@ -36,7 +36,10 @@ pub fn is_recursive_type(env: Rc<TypeEnv>, ident: i64) -> bool {
 }
 
 pub fn is_recursive_type_by_name(env: &Rc<TypeEnv>, name: String) -> bool {
-    is_recursive_type(env.clone(), intern_find_or_empty(env.intern_table.clone(), name))
+    match intern_find(env.intern_table.clone(), name) {
+    Some(id) => is_recursive_type(env.clone(), id.clone()),
+    None => false,
+}
 }
 
 pub fn lookup_type(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<Node>> {
@@ -47,7 +50,10 @@ pub fn lookup_type(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<Node>> {
 }
 
 pub fn lookup_type_by_name(env: &Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
-    lookup_type(env.clone(), intern_find_or_empty(env.intern_table.clone(), name))
+    match intern_find(env.intern_table.clone(), name) {
+    Some(id) => lookup_type(env.clone(), id.clone()),
+    None => None,
+}
 }
 
 pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {

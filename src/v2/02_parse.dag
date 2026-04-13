@@ -62,7 +62,7 @@ import v2.std.core {
   error_type, is_compiler_error,
   node_name_span, no_span,
   NewlineIndex, authored_name_at,
-  InternTable, InternResult, empty_intern_table, intern, intern_find_or_empty, pre_intern_tokens
+  InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens
 }
 
 import v2.compiler.languages {

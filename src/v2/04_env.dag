@@ -6,7 +6,7 @@
 //
 module v2.compiler.infer_env
 
-import v2.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find_or_empty, intern_str, source_text_at, authored_name_at }
+import v2.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at }
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 
 // =========================================================================
@@ -40,7 +40,10 @@ fn is_recursive_type(env: TypeEnv, ident: Int) -> Bool {
 }
 
 fn is_recursive_type_by_name(env: TypeEnv, name: String) -> Bool {
-  is_recursive_type(env: env, ident: intern_find_or_empty(table: env.intern_table, s: name))
+  match intern_find(table: env.intern_table, s: name) {
+    Some { value: id } => is_recursive_type(env: env, ident: id)
+    None => false
+  }
 }
 
 fn lookup_type(env: TypeEnv, ident: Int) -> Node? {
@@ -51,7 +54,10 @@ fn lookup_type(env: TypeEnv, ident: Int) -> Node? {
 }
 
 fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
-  lookup_type(env: env, ident: intern_find_or_empty(table: env.intern_table, s: name))
+  match intern_find(table: env.intern_table, s: name) {
+    Some { value: id } => lookup_type(env: env, ident: id)
+    None => None
+  }
 }
 
 fn authored_name(env: TypeEnv, node: Node) -> String {

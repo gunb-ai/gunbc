@@ -40,7 +40,7 @@ import v2.std.core {
   Connective, Conj, Disj, NoConnective,
   CardOptional, no_span,
   unit_type, string_type,
-  default_ident_span, kernel_span, node_name_span, intern_find_or_empty
+  default_ident_span, kernel_span, node_name_span, intern
 }
 import v2.compiler.infer_types {
   resolved_type, child_type_node, node_is_keyed_collection
@@ -912,7 +912,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   let tp_names = fn_type_param_names(item: item, source_indices: env.source_indices)
   let env = fold(tp_names, init: env, f: (e, tp_name) =>
     TypeEnv {
-      bindings: map_insert(e.bindings, intern_find_or_empty(table: e.intern_table, s: tp_name), TypeBinding {
+      bindings: map_insert(e.bindings, intern(table: e.intern_table, s: tp_name).id, TypeBinding {
         name: tp_name,
         resolved: Node { name: tp_name, span: kernel_span(name: tp_name), ident_span: Some { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
         provenance: SubValueUnknown
