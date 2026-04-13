@@ -706,8 +706,8 @@ fn parser_helper_state_arg_expr(call_node: Node, source_indices: Map<String, New
       let idx = pair.first
       let arg_node = pair.second
       let matches_state = match arg_name_at(n: arg_node, source_indices: source_indices) {
-        Some { value: name } => name == "state"
-        None => idx == 1
+        Some { value: name } => name == "state" || name == "tokens"
+        None => idx == 0
       }
       if matches_state {
         Some { value: arg_value(n: arg_node) }
