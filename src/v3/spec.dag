@@ -1,0 +1,690 @@
+// v3 Compiler Specification
+//
+// This is a design document written as .dag pseudocode. It defines the
+// stage-specific IRs, boundary contracts, and dimension mechanism that
+// v3 targets. Implementation follows from this spec.
+//
+// KEY LESSON FROM V2:
+// "Everything is graph-shaped" is the right invariant.
+// "Everything is one Node struct" is the wrong implementation.
+// Each stage gets its own IR. Boundary transforms are explicit.
+// No stage reads fields that a prior stage "happens to have set."
+//
+// The v2 god-struct emerged from a well-intentioned idea: the IR is
+// always Nodes. But "always Nodes" was implemented as "always the SAME
+// Node," which forced every stage to carry every field, made any field
+// change cross-cutting, and prevented stages from having typed contracts.
+//
+// v3 preserves "everything lowers to graph structure" but each stage
+// has its own graph schema. A parse node is not a semantic node is not
+// a render node. They share the SHAPE (tree of typed records) but not
+// the SCHEMA (which fields exist).
+
+module v3.spec
+
+// =========================================================================
+// PART 1: Stage-specific IRs
+// =========================================================================
+//
+// Four IR layers. Each is a complete, self-contained graph type.
+// Boundary transforms between layers are explicit pure functions.
+//
+//   Source text
+//     │
+//     ▼
+//   Token stream          (flat, no graph structure)
+//     │
+//     ▼
+//   AuthoredGraph         (what the user wrote — surface syntax)
+//     │
+//     ▼
+//   SemanticGraph         (what the compiler proved — resolved facts)
+//     │
+//     ├──▶ AnalysisViews  (complexity, ownership — read-only projections)
+//     │
+//     ▼
+//   RenderPlan            (what the emitter translates — target-ready)
+//     │
+//     ▼
+//   TextFile              (output)
+//
+// Each arrow is a pure function with a typed contract.
+// No stage reaches back through the arrow to read prior-stage data.
+
+// =========================================================================
+// 1a. Token (unchanged from v2 — already clean)
+// =========================================================================
+
+type Token {
+  text: String
+  span: SourceSpan
+  shape: TokenShape
+}
+
+// TokenShape is the tokenizer's discriminator. v2's design is correct here.
+// ShKeyword, ShIdent, ShLitStr, ShLitInt, ShLitFloat, ShLBrace, etc.
+
+// =========================================================================
+// 1b. AuthoredGraph — what the user wrote
+// =========================================================================
+//
+// This is the parse output. It captures surface syntax faithfully.
+// No compiler-derived facts. No inferred types. No semantic analysis.
+//
+// The key difference from v2: AuthoredNode does NOT have `inferred`,
+// `is_self_recursive`, `has_non_tail_self_call`, or enriched `expr_data`.
+// Those are semantic facts that belong in SemanticGraph.
+//
+// AuthoredNode carries what the user WROTE. SemanticNode carries what
+// the compiler PROVED.
+
+type AuthoredNode {
+  id: NodeId                        // unique identity (replaces v2 ident)
+  span: SourceSpan                  // source location of entire construct
+  name_span: SourceSpan?            // source location of identifier specifically
+
+  // --- Structure (how children connect) ---
+  children: List<AuthoredNode>      // fields (Conj), variants (Disj), args, etc.
+  connective: Connective            // Conj | Disj | Arrow | NoConnective
+  params: List<AuthoredNode>        // function parameters
+  body: AuthoredNode?               // function/data body expression
+  return_cardinality: Cardinality   // Required | Optional
+
+  // --- Authored annotations ---
+  type_annotation: AuthoredNode?    // explicit type ascription (user-written)
+  transport: AuthoredNode?          // service transport config (user-written)
+  uses: List<AuthoredNode>          // resource use declarations (user-written)
+  properties: List<AuthoredNode>    // field initialization / metadata (user-written)
+
+  // --- Expression kind ---
+  expr_kind: ExprKind               // what kind of expression (structural, not semantic)
+
+  // --- Pattern matching ---
+  match_pattern: MatchPattern?      // pattern in match arms (user-written)
+}
+
+// ExprKind is PURELY STRUCTURAL — what syntactic form the user wrote.
+// No semantic enrichment (no binding_kind, no call_semantics, no method_semantics).
+// Those are SemanticGraph concerns.
+type ExprKind =
+    Literal { value: LiteralValue }
+  | Var                               // variable reference (NO binding_kind here)
+  | FieldAccess                       // base.field (NO field_summary here)
+  | Call                              // f(args) (NO call_semantics here)
+  | MethodCall                        // x.m(args) (NO method_semantics here)
+  | Match
+  | If
+  | Let
+  | Block
+  | RecordLit
+  | ListLit
+  | BinOp { op: BinOp }
+  | UnaryOp { op: UnaryOpKind }
+  | Lambda                            // NO lambda_semantics here
+  | StringInterp
+  | ForEach
+  | Index
+  | Slice
+  | Cast
+  | Return
+
+// AuthoredGraph is the parse + resolve output bundled together.
+type AuthoredGraph {
+  modules: List<AuthoredModule>
+  source_indices: Map<String, NewlineIndex>
+  intern_table: InternTable
+}
+
+type AuthoredModule {
+  root: AuthoredNode                // module root node
+  resolved_imports: List<ResolvedImport>
+  dep_order: Int                    // topological sort position
+}
+
+// =========================================================================
+// BOUNDARY: authored_to_semantic
+// =========================================================================
+//
+// This is WHERE inference happens. The transform reads AuthoredGraph
+// and produces SemanticGraph. Every fact that downstream stages need
+// must be computed HERE and placed on SemanticNode or in the
+// SemanticGraph's tables.
+//
+// The contract: after this boundary, no downstream stage needs to
+// inspect authored structure to make semantic decisions. If it does,
+// the boundary is insufficient — fix the boundary, not the downstream.
+
+fn authored_to_semantic(authored: AuthoredGraph) -> SemanticGraph
+
+// =========================================================================
+// 1c. SemanticGraph — what the compiler proved
+// =========================================================================
+//
+// This is the central IR. It carries:
+// - Resolved types (what v2 puts on Node.inferred)
+// - Expression semantics (binding kind, call semantics, field access style)
+// - Dimension values (provenance, ownership, effects, cost)
+// - Recursion facts (is_self_recursive, tail position)
+//
+// Complexity and ownership READ this graph. They do not reconstruct.
+// Emit reads this graph + LanguageSpec. It does not decide.
+//
+// CRITICAL DESIGN POINT: SemanticNode is NOT AuthoredNode with more fields.
+// It is a DIFFERENT TYPE with a DIFFERENT schema. The authored_to_semantic
+// boundary constructs SemanticNodes from AuthoredNodes — it does not
+// mutate AuthoredNodes.
+
+type SemanticNode {
+  id: NodeId                         // same identity as AuthoredNode (cross-reference)
+  span: SourceSpan                   // carried forward for diagnostics
+
+  // --- Resolved structure ---
+  children: List<SemanticNode>
+  connective: Connective
+  params: List<SemanticNode>
+  body: SemanticNode?
+  return_cardinality: Cardinality
+
+  // --- Resolved type ---
+  resolved_type: ResolvedType        // fully resolved (not Optional — if unresolvable, it's a CompilerError in diagnostics)
+
+  // --- Expression semantics (computed by inference, consumed by emit) ---
+  expr: ExprSemantics                // enriched expression data
+
+  // --- Dimension values (computed at binding sites, consumed downstream) ---
+  dimensions: DimensionValues
+}
+
+// ResolvedType is what v2 calls InferredNode, but without the error case
+// embedded. Errors are diagnostics, not IR values. A SemanticNode always
+// has a resolved type — if inference failed, the type is ErrorType and
+// a diagnostic was emitted.
+type ResolvedType =
+    Concrete { node: TypeShape }     // successfully resolved
+  | ErrorType { message: String }    // inference failed (diagnostic emitted)
+  | TypeVar { id: Int }              // parametric (algebra instantiation)
+
+// TypeShape replaces "raw Node used as type." It is a purpose-built
+// type representation — not a reuse of the expression AST.
+type TypeShape {
+  kind: TypeKind
+  children: List<TypeShape>          // type parameters (List<T> → children = [T])
+  fields: List<FieldShape>           // record fields (Conj types)
+  variants: List<VariantShape>       // sum variants (Disj types)
+}
+
+type TypeKind =
+    Primitive { name: PrimitiveType }  // String, Int, Float, Bool, Bit
+  | Record { name: String }            // named record type
+  | Sum { name: String }               // named sum type
+  | Container { kind: ContainerKind }  // List, Set, Map
+  | Function { arity: Int }            // fn(A, B) -> C
+  | Optional                           // T?
+  | Unit                               // void/unit
+
+type FieldShape {
+  name: String
+  type_shape: TypeShape
+  cardinality: Cardinality
+  default: SemanticNode?
+}
+
+type VariantShape {
+  name: String
+  fields: List<FieldShape>
+}
+
+// ExprSemantics is the ENRICHED expression data. This is where v2's
+// binding_kind, call_semantics, method_semantics, field_summary,
+// descent_evidence, and lambda_semantics live. They are computed
+// during authored_to_semantic and consumed downstream.
+//
+// The difference from v2: in v2, ExprData starts with None/empty
+// semantic slots and inference fills them in by mutating the same Node.
+// In v3, ExprSemantics is constructed complete — no None slots, no
+// mutation. If a fact can't be determined, it's an error in the boundary.
+type ExprSemantics =
+    Literal { value: LiteralValue }
+  | Var { binding: BindingRef }
+  | FieldAccess { receiver: SemanticNode, field: FieldRef }
+  | Call { callee: CalleeRef, args: List<SemanticNode>, descent: DescentEvidence }
+  | MethodCall { receiver: SemanticNode, method: MethodRef, args: List<SemanticNode> }
+  | Match { scrutinee: SemanticNode, arms: List<MatchArm> }
+  | If { condition: SemanticNode, then_branch: SemanticNode, else_branch: SemanticNode? }
+  | Let { binding: BindingDef, value: SemanticNode, body: SemanticNode }
+  | Block { statements: List<SemanticNode> }
+  | RecordLit { type_ref: TypeRef, fields: List<FieldInit> }
+  | ListLit { elements: List<SemanticNode> }
+  | BinOp { op: BinOp, left: SemanticNode, right: SemanticNode, algebra: AlgebraRef? }
+  | UnaryOp { op: UnaryOpKind, operand: SemanticNode }
+  | Lambda { params: List<LambdaParam>, body: SemanticNode }
+  | StringInterp { parts: List<StringPart> }
+  | ForEach { collection: SemanticNode, variable: BindingDef, body: SemanticNode }
+  | Index { collection: SemanticNode, index: SemanticNode }
+  | Slice { collection: SemanticNode, start: SemanticNode?, end: SemanticNode? }
+  | Cast { value: SemanticNode, target_type: TypeShape }
+  | Return { value: SemanticNode? }
+
+// BindingRef replaces v2's "look up variable by string name."
+// It is a resolved reference to where the binding was defined.
+type BindingRef {
+  id: BindingId                    // unique binding identity (not a string name)
+  kind: BindingKind                // what kind of binding this is
+  source_name: String              // original name (for diagnostics/rendering only, NOT semantic authority)
+}
+
+type BindingKind =
+    LocalValue                     // let binding, function parameter
+  | FunctionValue                  // function name (not movable)
+  | VariantConstructor             // enum variant
+  | MatchBound                     // bound in match pattern
+  | ForEachElement                 // bound in for-each
+
+// FieldRef replaces v2's FieldSummary. It is a resolved reference
+// to the field definition with its access semantics.
+type FieldRef {
+  name: String
+  access: FieldAccessKind          // how this field is accessed
+  value_shape: FieldValueShape     // what the access produces
+  declaring_type: TypeRef          // which type owns this field
+}
+
+type FieldAccessKind =
+    StoredField                    // regular record field
+  | EnumAccessor                   // variant field accessor (.value on Some)
+  | OptionalUnwrap                 // .value on Optional
+  | TupleFirst                     // .first on Pair
+  | TupleSecond                    // .second on Pair
+
+// CalleeRef replaces v2's CallSemantics.
+type CalleeRef =
+    DirectCall { target: BindingRef }
+  | BuiltinCall { builtin: BuiltinKind }
+
+// MethodRef replaces v2's MethodSemantics. All semantic facts are
+// resolved — no downstream reconstruction needed.
+type MethodRef =
+    PlainMethod { name: String, resolved_def: TypeRef }
+  | AlgebraMethod { name: String, algebra_field: AlgebraFieldKind, method_def: TypeRef, fold_accumulator: TypeShape? }
+  | ServiceMethod { name: String, operation: ServiceOperation }
+
+// DescentEvidence replaces v2's descent_evidence on ExprCall.
+// Computed during authored_to_semantic, not reconstructed by CX.
+type DescentEvidence =
+    StructuralDescent { relation: SubValueRelation }  // proven descent
+  | NoRecursion                                        // not a recursive call
+  | Unresolved                                         // boundary couldn't determine (diagnostic)
+
+// =========================================================================
+// 1d. DimensionValues — extensible fact slots on bindings
+// =========================================================================
+//
+// Every SemanticNode carries dimension values computed at its binding
+// site. Downstream stages (complexity, ownership, emit) READ these —
+// they never reconstruct them.
+//
+// DESIGN: This is a fixed struct for now (known dimensions). The
+// generic mechanism (user-defined dimensions) is a v3.1 concern.
+// Design from concrete instances first, generalize later.
+
+type DimensionValues {
+  provenance: SubValueRelation       // how this value relates to its source
+  ownership: OwnershipFact           // consumption pattern
+  effect: EffectShape                // side effect classification
+  cost: CostBound                    // computation cost bound
+}
+
+// OwnershipFact replaces v2's post-hoc ownership analysis.
+// Computed at the binding site, not reconstructed.
+type OwnershipFact {
+  fan_out: Int                       // number of consumers
+  last_use: BindingId?               // which consumer is the last use (can move)
+  consumption: ConsumptionKind       // how this value is consumed
+}
+
+type ConsumptionKind =
+    Consumed                         // value is used and destroyed
+  | Read                             // value is read but not destroyed
+  | Projected                        // value is projected (field access)
+  | Threaded                         // value is threaded through (passed along)
+
+// CostBound is the symbolic cost of computing this value.
+// Read by complexity as a settled fact, not reconstructed.
+type CostBound =
+    Constant { value: Int }          // O(1)
+  | Linear { dimension: String }     // O(n) in some dimension
+  | Symbolic { expr: CostExpr }      // general symbolic expression
+  | Unknown                          // could not determine (diagnostic)
+
+// EffectShape classifies the side effect of computing this value.
+type EffectShape =
+    Pure                             // no side effects
+  | ServiceCall { transport: TransportKind }  // calls an external service
+  | Mutation { target: BindingRef }  // mutates a binding (fold accumulator)
+
+// =========================================================================
+// PART 2: Analysis views (read-only projections over SemanticGraph)
+// =========================================================================
+//
+// Complexity and ownership are NOT separate passes that walk the IR.
+// They are read-only projections that compose facts already on
+// SemanticNodes.
+//
+// The "complexity pass" becomes: for each recursive function, read
+// its descent evidence + cost bounds, compose via the cost algebra,
+// check that the composition proves termination.
+//
+// The "ownership pass" becomes: for each binding, read its fan_out
+// and last_use, determine move vs clone policy for the target language.
+//
+// If a projection needs a fact that isn't on SemanticNode, that's a
+// bug in the authored_to_semantic boundary — fix the boundary, not
+// the projection.
+
+// ComplexityView reads SemanticGraph, produces ComplexityReport.
+// It composes provenance and cost facts — it does NOT classify
+// or annotate. All classification happened in authored_to_semantic.
+fn complexity_view(graph: SemanticGraph) -> ComplexityReport
+
+// OwnershipView reads SemanticGraph, produces target-specific policy.
+// It reads fan_out and last_use — it does NOT count consumers.
+// All counting happened in authored_to_semantic.
+fn ownership_view(graph: SemanticGraph, target: LanguageSpec) -> OwnershipPolicy
+
+// =========================================================================
+// BOUNDARY: semantic_to_render
+// =========================================================================
+//
+// This boundary constructs a RenderPlan from SemanticGraph + LanguageSpec.
+// It resolves every target-specific question:
+// - How is this type rendered? (Rc<T>, *T, T, etc.)
+// - How is this value shared? (clone, borrow, move, copy)
+// - How is this expression rendered? (method call, free function, operator)
+// - What imports are needed?
+//
+// After this boundary, emission is string concatenation. No decisions.
+
+fn semantic_to_render(graph: SemanticGraph, spec: LanguageSpec) -> RenderPlan
+
+// =========================================================================
+// 1e. RenderPlan — what the emitter translates
+// =========================================================================
+//
+// The RenderPlan is the explicit "render descriptor" that the external
+// analysis identified as missing. It answers every question emit currently
+// guesses at:
+//
+// - Reference kind: value / function / type / variant
+// - Sharing strategy: move / clone / borrow / copy
+// - Type rendering: fully resolved target-language type string
+// - Import requirements: which modules/crates/packages are needed
+// - Expression rendering: how each expression form maps to target syntax
+
+type RenderPlan {
+  modules: List<RenderModule>
+  imports: List<ImportDecl>
+}
+
+type RenderModule {
+  items: List<RenderItem>
+}
+
+type RenderItem =
+    RenderType { shape: TypeRender }
+  | RenderFunction { sig: FunctionRender, body: ExprRender }
+  | RenderService { sig: FunctionRender, operations: List<OperationRender> }
+  | RenderData { name: String, value: ExprRender }
+
+// TypeRender is the fully resolved target-language type.
+// No more "look up type name, guess container, add Rc<>."
+type TypeRender {
+  target_text: String               // e.g., "Rc<Vec<Rc<Node>>>" or "[]Node" or "List[Node]"
+  value_context: ValueContext       // ConstantData | RuntimeValue | SpecWitness | Callable
+  sharing: SharingStrategy          // how this type is shared in the target language
+}
+
+type ValueContext =
+    ConstantData                     // compile-time constant
+  | RuntimeValue                     // heap-allocated runtime value
+  | SpecificationWitness             // algebra witness (phantom or omitted)
+  | CallableValue                    // function type
+
+type SharingStrategy =
+    Move                             // ownership transferred
+  | Clone                            // Rc::clone / deep copy
+  | Borrow                           // &T / pointer / reference
+  | Copy                             // bitwise copy (small values)
+  | GarbageCollected                 // Python/Go: runtime manages
+
+// ExprRender is the fully resolved expression rendering.
+// Every expression has a concrete rendering strategy — no fallback
+// lookups, no "check if this method is an algebra method."
+type ExprRender =
+    LiteralRender { text: String }
+  | VarRender { name: String, sharing: SharingStrategy }   // includes clone/move/borrow decision
+  | FieldAccessRender { receiver: ExprRender, field: String, access: FieldAccessKind }
+  | CallRender { callee: String, args: List<ExprRender> }
+  | MethodCallRender { receiver: ExprRender, method: String, args: List<ExprRender> }
+  | MatchRender { scrutinee: ExprRender, arms: List<ArmRender> }
+  | IfRender { condition: ExprRender, then_expr: ExprRender, else_expr: ExprRender? }
+  | LetRender { name: String, type_text: String, value: ExprRender, body: ExprRender }
+  | BlockRender { statements: List<ExprRender> }
+  | RecordLitRender { type_name: String, fields: List<FieldInitRender> }
+  | ListLitRender { elements: List<ExprRender> }
+  | BinOpRender { left: ExprRender, op: String, right: ExprRender }
+  | UnaryOpRender { op: String, operand: ExprRender }
+  | LambdaRender { params: List<ParamRender>, body: ExprRender }
+  | StringInterpRender { parts: List<StringPartRender> }
+  | ForEachRender { var_name: String, collection: ExprRender, body: ExprRender }
+  | IndexRender { collection: ExprRender, index: ExprRender }
+  | SliceRender { collection: ExprRender, start: ExprRender?, end: ExprRender? }
+  | CastRender { value: ExprRender, target_text: String }
+  | ReturnRender { value: ExprRender? }
+  | TcoLoopRender { params: List<ParamRender>, body: ExprRender }  // TCO-transformed
+
+// =========================================================================
+// PART 3: Expression fold (single structural visitor)
+// =========================================================================
+//
+// v2 has 5+ distinct ExprData walks capped by a ratchet. v3 provides
+// ONE fold API that all stages use. No stage writes its own expression
+// walker.
+//
+// The fold is parameterized by:
+// - An accumulator type A
+// - A function for each ExprSemantics variant
+//
+// This ensures that when ExprSemantics grows by one variant, every
+// consumer gets a compile error (non-exhaustive match) rather than
+// silently skipping the new case.
+
+fn fold_expr<A>(
+  node: SemanticNode,
+  init: A,
+  on_literal: fn(A, LiteralValue) -> A,
+  on_var: fn(A, BindingRef) -> A,
+  on_field_access: fn(A, SemanticNode, FieldRef) -> A,
+  on_call: fn(A, CalleeRef, List<SemanticNode>, DescentEvidence) -> A,
+  on_method_call: fn(A, SemanticNode, MethodRef, List<SemanticNode>) -> A,
+  on_match: fn(A, SemanticNode, List<MatchArm>) -> A,
+  on_if: fn(A, SemanticNode, SemanticNode, SemanticNode?) -> A,
+  on_let: fn(A, BindingDef, SemanticNode, SemanticNode) -> A,
+  on_block: fn(A, List<SemanticNode>) -> A,
+  on_record_lit: fn(A, TypeRef, List<FieldInit>) -> A,
+  on_list_lit: fn(A, List<SemanticNode>) -> A,
+  on_bin_op: fn(A, BinOp, SemanticNode, SemanticNode) -> A,
+  on_unary_op: fn(A, UnaryOpKind, SemanticNode) -> A,
+  on_lambda: fn(A, List<LambdaParam>, SemanticNode) -> A,
+  on_string_interp: fn(A, List<StringPart>) -> A,
+  on_for_each: fn(A, SemanticNode, BindingDef, SemanticNode) -> A,
+  on_index: fn(A, SemanticNode, SemanticNode) -> A,
+  on_slice: fn(A, SemanticNode, SemanticNode?, SemanticNode?) -> A,
+  on_cast: fn(A, SemanticNode, TypeShape) -> A,
+  on_return: fn(A, SemanticNode?) -> A
+) -> A
+
+// =========================================================================
+// PART 4: Pipeline
+// =========================================================================
+//
+// The full pipeline is:
+//
+//   source: String
+//     │
+//     ▼ tokenize
+//   tokens: List<Token>
+//     │
+//     ▼ parse
+//   authored: AuthoredGraph          (AuthoredNode trees)
+//     │
+//     ▼ authored_to_semantic         (inference + dimension computation)
+//   semantic: SemanticGraph           (SemanticNode trees with resolved types,
+//     │                                expr semantics, dimension values)
+//     │
+//     ├──▶ complexity_view           (read provenance + cost, compose, check)
+//     ├──▶ ownership_view            (read fan_out + last_use, derive policy)
+//     │
+//     ▼ semantic_to_render           (+ LanguageSpec → target-specific decisions)
+//   plan: RenderPlan                 (fully resolved rendering descriptors)
+//     │
+//     ▼ render                       (string concatenation — no decisions)
+//   files: List<TextFile>
+//
+// Each arrow is a pure function. Each type is a complete contract.
+// No stage reaches through an arrow to read prior-stage data.
+
+fn compile(sources: List<SourceFile>, target: LanguageSpec) -> PipelineResult {
+  // Stage 1: Tokenize (unchanged from v2)
+  let token_results = sources |> map(s => tokenize(source: s.content, file: s.path))
+
+  // Stage 2: Parse → AuthoredGraph
+  let authored = parse_to_authored(token_results: token_results)
+
+  // Stage 3: Inference + dimension computation → SemanticGraph
+  // THIS IS THE CRITICAL BOUNDARY. Everything downstream needs is
+  // computed here: resolved types, binding refs, field refs, method refs,
+  // descent evidence, provenance, ownership facts, effect shapes, cost bounds.
+  let semantic = authored_to_semantic(authored: authored)
+
+  // Stage 4: Analysis views (read-only projections)
+  let complexity = complexity_view(graph: semantic)
+  let ownership = ownership_view(graph: semantic, target: target)
+
+  // Stage 5: Render planning (semantic + spec → target-specific)
+  let plan = semantic_to_render(graph: semantic, spec: target)
+
+  // Stage 6: Rendering (string concatenation)
+  let files = render(plan: plan)
+
+  PipelineResult {
+    files: files,
+    diagnostics: semantic.diagnostics ++ complexity.diagnostics ++ ownership.diagnostics,
+    complexity: complexity,
+    ownership: ownership
+  }
+}
+
+// =========================================================================
+// PART 5: Bidirectional inference in authored_to_semantic
+// =========================================================================
+//
+// v2's inference is top-down: infer the type of an expression, then
+// check if it matches the expected type. This causes emit to compensate
+// for missing information (empty_map() type, fold accumulator type,
+// lambda parameter types).
+//
+// v3's inference is BIDIRECTIONAL: expected types propagate DOWN into
+// sub-expressions. When inferring `let x = empty_map()`, the expected
+// type from the binding's type annotation or downstream usage flows
+// into the call, resolving the map's key/value types without emit
+// having to guess.
+//
+// This is where the "missing bidirectional inference" from the external
+// analysis gets resolved. The authored_to_semantic boundary produces
+// COMPLETE type information — no downstream stage compensates.
+
+// Inference context flows both directions:
+type InferContext {
+  // Top-down: what type is expected at this position?
+  expected_type: TypeShape?
+
+  // Bottom-up: what type was inferred for this expression?
+  inferred_type: TypeShape
+
+  // Lateral: what bindings are in scope?
+  scope: ScopeTable
+}
+
+// ScopeTable replaces v2's string-keyed TypeEnv lookups.
+// Keyed by BindingId, not by name string.
+type ScopeTable {
+  bindings: Map<BindingId, BindingEntry>
+  types: Map<TypeId, TypeShape>
+}
+
+type BindingEntry {
+  id: BindingId
+  kind: BindingKind
+  resolved_type: TypeShape
+  dimensions: DimensionValues        // provenance, ownership, etc.
+  source_name: String                // for diagnostics only
+}
+
+// =========================================================================
+// PART 6: Bootstrap boundary
+// =========================================================================
+//
+// A self-hosted compiler without a reproducible fixed-point loop is
+// structurally unfinished. Bootstrap is architecture, not tooling.
+//
+// The bootstrap contract:
+// 1. v2 compiler compiles v3 stage0 (initial Rust output)
+// 2. v3 stage0 compiles v3 source → stage1
+// 3. stage1 compiles v3 source → stage2
+// 4. diff(stage1, stage2) = empty (fixed point)
+//
+// If the diff is non-empty, the bootstrap reports WHICH stage diverged
+// and WHY (per-stage structural diffs, not just "fixed point failed").
+
+type BootstrapResult {
+  converged: Bool
+  stage_diffs: List<StageDiff>       // per-stage comparison
+}
+
+type StageDiff {
+  stage_name: String
+  old_output_hash: String
+  new_output_hash: String
+  changed_items: List<String>        // which items differ
+}
+
+// =========================================================================
+// PART 7: What this spec does NOT define (deferred to v3.1+)
+// =========================================================================
+//
+// 1. Generic dimension mechanism (user-defined dimensions).
+//    v3 has a fixed DimensionValues struct. Generalization to a
+//    type-indexed dimension map is v3.1, after we validate that
+//    provenance + ownership + effects + cost work correctly as
+//    concrete instances.
+//
+// 2. Interpreter.
+//    v2's interpreter is correct and clean. It reads the same
+//    transport specs as the emitter. It can operate on SemanticGraph
+//    directly. No design change needed — just a new entry point.
+//
+// 3. Single emitter consolidation.
+//    v3's RenderPlan makes this straightforward: one render function
+//    reads the plan and produces text. Per-language differences are
+//    in LanguageSpec (data), not in emitter code. But the migration
+//    from 3 emitters to 1 is implementation work, not spec work.
+//
+// 4. Omni-emission (multi-target from single source).
+//    Falls out when the single emitter works. The pipeline runs
+//    once (through SemanticGraph), then semantic_to_render runs
+//    per-target. Analysis views run once. Only rendering is per-target.
+//
+// 5. Specific ExprSemantics variants and MethodRef details.
+//    The shapes above are representative, not exhaustive. The real
+//    list emerges from porting v2's 21 ExprData variants and their
+//    semantic enrichments.
