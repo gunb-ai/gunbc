@@ -1,11 +1,19 @@
 // v3 Specification
 //
-// The compiler is a DAG processor. Programs desugar to a small set of
-// behaviors that compose. Properties like cost, ownership, and effects
-// are contract dimensions — not separate passes.
+// Two ideas:
+//
+//   1. PHYSICS — programs desugar to a small set of behaviors that
+//      compose. The DAG is the closed world. All structure lives here.
+//
+//   2. LENSES — analyses (cost, ownership, effects, etc.) are
+//      lightweight views over the physics. They observe structure
+//      that already exists. If a lens needs information that isn't
+//      in the DAG, the physics is incomplete — fix the physics,
+//      not the lens.
 //
 // Design principle: keep behaviors intuitive enough that you can
 // explain each one in a sentence. Composition handles complexity.
+// Lenses are cheap because the physics is rich.
 
 module v3.spec
 
@@ -190,44 +198,120 @@ type Provenance =
 // CONTRACTS — what each node provides and requires
 // =========================================================================
 //
-// Every node has a contract. The compiler validates contracts the same
-// way gunb.ai/pkg/dag validates them: every import must be exported
-// by a prior node (wave-aware).
-//
-// Cost, ownership, and effects are CONTRACT DIMENSIONS — not separate
-// passes. They're declared/derived per node, and the compiler validates
-// them as part of contract checking.
+// Every node has a contract (same idea as gunb.ai/pkg/dag): what data
+// it exports and what data it imports. The compiler validates that
+// every import is exported by a prior node (wave-aware).
 
 type NodeContract {
-  // data flow
   exports: List<DataRef>          // typed data this node produces
   imports: List<DataRef>          // typed data this node requires
-
-  // cost
-  cost: CostExpr                  // how expensive this node is
-
-  // effect
-  effect: EffectShape             // what side effects this node has
-
-  // ownership
-  consumption: ConsumptionKind    // how this node uses its inputs
-
-  // provenance
-  provenance: Provenance          // where this node's output came from
-
-  // algebra (for simplification)
-  algebra: AlgebraProperty?       // algebraic laws this transform obeys
 }
 
-// Contract derivation per behavior (no heuristics — structural):
+// =========================================================================
+// LENSES — lightweight views over the physics
+// =========================================================================
 //
-// | Behavior | Cost | Effect | Consumption |
-// |----------|------|--------|-------------|
-// | Value | 0 | Pure | — (no inputs) |
-// | Transform | rule_cost(rule) | rule_effect(rule) | each input consumed once |
-// | Branch | cost(scrutinee) + max(path costs) | join(path effects) | scrutinee inspected, not consumed |
-// | Loop | bound × cost(body) | body effect | source iterated, init threaded |
-// | Bind | 0 | Pure | pass-through |
+// A lens is an observation: you point it at the DAG and you see
+// something. Cost, ownership, effects, purity, termination — these
+// are all lenses. They don't add information. They read information
+// that's already in the structure.
+//
+// The rule: if a lens needs information that isn't in the DAG, the
+// physics is incomplete. Fix the physics, not the lens. This is
+// exactly what went wrong in v2 — the complexity lens needed
+// provenance, but TypeBinding had thrown it away, so v2 built a
+// 5,000-line reconstruction engine instead of fixing the physics.
+//
+// A lens has three parts:
+//   - what you're looking at (the DAG, or a subgraph of it)
+//   - what you're measuring (cost, fan-out, effect, etc.)
+//   - how measurements compose (add for cost, max for branches, etc.)
+//
+// The compiler ships with built-in lenses. Users can define their own.
+// A user-defined lens (e.g., security classification) uses the same
+// mechanism as a built-in lens. If it can't, the mechanism is broken.
+
+// ---------------------------------------------------------------------------
+// Built-in lenses
+// ---------------------------------------------------------------------------
+
+// COST lens — "how expensive is this?"
+//   Looks at: each behavior node
+//   Measures: operation count / time bound
+//   Composes: add for sequence, multiply for loops, max for branches
+//
+//   Value:     0
+//   Transform: rule_cost(rule)
+//   Branch:    cost(scrutinee) + max(path costs)
+//   Loop:      bound × cost(body)
+//   Bind:      0
+
+// OWNERSHIP lens — "who uses this value, and how?"
+//   Looks at: edges (ports) between nodes
+//   Measures: fan-out (how many consumers), consumption kind
+//   Composes: count edges from each port
+//
+//   Fan-out = number of edges leaving a port
+//   Last use = edge with latest topological position → can move
+//   Exclusive branches = fork consumers don't double-count
+
+// EFFECT lens — "does this touch the outside world?"
+//   Looks at: each behavior node
+//   Measures: Pure / ServiceCall / Mutation
+//   Composes: lattice join (effects only escalate, never decrease)
+//
+//   Value:     Pure
+//   Transform: rule_effect(rule)
+//   Branch:    join(path effects)
+//   Loop:      body effect
+//   Bind:      Pure
+
+// PROVENANCE lens — "where did this value come from?"
+//   Looks at: each port
+//   Measures: Origin / SubValue / Computed / Selected / Accumulated
+//   Composes: follows edges backward to source
+//
+//   Already on every Port (it's part of the physics, not a separate
+//   observation). This is the one v2 got wrong — provenance was
+//   computed during inference then discarded. In v3, provenance is
+//   structural. It lives on the port. The lens just reads it.
+
+// TERMINATION lens — "does this finish?"
+//   Looks at: loops and recursive calls
+//   Measures: does every Loop have a Bound? Are all bounds finite?
+//   Composes: structural — the DAG is acyclic, Loops have bounds
+//
+//   In a well-formed DAG, termination is guaranteed by construction.
+//   The lens just confirms: no unbounded loops, no cycles.
+
+// ALGEBRA lens — "can this be simplified?"
+//   Looks at: adjacent transforms
+//   Measures: algebraic properties (involution, inverse, fusion)
+//   Composes: checks if adjacent operations simplify
+//
+//   reverse |> reverse = identity (involution)
+//   serialize |> deserialize = identity (inverse pair)
+//   map(f) |> map(g) = map(f.g) (functor fusion)
+
+// SPACE lens — "how much memory does this need?"
+//   Looks at: each behavior node
+//   Measures: allocation size
+//   Composes: add for sequence, max for branches, bound × body for loops
+//
+//   Analogous to cost lens but tracks allocation instead of time.
+
+// ---------------------------------------------------------------------------
+// User-defined lenses (v3.1)
+// ---------------------------------------------------------------------------
+//
+// A user defines a lens the same way:
+//   - what to measure (e.g., SecurityLevel = Public | Internal | Secret)
+//   - how it composes (e.g., lattice join — output ≥ max input)
+//   - what to check (e.g., Secret can't flow to a PublicAPI service call)
+//
+// The compiler points the lens at the DAG and enforces whatever it reveals.
+// Same mechanism as cost, ownership, effects. No compiler changes needed.
+// If user-defined lenses need special support, the mechanism is broken.
 
 // =========================================================================
 // L2: COMPOSED BEHAVIORS
@@ -255,24 +339,29 @@ type NodeContract {
 //   retry(3, action) = Loop(bound: 3, body: Branch(try action, [Ok → LoopSuccess, Err → LoopContinue]))
 
 // MapReduce = Loop whose accumulator Transform is associative + commutative
-//   → can be partitioned and parallelized (the compiler reads algebra from contract)
+//   → the algebra lens sees this, emitter can parallelize
 
 // Recursive function = Loop with structural descent bound
 //   fn f(tree) { ... f(child) ... } = Loop(source: tree, bound: TreeSize, body: Transform(f, child))
 
 // =========================================================================
-// PROPERTIES AS CONTRACT READINGS
+// PROPERTIES = LENSES POINTED AT THE PHYSICS
 // =========================================================================
 //
-// Every thesis property is a reading of contracts. Not a pass.
+// Every thesis property is a lens. Not a pass. Not an analysis.
+// Just a view over structure that already exists.
 //
-// Complexity = fold of node.contract.cost over the DAG
-// Ownership = reading of port fan-out (edge count) + node.contract.consumption
-// Purity = every node.contract.effect == Pure
-// Idempotence = every node.contract.algebra == LatticeMeet
-// Termination = every Loop has a Bound, DAG has no cycles
-// Parallelism = nodes with no shared edges are independent (waves)
-// Space bounds = fold of node.contract.cost with allocation tracking
+// Complexity    = cost lens pointed at the DAG
+// Ownership     = ownership lens pointed at edges
+// Purity        = effect lens → check if result is Pure
+// Idempotence   = algebra lens → check if all operations are lattice meets
+// Termination   = termination lens → check all Loops have bounds
+// Parallelism   = wave computation from dependency structure
+// Space bounds  = space lens pointed at the DAG
+// Security (v3.1) = user-defined lens pointed at the DAG
+//
+// If any of these needs a 5,000-line reconstruction engine, the physics
+// is missing information. Fix the physics.
 
 // =========================================================================
 // EMISSION
@@ -297,7 +386,8 @@ type NodeContract {
 //
 // 1. Every expression desugars to L1 behaviors. No exceptions.
 // 2. L2 behaviors compose L1. They never add new shapes.
-// 3. Properties are contract readings. Never separate passes.
+// 3. Properties are lens readings. Never separate passes.
+//    If a lens needs info that isn't in the DAG, fix the physics.
 // 4. New transforms add a rule to the table. Not a new behavior.
 // 5. Lambda = Bind + Define transform. Not a special behavior.
 // 6. if = Branch on Bool. match = Branch on any. Same behavior.
@@ -316,10 +406,11 @@ type NodeContract {
 //     Every L2 behavior can be rewritten as explicit L1 composition
 //     with identical semantics.
 //
-// T3: Contract sufficiency test
+// T3: Lens sufficiency test
 //     Every property the thesis claims (cost, ownership, effects,
-//     termination, purity, idempotence) is derivable from contracts
-//     alone. No graph walk. No heuristic. No reconstruction.
+//     termination, purity, idempotence) is readable by pointing a
+//     lens at the DAG. No reconstruction. No heuristics. If a lens
+//     can't read it, the physics is missing structure.
 //
 // T4: Lambda = function test
 //     Replace any lambda with an equivalent named function + Bind.
