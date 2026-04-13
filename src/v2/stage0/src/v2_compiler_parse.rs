@@ -1699,17 +1699,24 @@ if e.consumed.clone() {
 if has_err(r.err.clone()) {
                 return r.clone()
             }
+let extended = Rc::new(SourceSpan {
+    file: span.file.clone(),
+    start: span.start.clone(),
+    end: r.span.clone().end.clone(),
+});
 {
                 let __tco_0 = r.tokens.clone();
 let __tco_1 = v2_rt::concat(v2_rt::concat(acc, ".".to_string()), r.name.clone());
+let __tco_2 = extended;
 tokens = __tco_0;
 acc = __tco_1;
+span = __tco_2;
 continue;
 }
 } else {
             break Rc::new(NameResult {
     name: acc,
-    span: span,
+    span: span.clone(),
     tokens: tokens.clone(),
     err: None,
 });
