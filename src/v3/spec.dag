@@ -1,8 +1,8 @@
 // v3/spec.dag — Minimal compiler specification.
 //
 // This file IS the spec. It defines every type the v3 compiler operates on,
-// building up from structural axioms to pipeline contracts. If it compiles,
-// the spec is internally consistent.
+// building up from first principles to pipeline contracts. Each layer
+// depends only on prior layers. Nothing is axiomatic that can be derived.
 //
 // THESIS (from THESIS.md): gunbc is a causal engine. Its job is to validate
 // that a program has a consistent cause-and-effect flow from source to drain.
@@ -15,77 +15,201 @@
 // Implementation follows mechanically from these types.
 //
 // Layers (each depends only on prior layers):
-//   0  Structural axioms      — Classical, Product, Coproduct
-//   1  Algebraic foundations   — BoundedLattice, Monoid, Ordering
-//   2  The DAG IR              — Node, Edge (two designs explored)
-//   3  Edge vocabulary         — SubValueRelation, UsageEdge
-//   4  Dimension mechanism     — Dimension<T>, built-in dimensions
-//   5  Proof strategies        — fold + lattice + gate
-//   6  Pipeline contracts      — parse / resolve / prove / emit
+//
+//   0  Truth + Finiteness    — Classical, the closure axiom
+//   1  Composition           — Function (→), Product (×), Coproduct (+)
+//   2  Structure + Iteration — recursive types, fold/descend/repeat
+//   3  Observed patterns     — BoundedLattice, Monoid (named regularities)
+//   4  The DAG IR            — Node, Edge (two designs explored)
+//   5  Edge vocabulary       — SubValueRelation, UsageEdge
+//   6  Dimension mechanism   — Dimension<T>, built-in dimensions
+//   7  Proof strategies      — fold + lattice + gate
+//   8  Pipeline contracts    — parse / resolve / prove / emit
+//
+// The derivation order matters. Product and Coproduct are NOT axioms —
+// they are the two canonical ways to compose truth values. BoundedLattice
+// is NOT a foundation — it is a pattern OBSERVED across many finite
+// structures. Getting this right means user-defined dimensions and
+// emission to Verilog/SPICE/SQL/etc. all fall out of the same derivation.
 
 module v3.spec
 
 
 // =========================================================================
-// LAYER 0: STRUCTURAL AXIOMS
+// LAYER 0: TRUTH + FINITENESS
 //
-// The irreducible primitives from which everything composes.
-// These exist before any .dag file can be parsed — parsing itself
-// produces Product and Coproduct nodes.
+// The single primitive and the single axiom.
 //
-// Authority: constructors.dag, logic.dag (std/)
+// Primitive: Classical — a proposition holds or doesn't. Two-valued
+// truth is the smallest unambiguous unit of meaning in digital computing.
+// Everything above it — String, Int, List, services — is explicit
+// composition built on top of this.
+//
+// Axiom: finiteness (the closure axiom). All data is representable
+// in a finite number of bits. The largest value is Word64. There is
+// no infinity. This is what makes the system decidable — every type
+// has a finite number of inhabitants, every computation has a finite
+// bound, every proof is constructive.
+//
+// Together: truth + finiteness = a closed system in which every
+// property is decidable. This is what makes the causal engine possible.
+//
+// Authority: MODELING.md §Foundational primitive, THESIS.md §Why this works
 // =========================================================================
 
-// Two-valued truth. The smallest unambiguous primitive in digital computing.
-// Bool, Bit, and all integers are composed from this.
+// The primitive. A proposition holds (True) or doesn't (False).
+// Isomorphic to Bit, Bool. Everything numeric is composed from this:
+//   Bit = Classical
+//   Byte = (Classical, Classical, Classical, Classical, ...)  (8 times)
+//   Word64 = 64 × Classical
+//   Int = OrderedRing<Word64>
+//
+// The notation "True | False" presupposes the ability to say "one or
+// the other" — but the CONCEPT of one-or-the-other (disjunction) is
+// grounded in truth, not the other way around. We can describe Classical
+// without Coproduct: "there exists exactly one value, or its negation."
+// The syntax borrows from coproduct notation for readability.
 type Classical = True | False
 
-// Product: all children hold simultaneously (AND, record, struct).
-// Denotational: |A x B| = |A| * |B|
+// The closure axiom. Not a type — a constraint on all types.
+// Every type in the system has finitely many inhabitants.
+// The bound is machine-determined: 2^64 for the largest scalar.
+//
+// This is declared as a named constant rather than left implicit,
+// because it is load-bearing: termination proofs, complexity bounds,
+// exhaustive enumeration, and inhabitant generation all depend on it.
+data max_inhabitants: Int = 9223372036854775807
+
+
+// =========================================================================
+// LAYER 1: COMPOSITION
+//
+// Given truth (Layer 0), how do truths compose?
+//
+// Three irreducible modes, corresponding to the three connectives
+// of classical logic. These are DERIVED from truth — they describe
+// what happens when you have MULTIPLE propositions:
+//
+//   Function (→):  "if A holds, then B holds" — implication / causation
+//   Product (×):   "A holds AND B holds"      — conjunction
+//   Coproduct (+): "A holds OR B holds"        — disjunction
+//
+// These are not arbitrary choices. In any system with truth values
+// and finiteness, the cardinality arithmetic is:
+//   |A → B| = |B|^|A|   (exponential — all possible mappings)
+//   |A × B| = |A| · |B| (multiplication — all combinations)
+//   |A + B| = |A| + |B| (addition — disjoint alternatives)
+//
+// Exponentiation, multiplication, addition on natural numbers.
+// The type constructors ARE the arithmetic of finite cardinalities.
+// This is why they show up in every target: Verilog gates are AND/OR,
+// SQL joins are products, HTTP alternatives are coproducts, SPICE
+// parallel paths are sums. The structure is universal because
+// arithmetic is universal.
+//
+// Authority: MODELING.md §Foundational primitive, constructors.dag (std/)
+// =========================================================================
+
+// Function: A → B. "Given A, produce B." The directed edge in the
+// causal graph. This is the most fundamental composition — without it,
+// there is no causation, no computation, no dependencies.
+//
+// In the DAG IR, every edge IS a function application:
+// the source node produces a value, the edge carries it, the target
+// node consumes it. The program IS a graph of function applications.
+//
+// Function is a language primitive (not a declared type). We note it
+// here for completeness in the derivation. The syntax is:
+//   fn(A) -> B       (named function)
+//   (a) => expr      (lambda / anonymous function)
+
+// Product: all children hold simultaneously.
+// The type of "and" composition.
+//
+// |A × B| = |A| · |B|
+//
+// In concrete terms: a record, a struct, a tuple. Every field holds
+// a value. The product of a 3-field record with fields of cardinality
+// 2, 5, 3 has 2 × 5 × 3 = 30 inhabitants.
+//
+// In Verilog: parallel wires (all carry signals).
+// In SQL: a row (all columns have values).
+// In REST: a request body (all fields present).
+// In SPICE: parallel components (all conduct).
 type Product
 
-// Coproduct: exactly one child holds (OR, enum, tagged union).
-// Denotational: |A + B| = |A| + |B|
+// Coproduct: exactly one child holds.
+// The type of "or" composition.
+//
+// |A + B| = |A| + |B|
+//
+// In concrete terms: an enum, a tagged union, a sum type. Exactly one
+// variant is selected. The coproduct of variants with cardinalities
+// 2, 5, 3 has 2 + 5 + 3 = 10 inhabitants.
+//
+// In Verilog: a mux (one input selected).
+// In SQL: a UNION (one source per row).
+// In REST: alternative response types (200 | 404 | 500).
+// In SPICE: switched paths (one active).
 type Coproduct
 
-// Presence annotation on binding sites. Orthogonal to constructors.
+// Cardinality: presence annotation on binding sites.
+// Required = exactly 1 value. Optional = 0 or 1 value.
+// Optional is NOT a wrapper type — it is a property of the BINDING,
+// not the value. |Optional(A)| = |A| + 1 (the +1 is absence).
 type Cardinality = Required | Optional
 
 
 // =========================================================================
-// LAYER 1: ALGEBRAIC FOUNDATIONS
+// LAYER 2: STRUCTURE + ITERATION
 //
-// The abstract structures the compiler needs for dimension composition
-// and proof construction. We take only what's required — not the full
-// hierarchy (Ring, Field, etc.) which serves user-program type algebra.
+// Given truth (Layer 0) and composition (Layer 1), what structures
+// can we build, and how do we traverse them?
 //
-// Authority: algebra.dag, computation.dag (std/)
+// Recursive structure: types that reference themselves. List<T> is a
+// coproduct where one variant contains T and another List<T>. Tree<T>
+// is a product where one field is List<Tree<T>>. These are still
+// finite (closure axiom) — a List<T> has at most max_inhabitants
+// elements.
+//
+// Bounded iteration: the three finite ways to traverse recursive
+// structures. These are the ONLY forms of repetition in the system.
+// There is no while(true), no goto, no unbounded recursion. Every
+// computation terminates because every iteration is bounded by the
+// structure it traverses.
+//
+//   fold:    traverse a collection (List, Set, Map) — bounded by |collection|
+//   descend: traverse a tree via child accessors    — bounded by |tree|
+//   repeat:  iterate a fixed number of times        — bounded by N (or Word64)
+//
+// These three + composition cover all computable functions on finite
+// data. The system is Turing-complete up to the Word64 bound (which
+// means: 292 years at 1ns/iteration — "forever" for any practical
+// purpose, but still finite and provably terminating).
+//
+// Authority: THESIS.md §Why this works, computation.dag (std/)
 // =========================================================================
 
-// The workhorse. Every correctness dimension inhabits BoundedLattice.
-// meet: conservative merge at join points (weaker wins)
-// join: optimistic merge (stronger wins)
-// top: most permissive / best evidence
-// bottom: most restrictive / fail-closed default
-type BoundedLattice<T> {
-  bottom: T
-  top: T
-  meet: fn(T, T) -> T
-  join: fn(T, T) -> T
-}
+// Recursive type shapes. A type references itself through these forms.
+// The compiler reads these to know WHERE descent is possible.
+type RecursionShape
+  = DirectRecursion              // field type = parent type (tree child)
+  | ListRecursion                // field type = List<parent type>
+  | OptionalRecursion            // field type = parent type?
+  | SetRecursion                 // field type = Set<parent type>
+  | MapValueRecursion            // field type = Map<K, parent type>
 
-// Sequential composition of effects, costs, evidence.
-// op: associative binary operation
-// identity: op(identity, x) == x == op(x, identity)
-type Monoid<T> {
-  identity: T
-  op: fn(T, T) -> T
-}
-
-// Three-valued comparison result. Used for evidence ordering.
-type Ordering = Less | Equal | Greater
+// The three iteration primitives. Every computation lowers to one
+// of these. The compiler proves termination by showing every recursive
+// function is an instance of fold, descend, or repeat.
+type IterationPrimitive
+  = Fold                         // bounded by |collection|
+  | Descend                      // bounded by |tree|
+  | Repeat                       // bounded by explicit N
 
 // Rate of decrease per recursive step. Distinguishes O(n) from O(log n).
+// fold with skip(1) = UnitShrink → O(n).
+// repeat with n/2 = ProportionalShrink → O(log n).
 type ShrinkFactor
   = UnitShrink                       // decrease by 1 (list skip, tree child)
   | ConstantShrink { amount: Int }   // decrease by k (skip(k))
@@ -93,7 +217,79 @@ type ShrinkFactor
 
 
 // =========================================================================
-// LAYER 2: THE DAG IR
+// LAYER 3: OBSERVED PATTERNS (algebraic structures)
+//
+// Given Layers 0-2, certain patterns recur. A Monoid is not a
+// primitive — it is a REGULARITY observed across many concrete types:
+//
+//   (Int, +, 0)           is a monoid
+//   (String, concat, "")  is a monoid
+//   (List, append, [])    is a monoid
+//   (Bool, AND, true)     is a monoid
+//
+// Naming these patterns lets the compiler reason generically.
+// "This operation is associative with an identity element" is a
+// structural fact that enables fold optimization, parallel reduction,
+// and algebraic simplification — regardless of what the specific
+// type is.
+//
+// BoundedLattice is the pattern most critical to the compiler:
+// every correctness dimension (provenance, ownership, effects,
+// user-defined) exhibits lattice structure. But the lattice is not
+// a foundation — it is something the compiler DISCOVERS in std/
+// declarations. User-defined dimensions that declare a lattice get
+// the same treatment as built-in ones. No special compiler support.
+//
+// This is why these patterns are at Layer 3, not Layer 0: they
+// are consequences of Layers 0-2, not prerequisites. The compiler
+// reads them from data — it does not contain them as axioms.
+//
+// Authority: algebra.dag (std/), THESIS.md §Concept unification
+// =========================================================================
+
+// BoundedLattice: the workhorse for dimension composition.
+//
+// Any finite partial order automatically has meets (greatest lower
+// bound) and joins (least upper bound). In a finite set, you can
+// always find them by enumeration. So every finite type with a
+// natural ordering IS a bounded lattice — the lattice structure
+// is a consequence of finiteness + order, not an independent axiom.
+//
+// For the compiler, the lattice operations mean:
+//   meet: conservative merge at control-flow join points (weaker wins)
+//   join: optimistic merge (stronger wins)
+//   top:  most permissive / best evidence / strongest claim
+//   bottom: most restrictive / fail-closed / no information
+type BoundedLattice<T> {
+  bottom: T
+  top: T
+  meet: fn(T, T) -> T
+  join: fn(T, T) -> T
+}
+
+// Monoid: the pattern for sequential composition.
+//
+// When the compiler composes effects along a path (operation A then
+// operation B), it needs an associative combiner with an identity.
+// This is a monoid. The compiler doesn't know WHAT it's combining —
+// it reads the monoid from the dimension declaration and applies it.
+//
+// Why associativity matters: it means (A then B) then C = A then
+// (B then C). The compiler can regroup without changing meaning.
+// This is what enables algebraic simplification (THESIS §KF-2).
+type Monoid<T> {
+  identity: T
+  op: fn(T, T) -> T
+}
+
+// Ordering: the three-valued comparison result.
+// Derived from the total order on natural numbers (Layer 0 + finiteness).
+// Used for evidence comparison in termination proofs.
+type Ordering = Less | Equal | Greater
+
+
+// =========================================================================
+// LAYER 4: THE DAG IR
 //
 // The graph substrate. A .dag program IS a dependency graph. The IR must
 // make every dependency an explicit edge, every binding an explicit site
@@ -143,7 +339,7 @@ type ParamRef { func_id: NodeId, index: Int }
 
 
 // =========================================================================
-// DESIGN A: LEAN UNIVERSAL NODE
+// DESIGN A: LEAN UNIVERSAL NODE (Layer 4a)
 //
 // One node type. All structural relationships are edges. Uniform traversal
 // is trivial: walk node.edges. The NodeKind discriminator carries only
@@ -245,7 +441,7 @@ type TypeShape
 
 
 // =========================================================================
-// DESIGN B: TYPED NODES
+// DESIGN B: TYPED NODES (Layer 4b)
 //
 // Each syntactic form is its own type. No unused fields. Precise types
 // enable exhaustive pattern matching on the IR without runtime checks.
@@ -340,7 +536,7 @@ type FieldPattern { name: String, binding: String }
 
 
 // =========================================================================
-// LAYER 3: EDGE VOCABULARY
+// LAYER 5: EDGE VOCABULARY
 //
 // How a target value relates to a source value along an edge. This is
 // the key insight from the v2 branch analysis: SubValueRelation already
@@ -349,6 +545,7 @@ type FieldPattern { name: String, binding: String }
 // and then read it downstream — no reconstruction, no heuristics.
 //
 // Authority: induction.dag (std/), binding-model-proposal.md
+// Depends on: Layer 2 (ShrinkFactor), Layer 4 (NodeId, FieldRef, ParamRef)
 // =========================================================================
 
 // SubValueRelation: the PROVENANCE dimension and the structural edge
@@ -475,7 +672,7 @@ type UsageEdge
 
 
 // =========================================================================
-// LAYER 4: DIMENSION MECHANISM
+// LAYER 6: DIMENSION MECHANISM
 //
 // The generic DECLARE / COMPUTE / CARRY / ENFORCE pattern.
 //
@@ -488,6 +685,7 @@ type UsageEdge
 // The compiler carries it generically. Cost of change: one file.
 //
 // Authority: dimensions-design.md (src/v2/), THESIS.md §Correctness dimensions
+// Depends on: Layer 3 (BoundedLattice), Layer 5 (SVR, UsageEdge)
 // =========================================================================
 
 // The dimension contract. Any type T that satisfies this contract can be
@@ -544,7 +742,7 @@ type SuggestedFix {
 // BUILT-IN DIMENSION 1: PROVENANCE (termination)
 //
 // SubValueRelation IS the provenance dimension. It's already defined
-// in Layer 3. The lattice:
+// in Layer 5. The lattice:
 //   bottom = Unknown (fail-closed, no information)
 //   top    = StrictSubValue (provably smaller)
 //   meet   = meet_svr (conservative merge)
@@ -685,7 +883,7 @@ fn is_idempotent(shape: EffectShape) -> Bool {
 
 
 // =========================================================================
-// LAYER 5: PROOF STRATEGIES
+// LAYER 7: PROOF STRATEGIES
 //
 // The compiler constructs proofs. It doesn't know WHAT it's proving — it
 // reads proof strategies from std/ and executes them generically.
@@ -703,6 +901,8 @@ fn is_idempotent(shape: EffectShape) -> Bool {
 // user-defined ones (security classification, regulatory compliance, etc.).
 //
 // Authority: compiler-ideal-vs-actual.md, THESIS.md §Concept unification
+// Depends on: Layer 2 (fold, iteration), Layer 3 (BoundedLattice, Monoid),
+//             Layer 5 (SVR), Layer 6 (dimensions)
 // =========================================================================
 
 // A graph to traverse. The proof mechanism doesn't know what nodes and
@@ -926,7 +1126,7 @@ fn check_workflow_effect(composed: EffectShape, declared_idempotent: Bool) -> Pr
 
 
 // =========================================================================
-// LAYER 6: PIPELINE CONTRACTS
+// LAYER 8: PIPELINE CONTRACTS
 //
 // Four stages. Each a pure function with a typed contract.
 // The pipeline is a composition: emit(prove(resolve(parse(source)))).
@@ -1189,9 +1389,30 @@ type EmitResult {
 // =========================================================================
 // SPEC SUMMARY
 //
-// Total types declared:  ~60
-// Total functions:       ~15
-// Total lines:           ~950
+// 9 layers, each derived from prior layers:
+//
+//   0  Truth + Finiteness    — Classical, max_inhabitants
+//   1  Composition           — Function (→), Product (×), Coproduct (+)
+//   2  Structure + Iteration — RecursionShape, fold/descend/repeat, ShrinkFactor
+//   3  Observed patterns     — BoundedLattice, Monoid, Ordering
+//   4  The DAG IR            — Node, Edge (Designs A and B)
+//   5  Edge vocabulary       — SubValueRelation, UsageEdge
+//   6  Dimension mechanism   — Dimension<T>, provenance, ownership, effects
+//   7  Proof strategies      — ProofStrategy, termination, ownership, effects
+//   8  Pipeline contracts    — parse / resolve / prove / emit
+//
+// The derivation order encodes the thesis:
+//   - Truth is primitive; composition is derived from truth.
+//   - Product/Coproduct are not axioms — they are truth composition
+//     (cardinality arithmetic: ×, +, ^).
+//   - Algebraic patterns (lattice, monoid) are not foundations — they
+//     are regularities OBSERVED in finite structures. The compiler
+//     discovers them in std/ declarations, not as built-in knowledge.
+//   - User-defined dimensions work identically to built-in ones
+//     because both are instances of the same Layer 3 patterns.
+//   - Emission to ANY target (Rust, Verilog, SQL, SPICE, English)
+//     works because Product/Coproduct/Function are universal — they
+//     are arithmetic, and every target has arithmetic.
 //
 // vs v2:
 //   32 .dag files, 38,078 lines, 18-field Node, 22-variant ExprData,
@@ -1200,7 +1421,7 @@ type EmitResult {
 //
 // What this spec eliminates:
 //   - Node.name (string identity → NodeId)
-//   - Connective enum (→ TypeShape on declarations)
+//   - Connective enum (→ TypeShape on declarations, Layer 1 Product/Coproduct)
 //   - VarBindingKind (→ edge position: parameter vs body)
 //   - Separate ownership pass (→ dimension on bindings)
 //   - classify_binding_provenance, classify_let_value,
@@ -1208,6 +1429,7 @@ type EmitResult {
 //     classify_self_call_evidence (→ read SVR from edge)
 //   - Per-dimension proof code (→ generic ProofStrategy executor)
 //   - String-keyed tables (→ NodeId-keyed tables)
+//   - Algebraic axioms in Layer 0 (→ derived patterns in Layer 3)
 //
 // What this spec preserves:
 //   - SubValueRelation as the edge vocabulary (from std/induction.dag)
