@@ -264,8 +264,24 @@ pub fn method_size_effect(method_semantics: Option<Rc<MethodSemantics>>) -> Opti
 }
 }
 
+pub fn method_callback_element_position(method_semantics: Option<Rc<MethodSemantics>>) -> Option<i64> {
+    match method_semantics.as_deref().cloned() {
+    Some(MethodSemantics::AlgebraMethodSemantics { algebra_template: at, .. }) => match at.clone() {
+    Some(template) => template.callback_element_position.clone(),
+    None => None,
+},
+    _ => None,
+}
+}
+
 pub fn iteration_element_name(method_semantics: Option<Rc<MethodSemantics>>, lambda: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<String> {
-    lambda_param_names_at(lambda, si).last().cloned()
+    {
+        let params = lambda_param_names_at(lambda, si);
+match method_callback_element_position(method_semantics) {
+    Some(pos) => params.get(pos.clone() as usize).cloned(),
+    None => None,
+}
+}
 }
 
 pub fn proof_has_non_descending_cycle(proof: Rc<TerminationProof>, members: Rc<Vec<String>>, edges: Rc<Vec<Rc<ProofEdge>>>) -> bool {
@@ -1337,6 +1353,109 @@ pub fn is_list_shrink_expr(expr: &Rc<Node>, param_name: String, si: Rc<HashMap<S
 }
 }
 
+pub fn is_generalized_shrink(expr: &Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+    match (*expr.expr_data.clone()).clone() {
+    ExprData::ExprMethodCall { method_semantics: ms, .. } => {
+        let is_shrink = match method_size_effect(ms.clone()) {
+    Some(CollectionSizeEffect::ShrinkEffect) => true,
+    _ => false,
+};
+(is_shrink && match method_arg_nodes(expr.clone()).first().cloned() {
+    Some(arg_node) => match (*arg_value(&arg_node).expr_data.clone()).clone() {
+    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { value: n, .. } = value.as_ref() else { unreachable!() }; (n.clone() > 0) },
+    _ => false,
+},
+    None => false,
+})
+},
+    _ => false,
+}
+}
+
+pub fn list_passthrough_inner(expr: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
+    parser_passthrough_state_expr(&expr, &si)
+}
+
+pub fn is_list_passthrough_call(expr: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+    (list_passthrough_inner(expr, si) != None)
+}
+
+pub fn list_passthrough_inner_arg(expr: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
+    list_passthrough_inner(expr, si)
+}
+
+pub fn is_tokens_consuming_call(expr: &Rc<Node>, param_name: String, vars: Rc<HashMap<String, bool>>, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+    match (*expr.expr_data.clone()).clone() {
+    ExprData::ExprCall { .. } => match consuming_tokens_arg(expr.clone(), si.clone()) {
+    Some(tokens_arg) => is_tokens_input_expr(tokens_arg.clone(), param_name, vars, si.clone()),
+    None => false,
+},
+    _ => false,
+}
+}
+
+pub fn consuming_tokens_arg(expr: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
+    expr.children.clone().iter().cloned().fold(None, |acc: _, child: Rc<Node>| match acc.clone() {
+    Some(_) => acc.clone(),
+    None => match arg_name_at(child.clone(), si.clone()) {
+    Some(name) => if (name.clone().as_str() == "tokens".to_string().as_str()) {
+        Some(arg_value(&child))
+    } else {
+        None
+    },
+    None => None,
+},
+})
+}
+
+pub fn is_tokens_input_expr(mut expr: Rc<Node>, mut param_name: String, mut vars: Rc<HashMap<String, bool>>, mut si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+    loop {
+        match (*expr.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => { let vname = expr_var_name_at(expr.clone(), si.clone());
+break ((vname.clone().as_str() == param_name.clone().as_str()) || set_has(vars, vname.clone())); },
+    ExprData::ExprFieldAccess { .. } => { let field = field_access_field_at(expr.clone(), si.clone());
+if (field.as_str() == param_name.clone().as_str()) {
+            break true;
+} else {
+            let base = field_access_base(expr.clone());
+match (*base.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => { let bname = expr_var_name_at(base.clone(), si.clone());
+break ((bname.clone().as_str() == param_name.clone().as_str()) || set_has(vars, bname.clone())); },
+    _ => { break false; },
+}
+} },
+    ExprData::ExprMethodCall { method_semantics: ms, .. } => { match method_size_effect(ms.clone()) {
+    Some(CollectionSizeEffect::ShrinkEffect) => { {
+            let __tco_0 = method_receiver(expr);
+expr = __tco_0;
+continue;
+} },
+    _ => { break false; },
+} },
+    ExprData::ExprCall { .. } => { if is_list_passthrough_call(expr.clone(), si.clone()) {
+            match list_passthrough_inner_arg(expr.clone(), si.clone()) {
+    Some(inner) => { {
+                let __tco_0 = inner.clone();
+expr = __tco_0;
+continue;
+} },
+    None => { break false; },
+}
+} else {
+            match consuming_tokens_arg(expr.clone(), si.clone()) {
+    Some(tokens_arg) => { {
+                let __tco_0 = tokens_arg.clone();
+expr = __tco_0;
+continue;
+} },
+    None => { break false; },
+}
+} },
+    _ => { break false; },
+}
+}
+}
+
 pub fn is_descent_arg(expr: &Rc<Node>, param_name: &String, descent_vars: Rc<HashMap<String, bool>>, check_child: bool, check_list: bool, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
@@ -1511,7 +1630,19 @@ let field = field_access_field_at(val.clone(), si.clone());
 },
     _ => false,
 };
-let val_is_descent = ((((((is_direct_descent || is_descent_var) || is_option_descent) || is_match_descent) || is_wrapped_descent) || is_extraction_descent) || is_children_list);
+let is_passthrough_descent = if is_list_passthrough_call(val.clone(), si.clone()) {
+                match list_passthrough_inner_arg(val.clone(), si.clone()) {
+    Some(inner) => (((check_child.clone() && is_child_descent_expr(&inner, &param_name, &vars, &si)) || (check_list.clone() && is_list_shrink_expr(&inner, param_name.clone(), si.clone()))) || match (*inner.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => set_has(vars.clone(), expr_var_name_at(inner.clone(), si.clone())),
+    _ => false,
+}),
+    None => false,
+}
+            } else {
+                false
+            };
+let is_consuming_helper = (check_list.clone() && is_tokens_consuming_call(&val, param_name.clone(), vars.clone(), &si));
+let val_is_descent = ((((((((is_direct_descent || is_descent_var) || is_option_descent) || is_match_descent) || is_wrapped_descent) || is_extraction_descent) || is_children_list) || is_passthrough_descent) || is_consuming_helper);
 let next_vars = if val_is_descent {
                 v2_rt::rc_map_insert(vars.clone(), let_binding_name_at(body.clone(), si.clone()), true)
             } else {
@@ -1825,7 +1956,14 @@ match inner_ev.clone() {
 }
 }
                         } else {
-                            DescentEvidence::DescentUnknown
+                            if is_list_passthrough_call(arg_expr.clone(), si.clone()) {
+                                match list_passthrough_inner_arg(arg_expr.clone(), si.clone()) {
+    Some(inner) => classify_self_call_evidence(&inner, &param_name, &descent_vars, check_child.clone(), check_list.clone(), &si),
+    None => DescentEvidence::DescentUnknown,
+}
+                            } else {
+                                DescentEvidence::DescentUnknown
+                            }
                         }
                     },
     ExprData::ExprFieldAccess { .. } => {
@@ -1836,12 +1974,32 @@ match (*base.expr_data.clone()).clone() {
 if (set_has(descent_vars.clone(), bname.clone()) || (bname.clone().as_str() == param_name.clone().as_str())) {
                                 DescentEvidence::Strict
                             } else {
-                                DescentEvidence::DescentUnknown
+                                {
+                                    let field = field_access_field_at(arg_expr.clone(), si.clone());
+if (field.as_str() == param_name.clone().as_str()) {
+                                        DescentEvidence::NonIncreasing
+                                    } else {
+                                        DescentEvidence::DescentUnknown
+                                    }
+}
                             }
 },
     _ => DescentEvidence::DescentUnknown,
 }
 },
+    ExprData::ExprMethodCall { method_semantics: ms, .. } => if is_generalized_shrink(&arg_expr, si.clone()) {
+                        {
+                            let recv = method_receiver(arg_expr.clone());
+let recv_ev = classify_self_call_evidence(&recv, &param_name, &descent_vars, check_child.clone(), check_list.clone(), &si);
+match recv_ev {
+    DescentEvidence::Strict => DescentEvidence::Strict,
+    DescentEvidence::NonIncreasing => DescentEvidence::Strict,
+    DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
+}
+}
+                    } else {
+                        DescentEvidence::DescentUnknown
+                    },
     _ => DescentEvidence::DescentUnknown,
 }
                 }
@@ -1901,7 +2059,7 @@ let inner_p = match (*inner.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => (expr_var_name_at(inner.clone(), si.clone()).as_str() == param_name.clone().as_str()),
     _ => false,
 };
-((inner_d.clone() || inner_v.clone()) || inner_p.clone())
+((inner_d.clone() || inner_v.clone()) || inner_p)
 }
             } else {
                 false
@@ -1910,7 +2068,7 @@ let is_children_list = match (*val.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
                 let base = field_access_base(val.clone());
 let field = field_access_field_at(val.clone(), si.clone());
-(is_children_list_field(field.clone()) && match (*base.expr_data.clone()).clone() {
+(is_children_list_field(field) && match (*base.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
                     let bname = expr_var_name_at(base.clone(), si.clone());
 ((bname.clone().as_str() == param_name.clone().as_str()) || set_has(vars.clone(), bname.clone()))
@@ -1920,7 +2078,19 @@ let field = field_access_field_at(val.clone(), si.clone());
 },
     _ => false,
 };
-let next_vars = if ((((((is_direct.clone() || is_var.clone()) || is_option.clone()) || is_match_descent.clone()) || is_wrapped.clone()) || is_extraction.clone()) || is_children_list.clone()) {
+let is_passthrough = if is_list_passthrough_call(val.clone(), si.clone()) {
+                match list_passthrough_inner_arg(val.clone(), si.clone()) {
+    Some(inner) => (((check_child.clone() && is_child_descent_expr(&inner, &param_name, &vars, &si)) || (check_list.clone() && is_list_shrink_expr(&inner, param_name.clone(), si.clone()))) || match (*inner.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => set_has(vars.clone(), expr_var_name_at(inner.clone(), si.clone())),
+    _ => false,
+}),
+    None => false,
+}
+            } else {
+                false
+            };
+let is_consuming_helper = (check_list.clone() && is_tokens_consuming_call(&val, param_name.clone(), vars.clone(), &si));
+let next_vars = if ((((((((is_direct || is_var) || is_option) || is_match_descent) || is_wrapped) || is_extraction) || is_children_list) || is_passthrough) || is_consuming_helper) {
                 v2_rt::rc_map_insert(vars.clone(), let_binding_name_at(body.clone(), si.clone()), true)
             } else {
                 vars.clone()
@@ -2033,68 +2203,7 @@ merge_optional_evidence(own_evidence, child_evidence)
     vars: vars.clone(),
 }), |acc: Rc<EvidenceBlockAcc>, stmt: Rc<Node>| {
                 let stmt_ev = collect_evidence_incremental(&stmt, &func_name, &param_name, &acc.vars.clone(), check_child.clone(), check_list.clone(), branching_only.clone(), &si);
-let next_vars = match (*stmt.expr_data.clone()).clone() {
-    ExprData::ExprLet => {
-                    let val = let_value(stmt.clone());
-let is_direct = ((check_child.clone() && is_child_descent_expr(&val, &param_name, &acc.vars.clone(), &si)) || (check_list.clone() && is_list_shrink_expr(&val, param_name.clone(), si.clone())));
-let is_var = match (*val.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => set_has(acc.vars.clone(), expr_var_name_at(val.clone(), si.clone())),
-    _ => false,
-};
-let is_option = is_if_option_descent(&val, param_name.clone(), acc.vars.clone(), check_child.clone(), check_list.clone(), &si);
-let is_match_descent = is_match_option_descent(&val, &param_name, acc.vars.clone(), check_child.clone(), check_list.clone(), &si);
-let is_wrapped = if is_tree_size_preserving_wrapper(&val, si.clone()) {
-                        {
-                            let inner = wrapper_inner_arg(val.clone());
-let inner_d = ((check_child.clone() && is_child_descent_expr(&inner, &param_name, &acc.vars.clone(), &si)) || (check_list.clone() && is_list_shrink_expr(&inner, param_name.clone(), si.clone())));
-let inner_v = match (*inner.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => set_has(acc.vars.clone(), expr_var_name_at(inner.clone(), si.clone())),
-    _ => false,
-};
-(inner_d.clone() || inner_v.clone())
-}
-                    } else {
-                        false
-                    };
-let is_extraction = if is_sub_value_extractor(&val, si.clone()) {
-                        {
-                            let inner = extractor_inner_arg(val.clone());
-let inner_d = ((check_child.clone() && is_child_descent_expr(&inner, &param_name, &acc.vars.clone(), &si)) || (check_list.clone() && is_list_shrink_expr(&inner, param_name.clone(), si.clone())));
-let inner_v = match (*inner.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => set_has(acc.vars.clone(), expr_var_name_at(inner.clone(), si.clone())),
-    _ => false,
-};
-let inner_p = match (*inner.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => (expr_var_name_at(inner.clone(), si.clone()).as_str() == param_name.clone().as_str()),
-    _ => false,
-};
-((inner_d.clone() || inner_v.clone()) || inner_p.clone())
-}
-                    } else {
-                        false
-                    };
-let is_children_list = match (*val.expr_data.clone()).clone() {
-    ExprData::ExprFieldAccess { .. } => {
-                        let base = field_access_base(val.clone());
-let field = field_access_field_at(val.clone(), si.clone());
-(is_children_list_field(field.clone()) && match (*base.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => {
-                            let bname = expr_var_name_at(base.clone(), si.clone());
-((bname.clone().as_str() == param_name.clone().as_str()) || set_has(acc.vars.clone(), bname.clone()))
-},
-    _ => false,
-})
-},
-    _ => false,
-};
-if ((((((is_direct.clone() || is_var.clone()) || is_option.clone()) || is_match_descent.clone()) || is_wrapped.clone()) || is_extraction.clone()) || is_children_list.clone()) {
-                        v2_rt::rc_map_insert(acc.vars.clone(), let_binding_name_at(stmt.clone(), si.clone()), true)
-                    } else {
-                        acc.vars.clone()
-                    }
-},
-    _ => acc.vars.clone(),
-};
+let next_vars = collect_descent_vars(&stmt, &param_name, &acc.vars.clone(), check_child.clone(), check_list.clone(), &si);
 Rc::new(EvidenceBlockAcc {
     evidence: merge_optional_evidence(acc.evidence.clone(), stmt_ev.clone()),
     vars: next_vars.clone(),
@@ -2662,7 +2771,14 @@ match inner_progress.clone() {
 }
 }
                     } else {
-                        DescentEvidence::DescentUnknown
+                        if is_list_passthrough_call(arg_expr.clone(), si.clone()) {
+                            match list_passthrough_inner_arg(arg_expr.clone(), si.clone()) {
+    Some(inner) => classify_scc_call_progress(&inner, &param_name, &descent_vars, &si),
+    None => DescentEvidence::DescentUnknown,
+}
+                        } else {
+                            DescentEvidence::DescentUnknown
+                        }
                     }
                 },
     ExprData::ExprFieldAccess { .. } => {
@@ -2673,12 +2789,32 @@ match (*base.expr_data.clone()).clone() {
 if (set_has(descent_vars.clone(), bname.clone()) || (bname.clone().as_str() == param_name.clone().as_str())) {
                             DescentEvidence::Strict
                         } else {
-                            DescentEvidence::DescentUnknown
+                            {
+                                let field = field_access_field_at(arg_expr.clone(), si.clone());
+if (field.as_str() == param_name.clone().as_str()) {
+                                    DescentEvidence::NonIncreasing
+                                } else {
+                                    DescentEvidence::DescentUnknown
+                                }
+}
                         }
 },
     _ => DescentEvidence::DescentUnknown,
 }
 },
+    ExprData::ExprMethodCall { method_semantics: ms, .. } => if is_generalized_shrink(&arg_expr, si.clone()) {
+                    {
+                        let recv = method_receiver(arg_expr.clone());
+let recv_progress = classify_scc_call_progress(&recv, &param_name, &descent_vars, &si);
+match recv_progress {
+    DescentEvidence::Strict => DescentEvidence::Strict,
+    DescentEvidence::NonIncreasing => DescentEvidence::Strict,
+    DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
+}
+}
+                } else {
+                    DescentEvidence::DescentUnknown
+                },
     _ => DescentEvidence::DescentUnknown,
 }
             }
@@ -2792,7 +2928,7 @@ let inner_p = match (*inner.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => (expr_var_name_at(inner.clone(), si.clone()).as_str() == param_name.clone().as_str()),
     _ => false,
 };
-((inner_d.clone() || inner_v.clone()) || inner_p.clone())
+((inner_d.clone() || inner_v.clone()) || inner_p)
 }
             } else {
                 false
@@ -2801,7 +2937,7 @@ let is_children_list = match (*val.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { .. } => {
                 let base = field_access_base(val.clone());
 let field = field_access_field_at(val.clone(), si.clone());
-(is_children_list_field(field.clone()) && match (*base.expr_data.clone()).clone() {
+(is_children_list_field(field) && match (*base.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
                     let bname = expr_var_name_at(base.clone(), si.clone());
 ((bname.clone().as_str() == param_name.clone().as_str()) || set_has(descent_vars.clone(), bname.clone()))
@@ -2811,7 +2947,19 @@ let field = field_access_field_at(val.clone(), si.clone());
 },
     _ => false,
 };
-let next_vars = if ((((((is_direct.clone() || is_var.clone()) || is_option.clone()) || is_match_descent) || is_wrapped.clone()) || is_extraction.clone()) || is_children_list.clone()) {
+let is_passthrough = if is_list_passthrough_call(val.clone(), si.clone()) {
+                match list_passthrough_inner_arg(val.clone(), si.clone()) {
+    Some(inner) => (((check_child.clone() && is_child_descent_expr(&inner, &param_name, &descent_vars, &si)) || (check_list.clone() && is_list_shrink_expr(&inner, param_name.clone(), si.clone()))) || match (*inner.expr_data.clone()).clone() {
+    ExprData::ExprVar { .. } => set_has(descent_vars.clone(), expr_var_name_at(inner.clone(), si.clone())),
+    _ => false,
+}),
+    None => false,
+}
+            } else {
+                false
+            };
+let is_consuming_helper = (check_list.clone() && is_tokens_consuming_call(&val, param_name.clone(), descent_vars.clone(), &si));
+let next_vars = if ((((((((is_direct || is_var) || is_option) || is_match_descent) || is_wrapped) || is_extraction) || is_children_list) || is_passthrough) || is_consuming_helper) {
                 v2_rt::rc_map_insert(descent_vars.clone(), let_binding_name_at(body.clone(), si.clone()), true)
             } else {
                 descent_vars.clone()
@@ -2834,68 +2982,7 @@ v2_rt::concat(scrut_edges, arms_edges)
     vars: descent_vars.clone(),
 }), |acc: Rc<SccEdgeBlockAcc>, stmt: Rc<Node>| {
                 let stmt_edges = collect_scc_child_edges(&stmt, &caller, &param_name, &acc.vars.clone(), &target_set, check_child.clone(), check_list.clone(), &scc_measure_params, &si);
-let next_vars = match (*stmt.expr_data.clone()).clone() {
-    ExprData::ExprLet => {
-                    let val = let_value(stmt.clone());
-let is_direct = ((check_child.clone() && is_child_descent_expr(&val, &param_name, &acc.vars.clone(), &si)) || (check_list.clone() && is_list_shrink_expr(&val, param_name.clone(), si.clone())));
-let is_var = match (*val.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => set_has(acc.vars.clone(), expr_var_name_at(val.clone(), si.clone())),
-    _ => false,
-};
-let is_option = is_if_option_descent(&val, param_name.clone(), acc.vars.clone(), check_child.clone(), check_list.clone(), &si);
-let is_match_d = is_match_option_descent(&val, &param_name, acc.vars.clone(), check_child.clone(), check_list.clone(), &si);
-let is_wrapped = if is_tree_size_preserving_wrapper(&val, si.clone()) {
-                        {
-                            let inner = wrapper_inner_arg(val.clone());
-let inner_d = ((check_child.clone() && is_child_descent_expr(&inner, &param_name, &acc.vars.clone(), &si)) || (check_list.clone() && is_list_shrink_expr(&inner, param_name.clone(), si.clone())));
-let inner_v = match (*inner.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => set_has(acc.vars.clone(), expr_var_name_at(inner.clone(), si.clone())),
-    _ => false,
-};
-(inner_d.clone() || inner_v.clone())
-}
-                    } else {
-                        false
-                    };
-let is_extraction = if is_sub_value_extractor(&val, si.clone()) {
-                        {
-                            let inner = extractor_inner_arg(val.clone());
-let inner_d = ((check_child.clone() && is_child_descent_expr(&inner, &param_name, &acc.vars.clone(), &si)) || (check_list.clone() && is_list_shrink_expr(&inner, param_name.clone(), si.clone())));
-let inner_v = match (*inner.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => set_has(acc.vars.clone(), expr_var_name_at(inner.clone(), si.clone())),
-    _ => false,
-};
-let inner_p = match (*inner.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => (expr_var_name_at(inner.clone(), si.clone()).as_str() == param_name.clone().as_str()),
-    _ => false,
-};
-((inner_d.clone() || inner_v.clone()) || inner_p.clone())
-}
-                    } else {
-                        false
-                    };
-let is_children_list = match (*val.expr_data.clone()).clone() {
-    ExprData::ExprFieldAccess { .. } => {
-                        let base = field_access_base(val.clone());
-let field = field_access_field_at(val.clone(), si.clone());
-(is_children_list_field(field.clone()) && match (*base.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => {
-                            let bname = expr_var_name_at(base.clone(), si.clone());
-((bname.clone().as_str() == param_name.clone().as_str()) || set_has(acc.vars.clone(), bname.clone()))
-},
-    _ => false,
-})
-},
-    _ => false,
-};
-if ((((((is_direct.clone() || is_var.clone()) || is_option.clone()) || is_match_d.clone()) || is_wrapped.clone()) || is_extraction.clone()) || is_children_list.clone()) {
-                        v2_rt::rc_map_insert(acc.vars.clone(), let_binding_name_at(stmt.clone(), si.clone()), true)
-                    } else {
-                        acc.vars.clone()
-                    }
-},
-    _ => acc.vars.clone(),
-};
+let next_vars = collect_descent_vars(&stmt, &param_name, &acc.vars.clone(), check_child.clone(), check_list.clone(), &si);
 Rc::new(SccEdgeBlockAcc {
     edges: v2_rt::concat(acc.edges.clone(), stmt_edges.clone()),
     vars: next_vars.clone(),

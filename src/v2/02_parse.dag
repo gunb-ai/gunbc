@@ -873,10 +873,6 @@ fn parse(tokens: List<Token>, source_indices: Map<String, NewlineIndex>) -> Pars
   parse_with_table(tokens: tokens, source_indices: source_indices, intern_table: empty_intern_table()).result
 }
 
-fn parse(tokens: List<Token>, source_indices: Map<String, NewlineIndex>) -> ParseResult {
-  parse_with_table(tokens: tokens, source_indices: source_indices, intern_table: empty_intern_table()).result
-}
-
 // =========================================================================
 // 2. parse_module
 // =========================================================================
@@ -2496,7 +2492,7 @@ fn parse_operation_v2_inline(tokens: List<Token>, ctx: ParseContext, name: Strin
   let tokens = ret.tokens
   let ctx = ret.ctx
   let outputs = match ret.inferred {
-    Some { value: Resolved { node: rt } } => node_inferred_to_outputs(rt: rt, source_indices: state.source_indices)
+    Some { value: Resolved { node: rt } } => node_inferred_to_outputs(rt: rt, source_indices: ctx.source_indices)
     _ => []
   }
   let tokens = skip_newlines(tokens: tokens)
@@ -3089,7 +3085,7 @@ fn parse_capability(tokens: List<Token>, ctx: ParseContext) -> CapResult {
     let ret = parse_optional_inferred(tokens: r4.tokens, ctx: r3.ctx)
     if has_err(err: ret.err) { return CapResult { capability: dummy_cap, tokens: ret.tokens, ctx: ret.ctx, err: ret.err } }
     let outputs = match ret.inferred {
-      Some { value: Resolved { node: rt } } => node_inferred_to_outputs(rt: rt, source_indices: state.source_indices)
+      Some { value: Resolved { node: rt } } => node_inferred_to_outputs(rt: rt, source_indices: ret.ctx.source_indices)
       _ => []
     }
     let cap = make_capability_node(name: name, ident_span: Some { value: name_span }, inputs: inputs, outputs: outputs, span: start_span, source_indices: ctx.source_indices)
