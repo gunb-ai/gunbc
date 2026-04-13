@@ -6,17 +6,18 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::std_effects::{EffectShape, KeySource, HttpMethod, DerivedOpEffect, ModifierAgreement, ModifierCheck, IdempotencyTestObligation, WorkflowEffectConcern, parse_http_method, derive_effect_shape, derive_op_effect, check_modifier_vs_derivation, generate_idempotency_obligations, is_idempotent_effect, compose_effects, OperationEffect, ComposedEffect, IdempotencyEvidence};
+pub use crate::std_types::{HttpMethod};
+use crate::std_types::HttpMethod::{GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS};
+pub use crate::std_effects::{EffectShape, KeySource, DerivedOpEffect, ModifierAgreement, ModifierCheck, IdempotencyTestObligation, WorkflowEffectConcern, parse_http_method, derive_effect_shape, derive_op_effect, check_modifier_vs_derivation, generate_idempotency_obligations, is_idempotent_effect, compose_effects, OperationEffect, ComposedEffect, IdempotencyEvidence};
 use crate::std_effects::EffectShape::{ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect};
 use crate::std_effects::KeySource::{PathParam, InputField, CompositeKey};
-use crate::std_effects::HttpMethod::{Get, Put, Post, Delete, Patch, Head, Options};
 use crate::std_effects::ModifierAgreement::{Agrees, Disagrees, DerivationUnknown};
 use crate::std_effects::IdempotencyEvidence::{LatticeEffect, IdentityEffect, NonIdempotent};
 pub use crate::std_http_path::{UrlPathToken, PathTemplate, parse_path_template, has_path_params, last_path_param};
 use crate::std_http_path::UrlPathToken::{LiteralToken, ParamToken};
 
-pub fn re_export_derive_op_effect(operation_name: String, method_str: String, path_str: String, input_fields: Rc<Vec<String>>) -> Option<Rc<DerivedOpEffect>> {
-    derive_op_effect(operation_name, method_str, path_str, input_fields)
+pub fn re_export_derive_op_effect(operation_name: String, method_str: String, path_str: String) -> Option<Rc<DerivedOpEffect>> {
+    derive_op_effect(operation_name, method_str, path_str)
 }
 
 pub fn re_export_check_modifier(op: Rc<DerivedOpEffect>, declared_idempotent: bool, declared_readonly: bool) -> Rc<ModifierCheck> {

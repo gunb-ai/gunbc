@@ -96,9 +96,8 @@ service gcp.IAM {
       access_token: Secret from "accessToken"
       expire_time: String from "expireTime"
     }
-    // Derivation disagrees: POST with {target_sa} matches textbook REST upsert,
-    // but Google :verb convention treats {target_sa} as subject.
-    // See docs/effects-derivation-design.md "Google :verb URL convention".
+    // Derivation unknown: POST derives CreateEffect (fail-closed).
+    // Idempotency is declared per Google API semantics for generateAccessToken.
     idempotent
     transport rest { method: POST, path: "/v1/projects/-/serviceAccounts/\{target_sa\}:generateAccessToken" }
     response {

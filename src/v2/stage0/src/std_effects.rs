@@ -6,11 +6,12 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
+pub use crate::std_types::{HttpMethod};
+use crate::std_types::HttpMethod::{GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS};
 pub use crate::std_http_path::{PathTemplate, parse_path_template, has_path_params, last_path_param};
 use EffectShape::*;
 use KeySource::*;
 use IdempotencyEvidence::*;
-use HttpMethod::*;
 use ModifierAgreement::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -117,39 +118,27 @@ Rc::new(ComposedEffect {
 }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum HttpMethod {
-    Get,
-    Put,
-    Post,
-    Delete,
-    Patch,
-    Head,
-    Options,
-}
-
 pub fn parse_http_method(raw: &String) -> Option<HttpMethod> {
     if (raw.clone().as_str() == "GET".to_string().as_str()) {
-        Some(HttpMethod::Get)
+        Some(HttpMethod::GET)
     } else {
         if (raw.clone().as_str() == "PUT".to_string().as_str()) {
-            Some(HttpMethod::Put)
+            Some(HttpMethod::PUT)
         } else {
             if (raw.clone().as_str() == "POST".to_string().as_str()) {
-                Some(HttpMethod::Post)
+                Some(HttpMethod::POST)
             } else {
                 if (raw.clone().as_str() == "DELETE".to_string().as_str()) {
-                    Some(HttpMethod::Delete)
+                    Some(HttpMethod::DELETE)
                 } else {
                     if (raw.clone().as_str() == "PATCH".to_string().as_str()) {
-                        Some(HttpMethod::Patch)
+                        Some(HttpMethod::PATCH)
                     } else {
                         if (raw.clone().as_str() == "HEAD".to_string().as_str()) {
-                            Some(HttpMethod::Head)
+                            Some(HttpMethod::HEAD)
                         } else {
                             if (raw.clone().as_str() == "OPTIONS".to_string().as_str()) {
-                                Some(HttpMethod::Options)
+                                Some(HttpMethod::OPTIONS)
                             } else {
                                 None
                             }
@@ -169,89 +158,45 @@ pub struct DerivedOpEffect {
     pub shape: Rc<EffectShape>,
 }
 
-pub fn derive_effect_shape(method: HttpMethod, path: &Rc<PathTemplate>, input_fields: Rc<Vec<String>>) -> Rc<EffectShape> {
+pub fn derive_effect_shape(method: HttpMethod, path: Rc<PathTemplate>) -> Rc<EffectShape> {
     match method {
-    HttpMethod::Get => Rc::new(EffectShape::ReadEffect),
-    HttpMethod::Head => Rc::new(EffectShape::ReadEffect),
-    HttpMethod::Options => Rc::new(EffectShape::ReadEffect),
-    HttpMethod::Delete => match last_path_param(path.clone()) {
+    HttpMethod::GET => Rc::new(EffectShape::ReadEffect),
+    HttpMethod::HEAD => Rc::new(EffectShape::ReadEffect),
+    HttpMethod::OPTIONS => Rc::new(EffectShape::ReadEffect),
+    HttpMethod::POST => Rc::new(EffectShape::CreateEffect),
+    HttpMethod::DELETE => match last_path_param(path) {
     Some(p) => Rc::new(EffectShape::DeleteEffect {
     key_source: Rc::new(KeySource::PathParam {
     param: p.clone(),
 }),
 }),
-    None => match input_fields.first().cloned() {
-    Some(f) => Rc::new(EffectShape::DeleteEffect {
-    key_source: Rc::new(KeySource::InputField {
-    field: f.clone(),
-}),
-}),
-    None => Rc::new(EffectShape::DeleteEffect {
-    key_source: Rc::new(KeySource::InputField {
-    field: "".to_string(),
-}),
-}),
+    None => Rc::new(EffectShape::CreateEffect),
 },
-},
-    HttpMethod::Put => match last_path_param(path.clone()) {
-    Some(p) => Rc::new(EffectShape::UpsertEffect {
-    key_source: Rc::new(KeySource::PathParam {
-    param: p.clone(),
-}),
-}),
-    None => match input_fields.first().cloned() {
-    Some(f) => Rc::new(EffectShape::UpsertEffect {
-    key_source: Rc::new(KeySource::InputField {
-    field: f.clone(),
-}),
-}),
-    None => Rc::new(EffectShape::UpsertEffect {
-    key_source: Rc::new(KeySource::InputField {
-    field: "".to_string(),
-}),
-}),
-},
-},
-    HttpMethod::Patch => match last_path_param(path.clone()) {
-    Some(p) => Rc::new(EffectShape::UpsertEffect {
-    key_source: Rc::new(KeySource::PathParam {
-    param: p.clone(),
-}),
-}),
-    None => match input_fields.first().cloned() {
-    Some(f) => Rc::new(EffectShape::UpsertEffect {
-    key_source: Rc::new(KeySource::InputField {
-    field: f.clone(),
-}),
-}),
-    None => Rc::new(EffectShape::UpsertEffect {
-    key_source: Rc::new(KeySource::InputField {
-    field: "".to_string(),
-}),
-}),
-},
-},
-    HttpMethod::Post => if has_path_params(path.clone()) {
-        match last_path_param(path.clone()) {
+    HttpMethod::PUT => match last_path_param(path) {
     Some(p) => Rc::new(EffectShape::UpsertEffect {
     key_source: Rc::new(KeySource::PathParam {
     param: p.clone(),
 }),
 }),
     None => Rc::new(EffectShape::CreateEffect),
-}
-    } else {
-        Rc::new(EffectShape::CreateEffect)
-    },
+},
+    HttpMethod::PATCH => match last_path_param(path) {
+    Some(p) => Rc::new(EffectShape::UpsertEffect {
+    key_source: Rc::new(KeySource::PathParam {
+    param: p.clone(),
+}),
+}),
+    None => Rc::new(EffectShape::CreateEffect),
+},
 }
 }
 
-pub fn derive_op_effect(operation_name: String, method_str: String, path_str: String, input_fields: Rc<Vec<String>>) -> Option<Rc<DerivedOpEffect>> {
+pub fn derive_op_effect(operation_name: String, method_str: String, path_str: String) -> Option<Rc<DerivedOpEffect>> {
     match parse_http_method(&method_str) {
     None => None,
     Some(method) => {
         let path = parse_path_template(&path_str);
-let shape = derive_effect_shape(method.clone(), &path, input_fields);
+let shape = derive_effect_shape(method.clone(), path.clone());
 Some(Rc::new(DerivedOpEffect {
     operation_name: operation_name,
     method: method.clone(),
@@ -310,9 +255,9 @@ let agreement = if (declared_idempotent.clone() && derived_idempotent.clone()) {
             } else {
                 if (!declared_idempotent.clone() && declared_readonly.clone()) {
                     match op.method.clone() {
-    HttpMethod::Get => Rc::new(ModifierAgreement::Agrees),
-    HttpMethod::Head => Rc::new(ModifierAgreement::Agrees),
-    HttpMethod::Options => Rc::new(ModifierAgreement::Agrees),
+    HttpMethod::GET => Rc::new(ModifierAgreement::Agrees),
+    HttpMethod::HEAD => Rc::new(ModifierAgreement::Agrees),
+    HttpMethod::OPTIONS => Rc::new(ModifierAgreement::Agrees),
     _ => Rc::new(ModifierAgreement::Disagrees {
     reason: "readonly declared but method is not GET/HEAD/OPTIONS".to_string(),
 }),

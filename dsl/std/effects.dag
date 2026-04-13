@@ -38,6 +38,7 @@
 
 module std.effects
 
+import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 import std.http_path { PathTemplate, parse_path_template, has_path_params, last_path_param }
 
 // =========================================================================
@@ -192,12 +193,10 @@ fn compose_effects(effects: List<OperationEffect>) -> ComposedEffect {
 // -------------------------------------------------------------------------
 // Three modifiers survive with distinct roles after this PR:
 //   idempotent on REST ops:
-//     - DISSOLVED where derivation Agrees (1 site: AccessVersion)
-//     - KEPT where derivation Disagrees due to Google :verb convention
-//       (2 sites: AddVersion, GenerateAccessToken) — see :verb section
-//       in docs/effects-derivation-design.md
-//     - KEPT where derivation is DerivationUnknown due to spec-level
-//       idempotency (2 sites: Refresh/RFC 6749, Exchange/RFC 8693)
+//     - DISSOLVED where derivation Agrees (1 site: AccessVersion — GET)
+//     - KEPT where derivation is DerivationUnknown because POST always
+//       derives CreateEffect (fail-closed — no proven resource identity)
+//       (4 sites: AddVersion, GenerateAccessToken, Refresh, Exchange)
 //   readonly on REST GETs:
 //     - ASSERTABLE-REDUNDANT (check_modifier_vs_derivation returns Agrees)
 //     - Deletion deferred to v2 once derivation has wider track record
@@ -209,16 +208,16 @@ fn compose_effects(effects: List<OperationEffect>) -> ComposedEffect {
 // Effect derivation implementation
 // =========================================================================
 
-type HttpMethod = Get | Put | Post | Delete | Patch | Head | Options
+// HttpMethod imported from std.types (single authority, RFC 9110).
 
 fn parse_http_method(raw: String) -> HttpMethod? {
-  if raw == "GET" { Some { value: Get } }
-  else if raw == "PUT" { Some { value: Put } }
-  else if raw == "POST" { Some { value: Post } }
-  else if raw == "DELETE" { Some { value: Delete } }
-  else if raw == "PATCH" { Some { value: Patch } }
-  else if raw == "HEAD" { Some { value: Head } }
-  else if raw == "OPTIONS" { Some { value: Options } }
+  if raw == "GET" { Some { value: GET } }
+  else if raw == "PUT" { Some { value: PUT } }
+  else if raw == "POST" { Some { value: POST } }
+  else if raw == "DELETE" { Some { value: DELETE } }
+  else if raw == "PATCH" { Some { value: PATCH } }
+  else if raw == "HEAD" { Some { value: HEAD } }
+  else if raw == "OPTIONS" { Some { value: OPTIONS } }
   else { none }
 }
 
@@ -229,50 +228,40 @@ type DerivedOpEffect {
   shape: EffectShape
 }
 
+// Fail-closed derivation: only classifies effects the model can prove.
+//
+// POST always derives CreateEffect — the table cannot distinguish
+// parent-scoped paths (POST /projects/{id}/secrets creates a CHILD)
+// from resource-identity paths without a structural subject-key witness.
+// This is conservative: declared `idempotent` modifiers on POST ops
+// surface as DerivationUnknown, not as false proofs.
+//
+// PUT/PATCH/DELETE require a proven path key. Without one, the
+// derivation returns CreateEffect (non-idempotent) rather than
+// fabricating an empty InputField key.
 fn derive_effect_shape(
   method: HttpMethod,
-  path: PathTemplate,
-  input_fields: List<String>
+  path: PathTemplate
 ) -> EffectShape {
   match method {
-    Get     => ReadEffect
-    Head    => ReadEffect
-    Options => ReadEffect
-    Delete =>
+    GET     => ReadEffect
+    HEAD    => ReadEffect
+    OPTIONS => ReadEffect
+    POST    => CreateEffect
+    DELETE =>
       match last_path_param(template: path) {
         Some { value: p } => DeleteEffect { key_source: PathParam { param: p } }
-        None =>
-          match input_fields |> first {
-            Some { value: f } => DeleteEffect { key_source: InputField { field: f } }
-            None => DeleteEffect { key_source: InputField { field: "" } }
-          }
+        None => CreateEffect
       }
-    Put =>
+    PUT =>
       match last_path_param(template: path) {
         Some { value: p } => UpsertEffect { key_source: PathParam { param: p } }
-        None =>
-          match input_fields |> first {
-            Some { value: f } => UpsertEffect { key_source: InputField { field: f } }
-            None => UpsertEffect { key_source: InputField { field: "" } }
-          }
+        None => CreateEffect
       }
-    Patch =>
+    PATCH =>
       match last_path_param(template: path) {
         Some { value: p } => UpsertEffect { key_source: PathParam { param: p } }
-        None =>
-          match input_fields |> first {
-            Some { value: f } => UpsertEffect { key_source: InputField { field: f } }
-            None => UpsertEffect { key_source: InputField { field: "" } }
-          }
-      }
-    Post =>
-      if has_path_params(template: path) {
-        match last_path_param(template: path) {
-          Some { value: p } => UpsertEffect { key_source: PathParam { param: p } }
-          None => CreateEffect
-        }
-      } else {
-        CreateEffect
+        None => CreateEffect
       }
   }
 }
@@ -280,14 +269,13 @@ fn derive_effect_shape(
 fn derive_op_effect(
   operation_name: String,
   method_str: String,
-  path_str: String,
-  input_fields: List<String>
+  path_str: String
 ) -> DerivedOpEffect? {
   match parse_http_method(raw: method_str) {
     None => none
     Some { value: method } => {
       let path = parse_path_template(raw: path_str)
-      let shape = derive_effect_shape(method: method, path: path, input_fields: input_fields)
+      let shape = derive_effect_shape(method: method, path: path)
       Some { value: DerivedOpEffect {
         operation_name: operation_name,
         method: method,
@@ -332,9 +320,9 @@ fn check_modifier_vs_derivation(
     }
   } else if !declared_idempotent && declared_readonly {
     match op.method {
-      Get => Agrees
-      Head => Agrees
-      Options => Agrees
+      GET => Agrees
+      HEAD => Agrees
+      OPTIONS => Agrees
       _ => Disagrees { reason: "readonly declared but method is not GET/HEAD/OPTIONS" }
     }
   } else {

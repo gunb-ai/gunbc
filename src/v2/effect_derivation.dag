@@ -5,10 +5,11 @@
 
 module v2.compiler.effect_derivation
 
+import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
+
 import std.effects {
   EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect,
   KeySource, PathParam, InputField, CompositeKey,
-  HttpMethod, Get, Put, Post, Delete, Patch, Head, Options,
   DerivedOpEffect,
   ModifierAgreement, Agrees, Disagrees, DerivationUnknown,
   ModifierCheck,
@@ -35,14 +36,12 @@ import std.http_path {
 fn re_export_derive_op_effect(
   operation_name: String,
   method_str: String,
-  path_str: String,
-  input_fields: List<String>
+  path_str: String
 ) -> DerivedOpEffect? {
   derive_op_effect(
     operation_name: operation_name,
     method_str: method_str,
-    path_str: path_str,
-    input_fields: input_fields
+    path_str: path_str
   )
 }
 
