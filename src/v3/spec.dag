@@ -17,7 +17,7 @@
 // Layers (each depends only on prior layers):
 //
 //   0  Truth + Finiteness    — Classical, the closure axiom
-//   1  Composition           — Function (→), Product (×), Coproduct (+)
+//   1  Composition           — Function (→), Product (×), Coproduct (+), Unit (1), Void (0)
 //   2  Structure + Iteration — recursive types, fold/descend/repeat
 //   3  Observed patterns     — BoundedLattice, Monoid (named regularities)
 //   4  The DAG IR            — Node, Edge (two designs explored)
@@ -153,11 +153,28 @@ type Product
 // In SPICE: switched paths (one active).
 type Coproduct
 
-// Cardinality: presence annotation on binding sites.
-// Required = exactly 1 value. Optional = 0 or 1 value.
-// Optional is NOT a wrapper type — it is a property of the BINDING,
-// not the value. |Optional(A)| = |A| + 1 (the +1 is absence).
-type Cardinality = Required | Optional
+// Unit: the type with exactly one inhabitant. The identity for Product:
+//   A × 1 = A (having "nothing extra" changes nothing)
+// In set theory: the singleton set {∗}. In logic: trivial truth (⊤).
+// In type theory: the terminal object.
+type Unit
+
+// Void: the type with zero inhabitants. The identity for Coproduct:
+//   A + 0 = A (having "no alternative" changes nothing)
+// And the annihilator for Product:
+//   A × 0 = 0 (if any component is impossible, the whole is impossible)
+// In set theory: the empty set ∅. In logic: absurdity (⊥).
+// In type theory: the initial object.
+type Void
+
+// "Optional" is not a separate concept. It is A + Unit:
+// either a value of type A is present, or the single Unit value
+// (denoting absence) is present. |A + 1| = |A| + 1.
+//
+// The v2 compiler has `Cardinality = Required | Optional` — this
+// dissolves. A field of type A is "required." A field of type A + 1
+// is "optional." The distinction lives in the type, not in a
+// separate annotation.
 
 
 // =========================================================================
@@ -427,7 +444,7 @@ type NodeKind
   | ArmNode
   | FieldInitNode { name: String }
   | VariantDecl { name: String }
-  | FieldDecl { name: String, cardinality: Cardinality }
+  | FieldDecl { name: String }
 
 type UnaryOpKind = Not | Neg
 
@@ -462,10 +479,12 @@ type Decl
   | DeclService { name: String, operations: List<Decl>, span: Span }
   | DeclImport { path: String, names: List<String>, span: Span }
 
-type TypedFieldDecl { name: String, type_ref: TypeRef, cardinality: Cardinality, span: Span }
+type TypedFieldDecl { name: String, type_ref: TypeRef, span: Span }
 type TypedParam { name: String, type_ref: TypeRef, span: Span }
 
-// Type references — what appears in type annotations.
+// Type references — what appears in type annotations (surface syntax).
+// OptionalType is sugar: T? = T + Unit (coproduct with unit).
+// The resolve stage lowers it to a named coproduct.
 type TypeRef
   = NamedType { name: String, args: List<TypeRef> }
   | FuncType { params: List<TypeRef>, result: TypeRef }
@@ -1392,7 +1411,7 @@ type EmitResult {
 // 9 layers, each derived from prior layers:
 //
 //   0  Truth + Finiteness    — Classical, max_inhabitants
-//   1  Composition           — Function (→), Product (×), Coproduct (+)
+//   1  Composition           — Function (→), Product (×), Coproduct (+), Unit (1), Void (0)
 //   2  Structure + Iteration — RecursionShape, fold/descend/repeat, ShrinkFactor
 //   3  Observed patterns     — BoundedLattice, Monoid, Ordering
 //   4  The DAG IR            — Node, Edge (Designs A and B)
