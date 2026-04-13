@@ -218,10 +218,10 @@ if (((target.children.clone().len() as i64) > 0) && nc.clone()) {
 }
 }
 
-pub fn resolve_alias_target(target: Rc<Node>, env: Rc<TypeEnv>, module_name: String, depth: i64) -> Rc<Node> {
+pub fn resolve_alias_target(target: Rc<Node>, env: &Rc<TypeEnv>, module_name: String, depth: i64) -> Rc<Node> {
     match classify_alias(&target) {
     AliasKind::AliasParameterized => resolve_node_bounded(&target, &env, &module_name, (depth + 1)).resolved.clone(),
-    AliasKind::AliasLeaf => match lookup_type_by_name(&env, target.name.clone()) {
+    AliasKind::AliasLeaf => match lookup_type_by_name(&env, authored_name_at(env.source_indices.clone(), &target)) {
     Some(env_target) => env_target.clone(),
     None => target.clone(),
 },
@@ -492,7 +492,7 @@ let resolved_args = Rc::new({ let mut __result = Vec::new(); for ar in arg_resul
 let arg_diags = Rc::new({ let mut __result = Vec::new(); for ar in arg_results.clone().iter().cloned() { __result.extend((*ar.diagnostics.clone()).iter().cloned()); } __result });
 let slot_bindings = Rc::new(decl.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
                             let idx = pair.0.clone();
-let slot_name = pair.1.clone().name.clone();
+let slot_name = authored_name_at(env.source_indices.clone(), &pair.1.clone());
 match Rc::new({ let mut __result = Vec::new(); for p in Rc::new({ let mut __result = Vec::new(); for p in Rc::new(resolved_args.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { if (p.0.clone() == idx.clone()) { __result.push(p); } } __result }).iter().cloned() { __result.push(p.1.clone()); } __result }).first().cloned() {
     Some(arg) => v2_rt::rc_map_insert(acc.clone(), slot_name.clone(), arg.clone()),
     None => acc.clone(),
@@ -853,7 +853,7 @@ Rc::new(FieldResult {
     field: make_field_node(&field_node_name_at(field.clone(), env.source_indices.clone()), type_resolved, field_node_cardinality(field.clone()), match default_resolved.clone() {
     Some(result) => Some(result.expr.clone()),
     None => None,
-}, field_node_from_key(field.clone()), field.span.clone(), node_name_span(&field)),
+}, field_node_from_key(field.clone(), env.source_indices.clone()), field.span.clone(), node_name_span(&field)),
     diagnostics: v2_rt::concat(type_diags, default_diags),
 })
 }
@@ -1081,7 +1081,7 @@ let vr = resolve_expr_types(&val, &env, module_name.clone());
 make_arg_node(if (child.ident_span.clone() == None) {
                             None
                         } else {
-                            Some(child.name.clone())
+                            Some(authored_name_at(env.source_indices.clone(), &child))
                         }, vr.expr.clone(), child.span.clone(), node_name_span(&child))
 }
                 }
@@ -1289,7 +1289,7 @@ let vr = resolve_expr_types(&val, &env, module_name.clone());
 vr.diagnostics.clone()
 }).iter().cloned()); } __result });
 Rc::new(ExprResolveResult {
-    expr: make_named_expr_node(&texpr.name.clone(), Rc::new(ExprData::ExprRecordLit {
+    expr: make_named_expr_node(&authored_name_at(env.source_indices.clone(), &texpr), Rc::new(ExprData::ExprRecordLit {
     parent_enum: pe.clone(),
 }), resolved_children, texpr.inferred.clone(), texpr.span.clone(), node_name_span(&texpr)),
     diagnostics: all_diags,
@@ -1507,7 +1507,7 @@ Rc::new(ExprResolveResult {
 }
 
 pub fn fn_type_param_names(item: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<String>> {
-    Rc::new({ let mut __result = Vec::new(); for p in Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { if (param_node_name_at(p.clone(), source_indices.clone()).as_str() == param_node_type_expr(&p).name.clone().as_str()) { __result.push(p); } } __result }).iter().cloned() { __result.push(param_node_name_at(p.clone(), source_indices.clone())); } __result })
+    Rc::new({ let mut __result = Vec::new(); for p in Rc::new({ let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { if (param_node_name_at(p.clone(), source_indices.clone()).as_str() == authored_name_at(source_indices.clone(), &param_node_type_expr(&p)).as_str()) { __result.push(p); } } __result }).iter().cloned() { __result.push(param_node_name_at(p.clone(), source_indices.clone())); } __result })
 }
 
 pub fn resolve_item_types(item: &Rc<Node>, env: &Rc<TypeEnv>, module_name: &String) -> Rc<ItemResult> {

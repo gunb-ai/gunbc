@@ -116,9 +116,9 @@ pub fn has_mock_prefix(name: &String) -> bool {
 
 pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProjection>>> {
     Rc::new({ let mut __result = Vec::new(); for tm in typed.modules.clone().iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in tm.items.clone().iter().cloned() { if is_service_item(&item) { __result.push(item); } } __result }).iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for c in Rc::new({ let mut __result = Vec::new(); for c in item.children.clone().iter().cloned() { if { let mut __found = false; for p in c.properties.clone().iter().cloned() { if has_mock_prefix(&field_init_node_name_at(p.clone(), tm.type_env.clone().source_indices.clone())) { __found = true; break; } } __found } { __result.push(c); } } __result }).iter().cloned() { __result.push(Rc::new(TestProjection {
-    module_name: tm.module.clone().name.clone(),
-    service_name: item.name.clone(),
-    operation_name: c.name.clone(),
+    module_name: authored_name_at(tm.type_env.clone().source_indices.clone(), &tm.module.clone()),
+    service_name: authored_name_at(tm.type_env.clone().source_indices.clone(), &item),
+    operation_name: authored_name_at(tm.type_env.clone().source_indices.clone(), &c),
     inferred: resolved_type(c.clone()),
     params: c.params.clone(),
     mock_field_inits: Rc::new({ let mut __result = Vec::new(); for p in c.properties.clone().iter().cloned() { if has_mock_prefix(&field_init_node_name_at(p.clone(), tm.type_env.clone().source_indices.clone())) { __result.push(p); } } __result }),
@@ -322,7 +322,7 @@ pub fn module_emit_scope(typed_module: &Rc<TypedModule>) -> Rc<InferScope> {
     func_env: typed_module.func_env.clone(),
     locals: v2_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
     match_bound_names: v2_rt::rc_empty_map::<String, bool>(),
-    module_name: typed_module.module.clone().name.clone(),
+    module_name: authored_name_at(typed_module.type_env.clone().source_indices.clone(), &typed_module.module.clone()),
     service_registry: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
     item_registry: typed_module.item_registry.clone(),
     lambda_param_provenance: v2_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
@@ -1974,7 +1974,7 @@ if ((src_ty.clone().as_str() != "".to_string().as_str()) && (src_ty.clone().as_s
 pub fn emit_typed_for_each_shared(variable: &String, collection: &Rc<Node>, body: Rc<Node>, target: &RenderTarget, depth: i64, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>, recurse: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone, scope: &Rc<InferScope>) -> String {
     {
         let coll_str = recurse(collection.clone(), scope.clone(), depth.clone());
-let elem_type = for_each_element_type_node(resolved_type(collection.clone()));
+let elem_type = for_each_element_type_node(resolved_type(collection.clone()), source_indices);
 let body_scope = extend_scope(&scope, &variable, elem_type, Rc::new(SubValueRelation::SubValueUnknown));
 let body_str = recurse(body, body_scope, (depth.clone() + 1));
 let var_str = emit_ident(variable.clone(), target.clone());
@@ -2420,7 +2420,7 @@ let args_str = arg_strs.join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(spec.async_call_prefix.clone(), var_name), ".".to_string()), emit_export_ident(method, &target)), "(".to_string()), args_str), ")".to_string())
 },
     MethodSemantics::AlgebraMethodSemantics { method_def, .. } => {
-                let mn = method_def.name.clone();
+                let mn = authored_name_at(source_indices.clone(), &method_def);
 let first_arg_str = emit_typed_first_arg_shared(args.clone(), target.clone(), recurse.clone());
 emit_algebra_method_call_unified(&mn, receiver.clone(), args.clone(), &target, first_arg_str, recurse.clone())
 },

@@ -752,7 +752,7 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
         ..(*leaf_node("".to_string())).clone()
     });
 
-    let outputs = v2_compiler_parse::node_inferred_to_outputs(&conj_node);
+    let outputs = v2_compiler_parse::node_inferred_to_outputs(&conj_node, empty_source_indices());
     assert!(
         outputs.is_empty(),
         "fail-closed gate: Conj with error child must produce 0 outputs, got {}",

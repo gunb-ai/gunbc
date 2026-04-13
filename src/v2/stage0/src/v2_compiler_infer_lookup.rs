@@ -315,7 +315,7 @@ match direct.clone() {
 }
         } else {
             {
-                let enriched = enrich_kernel_type(&authored_name_at(source_indices.clone(), &receiver_type), &receiver_type);
+                let enriched = enrich_kernel_type(&authored_name_at(source_indices.clone(), &receiver_type), &receiver_type, source_indices.clone());
 if ((enriched.connective.clone() == Connective::Conj) && ((enriched.children.clone().len() as i64) > 0)) {
                     {
                         let base_result = lookup_field_in_product(enriched.clone(), method_name.clone(), source_indices.clone());
