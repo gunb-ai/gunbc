@@ -118,6 +118,14 @@ fn scan_dag_files(dir: &std::path::Path, index: &mut HashMap<String, std::path::
             scan_dag_files(&path, index);
         } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
             if let Some(module_path) = extract_module_declaration(&path) {
+                if let Some(existing) = index.get(&module_path) {
+                    panic!(
+                        "duplicate module declaration for {}: {} and {}",
+                        module_path,
+                        existing.display(),
+                        path.display()
+                    );
+                }
                 index.insert(module_path, path);
             }
         }
@@ -281,4 +289,52 @@ pub fn has_file(result: &PipelineResult, path: &str) -> bool {
 
 pub fn emitted_file_paths(result: &PipelineResult) -> Vec<String> {
     result.files.iter().map(|f| f.path.clone()).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_dir(name: &str) -> std::path::PathBuf {
+        let unique = format!(
+            "v2-helper-tests-{}-{}",
+            name,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock before unix epoch")
+                .as_nanos()
+        );
+        let dir = std::env::temp_dir().join(unique);
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    #[test]
+    fn scan_dag_files_panics_on_duplicate_module_names() {
+        let dir = temp_dir("duplicate-modules");
+        let a = dir.join("a.dag");
+        let b = dir.join("nested").join("b.dag");
+        std::fs::create_dir_all(b.parent().expect("nested dir")).expect("create nested dir");
+        std::fs::write(&a, "module duplicate.test\n").expect("write first module");
+        std::fs::write(&b, "module duplicate.test\n").expect("write second module");
+
+        let result = std::panic::catch_unwind(|| {
+            let mut index = HashMap::new();
+            scan_dag_files(&dir, &mut index);
+        });
+
+        let panic_payload = result.expect_err("expected duplicate module panic");
+        let message = if let Some(message) = panic_payload.downcast_ref::<String>() {
+            message.clone()
+        } else if let Some(message) = panic_payload.downcast_ref::<&str>() {
+            message.to_string()
+        } else {
+            String::new()
+        };
+
+        assert!(
+            message.contains("duplicate module declaration for duplicate.test"),
+            "panic should identify duplicate module names, got: {message}"
+        );
+    }
 }

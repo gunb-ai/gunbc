@@ -19,7 +19,7 @@
 module gunbc.tools.review_codex
 
 import extdeps.cron
-import extdeps.github.pulls { PrOpen }
+import extdeps.github.pulls
 import extdeps.llm.cli
 import extdeps.shell
 import std.credentials { CredentialSource, EnvVar }
@@ -227,7 +227,7 @@ func review_cycle(
     auth_token: github_auth,
     owner: cycle_owner,
     repo: cycle_repo,
-    state: PrOpen
+    state: "open"
   )
 
   // Review each (review_pr handles dedup internally)

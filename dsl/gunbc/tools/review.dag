@@ -13,13 +13,13 @@
 module gunbc.tools.review
 
 import extdeps.cron
-import extdeps.github.pulls { PrOpen }
-import extdeps.llm.anthropic { AnthropicModel, ClaudeSonnet4_6 }
+import extdeps.github.pulls
+import extdeps.llm.anthropic
 import extdeps.shell
 
 // -- Configuration as data --------------------------------------------
 
-data default_model: AnthropicModel = ClaudeSonnet4_6
+data default_model: String = "claude-sonnet-4-6-20250929"
 data cron_schedule: String = "*/10 * * * *"
 // BRIDGE: messages should be [{ role: "user", content: "..." }] (Json array),
 // but emit_simple_expr cannot render list/record literals in transport bodies.
@@ -75,7 +75,7 @@ func review_pr(
   owner: String,
   repo: String,
   pr_number: Int,
-  model: AnthropicModel = default_model
+  model: String = default_model
 ) -> { reviewed: Bool, comment_url: String } {
 
   // Step 1: Get PR metadata
@@ -172,7 +172,7 @@ func review_cycle(
     auth_token: "",
     owner: owner,
     repo: repo,
-    state: PrOpen
+    state: "open"
   )
 
   // Review each PR (review_pr handles dedup internally)

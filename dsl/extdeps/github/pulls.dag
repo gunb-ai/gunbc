@@ -23,10 +23,6 @@ import std.serialization { WireFormat, Text }
 
 // -- Pull request model -----------------------------------------------
 
-type PullRequestState = PrOpen | PrClosed | PrMerged
-
-type ReviewState = Approved | ChangesRequested | Commented | Dismissed | Pending
-
 type PullRequestRef {
   ref: String
   sha: String
@@ -37,7 +33,7 @@ type PullRequest {
   number: Int
   title: String
   body: String?
-  state: PullRequestState
+  state: String
   html_url: String
   user: GitHubUser
   head: PullRequestRef
@@ -73,7 +69,7 @@ service github.Pulls {
       auth_token: Secret
       owner: String
       repo: String
-      state: PullRequestState = PrOpen
+      state: String = "open"
       per_page: Int = default_per_page
     }
     output {
@@ -98,7 +94,7 @@ service github.Pulls {
           number: 42,
           title: "Add widget support",
           body: "Implements widget rendering",
-          state: PrOpen,
+          state: "open",
           html_url: "https://github.com/mock-owner/mock-repo/pull/42",
           user: { login: "mock-user", id: 1, type: "User" },
           head: { ref: "feature-widgets", sha: "abc1234def5678", label: "mock-user:feature-widgets" },
@@ -138,7 +134,7 @@ service github.Pulls {
         number: 42,
         title: "Add widget support",
         body: "Implements widget rendering",
-        state: PrOpen,
+        state: "open",
         html_url: "https://github.com/mock-owner/mock-repo/pull/42",
         user: { login: "mock-user", id: 1, type: "User" },
         head: { ref: "feature-widgets", sha: "abc1234def5678", label: "mock-user:feature-widgets" },
@@ -312,7 +308,7 @@ service github.Pulls {
 type PullReview {
   id: Int
   body: String
-  state: ReviewState
+  state: String
   commit_id: String
   html_url: String
 }
