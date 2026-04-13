@@ -493,18 +493,6 @@ type RestResponse {
   body: Json
 }
 
-type HttpResponse {
-  status: Int
-  headers: Json
-  body: String
-}
-
-type CliResult {
-  stdout: String
-  stderr: String
-  exit_code: Int
-}
-
 // --- Test / CI types (Level 3: Labeled Products) ----------------------
 
 type TestResult {

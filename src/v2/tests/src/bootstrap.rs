@@ -5,19 +5,6 @@
 
 #![allow(clippy::disallowed_macros)]
 
-// ── Helper: return the real workspace source roots ──
-//
-// The compiler reads .dag files read-only via --source-root, so tests
-// point directly at the workspace tree instead of copying files into
-// a temp dir. This eliminates the FF-9 curated-file-list workaround
-// and ensures bootstrap tests always see the same sources as the real
-// compiler.
-
-fn source_roots() -> (std::path::PathBuf, std::path::PathBuf) {
-    let ws = crate::helpers::workspace_root();
-    (ws.join("src/v2"), ws.join("dsl"))
-}
-
 // ── 1. stage0_cargo_check ───────────────────────────────────────────────
 
 #[test]
@@ -117,7 +104,7 @@ fn strict_compile_diagnostic_count() {
         stage0_bin.display()
     );
 
-    let (v2_root, dsl_root) = source_roots();
+    let [v2_root, dsl_root] = crate::helpers::source_roots();
 
     let out_dir = std::env::temp_dir().join("v2-diag-output");
     let _ = std::fs::remove_dir_all(&out_dir);
@@ -279,7 +266,7 @@ fn bootstrap_stage0_to_stage1() {
 
     let ws = crate::helpers::workspace_root();
     let stage0_bin = ws.join("target/release/v2-compiler");
-    let (v2_root, dsl_root) = source_roots();
+    let [v2_root, dsl_root] = crate::helpers::source_roots();
 
     // Run stage0 to compile stage1
     let stage1_dir = std::env::temp_dir().join("v2-bootstrap-stage1");
@@ -409,7 +396,7 @@ fn bootstrap_fixed_point() {
         String::from_utf8_lossy(&build.stderr)
     );
     let stage0_bin = ws.join("target/release/v2-compiler");
-    let (v2_root, dsl_root) = source_roots();
+    let [v2_root, dsl_root] = crate::helpers::source_roots();
 
     // Stage0 -> stage1
     let stage1_dir = std::env::temp_dir().join("v2-fp-stage1");
@@ -630,7 +617,7 @@ fn performance_ratchet() {
     assert!(build.status.success(), "stage0 build failed");
 
     let stage0_bin = ws.join("target/release/v2-compiler");
-    let (v2_root, dsl_root) = source_roots();
+    let [v2_root, dsl_root] = crate::helpers::source_roots();
 
     let out_dir = std::env::temp_dir().join("v2-perf-output");
     let _ = std::fs::remove_dir_all(&out_dir);
