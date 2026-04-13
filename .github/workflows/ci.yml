@@ -48,3 +48,7 @@ jobs:
 
       - name: CI Pipeline
         run: cargo run -p v2-compiler --release -- run --source-root dsl --function run_ci_pipeline
+
+      - name: CI Timing
+        if: always()
+        run: cat /tmp/v2-ci-timing.txt 2>/dev/null || echo "no timing data"

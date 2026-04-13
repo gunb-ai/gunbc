@@ -576,6 +576,21 @@ fn performance_ratchet() {
 
 use std::sync::LazyLock;
 
+/// Timing log file — written by LazyLock inits, read by ci.yml after pipeline.
+const CI_TIMING_FILE: &str = "/tmp/v2-ci-timing.txt";
+
+fn ci_timing(msg: &str) {
+    use std::io::Write;
+    let elapsed = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap();
+    let line = format!("[{:.1}s] {}\n", elapsed.as_secs_f64(), msg);
+    eprint!("{}", line);
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(CI_TIMING_FILE) {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
 /// Output from pass 1: build stage0, run one self-compile.
 struct Pass1Output {
     output_dir: std::path::PathBuf,
@@ -591,18 +606,21 @@ struct Pass2Output {
 }
 
 static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
+    ci_timing("PASS1: start build_stage0");
     let stage0_bin = build_stage0();
+    ci_timing("PASS1: build_stage0 done");
     let ws = crate::helpers::workspace_root();
 
     let output_dir = std::env::temp_dir().join("v2-ci-pass1");
     let _ = std::fs::remove_dir_all(&output_dir);
 
+    ci_timing("PASS1: start self-compile");
     let start = std::time::Instant::now();
     let output = run_self_compile(&stage0_bin, &output_dir);
     let elapsed = start.elapsed();
+    ci_timing(&format!("PASS1: self-compile done ({:.1}s)", elapsed.as_secs_f64()));
 
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    eprintln!("[ci pass 1] stderr:\n{}", stderr);
     assert!(
         output.status.success(),
         "pass 1 compile failed:\n{}",
@@ -614,6 +632,7 @@ static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
     let pass1_src = output_dir.join("src");
     let committed_src = ws.join("src/v2/stage0/src");
     let freshness = diff_excluding_hand_maintained(&pass1_src, &committed_src);
+    ci_timing("PASS1: freshness diff done");
 
     Pass1Output { output_dir, stderr, elapsed, freshness }
 });
@@ -624,8 +643,7 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
     let stage0_src = ws.join("src/v2/stage0/src");
 
     // Copy pass1 generated .rs files into the workspace's stage0 source.
-    // Hand-maintained files (v2_interpreter.rs, cli_run.rs) are NOT in pass1
-    // output and stay untouched. If freshness passes, this is a no-op.
+    ci_timing("PASS2: start copy .rs files into workspace");
     let pass1_src = pass1.output_dir.join("src");
     for entry in std::fs::read_dir(&pass1_src).unwrap() {
         let entry = entry.unwrap();
@@ -634,6 +652,7 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
             std::fs::copy(&path, stage0_src.join(entry.file_name())).unwrap();
         }
     }
+    ci_timing("PASS2: copy done, start workspace rebuild");
 
     // Rebuild workspace binary — incremental, all deps already compiled.
     let build1 = std::process::Command::new("cargo")
@@ -643,6 +662,10 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
         .arg("--release")
         .output()
         .expect("stage1 build failed");
+    ci_timing(&format!(
+        "PASS2: workspace rebuild done (success={})",
+        build1.status.success()
+    ));
     assert!(
         build1.status.success(),
         "stage1 build failed:\n{}",
@@ -651,9 +674,11 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
     let stage1_bin = ws.join("target/release/v2-compiler");
 
     // Self-compile pass 2
+    ci_timing("PASS2: start self-compile");
     let output_dir = std::env::temp_dir().join("v2-ci-pass2");
     let _ = std::fs::remove_dir_all(&output_dir);
     let pass2_output = run_self_compile(&stage1_bin, &output_dir);
+    ci_timing("PASS2: self-compile done");
     assert!(
         pass2_output.status.success(),
         "pass 2 (stage1->2) compile failed:\n{}",
@@ -666,6 +691,7 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
 #[test]
 #[ignore] // CI: cargo test -p v2-compiler-tests ci_ -- --ignored
 fn ci_full_dsl() {
+    ci_timing("ci_full_dsl: start");
     // Compile ALL .dag files under dsl/ via library API.
     // The subprocess self-compile (CI_PASS1) only compiles files transitively
     // imported from src/v2 entry modules — unreferenced .dag files in dsl/
@@ -700,7 +726,7 @@ fn ci_full_dsl() {
             .join("\n")
     );
 
-    eprintln!("ci_full_dsl: {} dsl files compiled, 0 hard diagnostics", dsl_sources.len());
+    ci_timing(&format!("ci_full_dsl: done ({} files)", dsl_sources.len()));
 }
 
 #[test]
