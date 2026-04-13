@@ -16,11 +16,14 @@ as afterthoughts rather than designed into the substrate. Each one
 required a separate reconstruction pass because the IR doesn't carry
 the facts they need.
 
-**The v3 question:** can the substrate be designed so that adding
-these concerns is additive (declare a lattice in std/, write a
-binding-site rule) rather than reconstructive (write a 5,000-line
-analysis pass that re-derives facts the IR already computed and
-discarded)?
+**The v3 question:** can the IR be designed so that complexity,
+ownership, effects are structural readings of the graph — like
+conservation laws in a physics engine — rather than separate
+analysis passes that reconstruct discarded information?
+
+**The v3 test:** can we add an arbitrary lane of analysis (like
+complexity) without bolting on a block of heuristics? If yes, the
+representation is right. If no, we missed a compression opportunity.
 
 ---
 
@@ -177,20 +180,90 @@ Three layers were identified:
 Layer 3 is where 90% of the wins live, and it's blocked on a design
 that was never done because ownership was an afterthought.
 
-### 2f. The thesis outran the implementation
+### 2f. ExprData: 21 variants where ~4 structural patterns suffice
 
-THESIS.md describes an architecture where:
-- Adding a correctness dimension = declare a lattice in std/ + a
-  binding-site rule
-- User-defined dimensions work the same as built-in ones
-- One mechanism enforces all dimensions uniformly
+The deepest missed compression. v2 has 21 ExprData variants
+(ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
+ExprMatch, ExprIf, ExprLet, ExprBlock, ExprRecordLit, ExprListLit,
+ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprForEach,
+ExprIndex, ExprSlice, ExprCast, ExprReturn, ExprError). Every
+downstream consumer pattern-matches on all 21.
 
-v2 has none of this. Each dimension is a bespoke pass. There's no
-generic dimension mechanism. User-defined dimensions are impossible.
+**The explosion by the numbers:**
+- 262 match expressions across 7 key files
+- 665 total match arms
+- Only ~40-50 arms (6%) have truly distinct logic
+- ~100-120 arms (18%) are "walk children, apply same pattern"
+- ~100-130 arms (20%) are trivial pass-through (return default)
 
-The thesis is the right goal. But it was written as if the
-implementation supported it, when actually the implementation needs
-structural changes to enable it.
+Adding one new variant requires touching ~262 match statements.
+
+**But these 21 variants are only ~4 structural patterns:**
+
+| Physical pattern | v2 variants | Count |
+|-----------------|-------------|-------|
+| **Constant** (leaf, known bits) | ExprLiteral | 1 |
+| **Interaction** (inputs → output) | ExprFieldAccess, ExprCall, ExprMethodCall, ExprBinOp, ExprUnaryOp, ExprCast, ExprRecordLit, ExprListLit, ExprStringInterp, ExprIndex, ExprSlice | 11 |
+| **Fork** (branch on input) | ExprMatch, ExprIf | 2 |
+| **Chain** (compressed iteration) | ExprForEach | 1 |
+| **Structural** (binding/scoping) | ExprLet, ExprBlock, ExprLambda, ExprReturn, ExprVar | 5 |
+
+The 11 interaction variants are all the same DAG shape: inputs come
+in on edges, a reaction occurs, output goes out. They differ in WHAT
+reaction occurs — but that's data on the node, not a structural
+distinction. A field access and a function call compose identically.
+They have the same cost model. The same ownership model.
+
+**What this cost the project:** complexity writes 11 interaction
+cases where 1 would suffice. Ownership writes 11 cases. Each
+emitter writes 11 cases. Each case is a place where a heuristic
+sneaks in — because each arm needs its own logic instead of reading
+uniform structure.
+
+**The physics engine analog:** a physics engine doesn't have
+`simulateSpring()`, `simulateGravity()`, `simulateElectromagnetism()`
+as separate code paths. It has `applyForce(particle, force)` and
+the force is data. Adding a new force doesn't change the engine.
+Adding a new ExprData variant changes everything.
+
+### 2g. Lambdas: a case study in failed desugaring
+
+Lambdas should be anonymous functions — structurally the same as
+named functions, just without a top-level binding. v2 treats them
+as fundamentally different:
+
+- Separate ExprData variant (ExprLambda) with its own LambdaSemantics
+- Separate inference path (77 lines in 04_infer.dag)
+- Separate ownership scoping (fresh accumulator, capture tracking)
+- Three separate emission modes in 05_emit_rust.dag
+- 19 lambda-specific functions across all compiler stages (~250 lines)
+- Lambdas don't get Arrow types — only the return type is inferred
+
+A lambda IS a function. It has params, a body, and a return type.
+The only difference is surface syntax: `x => x + 1` vs
+`fn add_one(x: Int) -> Int { x + 1 }`. In the causal DAG, both
+are subgraphs with input edges and output edges. Both have the
+same cost model. Both have the same ownership model.
+
+By treating them as structurally different, every consumer gains
+lambda-specific code paths: complexity special-cases lambdas as
+"iteration-bounded," ownership creates fresh scopes for captures,
+emit has three lambda rendering modes. These are heuristics
+compensating for the IR's failure to desugar lambdas into the
+same structural pattern as functions.
+
+### 2h. The thesis outran the implementation
+
+THESIS.md describes an architecture where properties like complexity
+and ownership are "consequences of the model, like conservation laws
+in physics." v2 has none of this. Each property is a bespoke pass.
+
+The thesis is the right goal. But the IR doesn't support it. The
+reason is now clear: the IR has too many structural variants (21)
+carrying too little structural information (TypeBinding discards
+provenance). This forces downstream consumers to both pattern-match
+exhaustively AND reconstruct discarded facts. The combination is
+what produces the heuristic explosion.
 
 ---
 

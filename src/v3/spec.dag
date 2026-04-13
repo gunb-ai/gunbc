@@ -1,657 +1,506 @@
-// v3 Boundary Specification
+// v3 Causal Kernel Specification
 //
-// This document defines what each compiler layer OWNS, what facts are
-// AUTHORITATIVE at each boundary, and what is FORBIDDEN from leaking
-// across boundaries. It is a contract document, not a type catalog.
+// The DAG is not just the IR. It is the closed physical world in which
+// all conserved quantities live. Complexity, ownership, cardinality,
+// and verification are not extra systems layered on top. They are
+// different readouts of the same bounded causal object.
 //
-// Implementation follows from these contracts. Types serve the contracts,
-// not the other way around.
-//
-// KEY INVARIANT: v3 keeps the DAG worldview and drops the single-schema
-// pipeline. Each layer has its own graph schema. No stage reads fields
-// that a prior stage "happens to have set."
+// This spec defines the causal kernel: which node kinds exist, what
+// each one conserves, and how surface constructs lower into the kernel.
 
 module v3.spec
 
 // =========================================================================
-// 1. GOAL
+// 1. THE CAUSAL KERNEL
 // =========================================================================
 //
-// The compiler is specified as four IR layers:
+// The kernel has three parts:
 //
-//   1. Authored graph
-//   2. Semantic graph
-//   3. Analysis views
-//   4. Render plan
+//   TOPOLOGY  — ports, edges, fork/join shape, bounded motifs
+//   CARRIER   — type/cardinality/state space on each edge
+//   LAW       — local monotonic facts: size effect, cost shape,
+//               fan-out, consumption, boundary obligations
 //
-// Every downstream decision reads from an explicit contract instead of
-// reconstructing meaning from Node, names, or target-specific heuristics.
+// Surface constructs (let, if, match, fn, lambda, fold, etc.) are
+// sugar that lowers into a small family of bounded causal motifs.
+// The compiler operates on the kernel, not on surface syntax.
 //
-// Boundary sufficiency rule: if a downstream stage branches on a name,
-// inspects raw type-node children for "Unit", or infers callability from
-// fallback lookups, the boundary is insufficient. Fix the boundary.
+// The test: can we add an arbitrary analysis lane (like complexity)
+// by folding local laws over the kernel? If yes, the kernel is right.
+// If we need heuristics, we missed a motif or a law.
 
 // =========================================================================
-// 2. WHY V2 IS NOT ENOUGH
+// 2. CAUSAL MOTIFS
 // =========================================================================
 //
-// v2 proved the product thesis (structural glue generation works) but
-// its Node still conflates authored identity, semantic facts, execution
-// shape, and metadata. Node carries name, ident, span, children, params,
-// inferred, uses, body, transport, properties, type_annotation,
-// match_pattern, and expr_data all in one type. That pressure turns
-// "DAG as IR" into "Node as god struct."
+// Every expression in the language lowers to one of these motifs.
+// There are no others. A motif is a node in the causal DAG with
+// typed input ports, typed output ports, and local laws.
 //
-// v2 also loses information at the reconcile→emit boundary:
-// - Rust emit classifies field access and optional receiver behavior
-// - lookup_in_scope fabricates function-as-value references from returns
-// - Dynamic compatibility masks missing normalization
-// - empty_map() and fold accumulator types lack expected-type propagation
-// - VariantPattern bindings in match arms are skipped by ownership
-//
-// These are not renderer bugs. They are proof that the semantic boundary
-// is insufficient.
-
-// =========================================================================
-// 3. IR LAYER CONTRACTS
-// =========================================================================
+// The number of motifs is SMALL. v2 had 21 ExprData variants.
+// The kernel has 5 motifs. The difference between a field access
+// and a function call is DATA on the interaction motif, not a
+// separate structural pattern.
 
 // ---------------------------------------------------------------------------
-// 3a. Authored graph
+// 2a. Constant — a leaf node with known bits
 // ---------------------------------------------------------------------------
 //
-// Records exactly what the user wrote.
+// No inputs. One output. Cost = 0. No causal predecessors.
+// Literals, data declarations, known values.
 //
-// OWNS:
-//   - source spans
-//   - authored names
-//   - token/syntax sugar
-//   - surface pattern structure
-//   - parse-local grouping
-//
-// DOES NOT OWN:
-//   - resolved references
-//   - final types
-//   - ownership
-//   - complexity
-//   - target rendering choices
-//
-// Authored names exist here as provenance only. They are NOT semantic
-// authority. If scrambling names changes downstream behavior, the
-// boundary is insufficient and names are being used as proxies.
+// Topology:  () → out
+// Carrier:   out has a known type and a known value
+// Laws:      cost = 0, fan-out = number of consumers of out
 
-type AuthoredNode {
+type Constant {
   id: NodeId
-  span: SourceSpan
-  name_span: SourceSpan?
-
-  // Structure
-  children: List<AuthoredNode>
-  connective: Connective            // Conj | Disj | Arrow | NoConnective
-  params: List<AuthoredNode>
-  body: AuthoredNode?
-  return_cardinality: Cardinality
-
-  // Authored annotations (what the user wrote, verbatim)
-  type_annotation: AuthoredNode?
-  transport: AuthoredNode?
-  uses: List<AuthoredNode>
-  properties: List<AuthoredNode>
-
-  // Expression kind (syntactic form, NOT semantic classification)
-  expr_kind: ExprKind
-  match_pattern: MatchPattern?
-}
-
-// ExprKind is PURELY STRUCTURAL. No binding_kind, no call_semantics,
-// no method_semantics, no field_summary. Those are semantic facts.
-type ExprKind =
-    Literal { value: LiteralValue }
-  | Var
-  | FieldAccess
-  | Call
-  | MethodCall
-  | Match | If | Let | Block
-  | RecordLit | ListLit
-  | BinOp { op: BinOp }
-  | UnaryOp { op: UnaryOpKind }
-  | Lambda | StringInterp | ForEach
-  | Index | Slice | Cast | Return
-
-type AuthoredGraph {
-  modules: List<AuthoredModule>
-  source_indices: Map<String, NewlineIndex>
-  intern_table: InternTable
-}
-
-type AuthoredModule {
-  root: AuthoredNode
-  resolved_imports: List<ResolvedImport>
-  dep_order: Int
+  value: Value                       // the known bits
+  carrier: TypeShape                 // the type of those bits
 }
 
 // ---------------------------------------------------------------------------
-// 3b. Semantic graph
+// 2b. Interaction — inputs transform to output via a known reaction
 // ---------------------------------------------------------------------------
 //
-// The real compiler boundary. Where "illegal states unrepresentable"
-// becomes true.
+// The general-purpose motif. Covers:
+//   function call, method call, field access, index, slice,
+//   binary op, unary op, cast, record construction, list construction,
+//   string interpolation, lambda application
 //
-// OWNS:
-//   - stable semantic ids for expressions, bindings, items, and types
-//   - resolved reference kind (value / function / type / variant / field / method)
-//   - resolved type shape (structure, not a name that may later resolve)
-//   - field-access classification (stored / enum accessor / optional unwrap / tuple)
-//   - method/intrinsic semantics (closed enum, not string dispatch)
-//   - call semantics (direct / builtin / service)
-//   - binding identity across patterns and branches
-//   - expected type context where required for downstream correctness
-//   - cardinality and type obligations
-//   - descent and size evidence (enough for complexity without heuristics)
-//   - consumer / fan-out facts (enough for ownership without recovery)
-//   - transport / service obligations
-//   - provenance links back to authored nodes/spans
+// All of these are the same DAG shape: edges in, reaction occurs,
+// edge out. They differ in WHAT reaction — that's data (ReactionKind),
+// not structure.
 //
-// DOES NOT OWN:
-//   - authored names as semantic authority
-//   - target-language rendering choices
-//   - Rust/Go/Python policy
-//
-// A consumer must not:
-//   - guess whether a reference names a value, function, type, or variant
-//   - infer optional-unwrapping from a field name
-//   - branch on "Unit" or "Dynamic" because expected-type propagation
-//     never arrived
-//   - compensate for missing fold accumulator types or empty literal types
+// Topology:  (in_1, in_2, ..., in_n) → out
+// Carrier:   each in_i has a type; out has a type determined by reaction
+// Laws:
+//   cost = reaction_cost(kind) + sum(cost(in_i))
+//   size_effect = reaction_size_effect(kind)  // preserving, reducing, expanding
+//   each in_i is consumed once by this interaction
+//   fan-out of out = number of downstream consumers
 
-type SemanticNode {
+type Interaction {
   id: NodeId
-  span: SourceSpan                   // carried for diagnostics
-
-  // Resolved structure
-  children: List<SemanticNode>
-  connective: Connective
-  params: List<SemanticNode>
-  body: SemanticNode?
-  return_cardinality: Cardinality
-
-  // Resolved type (not Optional — errors are diagnostics, not IR holes)
-  resolved_type: ResolvedType
-
-  // Expression semantics (fully classified — no None slots)
-  expr: ExprSemantics
-
-  // Dimension values (provenance, ownership, effects, cost)
-  dimensions: DimensionValues
+  kind: ReactionKind                 // what happens (data, not structure)
+  inputs: List<Port>                 // causal predecessors
+  output: Port                       // causal result
 }
 
-// ResolvedType is a resolved structure, not a name.
-// If inference failed, the type is ErrorType and a diagnostic was emitted.
-// Downstream stages never see "unresolved."
-type ResolvedType =
-    Concrete { shape: TypeShape }
-  | ErrorType { message: String }
-  | TypeVar { id: Int }
+// ReactionKind is DATA. Adding a new kind of reaction does not change
+// the compiler's traversal, cost model, ownership model, or emission
+// pattern. It adds a value to this enum and a row to the reaction table.
+type ReactionKind =
+    // Navigation — accessing sub-structure
+    FieldAccess { field: FieldRef }
+  | IndexAccess
+  | SliceAccess
 
-type TypeShape {
-  kind: TypeKind
-  children: List<TypeShape>
-  fields: List<FieldShape>
-  variants: List<VariantShape>
-}
-
-type TypeKind =
-    Primitive { name: PrimitiveType }
-  | Record { name: String }
-  | Sum { name: String }
-  | Container { kind: ContainerKind }
-  | Function { arity: Int }
-  | Optional
-  | Unit
-
-type FieldShape {
-  name: String
-  type_shape: TypeShape
-  cardinality: Cardinality
-  default: SemanticNode?
-}
-
-type VariantShape {
-  name: String
-  fields: List<FieldShape>
-}
-
-// ---------------------------------------------------------------------------
-// 3b-i. Mandatory semantic facts
-// ---------------------------------------------------------------------------
-//
-// This list is not hypothetical. It comes from currently live pain points.
-// A semantic expression node must carry, directly or through typed edges:
-
-// Reference classification — no guessing value vs function vs type.
-type BindingRef {
-  id: BindingId
-  kind: BindingKind
-  source_name: String               // provenance only, NOT semantic authority
-}
-
-type BindingKind =
-    LocalValue
-  | FunctionValue
-  | VariantConstructor
-  | MatchBound                       // including VariantPattern destructuring
-  | ForEachElement
-
-// Field access classification — no downstream repair.
-type FieldRef {
-  name: String
-  access: FieldAccessKind
-  value_shape: FieldValueShape
-  declaring_type: TypeRef
-}
-
-type FieldAccessKind =
-    StoredField
-  | EnumAccessor
-  | OptionalUnwrap
-  | TupleFirst
-  | TupleSecond
-
-// Method semantics — closed enum, not string dispatch.
-type MethodRef =
-    PlainMethod { name: String, resolved_def: TypeRef }
-  | AlgebraMethod { name: String, algebra_field: AlgebraFieldKind, method_def: TypeRef, fold_accumulator: TypeShape? }
-  | ServiceMethod { name: String, operation: ServiceOperation }
-
-// Call semantics — no fabrication from return types.
-type CalleeRef =
-    DirectCall { target: BindingRef }
+    // Application — applying a known reaction
+  | FunctionCall { target: NodeRef }
+  | MethodCall { method: MethodRef }
   | BuiltinCall { builtin: BuiltinKind }
 
-// Descent evidence — computed at the boundary, not reconstructed by CX.
-type DescentEvidence =
-    StructuralDescent { relation: SubValueRelation }
-  | NoRecursion
-  | Unresolved                       // boundary couldn't determine → diagnostic
+    // Arithmetic/logic — primitive operations
+  | BinaryOp { op: BinOp, algebra: AlgebraRef? }
+  | UnaryOp { op: UnaryOpKind }
+  | TypeCast { target_type: TypeShape }
 
-// ExprSemantics — fully classified. No None slots. No Optional wrappers
-// that "inference will fill in later." If a fact can't be determined,
-// it's an ErrorType with a diagnostic.
-type ExprSemantics =
-    Literal { value: LiteralValue }
-  | Var { binding: BindingRef }
-  | FieldAccess { receiver: SemanticNode, field: FieldRef }
-  | Call { callee: CalleeRef, args: List<SemanticNode>, descent: DescentEvidence }
-  | MethodCall { receiver: SemanticNode, method: MethodRef, args: List<SemanticNode> }
-  | Match { scrutinee: SemanticNode, arms: List<MatchArm> }
-  | If { condition: SemanticNode, then_branch: SemanticNode, else_branch: SemanticNode? }
-  | Let { binding: BindingDef, value: SemanticNode, body: SemanticNode }
-  | Block { statements: List<SemanticNode> }
-  | RecordLit { type_ref: TypeRef, fields: List<FieldInit> }
-  | ListLit { elements: List<SemanticNode> }
-  | BinOp { op: BinOp, left: SemanticNode, right: SemanticNode, algebra: AlgebraRef? }
-  | UnaryOp { op: UnaryOpKind, operand: SemanticNode }
-  | Lambda { params: List<LambdaParam>, body: SemanticNode }
-  | StringInterp { parts: List<StringPart> }
-  | ForEach { collection: SemanticNode, variable: BindingDef, body: SemanticNode }
-  | Index { collection: SemanticNode, index: SemanticNode }
-  | Slice { collection: SemanticNode, start: SemanticNode?, end: SemanticNode? }
-  | Cast { value: SemanticNode, target_type: TypeShape }
-  | Return { value: SemanticNode? }
+    // Construction — building structure from parts
+  | RecordConstruct { type_ref: TypeRef }
+  | ListConstruct
+  | StringBuild                      // interpolation
+
+// Every ReactionKind has an entry in the reaction table:
+//
+// | Kind | Cost | Size Effect | Inputs | Output Rule |
+// |------|------|-------------|--------|-------------|
+// | FieldAccess | O(1) | sub-value | 1 (receiver) | field type |
+// | FunctionCall | cost(target) | from target sig | n (args) | return type |
+// | BinaryOp | O(1) | preserving | 2 (left, right) | result type |
+// | RecordConstruct | O(fields) | constructing | n (field values) | record type |
+// | ... | ... | ... | ... | ... |
+//
+// The reaction table IS the spec. The compiler reads it. Adding a new
+// reaction means adding a row, not a new match arm in every consumer.
 
 // ---------------------------------------------------------------------------
-// 3b-ii. Dimension values
+// 2c. Fork — branch on input, both branches are real structure
 // ---------------------------------------------------------------------------
 //
-// Computed at binding sites during authored_to_semantic.
-// Consumed downstream as settled facts. Never reconstructed.
+// The input determines which of several subgraphs activates. Both
+// subgraphs exist in the causal DAG. At runtime, one path fires.
+// The compiler sees both paths (for cost: max, for ownership:
+// exclusive consumers).
 //
-// Fixed struct for v3. Generic mechanism (user-defined dimensions)
-// is v3.1, after concrete instances validate the pattern.
+// Topology:  (scrutinee) → select → { branch_1, branch_2, ..., branch_n } → join → out
+// Carrier:   scrutinee determines which branch; all branches produce same type
+// Laws:
+//   cost = cost(scrutinee) + max(cost(branch_i))
+//   ownership: branches are exclusive — fan-out from scrutinee into
+//     branches does NOT mean the value is consumed multiple times
+//   exhaustiveness: all possible values of scrutinee must be covered
+//
+// NOTE: ExprIf is just Fork with a Bool scrutinee and 2 branches.
+// ExprMatch is Fork with a general scrutinee and n branches.
+// They are the SAME motif. v2 had them as separate variants.
 
-type DimensionValues {
-  provenance: SubValueRelation       // how this value relates to its source
-  ownership: OwnershipFact           // consumption pattern
-  effect: EffectShape                // side effect classification
-  cost: CostBound                    // computation cost bound
+type Fork {
+  id: NodeId
+  scrutinee: Port                    // the value being branched on
+  branches: List<Branch>             // possible causal futures
+  output: Port                       // joined result
 }
 
-type OwnershipFact {
-  fan_out: Int
-  last_use: BindingId?
-  consumption: ConsumptionKind
+type Branch {
+  pattern: Pattern                   // what scrutinee value activates this branch
+  bindings: List<Binding>            // values extracted by the pattern
+  body: NodeRef                      // the subgraph for this branch
 }
-
-type ConsumptionKind =
-    Consumed | Read | Projected | Threaded
-
-type CostBound =
-    Constant { value: Int }
-  | Linear { dimension: String }
-  | Symbolic { expr: CostExpr }
-  | Unknown
-
-type EffectShape =
-    Pure
-  | ServiceCall { transport: TransportKind }
-  | Mutation { target: BindingRef }
 
 // ---------------------------------------------------------------------------
-// 3b-iii. Bidirectional inference
+// 2d. Chain — compressed repeated interaction with known bound
 // ---------------------------------------------------------------------------
 //
-// v2's inference is top-down only. Expected types don't propagate into
-// sub-expressions. This causes emit to compensate for empty_map() types,
-// fold accumulator types, and lambda parameter types.
+// A causal chain of N interactions, represented as (body, bound).
+// The body is one link in the chain. The bound is the chain length.
+// The compiler doesn't unroll — it reads the compressed structure.
 //
-// v3's authored_to_semantic boundary uses bidirectional inference:
-// expected types flow DOWN, inferred types flow UP. By the time we
-// leave this boundary, every expression has complete type context.
+// Topology:  (source, init) → [body × N] → out
+// Carrier:   source provides elements; init provides accumulator;
+//            body transforms (accumulator, element) → accumulator
+// Laws:
+//   cost = bound × cost(body)
+//   bound is a structural fact: |collection| for fold, |tree| for descend, N for repeat
+//   body's inputs are consumed once per iteration
+//   accumulator threads through: fan-out = 1 per step (ownership: movable)
+//
+// fold, descend, repeat are all Chains with different bound sources:
+//   fold:    bound = |collection|, element = collection[i]
+//   descend: bound = |tree|, element = tree.children[i]
+//   repeat:  bound = N, element = step index
+//
+// A "forever" loop is Chain with bound = Omega (system limit).
+// Structurally identical to bound = 5. Just longer.
 
-type InferContext {
-  expected_type: TypeShape?          // from annotation or downstream usage
-  inferred_type: TypeShape           // from the expression itself
-  scope: ScopeTable                  // keyed by BindingId, not name string
+type Chain {
+  id: NodeId
+  source: Port                       // what provides elements/iterations
+  init: Port                         // initial accumulator
+  body: NodeRef                      // one link of the chain (a subgraph)
+  bound: Bound                       // how many times the chain repeats
+  output: Port                       // final accumulator value
 }
 
-type ScopeTable {
-  bindings: Map<BindingId, BindingEntry>
-  types: Map<TypeId, TypeShape>
+type Bound =
+    CollectionSize { collection: Port }   // |collection| — fold
+  | TreeSize { tree: Port }               // |tree| — descend
+  | Explicit { count: Port }              // N — repeat
+  | SystemLimit                           // Omega — "forever"
+
+// ---------------------------------------------------------------------------
+// 2e. Binding — names a causal step for reference
+// ---------------------------------------------------------------------------
+//
+// Not a computation — structural. It attaches a name to a node's
+// output so other nodes can reference it. In the DAG, this is just
+// an edge label.
+//
+// let x = f(y) → the interaction f(y) produces an output; the
+// binding names that output "x" so downstream nodes can connect to it.
+//
+// Lambda is ALSO a binding: it names a subgraph (the function body)
+// as a value that can be passed around and applied later. A lambda
+// and a named function are the same motif — a subgraph with input
+// ports and output ports, bound to a name (explicit for fn, implicit
+// for lambda).
+//
+// Topology:  (value) → named_out
+// Carrier:   value's type flows to named_out unchanged
+// Laws:
+//   cost = 0 (binding is structural, not computational)
+//   fan-out of named_out = number of references to this binding
+
+type Binding {
+  id: NodeId
+  name: BindingId                    // how other nodes reference this
+  value: Port                        // what this binding names
+  scope: NodeRef?                    // body where this binding is visible
 }
 
-type BindingEntry {
+// ---------------------------------------------------------------------------
+// 2f. Subgraph — a reusable causal structure (functions, lambdas)
+// ---------------------------------------------------------------------------
+//
+// A subgraph is a bounded piece of the causal DAG with input ports
+// (parameters) and an output port (return value). Functions and
+// lambdas are the SAME motif — both are subgraphs. The difference
+// is surface syntax only:
+//   fn add(a: Int, b: Int) -> Int { a + b }     → named subgraph
+//   x => x + 1                                   → anonymous subgraph
+//
+// The compiler treats them identically. Cost, ownership, emission
+// all see the same structure.
+//
+// Topology:  (param_1, ..., param_n) → body_nodes → out
+// Carrier:   params have declared types; out has return type
+// Laws:
+//   cost = cost(body)
+//   calling this subgraph = Interaction with kind = FunctionCall
+
+type Subgraph {
+  id: NodeId
+  params: List<ParamPort>            // input ports with types
+  body: NodeRef                      // the causal structure
+  output: Port                       // return value
+}
+
+type ParamPort {
   id: BindingId
-  kind: BindingKind
-  resolved_type: TypeShape
-  dimensions: DimensionValues
-  source_name: String                // provenance only
-}
-
-// ---------------------------------------------------------------------------
-// 3c. Analysis views
-// ---------------------------------------------------------------------------
-//
-// Ownership and complexity are read-only projections over the semantic
-// graph. They do not invent new semantic guesses, create parallel fact
-// tables, or set target rendering policy.
-//
-// OWNERSHIP consumes semantic binding/use facts and emits proofs or
-// diagnostics. It does not reclassify references from names or renderer
-// syntax. It must cover destructuring and variant-pattern bindings, not
-// just simple locals. The fallback model "try unwrap else clone" is the
-// wrong shape — the compiler proves the move or fails structurally.
-//
-// COMPLEXITY consumes semantic descent, size, and expected-type facts.
-// It does not compensate for missing inference. Fold refinement and
-// empty-literal gaps are upstream incompleteness that v3 forbids from
-// leaking past the semantic boundary.
-
-fn complexity_view(graph: SemanticGraph) -> ComplexityReport
-fn ownership_view(graph: SemanticGraph, target: LanguageSpec) -> OwnershipPolicy
-
-// ---------------------------------------------------------------------------
-// 3d. Render plan
-// ---------------------------------------------------------------------------
-//
-// The last boundary before target text.
-//
-// OWNS:
-//   - target-agnostic rendering intents
-//   - type rendering descriptors (fully resolved target-language types)
-//   - import/module requirements
-//   - sharing/copy strategy (derived from LanguageSpec + ownership facts)
-//   - target-specific lowering choices from LanguageSpec
-//
-// DOES NOT OWN:
-//   - unresolved meaning
-//   - target-name guesses
-//   - policy hidden in core semantics
-//
-// Emission is translation, not decision-making. The emitter is a pure
-// function from (RenderPlan) to text. Known decisions that must move
-// into data or precomputed descriptors: sharing, clone semantics,
-// option/absence, async syntax, imports, container iteration, record
-// wrapping.
-
-fn semantic_to_render(graph: SemanticGraph, spec: LanguageSpec) -> RenderPlan
-
-type RenderPlan {
-  modules: List<RenderModule>
-  imports: List<ImportDecl>
-}
-
-type RenderModule {
-  items: List<RenderItem>
-}
-
-type RenderItem =
-    RenderType { shape: TypeRender }
-  | RenderFunction { sig: FunctionRender, body: ExprRender }
-  | RenderService { sig: FunctionRender, operations: List<OperationRender> }
-  | RenderData { name: String, value: ExprRender }
-
-type TypeRender {
-  target_text: String                // fully resolved, e.g. "Rc<Vec<Rc<Node>>>"
-  value_context: ValueContext
-  sharing: SharingStrategy
-}
-
-type ValueContext =
-    ConstantData | RuntimeValue | SpecificationWitness | CallableValue
-
-type SharingStrategy =
-    Move | Clone | Borrow | Copy | GarbageCollected
-
-type ExprRender =
-    LiteralRender { text: String }
-  | VarRender { name: String, sharing: SharingStrategy }
-  | FieldAccessRender { receiver: ExprRender, field: String, access: FieldAccessKind }
-  | CallRender { callee: String, args: List<ExprRender> }
-  | MethodCallRender { receiver: ExprRender, method: String, args: List<ExprRender> }
-  | MatchRender { scrutinee: ExprRender, arms: List<ArmRender> }
-  | IfRender { condition: ExprRender, then_expr: ExprRender, else_expr: ExprRender? }
-  | LetRender { name: String, type_text: String, value: ExprRender, body: ExprRender }
-  | BlockRender { statements: List<ExprRender> }
-  | RecordLitRender { type_name: String, fields: List<FieldInitRender> }
-  | ListLitRender { elements: List<ExprRender> }
-  | BinOpRender { left: ExprRender, op: String, right: ExprRender }
-  | UnaryOpRender { op: String, operand: ExprRender }
-  | LambdaRender { params: List<ParamRender>, body: ExprRender }
-  | StringInterpRender { parts: List<StringPartRender> }
-  | ForEachRender { var_name: String, collection: ExprRender, body: ExprRender }
-  | IndexRender { collection: ExprRender, index: ExprRender }
-  | SliceRender { collection: ExprRender, start: ExprRender?, end: ExprRender? }
-  | CastRender { value: ExprRender, target_text: String }
-  | ReturnRender { value: ExprRender? }
-  | TcoLoopRender { params: List<ParamRender>, body: ExprRender }
-
-// =========================================================================
-// 4. HARD RULES
-// =========================================================================
-//
-// These are the repo invariants restated as design constraints.
-//
-// MUST:
-//   - keep authored names only in authored/provenance space
-//   - make every boundary fact exact, typed, and consumed downstream
-//   - keep core target-agnostic
-//   - treat render as a consumer of semantic truth plus LanguageSpec
-//   - fail closed when a required semantic fact is absent
-//
-// MUST NOT:
-//   - use one universal Node schema across all stages
-//   - introduce a new fact table without a same-change consumer
-//   - use authored names for structural dispatch after the authored layer
-//   - put Rust/Go/Python policy in shared semantic types
-//   - let emit recover from missing semantics by heuristics or fabrication
-
-// =========================================================================
-// 5. EXPRESSION-WALK RULE
-// =========================================================================
-//
-// v2 caps full ExprData walks at five (ratchet, containment). v3
-// promotes a first-class fold/visitor to compiler architecture.
-//
-// No stage writes its own expression walker. All stages use fold_expr.
-// When ExprSemantics grows by one variant, every consumer gets a
-// compile error (non-exhaustive match) rather than silently skipping
-// the new case.
-//
-// Adding a new full expression walker is PROHIBITED without deleting
-// or merging an existing one.
-
-fn fold_expr<A>(
-  node: SemanticNode,
-  init: A,
-  on_literal: fn(A, LiteralValue) -> A,
-  on_var: fn(A, BindingRef) -> A,
-  on_field_access: fn(A, SemanticNode, FieldRef) -> A,
-  on_call: fn(A, CalleeRef, List<SemanticNode>, DescentEvidence) -> A,
-  on_method_call: fn(A, SemanticNode, MethodRef, List<SemanticNode>) -> A,
-  on_match: fn(A, SemanticNode, List<MatchArm>) -> A,
-  on_if: fn(A, SemanticNode, SemanticNode, SemanticNode?) -> A,
-  on_let: fn(A, BindingDef, SemanticNode, SemanticNode) -> A,
-  on_block: fn(A, List<SemanticNode>) -> A,
-  on_record_lit: fn(A, TypeRef, List<FieldInit>) -> A,
-  on_list_lit: fn(A, List<SemanticNode>) -> A,
-  on_bin_op: fn(A, BinOp, SemanticNode, SemanticNode) -> A,
-  on_unary_op: fn(A, UnaryOpKind, SemanticNode) -> A,
-  on_lambda: fn(A, List<LambdaParam>, SemanticNode) -> A,
-  on_string_interp: fn(A, List<StringPart>) -> A,
-  on_for_each: fn(A, SemanticNode, BindingDef, SemanticNode) -> A,
-  on_index: fn(A, SemanticNode, SemanticNode) -> A,
-  on_slice: fn(A, SemanticNode, SemanticNode?, SemanticNode?) -> A,
-  on_cast: fn(A, SemanticNode, TypeShape) -> A,
-  on_return: fn(A, SemanticNode?) -> A
-) -> A
-
-// =========================================================================
-// 6. BOOTSTRAP CLAUSE
-// =========================================================================
-//
-// Bootstrap is architecture, not tooling. v3 is not "done" unless the
-// bootstrap path is authoritative and reproducible.
-//
-// Contracts:
-//   - generated stage0 is derived, never hand-edited
-//   - the owned bootstrap command runs sanity gates, emitted-Rust gate,
-//     regeneration, and fixed-point checks
-//   - CI enforces regenerate → diff → empty
-//   - broader structural work resumes only after bootstrap is green
-//
-// Bootstrap reports per-stage structural diffs when divergence occurs.
-// "Fixed point failed" without identifying the divergent stage is not
-// acceptable.
-
-type BootstrapResult {
-  converged: Bool
-  stage_diffs: List<StageDiff>
-}
-
-type StageDiff {
-  stage_name: String
-  old_output_hash: String
-  new_output_hash: String
-  changed_items: List<String>
+  carrier: TypeShape                 // parameter type
 }
 
 // =========================================================================
-// 7. ACCEPTANCE TESTS (ratchets, not prose)
+// 3. PORTS AND EDGES
 // =========================================================================
 //
-// T1: Scrambled-name test
-//     Rename authored identifiers in AuthoredGraph → SemanticGraph.
-//     Semantic and render decisions must not change.
-//
-// T2: No speculative boundaries
-//     Any new semantic table or pass must have a same-change downstream
-//     consumer. Fact tables without consumers are violations.
-//
-// T3: No target leakage in core
-//     Core types must satisfy: "would this make sense for VHDL?"
-//     Rust/Go/Python-specific policy belongs in LanguageSpec data.
-//
-// T4: No new full expr walk
-//     Without deleting or merging an existing one. Ratchet: fold_expr
-//     is the sole expression traversal API.
-//
-// T5: Emit compile errors are upstream bugs
-//     Emitted code should fail only when earlier stages already surfaced
-//     the owning diagnostic. If emit hits a case it can't handle and no
-//     prior diagnostic exists, that's a semantic boundary bug.
-//
-// T6: Bootstrap fixed point
-//     Owned bootstrap entrypoint + CI regen diff gate.
-//     Regenerate → diff → empty, or the build fails.
+// Ports are the connection points. Edges connect output ports to
+// input ports. Every edge carries a typed value forward in time.
+// No back-edges. No cycles. The DAG is causal.
+
+type Port {
+  id: PortId
+  carrier: TypeShape                 // what type flows through this port
+  provenance: Provenance             // where this value came from
+}
+
+// Provenance tracks the causal history of a value. Not reconstructed
+// downstream — computed when the port is created.
+type Provenance =
+    Source                           // original value (literal, parameter)
+  | SubValue { parent: PortId, relation: SubValueRelation }  // derived from parent
+  | Computed { reaction: NodeId }    // result of an interaction
+  | Branched { fork: NodeId }        // result of a fork (one of several branches)
+  | Accumulated { chain: NodeId }    // result of a chain (threaded accumulator)
 
 // =========================================================================
-// 8. PIPELINE
+// 4. LOCAL LAWS (conserved quantities)
 // =========================================================================
 //
-//   Source text
-//     │
-//     ▼ tokenize
-//   Token stream
-//     │
-//     ▼ parse + resolve
-//   AuthoredGraph           (what the user wrote)
-//     │
-//     ▼ authored_to_semantic (inference + bidirectional types + dimensions)
-//   SemanticGraph            (what the compiler proved)
-//     │
-//     ├──▶ complexity_view   (read descent + cost, compose, check)
-//     ├──▶ ownership_view    (read fan_out + last_use, derive policy)
-//     │
-//     ▼ semantic_to_render   (+ LanguageSpec → target decisions)
-//   RenderPlan               (what the emitter translates)
-//     │
-//     ▼ render               (string concatenation — no decisions)
-//   TextFile
+// Every motif has local laws — facts that are determined by the
+// motif's structure and can be read without global analysis.
+//
+// Complexity, ownership, effects are FOLDS of local laws over the
+// kernel. The fold is uniform. The laws are per-motif. Adding a new
+// analysis = defining a new fold over the same laws.
 
-fn compile(sources: List<SourceFile>, target: LanguageSpec) -> PipelineResult {
-  let tokens = sources |> map(s => tokenize(source: s.content, file: s.path))
-  let authored = parse_and_resolve(tokens: tokens)
-  let semantic = authored_to_semantic(authored: authored)
-  let complexity = complexity_view(graph: semantic)
-  let ownership = ownership_view(graph: semantic, target: target)
-  let plan = semantic_to_render(graph: semantic, spec: target)
-  let files = render(plan: plan)
+// Cost law: what does this motif cost?
+fn motif_cost(node: KernelNode) -> CostExpr {
+  match node {
+    Constant { .. }     => O_1                        // free
+    Interaction { kind, inputs, .. } =>
+      reaction_cost(kind) + sum(inputs |> map(cost))  // reaction + inputs
+    Fork { scrutinee, branches, .. } =>
+      cost(scrutinee) + max(branches |> map(b => cost(b.body)))  // max branch
+    Chain { body, bound, .. } =>
+      bound_value(bound) * cost(body)                 // bound × body
+    Binding { .. }      => O_1                        // structural, free
+    Subgraph { body, .. } => cost(body)               // body cost
+  }
+}
 
-  PipelineResult {
-    files: files,
-    diagnostics: semantic.diagnostics ++ complexity.diagnostics ++ ownership.diagnostics,
-    complexity: complexity,
-    ownership: ownership
+// Size law: what happens to the size of the input?
+fn motif_size_effect(node: KernelNode) -> SizeEffect {
+  match node {
+    Constant { .. }     => Constructing               // creates new value
+    Interaction { kind, .. } => reaction_size_effect(kind)  // from table
+    Fork { .. }         => Preserving                 // output ≤ input
+    Chain { .. }        => BoundedBy { bound: bound } // output bounded by chain length
+    Binding { .. }      => Preserving                 // pass-through
+    Subgraph { .. }     => body_size_effect            // from body
+  }
+}
+
+// Ownership law: how are inputs consumed?
+fn motif_consumption(node: KernelNode) -> List<ConsumptionFact> {
+  match node {
+    Constant { .. }     => []                         // no inputs
+    Interaction { inputs, .. } =>
+      inputs |> map(i => Consumed { port: i })        // each input consumed once
+    Fork { scrutinee, branches, .. } =>
+      [Inspected { port: scrutinee }]                 // scrutinee inspected, not consumed
+      ++ branches |> flat_map(b => consumption(b.body))  // branches exclusive
+    Chain { source, init, body, .. } =>
+      [Iterated { port: source },                     // source iterated
+       Threaded { port: init }]                        // accumulator threaded (movable)
+    Binding { value, .. } =>
+      [PassThrough { port: value }]                   // naming, not consuming
+    Subgraph { .. } => []                             // deferred, not executed here
   }
 }
 
 // =========================================================================
-// 9. IMPLEMENTATION ORDER
+// 5. SURFACE LOWERING
 // =========================================================================
 //
-// Fix the deepest unsound ancestor first, not the compensating leaf.
-//
-// 1. Specify AuthoredGraph and SemanticGraph types.
-// 2. Land the missing semantic facts for currently live boundary leaks.
-// 3. Move ownership and complexity to pure semantic consumers.
-// 4. Introduce RenderPlan + LanguageSpec-driven rendering.
-// 5. Lock the bootstrap fixed-point loop and CI gate.
+// Every surface construct lowers to kernel motifs. This is where the
+// 21 ExprData variants collapse. The lowering is NOT interpretation —
+// it's structural translation. The surface syntax is sugar; the kernel
+// is the physical reality.
+
+// let x = f(y) in body
+//   → Binding { name: x, value: Interaction { kind: FunctionCall, inputs: [y] }, scope: body }
+
+// if P then A else B
+//   → Fork { scrutinee: P, branches: [{pattern: True, body: A}, {pattern: False, body: B}] }
+
+// match x { A => a, B => b }
+//   → Fork { scrutinee: x, branches: [{pattern: A, body: a}, {pattern: B, body: b}] }
+
+// items |> fold(init: z, fn: f)
+//   → Chain { source: items, init: z, body: f, bound: CollectionSize { collection: items } }
+
+// items |> map(f)
+//   → Chain { source: items, init: [], body: append(acc, f(elem)), bound: CollectionSize { collection: items } }
+
+// items |> filter(f)
+//   → Chain { source: items, init: [], body: if f(elem) then append(acc, elem) else acc, bound: CollectionSize { collection: items } }
+
+// x.field
+//   → Interaction { kind: FieldAccess { field }, inputs: [x] }
+
+// f(x, y)
+//   → Interaction { kind: FunctionCall { target: f }, inputs: [x, y] }
+
+// x + y
+//   → Interaction { kind: BinaryOp { op: Add }, inputs: [x, y] }
+
+// fn add(a, b) { a + b }
+//   → Subgraph { params: [a, b], body: Interaction { kind: BinaryOp, inputs: [a, b] } }
+
+// x => x + 1
+//   → Subgraph { params: [x], body: Interaction { kind: BinaryOp, inputs: [x, 1] } }
+//   (SAME motif as named fn — lambda desugars to anonymous Subgraph)
+
+// Record { a: 1, b: 2 }
+//   → Interaction { kind: RecordConstruct { type: Record }, inputs: [1, 2] }
+
+// [1, 2, 3]
+//   → Interaction { kind: ListConstruct, inputs: [1, 2, 3] }
 
 // =========================================================================
-// 10. DEFERRED TO V3.1+
+// 6. READINGS (not passes — folds over the kernel)
 // =========================================================================
 //
-// - Generic dimension mechanism (user-defined dimensions via type-indexed
-//   map). v3 uses fixed DimensionValues. Generalize after concrete
-//   instances validate the pattern.
+// Complexity = fold of cost laws over the kernel
+// Ownership = reading of fan-out + consumption facts from the graph
+// Effects = fold of effect laws over the kernel
+// Termination = structural fact: the DAG is acyclic + all chains bounded
 //
-// - Interpreter. v2's interpreter is clean. It reads transport specs
-//   like the emitter. Operates on SemanticGraph with a new entry point.
+// None of these are "passes." They are readings of the causal structure.
+// Adding a new reading means defining a new fold over the same local
+// laws. No heuristics. No reconstruction. The structure already has
+// the information.
+
+// =========================================================================
+// 7. EMISSION (translation of kernel to target syntax)
+// =========================================================================
 //
-// - Single emitter consolidation. RenderPlan makes this mechanical:
-//   one render function reads the plan. Per-language differences are in
-//   LanguageSpec data, not emitter code.
+// Emission is translation: (kernel motif, LanguageSpec) → text.
+// The emitter has one case per motif (5), not one case per surface
+// construct (21). The target-specific variation is in LanguageSpec
+// (data), not in the emitter (code).
 //
-// - Omni-emission. Falls out when single emitter works. Pipeline runs
-//   once through SemanticGraph; semantic_to_render runs per target.
-//   Analysis views run once. Only rendering is per-target.
+// | Motif | Rust | Python | Go |
+// |-------|------|--------|-----|
+// | Constant | `const`/`static` | module-level | `var` |
+// | Interaction | `callee(args)` | `callee(args)` | `callee(args)` |
+// | Fork | `match` | `match` | `switch` |
+// | Chain | `iter().fold()` | `functools.reduce` | `for range` |
+// | Binding | `let x = ...` | `x = ...` | `x := ...` |
+// | Subgraph | `fn`/closure | `def`/`lambda` | `func` |
+//
+// Differences between targets (Rc vs GC, &T vs pointer, async syntax)
+// are LanguageSpec data that parameterize the translation, not separate
+// emitter code paths.
+
+// =========================================================================
+// 8. HARD RULES
+// =========================================================================
+//
+// MUST:
+//   - every surface construct lowers to a kernel motif
+//   - every motif has local laws for cost, size, and consumption
+//   - every analysis is a fold over local laws (no global heuristics)
+//   - every emission is a translation of motifs (no semantic decisions)
+//   - every new reaction is a row in the reaction table, not a new motif
+//
+// MUST NOT:
+//   - add a new motif without proving existing motifs can't express it
+//   - add an analysis that walks the graph and reconstructs structure
+//   - add an emission path with target-specific semantic decisions
+//   - treat lambdas differently from named functions
+//   - treat if differently from match
+
+// =========================================================================
+// 9. ACCEPTANCE TESTS
+// =========================================================================
+//
+// T1: New reaction test
+//     Adding a new builtin operation requires: one ReactionKind value,
+//     one row in the reaction table. Zero changes to complexity,
+//     ownership, or emission code.
+//
+// T2: New analysis test
+//     Adding a new analysis lane (e.g., purity, security classification)
+//     requires: defining a fold over local laws. Zero heuristics. Zero
+//     reconstruction.
+//
+// T3: Lambda = function test
+//     All tests pass when lambda syntax is replaced with equivalent
+//     named function + reference. The kernel does not distinguish them.
+//
+// T4: Fork uniformity test
+//     All tests pass when if/else is replaced with equivalent match on
+//     Bool. The kernel does not distinguish them.
+//
+// T5: Cost accounting test
+//     For any subgraph, total_cost = fold of motif_cost over all nodes.
+//     No separate complexity pass needed. The result matches the current
+//     CX analyzer (where it doesn't have violations).
+//
+// T6: Ownership accounting test
+//     For any binding, fan_out = count of edges from that port.
+//     last_use = edge with latest topological position.
+//     No separate ownership pass needed.
+//
+// T7: No ungrounded control
+//     Every branch lowers to Fork with explicit join.
+//     Every loop lowers to Chain with explicit bound.
+//     Every recursion lowers to Chain (descent over tree structure).
+//     No unbounded control flow is representable.
+
+// =========================================================================
+// 10. V2 EMBRYOS
+// =========================================================================
+//
+// v2 already has pieces of this kernel, partially realized:
+//
+// - Node.children IS causal structure (topology)
+// - ExprData IS the motif tag (but 21 variants instead of 5)
+// - expr_child_roles / wrapper_child_roles = child layout as data
+//   (the reaction table, but hardcoded as a map instead of structural)
+// - node_field_roles = which fields carry causal structure vs metadata
+//   (topology vs carrier distinction)
+// - function_size_effects = local monotonic laws
+//   (size law, but hardcoded instead of structural)
+// - ExprCall.descent_evidence = provenance on interactions
+//   (carrier law, but only on one motif instead of all)
+// - MethodSemantics.size_effect, cost_shape = laws on reactions
+//   (reaction table entries, but only for methods)
+// - map_children() = generic kernel walker
+//   (fold over topology, but only for one level)
+//
+// The gap: these are scattered, incomplete, and not unified. The kernel
+// makes them ONE system: motifs + laws + fold. v2's 21 variants, 33
+// heuristics, and 665 match arms are the cost of not having the kernel.
