@@ -2145,10 +2145,10 @@ fn parse_service_after_kw(tokens: List<Token>, state: ParserState, start_span: S
   let r_ns = expect_name(tokens: tokens, state: state)
   if has_err(err: r_ns.err) { return ItemResult { item: dummy, state: r_ns.state, err: r_ns.err } }
   let namespace_root = r_ns.name
-  let name_span = r_ns.span
-  let r = parse_dotted_ident_rest(tokens: tokens, state: r_ns.state, acc: namespace_root, span: name_span)
+  let r = parse_dotted_ident_rest(tokens: tokens, state: r_ns.state, acc: namespace_root, span: r_ns.span)
   let name = r.name
-  let named_dummy = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let svc_name_span = r.span
+  let named_dummy = Node { name: name, span: start_span, ident_span: Some { value: svc_name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   let r = expect(tokens: tokens, state: r.state, expected: ExpectLBrace)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
@@ -2170,7 +2170,7 @@ fn parse_service_after_kw(tokens: List<Token>, state: ParserState, start_span: S
     Some { value: cfg } => service_config_properties(endpoint: cfg.endpoint, auth: cfg.auth, auth_input: cfg.auth_input, auth_source: cfg.auth_source, rate_limit: cfg.rate_limit, retry: cfg.retry)
     None => []
   }
-  let item = Node { name: name, span: start_span, ident_span: Some { value: name_span },
+  let item = Node { name: name, span: start_span, ident_span: Some { value: svc_name_span },
     children: r.operations,
     params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective,
     transport: Some { value: r.transport }, properties: concat([ns_prop], svc_props),

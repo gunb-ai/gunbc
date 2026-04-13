@@ -4793,13 +4793,13 @@ if has_err(r_ns.err.clone()) {
 })
         }
 let namespace_root = r_ns.name.clone();
-let name_span = r_ns.span.clone();
-let r = parse_dotted_ident_rest(tokens.clone(), r_ns.state.clone(), namespace_root.clone(), name_span.clone());
+let r = parse_dotted_ident_rest(tokens.clone(), r_ns.state.clone(), namespace_root.clone(), r_ns.span.clone());
 let name = r.name.clone();
+let svc_name_span = r.span.clone();
 let named_dummy = Rc::new(Node {
     name: name.clone(),
     span: start_span.clone(),
-    ident_span: Some(name_span.clone()),
+    ident_span: Some(svc_name_span.clone()),
     children: Rc::new(vec![]),
     params: Rc::new(vec![]),
     inferred: None,
@@ -4854,7 +4854,7 @@ let svc_props = match r.config.clone() {
 let item = Rc::new(Node {
     name: name.clone(),
     span: start_span.clone(),
-    ident_span: Some(name_span.clone()),
+    ident_span: Some(svc_name_span.clone()),
     children: r.operations.clone(),
     params: Rc::new(vec![]),
     inferred: None,
