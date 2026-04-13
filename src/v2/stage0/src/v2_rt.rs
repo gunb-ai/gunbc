@@ -68,23 +68,23 @@ pub fn index_by<V: Clone, F: Fn(&V) -> String>(list: Vec<V>, key_fn: F) -> HashM
     map
 }
 
-pub fn empty_map<V>() -> HashMap<String, V> { HashMap::new() }
+pub fn empty_map<K: std::cmp::Eq + std::hash::Hash, V>() -> HashMap<K, V> { HashMap::new() }
 
-pub fn map_insert<V>(mut map: HashMap<String, V>, key: String, value: V) -> HashMap<String, V> {
+pub fn map_insert<K: std::cmp::Eq + std::hash::Hash, V>(mut map: HashMap<K, V>, key: K, value: V) -> HashMap<K, V> {
     map.insert(key, value); map
 }
 
-pub fn map_merge<V>(mut base: HashMap<String, V>, overlay: HashMap<String, V>) -> HashMap<String, V> {
+pub fn map_merge<K: std::cmp::Eq + std::hash::Hash, V>(mut base: HashMap<K, V>, overlay: HashMap<K, V>) -> HashMap<K, V> {
     base.extend(overlay); base
 }
 
-pub fn map_get<V: Clone>(m: &HashMap<String, V>, key: String) -> Option<V> {
+pub fn map_get<K: std::cmp::Eq + std::hash::Hash, V: Clone>(m: &HashMap<K, V>, key: K) -> Option<V> {
     m.get(&key).cloned()
 }
 
-pub fn map_keys<V>(m: &HashMap<String, V>) -> Vec<String> { m.keys().cloned().collect() }
+pub fn map_keys<K: Clone, V>(m: &HashMap<K, V>) -> Vec<K> { m.keys().cloned().collect() }
 
-pub fn map_values<V: Clone>(m: &HashMap<String, V>) -> Vec<V> { m.values().cloned().collect() }
+pub fn map_values<K, V: Clone>(m: &HashMap<K, V>) -> Vec<V> { m.values().cloned().collect() }
 
 pub fn list_concat<T>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> { a.extend(b); a }
 
@@ -108,11 +108,11 @@ pub fn chars_to_string(chars: &Rc<Vec<i64>>, start: i64, end: i64) -> String {
 
 pub fn parse_int(s: String) -> Option<i64> { s.parse::<i64>().ok() }
 
-pub fn map_contains_key<V>(m: &HashMap<String, V>, key: String) -> bool {
+pub fn map_contains_key<K: std::cmp::Eq + std::hash::Hash, V>(m: &HashMap<K, V>, key: K) -> bool {
     m.contains_key(&key)
 }
 
-pub fn map_has<V>(m: &HashMap<String, V>, key: String) -> bool {
+pub fn map_has<K: std::cmp::Eq + std::hash::Hash, V>(m: &HashMap<K, V>, key: K) -> bool {
     m.contains_key(&key)
 }
 
@@ -142,13 +142,13 @@ pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
     result
 }
 
-pub fn rc_map_insert<V: Clone>(map: Rc<HashMap<String, V>>, key: String, value: V) -> Rc<HashMap<String, V>> {
+pub fn rc_map_insert<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(map: Rc<HashMap<K, V>>, key: K, value: V) -> Rc<HashMap<K, V>> {
     let mut m = map;
     Rc::make_mut(&mut m).insert(key, value);
     m
 }
 
-pub fn rc_map_merge<V: Clone>(base: Rc<HashMap<String, V>>, overlay: Rc<HashMap<String, V>>) -> Rc<HashMap<String, V>> {
+pub fn rc_map_merge<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(base: Rc<HashMap<K, V>>, overlay: Rc<HashMap<K, V>>) -> Rc<HashMap<K, V>> {
     let mut result = base;
     let inner = Rc::make_mut(&mut result);
     for (k, v) in overlay.iter() {
@@ -161,7 +161,7 @@ pub fn rc_index_by<V: Clone, F: Fn(&V) -> String>(list: Rc<Vec<V>>, key_fn: F) -
     Rc::new(list.iter().map(|v| (key_fn(v), v.clone())).collect())
 }
 
-pub fn rc_empty_map<V>() -> Rc<HashMap<String, V>> { Rc::new(HashMap::new()) }
+pub fn rc_empty_map<K: std::cmp::Eq + std::hash::Hash, V>() -> Rc<HashMap<K, V>> { Rc::new(HashMap::new()) }
 
 impl<T: Clone> V2Concat for Rc<Vec<T>> {
     fn v2_concat(self, other: Rc<Vec<T>>) -> Rc<Vec<T>> { rc_list_concat(self, other) }

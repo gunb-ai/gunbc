@@ -96,12 +96,6 @@ type EmitGraphInfo {
   // bindings use move semantics instead of .clone(). Set for fold
   // accumulators after Rc::try_unwrap.
   owned_bindings: Map<String, Bool>
-  // Per-function fold accumulator unwrap eligibility: func_name → (acc_type_name → true).
-  // Built from structural proofs in ownership.dag. The emitter combines this
-  // with rc_types to decide Rc::try_unwrap rendering.
-  fold_eligible_index: Map<String, Map<String, Bool>>
-  // Current function's eligible fold accumulator types. Set by emit_typed_item.
-  fold_eligible: Map<String, Bool>
   // Per-function read-only params: func_name → (param_name → true).
   // A param is read-only when all usage edges are Read/Projected/Threaded
   // (no Consumed) and fan-out > 1. These can be passed by borrow (&Rc<T>).
@@ -128,8 +122,6 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     movable: empty_map(),
     variant_to_enum: empty_map(),
     owned_bindings: empty_map(),
-    fold_eligible_index: empty_map(),
-    fold_eligible: empty_map(),
     read_only_params_index: empty_map(),
     read_only_params: empty_map()
   }
@@ -311,7 +303,7 @@ fn build_field_type_map(children: List<Node>, source_indices: Map<String, Newlin
   fold(children, init: empty_map(), f: (acc, child) =>
     match child.inferred {
       Some { value: Resolved { node: ft } } =>
-        let resolved_name = normalize_access_type_node(n: ft).name
+        let resolved_name = authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: ft))
         let ft_is_type_var = if ft.inferred != none { is_type_variable(inferred: ft.inferred.value) } else { false }
         // Fail-closed: exclude empty names, type variables, and placeholder types.
         // Dynamic is a compatibility placeholder that must not enter the authority surface.
@@ -338,7 +330,7 @@ fn build_type_summary(item: Node, source_indices: Map<String, NewlineIndex>) -> 
   )
   if is_product {
     Some { value: TypeSummary {
-      name: item.name,
+      name: authored_name_at(source_indices: source_indices, node: item),
       repr: StructRepr,
       field_summaries: build_struct_field_summaries(parent: item, source_indices: source_indices),
       field_type_map: build_field_type_map(children: item.children, source_indices: source_indices),
@@ -349,7 +341,7 @@ fn build_type_summary(item: Node, source_indices: Map<String, NewlineIndex>) -> 
   } else {
     let unit_only = item.children |> all(child => child.children |> count == 0)
     Some { value: TypeSummary {
-      name: item.name,
+      name: authored_name_at(source_indices: source_indices, node: item),
       repr: EnumRepr { unit_only: unit_only },
       field_summaries: build_enum_field_summaries(variants: item.children, source_indices: source_indices),
       field_type_map: empty_map(),

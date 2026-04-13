@@ -18,7 +18,8 @@ import v2.std.core {
   ErrorNode, make_error_node,
   MissingAnnotation, no_span,
   DeclaredFuncSig,
-  NewlineIndex
+  NewlineIndex,
+  authored_name_at
 }
 import v2.compiler.infer_types { emit_map_has }
 import std.induction { SubValueRelation }
@@ -70,7 +71,7 @@ type CallEdge {
 fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> List<CallEdge> {
   flat_map(items, item =>
     if item.params |> count > 0 && item.body != none {
-      collect_calls_in_expr(caller: item.name, texpr: item.body.value, local_func_set: local_func_set, source_indices: source_indices)
+      collect_calls_in_expr(caller: authored_name_at(source_indices: source_indices, node: item), texpr: item.body.value, local_func_set: local_func_set, source_indices: source_indices)
     } else {
       []
     }
@@ -247,7 +248,7 @@ fn resolve_func_sigs(
   // Bare generic type declarations (type List<element>) have params but no body.
   let local_func_names = items
     |> filter(item => item.params |> count > 0 && item.body != none)
-    |> map(item => item.name)
+    |> map(item => authored_name_at(source_indices: source_indices, node: item))
   let local_func_set = build_name_set(names: local_func_names)
   let call_edges = collect_func_call_edges(items: items, local_func_set: local_func_set, source_indices: source_indices)
   let parent_resolved = collect_parent_resolved_sigs(declared_sigs: declared_sigs, local_func_set: local_func_set)

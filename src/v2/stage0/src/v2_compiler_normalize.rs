@@ -81,7 +81,7 @@ pub fn normalize_graph(graph: &Rc<ModuleGraph>, source_indices: Rc<HashMap<Strin
     {
         let diags = Rc::new({ let mut __result = Vec::new(); for m in graph.modules.clone().iter().cloned() { __result.extend((*{
             let items = module_items(m.module.clone());
-Rc::new({ let mut __result = Vec::new(); for item in items.clone().iter().cloned() { __result.extend((*check_bare_containers(&item, &m.module.clone().name.clone(), &source_indices)).iter().cloned()); } __result })
+Rc::new({ let mut __result = Vec::new(); for item in items.clone().iter().cloned() { __result.extend((*check_bare_containers(&item, &authored_name_at(source_indices.clone(), &m.module.clone()), &source_indices)).iter().cloned()); } __result })
 }).iter().cloned()); } __result });
 Rc::new(NormalizeResult {
     graph: graph.clone(),

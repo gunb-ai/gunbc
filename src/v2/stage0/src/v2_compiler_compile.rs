@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, no_span, Connective, Cardinality, resource_use_name_at, resource_use_resource, param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span, module_imports, module_items, import_is_all, import_specific_names_at, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, MethodSemantics, ExprErrorKind, ExprData, MatchPattern, field_binding_name_at, field_binding_pattern, arg_name_at, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name_at, field_init_node_value, LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index, field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at, foreach_variable_at, expr_method_name_at, InternTable, InternResult, empty_intern_table, intern, merge_intern_tables};
+pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, no_span, Connective, Cardinality, resource_use_name_at, resource_use_resource, param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span, module_imports, module_items, import_is_all, import_specific_names_at, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, MethodSemantics, ExprErrorKind, ExprData, MatchPattern, field_binding_name_at, field_binding_pattern, arg_name_at, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name_at, field_init_node_value, LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index, field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at, foreach_variable_at, expr_method_name_at, InternTable, InternResult, empty_intern_table, intern};
 use crate::v2_std_core::CompilerDiagnostic::{InternalError, OwnershipViolation};
 use crate::v2_std_core::Connective::{NoConnective, Arrow};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
@@ -24,7 +24,7 @@ use crate::v2_std_core::BinOp::*;
 use crate::v2_std_core::UnaryOpKind::*;
 use crate::v2_std_core::StringPart::*;
 pub use crate::v2_compiler_tokenize::{tokenize};
-pub use crate::v2_compiler_parse::{parse, ParseResult};
+pub use crate::v2_compiler_parse::{parse_with_table, ParseResult};
 pub use crate::v2_compiler_resolve::{resolve_modules, ModuleGraph};
 pub use crate::v2_compiler_normalize::{normalize_graph, NormalizeResult};
 pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule};
@@ -72,11 +72,12 @@ pub struct FrontendResult {
 pub struct FrontendAccum {
     pub parse_results: Rc<Vec<Rc<ParseResult>>>,
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
+    pub intern_table: Rc<InternTable>,
 }
 
 pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> {
     Rc::new({ let mut __result = Vec::new(); for m in Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { if { let mut __found = false; for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __found = true; break; } } __found } { __result.push(m); } } __result }).iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned() { __result.push(Rc::new(FuncEntry {
-    name: item.name.clone(),
+    name: authored_name_at(m.type_env.clone().source_indices.clone(), &item),
     body: item.body.clone().clone().unwrap(),
     params: item.params.clone(),
     span: item.span.clone(),
@@ -89,7 +90,7 @@ pub fn build_recursion_context(typed: Rc<ResolvedGraph>) -> RecursionContext {
 }
 
 pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<OwnershipProof>>> {
-    Rc::new({ let mut __result = Vec::new(); for m in Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { if { let mut __found = false; for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __found = true; break; } } __found } { __result.push(m); } } __result }).iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned() { __result.push(analyze_ownership(item.name.clone(), item.params.clone(), item.body.clone().clone().unwrap(), &m.type_env.clone().source_indices.clone())); } __result })).iter().cloned()); } __result })
+    Rc::new({ let mut __result = Vec::new(); for m in Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { if { let mut __found = false; for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __found = true; break; } } __found } { __result.push(m); } } __result }).iter().cloned() { __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned() { __result.push(analyze_ownership(authored_name_at(m.type_env.clone().source_indices.clone(), &item), item.params.clone(), item.body.clone().clone().unwrap(), &m.type_env.clone().source_indices.clone())); } __result })).iter().cloned()); } __result })
 }
 
 pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<ErrorNode>>> {
@@ -266,14 +267,14 @@ pub fn serialize_span(span: &Rc<SourceSpan>) -> String {
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"start\": ".to_string(), (span.start.clone()).to_string()), ", \"end\": ".to_string()), (span.end.clone()).to_string()), "}".to_string())
 }
 
-pub fn serialize_import_node(imp: &Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+pub fn serialize_import_node(imp: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
     {
         let names_json = if import_is_all(imp.clone()) {
             "{\"kind\": \"ImportAll\"}".to_string()
         } else {
-            v2_rt::concat(v2_rt::concat("{\"kind\": \"ImportSpecific\", \"names\": ".to_string(), json_list(Rc::new({ let mut __result = Vec::new(); for v in import_specific_names_at(imp.clone(), source_indices).iter().cloned() { __result.push(json_quote(v.clone())); } __result }))), "}".to_string())
+            v2_rt::concat(v2_rt::concat("{\"kind\": \"ImportSpecific\", \"names\": ".to_string(), json_list(Rc::new({ let mut __result = Vec::new(); for v in import_specific_names_at(imp.clone(), source_indices.clone()).iter().cloned() { __result.push(json_quote(v.clone())); } __result }))), "}".to_string())
         };
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"module_path\": ".to_string(), json_quote(imp.name.clone())), ", \"names\": ".to_string()), names_json), ", \"span\": ".to_string()), serialize_span(&imp.span.clone())), "}".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"module_path\": ".to_string(), json_quote(authored_name_at(source_indices.clone(), &imp))), ", \"names\": ".to_string()), names_json), ", \"span\": ".to_string()), serialize_span(&imp.span.clone())), "}".to_string())
 }
 }
 
@@ -337,11 +338,11 @@ pub fn serialize_lambda_semantics(value: Option<Rc<LambdaSemantics>>, source_ind
 }
 }
 
-pub fn serialize_method_semantics(value: Option<Rc<MethodSemantics>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+pub fn serialize_method_semantics(value: Option<Rc<MethodSemantics>>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
     match value.as_deref().cloned() {
     Some(MethodSemantics::PlainMethodSemantics) => "{\"kind\": \"PlainMethodSemantics\"}".to_string(),
     Some(MethodSemantics::AlgebraMethodSemantics { method_def, fold_accumulator_type, .. }) => {
-        let mn = method_def.name.clone();
+        let mn = authored_name_at(source_indices.clone(), &method_def);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"AlgebraMethodSemantics\", \"method_name\": ".to_string(), json_quote(mn)), ", \"fold_accumulator_type\": ".to_string()), json_optional_node(fold_accumulator_type.clone(), source_indices.clone())), "}".to_string())
 },
     Some(MethodSemantics::ServiceMethodSemantics { service_name, op_params, .. }) => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ServiceMethodSemantics\", \"service_name\": ".to_string(), json_quote(service_name.clone())), ", \"op_params\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for p in op_params.clone().iter().cloned() { __result.push(serialize_param(&p, &source_indices)); } __result }))), "}".to_string()),
@@ -416,7 +417,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 },
     ExprData::ExprMethodCall { method_semantics, .. } => {
             let method = expr_method_name_at(expr_node.clone(), source_indices.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprMethodCall\", \"method\": ".to_string(), json_quote(method)), ", \"method_semantics\": ".to_string()), serialize_method_semantics(method_semantics.clone(), source_indices.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprMethodCall\", \"method\": ".to_string(), json_quote(method)), ", \"method_semantics\": ".to_string()), serialize_method_semantics(method_semantics.clone(), &source_indices)), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string())
 },
     ExprData::ExprBinOp { op, algebra_field: af, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprBinOp\", \"op\": ".to_string(), json_quote(bin_op_name(op.clone()))), ", \"algebra_field\": ".to_string()), match af.clone() {
     Some(f) => json_quote(algebra_field_kind_name(f.clone())),
@@ -462,7 +463,7 @@ pub fn serialize_resource_use(resource_use: &Rc<Node>, source_indices: &Rc<HashM
 }
 
 pub fn serialize_field(field: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(field_node_name_at(field.clone(), source_indices.clone()))), ", \"type_expr\": ".to_string()), serialize_node(&field_node_type_expr(&field), &source_indices)), ", \"cardinality\": ".to_string()), json_quote(cardinality_name(field_node_cardinality(field.clone())))), ", \"default_value\": ".to_string()), json_optional_node(field_node_default_value(&field), source_indices.clone())), ", \"from_key\": ".to_string()), json_optional_string(field_node_from_key(field.clone()))), ", \"span\": ".to_string()), serialize_span(&field_node_span(field.clone()))), "}".to_string())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(field_node_name_at(field.clone(), source_indices.clone()))), ", \"type_expr\": ".to_string()), serialize_node(&field_node_type_expr(&field), &source_indices)), ", \"cardinality\": ".to_string()), json_quote(cardinality_name(field_node_cardinality(field.clone())))), ", \"default_value\": ".to_string()), json_optional_node(field_node_default_value(&field), source_indices.clone())), ", \"from_key\": ".to_string()), json_optional_string(field_node_from_key(field.clone(), source_indices.clone()))), ", \"span\": ".to_string()), serialize_span(&field_node_span(field.clone()))), "}".to_string())
 }
 
 pub fn serialize_param(param: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
@@ -480,14 +481,14 @@ pub fn serialize_node(node: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<Ne
     })
 }
 
-pub fn serialize_module(module: &Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(module.name.clone())), ", \"imports\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for imp in module_imports(module.clone()).iter().cloned() { __result.push(serialize_import_node(&imp, source_indices.clone())); } __result }))), ", \"span\": ".to_string()), serialize_span(&module.span.clone())), "}".to_string())
+pub fn serialize_module(module: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(authored_name_at(source_indices.clone(), &module))), ", \"imports\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for imp in module_imports(module.clone()).iter().cloned() { __result.push(serialize_import_node(&imp, &source_indices)); } __result }))), ", \"span\": ".to_string()), serialize_span(&module.span.clone())), "}".to_string())
 }
 
 pub fn serialize_typed_module(module: &Rc<TypedModule>) -> String {
     {
         let si = module.type_env.clone().source_indices.clone();
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"module\": ".to_string(), serialize_module(&module.module.clone(), si.clone())), ", \"items\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for item in module.items.clone().iter().cloned() { __result.push(serialize_node(&item, &si)); } __result }))), ", \"item_registry_keys\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for k in Rc::new(v2_rt::map_keys(&module.item_registry.clone())).iter().cloned() { __result.push(json_quote(k.clone())); } __result }))), "}".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"module\": ".to_string(), serialize_module(&module.module.clone(), &si)), ", \"items\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for item in module.items.clone().iter().cloned() { __result.push(serialize_node(&item, &si)); } __result }))), ", \"item_registry_keys\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for k in Rc::new(v2_rt::map_keys(&module.item_registry.clone())).iter().cloned() { __result.push(json_quote(k.clone())); } __result }))), "}".to_string())
 }
 }
 
@@ -566,38 +567,40 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
         let acc = sources.iter().cloned().fold(Rc::new(FrontendAccum {
     parse_results: Rc::new(vec![]),
     newline_indices: Rc::new(vec![]),
+    intern_table: empty_intern_table(),
 }), |acc: Rc<FrontendAccum>, s: Rc<SourceFile>| { let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone()); {
             let tokens = tokenize(&s.content.clone(), s.path.clone());
 let si = build_newline_index(s.path.clone(), &s.content.clone());
-let pr = parse(&tokens, v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<NewlineIndex>>(), si.file.clone(), si.clone()));
+let parsed = parse_with_table(&tokens, v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(), si.file.clone(), si.clone()), acc.intern_table);
+let pr = parsed.result.clone();
 Rc::new(FrontendAccum {
     parse_results: v2_rt::rc_list_push(acc.parse_results, pr.clone()),
     newline_indices: v2_rt::rc_list_push(acc.newline_indices, si.clone()),
+    intern_table: parsed.intern_table.clone(),
 })
 } });
 let parse_results = acc.parse_results.clone();
 let newline_indices = acc.newline_indices.clone();
+let intern_table = acc.intern_table.clone();
 let parse_diagnostics = collect_diagnostics(parse_results.clone());
 let has_parse_errors = { let mut __found = false; for p in parse_results.clone().iter().cloned() { if (p.error.clone() != None) { __found = true; break; } } __found };
-let intern_tables = Rc::new({ let mut __result = Vec::new(); for p in parse_results.clone().iter().cloned() { __result.push(p.intern_table.clone()); } __result });
-let merged_intern_table = merge_intern_tables(intern_tables);
 if has_parse_errors {
             Rc::new(FrontendResult {
     graph: None,
     diagnostics: parse_diagnostics,
     newline_indices: newline_indices.clone(),
-    intern_table: merged_intern_table,
+    intern_table: intern_table,
 })
         } else {
             {
                 let modules = Rc::new({ let mut __result = Vec::new(); for p in parse_results.clone().iter().cloned() { __result.push(p.module.clone().clone().unwrap()); } __result });
-let source_indices = newline_indices.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<NewlineIndex>>(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, si: Rc<NewlineIndex>| v2_rt::rc_map_insert(acc.clone(), si.file.clone(), si.clone()));
-let graph = resolve_modules(&modules, source_indices);
+let source_indices = newline_indices.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, si: Rc<NewlineIndex>| v2_rt::rc_map_insert(acc, si.file.clone(), si.clone()));
+let graph = resolve_modules(&modules, &source_indices);
 Rc::new(FrontendResult {
     graph: Some(graph.clone()),
     diagnostics: v2_rt::concat(parse_diagnostics, graph.diagnostics.clone()),
     newline_indices: newline_indices.clone(),
-    intern_table: merged_intern_table,
+    intern_table: intern_table,
 })
 }
         }
@@ -640,7 +643,7 @@ if ((resolve_errors.len() as i64) > 0) {
     newline_indices: newline_indices.clone(),
 })
             }
-let source_indices = newline_indices.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<NewlineIndex>>(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| v2_rt::rc_map_insert(acc.clone(), index.file.clone(), index.clone()));
+let source_indices = newline_indices.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| v2_rt::rc_map_insert(acc, index.file.clone(), index.clone()));
 let norm = normalize_graph(&graph, source_indices.clone());
 let norm_diags = norm.diagnostics.clone();
 let norm_errors = Rc::new({ let mut __result = Vec::new(); for d in norm_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });
@@ -685,7 +688,7 @@ if ((ownership_errors.len() as i64) > 0) {
     newline_indices: newline_indices.clone(),
 })
             }
-let artifact_plan = default_artifact_plan(Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.push(m.module.clone().name.clone()); } __result }), target);
+let artifact_plan = default_artifact_plan(Rc::new({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.push(authored_name_at(source_indices.clone(), &m.module.clone())); } __result }), target);
 let emit_result = emit_from_artifact_plan(typed.clone(), &artifact_plan);
 let emit_files = emit_result.files.clone();
 let emit_diags = emit_result.diagnostics.clone();
@@ -726,7 +729,7 @@ match frontend.graph.clone() {
     None => Rc::new(ResolvedPipelineResult {
     graph: None,
     diagnostics: frontend.diagnostics.clone(),
-    source_indices: v2_rt::rc_empty_map::<Rc<NewlineIndex>>(),
+    source_indices: v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
     complexity: empty_complexity_report(),
     ownership: Rc::new(vec![]),
     newline_indices: newline_indices.clone(),
@@ -738,13 +741,13 @@ if ((resolve_errors.len() as i64) > 0) {
                 return Rc::new(ResolvedPipelineResult {
     graph: None,
     diagnostics: frontend.diagnostics.clone(),
-    source_indices: v2_rt::rc_empty_map::<Rc<NewlineIndex>>(),
+    source_indices: v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
     complexity: empty_complexity_report(),
     ownership: Rc::new(vec![]),
     newline_indices: newline_indices.clone(),
 })
             }
-let source_indices = newline_indices.clone().iter().cloned().fold(v2_rt::rc_empty_map::<Rc<NewlineIndex>>(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| v2_rt::rc_map_insert(acc.clone(), index.file.clone(), index.clone()));
+let source_indices = newline_indices.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| v2_rt::rc_map_insert(acc, index.file.clone(), index.clone()));
 let norm = normalize_graph(&graph, source_indices.clone());
 let norm_diags = norm.diagnostics.clone();
 let norm_errors = Rc::new({ let mut __result = Vec::new(); for d in norm_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });

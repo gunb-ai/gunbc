@@ -107,7 +107,7 @@ match first_field {
 }
 
 pub fn resolve_scrutinee_type_node(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
-    resolve_scrutinee_type_node_seen(&env, n, &v2_rt::rc_empty_map::<bool>())
+    resolve_scrutinee_type_node_seen(&env, n, &v2_rt::rc_empty_map::<String, bool>())
 }
 
 pub fn resolve_scrutinee_type_node_seen(env: &Rc<TypeEnv>, n: Rc<Node>, seen: &Rc<HashMap<String, bool>>) -> Rc<Node> {
@@ -151,7 +151,7 @@ match normed.inferred.clone().as_deref().cloned() {
                                 } else {
                                     v2_rt::rc_map_insert(seen.clone(), canonical.clone(), true)
                                 };
-match lookup_type_for(&env, normed.clone()) {
+match lookup_type_for(&env, &normed) {
     Some(resolved) => if ((((authored_name(env.clone(), resolved.clone()).as_str() == canonical.clone().as_str()) && (resolved.inferred.clone() == None)) && (resolved.connective.clone() == Connective::NoConnective)) && ((resolved.children.clone().len() as i64) == 0)) {
                                     normed.clone()
                                 } else {
@@ -302,12 +302,12 @@ match matching.first().cloned() {
 }
 }
 
-pub fn lookup_structural_method(receiver_type: &Rc<Node>, method_name: &String, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<MethodFieldResult>> {
+pub fn lookup_structural_method(receiver_type: &Rc<Node>, method_name: &String, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<MethodFieldResult>> {
     {
         let is_product = (receiver_type.connective.clone() == Connective::Conj);
 if is_product {
             {
-                let direct = lookup_field_in_product(receiver_type.clone(), method_name.clone(), source_indices);
+                let direct = lookup_field_in_product(receiver_type.clone(), method_name.clone(), source_indices.clone());
 match direct.clone() {
     Some(_) => direct.clone(),
     None => None,
@@ -315,13 +315,13 @@ match direct.clone() {
 }
         } else {
             {
-                let enriched = enrich_kernel_type(&receiver_type.name.clone(), &receiver_type);
+                let enriched = enrich_kernel_type(&authored_name_at(source_indices.clone(), &receiver_type), &receiver_type, source_indices.clone());
 if ((enriched.connective.clone() == Connective::Conj) && ((enriched.children.clone().len() as i64) > 0)) {
                     {
-                        let base_result = lookup_field_in_product(enriched.clone(), method_name.clone(), source_indices);
+                        let base_result = lookup_field_in_product(enriched.clone(), method_name.clone(), source_indices.clone());
 match base_result.clone() {
     Some(mfr) => {
-                            let profile = v2_rt::map_get(&kernel_algebra_profile(), receiver_type.name.clone());
+                            let profile = v2_rt::map_get(&kernel_algebra_profile(), authored_name_at(source_indices.clone(), &receiver_type));
 let template_match = match profile {
     Some(p) => {
                                 let templates = algebra_templates_for_profile(p.clone());
@@ -351,9 +351,9 @@ match template_match {
 }
 }
 
-pub fn resolve_known_method_node(receiver: Rc<Node>, receiver_type: &Rc<Node>, method_name: &String, fold_accumulator_type: Option<Rc<Node>>, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<KnownMethodResolution> {
+pub fn resolve_known_method_node(receiver: Rc<Node>, receiver_type: &Rc<Node>, method_name: &String, fold_accumulator_type: Option<Rc<Node>>, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<KnownMethodResolution> {
     {
-        let tier0_result = lookup_structural_method(&receiver_type, &method_name, source_indices);
+        let tier0_result = lookup_structural_method(&receiver_type, &method_name, &source_indices);
 match tier0_result {
     Some(mfr) => {
             let semantics = Rc::new(MethodSemantics::AlgebraMethodSemantics {
@@ -368,10 +368,10 @@ Rc::new(KnownMethodResolution {
     result_type: Some(mfr.result_type.clone()),
 })
 },
-    None => match check_service_method_call_node(&receiver_type, method_name.clone(), service_registry) {
+    None => match check_service_method_call_node(&receiver_type, method_name.clone(), service_registry, source_indices.clone()) {
     Some(svc_result) => Rc::new(KnownMethodResolution {
     semantics: Some(Rc::new(MethodSemantics::ServiceMethodSemantics {
-    service_name: receiver_type.name.clone(),
+    service_name: authored_name_at(source_indices.clone(), &receiver_type),
     op_params: svc_result.op_params.clone(),
 })),
     result_type: Some(svc_result.result_type.clone()),

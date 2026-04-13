@@ -567,7 +567,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     async_call_prefix: "".to_string(),
     bridge_method_prefix: "".to_string(),
     bridge_method_case: NamingCase::SnakeCase,
-    bridge_method_overrides: v2_rt::rc_empty_map::<String>(),
+    bridge_method_overrides: v2_rt::rc_empty_map::<String, String>(),
     record_lit: Rc::new(RecordLitSyntax {
     named_open: " {".to_string(),
     named_close: "}".to_string(),
@@ -740,7 +740,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     async_call_prefix: "await ".to_string(),
     bridge_method_prefix: "".to_string(),
     bridge_method_case: NamingCase::SnakeCase,
-    bridge_method_overrides: v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String>(), "with".to_string(), "with_update".to_string()),
+    bridge_method_overrides: v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String, String>(), "with".to_string(), "with_update".to_string()),
     record_lit: Rc::new(RecordLitSyntax {
     named_open: "(".to_string(),
     named_close: ")".to_string(),
@@ -907,7 +907,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     async_call_prefix: "".to_string(),
     bridge_method_prefix: "v2rt.".to_string(),
     bridge_method_case: NamingCase::PascalCase,
-    bridge_method_overrides: v2_rt::rc_empty_map::<String>(),
+    bridge_method_overrides: v2_rt::rc_empty_map::<String, String>(),
     record_lit: Rc::new(RecordLitSyntax {
     named_open: "{".to_string(),
     named_close: "}".to_string(),
@@ -1080,7 +1080,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
     async_call_prefix: "".to_string(),
     bridge_method_prefix: "".to_string(),
     bridge_method_case: NamingCase::SnakeCase,
-    bridge_method_overrides: v2_rt::rc_empty_map::<String>(),
+    bridge_method_overrides: v2_rt::rc_empty_map::<String, String>(),
     record_lit: Rc::new(RecordLitSyntax {
     named_open: " {".to_string(),
     named_close: "}".to_string(),
