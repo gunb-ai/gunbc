@@ -95,8 +95,17 @@ type ParseResult {
 
 // Helper result types — tokens only, no ctx.
 // Callers use ctx from their own scope.
-type AdvanceResult { token: Token, tokens: List<Token> }
-type EatResult { consumed: Bool, tokens: List<Token>, token: Token? }
+// Sum type: AdvanceOk carries the strictly shorter tokens (one consumed);
+// AdvanceEof signals empty input. Callers match-destructure, making the
+// structural consume-one-token relationship visible to CX.
+type AdvanceResult
+  = AdvanceOk { token: Token, tokens: List<Token> }
+  | AdvanceEof
+// Sum type: EatConsumed carries the strictly shorter tokens (one consumed);
+// EatUnchanged signals the expected token was not found.
+type EatResult
+  = EatConsumed { token: Token, tokens: List<Token> }
+  | EatUnchanged { tokens: List<Token> }
 
 // Typed PR replacements (flat -- r.val.X becomes r.X)
 type TokenResult { token: Token, tokens: List<Token>, err: ErrorNode? }
@@ -248,8 +257,8 @@ fn token_span(tok: Token?) -> SourceSpan {
 
 fn advance(tokens: List<Token>) -> AdvanceResult {
   match tokens |> first {
-    Some { value: t } => AdvanceResult { token: t, tokens: tokens |> skip(1) }
-    None => AdvanceResult { token: Token { text: "", span: make_span(start: 0, end: 0), shape: ShEof }, tokens: tokens }
+    Some { value: t } => AdvanceOk { token: t, tokens: tokens |> skip(1) }
+    None => AdvanceEof
   }
 }
 
@@ -675,11 +684,11 @@ fn eat(tokens: List<Token>, expected: ExpectedToken) -> EatResult {
   match tokens |> first {
     Some { value: t } =>
       if token_matches_expected(token: t, expected: expected) {
-        EatResult { consumed: true, tokens: tokens |> skip(1), token: Some { value: t } }
+        EatConsumed { token: t, tokens: tokens |> skip(1) }
       } else {
-        EatResult { consumed: false, tokens: tokens, token: none }
+        EatUnchanged { tokens: tokens }
       }
-    None => EatResult { consumed: false, tokens: tokens, token: none }
+    None => EatUnchanged { tokens: tokens }
   }
 }
 
@@ -831,15 +840,15 @@ fn parse_dotted_ident(tokens: List<Token>) -> NameResult {
 }
 
 fn parse_dotted_ident_rest(tokens: List<Token>, acc: String, span: SourceSpan) -> NameResult {
-  let e = eat(tokens: tokens, expected: ExpectDot)
-  if e.consumed {
-    let r = expect_name(tokens: e.tokens)
+  match eat(tokens: tokens, expected: ExpectDot) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let r = expect_name(tokens: __ec)
     if has_err(err: r.err) { return r }
     // Extend span to cover the full dotted path so authored_name_at
     // reads "shell.Codegen", not just "shell".
     let extended = SourceSpan { file: span.file, start: span.start, end: r.span.end }
     parse_dotted_ident_rest(tokens: r.tokens, acc: concat(acc, ".", r.name), span: extended)
-  } else {
+  EatUnchanged { tokens: __eu } =>
     NameResult { name: acc, span: span, tokens: tokens, err: none }
   }
 }
@@ -949,9 +958,9 @@ fn parse_import(tokens: List<Token>, ctx: ParseContext) -> ImportResult {
   let tokens = r.tokens
 
   // Optional binding list: { Name1, Name2 }
-  let e = eat(tokens: tokens, expected: ExpectLBrace)
-  if e.consumed {
-    let r = parse_import_names(tokens: e.tokens, ctx: ctx)
+  match eat(tokens: tokens, expected: ExpectLBrace) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let r = parse_import_names(tokens: __ec, ctx: ctx)
     if has_err(err: r.err) { return ImportResult { import: err_import, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let names = r.names
     let tokens = r.tokens
@@ -964,7 +973,7 @@ fn parse_import(tokens: List<Token>, ctx: ParseContext) -> ImportResult {
     let ctx = with(ctx, { intern_table: imp_ir.table })
     let imp = with(imp, { ident: imp_ir.id })
     ImportResult { import: imp, tokens: tokens, ctx: ctx, err: none }
-  } else {
+  EatUnchanged { tokens: __eu } =>
     // Bare import (no braces): import all from module.
     let tokens = skip_newlines(tokens: tokens)
     let imp = import_node(module_path: mod_path, is_all: true, specific_names: [], span: start_span)
@@ -999,7 +1008,7 @@ fn parse_import_names_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node
     let name_node = parsed_name_leaf(name: r.name, span: name_span)
     let tokens = skip_newlines(tokens: r.tokens)
     let e = eat(tokens: tokens, expected: ExpectComma)
-    let tokens = skip_newlines(tokens: if e.consumed { e.tokens } else { tokens })
+    let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => tokens })
     parse_import_names_acc(tokens: tokens, ctx: ctx, acc: list_push(acc, name_node))
   }
 }
@@ -1233,9 +1242,9 @@ fn parse_type_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: Sourc
   let ctx = type_params_result.ctx
 
   // Record type: type Name { fields }
-  let e = eat(tokens: tokens, expected: ExpectLBrace)
-  if e.consumed {
-    let r = parse_field_list(tokens: skip_newlines(tokens: e.tokens), ctx: ctx)
+  match eat(tokens: tokens, expected: ExpectLBrace) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let r = parse_field_list(tokens: skip_newlines(tokens: __ec), ctx: ctx)
     let named_dummy = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let tokens = skip_newlines(tokens: r.tokens)
@@ -1245,17 +1254,17 @@ fn parse_type_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: Sourc
     let type_children = r.fields |> map(f => field_to_child_node(field: f, source_indices: ctx.source_indices))
     let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     ItemResult { item: item, tokens: skip_newlines(tokens: r2.tokens), ctx: ctx, err: none }
-  } else {
+  EatUnchanged { tokens: __eu } =>
     // Sum type or alias: type Name = ...
     // Or bare primitive declaration: type Name (no body)
-    let eq = eat(tokens: tokens, expected: ExpectEq)
-    if eq.consumed {
-      let tokens = skip_newlines(tokens: eq.tokens)
-      parse_type_body_after_eq(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span, type_params: type_params)
-    } else {
-      // Bare type declaration -- primitive type with no structural expansion
-      let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Some { value: Resolved { node: leaf_type_node(name: name, span: name_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-      ItemResult { item: item, tokens: tokens, ctx: ctx, err: none }
+    match eat(tokens: tokens, expected: ExpectEq) {
+      EatConsumed { token: _, tokens: __ec } =>
+        let tokens = skip_newlines(tokens: __ec)
+        parse_type_body_after_eq(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span, type_params: type_params)
+      EatUnchanged { tokens: __eu } =>
+        // Bare type declaration -- primitive type with no structural expansion
+        let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Some { value: Resolved { node: leaf_type_node(name: name, span: name_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+        ItemResult { item: item, tokens: __eu, ctx: ctx, err: none }
     }
   }
 }
@@ -1271,9 +1280,9 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
   let tokens = skip_newlines(tokens: prefix.tokens)
 
   // Record type: type Name { fields }
-  let e = eat(tokens: tokens, expected: ExpectLBrace)
-  if e.consumed {
-    let r = parse_field_list(tokens: skip_newlines(tokens: e.tokens), ctx: ctx)
+  match eat(tokens: tokens, expected: ExpectLBrace) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let r = parse_field_list(tokens: skip_newlines(tokens: __ec), ctx: ctx)
     if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let tokens = skip_newlines(tokens: r.tokens)
     let ctx = r.ctx
@@ -1282,17 +1291,17 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
     let type_children = r.fields |> map(f => field_to_child_node(field: f, source_indices: ctx.source_indices))
     let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     ItemResult { item: item, tokens: skip_newlines(tokens: r2.tokens), ctx: ctx, err: none }
-  } else {
+  EatUnchanged { tokens: __eu } =>
     // Sum type or alias: type Name = ...
     // Or bare primitive declaration: type Name (no body)
-    let eq = eat(tokens: tokens, expected: ExpectEq)
-    if eq.consumed {
-      let tokens = skip_newlines(tokens: eq.tokens)
-      parse_type_body_after_eq(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span, type_params: type_params)
-    } else {
-      // Bare type declaration -- primitive type with no structural expansion
-      let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Some { value: Resolved { node: leaf_type_node(name: name, span: name_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-      ItemResult { item: item, tokens: tokens, ctx: ctx, err: none }
+    match eat(tokens: tokens, expected: ExpectEq) {
+      EatConsumed { token: _, tokens: __ec } =>
+        let tokens = skip_newlines(tokens: __ec)
+        parse_type_body_after_eq(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span, type_params: type_params)
+      EatUnchanged { tokens: __eu } =>
+        // Bare type declaration -- primitive type with no structural expansion
+        let item = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Some { value: Resolved { node: leaf_type_node(name: name, span: name_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+        ItemResult { item: item, tokens: __eu, ctx: ctx, err: none }
     }
   }
 }
@@ -1347,12 +1356,15 @@ fn parse_type_body_after_eq(tokens: List<Token>, ctx: ParseContext, name: String
 // wrap the base type in a Refined Node. Otherwise, return the base type unchanged.
 fn try_where_clause(tokens: List<Token>, ctx: ParseContext, base_te: Node, start_span: SourceSpan) -> TypeResult {
   if tok_is_keyword(tok: tokens |> first, kw: "where") {
-    let adv = advance(tokens: tokens)
-    let r = parse_predicates(tokens: adv.tokens, ctx: ctx)
-    if has_err(err: r.err) { return TypeResult { type_expr: base_te, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    let predicate_node = Node { name: "", span: start_span, ident_span: none, children: r.predicates, connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-    let refined = Node { name: "", span: start_span, ident_span: none, children: [base_te], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: Some { value: predicate_node }, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-    TypeResult { type_expr: refined, tokens: r.tokens, ctx: r.ctx, err: none }
+    match advance(tokens: tokens) {
+      AdvanceOk { token: _, tokens: rest } =>
+        let r = parse_predicates(tokens: rest, ctx: ctx)
+        if has_err(err: r.err) { return TypeResult { type_expr: base_te, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+        let predicate_node = Node { name: "", span: start_span, ident_span: none, children: r.predicates, connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+        let refined = Node { name: "", span: start_span, ident_span: none, children: [base_te], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: Some { value: predicate_node }, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+        TypeResult { type_expr: refined, tokens: r.tokens, ctx: r.ctx, err: none }
+      AdvanceEof => TypeResult { type_expr: base_te, tokens: tokens, ctx: ctx, err: none }
+    }
   } else {
     TypeResult { type_expr: base_te, tokens: tokens, ctx: ctx, err: none }
   }
@@ -1367,10 +1379,10 @@ fn parse_predicates_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>)
   let r = parse_single_predicate(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return PredsResult { predicates: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let acc = list_push(acc, r.predicate)
-  let e = eat(tokens: r.tokens, expected: ExpectComma)
-  if e.consumed {
-    parse_predicates_acc(tokens: skip_newlines(tokens: e.tokens), ctx: r.ctx, acc: acc)
-  } else {
+  match eat(tokens: r.tokens, expected: ExpectComma) {
+  EatConsumed { token: _, tokens: __ec } =>
+    parse_predicates_acc(tokens: skip_newlines(tokens: __ec), ctx: r.ctx, acc: acc)
+  EatUnchanged { tokens: __eu } =>
     PredsResult { predicates: acc, tokens: r.tokens, ctx: r.ctx, err: none }
   }
 }
@@ -1387,9 +1399,9 @@ fn parse_single_predicate(tokens: List<Token>, ctx: ParseContext) -> PredResult 
   let tokens = r.tokens
 
   // Check for (args)
-  let e = eat(tokens: tokens, expected: ExpectLParen)
-  if e.consumed {
-    let tokens = e.tokens
+  match eat(tokens: tokens, expected: ExpectLParen) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let tokens = __ec
     match pred_name {
       "pattern" => {
         let r2 = parse_string_literal_value(tokens: tokens)
@@ -1444,7 +1456,7 @@ fn parse_single_predicate(tokens: List<Token>, ctx: ParseContext) -> PredResult 
       _ =>
         PredResult { predicate: dummy_pred, tokens: tokens, ctx: ctx, err: Some { value: parse_error(msg: concat("unknown where predicate `", pred_name, "`"), span: token_span(tok: tokens |> first)) } }
     }
-  } else {
+  EatUnchanged { tokens: __eu } =>
     // No args -- bare predicate names (non_empty, is_text_readable, etc.)
     // Accept any identifier; later phases validate semantics.
     match pred_name {
@@ -1461,9 +1473,9 @@ fn parse_single_predicate(tokens: List<Token>, ctx: ParseContext) -> PredResult 
 fn parse_named_int_args(tokens: List<Token>, ctx: ParseContext) -> RangeArgsResult {
   let r = parse_single_named_int(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return RangeArgsResult { min_val: none, max_val: none, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-  let e = eat(tokens: r.tokens, expected: ExpectComma)
-  if e.consumed {
-    let r2 = parse_single_named_int(tokens: skip_newlines(tokens: e.tokens), ctx: r.ctx)
+  match eat(tokens: r.tokens, expected: ExpectComma) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let r2 = parse_single_named_int(tokens: skip_newlines(tokens: __ec), ctx: r.ctx)
     if has_err(err: r2.err) { return RangeArgsResult { min_val: none, max_val: none, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
     let min_val = if r.arg_name == "min" { Some { value: r.arg_value } }
                   else if r2.arg_name == "min" { Some { value: r2.arg_value } }
@@ -1472,7 +1484,7 @@ fn parse_named_int_args(tokens: List<Token>, ctx: ParseContext) -> RangeArgsResu
                   else if r2.arg_name == "max" { Some { value: r2.arg_value } }
                   else { none }
     RangeArgsResult { min_val: min_val, max_val: max_val, tokens: r2.tokens, ctx: r2.ctx, err: none }
-  } else {
+  EatUnchanged { tokens: __eu } =>
     let min_val = if r.arg_name == "min" { Some { value: r.arg_value } } else { none }
     let max_val = if r.arg_name == "max" { Some { value: r.arg_value } } else { none }
     RangeArgsResult { min_val: min_val, max_val: max_val, tokens: r.tokens, ctx: r.ctx, err: none }
@@ -1493,16 +1505,16 @@ fn parse_single_named_int(tokens: List<Token>, ctx: ParseContext) -> NamedIntRes
 
 fn parse_variant_fields(tokens: List<Token>, ctx: ParseContext, vname: String, vname_span: SourceSpan) -> VariantResult {
   let start_span = token_span(tok: tokens |> first)
-  let e = eat(tokens: tokens, expected: ExpectLBrace)
-  if e.consumed {
-    let r = parse_field_list(tokens: skip_newlines(tokens: e.tokens), ctx: ctx)
+  match eat(tokens: tokens, expected: ExpectLBrace) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let r = parse_field_list(tokens: skip_newlines(tokens: __ec), ctx: ctx)
     if has_err(err: r.err) { return VariantResult { variant: make_variant_node(name: vname, fields: [], span: start_span, name_span: vname_span), tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let tokens = skip_newlines(tokens: r.tokens)
     let r2 = expect(tokens: tokens, expected: ExpectRBrace)
     if has_err(err: r2.err) { return VariantResult { variant: make_variant_node(name: vname, fields: [], span: start_span, name_span: vname_span), tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
     let v = make_variant_node(name: vname, fields: r.fields, span: start_span, name_span: vname_span)
     VariantResult { variant: v, tokens: r2.tokens, ctx: r.ctx, err: none }
-  } else {
+  EatUnchanged { tokens: __eu } =>
     // Unit variant (no fields)
     let v = make_variant_node(name: vname, fields: [], span: vname_span, name_span: vname_span)
     VariantResult { variant: v, tokens: tokens, ctx: ctx, err: none }
@@ -1515,15 +1527,15 @@ fn parse_more_variants(tokens: List<Token>, ctx: ParseContext) -> VariantsResult
 
 fn parse_more_variants_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) -> VariantsResult {
   let tokens = skip_newlines(tokens: tokens)
-  let e = eat(tokens: tokens, expected: ExpectPipe)
-  if e.consumed {
-    let tokens = skip_newlines(tokens: e.tokens)
+  match eat(tokens: tokens, expected: ExpectPipe) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let tokens = skip_newlines(tokens: __ec)
     let r = expect_ident(tokens: tokens)
     if has_err(err: r.err) { return VariantsResult { variants: [], tokens: r.tokens, ctx: ctx, err: r.err } }
     let r2 = parse_variant_fields(tokens: r.tokens, ctx: ctx, vname: r.name, vname_span: r.span)
     if has_err(err: r2.err) { return VariantsResult { variants: [], tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
     parse_more_variants_acc(tokens: r2.tokens, ctx: r2.ctx, acc: list_push(acc, r2.variant))
-  } else {
+  EatUnchanged { tokens: __eu } =>
     VariantsResult { variants: acc, tokens: tokens, ctx: ctx, err: none }
   }
 }
@@ -1615,16 +1627,16 @@ fn parse_callable_param_types(tokens: List<Token>, ctx: ParseContext, acc: List<
   let param = make_param_node(name: "", type_expr: r.type_expr, default_value: none, span: r.type_expr.span, name_span: r.type_expr.span)
   let acc = list_push(acc, param)
 
-  let e = eat(tokens: r.tokens, expected: ExpectComma)
-  if e.consumed {
-    let tokens = skip_newlines(tokens: e.tokens)
+  match eat(tokens: r.tokens, expected: ExpectComma) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let tokens = skip_newlines(tokens: __ec)
     if tok_is_rparen(tok: tokens |> first) {
       // Trailing comma
       ParamsResult { params: acc, tokens: tokens, ctx: r.ctx, err: none }
     } else {
       parse_callable_param_types(tokens: tokens, ctx: r.ctx, acc: acc)
     }
-  } else {
+  EatUnchanged { tokens: __eu } =>
     ParamsResult { params: acc, tokens: r.tokens, ctx: r.ctx, err: none }
   }
 }
@@ -1632,9 +1644,9 @@ fn parse_callable_param_types(tokens: List<Token>, ctx: ParseContext, acc: List<
 fn finish_type_expr_from_name(tokens: List<Token>, ctx: ParseContext, type_name: String, start_span: SourceSpan) -> TypeResult {
   let dummy_te = leaf_type_node(name: type_name, span: start_span)
   // Check for generic: Name<T> or Map<K,V>
-  let e = eat(tokens: tokens, expected: ExpectLt)
-  if e.consumed {
-    let r = parse_type_expr(tokens: e.tokens, ctx: ctx)
+  match eat(tokens: tokens, expected: ExpectLt) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let r = parse_type_expr(tokens: __ec, ctx: ctx)
     if has_err(err: r.err) { return r }
     let first_arg = r.type_expr
 
@@ -1645,7 +1657,7 @@ fn finish_type_expr_from_name(tokens: List<Token>, ctx: ParseContext, type_name:
     if has_err(err: r3.err) { return TypeResult { type_expr: dummy_te, tokens: r3.tokens, ctx: type_args.ctx, err: r3.err } }
     let te = Node { name: type_name, span: start_span, ident_span: Some { value: start_span }, children: type_args.args, connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     maybe_optional(tokens: r3.tokens, ctx: type_args.ctx, te: te, start_span: start_span)
-  } else {
+  EatUnchanged { tokens: __eu } =>
     // Plain named type
     let te = leaf_type_node(name: type_name, span: start_span)
     maybe_optional(tokens: tokens, ctx: ctx, te: te, start_span: start_span)
@@ -1661,13 +1673,13 @@ type TypeParamsResult {
 // Parse optional type parameters: <name, name, ...>
 // Returns empty params if no < is found.
 fn parse_optional_type_params(tokens: List<Token>, ctx: ParseContext) -> TypeParamsResult {
-  let e = eat(tokens: tokens, expected: ExpectLt)
-  if e.consumed {
-    let params_result = collect_type_param_names(tokens: e.tokens, ctx: ctx, params: [])
+  match eat(tokens: tokens, expected: ExpectLt) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let params_result = collect_type_param_names(tokens: __ec, ctx: ctx, params: [])
     let r = expect(tokens: params_result.tokens, expected: ExpectGt)
     // If Gt parsing fails, return what we have — the error propagates from caller
     TypeParamsResult { params: params_result.params, tokens: r.tokens, ctx: params_result.ctx }
-  } else {
+  EatUnchanged { tokens: __eu } =>
     TypeParamsResult { params: [], tokens: tokens, ctx: ctx }
   }
 }
@@ -1678,10 +1690,10 @@ fn collect_type_param_names(tokens: List<Token>, ctx: ParseContext, params: List
     let span = r.span
     let param = make_param_node(name: r.name, type_expr: leaf_type_node(name: r.name, span: span), default_value: none, span: span, name_span: span)
     let next_params = list_push(params, param)
-    let e = eat(tokens: r.tokens, expected: ExpectComma)
-    if e.consumed {
-      collect_type_param_names(tokens: e.tokens, ctx: ctx, params: next_params)
-    } else {
+    match eat(tokens: r.tokens, expected: ExpectComma) {
+    EatConsumed { token: _, tokens: __ec } =>
+      collect_type_param_names(tokens: __ec, ctx: ctx, params: next_params)
+    EatUnchanged { tokens: __eu } =>
       TypeParamsResult { params: next_params, tokens: r.tokens, ctx: ctx }
     }
   } else {
@@ -1698,22 +1710,22 @@ type TypeArgsResult {
 
 // Collect comma-separated type args until > is reached.
 fn collect_type_args(tokens: List<Token>, ctx: ParseContext, args: List<Node>) -> TypeArgsResult {
-  let e = eat(tokens: tokens, expected: ExpectComma)
-  if e.consumed {
-    let r = parse_type_expr(tokens: e.tokens, ctx: ctx)
+  match eat(tokens: tokens, expected: ExpectComma) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let r = parse_type_expr(tokens: __ec, ctx: ctx)
     if has_err(err: r.err) { return TypeArgsResult { args: args, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     collect_type_args(tokens: r.tokens, ctx: r.ctx, args: list_push(args, r.type_expr))
-  } else {
+  EatUnchanged { tokens: __eu } =>
     TypeArgsResult { args: args, tokens: tokens, ctx: ctx, err: none }
   }
 }
 
 fn maybe_optional(tokens: List<Token>, ctx: ParseContext, te: Node, start_span: SourceSpan) -> TypeResult {
-  let e = eat(tokens: tokens, expected: ExpectQuestion)
-  if e.consumed {
+  match eat(tokens: tokens, expected: ExpectQuestion) {
+  EatConsumed { token: _, tokens: __ec } =>
     let ote = Node { name: te.name, span: te.span, ident_span: te.ident_span, children: te.children, connective: te.connective, params: te.params, inferred: te.inferred, return_cardinality: CardOptional, uses: te.uses, body: te.body, transport: te.transport, properties: te.properties, type_annotation: te.type_annotation, is_self_recursive: te.is_self_recursive, has_non_tail_self_call: te.has_non_tail_self_call, match_pattern: te.match_pattern, expr_data: te.expr_data }
-    TypeResult { type_expr: ote, tokens: e.tokens, ctx: ctx, err: none }
-  } else {
+    TypeResult { type_expr: ote, tokens: __ec, ctx: ctx, err: none }
+  EatUnchanged { tokens: __eu } =>
     TypeResult { type_expr: te, tokens: tokens, ctx: ctx, err: none }
   }
 }
@@ -1739,7 +1751,7 @@ fn parse_field_list_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>)
       if has_err(err: r.err) { return FieldsResult { fields: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
       let tokens = r.tokens
       let e = eat(tokens: tokens, expected: ExpectComma)
-      let tokens = skip_newlines(tokens: if e.consumed { e.tokens } else { tokens })
+      let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => tokens })
       parse_field_list_acc(tokens: tokens, ctx: r.ctx, acc: list_push(acc, r.field))
     } else {
       FieldsResult { fields: acc, tokens: tokens, ctx: ctx, err: none }
@@ -1776,16 +1788,16 @@ fn parse_field(tokens: List<Token>, ctx: ParseContext) -> FieldResult {
   let ctx = from_r.ctx
 
   // Check for default value: = expr
-  let e = eat(tokens: tokens, expected: ExpectEq)
-  if e.consumed {
-    let r4 = parse_expr(tokens: e.tokens, ctx: ctx)
+  match eat(tokens: tokens, expected: ExpectEq) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let r4 = parse_expr(tokens: __ec, ctx: ctx)
     if has_err(err: r4.err) { return FieldResult { field: dummy_field, tokens: r4.tokens, ctx: r4.ctx, err: r4.err } }
     let f = make_field_node(
       name: name, type_expr: te, cardinality: te.return_cardinality,
       default_value: Some { value: r4.expr }, from_key: from_key, span: start_span, name_span: name_span
     )
     FieldResult { field: f, tokens: r4.tokens, ctx: r4.ctx, err: none }
-  } else {
+  EatUnchanged { tokens: __eu } =>
     let f = make_field_node(
       name: name, type_expr: te, cardinality: te.return_cardinality,
       default_value: none, from_key: from_key, span: start_span, name_span: name_span
@@ -2020,10 +2032,10 @@ fn parse_uses_list_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) 
   if has_err(err: r.err) { return UsesResult { uses: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let acc = list_push(acc, r.resource_use)
 
-  let e = eat(tokens: r.tokens, expected: ExpectComma)
-  if e.consumed {
-    parse_uses_list_acc(tokens: e.tokens, ctx: r.ctx, acc: acc)
-  } else {
+  match eat(tokens: r.tokens, expected: ExpectComma) {
+  EatConsumed { token: _, tokens: __ec } =>
+    parse_uses_list_acc(tokens: __ec, ctx: r.ctx, acc: acc)
+  EatUnchanged { tokens: __eu } =>
     UsesResult { uses: acc, tokens: r.tokens, ctx: r.ctx, err: none }
   }
 }
@@ -2043,9 +2055,9 @@ fn parse_uses_entry(tokens: List<Token>, ctx: ParseContext) -> ResUseResult {
   if has_err(err: r3.err) { return ResUseResult { resource_use: dummy, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
 
   // Optional resource params: Filesystem(mode: ReadWrite)
-  let e = eat(tokens: r3.tokens, expected: ExpectLParen)
-  if e.consumed {
-    let ar = parse_resource_config_args(tokens: e.tokens, ctx: r3.ctx)
+  match eat(tokens: r3.tokens, expected: ExpectLParen) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let ar = parse_resource_config_args(tokens: __ec, ctx: r3.ctx)
     if has_err(err: ar.err) { return ResUseResult { resource_use: dummy, tokens: ar.tokens, ctx: ar.ctx, err: ar.err } }
     let r4 = expect(tokens: ar.tokens, expected: ExpectRParen)
     if has_err(err: r4.err) { return ResUseResult { resource_use: dummy, tokens: r4.tokens, ctx: ar.ctx, err: r4.err } }
@@ -2058,7 +2070,7 @@ fn parse_uses_entry(tokens: List<Token>, ctx: ParseContext) -> ResUseResult {
       match_pattern: r3.type_expr.match_pattern, expr_data: r3.type_expr.expr_data }
     let ru = make_resource_use_node(name: name, resource: res_node, span: start_span, name_span: r.span)
     ResUseResult { resource_use: ru, tokens: r4.tokens, ctx: ar.ctx, err: none }
-  } else {
+  EatUnchanged { tokens: __eu } =>
     let ru = make_resource_use_node(name: name, resource: r3.type_expr, span: start_span, name_span: r.span)
     ResUseResult { resource_use: ru, tokens: r3.tokens, ctx: r3.ctx, err: none }
   }
@@ -2086,21 +2098,21 @@ fn parse_resource_config_acc(tokens: List<Token>, ctx: ParseContext, acc: List<N
   if has_err(err: r3.err) { return ResConfigResult { fields: [], tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
   let fi = make_field_init_node(name: field_name, value: r3.expr, span: zero_span, name_span: r.span)
   let acc = list_push(acc, fi)
-  let e = eat(tokens: r3.tokens, expected: ExpectComma)
-  if e.consumed {
-    parse_resource_config_acc(tokens: skip_newlines(tokens: e.tokens), ctx: r3.ctx, acc: acc)
-  } else {
+  match eat(tokens: r3.tokens, expected: ExpectComma) {
+  EatConsumed { token: _, tokens: __ec } =>
+    parse_resource_config_acc(tokens: skip_newlines(tokens: __ec), ctx: r3.ctx, acc: acc)
+  EatUnchanged { tokens: __eu } =>
     ResConfigResult { fields: acc, tokens: r3.tokens, ctx: r3.ctx, err: none }
   }
 }
 
 fn parse_optional_inferred(tokens: List<Token>, ctx: ParseContext) -> OptRetResult {
-  let e = eat(tokens: tokens, expected: ExpectArrow)
-  if e.consumed {
-    let r = parse_type_expr(tokens: e.tokens, ctx: ctx)
+  match eat(tokens: tokens, expected: ExpectArrow) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let r = parse_type_expr(tokens: __ec, ctx: ctx)
     if has_err(err: r.err) { return OptRetResult { inferred: none, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     OptRetResult { inferred: Some { value: Resolved { node: r.type_expr } }, tokens: r.tokens, ctx: r.ctx, err: none }
-  } else {
+  EatUnchanged { tokens: __eu } =>
     OptRetResult { inferred: none, tokens: tokens, ctx: ctx, err: none }
   }
 }
@@ -2242,7 +2254,7 @@ fn parse_config_fields(tokens: List<Token>, ctx: ParseContext, endpoint: Node?, 
     let tokens = r3.tokens
     let ctx = r3.ctx
     let e = eat(tokens: tokens, expected: ExpectComma)
-    let tokens = if e.consumed { e.tokens } else { tokens }
+    let tokens = match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => tokens }
 
     match fname {
       "endpoint" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: Some { value: r3.expr }, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
@@ -2323,7 +2335,7 @@ fn parse_rest_fields(tokens: List<Token>, ctx: ParseContext, base_url: Node?, me
     let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
     if has_err(err: r3.err) { return TransportResult { transport: dummy, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
     let e = eat(tokens: r3.tokens, expected: ExpectComma)
-    let tokens = if e.consumed { e.tokens } else { r3.tokens }
+    let tokens = match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r3.tokens }
     let ctx = r3.ctx
     if fname == transport_url_key {
       parse_rest_fields(tokens: tokens, ctx: ctx, base_url: Some { value: r3.expr }, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: headers)
@@ -2374,19 +2386,19 @@ fn parse_shell_fields(tokens: List<Token>, ctx: ParseContext, argv: List<Node>, 
       let r5 = expect(tokens: r4.tokens, expected: ExpectRBracket)
       if has_err(err: r5.err) { return TransportResult { transport: dummy, tokens: r5.tokens, ctx: r4.ctx, err: r5.err } }
       let e = eat(tokens: r5.tokens, expected: ExpectComma)
-      let tokens = if e.consumed { e.tokens } else { r5.tokens }
+      let tokens = match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r5.tokens }
       parse_shell_fields(tokens: tokens, ctx: r4.ctx, argv: r4.exprs, stdin: stdin)
     } else if fname == transport_stdin_key {
       let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
       if has_err(err: r3.err) { return TransportResult { transport: dummy, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
       let e = eat(tokens: r3.tokens, expected: ExpectComma)
-      let tokens = if e.consumed { e.tokens } else { r3.tokens }
+      let tokens = match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r3.tokens }
       parse_shell_fields(tokens: tokens, ctx: r3.ctx, argv: argv, stdin: Some { value: r3.expr })
     } else {
       let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
       if has_err(err: r3.err) { return TransportResult { transport: dummy, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
       let e = eat(tokens: r3.tokens, expected: ExpectComma)
-      let tokens = if e.consumed { e.tokens } else { r3.tokens }
+      let tokens = match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r3.tokens }
       parse_shell_fields(tokens: tokens, ctx: r3.ctx, argv: argv, stdin: stdin)
     }
   }
@@ -2415,7 +2427,7 @@ fn parse_file_fields(tokens: List<Token>, ctx: ParseContext, base_path: Node?) -
     let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
     if has_err(err: r3.err) { return TransportResult { transport: dummy, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
     let e = eat(tokens: r3.tokens, expected: ExpectComma)
-    let tokens = if e.consumed { e.tokens } else { r3.tokens }
+    let tokens = match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r3.tokens }
     if fname == "path" || fname == transport_path_key {
       parse_file_fields(tokens: tokens, ctx: r3.ctx, base_path: Some { value: r3.expr })
     } else {
@@ -2747,7 +2759,7 @@ fn parse_exit_entries_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node
     let prop_name = concat("exit_", code_str)
     let entry = make_field_init_node(name: prop_name, value: make_named_expr_node(name: type_name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: r3.type_expr.span, name_span: r3.type_expr.span), span: r3.type_expr.span, name_span: no_span())
     let e = eat(tokens: desc_tokens, expected: ExpectComma)
-    let tokens = skip_newlines(tokens: if e.consumed { e.tokens } else { desc_tokens })
+    let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => desc_tokens })
     parse_exit_entries_acc(tokens: tokens, ctx: r3.ctx, acc: list_push(acc, entry))
   }
 }
@@ -2850,7 +2862,7 @@ fn parse_response_entries_acc(tokens: List<Token>, ctx: ParseContext, acc: List<
     let prop_name = concat("response_", status_str)
     let entry = make_field_init_node(name: prop_name, value: make_named_expr_node(name: type_name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: r3.type_expr.span, name_span: r3.type_expr.span), span: r3.type_expr.span, name_span: no_span())
     let e = eat(tokens: r3.tokens, expected: ExpectComma)
-    let tokens = skip_newlines(tokens: if e.consumed { e.tokens } else { r3.tokens })
+    let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r3.tokens })
     parse_response_entries_acc(tokens: tokens, ctx: r3.ctx, acc: list_push(acc, entry))
   }
 }
@@ -2904,7 +2916,7 @@ fn parse_mock_response_entries_acc(tokens: List<Token>, ctx: ParseContext, acc: 
     let prop_name = concat("mock_", status_str)
     let entry = make_field_init_node(name: prop_name, value: body, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
     let e = eat(tokens: desc_tokens, expected: ExpectComma)
-    let tokens = skip_newlines(tokens: if e.consumed { e.tokens } else { desc_tokens })
+    let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => desc_tokens })
     parse_mock_response_entries_acc(tokens: tokens, ctx: r3.ctx, acc: list_push(acc, entry))
   }
 }
@@ -3175,16 +3187,16 @@ fn parse_param_list_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>)
   if has_err(err: r.err) { return ParamsResult { params: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let acc = list_push(acc, r.param)
 
-  let e = eat(tokens: r.tokens, expected: ExpectComma)
-  if e.consumed {
-    let tokens = skip_newlines(tokens: e.tokens)
+  match eat(tokens: r.tokens, expected: ExpectComma) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let tokens = skip_newlines(tokens: __ec)
     if tok_is_rparen(tok: tokens |> first) {
       // Trailing comma
       ParamsResult { params: acc, tokens: tokens, ctx: r.ctx, err: none }
     } else {
       parse_param_list_acc(tokens: tokens, ctx: r.ctx, acc: acc)
     }
-  } else {
+  EatUnchanged { tokens: __eu } =>
     ParamsResult { params: acc, tokens: r.tokens, ctx: r.ctx, err: none }
   }
 }
@@ -3211,16 +3223,16 @@ fn parse_param(tokens: List<Token>, ctx: ParseContext) -> ParamResult {
   let ctx = wr.ctx
 
   // Optional default value
-  let e = eat(tokens: tokens, expected: ExpectEq)
-  if e.consumed {
-    let r4 = parse_expr(tokens: e.tokens, ctx: ctx)
+  match eat(tokens: tokens, expected: ExpectEq) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let r4 = parse_expr(tokens: __ec, ctx: ctx)
     if has_err(err: r4.err) { return ParamResult { param: dummy_param, tokens: r4.tokens, ctx: r4.ctx, err: r4.err } }
     let p = make_param_node(
       name: name, type_expr: type_expr,
       default_value: Some { value: r4.expr }, span: start_span, name_span: name_span
     )
     ParamResult { param: p, tokens: r4.tokens, ctx: r4.ctx, err: none }
-  } else {
+  EatUnchanged { tokens: __eu } =>
     let p = make_param_node(
       name: name, type_expr: type_expr,
       default_value: none, span: start_span, name_span: name_span
@@ -3384,7 +3396,7 @@ fn parse_node_decl(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   if has_err(err: cr.err) { return ExprResult { expr: dummy_expr, tokens: cr.tokens, ctx: cr.ctx, err: cr.err } }
   // Expect colon or equals: node x: Type  OR  node x = expr
   let e_colon = eat(tokens: cr.tokens, expected: ExpectColon)
-  let tokens = if e_colon.consumed { e_colon.tokens } else {
+  let tokens = match e_colon { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } =>
     let r2 = expect(tokens: cr.tokens, expected: ExpectEq)
     if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: cr.ctx, err: r2.err } }
     r2.tokens
@@ -3397,7 +3409,7 @@ fn parse_node_decl(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   if has_err(err: ret.err) { return ExprResult { expr: dummy_expr, tokens: ret.tokens, ctx: ret.ctx, err: ret.err } }
   // If colon form was used (node x: Type), the expression IS the type annotation.
   // Preserve this fact for downstream phases.
-  let type_ann = if e_colon.consumed { Some { value: r3.expr } } else { none }
+  let type_ann = match e_colon { EatConsumed { token: _, tokens: _ } => Some { value: r3.expr }  EatUnchanged { tokens: _ } => none }
   let node = Node { name: name, span: span, ident_span: Some { value: name_span }, children: [r3.expr],
     connective: NoConnective,    params: [], inferred: ret.inferred, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: cr.constraints,
@@ -3479,30 +3491,33 @@ fn parse_expr_loop(tokens: List<Token>, ctx: ParseContext, lhs: Node, min_bp: In
           if bps.left < min_bp {
             ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
           } else {
-            let adv = advance(tokens: tokens)
-            let op_shape = adv.token.shape
-            // Special case: dot is field access
-            if is_dot_shape(shape: op_shape) {
-              let r = expect_name(tokens: adv.tokens)
-              if has_err(err: r.err) { return ExprResult { expr: lhs, tokens: r.tokens, ctx: ctx, err: r.err } }
-              let new_lhs = make_named_expr_node(name: r.name, expr_data: ExprFieldAccess { summary: none }, children: [lhs], inferred: none, span: loop_span, name_span: r.span)
-              parse_expr_loop(tokens: r.tokens, ctx: ctx, lhs: new_lhs, min_bp: min_bp)
-            } else if is_pipe_arrow_shape(shape: op_shape) {
-              let r = parse_pipe_rhs(tokens: adv.tokens, ctx: ctx, receiver: lhs, span: loop_span)
-              if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-              parse_expr_loop(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, min_bp: min_bp)
-            } else {
-              let tokens = skip_newlines(tokens: adv.tokens)
-              let r = parse_expr_bp(tokens: tokens, ctx: ctx, min_bp: bps.right)
-              if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-              let binop_opt = find_operator_binop(ops: dag_syntax_spec.operators, symbol: adv.token.text)
-              match binop_opt {
-                Some { value: binop } => {
-                  let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, algebra_field: none }, children: [lhs, r.expr], inferred: none, span: loop_span)
-                  parse_expr_loop(tokens: r.tokens, ctx: r.ctx, lhs: new_lhs, min_bp: min_bp)
+            match advance(tokens: tokens) {
+              AdvanceOk { token: op_tok, tokens: rest } =>
+                let op_shape = op_tok.shape
+                // Special case: dot is field access
+                if is_dot_shape(shape: op_shape) {
+                  let r = expect_name(tokens: rest)
+                  if has_err(err: r.err) { return ExprResult { expr: lhs, tokens: r.tokens, ctx: ctx, err: r.err } }
+                  let new_lhs = make_named_expr_node(name: r.name, expr_data: ExprFieldAccess { summary: none }, children: [lhs], inferred: none, span: loop_span, name_span: r.span)
+                  parse_expr_loop(tokens: r.tokens, ctx: ctx, lhs: new_lhs, min_bp: min_bp)
+                } else if is_pipe_arrow_shape(shape: op_shape) {
+                  let r = parse_pipe_rhs(tokens: rest, ctx: ctx, receiver: lhs, span: loop_span)
+                  if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+                  parse_expr_loop(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, min_bp: min_bp)
+                } else {
+                  let tokens = skip_newlines(tokens: rest)
+                  let r = parse_expr_bp(tokens: tokens, ctx: ctx, min_bp: bps.right)
+                  if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+                  let binop_opt = find_operator_binop(ops: dag_syntax_spec.operators, symbol: op_tok.text)
+                  match binop_opt {
+                    Some { value: binop } => {
+                      let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, algebra_field: none }, children: [lhs, r.expr], inferred: none, span: loop_span)
+                      parse_expr_loop(tokens: r.tokens, ctx: r.ctx, lhs: new_lhs, min_bp: min_bp)
+                    }
+                    None => ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: Some { value: parse_error(msg: concat("unknown binary operator: ", op_tok.text), span: loop_span) } }
+                  }
                 }
-                None => ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: Some { value: parse_error(msg: concat("unknown binary operator: ", adv.token.text), span: loop_span) } }
-              }
+              AdvanceEof => ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
             }
           }
         }
@@ -3810,14 +3825,14 @@ fn is_constraint_bracket(tokens: List<Token>) -> Bool {
 type ConstraintsResult { constraints: List<Node>, tokens: List<Token>, ctx: ParseContext, err: ErrorNode? }
 
 fn parse_constraint_annotations(tokens: List<Token>, ctx: ParseContext) -> ConstraintsResult {
-  let e = eat(tokens: tokens, expected: ExpectLBracket)
-  if e.consumed {
-    let r = parse_constraint_list(tokens: e.tokens, ctx: ctx, acc: [])
+  match eat(tokens: tokens, expected: ExpectLBracket) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let r = parse_constraint_list(tokens: __ec, ctx: ctx, acc: [])
     if has_err(err: r.err) { return r }
     let r2 = expect(tokens: r.tokens, expected: ExpectRBracket)
     if has_err(err: r2.err) { return ConstraintsResult { constraints: [], tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
     ConstraintsResult { constraints: r.constraints, tokens: r2.tokens, ctx: r.ctx, err: none }
-  } else {
+  EatUnchanged { tokens: __eu } =>
     ConstraintsResult { constraints: [], tokens: tokens, ctx: ctx, err: none }
   }
 }
@@ -3838,10 +3853,10 @@ fn parse_constraint_list(tokens: List<Token>, ctx: ParseContext, acc: List<Node>
   if has_err(err: r.err) { return ConstraintsResult { constraints: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let fi = make_field_init_node(name: kw_name, value: r.expr, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
   let acc = list_push(acc, fi)
-  let ec = eat(tokens: r.tokens, expected: ExpectComma)
-  if ec.consumed {
-    parse_constraint_list(tokens: ec.tokens, ctx: r.ctx, acc: acc)
-  } else {
+  match eat(tokens: r.tokens, expected: ExpectComma) {
+  EatConsumed { token: _, tokens: __ec } =>
+    parse_constraint_list(tokens: __ec, ctx: r.ctx, acc: acc)
+  EatUnchanged { tokens: __eu } =>
     ConstraintsResult { constraints: acc, tokens: r.tokens, ctx: r.ctx, err: none }
   }
 }
@@ -3928,15 +3943,15 @@ fn parse_arg_list_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) -
   if has_err(err: r.err) { return ArgsResult { args: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let acc = list_push(acc, r.arg)
 
-  let e = eat(tokens: r.tokens, expected: ExpectComma)
-  if e.consumed {
-    let tokens = skip_newlines(tokens: e.tokens)
+  match eat(tokens: r.tokens, expected: ExpectComma) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let tokens = skip_newlines(tokens: __ec)
     if tok_is_rparen(tok: tokens |> first) {
       ArgsResult { args: acc, tokens: tokens, ctx: r.ctx, err: none }
     } else {
       parse_arg_list_acc(tokens: tokens, ctx: r.ctx, acc: acc)
     }
-  } else {
+  EatUnchanged { tokens: __eu } =>
     ArgsResult { args: acc, tokens: r.tokens, ctx: r.ctx, err: none }
   }
 }
@@ -4043,29 +4058,32 @@ fn parse_expr_loop_no_brace(tokens: List<Token>, ctx: ParseContext, lhs: Node, m
           if bps.left < min_bp {
             ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
           } else {
-            let adv = advance(tokens: tokens)
-            let op_shape = adv.token.shape
-            if is_dot_shape(shape: op_shape) {
-              let r = expect_name(tokens: adv.tokens)
-              if has_err(err: r.err) { return ExprResult { expr: lhs, tokens: r.tokens, ctx: ctx, err: r.err } }
-              let new_lhs = make_named_expr_node(name: r.name, expr_data: ExprFieldAccess { summary: none }, children: [lhs], inferred: none, span: loop_span, name_span: r.span)
-              parse_expr_loop_no_brace(tokens: r.tokens, ctx: ctx, lhs: new_lhs, min_bp: min_bp)
-            } else if is_pipe_arrow_shape(shape: op_shape) {
-              let r = parse_pipe_rhs(tokens: adv.tokens, ctx: ctx, receiver: lhs, span: loop_span)
-              if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-              parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, min_bp: min_bp)
-            } else {
-              let tokens = skip_newlines(tokens: adv.tokens)
-              let r = parse_expr_bp_no_brace(tokens: tokens, ctx: ctx, min_bp: bps.right)
-              if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-              let binop_opt = find_operator_binop(ops: dag_syntax_spec.operators, symbol: adv.token.text)
-              match binop_opt {
-                Some { value: binop } => {
-                  let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, algebra_field: none }, children: [lhs, r.expr], inferred: none, span: loop_span)
-                  parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: new_lhs, min_bp: min_bp)
+            match advance(tokens: tokens) {
+              AdvanceOk { token: op_tok, tokens: rest } =>
+                let op_shape = op_tok.shape
+                if is_dot_shape(shape: op_shape) {
+                  let r = expect_name(tokens: rest)
+                  if has_err(err: r.err) { return ExprResult { expr: lhs, tokens: r.tokens, ctx: ctx, err: r.err } }
+                  let new_lhs = make_named_expr_node(name: r.name, expr_data: ExprFieldAccess { summary: none }, children: [lhs], inferred: none, span: loop_span, name_span: r.span)
+                  parse_expr_loop_no_brace(tokens: r.tokens, ctx: ctx, lhs: new_lhs, min_bp: min_bp)
+                } else if is_pipe_arrow_shape(shape: op_shape) {
+                  let r = parse_pipe_rhs(tokens: rest, ctx: ctx, receiver: lhs, span: loop_span)
+                  if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+                  parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, min_bp: min_bp)
+                } else {
+                  let tokens = skip_newlines(tokens: rest)
+                  let r = parse_expr_bp_no_brace(tokens: tokens, ctx: ctx, min_bp: bps.right)
+                  if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+                  let binop_opt = find_operator_binop(ops: dag_syntax_spec.operators, symbol: op_tok.text)
+                  match binop_opt {
+                    Some { value: binop } => {
+                      let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, algebra_field: none }, children: [lhs, r.expr], inferred: none, span: loop_span)
+                      parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: new_lhs, min_bp: min_bp)
+                    }
+                    None => ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: Some { value: parse_error(msg: concat("unknown binary operator: ", op_tok.text), span: loop_span) } }
+                  }
                 }
-                None => ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: Some { value: parse_error(msg: concat("unknown binary operator: ", adv.token.text), span: loop_span) } }
-              }
+              AdvanceEof => ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
             }
           }
         }
@@ -4088,7 +4106,7 @@ fn parse_match_arms_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>)
     let r = parse_match_arm(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return ArmsResult { arms: acc, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let e = eat(tokens: r.tokens, expected: ExpectComma)
-    let tokens = skip_newlines(tokens: if e.consumed { e.tokens } else { r.tokens })
+    let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r.tokens })
     parse_match_arms_acc(tokens: tokens, ctx: r.ctx, acc: list_push(acc, r.arm))
   }
 }
@@ -4320,17 +4338,17 @@ fn parse_variant_bindings_brace_acc(tokens: List<Token>, ctx: ParseContext, acc:
     let field_name_span = r.span
     let tokens = r.tokens
 
-    let e = eat(tokens: tokens, expected: ExpectColon)
-    if e.consumed {
-      let r2 = parse_pattern(tokens: e.tokens, ctx: ctx)
+    match eat(tokens: tokens, expected: ExpectColon) {
+    EatConsumed { token: _, tokens: __ec } =>
+      let r2 = parse_pattern(tokens: __ec, ctx: ctx)
       if has_err(err: r2.err) { return BindingsResult { field_bindings: [], tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
       let e2 = eat(tokens: r2.tokens, expected: ExpectComma)
-      let tokens = skip_newlines(tokens: if e2.consumed { e2.tokens } else { r2.tokens })
+      let tokens = skip_newlines(tokens: match e2 { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r2.tokens })
       let fb = make_field_binding_node(field_name: field_name, binding: r2.pattern, span: bind_span, name_span: field_name_span)
       parse_variant_bindings_brace_acc(tokens: tokens, ctx: r2.ctx, acc: list_push(acc, fb))
-    } else {
+    EatUnchanged { tokens: __eu } =>
       let e2 = eat(tokens: tokens, expected: ExpectComma)
-      let tokens = skip_newlines(tokens: if e2.consumed { e2.tokens } else { tokens })
+      let tokens = skip_newlines(tokens: match e2 { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => tokens })
       let fb = make_field_binding_node(field_name: field_name, binding: Bind { name: field_name }, span: bind_span, name_span: field_name_span)
       parse_variant_bindings_brace_acc(tokens: tokens, ctx: ctx, acc: list_push(acc, fb))
     }
@@ -4357,9 +4375,9 @@ fn parse_if(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   let tokens = skip_newlines(tokens: r.tokens)
   let ctx = r.ctx
 
-  let e = eat(tokens: tokens, expected: ExpectKeyword { text: "else" })
-  if e.consumed {
-    let tokens = skip_newlines(tokens: e.tokens)
+  match eat(tokens: tokens, expected: ExpectKeyword { text: "else" }) {
+  EatConsumed { token: _, tokens: __ec } =>
+    let tokens = skip_newlines(tokens: __ec)
     if tok_is_keyword(tok: tokens |> first, kw: "if") {
       let r2 = parse_if(tokens: tokens, ctx: ctx)
       if has_err(err: r2.err) { return ExprResult { expr: r2.expr, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
@@ -4369,7 +4387,7 @@ fn parse_if(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
       if has_err(err: r2.err) { return ExprResult { expr: r2.expr, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
       ExprResult { expr: make_expr_node(expr_data: ExprIf, children: [condition, then_branch, r2.expr], inferred: none, span: span), tokens: r2.tokens, ctx: r2.ctx, err: none }
     }
-  } else {
+  EatUnchanged { tokens: __eu } =>
     ExprResult { expr: make_expr_node(expr_data: ExprIf, children: [condition, then_branch], inferred: none, span: span), tokens: tokens, ctx: ctx, err: none }
   }
 }
@@ -4475,7 +4493,7 @@ fn parse_field_init_list_acc(tokens: List<Token>, ctx: ParseContext, acc: List<N
     let r = parse_field_init(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return FieldInitsResult { fields: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let e = eat(tokens: r.tokens, expected: ExpectComma)
-    let tokens = skip_newlines(tokens: if e.consumed { e.tokens } else { r.tokens })
+    let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r.tokens })
     parse_field_init_list_acc(tokens: tokens, ctx: r.ctx, acc: list_push(acc, r.field))
   }
 }
@@ -4550,7 +4568,7 @@ fn parse_expr_list_until_acc(tokens: List<Token>, ctx: ParseContext, end_expecte
     let r = parse_expr(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return ExprsResult { exprs: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let e = eat(tokens: r.tokens, expected: ExpectComma)
-    let tokens = skip_newlines(tokens: if e.consumed { e.tokens } else { r.tokens })
+    let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r.tokens })
     parse_expr_list_until_acc(tokens: tokens, ctx: r.ctx, end_expected: end_expected, acc: list_push(acc, r.expr))
   }
 }
@@ -4667,10 +4685,10 @@ fn collect_lambda_idents(tokens: List<Token>, ctx: ParseContext, acc: List<Parse
     let tok = tokens |> first
     let param = ParserParam { name: tok.value.text, span: tok.value.span }
     let new_acc = list_push(acc, param)
-    let e = eat(tokens: tokens |> skip(1), expected: ExpectComma)
-    if e.consumed {
-      collect_lambda_idents(tokens: e.tokens, ctx: ctx, acc: new_acc)
-    } else {
+    match eat(tokens: tokens |> skip(1), expected: ExpectComma) {
+    EatConsumed { token: _, tokens: __ec } =>
+      collect_lambda_idents(tokens: __ec, ctx: ctx, acc: new_acc)
+    EatUnchanged { tokens: __eu } =>
       IdentCollectResult { success: true, params: new_acc, tokens: tokens |> skip(1), ctx: ctx, err: none }
     }
   } else {

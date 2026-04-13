@@ -35,6 +35,8 @@ type ResolvedFuncSig {
   inferred: Node
   is_async: Bool
   output_provenance: List<Map<String, SubValueRelation>>
+  // Per-variant per-field provenance for sum-type returns. See DeclaredFuncSig.
+  variant_provenance: Map<String, Map<String, Map<String, SubValueRelation>>>
 }
 
 type ResolvedFuncEnv {
@@ -132,7 +134,7 @@ fn collect_parent_resolved_sigs(declared_sigs: Map<String, DeclaredFuncSig>, loc
 // Convert a single DeclaredFuncSig with inferred: Some to ResolvedFuncSig.
 // Caller must ensure inferred is not None.
 fn declared_to_resolved(dsig: DeclaredFuncSig) -> ResolvedFuncSig {
-  ResolvedFuncSig { name: dsig.name, params: dsig.params, inferred: dsig.inferred.value, is_async: dsig.is_async, output_provenance: dsig.output_provenance }
+  ResolvedFuncSig { name: dsig.name, params: dsig.params, inferred: dsig.inferred.value, is_async: dsig.is_async, output_provenance: dsig.output_provenance, variant_provenance: dsig.variant_provenance }
 }
 
 // Merge all remaining declared sigs (with inferred: Some) into a resolved map.

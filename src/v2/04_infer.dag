@@ -108,8 +108,9 @@ import std.induction {
   InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
   SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown,
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
-  sub_value_to_evidence, meet_sub_value, compose_sub_value, compose_sub_value_relations
+  sub_value_to_evidence, meet_sub_value, join_sub_value, compose_sub_value, compose_sub_value_relations
 }
+import std.algebra { CollectionSizeEffect, ShrinkEffect }
 import v2.compiler.infer_resolve {
   resolve_node, resolve_item_types,
   NodeResolveResult, ItemResult
@@ -337,7 +338,8 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
               name: sig_key, params: sig_params,
               inferred: Some { value: sig_rt },
               is_async: sig_async,
-              output_provenance: rsig.output_provenance
+              output_provenance: rsig.output_provenance,
+              variant_provenance: rsig.variant_provenance
             })
           )
           // svc_registry + svc_locals from parent items
@@ -3362,11 +3364,35 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         _ => none
       }
       let scrut_has_inductive = (scrut_type != "" && inductive_fields_for(env: ctx.type_env, type_name: scrut_type) |> count > 0) || scrut_inducing_field != none
+      // CX-R: Detect scrutinee ExprCall with variant_provenance (sum-type return).
+      // When matching on a function call that returns a sum type, each arm's
+      // variant bindings can be classified using the function's per-variant
+      // per-field provenance, enabling structural descent evidence for
+      // `match advance(tokens: tokens) { AdvanceOk { tokens: rest } => self(tokens: rest) }`.
+      let scrut_variant_sig = match scrut.expr_data {
+        ExprCall { call_semantics: _, descent_evidence: _ } =>
+          let callee = expr_call_func_at(texpr: scrut, source_indices: ctx.type_env.source_indices)
+          match map_get(ctx.func_sigs, callee) {
+            Some { value: sig } =>
+              if map_keys(sig.variant_provenance) |> count > 0 { Some { value: sig } }
+              else { none }
+            None => none
+          }
+        _ => none
+      }
       // Annotate scrutinee
       let annotated_scrut = annotate_descent(body: scrut, ctx: ctx)
       // Process each arm with extended context
       let annotated_arms = match_arm_nodes(texpr: body) |> map(arm_node =>
-        let arm_ctx = if scrut_has_inductive {
+        let variant_arm_ctx = match scrut_variant_sig {
+          Some { value: sig } =>
+            arm_ctx_from_variant_provenance(arm_node: arm_node, sig: sig, scrut: scrut, ctx: ctx)
+          None => none
+        }
+        let arm_ctx = match variant_arm_ctx {
+          Some { value: c } => c
+          None =>
+        if scrut_has_inductive {
           match arm_pattern(n: arm_node) {
             VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
               // For field-access scrutinees with OptionalRecursion, the Some.value
@@ -3476,6 +3502,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             _ => ctx
           }
         } else { ctx }
+        }
         let annotated_body = annotate_descent(body: arm_body(n: arm_node), ctx: arm_ctx)
         // Reconstruct arm node with annotated body
         make_arm_node(pattern: arm_pattern(n: arm_node), guard: arm_guard(n: arm_node), body: annotated_body, span: arm_node.span)
@@ -3892,9 +3919,40 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
       let callee = expr_call_func_at(texpr: expr, source_indices: type_env.source_indices)
       compose_callee_provenance(callee: callee, arg_by_name: call_args_by_name(call: expr, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
 
-    ExprMethodCall { method_semantics: _ } =>
+    ExprMethodCall { method_semantics: ms } =>
       let mname = expr_method_name_at(texpr: expr, source_indices: type_env.source_indices)
-      compose_callee_provenance(callee: mname, arg_by_name: method_call_args_by_name(call: expr, func_sigs: func_sigs, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+      let callee_result = compose_callee_provenance(callee: mname, arg_by_name: method_call_args_by_name(call: expr, func_sigs: func_sigs, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+      if map_keys(callee_result) |> count > 0 { callee_result }
+      else {
+        // Kernel algebra methods (skip, etc.) aren't in func_sigs.
+        // Check for ShrinkEffect: receiver |> skip(N) with N > 0 → StrictSubValue.
+        let is_shrink = match ms {
+          Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: _, algebra_template: _ } } =>
+            match se { Some { value: ShrinkEffect } => true  _ => false }
+          _ => false
+        }
+        if is_shrink
+          && match method_arg_nodes(texpr: expr) |> first {
+            Some { value: arg_node } =>
+              match arg_value(n: arg_node).expr_data {
+                ExprLiteral { value: LitInt { value: n } } => n > 0
+                _ => false
+              }
+            None => false
+          }
+        {
+          let recv = method_receiver(texpr: expr)
+          let recv_prov = classify_body_provenance(expr: recv, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+          fold(map_keys(recv_prov), init: empty_map(), f: (acc, pname) =>
+            match map_get(recv_prov, pname) {
+              Some { value: recv_rel } =>
+                let synth_field = InductiveField { type_name: pname, variant_name: "", field_name: mname, shape: ListRecursion, element_type: pname }
+                map_insert(acc, pname, compose_sub_value(base: recv_rel, field: synth_field))
+              None => acc
+            }
+          )
+        } else { empty_map() }
+      }
 
     ExprMatch =>
       let scrut = match_scrutinee(texpr: expr)
@@ -4217,11 +4275,224 @@ fn intersect_prov_maps(a: Map<String, SubValueRelation>, b: Map<String, SubValue
   )
 }
 
+// CX-R: Compute arm_ctx for a match arm when the scrutinee is a call to a
+// function with variant_provenance. Returns Some(ctx) on success, None to
+// fall through to existing inductive-field handling.
+fn arm_ctx_from_variant_provenance(arm_node: Node, sig: ResolvedFuncSig, scrut: Node, ctx: DescentContext) -> DescentContext? {
+  match arm_pattern(n: arm_node) {
+    VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
+      match map_get(sig.variant_provenance, vname) {
+        Some { value: variant_field_map } =>
+          let call_args = call_args_by_name(call: scrut, source_indices: ctx.type_env.source_indices)
+          let extended = bindings |> fold(init: ctx, f: (c, fb) =>
+            let field_label = field_binding_name_at(n: fb, source_indices: ctx.type_env.source_indices)
+            let bind_name = match field_binding_pattern(n: fb) { Bind { name: bn } => bn  _ => "" }
+            if bind_name == "" || field_label == "" { c }
+            else {
+              // Look up by field name (not position) in the name-keyed provenance map.
+              match map_get(variant_field_map, field_label) {
+                Some { value: param_map } =>
+                  let composed = compose_callee_param_map(callee_prov: param_map, arg_by_name: call_args, param_names: c.param_order, param_types: c.param_names, type_env: c.type_env, func_sigs: c.func_sigs, let_prov: empty_map())
+                  // Meet ALL composed relations — don't drop any.
+                  // The composed map is keyed by caller param name. Meet gives
+                  // the conservative relation across all contributing params.
+                  let all_rels = map_keys(composed) |> map(k => match map_get(composed, k) { Some { value: r } => r  None => SubValueUnknown })
+                  let best = merge_argument_relations(rels: all_rels)
+                  match best {
+                    SubValueUnknown => c
+                    _ => DescentContext { fn_name: c.fn_name, param_names: c.param_names, param_order: c.param_order, type_env: c.type_env, sub_value_vars: map_insert(c.sub_value_vars, bind_name, best), size_aliases: c.size_aliases, scope_locals: c.scope_locals, func_sigs: c.func_sigs, per_field_vars: c.per_field_vars }
+                  }
+                None => c
+              }
+            }
+          )
+          Some { value: extended }
+        None => none
+      }
+    _ => none
+  }
+}
+
+fn compose_callee_param_map(callee_prov: Map<String, SubValueRelation>, arg_by_name: Map<String, Node>, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
+  fold(callee_prov |> map_keys, init: empty_map(), f: (acc, callee_pname) =>
+    match map_get(callee_prov, callee_pname) {
+      Some { value: callee_rel } =>
+        match map_get(arg_by_name, callee_pname) {
+          Some { value: arg } =>
+            let arg_prov = classify_body_provenance(expr: arg, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+            fold(arg_prov |> map_keys, init: acc, f: (inner, pname) =>
+              match map_get(arg_prov, pname) {
+                Some { value: arg_rel } =>
+                  let composed = compose_sub_value_relations(arg_rel: arg_rel, callee_rel: callee_rel)
+                  match composed { SubValueUnknown => inner  _ => map_insert(inner, pname, composed) }
+                None => inner
+              }
+            )
+          None => acc
+        }
+      None => acc
+    }
+  )
+}
+
 // Compose two sub-value relations across a function call boundary.
 // Delegates to std/induction.dag's compose_sub_value_relations — the
 // single authority for SubValueRelation sequential composition.
 fn compose_output_relations(arg_rel: SubValueRelation, callee_rel: SubValueRelation) -> SubValueRelation {
   compose_sub_value_relations(arg_rel: arg_rel, callee_rel: callee_rel)
+}
+
+// Compute per-variant per-field provenance for a sum-type returning function.
+// For each variant constructor (ExprRecordLit) in the body, classifies its
+// field values. Returns Map<variant_name, List<Map<param_name, SubValueRelation>>>.
+// Empty if the return type isn't a sum type or no variant constructors found.
+fn compute_variant_provenance(body: Node, return_type: Node, params: List<Node>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>) -> Map<String, Map<String, Map<String, SubValueRelation>>> {
+  // return_type from item.inferred is a reference node (NoConnective).
+  // Look up the actual type definition to check for Disj connective.
+  let rt_name = authored_name_at(source_indices: type_env.source_indices, node: return_type)
+  let rt_def = lookup_type(env: type_env, name: rt_name)
+  match rt_def {
+    Some { value: def_node } =>
+      match def_node.connective {
+        Disj =>
+          let param_names = params |> map(p => param_node_name_at(n: p, source_indices: type_env.source_indices))
+          let param_types = fold(params, init: empty_map(), f: (acc, p) =>
+            let pname = param_node_name_at(n: p, source_indices: type_env.source_indices)
+            let ptype = resolved_type_name(n: p, source_indices: type_env.source_indices)
+            if pname != "" && ptype != "" { map_insert(acc, pname, ptype) } else { acc }
+          )
+          collect_variant_constructors(body: body, parent_enum: rt_name, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: empty_map(), acc: empty_map())
+        _ => empty_map()
+      }
+    None => empty_map()
+  }
+}
+
+// Walk return-position expressions collecting ExprRecordLit nodes whose
+// parent_enum matches. Only recurses into return positions: match arm bodies,
+// if then/else branches, let bodies, block last statements. Does NOT recurse
+// into match scrutinees, if conditions, or let values — those are not return
+// positions and could fabricate contracts from temporary same-enum literals.
+fn collect_variant_constructors(body: Node, parent_enum: String, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>, acc: Map<String, Map<String, Map<String, SubValueRelation>>>) -> Map<String, Map<String, Map<String, SubValueRelation>>> {
+  match body.expr_data {
+    ExprRecordLit { parent_enum: pe } =>
+      match pe {
+        Some { value: enum_name } =>
+          if enum_name == parent_enum {
+            let variant_name = body.name
+            // Build name-keyed provenance map (not position-dependent).
+            let field_prov_map = body.children |> fold(init: empty_map(), f: (m, fi) =>
+              let fname = field_init_node_name_at(n: fi, source_indices: type_env.source_indices)
+              let fprov = classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+              if fname != "" { map_insert(m, fname, fprov) } else { m }
+            )
+            match map_get(acc, variant_name) {
+              Some { value: existing } =>
+                let merged = merge_field_prov_maps(a: existing, b: field_prov_map)
+                map_insert(acc, variant_name, merged)
+              None => map_insert(acc, variant_name, field_prov_map)
+            }
+          } else { acc }
+        None => acc
+      }
+    ExprMatch =>
+      // Only recurse into arm bodies (return positions), not the scrutinee.
+      match_arm_nodes(texpr: body) |> fold(init: acc, f: (a, arm) =>
+        collect_variant_constructors(body: arm_body(n: arm), parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov, acc: a)
+      )
+    ExprIf =>
+      // Only recurse into then/else branches (return positions), not the condition.
+      let then_acc = collect_variant_constructors(body: if_then_branch(texpr: body), parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov, acc: acc)
+      match if_else_branch(texpr: body) {
+        Some { value: eb } =>
+          collect_variant_constructors(body: eb, parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov, acc: then_acc)
+        None => then_acc
+      }
+    ExprLet =>
+      // Only recurse into the let body (return position), not the let value.
+      // But still track let bindings for provenance composition.
+      match let_body(texpr: body) {
+        Some { value: b } =>
+          let bname = let_binding_name_at(texpr: body, source_indices: type_env.source_indices)
+          let value_prov = classify_body_provenance(expr: let_value(texpr: body), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
+          let new_lp = map_insert(let_prov, bname, value_prov)
+          collect_variant_constructors(body: b, parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: new_lp, acc: acc)
+        None => acc
+      }
+    ExprBlock =>
+      // Only the last statement in a block is the return position.
+      // But track let bindings from earlier statements.
+      let stmts = body.children
+      let stmt_count = stmts |> count
+      if stmt_count == 0 { acc }
+      else {
+        // Accumulate let_prov from non-terminal statements
+        let final_lp = stmts |> take(stmt_count - 1) |> fold(init: let_prov, f: (lp, stmt) =>
+          match stmt.expr_data {
+            ExprLet =>
+              let bname = let_binding_name_at(texpr: stmt, source_indices: type_env.source_indices)
+              let vprov = classify_body_provenance(expr: let_value(texpr: stmt), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: lp)
+              map_insert(lp, bname, vprov)
+            _ => lp
+          }
+        )
+        // Recurse into only the last statement
+        match stmts |> skip(stmt_count - 1) |> first {
+          Some { value: last } =>
+            collect_variant_constructors(body: last, parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: final_lp, acc: acc)
+          None => acc
+        }
+      }
+    _ => acc
+  }
+}
+
+// Merge two field-level provenance maps (field_name → Map<param_name, SubValueRelation>).
+// For fields present in both, join the inner provenance maps. Fields in only one
+// side are kept. Used when multiple branches produce the same variant.
+fn merge_field_prov_maps(a: Map<String, Map<String, SubValueRelation>>, b: Map<String, Map<String, SubValueRelation>>) -> Map<String, Map<String, SubValueRelation>> {
+  let from_a = fold(map_keys(a), init: empty_map(), f: (result, fname) =>
+    match map_get(a, fname) {
+      Some { value: a_prov } =>
+        match map_get(b, fname) {
+          Some { value: b_prov } => map_insert(result, fname, union_prov_maps(a: a_prov, b: b_prov))
+          None => map_insert(result, fname, a_prov)
+        }
+      None => result
+    }
+  )
+  fold(map_keys(b), init: from_a, f: (result, fname) =>
+    if map_get(result, fname) != none { result }
+    else {
+      match map_get(b, fname) {
+        Some { value: b_prov } => map_insert(result, fname, b_prov)
+        None => result
+      }
+    }
+  )
+}
+
+// Union two provenance maps: keep keys present in either, join values.
+fn union_prov_maps(a: Map<String, SubValueRelation>, b: Map<String, SubValueRelation>) -> Map<String, SubValueRelation> {
+  let from_a = fold(map_keys(a), init: empty_prov_map(), f: (result, key) =>
+    match map_get(a, key) {
+      Some { value: a_rel } =>
+        match map_get(b, key) {
+          Some { value: b_rel } => map_insert(result, key, join_sub_value(a: a_rel, b: b_rel))
+          None => map_insert(result, key, a_rel)
+        }
+      None => result
+    }
+  )
+  fold(map_keys(b), init: from_a, f: (result, key) =>
+    if map_get(result, key) != none { result }
+    else {
+      match map_get(b, key) {
+        Some { value: b_rel } => map_insert(result, key, b_rel)
+        None => result
+      }
+    }
+  )
 }
 
 // Populate output provenance on resolved function signatures after body typing.
@@ -4246,7 +4517,8 @@ fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv
                     Some { value: sig } =>
                       map_insert(acc, fn_name, ResolvedFuncSig {
                         name: sig.name, params: sig.params, inferred: sig.inferred,
-                        is_async: sig.is_async, output_provenance: provenance
+                        is_async: sig.is_async, output_provenance: provenance,
+                        variant_provenance: sig.variant_provenance
                       })
                     None => acc
                   }
@@ -4261,12 +4533,22 @@ fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv
           Some { value: body } =>
             if !expr_has_self_call(texpr: body, fn_name: fn_name, source_indices: type_env.source_indices) {
               let provenance = infer_output_provenance(body: body, params: item.params, type_env: type_env, scope_locals: locals, func_sigs: acc)
-              if provenance |> count > 0 {
+              // Also compute per-variant provenance if the return type is a sum type
+              let variant_prov = match item.inferred {
+                Some { value: Resolved { node: rt } } =>
+                  compute_variant_provenance(body: body, return_type: rt, params: item.params, type_env: type_env, func_sigs: acc)
+                _ => empty_map()
+              }
+              let has_scalar = provenance |> count > 0
+              let has_variant = map_keys(variant_prov) |> count > 0
+              if has_scalar || has_variant {
                 match map_get(acc, fn_name) {
                   Some { value: sig } =>
                     map_insert(acc, fn_name, ResolvedFuncSig {
                       name: sig.name, params: sig.params, inferred: sig.inferred,
-                      is_async: sig.is_async, output_provenance: provenance
+                      is_async: sig.is_async,
+                      output_provenance: if has_scalar { provenance } else { sig.output_provenance },
+                      variant_provenance: if has_variant { variant_prov } else { sig.variant_provenance }
                     })
                   None => acc
                 }
@@ -4924,7 +5206,8 @@ fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContributi
       params: ritem.params,
       inferred: declared_rt,
       is_async: ritem.uses |> count > 0,
-      output_provenance: []
+      output_provenance: [],
+      variant_provenance: empty_map()
     } }
   } else {
     none
