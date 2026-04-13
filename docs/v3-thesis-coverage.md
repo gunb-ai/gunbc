@@ -11,11 +11,12 @@ desugaring computation to map + reduce. MapReduce didn't add a
 "parallelism pass." It showed that parallelism IS the structure
 when computation is expressed in the right primitives.
 
-The v3 kernel has 5 causal motifs: Constant, Interaction, Fork,
-Chain, Subgraph. Every .dag expression desugars to these. The
-thesis claims 8 correctness dimensions, 4 concept unifications,
-4 free consequences, 3 verification tiers, and several structural
-guarantees.
+The v3 spec has 5 L1 behaviors: Value, Transform, Branch, Loop,
+Bind. Every .dag expression desugars to these. Analyses (cost,
+ownership, effects, etc.) are lenses — lightweight views over
+the physics. The thesis claims 8 correctness dimensions, 4 concept
+unifications, 4 free consequences, 3 verification tiers, and
+several structural guarantees.
 
 This document shows, for each gap, exactly how it resolves to a
 law on the existing motifs — no new motifs, no separate passes,

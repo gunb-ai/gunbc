@@ -90,6 +90,9 @@ type TransformRule =
   | StringBuild
 
     // define (a deferred transform — lambda / function body)
+    // A lambda is sugar: x => x + y desugars to a Define where y is
+    // an explicit input edge, same as any other dependency in the DAG.
+    // No special capture mechanism — the dependency is just visible.
   | Define { params: List<ParamPort>, body: NodeRef }
 
 // ---------------------------------------------------------------------------
@@ -125,19 +128,32 @@ type Path {
 // Loop — repeat something, bounded
 // ---------------------------------------------------------------------------
 // Apply a body repeatedly, with a known bound on repetitions.
-// fold, descend, repeat, for-each, map, filter — all Loops.
-// They differ in the bound source and what the body does.
+// fold, descend, repeat, for-each — all Loops.
 //
 //   items |> fold(init: 0, step)     bound = |items|
 //   tree |> descend(base, combine)   bound = |tree|
 //   repeat(100, init, step)          bound = 100
-//   items |> map(f)                  bound = |items|, body = f
-//   items |> filter(p)              bound = |items|, body = branch on p
 //   "forever" server                 bound = system limit
 //
 // Cost = bound × cost(body).
 // A "forever" loop has bound = system limit (largest representable value).
 // Structurally identical to bound = 5. Just larger.
+//
+// IMPORTANT: Loop is not necessarily the lowering target. A developer
+// writes for/loop, and the compiler recognizes when the body is
+// elementwise-independent — then it can RAISE to map/filter (L2),
+// which enables parallelism. Lowering goes UP (imperative → parallel),
+// not DOWN (functional → sequential). "Parallelism is the default"
+// means: if elements don't depend on each other, the compiler sees
+// that from the DAG structure and can parallelize.
+//
+// TERMINATION: In a closed system with bounded iteration, termination
+// is guaranteed by construction. You can't WRITE a non-terminating
+// program — the only iteration primitive (Loop) requires a Bound.
+// There is nothing to "prove." v2's 420 CX violations exist because
+// v2 tries to prove termination after the fact instead of making
+// non-termination unrepresentable. In v3, the physics makes it
+// unrepresentable.
 
 type Loop {
   id: NodeId
@@ -281,8 +297,13 @@ type NodeContract {
 //   Measures: does every Loop have a Bound? Are all bounds finite?
 //   Composes: structural — the DAG is acyclic, Loops have bounds
 //
-//   In a well-formed DAG, termination is guaranteed by construction.
-//   The lens just confirms: no unbounded loops, no cycles.
+//   In a well-formed DAG with the right physics, this lens should
+//   be TRIVIAL. Termination is guaranteed by construction — you
+//   can't represent a non-terminating program because the only
+//   iteration primitive (Loop) requires a Bound. The lens just
+//   confirms the structural invariant holds. If this lens needs
+//   complex analysis (like v2's 5,000-line complexity.dag), the
+//   physics is wrong — iteration is escaping the Loop primitive.
 
 // ALGEBRA lens — "can this be simplified?"
 //   Looks at: adjacent transforms
@@ -322,27 +343,40 @@ type NodeContract {
 //
 // The test: every L2 can be written as L1 composition. If it can't,
 // it belongs in L1.
+//
+// IMPORTANT: L2 is not just a naming convenience — it's where the
+// compiler RAISES imperative code to parallelizable patterns. The
+// developer writes a for-loop. The compiler sees that iterations
+// are independent (no cross-element dependency in the DAG) and
+// raises it to Map — which CAN be parallelized. The lowering goes
+// UP (imperative → parallel), not down (functional → sequential).
 
-// Map = Loop where body is Transform
-//   items |> map(f) = Loop(source: items, init: [], body: append(acc, f(elem)))
+// Map — elementwise-independent transform. Parallelizable.
+//   The developer writes: for item in items { f(item) }
+//   The compiler sees: each f(item) is independent (no shared edges)
+//   The compiler raises to: Map(items, f) — can parallelize
 
-// Filter = Loop where body is Branch
-//   items |> filter(p) = Loop(source: items, init: [], body: if p(elem) then append(acc, elem) else acc)
+// Filter — elementwise-independent predicate. Parallelizable.
+//   The developer writes: for item in items { if p(item) { keep } }
+//   The compiler sees: each p(item) is independent
+//   The compiler raises to: Filter(items, p) — can parallelize
 
-// Fold = Loop (directly — fold IS the L1 Loop)
-//   items |> fold(init: z, step: f) = Loop(source: items, init: z, body: f(acc, elem))
+// Fold — accumulator-dependent iteration. Sequential.
+//   items |> fold(init: z, step: f)
+//   Each step depends on the previous accumulator. Cannot parallelize
+//   UNLESS the algebra lens sees that f is associative + commutative,
+//   in which case → MapReduce (partition, parallel fold, combine).
 
-// Pipeline = sequential Bind → Transform → Bind → Transform
-//   fetch(id) |> parse |> validate = Bind(raw, fetch(id)) → Transform(parse, raw) → Transform(validate, parsed)
+// Pipeline — sequential composition
+//   fetch(id) |> parse |> validate
 
-// Retry = Loop where body is Branch on error
-//   retry(3, action) = Loop(bound: 3, body: Branch(try action, [Ok → LoopSuccess, Err → LoopContinue]))
+// Retry — bounded retry with backoff
+//   retry(3, action)
 
-// MapReduce = Loop whose accumulator Transform is associative + commutative
-//   → the algebra lens sees this, emitter can parallelize
-
-// Recursive function = Loop with structural descent bound
-//   fn f(tree) { ... f(child) ... } = Loop(source: tree, bound: TreeSize, body: Transform(f, child))
+// Recursive function — self-call with smaller input
+//   fn f(tree) { ... f(child) ... }
+//   The child is structurally smaller than tree (the DAG shows this).
+//   Desugars to a bounded traversal.
 
 // =========================================================================
 // PROPERTIES = LENSES POINTED AT THE PHYSICS

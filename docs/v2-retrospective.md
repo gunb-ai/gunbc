@@ -1,6 +1,13 @@
-# v2 Retrospective: What Worked, What Didn't, What v3 Needs
+# v2 Retrospective: What Worked, What Didn't
 
 > Part of: [THESIS.md](../THESIS.md)
+>
+> **This is a retrospective analysis, not a design prescription.**
+> It diagnoses what went wrong in v2 and identifies patterns to
+> avoid. The v3 design lives in [src/v3/spec.dag](../src/v3/spec.dag).
+> Sections 4-7 contain early design explorations that have been
+> superseded by the spec — they're kept as historical context for
+> how the thinking evolved, not as current proposals.
 
 ## Executive summary
 
@@ -48,7 +55,7 @@ comprehensible.
 
 The compiler compiles itself. This is the strongest possible
 validation: the .dag language is expressive enough to describe
-its own compiler. 393 tests pass. Bootstrap converges.
+its own compiler. 394 tests pass. Bootstrap converges.
 
 ### 1d. Structural type system
 
@@ -317,6 +324,13 @@ Every instance follows the same pattern:
 ---
 
 ## 4. What v3 needs to be different
+
+> **Historical note:** Sections 4-7 were early design explorations
+> written before the physics + lenses framing emerged. The current
+> v3 design lives in [src/v3/spec.dag](../src/v3/spec.dag) and
+> takes a different approach: 5 L1 behaviors + lenses over the
+> structure, rather than extensible bindings or stage-specific IRs.
+> These sections are kept for context on how the thinking evolved.
 
 ### 4a. Extensible bindings (the dimension slot)
 
