@@ -138,7 +138,7 @@ pub fn variant_locals_from_items(items: Rc<Vec<Rc<Node>>>, init: Rc<HashMap<Stri
     items.iter().cloned().fold(init.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, item: Rc<Node>| {
         let is_coproduct = (item.connective.clone() == Connective::Disj);
 if is_coproduct.clone() {
-            item.children.clone().iter().cloned().fold(acc.clone(), |vacc: Rc<HashMap<String, Rc<TypeBinding>>>, child: Rc<Node>| v2_rt::rc_map_insert(vacc.clone(), child.name.clone(), Rc::new(TypeBinding {
+            item.children.clone().iter().cloned().fold(acc.clone(), |vacc: Rc<HashMap<String, Rc<TypeBinding>>>, child: Rc<Node>| v2_rt::rc_map_insert(vacc, child.name.clone(), Rc::new(TypeBinding {
     name: child.name.clone(),
     resolved: item.clone(),
     provenance: Rc::new(SubValueRelation::SubValueUnknown),

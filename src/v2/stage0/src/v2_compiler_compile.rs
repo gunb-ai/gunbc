@@ -594,7 +594,7 @@ if has_parse_errors {
         } else {
             {
                 let modules = Rc::new({ let mut __result = Vec::new(); for p in parse_results.clone().iter().cloned() { __result.push(p.module.clone().clone().unwrap()); } __result });
-let source_indices = newline_indices.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, si: Rc<NewlineIndex>| v2_rt::rc_map_insert(acc.clone(), si.file.clone(), si.clone()));
+let source_indices = newline_indices.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, si: Rc<NewlineIndex>| v2_rt::rc_map_insert(acc, si.file.clone(), si.clone()));
 let graph = resolve_modules(&modules, source_indices);
 Rc::new(FrontendResult {
     graph: Some(graph.clone()),
@@ -643,7 +643,7 @@ if ((resolve_errors.len() as i64) > 0) {
     newline_indices: newline_indices.clone(),
 })
             }
-let source_indices = newline_indices.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| v2_rt::rc_map_insert(acc.clone(), index.file.clone(), index.clone()));
+let source_indices = newline_indices.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| v2_rt::rc_map_insert(acc, index.file.clone(), index.clone()));
 let norm = normalize_graph(&graph, source_indices.clone());
 let norm_diags = norm.diagnostics.clone();
 let norm_errors = Rc::new({ let mut __result = Vec::new(); for d in norm_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result });

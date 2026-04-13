@@ -2369,7 +2369,7 @@ pub fn intern_find_or_empty(table: Rc<InternTable>, s: String) -> i64 {
 }
 
 pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> {
-    tables.iter().cloned().fold(empty_intern_table(), |merged: Rc<InternTable>, t: Rc<InternTable>| t.strings.clone().iter().cloned().fold(merged.clone(), |m: Rc<InternTable>, s: String| if (s.clone().as_str() == "".to_string().as_str()) {
+    tables.iter().cloned().fold(empty_intern_table(), |merged: Rc<InternTable>, t: Rc<InternTable>| t.strings.clone().iter().cloned().fold(merged, |m: Rc<InternTable>, s: String| if (s.clone().as_str() == "".to_string().as_str()) {
         m.clone()
     } else {
         intern(&m, &s).table.clone()

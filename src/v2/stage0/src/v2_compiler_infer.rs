@@ -232,7 +232,7 @@ pub fn merge_scope_from_imports(mut remaining: Rc<Vec<Rc<ResolvedImport>>>, mut 
 let sig_params = rsig.params.clone();
 let sig_rt = rsig.inferred.clone();
 let sig_async = rsig.is_async.clone();
-v2_rt::rc_map_insert(acc.clone(), sig_key.clone(), Rc::new(DeclaredFuncSig {
+v2_rt::rc_map_insert(acc, sig_key.clone(), Rc::new(DeclaredFuncSig {
     name: sig_key.clone(),
     params: sig_params.clone(),
     inferred: Some(sig_rt.clone()),
@@ -412,7 +412,7 @@ pub fn collect_item_inductive_fields(item: &Rc<Node>, recursive_type_set: Rc<Has
     {
         let item_name = authored_name_at(source_indices.clone(), &item);
 match item.connective.clone() {
-    Connective::Disj => item.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(), |variant_acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, variant_node: Rc<Node>| collect_fields_inductive(variant_node.children.clone(), item_name.clone(), authored_name_at(source_indices.clone(), &variant_node), recursive_type_set.clone(), variant_acc.clone(), source_indices.clone())),
+    Connective::Disj => item.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(), |variant_acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, variant_node: Rc<Node>| collect_fields_inductive(variant_node.children.clone(), item_name.clone(), authored_name_at(source_indices.clone(), &variant_node), recursive_type_set.clone(), variant_acc, source_indices.clone())),
     Connective::Conj => collect_fields_inductive(item.children.clone(), item_name.clone(), "".to_string(), recursive_type_set.clone(), v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(), source_indices.clone()),
     _ => v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
 }
@@ -420,7 +420,7 @@ match item.connective.clone() {
 }
 
 pub fn build_item_inductive_fields(items: Rc<Vec<Rc<Node>>>, recursive_type_set: Rc<HashMap<String, bool>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
-    items.iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, item: Rc<Node>| merge_inductive_fields(acc.clone(), &collect_item_inductive_fields(&item, recursive_type_set.clone(), &source_indices)))
+    items.iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, item: Rc<Node>| merge_inductive_fields(acc, &collect_item_inductive_fields(&item, recursive_type_set.clone(), &source_indices)))
 }
 
 pub fn nominal_ref_node(name: &String, span: Rc<SourceSpan>, ident_span: Option<Rc<SourceSpan>>) -> Rc<Node> {
@@ -682,7 +682,7 @@ match inferred_parent {
 
 pub fn build_params_scope(scope: &Rc<InferScope>, params: Rc<Vec<Rc<Node>>>) -> Rc<InferScope> {
     {
-        let new_locals = params.iter().cloned().fold(scope.locals.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, p: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), param_node_name_at(p.clone(), scope.type_env.clone().source_indices.clone()), Rc::new(TypeBinding {
+        let new_locals = params.iter().cloned().fold(scope.locals.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, p: Rc<Node>| v2_rt::rc_map_insert(acc, param_node_name_at(p.clone(), scope.type_env.clone().source_indices.clone()), Rc::new(TypeBinding {
     name: param_node_name_at(p.clone(), scope.type_env.clone().source_indices.clone()),
     resolved: param_node_type_expr(&p),
     provenance: Rc::new(SubValueRelation::PreservedValue),
@@ -736,7 +736,7 @@ pub fn extend_scope_match_bound(scope: &Rc<InferScope>, name: &String, resolved:
 
 pub fn extend_scope_with_params(scope: &Rc<InferScope>, params: Rc<Vec<String>>) -> Rc<InferScope> {
     {
-        let new_locals = params.iter().cloned().fold(scope.locals.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, p: String| v2_rt::rc_map_insert(acc.clone(), p.clone(), Rc::new(TypeBinding {
+        let new_locals = params.iter().cloned().fold(scope.locals.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, p: String| v2_rt::rc_map_insert(acc, p.clone(), Rc::new(TypeBinding {
     name: p.clone(),
     resolved: type_variable_node("lambda_param".to_string()),
     provenance: Rc::new(SubValueRelation::SubValueUnknown),
@@ -1009,7 +1009,7 @@ pub fn is_lambda_expr(e: Rc<Node>) -> bool {
 }
 
 pub fn seed_override_map() -> Rc<HashMap<String, Rc<Node>>> {
-    Rc::new(vec!["".to_string()]).iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, k: String| v2_rt::rc_map_insert(acc.clone(), k.clone(), unit_type()))
+    Rc::new(vec!["".to_string()]).iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<Node>>(), |acc: Rc<HashMap<String, Rc<Node>>>, k: String| v2_rt::rc_map_insert(acc, k.clone(), unit_type()))
 }
 
 pub fn fold_override_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {
@@ -1634,7 +1634,7 @@ Rc::new(ArmInferResult {
 }); } __result });
 let arm_body_types = Rc::new({ let mut __result = Vec::new(); for ar in arm_infer_results.clone().iter().cloned() { __result.push(ar.body_type.clone()); } __result });
 let unified_arm_type = match arm_body_types.clone().first().cloned() {
-    Some(first_type) => Rc::new(arm_body_types.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).iter().cloned().fold(first_type, |acc: Rc<Node>, t: Rc<Node>| prefer_specific_type(acc.clone(), t.clone(), &scope.type_env.clone().source_indices.clone())),
+    Some(first_type) => Rc::new(arm_body_types.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).iter().cloned().fold(first_type, |acc: Rc<Node>, t: Rc<Node>| prefer_specific_type(acc, t.clone(), &scope.type_env.clone().source_indices.clone())),
     None => scrut_rt.clone(),
 };
 let arm_infer_results = if is_fully_resolved(&unified_arm_type, &scope.type_env.clone().source_indices.clone()) {
@@ -3120,7 +3120,7 @@ if (v2_rt::map_get(&ctx.param_names.clone(), name.clone()) != None) {
 pub fn merge_argument_relations(rels: &Rc<Vec<Rc<SubValueRelation>>>) -> Rc<SubValueRelation> {
     match rels.clone().first().cloned() {
     None => Rc::new(SubValueRelation::SubValueUnknown),
-    Some(first_rel) => Rc::new(rels.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).iter().cloned().fold(first_rel.clone(), |acc: Rc<SubValueRelation>, rel: Rc<SubValueRelation>| meet_sub_value(acc.clone(), rel.clone())),
+    Some(first_rel) => Rc::new(rels.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()).iter().cloned().fold(first_rel.clone(), |acc: Rc<SubValueRelation>, rel: Rc<SubValueRelation>| meet_sub_value(acc, rel.clone())),
 }
 }
 
@@ -4559,7 +4559,7 @@ pub fn annotate_descent_evidence(body: Rc<Node>, fn_name: String, params: &Rc<Ve
         let param_name_map = params.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, String>(), |acc: Rc<HashMap<String, String>>, p: Rc<Node>| {
             let pname = param_node_name_at(p.clone(), type_env.source_indices.clone());
 let ptype = resolved_type_name(&p, type_env.source_indices.clone());
-v2_rt::rc_map_insert(acc.clone(), pname.clone(), ptype.clone())
+v2_rt::rc_map_insert(acc, pname.clone(), ptype.clone())
 });
 let param_order_list = Rc::new({ let mut __result = Vec::new(); for p in params.clone().iter().cloned() { __result.push(param_node_name_at(p.clone(), type_env.source_indices.clone())); } __result });
 let ctx = Rc::new(DescentContext {
@@ -4935,7 +4935,7 @@ pub fn is_type_variable_name(name: &String) -> bool {
 }
 
 pub fn collect_parent_bindings_filtered(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<HashMap<i64, Rc<TypeBinding>>> {
-    envs.iter().cloned().fold(v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(), |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, env: Rc<TypeEnv>| Rc::new(v2_rt::map_keys(&env.bindings.clone())).iter().cloned().fold(acc.clone(), |bacc: Rc<HashMap<i64, Rc<TypeBinding>>>, ident: i64| {
+    envs.iter().cloned().fold(v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(), |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, env: Rc<TypeEnv>| Rc::new(v2_rt::map_keys(&env.bindings.clone())).iter().cloned().fold(acc, |bacc: Rc<HashMap<i64, Rc<TypeBinding>>>, ident: i64| {
         let name = intern_str(env.intern_table.clone(), ident.clone());
 if is_type_variable_name(&name) {
             bacc.clone()
@@ -4958,9 +4958,9 @@ pub fn kernel_span(name: &String) -> Rc<SourceSpan> {
 
 pub fn build_type_env(module: &Rc<ResolvedModule>, parent_index: &Rc<HashMap<String, Rc<TypedModule>>>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>, intern_table: &Rc<InternTable>) -> Rc<BuildTypeEnvResult> {
     {
-        let source_indices = Rc::new(v2_rt::map_keys(&kernel_type_set())).iter().cloned().fold(source_indices.clone(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, name: String| v2_rt::rc_map_insert(acc.clone(), v2_rt::concat(v2_rt::concat("<kernel:".to_string(), name.clone()), ">".to_string()), build_newline_index(v2_rt::concat(v2_rt::concat("<kernel:".to_string(), name.clone()), ">".to_string()), &name)));
-let source_indices = Rc::new(vec!["Optional".to_string(), "Some".to_string(), "None".to_string(), "value".to_string(), "none".to_string()]).iter().cloned().fold(source_indices.clone(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, name: String| v2_rt::rc_map_insert(acc.clone(), v2_rt::concat(v2_rt::concat("<kernel:".to_string(), name.clone()), ">".to_string()), build_newline_index(v2_rt::concat(v2_rt::concat("<kernel:".to_string(), name.clone()), ">".to_string()), &name)));
-let kernel_bindings_base = Rc::new(v2_rt::map_keys(&kernel_type_set())).iter().cloned().fold(v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(), |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, name: String| v2_rt::rc_map_insert(acc.clone(), intern_find_or_empty(intern_table.clone(), name.clone()), Rc::new(TypeBinding {
+        let source_indices = Rc::new(v2_rt::map_keys(&kernel_type_set())).iter().cloned().fold(source_indices.clone(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, name: String| v2_rt::rc_map_insert(acc, v2_rt::concat(v2_rt::concat("<kernel:".to_string(), name.clone()), ">".to_string()), build_newline_index(v2_rt::concat(v2_rt::concat("<kernel:".to_string(), name.clone()), ">".to_string()), &name)));
+let source_indices = Rc::new(vec!["Optional".to_string(), "Some".to_string(), "None".to_string(), "value".to_string(), "none".to_string()]).iter().cloned().fold(source_indices.clone(), |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, name: String| v2_rt::rc_map_insert(acc, v2_rt::concat(v2_rt::concat("<kernel:".to_string(), name.clone()), ">".to_string()), build_newline_index(v2_rt::concat(v2_rt::concat("<kernel:".to_string(), name.clone()), ">".to_string()), &name)));
+let kernel_bindings_base = Rc::new(v2_rt::map_keys(&kernel_type_set())).iter().cloned().fold(v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(), |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, name: String| v2_rt::rc_map_insert(acc, intern_find_or_empty(intern_table.clone(), name.clone()), Rc::new(TypeBinding {
     name: name.clone(),
     resolved: Rc::new(Node {
     name: name.clone(),
@@ -5078,7 +5078,7 @@ let kernel_bindings = v2_rt::rc_map_insert(kernel_bindings.clone(), intern_find_
 }));
 let node_fields = inductive_fields_list_to_map(compiler_inductive_fields());
 let kernel_recursive_types = Rc::new({ let mut __result = Vec::new(); for name in Rc::new(v2_rt::map_keys(&compiler_recursive_types())).iter().cloned() { __result.push(intern_find_or_empty(intern_table.clone(), name.clone())); } __result });
-let kernel_recursive_type_set = Rc::new(v2_rt::map_keys(&compiler_recursive_types())).iter().cloned().fold(v2_rt::rc_empty_map::<i64, bool>(), |acc: Rc<HashMap<i64, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), intern_find_or_empty(intern_table.clone(), name.clone()), true));
+let kernel_recursive_type_set = Rc::new(v2_rt::map_keys(&compiler_recursive_types())).iter().cloned().fold(v2_rt::rc_empty_map::<i64, bool>(), |acc: Rc<HashMap<i64, bool>>, name: String| v2_rt::rc_map_insert(acc, intern_find_or_empty(intern_table.clone(), name.clone()), true));
 let kernel = Rc::new(TypeEnv {
     bindings: kernel_bindings.clone(),
     recursive_types: kernel_recursive_types,
@@ -5120,9 +5120,9 @@ if is_type_variable_name(&name) {
         },
     None => acc.clone(),
 });
-let import_recursive = parent_envs.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc.clone(), env.recursive_types.clone()));
-let import_recursive_set = parent_envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<i64, bool>(), |acc: Rc<HashMap<i64, bool>>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.recursive_type_set.clone()));
-let import_inductive_fields = parent_envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, env: Rc<TypeEnv>| merge_inductive_fields(acc.clone(), &env.inductive_fields.clone()));
+let import_recursive = parent_envs.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc, env.recursive_types.clone()));
+let import_recursive_set = parent_envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<i64, bool>(), |acc: Rc<HashMap<i64, bool>>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc, env.recursive_type_set.clone()));
+let import_inductive_fields = parent_envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, env: Rc<TypeEnv>| merge_inductive_fields(acc, &env.inductive_fields.clone()));
 let import_env = Rc::new(TypeEnv {
     bindings: import_bindings,
     recursive_types: import_recursive,
@@ -5255,14 +5255,14 @@ let param_bindings = module_items(module.module.clone()).iter().cloned().fold(v2
 };
 if (((item.params.clone().len() as i64) > 0) && is_type_decl.clone()) {
                 {
-                    let result = item.params.clone().iter().cloned().fold(acc.clone(), |pacc: Rc<HashMap<i64, Rc<TypeBinding>>>, p: Rc<Node>| v2_rt::rc_map_insert(pacc.clone(), intern_find_or_empty(intern_table.clone(), p.name.clone()), nominal_type_binding(&p.name.clone())));
+                    let result = item.params.clone().iter().cloned().fold(acc.clone(), |pacc: Rc<HashMap<i64, Rc<TypeBinding>>>, p: Rc<Node>| v2_rt::rc_map_insert(pacc, intern_find_or_empty(intern_table.clone(), p.name.clone()), nominal_type_binding(&p.name.clone())));
 result.clone()
 }
             } else {
                 acc.clone()
             }
 });
-let local_name_set = Rc::new(v2_rt::map_keys(&local_bindings)).iter().cloned().fold(v2_rt::rc_empty_map::<i64, bool>(), |acc: Rc<HashMap<i64, bool>>, ident: i64| v2_rt::rc_map_insert(acc.clone(), ident.clone(), true));
+let local_name_set = Rc::new(v2_rt::map_keys(&local_bindings)).iter().cloned().fold(v2_rt::rc_empty_map::<i64, bool>(), |acc: Rc<HashMap<i64, bool>>, ident: i64| v2_rt::rc_map_insert(acc, ident.clone(), true));
 let all_local_bindings = v2_rt::rc_map_merge(local_bindings.clone(), param_bindings);
 let pre_local_env = Rc::new(TypeEnv {
     bindings: all_local_bindings,
@@ -5273,13 +5273,13 @@ let pre_local_env = Rc::new(TypeEnv {
     intern_table: intern_table.clone(),
 });
 let merged = merge_envs(&Rc::new(vec![kernel, import_env, pre_local_env]));
-let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc.clone(), b.name.clone(), node_type_deps(&b.resolved.clone(), &source_indices)));
-let str_bindings = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<TypeBinding>>(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc.clone(), b.name.clone(), b.clone()));
+let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc, b.name.clone(), node_type_deps(&b.resolved.clone(), &source_indices)));
+let str_bindings = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<TypeBinding>>(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc, b.name.clone(), b.clone()));
 let cycle_set_str = detect_type_cycles_kahn(&all_deps_map, str_bindings);
 let cycle_set = Rc::new({ let mut __result = Vec::new(); for name in cycle_set_str.clone().iter().cloned() { __result.push(intern_find_or_empty(intern_table.clone(), name.clone())); } __result });
-let cycle_map = cycle_set_str.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
+let cycle_map = cycle_set_str.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc, name.clone(), true));
 let cross_type_set_str = v2_rt::rc_map_merge(cycle_map, compiler_recursive_types());
-let cross_type_set = Rc::new(v2_rt::map_keys(&cross_type_set_str)).iter().cloned().fold(v2_rt::rc_empty_map::<i64, bool>(), |acc: Rc<HashMap<i64, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), intern_find_or_empty(intern_table.clone(), name.clone()), true));
+let cross_type_set = Rc::new(v2_rt::map_keys(&cross_type_set_str)).iter().cloned().fold(v2_rt::rc_empty_map::<i64, bool>(), |acc: Rc<HashMap<i64, bool>>, name: String| v2_rt::rc_map_insert(acc, intern_find_or_empty(intern_table.clone(), name.clone()), true));
 let local_inductive_fields = build_item_inductive_fields(module_items(module.module.clone()), cross_type_set_str.clone(), source_indices.clone());
 let merged_inductive_fields = merge_inductive_fields(merged.inductive_fields.clone(), &local_inductive_fields);
 let unresolved_env = Rc::new(TypeEnv {
@@ -5311,7 +5311,7 @@ Rc::new(BuildTypeEnvResult {
 pub fn build_type_env_unresolved(module: &Rc<ResolvedModule>, parent_index: &Rc<HashMap<String, Rc<TypedModule>>>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>, intern_table: &Rc<InternTable>) -> Rc<BuildTypeEnvResult> {
     {
         let zero_span = make_span(0, 0);
-let kernel_bindings = Rc::new(v2_rt::map_keys(&kernel_type_set())).iter().cloned().fold(v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(), |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, name: String| v2_rt::rc_map_insert(acc.clone(), intern_find_or_empty(intern_table.clone(), name.clone()), Rc::new(TypeBinding {
+let kernel_bindings = Rc::new(v2_rt::map_keys(&kernel_type_set())).iter().cloned().fold(v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(), |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, name: String| v2_rt::rc_map_insert(acc, intern_find_or_empty(intern_table.clone(), name.clone()), Rc::new(TypeBinding {
     name: name.clone(),
     resolved: Rc::new(Node {
     name: name.clone(),
@@ -5443,9 +5443,9 @@ if is_type_variable_name(&name) {
         },
     None => acc.clone(),
 });
-let import_recursive = parent_envs.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc.clone(), env.recursive_types.clone()));
-let import_recursive_set = parent_envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<i64, bool>(), |acc: Rc<HashMap<i64, bool>>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc.clone(), env.recursive_type_set.clone()));
-let import_inductive_fields = parent_envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, env: Rc<TypeEnv>| merge_inductive_fields(acc.clone(), &env.inductive_fields.clone()));
+let import_recursive = parent_envs.clone().iter().cloned().fold(Rc::new(vec![]), |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc, env.recursive_types.clone()));
+let import_recursive_set = parent_envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<i64, bool>(), |acc: Rc<HashMap<i64, bool>>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc, env.recursive_type_set.clone()));
+let import_inductive_fields = parent_envs.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(), |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, env: Rc<TypeEnv>| merge_inductive_fields(acc, &env.inductive_fields.clone()));
 let import_env = Rc::new(TypeEnv {
     bindings: import_bindings,
     recursive_types: import_recursive,
@@ -5543,13 +5543,13 @@ let pre_local_env = Rc::new(TypeEnv {
     intern_table: intern_table.clone(),
 });
 let merged = merge_envs(&Rc::new(vec![kernel, import_env, pre_local_env]));
-let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc.clone(), b.name.clone(), node_type_deps(&b.resolved.clone(), &source_indices)));
-let str_bindings = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<TypeBinding>>(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc.clone(), b.name.clone(), b.clone()));
+let all_deps_map = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<Vec<String>>>(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc, b.name.clone(), node_type_deps(&b.resolved.clone(), &source_indices)));
+let str_bindings = Rc::new(v2_rt::map_values(&merged.bindings.clone())).iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<TypeBinding>>(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, b: Rc<TypeBinding>| v2_rt::rc_map_insert(acc, b.name.clone(), b.clone()));
 let cycle_set_str = detect_type_cycles_kahn(&all_deps_map, str_bindings);
 let cycle_set = Rc::new({ let mut __result = Vec::new(); for name in cycle_set_str.clone().iter().cloned() { __result.push(intern_find_or_empty(intern_table.clone(), name.clone())); } __result });
-let cycle_map = cycle_set_str.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
+let cycle_map = cycle_set_str.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc, name.clone(), true));
 let cross_type_set_str = v2_rt::rc_map_merge(cycle_map, compiler_recursive_types());
-let cross_type_set = Rc::new(v2_rt::map_keys(&cross_type_set_str)).iter().cloned().fold(v2_rt::rc_empty_map::<i64, bool>(), |acc: Rc<HashMap<i64, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), intern_find_or_empty(intern_table.clone(), name.clone()), true));
+let cross_type_set = Rc::new(v2_rt::map_keys(&cross_type_set_str)).iter().cloned().fold(v2_rt::rc_empty_map::<i64, bool>(), |acc: Rc<HashMap<i64, bool>>, name: String| v2_rt::rc_map_insert(acc, intern_find_or_empty(intern_table.clone(), name.clone()), true));
 let local_inductive_fields = build_item_inductive_fields(module_items(module.module.clone()), cross_type_set_str.clone(), source_indices.clone());
 let merged_inductive_fields = merge_inductive_fields(merged.inductive_fields.clone(), &local_inductive_fields);
 let unresolved_env = Rc::new(TypeEnv {
@@ -5718,7 +5718,7 @@ continue;
 pub fn build_module_context(contributions: Rc<Vec<Rc<ItemContribution>>>, parent_index: Rc<HashMap<String, Rc<TypedModule>>>, resolved_imports: &Rc<Vec<Rc<ResolvedImport>>>, env: &Rc<TypeEnv>, module_name: &String) -> Rc<ModuleContext> {
     {
         let local = fold_module_contributions(contributions, Rc::new(vec![]), v2_rt::rc_empty_map::<String, Rc<DeclaredFuncSig>>(), v2_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(), v2_rt::rc_empty_map::<String, Rc<TypeBinding>>(), v2_rt::rc_empty_map::<String, Rc<ItemInfo>>(), Rc::new(vec![]));
-let imported_enum_names = resolved_imports.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, imp: Rc<ResolvedImport>| imp.specific_names.clone().iter().cloned().fold(acc.clone(), |inner: Rc<HashMap<String, bool>>, n: String| v2_rt::rc_map_insert(inner.clone(), n.clone(), true)));
+let imported_enum_names = resolved_imports.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, imp: Rc<ResolvedImport>| imp.specific_names.clone().iter().cloned().fold(acc, |inner: Rc<HashMap<String, bool>>, n: String| v2_rt::rc_map_insert(inner, n.clone(), true)));
 let variant_fold = Rc::new(v2_rt::map_values(&env.bindings.clone())).iter().cloned().fold(Rc::new(VariantFoldState {
     locals: v2_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
     collision_errors: Rc::new(vec![]),
@@ -5775,7 +5775,7 @@ let env_variant_locals = variant_locals_from_items(local.resolved_items.clone(),
 let merged_scope = merge_scope_from_imports(resolved_imports.clone(), parent_index, env.clone(), v2_rt::rc_empty_map::<String, Rc<DeclaredFuncSig>>(), local.svc_registry.clone(), local.svc_locals.clone());
 let all_declared_sigs = v2_rt::rc_map_merge(merged_scope.func_sigs.clone(), local.func_sigs.clone());
 let resolve_result = resolve_func_sigs(&all_declared_sigs, &local.resolved_items.clone(), module_name.clone(), env.source_indices.clone());
-let all_locals = Rc::new(v2_rt::map_values(&merged_scope.svc_locals.clone())).iter().cloned().fold(env_variant_locals.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, binding: Rc<TypeBinding>| v2_rt::rc_map_insert(acc.clone(), binding.name.clone(), binding.clone()));
+let all_locals = Rc::new(v2_rt::map_values(&merged_scope.svc_locals.clone())).iter().cloned().fold(env_variant_locals.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, binding: Rc<TypeBinding>| v2_rt::rc_map_insert(acc, binding.name.clone(), binding.clone()));
 Rc::new(ModuleContext {
     resolved_items: local.resolved_items.clone(),
     func_env: resolve_result.func_env.clone(),
@@ -5909,7 +5909,7 @@ pub fn topo_resolve_types(mut remaining: Rc<Vec<String>>, mut env: Rc<TypeEnv>, 
     diagnostics: diagnostics.clone(),
 })
         }
-let remaining_set = remaining.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
+let remaining_set = remaining.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc, name.clone(), true));
 let ready = Rc::new({ let mut __result = Vec::new(); for name in remaining.clone().iter().cloned() { if match v2_rt::map_get(&deps_map, name.clone()) {
     Some(deps) => { let mut __all = true; for dep in deps.clone().iter().cloned() { if !(((((is_kernel_type(dep.clone()) || (dep.clone().as_str() == "None".to_string().as_str())) || (dep.clone().as_str() == "".to_string().as_str())) || is_recursive_type_by_name(&env, dep.clone())) || (emit_map_has(remaining_set.clone(), dep.clone()) == false))) { __all = false; break; } } __all },
     None => true,
@@ -5969,7 +5969,7 @@ Rc::new(BindingsAccum {
     None => acc.clone(),
 }
 });
-let ready_set = ready.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc.clone(), name.clone(), true));
+let ready_set = ready.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, name: String| v2_rt::rc_map_insert(acc, name.clone(), true));
 let next_remaining = Rc::new({ let mut __result = Vec::new(); for name in remaining.clone().iter().cloned() { if (emit_map_has(ready_set.clone(), name.clone()) == false) { __result.push(name); } } __result });
 {
             let __tco_0 = next_remaining;
@@ -6016,7 +6016,7 @@ pub fn build_fielded_variants(modules: Rc<Vec<Rc<TypedModule>>>, type_summaries:
     {
         let result = modules.iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, m: Rc<TypedModule>| {
             let items = m.items.clone();
-items.clone().iter().cloned().fold(acc.clone(), |inner: Rc<HashMap<String, bool>>, item: Rc<Node>| {
+items.clone().iter().cloned().fold(acc, |inner: Rc<HashMap<String, bool>>, item: Rc<Node>| {
                 let is_enum = match v2_rt::map_get(&type_summaries, item.name.clone()) {
     Some(summary) => match (*summary.repr.clone()).clone() {
     TypeRepr::EnumRepr { .. } => true,
@@ -6051,8 +6051,8 @@ pub fn build_emit_graph_info(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraph
         let init = Rc::new(EmitInfoBuildState {
     type_summaries: v2_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
 });
-let built = modules.clone().iter().cloned().fold(init.clone(), |state: Rc<EmitInfoBuildState>, typed_module: Rc<TypedModule>| typed_module.items.clone().iter().cloned().fold(state.clone(), |inner_state: Rc<EmitInfoBuildState>, item: Rc<Node>| add_emit_item_summary(inner_state.clone(), &item, &typed_module.type_env.clone().source_indices.clone())));
-let all_recursive = modules.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, m: Rc<TypedModule>| Rc::new(v2_rt::map_keys(&m.type_env.clone().recursive_type_set.clone())).iter().cloned().fold(acc.clone(), |inner: Rc<HashMap<String, bool>>, ident: i64| v2_rt::rc_map_insert(inner.clone(), intern_str(m.type_env.clone().intern_table.clone(), ident.clone()), true)));
+let built = modules.clone().iter().cloned().fold(init.clone(), |state: Rc<EmitInfoBuildState>, typed_module: Rc<TypedModule>| typed_module.items.clone().iter().cloned().fold(state, |inner_state: Rc<EmitInfoBuildState>, item: Rc<Node>| add_emit_item_summary(inner_state, &item, &typed_module.type_env.clone().source_indices.clone())));
+let all_recursive = modules.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, m: Rc<TypedModule>| Rc::new(v2_rt::map_keys(&m.type_env.clone().recursive_type_set.clone())).iter().cloned().fold(acc, |inner: Rc<HashMap<String, bool>>, ident: i64| v2_rt::rc_map_insert(inner, intern_str(m.type_env.clone().intern_table.clone(), ident.clone()), true)));
 let fielded = build_fielded_variants(modules.clone(), built.type_summaries.clone());
 let vtoe = derive_variant_to_enum(built.type_summaries.clone());
 Rc::new(EmitGraphInfo {
@@ -6064,8 +6064,6 @@ Rc::new(EmitGraphInfo {
     movable: v2_rt::rc_empty_map::<String, bool>(),
     variant_to_enum: vtoe,
     owned_bindings: v2_rt::rc_empty_map::<String, bool>(),
-    fold_eligible_index: v2_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
-    fold_eligible: v2_rt::rc_empty_map::<String, bool>(),
     read_only_params_index: v2_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
     read_only_params: v2_rt::rc_empty_map::<String, bool>(),
 })

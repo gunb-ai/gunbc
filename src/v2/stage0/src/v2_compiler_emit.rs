@@ -383,7 +383,7 @@ if (n.clone() != None) {
                         acc.clone()
                     }
 });
-let param_name_set = sig.params.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, param: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), param_node_name_at(param.clone(), scope.type_env.clone().source_indices.clone()), true));
+let param_name_set = sig.params.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, param: Rc<Node>| v2_rt::rc_map_insert(acc, param_node_name_at(param.clone(), scope.type_env.clone().source_indices.clone()), true));
 let ordered = Rc::new({ let mut __result = Vec::new(); for param in sig.params.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&arg_map, param_node_name_at(param.clone(), scope.type_env.clone().source_indices.clone())) {
     Some(arg) => Rc::new(vec![arg.clone()]),
     None => Rc::new(vec![]),
@@ -787,7 +787,7 @@ Rc::new(escaped.split(&"}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>
 }
 
 pub fn apply_escape_pairs(s: String, pairs: Rc<Vec<Rc<EscapePair>>>) -> String {
-    pairs.iter().cloned().fold(s.clone(), |acc: String, pair: Rc<EscapePair>| Rc::new(acc.clone().split(&pair.from.clone()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&pair.to.clone()))
+    pairs.iter().cloned().fold(s.clone(), |acc: String, pair: Rc<EscapePair>| Rc::new(acc.split(&pair.from.clone()).map(|s| s.to_string()).collect::<Vec<_>>()).join(&pair.to.clone()))
 }
 
 pub fn emit_string_literal(s: String, suffix: String) -> String {

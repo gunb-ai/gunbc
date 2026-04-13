@@ -60,8 +60,6 @@ pub struct EmitGraphInfo {
     pub movable: Rc<HashMap<String, bool>>,
     pub variant_to_enum: Rc<HashMap<String, String>>,
     pub owned_bindings: Rc<HashMap<String, bool>>,
-    pub fold_eligible_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    pub fold_eligible: Rc<HashMap<String, bool>>,
     pub read_only_params_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     pub read_only_params: Rc<HashMap<String, bool>>,
 }
@@ -81,8 +79,6 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     movable: v2_rt::rc_empty_map::<String, bool>(),
     variant_to_enum: v2_rt::rc_empty_map::<String, String>(),
     owned_bindings: v2_rt::rc_empty_map::<String, bool>(),
-    fold_eligible_index: v2_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
-    fold_eligible: v2_rt::rc_empty_map::<String, bool>(),
     read_only_params_index: v2_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
     read_only_params: v2_rt::rc_empty_map::<String, bool>(),
 })
@@ -282,7 +278,7 @@ Some(Rc::new(TypeSummary {
 }),
     field_summaries: build_enum_field_summaries(&item.children.clone(), source_indices.clone()),
     field_type_map: v2_rt::rc_empty_map::<String, String>(),
-    variant_name_set: item.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, child: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), authored_name_at(source_indices.clone(), &child), true)),
+    variant_name_set: item.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, child: Rc<Node>| v2_rt::rc_map_insert(acc, authored_name_at(source_indices.clone(), &child), true)),
     generic_param_names: gpn,
     has_fn_fields: has_fn,
 }))

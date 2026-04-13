@@ -650,7 +650,7 @@ pairs.iter().cloned().fold(base_subst.clone(), |subst: Rc<HashMap<String, Rc<Nod
     Some(a) => a.clone(),
     None => error_type(),
 };
-unify_template(pair.1.clone(), &arg_type, &receiver, subst.clone())
+unify_template(pair.1.clone(), &arg_type, &receiver, subst)
 })
 }
 }
