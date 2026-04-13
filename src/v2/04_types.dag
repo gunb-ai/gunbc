@@ -241,7 +241,7 @@ fn algebra_child_or_placeholder(base: Node, child_index: Int, placeholder: Strin
   }
 }
 
-fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node) -> Node {
+fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node, source_indices: Map<String, NewlineIndex>) -> Node {
   let elem = algebra_child_or_placeholder(base: base, child_index: 0, placeholder: "T")
   let key_node = algebra_child_or_placeholder(base: base, child_index: 0, placeholder: "K")
   let val_node = algebra_child_or_placeholder(base: base, child_index: 1, placeholder: "V")
@@ -253,19 +253,19 @@ fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node) -> Node {
     NamedTemplate { name: n } => nominal_type_ref(name: n)
     AlgebraTypeVariable { id: var_id } => type_variable_node(id: var_id)
     ContainerOf { source: src, element: inner } =>
-      let kind_name = match src { SameAsReceiver => base.name  Named { name: n } => n }
-      make_container_type(kind_name: kind_name, element: instantiate_algebra_type(template: inner, base: base))
-    OptionalOf { inner: inner } => with_optional_cardinality(n: instantiate_algebra_type(template: inner, base: base))
+      let kind_name = match src { SameAsReceiver => authored_name_at(source_indices: source_indices, node: base)  Named { name: n } => n }
+      make_container_type(kind_name: kind_name, element: instantiate_algebra_type(template: inner, base: base, source_indices: source_indices))
+    OptionalOf { inner: inner } => with_optional_cardinality(n: instantiate_algebra_type(template: inner, base: base, source_indices: source_indices))
     TupleOf { first: first, second: second } =>
-      make_tuple_type(first: instantiate_algebra_type(template: first, base: base), second: instantiate_algebra_type(template: second, base: base))
+      make_tuple_type(first: instantiate_algebra_type(template: first, base: base, source_indices: source_indices), second: instantiate_algebra_type(template: second, base: base, source_indices: source_indices))
     CallableOf { params: p, return_type: r } =>
-      make_callable_type(func_params: p |> map(tp => instantiate_algebra_type(template: tp, base: base)), ret: instantiate_algebra_type(template: r, base: base))
+      make_callable_type(func_params: p |> map(tp => instantiate_algebra_type(template: tp, base: base, source_indices: source_indices)), ret: instantiate_algebra_type(template: r, base: base, source_indices: source_indices))
   }
 }
 
-fn instantiate_algebra_field(template: AlgebraFieldTemplate, base: Node) -> Node {
-  let param_types = template.param_types |> map(tp => instantiate_algebra_type(template: tp, base: base))
-  let return_type = instantiate_algebra_type(template: template.return_type, base: base)
+fn instantiate_algebra_field(template: AlgebraFieldTemplate, base: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+  let param_types = template.param_types |> map(tp => instantiate_algebra_type(template: tp, base: base, source_indices: source_indices))
+  let return_type = instantiate_algebra_type(template: template.return_type, base: base, source_indices: source_indices)
   if param_types |> count > 0 {
     algebra_method_field(name: template.name, param_types: param_types, return_type: return_type)
   } else {
@@ -277,11 +277,11 @@ fn instantiate_algebra_field(template: AlgebraFieldTemplate, base: Node) -> Node
 // Looks up the algebra profile from kernel_algebra_profile data table,
 // instantiates field templates against the receiver shape, and wraps the result
 // as a Conj product. Non-enriched types pass through unchanged.
-fn enrich_kernel_type(name: String, base: Node) -> Node {
+fn enrich_kernel_type(name: String, base: Node, source_indices: Map<String, NewlineIndex>) -> Node {
   let profile = kernel_algebra_profile |> get(name)
   match profile {
     Some { value: p } =>
-      let fields = algebra_templates_for_profile(profile: p) |> map(template => instantiate_algebra_field(template: template, base: base))
+      let fields = algebra_templates_for_profile(profile: p) |> map(template => instantiate_algebra_field(template: template, base: base, source_indices: source_indices))
       enrich_base_with_fields(name: name, base: base, fields: fields)
     None => base
   }
@@ -291,7 +291,7 @@ fn enrich_kernel_type(name: String, base: Node) -> Node {
 // Structural type variable resolution (Phase C)
 // =========================================================================
 
-fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node, subst: Map<String, Node>) -> Map<String, Node> {
+fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {
   match template {
     AlgebraTypeVariable { id: var_id } =>
       if map_get(subst, var_id) != none { subst }
@@ -323,30 +323,30 @@ fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node,
       // concrete is the arg's inferred type. For a callable arg, this is
       // already the lambda's return type (extracted by rt_type). Unify
       // the template's return_type directly against the concrete value.
-      unify_template(template: ret_template, concrete: concrete, receiver: receiver, subst: subst)
+      unify_template(template: ret_template, concrete: concrete, receiver: receiver, subst: subst, source_indices: source_indices)
     ContainerOf { source: src, element: elem_template } =>
       // Enforce container source: SameAsReceiver requires same carrier,
       // Named requires the specific carrier name.
-      let expected_name = match src { SameAsReceiver => receiver.name  Named { name: n } => n }
-      if concrete.name != expected_name { subst }
+      let expected_name = match src { SameAsReceiver => authored_name_at(source_indices: source_indices, node: receiver)  Named { name: n } => n }
+      if authored_name_at(source_indices: source_indices, node: concrete) != expected_name { subst }
       else {
         match concrete.children |> first {
-          Some { value: child } => unify_template(template: elem_template, concrete: child_type_node(ch: child), receiver: receiver, subst: subst)
+          Some { value: child } => unify_template(template: elem_template, concrete: child_type_node(ch: child), receiver: receiver, subst: subst, source_indices: source_indices)
           None => subst
         }
       }
     OptionalOf { inner: inner_template } =>
       match concrete.children |> first {
-        Some { value: child } => unify_template(template: inner_template, concrete: child_type_node(ch: child), receiver: receiver, subst: subst)
+        Some { value: child } => unify_template(template: inner_template, concrete: child_type_node(ch: child), receiver: receiver, subst: subst, source_indices: source_indices)
         None => subst
       }
     TupleOf { first: ft, second: st } =>
       let s2 = match concrete.children |> first {
-        Some { value: c } => unify_template(template: ft, concrete: child_type_node(ch: c), receiver: receiver, subst: subst)
+        Some { value: c } => unify_template(template: ft, concrete: child_type_node(ch: c), receiver: receiver, subst: subst, source_indices: source_indices)
         None => subst
       }
       match concrete.children |> skip(1) |> first {
-        Some { value: c } => unify_template(template: st, concrete: child_type_node(ch: c), receiver: receiver, subst: s2)
+        Some { value: c } => unify_template(template: st, concrete: child_type_node(ch: c), receiver: receiver, subst: s2, source_indices: source_indices)
         None => s2
       }
     _ => subst
@@ -360,7 +360,7 @@ fn is_receiver_self(t: AlgebraTypeTemplate) -> Bool {
   }
 }
 
-fn build_type_substitution(param_templates: List<AlgebraTypeTemplate>, arg_types: List<Node>, receiver: Node, base_subst: Map<String, Node>) -> Map<String, Node> {
+fn build_type_substitution(param_templates: List<AlgebraTypeTemplate>, arg_types: List<Node>, receiver: Node, base_subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {
   // Skip only the FIRST ReceiverSelf (the receiver). Subsequent ReceiverSelf
   // entries are real args (e.g., map_merge's overlay is also ReceiverSelf).
   let first_is_self = match param_templates |> first {
@@ -376,11 +376,11 @@ fn build_type_substitution(param_templates: List<AlgebraTypeTemplate>, arg_types
       Some { value: a } => a
       None => error_type
     }
-    unify_template(template: pair.second, concrete: arg_type, receiver: receiver, subst: subst)
+    unify_template(template: pair.second, concrete: arg_type, receiver: receiver, subst: subst, source_indices: source_indices)
   )
 }
 
-fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Node>, receiver: Node) -> Node {
+fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Node>, receiver: Node, source_indices: Map<String, NewlineIndex>) -> Node {
   match template {
     AlgebraTypeVariable { id: var_id } =>
       match map_get(subst, var_id) {
@@ -390,12 +390,13 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
     ReceiverSelf =>
       // When the receiver is a bare container (children are TypeVariables), try to enrich
       // it from arg-derived bindings captured during unification.
-      let is_bare = is_container_type(name: receiver.name) && (receiver.children |> all(ch =>
+      let receiver_name_str = authored_name_at(source_indices: source_indices, node: receiver)
+      let is_bare = is_container_type(name: receiver_name_str) && (receiver.children |> all(ch =>
         let inner = child_type_node(ch: ch)
-        if inner.inferred != none { is_type_variable(inferred: inner.inferred.value) } else { inner.ident_span == none || !is_kernel_type(name: inner.name) }
+        if inner.inferred != none { is_type_variable(inferred: inner.inferred.value) } else { inner.ident_span == none || !is_kernel_type(name: authored_name_at(source_indices: source_indices, node: inner)) }
       ))
       if is_bare {
-        let arity = container_expected_arity(name: receiver.name)
+        let arity = container_expected_arity(name: receiver_name_str)
         if arity == Some { value: 2 } {
           // Keyed container (Map): enrich from __key__ and __value__ bindings.
           match map_get(subst, "__key__") {
@@ -410,7 +411,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
         } else if arity == Some { value: 1 } {
           // Element container (List): enrich from __element__ binding.
           match map_get(subst, "__element__") {
-            Some { value: elem } => make_container_type(kind_name: receiver.name, element: elem)
+            Some { value: elem } => make_container_type(kind_name: receiver_name_str, element: elem)
             None => receiver
           }
         } else { receiver }
@@ -421,7 +422,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
         None =>
           match map_get(subst, "__element__") {
             Some { value: elem } => elem
-            None => type_variable_node(id: container_param_name_required(kind_name: receiver.name, index: 0))
+            None => type_variable_node(id: container_param_name_required(kind_name: authored_name_at(source_indices: source_indices, node: receiver), index: 0))
           }
       }
     ReceiverKey =>
@@ -430,7 +431,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
         None =>
           match map_get(subst, "__key__") {
             Some { value: key } => key
-            None => type_variable_node(id: container_param_name_required(kind_name: receiver.name, index: 0))
+            None => type_variable_node(id: container_param_name_required(kind_name: authored_name_at(source_indices: source_indices, node: receiver), index: 0))
           }
       }
     ReceiverValue =>
@@ -439,20 +440,20 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
         None =>
           match map_get(subst, "__value__") {
             Some { value: val } => val
-            None => type_variable_node(id: container_param_name_required(kind_name: receiver.name, index: 1))
+            None => type_variable_node(id: container_param_name_required(kind_name: authored_name_at(source_indices: source_indices, node: receiver), index: 1))
           }
       }
     NamedTemplate { name: n } => nominal_type_ref(name: n)
     ContainerOf { source: src, element: inner } =>
-      let kind_name = match src { SameAsReceiver => receiver.name  Named { name: n } => n }
-      make_container_type(kind_name: kind_name, element: apply_type_substitution(template: inner, subst: subst, receiver: receiver))
+      let kind_name = match src { SameAsReceiver => authored_name_at(source_indices: source_indices, node: receiver)  Named { name: n } => n }
+      make_container_type(kind_name: kind_name, element: apply_type_substitution(template: inner, subst: subst, receiver: receiver, source_indices: source_indices))
     OptionalOf { inner: inner } =>
-      with_optional_cardinality(n: apply_type_substitution(template: inner, subst: subst, receiver: receiver))
+      with_optional_cardinality(n: apply_type_substitution(template: inner, subst: subst, receiver: receiver, source_indices: source_indices))
     TupleOf { first: ft, second: st } =>
-      make_tuple_type(first: apply_type_substitution(template: ft, subst: subst, receiver: receiver), second: apply_type_substitution(template: st, subst: subst, receiver: receiver))
+      make_tuple_type(first: apply_type_substitution(template: ft, subst: subst, receiver: receiver, source_indices: source_indices), second: apply_type_substitution(template: st, subst: subst, receiver: receiver, source_indices: source_indices))
     CallableOf { params: p, return_type: r } =>
-      let param_nodes = p |> map(tp => apply_type_substitution(template: tp, subst: subst, receiver: receiver))
-      make_callable_type(func_params: param_nodes |> map(pn => make_param_node(name: "_", type_expr: pn, default_value: none, span: no_span(), name_span: no_span())), ret: apply_type_substitution(template: r, subst: subst, receiver: receiver))
+      let param_nodes = p |> map(tp => apply_type_substitution(template: tp, subst: subst, receiver: receiver, source_indices: source_indices))
+      make_callable_type(func_params: param_nodes |> map(pn => make_param_node(name: "_", type_expr: pn, default_value: none, span: no_span(), name_span: no_span())), ret: apply_type_substitution(template: r, subst: subst, receiver: receiver, source_indices: source_indices))
   }
 }
 
@@ -478,14 +479,15 @@ fn has_type_variable(t: AlgebraTypeTemplate) -> Bool {
   }
 }
 
-fn resolve_type_variables_from_template(template: AlgebraFieldTemplate, arg_types: List<Node>, receiver_type: Node, overrides: Map<String, Node>) -> Node {
+fn resolve_type_variables_from_template(template: AlgebraFieldTemplate, arg_types: List<Node>, receiver_type: Node, overrides: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Node {
   let subst = build_type_substitution(
     param_templates: template.param_types,
     arg_types: arg_types,
     receiver: receiver_type,
-    base_subst: overrides
+    base_subst: overrides,
+    source_indices: source_indices
   )
-  apply_type_substitution(template: template.return_type, subst: subst, receiver: receiver_type)
+  apply_type_substitution(template: template.return_type, subst: subst, receiver: receiver_type, source_indices: source_indices)
 }
 
 fn callable_inferred(n: Node) -> Node {
@@ -586,7 +588,7 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
     let left_is_container = node_is_element_collection(n: left, source_indices: source_indices)
     let right_is_container = node_is_element_collection(n: right, source_indices: source_indices)
     if left_is_container && right_is_container {
-      if left.name != right.name { false }
+      if authored_name_at(source_indices: source_indices, node: left) != authored_name_at(source_indices: source_indices, node: right) { false }
       else {
         match left.children |> first {
           Some { value: left_ch } =>
@@ -613,7 +615,7 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
       else { node_type_compatible(left: left_inner, right: right_inner, source_indices: source_indices) }
     }
     else if left_opt || right_opt { false }
-    else { left.name == right.name }
+    else { authored_name_at(source_indices: source_indices, node: left) == authored_name_at(source_indices: source_indices, node: right) }
   }
 }
 
@@ -621,7 +623,7 @@ fn prefer_specific_type(left: Node, right: Node, source_indices: Map<String, New
   let left_is_container = node_is_element_collection(n: left, source_indices: source_indices)
   let left_is_optional = left.return_cardinality == CardOptional
   let left_first_child = left.children |> first
-  let left_norm_name = left.name
+  let left_norm_name = authored_name_at(source_indices: source_indices, node: left)
   let left_is_unit_inner = if left_is_container {
     match left_first_child {
       Some { value: ch } =>
@@ -637,7 +639,7 @@ fn prefer_specific_type(left: Node, right: Node, source_indices: Map<String, New
   let right_is_container = node_is_element_collection(n: right, source_indices: source_indices)
   let right_is_optional = right.return_cardinality == CardOptional
   let same_kind = if left_is_container && right_is_container {
-    left_norm_name == right.name
+    left_norm_name == authored_name_at(source_indices: source_indices, node: right)
   } else if left_is_optional && right_is_optional {
     true
   } else { false }
@@ -679,11 +681,13 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
   let right_leaf = right.connective == NoConnective && right.children |> count == 0 && right.properties |> count == 0
   let left_struct = left.connective != NoConnective
   let right_struct = right.connective != NoConnective
+  let left_name = authored_name_at(source_indices: source_indices, node: left)
+  let right_name = authored_name_at(source_indices: source_indices, node: right)
   if left_leaf && right_leaf {
-    left.name == right.name
+    left_name == right_name
   }
   else if left_struct && right_struct {
-    if left.name != right.name { false }
+    if left_name != right_name { false }
     else if (left.connective == Conj) != (right.connective == Conj) { false }
     else if left.children |> count != right.children |> count { false }
     else {
@@ -696,16 +700,16 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
     }
   }
   else if left_leaf && right_struct {
-    left.name == right.name
+    left_name == right_name
   }
   else if left_struct && right_leaf {
-    left.name == right.name
+    left_name == right_name
   }
   else {
     let left_is_container = node_is_element_collection(n: left, source_indices: source_indices)
     let right_is_container = node_is_element_collection(n: right, source_indices: source_indices)
     if left_is_container && right_is_container {
-      if left.name != right.name { false }
+      if left_name != right_name { false }
       else {
         match left.children |> first {
           Some { value: left_ch } =>
@@ -812,7 +816,7 @@ fn node_type_deps(n: Node, source_indices: Map<String, NewlineIndex>) -> List<St
     if n.ident_span != none && is_kernel_type(name: n_name) == false {
       concat([n_name], child_deps)
     } else { child_deps }
-  } else if is_kernel_type(name: n_name) || n_name == none_type.name || n.ident_span == none {
+  } else if is_kernel_type(name: n_name) || n_name == "None" || n.ident_span == none {
     []
   } else {
     [n_name]
@@ -965,7 +969,7 @@ fn infer_binop_type_node(op: BinOp, left_type: Node, source_indices: Map<String,
   }
 }
 
-fn for_each_element_type_node(n: Node) -> Node {
+fn for_each_element_type_node(n: Node, source_indices: Map<String, NewlineIndex>) -> Node {
   let normed = normalize_access_type_node(n: n)
   let is_single_child = normed.connective == NoConnective && normed.children |> count == 1
   let extracted = if is_single_child {
@@ -977,7 +981,7 @@ fn for_each_element_type_node(n: Node) -> Node {
   match extracted {
     Some { value: el } => el
     None =>
-      if normed.connective == NoConnective && normed.children |> count == 0 && normed.properties |> count == 0 && normed.name == string_type.name { string_type }
+      if normed.connective == NoConnective && normed.children |> count == 0 && normed.properties |> count == 0 && authored_name_at(source_indices: source_indices, node: normed) == "String" { string_type }
       else { normed }
   }
 }

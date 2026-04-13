@@ -694,9 +694,9 @@ fn field_node_default_value(n: Node) -> Node? {
   } else { none }
 }
 
-fn field_node_from_key(n: Node) -> String? {
+fn field_node_from_key(n: Node, source_indices: Map<String, NewlineIndex>) -> String? {
   match n.properties |> first {
-    Some { value: p } => Some { value: p.name }
+    Some { value: p } => Some { value: authored_name_at(source_indices: source_indices, node: p) }
     None => none
   }
 }

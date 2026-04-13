@@ -983,9 +983,9 @@ pub fn field_node_default_value(n: &Rc<Node>) -> Option<Rc<Node>> {
     }
 }
 
-pub fn field_node_from_key(n: Rc<Node>) -> Option<String> {
+pub fn field_node_from_key(n: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<String> {
     match n.properties.clone().first().cloned() {
-    Some(p) => Some(p.name.clone()),
+    Some(p) => Some(authored_name_at(source_indices, &p)),
     None => None,
 }
 }
@@ -2385,7 +2385,7 @@ pub fn is_internable_token(shape: TokenShape) -> bool {
 }
 
 pub fn pre_intern_tokens(tokens: Rc<Vec<Rc<Token>>>, table: Rc<InternTable>) -> Rc<InternTable> {
-    tokens.iter().cloned().fold(table.clone(), |t: Rc<InternTable>, tok: Rc<Token>| if is_internable_token(tok.shape.clone()) {
+    tokens.iter().cloned().fold(table, |t: Rc<InternTable>, tok: Rc<Token>| if is_internable_token(tok.shape.clone()) {
         intern(&t, &tok.text.clone()).table.clone()
     } else {
         t.clone()

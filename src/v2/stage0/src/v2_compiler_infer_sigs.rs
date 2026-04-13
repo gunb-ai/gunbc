@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{Node, ExprData, expr_call_func_at, ErrorNode, make_error_node, no_span, DeclaredFuncSig, NewlineIndex, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, ExprData, expr_call_func_at, ErrorNode, make_error_node, no_span, DeclaredFuncSig, NewlineIndex, authored_name_at, CompilerDiagnostic};
 use crate::v2_std_core::ExprData::{ExprCall};
 use crate::v2_std_core::CompilerDiagnostic::{MissingAnnotation};
 pub use crate::v2_compiler_infer_types::{emit_map_has};
@@ -47,7 +47,7 @@ pub struct CallEdge {
 
 pub fn collect_func_call_edges(items: Rc<Vec<Rc<Node>>>, local_func_set: Rc<HashMap<String, bool>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<Rc<CallEdge>>> {
     Rc::new({ let mut __result = Vec::new(); for item in items.iter().cloned() { __result.extend((*if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) {
-        collect_calls_in_expr(&item.name.clone(), &item.body.clone().clone().unwrap(), &local_func_set, &source_indices)
+        collect_calls_in_expr(&authored_name_at(source_indices.clone(), &item), &item.body.clone().clone().unwrap(), &local_func_set, &source_indices)
     } else {
         Rc::new(vec![])
     }).iter().cloned()); } __result })
@@ -122,7 +122,7 @@ pub fn declared_to_resolved(dsig: &Rc<DeclaredFuncSig>) -> Rc<ResolvedFuncSig> {
 }
 
 pub fn merge_remaining_declared(declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>, resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>) -> Rc<HashMap<String, Rc<ResolvedFuncSig>>> {
-    Rc::new(v2_rt::map_values(&declared_sigs)).iter().cloned().fold(resolved.clone(), |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| if (dsig.inferred.clone() != None) {
+    Rc::new(v2_rt::map_values(&declared_sigs)).iter().cloned().fold(resolved, |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| if (dsig.inferred.clone() != None) {
         v2_rt::rc_map_insert(acc.clone(), dsig.name.clone(), declared_to_resolved(&dsig))
     } else {
         acc.clone()
@@ -223,11 +223,11 @@ continue;
 }
 }
 
-pub fn resolve_func_sigs(declared_sigs: &Rc<HashMap<String, Rc<DeclaredFuncSig>>>, items: &Rc<Vec<Rc<Node>>>, module_name: String, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<ResolveFuncSigsResult> {
+pub fn resolve_func_sigs(declared_sigs: &Rc<HashMap<String, Rc<DeclaredFuncSig>>>, items: &Rc<Vec<Rc<Node>>>, module_name: String, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<ResolveFuncSigsResult> {
     {
-        let local_func_names = Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in items.clone().iter().cloned() { if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) { __result.push(item); } } __result }).iter().cloned() { __result.push(item.name.clone()); } __result });
+        let local_func_names = Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in items.clone().iter().cloned() { if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) { __result.push(item); } } __result }).iter().cloned() { __result.push(authored_name_at(source_indices.clone(), &item)); } __result });
 let local_func_set = build_name_set(local_func_names.clone());
-let call_edges = collect_func_call_edges(items.clone(), local_func_set.clone(), source_indices);
+let call_edges = collect_func_call_edges(items.clone(), local_func_set.clone(), source_indices.clone());
 let parent_resolved = collect_parent_resolved_sigs(declared_sigs.clone(), local_func_set.clone());
 topo_resolve_loop(local_func_names.clone(), parent_resolved, declared_sigs.clone(), call_edges, local_func_set.clone(), module_name, Rc::new(vec![]), (local_func_names.clone().len() as i64))
 }

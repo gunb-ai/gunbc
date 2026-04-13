@@ -20,7 +20,8 @@ import v2.std.core {
   no_span,
   unit_type,
   expr_var_name_at, expr_call_func_at, field_access_field_at, field_access_base,
-  method_receiver, param_node_type_expr
+  method_receiver, param_node_type_expr,
+  authored_name_at
 }
 import v2.compiler.infer_types {
   emit_map_has, nominal_type_ref
@@ -141,7 +142,8 @@ fn collect_called_func_names(texpr: Node, source_indices: Map<String, NewlineInd
 fn expand_transitive_services_once(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> Map<String, ItemInfo> {
   modules |> fold(init: registry, f: (reg, m) =>
     m.items |> fold(init: reg, f: (reg2, item) =>
-    match map_get(reg2, item.name) {
+    let item_name = authored_name_at(source_indices: m.type_env.source_indices, node: item)
+    match map_get(reg2, item_name) {
       Some { value: info } =>
         let has_no_body = item.body == none
         if has_no_body { reg2 }
@@ -160,7 +162,7 @@ fn expand_transitive_services_once(modules: List<TypedModule>, registry: Map<Str
           let same_count = merged |> count == info.service_names |> count
           if same_count { reg2 }
           else {
-            map_insert(reg2, item.name, ItemInfo {
+            map_insert(reg2, item_name, ItemInfo {
               name: info.name,
               module_name: info.module_name,
               kind: info.kind,
@@ -208,9 +210,9 @@ fn expand_transitive_services(modules: List<TypedModule>, registry: Map<String, 
 // the operation and returns its output type.
 // =========================================================================
 
-fn check_service_field_access_node(base_type: Node, field: String, service_registry: Map<String, List<OpEntry>>) -> Node? {
+fn check_service_field_access_node(base_type: Node, field: String, service_registry: Map<String, List<OpEntry>>, source_indices: Map<String, NewlineIndex>) -> Node? {
   if base_type.connective == NoConnective && base_type.children |> count == 0 {
-    let path = concat(base_type.name, ".", field)
+    let path = concat(authored_name_at(source_indices: source_indices, node: base_type), ".", field)
     match map_get(service_registry, path) {
       Some { value: _ } => Some { value: nominal_type_ref(name: path) }
       None => none
@@ -218,9 +220,9 @@ fn check_service_field_access_node(base_type: Node, field: String, service_regis
   } else { none }
 }
 
-fn check_service_method_call_node(receiver_type: Node, method: String, service_registry: Map<String, List<OpEntry>>) -> ServiceMethodResult? {
+fn check_service_method_call_node(receiver_type: Node, method: String, service_registry: Map<String, List<OpEntry>>, source_indices: Map<String, NewlineIndex>) -> ServiceMethodResult? {
   if receiver_type.connective == NoConnective && receiver_type.children |> count == 0 {
-    match map_get(service_registry, receiver_type.name) {
+    match map_get(service_registry, authored_name_at(source_indices: source_indices, node: receiver_type)) {
       Some { value: ops } =>
         let matching = ops |> filter(op => op.name == method)
         match matching |> first {
@@ -245,6 +247,6 @@ fn check_service_method_call_node(receiver_type: Node, method: String, service_r
   } else { none }
 }
 
-fn service_op_entry(child: Node) -> OpEntry {
-  OpEntry { name: child.name, outputs: inferred_to_outputs(inferred: child.inferred, span: child.span), params: child.params }
+fn service_op_entry(child: Node, source_indices: Map<String, NewlineIndex>) -> OpEntry {
+  OpEntry { name: authored_name_at(source_indices: source_indices, node: child), outputs: inferred_to_outputs(inferred: child.inferred, span: child.span, source_indices: source_indices), params: child.params }
 }

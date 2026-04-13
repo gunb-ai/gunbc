@@ -8,6 +8,29 @@ use v2_compiler::v2_compiler_artifact::RenderTarget;
 use v2_compiler::v2_compiler_compile::SourceFile;
 
 fn count_fold_param_clone_calls(content: &str) -> usize {
+    fn is_ident_char(ch: u8) -> bool {
+        ch.is_ascii_alphanumeric() || ch == b'_'
+    }
+
+    fn count_exact_identifier_clone_calls(line: &str, name: &str) -> usize {
+        if name.is_empty() {
+            return 0;
+        }
+        let needle = format!("{name}.clone()");
+        let bytes = line.as_bytes();
+        let mut start = 0usize;
+        let mut count = 0usize;
+        while let Some(found) = line[start..].find(&needle) {
+            let idx = start + found;
+            let has_ident_prefix = idx > 0 && is_ident_char(bytes[idx - 1]);
+            if !has_ident_prefix {
+                count += 1;
+            }
+            start = idx + 1;
+        }
+        count
+    }
+
     content
         .lines()
         .filter(|line| line.contains(".fold(") && line.contains(".clone()"))
@@ -27,7 +50,7 @@ fn count_fold_param_clone_calls(content: &str) -> usize {
             if name.is_empty() {
                 0
             } else {
-                count_pattern(line, &format!("{name}.clone()"))
+                count_exact_identifier_clone_calls(line, name)
             }
         })
         .sum()

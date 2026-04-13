@@ -82,7 +82,7 @@ fn check_bare_containers(n: Node, module_name: String, source_indices: Map<Strin
 fn normalize_graph(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>) -> NormalizeResult {
   let diags = flat_map(graph.modules, m => {
     let items = module_items(n: m.module)
-    flat_map(items, item => check_bare_containers(n: item, module_name: m.module.name, source_indices: source_indices))
+    flat_map(items, item => check_bare_containers(n: item, module_name: authored_name_at(source_indices: source_indices, node: m.module), source_indices: source_indices))
   })
   NormalizeResult {
     graph: graph,

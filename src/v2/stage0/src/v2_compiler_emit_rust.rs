@@ -303,20 +303,24 @@ if (ft_count < field_count) {
 }
 }
 
-pub fn build_shared_types(type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>, recursive_type_set: Rc<HashMap<String, bool>>, target: RenderTarget) -> Rc<HashMap<String, bool>> {
+pub fn maybe_mark_shared_type(acc: Rc<HashMap<String, bool>>, summary: &Rc<TypeSummary>, recursive_type_set: Rc<HashMap<String, bool>>, target_needs_sharing: bool) -> Rc<HashMap<String, bool>> {
     {
-        let sharing = sharing_for_target(target);
-let user_shared = Rc::new(v2_rt::map_values(&type_summaries)).iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, summary: Rc<TypeSummary>| {
-            let needs_sharing = (sharing.needs_sharing.clone() && match (*summary.repr.clone()).clone() {
+        let needs_sharing = (target_needs_sharing && match (*summary.repr.clone()).clone() {
     TypeRepr::StructRepr => true,
     TypeRepr::EnumRepr { unit_only, .. } => (unit_only.clone() == false),
 });
-if (needs_sharing.clone() && !is_type_constant(&summary, recursive_type_set.clone())) {
-                v2_rt::rc_map_insert(acc.clone(), summary.name.clone(), true)
-            } else {
-                acc.clone()
-            }
-});
+if (needs_sharing && !is_type_constant(&summary, recursive_type_set)) {
+            v2_rt::rc_map_insert(acc, summary.name.clone(), true)
+        } else {
+            acc
+        }
+}
+}
+
+pub fn build_shared_types(type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>, recursive_type_set: Rc<HashMap<String, bool>>, target: RenderTarget) -> Rc<HashMap<String, bool>> {
+    {
+        let sharing = sharing_for_target(target);
+let user_shared = Rc::new(v2_rt::map_values(&type_summaries)).iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, summary: Rc<TypeSummary>| maybe_mark_shared_type(acc, &summary, recursive_type_set.clone(), sharing.needs_sharing.clone()));
 let collection_keys = Rc::new({ let mut __result = Vec::new(); for k in Rc::new(v2_rt::map_keys(&rust_container_templates())).iter().cloned() { if ((sharing.needs_sharing.clone() && (k.clone().as_str() != "optional".to_string().as_str())) && (k.clone().as_str() != "boolean_algebra".to_string().as_str())) { __result.push(k); } } __result });
 collection_keys.iter().cloned().fold(user_shared.clone(), |acc: Rc<HashMap<String, bool>>, key: String| {
             let pascal = to_pascal(key.clone());
@@ -1023,7 +1027,7 @@ let params_str = emit_func_params(params.clone(), uses.clone(), service_names, s
 let ret_str = emit_func_inferred(inferred, shared_types.clone(), scope.type_env.clone().source_indices.clone());
 let body_scope = build_params_scope(&scope, params.clone());
 let si = scope.type_env.clone().source_indices.clone();
-let body_scope = uses.clone().iter().cloned().fold(body_scope, |s: Rc<InferScope>, u: Rc<Node>| extend_scope(&s, &resource_use_name_at(u.clone(), si.clone()), resource_use_resource(&u), Rc::new(SubValueRelation::SubValueUnknown)));
+let body_scope = uses.clone().iter().cloned().fold(body_scope.clone(), |s: Rc<InferScope>, u: Rc<Node>| extend_scope(&s, &resource_use_name_at(u.clone(), si.clone()), resource_use_resource(&u), Rc::new(SubValueRelation::SubValueUnknown)));
 let body_str = emit_func_body(&body, &registry, &body_scope, (depth.clone() + 1), &shared_types, &emit_info);
 let items = rust_items();
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), items.async_prefix.clone()), items.func_keyword.clone()), " ".to_string()), emit_ident(name.clone(), RenderTarget::Rust)), "(".to_string()), params_str), ")".to_string()), ret_str), " {\n".to_string()), make_indent((depth.clone() + 1))), body_str), "\n}".to_string())
@@ -2511,7 +2515,7 @@ pub fn emit_typed_for_each(variable: &String, collection: &Rc<Node>, body: Rc<No
     {
         let sharing = language_spec(RenderTarget::Rust).sharing.clone();
 let coll_str = emit_typed_expr(collection.clone(), registry.clone(), &scope, depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
-let elem_type = for_each_element_type_node(resolved_type(collection.clone()));
+let elem_type = for_each_element_type_node(resolved_type(collection.clone()), scope.type_env.clone().source_indices.clone());
 let body_scope = extend_scope(&scope, &variable, elem_type, Rc::new(SubValueRelation::SubValueUnknown));
 let body_str = emit_typed_expr(body, registry.clone(), &body_scope, (depth.clone() + 2), shared_types.clone(), emit_info.clone(), 1024);
 let ind1 = make_indent((depth.clone() + 1));
@@ -2851,7 +2855,7 @@ pub fn emit_rust_sort_by_method_call(receiver: &Rc<Node>, args: Rc<Vec<Rc<Node>>
 let elem_type_str = match receiver.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => {
             let resolved = rt.clone();
-let elem = for_each_element_type_node(resolved);
+let elem = for_each_element_type_node(resolved, scope.type_env.clone().source_indices.clone());
 let elem_is_type_var = if (elem.inferred.clone() != None) {
                 is_type_variable(elem.inferred.clone().clone().unwrap())
             } else {

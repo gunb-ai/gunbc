@@ -73,18 +73,18 @@ fn map_has(m: Map<String, Bool>, key: String) -> Bool {
 
 fn resolve_modules(modules: List<Node>, source_indices: Map<String, NewlineIndex>) -> ModuleGraph {
   // Phase 1: check for duplicate module declarations
-  let dup_diags = check_duplicate_modules(modules: modules)
+  let dup_diags = check_duplicate_modules(modules: modules, source_indices: source_indices)
 
   // Build a module index for O(1) lookup during import resolution.
   let module_index = modules |> fold(init: empty_map(), f: (acc, m) =>
-    map_insert(acc, m.name, m)
+    map_insert(acc, authored_name_at(source_indices: source_indices, node: m), m)
   )
 
   // Build per-module exported-name sets once for O(1) membership during import resolution.
   let export_sets = modules |> fold(init: empty_map(), f: (acc, m) =>
     let exported = get_exported_names(module: m, source_indices: source_indices)
     let exported_set = fold(exported, init: empty_map(), f: (inner_acc, name) => map_insert(inner_acc, name, true))
-    map_insert(acc, m.name, exported_set)
+    map_insert(acc, authored_name_at(source_indices: source_indices, node: m), exported_set)
   )
 
   // Phase 2: resolve each module's imports.
@@ -96,7 +96,7 @@ fn resolve_modules(modules: List<Node>, source_indices: Map<String, NewlineIndex
   }, f: (acc, m) =>
     let result = resolve_module_imports(module: m, module_index: module_index, export_sets: export_sets, source_indices: source_indices)
     ResolveAccum {
-      imports_by_name: map_insert(acc.imports_by_name, m.name, result.resolved_imports),
+      imports_by_name: map_insert(acc.imports_by_name, authored_name_at(source_indices: source_indices, node: m), result.resolved_imports),
       diagnostics: concat(acc.diagnostics, result.diagnostics)
     }
   )
@@ -104,7 +104,7 @@ fn resolve_modules(modules: List<Node>, source_indices: Map<String, NewlineIndex
   let import_diags = resolve_accum.diagnostics
 
   // Phase 3: topological sort
-  let topo_result = topological_sort(modules: modules)
+  let topo_result = topological_sort(modules: modules, source_indices: source_indices)
   let topo_diags = match topo_result.cycle_error {
     Some { value: diag } => [diag]
     None => []
@@ -119,9 +119,9 @@ fn resolve_modules(modules: List<Node>, source_indices: Map<String, NewlineIndex
     map_insert(acc, pair.second, pair.first)
   )
   let acyclic_resolved = modules |> flat_map(m =>
-    match map_get(sorted_order_map, m.name) {
+    match map_get(sorted_order_map, authored_name_at(source_indices: source_indices, node: m)) {
       Some { value: order } =>
-        match map_get(imports_by_name, m.name) {
+        match map_get(imports_by_name, authored_name_at(source_indices: source_indices, node: m)) {
           // imports_by_name should contain every module -- None is
           // unreachable. Default to [] only as a safe fallback.
           Some { value: imps } =>
@@ -167,7 +167,7 @@ type ModuleResolveResult {
 // Resolve all imports for a single module.
 fn resolve_module_imports(module: Node, module_index: Map<String, Node>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>) -> ModuleResolveResult {
   let results = module_imports(n: module) |> map(imp =>
-    resolve_import(import: imp, module_index: module_index, importing_module: module.name, export_sets: export_sets, source_indices: source_indices)
+    resolve_import(import: imp, module_index: module_index, importing_module: authored_name_at(source_indices: source_indices, node: module), export_sets: export_sets, source_indices: source_indices)
   )
   let resolved = results
     |> filter(r => r.resolved.target_module != none && (r.diagnostics |> count == 0))
@@ -193,13 +193,14 @@ fn resolve_import(
   export_sets: Map<String, Map<String, Bool>>,
   source_indices: Map<String, NewlineIndex>
 ) -> ImportResolveResult {
-  let target = find_module(module_index: module_index, path: import.name)
+  let import_path = authored_name_at(source_indices: source_indices, node: import)
+  let target = find_module(module_index: module_index, path: import_path)
   match target {
     None => {
-      let diag = make_error_node(diagnostic: UnresolvedImport { module_path: import.name, importing_module: importing_module, span: import.span }, module_name: importing_module)
+      let diag = make_error_node(diagnostic: UnresolvedImport { module_path: import_path, importing_module: importing_module, span: import.span }, module_name: importing_module)
       ImportResolveResult {
         resolved: ResolvedImport {
-          module_path: import.name,
+          module_path: import_path,
           is_all: import_is_all(n: import),
           specific_names: import_specific_names_at(n: import, source_indices: source_indices),
           target_module: None
@@ -210,7 +211,7 @@ fn resolve_import(
     Some { value: target_mod } => {
       // Validate each imported name exists in the target.
       // Use pre-computed export set for O(1) membership checks.
-      let exported_set = match map_get(export_sets, import.name) {
+      let exported_set = match map_get(export_sets, import_path) {
         Some { value: set } => set
         None => empty_map()
       }
@@ -218,12 +219,12 @@ fn resolve_import(
         import.children
           |> filter(child => map_has(m: exported_set, key: authored_name_at(source_indices: source_indices, node: child)) == false)
           |> map(child =>
-            make_error_node(diagnostic: MissingExport { name: authored_name_at(source_indices: source_indices, node: child), module_path: import.name, importing_module: importing_module, span: child.span }, module_name: importing_module)
+            make_error_node(diagnostic: MissingExport { name: authored_name_at(source_indices: source_indices, node: child), module_path: import_path, importing_module: importing_module, span: child.span }, module_name: importing_module)
           )
       }
       ImportResolveResult {
         resolved: ResolvedImport {
-          module_path: import.name,
+          module_path: import_path,
           is_all: import_is_all(n: import),
           specific_names: import_specific_names_at(n: import, source_indices: source_indices),
           target_module: Some { value: target_mod }
@@ -280,7 +281,7 @@ type DuplicateCheckState {
   diagnostics: List<ErrorNode>
 }
 
-fn check_duplicate_modules(modules: List<Node>) -> List<ErrorNode> {
+fn check_duplicate_modules(modules: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
   // Fold over modules maintaining a seen-names map for O(1) lookup.
   // For each module, check if its name is already in the seen map.
   // If so, emit a diagnostic. Then add the name to the seen map.
@@ -288,15 +289,16 @@ fn check_duplicate_modules(modules: List<Node>) -> List<ErrorNode> {
     seen_names: empty_map(),
     diagnostics: []
   }, f: fn(state, m) {
-    let is_dup = map_has(m: state.seen_names, key: m.name)
+    let m_name = authored_name_at(source_indices: source_indices, node: m)
+    let is_dup = map_has(m: state.seen_names, key: m_name)
     if is_dup {
       DuplicateCheckState {
         seen_names: state.seen_names,
-        diagnostics: concat(state.diagnostics, [make_error_node(diagnostic: DuplicateModule { name: m.name, span: m.span }, module_name: m.name)])
+        diagnostics: concat(state.diagnostics, [make_error_node(diagnostic: DuplicateModule { name: m_name, span: m.span }, module_name: m_name)])
       }
     } else {
       DuplicateCheckState {
-        seen_names: map_insert(state.seen_names, m.name, true),
+        seen_names: map_insert(state.seen_names, m_name, true),
         diagnostics: state.diagnostics
       }
     }
@@ -332,20 +334,21 @@ fn topo_sort_key(name: String) -> String {
   if name == "std.types" { "" } else { name }
 }
 
-fn topological_sort(modules: List<Node>) -> TopoResult {
-  let module_names = modules |> map(m => m.name)
+fn topological_sort(modules: List<Node>, source_indices: Map<String, NewlineIndex>) -> TopoResult {
+  let module_names = modules |> map(m => authored_name_at(source_indices: source_indices, node: m))
   let has_std_types = module_names |> any(name => name == "std.types")
   let explicit_edges = modules |> flat_map(m =>
-    module_imports(n: m) |> map(imp => DepEdge { from_module: imp.name, to_module: m.name })
+    module_imports(n: m) |> map(imp => DepEdge { from_module: authored_name_at(source_indices: source_indices, node: imp), to_module: authored_name_at(source_indices: source_indices, node: m) })
   )
   // Bootstrap bridge: if std.types is present, temporarily inject it as a
   // parent for modules that did not import it explicitly. This is not the
   // end-state authority model; the bridge deletes when FF-9 is complete.
   let implicit_std_types_edges = if has_std_types {
     modules |> flat_map(m =>
-      let imports_std_types = module_imports(n: m) |> any(imp => imp.name == "std.types")
-      if m.name != "std.types" && m.name != "std.algebra" && imports_std_types == false {
-        [DepEdge { from_module: "std.types", to_module: m.name }]
+      let m_name = authored_name_at(source_indices: source_indices, node: m)
+      let imports_std_types = module_imports(n: m) |> any(imp => authored_name_at(source_indices: source_indices, node: imp) == "std.types")
+      if m_name != "std.types" && m_name != "std.algebra" && imports_std_types == false {
+        [DepEdge { from_module: "std.types", to_module: m_name }]
       } else {
         []
       }
@@ -363,9 +366,10 @@ fn topological_sort(modules: List<Node>) -> TopoResult {
 
   // Compute initial in-degrees directly from import counts.
   let in_degree_map = modules |> fold(init: empty_map(), f: (acc, m) =>
-    let imports_std_types = module_imports(n: m) |> any(imp => imp.name == "std.types")
-    let implicit_std_types_in_degree = if has_std_types && m.name != "std.types" && m.name != "std.algebra" && imports_std_types == false { 1 } else { 0 }
-    map_insert(acc, m.name, module_imports(n: m) |> count + implicit_std_types_in_degree)
+    let m_name = authored_name_at(source_indices: source_indices, node: m)
+    let imports_std_types = module_imports(n: m) |> any(imp => authored_name_at(source_indices: source_indices, node: imp) == "std.types")
+    let implicit_std_types_in_degree = if has_std_types && m_name != "std.types" && m_name != "std.algebra" && imports_std_types == false { 1 } else { 0 }
+    map_insert(acc, m_name, module_imports(n: m) |> count + implicit_std_types_in_degree)
   )
 
   // Initial queue: all modules with in-degree 0 (no imports), sorted for determinism.

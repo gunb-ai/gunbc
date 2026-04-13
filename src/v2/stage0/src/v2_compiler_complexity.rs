@@ -24,7 +24,7 @@ use crate::std_induction::ShrinkFactor::{UnitShrink, ConstantShrink, Proportiona
 use crate::std_induction::CostBound::{ConstantBound, AtomicBound, ForeverBound, ErrorBound};
 use crate::std_induction::AtomicCost::{PolyCost};
 use crate::std_induction::PolynomialExponent::{IntegerExp};
-pub use crate::v2_std_core::{Node, NewlineIndex, ExprData, BinOp, MatchPattern, field_init_node_name_at, field_init_node_value, arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_pattern, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, let_binding_name_at, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name_at, param_node_type_expr, return_value, expr_call_func_at, expr_var_name_at, field_access_base, field_access_field_at, LiteralValue, is_child_accessor_in_model, lambda_param_names_at, lambda_body, is_children_list_field, is_sub_value_field, is_tree_size_preserving, is_tree_size_reducing};
+pub use crate::v2_std_core::{Node, NewlineIndex, ExprData, BinOp, MatchPattern, field_init_node_name_at, field_init_node_value, arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_pattern, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, let_binding_name_at, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name_at, param_node_type_expr, return_value, expr_call_func_at, expr_var_name_at, field_access_base, field_access_field_at, LiteralValue, is_child_accessor_in_model, lambda_param_names_at, lambda_body, is_children_list_field, is_sub_value_field, is_tree_size_preserving, is_tree_size_reducing, authored_name_at};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprBinOp, ExprUnaryOp, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprBlock, ExprForEach, ExprReturn, ExprLambda};
 use crate::v2_std_core::BinOp::{Sub, Div};
 use crate::v2_std_core::MatchPattern::{Bind, VariantPattern};
@@ -290,7 +290,7 @@ pub fn parser_state_param(params: Rc<Vec<Rc<Node>>>, si: Rc<HashMap<String, Rc<N
         {
             let idx = pair.0.clone();
 let param = pair.1.clone();
-if (param_node_type_expr(&param).name.clone().as_str() == "ParserState".to_string().as_str()) {
+if (authored_name_at(si.clone(), &param_node_type_expr(&param)).as_str() == "ParserState".to_string().as_str()) {
                 Some(Rc::new(ParserStateParam {
     name: param_node_name_at(param.clone(), si.clone()),
     index: idx.clone(),
@@ -2175,7 +2175,7 @@ pub fn construct_termination_proof(func_name: &String, body: &Rc<Node>, params: 
     Some(_) => best.clone(),
     None => {
             let pname = param_node_name_at(p.clone(), si.clone());
-let type_name = param_node_type_expr(&p).name.clone();
+let type_name = authored_name_at(si.clone(), &param_node_type_expr(&p));
 match type_iteration_dimension(&type_name) {
     Some(dim) => try_type_directed_dimension(body.clone(), func_name.clone(), &pname, dim.clone(), si.clone()),
     None => {
@@ -2254,7 +2254,7 @@ pub fn construct_branching_termination_proof(func_name: String, body: Rc<Node>, 
     Some(_) => best.clone(),
     None => {
         let pname = param_node_name_at(p.clone(), si.clone());
-let type_name = param_node_type_expr(&p).name.clone();
+let type_name = authored_name_at(si.clone(), &param_node_type_expr(&p));
 match type_iteration_dimension(&type_name) {
     Some(IterationDimension::TreeDescent) => match try_branching_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), true, false, si.clone()) {
     Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
@@ -3525,9 +3525,9 @@ pub fn size_binder_name(size: Rc<SizeExpr>) -> String {
 }
 }
 
-pub fn resolve_lambda_arg(mc_arg_nodes: &Rc<Vec<Rc<Node>>>) -> Option<Rc<Node>> {
+pub fn resolve_lambda_arg(mc_arg_nodes: &Rc<Vec<Rc<Node>>>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
     {
-        let f_arg = Rc::new({ let mut __result = Vec::new(); for a in mc_arg_nodes.clone().iter().cloned() { if (a.name.clone().as_str() == "f".to_string().as_str()) { __result.push(a); } } __result }).first().cloned();
+        let f_arg = Rc::new({ let mut __result = Vec::new(); for a in mc_arg_nodes.clone().iter().cloned() { if (authored_name_at(si.clone(), &a).as_str() == "f".to_string().as_str()) { __result.push(a); } } __result }).first().cloned();
 match f_arg {
     Some(fa) => Some(arg_value(&fa)),
     None => Rc::new({ let mut __result = Vec::new(); for a in mc_arg_nodes.clone().iter().cloned() { __result.push(arg_value(&a)); } __result }).first().cloned(),
@@ -3563,10 +3563,10 @@ match v2_rt::map_get(&func_index, fn_ref.clone()) {
 }
 }
 
-pub fn cost_of_method_by_shape(shape: CostShape, produces_collection: bool, recv_r: &Rc<SummaryResult>, mc_args: Rc<Vec<Rc<Node>>>, size: &Rc<SizeExpr>, binder: &String, func_index: Rc<HashMap<String, Rc<FuncEntry>>>, scc_index: Rc<HashMap<String, Rc<SccInfo>>>, parser_always_advancing: Rc<HashMap<String, bool>>, recursion_ctx: RecursionContext, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<SummaryResult> {
+pub fn cost_of_method_by_shape(shape: CostShape, produces_collection: bool, recv_r: &Rc<SummaryResult>, mc_args: Rc<Vec<Rc<Node>>>, size: &Rc<SizeExpr>, binder: &String, func_index: Rc<HashMap<String, Rc<FuncEntry>>>, scc_index: Rc<HashMap<String, Rc<SccInfo>>>, parser_always_advancing: Rc<HashMap<String, bool>>, recursion_ctx: RecursionContext, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<SummaryResult> {
     match shape {
     CostShape::ShapeIterateBody => {
-        let lambda_arg = resolve_lambda_arg(&mc_args);
+        let lambda_arg = resolve_lambda_arg(&mc_args, si.clone());
 let body_result = resolve_callback_cost(lambda_arg, recv_r.clone(), &func_index, scc_index, parser_always_advancing, recursion_ctx, &si);
 let loop_work = cost_loop(binder.clone(), size.clone(), &body_result.summary.clone().work.clone());
 let os = if (produces_collection == false) {
@@ -3590,7 +3590,7 @@ Rc::new(SummaryResult {
 })
 },
     CostShape::ShapeSortBody => {
-        let lambda_arg = resolve_lambda_arg(&mc_args);
+        let lambda_arg = resolve_lambda_arg(&mc_args, si.clone());
 let key_result = match lambda_arg {
     Some(la) => cost_of_expr(&la, &func_index, &scc_index, recv_r.table.clone(), &parser_always_advancing, &recursion_ctx, &si),
     None => Rc::new(SummaryResult {
@@ -4347,7 +4347,7 @@ let method_cost_result = if (ms.clone() == None) {
     MethodSemantics::AlgebraMethodSemantics { method_def: md, cost_shape: cs, .. } => {
                     let pc = node_is_collection(&resolved_type(texpr.clone()), si.clone());
 match cs.clone() {
-    Some(shape) => Some(cost_of_method_by_shape(shape.clone(), pc, &recv_r, mc_args.clone(), &size, &binder, func_index.clone(), scc_index.clone(), parser_always_advancing.clone(), recursion_ctx.clone(), si.clone())),
+    Some(shape) => Some(cost_of_method_by_shape(shape.clone(), pc, &recv_r, mc_args.clone(), &size, &binder, func_index.clone(), scc_index.clone(), parser_always_advancing.clone(), recursion_ctx.clone(), &si)),
     None => Some(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: cost_seq(recv_r.summary.clone().work.clone(), &Rc::new(CostExpr::CostConst {

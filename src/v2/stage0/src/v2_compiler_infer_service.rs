@@ -7,7 +7,7 @@ use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, Connective, ExprData, Cardinality, InferredNode, NewlineIndex, no_span, unit_type, expr_var_name_at, expr_call_func_at, field_access_field_at, field_access_base, method_receiver, param_node_type_expr};
+pub use crate::v2_std_core::{Node, Connective, ExprData, Cardinality, InferredNode, NewlineIndex, no_span, unit_type, expr_var_name_at, expr_call_func_at, field_access_field_at, field_access_base, method_receiver, param_node_type_expr, authored_name_at};
 use crate::v2_std_core::Connective::{Conj, NoConnective};
 use crate::v2_std_core::ExprData::{NoExprData, ExprFieldAccess, ExprMethodCall, ExprCall, ExprVar};
 use crate::v2_std_core::Cardinality::{Required};
@@ -143,28 +143,30 @@ result.result.clone()
 }
 
 pub fn expand_transitive_services_once(modules: Rc<Vec<Rc<TypedModule>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> Rc<HashMap<String, Rc<ItemInfo>>> {
-    modules.iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<ItemInfo>>>, m: Rc<TypedModule>| m.items.clone().iter().cloned().fold(reg, |reg2: Rc<HashMap<String, Rc<ItemInfo>>>, item: Rc<Node>| match v2_rt::map_get(&reg2, item.name.clone()) {
+    modules.iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<ItemInfo>>>, m: Rc<TypedModule>| m.items.clone().iter().cloned().fold(reg, |reg2: Rc<HashMap<String, Rc<ItemInfo>>>, item: Rc<Node>| {
+        let item_name = authored_name_at(m.type_env.clone().source_indices.clone(), &item);
+match v2_rt::map_get(&reg2, item_name.clone()) {
     Some(info) => {
-        let has_no_body = (item.body.clone() == None);
+            let has_no_body = (item.body.clone() == None);
 if has_no_body.clone() {
-            reg2.clone()
-        } else {
-            {
-                let called = collect_called_func_names(item.body.clone().clone().unwrap(), m.type_env.clone().source_indices.clone());
+                reg2.clone()
+            } else {
+                {
+                    let called = collect_called_func_names(item.body.clone().clone().unwrap(), m.type_env.clone().source_indices.clone());
 let extra = Rc::new({ let mut __result = Vec::new(); for callee_name in called.clone().iter().cloned() { __result.extend((*match v2_rt::map_get(&reg2, callee_name.clone()) {
     Some(callee_info) => callee_info.service_names.clone(),
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result });
 let merged = extra.clone().iter().cloned().fold(info.service_names.clone(), |svc_list: Rc<Vec<String>>, svc: String| if { let mut __found = false; for s in svc_list.clone().iter().cloned() { if (s.clone().as_str() == svc.clone().as_str()) { __found = true; break; } } __found } {
-                    svc_list.clone()
-                } else {
-                    v2_rt::rc_list_push(svc_list.clone(), svc.clone())
-                });
+                        svc_list.clone()
+                    } else {
+                        v2_rt::rc_list_push(svc_list.clone(), svc.clone())
+                    });
 let same_count = ((merged.clone().len() as i64) == (info.service_names.clone().len() as i64));
 if same_count.clone() {
-                    reg2.clone()
-                } else {
-                    v2_rt::rc_map_insert(reg2.clone(), item.name.clone(), Rc::new(ItemInfo {
+                        reg2.clone()
+                    } else {
+                        v2_rt::rc_map_insert(reg2.clone(), item_name.clone(), Rc::new(ItemInfo {
     name: info.name.clone(),
     module_name: info.module_name.clone(),
     kind: info.kind.clone(),
@@ -174,11 +176,12 @@ if same_count.clone() {
     is_self_recursive: info.is_self_recursive.clone(),
     has_non_tail_self_call: info.has_non_tail_self_call.clone(),
 }))
-                }
+                    }
 }
-        }
+            }
 },
     None => reg2.clone(),
+}
 }))
 }
 
@@ -209,10 +212,10 @@ continue;
 }
 }
 
-pub fn check_service_field_access_node(base_type: &Rc<Node>, field: String, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>) -> Option<Rc<Node>> {
+pub fn check_service_field_access_node(base_type: &Rc<Node>, field: String, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
     if ((base_type.connective.clone() == Connective::NoConnective) && ((base_type.children.clone().len() as i64) == 0)) {
         {
-            let path = v2_rt::concat(v2_rt::concat(base_type.name.clone(), ".".to_string()), field);
+            let path = v2_rt::concat(v2_rt::concat(authored_name_at(source_indices, &base_type), ".".to_string()), field);
 match v2_rt::map_get(&service_registry, path.clone()) {
     Some(_) => Some(nominal_type_ref(&path)),
     None => None,
@@ -223,9 +226,9 @@ match v2_rt::map_get(&service_registry, path.clone()) {
     }
 }
 
-pub fn check_service_method_call_node(receiver_type: &Rc<Node>, method: String, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>) -> Option<Rc<ServiceMethodResult>> {
+pub fn check_service_method_call_node(receiver_type: &Rc<Node>, method: String, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<ServiceMethodResult>> {
     if ((receiver_type.connective.clone() == Connective::NoConnective) && ((receiver_type.children.clone().len() as i64) == 0)) {
-        match v2_rt::map_get(&service_registry, receiver_type.name.clone()) {
+        match v2_rt::map_get(&service_registry, authored_name_at(source_indices, &receiver_type)) {
     Some(ops) => {
             let matching = Rc::new({ let mut __result = Vec::new(); for op in ops.clone().iter().cloned() { if (op.name.clone().as_str() == method.clone().as_str()) { __result.push(op); } } __result });
 match matching.first().cloned() {
@@ -290,10 +293,10 @@ match matching.first().cloned() {
     }
 }
 
-pub fn service_op_entry(child: &Rc<Node>) -> Rc<OpEntry> {
+pub fn service_op_entry(child: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<OpEntry> {
     Rc::new(OpEntry {
-    name: child.name.clone(),
-    outputs: inferred_to_outputs(&child.inferred.clone(), child.span.clone()),
+    name: authored_name_at(source_indices.clone(), &child),
+    outputs: inferred_to_outputs(&child.inferred.clone(), child.span.clone(), source_indices.clone()),
     params: child.params.clone(),
 })
 }

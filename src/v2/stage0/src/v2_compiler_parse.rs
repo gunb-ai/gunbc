@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{module_node, import_node, Node, InferredNode, Connective, is_container_type, Cardinality, make_param_node, param_node_type_expr, param_node_default_value, make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, make_variant_node, variant_node_name_at, variant_node_fields, leaf_node_with_span, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name_at, field_access_field_at, expr_call_func_at, make_arg_node, arg_name_at, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, MatchPattern, make_field_binding_node, field_binding_pattern, LiteralValue, ExprErrorKind, BinOp, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, transport_url_key, transport_path_key, transport_method_key, transport_path_template_key, transport_query_key, transport_body_key, transport_stdin_key, transport_response_format_key, transport_headers_key, service_config_properties, OperationModifier, Token, TokenShape, SourceSpan, make_span, ErrorNode, make_error_node, with_required_cardinality, error_type, is_compiler_error, node_name_span, no_span, NewlineIndex, InternTable, InternResult, empty_intern_table, intern, intern_find_or_empty, pre_intern_tokens, CompilerDiagnostic};
+pub use crate::v2_std_core::{module_node, import_node, Node, InferredNode, Connective, is_container_type, Cardinality, make_param_node, param_node_type_expr, param_node_default_value, make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, make_variant_node, variant_node_name_at, variant_node_fields, leaf_node_with_span, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name_at, field_access_field_at, expr_call_func_at, make_arg_node, arg_name_at, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, MatchPattern, make_field_binding_node, field_binding_pattern, LiteralValue, ExprErrorKind, BinOp, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, transport_url_key, transport_path_key, transport_method_key, transport_path_template_key, transport_query_key, transport_body_key, transport_stdin_key, transport_response_format_key, transport_headers_key, service_config_properties, OperationModifier, Token, TokenShape, SourceSpan, make_span, ErrorNode, make_error_node, with_required_cardinality, error_type, is_compiler_error, node_name_span, no_span, NewlineIndex, authored_name_at, InternTable, InternResult, empty_intern_table, intern, intern_find_or_empty, pre_intern_tokens, CompilerDiagnostic};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
@@ -1662,7 +1662,7 @@ pub fn child_inferred_or_empty(ch: Rc<Node>) -> Rc<Node> {
 }
 }
 
-pub fn node_inferred_to_outputs(rt: &Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+pub fn node_inferred_to_outputs(rt: &Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<Rc<Node>>> {
     if is_conj_with_children(&rt) {
         {
             let all_children_typed = { let mut __all = true; for ch in rt.children.clone().iter().cloned() { if !(match ch.inferred.clone().as_deref().cloned() {
@@ -1670,7 +1670,7 @@ pub fn node_inferred_to_outputs(rt: &Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     _ => false,
 }) { __all = false; break; } } __all };
 if all_children_typed {
-                Rc::new({ let mut __result = Vec::new(); for ch in rt.children.clone().iter().cloned() { __result.push(make_field_node(&ch.name.clone(), child_inferred_or_empty(ch.clone()), Cardinality::Required, ch.body.clone(), None, ch.span.clone(), node_name_span(&ch))); } __result })
+                Rc::new({ let mut __result = Vec::new(); for ch in rt.children.clone().iter().cloned() { __result.push(make_field_node(&authored_name_at(source_indices.clone(), &ch), child_inferred_or_empty(ch.clone()), Cardinality::Required, ch.body.clone(), None, ch.span.clone(), node_name_span(&ch))); } __result })
             } else {
                 Rc::new(vec![])
             }
@@ -1698,17 +1698,24 @@ if e.consumed.clone() {
 if has_err(r.err.clone()) {
                 return r.clone()
             }
+let extended = Rc::new(SourceSpan {
+    file: span.file.clone(),
+    start: span.start.clone(),
+    end: r.span.clone().end.clone(),
+});
 {
                 let __tco_0 = r.state.clone();
 let __tco_1 = v2_rt::concat(v2_rt::concat(acc, ".".to_string()), r.name.clone());
+let __tco_2 = extended;
 state = __tco_0;
 acc = __tco_1;
+span = __tco_2;
 continue;
 }
 } else {
             break Rc::new(NameResult {
     name: acc,
-    span: span,
+    span: span.clone(),
     state: state.clone(),
     err: None,
 });
@@ -1773,6 +1780,7 @@ if has_err(r.err.clone()) {
 })
         }
 let mod_name = r.name.clone();
+let mod_name_span = r.span.clone();
 let s = skip_newlines(tokens.clone(), r.state.clone());
 let r = parse_imports(tokens.clone(), s.clone());
 if has_err(r.err.clone()) {
@@ -1796,10 +1804,29 @@ let items = r.items.clone();
 let s = r.state.clone();
 let mod_ir = intern(&s.intern_table.clone(), &mod_name);
 let s = Rc::new(ParserState { intern_table: mod_ir.table.clone(), ..(*s.clone()).clone() });
-let r#mod = module_node(&mod_name, imports, items, &start_span);
-let r#mod = Rc::new(Node { ident: Some(mod_ir.id.clone()), ..(*r#mod.clone()).clone() });
+let base_mod = Rc::new(Node {
+    name: mod_name.clone(),
+    span: start_span.clone(),
+    ident_span: Some(mod_name_span),
+    children: items,
+    connective: Connective::NoConnective,
+    params: imports,
+    inferred: None,
+    return_cardinality: Cardinality::Required,
+    uses: Rc::new(vec![]),
+    body: None,
+    transport: None,
+    properties: Rc::new(vec![]),
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::NoExprData),
+    ident: None,
+});
+let r#mod = Rc::new(Node { ident: Some(mod_ir.id.clone()), ..(*base_mod).clone() });
 Rc::new(ModuleResult {
-    module: r#mod.clone(),
+    module: r#mod,
     state: s.clone(),
     err: None,
 })
@@ -1896,6 +1923,7 @@ if has_err(r.err.clone()) {
 })
         }
 let mod_path = r.name.clone();
+let mod_path_span = r.span.clone();
 let s = r.state.clone();
 let e = eat(&tokens, &s, Rc::new(ExpectedToken::ExpectLBrace));
 if e.consumed.clone() {
@@ -1919,12 +1947,12 @@ if has_err(r.err.clone()) {
 })
                 }
 let s = skip_newlines(tokens.clone(), r.state.clone());
-let imp = import_node(&mod_path, false, names, &start_span);
+let base_imp = import_node(&mod_path, false, names, &start_span);
 let imp_ir = intern(&s.intern_table.clone(), &mod_path);
 let s = Rc::new(ParserState { intern_table: imp_ir.table.clone(), ..(*s.clone()).clone() });
-let imp = Rc::new(Node { ident: Some(imp_ir.id.clone()), ..(*imp.clone()).clone() });
+let imp = Rc::new(Node { ident_span: Some(mod_path_span), ident: Some(imp_ir.id.clone()), ..(*base_imp).clone() });
 Rc::new(ImportResult {
-    import: imp.clone(),
+    import: imp,
     state: s.clone(),
     err: None,
 })
@@ -1932,12 +1960,12 @@ Rc::new(ImportResult {
         } else {
             {
                 let s = skip_newlines(tokens.clone(), s.clone());
-let imp = import_node(&mod_path, true, Rc::new(vec![]), &start_span);
+let base_imp = import_node(&mod_path, true, Rc::new(vec![]), &start_span);
 let imp_ir = intern(&s.intern_table.clone(), &mod_path);
 let s = Rc::new(ParserState { intern_table: imp_ir.table.clone(), ..(*s.clone()).clone() });
-let imp = Rc::new(Node { ident: Some(imp_ir.id.clone()), ..(*imp.clone()).clone() });
+let imp = Rc::new(Node { ident_span: Some(mod_path_span), ident: Some(imp_ir.id.clone()), ..(*base_imp).clone() });
 Rc::new(ImportResult {
-    import: imp.clone(),
+    import: imp,
     state: s.clone(),
     err: None,
 })
@@ -1964,8 +1992,7 @@ if tok_is_rbrace(peek(tokens.clone(), s.clone())) {
     err: None,
 });
 } else {
-            let name_span = current_span(tokens.clone(), s.clone());
-let r = parse_dotted_ident(&tokens, s.clone());
+            let r = parse_dotted_ident(&tokens, s.clone());
 if has_err(r.err.clone()) {
                 return Rc::new(NamesResult {
     names: Rc::new(vec![]),
@@ -1973,7 +2000,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
             }
-let name_node = parsed_name_leaf(r.name.clone(), name_span);
+let name_node = parsed_name_leaf(r.name.clone(), r.span.clone());
 let s = skip_newlines(tokens.clone(), r.state.clone());
 let e = eat(&tokens, &s, Rc::new(ExpectedToken::ExpectComma));
 let s = skip_newlines(tokens.clone(), if e.consumed.clone() {
@@ -2239,10 +2266,10 @@ parse_no_body_from_prefix(&prefix, start_span.clone())
 }
 }
 
-pub fn field_to_child_node(field: &Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Node> {
+pub fn field_to_child_node(field: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Node> {
     {
         let ret_type = field_node_type_expr(&field);
-let props = match field_node_from_key(field.clone()) {
+let props = match field_node_from_key(field.clone(), source_indices.clone()) {
     Some(key) => Rc::new(vec![make_field_init_node(&"from_key".to_string(), make_expr_node(Rc::new(ExprData::ExprLiteral {
     value: Rc::new(LiteralValue::LitStr {
     value: key.clone(),
@@ -2251,7 +2278,7 @@ let props = match field_node_from_key(field.clone()) {
     None => Rc::new(vec![]),
 };
 Rc::new(Node {
-    name: field_node_name_at(field.clone(), source_indices),
+    name: field_node_name_at(field.clone(), source_indices.clone()),
     span: field.span.clone(),
     ident_span: field.ident_span.clone(),
     children: Rc::new(vec![]),
@@ -2278,7 +2305,7 @@ Rc::new(Node {
 pub fn variant_to_child_node(variant: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Node> {
     {
         let fields = variant_node_fields(variant.clone());
-let children = Rc::new({ let mut __result = Vec::new(); for f in fields.clone().iter().cloned() { __result.push(field_to_child_node(&f, source_indices.clone())); } __result });
+let children = Rc::new({ let mut __result = Vec::new(); for f in fields.clone().iter().cloned() { __result.push(field_to_child_node(&f, &source_indices)); } __result });
 Rc::new(Node {
     name: variant_node_name_at(variant.clone(), source_indices.clone()),
     span: variant.span.clone(),
@@ -2313,7 +2340,7 @@ pub fn outputs_to_inferred(outputs: &Rc<Vec<Rc<Node>>>, span: Rc<SourceSpan>, so
     name: "".to_string(),
     span: span,
     ident_span: None,
-    children: Rc::new({ let mut __result = Vec::new(); for f in outputs.clone().iter().cloned() { __result.push(field_to_child_node(&f, source_indices.clone())); } __result }),
+    children: Rc::new({ let mut __result = Vec::new(); for f in outputs.clone().iter().cloned() { __result.push(field_to_child_node(&f, &source_indices)); } __result }),
     connective: Connective::Conj,
     params: Rc::new(vec![]),
     inferred: None,
@@ -2496,7 +2523,7 @@ if has_err(r2.err.clone()) {
     err: r2.err.clone(),
 })
                 }
-let type_children = Rc::new({ let mut __result = Vec::new(); for f in r.fields.clone().iter().cloned() { __result.push(field_to_child_node(&f, state.source_indices.clone())); } __result });
+let type_children = Rc::new({ let mut __result = Vec::new(); for f in r.fields.clone().iter().cloned() { __result.push(field_to_child_node(&f, &state.source_indices.clone())); } __result });
 let item = Rc::new(Node {
     name: name.clone(),
     span: start_span.clone(),
@@ -2613,7 +2640,7 @@ if has_err(r2.err.clone()) {
     err: r2.err.clone(),
 })
                 }
-let type_children = Rc::new({ let mut __result = Vec::new(); for f in r.fields.clone().iter().cloned() { __result.push(field_to_child_node(&f, prefix.state.clone().source_indices.clone())); } __result });
+let type_children = Rc::new({ let mut __result = Vec::new(); for f in r.fields.clone().iter().cloned() { __result.push(field_to_child_node(&f, &prefix.state.clone().source_indices.clone())); } __result });
 let item = Rc::new(Node {
     name: name.clone(),
     span: start_span.clone(),
@@ -3423,7 +3450,7 @@ let te = Rc::new(Node {
     name: "".to_string(),
     span: span,
     ident_span: None,
-    children: Rc::new({ let mut __result = Vec::new(); for f in r.fields.clone().iter().cloned() { __result.push(field_to_child_node(&f, state.source_indices.clone())); } __result }),
+    children: Rc::new({ let mut __result = Vec::new(); for f in r.fields.clone().iter().cloned() { __result.push(field_to_child_node(&f, &state.source_indices.clone())); } __result }),
     connective: Connective::Conj,
     params: Rc::new(vec![]),
     inferred: None,
@@ -5671,7 +5698,7 @@ if has_err(ret.err.clone()) {
         }
 let s = ret.state.clone();
 let outputs = match ret.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => node_inferred_to_outputs(&rt),
+    Some(InferredNode::Resolved { node: rt, .. }) => node_inferred_to_outputs(&rt, state.source_indices.clone()),
     _ => Rc::new(vec![]),
 };
 let s = skip_newlines(tokens.clone(), s.clone());
@@ -6197,7 +6224,7 @@ pub fn last_child_or_self(n: Rc<Node>) -> Rc<Node> {
 }
 }
 
-pub fn node_to_name_str(n: &Rc<Node>) -> String {
+pub fn node_to_name_str(n: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
@@ -6211,23 +6238,24 @@ let opt_prefix = if is_optional.clone() {
             } else {
                 "".to_string()
             };
-let is_keyed_container = (is_container_type(effective_n.name.clone()) && ((effective_n.children.clone().len() as i64) == 2));
+let effective_name = authored_name_at(source_indices.clone(), &effective_n);
+let is_keyed_container = (is_container_type(effective_name.clone()) && ((effective_n.children.clone().len() as i64) == 2));
 if is_keyed_container {
                 match effective_n.children.clone().last().cloned() {
-    Some(ch) => v2_rt::concat(v2_rt::concat(v2_rt::concat(opt_prefix, effective_n.name.clone()), "_".to_string()), node_to_name_str(&ch)),
-    None => v2_rt::concat(opt_prefix, effective_n.name.clone()),
+    Some(ch) => v2_rt::concat(v2_rt::concat(v2_rt::concat(opt_prefix, effective_name.clone()), "_".to_string()), node_to_name_str(&ch, &source_indices)),
+    None => v2_rt::concat(opt_prefix, effective_name.clone()),
 }
             } else {
                 if (effective_n.type_annotation.clone() != None) {
                     match effective_n.children.clone().first().cloned() {
-    Some(ch) => v2_rt::concat(opt_prefix, node_to_name_str(&ch)),
-    None => v2_rt::concat(opt_prefix, effective_n.name.clone()),
+    Some(ch) => v2_rt::concat(opt_prefix, node_to_name_str(&ch, &source_indices)),
+    None => v2_rt::concat(opt_prefix, effective_name.clone()),
 }
                 } else {
-                    if is_container_type(effective_n.name.clone()) {
+                    if is_container_type(effective_name.clone()) {
                         match effective_n.children.clone().first().cloned() {
-    Some(ch) => v2_rt::concat(v2_rt::concat(opt_prefix, "List_".to_string()), node_to_name_str(&ch)),
-    None => v2_rt::concat(opt_prefix, effective_n.name.clone()),
+    Some(ch) => v2_rt::concat(v2_rt::concat(opt_prefix, "List_".to_string()), node_to_name_str(&ch, &source_indices)),
+    None => v2_rt::concat(opt_prefix, effective_name.clone()),
 }
                     } else {
                         if (effective_n.ident_span.clone() == None) {
@@ -6240,12 +6268,12 @@ if is_conj {
                                     if is_disj {
                                         v2_rt::concat(opt_prefix, "Union".to_string())
                                     } else {
-                                        v2_rt::concat(opt_prefix, effective_n.name.clone())
+                                        v2_rt::concat(opt_prefix, effective_name.clone())
                                     }
                                 }
 }
                         } else {
-                            v2_rt::concat(opt_prefix, effective_n.name.clone())
+                            v2_rt::concat(opt_prefix, effective_name.clone())
                         }
                     }
                 }
@@ -6313,7 +6341,7 @@ Rc::new(DescResult {
 }),
 };
 let code_str = status_expr_to_str(&code, state.source_indices.clone());
-let type_name = node_to_name_str(&r3.type_expr.clone());
+let type_name = node_to_name_str(&r3.type_expr.clone(), &state.source_indices.clone());
 let prop_name = v2_rt::concat("exit_".to_string(), code_str);
 let entry = make_field_init_node(&prop_name, make_named_expr_node(&type_name, Rc::new(ExprData::ExprVar {
     binding_kind: None,
@@ -6587,7 +6615,7 @@ if has_err(r3.err.clone()) {
 })
             }
 let status_str = status_expr_to_str(&status, state.source_indices.clone());
-let type_name = node_to_name_str(&r3.type_expr.clone());
+let type_name = node_to_name_str(&r3.type_expr.clone(), &state.source_indices.clone());
 let prop_name = v2_rt::concat("response_".to_string(), status_str);
 let entry = make_field_init_node(&prop_name, make_named_expr_node(&type_name, Rc::new(ExprData::ExprVar {
     binding_kind: None,
@@ -7161,7 +7189,7 @@ if has_err(ret.err.clone()) {
 })
                     }
 let outputs = match ret.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: rt, .. }) => node_inferred_to_outputs(&rt),
+    Some(InferredNode::Resolved { node: rt, .. }) => node_inferred_to_outputs(&rt, state.source_indices.clone()),
     _ => Rc::new(vec![]),
 };
 let cap = make_capability_node(name, Some(name_span), inputs, outputs, &start_span, &state.source_indices.clone());

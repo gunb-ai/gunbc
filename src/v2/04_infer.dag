@@ -350,12 +350,12 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
           }, f: (acc, titem) =>
             if titem.transport != none && titem.children |> count > 0 {
               let entries = titem.children |> map(c =>
-                OpEntry { name: c.name, outputs: inferred_to_outputs(inferred: c.inferred, span: c.span), params: c.params }
+                OpEntry { name: authored_name_at(source_indices: env.source_indices, node: c), outputs: inferred_to_outputs(inferred: c.inferred, span: c.span, source_indices: env.source_indices), params: c.params }
               )
-              let root = namespace_root_from_properties(properties: titem.properties, name: titem.name, source_indices: env.source_indices)
+              let root = namespace_root_from_properties(properties: titem.properties, name: authored_name_at(source_indices: env.source_indices, node: titem), source_indices: env.source_indices)
               InferScopeComponents {
                 func_sigs: acc.func_sigs,
-                svc_registry: map_insert(acc.svc_registry, titem.name, entries),
+                svc_registry: map_insert(acc.svc_registry, authored_name_at(source_indices: env.source_indices, node: titem), entries),
                 svc_locals: map_insert(acc.svc_locals, root, nominal_type_binding(name: root))
               }
             }
@@ -365,7 +365,7 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
               InferScopeComponents {
                 func_sigs: acc.func_sigs,
                 svc_registry: acc.svc_registry,
-                svc_locals: map_insert(acc.svc_locals, titem.name, TypeBinding { name: titem.name, resolved: resolved_type(n: titem), provenance: SubValueUnknown })
+                svc_locals: map_insert(acc.svc_locals, authored_name_at(source_indices: env.source_indices, node: titem), TypeBinding { name: authored_name_at(source_indices: env.source_indices, node: titem), resolved: resolved_type(n: titem), provenance: SubValueUnknown })
               }
             }
             else {
@@ -407,13 +407,13 @@ type FieldRecursionResult {
   element_type: String
 }
 
-fn classify_field_recursion(field_node: Node, parent_name: String, recursive_type_set: Map<String, Bool>) -> FieldRecursionResult? {
+fn classify_field_recursion(field_node: Node, parent_name: String, recursive_type_set: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> FieldRecursionResult? {
   // After field_to_child_node, type info is in inferred (not children).
   let type_expr = match field_node.inferred {
     Some { value: Resolved { node: rt } } => rt
     _ => field_node_type_expr(n: field_node)
   }
-  let field_type_name = type_expr.name
+  let field_type_name = authored_name_at(source_indices: source_indices, node: type_expr)
   if field_type_name == parent_name {
     // Self-referential: Direct or Optional based on cardinality
     match field_node.return_cardinality {
@@ -428,7 +428,7 @@ fn classify_field_recursion(field_node: Node, parent_name: String, recursive_typ
     }
     let value_index = if arity == 2 { 1 } else { 0 }
     let value_type = match type_expr.children |> skip(value_index) |> first {
-      Some { value: t } => t.name
+      Some { value: t } => authored_name_at(source_indices: source_indices, node: t)
       None => ""
     }
     let is_recursive_element = value_type == parent_name || set_has(m: recursive_type_set, key: value_type)
@@ -453,7 +453,7 @@ fn classify_field_recursion(field_node: Node, parent_name: String, recursive_typ
 // Collect InductiveFields for the fields of a single variant or record.
 fn collect_fields_inductive(fields: List<Node>, parent_name: String, variant_name: String, recursive_type_set: Map<String, Bool>, acc: Map<String, List<InductiveField>>, source_indices: Map<String, NewlineIndex>) -> Map<String, List<InductiveField>> {
   fields |> fold(init: acc, f: (field_acc, field_node) =>
-    match classify_field_recursion(field_node: field_node, parent_name: parent_name, recursive_type_set: recursive_type_set) {
+    match classify_field_recursion(field_node: field_node, parent_name: parent_name, recursive_type_set: recursive_type_set, source_indices: source_indices) {
       Some { value: result } =>
         put_inductive_field_cross(fields: field_acc, type_name: parent_name, variant_name: variant_name, field_name: authored_name_at(source_indices: source_indices, node: field_node), shape: result.shape, element_type: result.element_type)
       None => field_acc
@@ -570,7 +570,7 @@ fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
           let is_coproduct = parent.connective == Disj
           if is_coproduct {
             if has_child_named(n: parent, name: name, source_indices: scope.type_env.source_indices) {
-              Some { value: binding.resolved.name }
+              Some { value: authored_name_at(source_indices: scope.type_env.source_indices, node: binding.resolved) }
             } else { none }
           } else { none }
         None => none
@@ -790,7 +790,7 @@ fn derive_field_provenance(scope: InferScope, scrutinee_provenance: SubValueRela
     SubValueUnknown => SubValueUnknown
     _ =>
       let scrut_type_name = match scrutinee_subject {
-        PatternResolved { node: n } => resolved_type(n: n).name
+        PatternResolved { node: n } => authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_type(n: n))
         _ => ""
       }
       if scrut_type_name == "" { SubValueUnknown }
@@ -879,9 +879,9 @@ fn derive_element_provenance(coll_expr: Node, elem_type: Node, scope: InferScope
   match coll_prov {
     SubValueUnknown => SubValueUnknown
     _ =>
-      if elem_type.name == "" { SubValueUnknown }
+      if authored_name_at(source_indices: scope.type_env.source_indices, node: elem_type) == "" { SubValueUnknown }
       else {
-        let ind_fields = inductive_fields_for(env: scope.type_env, type_name: elem_type.name)
+        let ind_fields = inductive_fields_for(env: scope.type_env, type_name: authored_name_at(source_indices: scope.type_env.source_indices, node: elem_type))
         let list_field = ind_fields |> filter(f => match f.shape { ListRecursion => true, _ => false }) |> first
         match list_field {
           Some { value: f } => IteratedSubValue { field: f }
@@ -1126,7 +1126,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               diagnostics: base_diags
             }
           } else {
-            match check_service_field_access_node(base_type: base_rt, field: field_name, service_registry: scope.service_registry) {
+            match check_service_field_access_node(base_type: base_rt, field: field_name, service_registry: scope.service_registry, source_indices: scope.type_env.source_indices) {
               Some { value: svc_type } =>
                 let fa_texpr = make_named_expr_node(
                   name: field_name,
@@ -1141,7 +1141,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                   diagnostics: base_diags
                 }
               None =>
-                let error_message = concat("no field '", field_name, "' on type '", resolved_base.name, "'")
+                let error_message = concat("no field '", field_name, "' on type '", authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_base), "'")
                 let fa_texpr = make_expr_error_node(kind: SemanticExprError, message: error_message, span: span)
                 InferResult {
                   typed: fa_texpr,
@@ -1186,7 +1186,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           Some { value: first_arg } =>
             let first_result = infer_expr(texpr: arg_value(n: first_arg), scope: scope, expected: none)
             let first_type = resolved_type(n: first_result.typed)
-            let elem_type = for_each_element_type_node(n: first_type)
+            let elem_type = for_each_element_type_node(n: first_type, source_indices: scope.type_env.source_indices)
             let call_elem_provenance = derive_element_provenance(coll_expr: first_result.typed, elem_type: elem_type, scope: scope)
             let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, scope: scope)
             concat(
@@ -1274,7 +1274,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                     if template_return_has_variables(template: t) || !is_fully_resolved(n: base_result_type, source_indices: scope.type_env.source_indices) {
                       let call_arg_types = remaining |> map(a => resolved_type(n: arg_value(n: a)))
                       let fold_overrides = if call_fold_info != none { fold_override_map(key: "FoldAccumulator", value: refined_call_fold_acc_type) } else { empty_override_map() }
-                      resolve_type_variables_from_template(template: t, arg_types: call_arg_types, receiver_type: first_arg_type, overrides: fold_overrides)
+                      resolve_type_variables_from_template(template: t, arg_types: call_arg_types, receiver_type: first_arg_type, overrides: fold_overrides, source_indices: scope.type_env.source_indices)
                     } else { base_result_type }
                   None => base_result_type
                 }
@@ -1471,7 +1471,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       // Type lambda args from receiver's element type instead of type variables.
       // For fold: also infer init arg to type accumulator param.
       let recv_rt = resolved_type(n: recv_typed)
-      let recv_elem_type = for_each_element_type_node(n: recv_rt)
+      let recv_elem_type = for_each_element_type_node(n: recv_rt, source_indices: scope.type_env.source_indices)
       // Use method name string directly for dispatch.
       let mc_method_name = Some { value: method_name }
       let fold_info = extract_fold_init_info(method_name: mc_method_name, method_args: mc_args, min_args: 2, scope: scope, expected: expected)
@@ -1526,7 +1526,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                 if template_return_has_variables(template: t) || !is_fully_resolved(n: base_result_type, source_indices: scope.type_env.source_indices) {
                   let mc_arg_types = typed_mc_args |> map(a => resolved_type(n: arg_value(n: a)))
                   let mc_fold_overrides = if fold_info != none { fold_override_map(key: "FoldAccumulator", value: refined_fold_acc_type) } else { empty_override_map() }
-                  resolve_type_variables_from_template(template: t, arg_types: mc_arg_types, receiver_type: recv_rt, overrides: mc_fold_overrides)
+                  resolve_type_variables_from_template(template: t, arg_types: mc_arg_types, receiver_type: recv_rt, overrides: mc_fold_overrides, source_indices: scope.type_env.source_indices)
                 } else { base_result_type }
               None => base_result_type
             }
@@ -1754,7 +1754,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let is_tail_return = match body_expr {
         Some { value: bd } =>
           match bd.expr_data {
-            ExprVar { binding_kind: _ } => bd.name == let_name
+            ExprVar { binding_kind: _ } => authored_name_at(source_indices: scope.type_env.source_indices, node: bd) == let_name
             _ => false
           }
         None => false
@@ -2036,7 +2036,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let coll_result = infer_expr(texpr: coll, scope: scope, expected: none)
       let coll_typed = coll_result.typed
       let coll_diags = coll_result.diagnostics
-      let elem_type_node = for_each_element_type_node(n: resolved_type(n: coll_typed))
+      let elem_type_node = for_each_element_type_node(n: resolved_type(n: coll_typed), source_indices: scope.type_env.source_indices)
       let elem_provenance = derive_element_provenance(coll_expr: coll_typed, elem_type: elem_type_node, scope: scope)
       let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type_node, provenance: elem_provenance)
       let body_result = infer_expr(texpr: body_expr, scope: body_scope, expected: none)
@@ -2489,6 +2489,48 @@ fn method_callback_element_position(semantics: MethodSemantics?) -> Int? {
   }
 }
 
+// Keep fold bodies structurally linear so ownership can move accumulators
+// without adding branch-sensitive proof logic.
+fn maybe_insert_composed_field_relation(acc: Map<String, SubValueRelation>, fname: String, composed: SubValueRelation?) -> Map<String, SubValueRelation> {
+  match composed {
+    Some { value: rel } =>
+      match rel {
+        SubValueUnknown => acc
+        _ => map_insert(acc, fname, rel)
+      }
+    None => acc
+  }
+}
+
+fn maybe_insert_output_field_relation(acc: Map<String, SubValueRelation>, idx: Int, fname: String, sig: ResolvedFuncSig, val: Node, ctx: DescentContext) -> Map<String, SubValueRelation> {
+  let composed = match sig.output_provenance |> skip(idx) |> first {
+    Some { value: param_map } => classify_call_via_provenance(call: val, param_map: param_map, ctx: ctx)
+    None => none
+  }
+  maybe_insert_composed_field_relation(acc: acc, fname: fname, composed: composed)
+}
+
+fn maybe_insert_match_field_relation(fp_acc: Map<String, SubValueRelation>, pname: String, field_label: String, vname: String, scrut_rel: SubValueRelation?, param_types: Map<String, String>, type_env: TypeEnv) -> Map<String, SubValueRelation> {
+  match scrut_rel {
+    Some { value: rel } =>
+      let lookup_type = match rel {
+        PreservedValue => match map_get(param_types, pname) { Some { value: t } => t  None => "" }
+        StrictSubValue { field: f, factor: _ } => f.element_type
+        IteratedSubValue { field: f } => f.element_type
+        _ => ""
+      }
+      if lookup_type != "" {
+        let ind_fields = inductive_fields_for(env: type_env, type_name: lookup_type)
+        let matching = ind_fields |> filter(f => f.field_name == field_label && (f.variant_name == vname || f.variant_name == "")) |> first
+        match matching {
+          Some { value: ind_field } => map_insert(fp_acc, pname, compose_sub_value(base: rel, field: ind_field))
+          None => fp_acc
+        }
+      } else { fp_acc }
+    None => fp_acc
+  }
+}
+
 // Build per-field provenance for a let-binding whose value is a call with
 // multi-field output_provenance. Maps field names from the return type to
 // composed SubValueRelation. Returns ctx.per_field_vars with the new entry
@@ -2506,16 +2548,7 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
               let idx = pair.first
               let field_node = pair.second
               let fname = authored_name_at(source_indices: ctx.type_env.source_indices, node: field_node)
-              match sig.output_provenance |> skip(idx) |> first {
-                Some { value: param_map } =>
-                  let composed = classify_call_via_provenance(call: val, param_map: param_map, ctx: ctx)
-                  match composed {
-                    Some { value: rel } =>
-                      match rel { SubValueUnknown => acc  _ => map_insert(acc, fname, rel) }
-                    None => acc
-                  }
-                None => acc
-              }
+              maybe_insert_output_field_relation(acc: acc, idx: idx, fname: fname, sig: sig, val: val, ctx: ctx)
             )
             if map_keys(field_map) |> count > 0 {
               map_insert(ctx.per_field_vars, binding_name, field_map)
@@ -2533,16 +2566,7 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
               let idx = pair.first
               let field_node = pair.second
               let fname = authored_name_at(source_indices: ctx.type_env.source_indices, node: field_node)
-              match sig.output_provenance |> skip(idx) |> first {
-                Some { value: param_map } =>
-                  let composed = classify_call_via_provenance(call: val, param_map: param_map, ctx: ctx)
-                  match composed {
-                    Some { value: rel } =>
-                      match rel { SubValueUnknown => acc  _ => map_insert(acc, fname, rel) }
-                    None => acc
-                  }
-                None => acc
-              }
+              maybe_insert_output_field_relation(acc: acc, idx: idx, fname: fname, sig: sig, val: val, ctx: ctx)
             )
             if map_keys(field_map) |> count > 0 {
               map_insert(ctx.per_field_vars, binding_name, field_map)
@@ -2631,7 +2655,7 @@ fn classify_binding_provenance(val: Node, scope: InferScope) -> SubValueRelation
           match map_get(scope.locals, bname) {
             Some { value: binding } =>
               // Compose provenance via compose_sub_value (std/induction.dag authority).
-              let fields = inductive_fields_for(env: scope.type_env, type_name: binding.resolved.name)
+              let fields = inductive_fields_for(env: scope.type_env, type_name: authored_name_at(source_indices: scope.type_env.source_indices, node: binding.resolved))
               let matching = fields |> filter(f => f.field_name == field) |> first
               match matching {
                 Some { value: ind_field } => compose_sub_value(base: binding.provenance, field: ind_field)
@@ -3148,7 +3172,7 @@ fn read_arg_provenance(arg_expr: Node, param_name: String, ctx: DescentContext) 
                   classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
                 _ =>
                   // Compose provenance via compose_sub_value (std/induction.dag authority).
-                  let fields = inductive_fields_for(env: ctx.type_env, type_name: binding.resolved.name)
+                  let fields = inductive_fields_for(env: ctx.type_env, type_name: authored_name_at(source_indices: ctx.type_env.source_indices, node: binding.resolved))
                   let matching = fields |> filter(f => f.field_name == field) |> first
                   match matching {
                     Some { value: ind_field } => compose_sub_value(base: binding.provenance, field: ind_field)
@@ -3222,6 +3246,23 @@ fn build_call_evidence(call_node: Node, ctx: DescentContext) -> List<SubValueRel
 // Walk a typed body and annotate self-call ExprCall nodes with descent_evidence.
 // Extends sub_value_vars when entering match arms (variant field bindings)
 // and let-bindings (aliases of known sub-values).
+fn descent_source_type(found: String, arg_node: Node, ctx: DescentContext) -> String {
+  if found != "" { found }
+  else {
+    match arg_value(n: arg_node).expr_data {
+      ExprLambda { semantics: _ } => found
+      _ =>
+        let arg_val = arg_value(n: arg_node)
+        match arg_val.expr_data {
+          ExprVar { binding_kind: _ } =>
+            let vname = expr_var_name_at(texpr: arg_val, source_indices: ctx.type_env.source_indices)
+            match map_get(ctx.param_names, vname) { Some { value: t } => t  None => "" }
+          _ => ""
+        }
+    }
+  }
+}
+
 fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
   match body.expr_data {
     ExprCall { call_semantics: cs, descent_evidence: _ } =>
@@ -3240,20 +3281,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       // The lambda param `child` receives sub-parts of `texpr`.
       // Register child as PreservedValue with texpr's type so inner calls see it.
       let source_type = body.children |> fold(init: "", f: (found, arg_node) =>
-        if found != "" { found }
-        else {
-          match arg_value(n: arg_node).expr_data {
-            ExprLambda { semantics: _ } => found
-            _ =>
-              let arg_val = arg_value(n: arg_node)
-              match arg_val.expr_data {
-                ExprVar { binding_kind: _ } =>
-                  let vname = expr_var_name_at(texpr: arg_val, source_indices: ctx.type_env.source_indices)
-                  match map_get(ctx.param_names, vname) { Some { value: t } => t  None => "" }
-                _ => ""
-              }
-          }
-        }
+        descent_source_type(found: found, arg_node: arg_node, ctx: ctx)
       )
       let annotated_children = body.children |> map(child =>
         let arg_val = arg_value(n: child)
@@ -3916,24 +3944,7 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
               }
               if bind_name != "" && field_label != "" {
                 let field_prov = fold(map_keys(scrut_prov), init: empty_prov_map(), f: (fp_acc, pname) =>
-                  match map_get(scrut_prov, pname) {
-                    Some { value: scrut_rel } =>
-                      let lookup_type = match scrut_rel {
-                        PreservedValue => match map_get(param_types, pname) { Some { value: t } => t  None => "" }
-                        StrictSubValue { field: f, factor: _ } => f.element_type
-                        IteratedSubValue { field: f } => f.element_type
-                        _ => ""
-                      }
-                      if lookup_type != "" {
-                        let ind_fields = inductive_fields_for(env: type_env, type_name: lookup_type)
-                        let matching = ind_fields |> filter(f => f.field_name == field_label && (f.variant_name == vname || f.variant_name == "")) |> first
-                        match matching {
-                          Some { value: ind_field } => map_insert(fp_acc, pname, compose_sub_value(base: scrut_rel, field: ind_field))
-                          None => fp_acc
-                        }
-                      } else { fp_acc }
-                    None => fp_acc
-                  }
+                  maybe_insert_match_field_relation(fp_acc: fp_acc, pname: pname, field_label: field_label, vname: vname, scrut_rel: map_get(scrut_prov, pname), param_types: param_types, type_env: type_env)
                 )
                 map_insert(acc, bind_name, field_prov)
               } else { acc }
@@ -4231,7 +4242,7 @@ fn compose_output_relations(arg_rel: SubValueRelation, callee_rel: SubValueRelat
 fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv, type_env: TypeEnv, locals: Map<String, TypeBinding>) -> ResolvedFuncEnv {
   let updated_sigs = fold(typed_items, init: func_env.signatures, f: (acc, item) =>
     if item.params |> count > 0 {
-      let fn_name = item.name
+      let fn_name = authored_name_at(source_indices: type_env.source_indices, node: item)
       if is_child_accessor_in_model(name: fn_name) || is_tree_size_reducing(func_name: fn_name) {
         match item.params |> first {
           Some { value: first_param } =>
@@ -4438,9 +4449,9 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let body_diags = body_result.diagnostics
     let inferred_ret = if item.inferred != none { item.inferred } else { body_typed.inferred }
     // CX-L2: annotate self-call sites with descent evidence
-    let is_recursive = expr_has_self_call(texpr: body_typed, fn_name: item.name, source_indices: scope.type_env.source_indices)
+    let is_recursive = expr_has_self_call(texpr: body_typed, fn_name: authored_name_at(source_indices: scope.type_env.source_indices, node: item), source_indices: scope.type_env.source_indices)
     let annotated_body = if is_recursive {
-      annotate_descent_evidence(body: body_typed, fn_name: item.name, params: item.params, type_env: scope.type_env, scope_locals: scope.locals, func_sigs: scope.func_env.signatures)
+      annotate_descent_evidence(body: body_typed, fn_name: authored_name_at(source_indices: scope.type_env.source_indices, node: item), params: item.params, type_env: scope.type_env, scope_locals: scope.locals, func_sigs: scope.func_env.signatures)
     } else { body_typed }
     TypedItemResult {
       item: Node {
@@ -4449,7 +4460,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         connective: NoConnective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
         is_self_recursive: is_recursive,
-        has_non_tail_self_call: expr_has_non_tail_self_call(texpr: body_typed, fn_name: item.name, in_tail: true, source_indices: scope.type_env.source_indices),
+        has_non_tail_self_call: expr_has_non_tail_self_call(texpr: body_typed, fn_name: authored_name_at(source_indices: scope.type_env.source_indices, node: item), in_tail: true, source_indices: scope.type_env.source_indices),
         match_pattern: none, expr_data: NoExprData
       },
       diagnostics: concat(transport_diags, props_diags, body_diags)
@@ -4640,7 +4651,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let imports_std_types = module.resolved_imports |> any(imp => imp.module_path == "std.types")
   // Bootstrap bridge: seed std.types into modules that did not import it
   // explicitly so declaration-driven lookup can run during the transition.
-  let std_types_parent_env = if module.module.name != "std.types" && imports_std_types == false {
+  let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
+  let std_types_parent_env = if module_name_str != "std.types" && imports_std_types == false {
     match map_get(parent_index, "std.types") {
       Some { value: typed_std } => [typed_std.type_env]
       None => []
@@ -4675,13 +4687,13 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
   let import_inductive_fields = fold(parent_envs, init: empty_map(), f: (acc, env) => merge_inductive_fields(left: acc, right: env.inductive_fields))
   let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set, inductive_fields: import_inductive_fields, source_indices: source_indices, intern_table: intern_table }
-  let import_diags = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: _ } => [] None => [make_error_node(diagnostic: InternalError { message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module.module.name, "'"), span: imp.target_module.value.span }, module_name: module.module.name)] })
+  let import_diags = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: _ } => [] None => [make_error_node(diagnostic: InternalError { message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module_name_str, "'"), span: imp.target_module.value.span }, module_name: module_name_str)] })
 
   // Collect local type definitions from module items.
   // Nodes with capabilities are registered as nominal types so they can be
   // referenced in `uses` clauses (e.g., `uses net: Network`).
   let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
-    let item_ident = intern_find_or_empty(table: intern_table, s: item.name)
+    let item_ident = intern_find_or_empty(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item))
     let has_structure = item.connective != NoConnective
     if has_structure {
       let type_node = Node {
@@ -4691,7 +4703,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
         uses: [], body: none, transport: none, properties: [],
         type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
-      map_insert(acc, item_ident, TypeBinding { name: item.name, resolved: type_node, provenance: SubValueUnknown })
+      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown })
     } else if item.inferred != none && item.params |> count == 0 && item.body == none {
       // Type alias: connective is none, but inferred references the aliased type
       // For aliases, create a leaf node referencing the aliased type
@@ -4702,10 +4714,10 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
         uses: [], body: none, transport: none, properties: [],
         type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
-      map_insert(acc, item_ident, TypeBinding { name: item.name, resolved: alias_node, provenance: SubValueUnknown })
+      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown })
     } else if item.transport == none && item.children |> count > 0 {
-      let ref_node = nominal_ref_node(name: item.name, span: item.span, ident_span: item.ident_span)
-      map_insert(acc, item_ident, TypeBinding { name: item.name, resolved: ref_node, provenance: SubValueUnknown })
+      let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
+      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown })
     } else if item.params |> count > 0 && item.connective == NoConnective && item.body == none && item.transport == none {
       // Parameterized type declaration (e.g., type List<element> = FreeMonoid<element>).
       // Register as a nominal type with params so generics can find the declaration.
@@ -4718,11 +4730,11 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
         uses: [], body: none, transport: none, properties: [],
         type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
-      map_insert(acc, item_ident, TypeBinding { name: item.name, resolved: bare_node, provenance: SubValueUnknown })
+      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: bare_node, provenance: SubValueUnknown })
     } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
       // Resource declaration: has properties (kind, mode) but no children/connective.
       // Register as a nominal type so it can be referenced in `uses` clauses.
-      map_insert(acc, item_ident, nominal_type_binding(name: item.name))
+      map_insert(acc, item_ident, nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item)))
     } else {
       acc
     }
@@ -4734,10 +4746,10 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // Only register params from items already recognized as type bindings —
   // prevents function params from leaking into the type namespace.
   let param_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
-    let is_type_decl = match map_get(local_bindings, intern_find_or_empty(table: intern_table, s: item.name)) { Some { value: _ } => true  None => false }
+    let is_type_decl = match map_get(local_bindings, intern_find_or_empty(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item))) { Some { value: _ } => true  None => false }
     if item.params |> count > 0 && is_type_decl {
       let result = fold(item.params, init: acc, f: (pacc, p) =>
-        map_insert(pacc, intern_find_or_empty(table: intern_table, s: p.name), nominal_type_binding(name: p.name))
+        map_insert(pacc, intern_find_or_empty(table: intern_table, s: authored_name_at(source_indices: source_indices, node: p)), nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: p)))
       )
       result
     } else { acc }
@@ -4776,7 +4788,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table }
   // Resolve only LOCAL type bindings. Imported bindings are already resolved.
   // (local_name_set computed above, before param_bindings merge.)
-  let resolved = resolve_env_bindings(env: unresolved_env, module_name: module.module.name, local_names: local_name_set, deps_map: all_deps_map)
+  let resolved = resolve_env_bindings(env: unresolved_env, module_name: module_name_str, local_names: local_name_set, deps_map: all_deps_map)
   let resolved_env_out = resolved.env
   let resolved_diags = resolved.diagnostics
   let final_env = TypeEnv {
@@ -4810,7 +4822,8 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table }
   let imports_std_types = module.resolved_imports |> any(imp => imp.module_path == "std.types")
   // Mirror the same bootstrap bridge in the unresolved path.
-  let std_types_parent_env = if module.module.name != "std.types" && imports_std_types == false {
+  let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
+  let std_types_parent_env = if module_name_str != "std.types" && imports_std_types == false {
     match map_get(parent_index, "std.types") {
       Some { value: typed_std } => [typed_std.type_env]
       None => []
@@ -4844,19 +4857,19 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let import_inductive_fields = fold(parent_envs, init: empty_map(), f: (acc, env) => merge_inductive_fields(left: acc, right: env.inductive_fields))
   let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set, inductive_fields: import_inductive_fields, source_indices: source_indices, intern_table: intern_table }
   let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
-    let item_ident = intern_find_or_empty(table: intern_table, s: item.name)
+    let item_ident = intern_find_or_empty(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item))
     let has_structure = item.connective != NoConnective
     if has_structure {
       let type_node = Node { name: item.name, span: item.span, ident_span: item.ident_span, children: item.children, connective: item.connective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-      map_insert(acc, item_ident, TypeBinding { name: item.name, resolved: type_node, provenance: SubValueUnknown })
+      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown })
     } else if item.inferred != none && item.params |> count == 0 && item.body == none {
       let alias_node = Node { name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-      map_insert(acc, item_ident, TypeBinding { name: item.name, resolved: alias_node, provenance: SubValueUnknown })
+      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown })
     } else if item.transport == none && item.children |> count > 0 {
-      let ref_node = nominal_ref_node(name: item.name, span: item.span, ident_span: item.ident_span)
-      map_insert(acc, item_ident, TypeBinding { name: item.name, resolved: ref_node, provenance: SubValueUnknown })
+      let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
+      map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown })
     } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
-      map_insert(acc, item_ident, nominal_type_binding(name: item.name))
+      map_insert(acc, item_ident, nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item)))
     } else {
       acc
     }
@@ -4890,10 +4903,11 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
 fn build_item_info(item: Node, source_indices: Map<String, NewlineIndex>, module_name: String) -> ItemInfo {
   let kind = item_kind(item: item)
   let res_names = item.uses |> map(u => resource_use_name_at(n: u, source_indices: source_indices))
+  let item_name_str = authored_name_at(source_indices: source_indices, node: item)
   match kind {
     FuncItem =>
       ItemInfo {
-        name: item.name,
+        name: item_name_str,
         module_name: module_name,
         kind: kind,
         service_names: if item.body == none { [] } else { collect_typed_service_calls(texpr: item.body.value, source_indices: source_indices) },
@@ -4904,18 +4918,18 @@ fn build_item_info(item: Node, source_indices: Map<String, NewlineIndex>, module
       }
     FnItem =>
       ItemInfo {
-        name: item.name,
+        name: item_name_str,
         module_name: module_name,
         kind: kind,
         service_names: if item.body == none { [] } else { collect_typed_service_calls(texpr: item.body.value, source_indices: source_indices) },
         resource_names: res_names,
         params: item.params,
-        is_self_recursive: if item.body == none { false } else { expr_has_self_call(texpr: item.body.value, fn_name: item.name, source_indices: source_indices) },
-        has_non_tail_self_call: if item.body == none { false } else { expr_has_non_tail_self_call(texpr: item.body.value, fn_name: item.name, in_tail: true, source_indices: source_indices) }
+        is_self_recursive: if item.body == none { false } else { expr_has_self_call(texpr: item.body.value, fn_name: item_name_str, source_indices: source_indices) },
+        has_non_tail_self_call: if item.body == none { false } else { expr_has_non_tail_self_call(texpr: item.body.value, fn_name: item_name_str, in_tail: true, source_indices: source_indices) }
       }
     _ =>
       ItemInfo {
-        name: item.name,
+        name: item_name_str,
         module_name: module_name,
         kind: kind,
         service_names: [],
@@ -4941,7 +4955,7 @@ fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContributi
       none
     }
     Some { value: DeclaredFuncSig {
-      name: ritem.name,
+      name: authored_name_at(source_indices: env.source_indices, node: ritem),
       params: ritem.params,
       inferred: declared_rt,
       is_async: ritem.uses |> count > 0,
@@ -4951,12 +4965,12 @@ fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContributi
     none
   }
   let svc_entries = if ritem.transport != none && ritem.children |> count > 0 {
-    ritem.children |> map(c => service_op_entry(child: c))
+    ritem.children |> map(c => service_op_entry(child: c, source_indices: env.source_indices))
   } else {
     []
   }
   let svc_local = if ritem.transport != none && ritem.children |> count > 0 {
-    let root = namespace_root_from_properties(properties: ritem.properties, name: ritem.name, source_indices: env.source_indices)
+    let root = namespace_root_from_properties(properties: ritem.properties, name: authored_name_at(source_indices: env.source_indices, node: ritem), source_indices: env.source_indices)
     Some { value: nominal_type_binding(name: root) }
   } else {
     none
@@ -4977,7 +4991,8 @@ fn fold_module_contributions(remaining: List<ItemContribution>,
     svc_registry: Map<String, List<OpEntry>>,
     svc_locals: Map<String, TypeBinding>,
     item_registry: Map<String, ItemInfo>,
-    diag_chunks: List<List<ErrorNode>>) -> LocalContributionState {
+    diag_chunks: List<List<ErrorNode>>,
+    source_indices: Map<String, NewlineIndex>) -> LocalContributionState {
   match remaining |> first {
     None =>
       LocalContributionState {
@@ -4994,7 +5009,7 @@ fn fold_module_contributions(remaining: List<ItemContribution>,
         None => func_sigs
       }
       let next_svc_registry = if contribution.svc_entries |> count > 0 {
-        map_insert(svc_registry, contribution.resolved_item.name, contribution.svc_entries)
+        map_insert(svc_registry, authored_name_at(source_indices: source_indices, node: contribution.resolved_item), contribution.svc_entries)
       } else {
         svc_registry
       }
@@ -5009,7 +5024,8 @@ fn fold_module_contributions(remaining: List<ItemContribution>,
         svc_registry: next_svc_registry,
         svc_locals: next_svc_locals,
         item_registry: map_insert(item_registry, contribution.item_info.name, contribution.item_info),
-        diag_chunks: list_push(diag_chunks, contribution.resolve_diagnostics)
+        diag_chunks: list_push(diag_chunks, contribution.resolve_diagnostics),
+        source_indices: source_indices
       )
   }
 }
@@ -5026,7 +5042,8 @@ fn build_module_context(contributions: List<ItemContribution>,
     svc_registry: empty_map(),
     svc_locals: empty_map(),
     item_registry: empty_map(),
-    diag_chunks: []
+    diag_chunks: [],
+    source_indices: env.source_indices
   )
   // C2.1: variant constructor locals carry the structural parent enum node,
   // not a bare nominal leaf. This means .inferred on variant expressions will be
@@ -5043,27 +5060,27 @@ fn build_module_context(contributions: List<ItemContribution>,
   let variant_fold = fold(env.bindings |> map_values, init: VariantFoldState { locals: empty_map(), collision_errors: [] }, f: (acc, binding) =>
     let is_coproduct = binding.resolved.connective == Disj
     if is_coproduct {
-      let curr_is_imported = map_get(imported_enum_names, binding.resolved.name) != none
+      let curr_is_imported = map_get(imported_enum_names, authored_name_at(source_indices: env.source_indices, node: binding.resolved)) != none
       fold(binding.resolved.children, init: acc, f: (vacc, child) =>
-        match map_get(vacc.locals, child.name) {
+        match map_get(vacc.locals, authored_name_at(source_indices: env.source_indices, node: child)) {
           Some { value: prev } =>
-            let prev_is_imported = map_get(imported_enum_names, prev.resolved.name) != none
+            let prev_is_imported = map_get(imported_enum_names, authored_name_at(source_indices: env.source_indices, node: prev.resolved)) != none
             if curr_is_imported && prev_is_imported {
               // Both enums explicitly imported — ambiguous. Remove the
               // binding so later phases cannot consume a fabricated choice.
               VariantFoldState {
                 locals: vacc.locals,
-                collision_errors: list_push(vacc.collision_errors, make_error_node(diagnostic: VariantCollision { variant: child.name, enum1: prev.resolved.name, enum2: binding.resolved.name, span: no_span() }, module_name: module_name))
+                collision_errors: list_push(vacc.collision_errors, make_error_node(diagnostic: VariantCollision { variant: authored_name_at(source_indices: env.source_indices, node: child), enum1: authored_name_at(source_indices: env.source_indices, node: prev.resolved), enum2: authored_name_at(source_indices: env.source_indices, node: binding.resolved), span: no_span() }, module_name: module_name))
               }
             } else if curr_is_imported {
               VariantFoldState {
-                locals: map_insert(vacc.locals, child.name, TypeBinding { name: child.name, resolved: binding.resolved, provenance: SubValueUnknown }),
+                locals: map_insert(vacc.locals, authored_name_at(source_indices: env.source_indices, node: child), TypeBinding { name: authored_name_at(source_indices: env.source_indices, node: child), resolved: binding.resolved, provenance: SubValueUnknown }),
                 collision_errors: vacc.collision_errors
               }
             } else { vacc }
           None =>
             VariantFoldState {
-              locals: map_insert(vacc.locals, child.name, TypeBinding { name: child.name, resolved: binding.resolved, provenance: SubValueUnknown }),
+              locals: map_insert(vacc.locals, authored_name_at(source_indices: env.source_indices, node: child), TypeBinding { name: authored_name_at(source_indices: env.source_indices, node: child), resolved: binding.resolved, provenance: SubValueUnknown }),
               collision_errors: vacc.collision_errors
             }
         }
@@ -5072,7 +5089,7 @@ fn build_module_context(contributions: List<ItemContribution>,
   )
   let imported_variant_locals = variant_fold.locals
   let variant_collision_errors = variant_fold.collision_errors
-  let env_variant_locals = variant_locals_from_items(items: local.resolved_items, init: imported_variant_locals)
+  let env_variant_locals = variant_locals_from_items(items: local.resolved_items, init: imported_variant_locals, source_indices: env.source_indices)
   let merged_scope = merge_scope_from_imports(
     remaining: resolved_imports,
     parent_index: parent_index,
@@ -5140,22 +5157,23 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     }
   }
 
+  let resolved_module_name = authored_name_at(source_indices: source_indices, node: resolved.module)
   let contributions = map(module_items(n: resolved.module), item =>
-    analyze_item(item: item, env: env, module_name: resolved.module.name)
+    analyze_item(item: item, env: env, module_name: resolved_module_name)
   )
   let ctx = build_module_context(
     contributions: contributions,
     parent_index: parent_index,
     resolved_imports: resolved.resolved_imports,
     env: env,
-    module_name: resolved.module.name
+    module_name: resolved_module_name
   )
 
   // Add data declarations to scope as local variables.
   // Data items: body != none, params == [], no inferred (have type_annotation instead).
   let data_locals = fold(ctx.resolved_items, init: ctx.locals, f: (acc, item) =>
     if item.body != none && item.params |> count == 0 && item.inferred == none && item.type_annotation != none {
-      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: item.type_annotation.value, provenance: SubValueUnknown })
+      map_insert(acc, authored_name_at(source_indices: source_indices, node: item), TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: item.type_annotation.value, provenance: SubValueUnknown })
     } else {
       acc
     }
@@ -5165,7 +5183,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     func_env: ctx.func_env,
     locals: data_locals,
     match_bound_names: empty_map(),
-    module_name: resolved.module.name,
+    module_name: resolved_module_name,
     service_registry: ctx.svc_registry,
     item_registry: ctx.item_registry,
     lambda_param_provenance: empty_map()
@@ -5192,7 +5210,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         inferred: item.inferred, return_cardinality: item.return_cardinality,
         uses: item.uses,
         body: Some { value: annotate_descent_evidence(
-          body: item.body.value, fn_name: item.name, params: item.params,
+          body: item.body.value, fn_name: authored_name_at(source_indices: source_indices, node: item), params: item.params,
           type_env: env, scope_locals: data_locals,
           func_sigs: updated_func_env.signatures
         ) },
@@ -5204,7 +5222,11 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       }
     } else { item }
   )
-  let typed_module = module_node(name: resolved.module.name, imports: module_imports(n: resolved.module), items: ctx.resolved_items, span: resolved.module.span)
+  // Preserve the parsed module node's ident_span (points at the dotted
+  // module name, not the whole module) so authored_name_at returns the
+  // module name instead of the full source text.
+  let typed_base = module_node(name: resolved_module_name, imports: module_imports(n: resolved.module), items: ctx.resolved_items, span: resolved.module.span)
+  let typed_module = with(typed_base, { ident_span: resolved.module.ident_span })
 
   TypecheckModuleResult {
     typed: TypedModule {
@@ -5345,17 +5367,18 @@ fn topo_resolve_types(
 // by looking up already-typed modules in the completed list.
 // =========================================================================
 
-fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, TypedModule>) -> ParentModulesResult {
+fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> ParentModulesResult {
   let modules = flat_map(resolved.resolved_imports, imp =>
     match map_get(module_index, imp.module_path) {
       Some { value: typed } => [typed]
       None => []
     }
   )
+  let resolved_mod_name = authored_name_at(source_indices: source_indices, node: resolved.module)
   let diagnostics = flat_map(resolved.resolved_imports, imp =>
     match map_get(module_index, imp.module_path) {
       Some { value: _ } => []
-      None => [make_error_node(diagnostic: InternalError { message: concat("missing parent environment for imported module '", imp.module_path, "' while ordering '", resolved.module.name, "'"), span: imp.target_module.value.span }, module_name: resolved.module.name)]
+      None => [make_error_node(diagnostic: InternalError { message: concat("missing parent environment for imported module '", imp.module_path, "' while ordering '", resolved_mod_name, "'"), span: imp.target_module.value.span }, module_name: resolved_mod_name)]
     }
   )
   ParentModulesResult { modules: modules, diagnostics: diagnostics }
@@ -5365,8 +5388,9 @@ fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, Typed
 fn build_fielded_variants(modules: List<TypedModule>, type_summaries: Map<String, TypeSummary>) -> Map<String, Bool> {
   let result = modules |> fold(init: empty_map(), f: (acc, m) =>
     let items = m.items
+    let si = m.type_env.source_indices
     items |> fold(init: acc, f: (inner, item) =>
-      let is_enum = match map_get(type_summaries, item.name) {
+      let is_enum = match map_get(type_summaries, authored_name_at(source_indices: si, node: item)) {
         Some { value: summary } => match summary.repr {
           EnumRepr { unit_only: _ } => true
           _ => false
@@ -5374,11 +5398,11 @@ fn build_fielded_variants(modules: List<TypedModule>, type_summaries: Map<String
         None => false
       }
       if is_enum {
-        let enum_name = item.name
+        let enum_name = authored_name_at(source_indices: si, node: item)
         let variants = item.children
         variants |> fold(init: inner, f: (vacc, variant) =>
           let has_fields = variant.children |> count > 0
-          if has_fields { map_insert(vacc, concat(enum_name, "::", variant.name), true) } else { vacc }
+          if has_fields { map_insert(vacc, concat(enum_name, "::", authored_name_at(source_indices: si, node: variant)), true) } else { vacc }
         )
       } else { inner }
     )
@@ -5462,14 +5486,14 @@ fn typecheck_modules(
       let expanded_registry = expand_transitive_services(modules: modules, registry: item_registry, remaining_passes: 5)
       TypedGraph { modules: modules, item_registry: expanded_registry, diagnostics: flat_map(diag_chunks, c => c) }
     Some { value: resolved } =>
-      let parent_result = collect_parent_envs(resolved: resolved, module_index: module_index)
+      let parent_result = collect_parent_envs(resolved: resolved, module_index: module_index, source_indices: source_indices)
       let tc_result = typecheck_module(resolved: resolved, parent_index: module_index, source_indices: source_indices, intern_table: intern_table)
       let typed = tc_result.typed
       let tc_diags = tc_result.diagnostics
       typecheck_modules(
         remaining: remaining |> skip(1),
         modules: list_push(modules, typed),
-        module_index: map_insert(module_index, typed.module.name, typed),
+        module_index: map_insert(module_index, authored_name_at(source_indices: source_indices, node: typed.module), typed),
         item_registry: map_merge(item_registry, typed.item_registry),
         diag_chunks: list_push(list_push(diag_chunks, parent_result.diagnostics), tc_diags),
         source_indices: source_indices,

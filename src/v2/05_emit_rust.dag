@@ -419,21 +419,25 @@ fn is_type_constant(summary: TypeSummary, recursive_type_set: Map<String, Bool>)
 // all Rc wrapping and cloning become no-ops via identity SharingStrategy templates.
 // For Rust: includes user-defined types (structs, data enums) and built-in
 // collection types. Constant types (fixed-width carriers) skip sharing.
+fn maybe_mark_shared_type(acc: Map<String, Bool>, summary: TypeSummary, recursive_type_set: Map<String, Bool>, target_needs_sharing: Bool) -> Map<String, Bool> {
+  let needs_sharing = target_needs_sharing && match summary.repr {
+    StructRepr => true
+    EnumRepr { unit_only: unit_only } => unit_only == false
+  }
+  if needs_sharing && !is_type_constant(summary: summary, recursive_type_set: recursive_type_set) {
+    map_insert(acc, summary.name, true)
+  } else {
+    acc
+  }
+}
+
 fn build_shared_types(type_summaries: Map<String, TypeSummary>, recursive_type_set: Map<String, Bool>, target: RenderTarget) -> Map<String, Bool> {
   // needs_sharing: Rust=true (ownership), Python/Go=false (GC).
   // When false, both folds produce empty results → identity SharingStrategy
   // templates produce no-op wrapping/cloning.
   let sharing = sharing_for_target(target: target)
   let user_shared = map_values(type_summaries) |> fold(init: empty_map(), f: (acc, summary) =>
-    let needs_sharing = sharing.needs_sharing && match summary.repr {
-      StructRepr => true
-      EnumRepr { unit_only: unit_only } => unit_only == false
-    }
-    if needs_sharing && !is_type_constant(summary: summary, recursive_type_set: recursive_type_set) {
-      map_insert(acc, summary.name, true)
-    } else {
-      acc
-    }
+    maybe_mark_shared_type(acc: acc, summary: summary, recursive_type_set: recursive_type_set, target_needs_sharing: sharing.needs_sharing)
   )
   // Collection types: any template key whose bare type has O(n) clone cost.
   // "optional" and "boolean_algebra" excluded. GC languages: sharing.needs_sharing
@@ -2575,7 +2579,7 @@ fn emit_nested_rt_concat(remaining: List<String>, acc: String, shared_types: Map
 fn emit_typed_for_each(variable: String, collection: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let sharing = language_spec(target: Rust).sharing
   let coll_str = emit_typed_expr(texpr: collection, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-  let elem_type = for_each_element_type_node(n: resolved_type(n: collection))
+  let elem_type = for_each_element_type_node(n: resolved_type(n: collection), source_indices: scope.type_env.source_indices)
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type, provenance: SubValueUnknown)
   let body_str = emit_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 2, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let ind1 = make_indent(level: depth + 1)
@@ -2881,7 +2885,7 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
   let elem_type_str = match receiver.inferred {
     Some { value: Resolved { node: rt } } =>
       let resolved = rt
-      let elem = for_each_element_type_node(n: resolved)
+      let elem = for_each_element_type_node(n: resolved, source_indices: scope.type_env.source_indices)
       let elem_is_type_var = if elem.inferred != none { is_type_variable(inferred: elem.inferred.value) } else { false }
       if elem.ident_span != none && !elem_is_type_var {
         render_rust_type(n: elem, shared_types: shared_types, source_indices: scope.type_env.source_indices)

@@ -150,7 +150,7 @@ let self_refs = Rc::new({ let mut __result = Vec::new(); for name in all_names.c
 } { __result.push(name); } } __result });
 let cycle_members = kahn_remove_loop(&all_names, &local_deps);
 let sr_set = self_refs.iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, n: String| v2_rt::rc_map_insert(acc, n.clone(), true));
-let cm_set = cycle_members.iter().cloned().fold(sr_set.clone(), |acc: Rc<HashMap<String, bool>>, n: String| v2_rt::rc_map_insert(acc, n.clone(), true));
+let cm_set = cycle_members.iter().cloned().fold(sr_set, |acc: Rc<HashMap<String, bool>>, n: String| v2_rt::rc_map_insert(acc, n.clone(), true));
 let result = Rc::new({ let mut __result = Vec::new(); for n in all_names.clone().iter().cloned() { if set_has(cm_set.clone(), n.clone()) { __result.push(n); } } __result });
 result
 }

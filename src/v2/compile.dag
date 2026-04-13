@@ -94,7 +94,7 @@ fn extract_func_entries(typed: ResolvedGraph) -> List<FuncEntry> {
     |> flat_map(m =>
       m.items |> filter(item => item.body != None) |> map(item =>
         FuncEntry {
-          name: item.name,
+          name: authored_name_at(source_indices: m.type_env.source_indices, node: item),
           body: item.body.value,
           params: item.params,
           span: item.span,
@@ -118,7 +118,7 @@ fn extract_ownership_proofs(typed: ResolvedGraph) -> List<OwnershipProof> {
     |> filter(m => m.items |> any(item => item.body != None))
     |> flat_map(m =>
       m.items |> filter(item => item.body != None) |> map(item =>
-        analyze_ownership(func_name: item.name, params: item.params, body: item.body.value, si: m.type_env.source_indices)
+        analyze_ownership(func_name: authored_name_at(source_indices: m.type_env.source_indices, node: item), params: item.params, body: item.body.value, si: m.type_env.source_indices)
       )
     )
 }
@@ -316,7 +316,7 @@ fn serialize_import_node(imp: Node, source_indices: Map<String, NewlineIndex>) -
       "}")
   }
   concat(
-    "{\"module_path\": ", json_quote(s: imp.name),
+    "{\"module_path\": ", json_quote(s: authored_name_at(source_indices: source_indices, node: imp)),
     ", \"names\": ", names_json,
     ", \"span\": ", serialize_span(span: imp.span),
     "}")
@@ -421,7 +421,7 @@ fn serialize_method_semantics(value: MethodSemantics?, source_indices: Map<Strin
     Some { value: PlainMethodSemantics } =>
       "{\"kind\": \"PlainMethodSemantics\"}"
     Some { value: AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: fold_accumulator_type, size_effect: _, cost_shape: _, algebra_template: _ } } =>
-      let mn = method_def.name
+      let mn = authored_name_at(source_indices: source_indices, node: method_def)
       concat(
         "{\"kind\": \"AlgebraMethodSemantics\", \"method_name\": ",
         json_quote(s: mn),
@@ -656,7 +656,7 @@ fn serialize_field(field: Node, source_indices: Map<String, NewlineIndex>) -> St
     ", \"type_expr\": ", serialize_node(node: field_node_type_expr(n: field), source_indices: source_indices),
     ", \"cardinality\": ", json_quote(s: cardinality_name(value: field_node_cardinality(n: field))),
     ", \"default_value\": ", json_optional_node(value: field_node_default_value(n: field), source_indices: source_indices),
-    ", \"from_key\": ", json_optional_string(value: field_node_from_key(n: field)),
+    ", \"from_key\": ", json_optional_string(value: field_node_from_key(n: field, source_indices: source_indices)),
     ", \"span\": ", serialize_span(span: field_node_span(n: field)),
     "}")
 }
@@ -699,7 +699,7 @@ fn serialize_node(node: Node, source_indices: Map<String, NewlineIndex>) -> Stri
 
 fn serialize_module(module: Node, source_indices: Map<String, NewlineIndex>) -> String {
   concat(
-    "{\"name\": ", json_quote(s: module.name),
+    "{\"name\": ", json_quote(s: authored_name_at(source_indices: source_indices, node: module)),
     ", \"imports\": ", json_list(items: module_imports(n: module) |> map(imp => serialize_import_node(imp: imp, source_indices: source_indices))),
     ", \"span\": ", serialize_span(span: module.span),
     "}")
@@ -939,7 +939,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
 
       // Stage 7: Default artifact planning for the current single-artifact flow.
       let artifact_plan = default_artifact_plan(
-        root_modules: typed.modules |> map(m => m.module.name),
+        root_modules: typed.modules |> map(m => authored_name_at(source_indices: source_indices, node: m.module)),
         target: target
       )
 

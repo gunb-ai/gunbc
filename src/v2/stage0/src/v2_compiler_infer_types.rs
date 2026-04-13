@@ -498,7 +498,7 @@ pub fn algebra_child_or_placeholder(base: Rc<Node>, child_index: i64, placeholde
 }
 }
 
-pub fn instantiate_algebra_type(template: Rc<AlgebraTypeTemplate>, base: &Rc<Node>) -> Rc<Node> {
+pub fn instantiate_algebra_type(template: Rc<AlgebraTypeTemplate>, base: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let elem = algebra_child_or_placeholder(base.clone(), 0, "T".to_string());
@@ -513,23 +513,23 @@ match (*template).clone() {
     AlgebraTypeTemplate::AlgebraTypeVariable { id: var_id, .. } => type_variable_node(var_id.clone()),
     AlgebraTypeTemplate::ContainerOf { source: src, element: inner, .. } => {
                 let kind_name = match (*src.clone()).clone() {
-    ContainerSource::SameAsReceiver => base.name.clone(),
+    ContainerSource::SameAsReceiver => authored_name_at(source_indices.clone(), &base),
     ContainerSource::Named { name: n, .. } => n.clone(),
 };
-make_container_type(&kind_name, instantiate_algebra_type(inner.clone(), &base))
+make_container_type(&kind_name, instantiate_algebra_type(inner.clone(), &base, &source_indices))
 },
-    AlgebraTypeTemplate::OptionalOf { inner, .. } => with_optional_cardinality(&instantiate_algebra_type(inner.clone(), &base)),
-    AlgebraTypeTemplate::TupleOf { first, second, .. } => make_tuple_type(instantiate_algebra_type(first.clone(), &base), instantiate_algebra_type(second.clone(), &base)),
-    AlgebraTypeTemplate::CallableOf { params: p, return_type: r, .. } => make_callable_type(Rc::new({ let mut __result = Vec::new(); for tp in p.clone().iter().cloned() { __result.push(instantiate_algebra_type(tp.clone(), &base)); } __result }), instantiate_algebra_type(r.clone(), &base)),
+    AlgebraTypeTemplate::OptionalOf { inner, .. } => with_optional_cardinality(&instantiate_algebra_type(inner.clone(), &base, &source_indices)),
+    AlgebraTypeTemplate::TupleOf { first, second, .. } => make_tuple_type(instantiate_algebra_type(first.clone(), &base, &source_indices), instantiate_algebra_type(second.clone(), &base, &source_indices)),
+    AlgebraTypeTemplate::CallableOf { params: p, return_type: r, .. } => make_callable_type(Rc::new({ let mut __result = Vec::new(); for tp in p.clone().iter().cloned() { __result.push(instantiate_algebra_type(tp.clone(), &base, &source_indices)); } __result }), instantiate_algebra_type(r.clone(), &base, &source_indices)),
 }
 }
     })
 }
 
-pub fn instantiate_algebra_field(template: &Rc<AlgebraFieldTemplate>, base: &Rc<Node>) -> Rc<Node> {
+pub fn instantiate_algebra_field(template: &Rc<AlgebraFieldTemplate>, base: &Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Node> {
     {
-        let param_types = Rc::new({ let mut __result = Vec::new(); for tp in template.param_types.clone().iter().cloned() { __result.push(instantiate_algebra_type(tp.clone(), &base)); } __result });
-let return_type = instantiate_algebra_type(template.return_type.clone(), &base);
+        let param_types = Rc::new({ let mut __result = Vec::new(); for tp in template.param_types.clone().iter().cloned() { __result.push(instantiate_algebra_type(tp.clone(), &base, &source_indices)); } __result });
+let return_type = instantiate_algebra_type(template.return_type.clone(), &base, &source_indices);
 if ((param_types.clone().len() as i64) > 0) {
             algebra_method_field(&template.name.clone(), param_types.clone(), return_type)
         } else {
@@ -538,12 +538,12 @@ if ((param_types.clone().len() as i64) > 0) {
 }
 }
 
-pub fn enrich_kernel_type(name: &String, base: &Rc<Node>) -> Rc<Node> {
+pub fn enrich_kernel_type(name: &String, base: &Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Node> {
     {
         let profile = v2_rt::map_get(&kernel_algebra_profile(), name.clone());
 match profile {
     Some(p) => {
-            let fields = Rc::new({ let mut __result = Vec::new(); for template in algebra_templates_for_profile(p.clone()).iter().cloned() { __result.push(instantiate_algebra_field(&template, &base)); } __result });
+            let fields = Rc::new({ let mut __result = Vec::new(); for template in algebra_templates_for_profile(p.clone()).iter().cloned() { __result.push(instantiate_algebra_field(&template, &base, &source_indices)); } __result });
 enrich_base_with_fields(name.clone(), &base, fields)
 },
     None => base.clone(),
@@ -551,7 +551,7 @@ enrich_base_with_fields(name.clone(), &base, fields)
 }
 }
 
-pub fn unify_template(template: Rc<AlgebraTypeTemplate>, concrete: &Rc<Node>, receiver: &Rc<Node>, subst: Rc<HashMap<String, Rc<Node>>>) -> Rc<HashMap<String, Rc<Node>>> {
+pub fn unify_template(template: Rc<AlgebraTypeTemplate>, concrete: &Rc<Node>, receiver: &Rc<Node>, subst: Rc<HashMap<String, Rc<Node>>>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<HashMap<String, Rc<Node>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*template).clone() {
     AlgebraTypeTemplate::AlgebraTypeVariable { id: var_id, .. } => if (v2_rt::map_get(&subst, var_id.clone()) != None) {
@@ -592,32 +592,32 @@ match concrete.children.clone().get(1 as usize).cloned() {
         } else {
             v2_rt::rc_map_insert(subst.clone(), "__element__".to_string(), concrete.clone())
         },
-    AlgebraTypeTemplate::CallableOf { return_type: ret_template, .. } => unify_template(ret_template.clone(), &concrete, &receiver, subst.clone()),
+    AlgebraTypeTemplate::CallableOf { return_type: ret_template, .. } => unify_template(ret_template.clone(), &concrete, &receiver, subst.clone(), &source_indices),
     AlgebraTypeTemplate::ContainerOf { source: src, element: elem_template, .. } => {
             let expected_name = match (*src.clone()).clone() {
-    ContainerSource::SameAsReceiver => receiver.name.clone(),
+    ContainerSource::SameAsReceiver => authored_name_at(source_indices.clone(), &receiver),
     ContainerSource::Named { name: n, .. } => n.clone(),
 };
-if (concrete.name.clone().as_str() != expected_name.as_str()) {
+if (authored_name_at(source_indices.clone(), &concrete).as_str() != expected_name.as_str()) {
                 subst.clone()
             } else {
                 match concrete.children.clone().first().cloned() {
-    Some(child) => unify_template(elem_template.clone(), &child_type_node(&child), &receiver, subst.clone()),
+    Some(child) => unify_template(elem_template.clone(), &child_type_node(&child), &receiver, subst.clone(), &source_indices),
     None => subst.clone(),
 }
             }
 },
     AlgebraTypeTemplate::OptionalOf { inner: inner_template, .. } => match concrete.children.clone().first().cloned() {
-    Some(child) => unify_template(inner_template.clone(), &child_type_node(&child), &receiver, subst.clone()),
+    Some(child) => unify_template(inner_template.clone(), &child_type_node(&child), &receiver, subst.clone(), &source_indices),
     None => subst.clone(),
 },
     AlgebraTypeTemplate::TupleOf { first: ft, second: st, .. } => {
             let s2 = match concrete.children.clone().first().cloned() {
-    Some(c) => unify_template(ft.clone(), &child_type_node(&c), &receiver, subst.clone()),
+    Some(c) => unify_template(ft.clone(), &child_type_node(&c), &receiver, subst.clone(), &source_indices),
     None => subst.clone(),
 };
 match concrete.children.clone().get(1 as usize).cloned() {
-    Some(c) => unify_template(st.clone(), &child_type_node(&c), &receiver, s2),
+    Some(c) => unify_template(st.clone(), &child_type_node(&c), &receiver, s2, &source_indices),
     None => s2,
 }
 },
@@ -633,7 +633,7 @@ pub fn is_receiver_self(t: Rc<AlgebraTypeTemplate>) -> bool {
 }
 }
 
-pub fn build_type_substitution(param_templates: &Rc<Vec<Rc<AlgebraTypeTemplate>>>, arg_types: Rc<Vec<Rc<Node>>>, receiver: Rc<Node>, base_subst: Rc<HashMap<String, Rc<Node>>>) -> Rc<HashMap<String, Rc<Node>>> {
+pub fn build_type_substitution(param_templates: &Rc<Vec<Rc<AlgebraTypeTemplate>>>, arg_types: Rc<Vec<Rc<Node>>>, receiver: Rc<Node>, base_subst: Rc<HashMap<String, Rc<Node>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<HashMap<String, Rc<Node>>> {
     {
         let first_is_self = match param_templates.clone().first().cloned() {
     Some(t) => is_receiver_self(t.clone()),
@@ -650,12 +650,12 @@ pairs.iter().cloned().fold(base_subst.clone(), |subst: Rc<HashMap<String, Rc<Nod
     Some(a) => a.clone(),
     None => error_type(),
 };
-unify_template(pair.1.clone(), &arg_type, &receiver, subst)
+unify_template(pair.1.clone(), &arg_type, &receiver, subst, &source_indices)
 })
 }
 }
 
-pub fn apply_type_substitution(template: Rc<AlgebraTypeTemplate>, subst: &Rc<HashMap<String, Rc<Node>>>, receiver: Rc<Node>) -> Rc<Node> {
+pub fn apply_type_substitution(template: Rc<AlgebraTypeTemplate>, subst: &Rc<HashMap<String, Rc<Node>>>, receiver: Rc<Node>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*template).clone() {
     AlgebraTypeTemplate::AlgebraTypeVariable { id: var_id, .. } => match v2_rt::map_get(&subst, var_id.clone()) {
@@ -663,17 +663,18 @@ pub fn apply_type_substitution(template: Rc<AlgebraTypeTemplate>, subst: &Rc<Has
     None => type_variable_node(var_id.clone()),
 },
     AlgebraTypeTemplate::ReceiverSelf => {
-            let is_bare = (is_container_type(receiver.name.clone()) && { let mut __all = true; for ch in receiver.children.clone().iter().cloned() { if !({
+            let receiver_name_str = authored_name_at(source_indices.clone(), &receiver);
+let is_bare = (is_container_type(receiver_name_str.clone()) && { let mut __all = true; for ch in receiver.children.clone().iter().cloned() { if !({
                 let inner = child_type_node(&ch);
 if (inner.inferred.clone() != None) {
                     is_type_variable(inner.inferred.clone().clone().unwrap())
                 } else {
-                    ((inner.ident_span.clone() == None) || !is_kernel_type(inner.name.clone()))
+                    ((inner.ident_span.clone() == None) || !is_kernel_type(authored_name_at(source_indices.clone(), &inner)))
                 }
 }) { __all = false; break; } } __all });
 if is_bare {
                 {
-                    let arity = container_expected_arity(receiver.name.clone());
+                    let arity = container_expected_arity(receiver_name_str.clone());
 if (arity.clone() == Some(2)) {
                         match v2_rt::map_get(&subst, "__key__".to_string()) {
     Some(key) => {
@@ -688,7 +689,7 @@ make_map_type(key.clone(), val)
                     } else {
                         if (arity.clone() == Some(1)) {
                             match v2_rt::map_get(&subst, "__element__".to_string()) {
-    Some(elem) => make_container_type(&receiver.name.clone(), elem.clone()),
+    Some(elem) => make_container_type(&receiver_name_str, elem.clone()),
     None => receiver.clone(),
 }
                         } else {
@@ -704,36 +705,36 @@ make_map_type(key.clone(), val)
     Some(child) => child_type_node(&child),
     None => match v2_rt::map_get(&subst, "__element__".to_string()) {
     Some(elem) => elem.clone(),
-    None => type_variable_node(container_param_name_required(&receiver.name.clone(), 0)),
+    None => type_variable_node(container_param_name_required(&authored_name_at(source_indices.clone(), &receiver), 0)),
 },
 },
     AlgebraTypeTemplate::ReceiverKey => match receiver.children.clone().first().cloned() {
     Some(child) => child_type_node(&child),
     None => match v2_rt::map_get(&subst, "__key__".to_string()) {
     Some(key) => key.clone(),
-    None => type_variable_node(container_param_name_required(&receiver.name.clone(), 0)),
+    None => type_variable_node(container_param_name_required(&authored_name_at(source_indices.clone(), &receiver), 0)),
 },
 },
     AlgebraTypeTemplate::ReceiverValue => match receiver.children.clone().get(1 as usize).cloned() {
     Some(child) => child_type_node(&child),
     None => match v2_rt::map_get(&subst, "__value__".to_string()) {
     Some(val) => val,
-    None => type_variable_node(container_param_name_required(&receiver.name.clone(), 1)),
+    None => type_variable_node(container_param_name_required(&authored_name_at(source_indices.clone(), &receiver), 1)),
 },
 },
     AlgebraTypeTemplate::NamedTemplate { name: n, .. } => nominal_type_ref(&n),
     AlgebraTypeTemplate::ContainerOf { source: src, element: inner, .. } => {
             let kind_name = match (*src.clone()).clone() {
-    ContainerSource::SameAsReceiver => receiver.name.clone(),
+    ContainerSource::SameAsReceiver => authored_name_at(source_indices.clone(), &receiver),
     ContainerSource::Named { name: n, .. } => n.clone(),
 };
-make_container_type(&kind_name, apply_type_substitution(inner.clone(), &subst, receiver.clone()))
+make_container_type(&kind_name, apply_type_substitution(inner.clone(), &subst, receiver.clone(), &source_indices))
 },
-    AlgebraTypeTemplate::OptionalOf { inner, .. } => with_optional_cardinality(&apply_type_substitution(inner.clone(), &subst, receiver.clone())),
-    AlgebraTypeTemplate::TupleOf { first: ft, second: st, .. } => make_tuple_type(apply_type_substitution(ft.clone(), &subst, receiver.clone()), apply_type_substitution(st.clone(), &subst, receiver.clone())),
+    AlgebraTypeTemplate::OptionalOf { inner, .. } => with_optional_cardinality(&apply_type_substitution(inner.clone(), &subst, receiver.clone(), &source_indices)),
+    AlgebraTypeTemplate::TupleOf { first: ft, second: st, .. } => make_tuple_type(apply_type_substitution(ft.clone(), &subst, receiver.clone(), &source_indices), apply_type_substitution(st.clone(), &subst, receiver.clone(), &source_indices)),
     AlgebraTypeTemplate::CallableOf { params: p, return_type: r, .. } => {
-            let param_nodes = Rc::new({ let mut __result = Vec::new(); for tp in p.clone().iter().cloned() { __result.push(apply_type_substitution(tp.clone(), &subst, receiver.clone())); } __result });
-make_callable_type(Rc::new({ let mut __result = Vec::new(); for pn in param_nodes.iter().cloned() { __result.push(make_param_node(&"_".to_string(), pn.clone(), None, no_span(), no_span())); } __result }), apply_type_substitution(r.clone(), &subst, receiver.clone()))
+            let param_nodes = Rc::new({ let mut __result = Vec::new(); for tp in p.clone().iter().cloned() { __result.push(apply_type_substitution(tp.clone(), &subst, receiver.clone(), &source_indices)); } __result });
+make_callable_type(Rc::new({ let mut __result = Vec::new(); for pn in param_nodes.iter().cloned() { __result.push(make_param_node(&"_".to_string(), pn.clone(), None, no_span(), no_span())); } __result }), apply_type_substitution(r.clone(), &subst, receiver.clone(), &source_indices))
 },
 }
     })
@@ -760,10 +761,10 @@ pub fn has_type_variable(t: Rc<AlgebraTypeTemplate>) -> bool {
     })
 }
 
-pub fn resolve_type_variables_from_template(template: &Rc<AlgebraFieldTemplate>, arg_types: Rc<Vec<Rc<Node>>>, receiver_type: &Rc<Node>, overrides: Rc<HashMap<String, Rc<Node>>>) -> Rc<Node> {
+pub fn resolve_type_variables_from_template(template: &Rc<AlgebraFieldTemplate>, arg_types: Rc<Vec<Rc<Node>>>, receiver_type: &Rc<Node>, overrides: Rc<HashMap<String, Rc<Node>>>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Node> {
     {
-        let subst = build_type_substitution(&template.param_types.clone(), arg_types, receiver_type.clone(), overrides);
-apply_type_substitution(template.return_type.clone(), &subst, receiver_type.clone())
+        let subst = build_type_substitution(&template.param_types.clone(), arg_types, receiver_type.clone(), overrides, source_indices.clone());
+apply_type_substitution(template.return_type.clone(), &subst, receiver_type.clone(), &source_indices)
 }
 }
 
@@ -912,7 +913,7 @@ if (left_err || right_err) {
                         let left_is_container = node_is_element_collection(&left, source_indices.clone());
 let right_is_container = node_is_element_collection(&right, source_indices.clone());
 if (left_is_container && right_is_container) {
-                            if (left.name.clone().as_str() != right.name.clone().as_str()) {
+                            if (authored_name_at(source_indices.clone(), &left).as_str() != authored_name_at(source_indices.clone(), &right).as_str()) {
                                 break false;
 } else {
                                 match left.children.clone().first().cloned() {
@@ -958,7 +959,7 @@ continue;
                                 if (left_opt.clone() || right_opt.clone()) {
                                     break false;
 } else {
-                                    break (left.name.clone().as_str() == right.name.clone().as_str());
+                                    break (authored_name_at(source_indices.clone(), &left).as_str() == authored_name_at(source_indices.clone(), &right).as_str());
 }
 }
 }
@@ -974,7 +975,7 @@ pub fn prefer_specific_type(left: Rc<Node>, right: Rc<Node>, source_indices: &Rc
         let left_is_container = node_is_element_collection(&left, source_indices.clone());
 let left_is_optional = (left.return_cardinality.clone() == Cardinality::CardOptional);
 let left_first_child = left.children.clone().first().cloned();
-let left_norm_name = left.name.clone();
+let left_norm_name = authored_name_at(source_indices.clone(), &left);
 let left_is_unit_inner = if left_is_container.clone() {
             match left_first_child {
     Some(ch) => {
@@ -997,7 +998,7 @@ left_is_unit
 let right_is_container = node_is_element_collection(&right, source_indices.clone());
 let right_is_optional = (right.return_cardinality.clone() == Cardinality::CardOptional);
 let same_kind = if (left_is_container.clone() && right_is_container) {
-            (left_norm_name.as_str() == right.name.clone().as_str())
+            (left_norm_name.as_str() == authored_name_at(source_indices.clone(), &right).as_str())
         } else {
             if (left_is_optional.clone() && right_is_optional) {
                 true
@@ -1077,11 +1078,13 @@ pub fn node_type_equals_core(left: &Rc<Node>, right: &Rc<Node>, source_indices: 
 let right_leaf = (((right.connective.clone() == Connective::NoConnective) && ((right.children.clone().len() as i64) == 0)) && ((right.properties.clone().len() as i64) == 0));
 let left_struct = (left.connective.clone() != Connective::NoConnective);
 let right_struct = (right.connective.clone() != Connective::NoConnective);
+let left_name = authored_name_at(source_indices.clone(), &left);
+let right_name = authored_name_at(source_indices.clone(), &right);
 if (left_leaf.clone() && right_leaf.clone()) {
-            (left.name.clone().as_str() == right.name.clone().as_str())
+            (left_name.as_str() == right_name.as_str())
         } else {
             if (left_struct.clone() && right_struct.clone()) {
-                if (left.name.clone().as_str() != right.name.clone().as_str()) {
+                if (left_name.as_str() != right_name.as_str()) {
                     false
                 } else {
                     if ((left.connective.clone() == Connective::Conj) != (right.connective.clone() == Connective::Conj)) {
@@ -1099,16 +1102,16 @@ if (left_leaf.clone() && right_leaf.clone()) {
                 }
             } else {
                 if (left_leaf.clone() && right_struct.clone()) {
-                    (left.name.clone().as_str() == right.name.clone().as_str())
+                    (left_name.as_str() == right_name.as_str())
                 } else {
                     if (left_struct.clone() && right_leaf.clone()) {
-                        (left.name.clone().as_str() == right.name.clone().as_str())
+                        (left_name.as_str() == right_name.as_str())
                     } else {
                         {
                             let left_is_container = node_is_element_collection(&left, source_indices.clone());
 let right_is_container = node_is_element_collection(&right, source_indices.clone());
 if (left_is_container && right_is_container) {
-                                if (left.name.clone().as_str() != right.name.clone().as_str()) {
+                                if (left_name.as_str() != right_name.as_str()) {
                                     false
                                 } else {
                                     match left.children.clone().first().cloned() {
@@ -1232,7 +1235,7 @@ if ((n.ident_span.clone() != None) && (is_kernel_type(n_name.clone()) == false))
                                 }
 }
                         } else {
-                            if ((is_kernel_type(n_name.clone()) || (n_name.clone().as_str() == none_type().name.clone().as_str())) || (n.ident_span.clone() == None)) {
+                            if ((is_kernel_type(n_name.clone()) || (n_name.clone().as_str() == "None".to_string().as_str())) || (n.ident_span.clone() == None)) {
                                 Rc::new(vec![])
                             } else {
                                 Rc::new(vec![n_name.clone()])
@@ -1435,7 +1438,7 @@ if is_product {
 }
 }
 
-pub fn for_each_element_type_node(n: Rc<Node>) -> Rc<Node> {
+pub fn for_each_element_type_node(n: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Node> {
     {
         let normed = normalize_access_type_node(n);
 let is_single_child = ((normed.connective.clone() == Connective::NoConnective) && ((normed.children.clone().len() as i64) == 1));
@@ -1449,7 +1452,7 @@ let extracted = if is_single_child {
         };
 match extracted {
     Some(el) => el.clone(),
-    None => if ((((normed.connective.clone() == Connective::NoConnective) && ((normed.children.clone().len() as i64) == 0)) && ((normed.properties.clone().len() as i64) == 0)) && (normed.name.clone().as_str() == string_type().name.clone().as_str())) {
+    None => if ((((normed.connective.clone() == Connective::NoConnective) && ((normed.children.clone().len() as i64) == 0)) && ((normed.properties.clone().len() as i64) == 0)) && (authored_name_at(source_indices, &normed).as_str() == "String".to_string().as_str())) {
             string_type()
         } else {
             normed.clone()

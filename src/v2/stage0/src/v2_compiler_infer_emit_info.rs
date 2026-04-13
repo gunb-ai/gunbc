@@ -230,7 +230,7 @@ consistent.iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<FieldSummary>>(
 pub fn build_field_type_map(children: Rc<Vec<Rc<Node>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<HashMap<String, String>> {
     children.iter().cloned().fold(v2_rt::rc_empty_map::<String, String>(), |acc: Rc<HashMap<String, String>>, child: Rc<Node>| match child.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: ft, .. }) => {
-        let resolved_name = normalize_access_type_node(ft.clone()).name.clone();
+        let resolved_name = authored_name_at(source_indices.clone(), &normalize_access_type_node(ft.clone()));
 let ft_is_type_var = if (ft.inferred.clone() != None) {
             is_type_variable(ft.inferred.clone().clone().unwrap())
         } else {
@@ -260,7 +260,7 @@ let has_fn = { let mut __found = false; for child in item.children.clone().iter(
 } { __found = true; break; } } __found };
 if is_product {
             Some(Rc::new(TypeSummary {
-    name: item.name.clone(),
+    name: authored_name_at(source_indices.clone(), &item),
     repr: Rc::new(TypeRepr::StructRepr),
     field_summaries: build_struct_field_summaries(&item, source_indices.clone()),
     field_type_map: build_field_type_map(item.children.clone(), source_indices.clone()),
@@ -272,7 +272,7 @@ if is_product {
             {
                 let unit_only = { let mut __all = true; for child in item.children.clone().iter().cloned() { if !(((child.children.clone().len() as i64) == 0)) { __all = false; break; } } __all };
 Some(Rc::new(TypeSummary {
-    name: item.name.clone(),
+    name: authored_name_at(source_indices.clone(), &item),
     repr: Rc::new(TypeRepr::EnumRepr {
     unit_only: unit_only,
 }),

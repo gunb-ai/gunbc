@@ -16,7 +16,8 @@ import v2.std.core {
   Cardinality, Required,
   expr_has_self_call, expr_has_non_tail_self_call,
   Connective, Conj, Disj, NoConnective,
-  node_name_span, no_span
+  node_name_span, no_span,
+  NewlineIndex, authored_name_at
 }
 import v2.compiler.infer_types {
   child_type_node
@@ -83,7 +84,7 @@ type ResolvedGraph {
 //   - Single output: inferred is the Node directly
 //   - Multiple outputs: inferred is Conj Node with field children
 //   - No outputs: inferred is none
-fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan) -> List<Node> {
+fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> List<Node> {
   if inferred == none { [] }
   else { match inferred.value {
     CompilerError { message: _, span: _ } => []
@@ -97,7 +98,7 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan) -> List<Node> 
               // Anonymous product -- expand children as fields
               map(rt.children, child =>
                 let child_type = child_type_node(ch: child)
-                make_field_node(name: child.name, type_expr: child_type, cardinality: Required, default_value: none, from_key: none, span: span, name_span: node_name_span(n: child))
+                make_field_node(name: authored_name_at(source_indices: source_indices, node: child), type_expr: child_type, cardinality: Required, default_value: none, from_key: none, span: span, name_span: node_name_span(n: child))
               )
             } else {
               [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span, name_span: no_span())]
@@ -134,13 +135,14 @@ fn item_kind(item: Node) -> ItemKind {
 }
 
 // C2.1: variant locals carry the structural parent node, not a bare nominal leaf.
-fn variant_locals_from_items(items: List<Node>, init: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
+fn variant_locals_from_items(items: List<Node>, init: Map<String, TypeBinding>, source_indices: Map<String, NewlineIndex>) -> Map<String, TypeBinding> {
   fold(items, init: init, f: (acc, item) =>
     let is_coproduct = item.connective == Disj
     if is_coproduct {
       fold(item.children, init: acc, f: (vacc, child) =>
-        map_insert(vacc, child.name, TypeBinding {
-          name: child.name,
+        let child_name = authored_name_at(source_indices: source_indices, node: child)
+        map_insert(vacc, child_name, TypeBinding {
+          name: child_name,
           resolved: item,
           provenance: SubValueUnknown
         })
