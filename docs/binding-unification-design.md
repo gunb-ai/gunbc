@@ -156,10 +156,57 @@ emission, future dimensions) seeing fewer forms.
    Argument for before: reduces M1 surface area. Argument for
    after: M1 is on a clear path, don't disrupt.
 
+## Structural modeling (2026-04-12)
+
+The 7 → 2 reduction is proposed as `.dag` types in
+[docs/binding-model-proposal.md](binding-model-proposal.md):
+
+- **Binding forms** — `BindingForm = Parameter | LetBinding`,
+  `BindingSurface` (6 syntactic forms mapped to 2 via `binding_form`),
+  `CallerContext` (what the call site contributes to a parameter),
+  `AccessShape` (how a let-binding's value relates to its source),
+  `IterationBinding` (how fold/descend/repeat create parameter bindings).
+
+- **Ownership as dimension** — `OwnershipKind = Owned | Borrowed | Shared`
+  as a `BoundedLattice` inhabitant, with binding-site rules
+  (`ownership_at_let`) keyed on `BindingForm + AccessShape`.
+
+- **Provenance interface** — `SubValueRelation` binding-site computation
+  rules keyed on `CallerContext` (for parameters) and `AccessShape`
+  (for let-bindings), replacing the triple classification system.
+
+These are **proposals** — the types land in `dsl/std/` when the
+corresponding implementation work begins.
+
+### Open questions resolved
+
+1. **Exhaustiveness checking:** Match arms remain a structural
+   `ExprMatch` in the IR. Only BINDING CREATION inside arms
+   desugars to LetBinding + FieldAccess. The arm→variant
+   relationship and exhaustiveness check are untouched.
+
+2. **Fold accumulator:** Modeled explicitly as `IterationBinding`
+   in `std/binding.dag`. `FoldAccumulator` has `CallerContext =
+   DirectArgument` (ownership: `ThreadedOwned`). The synthetic
+   `()` accumulator for for-each is a Construction (AccessShape),
+   so its ownership is `Owned` and its provenance is
+   `SubValueUnknown` — no noise.
+
+3. **When to desugar:** Option B (late, after inference). The
+   modeling supports this: `BindingSurface` metadata is carried
+   for diagnostics/emission, but dimension computation uses only
+   `BindingForm + AccessShape`.
+
+4. **Migration scope:** Incremental, parallel with M1. Each
+   desugaring is a separate PR:
+   - PR 1: for-each → fold (most obvious)
+   - PR 2: match arm bindings → let + field access
+   - PR 3: lambda param variants → single Parameter + CallerContext
+   The modeling is done; migration is mechanical.
+
 ## Status
 
-Design direction only. Not yet on the roadmap. Surfaced during
-thesis audit (2026-04-12). Next step: evaluate whether Option B
-(late desugaring) can be introduced incrementally — one form at a
-time (start with for-each → fold, which is the most obvious
-desugaring) — without disrupting active M1 work.
+**On roadmap.** Theme 1 (Close the Binding Model) in ROADMAP.md.
+Proposed .dag types in [docs/binding-model-proposal.md](binding-model-proposal.md).
+Incremental migration path defined. Next step: first implementation
+PR (for-each → fold desugaring).
