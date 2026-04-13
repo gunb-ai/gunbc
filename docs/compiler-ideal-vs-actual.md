@@ -1,46 +1,151 @@
 > Part of: [THESIS.md](../THESIS.md) > [ROADMAP.md](../ROADMAP.md)
 > See also: [compiler-reduction-plan.md](compiler-reduction-plan.md),
-> [dag-vocabulary-reconciliation.md](dag-vocabulary-reconciliation.md)
+> [dag-vocabulary-reconciliation.md](dag-vocabulary-reconciliation.md),
+> [binding-model-proposal.md](binding-model-proposal.md)
 
 # Compiler: First-Principles Architecture
 
 What stages does the thesis REQUIRE? Not "what do we have" — what
-MUST exist?
+MUST exist? And how does every thesis requirement (termination,
+ownership, effects, testgen, emission) emerge from composition of
+a small set of primitives?
 
 ---
 
-## The thesis, restated as a compiler contract
+## Primitives: what the system is built from
 
-The compiler takes .dag source and constructs a proof that the
-program's causal graph is sound. If the proof constructs, emission
-is mechanical. The proof has N dimensions, each declared in std/
-as a BoundedLattice. The compiler doesn't know which dimensions
-exist — it reads them from std/ and applies ONE generic mechanism.
+The compiler — and the programs it validates — compose from a
+small set of primitives. Everything else emerges.
+
+| Primitive | Declared in | What it is |
+|-----------|-----------|------------|
+| `Classical = True \| False` | `std/logic.dag` | Bivalent truth — the foundation |
+| `Product` (AND), `Coproduct` (OR) | `std/constructors.dag` | How things compose structurally |
+| `Monoid`, `Lattice`, `BoundedLattice` | `std/algebra.dag` | Algebraic structure on values |
+| `fold`, `descend`, `repeat` | `std/computation.dag` | Bounded iteration (the only computation) |
+| Functions (`A -> B`) | Language primitive | Implication — "given A, produce B" |
+
+Every concept in the system composes from these:
+
+- `SubValueRelation` — a `BoundedLattice` (algebra primitive)
+- `DescentEvidence` — a `BoundedLattice` (same mechanism)
+- `OwnershipKind` — a `BoundedLattice` (same mechanism)
+- `EffectShape` — composes via `Monoid` (sequential) + `Lattice` (branching)
+- `TerminationProof` — `fold` over `List<ProofEdge>` (bounded iteration over finite evidence)
+- SCC analysis — `fold` over the call graph (bounded iteration over finite edges)
+- Cost composition — `Semiring` on `CostExpr` (algebra)
+- Testgen — `fold` over type inhabitants (bounded iteration over finite types)
+- Proof strategies — `fold` + `BoundedLattice` + `Function` (three primitives)
+
+**The test:** can every proof the compiler constructs be expressed
+as a composition of `fold`/`descend`/`repeat` over `BoundedLattice`
+values along `Product`/`Coproduct` structures? If yes, the compiler
+is an evaluator of these compositions — and CX can prove it
+terminates, because bounded iteration over finite lattices always
+terminates.
+
+---
+
+## The compiler contract
+
+The compiler takes `.dag` source and constructs a proof that the
+causal graph is sound. If the proof constructs, emission is
+mechanical. The compiler doesn't know WHAT it's proving — it reads
+proof strategies from `std/` and executes them generically.
 
 **The compiler should not know about complexity.** It should not
 know about ownership. It should not know about effects. These are
-dimension FACTS declared in .dag source (std/). The compiler knows
-how to process dimensions generically:
+dimension facts declared in `.dag` source (`std/`). The compiler
+knows how to execute proof strategies composed from primitives.
 
-1. Read a `BoundedLattice<D>` declaration from std/
-2. At each binding site, compute `D` using the lattice's compose
-   function and the edge's `SubValueRelation`
-3. Carry `D` through the IR on bindings
-4. At gates, check the constraint (dimension-specific, but the
-   MECHANISM of checking is generic)
+---
 
-`complexity.dag` (5,489 lines) as a compiler file is evidence that
-the generic mechanism doesn't work yet. The cost algebra, SCC
-analysis, parser progress model, termination proof construction —
-these are all facts about the TERMINATION dimension, not compiler
-infrastructure. They should be .dag functions in std/ that the
-generic mechanism calls.
+## Proof strategies: everything is fold + lattice + function
 
-Same for `ownership.dag` (635 lines). OwnershipKind, UsageEdge,
-fold detection, fan-out counting — facts about the OWNERSHIP
-dimension. The compiler doesn't "run an ownership pass." It runs
-the generic dimension mechanism, and ownership is one of the
-dimensions it reads from std/.
+A proof strategy is:
+1. A **graph structure** to traverse (call graph SCCs, use-site
+   fan-out, workflow composition, type inhabitant enumeration)
+2. A **composition algebra** to apply along edges (`BoundedLattice`
+   meet/join, `Semiring` add/multiply, `Monoid` concat)
+3. A **gate criterion** to check (does the composed value satisfy
+   the required property?)
+
+All three are `.dag` data declarations. The compiler reads them
+and executes: `fold` over the graph, compose with the algebra,
+check the gate. One mechanism.
+
+### Termination (KF-1)
+
+```
+graph:   CallGraphSCCs (call graph, decomposed into SCCs)
+compose: compose_descent (SubValueRelation lattice meet)
+gate:    all recursive calls show structural descent
+```
+
+- `fold` over each SCC's edges
+- `compose_descent` along each call edge (reads SVR from bindings)
+- Gate: every dimension in the `TerminationProof` has `Strict` evidence
+
+The SCC algorithm is `std/graph.dag`. The composition is
+`std/induction.dag`. The gate is `std/termination.dag`. The
+compiler calls them — doesn't contain them.
+
+### Ownership
+
+```
+graph:   UseSiteGraph (per-binding fan-out of use sites)
+compose: ownership_meet (OwnershipKind lattice meet)
+gate:    no SharedError (fan-out > 1 without last-use identification)
+```
+
+- `fold` over each binding's use sites
+- Classify each use as `UsageEdge` (Consumed/Read/Projected/Threaded)
+- Derive `OwnershipKind` from SVR on the binding edge
+- Gate: for each binding, fan-out is sound (sole owner or last-use elision)
+
+The lattice is `std/ownership.dag`. The use-site classification
+reads from the walk context (which Node field, what expression
+form). The compiler walks generically.
+
+### Effects (idempotency, safety)
+
+```
+graph:   WorkflowComposition (sequential/parallel operation sequence)
+compose: compose_effects (EffectShape monoid/lattice)
+gate:    workflow effect is lattice (idempotent) or explicitly non-idempotent
+```
+
+- `fold` over the workflow's operations
+- `compose_effects` from `std/effects.dag`
+- Gate: the composed effect satisfies the workflow's declared property
+
+### Testgen (Tier 3)
+
+```
+graph:   TypedModuleGraph (all declared types and operations)
+compose: type_inhabitants (generate witness values from type structure)
+gate:    every type has inhabitants, every operation has test coverage
+```
+
+- `fold` over type declarations
+- For each type, generate witness values (finite types have finite
+  inhabitants — `Coproduct` = enumerate variants, `Product` = compose
+  fields)
+- For each operation with a mock, generate: call mock → parse response
+  → verify against declared type
+
+### Cross-language equivalence (KF-4)
+
+```
+graph:   FunctionGraph (all declared functions)
+compose: evaluate in interpreter + emit to each target + execute
+gate:    interpreter result == emitted result for all targets
+```
+
+- `fold` over functions with generated inputs
+- Evaluate in `.dag` interpreter (the oracle)
+- Emit to Rust/Python/Go, execute, compare
+- Gate: all results match
 
 ---
 
@@ -51,255 +156,134 @@ dimensions it reads from std/.
 **Input:** source text.
 **Output:** Node tree with spans.
 
-This must exist. A language needs a parser. The parser produces
-the syntactic structure. It does NOT do semantic analysis.
-
-**Minimal file set:**
-- `01_tokenize.dag` — lexer
-- `02_parse.dag` — recursive descent + Pratt
-
-**Current state:** These files are ~90% and ~70% ideal respectively.
-The parser has mechanical debt (predicate duplication, hardcoded
-keywords, witness machinery in the wrong place) but the stage
-itself is correct.
+A language needs a parser. This must exist.
 
 ### Stage 2: Resolve
 
 **Input:** Node trees from multiple files.
-**Output:** A module graph with resolved names, types, and imports.
-All names point to their declarations. Cycles detected.
+**Output:** Module graph with resolved names, types, imports.
 
-This must exist. Modules need to be connected, names need to be
-resolved, generic types need to be substituted.
+Modules need to be connected, names resolved, generics substituted.
+This must exist.
 
-**Minimal file set:**
-- `resolve.dag` — module graph + name resolution + type resolution
-  + cycle detection
+**Current 13 sub-files → ideal 4-5 files:**
+- Module graph resolution (imports, exports, topo sort)
+- Type tree resolution (expand named refs, generics, aliases)
+- Pure type vocabulary (structural predicates, constructors)
+- Pattern matching / exhaustiveness
+- Function signature resolution (call graph, mutual recursion)
 
-**Current state:** Split across 03_resolve (461), 03_normalize (91),
-04_resolve (992), 04_types (992), 04_patterns (242), 04_lookup (346),
-04_items (150), 04_access (129), 04_service (250), 04_sigs (262),
-04_method (113), 04_cycle (156), 04_env (133) = **4,317 lines across
-13 files.**
-
-The question: how many of these 13 files are genuinely distinct
-concerns vs. artifacts of incremental development?
-
-**Genuinely distinct:**
-- Module graph resolution (imports, exports, topo sort) — 03_resolve
-- Type tree resolution (expand named refs, generics, aliases) — 04_resolve
-- Pure type vocabulary (structural predicates, constructors) — 04_types
-- Pattern matching / exhaustiveness — 04_patterns
-- Function signature resolution (call graph, mutual recursion) — 04_sigs
-- Service graph (collect service deps, validate ops) — 04_service
-
-**Should merge or dissolve:**
-- 03_normalize (91) → merge into resolve (2 functions)
-- 04_access (129) → merge into type resolution (index/slice checks)
-- 04_method (113) → dissolve entirely (hardcoded builtins → std/ data)
-- 04_cycle (156) → merge into resolve or sigs (cycle detection)
-- 04_lookup (346) → merge into the proof stage (scope lookup during
-  proof construction, not a separate concern)
-- 04_items (150) → merge into resolve (item classification)
-- 04_env (133) → this is TypeBinding + TypeEnv. These types stay,
-  but the file could merge into the proof stage.
-
-**Ideal file count: 4-5 files** (module resolve, type resolve, type
-vocabulary, patterns, service graph) instead of 13.
+Merge candidates: 03_normalize, 04_access, 04_method (dissolves
+into std/ data), 04_cycle, 04_lookup, 04_items, 04_env.
 
 ### Stage 3: Prove
 
-**Input:** Resolved module graph with typed nodes.
-**Output:** The same graph with dimension values on every edge.
-TerminationProof per recursive function. OwnershipProof per
-function. Effect composition per workflow. Diagnostics for any
-proof that fails to construct.
+**Input:** Resolved module graph.
+**Output:** Graph with dimension values on every edge. Proof results
+per function/workflow. Diagnostics for failed proof constructions.
 
-**This is the radical claim: prove is ONE stage, not three.**
-
-The current compiler has three separate passes:
-- `04_infer.dag` (5,470) — type inference + provenance
-- `complexity.dag` (5,489) — termination proofs
-- `ownership.dag` (635) — ownership analysis
-
-The thesis says these should be ONE generic dimension mechanism
-applied to all declared dimensions. The compiler doesn't know
-about complexity or ownership. It reads dimension declarations
-from std/ and applies the mechanism:
-
-```
-for each dimension D declared in std/:
-  for each binding in the resolved graph:
-    D(binding) = compose_D(edge.svr, source_D)
-  for each function:
-    check_D_gate(function)  // e.g., terminates? ownership sound?
-```
+This is ONE stage, not three. The compiler:
+1. Walks the resolved graph
+2. At each binding site, computes all dimension values (SVR,
+   ownership, effects) using the dimension's `compose` function
+3. Carries dimension values on bindings through the IR
+4. For each proof strategy declared in `std/`, executes it:
+   traverse the relevant graph, compose with the algebra, check gate
 
 **What moves from compiler to std/:**
 
-| Currently in compiler | Should be in std/ | Why |
-|----------------------|-------------------|-----|
-| Cost algebra (SizeExpr, CostExpr, ~400 lines) | `std/computation.dag` (partially there) | Facts about cost, not compiler infrastructure |
-| SCC analysis (~300 lines) | `std/graph.dag` (partially there) | Graph algorithm, not dimension-specific |
-| Parser progress model (~500 lines) | `std/parser_progress.dag` (new) | Facts about parser termination |
-| Termination proof construction (~200 lines) | `std/termination.dag` (partially there) | Proof rules for the termination dimension |
-| Ownership rules (fold detection, fan-out, ~200 lines) | `std/ownership.dag` (proposed) | Facts about the ownership dimension |
+| Currently in compiler | Moves to std/ | Why |
+|----------------------|--------------|-----|
+| Cost algebra (SizeExpr, CostExpr) | `std/computation.dag` | Algebraic facts |
+| SCC analysis | `std/graph.dag` | Graph algorithm |
+| Parser progress model | `std/computation.dag` | Domain-specific termination |
+| Termination proof construction | `std/termination.dag` | Proof rules |
+| Ownership rules | `std/ownership.dag` | Dimension algebra |
 | Evidence classification (~330 lines) | DISSOLVES | Reconstruction that SVR eliminates |
 
 **What stays in the compiler:**
-- The generic dimension mechanism (~500 lines estimated):
-  read lattice declarations, compute at binding sites, carry
-  through IR, check gates
-- Expression typing (~2,000 lines from 04_infer.dag):
-  the actual type inference (resolve expression types, check
-  compatibility, produce typed nodes)
-- Scope management (~500 lines): locals, imports, func sigs
-- Diagnostic construction (~200 lines)
-
-**Ideal file set:**
-- `prove.dag` — the generic dimension mechanism + expression
-  typing + scope management
-
-**Current: 11,594 lines across 3 files + 13 sub-files.**
-**Ideal: ~3,200 lines in 1 file** (the generic mechanism +
-expression typing) **+ dimension facts in std/ (~1,600 lines).**
-
-The 5,489-line complexity.dag largely dissolves: ~1,400 lines
-move to std/ as dimension facts, ~330 lines dissolve (reconstruction),
-and the remaining ~3,700 lines of SCC/cost/parser-progress become
-std/ graph algorithms and dimension data. The 635-line ownership.dag
-moves to std/. The 5,470-line 04_infer.dag sheds ~1,200 lines
-of reconstruction and ~2,000 lines become the generic mechanism.
+- The generic proof mechanism: read strategies, execute them
+- Expression typing: resolve expression types, check compatibility
+- Scope management: locals, imports, func sigs
+- Diagnostic construction
 
 ### Stage 4: Emit
 
-**Input:** Resolved graph with dimension values proven on every edge.
+**Input:** Graph with proven dimension values on every edge.
 **Output:** Target language source files.
 
-This must exist. Emission reads LanguageSpec + dimension proofs
-and produces code. It never decides — it reads.
-
-**Minimal file set:**
-- `emit.dag` — shared emission kernel (expression rendering,
-  block structure, TCO, imports)
-- `emit_rust.dag` — Rust-specific (derives, Rc, cargo, runtime)
-- `emit_go.dag` — Go-specific
-- `emit_python.dag` — Python-specific
-- `languages.dag` — LanguageSpec data
-- `coercion.dag` — type realization data
-
-**Current state:** These files are ~75-90% ideal. The main debt
-is ownership reconstruction in the Rust emitter (~300 lines),
-which dissolves when ownership proofs are on bindings.
-
-**Ideal: same file count, ~300 fewer lines.**
-
-### Infrastructure
-
-**Must exist:**
-- `core.dag` — Node, ExprData, IR types. But smaller: no
-  VarBindingKind, no Connective (use Product/Coproduct), no
-  hand-maintained tables, no ~60 accessor functions (structural
-  child access instead)
-- `compile.dag` — pipeline orchestration
-- `artifact.dag` — RenderTarget, ArtifactPlan
-
-**Should dissolve:**
-- `04_method.dag` → builtins become std/ data declarations
-- `effect_derivation.dag` → bootstrap artifact
-- `compiler_tests_rust.dag` → could be data-driven from specs
-
-**Moves to std/:**
-- `runtime_rust.dag` → arguably an extdeps concern (Rust runtime),
-  not a compiler concern
-- `trace.dag` → runtime contract, could be std/ or extdeps
+Reads `LanguageSpec` + dimension proofs. Never decides. Mechanical
+translation.
 
 ---
 
-## The minimal compiler
+## Line count estimate
 
 ```
 COMPILER (src/v2/):              DIMENSION FACTS (dsl/std/):
-                                 
+
   core.dag        ~1,000         algebra.dag (BoundedLattice)
-  tokenize.dag      ~500         induction.dag (SubValueRelation)
-  parse.dag       ~4,500         termination.dag (DescentEvidence, proofs)
+  tokenize.dag      ~500         induction.dag (SVR, composition)
+  parse.dag       ~4,500         termination.dag (proofs, evidence)
   resolve.dag     ~3,000         computation.dag (cost algebra, SCC)
   prove.dag       ~3,200         graph.dag (graph algorithms)
   emit.dag        ~3,000         ownership.dag (OwnershipKind)
   emit_rust.dag   ~5,600         effects.dag (EffectShape)
-  emit_go.dag       ~690         
-  emit_python.dag   ~670         
-  compile.dag     ~1,000         
-  languages.dag   ~1,160         
-  coercion.dag      ~300         
-  artifact.dag      ~110         
+  emit_go.dag       ~690
+  emit_python.dag   ~670
+  compile.dag     ~1,000
+  languages.dag   ~1,160
+  coercion.dag      ~300
+  artifact.dag      ~110
                  -------
                  ~24,730
 ```
 
 **Current: 38,078 lines across 32 files.**
-**Ideal: ~24,730 lines across ~13 files + dimension facts in std/.**
-
-The ~13,000 line reduction comes from:
-- ~1,200 lines of reconstruction in infer (SVR eliminates)
-- ~5,500 lines of complexity.dag moving to std/ dimension facts
-  (~1,400 lines) + dissolving (~330 lines) + becoming graph
-  algorithms in std/ (~3,700 lines of SCC/cost/parser-progress)
-- ~635 lines of ownership.dag moving to std/
-- ~1,200 lines of sub-file merges (13 → 5 resolve files)
-- ~1,000 lines of core.dag reduction (tables, accessors, VarBindingKind)
-- ~300 lines of Rust emitter ownership reconstruction
-- ~500 lines of misc (04_method dissolution, predicate dedup, etc.)
-
-The total .dag code doesn't decrease by 13,000 — much of it MOVES
-to std/ rather than disappearing. But the COMPILER shrinks from
-38K to ~25K, and the compiler becomes generic over dimensions
-rather than hardcoding complexity/ownership/effects.
+**Ideal: ~24,730 lines across ~13 compiler files + facts in std/.**
 
 ---
 
-## The key architectural question
+## The self-referential closure
 
-**Does the generic dimension mechanism actually work?**
+The compiler proving ITSELF terminates, using the same mechanism
+it uses to prove user programs terminate. The compiler is a `.dag`
+program. Its functions use `fold`/`descend`/`repeat`. Its data
+is finite (`BoundedLattice` values on edges). CX can prove every
+compiler function terminates — because the compiler IS the
+mechanism it applies.
 
-The dimensions-design.md says yes. But no dimension is fully
-implemented via the generic mechanism today. SubValueRelation is
-closest (it's on TypeBinding, it has a lattice, it has composition).
-But even SubValueRelation is partially reconstructed downstream
-(the triple classification problem).
+When the compiler compiles itself:
+- Stage 1 parses .dag source (including the compiler's own source)
+- Stage 2 resolves names (including its own modules)
+- Stage 3 proves properties (including its own termination)
+- Stage 4 emits Rust (producing stage0, which IS the compiler)
 
-The proof that the mechanism works: implement ONE dimension
-end-to-end via the generic mechanism. SubValueRelation is the
-candidate. When SVR flows through every edge via the generic
-mechanism, and CX reads it without reconstruction, that proves
-the mechanism. Then ownership and effects are the same mechanism
-with different lattice declarations.
-
-If the mechanism DOESN'T work (some dimension needs compiler-
-specific logic that can't be expressed as a lattice + compose),
-then the architecture is wrong and we need to understand why.
+The bootstrap loop is closed at the SEMANTIC level: the compiler
+doesn't just produce code that happens to work — it proves its
+own code satisfies the same properties it enforces on user code.
 
 ---
 
 ## Execution: what to do
 
-1. **Build the generic dimension mechanism** — this is the
-   architectural bet. One mechanism that reads any
-   BoundedLattice<D> from std/ and processes it at binding sites.
-   Test with SubValueRelation (already 80% there).
+1. **Prove the mechanism on SVR** — implement one dimension
+   end-to-end via the generic mechanism. SVR is the candidate
+   (already 80% there). When SVR flows through every edge without
+   reconstruction and CX reads it without heuristics, the
+   mechanism is proven.
 
-2. **Move complexity facts to std/** — cost algebra, proof rules,
-   parser progress → std/computation.dag, std/termination.dag,
-   std/graph.dag. The compiler calls them; doesn't contain them.
+2. **Move dimension facts to std/** — cost algebra, proof rules,
+   parser progress, ownership rules, effect composition. The
+   compiler calls them; doesn't contain them.
 
-3. **Move ownership facts to std/** — OwnershipKind, UsageEdge,
-   composition rules → std/ownership.dag.
+3. **Consolidate resolve files** — 13 files → 4-5 files.
 
-4. **Merge resolve files** — 13 files → 4-5 files.
+4. **Reduce core.dag** — dissolve tables, Connective, VarBindingKind.
 
-5. **Reduce core.dag** — dissolve tables, Connective, VarBindingKind.
+5. **Build proof strategy framework** — the generic mechanism that
+   reads strategies from std/ and executes them. This is the
+   architectural bet.
 
-Each step is testable: the 394 existing tests must still pass.
-The dimension mechanism is proven when CX violations = 0 via
-the generic path (not via complexity.dag heuristics).
+Each step is testable: existing tests must still pass. The
+mechanism is proven when CX violations = 0 via the generic path.

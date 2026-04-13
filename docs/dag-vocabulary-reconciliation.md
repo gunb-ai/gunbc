@@ -247,3 +247,8 @@ Items 2-5 are independent. Items 6-7 are larger and tracked separately.
 **Proposal.** SVR recognized as the existing edge vocabulary.
 UsageEdge identified as the only new concept. 5 conflicts documented
 with resolutions. Redundant coproducts from earlier drafts killed.
+
+All concepts compose from primitives: `Classical`, `Product`/`Coproduct`,
+`BoundedLattice`, `fold`/`descend`/`repeat`, functions. See
+[compiler-ideal-vs-actual.md](compiler-ideal-vs-actual.md) for the
+full primitives-to-proof-strategies derivation.

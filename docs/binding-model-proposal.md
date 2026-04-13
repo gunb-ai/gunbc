@@ -184,12 +184,29 @@ UsageEdge), not a separate `AccumulatorOwnership` type.
 
 ---
 
+## Relationship to primitives
+
+Every concept in this proposal composes from the system's primitives
+(see [compiler-ideal-vs-actual.md](compiler-ideal-vs-actual.md)):
+
+- `SubValueRelation` — a `BoundedLattice` (algebra primitive)
+- `UsageEdge` — a `Coproduct` (structural primitive)
+- Dimension computation — `fold` over bindings with lattice `compose`
+- Proof construction — `fold` over graph structure + lattice + gate
+
+The compiler doesn't know about specific dimensions. It reads proof
+strategies from `std/` and executes them: traverse a graph, compose
+with an algebra, check a gate. One mechanism, N dimensions.
+
+---
+
 ## Status
 
 **Proposal.** Grounded in SubValueRelation as the existing edge
 vocabulary. UsageEdge is the only new type. Binding forms derived
-from edge position. Dimension table is SVR-keyed. 7 redundant
-coproducts from earlier drafts eliminated.
+from edge position. Dimension table is SVR-keyed.
 
 See [dag-vocabulary-reconciliation.md](dag-vocabulary-reconciliation.md)
 for the full type inventory and conflict catalog.
+See [compiler-ideal-vs-actual.md](compiler-ideal-vs-actual.md)
+for the first-principles architecture and proof strategy framework.
