@@ -40,7 +40,7 @@ type CloudAuthScheme
 
 // -- Credentials ---------------------------------------------------
 
-type Credential {
+type CloudCredential {
   scheme: CloudAuthScheme
   scopes: List<String>?
   expires_seconds: Int?

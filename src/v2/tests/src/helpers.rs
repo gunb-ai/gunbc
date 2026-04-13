@@ -25,6 +25,12 @@ pub fn read_v2_file(relative_path: &str) -> String {
         .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e))
 }
 
+/// Source roots where `.dag` files can be found.
+pub fn source_roots() -> [std::path::PathBuf; 2] {
+    let ws = workspace_root();
+    [ws.join("src/v2"), ws.join("dsl")]
+}
+
 // ── Tokenize + Parse ─────────────────────────────────────────────────────
 
 pub fn tokenize(source: &str) -> Rc<Vec<Rc<Token>>> {
@@ -90,15 +96,6 @@ pub fn assert_parses_strict(relative_path: &str) {
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
-
-/// Source roots where .dag files can be found.
-fn source_roots() -> Vec<std::path::PathBuf> {
-    let ws = workspace_root();
-    vec![
-        ws.join("dsl"),
-        ws.join("src/v2"),
-    ]
-}
 
 /// Build module index using the parser as single authority for module names.
 /// Scans source roots recursively, tokenizes+parses each .dag file to
