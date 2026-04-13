@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::std_algebra::{FreeMonoid, PartialFunction, kernel_algebra_profile, algebra_type_param_names};
+pub use crate::std_algebra::{BooleanAlgebra, FreeMonoid, PartialFunction, kernel_algebra_profile, algebra_type_param_names};
 use Bool::*;
 use Platform::*;
 use TopologyNodeKind::*;
@@ -494,20 +494,6 @@ pub struct RestResponse {
     pub status: i64,
     pub headers: serde_json::Value,
     pub body: serde_json::Value,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct HttpResponse {
-    pub status: i64,
-    pub headers: serde_json::Value,
-    pub body: String,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CliResult {
-    pub stdout: String,
-    pub stderr: String,
-    pub exit_code: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

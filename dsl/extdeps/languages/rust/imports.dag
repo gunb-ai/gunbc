@@ -12,6 +12,8 @@
 
 module extdeps.languages.rust.imports
 
+import extdeps.cargo { CargoDependency }
+
 // -- Module declaration ----------------------------------------------
 // Ref: Rust Reference 6.5 "Modules"
 
@@ -73,20 +75,14 @@ data cargo_deps_header: String = "\n[dependencies]\n"
 data default_edition: String = "2021"
 
 // "What crate dependencies does a generated Rust project need?"
-type CrateDep {
-  name: String
-  version: String
-  features: List<String>
-}
-
-data base_deps: List<CrateDep> = [
+data base_deps: List<CargoDependency> = [
   { name: "serde", version: "1", features: ["derive"] },
   { name: "serde_json", version: "1", features: [] },
   { name: "clap", version: "4", features: ["derive"] },
   { name: "lazy_static", version: "1", features: [] }
 ]
 
-data async_deps: List<CrateDep> = [
+data async_deps: List<CargoDependency> = [
   { name: "tokio", version: "1", features: ["full"] },
   { name: "reqwest", version: "0.12", features: ["json"] },
   { name: "async-trait", version: "0.1", features: [] }
