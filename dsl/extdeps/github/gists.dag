@@ -9,13 +9,11 @@
 
 module extdeps.github.gists
 
-import extdeps.github.github { GitHubUser }
+import extdeps.github.github { GitHubUser, default_api_base }
 import std.types { Timestamp, GistId, Url, HttpMethod, AuthScheme }
 import std.errors { GitHubErrorShape }
 
 // -- Gist model ----------------------------------------------------
-
-type GistVisibility = Public | GistSecret
 
 type GistFile {
   filename: String
@@ -39,7 +37,7 @@ type Gist {
 
 service github.Gist {
   config {
-    endpoint: "https://api.github.com"
+    endpoint: default_api_base
     auth: Bearer
     auth_input: auth_token
     // GitHub API rate limits: 5000 requests/hour for authenticated users

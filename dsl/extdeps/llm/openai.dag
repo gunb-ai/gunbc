@@ -100,11 +100,15 @@ service llm.OpenAI {
     output {
       content: String from "choices/0/message/content"
       model: String from "model"
-      finish_reason: String from "choices/0/finish_reason"
+      finish_reason: OpenAiFinishReason from "choices/0/finish_reason"
       prompt_tokens: Int from "usage/prompt_tokens"
       completion_tokens: Int from "usage/completion_tokens"
     }
-    transport rest { method: POST, path: "/v1/chat/completions" }
+    transport rest {
+      method: POST,
+      path: "/v1/chat/completions",
+      body: { model: model, messages: messages, temperature: temperature, max_tokens: max_tokens }
+    }
     response {
       200 => Json
       400 => OpenAiErrorShape
@@ -136,7 +140,11 @@ service llm.OpenAI {
       output_tokens: Int from "usage/output_tokens"
       input_tokens: Int from "usage/input_tokens"
     }
-    transport rest { method: POST, path: "/v1/responses" }
+    transport rest {
+      method: POST,
+      path: "/v1/responses",
+      body: { model: model, input: input, instructions: instructions, max_output_tokens: max_output_tokens }
+    }
     response {
       200 => Json
       400 => OpenAiErrorShape

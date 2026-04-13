@@ -15,15 +15,13 @@
 
 module extdeps.github.pulls
 
-import extdeps.github.github { GitHubUser }
+import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
 import std.types { Timestamp, Url, HttpMethod, AuthScheme }
 import std.errors { GitHubErrorShape }
 import std.credentials { CredentialSource, EnvVar }
 import std.serialization { WireFormat, Text }
 
 // -- Pull request model -----------------------------------------------
-
-type PullRequestState = PrOpen | PrClosed | PrMerged
 
 type PullRequestRef {
   ref: String
@@ -57,7 +55,7 @@ type IssueComment {
 
 service github.Pulls {
   config {
-    endpoint: "https://api.github.com"
+    endpoint: default_api_base
     auth: Bearer
     auth_source: EnvVar { name: "GITHUB_TOKEN" }
     // GitHub API rate limits: 5000 requests/hour for authenticated users
@@ -72,7 +70,7 @@ service github.Pulls {
       owner: String
       repo: String
       state: String = "open"
-      per_page: Int = 30
+      per_page: Int = default_per_page
     }
     output {
       pulls: List<PullRequest>

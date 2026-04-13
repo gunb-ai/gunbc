@@ -113,7 +113,7 @@ service llm.Anthropic {
     output {
       content: String from "content/0/text"
       model: String from "model"
-      stop_reason: String from "stop_reason"
+      stop_reason: StopReason from "stop_reason"
       input_tokens: Int from "usage/input_tokens"
       output_tokens: Int from "usage/output_tokens"
     }
