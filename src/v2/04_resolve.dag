@@ -819,11 +819,11 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       // children: [operand]
       let r = match texpr.children |> first { Some { value: o } => resolve_expr_types(texpr: o, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
       ExprResolveResult { expr: make_expr_node(expr_data: ExprUnaryOp { op: op }, children: [r.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: r.diagnostics }
-    ExprLambda { semantics: s } =>
+    ExprLambda =>
       // children: [body, param0, param1, ...]
       let lam_param_nodes = texpr.children |> skip(1)
       let r = match texpr.children |> first { Some { value: b } => resolve_expr_types(texpr: b, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
-      ExprResolveResult { expr: make_expr_node(expr_data: ExprLambda { semantics: s }, children: concat([r.expr], lam_param_nodes), inferred: texpr.inferred, span: texpr.span), diagnostics: r.diagnostics }
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprLambda, children: concat([r.expr], lam_param_nodes), inferred: texpr.inferred, span: texpr.span), diagnostics: r.diagnostics }
     ExprStringInterp =>
       // children: text/interp part nodes
       let resolved_children = texpr.children |> map(part_node =>

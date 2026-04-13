@@ -192,11 +192,6 @@ pub enum CallSemantics {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct LambdaSemantics {
-    pub param_types: Rc<Vec<Rc<Node>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum MethodSemantics {
     PlainMethodSemantics,
@@ -259,9 +254,7 @@ pub enum ExprData {
     ExprUnaryOp {
         op: UnaryOpKind,
     },
-    ExprLambda {
-        semantics: Option<Rc<LambdaSemantics>>,
-    },
+    ExprLambda,
     ExprStringInterp,
     ExprBlock,
     ExprCast,

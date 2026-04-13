@@ -330,7 +330,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
         walk_expr(accum: acc, texpr: child, in_tail: true, si: si)
       )
 
-    ExprLambda { semantics: _ } =>
+    ExprLambda =>
       // Lambda bodies may execute N times (map/filter/fold). Walk the body
       // in a fresh accumulator, then record ALL variables found (including
       // lambda params) twice in the outer accumulator — ensuring fan-out >= 2.
@@ -491,7 +491,7 @@ fn collect_callable_refs(texpr: Node, si: Map<String, NewlineIndex>) -> Map<Stri
         Some { value: child } => collect_callable_refs(texpr: child, si: si)
         None => empty_map()
       }
-    ExprLambda { semantics: _ } =>
+    ExprLambda =>
       collect_callable_refs(texpr: lambda_body(texpr: texpr), si: si)
     ExprForEach =>
       let col = collect_callable_refs(texpr: foreach_collection(texpr: texpr), si: si)
@@ -577,7 +577,7 @@ fn summarize_fold_acc_uses(node: Node, acc_name: String, si: Map<String, Newline
         )
       }
 
-    ExprLambda { semantics: _ } =>
+    ExprLambda =>
       let body_summary = summarize_fold_acc_uses(node: lambda_body(texpr: node), acc_name: acc_name, si: si, inside_nested: true)
       if body_summary.whole_acc_uses > 0 || body_summary.field_moves |> count > 0 || body_summary.nested_acc_refs {
         FoldAccUseSummary { whole_acc_uses: 0, field_moves: [], nested_acc_refs: true }
@@ -604,7 +604,7 @@ fn summarize_fold_acc_uses(node: Node, acc_name: String, si: Map<String, Newline
 
 fn fold_lambda_acc_use_summary(lambda_node: Node, acc_name: String, si: Map<String, NewlineIndex>) -> FoldAccUseSummary {
   match lambda_node.expr_data {
-    ExprLambda { semantics: _ } => summarize_fold_acc_uses(node: lambda_body(texpr: lambda_node), acc_name: acc_name, si: si, inside_nested: false)
+    ExprLambda => summarize_fold_acc_uses(node: lambda_body(texpr: lambda_node), acc_name: acc_name, si: si, inside_nested: false)
     _ => empty_fold_acc_use_summary()
   }
 }
@@ -612,7 +612,7 @@ fn fold_lambda_acc_use_summary(lambda_node: Node, acc_name: String, si: Map<Stri
 // Does the fold lambda's terminal expression construct a record literal of the accumulator type?
 fn fold_body_constructs_acc_struct(lambda_node: Node, acc_type_name: String, si: Map<String, NewlineIndex>) -> Bool {
   match lambda_node.expr_data {
-    ExprLambda { semantics: _ } =>
+    ExprLambda =>
       let body = lambda_body(texpr: lambda_node)
       let terminal = fold_terminal_expr(body: body)
       match terminal.expr_data {
@@ -654,7 +654,7 @@ fn analyze_single_fold(method_call: Node, si: Map<String, NewlineIndex>) -> Fold
     None => method_call
   }
   let acc_param_name = match fold_lambda_node.expr_data {
-    ExprLambda { semantics: _ } => match lambda_param_names_at(texpr: fold_lambda_node, source_indices: si) |> first {
+    ExprLambda => match lambda_param_names_at(texpr: fold_lambda_node, source_indices: si) |> first {
       Some { value: n } => n
       None => ""
     }
