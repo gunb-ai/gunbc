@@ -1997,11 +1997,7 @@ let val_str = rust_empty_map_value_type_str(map_type.clone(), shared_types.clone
 if ((key_str.clone().as_str() != "".to_string().as_str()) && (val_str.clone().as_str() != "".to_string().as_str())) {
             v2_rt::concat(v2_rt::concat(key_str.clone(), ", ".to_string()), val_str.clone())
         } else {
-            if (val_str.clone().as_str() != "".to_string().as_str()) {
-                val_str.clone()
-            } else {
-                "".to_string()
-            }
+            "".to_string()
         }
 }
 }

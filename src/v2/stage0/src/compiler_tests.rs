@@ -73,32 +73,40 @@ mod compiler_tests {
             .collect()
     }
 
-    fn extract_module_path(content: &str) -> Option<String> {
-        for line in content.lines() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("module ") {
-                return Some(trimmed["module ".len()..].trim().to_string());
-            }
-            if !trimmed.is_empty() && !trimmed.starts_with("//") {
-                break;
-            }
+    fn parse_module_or_panic(path: &str, content: &str) -> std::rc::Rc<crate::v2_std_core::Node> {
+        let tokens = tokenize(&content.to_string(), path.to_string());
+        let mut source_indices = HashMap::new();
+        source_indices.insert(
+            path.to_string(),
+            crate::v2_std_core::build_newline_index(path.to_string(), &content.to_string()),
+        );
+        let parsed = crate::v2_compiler_parse::parse_with_table(
+            &tokens,
+            std::rc::Rc::new(source_indices),
+            crate::v2_std_core::empty_intern_table(),
+        );
+        if let Some(err) = parsed.result.error.as_ref() {
+            panic!(
+                "failed to parse {} while building source closure: {}",
+                path,
+                crate::v2_std_core::diagnostic_to_message(err.diagnostic.clone())
+            );
         }
-        None
+        parsed.result.module.clone().unwrap_or_else(|| {
+            panic!("{} produced no module while building source closure", path)
+        })
     }
 
-    fn extract_import_paths(content: &str) -> Vec<String> {
-        let mut imports = Vec::new();
-        for line in content.lines() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("import ") {
-                let rest = trimmed["import ".len()..].trim();
-                let module_path = rest.split('{').next().unwrap_or(rest).trim();
-                if !module_path.is_empty() {
-                    imports.push(module_path.to_string());
-                }
-            }
-        }
-        imports
+    fn module_path_from_source(path: &str, content: &str) -> String {
+        parse_module_or_panic(path, content).name.clone()
+    }
+
+    fn import_paths_from_source(path: &str, content: &str) -> Vec<String> {
+        let module = parse_module_or_panic(path, content);
+        crate::v2_std_core::module_imports(module)
+            .iter()
+            .map(|imp| imp.name.clone())
+            .collect()
     }
 
     fn build_source_index(
@@ -107,17 +115,16 @@ mod compiler_tests {
         let mut index = HashMap::new();
         for root in roots {
             for (path, content) in discover_dag_files(root) {
-                if let Some(module_path) = extract_module_path(&content) {
-                    if let Some((existing, _)) = index.get(&module_path) {
-                        panic!(
-                            "duplicate module path '{}': declared in both {} and {}",
-                            module_path,
-                            existing,
-                            path
-                        );
-                    }
-                    index.insert(module_path, (path, content));
+                let module_path = module_path_from_source(&path, &content);
+                if let Some((existing, _)) = index.get(&module_path) {
+                    panic!(
+                        "duplicate module path '{}': declared in both {} and {}",
+                        module_path,
+                        existing,
+                        path
+                    );
                 }
+                index.insert(module_path, (path, content));
             }
         }
         index
@@ -132,20 +139,19 @@ mod compiler_tests {
         let mut queue = Vec::new();
 
         for (path, content) in entry_pairs {
-            if let Some(module_path) = extract_module_path(&content) {
-                seen.insert(
-                    module_path,
-                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile {
-                        path: path.clone(),
-                        content: content.clone(),
-                    }),
-                );
-            }
+            let module_path = module_path_from_source(&path, &content);
+            seen.insert(
+                module_path,
+                std::rc::Rc::new(crate::v2_compiler_compile::SourceFile {
+                    path: path.clone(),
+                    content: content.clone(),
+                }),
+            );
             queue.push((path, content));
         }
 
         while let Some((_path, content)) = queue.pop() {
-            for module_path in extract_import_paths(&content) {
+            for module_path in import_paths_from_source(&_path, &content) {
                 if seen.contains_key(&module_path) {
                     continue;
                 }

@@ -719,6 +719,21 @@ fn parse_boundary_keeps_intern_table_out_of_parse_result() {
         "merge_intern_tables(",
         "compiler_tests_rust.dag should not merge per-file parse tables after parse",
     );
+    assert_live_not_contains(
+        &profile_source,
+        "fn extract_module_path(content: &str)",
+        "compiler_tests_rust.dag should not line-scan module declarations in the self-compile path",
+    );
+    assert_live_not_contains(
+        &profile_source,
+        "fn extract_import_paths(content: &str)",
+        "compiler_tests_rust.dag should not line-scan import declarations in the self-compile path",
+    );
+    assert_live_contains(
+        &profile_source,
+        "module_imports(module)",
+        "compiler_tests_rust.dag should use parser-backed module_imports for self-compile source closure",
+    );
 }
 
 #[test]
@@ -743,6 +758,10 @@ fn testgen_emits_valid_rust() {
     assert!(
         source.contains("has_mock_prefix"),
         "05_emit_rust.dag should contain has_mock_prefix"
+    );
+    assert!(
+        !source.contains("} else if val_str != \"\" {"),
+        "05_emit_rust.dag should fail closed instead of emitting one-parameter empty_map turbofish"
     );
     assert!(
         !source.contains("starts_with_prefix"),

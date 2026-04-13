@@ -2091,8 +2091,6 @@ fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Map<String, Bool>, s
   let val_str = rust_empty_map_value_type_str(map_type: map_type, shared_types: shared_types, source_indices: source_indices)
   if key_str != "" && val_str != "" {
     concat(key_str, ", ", val_str)
-  } else if val_str != "" {
-    val_str
   } else { "" }
 }
 
