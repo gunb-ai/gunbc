@@ -21,6 +21,7 @@ Coercion design (algebra-keyed inhabitants): [docs/coercion-design.md](docs/coer
 Testing strategy: [src/v2/tests/testing-strategy.md](src/v2/tests/testing-strategy.md)
 Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 Modeling guidelines: [MODELING.md](MODELING.md)
+DAG vocabulary reconciliation: [docs/dag-vocabulary-reconciliation.md](docs/dag-vocabulary-reconciliation.md)
 
 ---
 
@@ -123,6 +124,7 @@ the expression's AccessShape (DirectValue, FieldAccess, Iteration,
 Arithmetic, Construction).
 
 See [docs/binding-unification-design.md](docs/binding-unification-design.md).
+Full DAG vocabulary accounting: [docs/dag-vocabulary-reconciliation.md](docs/dag-vocabulary-reconciliation.md).
 
 **Step 2:** Thread the existing `SubValueRelation` (std/induction.dag)
 through bindings — preserved from computation to consumption:

@@ -158,22 +158,23 @@ emission, future dimensions) seeing fewer forms.
 
 ## Structural modeling (2026-04-12)
 
-The 7 → 2 reduction is proposed as `.dag` types in
-[docs/binding-model-proposal.md](binding-model-proposal.md):
+The 7 → 2 reduction is grounded in the DAG edge vocabulary:
 
-- **Binding forms** — `BindingForm = Parameter | LetBinding`,
-  `BindingSurface` (6 syntactic forms mapped to 2 via `binding_form`),
-  `CallerContext` (what the call site contributes to a parameter),
-  `AccessShape` (how a let-binding's value relates to its source),
-  `IterationBinding` (how fold/descend/repeat create parameter bindings).
+- **DAG edges** — The binding form distinction (parameter vs
+  let-binding) is a projection of `ValueFlow = BoundaryCrossing |
+  LocalNaming` from the proposed DAG edge vocabulary. Bindings are
+  not a separate concept from edges — a binding is a name attached
+  to an edge.
 
-- **Ownership as dimension** — `OwnershipKind = Owned | Borrowed | Shared`
-  as a `BoundedLattice` inhabitant, with binding-site rules
-  (`ownership_at_let`) keyed on `BindingForm + AccessShape`.
+- **Full proposal** — [binding-model-proposal.md](binding-model-proposal.md)
+  defines edge types (`StructuralEdge`, `ValueFlow`, `BoundaryContext`,
+  `NamingShape`, `UsageEdge`), derives binding forms as projections,
+  and specifies the dimension computation table.
 
-- **Provenance interface** — `SubValueRelation` binding-site computation
-  rules keyed on `CallerContext` (for parameters) and `AccessShape`
-  (for let-bindings), replacing the triple classification system.
+- **Reconciliation** — [dag-vocabulary-reconciliation.md](dag-vocabulary-reconciliation.md)
+  documents all ~120 compiler types, identifies 5 conflicts
+  (Cardinality, Connective, SizeExpr, TextFile, VarBindingKind),
+  and proposes resolutions.
 
 These are **proposals** — the types land in `dsl/std/` when the
 corresponding implementation work begins.
@@ -207,6 +208,8 @@ corresponding implementation work begins.
 ## Status
 
 **On roadmap.** Theme 1 (Close the Binding Model) in ROADMAP.md.
-Proposed .dag types in [docs/binding-model-proposal.md](binding-model-proposal.md).
-Incremental migration path defined. Next step: first implementation
-PR (for-each → fold desugaring).
+Grounded in DAG edge vocabulary:
+[binding-model-proposal.md](binding-model-proposal.md) (types),
+[dag-vocabulary-reconciliation.md](dag-vocabulary-reconciliation.md)
+(full accounting + conflicts). Incremental migration path defined.
+Next step: first implementation PR (for-each → fold desugaring).
