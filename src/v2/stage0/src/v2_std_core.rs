@@ -1903,7 +1903,7 @@ pub fn module_node(name: &String, imports: Rc<Vec<Rc<Node>>>, items: Rc<Vec<Rc<N
 })
 }
 
-pub fn import_node(module_path: &String, is_all: bool, specific_names: Rc<Vec<Rc<Node>>>, span: &Rc<SourceSpan>) -> Rc<Node> {
+pub fn import_node(module_path: String, is_all: bool, specific_names: Rc<Vec<Rc<Node>>>, span: &Rc<SourceSpan>, name_span: Rc<SourceSpan>) -> Rc<Node> {
     {
         let wildcard_marker = if is_all {
             Some(Rc::new(Node {
@@ -1930,9 +1930,9 @@ pub fn import_node(module_path: &String, is_all: bool, specific_names: Rc<Vec<Rc
             None
         };
 Rc::new(Node {
-    name: module_path.clone(),
+    name: module_path,
     span: span.clone(),
-    ident_span: default_ident_span(module_path.clone(), span.clone()),
+    ident_span: Some(name_span),
     children: specific_names,
     connective: Connective::NoConnective,
     params: Rc::new(vec![]),

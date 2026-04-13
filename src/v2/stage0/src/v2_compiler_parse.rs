@@ -1902,7 +1902,7 @@ continue;
 pub fn parse_import(tokens: &Rc<Vec<Rc<Token>>>, state: &Rc<ParserState>) -> Rc<ImportResult> {
     {
         let start_span = current_span(tokens.clone(), state.clone());
-let err_import = import_node(&"".to_string(), false, Rc::new(vec![]), &start_span);
+let err_import = import_node("".to_string(), false, Rc::new(vec![]), &start_span, start_span.clone());
 let r = expect(&tokens, &state, &Rc::new(ExpectedToken::ExpectKeyword {
     text: "import".to_string(),
 }));
@@ -1947,10 +1947,10 @@ if has_err(r.err.clone()) {
 })
                 }
 let s = skip_newlines(tokens.clone(), r.state.clone());
-let base_imp = import_node(&mod_path, false, names, &start_span);
+let base_imp = import_node(mod_path.clone(), false, names, &start_span, mod_path_span);
 let imp_ir = intern(&s.intern_table.clone(), &mod_path);
 let s = Rc::new(ParserState { intern_table: imp_ir.table.clone(), ..(*s.clone()).clone() });
-let imp = Rc::new(Node { ident_span: Some(mod_path_span), ident: Some(imp_ir.id.clone()), ..(*base_imp).clone() });
+let imp = Rc::new(Node { ident: Some(imp_ir.id.clone()), ..(*base_imp).clone() });
 Rc::new(ImportResult {
     import: imp,
     state: s.clone(),
@@ -1960,10 +1960,10 @@ Rc::new(ImportResult {
         } else {
             {
                 let s = skip_newlines(tokens.clone(), s.clone());
-let base_imp = import_node(&mod_path, true, Rc::new(vec![]), &start_span);
+let base_imp = import_node(mod_path.clone(), true, Rc::new(vec![]), &start_span, mod_path_span);
 let imp_ir = intern(&s.intern_table.clone(), &mod_path);
 let s = Rc::new(ParserState { intern_table: imp_ir.table.clone(), ..(*s.clone()).clone() });
-let imp = Rc::new(Node { ident_span: Some(mod_path_span), ident: Some(imp_ir.id.clone()), ..(*base_imp).clone() });
+let imp = Rc::new(Node { ident: Some(imp_ir.id.clone()), ..(*base_imp).clone() });
 Rc::new(ImportResult {
     import: imp,
     state: s.clone(),
@@ -4805,13 +4805,13 @@ if has_err(r_ns.err.clone()) {
 })
         }
 let namespace_root = r_ns.name.clone();
-let name_span = r_ns.span.clone();
-let r = parse_dotted_ident_rest(tokens.clone(), r_ns.state.clone(), namespace_root.clone(), name_span.clone());
+let r = parse_dotted_ident_rest(tokens.clone(), r_ns.state.clone(), namespace_root.clone(), r_ns.span.clone());
 let name = r.name.clone();
+let svc_name_span = r.span.clone();
 let named_dummy = Rc::new(Node {
     name: name.clone(),
     span: start_span.clone(),
-    ident_span: Some(name_span.clone()),
+    ident_span: Some(svc_name_span.clone()),
     children: Rc::new(vec![]),
     params: Rc::new(vec![]),
     inferred: None,
@@ -4866,7 +4866,7 @@ let svc_props = match r.config.clone() {
 let item = Rc::new(Node {
     name: name.clone(),
     span: start_span.clone(),
-    ident_span: Some(name_span.clone()),
+    ident_span: Some(svc_name_span.clone()),
     children: r.operations.clone(),
     params: Rc::new(vec![]),
     inferred: None,
