@@ -1889,7 +1889,7 @@ continue;
 pub fn parse_import(tokens: &Rc<Vec<Rc<Token>>>, state: &Rc<ParserState>) -> Rc<ImportResult> {
     {
         let start_span = current_span(tokens.clone(), state.clone());
-let err_import = import_node(&"".to_string(), false, Rc::new(vec![]), &start_span);
+let err_import = import_node("".to_string(), false, Rc::new(vec![]), &start_span, start_span.clone());
 let r = expect(&tokens, &state, &Rc::new(ExpectedToken::ExpectKeyword {
     text: "import".to_string(),
 }));
@@ -1910,6 +1910,7 @@ if has_err(r.err.clone()) {
 })
         }
 let mod_path = r.name.clone();
+let mod_path_span = r.span.clone();
 let s = r.state.clone();
 let e = eat(&tokens, &s, Rc::new(ExpectedToken::ExpectLBrace));
 if e.consumed.clone() {
@@ -1933,12 +1934,12 @@ if has_err(r.err.clone()) {
 })
                 }
 let s = skip_newlines(tokens.clone(), r.state.clone());
-let imp = import_node(&mod_path, false, names, &start_span);
+let base_imp = import_node(mod_path.clone(), false, names, &start_span, mod_path_span);
 let imp_ir = intern(&s.intern_table.clone(), &mod_path);
 let s = Rc::new(ParserState { intern_table: imp_ir.table.clone(), ..(*s.clone()).clone() });
-let imp = Rc::new(Node { ident: Some(imp_ir.id.clone()), ..(*imp.clone()).clone() });
+let imp = Rc::new(Node { ident: Some(imp_ir.id.clone()), ..(*base_imp).clone() });
 Rc::new(ImportResult {
-    import: imp.clone(),
+    import: imp,
     state: s.clone(),
     err: None,
 })
@@ -1946,12 +1947,12 @@ Rc::new(ImportResult {
         } else {
             {
                 let s = skip_newlines(tokens.clone(), s.clone());
-let imp = import_node(&mod_path, true, Rc::new(vec![]), &start_span);
+let base_imp = import_node(mod_path.clone(), true, Rc::new(vec![]), &start_span, mod_path_span);
 let imp_ir = intern(&s.intern_table.clone(), &mod_path);
 let s = Rc::new(ParserState { intern_table: imp_ir.table.clone(), ..(*s.clone()).clone() });
-let imp = Rc::new(Node { ident: Some(imp_ir.id.clone()), ..(*imp.clone()).clone() });
+let imp = Rc::new(Node { ident: Some(imp_ir.id.clone()), ..(*base_imp).clone() });
 Rc::new(ImportResult {
-    import: imp.clone(),
+    import: imp,
     state: s.clone(),
     err: None,
 })
