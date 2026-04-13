@@ -57,7 +57,7 @@ LAYER 4: End-to-end (depends on Layer 3)
 LAYER 5: Thesis completion (depends on Layer 4)
   Track 13 (single emitter)        🟡 ── depends on Track 2 + 7
   Track 11 (runtime safety)        🟡 ── needs design (refinement types or total ops)
-  Track 12 (verification)          🟡 ── depends on Track 5 (need working emission)
+  Track 12 (verification)          🟢 ── partially unblocked (L4 can start, Track 5 🟢)
 
 LAYER 6: Full vision (depends on Layer 5)
   Track 14 (omni-emission)         🔴 ── depends on Track 13; needs vision
@@ -85,7 +85,7 @@ LAYER 6: Full vision (depends on Layer 5)
 | **Track 18 (error mode taxonomy)** | **Tier 1 (no duplicate representations)** | **🟢** | **Nothing** |
 | Track 13 (single emitter) | Emission is mechanical | 🟡 | Track 2 + 7 |
 | Track 11 (runtime safety) | Tier 2 | 🟡 | Design phase |
-| Track 12 (verification) | Tier 3 | 🟡 | Track 5 |
+| **Track 12 (verification)** | **Tier 3** | **🟢** | **Partially unblocked — L4 can start** |
 | Track 14 (omni-emission) | Omni-emission | 🔴 | Track 13 + vision |
 
 ---
@@ -1275,7 +1275,22 @@ emits both from the same source.
 - L6 (exhaustive form coverage): every structural form compiles to every target
 - L7 (algebraic law verification): operations obey declared laws
 
-**Blocked on:** Track 5 (need working emission to execute against).
+**Status (2026-04-12):** PARTIALLY UNBLOCKED. Track 5 is now 🟢
+(RE-3/RE-4 remaining). The interpreter can evaluate .dag functions
+directly. The emitter produces Rust/Python/Go code. L4 (semantic
+correctness) can start: evaluate a .dag function in the interpreter,
+emit and execute the same function in Rust, compare outputs. The
+test infrastructure (`compile_to_resolved` in compile.dag) and the
+interpreter (`dag run`) are both operational.
+
+L7 (algebraic law verification) has its first concrete candidate:
+Track 17a effects derivation generates `f(f(x)) == f(x)` test
+obligations for idempotent REST ops. These are L7 tests in
+obligation-as-data form, awaiting an execution runner.
+
+**Blocked on:** nothing for L4 design + first tests. L5/L6 need
+broader emission coverage. L7 execution needs a test runner that
+reads obligation data and dispatches.
 
 ### Track 13: Single emitter (compiler-laws.md Lane C)
 

@@ -667,27 +667,62 @@ current state, then into the relevant design doc for details.
 
 ---
 
-## Current scoreboard
+## Thesis claims — complete list
 
-Updated manually. If this is stale, check ROADMAP.md for details.
+Every claim the thesis makes, in one place. The ROADMAP tracks
+progress toward each. If a claim isn't here, the project doesn't
+claim it. If a claim IS here but the ROADMAP has no track for it,
+that's a gap.
 
-```
-Tier 1: Structural         ██████████████░░ ~85%
-  CX gate:                 421 violations remaining (non-blocking)
-  Coercion (= emission):   schema + dispatch + data done; single emitter (Lane C) not started
-  Record completeness:     partial
+**Core abstraction:**
+- .dag is dependency modeling software. The program IS a dependency
+  graph. Parallelism is the default; sequential execution requires
+  a data dependency to justify it.
 
-Tier 2: Runtime safety      ░░░░░░░░░░░░░░░ ~0%
-  No runtime safety proofs yet
+**Tier 1 — Structural correctness (impossible to write the bug):**
+- Type mismatches, field typos, non-exhaustive matches, bare
+  container types, circular dependencies, stale imports, cross-target
+  drift — all caught at compile time.
+- CX gate: every recursive function terminates with a proven bound.
+- Coercion = emission: the compiler reads a target spec and
+  translates. No separate coercion engine.
+- Ownership: the compiler proves no aliased mutation in emitted code.
 
-Tier 3: Generated tests     ████░░░░░░░░░░░ ~25%
-  L0-L3 done, L4-L7 not started
+**Tier 2 — Runtime safety (proven safe or total):**
+- Division by zero, integer overflow, out-of-bounds, force-unwrap,
+  partial functions — either proven safe at compile time or made
+  total. No partial functions in the runtime.
 
-Free consequences:          ░░░░░░░░░░░░░░░ blocked on Tiers 1-2
-  Parallelism:             blocked (needs CX + ownership + purity)
-  Memoization:             blocked (needs CX + purity)
-  Space bounds:            blocked (needs CX)
-```
+**Tier 3 — Verification from structure:**
+- L4: emitted code executes and matches .dag evaluation.
+- L5: same .dag produces same behavior in Rust/Python/Go.
+- L6: every structural form compiles to every target.
+- L7: operations obey declared algebraic laws.
+
+**Concept unifications:**
+- Coercion cost = complexity.
+- Coercion = emission.
+- Target language spec = transport spec = interpreter runtime.
+- Idempotency + cancellation + redundancy = algebraic simplification.
+
+**Free consequences (fall out when Tiers 1-2 close):**
+- Automatic parallelism from dependency graph.
+- Automatic memoization from purity + cost.
+- Space bound proofs from CX.
+- Cross-language optimization from shared cost algebra.
+
+**Meta-process modeling:**
+- Bootstrap, CI, dev process modeled as .dag workflows.
+- `dag run` is the primary execution path.
+- Adding a CI gate, a Node field, or a target language requires
+  editing one .dag file.
+
+**Modeling discipline:**
+- Every declared type has at least one structural consumer.
+- Every service boundary uses typed enums, not String/Bool proxies.
+- No fabrication sentinels (`__BUG_*`, `__EMIT_BUG_*`). Missing
+  facts are compile-time errors, not runtime strings.
+- No duplicate record shapes. One type per concept.
 
 ---
 
