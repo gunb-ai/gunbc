@@ -73,35 +73,109 @@ mod compiler_tests {
             .collect()
     }
 
-    /// Build the self-compile source closure: dsl/ dependencies + all src/v2/*.dag.
-    fn self_compile_sources() -> Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> {
-        let dsl_deps = &[
-            "dsl/extdeps/languages/go/emit.dag",
-            "dsl/extdeps/languages/python/emit.dag",
-            "dsl/extdeps/languages/rust/emit.dag",
-            "dsl/extdeps/languages/dag/syntax.dag",
-            "dsl/std/algebra.dag",
-            "dsl/std/syntax.dag",
-            "dsl/std/types.dag",
-            "dsl/std/verification.dag",
-        ];
-        let root = workspace_root();
-        let mut sources: Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> = dsl_deps
-            .iter()
-            .map(|p| {
-                let full = root.join(p);
-                let content = std::fs::read_to_string(&full)
-                    .unwrap_or_else(|e| panic!("failed to read {}: {}", full.display(), e));
-                std::rc::Rc::new(crate::v2_compiler_compile::SourceFile {
-                    path: p.to_string(),
-                    content,
-                })
-            })
-            .collect();
+    fn parse_module_or_panic(path: &str, content: &str) -> std::rc::Rc<crate::v2_std_core::Node> {
+        let tokens = tokenize(&content.to_string(), path.to_string());
+        let mut source_indices = HashMap::new();
+        source_indices.insert(
+            path.to_string(),
+            crate::v2_std_core::build_newline_index(path.to_string(), &content.to_string()),
+        );
+        let parsed = crate::v2_compiler_parse::parse_with_table(
+            &tokens,
+            std::rc::Rc::new(source_indices),
+            crate::v2_std_core::empty_intern_table(),
+        );
+        if let Some(err) = parsed.result.error.as_ref() {
+            panic!(
+                "failed to parse {} while building source closure: {}",
+                path,
+                crate::v2_std_core::diagnostic_to_message(err.diagnostic.clone())
+            );
+        }
+        parsed.result.module.clone().unwrap_or_else(|| {
+            panic!("{} produced no module while building source closure", path)
+        })
+    }
 
-        let v2_files = discover_dag_files("src/v2");
-        sources.extend(source_files_from(&v2_files));
-        sources
+    fn module_path_from_source(path: &str, content: &str) -> String {
+        parse_module_or_panic(path, content).name.clone()
+    }
+
+    fn import_paths_from_source(path: &str, content: &str) -> Vec<String> {
+        let module = parse_module_or_panic(path, content);
+        crate::v2_std_core::module_imports(module)
+            .iter()
+            .map(|imp| imp.name.clone())
+            .collect()
+    }
+
+    fn build_source_index(
+        roots: &[&str],
+    ) -> HashMap<String, (String, String)> {
+        let mut index = HashMap::new();
+        for root in roots {
+            for (path, content) in discover_dag_files(root) {
+                let module_path = module_path_from_source(&path, &content);
+                if let Some((existing, _)) = index.get(&module_path) {
+                    panic!(
+                        "duplicate module path '{}': declared in both {} and {}",
+                        module_path,
+                        existing,
+                        path
+                    );
+                }
+                index.insert(module_path, (path, content));
+            }
+        }
+        index
+    }
+
+    fn resolve_source_closure(
+        entry_pairs: Vec<(String, String)>,
+        roots: &[&str],
+    ) -> Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> {
+        let index = build_source_index(roots);
+        let mut seen = HashMap::<String, std::rc::Rc<crate::v2_compiler_compile::SourceFile>>::new();
+        let mut queue = Vec::new();
+
+        for (path, content) in entry_pairs {
+            let module_path = module_path_from_source(&path, &content);
+            seen.insert(
+                module_path,
+                std::rc::Rc::new(crate::v2_compiler_compile::SourceFile {
+                    path: path.clone(),
+                    content: content.clone(),
+                }),
+            );
+            queue.push((path, content));
+        }
+
+        while let Some((_path, content)) = queue.pop() {
+            for module_path in import_paths_from_source(&_path, &content) {
+                if seen.contains_key(&module_path) {
+                    continue;
+                }
+                if let Some((path, file_content)) = index.get(&module_path).cloned() {
+                    seen.insert(
+                        module_path,
+                        std::rc::Rc::new(crate::v2_compiler_compile::SourceFile {
+                            path: path.clone(),
+                            content: file_content.clone(),
+                        }),
+                    );
+                    queue.push((path, file_content));
+                }
+            }
+        }
+
+        let mut result: Vec<_> = seen.into_values().collect();
+        result.sort_by(|a, b| a.path.cmp(&b.path));
+        result
+    }
+
+    /// Build the self-compile source closure from src/v2 entry modules with dsl as a dependency pool.
+    fn self_compile_sources() -> Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> {
+        resolve_source_closure(discover_dag_files("src/v2"), &["src/v2", "dsl"])
     }
 
     /// Build the gist pipeline source closure.
@@ -192,7 +266,7 @@ mod compiler_tests {
             &"module test\ntype Foo { x: Int }\n".to_string(),
             "test.dag".to_string(),
         );
-        let result = crate::v2_compiler_parse::parse(&tokens, std::rc::Rc::new(std::collections::HashMap::new()));
+        let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
         assert!(
             result.module.is_some(),
             "valid module should parse successfully"
@@ -219,7 +293,7 @@ mod compiler_tests {
                     last.shape
                 );
 
-                let result = crate::v2_compiler_parse::parse(&tokens, std::rc::Rc::new(std::collections::HashMap::new()));
+                let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
 
                 assert!(
                     result.module.is_some(),
@@ -296,7 +370,7 @@ mod compiler_tests {
                         "{} should end with Eof",
                         file
                     );
-                    let result = crate::v2_compiler_parse::parse(&tokens, std::rc::Rc::new(std::collections::HashMap::new()));
+                    let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
                     assert!(
                         result.module.is_some(),
                         "{} should parse successfully, error: {:?}",
@@ -314,6 +388,38 @@ mod compiler_tests {
             .expect("failed to spawn thread")
             .join();
         result.expect("self-parse-all test panicked");
+    }
+
+    #[test]
+    fn self_resolve_all_modules() {
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                let sources = std::rc::Rc::new(self_compile_sources());
+                let result = crate::v2_compiler_compile::resolve_sources(sources);
+
+                let errors: Vec<_> = result
+                    .diagnostics
+                    .iter()
+                    .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
+                    .collect();
+                let error_count = errors.len();
+
+                eprintln!("self-resolve error count: {}", error_count);
+                for e in &errors {
+                    eprintln!("  {:?}", e.diagnostic);
+                }
+
+                assert!(
+                    error_count == 0,
+                    "self-resolve errors: {} errors (expected 0): {:?}",
+                    error_count,
+                    errors
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("self-resolve-all test panicked");
     }
 
     #[test]
@@ -738,10 +844,24 @@ mod compiler_tests {
 
                 let t_stage = Instant::now();
                 let mut modules = Vec::new();
-                let mut intern_tables = Vec::new();
+                let mut intern_table = crate::v2_std_core::empty_intern_table();
                 for (i, tokens) in token_lists.iter().enumerate() {
                     let t = Instant::now();
-                    let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
+                    let si = crate::v2_std_core::build_newline_index(
+                        sources[i].path.clone(),
+                        &sources[i].content.clone(),
+                    );
+                    let parsed = crate::v2_compiler_parse::parse_with_table(
+                        tokens,
+                        crate::v2_rt::rc_map_insert(
+                            crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                            si.file.clone(),
+                            si.clone(),
+                        ),
+                        intern_table.clone(),
+                    );
+                    let result = parsed.result.clone();
+                    intern_table = parsed.intern_table.clone();
                     let elapsed = t.elapsed();
                     let ok = result.module.is_some();
                     eprintln!(
@@ -751,18 +871,16 @@ mod compiler_tests {
                     let m = result.module.clone()
                         .unwrap_or_else(|| panic!("parse failed for source {}", sources[i].path));
                     modules.push(m);
-                    intern_tables.push(result.intern_table.clone());
                 }
-                let intern_table = crate::v2_std_core::merge_intern_tables(std::rc::Rc::new(intern_tables));
                 let parse_total = t_stage.elapsed();
                 eprintln!("  PARSE TOTAL:    {:?}\n", parse_total);
 
                 let t_stage = Instant::now();
                 let resolve_si = sources.iter().fold(
-                    crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                    crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), &s.content.clone())),
                 );
-                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), resolve_si);
+                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), &resolve_si);
                 let resolve_total = t_stage.elapsed();
                 let errors: Vec<_> = graph
                     .diagnostics
@@ -838,11 +956,25 @@ mod compiler_tests {
 
                 let t_stage = Instant::now();
                 let mut modules = Vec::new();
-                let mut intern_tables_p = Vec::new();
+                let mut intern_table_p = crate::v2_std_core::empty_intern_table();
                 let mut phase2_diags = 0usize;
                 for (i, tokens) in token_lists.iter().enumerate() {
                     let t = Instant::now();
-                    let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
+                    let si = crate::v2_std_core::build_newline_index(
+                        sources[i].path.clone(),
+                        &sources[i].content.clone(),
+                    );
+                    let parsed = crate::v2_compiler_parse::parse_with_table(
+                        tokens,
+                        crate::v2_rt::rc_map_insert(
+                            crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                            si.file.clone(),
+                            si.clone(),
+                        ),
+                        intern_table_p.clone(),
+                    );
+                    let result = parsed.result.clone();
+                    intern_table_p = parsed.intern_table.clone();
                     let elapsed = t.elapsed();
                     let ok = result.module.is_some();
                     if result.error.is_some() {
@@ -855,9 +987,7 @@ mod compiler_tests {
                     let m = result.module.clone()
                         .unwrap_or_else(|| panic!("parse failed for source {}", sources[i].path));
                     modules.push(m);
-                    intern_tables_p.push(result.intern_table.clone());
                 }
-                let intern_table_p = crate::v2_std_core::merge_intern_tables(std::rc::Rc::new(intern_tables_p));
                 let parse_total = t_stage.elapsed();
                 let rss_after_parse = get_rss_bytes();
                 eprintln!(
@@ -869,10 +999,10 @@ mod compiler_tests {
 
                 let t_stage = Instant::now();
                 let resolve_si = sources.iter().fold(
-                    crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                    crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), &s.content.clone())),
                 );
-                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), resolve_si);
+                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), &resolve_si);
                 let resolve_total = t_stage.elapsed();
                 let phase3_diags: usize = graph
                     .diagnostics
@@ -992,23 +1122,35 @@ mod compiler_tests {
 
                 let t = Instant::now();
                 let mut modules = Vec::new();
-                let mut intern_tables_fp = Vec::new();
+                let mut intern_table_fp = crate::v2_std_core::empty_intern_table();
                 for (i, tokens) in token_lists.iter().enumerate() {
-                    let result = crate::v2_compiler_parse::parse(tokens, std::rc::Rc::new(std::collections::HashMap::new()));
+                    let si = crate::v2_std_core::build_newline_index(
+                        sources[i].path.clone(),
+                        &sources[i].content.clone(),
+                    );
+                    let parsed = crate::v2_compiler_parse::parse_with_table(
+                        tokens,
+                        crate::v2_rt::rc_map_insert(
+                            crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                            si.file.clone(),
+                            si.clone(),
+                        ),
+                        intern_table_fp.clone(),
+                    );
+                    let result = parsed.result.clone();
+                    intern_table_fp = parsed.intern_table.clone();
                     let m = result.module.clone()
                         .unwrap_or_else(|| panic!("parse failed for source {}", sources[i].path));
                     modules.push(m);
-                    intern_tables_fp.push(result.intern_table.clone());
                 }
-                let intern_table_fp = crate::v2_std_core::merge_intern_tables(std::rc::Rc::new(intern_tables_fp));
                 let parse_elapsed = t.elapsed();
                 // 1b. Resolve
                 let t = Instant::now();
                 let resolve_si = sources.iter().fold(
-                    crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                    crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), &s.content.clone())),
                 );
-                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), resolve_si);
+                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), &resolve_si);
                 let resolve_elapsed = t.elapsed();
                 let resolve_errors: usize = graph.diagnostics.iter()
                     .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
@@ -1031,7 +1173,7 @@ mod compiler_tests {
                 // 2. Normalize
                 let t = Instant::now();
                 let source_indices = newline_indices.iter().cloned().fold(
-                    crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                    crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, index| crate::v2_rt::rc_map_insert(acc, index.file.clone(), index.clone()),
                 );
                 let norm = crate::v2_compiler_normalize::normalize_graph(&graph, source_indices.clone());
@@ -1115,24 +1257,36 @@ mod compiler_tests {
 
                 let t0 = Instant::now();
                 let mut modules = Vec::new();
-                let mut intern_tables_r = Vec::new();
+                let mut intern_table = crate::v2_std_core::empty_intern_table();
                 for source in &sources {
                     let tokens = crate::v2_compiler_tokenize::tokenize(
                         &source.content.clone(),
                         source.path.clone(),
                     );
-                    let result = crate::v2_compiler_parse::parse(&tokens, std::rc::Rc::new(std::collections::HashMap::new()));
+                    let si = crate::v2_std_core::build_newline_index(
+                        source.path.clone(),
+                        &source.content.clone(),
+                    );
+                    let parsed = crate::v2_compiler_parse::parse_with_table(
+                        &tokens,
+                        crate::v2_rt::rc_map_insert(
+                            crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                            si.file.clone(),
+                            si.clone(),
+                        ),
+                        intern_table.clone(),
+                    );
+                    let result = parsed.result.clone();
+                    intern_table = parsed.intern_table.clone();
                     let m = result.module.clone()
                         .unwrap_or_else(|| panic!("parse failed for source {}", source.path));
                     modules.push(m);
-                    intern_tables_r.push(result.intern_table.clone());
                 }
-                let intern_table = crate::v2_std_core::merge_intern_tables(std::rc::Rc::new(intern_tables_r));
                 let resolve_si = sources.iter().fold(
-                    crate::v2_rt::rc_empty_map::<std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
+                    crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), &s.content.clone())),
                 );
-                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), resolve_si);
+                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), &resolve_si);
                 let setup_time = t0.elapsed();
                 let rss_baseline = get_rss_bytes();
                 eprintln!(
@@ -1236,7 +1390,7 @@ mod compiler_tests {
                     let tc_result = crate::v2_compiler_infer::typecheck_module(
                         &resolved.clone(),
                         &module_index,
-                        source_indices.clone(),
+                        &source_indices.clone(),
                         intern_table.clone(),
                     );
                     let full_elapsed = t_full.elapsed();

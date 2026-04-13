@@ -35,7 +35,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
-    ident: 0,
+    ident: None,
 })
 }
 
@@ -52,7 +52,7 @@ pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn seed_node_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {
-    v2_rt::rc_map_insert(v2_rt::rc_empty_map::<Rc<Node>>(), key, value)
+    v2_rt::rc_map_insert(v2_rt::rc_empty_map::<String, Rc<Node>>(), key, value)
 }
 
 pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {

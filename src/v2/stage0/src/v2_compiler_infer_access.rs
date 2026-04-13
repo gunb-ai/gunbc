@@ -106,7 +106,7 @@ access_result(unit_type(), &malformed_diags, span.clone(), "malformed keyed coll
             } else {
                 if ((is_ordered_element_collection(authored_name_at(source_indices.clone(), &normed)) && node_is_element_collection(&normed, source_indices.clone())) && index_is_int) {
                     {
-                        let elem = for_each_element_type_node(normed.clone());
+                        let elem = for_each_element_type_node(normed.clone(), source_indices.clone());
 access_result(with_optional_cardinality(&elem), &Rc::new(vec![]), span.clone(), "list index access".to_string())
 }
                 } else {

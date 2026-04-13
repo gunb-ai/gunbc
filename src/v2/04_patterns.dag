@@ -31,7 +31,7 @@ import v2.compiler.infer_types {
 }
 import v2.compiler.infer_env {
   TypeEnv,
-  lookup_type
+  lookup_type, lookup_type_by_name
 }
 
 // =========================================================================
@@ -122,9 +122,9 @@ fn pattern_binding_type(subject: PatternSubject) -> Node {
   }
 }
 
-fn variant_not_found_result(scrut: Node, variant_name: String, module_name: String) -> NodeLookupResult {
+fn variant_not_found_result(scrut: Node, variant_name: String, module_name: String, source_indices: Map<String, NewlineIndex>) -> NodeLookupResult {
   node_lookup_failed(
-    diagnostics: [make_error_node(diagnostic: VariantNotFound { variant: variant_name, type_name: scrut.name, span: scrut.span }, module_name: module_name)]
+    diagnostics: [make_error_node(diagnostic: VariantNotFound { variant: variant_name, type_name: authored_name_at(source_indices: source_indices, node: scrut), span: scrut.span }, module_name: module_name)]
   )
 }
 
@@ -146,7 +146,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
         } else if scrut_opt && variant_name == "None" {
           node_lookup_resolved(node: none_type)
         } else {
-          variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name)
+          variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name, source_indices: source_indices)
         }
         match direct_match {
           Some { value: v } => node_lookup_resolved(node: v)
@@ -191,7 +191,7 @@ fn check_match_exhaustiveness(
   let resolved_raw = if has_structure {
     scrutinee_type
   } else {
-    match lookup_type(env: env, name: scrutinee_type.name) {
+    match lookup_type_by_name(env: env, name: authored_name_at(source_indices: env.source_indices, node: scrutinee_type)) {
       Some { value: def } => def
       None => scrutinee_type
     }
@@ -207,7 +207,7 @@ fn check_match_exhaustiveness(
     let variant_names = if resolved_is_optional {
       ["Some", "None"]
     } else {
-      resolved.children |> map(c => c.name)
+      resolved.children |> map(c => authored_name_at(source_indices: env.source_indices, node: c))
     }
     // Check if any arm is a wildcard or bind (covers all remaining).
     let has_catch_all = any(arms, arm =>

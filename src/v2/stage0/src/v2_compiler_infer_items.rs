@@ -7,7 +7,7 @@ use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, ErrorNode, make_param_node, param_node_name_at, param_node_type_expr, make_field_node, InferredNode, Cardinality, expr_has_self_call, expr_has_non_tail_self_call, Connective, node_name_span, no_span};
+pub use crate::v2_std_core::{Node, ErrorNode, make_param_node, param_node_name_at, param_node_type_expr, make_field_node, InferredNode, Cardinality, expr_has_self_call, expr_has_non_tail_self_call, Connective, node_name_span, no_span, NewlineIndex, authored_name_at};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::Cardinality::{Required};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective};
@@ -66,7 +66,7 @@ pub struct ResolvedGraph {
     pub emit_graph_info: Rc<EmitGraphInfo>,
 }
 
-pub fn inferred_to_outputs(inferred: &Option<Rc<InferredNode>>, span: Rc<SourceSpan>) -> Rc<Vec<Rc<Node>>> {
+pub fn inferred_to_outputs(inferred: &Option<Rc<InferredNode>>, span: Rc<SourceSpan>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<Rc<Node>>> {
     if (inferred.clone() == None) {
         Rc::new(vec![])
     } else {
@@ -82,7 +82,7 @@ if is_product {
                         if (rt.ident_span.clone() == None) {
                             Rc::new({ let mut __result = Vec::new(); for child in rt.children.clone().iter().cloned() { __result.push({
                                 let child_type = child_type_node(&child);
-make_field_node(&child.name.clone(), child_type.clone(), Cardinality::Required, None, None, span.clone(), node_name_span(&child))
+make_field_node(&authored_name_at(source_indices.clone(), &child), child_type.clone(), Cardinality::Required, None, None, span.clone(), node_name_span(&child))
 }); } __result })
                         } else {
                             Rc::new(vec![make_field_node(&"value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone(), no_span())])
@@ -134,15 +134,18 @@ kind
 }
 }
 
-pub fn variant_locals_from_items(items: Rc<Vec<Rc<Node>>>, init: Rc<HashMap<String, Rc<TypeBinding>>>) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    items.iter().cloned().fold(init.clone(), |acc: Rc<HashMap<String, Rc<TypeBinding>>>, item: Rc<Node>| {
+pub fn variant_locals_from_items(items: Rc<Vec<Rc<Node>>>, init: Rc<HashMap<String, Rc<TypeBinding>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    items.iter().cloned().fold(init, |acc: Rc<HashMap<String, Rc<TypeBinding>>>, item: Rc<Node>| {
         let is_coproduct = (item.connective.clone() == Connective::Disj);
 if is_coproduct.clone() {
-            item.children.clone().iter().cloned().fold(acc.clone(), |vacc: Rc<HashMap<String, Rc<TypeBinding>>>, child: Rc<Node>| v2_rt::rc_map_insert(vacc.clone(), child.name.clone(), Rc::new(TypeBinding {
-    name: child.name.clone(),
+            item.children.clone().iter().cloned().fold(acc.clone(), |vacc: Rc<HashMap<String, Rc<TypeBinding>>>, child: Rc<Node>| {
+                let child_name = authored_name_at(source_indices.clone(), &child);
+v2_rt::rc_map_insert(vacc, child_name.clone(), Rc::new(TypeBinding {
+    name: child_name.clone(),
     resolved: item.clone(),
     provenance: Rc::new(SubValueRelation::SubValueUnknown),
-})))
+}))
+})
         } else {
             acc.clone()
         }

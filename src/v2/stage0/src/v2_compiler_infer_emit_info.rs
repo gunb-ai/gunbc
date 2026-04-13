@@ -60,8 +60,6 @@ pub struct EmitGraphInfo {
     pub movable: Rc<HashMap<String, bool>>,
     pub variant_to_enum: Rc<HashMap<String, String>>,
     pub owned_bindings: Rc<HashMap<String, bool>>,
-    pub fold_eligible_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    pub fold_eligible: Rc<HashMap<String, bool>>,
     pub read_only_params_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     pub read_only_params: Rc<HashMap<String, bool>>,
 }
@@ -73,18 +71,16 @@ pub struct EmitInfoBuildState {
 
 pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     Rc::new(EmitGraphInfo {
-    type_summaries: v2_rt::rc_empty_map::<Rc<TypeSummary>>(),
-    recursive_type_set: v2_rt::rc_empty_map::<bool>(),
-    fielded_variants: v2_rt::rc_empty_map::<bool>(),
-    shared_types: v2_rt::rc_empty_map::<bool>(),
-    ownership_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
-    movable: v2_rt::rc_empty_map::<bool>(),
-    variant_to_enum: v2_rt::rc_empty_map::<String>(),
-    owned_bindings: v2_rt::rc_empty_map::<bool>(),
-    fold_eligible_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
-    fold_eligible: v2_rt::rc_empty_map::<bool>(),
-    read_only_params_index: v2_rt::rc_empty_map::<Rc<HashMap<String, bool>>>(),
-    read_only_params: v2_rt::rc_empty_map::<bool>(),
+    type_summaries: v2_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
+    recursive_type_set: v2_rt::rc_empty_map::<String, bool>(),
+    fielded_variants: v2_rt::rc_empty_map::<String, bool>(),
+    shared_types: v2_rt::rc_empty_map::<String, bool>(),
+    ownership_index: v2_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+    movable: v2_rt::rc_empty_map::<String, bool>(),
+    variant_to_enum: v2_rt::rc_empty_map::<String, String>(),
+    owned_bindings: v2_rt::rc_empty_map::<String, bool>(),
+    read_only_params_index: v2_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+    read_only_params: v2_rt::rc_empty_map::<String, bool>(),
 })
 }
 
@@ -103,7 +99,7 @@ pub fn lookup_emit_type_summary(emit_info: Rc<EmitGraphInfo>, type_name: String)
 }
 
 pub fn derive_variant_to_enum(type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>) -> Rc<HashMap<String, String>> {
-    Rc::new(v2_rt::map_values(&type_summaries)).iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, summary: Rc<TypeSummary>| match (*summary.repr.clone()).clone() {
+    Rc::new(v2_rt::map_values(&type_summaries)).iter().cloned().fold(v2_rt::rc_empty_map::<String, String>(), |acc: Rc<HashMap<String, String>>, summary: Rc<TypeSummary>| match (*summary.repr.clone()).clone() {
     TypeRepr::EnumRepr { .. } => Rc::new(v2_rt::map_keys(&summary.variant_name_set.clone())).iter().cloned().fold(acc.clone(), |inner: Rc<HashMap<String, String>>, vn: String| match v2_rt::map_get(&inner, vn.clone()) {
     Some(_) => v2_rt::rc_map_insert(inner.clone(), vn.clone(), "".to_string()),
     None => v2_rt::rc_map_insert(inner.clone(), vn.clone(), summary.name.clone()),
@@ -162,7 +158,7 @@ pub fn is_tuple_type(n: &Rc<Node>) -> bool {
 pub fn build_struct_field_summaries(parent: &Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<HashMap<String, Rc<FieldSummary>>> {
     {
         let is_pair = is_tuple_type(&parent);
-Rc::new(parent.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(v2_rt::rc_empty_map::<Rc<FieldSummary>>(), |acc: Rc<HashMap<String, Rc<FieldSummary>>>, pair: (i64, Rc<Node>)| {
+Rc::new(parent.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<FieldSummary>>(), |acc: Rc<HashMap<String, Rc<FieldSummary>>>, pair: (i64, Rc<Node>)| {
             let idx = pair.0.clone();
 let child = pair.1.clone();
 if (child.inferred.clone() == None) {
@@ -221,7 +217,7 @@ let consistent = Rc::new({ let mut __result = Vec::new(); for field_name in shar
     Some(first_field) => enum_field_type_consistent(variants.clone(), field_name.clone(), child_type_node(&first_field), source_indices.clone()),
     None => false,
 } { __result.push(field_name); } } __result });
-consistent.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<FieldSummary>>(), |acc: Rc<HashMap<String, Rc<FieldSummary>>>, field_name: String| match find_first_enum_field_node(variants.clone(), field_name.clone(), source_indices.clone()) {
+consistent.iter().cloned().fold(v2_rt::rc_empty_map::<String, Rc<FieldSummary>>(), |acc: Rc<HashMap<String, Rc<FieldSummary>>>, field_name: String| match find_first_enum_field_node(variants.clone(), field_name.clone(), source_indices.clone()) {
     Some(first_field) => v2_rt::rc_map_insert(acc.clone(), field_name.clone(), Rc::new(FieldSummary {
     access_style: FieldAccessStyle::EnumAccessor,
     value_shape: field_value_shape_from_type_node(child_type_node(&first_field)),
@@ -232,9 +228,9 @@ consistent.iter().cloned().fold(v2_rt::rc_empty_map::<Rc<FieldSummary>>(), |acc:
 }
 
 pub fn build_field_type_map(children: Rc<Vec<Rc<Node>>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<HashMap<String, String>> {
-    children.iter().cloned().fold(v2_rt::rc_empty_map::<String>(), |acc: Rc<HashMap<String, String>>, child: Rc<Node>| match child.inferred.clone().as_deref().cloned() {
+    children.iter().cloned().fold(v2_rt::rc_empty_map::<String, String>(), |acc: Rc<HashMap<String, String>>, child: Rc<Node>| match child.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: ft, .. }) => {
-        let resolved_name = normalize_access_type_node(ft.clone()).name.clone();
+        let resolved_name = authored_name_at(source_indices.clone(), &normalize_access_type_node(ft.clone()));
 let ft_is_type_var = if (ft.inferred.clone() != None) {
             is_type_variable(ft.inferred.clone().clone().unwrap())
         } else {
@@ -264,11 +260,11 @@ let has_fn = { let mut __found = false; for child in item.children.clone().iter(
 } { __found = true; break; } } __found };
 if is_product {
             Some(Rc::new(TypeSummary {
-    name: item.name.clone(),
+    name: authored_name_at(source_indices.clone(), &item),
     repr: Rc::new(TypeRepr::StructRepr),
     field_summaries: build_struct_field_summaries(&item, source_indices.clone()),
     field_type_map: build_field_type_map(item.children.clone(), source_indices.clone()),
-    variant_name_set: v2_rt::rc_empty_map::<bool>(),
+    variant_name_set: v2_rt::rc_empty_map::<String, bool>(),
     generic_param_names: gpn,
     has_fn_fields: has_fn,
 }))
@@ -276,13 +272,13 @@ if is_product {
             {
                 let unit_only = { let mut __all = true; for child in item.children.clone().iter().cloned() { if !(((child.children.clone().len() as i64) == 0)) { __all = false; break; } } __all };
 Some(Rc::new(TypeSummary {
-    name: item.name.clone(),
+    name: authored_name_at(source_indices.clone(), &item),
     repr: Rc::new(TypeRepr::EnumRepr {
     unit_only: unit_only,
 }),
     field_summaries: build_enum_field_summaries(&item.children.clone(), source_indices.clone()),
-    field_type_map: v2_rt::rc_empty_map::<String>(),
-    variant_name_set: item.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<bool>(), |acc: Rc<HashMap<String, bool>>, child: Rc<Node>| v2_rt::rc_map_insert(acc.clone(), authored_name_at(source_indices.clone(), &child), true)),
+    field_type_map: v2_rt::rc_empty_map::<String, String>(),
+    variant_name_set: item.children.clone().iter().cloned().fold(v2_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, child: Rc<Node>| v2_rt::rc_map_insert(acc, authored_name_at(source_indices.clone(), &child), true)),
     generic_param_names: gpn,
     has_fn_fields: has_fn,
 }))
@@ -307,7 +303,7 @@ v2_rt::rc_map_insert(acc.clone(), vname.clone(), Rc::new(TypeSummary {
     repr: Rc::new(TypeRepr::StructRepr),
     field_summaries: build_struct_field_summaries(&variant, source_indices.clone()),
     field_type_map: build_field_type_map(variant.children.clone(), source_indices.clone()),
-    variant_name_set: v2_rt::rc_empty_map::<bool>(),
+    variant_name_set: v2_rt::rc_empty_map::<String, bool>(),
     generic_param_names: Rc::new(vec![]),
     has_fn_fields: v_has_fn.clone(),
 }))

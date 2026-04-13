@@ -61,8 +61,8 @@ import v2.std.core {
   with_required_cardinality,
   error_type, is_compiler_error,
   node_name_span, no_span,
-  NewlineIndex,
-  InternTable, InternResult, empty_intern_table, intern, intern_find_or_empty, pre_intern_tokens
+  NewlineIndex, authored_name_at,
+  InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens
 }
 
 import v2.compiler.languages {
@@ -86,6 +86,10 @@ type ParseContext {
 type ParseResult {
   module: Node?
   error: ErrorNode?
+}
+
+type ParseWithTableResult {
+  result: ParseResult
   intern_table: InternTable
 }
 
@@ -815,12 +819,12 @@ fn child_inferred_or_empty(ch: Node) -> Node {
 // Convert a Node return type to output fields.
 // Fail-closed: if ANY child is not fully typed, return [] (no partial boundaries).
 // Otherwise -> Conj with children extracts fields, scalar wraps as single "value" field.
-fn node_inferred_to_outputs(rt: Node) -> List<Node> {
+fn node_inferred_to_outputs(rt: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
   if is_conj_with_children(n: rt) {
     let all_children_typed = rt.children |> all(ch => match ch.inferred { Some { value: Resolved { node: _ } } => true  _ => false })
     if all_children_typed {
       rt.children
-        |> map(ch => make_field_node(name: ch.name, type_expr: child_inferred_or_empty(ch: ch), cardinality: Required, default_value: ch.body, from_key: none, span: ch.span, name_span: node_name_span(n: ch)))
+        |> map(ch => make_field_node(name: authored_name_at(source_indices: source_indices, node: ch), type_expr: child_inferred_or_empty(ch: ch), cardinality: Required, default_value: ch.body, from_key: none, span: ch.span, name_span: node_name_span(n: ch)))
     } else {
       []
     }
@@ -849,7 +853,7 @@ fn parse_dotted_ident_rest(tokens: List<Token>, acc: String, span: SourceSpan) -
     let extended = SourceSpan { file: span.file, start: span.start, end: r.span.end }
     parse_dotted_ident_rest(tokens: r.tokens, acc: concat(acc, ".", r.name), span: extended)
   EatUnchanged { tokens: __eu } =>
-    NameResult { name: acc, span: span, tokens: tokens, err: none }
+    NameResult { name: acc, span: span, tokens: __eu, err: none }
   }
 }
 
@@ -857,15 +861,25 @@ fn parse_dotted_ident_rest(tokens: List<Token>, acc: String, span: SourceSpan) -
 // 1. Entry point
 // =========================================================================
 
-fn parse(tokens: List<Token>, source_indices: Map<String, NewlineIndex>) -> ParseResult {
-  let pre_interned = pre_intern_tokens(tokens: tokens, table: empty_intern_table())
+fn parse_with_table(tokens: List<Token>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ParseWithTableResult {
+  let pre_interned = pre_intern_tokens(tokens: tokens, table: intern_table)
   let ctx = ParseContext { source_indices: source_indices, intern_table: pre_interned }
   let r = parse_module(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) {
-    ParseResult { module: none, error: r.err, intern_table: r.ctx.intern_table }
+    ParseWithTableResult {
+      result: ParseResult { module: none, error: r.err },
+      intern_table: r.ctx.intern_table
+    }
   } else {
-    ParseResult { module: Some { value: r.module }, error: none, intern_table: r.ctx.intern_table }
+    ParseWithTableResult {
+      result: ParseResult { module: Some { value: r.module }, error: none },
+      intern_table: r.ctx.intern_table
+    }
   }
+}
+
+fn parse(tokens: List<Token>, source_indices: Map<String, NewlineIndex>) -> ParseResult {
+  parse_with_table(tokens: tokens, source_indices: source_indices, intern_table: empty_intern_table()).result
 }
 
 // =========================================================================
@@ -884,6 +898,7 @@ fn parse_module(tokens: List<Token>, ctx: ParseContext) -> ModuleResult {
   let r = parse_dotted_ident(tokens: tokens)
   if has_err(err: r.err) { return ModuleResult { module: module_node(name: "", imports: [], items: [], span: start_span), tokens: r.tokens, ctx: ctx, err: r.err } }
   let mod_name = r.name
+  let mod_name_span = r.span
   let tokens = skip_newlines(tokens: r.tokens)
 
   // imports
@@ -903,8 +918,18 @@ fn parse_module(tokens: List<Token>, ctx: ParseContext) -> ModuleResult {
   // Intern the module name for future identity lookup
   let mod_ir = intern(table: ctx.intern_table, s: mod_name)
   let ctx = with(ctx, { intern_table: mod_ir.table })
-  let mod = module_node(name: mod_name, imports: imports, items: items, span: start_span)
-  let mod = with(mod, { ident: mod_ir.id })
+  // Build module node with the name-token ident_span so authored_name_at
+  // returns the dotted name (not the full module source).
+  let base_mod = Node {
+    name: mod_name, span: start_span,
+    ident_span: Some { value: mod_name_span },
+    children: items, connective: NoConnective,
+    params: imports, inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+  let mod = with(base_mod, { ident: Some { value: mod_ir.id } })
   ModuleResult { module: mod, tokens: tokens, ctx: ctx, err: none }
 }
 
@@ -947,7 +972,7 @@ fn parse_items_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node>) -> I
 
 fn parse_import(tokens: List<Token>, ctx: ParseContext) -> ImportResult {
   let start_span = token_span(tok: tokens |> first)
-  let err_import = import_node(module_path: "", is_all: false, specific_names: [], span: start_span)
+  let err_import = import_node(module_path: "", is_all: false, specific_names: [], span: start_span, name_span: start_span)
   let r = expect(tokens: tokens, expected: ExpectKeyword { text: "import" })
   if has_err(err: r.err) { return ImportResult { import: err_import, tokens: r.tokens, ctx: ctx, err: r.err } }
   let tokens = r.tokens
@@ -955,6 +980,7 @@ fn parse_import(tokens: List<Token>, ctx: ParseContext) -> ImportResult {
   let r = parse_dotted_ident(tokens: tokens)
   if has_err(err: r.err) { return ImportResult { import: err_import, tokens: r.tokens, ctx: ctx, err: r.err } }
   let mod_path = r.name
+  let mod_path_span = r.span
   let tokens = r.tokens
 
   // Optional binding list: { Name1, Name2 }
@@ -968,18 +994,18 @@ fn parse_import(tokens: List<Token>, ctx: ParseContext) -> ImportResult {
     let r = expect(tokens: tokens, expected: ExpectRBrace)
     if has_err(err: r.err) { return ImportResult { import: err_import, tokens: r.tokens, ctx: ctx, err: r.err } }
     let tokens = skip_newlines(tokens: r.tokens)
-    let imp = import_node(module_path: mod_path, is_all: false, specific_names: names, span: start_span)
+    let base_imp = import_node(module_path: mod_path, is_all: false, specific_names: names, span: start_span, name_span: mod_path_span)
     let imp_ir = intern(table: ctx.intern_table, s: mod_path)
     let ctx = with(ctx, { intern_table: imp_ir.table })
-    let imp = with(imp, { ident: imp_ir.id })
+    let imp = with(base_imp, { ident: Some { value: imp_ir.id } })
     ImportResult { import: imp, tokens: tokens, ctx: ctx, err: none }
   EatUnchanged { tokens: __eu } =>
     // Bare import (no braces): import all from module.
     let tokens = skip_newlines(tokens: tokens)
-    let imp = import_node(module_path: mod_path, is_all: true, specific_names: [], span: start_span)
+    let base_imp = import_node(module_path: mod_path, is_all: true, specific_names: [], span: start_span, name_span: mod_path_span)
     let imp_ir = intern(table: ctx.intern_table, s: mod_path)
     let ctx = with(ctx, { intern_table: imp_ir.table })
-    let imp = with(imp, { ident: imp_ir.id })
+    let imp = with(base_imp, { ident: Some { value: imp_ir.id } })
     ImportResult { import: imp, tokens: tokens, ctx: ctx, err: none }
   }
 }
@@ -1002,10 +1028,9 @@ fn parse_import_names_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node
   if tok_is_rbrace(tok: tokens |> first) {
     NamesResult { names: acc, tokens: tokens, ctx: ctx, err: none }
   } else {
-    let name_span = token_span(tok: tokens |> first)
     let r = parse_dotted_ident(tokens: tokens)
     if has_err(err: r.err) { return NamesResult { names: [], tokens: r.tokens, ctx: ctx, err: r.err } }
-    let name_node = parsed_name_leaf(name: r.name, span: name_span)
+    let name_node = parsed_name_leaf(name: r.name, span: r.span)
     let tokens = skip_newlines(tokens: r.tokens)
     let e = eat(tokens: tokens, expected: ExpectComma)
     let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => tokens })
@@ -1141,7 +1166,7 @@ fn parse_item_by_form(tokens: List<Token>, ctx: ParseContext, form: ItemForm) ->
 
 fn field_to_child_node(field: Node, source_indices: Map<String, NewlineIndex>) -> Node {
   let ret_type = field_node_type_expr(n: field)
-  let props = match field_node_from_key(n: field) {
+  let props = match field_node_from_key(n: field, source_indices: source_indices) {
     Some { value: key } => [make_field_init_node(name: "from_key", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: key } }, children: [], inferred: none, span: field.span), span: field.span, name_span: no_span())]
     None => []
   }
@@ -2135,10 +2160,10 @@ fn parse_service_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: So
   let r_ns = expect_name(tokens: tokens)
   if has_err(err: r_ns.err) { return ItemResult { item: dummy, tokens: r_ns.tokens, ctx: ctx, err: r_ns.err } }
   let namespace_root = r_ns.name
-  let name_span = r_ns.span
-  let r = parse_dotted_ident_rest(tokens: r_ns.tokens, acc: namespace_root, span: name_span)
+  let r = parse_dotted_ident_rest(tokens: r_ns.tokens, acc: namespace_root, span: r_ns.span)
   let name = r.name
-  let named_dummy = Node { name: name, span: start_span, ident_span: Some { value: name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let svc_name_span = r.span
+  let named_dummy = Node { name: name, span: start_span, ident_span: Some { value: svc_name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   let r = expect(tokens: r.tokens, expected: ExpectLBrace)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -2160,7 +2185,7 @@ fn parse_service_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: So
     Some { value: cfg } => service_config_properties(endpoint: cfg.endpoint, auth: cfg.auth, auth_input: cfg.auth_input, auth_source: cfg.auth_source, rate_limit: cfg.rate_limit, retry: cfg.retry)
     None => []
   }
-  let item = Node { name: name, span: start_span, ident_span: Some { value: name_span },
+  let item = Node { name: name, span: start_span, ident_span: Some { value: svc_name_span },
     children: r.operations,
     params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective,
     transport: Some { value: r.transport }, properties: concat([ns_prop], svc_props),
@@ -2479,7 +2504,7 @@ fn parse_operation_v2_inline(tokens: List<Token>, ctx: ParseContext, name: Strin
   let tokens = ret.tokens
   let ctx = ret.ctx
   let outputs = match ret.inferred {
-    Some { value: Resolved { node: rt } } => node_inferred_to_outputs(rt: rt)
+    Some { value: Resolved { node: rt } } => node_inferred_to_outputs(rt: rt, source_indices: ctx.source_indices)
     _ => []
   }
   let tokens = skip_newlines(tokens: tokens)
@@ -2697,34 +2722,35 @@ fn last_child_or_self(n: Node) -> Node {
 // Recursion is structurally bounded: all self-calls pass a strict child of n.
 // Optional handling uses with_required_cardinality (TreeSizePreserving wrapper);
 // the CX analyzer sees through this via wrapper transparency in SCC edge classification.
-fn node_to_name_str(n: Node) -> String {
+fn node_to_name_str(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let is_optional = n.return_cardinality == CardOptional
   let effective_n = if is_optional { with_required_cardinality(n: n) } else { n }
   let opt_prefix = if is_optional { "Optional_" } else { "" }
-  let is_keyed_container = is_container_type(name: effective_n.name) && effective_n.children |> count == 2
+  let effective_name = authored_name_at(source_indices: source_indices, node: effective_n)
+  let is_keyed_container = is_container_type(name: effective_name) && effective_n.children |> count == 2
   if is_keyed_container {
     match effective_n.children |> last {
-      Some { value: ch } => concat(opt_prefix, effective_n.name, "_", node_to_name_str(n: ch))
-      None => concat(opt_prefix, effective_n.name)
+      Some { value: ch } => concat(opt_prefix, effective_name, "_", node_to_name_str(n: ch, source_indices: source_indices))
+      None => concat(opt_prefix, effective_name)
     }
   } else if effective_n.type_annotation != none {
     match effective_n.children |> first {
-      Some { value: ch } => concat(opt_prefix, node_to_name_str(n: ch))
-      None => concat(opt_prefix, effective_n.name)
+      Some { value: ch } => concat(opt_prefix, node_to_name_str(n: ch, source_indices: source_indices))
+      None => concat(opt_prefix, effective_name)
     }
-  } else if is_container_type(name: effective_n.name) {
+  } else if is_container_type(name: effective_name) {
     match effective_n.children |> first {
-      Some { value: ch } => concat(opt_prefix, "List_", node_to_name_str(n: ch))
-      None => concat(opt_prefix, effective_n.name)
+      Some { value: ch } => concat(opt_prefix, "List_", node_to_name_str(n: ch, source_indices: source_indices))
+      None => concat(opt_prefix, effective_name)
     }
   } else if effective_n.ident_span == none {
     let is_conj = effective_n.connective == Conj
     let is_disj = effective_n.connective == Disj
     if is_conj { concat(opt_prefix, "Record") }
     else if is_disj { concat(opt_prefix, "Union") }
-    else { concat(opt_prefix, effective_n.name) }
+    else { concat(opt_prefix, effective_name) }
   } else {
-    concat(opt_prefix, effective_n.name)
+    concat(opt_prefix, effective_name)
   }
 }
 
@@ -2755,7 +2781,7 @@ fn parse_exit_entries_acc(tokens: List<Token>, ctx: ParseContext, acc: List<Node
     }
     // Convert to property: exit_<code> = type_name
     let code_str = status_expr_to_str(expr: code, source_indices: ctx.source_indices)
-    let type_name = node_to_name_str(n: r3.type_expr)
+    let type_name = node_to_name_str(n: r3.type_expr, source_indices: ctx.source_indices)
     let prop_name = concat("exit_", code_str)
     let entry = make_field_init_node(name: prop_name, value: make_named_expr_node(name: type_name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: r3.type_expr.span, name_span: r3.type_expr.span), span: r3.type_expr.span, name_span: no_span())
     let e = eat(tokens: desc_tokens, expected: ExpectComma)
@@ -2858,7 +2884,7 @@ fn parse_response_entries_acc(tokens: List<Token>, ctx: ParseContext, acc: List<
     if has_err(err: r3.err) { return RespEntriesResult { entries: [], tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
     // Convert to property: response_<status> = type_name
     let status_str = status_expr_to_str(expr: status, source_indices: ctx.source_indices)
-    let type_name = node_to_name_str(n: r3.type_expr)
+    let type_name = node_to_name_str(n: r3.type_expr, source_indices: ctx.source_indices)
     let prop_name = concat("response_", status_str)
     let entry = make_field_init_node(name: prop_name, value: make_named_expr_node(name: type_name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: r3.type_expr.span, name_span: r3.type_expr.span), span: r3.type_expr.span, name_span: no_span())
     let e = eat(tokens: r3.tokens, expected: ExpectComma)
@@ -3071,7 +3097,7 @@ fn parse_capability(tokens: List<Token>, ctx: ParseContext) -> CapResult {
     let ret = parse_optional_inferred(tokens: r4.tokens, ctx: r3.ctx)
     if has_err(err: ret.err) { return CapResult { capability: dummy_cap, tokens: ret.tokens, ctx: ret.ctx, err: ret.err } }
     let outputs = match ret.inferred {
-      Some { value: Resolved { node: rt } } => node_inferred_to_outputs(rt: rt)
+      Some { value: Resolved { node: rt } } => node_inferred_to_outputs(rt: rt, source_indices: ret.ctx.source_indices)
       _ => []
     }
     let cap = make_capability_node(name: name, ident_span: Some { value: name_span }, inputs: inputs, outputs: outputs, span: start_span, source_indices: ctx.source_indices)

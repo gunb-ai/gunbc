@@ -398,7 +398,11 @@ type DeclaredFuncEnv {
 
 type Node {
   name: String
-  ident: Int
+  // Interned identifier for name-based identity. None for anonymous or
+  // synthesized nodes that have no authored identifier. Using Int? (not
+  // Int defaulting to 0) so "no ident" is structurally distinct from a
+  // valid ident 0 and cannot be confused at a registry key.
+  ident: Int?
   span: SourceSpan
   ident_span: SourceSpan?
   // Fractal composition -- operations, capabilities, items are all children
@@ -712,9 +716,9 @@ fn field_node_default_value(n: Node) -> Node? {
   } else { none }
 }
 
-fn field_node_from_key(n: Node) -> String? {
+fn field_node_from_key(n: Node, source_indices: Map<String, NewlineIndex>) -> String? {
   match n.properties |> first {
-    Some { value: p } => Some { value: p.name }
+    Some { value: p } => Some { value: authored_name_at(source_indices: source_indices, node: p) }
     None => none
   }
 }
@@ -1473,14 +1477,14 @@ fn module_node(name: String, imports: List<Node>, items: List<Node>, span: Sourc
   }
 }
 
-fn import_node(module_path: String, is_all: Bool, specific_names: List<Node>, span: SourceSpan) -> Node {
+fn import_node(module_path: String, is_all: Bool, specific_names: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
   // Wildcard imports set body to a marker node so they're structurally
   // distinguishable from empty specific imports (import foo {}).
   let wildcard_marker = if is_all {
     Some { value: Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } }
   } else { none }
   Node {
-    name: module_path, span: span, ident_span: default_ident_span(name: module_path, span: span), children: specific_names, connective: NoConnective,
+    name: module_path, span: span, ident_span: Some { value: name_span }, children: specific_names, connective: NoConnective,
 
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: wildcard_marker, transport: none, properties: [],
