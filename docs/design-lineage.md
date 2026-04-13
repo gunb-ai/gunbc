@@ -1,6 +1,6 @@
 # Design Lineage: gunb.ai → the-gunbai → gunbc
 
-> Part of: [THESIS.md](../THESIS.md) > [src/v3/spec.dag](../src/v3/spec.dag)
+> Part of: [THESIS.md](../THESIS.md) > [docs/v3-spec.md](v3-spec.md)
 
 How the current v3 design emerged across four repos. The same
 principles appear at every stage — they just get sharper.

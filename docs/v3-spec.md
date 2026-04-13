@@ -1,4 +1,9 @@
-// v3 Specification
+// v3 Design Proposal
+//
+// STATUS: proposal, pending validation via bounded experiments in v2.
+// This is a design document, not executable .dag. Types used here
+// (NodeId, TypeShape, etc.) are design notation, not imports.
+// See docs/v2-retrospective.md for the diagnosis that motivated this.
 //
 // Two ideas:
 //
@@ -14,8 +19,6 @@
 // Design principle: keep behaviors intuitive enough that you can
 // explain each one in a sentence. Composition handles complexity.
 // Lenses are cheap because the physics is rich.
-
-module v3.spec
 
 // =========================================================================
 // L1: FUNDAMENTAL BEHAVIORS

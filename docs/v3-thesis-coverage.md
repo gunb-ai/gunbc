@@ -1,7 +1,7 @@
 # v3 Thesis Coverage
 
 > Part of: [THESIS.md](../THESIS.md)
-> Single authority: [src/v3/spec.dag](../src/v3/spec.dag)
+> Single authority: [docs/v3-spec.md](v3-spec.md)
 
 The spec is the authority. This doc tracks which thesis claims
 are covered and which have gaps. See the spec for the design.

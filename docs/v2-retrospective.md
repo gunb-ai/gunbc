@@ -4,7 +4,7 @@
 >
 > **This is a retrospective analysis, not a design prescription.**
 > It diagnoses what went wrong in v2 and identifies patterns to
-> avoid. The v3 design lives in [src/v3/spec.dag](../src/v3/spec.dag).
+> avoid. The v3 design lives in [docs/v3-spec.md](v3-spec.md).
 > Sections 4-7 contain early design explorations that have been
 > superseded by the spec — they're kept as historical context for
 > how the thinking evolved, not as current proposals.
@@ -327,7 +327,7 @@ Every instance follows the same pattern:
 
 > **Historical note:** Sections 4-7 were early design explorations
 > written before the physics + lenses framing emerged. The current
-> v3 design lives in [src/v3/spec.dag](../src/v3/spec.dag) and
+> v3 design lives in [docs/v3-spec.md](v3-spec.md) and
 > takes a different approach: 5 L1 behaviors + lenses over the
 > structure, rather than extensible bindings or stage-specific IRs.
 > These sections are kept for context on how the thinking evolved.
@@ -566,7 +566,7 @@ iterate on the mechanism until they don't.
 
 ---
 
-## 7. Concrete v3 spec sketch (src/v3/spec.dag target)
+## 7. Concrete v3 spec sketch (docs/v3-spec.md)
 
 This is the shape, not the implementation. The implementation
 emerges from the extraction path (6a-6c).
@@ -765,7 +765,7 @@ Full path (through single emitter) is months.
 
 ### Path B: Clean redesign (spec-first)
 
-Write src/v3/spec.dag as a complete specification. Design the
+Write a complete specification. Design the
 substrate (Node, TypeBinding, DimensionSet, CompilerTable) with all
 known concerns from day one. Then implement the pipeline against
 the spec, porting the 17,500 structural lines and rewriting the
