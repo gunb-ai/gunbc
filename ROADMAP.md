@@ -255,7 +255,7 @@ M1: CX gate → 0 violations (currently 420, ratchet 420)
       Graph DFS (needs language primitive or work-list
       RankingDimension), arithmetic refinement.
 
-    Violation landscape (354 total, down from 420):
+    Violation landscape (357 total, down from 420):
       Parser SCC: 139 violations. Descent chains break at
       expect/expect_name (product-type returns without per-field
       output_provenance).
@@ -432,7 +432,7 @@ Phase 2 — Sum-type migration: IN PROGRESS.
 
   PRs:
   - #424 (free-owl-375): CX-R bridges, 350→340. Temporary heuristics.
-  - #428 (sum-type-advance-pilot): Sum-type migration + pipeline. 354.
+  - #428 (sum-type-advance-pilot): Sum-type migration + pipeline. 357.
 
   Next steps (next PR):
   1. expect_name/expect output_provenance — 15 eat-consumer functions
@@ -1495,7 +1495,7 @@ discipline (Rule 3), not a missing optimizer.
    (stable binding identity → Stream B Layer 1), but no longer
    the critical perf path.
 3. **M1 Step 1 — per-field provenance on function signatures.**
-   `variant_provenance` (Map<String, List<Map<String, SubValueRelation>>>)
+   `variant_provenance` (Map<String, Map<String, Map<String, SubValueRelation>>>)
    now populates for sum-type returns (PR #428). Infrastructure works
    end-to-end. Next: per-field `output_provenance` for product-type
    returns (expect_name, expect) to close descent chains in the
