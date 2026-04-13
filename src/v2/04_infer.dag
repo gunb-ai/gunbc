@@ -4363,19 +4363,24 @@ fn compose_output_relations(arg_rel: SubValueRelation, callee_rel: SubValueRelat
 // field values. Returns Map<variant_name, List<Map<param_name, SubValueRelation>>>.
 // Empty if the return type isn't a sum type or no variant constructors found.
 fn compute_variant_provenance(body: Node, return_type: Node, params: List<Node>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>) -> Map<String, List<Map<String, SubValueRelation>>> {
-  match return_type.connective {
-    Disj =>
-      let param_names = params |> map(p => param_node_name_at(n: p, source_indices: type_env.source_indices))
-      let param_types = fold(params, init: empty_map(), f: (acc, p) =>
-        let pname = param_node_name_at(n: p, source_indices: type_env.source_indices)
-        let ptype = resolved_type_name(n: p, source_indices: type_env.source_indices)
-        if pname != "" && ptype != "" { map_insert(acc, pname, ptype) } else { acc }
-      )
-      let rt_name = authored_name_at(source_indices: type_env.source_indices, node: return_type)
-      // Walk body, collecting per-variant per-field provenance.
-      // Uses classify_body_provenance on each field init with accumulated let_prov.
-      collect_variant_constructors(body: body, parent_enum: rt_name, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: empty_map(), acc: empty_map())
-    _ => empty_map()
+  // return_type from item.inferred is a reference node (NoConnective).
+  // Look up the actual type definition to check for Disj connective.
+  let rt_name = authored_name_at(source_indices: type_env.source_indices, node: return_type)
+  let rt_def = lookup_type(env: type_env, name: rt_name)
+  match rt_def {
+    Some { value: def_node } =>
+      match def_node.connective {
+        Disj =>
+          let param_names = params |> map(p => param_node_name_at(n: p, source_indices: type_env.source_indices))
+          let param_types = fold(params, init: empty_map(), f: (acc, p) =>
+            let pname = param_node_name_at(n: p, source_indices: type_env.source_indices)
+            let ptype = resolved_type_name(n: p, source_indices: type_env.source_indices)
+            if pname != "" && ptype != "" { map_insert(acc, pname, ptype) } else { acc }
+          )
+          collect_variant_constructors(body: body, parent_enum: rt_name, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: empty_map(), acc: empty_map())
+        _ => empty_map()
+      }
+    None => empty_map()
   }
 }
 

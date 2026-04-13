@@ -76,6 +76,7 @@ fn stage0_cargo_check() {
 //   -3 dissolved: scan_braces_depth, scan_for_fat_arrow_after_braces,
 //   looks_like_arm_start — integer idx recursion replaced by list consumption.
 //   Net +4. Correct observations; dissolves with return-contract inference.
+<<<<<<< HEAD
 // 2026-04-12: 350→340 — CX-R: parser list consumption recognition (-10).
 //   Recognize list-consuming call patterns: field-name provenance (r.tokens →
 //   NonIncreasing), pass-through transparency (skip_newlines), generalized
@@ -84,7 +85,16 @@ fn stage0_cargo_check() {
 //   Refactored ExprBlock descent-var threading to use collect_descent_vars
 //   as single source of truth. -10 from single-func parser proofs +
 //   composed callers.
-const DIAG_RATCHET: usize = 340;
+// 2026-04-12: 350→354 — eat/advance sum-type migration + variant_provenance
+//   pipeline fix. Parser helpers return sum types (EatConsumed | EatUnchanged,
+//   AdvanceOk | AdvanceEof). Variant_provenance populates per-variant per-field
+//   SubValueRelation on sigs. Pipeline was blocked by lookup_type gap (reference
+//   node has NoConnective, need to resolve to Disj definition). Fix: lookup_type
+//   in compute_variant_provenance. +4 net: restructuring adds violations, variant
+//   provenance subtracts some (2 resolved: collect_lambda_idents,
+//   collect_type_param_names). Remaining 139 parser violations need expect/expect_name
+//   output_provenance to complete descent chains.
+const DIAG_RATCHET: usize = 354;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)
