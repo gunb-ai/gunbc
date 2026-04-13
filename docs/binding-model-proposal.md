@@ -68,13 +68,10 @@ about the edge:
   construction → `SubValueUnknown`.
 
 This distinction is derivable from which Node field the binding
-occupies. A function, not a type:
-
-```dag
-fn is_boundary_crossing(field: String) -> Bool {
-  field == "params"
-}
-```
+occupies — a structural fact about position in the tree, not a
+string comparison. The compiler already knows which field it's
+processing when it walks `Node.params` vs `Node.body` vs
+`Node.children`; the walk context carries this structurally.
 
 ### Surface metadata (optional, for diagnostics)
 

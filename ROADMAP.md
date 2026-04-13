@@ -63,7 +63,7 @@ THEME 4: Emission as Data
 
 | Theme | Readiness | Blocked on | Key metric |
 |-------|-----------|------------|------------|
-| **1: Close the Binding Model** | Implement | Nothing — modeling done, migration is mechanical | CX violations: 420 → 0 |
+| **1: Close the Binding Model** | Design/Implement | SVR composition rules + ownership table open questions | CX violations: 340 → 0 |
 | **2: Structural Identity** | Implement | authored_name_at fallback fix | n.name reads: ~15 → 0 |
 | **3: Ownership as Dimension** | Design | Theme 2 (stable binding identity) | Separate pass → dimension on bindings |
 | **4: Emission as Data** | Implement/Design | Theme 1 (Rust needs provenance), LS-4 (borrow model) | Per-language files: 3 → 0 |
@@ -100,7 +100,7 @@ type TypeBinding {
 
 Every downstream consumer that needs facts beyond the type must
 reconstruct them:
-- **Complexity:** 33 heuristics in annotate_descent_evidence (420 violations)
+- **Complexity:** 33 heuristics in annotate_descent_evidence (340 violations)
 - **Ownership:** string name matching for fold accumulators
 - **Emission:** compensates for upstream information loss (M2)
 - **Core tables:** hand-maintained string-keyed semantic maps
@@ -110,18 +110,12 @@ reconstruct them:
 **Step 1:** Reduce 7 syntactic binding forms to 2 fundamental mechanisms
 (`std/binding.dag`):
 
-```
-type BindingForm = Parameter | LetBinding
-```
-
-Parameter: "I receive a value from my caller." Provenance, ownership,
-and all dimension values flow FROM the caller TO the parameter. The
-call site context (fold, descend, direct call) determines what it
-passes — the parameter reads what it receives.
-
-LetBinding: "I name a computed value." Dimension values derive from
-the expression's AccessShape (DirectValue, FieldAccess, Iteration,
-Arithmetic, Construction).
+The binding form question is not a separate type — it's derivable
+from edge position: does the binding sit in `params` (caller provides
+SVR) or `body`/`children` (expression determines SVR)? The caller
+context (fold/descend/direct call) is the `SubValueRelation` the
+call site attaches. The access shape is the SVR derived from the
+expression. All reduce to existing SVR vocabulary.
 
 See [docs/binding-unification-design.md](docs/binding-unification-design.md).
 Full DAG vocabulary accounting: [docs/dag-vocabulary-reconciliation.md](docs/dag-vocabulary-reconciliation.md).
@@ -146,7 +140,7 @@ one consumer:
 
 | Current | Role | After |
 |---------|------|-------|
-| `classify_binding_provenance` (04_infer.dag ~2616) | At bind time | Single computation keyed on BindingForm + AccessShape |
+| `classify_binding_provenance` (04_infer.dag ~2616) | At bind time | Single SVR computation at binding creation |
 | `classify_let_value` / `classify_argument` (04_infer.dag ~2649-3104) | For descent evidence | Reads TypeBinding.provenance (no re-derivation) |
 | `classify_body_provenance` (04_infer.dag ~3851) | For output provenance | Reads TypeBinding.provenance (no re-derivation) |
 | `classify_self_call_evidence` (complexity.dag ~2535) | CX fallback | Deleted (reads annotated evidence only) |
@@ -168,21 +162,20 @@ provenance.
 
 Proposed `.dag` types in [docs/binding-model-proposal.md](docs/binding-model-proposal.md):
 
-- **Binding forms** — `BindingForm = Parameter | LetBinding`,
-  `BindingSurface` (6 syntactic forms → 2 via `binding_form()`),
-  `CallerContext` (call-site contribution to parameters),
-  `AccessShape` (let-binding value relationship to source),
-  `IterationBinding` (how fold/descend/repeat create parameter
-  bindings with `iteration_caller_context()`).
+- **Edge vocabulary** — `SubValueRelation` (already in std/induction.dag)
+  IS the edge classifier. Binding form (parameter vs let-binding) is
+  derivable from Node field position. Caller context and access shape
+  are both SVR values, not separate types.
 
-- **Provenance interface** — SubValueRelation binding-site computation
-  rules keyed on CallerContext (parameters) and AccessShape
-  (let-bindings). Single composition interface replacing the
-  triple classification system.
+- **Only new type** — `UsageEdge = Consumed | Read | Projected | Threaded`
+  (what happens at each use site, orthogonal to SVR).
+
+- **Dimension table** — SVR-keyed: one row per SVR variant, one column
+  per dimension. Replaces the triple classification system.
 
 Types land in `dsl/std/` when implementation work begins.
 
-### Path to CX gate = 0 (420 → 0)
+### Path to CX gate = 0 (340 → 0)
 
 Step 1: Per-field struct provenance consumption        ~-132
   When callee returns a struct, caller accesses .tokens →
@@ -211,7 +204,7 @@ Step 4: Universal checker replaces classify_* heuristics ~-80
 Step 5: Remaining edge cases                            ~-10
   Graph DFS, arithmetic refinement.
 
-Violation landscape (420 total):
+Violation landscape (340 total):
   104 parse_type_expr + 89 render_node_type + 48 to_string
   = 241 (57%) from recursive functions with multi-param
   descent patterns (lexicographic, Steps 2-3).
@@ -225,18 +218,18 @@ Each desugaring is a separate PR:
 
 - PR 1: for-each → fold (most obvious desugaring)
 - PR 2: match arm bindings → let + field access
-- PR 3: lambda param variants → single Parameter + CallerContext
+- PR 3: lambda param variants → single boundary-crossing edge with
+  SVR provided by call site
 
-`BindingSurface` metadata preserved for diagnostics and emission.
-Dimension computation uses only `BindingForm + AccessShape`.
+Dimension computation uses only SVR on the edge.
 
 ### Done when
 
 - CX violations = 0, gate is blocking
 - `classify_argument`, `classify_self_call_evidence`,
   `collect_evidence_incremental` deleted or reduced to thin readers
-- `lambda_param_provenance` on InferScope dissolved (CallerContext
-  replaces the side-channel)
+- `lambda_param_provenance` on InferScope dissolved (SVR from call
+  site replaces the side-channel)
 - Adding new syntax requires parser + desugaring only
 
 ### Active workboards
@@ -295,8 +288,7 @@ Proposed `.dag` types in [docs/binding-model-proposal.md](docs/binding-model-pro
 - `OwnershipKind = Owned | Borrowed | Shared` as a `BoundedLattice`
   inhabitant with meet/join/top/bottom
 - `UsageEdge = Consumed | Read | Projected | Threaded`
-- `ownership_at_let(source, access_shape)` — binding-site rule keyed
-  on `AccessShape`
+- `ownership_at_svr(source, svr)` — binding-site rule keyed on SVR
 - `AccumulatorOwnership = ThreadedOwned | ThreadedShared` — fold
   accumulator contract
 
@@ -313,8 +305,9 @@ The compiler's `src/v2/ownership.dag` has:
 - Fold detection via string name matching ("init" arg, method name "fold")
 
 Target: `analyze_ownership` deleted. Ownership facts live on
-TypeBinding (or DimensionTable). Fold detection reads `IterationBinding`
-from `std/binding.dag` instead of matching method names.
+TypeBinding (or DimensionTable). Fold detection reads SVR
+(`PreservedValue` for accumulator, `IteratedSubValue` for element)
+instead of matching method name strings.
 
 ### Three layers to clone elimination
 
@@ -346,7 +339,7 @@ SharingStrategy per target language.
 - `analyze_ownership` (separate pass) deleted
 - Ownership facts live on TypeBinding or DimensionTable
 - OwnershipKind computed at binding sites during inference
-- Fold detection reads IterationBinding, not method name strings
+- Fold detection reads SVR from bindings, not method name strings
 - Layer 3 borrow propagation eliminates bulk of clones
 
 ---
@@ -476,7 +469,7 @@ Important but separate from compiler correctness.
 | Lint | `cargo clippy --workspace -- -D warnings` | GREEN |
 | Tests | `cargo test -p v2-compiler-tests` | GREEN (394 pass) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN |
-| Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 424 (honest, non-blocking) |
+| Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 340 (honest, non-blocking) |
 | L1 gate | `scripts/l1-ratchet.sh --check` | GREEN (0, hard gate) |
 | Stage0 freshness | `scripts/check-stage0-freshness.sh` | GREEN (blocking) |
 
@@ -540,7 +533,7 @@ Capabilities grounded in the closed-model property.
 
 | Feature | Status | Blocked on |
 |---------|--------|------------|
-| KF-1: Complexity proof on every compile | 420 violations (non-blocking) | Theme 1 |
+| KF-1: Complexity proof on every compile | 340 violations (non-blocking) | Theme 1 |
 | KF-2: Reject suboptimal algorithms | Not built | KF-1 |
 | KF-3: Verification from structure | L0 done, L4-L7 not built | Theme 4 |
 | KF-4: Cross-language equivalence | Partial | Theme 4 |
