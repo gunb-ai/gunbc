@@ -40,7 +40,7 @@ module v3.spec
 type Value {
   id: NodeId
   data: LiteralValue
-  carrier: TypeShape              // the type of this value
+  value_type: TypeShape            // what type this value is
 }
 
 // ---------------------------------------------------------------------------
@@ -116,12 +116,12 @@ type TransformRule =
 // `match` is Branch on any type with N paths.
 // Same behavior.
 //
-// Cost = cost(scrutinee) + max(cost per path).
+// Cost = cost(input) + max(cost per path).
 // Ownership: paths are exclusive — value is consumed once, not N times.
 
 type Branch {
   id: NodeId
-  scrutinee: Port                 // what we're looking at
+  input: Port                     // the value we're inspecting
   paths: List<Path>               // possible outcomes
   output: Port                    // result (from whichever path fires)
 }
@@ -210,18 +210,14 @@ type Bind {
 
 type Port {
   id: PortId
-  carrier: TypeShape              // what type flows here
-  provenance: Provenance          // where this value came from
+  value_type: TypeShape            // what type flows through this port
+  produced_by: NodeId?             // which node produced this value (None = parameter/literal)
 }
 
-// Provenance: where did this value come from?
-// Just a pointer back to the node that produced it (if any).
-// Origin values (parameters, literals) have no source.
-// The structural relationship (sub-value, computed, selected,
-// accumulated) is readable from the source node's behavior type.
-type Provenance {
-  source: NodeId?                 // None = origin (parameter, literal)
-}
+// "Where did this value come from?" is just produced_by on the Port.
+// Follow the edge backward to the source node. The relationship
+// (sub-value, computed, branched, accumulated) is readable from
+// the source node's behavior type. No separate tracking needed.
 
 // =========================================================================
 // CONTRACTS = DERIVED FROM PORTS (not a separate structure)
@@ -245,7 +241,7 @@ type Provenance {
 // The rule: if a lens needs information that isn't in the DAG, the
 // physics is incomplete. Fix the physics, not the lens. This is
 // exactly what went wrong in v2 — the complexity lens needed
-// provenance, but TypeBinding had thrown it away, so v2 built a
+// "where values come from," but TypeBinding had thrown it away, so v2 built a
 // 5,000-line reconstruction engine instead of fixing the physics.
 //
 // A lens has three parts:
@@ -268,7 +264,7 @@ type Provenance {
 //
 //   Value:     0
 //   Transform: rule_cost(rule)
-//   Branch:    cost(scrutinee) + max(path costs)
+//   Branch:    cost(input) + max(path costs)
 //   Loop:      bound × cost(body)
 //   Bind:      0
 
@@ -284,7 +280,7 @@ type Provenance {
 // EFFECT lens — "does this touch the outside world?"
 //   Looks at: each behavior node
 //   Measures: Pure / ServiceCall / Mutation
-//   Composes: lattice join (effects only escalate, never decrease)
+//   Composes: pick the strongest (effects only escalate, never decrease)
 //
 //   Value:     Pure
 //   Transform: rule_effect(rule)
@@ -298,9 +294,9 @@ type Provenance {
 //   Composes: follows edges backward to source
 //
 //   Already on every Port (it's part of the physics, not a separate
-//   observation). This is the one v2 got wrong — provenance was
-//   computed during inference then discarded. In v3, provenance is
-//   structural. It lives on the port. The lens just reads it.
+//   observation). This is the one v2 got wrong — origin tracking
+//   was computed during inference then discarded. In v3, every port
+//   has produced_by. The lens just reads it.
 
 // TERMINATION lens — "does this finish?"
 //   Looks at: loops and recursive calls
@@ -345,7 +341,7 @@ type Provenance {
 //
 // A user defines a lens the same way:
 //   - what to measure (e.g., SecurityLevel = Public | Internal | Secret)
-//   - how it composes (e.g., lattice join — output ≥ max input)
+//   - how it composes (e.g., pick the strongest — output ≥ max input)
 //   - what to check (e.g., Secret can't flow to a PublicAPI service call)
 //
 // The compiler points the lens at the DAG and enforces whatever it reveals.
@@ -406,7 +402,7 @@ type Provenance {
 // Complexity    = cost lens pointed at the DAG
 // Ownership     = ownership lens pointed at edges
 // Purity        = effect lens → check if result is Pure
-// Idempotence   = algebra lens → check if all operations are lattice meets
+// Idempotence   = algebra lens → check if all operations are "do once = do many times"
 // Termination   = termination lens → check all Loops have bounds
 // Parallelism   = independence from DAG structure (no shared edges)
 // Space bounds  = space lens pointed at the DAG
@@ -438,7 +434,7 @@ type Provenance {
 //
 // The developer doesn't opt into optionality. The system enforces it.
 // If an operation can fail (map lookup, optional field, service call),
-// the return carrier IS Optional<T>. The developer MUST Branch before
+// the return type IS Optional<T>. The developer MUST Branch before
 // accessing the inner value. There is no unwrap. There is no null.
 // There is no sentinel value. There is no forgetting to check.
 //
@@ -466,7 +462,7 @@ type Provenance {
 //   - For every map_get: test with key present AND key absent
 //   - For every Optional<T> field: test with Some and None
 //   - For every Branch: verify both arms produce correct results
-// These tests fall out of the carrier types. No hand-writing.
+// These tests fall out of the port types. No hand-writing.
 
 // =========================================================================
 // E2E SCENARIOS
@@ -506,7 +502,7 @@ type Provenance {
 //   Cost: cost(MapGet) + cost(Branch) + cost(FieldAccess) + cost(Branch) + cost(FieldAccess)
 //   Ownership: person_port fan-out=1 (into Branch), p fan-out=1 (into FieldAccess) → all move, zero clones
 //   Effect: all Pure
-//   Cardinality: read each port's carrier. Optional<Person> → optional. Address → required. Trivial.
+//   Cardinality: read each port's type. Optional<Person> → optional. Address → required. Trivial.
 //
 // EMISSION (Rust):
 //   people.get("alice").and_then(|p| p.address.as_ref()).and_then(|a| a.zip.clone())
@@ -960,4 +956,4 @@ type Provenance {
 //
 // T6: Name scramble test
 //     Rename all user identifiers. Semantic and emission decisions
-//     don't change. Names are provenance, not authority.
+//     don't change. Names are labels, not authority.
