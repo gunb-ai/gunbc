@@ -30,6 +30,54 @@ exist outside the program's causal graph. If those facts are
 structured in the language (service declarations, transport
 contracts), the compiler can validate them too.
 
+## The core abstraction: dependency modeling
+
+A `.dag` program is a dependency graph. Every binding declares
+what it depends on. Every function declares its inputs. Every
+`fold`/`descend`/`repeat` declares its data source and its
+accumulator. **The program IS the dependency graph.** There is
+no separate "scheduler" or "orchestrator" that reads the program
+and decides execution order — the dependency structure IS the
+execution order.
+
+This has a fundamental consequence: **parallelism is not a
+feature. It is the default.** Two bindings with no data
+dependency between them are independent. The compiler can see
+this from the dependency graph — no annotation, no `async`, no
+thread pool configuration. Independent computations execute
+concurrently because nothing constrains them to be sequential.
+Sequential execution is what requires justification (a data
+dependency), not parallel execution.
+
+This is the same insight as MapReduce: the programmer declares
+data dependencies (map function, reduce function, key partitioning),
+and the framework handles distribution. But MapReduce is a
+library that reads these declarations at runtime. `.dag` is a
+language where the compiler reads them at compile time. The
+compiler knows the full dependency graph, the cost of each node
+(CX), whether the combining function is associative (algebra
+inhabitant), and whether any node has side effects (effect shape).
+It can emit the optimal schedule for any target — single-threaded,
+multi-threaded, distributed, or pipelined — from the same source.
+
+**Using .dag as a sequential scripting language is technically
+possible but misses the point.** The language exists to model
+dependencies. A program that threads all state through a single
+sequential chain (do A, then B, then C, then D) is a valid
+program, but it's an impoverished use of the abstraction. The
+equivalent of writing MapReduce code that puts everything in one
+partition.
+
+The CI pipeline is the canonical example. Writing 8 gates as a
+sequential list of shell commands is using .dag as a scripting
+language. Writing the same 8 gates with their actual data
+dependencies (build → compile → [check_dsl, check_diag, check_fresh,
+check_perf]) is using .dag as dependency modeling software. The
+compiler reads the graph, sees that `lint` and `tests` and
+`check_l1` have no dependency on `build`, and can execute them
+concurrently. No wave computation algorithm needed — the
+dependency graph IS the wave computation.
+
 ## Why this works
 
 `.dag` is a closed system. All data is finite (Bit/Word64). All
@@ -378,10 +426,15 @@ Emission is independent of intent. You declare what the system
 does; separately, you declare what artifacts it becomes. The
 compiler handles everything in between.
 
-### Automatic parallelism (map-reduce)
+### Automatic parallelism (structural, not scheduled)
 
-If every operation is a fold/descend/repeat, complexity is known,
-and there is no shared mutable state, then:
+Parallelism in .dag is not scheduled — it is structural. The
+program IS a dependency graph (see "The core abstraction" above).
+Independent subexpressions have no ordering constraint. The
+compiler reads the graph and emits concurrent execution for any
+target that supports it.
+
+Three specific patterns emerge from the bounded iteration model:
 
 - **fold over partitioned data → map-reduce.** The compiler knows
   the fold's accumulator type, the element type, and the combining
@@ -397,10 +450,35 @@ and there is no shared mutable state, then:
   iterations are independent (pure function, no accumulator
   mutation), iterations can overlap.
 
-**Prerequisite:** provenance on bindings (Stream A) + ownership
-proof (Stream B) + CX gate closed. The compiler needs to know
-that the fold body is pure, that the accumulator isn't aliased,
-and that the operation terminates.
+But these are specific instances of the general principle: **any
+two expressions without a data dependency can execute concurrently.**
+The compiler doesn't need special "parallel fold" or "parallel
+descend" support — it needs to read the dependency graph and emit
+independent subgraphs to concurrent execution units.
+
+**What the compiler needs to know:**
+- Provenance on bindings (Stream A) — which values depend on which
+- Ownership proof (Stream B) — whether the accumulator is aliased
+- CX gate closed — that the operation terminates
+- Effect shape (std/effects.dag) — whether the operation has side
+  effects that constrain ordering
+
+**What the compiler does NOT need:**
+- Explicit parallelism annotations (async, spawn, par_iter)
+- A separate scheduling algorithm (wave computation, task graphs)
+- Runtime thread pool configuration
+
+These are all derivable from the dependency graph + the target's
+concurrency model. The emitter reads the target spec to decide
+HOW to express concurrency (OS threads, async tasks, distributed
+workers, CI job dependencies). The .dag source says WHAT depends
+on WHAT. The rest follows.
+
+**The sustainability test:** adding a new concurrency target
+(e.g., "emit as GitHub Actions jobs" or "emit as Kubernetes pods")
+should require adding a target spec, not changing the source
+program. The dependencies are the same regardless of whether
+they execute on threads, CI runners, or cloud functions.
 
 ### Automatic memoization
 
