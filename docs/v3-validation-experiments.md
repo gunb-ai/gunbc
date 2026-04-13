@@ -182,10 +182,51 @@ Experiment 4 (purity lens)   ← tests lens extensibility
 All four are independent. Can run in parallel. Each is 1-2 PRs.
 All must keep bootstrap green.
 
+## Experiment 5: Measure the disease — ExprData variant edit cost
+
+**What it tests:** the DISEASE, not the cure. How many files and
+match arms need editing to add a new ExprData variant?
+
+**Method:** count every match on `.expr_data` across all .dag files.
+
+**Results:**
+
+| Metric | Count |
+|--------|-------|
+| Files that MUST be edited | 6 |
+| Files that SHOULD be reviewed | 5 |
+| **Total files needing edits** | **8-11** |
+| Exhaustive match arms | 4 |
+| Big-dispatch match arms | 26 |
+| **Total actionable match arms** | **30** |
+| Estimated new lines | ~76-215 |
+
+**Verdict:** Adding one ExprData variant costs 8-11 files and ~30
+match arms. Thesis target: "cost of change = 1 file." V2 is 8-11x
+over. Experiment 3 (clamp via rule table): 3 files, zero consumer
+edits. Concrete improvement validated.
+
+---
+
+## Results
+
+| # | Experiment | Result | Key metric |
+|---|---|---|---|
+| 1 | Lambda → Bind + Define | **PASS** | -30 net lines, LambdaSemantics deleted, 5 functions removed |
+| 2 | Provenance on binding | **PASS** | scope_locals carries facts, read_arg_provenance finds them directly |
+| 3 | Add clamp builtin | **PASS** | 3 files edited, zero consumer edits |
+| 4 | Purity lens | **PASS** | 1 new file, zero compiler changes |
+| 5 | ExprData variant cost | **MEASURED** | 8-11 files, ~30 match arms per new variant |
+
+All experiments keep tests green (415 pass) and CX ratchet stable.
+
 ## After validation
 
-If all four pass → the spec's core claims are validated.
-Proceed to v3 build with confidence.
+All five experiments validate the v3 spec's core claims:
+- Kernel shape works (lambda = Bind + Define dissolves downstream logic)
+- Physics + lens works (carried provenance dissolves reconstruction)
+- Variation is data (new transform = rule table entry, not structure)
+- Observational lenses work without compiler changes
+- The current v2 structure costs 8-11x the thesis target per new variant
 
-If any fail → the spec has a gap. Fix the spec, then re-validate.
-Cheaper to learn this now than after building half a compiler.
+Proceed to v3 build with confidence in the design direction.
