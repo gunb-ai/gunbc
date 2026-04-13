@@ -3,326 +3,196 @@
 > [binding-unification-design.md](binding-unification-design.md),
 > [dimensions-design.md](../src/v2/dimensions-design.md)
 
-# Proposed .dag modeling: edges, bindings, dimensions
+# Proposed modeling: edges, bindings, dimensions
 
-This document proposes the structural `.dag` types for the DAG edge
-vocabulary, binding unification (7 → 2), and correctness dimensions
-(provenance, ownership). These are **proposals** — the types will
-land in `dsl/std/` when the corresponding implementation work begins.
-
-The key insight: **bindings are not a separate concept from edges.**
-A binding is a name attached to a DAG edge. The binding's form
-(parameter vs let-binding) is a projection of the edge's value-flow
-kind. All downstream concepts (provenance, ownership, access shape)
-derive from the edge vocabulary, not from independent classifications.
-
-See [dag-vocabulary-reconciliation.md](dag-vocabulary-reconciliation.md)
-for the full accounting of existing concepts and conflicts.
+The minimal edge vocabulary and its consequences for binding
+unification and correctness dimensions. These are **proposals** —
+types land in `dsl/std/` when implementation begins.
 
 ---
 
-## 0. DAG edge vocabulary (`std/edge.dag` — proposed new file)
+## The edge vocabulary already exists
 
-This is the **foundation** from which everything else derives. The
-DAG today has Node but no explicit Edge type. Edges are implicit in
-Node fields. This proposal makes them explicit.
-
-External authority: directed acyclic graphs (graph theory). An edge
-is an ordered pair (source, target) with a kind that classifies the
-relationship.
-
-### Structural edges
+A binding is a name attached to a DAG edge. The edge's value
+relationship is classified by `SubValueRelation` (std/induction.dag),
+which already exists and already does the right thing:
 
 ```dag
-// StructuralEdge: which Node field this relationship occupies.
-// Replaces the implicit field-position classification.
-//
-// Concept DAG attachment:
-//   constructors.dag (Product, Coproduct)
-//     └── edge.dag — edges connect Products/Coproducts in the DAG
-type StructuralEdge
-  = Containment      // children: structural sub-nodes (AND/OR branches)
-  | InputPort        // params: values flowing in from outside scope
-  | ComputationBody  // body: how this node computes its value
-  | ExecutionBinding // transport: external execution strategy
-  | ResourceDep      // uses: resources/services this node depends on
-  | TypeAssertion    // type_annotation: declared type constraint
-  | Metadata         // properties: non-structural annotations
+// std/induction.dag — the edge vocabulary
+type SubValueRelation
+  = StrictSubValue { field: InductiveField, factor: ShrinkFactor }
+  | IteratedSubValue { field: InductiveField }
+  | ArithmeticDescent { param: String, factor: ShrinkFactor }
+  | PreservedValue
+  | SubValueUnknown
 ```
 
-`NodeFieldRole` (currently in 00_core.dag) becomes a derivable
-function, not an independent classification:
+This type classifies how a target value relates to a source value
+along an edge. It already has a BoundedLattice (meet/join), a
+composition function (`compose_sub_value`), and is carried on
+`TypeBinding.provenance`.
+
+The only genuinely new edge concept is `UsageEdge` — what happens
+to the value at each use site (orthogonal to SVR):
 
 ```dag
-fn structural_descent_role(edge: StructuralEdge) -> NodeFieldRole {
-  match edge {
-    Containment      => ChildrenListField
-    InputPort        => SubValueField
-    ComputationBody  => SubValueField
-    ExecutionBinding => MetadataField
-    ResourceDep      => MetadataField
-    TypeAssertion    => MetadataField
-    Metadata         => MetadataField
-  }
-}
-```
-
-### Value-flow edges
-
-```dag
-// ValueFlow: how a value moves through a DAG edge.
-//
-// Every binding introduces a name. The value behind that name
-// arrives via one of these two flows. This is the DAG-native
-// concept that BindingForm projects from.
-//
-// External authority: lambda calculus — abstraction (boundary
-// crossing) and let-binding (local naming).
-type ValueFlow
-  = BoundaryCrossing   // value flows across a scope boundary
-  | LocalNaming        // value named within current scope
-```
-
-### Boundary context (for BoundaryCrossing edges)
-
-```dag
-// BoundaryContext: what the provider side contributes across
-// a scope boundary. This is the DAG-native concept that
-// CallerContext projects from.
-//
-// This is a property of the CALL SITE edge, not the binding
-// at the target. A lambda parameter reads whatever the caller
-// provides — it doesn't need to know the context.
-type BoundaryContext
-  = CollectionElement  // fold/map: element is sub-value of collection
-  | TreeChild          // descend: child is strict sub-value of parent
-  | ContractProvided   // higher-order: callee contract specifies
-  | DirectPass         // plain argument: value = caller's value
-  | Unspecified        // no context available (fail-closed to bottom)
-```
-
-### Naming shape (for LocalNaming edges)
-
-```dag
-// NamingShape: how a locally-named value relates to its source
-// expression. This is the DAG-native concept that AccessShape
-// projects from.
-type NamingShape
-  = DirectAlias        // let x = y — same value, new name
-  | FieldProjection    // let x = y.field — structural descent into source
-  | ElementExtraction  // let x = elem of collection — iteration
-  | ArithmeticStep     // let x = n - 1 — arithmetic descent
-  | FreshConstruction  // let x = { ... } — newly constructed value
-```
-
-### Use-site edges
-
-```dag
-// UsageEdge: what happens to the value at each reference point.
-// Orthogonal to ValueFlow (how the value arrived).
-//
-// Unifies EdgeKind from src/v2/ownership.dag with the shared
-// vocabulary — same concept, one location.
+// Proposed — belongs in std/ownership.dag
 type UsageEdge
-  = Consumed   // moved / ownership transferred (last use candidate)
-  | Read       // read but not consumed (borrow candidate)
-  | Projected  // accessed via field / index (structural borrow)
+  = Consumed   // moved / ownership transferred
+  | Read       // read but not consumed
+  | Projected  // accessed via field / index
   | Threaded   // passed through unchanged (fold accumulator)
 ```
 
+Everything else — binding form, caller context, access shape —
+is a derived view, not a separate type.
+
 ---
 
-## 1. Binding forms — projections of edge vocabulary
+## Binding forms: derived from edge position + SVR
 
-`BindingForm`, `CallerContext`, and `AccessShape` from the original
-binding-unification analysis are NOT independent types. They are
-**projections** of the edge vocabulary:
+The 7 → 2 binding unification is not a new type. It's a question
+about the edge:
 
-| Binding concept | Projects from | Relationship |
-|----------------|---------------|-------------|
-| `BindingForm = Parameter \| LetBinding` | `ValueFlow` | `Parameter ≡ BoundaryCrossing`, `LetBinding ≡ LocalNaming` |
-| `CallerContext` (5 variants) | `BoundaryContext` | Same concept, same variants |
-| `AccessShape` (5 variants) | `NamingShape` | Same concept, same variants |
+**"Is the SVR provided by the caller, or derived from the expression?"**
 
-Whether the implementation uses the edge-vocabulary names directly
-(`ValueFlow`, `BoundaryContext`, `NamingShape`) or keeps the
-binding-specific projections (`BindingForm`, `CallerContext`,
-`AccessShape`) as aliases is an implementation choice. The key
-requirement: **one authority, not parallel classifications.**
+- **Parameter** (caller provides SVR): the binding sits in `params`
+  — a boundary-crossing position. fold passes `IteratedSubValue`,
+  descend passes `StrictSubValue`, plain call passes
+  `PreservedValue`. The parameter reads what it receives.
 
-### Surface syntax (metadata, not branching)
+- **Let-binding** (expression determines SVR): the binding sits in
+  `body`/`children` — a local position. The SVR is derived from
+  the expression: field access → `StrictSubValue`, method call on
+  collection → `IteratedSubValue`, arithmetic → `ArithmeticDescent`,
+  construction → `SubValueUnknown`.
+
+This distinction is derivable from which Node field the binding
+occupies. A function, not a type:
 
 ```dag
-// BindingSurface: the original syntactic form.
-// Downstream code does NOT branch on this.
+fn is_boundary_crossing(field: String) -> Bool {
+  field == "params"
+}
+```
+
+### Surface metadata (optional, for diagnostics)
+
+```dag
 type BindingSurface
-  = FunctionParam      // → BoundaryCrossing
-  | LambdaParam        // → BoundaryCrossing
-  | ForEachVariable    // → BoundaryCrossing (desugars to fold)
-  | LetDeclaration     // → LocalNaming
-  | MatchArmBind       // → LocalNaming (desugars to destructure)
-  | BlockLetBind       // → LocalNaming
-
-fn value_flow(surface: BindingSurface) -> ValueFlow {
-  match surface {
-    FunctionParam   => BoundaryCrossing
-    LambdaParam     => BoundaryCrossing
-    ForEachVariable => BoundaryCrossing
-    LetDeclaration  => LocalNaming
-    MatchArmBind    => LocalNaming
-    BlockLetBind    => LocalNaming
-  }
-}
+  = FunctionParam | LambdaParam | ForEachVariable
+  | LetDeclaration | MatchArmBind | BlockLetBind
 ```
 
-### Iteration binding contracts
+No downstream code branches on this. Exists for error messages
+("in match arm for Foo") and idiomatic emission (emit for-each
+as for-loop). Does not affect the edge model.
 
-```dag
-// IterationBinding: how fold/descend/repeat create BoundaryCrossing
-// edges into their bodies.
-type IterationBinding
-  = FoldAccumulator  { cardinality: Cardinality }
-  | FoldElement
-  | DescendChild
-  | RepeatCounter
-  | RepeatAccumulator
+### Iteration contracts: which SVR the primitive provides
 
-fn iteration_boundary_context(ib: IterationBinding) -> BoundaryContext {
-  match ib {
-    FoldAccumulator { cardinality: _ } => DirectPass
-    FoldElement                        => CollectionElement
-    DescendChild                       => TreeChild
-    RepeatCounter                      => Unspecified
-    RepeatAccumulator                  => DirectPass
-  }
-}
-```
+fold/descend/repeat are not special types — they're call sites
+that provide specific SubValueRelations to their body parameters:
 
-### VarBindingKind dissolution
+| Primitive | Parameter | SVR provided |
+|-----------|-----------|-------------|
+| `fold(coll, init, (acc, elem) => ...)` | `acc` | `PreservedValue` |
+| `fold(coll, init, (acc, elem) => ...)` | `elem` | `IteratedSubValue` |
+| `descend(node, (child) => ...)` | `child` | `StrictSubValue` |
+| `repeat(n, init, (i, acc) => ...)` | `acc` | `PreservedValue` |
+| `repeat(n, init, (i, acc) => ...)` | `i` | `SubValueUnknown` |
+| `for x in coll { ... }` (desugars to fold) | `x` | `IteratedSubValue` |
 
-`VarBindingKind` (00_core.dag) dissolves into `ValueFlow`:
-- `LocalValueBinding` → `LocalNaming`
-- `FunctionValueBinding` → `BoundaryCrossing`
-- `VariantValueBinding` → not a value flow (constructor reference)
-- `MatchBoundBinding` → `LocalNaming` + `NamingShape = FieldProjection`
+No `IterationBinding` type needed. The contract is: "what SVR does
+this call site attach to each parameter edge?"
 
 ---
 
-## 2. Dimension computation — keyed on edges
+## Dimension computation: SVR-keyed table
 
-Every correctness dimension follows the same pattern, keyed on the
-edge vocabulary:
+Every correctness dimension computes a value from the
+SubValueRelation on the binding's edge:
 
-### The generic interface
+| SubValueRelation | Provenance | Ownership | Descent |
+|---|---|---|---|
+| `PreservedValue` | PreservedValue | source | NonIncreasing |
+| `StrictSubValue` | StrictSubValue | Borrowed | Strict |
+| `IteratedSubValue` | IteratedSubValue | Owned | Strict |
+| `ArithmeticDescent` | ArithmeticDescent | Owned | Strict |
+| `SubValueUnknown` | SubValueUnknown | Owned (fresh) or Shared (unknown) | DescentUnknown |
 
-```
-For a dimension D with BoundedLattice<D>:
+One row per SVR variant. One column per dimension. Adding a
+dimension = one column. Adding a value relationship = one row.
 
-  BoundaryCrossing edge:
-    D(binding) = what the caller provides via BoundaryContext
-    The binding reads what it receives.
+The boundary-crossing question determines WHO provides the SVR:
+- Parameter: caller provides SVR (read from call site)
+- Let-binding: derive SVR from expression
 
-  LocalNaming edge:
-    D(binding) = compose_D(source_D, naming_shape)
-    The composition is dimension-specific.
+It does not change what the SVR IS or how dimensions compute from it.
 
-  When composition fails: D = D.bottom (fail-closed).
-```
-
-### Per-dimension composition table
-
-| NamingShape | Provenance (SVR) | Ownership | Descent | Effect |
-|-------------|-----------------|-----------|---------|--------|
-| DirectAlias | source | source | source | source |
-| FieldProjection | compose_sub_value | Borrowed | structural_descent | source |
-| ElementExtraction | IteratedSubValue | Owned | IteratedSubValue | source |
-| ArithmeticStep | ArithmeticDescent | Owned | ArithmeticDescent | Pure |
-| FreshConstruction | SubValueUnknown | Owned | DescentUnknown | from body |
-
-| BoundaryContext | Provenance (SVR) | Ownership | Descent |
-|-----------------|-----------------|-----------|---------|
-| CollectionElement | IteratedSubValue | Owned | IteratedSubValue |
-| TreeChild | StrictSubValue | Owned | Strict |
-| ContractProvided | from DeclaredFuncSig | from contract | from contract |
-| DirectPass | PreservedValue | Owned (caller transfers) | NonIncreasing |
-| Unspecified | SubValueUnknown | Shared (bottom) | DescentUnknown |
-
-This is the SINGLE TABLE that replaces per-dimension, per-syntax-form
-code paths in the compiler. Adding a new dimension means adding one
-column. Adding a new NamingShape or BoundaryContext means adding one
-row. The cost of change is O(1).
-
-### Provenance (SubValueRelation) — already exists
-
-`std/induction.dag` already defines SubValueRelation and the
-composition function `compose_sub_value`. The table above documents
-how to call it keyed on the edge vocabulary. This replaces:
+This replaces the triple classification system in the compiler:
 - `classify_binding_provenance` (04_infer.dag ~2616)
 - `classify_let_value` / `classify_argument` (04_infer.dag ~2649-3104)
 - `classify_body_provenance` (04_infer.dag ~3851)
 - `classify_self_call_evidence` (complexity.dag ~2535)
 
-### Ownership (OwnershipKind) — proposed
+All four reconstruct SubValueRelation from AST structure. With
+SVR carried on edges, they become thin readers.
+
+---
+
+## Ownership as dimension
 
 ```dag
-// OwnershipKind: how exclusively a binding holds its value.
-// BoundedLattice: bottom = Shared, top = Owned, meet = min.
+// Proposed — std/ownership.dag
 type OwnershipKind = Owned | Borrowed | Shared
 
-fn ownership_at_naming(source: OwnershipKind, shape: NamingShape) -> OwnershipKind {
-  match shape {
-    DirectAlias       => source
-    FieldProjection   => Borrowed
-    ElementExtraction => Owned
-    ArithmeticStep    => Owned
-    FreshConstruction => Owned
-  }
-}
+// BoundedLattice: bottom = Shared, top = Owned, meet = min
+fn ownership_meet(a: OwnershipKind, b: OwnershipKind) -> OwnershipKind
+fn ownership_join(a: OwnershipKind, b: OwnershipKind) -> OwnershipKind
+data ownership_bottom: OwnershipKind = Shared
+data ownership_top: OwnershipKind = Owned
 ```
 
-### Fold accumulator contract
+Ownership is computed from SVR on the edge (per the table above)
+plus `UsageEdge` at use sites (for fan-out / last-use analysis).
 
-```dag
-type AccumulatorOwnership
-  = ThreadedOwned    // fold guarantees unique access per iteration
-  | ThreadedShared   // cannot guarantee (aliased in body)
-```
+### Fold accumulator
+
+Inside a fold body, the accumulator is `Owned` per iteration (the
+fold primitive guarantees unique access). This is a property of the
+fold's calling convention (`PreservedValue` SVR + `Threaded`
+UsageEdge), not a separate `AccumulatorOwnership` type.
 
 ---
 
 ## Open design questions
 
-1. **FieldProjection ownership** — proposed as `Borrowed`
-   unconditionally. But if the source struct is being moved
-   (destructured), the field could be `Owned`. May need:
-   `FieldProjection + Owned source → Owned` (destructuring move)
-   vs `FieldProjection + Borrowed source → Borrowed` (borrow).
+1. **`StrictSubValue` ownership** — the table says `Borrowed`. But
+   if the source struct is being moved (destructured), the field
+   could be `Owned`. May need to condition on whether the source
+   is consumed: `StrictSubValue + source Consumed → Owned`,
+   `StrictSubValue + source Read → Borrowed`.
 
-2. **RepeatCounter boundary context** — proposed as `Unspecified`.
-   The counter is a known bounded arithmetic sequence (0..n).
-   Should this be a new variant, or is `Unspecified` correct
-   because the counter is not a sub-value of any input?
+2. **`SubValueUnknown` ownership** — says `Owned (fresh) or Shared
+   (unknown)`. These are different cases: a newly constructed value
+   is Owned, but an unknown-provenance value should be Shared
+   (conservative). May need to distinguish "fresh unknown" from
+   "genuinely unknown." Or: `SubValueUnknown` always → `Shared`
+   (bottom), and construction gets a different SVR variant.
 
-3. **ElementExtraction ownership** — proposed as `Owned`
-   unconditionally. But if the collection is borrowed, the element
-   may also be borrowed.
-
-4. **Edge vocabulary as types vs metadata** — should `StructuralEdge`
-   be a field on Node (explicit edge kind per child), or remain
-   implicit in the field position? Explicit is cleaner but changes
-   the Node type. Implicit preserves backward compatibility but
-   requires the projection function.
+3. **Repeat counter** — the counter `i` has `SubValueUnknown`
+   because it's not a sub-value of any input. But it IS a known
+   bounded value (0..n). Does this matter for any dimension, or
+   is `SubValueUnknown` correct?
 
 ---
 
 ## Status
 
-**Proposal.** Grounded in the DAG edge vocabulary from
-[dag-vocabulary-reconciliation.md](dag-vocabulary-reconciliation.md).
-Types land in `dsl/std/` when implementation begins. The
-reconciliation doc tracks all known conflicts and their resolutions.
+**Proposal.** Grounded in SubValueRelation as the existing edge
+vocabulary. UsageEdge is the only new type. Binding forms derived
+from edge position. Dimension table is SVR-keyed. 7 redundant
+coproducts from earlier drafts eliminated.
 
-Next steps:
-- Theme 1: implement edge vocabulary → binding unification → CX gate
-- Conflict PRs: Cardinality, SizeExpr, TextFile (independent)
-- Connective dissolution (313 sites, tracked separately)
+See [dag-vocabulary-reconciliation.md](dag-vocabulary-reconciliation.md)
+for the full type inventory and conflict catalog.

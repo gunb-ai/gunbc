@@ -158,58 +158,59 @@ emission, future dimensions) seeing fewer forms.
 
 ## Structural modeling (2026-04-12)
 
-The 7 → 2 reduction is grounded in the DAG edge vocabulary:
+The 7 → 2 reduction is grounded in `SubValueRelation` — the
+existing DAG edge vocabulary:
 
-- **DAG edges** — The binding form distinction (parameter vs
-  let-binding) is a projection of `ValueFlow = BoundaryCrossing |
-  LocalNaming` from the proposed DAG edge vocabulary. Bindings are
-  not a separate concept from edges — a binding is a name attached
-  to an edge.
+- **SubValueRelation IS the edge vocabulary.** It classifies how a
+  target value relates to its source along a DAG edge. It already
+  exists in `std/induction.dag` with lattice operations and
+  composition. No new edge type needed.
 
-- **Full proposal** — [binding-model-proposal.md](binding-model-proposal.md)
-  defines edge types (`StructuralEdge`, `ValueFlow`, `BoundaryContext`,
-  `NamingShape`, `UsageEdge`), derives binding forms as projections,
-  and specifies the dimension computation table.
+- **Binding form is not a type — it's a question about the edge:**
+  "Is the SVR provided by the caller (parameter), or derived from
+  the expression (let-binding)?" This is derivable from which Node
+  field the binding sits in (`params` = boundary crossing,
+  `body`/`children` = local).
 
-- **Reconciliation** — [dag-vocabulary-reconciliation.md](dag-vocabulary-reconciliation.md)
-  documents all ~120 compiler types, identifies 5 conflicts
-  (Cardinality, Connective, SizeExpr, TextFile, VarBindingKind),
-  and proposes resolutions.
+- **Dimension computation is SVR-keyed.** One row per SVR variant,
+  one column per dimension. All four classification systems in the
+  compiler (`classify_binding_provenance`, `classify_let_value`,
+  `classify_body_provenance`, `classify_self_call_evidence`) become
+  thin readers of SVR on bindings.
 
-These are **proposals** — the types land in `dsl/std/` when the
-corresponding implementation work begins.
+- **UsageEdge is the only new concept.** What happens to the value
+  at each use site (`Consumed | Read | Projected | Threaded`).
+  Currently `EdgeKind` in the compiler; belongs in `std/`.
+
+Full proposal: [binding-model-proposal.md](binding-model-proposal.md).
+Full accounting: [dag-vocabulary-reconciliation.md](dag-vocabulary-reconciliation.md).
 
 ### Open questions resolved
 
-1. **Exhaustiveness checking:** Match arms remain a structural
+1. **Exhaustiveness checking:** Match arms remain structural
    `ExprMatch` in the IR. Only BINDING CREATION inside arms
-   desugars to LetBinding + FieldAccess. The arm→variant
-   relationship and exhaustiveness check are untouched.
+   is a local-position edge with `StrictSubValue` SVR (field
+   access on scrutinee). The arm→variant relationship and
+   exhaustiveness check are untouched.
 
-2. **Fold accumulator:** Modeled explicitly as `IterationBinding`
-   in `std/binding.dag`. `FoldAccumulator` has `CallerContext =
-   DirectArgument` (ownership: `ThreadedOwned`). The synthetic
-   `()` accumulator for for-each is a Construction (AccessShape),
-   so its ownership is `Owned` and its provenance is
-   `SubValueUnknown` — no noise.
+2. **Fold accumulator:** The fold passes `PreservedValue` SVR to
+   the accumulator parameter and `IteratedSubValue` to the element
+   parameter. Inside the body, the accumulator has `Threaded`
+   UsageEdge — unique access per iteration. No separate
+   `AccumulatorOwnership` type needed.
 
-3. **When to desugar:** Option B (late, after inference). The
-   modeling supports this: `BindingSurface` metadata is carried
-   for diagnostics/emission, but dimension computation uses only
-   `BindingForm + AccessShape`.
+3. **When to desugar:** Option B (late, after inference). Surface
+   syntax metadata (`BindingSurface`) is carried for diagnostics.
+   Dimension computation uses only SVR on the edge.
 
 4. **Migration scope:** Incremental, parallel with M1. Each
    desugaring is a separate PR:
    - PR 1: for-each → fold (most obvious)
-   - PR 2: match arm bindings → let + field access
-   - PR 3: lambda param variants → single Parameter + CallerContext
-   The modeling is done; migration is mechanical.
+   - PR 2: match arm bindings → local + field access SVR
+   - PR 3: lambda param variants → single boundary-crossing edge
 
 ## Status
 
 **On roadmap.** Theme 1 (Close the Binding Model) in ROADMAP.md.
-Grounded in DAG edge vocabulary:
-[binding-model-proposal.md](binding-model-proposal.md) (types),
-[dag-vocabulary-reconciliation.md](dag-vocabulary-reconciliation.md)
-(full accounting + conflicts). Incremental migration path defined.
-Next step: first implementation PR (for-each → fold desugaring).
+Incremental migration path defined. Next step: first implementation
+PR (for-each → fold desugaring).
