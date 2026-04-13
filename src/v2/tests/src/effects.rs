@@ -39,28 +39,28 @@ fn is_delete(shape: &EffectShape) -> bool {
 
 #[test]
 fn parse_simple_path() {
-    let t = parse_path_template("/repos/{owner}/{repo}/pulls".to_string());
+    let t = parse_path_template(&"/repos/{owner}/{repo}/pulls".to_string());
     assert!(has_path_params(t.clone()));
     assert_eq!(last_path_param(t).unwrap(), "repo");
 }
 
 #[test]
 fn parse_path_with_colon_suffix() {
-    let t = parse_path_template("/v1/{secret_name}:addVersion".to_string());
+    let t = parse_path_template(&"/v1/{secret_name}:addVersion".to_string());
     assert!(has_path_params(t.clone()));
     assert_eq!(last_path_param(t).unwrap(), "secret_name");
 }
 
 #[test]
 fn parse_path_no_params() {
-    let t = parse_path_template("/token".to_string());
+    let t = parse_path_template(&"/token".to_string());
     assert!(!has_path_params(t.clone()));
     assert!(last_path_param(t).is_none());
 }
 
 #[test]
 fn parse_path_multiple_params() {
-    let t = parse_path_template(
+    let t = parse_path_template(&
         "/v1/projects/{project_id}/secrets/{secret}/versions/{version}:access".to_string(),
     );
     assert!(has_path_params(t.clone()));
@@ -68,8 +68,18 @@ fn parse_path_multiple_params() {
 }
 
 #[test]
+fn parse_path_strips_query_string() {
+    let t = parse_path_template(&
+        "/computeMetadata/v1/instance/service-accounts/default/identity?audience={audience}".to_string(),
+    );
+    // Query param {audience} must NOT appear as a path param
+    assert!(!has_path_params(t.clone()));
+    assert!(last_path_param(t).is_none());
+}
+
+#[test]
 fn parse_deeply_nested_path() {
-    let t = parse_path_template(
+    let t = parse_path_template(&
         "/repos/{owner}/{repo}/pulls/{pull_number}/reviews".to_string(),
     );
     assert!(has_path_params(t.clone()));

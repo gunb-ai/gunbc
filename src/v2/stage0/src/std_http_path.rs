@@ -24,9 +24,13 @@ pub struct PathTemplate {
     pub tokens: Rc<Vec<Rc<UrlPathToken>>>,
 }
 
-pub fn parse_path_template(raw: String) -> Rc<PathTemplate> {
+pub fn parse_path_template(raw: &String) -> Rc<PathTemplate> {
     {
-        let segments = Rc::new({ let mut __result = Vec::new(); for s in Rc::new(raw.split(&"/".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).iter().cloned() { if (s.clone().as_str() != "".to_string().as_str()) { __result.push(s); } } __result });
+        let path_only = match Rc::new(raw.clone().split(&"?".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).first().cloned() {
+    Some(p) => p.clone(),
+    None => raw.clone(),
+};
+let segments = Rc::new({ let mut __result = Vec::new(); for s in Rc::new(path_only.split(&"/".to_string()).map(|s| s.to_string()).collect::<Vec<_>>()).iter().cloned() { if (s.clone().as_str() != "".to_string().as_str()) { __result.push(s); } } __result });
 let tokens = Rc::new({ let mut __result = Vec::new(); for seg in segments.iter().cloned() { __result.extend((*parse_segment_tokens(&seg)).iter().cloned()); } __result });
 Rc::new(PathTemplate {
     tokens: tokens,

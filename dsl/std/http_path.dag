@@ -24,7 +24,11 @@ type PathTemplate {
 }
 
 fn parse_path_template(raw: String) -> PathTemplate {
-  let segments = raw |> split(delimiter: "/") |> filter(s => s != "")
+  let path_only = match raw |> split(delimiter: "?") |> first {
+    Some { value: p } => p
+    None => raw
+  }
+  let segments = path_only |> split(delimiter: "/") |> filter(s => s != "")
   let tokens = segments |> flat_map(seg => parse_segment_tokens(seg: seg))
   PathTemplate { tokens: tokens }
 }
