@@ -762,7 +762,7 @@ mod compiler_tests {
                     crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), &s.content.clone())),
                 );
-                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), resolve_si);
+                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), &resolve_si);
                 let resolve_total = t_stage.elapsed();
                 let errors: Vec<_> = graph
                     .diagnostics
@@ -872,7 +872,7 @@ mod compiler_tests {
                     crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), &s.content.clone())),
                 );
-                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), resolve_si);
+                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), &resolve_si);
                 let resolve_total = t_stage.elapsed();
                 let phase3_diags: usize = graph
                     .diagnostics
@@ -1008,7 +1008,7 @@ mod compiler_tests {
                     crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), &s.content.clone())),
                 );
-                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), resolve_si);
+                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), &resolve_si);
                 let resolve_elapsed = t.elapsed();
                 let resolve_errors: usize = graph.diagnostics.iter()
                     .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
@@ -1132,7 +1132,7 @@ mod compiler_tests {
                     crate::v2_rt::rc_empty_map::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>(),
                     |acc, s| crate::v2_rt::rc_map_insert(acc, s.path.clone(), crate::v2_std_core::build_newline_index(s.path.clone(), &s.content.clone())),
                 );
-                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), resolve_si);
+                let graph = crate::v2_compiler_resolve::resolve_modules(&std::rc::Rc::new(modules), &resolve_si);
                 let setup_time = t0.elapsed();
                 let rss_baseline = get_rss_bytes();
                 eprintln!(
@@ -1236,7 +1236,7 @@ mod compiler_tests {
                     let tc_result = crate::v2_compiler_infer::typecheck_module(
                         &resolved.clone(),
                         &module_index,
-                        source_indices.clone(),
+                        &source_indices.clone(),
                         intern_table.clone(),
                     );
                     let full_elapsed = t_full.elapsed();
