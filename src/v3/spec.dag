@@ -661,6 +661,183 @@ type NodeContract {
 // Go: *T for pointer, Python: no-op) and renders. No defensive cloning.
 // No "emit Rc<T> everywhere then try to optimize."
 
+// ---------------------------------------------------------------------------
+// Scenario 5: Recursive generics — Tree<T> and Tree<Tree<Int>>
+// ---------------------------------------------------------------------------
+//
+// Generics are anonymous compositions, like lambdas. A generic type
+// is a Define at the type level: give it a type parameter, get a
+// concrete type. Recursive generics follow the same bounded-recursion
+// law as recursive functions.
+//
+// FRONTEND:
+//
+//   type Tree<T> {
+//     value: T
+//     children: List<Tree<T>>
+//   }
+//
+//   fn sum_tree(tree: Tree<Int>) -> Int {
+//     tree.value + tree.children |> fold(init: 0, fn: (acc, child) =>
+//       acc + sum_tree(child)
+//     )
+//   }
+//
+//   // And the nested case:
+//   let nested: Tree<Tree<Int>> = ...
+//   let flat: Tree<Int> = flatten(nested)
+//
+// TYPE-LEVEL DAG (generic instantiation):
+//
+//   Tree is a type-level Define: (T) → { value: T, children: List<Tree<T>> }
+//
+//   Tree<Int>:
+//     Substitute T → Int:
+//     { value: Int, children: List<Tree<Int>> }
+//     The Tree<Int> in children is a SELF-REFERENCE — not expanded further.
+//     Substitution terminates in one step. Done.
+//
+//   Tree<Tree<Int>>:
+//     Substitute T → Tree<Int>:
+//     { value: Tree<Int>, children: List<Tree<Tree<Int>>> }
+//     The Tree<Tree<Int>> in children is a self-reference — not expanded.
+//     One substitution step. Done.
+//
+//   SAME LAW AS VALUE-LEVEL RECURSION:
+//     Value: fn f(tree) { f(child) } → child is smaller → bounded
+//     Type:  Tree<T> { children: List<Tree<T>> } → self-ref → not expanded
+//     Both detect self-reference. Both refuse to expand infinitely.
+//     Both are bounded by structure.
+//
+// VALUE-LEVEL DAG (sum_tree):
+//
+//   sum_tree is recursive: calls itself on child (sub-value of tree).
+//   Lowers to Loop:
+//
+//   Loop {
+//     source: tree.children              // iterate children
+//     bound: TreeSize(tree)              // bounded by tree structure
+//     init: tree.value                   // start with root's value
+//     body: Transform(BinaryOp(Add), [acc, recursive_result])
+//   }
+//
+//   Where recursive_result is itself a Loop over child.children.
+//   The recursion unwinds into nested Loops, each bounded by
+//   the subtree size. Total work = O(|tree|).
+//
+// LENSES:
+//   Cost: O(|tree|) — one visit per node, O(1) work each
+//   Termination: trivially bounded — Loop has TreeSize bound,
+//     tree gets structurally smaller at each level
+//   Ownership:
+//     tree: fan-out = 2 (value access + children access) → borrow
+//     child: fan-out = 1 (into recursive call) → move
+//     acc: fan-out = 1 (into Add) → move (Int, copied)
+//     Zero Rc clones. Tree nodes are borrowed during traversal.
+//   Effect: Pure
+//
+// EMISSION (Rust):
+//
+//   // Tree<Int> becomes:
+//   struct Tree<T> {
+//     value: T,
+//     children: Vec<Tree<T>>,    // Rc<Vec<...>> based on ownership lens
+//   }
+//
+//   fn sum_tree(tree: &Tree<i64>) -> i64 {     // borrow — fan-out > 1
+//     tree.value + tree.children.iter().fold(0, |acc, child| {
+//       acc + sum_tree(child)                    // borrow child too
+//     })
+//   }
+//
+//   // Tree<Tree<Int>> becomes:
+//   // Tree<Tree<i64>> — same struct, nested. No special handling.
+//
+// EMISSION (Go):
+//   type Tree[T any] struct {
+//     Value    T
+//     Children []Tree[T]
+//   }
+//   func SumTree(tree *Tree[int64]) int64 { ... }
+//
+// GENERATED TESTS:
+//   - Empty tree (no children): sum = value
+//   - Single child: sum = parent.value + child.value
+//   - Deep tree: sum = all values (verifies recursion terminates)
+//   - Tree<Tree<Int>>: nested instantiation produces valid struct
+//   - Type substitution: Tree<String> produces { value: String, children: List<Tree<String>> }
+
+// ---------------------------------------------------------------------------
+// Scenario 6: Generics + optionality + ownership combined
+// ---------------------------------------------------------------------------
+//
+// The hardest case: generic container with optional fields, accessed
+// through a map lookup, with ownership tracking at every level.
+//
+// FRONTEND:
+//
+//   type Config<T> {
+//     default_value: T
+//     overrides: Map<String, T>
+//   }
+//
+//   fn resolve<T>(config: Config<T>, key: String) -> T {
+//     match config.overrides |> map_get(key) {
+//       Some { value: v } => v
+//       None => config.default_value
+//     }
+//   }
+//
+//   let config: Config<Int> = Config { default_value: 0, overrides: { "timeout": 30 } }
+//   let timeout = resolve(config, "timeout")
+//
+// TYPE-LEVEL:
+//   Config<Int>: substitute T → Int
+//   { default_value: Int, overrides: Map<String, Int> }
+//   resolve<Int>: substitute T → Int in signature
+//   (Config<Int>, String) → Int
+//   One step. Done.
+//
+// VALUE-LEVEL DAG:
+//
+//   Bind(config, param_port<Config<Int>>)
+//   Transform(FieldAccess("overrides"), [config]) → overrides_port<Map<String,Int>>
+//   Transform(Method(MapGet), [overrides_port, key]) → lookup_port<Optional<Int>>
+//   Branch(lookup_port, [
+//     Some { v: Int } => v                      // use the override
+//     None =>
+//       Transform(FieldAccess("default_value"), [config]) → default_port<Int>
+//   ])
+//   output: Port<Int>                           // result is non-optional!
+//
+// LENSES:
+//   Cost: O(log n) for map_get + O(1) for field access
+//   Ownership:
+//     config: fan-out = 2 (overrides access + default_value access)
+//       BUT the accesses are in EXCLUSIVE branches of the Branch.
+//       Some arm uses overrides. None arm uses default_value.
+//       The compiler sees: config is consumed in exclusive paths.
+//       → borrow config, not clone. Even with fan-out = 2.
+//     v: fan-out = 1 → move
+//     default_value: fan-out = 1 → move
+//     ZERO clones.
+//   Effect: Pure
+//   Cardinality: output is Int (Required), not Optional<Int>.
+//     The Branch consumed the optionality — both arms return Int.
+//
+// EMISSION (Rust):
+//   fn resolve(config: &Config<i64>, key: &str) -> i64 {
+//     match config.overrides.get(key) {
+//       Some(v) => *v,
+//       None => config.default_value,
+//     }
+//   }
+//
+// GENERATED TESTS:
+//   - Key exists: returns override value
+//   - Key missing: returns default_value
+//   - Generic instantiation: Config<String>, Config<List<Int>> all work
+
 // =========================================================================
 // DIAGNOSTICS = CORRECTIONS, NOT ERROR MESSAGES
 // =========================================================================
