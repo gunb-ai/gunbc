@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{Node, InferredNode, is_compiler_error, import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, find_child_named, expr_var_name_at, expr_call_func_at, field_access_field_at, param_node_name_at, resource_use_name_at, field_binding_name_at, generic_param_name_at, LiteralValue, ExprData, make_expr_node, LambdaSemantics, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, MatchPattern, field_binding_pattern, TextFile, ErrorNode, make_error_node, SourceSpan, resource_use_resource, BinOp, AlgebraFieldKind, UnaryOpKind, StringPart, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, transport_method, transport_path_template, transport_query, transport_request_body, transport_stdin, transport_response_format, service_config_auth, service_config_auth_input, service_config_auth_source, service_config_endpoint, expr_has_self_call, expr_has_non_tail_self_call, field_access_base, foreach_variable_at, expr_method_name_at, let_binding_name_at, record_lit_type_name_at, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body, lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, make_span, with_required_cardinality, Connective, Cardinality, is_rest_transport, is_shell_transport, is_file_transport, FieldAccessStyle, FieldValueShape, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, InferredNode, is_compiler_error, import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, find_child_named, expr_var_name_at, expr_call_func_at, field_access_field_at, param_node_name_at, resource_use_name_at, field_binding_name_at, generic_param_name_at, LiteralValue, ExprData, make_expr_node, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, MatchPattern, field_binding_pattern, TextFile, ErrorNode, make_error_node, SourceSpan, resource_use_resource, BinOp, AlgebraFieldKind, UnaryOpKind, StringPart, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, transport_method, transport_path_template, transport_query, transport_request_body, transport_stdin, transport_response_format, service_config_auth, service_config_auth_input, service_config_auth_source, service_config_endpoint, expr_has_self_call, expr_has_non_tail_self_call, field_access_base, foreach_variable_at, expr_method_name_at, let_binding_name_at, record_lit_type_name_at, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body, lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, make_span, with_required_cardinality, Connective, Cardinality, is_rest_transport, is_shell_transport, is_file_transport, FieldAccessStyle, FieldValueShape, CompilerDiagnostic};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::FieldAccessStyle::{StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond};
@@ -2343,9 +2343,9 @@ let collection_scope = if ((((func.clone().as_str() == "map".to_string().as_str(
                 let call_args = order_typed_call_args(&args, func.clone(), &scope);
 match call_args.last().cloned() {
     Some(a) => match (*arg_value(&a).expr_data.clone()).clone() {
-    ExprData::ExprLambda { semantics, .. } => {
+    ExprData::ExprLambda => {
                     let lps = lambda_param_names_at(arg_value(&a), scope.type_env.clone().source_indices.clone());
-lambda_scope_from_semantics(scope.clone(), lps, semantics.clone())
+lambda_scope_from_children(scope.clone(), lps, Rc::new(arg_value(&a).children.iter().cloned().skip(1 as usize).collect::<Vec<_>>()))
 },
     _ => scope.clone(),
 },
@@ -2605,46 +2605,52 @@ if (elem_is_error || elem_is_type_var) {
 }
 }
 
-pub fn lambda_scope_from_semantics(scope: Rc<InferScope>, params: Rc<Vec<String>>, semantics: Option<Rc<LambdaSemantics>>) -> Rc<InferScope> {
-    match semantics {
-    Some(lambda_semantics) => Rc::new(params.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(scope, |acc: Rc<InferScope>, pair: (i64, String)| {
+pub fn lambda_scope_from_children(scope: Rc<InferScope>, params: Rc<Vec<String>>, param_nodes: Rc<Vec<Rc<Node>>>) -> Rc<InferScope> {
+    Rc::new(params.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(scope, |acc: Rc<InferScope>, pair: (i64, String)| {
         let idx = pair.0.clone();
 let param_name = pair.1.clone();
-let param_type = match lambda_semantics.param_types.clone().get(idx.clone() as usize).cloned() {
-    Some(resolved_type) => resolved_type.clone(),
+let param_type = match param_nodes.get(idx.clone() as usize).cloned() {
+    Some(pn) => match pn.inferred.clone() {
+        Some(inf) => match (*inf).clone() {
+            InferredNode::Resolved { node: resolved_type, .. } => resolved_type.clone(),
+            _ => type_variable_node("lambda_param".to_string()),
+        },
+        None => type_variable_node("lambda_param".to_string()),
+    },
     None => type_variable_node("lambda_param".to_string()),
 };
 extend_scope(&acc, &param_name, param_type.clone(), Rc::new(SubValueRelation::SubValueUnknown))
-}),
-    None => scope,
-}
+})
 }
 
-pub fn lambda_param_type_strs(params: Rc<Vec<String>>, semantics: Option<Rc<LambdaSemantics>>, fallback_types: Rc<Vec<String>>, shared_types: Rc<HashMap<String, bool>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<String>> {
+pub fn lambda_param_type_strs(params: Rc<Vec<String>>, param_nodes: Rc<Vec<Rc<Node>>>, fallback_types: Rc<Vec<String>>, shared_types: Rc<HashMap<String, bool>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<String>> {
     Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(params.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { __result.push({
         let idx = pair.0.clone();
 let param_name = pair.1.clone();
-let inferred_type = match semantics.clone() {
-    Some(lambda_semantics) => match lambda_semantics.param_types.clone().get(idx.clone() as usize).cloned() {
-    Some(param_type) => {
-            let param_is_error = if (param_type.inferred.clone() != None) {
-                is_compiler_error(param_type.inferred.clone().clone().unwrap())
-            } else {
-                false
-            };
+let inferred_type = match param_nodes.get(idx.clone() as usize).cloned() {
+    Some(pn) => match pn.inferred.clone() {
+        Some(inf) => match (*inf).clone() {
+            InferredNode::Resolved { node: param_type, .. } => {
+                let param_is_error = if (param_type.inferred.clone() != None) {
+                    is_compiler_error(param_type.inferred.clone().clone().unwrap())
+                } else {
+                    false
+                };
 let param_is_type_var = if (param_type.inferred.clone() != None) {
-                is_type_variable(param_type.inferred.clone().clone().unwrap())
-            } else {
-                false
-            };
+                    is_type_variable(param_type.inferred.clone().clone().unwrap())
+                } else {
+                    false
+                };
 if (param_is_type_var.clone() || param_is_error.clone()) {
-                None
-            } else {
-                Some(render_rust_type(param_type.clone(), shared_types.clone(), source_indices.clone()))
-            }
-},
-    None => None,
-},
+                    None
+                } else {
+                    Some(render_rust_type(param_type.clone(), shared_types.clone(), source_indices.clone()))
+                }
+            },
+            _ => None,
+        },
+        None => None,
+    },
     None => None,
 };
 let fallback_type = match fallback_types.clone().get(idx.clone() as usize).cloned() {
@@ -2662,12 +2668,13 @@ match inferred_type.clone() {
 
 pub fn emit_typed_collection_lambda(lambda_expr: &Rc<Node>, elem_type_str: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64, shared_types: &Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> String {
     match (*lambda_expr.expr_data.clone()).clone() {
-    ExprData::ExprLambda { semantics, .. } => {
+    ExprData::ExprLambda => {
         let ps = lambda_param_names_at(lambda_expr.clone(), scope.type_env.clone().source_indices.clone());
 let bd = lambda_body(lambda_expr.clone());
-let param_strs = lambda_param_type_strs(ps.clone(), semantics.clone(), Rc::new(vec![elem_type_str]), shared_types.clone(), scope.type_env.clone().source_indices.clone());
+let pn = Rc::new(lambda_expr.children.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let param_strs = lambda_param_type_strs(ps.clone(), pn.clone(), Rc::new(vec![elem_type_str]), shared_types.clone(), scope.type_env.clone().source_indices.clone());
 let params_str = param_strs.join(&", ".to_string());
-let lambda_scope = lambda_scope_from_semantics(scope.clone(), ps.clone(), semantics.clone());
+let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), pn);
 let body_str = emit_typed_expr(bd, registry, &lambda_scope, depth, shared_types.clone(), emit_info, 1024);
 v2_rt::concat(v2_rt::concat(v2_rt::concat("|".to_string(), params_str), "| ".to_string()), body_str)
 },
@@ -2677,9 +2684,10 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat("|".to_string(), params_str), "| ".to_
 
 pub fn emit_typed_fold_lambda(lambda_expr: &Rc<Node>, acc_type_str: &String, elem_type_str: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: &Rc<InferScope>, depth: i64, shared_types: &Rc<HashMap<String, bool>>, emit_info: &Rc<EmitGraphInfo>) -> String {
     match (*lambda_expr.expr_data.clone()).clone() {
-    ExprData::ExprLambda { semantics, .. } => {
+    ExprData::ExprLambda => {
         let ps = lambda_param_names_at(lambda_expr.clone(), scope.type_env.clone().source_indices.clone());
 let bd = lambda_body(lambda_expr.clone());
+let pn = Rc::new(lambda_expr.children.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 let safe_acc_type = if (((acc_type_str.clone().as_str() == "Rc<Vec<()>>".to_string().as_str()) || (acc_type_str.clone().as_str() == "Vec<()>".to_string().as_str())) || (acc_type_str.clone().as_str() == "Option<()>".to_string().as_str())) {
             "_".to_string()
         } else {
@@ -2690,9 +2698,9 @@ let fallback_types = Rc::new({ let mut __result = Vec::new(); for pair in Rc::ne
         } else {
             elem_type_str.clone()
         }); } __result });
-let param_strs = lambda_param_type_strs(ps.clone(), None, fallback_types, shared_types.clone(), scope.type_env.clone().source_indices.clone());
+let param_strs = lambda_param_type_strs(ps.clone(), Rc::new(vec![]), fallback_types, shared_types.clone(), scope.type_env.clone().source_indices.clone());
 let params_str = param_strs.join(&", ".to_string());
-let lambda_scope = lambda_scope_from_semantics(scope.clone(), ps.clone(), semantics.clone());
+let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), pn);
 let body_str = emit_typed_expr(bd, registry, &lambda_scope, depth, shared_types.clone(), emit_info.clone(), 1024);
 let acc_name = match ps.clone().first().cloned() {
     Some(n) => n.clone(),
@@ -2753,7 +2761,7 @@ let fold_lambda_node = match args.clone().get(1 as usize).cloned() {
     None => type_variable_node("".to_string()),
 };
 let acc_param_name = match (*fold_lambda_node.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => match lambda_param_names_at(fold_lambda_node.clone(), scope.type_env.clone().source_indices.clone()).first().cloned() {
+    ExprData::ExprLambda => match lambda_param_names_at(fold_lambda_node.clone(), scope.type_env.clone().source_indices.clone()).first().cloned() {
     Some(n) => n.clone(),
     None => "".to_string(),
 },
@@ -2765,7 +2773,7 @@ let structural_move = (fold_proof.eligible.clone() && fold_proof.whole_acc_singl
 let acc_unwrap = (structural_unwrap && emit_map_has(shared_types.clone(), acc_type_name.clone()));
 let fold_emit_info = if acc_unwrap {
             match (*fold_lambda_node.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => {
+    ExprData::ExprLambda => {
                 let ps = lambda_param_names_at(fold_lambda_node.clone(), scope.type_env.clone().source_indices.clone());
 match ps.first().cloned() {
     Some(acc_name) => Rc::new(EmitGraphInfo {
@@ -2788,7 +2796,7 @@ match ps.first().cloned() {
         } else {
             if structural_move {
                 match (*fold_lambda_node.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => {
+    ExprData::ExprLambda => {
                     let ps = lambda_param_names_at(fold_lambda_node.clone(), scope.type_env.clone().source_indices.clone());
 match ps.first().cloned() {
     Some(acc_name) => Rc::new(EmitGraphInfo {
@@ -2901,7 +2909,7 @@ let recv_is_optional = match receiver.inferred.clone().as_deref().cloned() {
 if recv_is_optional {
             match args.clone().first().cloned() {
     Some(a) => match (*arg_value(&a).expr_data.clone()).clone() {
-    ExprData::ExprLambda { semantics, .. } => {
+    ExprData::ExprLambda => {
                 let bd = match arg_value(&a).children.clone().first().cloned() {
     Some(v) => v.clone(),
     None => arg_value(&a),
@@ -2912,7 +2920,7 @@ let dag_name = match ps.clone().first().cloned() {
     None => "__x".to_string(),
 };
 let p = emit_ident(dag_name, RenderTarget::Rust);
-let lambda_scope = lambda_scope_from_semantics(scope.clone(), ps.clone(), semantics.clone());
+let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), Rc::new(arg_value(&a).children.iter().cloned().skip(1 as usize).collect::<Vec<_>>()));
 let body_str = emit_typed_expr(bd, registry.clone(), &lambda_scope, depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str, ".map(|".to_string()), p), "| ".to_string()), body_str), ")".to_string())
 },
@@ -2926,7 +2934,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str, 
 let iter_str = apply_type_template1(sharing.iter_owned.clone(), recv_str);
 match args.clone().first().cloned() {
     Some(a) => match (*arg_value(&a).expr_data.clone()).clone() {
-    ExprData::ExprLambda { semantics, .. } => {
+    ExprData::ExprLambda => {
                     let bd = match arg_value(&a).children.clone().first().cloned() {
     Some(v) => v.clone(),
     None => arg_value(&a),
@@ -2937,7 +2945,7 @@ let dag_name = match ps.clone().first().cloned() {
     None => "__x".to_string(),
 };
 let p = emit_ident(dag_name, RenderTarget::Rust);
-let lambda_scope = lambda_scope_from_semantics(scope.clone(), ps.clone(), semantics.clone());
+let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), Rc::new(arg_value(&a).children.iter().cloned().skip(1 as usize).collect::<Vec<_>>()));
 let body_str = emit_typed_expr(bd, registry.clone(), &lambda_scope, depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new({ let mut __result = Vec::new(); for ".to_string(), p), " in ".to_string()), iter_str), " { __result.push(".to_string()), body_str), "); } __result })".to_string())
 },
@@ -2958,7 +2966,7 @@ let first_arg_str = emit_typed_first_arg(args.clone(), registry.clone(), scope.c
 let iter_str = apply_type_template1(sharing.iter_owned.clone(), recv_str);
 match args.clone().first().cloned() {
     Some(a) => match (*arg_value(&a).expr_data.clone()).clone() {
-    ExprData::ExprLambda { semantics, .. } => {
+    ExprData::ExprLambda => {
             let bd = match arg_value(&a).children.clone().first().cloned() {
     Some(v) => v.clone(),
     None => arg_value(&a),
@@ -2969,7 +2977,7 @@ let dag_name = match ps.clone().first().cloned() {
     None => "__x".to_string(),
 };
 let p = emit_ident(dag_name, RenderTarget::Rust);
-let lambda_scope = lambda_scope_from_semantics(scope.clone(), ps.clone(), semantics.clone());
+let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), Rc::new(arg_value(&a).children.iter().cloned().skip(1 as usize).collect::<Vec<_>>()));
 let body_str = emit_typed_expr(bd, registry.clone(), &lambda_scope, depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
 let inner_iter = apply_type_template1(sharing.iter_owned.clone(), v2_rt::concat(v2_rt::concat("(*".to_string(), body_str.clone()), ")".to_string()));
 let bindings = v2_rt::rc_map_insert(v2_rt::rc_map_insert(v2_rt::rc_map_insert(seed_bindings("param".to_string(), p), "body".to_string(), body_str.clone()), "iter".to_string(), iter_str), "inner_iter".to_string(), inner_iter);

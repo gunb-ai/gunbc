@@ -8789,9 +8789,7 @@ if has_err(r.err.clone()) {
                     return r.clone()
                 }
 Rc::new(ExprResult {
-    expr: make_expr_node(Rc::new(ExprData::ExprLambda {
-    semantics: None,
-}), v2_rt::concat(Rc::new(vec![r.expr.clone()]), Rc::new(vec![parsed_name_leaf(name.clone(), span.clone())])), None, span.clone()),
+    expr: make_expr_node(Rc::new(ExprData::ExprLambda), v2_rt::concat(Rc::new(vec![r.expr.clone()]), Rc::new(vec![parsed_name_leaf(name.clone(), span.clone())])), None, span.clone()),
     tokens: r.tokens.clone(),
     ctx: r.ctx.clone(),
     err: None,
@@ -10704,9 +10702,7 @@ if has_err(r.err.clone()) {
 })
                         }
 Rc::new(ExprResult {
-    expr: make_expr_node(Rc::new(ExprData::ExprLambda {
-    semantics: None,
-}), v2_rt::concat(Rc::new(vec![r.expr.clone()]), Rc::new({ let mut __result = Vec::new(); for p in lambda_r.params.clone().iter().cloned() { __result.push(parsed_name_leaf(p.name.clone(), p.span.clone())); } __result })), None, span),
+    expr: make_expr_node(Rc::new(ExprData::ExprLambda), v2_rt::concat(Rc::new(vec![r.expr.clone()]), Rc::new({ let mut __result = Vec::new(); for p in lambda_r.params.clone().iter().cloned() { __result.push(parsed_name_leaf(p.name.clone(), p.span.clone())); } __result })), None, span),
     tokens: r.tokens.clone(),
     ctx: r.ctx.clone(),
     err: None,
@@ -10786,9 +10782,7 @@ if has_err(body_r.err.clone()) {
             return body_r.clone()
         }
 Rc::new(ExprResult {
-    expr: make_expr_node(Rc::new(ExprData::ExprLambda {
-    semantics: None,
-}), v2_rt::concat(Rc::new(vec![body_r.expr.clone()]), Rc::new({ let mut __result = Vec::new(); for p in params_r.params.clone().iter().cloned() { __result.push(parsed_name_leaf(p.name.clone(), p.span.clone())); } __result })), None, span),
+    expr: make_expr_node(Rc::new(ExprData::ExprLambda), v2_rt::concat(Rc::new(vec![body_r.expr.clone()]), Rc::new({ let mut __result = Vec::new(); for p in params_r.params.clone().iter().cloned() { __result.push(parsed_name_leaf(p.name.clone(), p.span.clone())); } __result })), None, span),
     tokens: body_r.tokens.clone(),
     ctx: body_r.ctx.clone(),
     err: None,

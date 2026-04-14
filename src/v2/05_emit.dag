@@ -1492,7 +1492,7 @@ fn classify_expr(texpr: Node) -> ExprCategory {
     ExprListLit => ExprCatCompound
     ExprBinOp { op: _, algebra_field: _ } => ExprCatCompound
     ExprUnaryOp { op: _ } => ExprCatCompound
-    ExprLambda { semantics: _ } => ExprCatCompound
+    ExprLambda => ExprCatCompound
     ExprStringInterp => ExprCatCompound
     ExprCast => ExprCatCompound
     ExprIndex => ExprCatCompound
@@ -2361,7 +2361,7 @@ fn emit_shared_expr(
     ExprUnaryOp { op: op } =>
       let operand = unaryop_operand(texpr: texpr)
       wrap_result(emit_unary_op(op: op, operand_str: recurse(operand), target: target))
-    ExprLambda { semantics: _ } =>
+    ExprLambda =>
       let body = lambda_body(texpr: texpr)
       wrap_result(emit_lambda(params_str: emit_lambda_params(param_names: lambda_param_names_at(texpr: texpr, source_indices: source_indices), target: target), body_str: recurse(body), target: target))
     ExprStringInterp =>

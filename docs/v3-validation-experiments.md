@@ -182,10 +182,73 @@ Experiment 4 (purity lens)   ← tests lens extensibility
 All four are independent. Can run in parallel. Each is 1-2 PRs.
 All must keep bootstrap green.
 
+## Experiment 5: Measure the disease — ExprData variant edit cost
+
+**What it tests:** the DISEASE, not the cure. How many files and
+match arms need editing to add a new ExprData variant?
+
+**Method:** count every match on `.expr_data` across all .dag files.
+
+**Results:**
+
+| Metric | Count |
+|--------|-------|
+| Files that MUST be edited | 6 |
+| Files that SHOULD be reviewed | 5 |
+| **Total files needing edits** | **8-11** |
+| Exhaustive match arms | 4 |
+| Big-dispatch match arms | 26 |
+| **Total actionable match arms** | **30** |
+| Estimated new lines | ~76-215 |
+
+**Verdict:** Adding one ExprData variant costs 8-11 files and ~30
+match arms. Thesis target: "cost of change = 1 file." V2 is 8-11x
+over. Experiment 3 (clamp via rule table): 3 files, zero consumer
+edits. Concrete improvement validated.
+
+---
+
+## Results
+
+| # | Experiment | Result | Key metric |
+|---|---|---|---|
+| 1 | Lambda → Bind + Define | **PASS (partial)** | LambdaSemantics deleted, -30 lines. 43 ExprLambda refs remain for closure semantics. |
+| 2 | Provenance on binding | **PASS (partial)** | Carry path works. classify_let_value reads scope_locals first. Reconstruction not yet fully deleted. |
+| 3 | Add clamp builtin | **PASS (full)** | 3 files edited, zero consumer edits |
+| 4 | Purity lens | **PASS (full)** | 1 new file, zero compiler changes, 3117 pure / 36 effectful |
+| 5 | ExprData variant cost | **MEASURED** | 8-11 files, ~30 match arms per new variant |
+
+All experiments keep tests green (415 pass) and CX ratchet stable.
+
+## What the experiments actually prove
+
+- **Transform/rule-table mechanism:** validated (exp 3 full pass)
+- **Observational lens mechanism:** validated (exp 4 full pass)
+- **Carry-facts-through-bindings:** validated at substrate level (exp 2 partial)
+- **"Lambda = function" was too coarse:** real distinction is closure/binding
+  semantics, not lambda syntax (exp 1 discovery)
+- **v2 ExprData tax:** empirically real at 8-11x over target (exp 5)
+
+## Revised acceptance criteria (per reviewer feedback)
+
+The original criteria were too focused on optics (zero refs, net deletion).
+These track ontology instead:
+
+- **Exp 1 revised:** any remaining lambda-specific logic must be justified
+  by closure/binding semantics (fresh scope, capture fan-out, iteration
+  context), not by missing carried facts or surface-syntax differences.
+  Bucket the 43 refs into: surface syntax, real closure semantics, residual
+  v2 artifact. Only the last bucket is a deletion target.
+
+- **Exp 2 revised:** at least one reconstruction function DELETED (not just
+  bypassed). The carry path working in parallel with the old path is a
+  parallel implementation, not a dissolved heuristic. The dividend is
+  enabled but not yet banked.
+
 ## After validation
 
-If all four pass → the spec's core claims are validated.
-Proceed to v3 build with confidence.
-
-If any fail → the spec has a gap. Fix the spec, then re-validate.
-Cheaper to learn this now than after building half a compiler.
+The experiments validate the v3 direction with honest partials:
+- The design is sound where tested
+- The spec needed one refinement (callback rule for closures-in-Loops)
+- The transition strategy (v3-from-scratch vs incremental) is unvalidated
+  by these experiments — they tested mechanisms, not migration

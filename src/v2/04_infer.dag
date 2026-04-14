@@ -55,7 +55,6 @@ import v2.std.core {
   CallSemantics, PlainCallSemantics, LookupCallSemantics,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
   ServiceMethodSemantics,
-  LambdaSemantics,
   ExprErrorKind, ParseRecoveryError, SemanticExprError, InternalExprError,
   BinOp, Add, Sub, Mul, Div, Mod,
   Eq, Ne, Lt, Gt, Le, Ge,
@@ -639,19 +638,6 @@ fn inferred_or_error(result: InferredNode?, fallback_message: String, fallback_s
   }
 }
 
-fn lambda_semantics_from_param_types(param_types: List<Node>) -> LambdaSemantics {
-  LambdaSemantics { param_types: param_types }
-}
-
-fn lambda_param_types_from_scope(scope: InferScope, params: List<String>) -> List<Node> {
-  params |> map(param_name =>
-    match map_get(scope.locals, param_name) {
-      Some { value: binding } => binding.resolved
-      None => error_type
-    }
-  )
-}
-
 fn resolve_pattern_subject(scope: InferScope, scrutinee_subject: PatternSubject) -> PatternSubject {
   match scrutinee_subject {
     PatternResolved { node: scrutinee_type } =>
@@ -973,7 +959,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
 
 fn is_lambda_expr(e: Node) -> Bool {
   match e.expr_data {
-    ExprLambda { semantics: _ } => true
+    ExprLambda => true
     _ => false
   }
 }
@@ -1875,7 +1861,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         diagnostics: operand_diags
       }
 
-    ExprLambda { semantics: _ } =>
+    ExprLambda =>
       let span = texpr.span
       // children: [body, param0, param1, ...]
       let lam_body = lambda_body(texpr: texpr)
@@ -1940,11 +1926,26 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let body_result = infer_expr(texpr: lam_body, scope: body_scope, expected: body_expected)
       let body_typed = body_result.typed
       let body_diags = body_result.diagnostics
+      // Enrich param child nodes with inferred types from scope.
+      let typed_param_nodes = lam_param_nodes |> enumerate |> map(pair =>
+        let pn = pair.second
+        let param_name = match lam_params |> skip(pair.first) |> first { Some { value: n } => n  None => "" }
+        let param_type = match map_get(lam_scope.locals, param_name) {
+          Some { value: binding } => Some { value: Resolved { node: binding.resolved } }
+          None => none
+        }
+        Node {
+          name: pn.name, ident: pn.ident, span: pn.span, ident_span: pn.ident_span, children: pn.children,
+          connective: pn.connective, params: pn.params, inferred: param_type,
+          return_cardinality: pn.return_cardinality, uses: pn.uses, body: pn.body,
+          transport: pn.transport, properties: pn.properties, type_annotation: pn.type_annotation,
+          is_self_recursive: pn.is_self_recursive, has_non_tail_self_call: pn.has_non_tail_self_call,
+          match_pattern: pn.match_pattern, expr_data: pn.expr_data
+        }
+      )
       let lam_texpr = make_expr_node(
-        expr_data: ExprLambda {
-          semantics: Some { value: lambda_semantics_from_param_types(param_types: lambda_param_types_from_scope(scope: lam_scope, params: lam_params)) }
-        },
-        children: concat([body_typed], lam_param_nodes),
+        expr_data: ExprLambda,
+        children: concat([body_typed], typed_param_nodes),
         inferred: body_typed.inferred,
         span: span
       )
@@ -2677,7 +2678,15 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
   match val.expr_data {
     ExprVar { binding_kind: _ } =>
       let vname = expr_var_name_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      map_get(ctx.sub_value_vars, vname)
+      // Check scope_locals first (carried facts), then sub_value_vars (legacy)
+      match map_get(ctx.scope_locals, vname) {
+        Some { value: binding } =>
+          match binding.provenance {
+            SubValueUnknown => map_get(ctx.sub_value_vars, vname)
+            _ => Some { value: binding.provenance }
+          }
+        None => map_get(ctx.sub_value_vars, vname)
+      }
     ExprFieldAccess { summary: _ } =>
       let base = field_access_base(texpr: val)
       let field = field_access_field_at(texpr: val, source_indices: ctx.type_env.source_indices)
@@ -2692,18 +2701,22 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
           match from_per_field {
             Some { value: rel } => Some { value: rel }
             None =>
-              // Fall through to inductive field lookup
-              let type_name = match map_get(ctx.param_names, bname) {
-                Some { value: t } => t
+              // Check scope_locals for base type, then param_names, then sub_value_vars
+              let type_name = match map_get(ctx.scope_locals, bname) {
+                Some { value: binding } => authored_name_at(source_indices: ctx.type_env.source_indices, node: binding.resolved)
                 None =>
-                  match map_get(ctx.sub_value_vars, bname) {
-                    Some { value: rel } =>
-                      match rel {
-                        StrictSubValue { field: f, factor: _ } => f.element_type
-                        IteratedSubValue { field: f } => f.element_type
-                        _ => ""
+                  match map_get(ctx.param_names, bname) {
+                    Some { value: t } => t
+                    None =>
+                      match map_get(ctx.sub_value_vars, bname) {
+                        Some { value: rel } =>
+                          match rel {
+                            StrictSubValue { field: f, factor: _ } => f.element_type
+                            IteratedSubValue { field: f } => f.element_type
+                            _ => ""
+                          }
+                        None => ""
                       }
-                    None => ""
                   }
               }
               if type_name != "" {
@@ -3252,7 +3265,7 @@ fn descent_source_type(found: String, arg_node: Node, ctx: DescentContext) -> St
   if found != "" { found }
   else {
     match arg_value(n: arg_node).expr_data {
-      ExprLambda { semantics: _ } => found
+      ExprLambda => found
       _ =>
         let arg_val = arg_value(n: arg_node)
         match arg_val.expr_data {
@@ -3288,7 +3301,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       let annotated_children = body.children |> map(child =>
         let arg_val = arg_value(n: child)
         match arg_val.expr_data {
-          ExprLambda { semantics: _ } =>
+          ExprLambda =>
             if source_type != "" {
               // Register lambda params with source param type for descent tracking.
               // Most callback lambdas have 1-2 params. Register all with PreservedValue
@@ -3577,7 +3590,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: map_insert(ctx.sub_value_vars, binding_name, rel),
             size_aliases: inner_size_aliases,
-            scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs,
+            scope_locals: map_insert(ctx.scope_locals, binding_name, TypeBinding { name: binding_name, resolved: resolved_type(n: val), provenance: rel }),
+            func_sigs: ctx.func_sigs,
             per_field_vars: inner_per_field
           }
         None =>
@@ -3585,7 +3599,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             fn_name: ctx.fn_name, param_names: ctx.param_names, param_order: ctx.param_order, type_env: ctx.type_env,
             sub_value_vars: ctx.sub_value_vars,
             size_aliases: inner_size_aliases,
-            scope_locals: ctx.scope_locals, func_sigs: ctx.func_sigs,
+            scope_locals: map_insert(ctx.scope_locals, binding_name, TypeBinding { name: binding_name, resolved: resolved_type(n: val), provenance: SubValueUnknown }),
+            func_sigs: ctx.func_sigs,
             per_field_vars: inner_per_field
           }
       }
@@ -3636,7 +3651,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   param_order: acc.ctx.param_order, type_env: acc.ctx.type_env,
                   sub_value_vars: map_insert(acc.ctx.sub_value_vars, bname, rel),
                   size_aliases: new_sa,
-                  scope_locals: acc.ctx.scope_locals, func_sigs: acc.ctx.func_sigs,
+                  scope_locals: map_insert(acc.ctx.scope_locals, bname, TypeBinding { name: bname, resolved: resolved_type(n: val), provenance: rel }),
+                  func_sigs: acc.ctx.func_sigs,
                   per_field_vars: acc.ctx.per_field_vars
                 }
               None =>
@@ -3644,7 +3660,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   fn_name: acc.ctx.fn_name, param_names: acc.ctx.param_names, param_order: acc.ctx.param_order, type_env: acc.ctx.type_env,
                   sub_value_vars: acc.ctx.sub_value_vars,
                   size_aliases: new_sa,
-                  scope_locals: acc.ctx.scope_locals, func_sigs: acc.ctx.func_sigs,
+                  scope_locals: map_insert(acc.ctx.scope_locals, bname, TypeBinding { name: bname, resolved: resolved_type(n: val), provenance: SubValueUnknown }),
+                  func_sigs: acc.ctx.func_sigs,
                   per_field_vars: acc.ctx.per_field_vars
                 }
             }
@@ -3725,7 +3742,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         // Find the lambda argument and extend context for its element parameter
         let method_args = method_arg_nodes(texpr: body)
         let lambda_arg = method_args |> filter(a =>
-          match arg_value(n: a).expr_data { ExprLambda { semantics: _ } => true  _ => false }
+          match arg_value(n: a).expr_data { ExprLambda => true  _ => false }
         ) |> first
         // Inside a fold/map lambda, captured sub_value_vars are cleared.
         // Captured variables have their descent multiplied by the fold
@@ -3778,7 +3795,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         let annotated_receiver = annotate_descent(body: method_receiver(texpr: body), ctx: ctx)
         let annotated_args = method_arg_nodes(texpr: body) |> map(arg_node =>
           let arg_val = arg_value(n: arg_node)
-          let is_lambda = match arg_val.expr_data { ExprLambda { semantics: _ } => true  _ => false }
+          let is_lambda = match arg_val.expr_data { ExprLambda => true  _ => false }
           if is_lambda {
             make_arg_node(name: match arg_name_at(n: arg_node, source_indices: ctx.type_env.source_indices) { Some { value: n } => Some { value: n }  None => none }, value: annotate_descent(body: arg_val, ctx: inner_ctx), span: arg_node.span, name_span: arg_node.span)
           } else {
@@ -4733,7 +4750,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     // CX-L2: annotate self-call sites with descent evidence
     let is_recursive = expr_has_self_call(texpr: body_typed, fn_name: authored_name_at(source_indices: scope.type_env.source_indices, node: item), source_indices: scope.type_env.source_indices)
     let annotated_body = if is_recursive {
-      annotate_descent_evidence(body: body_typed, fn_name: authored_name_at(source_indices: scope.type_env.source_indices, node: item), params: item.params, type_env: scope.type_env, scope_locals: scope.locals, func_sigs: scope.func_env.signatures)
+      annotate_descent_evidence(body: body_typed, fn_name: authored_name_at(source_indices: scope.type_env.source_indices, node: item), params: item.params, type_env: scope.type_env, scope_locals: fn_scope.locals, func_sigs: scope.func_env.signatures)
     } else { body_typed }
     TypedItemResult {
       item: Node {

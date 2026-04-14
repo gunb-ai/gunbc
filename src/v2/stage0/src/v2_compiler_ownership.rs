@@ -302,7 +302,7 @@ match ss.clone().last().cloned() {
             }
 },
     ExprData::ExprReturn => texpr.children.clone().iter().cloned().fold(accum, |acc: Rc<UsageAccum>, child: Rc<Node>| walk_expr(acc, &child, true, &si)),
-    ExprData::ExprLambda { .. } => {
+    ExprData::ExprLambda => {
             let body = lambda_body(texpr.clone());
 let inner = walk_expr(empty_usage_accum(), &body, false, &si);
 let binding_merged = Rc::new(v2_rt::map_values(&inner.bindings.clone())).iter().cloned().fold(accum, |acc: Rc<UsageAccum>, usage: Rc<BindingUsage>| {
@@ -436,7 +436,7 @@ match let_body(texpr.clone()) {
     Some(child) => collect_callable_refs(&child, &si),
     None => v2_rt::rc_empty_map::<String, bool>(),
 },
-    ExprData::ExprLambda { .. } => collect_callable_refs(&lambda_body(texpr.clone()), &si),
+    ExprData::ExprLambda => collect_callable_refs(&lambda_body(texpr.clone()), &si),
     ExprData::ExprForEach => {
             let col = collect_callable_refs(&foreach_collection(texpr.clone()), &si);
 v2_rt::rc_map_merge(col, collect_callable_refs(&foreach_body(texpr.clone()), &si))
@@ -531,7 +531,7 @@ if is_direct {
                 node.children.clone().iter().cloned().fold(empty_fold_acc_use_summary(), |acc: Rc<FoldAccUseSummary>, child: Rc<Node>| merge_fold_acc_use_summaries(&acc, &summarize_fold_acc_uses(&child, &acc_name, &si, inside_nested.clone())))
             }
 },
-    ExprData::ExprLambda { .. } => {
+    ExprData::ExprLambda => {
             let body_summary = summarize_fold_acc_uses(&lambda_body(node.clone()), &acc_name, &si, true);
 if (((body_summary.whole_acc_uses.clone() > 0) || ((body_summary.field_moves.clone().len() as i64) > 0)) || body_summary.nested_acc_refs.clone()) {
                 Rc::new(FoldAccUseSummary {
@@ -564,14 +564,14 @@ merge_fold_acc_use_summaries(&coll_summary, &nested_summary)
 
 pub fn fold_lambda_acc_use_summary(lambda_node: &Rc<Node>, acc_name: String, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<FoldAccUseSummary> {
     match (*lambda_node.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => summarize_fold_acc_uses(&lambda_body(lambda_node.clone()), &acc_name, &si, false),
+    ExprData::ExprLambda => summarize_fold_acc_uses(&lambda_body(lambda_node.clone()), &acc_name, &si, false),
     _ => empty_fold_acc_use_summary(),
 }
 }
 
 pub fn fold_body_constructs_acc_struct(lambda_node: &Rc<Node>, acc_type_name: String, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
     match (*lambda_node.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => {
+    ExprData::ExprLambda => {
         let body = lambda_body(lambda_node.clone());
 let terminal = fold_terminal_expr(body);
 match (*terminal.expr_data.clone()).clone() {
@@ -610,7 +610,7 @@ let fold_lambda_node = match args.clone().get(1 as usize).cloned() {
     None => method_call.clone(),
 };
 let acc_param_name = match (*fold_lambda_node.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => match lambda_param_names_at(fold_lambda_node.clone(), si.clone()).first().cloned() {
+    ExprData::ExprLambda => match lambda_param_names_at(fold_lambda_node.clone(), si.clone()).first().cloned() {
     Some(n) => n.clone(),
     None => "".to_string(),
 },

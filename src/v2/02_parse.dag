@@ -3748,7 +3748,7 @@ fn parse_ident_expr(tokens: List<Token>, ctx: ParseContext, name: String) -> Exp
   if tok_is_fat_arrow(tok: tokens |> first) {
     let r = parse_lambda_body(tokens: tokens |> skip(1), ctx: ctx)
     if has_err(err: r.err) { return r }
-    ExprResult { expr: make_expr_node(expr_data: ExprLambda { semantics: none }, children: concat([r.expr], [parsed_name_leaf(name: name, span: span)]), inferred: none, span: span), tokens: r.tokens, ctx: r.ctx, err: none }
+    ExprResult { expr: make_expr_node(expr_data: ExprLambda, children: concat([r.expr], [parsed_name_leaf(name: name, span: span)]), inferred: none, span: span), tokens: r.tokens, ctx: r.ctx, err: none }
   } else {
     if is_uppercase_start(name: name) && tok_is_lbrace(tok: tokens |> first) {
       parse_record_literal(tokens: tokens, ctx: ctx, name: name, span: span)
@@ -4623,7 +4623,7 @@ fn parse_paren_expr(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
     if lambda_r.is_lambda {
       let r = parse_lambda_body(tokens: lambda_r.tokens, ctx: lambda_r.ctx)
       if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-      ExprResult { expr: make_expr_node(expr_data: ExprLambda { semantics: none }, children: concat([r.expr], lambda_r.params |> map(p => parsed_name_leaf(name: p.name, span: p.span))), inferred: none, span: span), tokens: r.tokens, ctx: r.ctx, err: none }
+      ExprResult { expr: make_expr_node(expr_data: ExprLambda, children: concat([r.expr], lambda_r.params |> map(p => parsed_name_leaf(name: p.name, span: p.span))), inferred: none, span: span), tokens: r.tokens, ctx: r.ctx, err: none }
     } else {
       // lambda_r.tokens is restored to original tokens on failure
       let r = parse_expr(tokens: lambda_r.tokens, ctx: lambda_r.ctx)
@@ -4661,7 +4661,7 @@ fn parse_fn_lambda(tokens: List<Token>, ctx: ParseContext) -> ExprResult {
   // Parse body: { ... }
   let body_r = parse_brace_expr(tokens: tokens, ctx: params_r.ctx)
   if has_err(err: body_r.err) { return body_r }
-  ExprResult { expr: make_expr_node(expr_data: ExprLambda { semantics: none }, children: concat([body_r.expr], params_r.params |> map(p => parsed_name_leaf(name: p.name, span: p.span))), inferred: none, span: span), tokens: body_r.tokens, ctx: body_r.ctx, err: none }
+  ExprResult { expr: make_expr_node(expr_data: ExprLambda, children: concat([body_r.expr], params_r.params |> map(p => parsed_name_leaf(name: p.name, span: p.span))), inferred: none, span: span), tokens: body_r.tokens, ctx: body_r.ctx, err: none }
 }
 
 // Collect comma-separated identifiers for fn lambda params.

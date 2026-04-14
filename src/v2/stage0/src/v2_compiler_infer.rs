@@ -8,7 +8,7 @@ use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
 pub use crate::std_types::{SourceSpan, container_param_name};
 pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
-pub use crate::v2_std_core::{Node, InternTable, intern, intern_str, authored_name_at, NewlineIndex, has_child_named, build_newline_index, module_node, module_imports, module_items, import_is_all, make_param_node, param_node_name_at, param_node_type_expr, field_node_type_expr, Connective, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name_at, field_access_base, field_access_field_at, expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at, lambda_param_names_at, record_lit_type_name_at, make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_text_part_node, make_interp_part_node, map_children, arg_value, arg_name_at, has_inferred, is_compiler_error, InferredNode, Cardinality, ErrorNode, make_error_node, is_error_diagnostic, resource_use_name_at, resource_use_resource, kernel_type_set, is_kernel_type, is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, LambdaSemantics, ExprErrorKind, BinOp, UnaryOpKind, unaryop_operand, MatchPattern, StringPart, make_field_binding_node, field_binding_name_at, field_binding_pattern, let_value, let_body, lambda_body, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, make_transport_node, local_transport_node, with_optional_cardinality, with_required_cardinality, no_span, make_span, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, is_container_type, container_expected_arity, default_ident_span, node_name_span, CompilerDiagnostic};
+pub use crate::v2_std_core::{Node, InternTable, intern, intern_str, authored_name_at, NewlineIndex, has_child_named, build_newline_index, module_node, module_imports, module_items, import_is_all, make_param_node, param_node_name_at, param_node_type_expr, field_node_type_expr, Connective, ExprData, make_expr_node, make_named_expr_node, make_expr_error_node, expr_var_name_at, field_access_base, field_access_field_at, expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at, lambda_param_names_at, record_lit_type_name_at, make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_text_part_node, make_interp_part_node, map_children, arg_value, arg_name_at, has_inferred, is_compiler_error, InferredNode, Cardinality, ErrorNode, make_error_node, is_error_diagnostic, resource_use_name_at, resource_use_resource, kernel_type_set, is_kernel_type, is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, ExprErrorKind, BinOp, UnaryOpKind, unaryop_operand, MatchPattern, StringPart, make_field_binding_node, field_binding_name_at, field_binding_pattern, let_value, let_body, lambda_body, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, make_transport_node, local_transport_node, with_optional_cardinality, with_required_cardinality, no_span, make_span, unit_type, bool_type, string_type, int_type, float_type, none_type, error_type, is_container_type, container_expected_arity, default_ident_span, node_name_span, CompilerDiagnostic};
 use crate::v2_std_core::Connective::{Conj, Disj, NoConnective, Arrow};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
@@ -614,19 +614,6 @@ pub fn inferred_or_error(result: Option<Rc<InferredNode>>, fallback_message: Str
 }
 }
 
-pub fn lambda_semantics_from_param_types(param_types: Rc<Vec<Rc<Node>>>) -> Rc<LambdaSemantics> {
-    Rc::new(LambdaSemantics {
-    param_types: param_types,
-})
-}
-
-pub fn lambda_param_types_from_scope(scope: Rc<InferScope>, params: Rc<Vec<String>>) -> Rc<Vec<Rc<Node>>> {
-    Rc::new({ let mut __result = Vec::new(); for param_name in params.iter().cloned() { __result.push(match v2_rt::map_get(&scope.locals.clone(), param_name.clone()) {
-    Some(binding) => binding.resolved.clone(),
-    None => error_type(),
-}); } __result })
-}
-
 pub fn resolve_pattern_subject(scope: Rc<InferScope>, scrutinee_subject: Rc<PatternSubject>) -> Rc<PatternSubject> {
     match (*scrutinee_subject).clone() {
     PatternSubject::PatternResolved { node: scrutinee_type, .. } => pattern_subject_from_node(&resolve_scrutinee_type_node(scope.type_env.clone(), scrutinee_type.clone())),
@@ -1006,7 +993,7 @@ infer_arg_with_element_type(&a, element_type.clone(), &nf_scope)
 
 pub fn is_lambda_expr(e: Rc<Node>) -> bool {
     match (*e.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => true,
+    ExprData::ExprLambda => true,
     _ => false,
 }
 }
@@ -1927,7 +1914,7 @@ Rc::new(InferResult {
     diagnostics: operand_diags,
 })
 },
-    ExprData::ExprLambda { .. } => {
+    ExprData::ExprLambda => {
             let span = texpr.span.clone();
 let lam_body = lambda_body(texpr.clone());
 let lam_params = lambda_param_names_at(texpr.clone(), scope.type_env.clone().source_indices.clone());
@@ -2001,9 +1988,23 @@ let body_scope = Rc::new(InferScope {
 let body_result = infer_expr(&lam_body, &body_scope, &body_expected);
 let body_typed = body_result.typed.clone();
 let body_diags = body_result.diagnostics.clone();
-let lam_texpr = make_expr_node(Rc::new(ExprData::ExprLambda {
-    semantics: Some(lambda_semantics_from_param_types(lambda_param_types_from_scope(lam_scope.clone(), lam_params.clone()))),
-}), v2_rt::concat(Rc::new(vec![body_typed.clone()]), lam_param_nodes), body_typed.inferred.clone(), span.clone());
+let typed_param_nodes: Rc<Vec<Rc<Node>>> = Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(lam_param_nodes.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() {
+    let pn = pair.1.clone();
+    let param_name = match lam_params.get(pair.0.clone() as usize).cloned() { Some(n) => n, None => "".to_string() };
+    let param_type: Option<Rc<InferredNode>> = match v2_rt::map_get(&lam_scope.locals.clone(), param_name.clone()) {
+        Some(binding) => Some(Rc::new(InferredNode::Resolved { node: binding.resolved.clone() })),
+        None => None,
+    };
+    __result.push(Rc::new(Node {
+        name: pn.name.clone(), ident: pn.ident.clone(), span: pn.span.clone(), ident_span: pn.ident_span.clone(), children: pn.children.clone(),
+        connective: pn.connective.clone(), params: pn.params.clone(), inferred: param_type,
+        return_cardinality: pn.return_cardinality.clone(), uses: pn.uses.clone(), body: pn.body.clone(),
+        transport: pn.transport.clone(), properties: pn.properties.clone(), type_annotation: pn.type_annotation.clone(),
+        is_self_recursive: pn.is_self_recursive.clone(), has_non_tail_self_call: pn.has_non_tail_self_call.clone(),
+        match_pattern: pn.match_pattern.clone(), expr_data: pn.expr_data.clone(),
+    }));
+} __result });
+let lam_texpr = make_expr_node(Rc::new(ExprData::ExprLambda), v2_rt::concat(Rc::new(vec![body_typed.clone()]), typed_param_nodes), body_typed.inferred.clone(), span.clone());
 Rc::new(InferResult {
     typed: lam_texpr,
     diagnostics: body_diags.clone(),
@@ -2812,7 +2813,14 @@ pub fn classify_let_value(val: &Rc<Node>, ctx: &Rc<DescentContext>) -> Option<Rc
     match (*val.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
         let vname = expr_var_name_at(val.clone(), ctx.type_env.clone().source_indices.clone());
-v2_rt::map_get(&ctx.sub_value_vars.clone(), vname)
+// Check scope_locals first (carried facts), then sub_value_vars (legacy)
+match v2_rt::map_get(&ctx.scope_locals.clone(), vname.clone()) {
+    Some(binding) => match (*binding.provenance.clone()).clone() {
+        SubValueRelation::SubValueUnknown => v2_rt::map_get(&ctx.sub_value_vars.clone(), vname),
+        _ => Some(binding.provenance.clone()),
+    },
+    None => v2_rt::map_get(&ctx.sub_value_vars.clone(), vname),
+}
 },
     ExprData::ExprFieldAccess { .. } => {
         let base = field_access_base(val.clone());
@@ -2827,7 +2835,10 @@ let from_per_field = match v2_rt::map_get(&ctx.per_field_vars.clone(), bname.clo
 match from_per_field {
     Some(rel) => Some(rel.clone()),
     None => {
-                let type_name = match v2_rt::map_get(&ctx.param_names.clone(), bname.clone()) {
+                // Check scope_locals for base type, then param_names, then sub_value_vars
+                let type_name = match v2_rt::map_get(&ctx.scope_locals.clone(), bname.clone()) {
+    Some(binding) => authored_name_at(ctx.type_env.clone().source_indices.clone(), &binding.resolved.clone()),
+    None => match v2_rt::map_get(&ctx.param_names.clone(), bname.clone()) {
     Some(t) => t.clone(),
     None => match v2_rt::map_get(&ctx.sub_value_vars.clone(), bname.clone()) {
     Some(rel) => match (*rel.clone()).clone() {
@@ -2836,6 +2847,7 @@ match from_per_field {
     _ => "".to_string(),
 },
     None => "".to_string(),
+},
 },
 };
 if (type_name.clone().as_str() != "".to_string().as_str()) {
@@ -3429,7 +3441,7 @@ pub fn descent_source_type(found: String, arg_node: &Rc<Node>, ctx: &Rc<DescentC
         found.clone()
     } else {
         match (*arg_value(&arg_node).expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => found.clone(),
+    ExprData::ExprLambda => found.clone(),
     _ => {
             let arg_val = arg_value(&arg_node);
 match (*arg_val.expr_data.clone()).clone() {
@@ -3456,7 +3468,7 @@ let source_type = body.children.clone().iter().cloned().fold("".to_string(), |fo
 let annotated_children = Rc::new({ let mut __result = Vec::new(); for child in body.children.clone().iter().cloned() { __result.push({
                 let arg_val = arg_value(&child);
 match (*arg_val.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => if (source_type.clone().as_str() != "".to_string().as_str()) {
+    ExprData::ExprLambda => if (source_type.clone().as_str() != "".to_string().as_str()) {
                     {
                         let lparams = lambda_param_names_at(arg_val.clone(), ctx.type_env.clone().source_indices.clone());
 let p1 = match lparams.clone().first().cloned() {
@@ -3795,7 +3807,7 @@ Rc::new(DescentContext {
     type_env: ctx.type_env.clone(),
     sub_value_vars: v2_rt::rc_map_insert(ctx.sub_value_vars.clone(), binding_name.clone(), rel.clone()),
     size_aliases: inner_size_aliases,
-    scope_locals: ctx.scope_locals.clone(),
+    scope_locals: v2_rt::rc_map_insert(ctx.scope_locals.clone(), binding_name.clone(), Rc::new(TypeBinding { name: binding_name.clone(), resolved: resolved_type(val.clone()), provenance: rel.clone() })),
     func_sigs: ctx.func_sigs.clone(),
     per_field_vars: inner_per_field,
 })
@@ -3807,7 +3819,7 @@ Rc::new(DescentContext {
     type_env: ctx.type_env.clone(),
     sub_value_vars: ctx.sub_value_vars.clone(),
     size_aliases: inner_size_aliases,
-    scope_locals: ctx.scope_locals.clone(),
+    scope_locals: v2_rt::rc_map_insert(ctx.scope_locals.clone(), binding_name.clone(), Rc::new(TypeBinding { name: binding_name.clone(), resolved: resolved_type(val.clone()), provenance: Rc::new(SubValueRelation::SubValueUnknown) })),
     func_sigs: ctx.func_sigs.clone(),
     per_field_vars: inner_per_field,
 }),
@@ -3872,7 +3884,7 @@ Rc::new(DescentContext {
     type_env: acc.ctx.clone().type_env.clone(),
     sub_value_vars: v2_rt::rc_map_insert(acc.ctx.clone().sub_value_vars.clone(), bname.clone(), rel.clone()),
     size_aliases: new_sa.clone(),
-    scope_locals: acc.ctx.clone().scope_locals.clone(),
+    scope_locals: v2_rt::rc_map_insert(acc.ctx.clone().scope_locals.clone(), bname.clone(), Rc::new(TypeBinding { name: bname.clone(), resolved: resolved_type(val.clone()), provenance: rel.clone() })),
     func_sigs: acc.ctx.clone().func_sigs.clone(),
     per_field_vars: acc.ctx.clone().per_field_vars.clone(),
 })
@@ -3884,7 +3896,7 @@ Rc::new(DescentContext {
     type_env: acc.ctx.clone().type_env.clone(),
     sub_value_vars: acc.ctx.clone().sub_value_vars.clone(),
     size_aliases: new_sa.clone(),
-    scope_locals: acc.ctx.clone().scope_locals.clone(),
+    scope_locals: v2_rt::rc_map_insert(acc.ctx.clone().scope_locals.clone(), bname.clone(), Rc::new(TypeBinding { name: bname.clone(), resolved: resolved_type(val.clone()), provenance: Rc::new(SubValueRelation::SubValueUnknown) })),
     func_sigs: acc.ctx.clone().func_sigs.clone(),
     per_field_vars: acc.ctx.clone().per_field_vars.clone(),
 }),
@@ -3983,7 +3995,7 @@ match v2_rt::map_get(&ctx.sub_value_vars.clone(), rname) {
 };
 let method_args = method_arg_nodes(body.clone());
 let lambda_arg = Rc::new({ let mut __result = Vec::new(); for a in method_args.iter().cloned() { if match (*arg_value(&a).expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => true,
+    ExprData::ExprLambda => true,
     _ => false,
 } { __result.push(a); } } __result }).first().cloned();
 let lambda_elem_info = match lambda_arg {
@@ -4038,7 +4050,7 @@ let annotated_receiver = annotate_descent(&method_receiver(body.clone()), &ctx);
 let annotated_args = Rc::new({ let mut __result = Vec::new(); for arg_node in method_arg_nodes(body.clone()).iter().cloned() { __result.push({
                         let arg_val = arg_value(&arg_node);
 let is_lambda = match (*arg_val.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => true,
+    ExprData::ExprLambda => true,
     _ => false,
 };
 if is_lambda.clone() {
@@ -5049,7 +5061,7 @@ let inferred_ret = if (item.inferred.clone() != None) {
                         };
 let is_recursive = expr_has_self_call(&body_typed, &authored_name_at(scope.type_env.clone().source_indices.clone(), &item), &scope.type_env.clone().source_indices.clone());
 let annotated_body = if is_recursive.clone() {
-                            annotate_descent_evidence(body_typed.clone(), authored_name_at(scope.type_env.clone().source_indices.clone(), &item), &item.params.clone(), &scope.type_env.clone(), scope.locals.clone(), scope.func_env.clone().signatures.clone())
+                            annotate_descent_evidence(body_typed.clone(), authored_name_at(scope.type_env.clone().source_indices.clone(), &item), &item.params.clone(), &scope.type_env.clone(), fn_scope.locals.clone(), scope.func_env.clone().signatures.clone())
                         } else {
                             body_typed.clone()
                         };

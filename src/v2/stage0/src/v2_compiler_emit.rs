@@ -1451,7 +1451,7 @@ pub fn classify_expr(texpr: Rc<Node>) -> ExprCategory {
     ExprData::ExprListLit => ExprCategory::ExprCatCompound,
     ExprData::ExprBinOp { .. } => ExprCategory::ExprCatCompound,
     ExprData::ExprUnaryOp { .. } => ExprCategory::ExprCatCompound,
-    ExprData::ExprLambda { .. } => ExprCategory::ExprCatCompound,
+    ExprData::ExprLambda => ExprCategory::ExprCatCompound,
     ExprData::ExprStringInterp => ExprCategory::ExprCatCompound,
     ExprData::ExprCast => ExprCategory::ExprCatCompound,
     ExprData::ExprIndex => ExprCategory::ExprCatCompound,
@@ -2166,7 +2166,7 @@ pub fn emit_shared_expr(texpr: &Rc<Node>, target: &RenderTarget, source_indices:
         let operand = unaryop_operand(texpr.clone());
 wrap_result(emit_unary_op(op.clone(), recurse(operand), target.clone()))
 },
-    ExprData::ExprLambda { .. } => {
+    ExprData::ExprLambda => {
         let body = lambda_body(texpr.clone());
 wrap_result(emit_lambda(emit_lambda_params(lambda_param_names_at(texpr.clone(), source_indices), &target), recurse(body), target.clone()))
 },
