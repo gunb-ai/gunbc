@@ -299,27 +299,59 @@ the system itself is a conceptual derivation graph. Every
 declaration's meaning comes from walking its composition back to
 primitives.
 
-The root primitives are a small set of logical and algebraic
-structures declared in `dsl/std/algebra.dag`:
+The root primitives are the minimal set that every other concept
+composes from. Per `MODELING.md` §"Foundational primitive:
+truth-valued structure" and §M9, the roots are:
 
-- **Closure.** `fn(T, T) -> T` is the primitive shape of "operation
-  on a carrier" — no laws, just closure. Appears in `Magma<T>` and
-  is inherited by every structure above.
-- **Monoid.** Closure + associativity + identity. The root of
-  counting, concatenation, effect composition, and the meet/join
-  structure used by every lattice-valued correctness dimension.
-- **Classical logic.** `BooleanAlgebra` over two elements. The root
-  of decision, exhaustiveness, filter, set membership, and the
-  meet/join/complement structure of every two-valued lens.
-- **Free constructions.** `FreeMonoid<T>`, `FreeGroup<T>`, and
-  similar — the canonical "generate from nothing" shapes that root
-  strings, lists, syntax trees.
+- **Classical logic** — the truth-valued carrier. `Bit = Disj {
+  On: Atom; Off: Atom }`, the two-element Disj with Atom variants,
+  declared in `dsl/std/logic.dag`. This is the foundational
+  carrier Word8/16/32/64 build from, which Int/Nat/Float build
+  from, which everything user-facing eventually walks down to.
+- **Conj (product constructor)** — labeled product, logical AND,
+  the structural primitive for "these children present together."
+- **Disj (coproduct constructor)** — labeled coproduct, logical
+  OR, the structural primitive for "exactly one of these
+  alternatives." Bit uses this over two Atoms; everything else
+  follows.
 
-Higher structures compose upward: `Semigroup = Magma + associativity`,
-`Monoid = Semigroup + identity`, `Ring = Semiring + additive
-inverse`, `OrderedRing = Ring + total order`. The chain is declared
-in `.dag`; the compiler reads it as ordinary compositional modeling,
-not as a special-cased algebra hierarchy.
+Those three (Classical Bit + Conj + Disj) are the actual roots.
+Every other named structure in the project — `Word64`, `Int`,
+`String`, `List<T>`, `Monoid<T>`, `Ring<T>`, `BooleanAlgebra`,
+`FreeMonoid<T>`, `Order`, `CIWorkflow<Step>` — is a Layer 1 (or
+higher) composition on top of these roots. The algebras in
+`dsl/std/algebra.dag` are NOT roots; they are the first-floor
+library of compositional structures user types inhabit.
+
+Examples of how Layer 1 composes from the roots:
+
+- **Magma<T>** is a Conj with one `op` child (an Arrow with three
+  T-references). Closure as a Conj-of-Arrow pattern.
+- **Monoid<T>** is Magma plus an `identity` child (an Atom
+  reference to the T parameter). Identity as a Conj-of-Arrow-plus-
+  Atom pattern.
+- **Ring<T>** is Monoid-shaped with more labeled children (`add`,
+  `mul`, `zero`, `one`, `negate`). All Conj-of-Arrow-plus-Atom.
+- **BooleanAlgebra** is a Conj over Bit — meet/join/complement as
+  Arrow children whose inputs are Bit-typed. `Bool = Classical`,
+  not a new primitive.
+- **FreeMonoid<T>** is the recursive Disj `Empty | Cons { head:
+  T; tail: FreeMonoid<T> }` — the canonical "generate from
+  nothing" shape that roots strings, lists, syntax trees. Built
+  from Disj + Conj + Atom references. Not a primitive.
+
+The chain from roots to user code walks: roots (Classical + Conj
++ Disj) → Layer 1 algebras (Magma/Monoid/Ring/Lattice/FreeMonoid/
+BooleanAlgebra in `algebra.dag`) → concrete types (Int = Instantiation
+of OrderedRing<Word64>, String = Instantiation of FreeMonoid<Char>,
+etc. in `types.dag`) → user types and workflows. Every layer
+composes the layer below.
+
+The thesis aligns with `MODELING.md` on this point: the
+composition layer (Node, children, edges) is the substrate; the
+foundation (logical algebra / Classical) is the interpretation
+that gives the substrate meaning. The algebras are built on top,
+not at the root.
 
 Concrete types attach to this chain by **inhabitance**:
 
@@ -451,7 +483,7 @@ statement to measure against.
 parameterized generic, a service, an algebra, a correctness
 dimension, a user-defined domain meta-model — is a Node with:
 
-- A **connective**: `Atom | Conj | Disj | Arrow | Cardinality | Instance`
+- A **connective**: `Atom | Conj | Disj | Arrow | Cardinality | Instantiation`
 - **Children**: labeled (`Conj`, `Disj`) or positional
   (`Cardinality`) edges to other Nodes in the type substrate
 - An optional **inhabits** edge: a reference to an algebra
@@ -467,8 +499,12 @@ Connective meanings:
 - **Conj.** Product / record with named children. Hosts type
   declarations (`Monoid<T> { op: fn(T, T) -> T; identity: T }`),
   services (`service shell.Exec { operation Run { ... } }`),
-  operation definitions, user-defined domain meta-models, and
-  correctness dimension declarations.
+  operation definitions, user-defined domain meta-models,
+  correctness dimension declarations, and **value construction**
+  like `transport shell { argv: ["sh", "-lc", "{script}"] }` —
+  which is a Conj whose fields are bound to specific values, with
+  an optional `inhabits` edge pointing at the meta-type the Conj
+  satisfies.
 - **Disj.** Coproduct / sum with labeled alternatives. Hosts
   explicit sum types (`type Result<T, E> = Ok(T) | Err(E)`), exit
   patterns (`exit { 0 => Unit; nonzero => String }`), and the
@@ -479,22 +515,59 @@ Connective meanings:
   Arrow Node with three positional type children. An Arrow
   declaration's **body** is a reference into the computation
   substrate (a sub-DAG of L1 behaviors) for user functions, or
-  into a realization declaration in `extdeps/` for primitives.
-  This is where the two substrates meet.
+  into a realization declaration in `extdeps/` for primitives (or
+  `None` until the realization lands — see §"Two groundings"
+  below for why `body: None` is valid). This is where the two
+  substrates meet.
 - **Cardinality.** Repetition over a child Node with a (possibly
   symbolic) count. `argv: ["sh", "-lc", "{script}"]` is a
   `Cardinality(3)` with three String-Atom children. `List<T>` is
   `Cardinality(n)` over `T`. Bounded iteration falls out of
-  `List<T>` having a finite `n`.
-- **Instance.** Instantiation of a parameterized Node with
-  children bound to concrete Nodes. `Int64 = OrderedRing<Word64>`
-  is an Instance whose template is `OrderedRing` and whose
-  parameter binding is `{ T := Word64 }`. `transport shell { argv:
-  [...] }` is an Instance of the `transport` meta-declaration.
-  **Inhabitance is Instance**: "Int inhabits OrderedRing<Word64>"
-  is realized as an `inhabits` edge from Int's declaration to an
-  Instance Node whose template is OrderedRing and whose parameter
-  is Word64.
+  `List<T>` having a finite `n`. Unifies v2's Required / Optional
+  (presence) with repetition (lists, arrays) in one connective.
+- **Instantiation.** Specialization of a parameterized template
+  declaration by binding its template parameters to concrete
+  types. `Int64 = OrderedRing<Word64>` is an Instantiation whose
+  `template` is the `OrderedRing` declaration and whose
+  `arguments` list contains a single binding `T := Word64`.
+  Substitution happens lazily at walk time via a substitution
+  stack: walkers push the arguments on entering the Instantiation,
+  look up template-parameter references inside the template body,
+  and pop on exit. This matches C++ template instantiation
+  exactly — a template is a parameterized declaration (`Monoid<T>`,
+  analogous to `template<typename T> class Monoid`), an
+  Instantiation is the specialized form with concrete arguments
+  (`Monoid<Int>`, analogous to `Monoid<int>`).
+
+**Instantiation is ONLY for type parameterization.** Earlier drafts
+of this section conflated three different things under the
+"Instance" label: type parameterization (`OrderedRing<Word64>`),
+value construction (`transport shell { argv: [...] }`), and
+inhabitance witness (`Int inhabits OrderedRing`). These are
+three different structural relationships and the conflation was
+a coproduct hiding in plain prose. They resolve as follows:
+
+- **Type parameterization** → `Instantiation` connective, as
+  described above. Template parameters (the `T` atoms in the
+  parameterized declaration) bind to concrete types at the
+  Instantiation site.
+- **Value construction** → plain `Conj` with the field values as
+  children, and an optional `inhabits` edge pointing at the
+  meta-type the Conj should satisfy. `transport shell { argv:
+  [...] }` is a Conj with one labeled child `argv` (a Cardinality
+  literal) and an `inhabits` edge to the `transport` meta-type.
+  No Instantiation involved — it's just record construction with
+  a type tag.
+- **Inhabitance witness** → for pure aliases like `Int =
+  OrderedRing<Word64>`, Instantiation IS the inhabitance. Int's
+  declaration has connective `Instantiation` directly; there is
+  no separate "Int declaration with an inhabits edge pointing at
+  an Instantiation Node." The collapse is honest because Int has
+  no structure of its own beyond the inhabitance. The optional
+  `Declaration.inhabits` slot is reserved for the rare case of a
+  primary-structure declaration (Conj/Disj/Atom) that
+  additionally inhabits an algebra — like a hypothetical Money
+  record that also inhabits a CurrencyLattice.
 
 **Computation is five L1 behaviors.** Every function body is a
 sub-DAG of Nodes in a separate substrate with exactly five
@@ -543,7 +616,7 @@ Specifically, the shape must carry four things:
    — type declarations whose children reference a free type
    parameter. The substrate must represent `T` as a child Node
    (probably an Atom with a parameter marker) that gets bound at
-   Instance time, not as a string name with ad-hoc substitution.
+   Instantiation time, not as a string name with ad-hoc substitution.
 
 2. **Structural children.** `Monoid<T>` as a Conj with children
    `{ op: Arrow(T, T, T); identity: T }`. The substrate must carry
@@ -557,13 +630,15 @@ Specifically, the shape must carry four things:
    the algebra they belong to.
 
 4. **The inhabitance relation.** `Int inhabits OrderedRing<Word64>`
-   — an `inhabits` edge from Int's declaration to an Instance Node
-   whose template is OrderedRing and whose parameter is Word64.
-   The substrate must carry this edge structurally so that
-   `Int.add` resolves by walking `inhabits → OrderedRing → add
-   child → Arrow(T, T, T)` with `T := Word64` substituted at each
-   position — with no separate `add` declaration attached directly
-   to Int.
+   — realized as an Instantiation node whose `template` is
+   `OrderedRing` and whose `arguments` are `[T := Word64]`. Int's
+   declaration IS this Instantiation; no separate edge needed for
+   the pure-alias case. The substrate must carry this relation
+   structurally so that `Int.add` resolves by walking `Int →
+   Instantiation → OrderedRing (template) → add child →
+   Arrow(T, T, T)` with `T := Word64` substituted from the
+   arguments stack at each parameter reference — with no separate
+   `add` declaration attached directly to Int.
 
 If the substrate hosts `algebra.dag` through this walk, it
 automatically hosts `shell.dag`, domain meta-models, user-defined
@@ -591,15 +666,170 @@ to both substrates symmetrically.
 **Future candidate (not committed): unified substrate.** A
 stronger redesign that dissolves the five L1 behaviors into
 patterns over the type substrate — treating Value as an Atom
-carrying a literal, Transform as an Instance of an Arrow, Branch
-as an Instance of Disj elimination, Loop as an Instance of
-`fold`, Bind as a local-scoped Declaration — has been discussed
-as a candidate for concept-unification applied to the substrate
-itself. **The thesis does NOT commit to this collapse.** M0's
-validation of the five behaviors as substrate primitives stands;
-revisiting them requires new failure pressure, not just aesthetic
-or theoretical preference. Recorded here as a candidate for
-future consideration only.
+carrying a literal, Transform as an Instantiation of an Arrow,
+Branch as an Instantiation of Disj elimination, Loop as an
+Instantiation of `fold`, Bind as a local-scoped declaration —
+has been discussed as a candidate for concept-unification applied
+to the substrate itself. **The thesis does NOT commit to this
+collapse.** M0's validation of the five behaviors as substrate
+primitives stands; revisiting them requires new failure pressure,
+not just aesthetic or theoretical preference. Recorded here as a
+candidate for future consideration only.
+
+### Two groundings: static validation vs efficient realization
+
+Every concept in gunbc has **two groundings** that must both be
+present and must be consistent with each other. These are
+different things — they have different shapes, different
+purposes, and different completeness requirements. Earlier drafts
+of the thesis blurred them; this section pins the distinction
+down.
+
+**Grounding #1: static grounding (`.dag` level).** Every concept
+walks all the way down to the root primitives (Classical Bit +
+Conj + Disj + Atom) via structural composition. The chain is
+complete, deep, and bounded — every step is a substrate edge,
+and every walk terminates at the roots. There are no escape
+hatches, no opaque intrinsics, no concepts whose decomposition
+is unfinished. This is the grounding §"Epistemic stacking"
+insists on and the grounding §"The substrate"'s load-bearing
+test validates.
+
+The purpose of static grounding is **correctness proof**. It
+answers questions like: Is `Int.add` a valid concept? Does it
+type-check? Does it terminate? Does adding `Int256` work without
+touching the compiler? Every answer comes from walking the
+decomposition chain; nothing depends on the target world. Static
+grounding is pure, closed-system, compile-time-only.
+
+**Grounding #2: realization grounding (target level).** When the
+compiler emits to a target language, every concept maps to the
+nearest efficient target primitive via a language spec
+declaration. This grounding is **shallow and target-specific**.
+It is not a decomposition — it is a projection onto the target's
+native capabilities. Concrete examples:
+
+- `.dag Int64` realizes as Rust `i64`, NOT as a struct of 64
+  individual Bit nodes. The compiler does not emit carry-
+  propagation loops to add two integers — it emits `a + b` using
+  the target's native machine instruction.
+- `.dag Bool` realizes as Rust `bool`, not as a two-variant enum
+  that dispatches through match arms for every operation.
+- `.dag String` realizes as Rust `String`, not as a `FreeMonoid<
+  Char>` traversal.
+- `.dag List<T>` realizes as Rust `Vec<T>`, not as a cons-cell
+  chain.
+
+The language spec (`dsl/extdeps/languages/rust.dag` and friends)
+is the **mapping from `.dag` concepts to efficient target
+primitives**. The emitter uses this mapping directly; it does
+not walk down the decomposition chain and reconstruct. The
+target's native primitives are the realization boundary — the
+point where the compiler hands off to the target world.
+
+**The two groundings have different shapes and different
+completeness rules:**
+
+| Property | Static grounding | Realization grounding |
+|---|---|---|
+| Depth | Deep (walks to Classical + Conj + Disj) | Shallow (one hop to target primitive) |
+| Purpose | Correctness proof | Efficient execution |
+| Completeness | Must be total | Must exist for every concept the target emits |
+| Time | Compile-time, closed-system | Compile-time declaration, target-time execution |
+| Substrate impact | None (concept decomposition) | Language spec declarations only |
+| Consistency requirement | Type-preserving with declared laws | Semantically equivalent to static chain (L4 verifies) |
+
+**The two groundings must be consistent by construction + verified
+by L4.** The language spec's realization claim is structurally
+consistent with the `.dag` declaration's algebraic laws: Rust's
+`i64` satisfies the OrderedRing axioms modulo two's-complement
+overflow (which is a handled special case with explicit bounds
+on safe inputs). L4 verification (see §"Tier 3: Verification
+from structure") tests this by generating witness values,
+evaluating them at the `.dag` level via the deep chain, emitting
+them via the shallow chain to the target, and comparing results.
+When L4 says a concept's static and realization groundings agree,
+the language spec's realization claim is certified.
+
+**Why this distinction resolves the "ungrounded concept"
+question.** Earlier drafts of §"Epistemic stacking" declared that
+every opaque intrinsic, runtime-native helper, or bolt-on
+analyzer is "unfinished composition." That reading is correct for
+the static grounding — at the `.dag` level, every concept must
+decompose completely. But it's wrong if you apply it to
+realization: `.dag Int.add` at M1(2.5) has `body: None` because
+its realization lives in `extdeps/languages/rust.dag` (or will,
+when that file lands). That is NOT an ungrounded concept; it is
+a **concept whose static grounding is complete and whose
+realization grounding is declared at the target boundary.** The
+stop signal applies to static grounding (no concept without a
+compositional chain), not to realization grounding (which is
+deliberately target-specific and shallow by design).
+
+**For M1(2.5):** primitive Arrows with `body: None` are allowed.
+Their static grounding walks through inhabitance (e.g., `Int.add`
+walks through OrderedRing); their realization grounding will be
+declared in the Rust language spec when that work lands. The
+absence of the realization declaration is a milestone-scope issue,
+not a thesis violation. The C-checkpoint for "ungrounded concept"
+fires only when a concept cannot be walked through its static
+chain — which `Int.add` can, via OrderedRing<Word64>.
+
+### Target realization efficiency
+
+A direct consequence of the two-groundings distinction: **the
+cost complexity of a concept is different at the `.dag` level
+versus at the target level, and the compiler can compute both.**
+
+**`.dag`-level complexity** is declared via CX (the complexity
+dimension — see §"Correctness dimensions"). `Int.add` at the
+algebra level is O(1) because it's a single field access on
+`OrderedRing.add`. The CX claim is independent of any target.
+
+**Target-level complexity** is declared in the language spec as
+**realization cost** per primitive. Concrete examples:
+
+- `rust.dag` declares: `Int64.add realizes as i64 + i64, cost
+  O(1), ~1 machine instruction, ~1ns on commodity hardware`.
+- `rust.dag` declares: `Int256.add realizes as carry-propagated
+  quad-word addition, cost O(4), ~4 machine instructions`
+  (assuming no native 256-bit hardware).
+- `python.dag` declares: `Int.add realizes as Python int
+  addition, cost O(1) amortized for small ints, O(log n) for big
+  ints, with GC overhead`.
+- `spice.dag` (if it exists as a language spec) declares: `Bool.and
+  realizes as AND gate, cost O(1) gate delay`.
+
+Target-level complexity **composes** with `.dag`-level CX. For a
+`.dag` program that does `k × Int.add`, the target cost is `k ×
+realization_cost(Int.add, target)`. The compiler walks the
+declared program, composes `.dag` CX with language-spec
+realization costs per primitive, and yields per-target
+complexity bounds for any function. No execution required.
+
+**Why this matters for omni-emission.** With cost complexity as
+a first-class thesis claim, the question "which target is fastest
+for this workflow?" becomes a compile-time question the compiler
+can answer statically. `create_order` in Rust: 2μs median.
+Python: 180μs median. Go: 3μs median. Target selection becomes
+a cost-aware optimization with bounded complexity estimates,
+not an execution experiment.
+
+**Why this is not speculative.** `.dag` already commits to CX as
+a correctness dimension (see §"Correctness dimensions"). The
+language spec already exists as a declaration pattern (see
+§"Concept unification" → "coercion = emission"). Composing the
+two requires adding a `realization_cost` field per primitive in
+the language spec, and a composition rule in the CX analysis
+pass. Both are small additions to existing mechanisms. The
+thesis makes the claim here; implementation falls out when the
+emitter lands.
+
+**The sustainability consequence.** Adding a new target language
+automatically yields target-specific cost analysis for every
+existing workflow — zero new work per workflow. Cost-aware target
+selection is a free consequence of declaring realization costs
+in the language spec.
 
 ## Correctness dimensions
 
@@ -906,7 +1136,7 @@ real application, coherent by construction:
 | **DB migration** | Postgres DDL | `persistence OrderRecord` walks `Order`'s Node tree. `CREATE TABLE orders (...)` with a `CHECK (status IN (...))` constraint derived from the `OrderStatus` Disj variants. |
 | **Backend struct + handler** | Rust | `struct Order { ... }` + `async fn create_order_handler(Json(draft): Json<Order>) -> ...` where the body is emission of the workflow's L1 behaviors. |
 | **Backend service logic** | Rust | Each workflow step emitted from its own function body in `.dag`. Rust-specific error handling, `Rc` wrapping, and async insertions are projection-rule consequences of the Rust language spec. |
-| **Client-side API binding** | TypeScript | `async function createOrder(draft: Order): Promise<OrderId> { ... }` — emitted from the `service OrderAPI` Instance by walking the REST transport spec with the TypeScript language spec. |
+| **Client-side API binding** | TypeScript | `async function createOrder(draft: Order): Promise<OrderId> { ... }` — emitted from the `service OrderAPI` declaration by walking the REST transport spec with the TypeScript language spec. |
 | **Client-side type definitions** | TypeScript | `interface Order { ... }` + `type OrderStatus = 'Pending' \| 'Confirmed' \| ...` — same Node tree, TypeScript projection rules (camelCase field rewrite, string-union for unit-variant Disj, `number` for `Money`'s Word64 carrier). |
 | **Client-side form component** | React | `<form>` with fields for each `Order` child, dynamic list for `items`, dropdown for `status` — walked from `form_for Order` through the React spec's "Conj → form fields, Disj-of-units → dropdown, Cardinality<T> → dynamic list" rules. |
 
@@ -950,64 +1180,127 @@ compiler changes, zero emitter changes, zero workflow changes,
 zero risk of drift into existing targets.** The spec IS the
 implementation.
 
-**This generalizes beyond programming languages.** The mechanism
-does not care whether a target is Turing-complete, general-purpose,
-or even textual. Any artifact class with a structured
-representation and a defined projection surface is a valid
-target:
+**Two shapes of omni-emission: Shape A (compiler targets) vs
+Shape B (user programs).** This is a load-bearing distinction per
+`ROADMAP.md` §Track 16 and should not be blurred. The two shapes
+have different mechanisms, different cost structures, and
+different scope in the compiler core.
 
-- **SPICE netlists.** An analog filter declared in `.dag` —
-  components inhabiting Ring/Field algebras, topology as a Conj
-  of typed connection children — projects to a SPICE netlist. If
-  the filter is modified, the netlist updates. If there is also a
-  simulation-result consumer (spectrum analyzer, transfer-function
-  plot), it updates too, from the same source.
-- **Natural language / documentation.** A walk over the Node tree
-  through a natural-language projection spec maps each connective
-  to a linguistic pattern: Conj with named children → "X has Y
-  and Z"; Disj with unit variants → "X is one of A, B, or C";
-  Arrow → "given X, returns Y." API reference material, user-
-  facing help strings, error message text, generated book chapters
-  — all first-class emission classes. Adding a new natural
-  language (French, Japanese) is adding a language spec.
-- **Infrastructure-as-code.** Terraform HCL, Kubernetes
-  manifests, CloudFormation templates — structured artifact
-  classes projected from a workflow declaration via an IaC
-  language spec. Change a service's scaling requirements in
-  `.dag`, the Terraform module updates.
-- **CI pipeline definitions.** GitHub Actions YAML, GitLab CI,
-  Jenkinsfile — each a Node-tree walk with a different
-  projection spec. The thesis's existing claim that "the CI
-  pipeline is the canonical dependency-modeling example" (see
-  §"The core abstraction") becomes omni-emission specifically:
-  one pipeline declaration, arbitrary CI-system targets.
-- **Hardware description languages.** Verilog, VHDL, Chisel —
-  for digital circuits declared as compositional workflows with
-  clock-domain annotations.
-- **Data-transformation languages.** SQL, Pandas, Spark — any
-  declared analytics computation projects onto whichever target
-  environment the consumer needs.
+**Shape A — compiler language targets.** Programming languages
+that execute the full computational semantics of `.dag`. The
+compiler reads a language spec from `dsl/extdeps/languages/` and
+emits target source code via the single emitter. Examples: Rust,
+Python, Go, TypeScript, Swift, and potentially hardware
+description languages (Verilog, VHDL, Chisel) where the target
+executes the compiled program. Shape A targets get the full
+"one language spec per target" treatment — adding a new Shape A
+target costs one spec file, zero compiler changes. The compiler
+core grows only when a new structural primitive is discovered,
+not per-target.
 
-**The rule that makes this cheap: treat every target as an
-extdep.** The compiler does not know Rust, or TypeScript, or
-SPICE, or English. It reads a language spec from
-`dsl/extdeps/languages/` (or the analogous transport/persistence/
-platform spec directory), and the spec declares — as ordinary
+**Shape B — user-program artifact generation.** Non-programming-
+language artifacts that are OUTPUTS of `.dag` programs, not
+compiled-to by the compiler. A `.dag` workflow walks a typed value
+(a `Workflow`, a `Circuit`, a `Manifest`, an `Understanding`) and
+emits strings via `concat`/`fold`/`match` — standard user-code
+operations. The compiler emits the `.dag` PROGRAM to a Shape A
+target (Rust, Python, Go); that program's OUTPUT is the Shape B
+artifact. Examples: YAML configs, Terraform HCL, Kubernetes
+manifests, CloudFormation templates, CI pipeline YAML (GitHub
+Actions, GitLab, Jenkinsfile), SPICE netlists, natural-language
+documentation, API reference material, SQL schemas, JSON Schema,
+OpenAPI specs. Shape B targets are authored as `.dag` programs
+that consume typed workflow values and produce the target
+artifact as a string. Adding a new Shape B target costs one
+`.dag` program that walks the appropriate typed value and emits
+the target format — zero compiler changes, zero emitter changes.
+
+**Why the distinction matters.** Per Track 16, treating YAML /
+Terraform / SPICE / natural language as compiler render targets
+would be a category error: it would grow the compiler core for
+concerns that belong in user code. The compiler's job is to
+emit executable code for programming languages; everything else
+is a user program that runs in a Shape A language and produces
+the artifact. This keeps the compiler core small and bounded to
+"things that run computation."
+
+**Both shapes produce coherent artifacts from the same source.**
+Coherence-by-construction is preserved in both cases because both
+derive from the same `.dag` declarations. A `create_order`
+workflow might simultaneously produce:
+
+- Rust backend (Shape A — compiler emits Rust directly).
+- TypeScript frontend (Shape A — compiler emits TypeScript
+  directly).
+- Postgres schema migration SQL (Shape B — a `.dag` program
+  walks the Order type and emits `CREATE TABLE` string via
+  fold/match).
+- Terraform infrastructure module (Shape B — a `.dag` program
+  walks the service deployment spec and emits HCL strings).
+- English API documentation (Shape B — a `.dag` program walks
+  the service declarations and emits markdown strings).
+- SPICE netlist for any analog circuit declarations (Shape B).
+
+The `.dag` source is the single source of truth for all six
+outputs; drift is structurally impossible because all six are
+projections (direct or indirect) of the same Node tree.
+
+**Cost scaling differs between the two shapes:**
+
+- **Shape A:** cost of adding a new target = one language spec
+  in `dsl/extdeps/languages/`. Applies to every workflow
+  automatically. `O(1)` per new target.
+- **Shape B:** cost of adding a new target = one `.dag` program
+  that walks the appropriate typed value and emits the target
+  format. Typically `~50-200 lines` of .dag per artifact class,
+  reusable across workflows that share the same input type.
+  `O(types × artifact classes)`, but the per-entry cost is small
+  and the programs are themselves subject to all the usual
+  correctness dimensions.
+
+**The 1:1 effort property still holds**, with the two-shape
+mechanism:
+
+1. The user's declarations (types, workflows, services) are
+   written once.
+2. Shape A targets get compiler projection automatically.
+3. Shape B targets get user-program projection, but the user
+   programs are themselves reusable across workflows and are
+   written in `.dag` (so they inherit all the correctness
+   guarantees).
+
+Cost scales with the number of conceptually distinct artifact
+classes, not with the number of workflows × artifacts. Editing
+the `.dag` source still reflows consistently across all six
+output classes because both the compiler and the Shape B user
+programs derive from the same typed declarations.
+
+**The rule that makes Shape A cheap: treat every programming-
+language target as an extdep.** The compiler does not know Rust,
+or TypeScript, or Go natively. It reads a language spec from
+`dsl/extdeps/languages/`, and the spec declares — as ordinary
 `.dag` compositional modeling — how each connective in the type
 substrate and each L1 behavior in the computation substrate
-projects onto the target's constructs. Adding a new target is
-writing a new spec against whatever API that target provides.
-The spec is reusable across every workflow; the workflows are
-reusable across every spec. **N workflows × M targets is handled
-by N + M declarations, not N × M handwritten integrations.**
+projects onto the target's constructs. Adding a new Shape A
+target is writing a new spec against whatever the target
+language provides. The spec is reusable across every workflow;
+the workflows are reusable across every spec. For Shape A,
+**N workflows × M language targets is handled by N + M
+declarations, not N × M handwritten integrations.**
 
-**Cost-scaling consequence.** Adding a new emission target is
-`O(language spec)`, not `O(existing targets × workflow size)`.
-Adding SPICE projection for the Order workflow above would
-require a SPICE language spec in `dsl/extdeps/languages/`. Once
-that spec exists, *every* `.dag` workflow with appropriate
-compositional content can emit to SPICE — not just Order. A team
-using `.dag` omni-emission pays for:
+**Shape B uses the same mechanism at the user-code level.** A
+`.dag` program that walks an `Order` value and emits Postgres
+DDL is itself a reusable artifact — the same program works for
+any record type that needs schema generation. Shape B emitters
+are libraries, not compiler features. Writing a SPICE-netlist
+emitter is writing a `.dag` program once; any circuit declaration
+can feed into it.
+
+**Cost-scaling consequence.** Adding a Shape A target is
+`O(1)` — one language spec. Adding a Shape B target is
+`O(1)` per artifact class — one `.dag` emitter program. Neither
+is `O(N × M)` across workflows × targets. A team using `.dag`
+omni-emission pays for:
 
 1. Their workflow declarations (the conceptual content of their
    system).
@@ -1052,10 +1345,13 @@ specs themselves (Node-tree declarations that describe target-
 world shapes and projection rules). The substrate test "can it
 host `dsl/std/algebra.dag` as-is?" is precisely what unlocks
 this: the same connective set that holds `Monoid<T>` also holds
-`service OrderAPI via rest::server { ... }`, the same `Instance`
-connective that binds `T := Word64` for `Int64` also binds `lang:
-Rust` for the REST server target, and the same `inhabits` edge
-that connects `Int` to `OrderedRing` connects `create_order` to
+`service OrderAPI via rest::server { ... }`, the same
+`Instantiation` connective that binds `T := Word64` for `Int64`
+via type parameterization also has a Conj-with-inhabits-tag
+counterpart for value construction like `transport shell
+{ argv: [...] }` and `service OrderAPI via rest::server(lang:
+Rust)`, and the same `inhabits` edge that connects `Int` to
+`OrderedRing` connects `create_order` to
 the workflow-projection rules in the Rust spec. **One substrate,
 one walk, arbitrarily many targets.**
 
@@ -1368,9 +1664,12 @@ that's a gap.
 
 **Substrate shape (two coordinated substrates — must not be flattened):**
 - Types are Node trees with six connectives: `Atom | Conj | Disj |
-  Arrow | Cardinality | Instance`. `service`, `fn`, `type`,
+  Arrow | Cardinality | Instantiation`. `service`, `fn`, `type`,
   `operation` are surface sugar over this layer
-  (`MODELING.md` §"Composition layer").
+  (`MODELING.md` §"Composition layer"). `Instantiation` matches
+  C++ template-instantiation vocabulary and is ONLY used for type
+  parameterization; value construction (`transport shell
+  { argv: [...] }`) uses plain Conj with an optional inhabits tag.
 - Computation is five L1 behaviors: `Value | Transform | Branch |
   Loop | Bind`. Validated by M0 under three reviewer rounds; the
   stop signal never fired.
@@ -1398,14 +1697,30 @@ that's a gap.
   application: DB schema, backend service, API client, frontend
   form, documentation — from one source.
 - Coherence between layers is structural, not checked — drift is
-  impossible because every layer is a walk over the same Node
-  tree through a different language spec.
-- Emission targets are declarations in `dsl/extdeps/languages/`
-  and `dsl/extdeps/transports/`. Adding a new target (Swift,
-  SPICE netlists, Terraform, natural-language docs, Verilog,
-  SQL) costs one language spec. Zero compiler/emitter changes.
-- Cost scaling: N workflows × M targets handled by `N + M`
-  declarations, not `N × M` handwritten integrations. Effort
+  impossible because every layer derives from the same Node
+  tree (directly via compiler emission for Shape A targets, or
+  indirectly via Shape B user programs walking typed values).
+- **Shape A — compiler language targets**: programming languages
+  (Rust, Python, Go, TypeScript, Swift, HDLs). Compiler emits
+  directly via a language spec in `dsl/extdeps/languages/`.
+  Adding a new Shape A target costs one language spec. `O(1)`
+  per target; zero compiler/emitter changes.
+- **Shape B — user-program artifacts**: YAML configs, Terraform
+  HCL, Kubernetes manifests, SPICE netlists, natural-language
+  docs, SQL schemas, JSON Schema, OpenAPI specs. Emitted by
+  `.dag` programs walking typed values via `concat`/`fold`/`match`.
+  Per ROADMAP Track 16: these are not compiler render targets;
+  they are user code generating target strings. Adding a Shape B
+  target is writing one reusable `.dag` emitter program.
+- Target-level cost complexity composes with `.dag`-level CX via
+  language-spec realization costs — the compiler can compute
+  per-target complexity bounds statically (see §"Target
+  realization efficiency").
+- The two-shape distinction follows ROADMAP Track 16's explicit
+  decision: the compiler emits programming languages; everything
+  else is user code.
+- Cost scaling: Shape A is `O(1)` per language target; Shape B
+  is `O(1)` per artifact class. Neither is `O(N × M)`. Effort
   scales with conceptual content, not with layer or target count.
 - Emission is independent of intent. You declare what the system
   does; separately, you declare what artifacts it becomes.
