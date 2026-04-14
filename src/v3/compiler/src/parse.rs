@@ -23,6 +23,8 @@
 //   additive   := term ( (`+` | `-`) term )*
 //   term       := primary ( (`*` | `/`) primary )*
 //   primary    := int_lit
+//              | bool_lit                        (`true` | `false`)
+//              | string_lit                      (`"..."`)
 //              | ident ( `(` args `)` )?
 //              | `if` expr `then` expr `else` expr
 //   args       := ( expr ( `,` expr )* )?
@@ -73,6 +75,14 @@ impl SurfaceType {
 pub enum SurfaceExpr {
     IntLit {
         value: i64,
+        span: SourceSpan,
+    },
+    BoolLit {
+        value: bool,
+        span: SourceSpan,
+    },
+    StringLit {
+        value: String,
         span: SourceSpan,
     },
     Var {
@@ -311,6 +321,18 @@ impl<'a> Parser<'a> {
                 value,
                 span: token.span,
             }),
+            TokenKind::KwTrue => Ok(SurfaceExpr::BoolLit {
+                value: true,
+                span: token.span,
+            }),
+            TokenKind::KwFalse => Ok(SurfaceExpr::BoolLit {
+                value: false,
+                span: token.span,
+            }),
+            TokenKind::StringLit(value) => Ok(SurfaceExpr::StringLit {
+                value,
+                span: token.span,
+            }),
             TokenKind::Ident(name) => {
                 if matches!(self.peek().kind, TokenKind::LParen) {
                     self.bump();
@@ -375,6 +397,8 @@ impl<'a> Parser<'a> {
 fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
     match expr {
         SurfaceExpr::IntLit { span, .. }
+        | SurfaceExpr::BoolLit { span, .. }
+        | SurfaceExpr::StringLit { span, .. }
         | SurfaceExpr::Var { span, .. }
         | SurfaceExpr::Call { span, .. }
         | SurfaceExpr::If { span, .. } => span,

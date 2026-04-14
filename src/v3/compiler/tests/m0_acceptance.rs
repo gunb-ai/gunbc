@@ -352,6 +352,147 @@ fn test_unknown_function_produces_diagnostic() {
 }
 
 #[test]
+fn test_bool_literal_true() {
+    // `let x = true` — the value port producer is a Value node
+    // carrying LiteralValue::Bool(true), and inference resolves the
+    // port to Prim::Bool.
+    let dag = compile_to_dag("let x = true", "test.v3").expect("compiles");
+
+    let bind_x = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "x")
+        .expect("Bind(x) must exist");
+
+    let producer = dag
+        .port(bind_x.value)
+        .produced_by
+        .expect("bind value has producer");
+    let value_node = dag
+        .node(producer)
+        .as_value()
+        .expect("producer is a Value node");
+    assert_eq!(value_node.data, LiteralValue::Bool(true));
+
+    assert_eq!(
+        dag.port(bind_x.value).value_type(),
+        Some(&TypeShape::Primitive(Prim::Bool)),
+        "bool literal infers to Bool",
+    );
+    assert!(dag.diagnostics().is_empty());
+}
+
+#[test]
+fn test_bool_literal_false() {
+    let dag = compile_to_dag("let x = false", "test.v3").expect("compiles");
+
+    let bind_x = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "x")
+        .expect("Bind(x) must exist");
+
+    let producer = dag
+        .port(bind_x.value)
+        .produced_by
+        .expect("bind value has producer");
+    let value_node = dag
+        .node(producer)
+        .as_value()
+        .expect("producer is a Value node");
+    assert_eq!(value_node.data, LiteralValue::Bool(false));
+
+    assert_eq!(
+        dag.port(bind_x.value).value_type(),
+        Some(&TypeShape::Primitive(Prim::Bool)),
+        "bool literal infers to Bool",
+    );
+    assert!(dag.diagnostics().is_empty());
+}
+
+#[test]
+fn test_string_literal() {
+    // `let x = "hello"` — the value port producer is a Value node
+    // carrying LiteralValue::String("hello"), and inference resolves
+    // the port to Prim::String.
+    let dag = compile_to_dag("let x = \"hello\"", "test.v3").expect("compiles");
+
+    let bind_x = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "x")
+        .expect("Bind(x) must exist");
+
+    let producer = dag
+        .port(bind_x.value)
+        .produced_by
+        .expect("bind value has producer");
+    let value_node = dag
+        .node(producer)
+        .as_value()
+        .expect("producer is a Value node");
+    assert_eq!(value_node.data, LiteralValue::String("hello".to_string()));
+
+    assert_eq!(
+        dag.port(bind_x.value).value_type(),
+        Some(&TypeShape::Primitive(Prim::String)),
+        "string literal infers to String",
+    );
+    assert!(dag.diagnostics().is_empty());
+}
+
+#[test]
+fn test_bool_literal_in_conditional() {
+    // `let x = if true then 1 else 2` — integration test. The
+    // Branch node's `input` port must trace back to a Value(Bool(true))
+    // producer, proving tokenize -> parse -> lower -> infer flows
+    // bool literals end-to-end into the conditional context.
+    let dag = compile_to_dag("let x = if true then 1 else 2", "test.v3")
+        .expect("compiles");
+
+    let bind_x = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "x")
+        .expect("Bind(x) must exist");
+
+    let branch_id = dag
+        .port(bind_x.value)
+        .produced_by
+        .expect("bind value has producer");
+    let branch = dag
+        .node(branch_id)
+        .as_branch()
+        .expect("producer is a Branch");
+
+    let cond_producer = dag
+        .port(branch.input)
+        .produced_by
+        .expect("branch input has producer");
+    let cond_value = dag
+        .node(cond_producer)
+        .as_value()
+        .expect("branch condition is a Value node");
+    assert_eq!(cond_value.data, LiteralValue::Bool(true));
+
+    assert_eq!(
+        dag.port(branch.input).value_type(),
+        Some(&TypeShape::Primitive(Prim::Bool)),
+        "branch condition is typed Bool",
+    );
+    assert_eq!(
+        dag.port(branch.output).value_type(),
+        Some(&TypeShape::Primitive(Prim::Int)),
+        "unified branch output is Int (both arms are Int)",
+    );
+    assert!(dag.diagnostics().is_empty());
+}
+
+#[test]
 fn test_compile_boundary_is_fail_closed() {
     // compile_to_dag returns Ok ONLY when the diagnostic table is
     // empty. A happy-path source returns Ok; any error source must
@@ -944,6 +1085,11 @@ fn invariant_port_state_matches_diagnostic_table() {
         "let x = 5\nlet result = if x > 0 then 1 else 2",
         "fn count_down(n: Int) -> Int = if n == 0 then 0 else n + count_down(n - 1)\nlet answer = count_down(3)",
         "let a = 1\nlet b = 2\nlet c = a + b",
+        // Bool + string literals (Lane B)
+        "let x = true",
+        "let x = false",
+        "let x = \"hello\"",
+        "let x = if true then 1 else 2",
         // Error paths
         "let x: Bool = 1",
         "let y = x\nlet x = 1",

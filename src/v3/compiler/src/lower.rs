@@ -19,7 +19,9 @@
 // read the span directly from the node. No reconstruction.
 //
 // Surface -> L1 map:
-//   IntLit             -> Value
+//   IntLit             -> Value(LiteralValue::Int)
+//   BoolLit            -> Value(LiteralValue::Bool)
+//   StringLit          -> Value(LiteralValue::String)
 //   Var (local)        -> scope lookup (no new node; reuses producer's port)
 //   Var (unresolved)   -> placeholder port + ResolveError diagnostic
 //   Call               -> Transform { target: FunctionRef, inputs }
@@ -271,6 +273,28 @@ fn lower_expr(
             }));
             output
         }
+        SurfaceExpr::BoolLit { value, span } => {
+            let node_id = dag.alloc_node_id();
+            let output = dag.alloc_port(Some(node_id));
+            dag.push_node(Behavior::Value(ValueNode {
+                id: node_id,
+                data: LiteralValue::Bool(*value),
+                output,
+                span: span.clone(),
+            }));
+            output
+        }
+        SurfaceExpr::StringLit { value, span } => {
+            let node_id = dag.alloc_node_id();
+            let output = dag.alloc_port(Some(node_id));
+            dag.push_node(Behavior::Value(ValueNode {
+                id: node_id,
+                data: LiteralValue::String(value.clone()),
+                output,
+                span: span.clone(),
+            }));
+            output
+        }
         SurfaceExpr::Var { name, span } => match scope.get(name) {
             Some(port) => *port,
             None => {
@@ -343,7 +367,10 @@ fn producer_of(dag: &Dag, port: PortId) -> Option<NodeId> {
 
 fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
     match expr {
-        SurfaceExpr::IntLit { .. } | SurfaceExpr::Var { .. } => false,
+        SurfaceExpr::IntLit { .. }
+        | SurfaceExpr::BoolLit { .. }
+        | SurfaceExpr::StringLit { .. }
+        | SurfaceExpr::Var { .. } => false,
         SurfaceExpr::Call { target, args, .. } => {
             if target == self_name {
                 return true;
@@ -381,7 +408,10 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
 /// strictly necessary, never accept a program that could diverge.
 fn descent_provable(expr: &SurfaceExpr, self_name: &str, first_param: &str) -> bool {
     match expr {
-        SurfaceExpr::IntLit { .. } | SurfaceExpr::Var { .. } => true,
+        SurfaceExpr::IntLit { .. }
+        | SurfaceExpr::BoolLit { .. }
+        | SurfaceExpr::StringLit { .. }
+        | SurfaceExpr::Var { .. } => true,
         SurfaceExpr::Call { target, args, .. } => {
             if target == self_name {
                 match args.first() {
@@ -437,6 +467,8 @@ fn is_strictly_smaller(expr: &SurfaceExpr, first_param: &str) -> bool {
 fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
     match expr {
         SurfaceExpr::IntLit { span, .. }
+        | SurfaceExpr::BoolLit { span, .. }
+        | SurfaceExpr::StringLit { span, .. }
         | SurfaceExpr::Var { span, .. }
         | SurfaceExpr::Call { span, .. }
         | SurfaceExpr::If { span, .. } => span,

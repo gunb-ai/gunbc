@@ -1,10 +1,11 @@
 // Minimal tokenizer for M0 test subset.
 //
-// Recognizes keywords (`let`, `if`, `then`, `else`, `fn`, `Int`,
-// `Bool`, `String`), identifiers, integer literals, and punctuation
-// (`=`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `+`, `-`, `*`, `/`, `:`,
-// `->`, `(`, `)`, `,`). Whitespace is skipped. Tokenizer errors flow
-// through the Diagnostic path — no panics.
+// Recognizes keywords (`let`, `if`, `then`, `else`, `fn`, `true`,
+// `false`, `Int`, `Bool`, `String`), identifiers, integer literals,
+// double-quoted string literals, and punctuation (`=`, `==`, `!=`,
+// `<`, `<=`, `>`, `>=`, `+`, `-`, `*`, `/`, `:`, `->`, `(`, `)`,
+// `,`). Whitespace is skipped. Tokenizer errors flow through the
+// Diagnostic path — no panics.
 
 use crate::diagnostics::{Diagnostic, SourceSpan};
 
@@ -15,8 +16,11 @@ pub enum TokenKind {
     KwThen,
     KwElse,
     KwFn,
+    KwTrue,
+    KwFalse,
     Ident(String),
     IntLit(i64),
+    StringLit(String),
     Eq,
     EqEq,
     NotEq,
@@ -98,6 +102,8 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
                 "then" => TokenKind::KwThen,
                 "else" => TokenKind::KwElse,
                 "fn" => TokenKind::KwFn,
+                "true" => TokenKind::KwTrue,
+                "false" => TokenKind::KwFalse,
                 _ => TokenKind::Ident(text.to_string()),
             };
             tokens.push(Token {
@@ -105,6 +111,33 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
                 span: SourceSpan::new(file, start as u32, end as u32),
             });
             pos = end;
+            continue;
+        }
+
+        // String literal: "..."
+        //
+        // M0: no escape sequences. A `\` inside the string is a
+        // literal backslash. The string terminates at the next `"`
+        // or fails with TokenizerError if the source ends first.
+        if byte == b'"' {
+            let content_start = pos + 1;
+            let mut end = content_start;
+            while end < bytes.len() && bytes[end] != b'"' {
+                end += 1;
+            }
+            if end >= bytes.len() {
+                return Err(Diagnostic::TokenizerError {
+                    message: "unterminated string literal".to_string(),
+                    span: SourceSpan::new(file, start as u32, end as u32),
+                });
+            }
+            let content = source[content_start..end].to_string();
+            let close = end + 1;
+            tokens.push(Token {
+                kind: TokenKind::StringLit(content),
+                span: SourceSpan::new(file, start as u32, close as u32),
+            });
+            pos = close;
             continue;
         }
 
