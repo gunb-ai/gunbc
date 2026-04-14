@@ -33,7 +33,8 @@ The project converged at 2026-04-15 on:
 
 - **Settled:** epistemic stacking is load-bearing; flat `DeclKind::{Type,
   Function}` is too narrow; substrate test is "host `dsl/std/algebra.dag`
-  + a real domain model like `shell.Exec.Run` with no new DeclKind variants";
+  + a synthetic nested-domain model analogous to `shell.Exec.Run`
+  with no new DeclKind variants";
   design-first before implementation; omni-emission is the long-term goal.
 - **Open (this doc pins them down):** two-substrate concrete shape,
   Declaration struct, PR #442 infrastructure inventory.
@@ -119,13 +120,14 @@ pub enum TypeConnective {
     Disj { variants: Vec<Field> },
 
     /// Function type — directional flow from inputs to an output.
-    /// Body references the computation substrate for user functions,
-    /// or is None for primitives (realized by extdeps/ language specs
-    /// at emission time).
+    /// Function type — directional flow from inputs to an output.
+    /// `body` is an ArrowBody enum covering user-defined sub-DAGs,
+    /// extdeps-declared realizations, and the Pending bootstrap
+    /// state. See Q7 for the full semantics.
     Arrow {
         inputs: Vec<DeclarationId>,
         output: DeclarationId,
-        body: Option<NodeId>,
+        body: ArrowBody,
     },
 
     /// Repetition over an element type with a bound. Unifies v2's
@@ -157,6 +159,24 @@ pub struct Field {
 }
 
 #[derive(Debug, Clone)]
+pub enum ArrowBody {
+    /// User function. NodeId is the root of a sub-DAG of L1
+    /// behavior nodes in Dag::nodes.
+    UserDefined(NodeId),
+    /// Primitive / intrinsic whose realization is declared in
+    /// an extdeps language spec. DeclarationId points at the
+    /// realization declaration, reached by a typed edge — not
+    /// by name lookup. See Q7.
+    ExternalRealization(DeclarationId),
+    /// Bootstrap state at M1(2.5): static grounding is complete
+    /// via inhabitance, but no realization declaration is
+    /// loaded yet. Scaffolded state — CI ratchet (§8.10)
+    /// enforces that Pending resolves to UserDefined or
+    /// ExternalRealization before M3 completes.
+    Pending,
+}
+
+#[derive(Debug, Clone)]
 pub enum AtomPayload {
     /// A literal bit pattern carried at the type level.
     Literal(LiteralBits),
@@ -181,12 +201,21 @@ pub enum LiteralBits {
 
 #[derive(Debug, Clone)]
 pub enum CardinalityBound {
-    /// Required (exactly 1), also Cardinality(3) for fixed-size.
+    /// Exact count. Required fields use Exact(1); fixed-size
+    /// arrays use Exact(n); argv literals use Exact(3).
     Exact(u32),
-    /// Optional (0..1), also List<T>.
+    /// Zero or one. The distinct shape for optional fields
+    /// (`T?` in surface syntax). Keeps 0..1 structurally
+    /// distinguishable from 0..n.
+    AtMostOne,
+    /// Zero or more. The shape for `List<T>`, used anywhere
+    /// the count is unbounded.
     Unbounded,
-    // Range / AtMost / AtLeast deferred to M1+; not needed for
-    // algebra.dag or minimal shell.dag.
+    // Range / AtLeast(n) / AtMost(n) deferred to M1+; neither
+    // algebra.dag nor minimal shell.dag needs them. AtMostOne
+    // is included from the start because Optional is a
+    // distinct shape from List and conflating them would let
+    // illegal states (a "List-typed optional") be representable.
 }
 
 #[derive(Debug, Clone)]
@@ -451,110 +480,196 @@ provenance. See Q1 rationale.
 
 ### Q5: Cardinality's scope — does it subsume v2's Required/Optional?
 
-**Answer: Yes. Cardinality unifies repetition and presence.**
+**Answer: Yes, with three distinct bound variants at M1(2.5).**
 
-v2's `constructors.dag` has `Required | Optional` as a flat enum on
-binding sites. In v3's substrate:
+v2's `constructors.dag` has `Required | Optional` as a flat enum
+on binding sites. In v3's substrate, all presence/repetition
+shapes become variants of `CardinalityBound`:
 
 - `Required` = `Cardinality { element: T, bound: Exact(1) }`.
-- `Optional` = `Cardinality { element: T, bound: Unbounded }` with
-  upper-bound 1 (or a dedicated `AtMost(1)` variant if needed).
+- `Optional` (`T?`) = `Cardinality { element: T, bound: AtMostOne }`.
 - `List<T>` = `Cardinality { element: T, bound: Unbounded }`.
 - `[T; n]` fixed array = `Cardinality { element: T, bound: Exact(n) }`.
 - `argv: ["sh", "-lc", "{script}"]` = `Cardinality { element: String, bound: Exact(3) }`
   with children inlined (implementation detail).
 
-M1(2.5) commits to two bound variants: `Exact(u32)` and `Unbounded`.
-Range / AtMost / AtLeast are deferred until a real oracle needs them
-(neither algebra.dag nor minimal shell.dag does).
+**M1(2.5) commits to three bound variants: `Exact(u32)`,
+`AtMostOne`, and `Unbounded`.** Range / AtLeast(n) / AtMost(n)
+are deferred until a real oracle needs them (neither
+`algebra.dag` nor minimal `shell.dag` does).
 
-**`Optional` is not a separate primitive.** It's `Cardinality` with a
-specific bound. The surface syntax `field: T?` lowers to
-`Cardinality { element: T, bound: AtMost(1) }`; when `AtMost` is added
-later, this lowering is trivial.
+**Why AtMostOne is in scope from the start.** Collapsing
+Optional into Unbounded (as earlier drafts proposed) lets
+"0..1" and "0..n" be represented by the same shape — which
+means a `T?` value and a `List<T>` value would be
+structurally indistinguishable. That's an illegal-states-
+unrepresentable violation: the substrate would admit shapes
+("a List where we forgot the upper bound was 1") that should
+not exist. `AtMostOne` as a dedicated variant keeps the
+distinction structural.
+
+**Optional syntax IS in scope for M1(2.5)** — `T?` parses to
+`AtMostOne`. No deferral.
 
 ### Q6: How do Arrow bodies cross into the computation substrate?
 
-**Answer: Co-allocation in a single `Dag::nodes` table. NodeId
-namespace is shared between type declarations and computation nodes.**
+**Answer: Separate tables with separate ID types, referenced by
+typed edges. `DeclarationId` and `NodeId` are distinct newtypes;
+`declarations` and `nodes` are distinct tables on `Dag`.**
 
-The M0 Dag struct already holds both `Node`s (L1 behaviors) and
-declarations in related tables. M1(2.5) maintains this layout:
+The two substrates live in separate tables of the same Dag
+struct. Each has its own stable ID type. Crossings between them
+are **typed edges** (DeclarationId from one side, NodeId from
+the other), not shared ID spaces.
 
 ```rust
 pub struct Dag {
-    // Unified node table. Type declarations and computation Nodes
-    // share the same NodeId space. Distinguish by connective
-    // (declarations) vs behavior (computation nodes).
+    // Type substrate — declarations (Conj/Disj/Arrow/etc. shapes).
     declarations: Vec<Declaration>,
-    nodes: Vec<Node>,              // L1 behavior nodes, unchanged from M0
-    ports: Vec<Port>,              // unchanged from M0
+    // Computation substrate — L1 behavior nodes, unchanged from M0.
+    nodes: Vec<Node>,
+    // Ports carry typed values through the computation graph.
+    ports: Vec<Port>,
 
-    // Name resolution, diagnostics, etc. unchanged.
+    // Name resolution, diagnostics, etc.
     named: HashMap<String, DeclarationId>,
     diagnostics: DiagnosticTable,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DeclarationId(u32);   // index into Dag::declarations
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct NodeId(u32);          // index into Dag::nodes
 ```
 
-`Arrow::body: Option<NodeId>` points into `Dag::nodes` for user
-functions. For primitives, `body` is None, and the emitter / interpreter
-resolves the primitive implementation by name from `extdeps/` when
-emitting.
+**Two typed crossings connect the substrates:**
 
-`Transform::target: FunctionRef(DeclarationId)` points at the declaration
-table. Inference uses the declaration's Arrow signature to type-check
-the Transform; emission walks from the Transform through the
-FunctionRef to the Arrow to its body.
+1. **`Transform::target: FunctionRef(DeclarationId)`** — a
+   Transform node in the computation substrate holds a
+   `FunctionRef` wrapping a `DeclarationId`. The DeclarationId
+   points at an Arrow declaration in the type substrate, which
+   has the function's signature. Inference uses this crossing
+   to type-check the Transform.
 
-**The "two substrates, two meeting points" framing holds logically.**
-Physically, the two substrates live in adjacent tables of the same Dag
-struct. No serialization or storage split is needed. "Two substrates"
-is a conceptual separation, not a memory-layout one.
+2. **`Arrow::body: Option<NodeId>`** — an Arrow declaration in
+   the type substrate optionally holds a `NodeId` pointing at
+   the root of the function's computation sub-DAG. For user
+   functions, `body` is `Some(node_id)`. For primitives whose
+   realization lives in an extdeps language spec, `body` is
+   `None` — see Q7 and the updated Q7-bis below for the
+   realization edge mechanism.
 
-### Q7: Are primitive Arrows with `body: None` "ungrounded"?
+**Keeping `DeclarationId` and `NodeId` as separate newtypes
+prevents cross-substrate ID mixing bugs.** A function that
+expects a `NodeId` can't be passed a `DeclarationId`; the type
+system catches the error at compile time. The "two substrates,
+two meeting points" framing is preserved both conceptually AND
+in the type system — the two ID types are the structural
+evidence that the substrates are distinct.
 
-**Answer: No. Concept decomposition is the test, not runtime
-realization.**
+### Q7: How do primitive Arrows express their realization?
 
-Per the thesis §"Two groundings" (added in the BI-3 resolution):
-every concept has two groundings. The **static grounding** is
-the `.dag`-level decomposition down to Classical + Conj + Disj +
-Atom. The **realization grounding** is the target-world mapping
-declared in a language spec. They are different things with
-different completeness rules.
+**Answer: via a typed `realization` edge on Arrow, not by name
+lookup. `body` and `realization` are two separate fields on
+Arrow. Exactly one of them must be present post-bootstrap.**
 
-An Arrow with `body: None` at M1(2.5) is NOT ungrounded:
+Earlier drafts of this section said "primitive Arrows have
+`body: None`, and the emitter recovers the realization by name
+from extdeps." That resurrected exactly the kind of name-based
+special-case lookup the thesis forbids: a concept whose
+realization is reached via a hardcoded path outside the substrate
+is an ungrounded concept (the escape from the epistemic chain).
+Fix: primitive Arrows point at a **realization declaration**
+via a typed edge in the same way user functions point at a body.
 
-- Its **static grounding** walks through inhabitance. `Int.add`
-  walks Int → Instantiation(OrderedRing, [T := Word64]) →
-  OrderedRing (Conj) → `add` child (Arrow) → T references →
-  substitute via substitution stack → Arrow(Word64, Word64,
-  Word64). Complete structural chain, no gaps, terminates at the
-  root primitives.
-- Its **realization grounding** will be declared in a language
-  spec when that work lands (M3-ish). `dsl/extdeps/languages/rust.dag`
-  will say: `Int64.add realizes as i64::wrapping_add on Rust,
-  cost O(1)`. Until that declaration exists, the realization
-  binding is simply pending — not "ungrounded."
+Revised Arrow shape:
 
-The "no concept is opaque" stop signal in §"Epistemic stacking"
-applies to the STATIC grounding. An Arrow whose body references
-a hardcoded Rust function inside the compiler (not declared
-anywhere in `.dag`) IS ungrounded — the concept has escaped the
-substrate. An Arrow whose body is `None` because its realization
-declaration hasn't been written yet is not in that category.
+```rust
+TypeConnective::Arrow {
+    inputs: Vec<DeclarationId>,
+    output: DeclarationId,
+    /// Either the realization is defined in user source (as a
+    /// sub-DAG of computation nodes) OR it's declared in an
+    /// extdeps/ language spec (as a Declaration that the
+    /// language spec references). Exactly one variant is
+    /// present post-bootstrap; both None at M1(2.5) for
+    /// algebras whose extdeps realization hasn't been
+    /// declared yet.
+    body: ArrowBody,
+}
 
-**For M1(2.5):** primitive Arrows in algebra.dag have `body:
-None`. Inference walks through inhabitance and resolves their
-signatures structurally. The language spec / extdeps integration
-is deferred to M3 work. This is legitimate.
+#[derive(Debug, Clone)]
+pub enum ArrowBody {
+    /// User function. The referenced NodeId is the root of a
+    /// computation sub-DAG (Value/Transform/Branch/Loop/Bind).
+    UserDefined(NodeId),
+    /// Realization declared in a language spec. The
+    /// DeclarationId points at a Realization declaration in
+    /// dsl/extdeps/languages/<target>.dag. The language spec
+    /// declaration is an ordinary Declaration in the type
+    /// substrate, reached by a typed edge like any other
+    /// declaration. Inference can follow the edge to the
+    /// realization and check that the declared signature
+    /// matches.
+    ExternalRealization(DeclarationId),
+    /// Bootstrap state: neither user body nor extdeps
+    /// realization declared yet. Legal ONLY during M1(2.5)
+    /// bootstrap while std/algebra.dag is loaded without
+    /// extdeps/languages/*.dag yet. Inference must accept
+    /// body: Pending for primitive Arrows whose signatures
+    /// resolve via inhabitance. A post-bootstrap sweep
+    /// ratchets "no Pending remains once extdeps are wired."
+    Pending,
+}
+```
 
-**Implementation implication:** inference must NOT panic or
-error on `body: None`. It should treat body-None Arrows as
-"realization-pending" — type-check the signature against the
-declaration, but skip body type-checking. A body-None Arrow
-whose signature can't be resolved via inhabitance IS a real
-error (that's a genuine gap in the static chain).
+**Why `Pending` is a scaffolded state, not a forever-legal one.**
+At M1(2.5), std/algebra.dag declares `Magma<T>.op`, `Ring<T>.add`,
+etc., as Arrows. Their *signatures* are well-defined (they
+resolve through inhabitance via the substitution stack). Their
+*realizations* — what these operations map onto in Rust / Python
+/ Go — need `dsl/extdeps/languages/rust.dag` and friends to
+declare the target mapping, and those files don't exist yet.
+`Pending` names the state "this Arrow has a valid static
+grounding via inhabitance, but no realization declaration has
+been loaded." It is explicitly scaffolded: a CI-enforced
+ratchet (see §8.10) will require `Pending` → either `UserDefined`
+or `ExternalRealization` before M3 completes.
+
+**This matches `body` for user functions.** A `UserDefined`
+body is a `NodeId` into the computation substrate — a typed
+edge, not a name lookup. An `ExternalRealization` is a
+`DeclarationId` into another declaration in the type substrate
+(in `dsl/extdeps/languages/<target>.dag`) — also a typed edge,
+also not a name lookup. Both are structural; both are walkable
+by any consumer without name resolution.
+
+**Inference handling:**
+
+- `UserDefined(node_id)`: type-check the sub-DAG body against
+  the declared input/output types.
+- `ExternalRealization(decl_id)`: walk the realization
+  declaration, verify its declared signature is compatible
+  with this Arrow's signature.
+- `Pending`: accept as realization-pending; the signature
+  type-checks via inhabitance. Emission of this Arrow
+  requires the `Pending` to resolve before the emitter runs.
+
+**For M1(2.5):** primitive Arrows in algebra.dag land with
+`body: Pending`. Inference treats them as ok-for-signature-
+checking but not-yet-emittable. The substrate test
+`parse_std_algebra_and_walk_int_add` validates that inhabitance
+walk produces the correct Arrow type even with Pending bodies.
+
+**The "no concept is opaque" stop signal applies fully.** An
+Arrow whose realization is reached via a hardcoded path outside
+the substrate (e.g., a Rust function inside the compiler that
+the emitter calls by name when it sees this Arrow) IS ungrounded
+and is a thesis violation. The `ArrowBody` enum forces
+realization to be either a sub-DAG or a typed reference to
+another Declaration — both walkable, both structural, neither
+an escape hatch.
 
 ## 5. `dsl/std/algebra.dag` mapping (substrate test oracle #1)
 
@@ -618,7 +733,7 @@ Monoid:
   }
 
 Monoid_T_param:  Atom(TypeParam("T"))
-Monoid_op_arrow: Arrow { inputs: [T, T], output: T, body: None }
+Monoid_op_arrow: Arrow { inputs: [T, T], output: T, body: Pending }
 Monoid_identity_ref: Atom(Identifier { name: "T", resolved: Some(Monoid_T_param) })
 ```
 
@@ -690,88 +805,129 @@ this walk produces `Arrow(Word64, Word64, Word64)` as the type of
 `Int.add` from an empty compiler state parsing only `std/algebra.dag`
 + the `Int = OrderedRing<Word64>` declaration.
 
-## 6. `dsl/extdeps/shell.dag` minimal mapping (substrate test oracle #2)
+## 6. Nested-domain-model oracle #2 (synthetic)
 
-The minimal subset for M1(2.5): `service shell.Exec { operation Run {
-input { script: String }; output { ... }; transport shell { argv: [...] } } }`.
-Drop `exit` and `mock_response` (they add Disj and nested Instantiation
-complexity; add them in a follow-up).
+**Scope note:** M1(2.5) does NOT aim for full fidelity against
+`dsl/extdeps/shell.dag` as-is. That file has structure we are
+not ready to host yet: a `transport_shell_template` with its own
+declaration (which lives in `dsl/extdeps/transports/shell.dag` —
+not currently declared in the project), `exit` branches (which
+use Disj with payloads and need the sum-type parser extensions),
+and `mock_response` tables (which need literal-record construction).
+
+**Instead:** oracle #2 is a **synthetic nested-domain model**
+that exercises the same substrate shapes `shell.Exec.Run` would
+exercise, without inheriting v2's specific extdeps declarations
+we haven't staged yet. The synthetic model is defined inline in
+the M1(2.5) test source:
+
+```dag
+// Test-only declaration. Exercises the nested-domain shape
+// (Conj-of-Conj-of-field-values-with-inhabits-tags) that shell.dag
+// uses, without importing shell.dag itself.
+
+type SyntheticService {
+  operations: Conj  // labeled-operation container
+}
+
+type SyntheticOperation {
+  input:     Conj   // labeled-field record
+  output:    Conj
+  arguments: List<String>
+}
+
+// An instance of the synthetic service — what the test parses.
+service CmdExec: SyntheticService {
+  operation Run: SyntheticOperation {
+    input  { script: String }
+    output { stdout: String; stderr: String; exit_code: Int }
+    arguments: ["sh", "-lc", "{script}"]
+  }
+}
+```
+
+All nested Conj compositions, no new connectives, no references
+to un-declared v2 files. This subset exercises:
+
+- Nested Conj (service → operations → operation → input/output).
+- `inhabits` tags on the service/operation Conjs pointing at the
+  meta-type declarations (`SyntheticService`, `SyntheticOperation`).
+- Cardinality with `Exact(3)` for the argument list literal.
+- String literal Atoms as leaves.
+- Value-construction via Conj-with-field-values (NOT Instantiation —
+  see Q0 and BI-1).
+
+Parsed into the substrate:
 
 ```
-shell.Exec:
-  connective: Conj {
-    children: [
-      Field { label: "operations", ty: shell_Exec_operations }
-    ]
-  }
+CmdExec:
+  connective: Conj
+  inhabits: Some(SyntheticService_decl)
+  children: [
+    Field { label: "operations", ty: CmdExec_operations }
+  ]
 
-shell_Exec_operations:
-  connective: Conj {
-    children: [
-      Field { label: "Run", ty: shell_Exec_Run }
-    ]
-  }
+CmdExec_operations:
+  connective: Conj
+  children: [
+    Field { label: "Run", ty: CmdExec_Run }
+  ]
 
-shell_Exec_Run:
-  connective: Conj {
-    children: [
-      Field { label: "input",     ty: Run_input     },
-      Field { label: "output",    ty: Run_output    },
-      Field { label: "transport", ty: Run_transport },
-    ]
-  }
+CmdExec_Run:
+  connective: Conj
+  inhabits: Some(SyntheticOperation_decl)
+  children: [
+    Field { label: "input",     ty: Run_input     },
+    Field { label: "output",    ty: Run_output    },
+    Field { label: "arguments", ty: Run_args      },
+  ]
 
 Run_input:
-  connective: Conj {
-    children: [
-      Field { label: "script", ty: String_decl }  // resolves to std/String
-    ]
-  }
+  connective: Conj
+  children: [
+    Field { label: "script", ty: String_decl }
+  ]
 
 Run_output:
-  connective: Conj {
-    children: [
-      Field { label: "exit_code", ty: Int_decl    },
-      Field { label: "success",   ty: Bool_decl   },
-      Field { label: "stdout",    ty: String_decl },
-      Field { label: "stderr",    ty: String_decl },
-    ]
-  }
+  connective: Conj
+  children: [
+    Field { label: "stdout",    ty: String_decl },
+    Field { label: "stderr",    ty: String_decl },
+    Field { label: "exit_code", ty: Int_decl    },
+  ]
 
-Run_transport:
-  connective: Instantiation {
-    template: transport_shell_template,
-    bindings: [
-      TemplateArgument { parameter: argv_param, value: Run_argv_literal }
-    ]
-  }
-
-Run_argv_literal:
+Run_args:
   connective: Cardinality {
     element: String_decl,
     bound:   Exact(3),
   }
-  // children are three String literal Atoms — inline literal construction
 ```
 
-Six levels of nesting:
-1. service (Conj)
+Five levels of nesting:
+1. service (Conj with inhabits)
 2. operations container (Conj)
-3. operation Run (Conj)
-4. input / output / transport members (Conj or Instantiation)
-5. scalar fields or argv (Atom or Cardinality)
-6. literal payloads (Atom)
+3. operation Run (Conj with inhabits)
+4. input / output / arguments members (Conj or Cardinality)
+5. scalar fields and literal atoms (Atom)
 
-Every level maps onto the six-connective shape. **No new `DeclKind`
-variant is needed for service, operation, input, output, or transport.**
-They're all Conj/Instantiation/Atom. The `transport shell { ... }` syntax
-lowers to an Instantiation of the `transport_shell_template` declaration,
-which itself is a Conj declared in `dsl/extdeps/transports/shell.dag`
-(deferred to emission work).
+Every level maps onto the six-connective shape. **No new
+connective variants needed.** The `inhabits` tag provides the
+"this Conj satisfies this meta-type" semantics without any
+special Service/Operation connective.
 
-**Substrate test `parse_shell_exec_run_minimal` passes** when parsing
-this subset produces the above Declaration tree with no extension to
-the connective enum.
+**Substrate test `parse_synthetic_service_all_layers` passes** when
+parsing this subset produces the above Declaration tree with no
+extension to the connective enum.
+
+**Why synthetic rather than the real shell.dag:** full shell.dag
+fidelity requires the extdeps/transports layer, sum-type payloads
+(for `exit`), and literal record construction (for `mock_response`)
+— all of which are genuine substrate exercises but add scope
+beyond what's needed to prove the substrate shape is right. The
+synthetic oracle tests the shapes that shell.dag uses without
+inheriting its specific external dependencies. Full shell.dag
+adoption is a follow-up milestone (M1(2.6) or M2) that lands
+after extdeps/transports exists as a declared .dag subtree.
 
 ## 7. Implementation plan
 
@@ -793,7 +949,7 @@ Focused, small, one PR. No scope creep.
 | `dsl/std/algebra.dag` | VERIFY it parses into the new substrate. No file content changes — the file's shape is already right; just bring it into the bootstrap path. | ~15m |
 | `dsl/std/types.dag` | VERIFY Int = OrderedRing<Word64>, Bool = Classical, String = FreeMonoid<Char> all parse as Instantiation declarations. | ~15m |
 | `src/v3/compiler/src/bootstrap.rs` | NEW or UPDATE. Parse logic.dag → bit.dag → algebra.dag → types.dag in order at `Dag::new()` time (§8.6). | ~1h |
-| `src/v3/compiler/tests/m1_substrate_test.rs` | NEW. Two test cases: `parse_std_algebra_and_walk_int_add` and `parse_shell_exec_run_minimal`. | ~1.5h |
+| `src/v3/compiler/tests/m1_substrate_test.rs` | NEW. Two test cases: `parse_std_algebra_and_walk_int_add` and `parse_synthetic_service_all_layers`. | ~1.5h |
 
 **Total estimate: 14–16 hours.** Scope expanded from original
 10–12h estimate after the review pass identified additional
@@ -808,8 +964,11 @@ tree in an incoherent state between PRs.
 2. **`parse_std_algebra_and_walk_int_add`** — parse `std/algebra.dag`,
    declare `Int = OrderedRing<Word64>`, walk `Int.add`, assert the
    result is `Arrow { inputs: [Word64, Word64], output: Word64 }`.
-3. **`parse_shell_exec_run_minimal`** — parse the minimal shell.dag
-   subset from §6, assert the Declaration tree structure matches.
+3. **`parse_synthetic_service_all_layers`** — parse the synthetic
+   nested-domain model from §6, assert the Declaration tree
+   structure matches. Tests the same substrate shapes shell.dag
+   would exercise without requiring v2's extdeps/transports
+   declarations to exist yet.
 4. **`cargo clippy -p v3-compiler --all-targets -- -D warnings`** —
    clean.
 5. **Substrate audit:** grep `TypeConnective::` variants in the M1
@@ -982,7 +1141,9 @@ scaffolding work.
 - `src/v3/compiler/src/dag.rs` contains no `DeclKind::{Type, Function}`
   references. `TypeConnective` has exactly the six variants in §3.
 - `Int.add` resolves through inhabitance (no hardcoded signature).
-- `shell.Exec.Run` (minimal subset) parses and type-checks.
+- Synthetic nested-domain model (§6) parses and type-checks.
+  Exercises the same substrate shapes as `shell.Exec.Run` without
+  requiring v2's extdeps/transports subtree to exist yet.
 - PR description cites this design note; reviewers can verify
   against §3–§6 and the acceptance gates in §7.
 

@@ -358,7 +358,7 @@ Concrete types attach to this chain by **inhabitance**:
 ```
 Bool     inhabits BooleanAlgebra
 Nat      inhabits CommutativeSemiring
-Int      inhabits OrderedCommutativeRing
+Int      inhabits OrderedRing
 String   inhabits FreeMonoid<Char>
 List<T>  inhabits FreeMonoid<T>
 Set<A>   inhabits BooleanAlgebra<A>    (via A -> Bool encoding)
@@ -398,11 +398,16 @@ substrate and one emission walk.
 are the direct consequence.** A user can declare their own
 meta-model — `type CIWorkflow<Step>`, `type ControlPlane<Resource>`,
 `type Understanding<System> { behaviors: List<Behavior>, ... }` —
-and instances of that meta-model project onto code the same way
-`Int` does. The substrate doesn't distinguish math primitives from
-domain primitives; a primitive is anything the user hasn't yet
-decomposed, and everything above it is a composition. This is the
-property that lets gunbc target dependency surface area of
+and instantiations of that meta-model project onto code the same
+way `Int` does. The substrate does not distinguish math compositions
+from domain compositions; **both compose from the same three
+substrate roots (Classical + Conj + Disj)** via the ordinary
+composition mechanism. What's "primitive" in gunbc is structural,
+not subjective: a primitive is one of the three substrate roots
+(`MODELING.md`'s foundational primitives), or a user-input boundary
+Atom (identifiers, literals, source spans from outside the closed
+world). Everything else, math or domain, is a composition. This
+is the property that lets gunbc target dependency surface area of
 arbitrary depth: the deeper the domain's compositional structure,
 the more load the epistemic chain carries, and the more leverage
 the user gets per declaration.
@@ -1192,11 +1197,20 @@ compiler reads a language spec from `dsl/extdeps/languages/` and
 emits target source code via the single emitter. Examples: Rust,
 Python, Go, TypeScript, Swift, and potentially hardware
 description languages (Verilog, VHDL, Chisel) where the target
-executes the compiled program. Shape A targets get the full
-"one language spec per target" treatment — adding a new Shape A
-target costs one spec file, zero compiler changes. The compiler
-core grows only when a new structural primitive is discovered,
-not per-target.
+executes the compiled program.
+
+**Shape A is the target architecture, not the current reality.**
+At the time of writing, the LanguageSpec mechanism is partial:
+materialization strategy, sharing × serialization coupling, and
+type-decoration selection are not fully modeled in LanguageSpec
+and still leak into per-target emitter code (see `src/v2/*.dag`
+emit phases for the current state). The thesis commitment is to
+the end state — "adding a new Shape A target costs one spec file,
+zero compiler changes" — and the work between M1 and M2 is
+closing the gap between what LanguageSpec currently covers and
+what it needs to cover to make that claim fully banked. Treat
+"one spec per target" as the architectural target, not as an
+already-achieved property.
 
 **Shape B — user-program artifact generation.** Non-programming-
 language artifacts that are OUTPUTS of `.dag` programs, not

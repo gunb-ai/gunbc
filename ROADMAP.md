@@ -2,19 +2,49 @@
 
 ## Architecture
 
-Two substrate primitives: **Node** and **Edge**. Everything else —
-types, truth values, cardinality, product/coproduct — is compositional
-modeling in `.dag`. Languages are coercion targets. Testing is
-compilation.
+**Two coordinated substrates** (per `THESIS.md` §"The substrate: two
+coordinated shapes" and `src/v3/M1_DESIGN.md`):
 
-**Bounded kernel invariant:** Node is the only recursive semantic
-authority in the compiler IR. All durable recursive structures are
-Node trees — recursion lives in the data (children list), not in
-type definitions. Non-Node types are flat discriminants and data
-tables. This makes descent provable by construction: any function
-that walks Node.children is structurally bounded.
+1. **Type substrate.** A labeled DAG of declarations with six
+   structural connectives: `Atom | Conj | Disj | Arrow | Cardinality
+   | Instantiation`. Hosts type declarations, services, operations,
+   algebras, correctness dimensions, user-defined domain meta-models,
+   and language specs. `service`, `fn`, `type`, `operation` are
+   surface sugar over this layer (per `MODELING.md` §"Composition
+   layer").
+2. **Computation substrate.** Five L1 behaviors: `Value | Transform |
+   Branch | Loop | Bind`. Validated by v3 M0 under three reviewer
+   rounds. Hosts function bodies as sub-DAGs.
+
+The two substrates meet at exactly two typed edges: `Transform →
+FunctionRef(DeclarationId)` (computation references type) and
+`Arrow::body → NodeId / DeclarationId / Pending` (type references
+computation or a realization declaration). `DeclarationId` and
+`NodeId` are distinct newtypes preventing cross-substrate ID
+mixing.
+
+Languages are coercion targets via `dsl/extdeps/languages/`. Each
+target language is an extdep spec declaring how connectives and L1
+behaviors project onto target constructs. Testing is compilation.
+
+**Flat substrate superseded.** Earlier M1 work (PR #442 / cool-owl-931)
+attempted a flat `DeclKind::{Type, Function}` shape that could not
+host parameterization (`Magma<T>`), structural children
+(`Monoid<T> { op, identity }`), or inhabitance (`Int inhabits
+OrderedRing<Word64>`). That attempt is abandoned; **M1(2.5)** is
+the active substrate step, executing against `src/v3/M1_DESIGN.md`
+to land the six-connective + five-behavior shape.
+
+**Bounded kernel invariant:** the computation substrate's Loop
+behavior is the only bounded-iteration primitive. All durable
+recursive structures are Node trees (type substrate) or bounded
+Loop bodies (computation substrate) — recursion lives in the data
+(children lists, finite Cardinalities), not in unbounded
+iteration. Descent is provable by construction.
 
 Full thesis: [THESIS.md](THESIS.md)
+v3 substrate design: [src/v3/M1_DESIGN.md](src/v3/M1_DESIGN.md)
+v3 M0 retrospective: [src/v3/M0_RETROSPECTIVE.md](src/v3/M0_RETROSPECTIVE.md)
 Architecture: [docs/architecture.md](docs/architecture.md)
 Compiler laws and coercion model: [src/v2/compiler-laws.md](src/v2/compiler-laws.md)
 Coercion design (algebra-keyed inhabitants): [docs/coercion-design.md](docs/coercion-design.md)
