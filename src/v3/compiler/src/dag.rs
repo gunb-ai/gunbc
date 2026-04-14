@@ -24,7 +24,7 @@
 
 use std::collections::HashMap;
 
-use crate::diagnostics::DiagnosticTable;
+use crate::diagnostics::{Diagnostic, DiagnosticTable, SourceSpan};
 use crate::types::TypeShape;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -145,7 +145,6 @@ pub struct BindNode {
     /// Optional marker, no coproduct, no type tag. See Checkpoint C2
     /// dissolution receipt at the top of this file.
     pub params: Vec<PortId>,
-    pub scope: Option<NodeId>,
 }
 
 // Checkpoint C1.
@@ -259,10 +258,32 @@ pub struct Signature {
 }
 
 pub struct Dag {
+    /// Behaviors in construction order. Load-bearing invariant:
+    /// each node in `nodes` comes after all nodes it depends on
+    /// (ports it reads). Lowering emits children before parents,
+    /// so a forward walk through this vector visits dependencies
+    /// before dependents. Inference relies on this for a single
+    /// forward pass; any pass that reorders nodes (future
+    /// graph-rewriting) must preserve the topological order or
+    /// the invariant breaks silently.
     nodes: Vec<Behavior>,
     ports: HashMap<PortId, Port>,
     diagnostics: DiagnosticTable,
     signatures: HashMap<String, Signature>,
+    /// Source spans for declared type annotations, keyed by the
+    /// port whose type the annotation declared. Populated during
+    /// lowering; consulted by inference when a declared type
+    /// conflicts with an inferred type so the resulting diagnostic
+    /// points back at the user's annotation, not at some derived
+    /// location.
+    annotation_spans: HashMap<PortId, SourceSpan>,
+    /// Source spans for each DAG node, keyed by NodeId. Populated
+    /// during lowering from the SurfaceExpr's span so that
+    /// decide-level failures in infer (arity mismatch, unknown
+    /// function, etc.) can produce diagnostics that point at the
+    /// actual call site rather than a synthetic "<inferred>" span.
+    /// Fail-closed invariant C-8: every failure gets a real span.
+    node_spans: HashMap<NodeId, SourceSpan>,
     next_node_id: u32,
     next_port_id: u32,
 }
@@ -274,6 +295,8 @@ impl Dag {
             ports: HashMap::new(),
             diagnostics: DiagnosticTable::new(),
             signatures: HashMap::new(),
+            annotation_spans: HashMap::new(),
+            node_spans: HashMap::new(),
             next_node_id: 0,
             next_port_id: 0,
         }
@@ -350,6 +373,29 @@ impl Dag {
         self.signatures.insert(name.into(), sig);
     }
 
+    /// Record a declared type annotation's span for a port. Used
+    /// when inference detects a conflict between the annotation and
+    /// the inferred type — the resulting diagnostic points back at
+    /// the annotation's source location.
+    pub(crate) fn record_annotation_span(&mut self, port: PortId, span: SourceSpan) {
+        self.annotation_spans.insert(port, span);
+    }
+
+    pub(crate) fn annotation_span(&self, port: PortId) -> Option<&SourceSpan> {
+        self.annotation_spans.get(&port)
+    }
+
+    /// Record the source span of a DAG node. Called by lowering for
+    /// every behavior it creates, so infer can point diagnostics
+    /// at the originating expression.
+    pub(crate) fn record_node_span(&mut self, node: NodeId, span: SourceSpan) {
+        self.node_spans.insert(node, span);
+    }
+
+    pub fn node_span(&self, node: NodeId) -> Option<&SourceSpan> {
+        self.node_spans.get(&node)
+    }
+
     /// Upgrade a port from None to Some(type). Used by both
     /// inference (computed types) and lowering (declared type
     /// annotations from parse).
@@ -360,14 +406,30 @@ impl Dag {
     }
 
     /// The ONLY code path that sets value_type to None. Called
-    /// exclusively from DiagnosticTable::mark_unresolved, which
-    /// atomically writes the diagnostic entry. Do not call from
-    /// anywhere else. Linked-by-construction invariant:
+    /// exclusively from Dag::mark_unresolved, which atomically also
+    /// writes the diagnostic entry. Do not call from anywhere else.
+    /// Linked-by-construction invariant:
     ///   port.value_type == None  iff  diagnostics.contains(port_id)
-    pub(crate) fn clear_port_type(&mut self, id: PortId) {
+    fn clear_port_type(&mut self, id: PortId) {
         if let Some(port) = self.ports.get_mut(&id) {
             port.value_type = None;
         }
+    }
+
+    /// The enforced public API for transitioning a port from a
+    /// typed state to Unresolved. Atomically: nulls the port's
+    /// value_type AND records the diagnostic entry. There is NO
+    /// other way to write `value_type = None` in the crate.
+    ///
+    /// The invariant holds by construction because:
+    ///   1. `clear_port_type` is private to this module.
+    ///   2. Only `mark_unresolved` calls it.
+    ///   3. `mark_unresolved` always inserts a diagnostic.
+    ///
+    /// So a `None`-typed port always has a corresponding diagnostic.
+    pub(crate) fn mark_unresolved(&mut self, port: PortId, diagnostic: Diagnostic) {
+        self.clear_port_type(port);
+        self.diagnostics.insert(port, diagnostic);
     }
 }
 

@@ -39,6 +39,7 @@ pub struct SurfaceModule {
 pub enum SurfaceItem {
     Let {
         name: String,
+        type_ann: Option<SurfaceType>,
         expr: SurfaceExpr,
     },
     Fn {
@@ -57,7 +58,15 @@ pub struct SurfaceParam {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SurfaceType {
-    Named(String),
+    Named { name: String, span: SourceSpan },
+}
+
+impl SurfaceType {
+    pub fn span(&self) -> &SourceSpan {
+        match self {
+            SurfaceType::Named { span, .. } => span,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -143,9 +152,19 @@ impl<'a> Parser<'a> {
     fn parse_let_item(&mut self) -> Result<SurfaceItem, Diagnostic> {
         self.expect_kind(TokenKind::KwLet)?;
         let name = self.parse_ident()?;
+        let type_ann = if matches!(self.peek().kind, TokenKind::Colon) {
+            self.bump();
+            Some(self.parse_type_ann()?)
+        } else {
+            None
+        };
         self.expect_kind(TokenKind::Eq)?;
         let expr = self.parse_expr()?;
-        Ok(SurfaceItem::Let { name, expr })
+        Ok(SurfaceItem::Let {
+            name,
+            type_ann,
+            expr,
+        })
     }
 
     fn parse_fn_item(&mut self) -> Result<SurfaceItem, Diagnostic> {
@@ -186,8 +205,17 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_type_ann(&mut self) -> Result<SurfaceType, Diagnostic> {
-        let name = self.parse_ident()?;
-        Ok(SurfaceType::Named(name))
+        let token = self.bump().clone();
+        match token.kind {
+            TokenKind::Ident(name) => Ok(SurfaceType::Named {
+                name,
+                span: token.span,
+            }),
+            other => Err(Diagnostic::ParseError {
+                message: format!("expected type name, got {other:?}"),
+                span: token.span,
+            }),
+        }
     }
 
     fn parse_ident(&mut self) -> Result<String, Diagnostic> {

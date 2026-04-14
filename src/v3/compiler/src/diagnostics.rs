@@ -4,17 +4,51 @@
 //   Port.value_type == None  iff  DiagnosticTable contains PortId
 //
 // Enforcement is structural: Dag::clear_port_type is pub(crate) and
-// is ONLY called from DiagnosticTable::mark_unresolved (which also
-// writes the diagnostic entry). No other call path can null a port.
+// is ONLY called from Dag::mark_unresolved (which also writes the
+// diagnostic entry atomically). No other call path can null a port.
 //
 // G2 guardrail: SourceSpan always carries a non-empty `file` field.
 // Cross-artifact diagnostics (M2+ multi-file, multi-language) rely
 // on spans being addressable across files. Do NOT replace this with
 // a bare (line, col) pair — that forecloses the thesis goal.
+//
+// ────────────────────────────────────────────────────────────────
+// DEFERRED DISSOLUTION: Diagnostic enum is a scaffold.
+//
+// Current variants (M0.5): TokenizerError, ParseError, TypeMismatch,
+// ArityMismatch, ResolveError. The v3 target shape per
+// docs/v3-modeling-analysis.md §CompilerDiagnostic is a 5-field
+// record:
+//
+//   Diagnostic {
+//     span: SourceSpan,
+//     category: DiagnosticCategory,  // Type | Cardinality | ...
+//     subject: DiagnosticSubject,    // typed ref to thing flagged
+//     detail: DiagnosticDetail,      // category-specific payload
+//     producing_node: Option<NodeId>,
+//   }
+//
+// TRIGGER for dissolution: when typed references (TypeRef, FieldRef,
+// FunctionRef beyond M0's symbolic string form) exist in the
+// substrate and can be used as Subject carriers. That's M1+ work
+// after std/ declarations land.
+//
+// Extension from 3→5 variants at M0.5 is deferred dissolution with
+// justification: the fail-closed invariant (C-8) requires that every
+// detectable failure produces a diagnostic, and M0's infer + lower
+// stages reach failure categories (arity, resolve) that TypeMismatch
+// does not cover. Until Subject/Detail infrastructure exists,
+// extension is the least-bad interim form.
+//
+// DO NOT add a severity field. C-8: all diagnostics are errors.
+// DO NOT add a warning variant. DO NOT add a "maybe wrong" state.
+// If a condition is detected and it's wrong, emit the diagnostic
+// and fail. If it's not wrong, emit nothing. There is no middle.
+// ────────────────────────────────────────────────────────────────
 
 use std::collections::HashMap;
 
-use crate::dag::{Dag, PortId};
+use crate::dag::PortId;
 use crate::types::TypeShape;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,6 +83,16 @@ pub enum Diagnostic {
         actual: TypeShape,
         span: SourceSpan,
     },
+    ArityMismatch {
+        function: String,
+        expected: usize,
+        actual: usize,
+        span: SourceSpan,
+    },
+    ResolveError {
+        name: String,
+        span: SourceSpan,
+    },
 }
 
 impl Diagnostic {
@@ -56,7 +100,9 @@ impl Diagnostic {
         match self {
             Diagnostic::TokenizerError { span, .. }
             | Diagnostic::ParseError { span, .. }
-            | Diagnostic::TypeMismatch { span, .. } => span,
+            | Diagnostic::TypeMismatch { span, .. }
+            | Diagnostic::ArityMismatch { span, .. }
+            | Diagnostic::ResolveError { span, .. } => span,
         }
     }
 }
@@ -89,15 +135,11 @@ impl DiagnosticTable {
         self.entries.len()
     }
 
-    /// The ONLY code path that sets Port.value_type to None.
-    /// Atomically: writes the diagnostic entry AND nulls the
-    /// port's type. Linked-by-construction invariant enforced.
-    ///
-    /// Callers must pass &mut Dag so that the null and the write
-    /// happen in one call — there is no way to write the diagnostic
-    /// without nulling the port, or vice versa.
-    pub fn mark_unresolved(&mut self, dag: &mut Dag, port: PortId, diagnostic: Diagnostic) {
-        dag.clear_port_type(port);
+    /// Insert a diagnostic entry for a port. pub(crate) because the
+    /// only callers are Dag::mark_unresolved (which atomically also
+    /// clears the port's value_type) and should never be called
+    /// independently from outside the crate.
+    pub(crate) fn insert(&mut self, port: PortId, diagnostic: Diagnostic) {
         self.entries.insert(port, diagnostic);
     }
 }

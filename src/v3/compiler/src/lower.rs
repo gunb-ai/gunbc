@@ -21,6 +21,7 @@ use crate::dag::{
     Behavior, BindNode, Bound, BranchNode, Dag, FunctionRef, LiteralValue, LoopNode, NodeId, Path,
     PortId, Signature, TransformNode, ValueNode,
 };
+use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::parse::{SurfaceExpr, SurfaceItem, SurfaceModule, SurfaceParam, SurfaceType};
 use crate::types::{Prim, TypeShape};
 
@@ -35,15 +36,23 @@ pub fn lower(module: &SurfaceModule) -> Dag {
 
 fn lower_item(item: &SurfaceItem, dag: &mut Dag, scope: &mut HashMap<String, PortId>) {
     match item {
-        SurfaceItem::Let { name, expr } => {
+        SurfaceItem::Let {
+            name,
+            type_ann,
+            expr,
+        } => {
             let value_port = lower_expr(expr, dag, scope);
+            if let Some(ty) = type_ann {
+                let declared = lower_type(ty);
+                dag.record_annotation_span(value_port, ty.span().clone());
+                dag.set_port_type(value_port, declared);
+            }
             let bind_id = dag.alloc_node_id();
             dag.push_node(Behavior::Bind(BindNode {
                 id: bind_id,
                 name: name.clone(),
                 value: value_port,
                 params: Vec::new(),
-                scope: None,
             }));
             scope.insert(name.clone(), value_port);
         }
@@ -102,16 +111,18 @@ fn lower_fn_item(
         let loop_id = dag.alloc_node_id();
         let loop_output = dag.alloc_port(Some(loop_id));
         dag.set_port_type(loop_output, return_ty.clone());
+        let loop_body_node = body_root.unwrap_or(loop_id);
         dag.push_node(Behavior::Loop(LoopNode {
             id: loop_id,
             source: param_ports[0],
             init: param_ports[0],
-            body: body_root,
+            body: loop_body_node,
             bound: Bound {
                 count: param_ports[0],
             },
             output: loop_output,
         }));
+        dag.record_node_span(loop_id, synthetic_lower_span(name));
         loop_output
     } else {
         body_return_port
@@ -127,14 +138,13 @@ fn lower_fn_item(
         name: name.to_string(),
         value: value_port,
         params: param_ports,
-        scope: None,
     }));
     outer_scope.insert(name.to_string(), value_port);
 }
 
 fn lower_type(ty: &SurfaceType) -> TypeShape {
     match ty {
-        SurfaceType::Named(name) => match name.as_str() {
+        SurfaceType::Named { name, .. } => match name.as_str() {
             "Int" => TypeShape::Primitive(Prim::Int),
             "Bool" => TypeShape::Primitive(Prim::Bool),
             "String" => TypeShape::Primitive(Prim::String),
@@ -149,7 +159,7 @@ fn lower_expr(
     scope: &HashMap<String, PortId>,
 ) -> PortId {
     match expr {
-        SurfaceExpr::IntLit { value, .. } => {
+        SurfaceExpr::IntLit { value, span } => {
             let node_id = dag.alloc_node_id();
             let output = dag.alloc_port(Some(node_id));
             dag.push_node(Behavior::Value(ValueNode {
@@ -157,12 +167,28 @@ fn lower_expr(
                 data: LiteralValue::Int(*value),
                 output,
             }));
+            dag.record_node_span(node_id, span.clone());
             output
         }
-        SurfaceExpr::Var { name, .. } => *scope
-            .get(name)
-            .expect("M0 requires let-before-use; forward references are deferred work"),
-        SurfaceExpr::Call { target, args, .. } => {
+        SurfaceExpr::Var { name, span } => match scope.get(name) {
+            Some(port) => *port,
+            None => {
+                // Forward reference: the name isn't in scope yet.
+                // Fail-closed: allocate a placeholder port and mark
+                // it unresolved with a ResolveError diagnostic. The
+                // pipeline continues so more errors can accumulate.
+                let port = dag.alloc_port(None);
+                dag.mark_unresolved(
+                    port,
+                    Diagnostic::ResolveError {
+                        name: name.clone(),
+                        span: span.clone(),
+                    },
+                );
+                port
+            }
+        },
+        SurfaceExpr::Call { target, args, span } => {
             let input_ports: Vec<PortId> =
                 args.iter().map(|a| lower_expr(a, dag, scope)).collect();
             let node_id = dag.alloc_node_id();
@@ -173,21 +199,22 @@ fn lower_expr(
                 inputs: input_ports,
                 output,
             }));
+            dag.record_node_span(node_id, span.clone());
             output
         }
         SurfaceExpr::If {
             cond,
             then_branch,
             else_branch,
-            ..
+            span,
         } => {
             let cond_port = lower_expr(cond, dag, scope);
             let then_port = lower_expr(then_branch, dag, scope);
             let else_port = lower_expr(else_branch, dag, scope);
-            let then_body = producer_of(dag, then_port);
-            let else_body = producer_of(dag, else_port);
             let branch_id = dag.alloc_node_id();
             let branch_output = dag.alloc_port(Some(branch_id));
+            let then_body = producer_of(dag, then_port).unwrap_or(branch_id);
+            let else_body = producer_of(dag, else_port).unwrap_or(branch_id);
             dag.push_node(Behavior::Branch(BranchNode {
                 id: branch_id,
                 input: cond_port,
@@ -203,15 +230,18 @@ fn lower_expr(
                 ],
                 output: branch_output,
             }));
+            dag.record_node_span(branch_id, span.clone());
             branch_output
         }
     }
 }
 
-fn producer_of(dag: &Dag, port: PortId) -> NodeId {
-    dag.port(port)
-        .produced_by
-        .expect("lowered expressions always have a producing node")
+fn producer_of(dag: &Dag, port: PortId) -> Option<NodeId> {
+    dag.port(port).produced_by
+}
+
+fn synthetic_lower_span(name: &str) -> SourceSpan {
+    SourceSpan::new(format!("<lower:{name}>"), 0, 0)
 }
 
 fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
