@@ -98,12 +98,24 @@ pub struct Declaration {
     pub id: DeclarationId,
     pub name: Option<String>,
     pub connective: TypeConnective,
-    /// Optional additional inhabitance edge. For Instantiation-connective
-    /// declarations, inhabits is typically None — the Instantiation IS the
-    /// inhabitance. For declarations with their own primary structure
-    /// (Conj/Disj/Atom) that additionally inhabit an algebra (e.g.,
-    /// a user-defined Money record inhabiting a Currency lattice),
-    /// inhabits carries that secondary relation.
+    /// Meta-type tag for value-construction Conjs. Points at the
+    /// declared meta-type whose shape this Conj is expected to
+    /// satisfy. Example: `transport shell { argv: [...] }` is a
+    /// Conj whose `meta_tag` points at the `transport` meta-type
+    /// declaration; the compiler structurally type-checks the
+    /// Conj's children against the meta-type's field shape.
+    /// None for declarations that are their own primary
+    /// meaning (algebras, primitive types, function types).
+    pub meta_tag: Option<DeclarationId>,
+    /// Algebra inhabitance edge. Separate from `meta_tag`. Used
+    /// when a declaration has its own primary structure AND
+    /// additionally inhabits an algebra beyond its structural
+    /// shape. Example: a hypothetical `Money` record
+    /// (`Conj { value: Float, currency: Currency }`) could
+    /// additionally inhabit a `CurrencyLattice` algebra; that
+    /// edge goes here, not in `meta_tag`. For pure aliases like
+    /// `Int = OrderedRing<Word64>`, the Instantiation connective
+    /// IS the inhabitance and `inhabits` stays None.
     pub inhabits: Option<DeclarationId>,
     pub span: SourceSpan,
 }
@@ -170,7 +182,8 @@ pub enum ArrowBody {
     ExternalRealization(DeclarationId),
     /// Bootstrap state at M1(2.5): static grounding is complete
     /// via inhabitance, but no realization declaration is
-    /// loaded yet. Scaffolded state — CI ratchet (§8.10)
+    /// loaded yet. Scaffolded state — CI ratchet (§8.11,
+    /// distinct from §8.10's substrate-extension audit)
     /// enforces that Pending resolves to UserDefined or
     /// ExternalRealization before M3 completes.
     Pending,
@@ -179,18 +192,69 @@ pub enum ArrowBody {
 #[derive(Debug, Clone)]
 pub enum AtomPayload {
     /// A literal bit pattern carried at the type level.
+    /// Terminal: comes from source text literals (numbers,
+    /// strings, booleans). User-input boundary.
     Literal(LiteralBits),
     /// An identifier reference. String pre-resolution, DeclarationId
     /// post-resolution. Stored as a string so pre/post is a bit flag,
     /// not a variant split.
+    /// Terminal: comes from user-chosen names in source text.
+    /// User-input boundary.
     Identifier { name: String, resolved: Option<DeclarationId> },
     /// A type parameter declaration slot. Appears as a child of a
     /// parameterized declaration; referenced from inside the body by
     /// other Identifier atoms that resolve to this slot.
+    /// Terminal: the declaration site of a type parameter in
+    /// `type Foo<T> { ... }`. User-chosen name; the value is
+    /// bound at Instantiation time.
     TypeParam(String),
     /// A source span reference for metadata-only atoms.
+    /// Terminal: byte offsets in source files. Metadata, not
+    /// data flowing through the graph; span atoms appear as
+    /// children of declarations for diagnostic purposes.
     Span(SourceSpanId),
 }
+
+// AtomPayload dissolution ledger (4-pattern check per
+// §"Structural decompression"):
+//
+// AtomPayload is a 4-variant coproduct at M1(2.5). Each variant
+// represents a distinct KIND OF USER-INPUT BOUNDARY — a
+// terminal fact the compiler receives from outside the closed
+// world and does not decompose further.
+//
+// Pattern 1 (fact placement): fails. Literal/Identifier/
+//   TypeParam/Span serve different downstream consumers
+//   (inference reads types via Identifier, error reporting
+//   reads Span, literal constant folding reads Literal,
+//   template substitution reads TypeParam). Scattering each
+//   into its own substrate slot would create four parallel
+//   atom carriers and multiply the substrate surface without
+//   simplifying anything.
+//
+// Pattern 2 (variant-is-data): fails. The variants are not
+//   "different data in the same shape" — they have structurally
+//   different payload types (bit pattern vs string vs type-
+//   parameter-name vs byte offset). A unified payload type
+//   would require a tagged union, which is what we already
+//   have.
+//
+// Pattern 3 (algebraic form): fails. The four variants do not
+//   trace to introduction/elimination forms of any algebra in
+//   std/; they are terminal facts from distinct user-input
+//   boundaries.
+//
+// Pattern 4 (dimensional): fails. There is no shared coordinate
+//   space underlying the four variants. "Literal" and "Span"
+//   don't share structural dimensions.
+//
+// Dissolution verdict: AtomPayload is genuinely terminal.
+// Each variant corresponds to a distinct user-input boundary
+// (per §"Structural decompression": "terminal at the user-input
+// boundary"). The 4-variant shape is load-bearing and should
+// not dissolve. No further action needed. Any future extension
+// (e.g., adding a `Char` literal kind) would be a variant
+// extension subject to §8.10's substrate-extension audit.
 
 #[derive(Debug, Clone)]
 pub enum LiteralBits {
@@ -258,8 +322,8 @@ stack. Matches C++ `template<typename T> class X { ... }` →
 ["sh", "-lc", "{script}"] }`, `Order { customer_id: "x", items:
 [...] }`) is **NOT** Instantiation. It is a plain `Conj` whose
 children are bound to specific values, with an optional
-`inhabits` edge on the Declaration pointing at the meta-type the
-Conj satisfies:
+`meta_tag` edge on the Declaration pointing at the meta-type
+the Conj is expected to satisfy:
 
 ```
 Node: Run_transport
@@ -267,14 +331,35 @@ Node: Run_transport
   children: [
     Field { label: "argv", ty: argv_literal_node }
   ]
-  inhabits: Some(transport_shell_meta_ref)   // tag, not Instantiation
+  meta_tag: Some(transport_shell_meta_ref)   // meta-type tag
+  inhabits: None                              // no algebra inhabitance
 ```
 
 The compiler type-checks this Conj against `transport_shell_meta`'s
-declared field shape via a structural check — no Instantiation
-machinery involved. The inhabits tag answers "what shape should
-this Conj satisfy?"; the Conj's children answer "what values do
-the fields hold?"
+declared field shape via a structural check on the `meta_tag`
+edge — no Instantiation machinery involved. The `meta_tag`
+answers "what shape should this Conj satisfy?"; the Conj's
+children answer "what values do the fields hold?"
+
+**`meta_tag` vs `inhabits`: two different edges.** The
+Declaration struct (§3) has both. They serve different
+relations:
+
+- **`meta_tag`** — "this Conj's shape is constrained by the
+  linked meta-type declaration." Used for value construction
+  (services, records, transports). The linked declaration is
+  typically itself a Conj whose fields describe the expected
+  shape.
+- **`inhabits`** — "this declaration additionally satisfies
+  the linked algebra's laws." Used for secondary algebra
+  inhabitance on declarations that have their own primary
+  structure. Typically unused at M1(2.5); held open for
+  future Money-inhabits-CurrencyLattice-type cases.
+
+Earlier drafts of this section used `inhabits` for both
+relations, which overloaded one field with two distinct
+meanings. The split into `meta_tag` + `inhabits` is the
+dissolution fix.
 
 **Case 3: Inhabitance witness** (e.g., `Int inhabits OrderedRing`)
 for pure aliases like `Int = OrderedRing<Word64>` is **the
@@ -639,8 +724,41 @@ declare the target mapping, and those files don't exist yet.
 `Pending` names the state "this Arrow has a valid static
 grounding via inhabitance, but no realization declaration has
 been loaded." It is explicitly scaffolded: a CI-enforced
-ratchet (see §8.10) will require `Pending` → either `UserDefined`
-or `ExternalRealization` before M3 completes.
+monotonic-decrease ratchet (see §8.11 for the specification;
+distinct from §8.10's substrate-extension audit) requires that
+every commit after M1(2.5) either preserves or reduces the
+count of Pending Arrows in the loaded declaration table, until
+the count reaches zero by M3.
+
+**Dissolution ledger entry.** ArrowBody is a 3-variant coproduct
+that MIXES two terminal semantic cases (`UserDefined`,
+`ExternalRealization`) with one scaffolded-state case
+(`Pending`). This is a mixed-lifecycle coproduct: `Pending` is
+expected to dissolve out of the variant set by M3, leaving only
+the two terminal cases. The §"Structural decompression" four
+pattern check classifies ArrowBody as follows:
+
+- **Pattern 1 (fact placement)**: fails — both UserDefined and
+  ExternalRealization are Arrow-level facts with different
+  structural targets (NodeId vs DeclarationId); scattering is
+  not simplification.
+- **Pattern 2 (variant-is-data)**: fails — the two terminal
+  cases point at structurally different substrates.
+- **Pattern 3 (algebraic form)**: partial — both terminal cases
+  are forms of "Arrow realization reference," but the reference
+  types are different enough that collapsing would require
+  introducing a sum of NodeId/DeclarationId (which would be a
+  worse coproduct, not a better one).
+- **Pattern 4 (dimensional)**: fails — there is no shared
+  coordinate space underlying the two terminal cases.
+
+ArrowBody's **terminal form is 2 variants** (UserDefined,
+ExternalRealization). Pending is the 3rd variant ONLY during
+the M1(2.5) → M3 transition. The ratchet at §8.11 enforces that
+the 3-variant form is not permanent. Once the ratchet count
+reaches zero, §8.11 requires the Pending variant be removed
+from the enum definition itself via a substrate-extension PR
+(reverse of §8.10's check).
 
 **This matches `body` for user functions.** A `UserDefined`
 body is a `NodeId` into the computation substrate — a typed
@@ -742,9 +860,24 @@ Monoid_op_arrow: Arrow { inputs: [T, T], output: T, body: Pending }
 Monoid_identity_ref: Atom(Identifier { name: "T", resolved: Some(Monoid_T_param) })
 ```
 
-`identity` is a value of type T, represented as an Atom reference to
-the T parameter. At inference time, `identity` resolves to a field with
-type T (and ultimately a concrete carrier when Monoid is instantiated).
+**Level note (Field vs value).** The Monoid declaration's
+`identity` child is a `Field`, not a value itself. The `Field`'s
+`ty` edge points at the T parameter declaration — i.e., "this
+field's TYPE is T." At runtime, a specific Monoid inhabitant
+(e.g., "additive monoid on Int") provides a concrete T value
+(e.g., `0`) that fills the identity slot. This matches the C++
+analogue exactly: `template<typename T> struct Monoid { T op;
+T identity; };` declares `identity` as a member of type T; the
+T in that position is a type, not a value, and the member slot
+holds a T-value at runtime. The Monoid declaration is the
+shape-level statement ("every Monoid has an identity field of
+type T"); concrete identity values come from witnesses at
+instantiation time (a design concern deferred to realization
+work, not M1(2.5) substrate shape).
+
+`identity` resolves at inference time to a field whose type is
+whatever T is bound to in the current Instantiation (e.g., Int
+for `Monoid<Int>`).
 
 ### Ring<T>
 
@@ -924,6 +1057,33 @@ special Service/Operation connective.
 parsing this subset produces the above Declaration tree with no
 extension to the connective enum.
 
+**Scope of the synthetic oracle.** The synthetic oracle is a
+**static substrate shape test**, not an end-to-end execution
+test. It validates that:
+
+- The parser can produce a nested-Conj Declaration tree at this
+  shape.
+- Name resolution correctly links identifier atoms to their
+  target declarations (`SyntheticService`, `SyntheticOperation`,
+  `String`, `Int`, `Bool`).
+- Inference walks the tree without panicking and type-checks the
+  Conj-with-meta-tag shape against the meta-type's declared
+  field layout.
+
+It does NOT validate:
+
+- That the declared structure corresponds to real external
+  behavior (there is no real `CmdExec` service to run).
+- That emission produces working target code (emission is M1(4)+).
+- That a language-spec realization exists for the operation
+  (realization is M1(3)+).
+- That runtime primitives invoke it correctly.
+
+Those validations are end-to-end consumer concerns that arrive
+later. The synthetic oracle is deliberately scoped to the
+substrate-shape layer only. See §6.5 below for the one smoke
+test that does exercise a minimal end-to-end realization path.
+
 **Why synthetic rather than the real shell.dag:** full shell.dag
 fidelity requires the extdeps/transports layer, sum-type payloads
 (for `exit`), and literal record construction (for `mock_response`)
@@ -933,6 +1093,77 @@ synthetic oracle tests the shapes that shell.dag uses without
 inheriting its specific external dependencies. Full shell.dag
 adoption is a follow-up milestone (M1(2.6) or M2) that lands
 after extdeps/transports exists as a declared .dag subtree.
+
+## 6.5 Realization smoke test (end-to-end spot check)
+
+The static oracles in §5 and §6 prove the substrate shape hosts
+the required compositions. They do NOT prove that the
+`ExternalRealization` path in `ArrowBody` actually wires through
+inference and connects a primitive Arrow to a realization
+declaration. That path is the one piece of M1(2.5)'s realization
+story that has to exist in Rust for the M3 `.dag` rewrite to be
+mechanical translation; leaving it entirely unvalidated would
+let realization-entanglement issues surface late.
+
+**The smoke test** is a small, self-contained validation of the
+ExternalRealization path:
+
+1. Bootstrap parses `dsl/std/logic.dag`, `dsl/std/bit.dag`,
+   `dsl/std/algebra.dag`, `dsl/std/types.dag` as normal
+   (producing primitive Arrows with `body: Pending`).
+2. **Additionally**, bootstrap parses a one-file stub
+   `dsl/extdeps/languages/rust.dag` that declares exactly ONE
+   realization: `Int64.add` maps to the Rust `i64::wrapping_add`
+   intrinsic. The stub is a Conj declaration:
+
+   ```dag
+   module extdeps.languages.rust
+
+   import std.integer { Int64 }
+
+   realization Int64_add {
+     for:    Int64.add   // the .dag concept being realized
+     target: rust        // language target
+     body:   "i64::wrapping_add"  // target-specific identifier
+   }
+   ```
+
+3. After bootstrap, the `Int64.add` Arrow's `body` field is
+   **`ExternalRealization(Int64_add_decl_id)`** instead of
+   `Pending`. The inference pass must treat this as a valid
+   realization and walk the declaration to verify signature
+   compatibility.
+4. A new test `smoke_int_add_external_realization` asserts:
+   - Int64.add's Arrow body is `ExternalRealization(_)` after
+     bootstrap, not `Pending`.
+   - The referenced Declaration is reachable by walking the
+     DeclarationId.
+   - The referenced Declaration's `target` field is the
+     `rust` Atom (validates the typed edge, not a name lookup).
+   - Inference accepts the Arrow as ready-for-emission.
+
+**Scope:** one language-spec stub declaration, one realization
+entry, one test. The `realization` meta-type declaration itself
+must land as a Conj declaration in std/ or extdeps/ as part of
+this work — expect ~30 lines of declarative `.dag` plus a
+~20-line Rust test. Total: ~1-2 hours beyond the main M1(2.5)
+scope.
+
+**Why this is in scope for M1(2.5) despite being deferred
+elsewhere.** M1(2.5)'s job is to pin down the substrate shape
+so that M3 (the `.dag` rewrite) is mechanical translation. The
+`ArrowBody::ExternalRealization` variant is part of the substrate
+shape commitment; having zero tests for it at M1(2.5) means the
+first code path that exercises it lands at M1(3)+ and might
+discover shape problems that force substrate changes — exactly
+the retrofit debt this milestone is meant to prevent. One smoke
+test closes this risk without pulling in a full rust.dag.
+
+**What this smoke test does NOT do.** It does not emit actual
+Rust code, does not execute anything, does not provide a real
+runtime. It just proves that the `ExternalRealization` path
+walks cleanly through inference. Emission of the walked result
+is M1(4) work.
 
 ## 7. Implementation plan
 
@@ -954,7 +1185,8 @@ Focused, small, one PR. No scope creep.
 | `dsl/std/algebra.dag` | VERIFY it parses into the new substrate. No file content changes — the file's shape is already right; just bring it into the bootstrap path. | ~15m |
 | `dsl/std/types.dag` | VERIFY Int = OrderedRing<Word64>, Bool = Classical, String = FreeMonoid<Char> all parse as Instantiation declarations. | ~15m |
 | `src/v3/compiler/src/bootstrap.rs` | NEW or UPDATE. Parse logic.dag → bit.dag → algebra.dag → types.dag in order at `Dag::new()` time (§8.6). | ~1h |
-| `src/v3/compiler/tests/m1_substrate_test.rs` | NEW. Two test cases: `parse_std_algebra_and_walk_int_add` and `parse_synthetic_service_all_layers`. | ~1.5h |
+| `src/v3/compiler/tests/m1_substrate_test.rs` | NEW. Three test cases: `parse_std_algebra_and_walk_int_add`, `parse_synthetic_service_all_layers`, and `smoke_int_add_external_realization` (§6.5). | ~2h |
+| `dsl/extdeps/languages/rust.dag` | NEW stub. One-file declaration containing the `realization` meta-type declaration and one concrete `realization Int64_add { for: Int64.add; target: rust; body: "i64::wrapping_add" }` entry. Parsed during bootstrap as part of §8.6's file order. | ~30m |
 
 **Total estimate: 14–16 hours.** Scope expanded from original
 10–12h estimate after the review pass identified additional
@@ -968,15 +1200,22 @@ tree in an incoherent state between PRs.
 1. **`cargo test -p v3-compiler`** — all 40 M0 tests pass unchanged.
 2. **`parse_std_algebra_and_walk_int_add`** — parse `std/algebra.dag`,
    declare `Int = OrderedRing<Word64>`, walk `Int.add`, assert the
-   result is `Arrow { inputs: [Word64, Word64], output: Word64 }`.
+   result is `Arrow { inputs: [Word64, Word64], output: Word64,
+   body: Pending }`.
 3. **`parse_synthetic_service_all_layers`** — parse the synthetic
    nested-domain model from §6, assert the Declaration tree
-   structure matches. Tests the same substrate shapes shell.dag
-   would exercise without requiring v2's extdeps/transports
-   declarations to exist yet.
-4. **`cargo clippy -p v3-compiler --all-targets -- -D warnings`** —
+   structure matches. Static substrate shape test — see §6 "Scope
+   of the synthetic oracle" for what this does and doesn't validate.
+4. **`smoke_int_add_external_realization`** (§6.5) — parse the
+   one-entry `dsl/extdeps/languages/rust.dag` stub, assert that
+   `Int64.add`'s Arrow body resolves to
+   `ExternalRealization(_)` (not `Pending`), walk the referenced
+   declaration, and confirm inference accepts the Arrow as
+   ready-for-emission. The only end-to-end validation in
+   M1(2.5); closes the realization-entanglement risk.
+5. **`cargo clippy -p v3-compiler --all-targets -- -D warnings`** —
    clean.
-5. **Substrate audit:** grep `TypeConnective::` variants in the M1
+6. **Substrate audit:** grep `TypeConnective::` variants in the M1
    code; confirm only the six variants from §3 exist. No
    `DeclKind::Service`, `DeclKind::Operation`, etc. variants were
    added. Extension stop signal holds.
@@ -1061,7 +1300,7 @@ element: T, bound: Exact(3) }`. Surface syntax covers both.
 Cardinality literal with `Exact(3)` and inline String-Atom
 children.
 
-### 8.6: Bootstrap file order — **logic → bit → algebra → types → user**
+### 8.6: Bootstrap file order — **logic → bit → algebra → types → realization stub → user**
 
 `Dag::new()` parses in this order, synchronously, before any
 user source:
@@ -1076,15 +1315,31 @@ user source:
 3. **`dsl/std/algebra.dag`** — Magma through OrderedRing, Field,
    Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid,
    PartialFunction. The algebra hierarchy parsed in one pass.
-4. **`dsl/std/types.dag`** — Int = OrderedRing<Word64>, Bool =
-   Classical (Bit), String = FreeMonoid<Char>, List<T> =
-   FreeMonoid<T>, etc. Inhabitance declarations.
+4. **`dsl/std/integer.dag`** + **`dsl/std/types.dag`** —
+   Int64 = OrderedRing<Word64> lives in `integer.dag` (per
+   v2's actual layout: `module std.integer` declares `type Int64`).
+   `types.dag` declares Bool = Classical (Bit), String =
+   FreeMonoid<Char>, List<T> = FreeMonoid<T>, and re-exports
+   `Int = Int64` as the short alias. Inhabitance declarations.
+5. **`dsl/extdeps/languages/rust.dag`** (§6.5 stub) — the
+   one-realization fixture for the smoke test. Parses the
+   `realization` meta-type declaration plus one concrete
+   `realization Int64_add { for: Int64.add; target: rust;
+   body: "i64::wrapping_add" }` entry. This step MUST come
+   after types/integer.dag so that the `Int64.add` reference
+   resolves correctly. If the parser cannot yet handle the
+   `realization` record-literal shape, the fallback is to
+   inject the equivalent declaration chain directly in Rust
+   via a `bootstrap::inject_realization_stub` helper;
+   `smoke_int_add_external_realization` validates either
+   path. See M1_FOLLOWUPS for the parser-gap tracking.
 
 Post-bootstrap, additional std/ files (iteration, containers,
 graph, etc.) get parsed lazily when user code imports them.
 
 This order matches MODELING.md's root-to-leaves layering: roots
-(logic) → carriers (bit) → algebras → concrete types → user code.
+(logic) → carriers (bit) → algebras → concrete types → smoke
+realization stub → user code.
 
 ### 8.7: Sum-type parser syntax — **`type Name = A | B(payload)`**
 
@@ -1136,6 +1391,49 @@ substrate rework. **Deferred to M1(3)** — implement alongside the
 cost lens as a CI check that audits the `TypeConnective` and
 `Behavior` enum variants against the audit file. ~1-2h of CI
 scaffolding work.
+
+### 8.11: Pending-elimination ratchet — **tracked separately, resolves by M3**
+
+Distinct from §8.10's substrate-extension audit. `ArrowBody::
+Pending` is a scaffolded state introduced in §Q7 for primitive
+Arrows whose realization declarations haven't landed yet. Pending
+is not intended as a forever-legal substrate variant — it must
+dissolve as M1(3) / M3 realization work proceeds.
+
+**The ratchet mechanism.** A CI check audits every reachable
+Arrow in the loaded declaration table and counts occurrences of
+`ArrowBody::Pending`. The count must **monotonically decrease**
+across commits after M1(2.5) ships: each M1(3)+ commit either
+preserves the count or reduces it, never increases it. The
+count is stored in a tracked ratchet file (analogous to v2's
+CX diagnostic ratchet) and a CI gate blocks PRs that regress
+the count.
+
+**Starting count at M1(2.5):** approximately one Pending per
+primitive Arrow field in `dsl/std/algebra.dag` (Magma.op,
+Semigroup.op, Monoid.op, Monoid.identity, Ring.add, Ring.zero,
+Ring.negate, Ring.mul, Ring.one, OrderedRing additional fields,
+etc.). Order-of-magnitude ~30-50 Pending arrows post-bootstrap.
+
+**Ending count:** zero. Every primitive Arrow must resolve to
+`ExternalRealization(DeclarationId)` pointing at a declaration
+in `dsl/extdeps/languages/<target>.dag`, or `UserDefined(NodeId)`
+for algebras whose operations are expressed as `.dag` sub-DAGs
+rather than target primitives.
+
+**Ratchet scope vs. §8.10 scope.** §8.10 enforces "no new
+substrate variants" (structural stability of the substrate
+itself). §8.11 enforces "Pending dissolves over time"
+(scaffolding cleanup). Different targets, different enforcement
+cadences, different files. Both deferred to M1(3) to implement;
+both documented here so the implementer knows what scaffolding
+commitments M1(2.5) creates.
+
+**Scoping note for M1(2.5).** The ratchet file does not have
+to exist at M1(2.5) ship time — what must exist is the decision
+to track Pending separately. A one-line note in `src/v3/ROADMAP.md`
+under the M1(3) milestone is sufficient. Actual CI wiring is
+M1(3) work.
 
 ## 9. What "done" looks like for M1(2.5)
 

@@ -685,11 +685,27 @@ candidate for future consideration only.
 ### Two groundings: static validation vs efficient realization
 
 Every concept in gunbc has **two groundings** that must both be
-present and must be consistent with each other. These are
-different things — they have different shapes, different
-purposes, and different completeness requirements. Earlier drafts
-of the thesis blurred them; this section pins the distinction
-down.
+present, in the thesis's end-state, and must be consistent with
+each other. These are different things — they have different
+shapes, different purposes, and different completeness
+requirements. Earlier drafts of the thesis blurred them; this
+section pins the distinction down.
+
+**Milestone scope note.** The thesis's top-level claim ("if it
+compiles, the intent is sound and will execute as declared")
+applies when both groundings are in place. **At M1(2.5), only
+the static grounding is validated.** Realization grounding — the
+target-language mapping that makes concepts emittable — lands at
+M1(3)+ as language-spec declarations in
+`dsl/extdeps/languages/`. During the M1(2.5) → M3 transition,
+some primitive Arrows carry a scaffolded `Pending` realization
+state: their concept decomposes completely via inhabitance, but
+their target-language realization is declared later. A CI
+ratchet (see `src/v3/M1_DESIGN.md` §8.11) requires that every
+Pending Arrow resolves to `UserDefined` or `ExternalRealization`
+before M3 completes. The top-level executability claim is
+therefore **milestone-conditional**: fully satisfied once M3's
+realization declarations land, not before.
 
 **Grounding #1: static grounding (`.dag` level).** Every concept
 walks all the way down to the root primitives (Classical Bit +
