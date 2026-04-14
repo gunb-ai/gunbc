@@ -107,7 +107,7 @@ impl Diagnostic {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct DiagnosticTable {
     entries: HashMap<PortId, Diagnostic>,
 }

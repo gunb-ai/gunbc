@@ -1,20 +1,26 @@
 // M0 acceptance tests.
 //
-// Test 1 — the session target: `let x = 1 + 2` compiles to a DAG
-// with Value(1) + Value(2) + Transform(BinaryOp(Add)) + Bind(x).
-//
-// invariant_none_type_implies_diagnostic — the structural audit of
-// the enforced mark_unresolved API. Walks every port in every
-// M0-test DAG and asserts the biconditional:
-//   Port.value_type == None  iff  DiagnosticTable contains PortId
-//
-// Tests 2-5 (Branch, Loop, provenance lens, type-mismatch diagnostic)
-// are deferred to future sessions per the session plan.
+// Tests 1-5 cover the full M0 pipeline. Structural audits verify
+// the fail-closed invariant (C-8) holds across both happy-path and
+// error-path inputs.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, FunctionRef, LiteralValue};
+use v3_compiler::dag::{Behavior, Dag, FunctionRef, LiteralValue, PortState};
 use v3_compiler::lens_provenance::{Origin, ProvenanceLens};
 use v3_compiler::types::{Prim, TypeShape};
+use v3_compiler::CompileError;
+
+/// Test helper: extract the Dag regardless of whether the compile
+/// succeeded or failed with semantic errors. Panics on tokenize/parse
+/// failures (which would indicate an unexpected structural error
+/// in the test source).
+fn compile_any(src: &str, file: &str) -> Dag {
+    match compile_to_dag(src, file) {
+        Ok(dag) => dag,
+        Err(CompileError::Semantic(dag)) => dag,
+        Err(other) => panic!("unexpected structural error: {other:?}"),
+    }
+}
 
 #[test]
 fn test_let_binding_produces_dag_shape() {
@@ -194,10 +200,6 @@ fn test_recursive_function_produces_loop_dag() {
 
 #[test]
 fn test_provenance_lens_reads_produced_by() {
-    // The v3-vs-v2 proof point: the provenance lens reads Port.produced_by
-    // directly and classifies by behavior kind. NO reconstruction. The
-    // ProvenanceLens implementation is under 60 lines — if it ever isn't,
-    // the substrate has a physics gap that needs fixing.
     let src = "let a = 1\nlet b = 2\nlet c = a + b";
     let dag = compile_to_dag(src, "test.v3").expect("compiles");
     let lens = ProvenanceLens::new(&dag);
@@ -209,22 +211,17 @@ fn test_provenance_lens_reads_produced_by() {
         .find(|b| b.name == "c")
         .expect("Bind(c) must exist");
 
-    // c's value port was produced by a Transform (the Add).
     let add_id = match lens.origin_of(bind_c.value) {
         Origin::Computed { by } => by,
         other => panic!("expected Origin::Computed for c, got {other:?}"),
     };
 
-    // The lens, reading only produced_by, agrees with structural lookup.
     let add = dag
         .node(add_id)
         .as_transform()
         .expect("add_id points to a Transform");
     assert_eq!(add.target, FunctionRef::new("std::int::add"));
 
-    // Each operand of Add came from a Value literal. The lens reports
-    // Origin::Source with the Value's NodeId — again, reading only
-    // produced_by on the input port and the producer's behavior kind.
     for input in &add.inputs {
         match lens.origin_of(*input) {
             Origin::Source { by: Some(node_id) } => {
@@ -241,27 +238,29 @@ fn test_provenance_lens_reads_produced_by() {
 
 #[test]
 fn test_type_mismatch_produces_diagnostic_entry() {
-    // `let x: Bool = 1` — the declared annotation is Bool but the
-    // value is an Int literal. Inference detects the conflict and
-    // calls mark_unresolved, which atomically nulls the port's
-    // value_type AND records a TypeMismatch diagnostic pointing at
-    // the annotation's span. G5: compile_to_dag still returns Ok.
-    let src = "let x: Bool = 1";
-    let dag = compile_to_dag(src, "test.v3").expect(
-        "G5: compile_to_dag never returns Err for type errors — they go to the diagnostic table",
-    );
+    // `let x: Bool = 1` — G5: compile_to_dag returns
+    // Err(CompileError::Semantic(dag)) because the diagnostic table
+    // is non-empty. The Dag is still accessible via the Err payload.
+    // The port for the Value(1) is Unresolved; the diagnostic table
+    // has a TypeMismatch entry.
+    let result = compile_to_dag("let x: Bool = 1", "test.v3");
+    let dag = match result {
+        Err(CompileError::Semantic(dag)) => dag,
+        other => panic!("expected Err(Semantic), got {other:?}"),
+    };
 
     let bind_x = dag
         .nodes()
         .iter()
         .filter_map(Behavior::as_bind)
         .find(|b| b.name == "x")
-        .expect("Bind(x) must still exist — type errors don't drop nodes");
+        .expect("Bind(x) still exists");
 
     let port = dag.port(bind_x.value);
     assert!(
-        port.value_type().is_none(),
-        "type mismatch nulls the port's value_type"
+        matches!(port.state(), PortState::Unresolved),
+        "type-mismatch port is Unresolved, state = {:?}",
+        port.state()
     );
     assert!(
         dag.diagnostics().contains(port.id()),
@@ -283,12 +282,8 @@ fn test_type_mismatch_produces_diagnostic_entry() {
 fn test_forward_reference_produces_diagnostic() {
     // Fail-closed (C-8): forward references are a failure path
     // routed through mark_unresolved, not a panic. The placeholder
-    // port has value_type = None and a ResolveError entry in the
-    // diagnostic table.
-    let src = "let y = x\nlet x = 1";
-    let dag = compile_to_dag(src, "test.v3").expect(
-        "G5: forward reference goes to the diagnostic table, not Err",
-    );
+    // port is Unresolved; compile_to_dag returns Err(Semantic).
+    let dag = compile_any("let y = x\nlet x = 1", "test.v3");
     let bind_y = dag
         .nodes()
         .iter()
@@ -296,8 +291,8 @@ fn test_forward_reference_produces_diagnostic() {
         .find(|b| b.name == "y")
         .expect("Bind(y) still exists");
     assert!(
-        dag.port(bind_y.value).value_type().is_none(),
-        "forward-ref port stays None"
+        matches!(dag.port(bind_y.value).state(), PortState::Unresolved),
+        "forward-ref port is Unresolved"
     );
     assert!(
         dag.diagnostics().contains(bind_y.value),
@@ -307,10 +302,12 @@ fn test_forward_reference_produces_diagnostic() {
 
 #[test]
 fn test_arity_mismatch_produces_diagnostic() {
-    // Fail-closed (C-8): decide-level failure in infer must route
-    // through mark_unresolved, not a silent None return.
-    let src = "fn f(a: Int) -> Int = a\nlet x = f(1, 2)";
-    let dag = compile_to_dag(src, "test.v3").expect("G5: type errors stay in the table");
+    // Fail-closed (C-8): decide-level failure in infer routes
+    // through mark_unresolved, not a silent return.
+    let dag = compile_any(
+        "fn f(a: Int) -> Int = a\nlet x = f(1, 2)",
+        "test.v3",
+    );
     let bind_x = dag
         .nodes()
         .iter()
@@ -318,8 +315,8 @@ fn test_arity_mismatch_produces_diagnostic() {
         .find(|b| b.name == "x")
         .expect("Bind(x) still exists");
     assert!(
-        dag.port(bind_x.value).value_type().is_none(),
-        "arity-mismatched call has None value type"
+        matches!(dag.port(bind_x.value).state(), PortState::Unresolved),
+        "arity-mismatched call is Unresolved"
     );
     let diag = dag
         .diagnostics()
@@ -333,15 +330,17 @@ fn test_arity_mismatch_produces_diagnostic() {
 
 #[test]
 fn test_unknown_function_produces_diagnostic() {
-    let src = "let x = unknown_fn(1)";
-    let dag = compile_to_dag(src, "test.v3").expect("G5: resolve errors stay in the table");
+    let dag = compile_any("let x = unknown_fn(1)", "test.v3");
     let bind_x = dag
         .nodes()
         .iter()
         .filter_map(Behavior::as_bind)
         .find(|b| b.name == "x")
         .expect("Bind(x) still exists");
-    assert!(dag.port(bind_x.value).value_type().is_none());
+    assert!(
+        matches!(dag.port(bind_x.value).state(), PortState::Unresolved),
+        "unknown function call is Unresolved"
+    );
     let diag = dag
         .diagnostics()
         .get(bind_x.value)
@@ -353,36 +352,80 @@ fn test_unknown_function_produces_diagnostic() {
 }
 
 #[test]
-fn invariant_none_type_implies_diagnostic() {
+fn test_compile_boundary_is_fail_closed() {
+    // compile_to_dag returns Ok ONLY when the diagnostic table is
+    // empty. A happy-path source returns Ok; any error source must
+    // return Err, even when the Dag is still well-formed enough to
+    // inspect.
+    assert!(
+        compile_to_dag("let x = 1 + 2", "test.v3").is_ok(),
+        "clean compile returns Ok"
+    );
+    assert!(
+        matches!(
+            compile_to_dag("let x: Bool = 1", "test.v3"),
+            Err(CompileError::Semantic(_))
+        ),
+        "type-mismatch source returns Err(Semantic)"
+    );
+    assert!(
+        matches!(
+            compile_to_dag("let y = x\nlet x = 1", "test.v3"),
+            Err(CompileError::Semantic(_))
+        ),
+        "forward-reference source returns Err(Semantic)"
+    );
+}
+
+#[test]
+fn invariant_port_state_matches_diagnostic_table() {
     // Structural audit of the enforced mark_unresolved API.
-    //   Port.value_type == None  iff  DiagnosticTable contains PortId
+    //
+    //   PortState == Unresolved       iff  DiagnosticTable.contains(port)
+    //   PortState == Resolved(_)      implies !DiagnosticTable.contains(port)
+    //   PortState == Uninferred       MUST NOT exist after compile returns
     //
     // Runs over both happy-path AND error-path inputs so the
     // biconditional is verified under conditions that actually
-    // exercise the None branch. This is the fail-closed audit.
+    // exercise each state.
     let sources = &[
         // Happy path
         "let x = 1 + 2",
         "let x = 5\nlet result = if x > 0 then 1 else 2",
         "fn count_down(n: Int) -> Int = if n == 0 then 0 else n + count_down(n - 1)\nlet answer = count_down(3)",
         "let a = 1\nlet b = 2\nlet c = a + b",
-        // Error paths — every port that ends up with None MUST
-        // have a diagnostic entry; every port with a diagnostic
-        // entry MUST have value_type = None.
+        // Error paths
         "let x: Bool = 1",
         "let y = x\nlet x = 1",
         "fn f(a: Int) -> Int = a\nlet x = f(1, 2)",
         "let x = unknown_fn(1)",
     ];
     for src in sources {
-        let dag = compile_to_dag(src, "invariant.v3").unwrap();
+        let dag = compile_any(src, "invariant.v3");
         for port in dag.all_ports() {
-            assert_eq!(
-                port.value_type().is_none(),
-                dag.diagnostics().contains(port.id()),
-                "physics invariant violated for port {:?} in source {src:?}",
-                port.id(),
-            );
+            match port.state() {
+                PortState::Uninferred => {
+                    panic!(
+                        "port {:?} is Uninferred after compile — post-sweep failed \
+                         in source {src:?}",
+                        port.id()
+                    );
+                }
+                PortState::Resolved(_) => {
+                    assert!(
+                        !dag.diagnostics().contains(port.id()),
+                        "Resolved port {:?} has a diagnostic entry in source {src:?}",
+                        port.id(),
+                    );
+                }
+                PortState::Unresolved => {
+                    assert!(
+                        dag.diagnostics().contains(port.id()),
+                        "Unresolved port {:?} has no diagnostic entry in source {src:?}",
+                        port.id(),
+                    );
+                }
+            }
         }
     }
 }

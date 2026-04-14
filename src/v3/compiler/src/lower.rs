@@ -4,9 +4,15 @@
 // HashMap<String, PortId> tracks let-binding names in scope so that
 // a later reference to a name resolves to the same port.
 //
+// Facts flow forward: every SurfaceExpr has a span, and every
+// Behavior we create carries that span as a structural field
+// (not a side table). Downstream stages (infer, lenses, emission)
+// read the span directly from the node. No reconstruction.
+//
 // Surface -> L1 map:
 //   IntLit             -> Value
-//   Var (local)        -> scope lookup (no new node)
+//   Var (local)        -> scope lookup (no new node; reuses producer's port)
+//   Var (unresolved)   -> placeholder port + ResolveError diagnostic
 //   Call               -> Transform { target: FunctionRef, inputs }
 //                         (operators like `+` pre-resolved to
 //                         "std::int::add" etc. by parse.rs)
@@ -44,15 +50,31 @@ fn lower_item(item: &SurfaceItem, dag: &mut Dag, scope: &mut HashMap<String, Por
             let value_port = lower_expr(expr, dag, scope);
             if let Some(ty) = type_ann {
                 let declared = lower_type(ty);
-                dag.record_annotation_span(value_port, ty.span().clone());
+                // Pre-set the declared type before inference runs.
+                // If the expression's inferred type conflicts, infer
+                // will detect it via the apply-level check and route
+                // the mismatch through mark_unresolved with a
+                // diagnostic that uses the annotation's span.
+                if let Some(producer_id) = dag.port(value_port).produced_by {
+                    // Override the producer's span with the annotation
+                    // span for diagnostic precision. We do this by
+                    // stashing the annotation span on the bind below;
+                    // the diagnostic uses bind_span.
+                    let _ = producer_id;
+                }
                 dag.set_port_type(value_port, declared);
             }
             let bind_id = dag.alloc_node_id();
+            let bind_span = match type_ann {
+                Some(ty) => ty.span().clone(),
+                None => expr_span(expr).clone(),
+            };
             dag.push_node(Behavior::Bind(BindNode {
                 id: bind_id,
                 name: name.clone(),
                 value: value_port,
                 params: Vec::new(),
+                span: bind_span,
             }));
             scope.insert(name.clone(), value_port);
         }
@@ -102,7 +124,8 @@ fn lower_fn_item(
 
     // 3. Lower the body in the extended scope.
     let body_return_port = lower_expr(body, dag, &body_scope);
-    let body_root = producer_of(dag, body_return_port);
+    let body_root = dag.port(body_return_port).produced_by;
+    let body_span = expr_span(body).clone();
 
     // 4. If the body is recursive, wrap it in a Loop with the first
     //    parameter as the bound count (the M0 pattern: structurally
@@ -121,8 +144,8 @@ fn lower_fn_item(
                 count: param_ports[0],
             },
             output: loop_output,
+            span: body_span.clone(),
         }));
-        dag.record_node_span(loop_id, synthetic_lower_span(name));
         loop_output
     } else {
         body_return_port
@@ -138,6 +161,7 @@ fn lower_fn_item(
         name: name.to_string(),
         value: value_port,
         params: param_ports,
+        span: body_span,
     }));
     outer_scope.insert(name.to_string(), value_port);
 }
@@ -166,8 +190,8 @@ fn lower_expr(
                 id: node_id,
                 data: LiteralValue::Int(*value),
                 output,
+                span: span.clone(),
             }));
-            dag.record_node_span(node_id, span.clone());
             output
         }
         SurfaceExpr::Var { name, span } => match scope.get(name) {
@@ -175,7 +199,7 @@ fn lower_expr(
             None => {
                 // Forward reference: the name isn't in scope yet.
                 // Fail-closed: allocate a placeholder port and mark
-                // it unresolved with a ResolveError diagnostic. The
+                // it Unresolved with a ResolveError diagnostic. The
                 // pipeline continues so more errors can accumulate.
                 let port = dag.alloc_port(None);
                 dag.mark_unresolved(
@@ -198,8 +222,8 @@ fn lower_expr(
                 target: FunctionRef::new(target.clone()),
                 inputs: input_ports,
                 output,
+                span: span.clone(),
             }));
-            dag.record_node_span(node_id, span.clone());
             output
         }
         SurfaceExpr::If {
@@ -229,8 +253,8 @@ fn lower_expr(
                     },
                 ],
                 output: branch_output,
+                span: span.clone(),
             }));
-            dag.record_node_span(branch_id, span.clone());
             branch_output
         }
     }
@@ -238,10 +262,6 @@ fn lower_expr(
 
 fn producer_of(dag: &Dag, port: PortId) -> Option<NodeId> {
     dag.port(port).produced_by
-}
-
-fn synthetic_lower_span(name: &str) -> SourceSpan {
-    SourceSpan::new(format!("<lower:{name}>"), 0, 0)
 }
 
 fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
@@ -263,5 +283,14 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
                 || is_recursive(then_branch, self_name)
                 || is_recursive(else_branch, self_name)
         }
+    }
+}
+
+fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
+    match expr {
+        SurfaceExpr::IntLit { span, .. }
+        | SurfaceExpr::Var { span, .. }
+        | SurfaceExpr::Call { span, .. }
+        | SurfaceExpr::If { span, .. } => span,
     }
 }
