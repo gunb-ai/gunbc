@@ -103,7 +103,7 @@ fn full_dsl_compiles() {
     );
 }
 
-fn collect_dag_sources(
+pub fn collect_dag_sources(
     root: &std::path::Path,
     dir: &std::path::Path,
     sources: &mut Vec<Rc<SourceFile>>,

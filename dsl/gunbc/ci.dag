@@ -99,20 +99,6 @@ data test_gate: CIGate = {
   source: TestSuiteGate { test_name: "" }
 }
 
-data full_dsl_gate: CIGate = {
-  name: "Full DSL Compiles",
-  command: ignored_test_command(cargo: "cargo", package: test_package, test_name: "full_dsl_compiles"),
-  blocking: true,
-  source: TestSuiteGate { test_name: "full_dsl_compiles" }
-}
-
-data diagnostic_ratchet_gate: CIGate = {
-  name: "Diagnostic Ratchet",
-  command: ignored_test_command(cargo: "cargo", package: test_package, test_name: "strict_compile_diagnostic_count"),
-  blocking: false,
-  source: RatchetGate { metric: DiagnosticCount, direction: Down }
-}
-
 // Script gates — will become `dag run` invocations once the tool
 // workflows execute reliably in any environment.
 
@@ -123,25 +109,17 @@ data l1_gate: CIGate = {
   source: RatchetGate { metric: L1TypeKnowledge, direction: Stable }
 }
 
-data stage0_freshness_gate: CIGate = {
-  name: "Stage0 Freshness",
-  command: "scripts/check-stage0-freshness.sh",
-  blocking: true,
-  source: FreshnessGate
-}
+// Consolidated compile gate — 4 hermetic tests sharing a single
+// compilation via LazyLock (ci_diagnostic_ratchet, ci_performance_ratchet,
+// ci_freshness, ci_fixed_point). Run in one process via prefix match.
+// Pass 1 compiles once for diagnostic/perf/freshness checks;
+// pass 2 builds stage1 and compiles again for fixed-point.
+// Replaces 4 separate gates that each independently built + compiled
+// (6 self-compiles → 2).
 
-// Test gates derived from compiler.dag.
-
-data performance_ratchet_gate: CIGate = {
-  name: "Performance Ratchet",
-  command: ignored_test_command(cargo: "cargo", package: test_package, test_name: "performance_ratchet"),
-  blocking: true,
-  source: RatchetGate { metric: Performance, direction: Stable }
-}
-
-data bootstrap_fixed_point_gate: CIGate = {
-  name: "Bootstrap Fixed Point",
-  command: ignored_test_command(cargo: "cargo", package: test_package, test_name: "bootstrap_fixed_point"),
+data compile_gates_gate: CIGate = {
+  name: "Compile Gates",
+  command: ignored_test_command(cargo: "cargo", package: test_package, test_name: "ci_"),
   blocking: true,
   source: FixedPointGate
 }
@@ -150,14 +128,13 @@ data bootstrap_fixed_point_gate: CIGate = {
 
 data ci_pipeline: CIPipeline = {
   name: "gunbc-ci",
+  // compile_gates first: build_stage0() hits the clean release cache
+  // from ci.yml's Build Compiler step. Running clippy before this would
+  // invalidate cargo's release fingerprints, forcing a full rebuild.
   gates: [
+    compile_gates_gate,
     lint_gate,
     test_gate,
-    full_dsl_gate,
-    diagnostic_ratchet_gate,
-    l1_gate,
-    stage0_freshness_gate,
-    performance_ratchet_gate,
-    bootstrap_fixed_point_gate
+    l1_gate
   ]
 }
