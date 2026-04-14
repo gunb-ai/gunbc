@@ -925,11 +925,40 @@ the v3 direction. Status matters because the doc builds on them:
 | 4 | Purity lens | **PASS (full)** | 1 new file, zero compiler changes, 3117 pure / 36 effectful. Validates observational lens mechanism. |
 | 5 | ExprData variant cost | **MEASURED** | 8-11 files, ~30 match arms per new variant. Validates the disease is real. |
 
-**Experiment 2 is the honest partial.** The carry path works at
-the substrate level, but the old reconstruction hasn't been deleted.
-Until at least one reconstruction function is DELETED (not just
-bypassed), the v3 spec's "lenses read physics" claim rests on a
-half-proof. The mechanism is validated; the full dividend is not.
+**Experiment 2 is a gate on v3 construction.**
+
+The carry path works, but the old reconstruction runs in parallel.
+This is strictly worse than v2's starting state — two sources of
+truth for provenance instead of one. The "dividend is enabled but
+not banked" framing understates it: there is active debt. Every
+day both paths coexist, new code might silently read from the old
+reconstruction and depend on it, making the eventual deletion
+harder. The parallel implementation IS the construct-discard-
+reconstruct pattern, just with "also construct" added.
+
+**Gate:** Experiment 2 must complete (at least one reconstruction
+function DELETED, CX violations not increased) before the v3 spec
+is considered validated for "lenses read physics." The mechanism
+works. The dividend is not banked. Finishing is probably a day of
+work and turns a partial into a full. Cheap to do, expensive to
+skip.
+
+### Mechanism vs dividend discipline
+
+Use this as a standing discipline for v3 work:
+
+| Claim | Mechanism | Dividend |
+|---|---|---|
+| Rule-table transforms | validated (Exp 3) | banked |
+| Observational lenses | validated (Exp 4) | banked |
+| Facts carried through bindings | validated (Exp 2) | **NOT banked** — old path not deleted |
+| Lambda = function | validated (Exp 1) | partially banked — closure rule identified |
+| ExprData tax is real | measured (Exp 5) | target: 8-11x → 1x |
+
+The spec only claims credit when both columns are green. Exp 3+4
+justify the TransformRule dissolution and lens mechanism. Exp 2
+justifies the "physics carries facts" claim ONLY when the old
+reconstruction is gone.
 
 All experiments keep 415 tests green and CX ratchet stable.
 
