@@ -1,17 +1,25 @@
 // Type inference: fills Port.state by propagating types forward
 // through the DAG.
 //
-// M0 scope:
-//   - ValueNode(literal)  -> output port = literal type
-//   - TransformNode       -> output type from target function's
-//                            signature (user signature registry OR
-//                            primitive table). Arity-mismatch and
+// M1 task (1) update: signatures are read from the Dag's
+// declaration table instead of a hardcoded primitive_signature()
+// match and a parallel signatures map. Transform's target is a
+// FunctionRef (a DeclarationId newtype), and the declaration's
+// `DeclKind::Function { params, return_type, body_port }` carries
+// everything inference needs. The body-state check that used to
+// scan Binds by name now reads the declaration's `body_port`
+// field directly — no name lookups on the hot path.
+//
+// M0 scope (unchanged):
+//   - ValueNode(literal)  -> output port = literal.ty
+//   - TransformNode       -> output type from target declaration's
+//                            Function signature. Arity-mismatch and
 //                            unknown-target are fail-closed.
 //   - BranchNode          -> output type = unified path outputs.
-//                            Path-disagreement is fail-closed.
-//   - LoopNode            -> output type pre-set during lowering
-//                            from declared return type; infer
-//                            leaves it alone.
+//                            Condition must be Bool; path-disagreement
+//                            is fail-closed.
+//   - LoopNode            -> reconciles pre-seeded output with the
+//                            body's actual return type (M0.10).
 //   - BindNode            -> no output port to fill; the bound name
 //                            reuses its value port via the scope
 //                            map set during lowering.
@@ -33,9 +41,8 @@
 //
 // G5: never return Result<_, TypeError>, never throw.
 
-use crate::dag::{Behavior, Dag, FunctionRef, LiteralValue, PortId, PortState};
+use crate::dag::{Behavior, Dag, DeclKind, FunctionRef, PortId, PortState, TypeShape};
 use crate::diagnostics::{Diagnostic, SourceSpan};
-use crate::types::{Prim, TypeShape};
 
 pub fn infer(dag: &mut Dag) {
     loop {
@@ -122,104 +129,14 @@ enum Decision {
 
 fn decide(dag: &Dag, index: usize) -> Decision {
     match &dag.nodes()[index] {
-        Behavior::Value(v) => {
-            let ty = match &v.data {
-                LiteralValue::Int(_) => TypeShape::Primitive(Prim::Int),
-                LiteralValue::Bool(_) => TypeShape::Primitive(Prim::Bool),
-                LiteralValue::String(_) => TypeShape::Primitive(Prim::String),
-            };
-            Decision::Set(v.output, ty)
-        }
-        Behavior::Transform(t) => {
-            // User-function Bind-state check: if the target is a
-            // user function, verify that its Bind.value port is in
-            // Resolved state. An Unresolved function means the body
-            // conflicted with the declared signature (caught by the
-            // apply-level conflict check on the function's return
-            // port), and the declared signature is no longer
-            // trustworthy. An Uninferred function means the body
-            // hasn't been processed yet this iteration; Retry.
-            //
-            // This is the producer-fact-reaches-consumer path: the
-            // body-validity fact lives on the function's Bind port,
-            // and call sites consult it before trusting the
-            // registered signature. Without this check, a function
-            // with a body/signature mismatch silently propagates
-            // its declared return type to all call sites.
-            if dag.signature(&t.target.name).is_some() {
-                if let Some(bind) = dag.lookup_function(&t.target.name) {
-                    match dag.port(bind.value).state() {
-                        PortState::Uninferred => return Decision::Retry,
-                        PortState::Unresolved => {
-                            return Decision::Fail(
-                                t.output,
-                                Diagnostic::ResolveError {
-                                    name: format!(
-                                        "function `{}` has an invalid body",
-                                        t.target.name
-                                    ),
-                                    span: t.span.clone(),
-                                },
-                            );
-                        }
-                        PortState::Resolved(_) => {}
-                    }
-                }
-            }
-
-            let Some(sig) = lookup_signature(dag, &t.target) else {
-                return Decision::Fail(
-                    t.output,
-                    Diagnostic::ResolveError {
-                        name: t.target.name.clone(),
-                        span: t.span.clone(),
-                    },
-                );
-            };
-            if sig.params.len() != t.inputs.len() {
-                return Decision::Fail(
-                    t.output,
-                    Diagnostic::ArityMismatch {
-                        function: t.target.name.clone(),
-                        expected: sig.params.len(),
-                        actual: t.inputs.len(),
-                        span: t.span.clone(),
-                    },
-                );
-            }
-            for (input_port, expected_ty) in t.inputs.iter().zip(sig.params.iter()) {
-                match dag.port(*input_port).state() {
-                    PortState::Uninferred => return Decision::Retry,
-                    PortState::Unresolved => {
-                        return Decision::Fail(
-                            t.output,
-                            Diagnostic::ResolveError {
-                                name: format!("(upstream failure in {})", t.target.name),
-                                span: t.span.clone(),
-                            },
-                        );
-                    }
-                    PortState::Resolved(actual) if actual == expected_ty => {}
-                    PortState::Resolved(actual) => {
-                        return Decision::Fail(
-                            t.output,
-                            Diagnostic::TypeMismatch {
-                                expected: expected_ty.clone(),
-                                actual: actual.clone(),
-                                span: t.span.clone(),
-                            },
-                        );
-                    }
-                }
-            }
-            Decision::Set(t.output, sig.return_type)
-        }
+        Behavior::Value(v) => Decision::Set(v.output, v.literal.ty),
+        Behavior::Transform(t) => decide_transform(dag, t.id, t.target, &t.inputs, t.output, &t.span),
         Behavior::Branch(b) => {
             // Branch input must be Bool — the condition selects
             // which path fires. Not checking this was the embarrassing
             // miss from the M0.1-M0.6 review: `if 1 then 2 else 3`
             // typed as Int with no diagnostic.
-            let bool_ty = TypeShape::Primitive(Prim::Bool);
+            let bool_ty = lookup_primitive_type(dag, "Bool");
             match dag.port(b.input).state() {
                 PortState::Uninferred => return Decision::Retry,
                 PortState::Unresolved => {
@@ -237,7 +154,7 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                         b.output,
                         Diagnostic::TypeMismatch {
                             expected: bool_ty,
-                            actual: ty.clone(),
+                            actual: *ty,
                             span: b.span.clone(),
                         },
                     );
@@ -259,7 +176,7 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                         },
                     );
                 }
-                PortState::Resolved(t) => t.clone(),
+                PortState::Resolved(t) => *t,
             };
             for path in iter {
                 match dag.port(path.output).state() {
@@ -278,8 +195,8 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                         return Decision::Fail(
                             b.output,
                             Diagnostic::TypeMismatch {
-                                expected: first_type.clone(),
-                                actual: other.clone(),
+                                expected: first_type,
+                                actual: *other,
                                 span: b.span.clone(),
                             },
                         );
@@ -337,13 +254,118 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                         span: l.span.clone(),
                     },
                 ),
-                PortState::Resolved(body_ty) => {
-                    Decision::Set(l.output, body_ty.clone())
-                }
+                PortState::Resolved(body_ty) => Decision::Set(l.output, *body_ty),
             }
         }
         Behavior::Bind(_) => Decision::Retry,
     }
+}
+
+/// Apply a FunctionRef to its input ports: look up the declared
+/// signature on the declaration table, run the body-state check
+/// (for user functions with a `body_port`), verify arity and
+/// parameter types, and return the declared return type.
+fn decide_transform(
+    dag: &Dag,
+    _node_id: crate::dag::NodeId,
+    target: FunctionRef,
+    inputs: &[PortId],
+    output: PortId,
+    span: &SourceSpan,
+) -> Decision {
+    let decl = dag.declaration(target.declaration());
+    let (params, return_type, body_port) = match &decl.kind {
+        DeclKind::Function {
+            params,
+            return_type,
+            body_port,
+        } => (params, *return_type, *body_port),
+        DeclKind::Type => {
+            return Decision::Fail(
+                output,
+                Diagnostic::ResolveError {
+                    name: format!("`{}` is a type, not a function", decl.name),
+                    span: span.clone(),
+                },
+            );
+        }
+    };
+
+    // User-function body-state check: if the target is a user
+    // function whose body_port is not Resolved, either retry
+    // (body still being inferred) or fail (body already unresolved,
+    // meaning the declared signature is no longer trustworthy).
+    //
+    // Primitives have body_port: None and skip this check — their
+    // declared signatures are unconditionally trusted.
+    //
+    // This is the producer-fact-reaches-consumer path from M0.10
+    // reshaped for M1(1): the body-validity fact lives on the
+    // declaration's body_port field, and call sites consult it
+    // before trusting the declared signature.
+    if let Some(body_port) = body_port {
+        match dag.port(body_port).state() {
+            PortState::Uninferred => return Decision::Retry,
+            PortState::Unresolved => {
+                return Decision::Fail(
+                    output,
+                    Diagnostic::ResolveError {
+                        name: format!("function `{}` has an invalid body", decl.name),
+                        span: span.clone(),
+                    },
+                );
+            }
+            PortState::Resolved(_) => {}
+        }
+    }
+
+    if params.len() != inputs.len() {
+        return Decision::Fail(
+            output,
+            Diagnostic::ArityMismatch {
+                function: decl.name.clone(),
+                expected: params.len(),
+                actual: inputs.len(),
+                span: span.clone(),
+            },
+        );
+    }
+    for (input_port, expected_ty) in inputs.iter().zip(params.iter()) {
+        match dag.port(*input_port).state() {
+            PortState::Uninferred => return Decision::Retry,
+            PortState::Unresolved => {
+                return Decision::Fail(
+                    output,
+                    Diagnostic::ResolveError {
+                        name: format!("(upstream failure in {})", decl.name),
+                        span: span.clone(),
+                    },
+                );
+            }
+            PortState::Resolved(actual) if actual == expected_ty => {}
+            PortState::Resolved(actual) => {
+                return Decision::Fail(
+                    output,
+                    Diagnostic::TypeMismatch {
+                        expected: *expected_ty,
+                        actual: *actual,
+                        span: span.clone(),
+                    },
+                );
+            }
+        }
+    }
+    Decision::Set(output, return_type)
+}
+
+/// Look up a primitive type (Int, Bool, String) as a TypeShape.
+/// Panics if the declaration is missing — bootstrap_primitives
+/// is the authority, and a missing primitive is a bootstrap bug.
+fn lookup_primitive_type(dag: &Dag, name: &str) -> TypeShape {
+    let id = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("primitive `{name}` missing from bootstrap"));
+    TypeShape::new(id)
 }
 
 /// Return the "output" port of a behavior node — the port that
@@ -367,42 +389,4 @@ fn node_span_for_port(dag: &Dag, port: PortId) -> Option<SourceSpan> {
 
 fn synthetic_span() -> SourceSpan {
     SourceSpan::new("<inferred>", 0, 0)
-}
-
-/// Resolve a FunctionRef to a signature:
-///   1. User function registry (populated during lowering)
-///   2. Hardcoded primitive table (M0 placeholder for std/ algebra
-///      declarations — migrates in M1)
-fn lookup_signature(dag: &Dag, target: &FunctionRef) -> Option<ResolvedSignature> {
-    if let Some(sig) = dag.signature(&target.name) {
-        return Some(ResolvedSignature {
-            params: sig.params.clone(),
-            return_type: sig.return_type.clone(),
-        });
-    }
-    primitive_signature(&target.name)
-}
-
-struct ResolvedSignature {
-    params: Vec<TypeShape>,
-    return_type: TypeShape,
-}
-
-fn primitive_signature(name: &str) -> Option<ResolvedSignature> {
-    let int = || TypeShape::Primitive(Prim::Int);
-    let bool_ty = || TypeShape::Primitive(Prim::Bool);
-    match name {
-        "std::int::add" | "std::int::sub" | "std::int::mul" | "std::int::div" => {
-            Some(ResolvedSignature {
-                params: vec![int(), int()],
-                return_type: int(),
-            })
-        }
-        "std::int::eq" | "std::int::ne" | "std::int::lt" | "std::int::le"
-        | "std::int::gt" | "std::int::ge" => Some(ResolvedSignature {
-            params: vec![int(), int()],
-            return_type: bool_ty(),
-        }),
-        _ => None,
-    }
 }

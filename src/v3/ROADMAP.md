@@ -114,16 +114,25 @@ scaffolds inherits the pattern. See
 `src/v3/M0_RETROSPECTIVE.md` §"The primitive substrate gap" for
 the rationale.
 
-- [ ] **(1) Primitive substrate restructuring** — replace the
-  parallel-representation scaffolds (`Prim` enum, `FunctionRef`-as-
-  string, hardcoded `primitive_signature` table) with a
-  `Declaration` table on the Dag, consumed via `DeclarationId`
-  references. Primitives remain hardcoded via `bootstrap_primitives`
-  at `Dag::new()`. No std/ parsing yet. Acceptance: `FunctionRef`
-  and `TypeShape` are both `DeclarationId` newtypes;
-  `primitive_signature` function is deleted; inference reads
-  signatures from `dag.declaration(id)`. Existing 38 tests must
-  continue to pass.
+- [x] **(1) Primitive substrate restructuring** — DONE. Parallel-
+  representation scaffolds (`Prim` enum, `FunctionRef`-as-string,
+  hardcoded `primitive_signature` table, `Dag.signatures` HashMap,
+  `Signature` struct) are replaced by a `Declaration` table on the
+  Dag, consumed via `DeclarationId` newtypes wrapped as
+  `TypeShape(DeclarationId)` and `FunctionRef(DeclarationId)`.
+  Primitives bootstrap via `Dag::bootstrap_primitives` at
+  `Dag::new()`. User functions register themselves as Declarations
+  before body lowering (so recursive calls can resolve the
+  signature without a fixpoint cycle) and patch the `body_port`
+  field on the declaration after the Bind is created. Inference's
+  Transform case reads signatures from `dag.declaration(id).kind`;
+  the body-state check reads the declaration's `body_port` directly
+  — no name lookups on the hot path. `LiteralValue` dissolved to
+  `Literal { ty: TypeShape, data: LiteralData }`. 40 acceptance
+  tests pass, clippy clean, `types.rs` deleted. See
+  `src/v3/compiler/src/dag.rs` for the shape and the dissolution
+  receipts on `DeclarationId` / `TypeShape` / `FunctionRef` /
+  `Literal` / `DeclKind`.
 - [ ] **(2) std/ parsing.** Replace the `bootstrap_primitives`
   hardcoded table with a std/ parse pass. Declarations now come
   from `.dag` source. The substrate doesn't change during this

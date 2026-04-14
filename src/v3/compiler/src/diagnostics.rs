@@ -28,10 +28,12 @@
 //     producing_node: Option<NodeId>,
 //   }
 //
-// TRIGGER for dissolution: when typed references (TypeRef, FieldRef,
-// FunctionRef beyond M0's symbolic string form) exist in the
-// substrate and can be used as Subject carriers. That's M1+ work
-// after std/ declarations land.
+// TRIGGER for dissolution: when richer typed references (FieldRef,
+// SubjectRef) exist in the substrate and can be used as Subject
+// carriers. M1 task (1) reshaped TypeShape and FunctionRef to
+// DeclarationId-backed newtypes, but the richer Subject shape still
+// needs field-level and node-level refs. That's M1+ work after more
+// of std/ lands.
 //
 // Extension from 3→5 variants at M0.5 is deferred dissolution with
 // justification: the fail-closed invariant (C-8) requires that every
@@ -48,8 +50,7 @@
 
 use std::collections::HashMap;
 
-use crate::dag::PortId;
-use crate::types::TypeShape;
+use crate::dag::{PortId, TypeShape};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceSpan {

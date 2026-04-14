@@ -19,7 +19,6 @@ pub mod dag;
 pub mod diagnostics;
 pub mod lens_depth;
 pub mod lens_provenance;
-pub mod types;
 
 mod infer;
 mod lower;

@@ -18,15 +18,26 @@
 // (not a side table). Downstream stages (infer, lenses, emission)
 // read the span directly from the node. No reconstruction.
 //
+// M1 task (1) name resolution: surface-level strings for type
+// names and function targets (e.g., "Int", "std::int::add") are
+// resolved to [`DeclarationId`]s via `dag.declaration_by_name()`
+// at lowering time. Primitives are pre-populated by
+// `bootstrap_primitives`; user functions register themselves
+// with `dag.register_declaration` before their bodies are lowered
+// (so recursive calls can look up the function's own signature
+// without a fixpoint cycle), and patch their `body_port` with
+// `dag.set_function_body_port` after the Bind is created.
+//
 // Surface -> L1 map:
-//   IntLit             -> Value(LiteralValue::Int)
-//   BoolLit            -> Value(LiteralValue::Bool)
-//   StringLit          -> Value(LiteralValue::String)
+//   IntLit             -> Value(Literal { ty: Int,    data: Int(_) })
+//   BoolLit            -> Value(Literal { ty: Bool,   data: Bool(_) })
+//   StringLit          -> Value(Literal { ty: String, data: String(_) })
 //   Var (local)        -> scope lookup (no new node; reuses producer's port)
 //   Var (unresolved)   -> placeholder port + ResolveError diagnostic
 //   Call               -> Transform { target: FunctionRef, inputs }
 //                         (operators like `+` pre-resolved to
-//                         "std::int::add" etc. by parse.rs)
+//                         "std::int::add" etc. by parse.rs, then
+//                         resolved to a DeclarationId here)
 //   If/then/else       -> Branch with 2 Paths
 //   Fn item            -> Bind with non-empty params field
 //                         + Loop wrapper when body is recursive
@@ -35,12 +46,11 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::dag::{
-    Behavior, BindNode, Bound, BranchNode, Dag, FunctionRef, LiteralValue, LoopNode, NodeId, Path,
-    PortId, Signature, TransformNode, ValueNode,
+    Behavior, BindNode, Bound, BranchNode, Dag, DeclKind, Declaration, FunctionRef, Literal,
+    LiteralData, LoopNode, NodeId, Path, PortId, TransformNode, TypeShape, ValueNode,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::parse::{SurfaceExpr, SurfaceItem, SurfaceModule, SurfaceParam, SurfaceType};
-use crate::types::{Prim, TypeShape};
 
 pub fn lower(module: &SurfaceModule) -> Dag {
     let mut dag = Dag::new();
@@ -73,7 +83,7 @@ fn lower_item(
         } => {
             let value_port = lower_expr(expr, dag, &scope);
             if let Some(ty) = type_ann {
-                match lower_type(ty) {
+                match lower_type(dag, ty) {
                     Ok(declared) => dag.set_port_type(value_port, declared),
                     Err(diag) => dag.mark_unresolved(value_port, diag),
                 }
@@ -124,19 +134,20 @@ fn lower_fn_item(
     //    a ResolveError and fall through with a sentinel Int type.
     //    This propagates via the cascade logic in infer to every
     //    call site that touches this parameter.
+    let int_sentinel = lookup_primitive(dag, "Int");
     let mut param_ports: Vec<PortId> = Vec::with_capacity(params.len());
     let mut param_types: Vec<TypeShape> = Vec::with_capacity(params.len());
     let mut body_scope: HashMap<String, PortId> = outer_scope.clone();
     for param in params {
         let port = dag.alloc_port(None);
-        let ty = match lower_type(&param.ty) {
+        let ty = match lower_type(dag, &param.ty) {
             Ok(ty) => {
-                dag.set_port_type(port, ty.clone());
+                dag.set_port_type(port, ty);
                 ty
             }
             Err(diag) => {
                 dag.mark_unresolved(port, diag);
-                TypeShape::Primitive(Prim::Int)
+                int_sentinel
             }
         };
         body_scope.insert(param.name.clone(), port);
@@ -146,38 +157,38 @@ fn lower_fn_item(
 
     // 2. Register the function's declared signature BEFORE lowering
     //    the body, so recursive Transforms in the body can resolve
-    //    their own function's return type without a cycle.
+    //    their own function's return type without a cycle. We
+    //    register a user-function Declaration with body_port: None
+    //    and patch it in step 5 once the Bind is created.
+    //
     //    On unknown return type name, we still register (with a
     //    sentinel) so that the structure of the DAG is complete,
     //    but we also allocate a placeholder port to carry the
     //    ResolveError so the fail-closed invariant holds.
-    let return_ty = match lower_type(return_type) {
+    let return_ty = match lower_type(dag, return_type) {
         Ok(ty) => ty,
         Err(diag) => {
             let err_port = dag.alloc_port(None);
             dag.mark_unresolved(err_port, diag);
-            TypeShape::Primitive(Prim::Int)
+            int_sentinel
         }
     };
-    dag.register_signature(
-        name,
-        Signature {
-            params: param_types.clone(),
-            return_type: return_ty.clone(),
+    let fn_decl_id = dag.register_declaration(Declaration {
+        name: name.to_string(),
+        kind: DeclKind::Function {
+            params: param_types,
+            return_type: return_ty,
+            body_port: None,
         },
-    );
+    });
 
     // 2.5. Mutual recursion check. If this function is part of a
     //      call cycle of size > 1, skip body lowering entirely and
     //      emit a rejection Bind whose value port is Unresolved.
-    //      The signature remains registered (so other functions
+    //      The declaration remains registered (so other functions
     //      that call this one can look it up and cascade Fail),
     //      but the Bind.value port's Unresolved state prevents
-    //      callers from trusting the signature. This is the
-    //      existing Bind-state check from M0.8 in reverse: here,
-    //      we preemptively mark the Bind invalid because we know
-    //      the body can't be typed without support we haven't
-    //      built yet.
+    //      callers from trusting the signature.
     if mutually_recursive.contains(name) {
         let err_port = dag.alloc_port(None);
         let body_span = expr_span(body).clone();
@@ -198,6 +209,7 @@ fn lower_fn_item(
             params: param_ports,
             span: body_span,
         }));
+        dag.set_function_body_port(fn_decl_id, err_port);
         let mut outer_scope = outer_scope;
         outer_scope.insert(name.to_string(), err_port);
         return outer_scope;
@@ -257,7 +269,7 @@ fn lower_fn_item(
         } else {
             let loop_id = dag.alloc_node_id();
             let loop_output = dag.alloc_port(Some(loop_id));
-            dag.set_port_type(loop_output, return_ty.clone());
+            dag.set_port_type(loop_output, return_ty);
             let loop_body_node = body_root.unwrap_or(loop_id);
             dag.push_node(Behavior::Loop(LoopNode {
                 id: loop_id,
@@ -276,11 +288,11 @@ fn lower_fn_item(
         body_return_port
     };
 
-    // 5. Create the Bind for the function. The value port's type is
-    //    the declared return type — pre-set so inference for call
-    //    sites can trust it (subject to the Bind-state check in
-    //    infer's Transform decide, which catches body/signature
-    //    mismatches).
+    // 5. Create the Bind for the function and patch the declaration
+    //    to point at its value port. The value port's type is the
+    //    declared return type — pre-set so inference for call sites
+    //    can trust it (subject to the body-port check in infer's
+    //    Transform decide, which catches body/signature mismatches).
     dag.set_port_type(value_port, return_ty);
     let bind_id = dag.alloc_node_id();
     dag.push_node(Behavior::Bind(BindNode {
@@ -290,23 +302,44 @@ fn lower_fn_item(
         params: param_ports,
         span: body_span,
     }));
+    dag.set_function_body_port(fn_decl_id, value_port);
     let mut outer_scope = outer_scope;
     outer_scope.insert(name.to_string(), value_port);
     outer_scope
 }
 
-fn lower_type(ty: &SurfaceType) -> Result<TypeShape, Diagnostic> {
+/// Resolve a surface type reference to a [`TypeShape`] by looking
+/// up the named declaration on the Dag. Fails with a ResolveError
+/// if the name is not in the declaration table or refers to a
+/// non-type declaration.
+fn lower_type(dag: &Dag, ty: &SurfaceType) -> Result<TypeShape, Diagnostic> {
     match ty {
-        SurfaceType::Named { name, span } => match name.as_str() {
-            "Int" => Ok(TypeShape::Primitive(Prim::Int)),
-            "Bool" => Ok(TypeShape::Primitive(Prim::Bool)),
-            "String" => Ok(TypeShape::Primitive(Prim::String)),
-            _ => Err(Diagnostic::ResolveError {
-                name: format!("unknown type `{name}`"),
-                span: span.clone(),
-            }),
-        },
+        SurfaceType::Named { name, span } => {
+            let decl_id = dag
+                .declaration_by_name(name)
+                .ok_or_else(|| Diagnostic::ResolveError {
+                    name: format!("unknown type `{name}`"),
+                    span: span.clone(),
+                })?;
+            match dag.declaration(decl_id).kind {
+                DeclKind::Type => Ok(TypeShape::new(decl_id)),
+                DeclKind::Function { .. } => Err(Diagnostic::ResolveError {
+                    name: format!("`{name}` is a function, not a type"),
+                    span: span.clone(),
+                }),
+            }
+        }
     }
+}
+
+/// Look up a primitive type by name. Panics if the declaration is
+/// missing — bootstrap_primitives is the authority for these names
+/// and a missing declaration is a bootstrap bug, not user input.
+fn lookup_primitive(dag: &Dag, name: &str) -> TypeShape {
+    let id = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("primitive `{name}` missing from bootstrap"));
+    TypeShape::new(id)
 }
 
 fn lower_expr(
@@ -316,33 +349,45 @@ fn lower_expr(
 ) -> PortId {
     match expr {
         SurfaceExpr::IntLit { value, span } => {
+            let ty = lookup_primitive(dag, "Int");
             let node_id = dag.alloc_node_id();
             let output = dag.alloc_port(Some(node_id));
             dag.push_node(Behavior::Value(ValueNode {
                 id: node_id,
-                data: LiteralValue::Int(*value),
+                literal: Literal {
+                    ty,
+                    data: LiteralData::Int(*value),
+                },
                 output,
                 span: span.clone(),
             }));
             output
         }
         SurfaceExpr::BoolLit { value, span } => {
+            let ty = lookup_primitive(dag, "Bool");
             let node_id = dag.alloc_node_id();
             let output = dag.alloc_port(Some(node_id));
             dag.push_node(Behavior::Value(ValueNode {
                 id: node_id,
-                data: LiteralValue::Bool(*value),
+                literal: Literal {
+                    ty,
+                    data: LiteralData::Bool(*value),
+                },
                 output,
                 span: span.clone(),
             }));
             output
         }
         SurfaceExpr::StringLit { value, span } => {
+            let ty = lookup_primitive(dag, "String");
             let node_id = dag.alloc_node_id();
             let output = dag.alloc_port(Some(node_id));
             dag.push_node(Behavior::Value(ValueNode {
                 id: node_id,
-                data: LiteralValue::String(value.clone()),
+                literal: Literal {
+                    ty,
+                    data: LiteralData::String(value.clone()),
+                },
                 output,
                 span: span.clone(),
             }));
@@ -371,9 +416,36 @@ fn lower_expr(
                 args.iter().map(|a| lower_expr(a, dag, scope)).collect();
             let node_id = dag.alloc_node_id();
             let output = dag.alloc_port(Some(node_id));
+            let target_ref = match resolve_function_ref(dag, target) {
+                Ok(fn_ref) => fn_ref,
+                Err(()) => {
+                    // Unknown target: allocate a sentinel declaration
+                    // entry is NOT what we want — we want to mark the
+                    // output port Unresolved so the downstream
+                    // behavior survives a missing target. But we still
+                    // need a valid FunctionRef for the TransformNode.
+                    // Resolution: mark the output port Unresolved
+                    // with a ResolveError and use a sentinel
+                    // FunctionRef pointing at the first declaration
+                    // (which exists because bootstrap pre-populates
+                    // the table). The Transform's output is
+                    // Unresolved regardless of inference, so the
+                    // sentinel FunctionRef is never actually read by
+                    // a downstream consumer that trusts the
+                    // signature.
+                    dag.mark_unresolved(
+                        output,
+                        Diagnostic::ResolveError {
+                            name: target.clone(),
+                            span: span.clone(),
+                        },
+                    );
+                    sentinel_function_ref(dag)
+                }
+            };
             dag.push_node(Behavior::Transform(TransformNode {
                 id: node_id,
-                target: FunctionRef::new(target.clone()),
+                target: target_ref,
                 inputs: input_ports,
                 output,
                 span: span.clone(),
@@ -412,6 +484,35 @@ fn lower_expr(
             branch_output
         }
     }
+}
+
+/// Resolve a surface function-call target name to a [`FunctionRef`].
+/// Looks up the name in the Dag's declaration table and verifies
+/// that the declaration is a Function (not a Type). Returns `Err(())`
+/// if the declaration is missing or the wrong kind — the caller
+/// surfaces the specific diagnostic with the call-site span.
+fn resolve_function_ref(dag: &Dag, name: &str) -> Result<FunctionRef, ()> {
+    let id = dag.declaration_by_name(name).ok_or(())?;
+    match dag.declaration(id).kind {
+        DeclKind::Function { .. } => Ok(FunctionRef::new(id)),
+        DeclKind::Type => Err(()),
+    }
+}
+
+/// A known-valid FunctionRef used when the real target can't be
+/// resolved but a TransformNode still needs a syntactically-valid
+/// field. The output port is always marked Unresolved before this
+/// sentinel is placed, so no consumer trusting the signature ever
+/// actually reads it.
+fn sentinel_function_ref(dag: &Dag) -> FunctionRef {
+    // "std::int::add" is pre-populated by bootstrap_primitives and
+    // is always the first function declaration registered. Using
+    // it as a sentinel means the field is structurally valid even
+    // when the real target was unresolvable.
+    let id = dag
+        .declaration_by_name("std::int::add")
+        .expect("bootstrap registered std::int::add");
+    FunctionRef::new(id)
 }
 
 fn producer_of(dag: &Dag, port: PortId) -> Option<NodeId> {
