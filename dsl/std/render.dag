@@ -271,10 +271,5 @@ type GeneratorHeader {
   regen_command: String
 }
 
-// RenderDocument: a complete renderable artifact.
-type RenderDocument {
-  format: OutputFormat
-  header: GeneratorHeader?
-  preamble: List<Fragment>
-  sections: List<Fragment>
-}
+// RenderDocument: deleted. Depended on Fragment (also deleted).
+// Both had zero consumers. Reintroduce with a consumer when needed.
