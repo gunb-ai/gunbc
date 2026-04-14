@@ -1230,6 +1230,56 @@ fn test_depth_lens_branch_takes_max_of_paths_and_condition() {
     assert_eq!(lens.depth_of(bind_r.value), 2);
 }
 
+// ════════════════════════════════════════════════════════════════
+// M0.10 — recursive body/signature reconciliation. The M0.8 call-
+// site Bind-state check handles non-recursive function body
+// mismatches correctly, but recursive functions had a second bug:
+// Loop.output was pre-seeded with the declared return type AND the
+// body's actual return type was computed on a separate port
+// (body_return_port). Nothing reconciled the two, so call sites
+// read the pre-seeded declared type and trusted it even when the
+// body disagreed.
+// ════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_recursive_function_with_wrong_body_type_is_rejected() {
+    // `fn bad(n: Int) -> Bool = if n == 0 then 0 else bad(n - 1)`
+    //
+    // The declaration says Bool, but the body's then-path produces
+    // Int (Value(0)). This is the recursive analogue of
+    // `reviewer_call_site_rejects_function_with_invalid_body`
+    // which only covered non-recursive functions.
+    //
+    // Expected: both `bad`'s value port AND the call site `x` must
+    // end up Unresolved after the fix. Before the fix, loop_output
+    // stays Resolved(Bool) from the pre-seed, so x gets Bool and
+    // the body mismatch is invisible to consumers.
+    let src = "fn bad(n: Int) -> Bool = if n == 0 then 0 else bad(n - 1)\nlet x = bad(5)";
+    let dag = compile_any(src, "test.v3");
+    let bad_bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "bad")
+        .expect("Bind(bad) must exist");
+    assert!(
+        matches!(dag.port(bad_bind.value).state(), PortState::Unresolved),
+        "bad's value port is Unresolved because the body doesn't match the declared return type; got {:?}",
+        dag.port(bad_bind.value).state()
+    );
+    let x_bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "x")
+        .expect("Bind(x) must exist");
+    assert!(
+        matches!(dag.port(x_bind.value).state(), PortState::Unresolved),
+        "call site x is Unresolved because bad is invalid; got {:?}",
+        dag.port(x_bind.value).state()
+    );
+}
+
 #[test]
 fn invariant_port_state_matches_diagnostic_table() {
     // Structural audit of the enforced mark_unresolved API.
@@ -1275,6 +1325,8 @@ fn invariant_port_state_matches_diagnostic_table() {
         "let x: Int = true",
         "let x: Int = \"hello\"",
         "let x = if \"foo\" then 1 else 2",
+        // M0.10: recursive function body/signature mismatch
+        "fn bad(n: Int) -> Bool = if n == 0 then 0 else bad(n - 1)\nlet x = bad(5)",
     ];
     for src in sources {
         let dag = compile_any(src, "invariant.v3");

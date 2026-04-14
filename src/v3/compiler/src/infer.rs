@@ -288,7 +288,74 @@ fn decide(dag: &Dag, index: usize) -> Decision {
             }
             Decision::Set(b.output, first_type)
         }
-        Behavior::Loop(_) | Behavior::Bind(_) => Decision::Retry,
+        Behavior::Loop(l) => {
+            // M0.10: reconcile the body's actual return type with
+            // the loop's output (which was pre-seeded during
+            // lowering from the declared return type). The pre-seed
+            // is load-bearing for the fixpoint — recursive calls
+            // inside the body look up the function's Bind.value
+            // port (which is loop.output) to determine their own
+            // return type, so loop.output must be Resolved before
+            // the body can settle. But without a reconciliation
+            // step, loop.output stays at the pre-seeded declared
+            // type even if the body computes something different.
+            //
+            // Fix: after the body settles, Set loop.output to the
+            // body's actual return type. If that type matches the
+            // pre-seeded declared type, the apply loop is a no-op.
+            // If it doesn't match, the apply loop's conflict
+            // detection marks loop.output Unresolved with a
+            // TypeMismatch diagnostic pointing at the Loop's span.
+            //
+            // Known deferred: the self-referential Transform nodes
+            // inside the Loop body (the `bad(n - 1)` calls in the
+            // body) are still literal function-call nodes, not a
+            // Recur primitive. The Loop wrapper is currently a
+            // structural annotation that the substrate doesn't
+            // interpret specially beyond this reconciliation. A
+            // full "recursion rewrites during lowering" fix would
+            // replace the self-calls with a Recur node, making the
+            // Loop genuinely terminal for iteration. That's M1+
+            // work — the current fix addresses the producer-fact-
+            // reaches-consumer hole without restructuring the
+            // lowering.
+            if l.body == l.id {
+                // Degenerate case: body_root was None during
+                // lowering (placeholder body), so loop_body_node
+                // defaulted to loop_id. No meaningful reconciliation
+                // — body is already broken upstream.
+                return Decision::Retry;
+            }
+            let body_node = dag.node(l.body);
+            let body_output = behavior_output_port(body_node);
+            match dag.port(body_output).state() {
+                PortState::Uninferred => Decision::Retry,
+                PortState::Unresolved => Decision::Fail(
+                    l.output,
+                    Diagnostic::ResolveError {
+                        name: "function body is unresolved".to_string(),
+                        span: l.span.clone(),
+                    },
+                ),
+                PortState::Resolved(body_ty) => {
+                    Decision::Set(l.output, body_ty.clone())
+                }
+            }
+        }
+        Behavior::Bind(_) => Decision::Retry,
+    }
+}
+
+/// Return the "output" port of a behavior node — the port that
+/// carries the value this node produces. For Bind, this is the
+/// value port the Bind aliases, not a separately-owned port.
+fn behavior_output_port(node: &Behavior) -> PortId {
+    match node {
+        Behavior::Value(v) => v.output,
+        Behavior::Transform(t) => t.output,
+        Behavior::Branch(b) => b.output,
+        Behavior::Loop(l) => l.output,
+        Behavior::Bind(b) => b.value,
     }
 }
 
