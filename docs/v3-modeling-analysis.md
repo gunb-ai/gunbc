@@ -554,18 +554,124 @@ drives the entire chain.
 
 ---
 
+## String Interpolation — Dissolves Into Algebra
+
+String interpolation is not a special operation. It is FreeMonoid
+concat with coercion. No special ExprData variant, no dedicated
+emit path.
+
+### How v2 handles it (the disease)
+
+v2 treats `ExprStringInterp` as one of 22 ExprData variants. It has
+dedicated match arms in emit (2 rendering functions), ownership,
+and complexity. The tokenizer emits StrBegin/StrMid/StrEnd tokens.
+The parser builds a `StringPart` list (Text | Interpolation).
+The emitter reads a `string_interp` template from LanguageSpec.
+
+The tokenizer model (StrBegin/StrMid/StrEnd) is reusable — it's
+just token classification. The ExprStringInterp variant is not.
+
+### How v3 handles it (the dissolution)
+
+The parser desugars string interpolation to FreeMonoid concat +
+coercion transforms during DAG construction. No special variant.
+
+**Example 1: all parts are String**
+
+```
+let name = "Alice"
+let msg = "Hello {name}"
+```
+
+→ Two String values, FreeMonoid concat:
+```
+Value("Hello ") → port<String>
+Bind(name) → port<String>
+Transform(FreeMonoid concat, [port<String>, port<String>]) → port<String>
+```
+
+No coercion needed. Both parts already inhabit FreeMonoid<Char>.
+
+**Example 2: mixed types (Int → String coercion)**
+
+```
+let age = 30
+let msg = "age is {age}"
+```
+
+→ `age` is Int (OrderedRing), target is String (FreeMonoid<Char>).
+Int's algebra provides `to_string` (Ring → FreeMonoid morphism):
+```
+Value("age is ") → port<String>
+Bind(age) → port<Int>
+Transform(Ring→FreeMonoid coercion, [port<Int>]) → port<String>
+Transform(FreeMonoid concat, [port<String>, port<String>]) → port<String>
+```
+
+The coercion is a transform like any other. The coercion system
+already handles Int→String via algebra profiles.
+
+**Example 3: nested expression**
+
+```
+let msg = "total: {a + b}"
+```
+
+→ `a + b` is a Ring operation producing Int, then coerced:
+```
+Bind(a) → port<Int>
+Bind(b) → port<Int>
+Transform(Ring addition, [port<Int>, port<Int>]) → port<Int>
+Transform(Ring→FreeMonoid coercion, [port<Int>]) → port<String>
+Value("total: ") → port<String>
+Transform(FreeMonoid concat, [port<String>, port<String>]) → port<String>
+```
+
+Three transforms, all from existing algebra. No special case.
+
+**Example 4: multiple interpolations**
+
+```
+let msg = "Hello {name}, you are {age} years old"
+```
+
+→ Desugars to a chain of FreeMonoid concats:
+```
+concat("Hello ", name, ", you are ", to_string(age), " years old")
+```
+
+Which is associative (FreeMonoid axiom), so the compiler can
+group however it wants. Left-to-right fold, balanced tree, etc.
+
+### Rendering optimization
+
+Target languages have optimized string interpolation syntax:
+- Rust: `format!("{}{}", ...)`
+- Python: `f"Hello {name}"`
+- Go: `fmt.Sprintf("Hello %v", name)`
+
+The emitter can recognize "a chain of FreeMonoid concats where
+some inputs are coerced" and use the optimized syntax. This is a
+rendering optimization in LanguageSpec, not a semantic distinction.
+The DAG is still just concat + coercion.
+
+### Bootstrapping
+
+No bootstrapping issue. v2's tokenizer (StrBegin/StrMid/StrEnd)
+feeds v3's parser unchanged. The difference is entirely in how
+the parser builds the DAG from those tokens — v3 desugars to
+concat + coercion instead of building ExprStringInterp nodes.
+
+---
+
 ## Open Questions
 
-1. **String interpolation:** builds a String from heterogeneous parts.
-   Is this FreeMonoid introduction where each part is coerced to
-   the FreeMonoid's element type? Or a distinct operation?
-
-2. **How much of this is v3 vs v2-compatible?**
+1. **How much of this is v3 vs v2-compatible?**
    The std/ declarations (intro/elim on structures, function space,
    port) can be added now without changing v2. The compiler reading
    them is v3 work. The std/ audit (moving compiler types out) can
    happen incrementally.
 
-3. **Parser state model:** v2 uses integer position. v3 should use
+2. **Parser state model:** v2 uses integer position. v3 should use
    list consumption for structural descent evidence. Design the
    ParseState type before implementing.
