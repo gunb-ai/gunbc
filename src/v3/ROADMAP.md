@@ -106,34 +106,52 @@ first ask: can the algebra express this?
 
 ### M1: Self-contained compilation
 
-**Ordering note (post-M0 retrospective):** cost lens comes BEFORE
-emission, not after. The cost lens is the first writer lens in v3 —
-it produces new facts (computed costs per node) that downstream
-analyses consume. Building it first forces the "how do lenses store
-results" decision under real pressure, rather than guessing at the
-answer while building emission. If the cost lens can't be added
-without substrate modifications, the substrate is not yet at the
-success bar and needs fixing before emission lands.
+**Ordering is load-bearing (post-M0 retrospective):** primitive
+substrate restructuring FIRST, then std/ parsing, then cost lens,
+then emission. Don't skip the substrate work and jump to emission —
+every feature that lands on top of the parallel-representation
+scaffolds inherits the pattern. See
+`src/v3/M0_RETROSPECTIVE.md` §"The primitive substrate gap" for
+the rationale.
 
-- [ ] **Cost lens (writer lens #1)** — reads the DAG, writes computed
-  costs per node/port. Implementation must live in `lens_cost.rs`
-  as a new file with no substrate file changes. If substrate changes
-  are required, pause and design the lens-storage mechanism once,
-  then proceed. Acceptance: line count of substrate mods = 0.
-- [ ] **Success bar validated for writer lenses.** By the end of the
-  cost lens work, the question "if we came up with a new lens
-  tomorrow, what's the minimum substrate change?" has a confident
-  answer of zero. This is the gating acceptance criterion for
-  moving on to emission. See `src/v3/M0_RETROSPECTIVE.md` for the
-  framing.
-- [ ] **Ownership lens (writer lens #2)** — second writer lens.
+- [ ] **(1) Primitive substrate restructuring** — replace the
+  parallel-representation scaffolds (`Prim` enum, `FunctionRef`-as-
+  string, hardcoded `primitive_signature` table) with a
+  `Declaration` table on the Dag, consumed via `DeclarationId`
+  references. Primitives remain hardcoded via `bootstrap_primitives`
+  at `Dag::new()`. No std/ parsing yet. Acceptance: `FunctionRef`
+  and `TypeShape` are both `DeclarationId` newtypes;
+  `primitive_signature` function is deleted; inference reads
+  signatures from `dag.declaration(id)`. Existing 38 tests must
+  continue to pass.
+- [ ] **(2) std/ parsing.** Replace the `bootstrap_primitives`
+  hardcoded table with a std/ parse pass. Declarations now come
+  from `.dag` source. The substrate doesn't change during this
+  swap — only the source of the Declarations. This is the first
+  real consumer of the declaration table and validates that the
+  shape actually works when fed real data.
+- [ ] **(3) Cost lens (writer lens #1)** — reads the DAG, writes
+  computed costs per node/port. Implementation must live in
+  `lens_cost.rs` as a new file with no substrate file changes
+  BEYOND whatever the Declaration table needed for algebra/cost
+  metadata in step (1). If more substrate changes are required at
+  this stage, pause and design the lens-storage mechanism once,
+  then proceed. Acceptance: line count of substrate mods = 0 for
+  adding a new lens after (1)+(2) are in place.
+- [ ] **(4) Success bar validated for writer lenses.** By the end
+  of the cost lens work, the question "if we came up with a new
+  lens tomorrow, what's the minimum substrate change?" has a
+  confident answer of zero. This is the gating acceptance criterion
+  for moving on to emission.
+- [ ] **(5) Ownership lens (writer lens #2)** — second writer lens.
   Reuses the storage mechanism chosen for cost. If the mechanism
   doesn't generalize, that's a signal to fix it before adding more
   lenses.
-- [ ] Emit Rust from DAG (single target, minimal). Only after cost
-  + ownership lenses prove the substrate is extensible.
-- [ ] Emitted code compiles and runs
-- [ ] Transform rules from std/ algebra (not hardcoded enum)
+- [ ] **(6) Emit Rust from DAG** (single target, minimal). Only
+  after cost + ownership lenses prove the substrate is extensible.
+- [ ] Emitted code compiles and runs.
+- [ ] `LanguageSpec` with per-target cost characteristics (G4
+  guardrail finally gets exercised).
 
 ### M2: Feature parity with v2 subset
 - [ ] Generics

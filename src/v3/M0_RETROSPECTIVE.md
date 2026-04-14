@@ -97,6 +97,88 @@ program but doesn't. Internal review (my own triage) excels at "missing
 tests" — coverage gaps on already-correct code. Both feedback paths are
 necessary; neither catches the other's bug class.
 
+## The primitive substrate gap (parallel-representation debt)
+
+M0 built the control-flow substrate (L1 behaviors, Ports, diagnostics)
+to completion, with dissolution discipline applied at every checkpoint.
+The **data substrate** — specifically, how types and primitive
+operations are represented — was scaffolded rather than completed, and
+the scaffold is in the wrong shape.
+
+**The scaffold:**
+
+- `TypeShape::Primitive(Prim)` where `Prim = Int | Bool | String` — a
+  flat enum in `types.rs`
+- `FunctionRef { name: String }` — a string wrapper in `dag.rs`
+- `primitive_signature(name: &str) -> Option<Signature>` — a hardcoded
+  Rust function in `infer.rs` mapping operator names to type signatures
+
+**Why this is the wrong shape**, even though each scaffold is honestly
+marked as a scaffold: it is a **parallel representation** of facts that
+already live canonically in v2's `dsl/std/`. v2 declares Int, Bool,
+String and their operations in `.dag` source. v3's scaffold re-asserts
+the same facts in Rust code, creating a single-authority violation
+the modeling discipline forbids. Every primitive in v3's table is an
+unnecessary second source of truth.
+
+Additionally, `FunctionRef { name: String }` is name-based dispatch —
+the M8 pattern the modeling discipline explicitly rejects. The
+substrate's notion of "primitive" is an opaque label, not a reference
+to a structurally-rich declaration. `primitive_signature()` is literal
+string-dispatch inside the compiler — exactly the pattern v3 is
+supposed to cure.
+
+**What the correct shape looks like:** a single declaration table
+owned by the Dag, where every named thing (types, functions,
+operations, eventually algebras and effects) is a `Declaration`.
+References are `DeclarationId`s, not strings. Primitives are
+Declarations pre-populated at `Dag::new()` (bootstrap); user code
+declarations join the same table via the same mechanism; the
+substrate doesn't distinguish "primitive" from "user function" —
+both are Declarations, only their source differs (hardcoded bootstrap
+at M0, parsed from `std/` at M1, parsed from user source at M2+).
+
+**Debt classification:** this is **parallel-representation debt**,
+not **dissolution debt**. It's not a coproduct that needs to collapse
+into a better shape with fewer variants — it's a scaffold whose
+authority should live elsewhere. The fix is "delete the parallel copy
+and consume the canonical source," not "collapse variants." The
+control-flow substrate (five behaviors, ports, diagnostics) does not
+have this debt; the data substrate has it in three localized places.
+
+**Why this happened:** M0's scoping decision focused on the
+control-flow substrate (L1 behaviors, Port state, fail-closed
+discipline) and deferred the data substrate to M1 under the framing
+"we have to start somewhere." That framing was too narrow. The data
+substrate is an equally important part of the thesis (single source
+of truth, no parallel representations, name-based dispatch forbidden),
+and building parallel scaffolds — even honest scaffolds — created
+migration debt. The scaffold discipline ("mark it as a scaffold, name
+the dissolution target") is not a substitute for the single-authority
+principle when a canonical source already exists.
+
+**Resolution path:** M1's **first** task before any other M1 work
+(cost lens, emission, LanguageSpec) is the primitive substrate
+restructuring — replace `Prim`/`FunctionRef`/`primitive_signature`
+with a `Declaration` table on the Dag, consumed via `DeclarationId`
+references. The primitives stay hardcoded at first (at `Dag::new()`
+via a `bootstrap_primitives` pass), then M1 replaces the bootstrap
+with std/ parsing. The substrate doesn't change during the std/
+wiring — only the source of the Declarations changes. This sequencing
+puts the restructuring under pressure from real consumer requirements
+(the cost lens needs to read per-declaration algebra, emission needs
+to read per-declaration cost characteristics), which is the right
+place for it. See `src/v3/ROADMAP.md` §M1 for the explicit ordering.
+
+**Lesson for future substrate work:** when there's an existing
+canonical source for a class of facts, the substrate should consume
+the canonical source from the start, not build a parallel
+representation as a scaffold. Parallel representations create
+migration debt, and migration debt compounds. The "honest scaffold"
+discipline is not a substitute for the single-authority principle —
+a scaffold that captures the wrong abstractions creates the same
+debt as a non-scaffolded parallel representation would.
+
 ## Deferred limitations
 
 | Item | Reason | Target |
@@ -136,17 +218,32 @@ necessary; neither catches the other's bug class.
 
 ## What M1 has to build fresh
 
-- Emission to a target language (Rust first, per the ROADMAP — matches
-  v3's own implementation language, so emission can be cross-checked
-  against the reference)
-- `LanguageSpec` with per-target cost characteristics (G4 guardrail
-  finally gets exercised)
-- Cost lens (second lens after provenance)
-- `std/`-backed algebra declarations — this is what dissolves the
-  remaining M0 scaffolds (TypeShape C3, Diagnostic variants, the
-  hardcoded primitive signature table in `infer.rs`)
-- Ownership/effect lenses if the M1 test corpus forces them
-- More sophisticated descent analysis if any M1 test program needs it
+**M1 ordering matters.** The primitive substrate restructuring comes
+FIRST, before cost lens or emission, because it's substrate work that
+everything else builds on. See the "primitive substrate gap" section
+above for the rationale.
+
+1. **Primitive substrate restructuring (first M1 task).** Replace the
+   parallel-representation scaffolds (`Prim` enum, `FunctionRef`-as-
+   string, hardcoded `primitive_signature` match table) with a
+   `Declaration` table on the Dag, consumed via `DeclarationId`
+   references. Primitives remain hardcoded at `bootstrap_primitives`
+   time. No std/ parsing yet — that comes after.
+2. **std/ parsing.** Replace the bootstrap with a std/ parse pass.
+   Declarations now come from `.dag` source rather than Rust code.
+   The substrate doesn't change during this swap — only the source
+   of the Declarations changes.
+3. **Cost lens (writer lens #1).** The forcing function for the
+   "how do lenses store results" decision. Must land with zero
+   substrate modifications beyond whatever the Declaration table
+   needs for algebra/cost metadata. See the success bar section.
+4. **Emission to a target language (Rust first).** Only after the
+   cost lens proves the substrate is extensible. `LanguageSpec` with
+   per-target cost characteristics (G4 guardrail exercised).
+5. **Ownership/effect lenses** if the M1 test corpus forces them.
+6. **More sophisticated descent analysis** if any M1 test program
+   needs it (current partial descent rejects the obvious bad cases;
+   lexicographic orderings and non-subtraction measures are M1+).
 
 ## Success bar: trivial to add new analyses
 
