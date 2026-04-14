@@ -1107,19 +1107,50 @@ In v3 where string interpolation dissolves into FreeMonoid concat,
 these tokens exist only to signal grouping — the position tag
 makes that explicit.
 
-**Genuinely atomic tokens (~12):**
-- ShIdent — a name (genuinely different from literals)
-- ShKeyword — text carries identity (already pattern 2)
-- ShColon, ShComma — structural separators
-- ShDot, ShDotDot — field access vs range (related but parser
-  uses them in different contexts, structurally minimal)
-- ShArrow, ShFatArrow — return type vs match arm (related but
-  different grammatical roles)
-- ShEq — assignment (distinct from == which is an operator)
-- ShNewline, ShEof — control tokens
-- ShUnknown — error recovery sentinel
+**Boundary markers (2 variants → 1).** Pattern 4 (dimensional).
+Newline and Eof both signal boundaries in the token stream —
+statement end vs file end. They share the structural role of
+"position marker, not content carrier":
+```
+Marker { kind: MarkerKind }
+MarkerKind = StatementEnd | FileEnd
+```
+"Is this any boundary marker?" → `match t { Marker(_) => ... }`.
 
-**Result: 35 → ~12 top-level variants.**
+**Unknown → fact placement (#1), not a token at all.**
+Unknown is the tokenizer's version of InferredNode's CompilerError:
+an error state mixed into a success type. Structurally, it's not
+a token — it's the absence of a successful tokenization. By the
+fact-placement rule, it belongs in a tokenization diagnostic table,
+not in the token stream. The token stream should contain only real
+tokens.
+
+**Remaining atomic tokens (~8), with structural justifications:**
+- ShIdent — terminal carrier for user-chosen names. Names have no
+  compile-time structural properties. Genuinely atomic.
+- ShKeyword — already dissolved by variant-is-data (text carries
+  identity). Single variant by that rule, not by "irreducible."
+- ShColon — binding separator (name:type, key:value). No shared
+  dimension with other punctuation.
+- ShComma — element separator (list items, fields). No shared
+  dimension with Colon — different grammatical role.
+- ShDot — field access operator. Related to DotDot (range), but
+  the parser uses them in completely different grammatical contexts
+  (postfix access vs infix range). No useful cross-variant query.
+- ShDotDot — range operator. See Dot.
+- ShArrow — return type annotation (`-> Type`). Related to FatArrow
+  but different grammatical role (type annotation vs match body).
+- ShFatArrow — match arm body (`=> expr`). See Arrow.
+- ShEq — assignment/binding form. Structurally distinct from EqEq
+  (Ring/BooleanAlgebra equality operation). Assignment is a binding
+  form with no dimensional structure.
+
+**Stopping rule:** stop dissolving when remaining variants have no
+cross-variant query that would be cleaner as a field read. Each
+atom above has no useful "is this any kind of X?" query that groups
+it with other atoms.
+
+**Result: 35 → ~9 top-level variants + sidecar relocation.**
 
 | Category | Current | Proposed | Pattern |
 |---|---|---|---|
@@ -1133,7 +1164,9 @@ makes that explicit.
 | Control | 2 | 2 (Newline, Eof) | atomic |
 | Assignment | 1 | 1 (Eq) | atomic |
 | Unknown | 1 | 1 | atomic |
-| **Total** | **35** | **~12** | |
+| Boundary markers | 2 | 1 (ShMarker { kind }) | dimensional |
+| Unknown | 1 | 0 (→ diagnostic table) | fact placement |
+| **Total** | **35** | **~9** | |
 
 The internal mini-coproducts (BracketShape=3, Side=2, LiteralKind=3,
 StrPosition=3) are all small, coherent, and structurally stable —
@@ -1143,6 +1176,114 @@ This is an architectural win, not an optimization. Every parser
 site that asks "is this any kind of X?" goes from N-way match to
 one-arm match or field read. Same kind of win Experiment 5 measured
 for ExprData (~30 arms per new variant).
+
+### Full coproduct inventory — dissolution status
+
+~280 coproducts across the codebase. Categorized by what v3 needs
+to address vs what's fine.
+
+**ALREADY DISSOLVED (design complete, 11 types):**
+
+| Type | Variants | Pattern | Status |
+|---|---|---|---|
+| ExprData | 22 | L1 behaviors + algebraic forms | design done |
+| TransformRule (spec) | 14 | algebraic-form (#3) | design done |
+| TokenShape | 35 | dimensional (#4) → ~12 | design done |
+| Connective | 4 | → Product/Coproduct/Terminal/Function | dissolves with std/ |
+| FieldAccessStyle | 5 | algebraic-form (#3) → intro/elim instances | dissolves with std/ |
+| InferredNode | 3 | fact placement (#1) → Port + diagnostics | design done |
+| SizeBound | 5 | → Bound { produced_by, count } | design done |
+| BinOp | 14 | variant-is-data (#2) → algebra resolution | design done |
+| UnaryOpKind | 2 | → algebra resolution (same as BinOp) | design done |
+| VarBindingKind | 4 | variant-is-data (#2) → origin as data | design done |
+| ExprErrorKind | 3 | → unified diagnostic type | design done |
+
+**DISSOLVES WHEN V3 LANDS (no design needed, 8 types):**
+
+| Type | Variants | Why it dissolves |
+|---|---|---|
+| MethodSemantics | 3 | algebra elim vs transport elim — falls out of function space |
+| CallSemantics | 2 | Plain vs Lookup — falls out when method resolution reads algebra |
+| StringPart | 2 | dissolves when string interp → FreeMonoid concat |
+| OperationModifier | 3 | becomes boolean fields on effect descriptor |
+| ExprCategory | 5 | classification of ExprData — gone when ExprData gone |
+| FuncBodyShape | 3 | classification of func bodies — gone when emit reads L1 behaviors |
+| TcoExprShape | 5 | TCO classification — gone when recursion → Loop lowering |
+| BackendCapability | 5 | capability flags — becomes boolean fields on LanguageSpec |
+
+**NEEDS DESIGN DECISION (v3-relevant, 8 types):**
+
+| Type | Variants | Question |
+|---|---|---|
+| MatchPattern | 4 (Bind, LitPattern, VariantPattern, Wildcard) | Part of Branch (Coproduct elimination). These have genuinely different fields. Dimensional: Pattern { kind, bindings }? Or is this irreducible because each variant carries structurally different data? |
+| CompilerDiagnostic | 16 | All variants carry span + context fields. Dimensional: Diagnostic { category, severity, span, context }? Category is variant-is-data. Severity can be derived from category. Most variants share the same structure — only NonExhaustiveMatch (carries List<String>) and ArityMismatch (carries expected/got counts) differ. |
+| NodeFieldRole | 3 | Classification of Node fields for CX. Goes away when Node moves to std/ and fields are declared with inductive structure (already in node.dag). |
+| FunctionSizeEffect | 3 | Classification of function size effects. Goes away when the cost lens reads algebraic properties instead of function-specific tables. |
+| EdgeKind | 4 (Consumed, Read, Threaded, Projected) | Ownership edge types. These trace to ownership lens concepts. Dimensional: edge has {mutability, lifetime} dimensions? Or irreducible because the ownership algebra needs exactly these 4 cases? |
+| OwnershipDecision | 3 (SoleOwner, SharedError, Unclassified) | Output of ownership analysis. SoleOwner is the happy path. SharedError and Unclassified are diagnostic states. Fact placement: decision is a field, errors go to diagnostic table. |
+| ItemKind | 7 | Parser classification of declaration types. Variant-is-data: all items have the same structure (name, params, body, type annotation) with ItemForm driving the differences. Already modeled in SyntaxSpec.item_forms. |
+| AliasKind | 3 | Type alias classification. Variant-is-data: all aliases are name → type, the kind determines resolution strategy. |
+
+**DOMAIN MODELING (external facts, ~70 types):**
+
+Types that model external systems (GitHub Actions, GCP, LLM APIs,
+Cargo, Git, Bash). These are dictated by the external API shapes
+and are correct as-is. They describe the real world's structure,
+not compression artifacts.
+
+Examples: HttpMethod (7), Platform (3), Arch (11), Role (4),
+GitFileStatus (6), CargoCommand (8), ShellType (5).
+
+Rule: if the variants come from an external spec, they're facts
+about the world. Don't dissolve facts.
+
+**STD/ MODELING (language concepts, ~40 types):**
+
+Types modeling general computing concepts. Most are small (2-4
+variants) and structurally coherent. Worth auditing:
+
+| Type | Variants | Assessment |
+|---|---|---|
+| LiteralValue | 5 | Dimensional: Literal { kind, value }? But value types differ per kind (String vs Int vs Float). Probably irreducible — the kinds carry different data. |
+| BodyKind | 7 | Variant-is-data: all bodies are "contents of a declaration." The kind determines parse shape. Maps to SyntaxSpec. |
+| ItemFormKind | 6 | Same as BodyKind — maps to SyntaxSpec item_forms. |
+| AlgebraProfile | 7 | Each profile carries different operation sets. Dimensional? The profile IS the algebraic structure description. Probably irreducible — each algebra genuinely has different laws. |
+| AlgebraFieldKind | 5 | Variant-is-data: names of algebraic operations. Could be text in a table. |
+| CostBound | 5 | Dimensional: bound has { complexity_class, multiplier }? Or irreducible because the classes have genuinely different composition rules? |
+| AtomicCost | 5 | Same question as CostBound. |
+| RecursionShape | 5 | induction.dag shapes. Dimensional: { direction, wrapping }? |
+| Certainty | 4 | Severity-like scale. Could be an ordered Int. |
+| DescentEvidence | 3 | Ordered lattice: Strict > NonIncreasing > Unknown. Could be an Int with ordering. |
+| Fragment | 10 | Render fragments. Each carries different content. Dimensional? Category + content? Some share structure (Text, Comment, Heading all carry String). |
+| Ordering | 3 | Less/Equal/Greater — mathematical. Genuinely irreducible. |
+| Cardinality | 2 | Required/Optional — genuinely irreducible (it IS the information). |
+| Classical | 2 | True/False — genuinely irreducible (it IS the Bit). |
+
+**COMPILER INFRASTRUCTURE (parse/infer/emit internals, ~30 types):**
+
+Types internal to v2's compiler pipeline. Most are result types
+(ParseResult variants, lookup statuses) or classification types
+for specific stages. These don't carry forward to v3 — they're
+v2 implementation details that v3 replaces entirely.
+
+Examples: AdvanceResult (2), EatResult (2), ExpectedToken (4),
+NodeLookupStatus (3), PatternSubject (3), CoercionAssertion (3),
+StringScanResult (3), TypeRepr (2).
+
+Rule: don't dissolve v2 infrastructure that v3 replaces. Focus
+dissolution energy on types that v3 inherits.
+
+### Summary counts
+
+| Category | Types | Action |
+|---|---|---|
+| Already dissolved | 11 | design done |
+| Dissolves with v3 | 8 | no action needed |
+| Needs design decision | 8 | resolve before v3 construction |
+| Domain modeling | ~70 | leave as-is (external facts) |
+| std/ modeling | ~40 | audit individually |
+| Compiler infrastructure | ~30 | v3 replaces entirely |
+| **Total** | **~280** | |
 
 ### Why 04_infer fragmented into 13 files
 
