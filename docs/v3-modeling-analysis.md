@@ -398,9 +398,9 @@ construction time.
 ## TransformRule Dissolution
 
 This is the most important section. TransformRule in the v3 spec is
-a 14-variant enum. In v2, ExprData was a 22-variant enum and caused
-665 match arms across the codebase. TransformRule is the same disease
-at smaller scale.
+a 13-variant enum (v3-spec.md lines 82-119). In v2, ExprData was a
+22-variant enum and caused 665 match arms across the codebase.
+TransformRule is the same disease at smaller scale.
 
 ### The insight
 
@@ -519,8 +519,10 @@ general. CallGraph with String keys + ProofEdge imports are
 compiler-specific. Split: generalize algorithms, move specific
 types to src/v3/.
 
-**fidelity.dag — compiler-specific.** TransportClass, TestClass,
-DerivedClassification. Move to: src/v3/.
+**fidelity.dag — stays in std/ (reviewer-corrected).** TransportClass
+and TestClass are shared transport vocabulary, not compiler policy.
+Part of extdeps layer model (fermi → fidelity → test_policy). The
+file explicitly says "no repo-specific policy here." Stays in std/.
 
 ### What stays (reviewer-corrected)
 
@@ -1440,11 +1442,11 @@ All experiments keep 415 tests green and CX ratchet stable.
 ### std/ loses (proposed):
 1. node.dag compiler-type instances → src/v3/
 2. graph.dag compiler-specific types → src/v3/
-3. fidelity.dag → src/v3/
 
 ### std/ stays (reviewer-confirmed):
 1. computation.dag CallPattern/LoweringTarget — language guarantee
 2. effects.dag ComposedEffect/ModifierAgreement — algebraic
+3. fidelity.dag — shared transport vocabulary (extdeps layer model)
 
 ### TransformRule dissolves:
 From 14-variant enum → algebraic structure + form (intro/elim/op).
