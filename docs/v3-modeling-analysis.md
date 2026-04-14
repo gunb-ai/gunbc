@@ -1782,6 +1782,14 @@ Every THESIS claim, cross-referenced. No silent drops.
 | 4 | Idempotency + cancellation + redundancy = algebra | DECLARED, NOT CONSUMED | std/effects.dag + std/algebra.dag | v3 M2 (Track 17: wire into ops) |
 | 5 | Structural decompression | NEW (this session) | 4 patterns, ledger, theorem | Applied during v3 construction |
 
+### Core thesis claims (beyond zero-bugs)
+
+| # | Claim | Status | Evidence | What's left |
+|---|---|---|---|---|
+| Core2 | Omni-emission: one intent graph → many coordinated artifacts, cross-artifact consistency enforced | Thesis goal, not tested | — | v3 M2+: full-stack example (e.g. Rust API + TS frontend + SQL schema) with cross-artifact type agreement enforced at compile time |
+| Core3 | Frontend agnosticism: IR independent of surface syntax; alternative frontends can feed the same causal graph | Structurally in v3 spec (L1 behaviors are syntax-neutral), not validated | v3 spec | Not gated in M0; testable when second frontend is attempted. M0 constraint: keep IR free of .dag-specific assumptions |
+| Core4 | Meta-process modeling: bootstrap, CI, dev process as .dag workflows; `dag run` as primary execution path | v2 partial — interpreter exists, workflows not yet modeled in .dag | `dag run` works | v3: bootstrap + CI expressible as .dag artifacts. Compiler's own meta-process becomes first non-trivial omni-emission test case |
+
 ### Free consequences (fall out when Tiers 1-2 close)
 
 | Consequence | Status | Milestone |
@@ -1789,7 +1797,7 @@ Every THESIS claim, cross-referenced. No silent drops.
 | Automatic parallelism | MODELED (v3 spec: independence from DAG) | v3 M2 (emission with parallelism) |
 | Automatic memoization | NOT TRACKED until now | v3 M4 (requires purity + cost lenses) |
 | Space bound proofs | NOT STARTED (space lens not modeled) | v3 M4 |
-| Cross-language optimization | NOT TRACKED until now | v3 M4 (requires cost algebra per target) |
+| Cross-language optimization | NOT TRACKED until now | v3 M4 (requires per-target cost in LanguageSpec) |
 | Meta-process modeling | PARTIAL (CI is .dag workflow) | v3 M3 (dag run as primary path) |
 
 ### Modeling discipline
@@ -1806,7 +1814,7 @@ Every THESIS claim, cross-referenced. No silent drops.
 
 | Lens | Modeled | Implemented | v3 status |
 |---|---|---|---|
-| Cost | computation.dag | v2: complexity.dag (5000 lines) | M1: reads Bound on Ports |
+| Cost | computation.dag | v2: complexity.dag (5000 lines) | M1: reads Bound on Ports. Must expose per-target cost hooks for Free2 (cross-language optimization) |
 | Ownership | EdgeKind → dimensional, OwnershipDecision → deleted | v2: ownership.dag (separate pass) | M1: fan-out on Ports |
 | Effect | std/effects.dag | v2: declared, not consumed | M2: lens reads effect from behaviors |
 | Termination | computation.dag lowering table | v2: CX gate (0 violations) | M0: structural (Loop requires Bound) |
@@ -1814,6 +1822,19 @@ Every THESIS claim, cross-referenced. No silent drops.
 | Algebra | std/algebra.dag hierarchy | v2: not implemented as lens | M1: normalization during construction |
 | Space | not yet modeled | v2: not started | M4: parallel to cost lens |
 | Closure rule | Define-in-Loop → fan-out=N, Loop's termination | v2: Exp 1 partial | M1: 2 fields on Define |
+
+### M0 substrate constraints (from omni-emission thesis claims)
+
+These are not M0 features. They are "don't foreclose" constraints the
+substrate work must honor so that later milestones aren't accidentally
+made expensive.
+
+| Constraint | Rationale |
+|---|---|
+| Types in the v3 IR must be representable without implicit privilege to any single target language | Omni-emission (Core2) requires the same declared type to emit coherently to Rust, Go, TypeScript, SQL, etc. Litmus test during M0: "does this type make sense if the target were simultaneously Rust, Go, Python, TypeScript, and SQL?" |
+| The diagnostic system must be able to represent diagnostics whose subject spans multiple artifacts | Omni-emission bugs include cross-artifact disagreements ("Rust API returns Foo but TypeScript client expects Bar"). The diagnostic structure needs cross-artifact context even if M0 doesn't produce such diagnostics yet |
+| The IR must remain independent of .dag's surface syntax; parser-specific assumptions must not leak into L1 behaviors | Frontend agnosticism (Core3) requires the IR to be reachable from alternative frontends. Parser concerns belong in the parse layer, not the substrate |
+| The LanguageSpec data model must support per-target cost characteristics, not just syntax templates | Cross-language optimization (Free2) depends on the emitter reading per-target concurrency, memory, and async cost models from declared data. Designing LanguageSpec as syntax-only forecloses Free2 |
 
 ### Experiments — mechanism vs dividend (corrected)
 
