@@ -605,10 +605,25 @@ struct Pass2Output {
     output_dir: std::path::PathBuf,
 }
 
+/// Find the stage0 binary without rebuilding. On CI, the Build Compiler
+/// step already ran `cargo build -p v2-compiler --release`. Rebuilding
+/// here would waste ~2 min due to fingerprint invalidation from earlier
+/// cargo commands (clippy, test). Falls back to build_stage0() if the
+/// binary doesn't exist (local dev).
+fn find_or_build_stage0() -> std::path::PathBuf {
+    let ws = crate::helpers::workspace_root();
+    let bin = ws.join("target/release/v2-compiler");
+    if bin.exists() {
+        ci_timing("PASS1: stage0 binary found (skipping rebuild)");
+        bin
+    } else {
+        ci_timing("PASS1: stage0 binary not found, building");
+        build_stage0()
+    }
+}
+
 static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
-    ci_timing("PASS1: start build_stage0");
-    let stage0_bin = build_stage0();
-    ci_timing("PASS1: build_stage0 done");
+    let stage0_bin = find_or_build_stage0();
     let ws = crate::helpers::workspace_root();
 
     let output_dir = std::env::temp_dir().join("v2-ci-pass1");
