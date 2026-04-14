@@ -95,14 +95,44 @@ gives a worse result — e.g., applying fact placement to
 TransformRule would scatter transform rules across the DAG and
 lose their shared machinery.
 
-### Default: assume dissolvable
+### Default: dissolve at first sight
 
-The default should be: every coproduct is dissolvable. The burden
+Every coproduct is dissolvable until proven otherwise. The burden
 is on PROVING irreducibility with a structural argument ("these
 cases share no common fields or dimensions"), not an operational
 one ("the parser does different things with them"). Operational
 arguments describe current code; structural arguments describe
 the model. The project is about the second.
+
+**"Single consumer" is not a defer signal — it's an urgency signal.**
+
+In hand-written codebases, a single-consumer coproduct looks safe
+to defer: low pain, low priority. But in a generated-code system,
+this reasoning is inverted:
+
+- Dissolution cost = model editing (cheap, constant over time)
+- Deferral cost = consumer accretion (expensive, monotonically
+  increasing — new consumers bolt on because the coproduct exists)
+- Therefore: the cheapest moment to dissolve is always NOW
+
+ExprData is the existence proof. It started as the parser's
+discriminator. One consumer. Looked fine. Five years later:
+22 variants, 665 match arms, 7 consumers, thousands of lines
+to unwind. Nobody designed a god-coproduct — it accreted because
+each new consumer was marginally easier to bolt on than to
+redesign. "Single consumer" was a temporal accident, not a
+design property.
+
+**Priority order (opposite of instinct):**
+1. Single-consumer coproducts first — cheapest, highest risk
+2. Few-consumer coproducts next — before they grow
+3. God-coproducts last — wait for big-bang moments (like v2→v3)
+
+**Criterion:** not "is this a design blocker?" (that only catches
+things that stop v3 from being built). The criterion is: "does
+the argument for keeping this rely on current consumer count, or
+on structural irreducibility?" If the former, dissolve. If the
+latter, accept.
 
 ---
 
