@@ -1,23 +1,23 @@
 // Type inference: fills Port.value_type by propagating types forward
 // through the DAG.
 //
-// M0.1 scope:
-//   - ValueNode(Int literal)     -> output port gets TypeShape::Primitive(Int)
-//   - TransformNode(BinaryOp)    -> output port type is composed from
-//                                   input port types (both Int -> Int)
+// M0 scope:
+//   - ValueNode(literal)         -> output port = literal type
+//   - TransformNode(BinaryOp)    -> output port from composed inputs
+//   - BranchNode                 -> output port from unified path outputs
 //   - BindNode                   -> no output port to fill; the bound
-//                                   name reuses its value port by
-//                                   reference in the scope map
+//                                   name reuses its value port via the
+//                                   scope map set during lowering
 //
-// On inference failure (not exercised by Test 1, but the pipeline
+// On inference failure (not exercised by Tests 1–2, but the pipeline
 // must not abort): call DiagnosticTable::mark_unresolved to nullify
 // the port's type AND record the diagnostic atomically. Never throw,
 // never return Result<_, TypeError>. Guardrail G5.
 //
-// The DAG is topologically ordered by construction (lowering emits
-// each node after its dependencies), so a single forward walk with
-// immediate application suffices — a Transform's inputs are always
-// resolved by the time the Transform itself is visited.
+// The DAG is topologically ordered by construction: lowering emits
+// each node after its dependencies, and Branch children (path bodies)
+// are lowered before the Branch itself. A single forward walk with
+// immediate application suffices.
 
 use crate::dag::{Behavior, BinOp, Dag, LiteralValue, PortId, TransformRule};
 use crate::types::{Prim, TypeShape};
@@ -50,7 +50,18 @@ fn decide(dag: &Dag, index: usize) -> Option<(PortId, TypeShape)> {
             let rhs_ty = dag.port(t.inputs[1]).value_type().cloned();
             infer_binop_result(*op, lhs_ty.as_ref(), rhs_ty.as_ref()).map(|ty| (t.output, ty))
         }
-        Behavior::Branch(_) | Behavior::Loop(_) | Behavior::Bind(_) => None,
+        Behavior::Branch(b) => {
+            let mut path_types = b.paths.iter().map(|p| dag.port(p.output).value_type());
+            let first = path_types.next().and_then(|t| t.cloned())?;
+            for other in path_types {
+                match other {
+                    Some(t) if *t == first => continue,
+                    _ => return None,
+                }
+            }
+            Some((b.output, first))
+        }
+        Behavior::Loop(_) | Behavior::Bind(_) => None,
     }
 }
 

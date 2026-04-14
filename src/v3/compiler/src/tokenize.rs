@@ -1,17 +1,27 @@
-// Minimal tokenizer for Test 1: `let x = 1 + 2`.
+// Minimal tokenizer for M0 test subset.
 //
-// Recognizes: `let`, identifiers, integer literals, `=`, `+`,
-// whitespace (skipped), EOF. Everything else is a tokenizer error
-// routed through the Diagnostic path — no panics.
+// Recognizes: `let`, `if`, `then`, `else`, identifiers, integer
+// literals, `=`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `+`, whitespace
+// (skipped), EOF. Everything else is a tokenizer error routed
+// through the Diagnostic path — no panics.
 
 use crate::diagnostics::{Diagnostic, SourceSpan};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
     KwLet,
+    KwIf,
+    KwThen,
+    KwElse,
     Ident(String),
     IntLit(i64),
     Eq,
+    EqEq,
+    NotEq,
+    Lt,
+    Le,
+    Gt,
+    Ge,
     Plus,
     Eof,
 }
@@ -37,21 +47,12 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
 
         let start = pos;
 
-        if byte == b'=' {
+        if let Some((kind, width)) = punctuation_token(bytes, pos) {
             tokens.push(Token {
-                kind: TokenKind::Eq,
-                span: SourceSpan::new(file, start as u32, (start + 1) as u32),
+                kind,
+                span: SourceSpan::new(file, start as u32, (start + width) as u32),
             });
-            pos += 1;
-            continue;
-        }
-
-        if byte == b'+' {
-            tokens.push(Token {
-                kind: TokenKind::Plus,
-                span: SourceSpan::new(file, start as u32, (start + 1) as u32),
-            });
-            pos += 1;
+            pos += width;
             continue;
         }
 
@@ -83,6 +84,9 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
             let text = &source[start..end];
             let kind = match text {
                 "let" => TokenKind::KwLet,
+                "if" => TokenKind::KwIf,
+                "then" => TokenKind::KwThen,
+                "else" => TokenKind::KwElse,
                 _ => TokenKind::Ident(text.to_string()),
             };
             tokens.push(Token {
@@ -104,4 +108,20 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
         span: SourceSpan::new(file, bytes.len() as u32, bytes.len() as u32),
     });
     Ok(tokens)
+}
+
+fn punctuation_token(bytes: &[u8], pos: usize) -> Option<(TokenKind, usize)> {
+    let first = bytes[pos];
+    let second = bytes.get(pos + 1).copied();
+    match (first, second) {
+        (b'=', Some(b'=')) => Some((TokenKind::EqEq, 2)),
+        (b'!', Some(b'=')) => Some((TokenKind::NotEq, 2)),
+        (b'<', Some(b'=')) => Some((TokenKind::Le, 2)),
+        (b'>', Some(b'=')) => Some((TokenKind::Ge, 2)),
+        (b'=', _) => Some((TokenKind::Eq, 1)),
+        (b'<', _) => Some((TokenKind::Lt, 1)),
+        (b'>', _) => Some((TokenKind::Gt, 1)),
+        (b'+', _) => Some((TokenKind::Plus, 1)),
+        _ => None,
+    }
 }

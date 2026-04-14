@@ -69,10 +69,70 @@ fn test_let_binding_produces_dag_shape() {
 }
 
 #[test]
+fn test_if_then_else_produces_branch_dag() {
+    let src = "let x = 5\nlet result = if x > 0 then 1 else 2";
+    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+
+    let result_bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "result")
+        .expect("Bind(result) must exist");
+
+    let value_port = dag.port(result_bind.value);
+    let branch_id = value_port
+        .produced_by
+        .expect("result has a producer node");
+    let branch = dag
+        .node(branch_id)
+        .as_branch()
+        .expect("producer is a Branch");
+
+    assert_eq!(branch.paths.len(), 2, "if/else produces two paths");
+
+    let cmp_id = dag
+        .port(branch.input)
+        .produced_by
+        .expect("branch input has producer");
+    let cmp = dag
+        .node(cmp_id)
+        .as_transform()
+        .expect("branch input is a Transform");
+    assert_eq!(cmp.rule, TransformRule::BinaryOp(BinOp::Gt));
+
+    assert_eq!(
+        dag.port(branch.input).value_type(),
+        Some(&TypeShape::Primitive(Prim::Bool)),
+        "comparison produces Bool",
+    );
+
+    assert_eq!(
+        dag.port(branch.output).value_type(),
+        Some(&TypeShape::Primitive(Prim::Int)),
+        "both paths produce Int; unified branch output is Int",
+    );
+
+    for path in &branch.paths {
+        assert_eq!(
+            dag.port(path.output).value_type(),
+            Some(&TypeShape::Primitive(Prim::Int)),
+            "each path's output port is typed Int",
+        );
+    }
+
+    assert!(dag.diagnostics().is_empty());
+}
+
+#[test]
 fn invariant_none_type_implies_diagnostic() {
     // Structural audit of the enforced mark_unresolved API.
     //   Port.value_type == None  iff  DiagnosticTable contains PortId
-    for src in &["let x = 1 + 2"] {
+    let sources = &[
+        "let x = 1 + 2",
+        "let x = 5\nlet result = if x > 0 then 1 else 2",
+    ];
+    for src in sources {
         let dag = compile_to_dag(src, "invariant.v3").unwrap();
         for port in dag.all_ports() {
             assert_eq!(

@@ -110,6 +110,7 @@ pub struct BranchNode {
 #[derive(Debug, Clone)]
 pub struct Path {
     pub body: NodeId,
+    pub output: PortId,
 }
 
 #[derive(Debug, Clone)]
