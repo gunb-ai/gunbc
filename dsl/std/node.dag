@@ -191,17 +191,8 @@ data compiler_inductive_fields: List<InductiveField> = [
     element_type: "Node"
   },
 
-  // =========================================================================
-  // LambdaSemantics — lambda parameter types
-  // =========================================================================
-
-  InductiveField {
-    type_name: "LambdaSemantics",
-    variant_name: "",
-    field_name: "param_types",
-    shape: ListRecursion,
-    element_type: "Node"
-  }
+  // LambdaSemantics removed — lambda param types now live on
+  // enriched child nodes directly (Experiment 1, PR #437).
 ]
 
 // =========================================================================
@@ -217,8 +208,7 @@ data compiler_recursive_types: Map<String, Bool> = {
   "Node": true,
   "InferredNode": true,
   "MatchPattern": true,
-  "MethodSemantics": true,
-  "LambdaSemantics": true
+  "MethodSemantics": true
 }
 
 // Query: is a type name in the compiler's recursive type set?
