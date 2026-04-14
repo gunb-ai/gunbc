@@ -1852,5 +1852,12 @@ Every THESIS claim, cross-referenced. No silent drops.
 3. **Service boundary typed-enum audit:** how many String proxies
    remain at service boundaries? Needs spot-check.
 
-4. **Domain-modeling spot-check:** 5 random entries from the ~70
-   bucket, tested with the richer-source question.
+4. **Domain-modeling spot-check: DONE. Bucket is NOT honest.**
+   5 random entries tested. 1/5 terminal (Role — direct API
+   transcription, opaque use). 4/5 unfinished: HttpMethod has
+   dimensional structure hiding in effects.dag grouping,
+   GitFileStatus and CargoCommand are completely unused (zero
+   consumers — dead types), WorkflowTrigger has zero matches and
+   latent source×filters decomposition. At 4/5 failure rate, the
+   ~70 bucket likely contains 50+ types needing a pass. Not before
+   M0, but before domain modeling is considered complete.
