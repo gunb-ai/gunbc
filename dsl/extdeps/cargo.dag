@@ -57,10 +57,6 @@ type CargoFeature {
 
 type TestHarness = Harness | NoHarness
 
-// -- Commands ------------------------------------------------------
-
-type CargoCommand = CargoBuild | CargoTest | CargoClippy | CargoDoc | CargoRun | CargoCheck | CargoBench | CargoPublish
-
 // -- Constants -----------------------------------------------------
 
 data default_edition: String = "2021"

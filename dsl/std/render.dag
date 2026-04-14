@@ -253,27 +253,6 @@ fn kv_block(level: Int, unit: String, sep: String, entries: List<{ key: String, 
 // Fragment IR -- format-agnostic renderable content
 // ===================================================================
 //
-// Fragment is the universal intermediate representation between
-// "what I want to express" and "what text I emit." The same Fragment
-// tree can be serialized to Makefile, Justfile, Markdown, or any format.
-//
-// No recursive variants. Indentation is a serializer concern (level
-// parameter), not a Fragment concern. Block/Section children are
-// List<Fragment> but serializers handle one level at a time --
-// callers pre-serialize children when depth > 1.
-
-type Fragment
-  = Text { content: String }
-  | Blank
-  | Comment { text: String }
-  | Heading { level: Int, text: String }
-  | KeyValue { key: String, value: String }
-  | ListItem { content: String }
-  | Block { header: String?, children: List<Fragment>, separator: String? }
-  | Section { title: String?, children: List<Fragment> }
-  | Verbatim { content: String }
-  | Separator { text: String }
-
 // OutputFormat: syntactic parameters of a target format.
 // Each format module owns its own OutputFormat data declaration.
 type OutputFormat {

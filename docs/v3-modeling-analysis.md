@@ -1543,8 +1543,8 @@ dissolution energy on types that v3 inherits.
 | Already dissolved | 15 | design done (11 prior + 4 resolved) |
 | Dissolves with v3 | 7 | no action needed (BackendCapability → delete, dead code) |
 | Mechanical (v3 substrate) | 4 | NodeFieldRole, FunctionSizeEffect, ItemKind, AliasKind |
-| Domain modeling | ~70 | external facts (spot-check 5 pending) |
-| std/ modeling | ~40 | audit individually |
+| Domain modeling | ~68 | UNEXAMINED. Spot-check 4/5 failed. 2 dead types deleted. Full pass blocks thesis completion, not M0. |
+| std/ modeling | ~39 | Spot-check 3/5 non-terminal. 1 dead type deleted. Full pass blocks thesis. |
 | Compiler infrastructure | ~30 | v3 replaces entirely |
 | **Total** | **~280** | |
 
@@ -1833,7 +1833,7 @@ Every THESIS claim, cross-referenced. No silent drops.
 | Automatic with v3 (concrete recipe) | 5 | MethodSemantics, CallSemantics, StringPart, OperationModifier, ExprCategory |
 | Automatic with v3 (vague recipe) | 2 | FuncBodyShape, TcoExprShape — need work |
 | Mechanical | 4 | NodeFieldRole, FunctionSizeEffect, ItemKind, AliasKind |
-| Domain modeling | ~70 | External facts (spot-check pending) |
+| Domain modeling | ~68 | UNEXAMINED. Spot-check 4/5 failed. Full pass blocks thesis completion. |
 | std/ modeling | ~40 | Audit individually |
 | Compiler infrastructure | ~30 | v3 replaces |
 | Deleted (dead code) | 1 | BackendCapability |
@@ -1851,6 +1851,22 @@ Every THESIS claim, cross-referenced. No silent drops.
 
 3. **Service boundary typed-enum audit:** how many String proxies
    remain at service boundaries? Needs spot-check.
+
+5. **HttpMethod dissolution (from spot-check).** effects.dag groups
+   HttpMethod variants into safety/operation classes via match arms.
+   Dimensional decomposition: `{ name: String, safety: Safe | Unsafe,
+   idempotent: Bool, operation: Read | Create | Replace | Delete }`.
+   The match arms in effects.dag dissolve into field reads.
+
+6. **std/ modeling spot-check: DONE. Better than domain, still not clean.**
+   5 random entries tested. 2/5 terminal (CostBound — well-designed
+   output type, all construction via named functions; RecursionShape —
+   never directly queried, threaded via InductiveField). 2/5 unfinished
+   (BodyKind — hidden prefix dimension in parser dispatch; Certainty —
+   4 variants in std/ but complexity.dag defines its own 2-variant
+   duplicate). 1/5 dead (Fragment — 10-variant type, zero consumers,
+   deleted). At 3/5 non-terminal rate, the ~40 bucket has ~24 items
+   needing attention. Not blocking M0, blocks thesis completion.
 
 4. **Domain-modeling spot-check: DONE. Bucket is NOT honest.**
    5 random entries tested. 1/5 terminal (Role — direct API
