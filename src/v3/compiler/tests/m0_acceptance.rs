@@ -13,6 +13,7 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, FunctionRef, LiteralValue};
+use v3_compiler::lens_provenance::{Origin, ProvenanceLens};
 use v3_compiler::types::{Prim, TypeShape};
 
 #[test]
@@ -192,6 +193,53 @@ fn test_recursive_function_produces_loop_dag() {
 }
 
 #[test]
+fn test_provenance_lens_reads_produced_by() {
+    // The v3-vs-v2 proof point: the provenance lens reads Port.produced_by
+    // directly and classifies by behavior kind. NO reconstruction. The
+    // ProvenanceLens implementation is under 60 lines — if it ever isn't,
+    // the substrate has a physics gap that needs fixing.
+    let src = "let a = 1\nlet b = 2\nlet c = a + b";
+    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+    let lens = ProvenanceLens::new(&dag);
+
+    let bind_c = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "c")
+        .expect("Bind(c) must exist");
+
+    // c's value port was produced by a Transform (the Add).
+    let add_id = match lens.origin_of(bind_c.value) {
+        Origin::Computed { by } => by,
+        other => panic!("expected Origin::Computed for c, got {other:?}"),
+    };
+
+    // The lens, reading only produced_by, agrees with structural lookup.
+    let add = dag
+        .node(add_id)
+        .as_transform()
+        .expect("add_id points to a Transform");
+    assert_eq!(add.target, FunctionRef::new("std::int::add"));
+
+    // Each operand of Add came from a Value literal. The lens reports
+    // Origin::Source with the Value's NodeId — again, reading only
+    // produced_by on the input port and the producer's behavior kind.
+    for input in &add.inputs {
+        match lens.origin_of(*input) {
+            Origin::Source { by: Some(node_id) } => {
+                let value_node = dag
+                    .node(node_id)
+                    .as_value()
+                    .expect("the lens reported a Value source");
+                assert!(matches!(value_node.data, LiteralValue::Int(_)));
+            }
+            other => panic!("expected Origin::Source from Value, got {other:?}"),
+        }
+    }
+}
+
+#[test]
 fn invariant_none_type_implies_diagnostic() {
     // Structural audit of the enforced mark_unresolved API.
     //   Port.value_type == None  iff  DiagnosticTable contains PortId
@@ -199,6 +247,7 @@ fn invariant_none_type_implies_diagnostic() {
         "let x = 1 + 2",
         "let x = 5\nlet result = if x > 0 then 1 else 2",
         "fn count_down(n: Int) -> Int = if n == 0 then 0 else n + count_down(n - 1)\nlet answer = count_down(3)",
+        "let a = 1\nlet b = 2\nlet c = a + b",
     ];
     for src in sources {
         let dag = compile_to_dag(src, "invariant.v3").unwrap();
