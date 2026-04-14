@@ -1279,18 +1279,169 @@ to address vs what's fine.
 | TcoExprShape | 5 | TCO classification — gone when recursion → Loop lowering |
 | BackendCapability | 5 | capability flags — becomes boolean fields on LanguageSpec |
 
-**NEEDS DESIGN DECISION (v3-relevant, 8 types):**
+**DESIGN DECISIONS RESOLVED (4 non-trivial, 4 mechanical):**
 
-| Type | Variants | Question |
+The 4 non-trivial cases have concrete v3 type declarations.
+The 4 mechanical cases (NodeFieldRole, FunctionSizeEffect, ItemKind,
+AliasKind) dissolve automatically when their substrate changes land.
+
+#### OwnershipDecision — DELETED (fact placement #1)
+
+No type declaration needed. Ownership is a derived query on Ports:
+
+```
+fan_out(port) == 1                            → move-eligible
+fan_out(port) > 1                             → shared; diagnostic if uniqueness required
+fan_out(port) == 0 AND node is pure           → dead code diagnostic
+fan_out(port) == 0 AND node has effect        → valid (effect is the "use")
+```
+
+Consumers that asked "is this SoleOwner?" now ask `fan_out(port) == 1`.
+Errors go to the diagnostic table. The Port.value_type = None invariant
+extends: if a port has fan_out > 1 in a uniqueness context, a diagnostic
+is written with binding, consumer_count, and sites as structured data.
+
+Note: fan_out=0 rule accounts for effects — effectful ports with no
+consumers are valid (the effect IS the use), not dead code.
+
+#### EdgeKind — dimensional (SourceEffect × ControlRole)
+
+```
+type SourceEffect = Intact | Partial | Consumed
+type ControlRole  = DataFlow | IterationCarry
+
+type Edge {
+  source_port: PortId
+  consumer_port: PortId
+  source_effect: SourceEffect
+  control_role: ControlRole
+}
+```
+
+v2's Threaded = (Consumed, IterationCarry). Consumer migration:
+- `semantic_consumer_count` → `source_effect == Consumed && control_role == DataFlow`
+- `binding_fan_out` → `control_role == DataFlow`
+- `build_read_only_params` → `source_effect != Consumed OR control_role == IterationCarry`
+
+The third filter mixes dimensions — a hint that "read-only params" may
+be a v2-ism that mixed two concepts. Flag for audit during v3 ownership.
+
+Naming: "control_role" replaces "administrative" — structural property
+of the edge in the data-flow graph, not compiler bookkeeping category.
+
+#### MatchPattern — dimensional (Activation × BindingSet)
+
+```
+type Activation =
+    Always
+  | Literal { value: LiteralValue }
+  | Variant { variant_ref: VariantRef }
+
+type BindingSet =
+    NoBinding
+  | Single { name: Name }
+  | PerField { fields: List<(FieldName, Pattern)> }
+
+type Pattern {
+  activation: Activation
+  binding: BindingSet
+  span: SourceSpan
+}
+```
+
+v2's 4 variants are specific points in a 3×3 space:
+- Wildcard       = (Always, NoBinding)
+- Bind           = (Always, Single)
+- LitPattern     = (Literal, NoBinding)
+- VariantPattern = (Variant, PerField)
+
+Uninhabited: (Always, PerField) and (Literal, PerField) — "destructure
+anything" and "destructure a literal" are nonsensical. Enforced by
+validity rule, not type structure.
+
+Free extensions at zero consumer cost: at-patterns like `n @ 42`
+(Literal, Single) and `s @ Some(_)` (Variant, Single).
+
+PerField uses named field bindings `(FieldName, Pattern)` rather than
+positional — prevents wrong-field bugs. Change from v2's positional model.
+
+Exhaustiveness checking simplifies: the checker folds over patterns
+along the activation axis. "Is this exhaustive?" = "does the set of
+activations cover all values of the scrutinee type?"
+
+#### CompilerDiagnostic — 5-field record with residual coproducts
+
+```
+type Severity = Error | Warning | Info
+
+type Category = Module | Type | Pattern | Parse | Analysis | Internal
+
+type Subject =
+    OfName     { name: Name }
+  | OfType     { type_ref: TypeRef }
+  | OfField    { field_ref: FieldRef }
+  | OfModule   { module_path: ModulePath }
+  | OfFunction { function_ref: FunctionRef }
+  | OfBinding  { binding_ref: BindingRef }
+  | OfVariant  { variant_ref: VariantRef }
+
+type Detail =
+    NoDetail
+  | Comparison    { expected: TypeRef, got: TypeRef }
+  | ArityCompare  { expected: Int, got: Int }
+  | MissingItems  { missing: List<Name> }
+  | ItemChain     { chain: List<ModulePath> }
+  | ConsumerList  { consumers: List<BindingRef> }
+  | Reason        { text: String }
+
+type Diagnostic {
+  span: SourceSpan
+  severity: Severity
+  category: Category
+  subject: Subject
+  detail: Detail
+  producing_node: NodeId
+}
+```
+
+**Subject is a residual coproduct, NOT terminal.** The richer source
+(typed program references with uniform identity) doesn't fully exist
+yet. When typed references land, Subject decomposes to dimensional
+form: `Reference { ref_kind, identity }`. This is honest deferral
+with a named trigger, not accepted compression.
+
+**Detail is a terminal coproduct.** The variants carry genuinely
+different structured payloads (two TypeRefs vs a List<Name> vs Int
+pair). No coordinate space exists — they're different small record
+types. The smallest possible set of genuinely different shapes.
+
+**Reason is an escape hatch.** Prefer structured Detail variants.
+Every Reason use is a deferred modeling task. Over time, Reason
+uses should decrease as structured variants are added.
+
+Consumer wins:
+- `diagnostic_to_span(d)` → `d.span` (field read, was 16-way match)
+- `is_error_diagnostic(d)` → `d.severity == Error` (was hand-maintained list)
+- `diagnostic_to_message(d)` → formatted by category + detail kind,
+  driven by a template table. New diagnostic = new row, not new branch.
+
+v2 → v3 migration (sample):
+```
+v2: TypeMismatch { expected, got, span }
+v3: Diagnostic { span, severity: Error, category: Type,
+     subject: OfType { type_ref: expected },
+     detail: Comparison { expected, got },
+     producing_node: <node_id> }
+```
+
+#### Remaining 4 mechanical dissolutions
+
+| Type | Variants | Dissolution |
 |---|---|---|
-| MatchPattern | 4 (Bind, LitPattern, VariantPattern, Wildcard) | Part of Branch (Coproduct elimination). These have genuinely different fields. Dimensional: Pattern { kind, bindings }? Or is this irreducible because each variant carries structurally different data? |
-| CompilerDiagnostic | 16 | All variants carry span + context fields. Dimensional: Diagnostic { category, severity, span, context }? Category is variant-is-data. Severity can be derived from category. Most variants share the same structure — only NonExhaustiveMatch (carries List<String>) and ArityMismatch (carries expected/got counts) differ. |
-| NodeFieldRole | 3 | Classification of Node fields for CX. Goes away when Node moves to std/ and fields are declared with inductive structure (already in node.dag). |
-| FunctionSizeEffect | 3 | Classification of function size effects. Goes away when the cost lens reads algebraic properties instead of function-specific tables. |
-| EdgeKind | 4 (Consumed, Read, Threaded, Projected) | Ownership edge types. These trace to ownership lens concepts. Dimensional: edge has {mutability, lifetime} dimensions? Or irreducible because the ownership algebra needs exactly these 4 cases? |
-| OwnershipDecision | 3 (SoleOwner, SharedError, Unclassified) | Output of ownership analysis. SoleOwner is the happy path. SharedError and Unclassified are diagnostic states. Fact placement: decision is a field, errors go to diagnostic table. |
-| ItemKind | 7 | Parser classification of declaration types. Variant-is-data: all items have the same structure (name, params, body, type annotation) with ItemForm driving the differences. Already modeled in SyntaxSpec.item_forms. |
-| AliasKind | 3 | Type alias classification. Variant-is-data: all aliases are name → type, the kind determines resolution strategy. |
+| NodeFieldRole | 3 | Dissolves when Node moves to std/ — fields declared with inductive structure (already in node.dag) |
+| FunctionSizeEffect | 3 | Dissolves when cost lens reads algebraic properties instead of function-specific tables |
+| ItemKind | 7 | Variant-is-data: all items have same structure, ItemForm drives differences. Already modeled in SyntaxSpec.item_forms |
+| AliasKind | 3 | Variant-is-data: all aliases are name → type, kind determines resolution strategy |
 
 **DOMAIN MODELING (external facts, ~70 types):**
 
@@ -1345,10 +1496,10 @@ dissolution energy on types that v3 inherits.
 
 | Category | Types | Action |
 |---|---|---|
-| Already dissolved | 11 | design done |
-| Dissolves with v3 | 8 | no action needed |
-| Needs design decision | 8 | resolve before v3 construction |
-| Domain modeling | ~70 | leave as-is (external facts) |
+| Already dissolved | 15 | design done (11 prior + 4 resolved) |
+| Dissolves with v3 | 7 | no action needed (BackendCapability → delete, dead code) |
+| Mechanical (v3 substrate) | 4 | NodeFieldRole, FunctionSizeEffect, ItemKind, AliasKind |
+| Domain modeling | ~70 | external facts (spot-check 5 pending) |
 | std/ modeling | ~40 | audit individually |
 | Compiler infrastructure | ~30 | v3 replaces entirely |
 | **Total** | **~280** | |
@@ -1389,23 +1540,27 @@ the v3 direction. Status matters because the doc builds on them:
 | 4 | Purity lens | **PASS (full)** | 1 new file, zero compiler changes, 3117 pure / 36 effectful. Validates observational lens mechanism. |
 | 5 | ExprData variant cost | **MEASURED** | 8-11 files, ~30 match arms per new variant. Validates the disease is real. |
 
-**Experiment 2 is a gate on v3 construction.**
+**Experiment 2 gate: CLEARED.**
 
-The carry path works, but the old reconstruction runs in parallel.
-This is strictly worse than v2's starting state — two sources of
-truth for provenance instead of one. The "dividend is enabled but
-not banked" framing understates it: there is active debt. Every
-day both paths coexist, new code might silently read from the old
-reconstruction and depend on it, making the eventual deletion
-harder. The parallel implementation IS the construct-discard-
-reconstruct pattern, just with "also construct" added.
+The classify_let_value reconstruction path has been deleted for
+ExprVar and ExprFieldAccess cases. scope_locals (carried facts)
+covers these paths. 415 tests pass, CX ratchet 0 diagnostics
+(stable), no compensating skip annotations.
 
-**Gate:** Experiment 2 must complete (at least one reconstruction
-function DELETED, CX violations not increased) before the v3 spec
-is considered validated for "lenses read physics." The mechanism
-works. The dividend is not banked. Finishing is probably a day of
-work and turns a partial into a full. Cheap to do, expensive to
-skip.
+**Experiment 2 completion proves the physics-and-lens architecture
+holds when tested.** One reconstruction path has been deleted with
+zero CX regression and no compensating mechanism. The remaining
+20 migrations are incremental work under the same pattern. This is
+the first banked dividend in the project, and it confirms that
+dissolution removes code rather than relocating complexity.
+
+The 20 remaining sub_value_vars reads (classify_argument,
+resolve_collection_field, annotate_descent match/lambda/foreach)
+are a parallel track alongside v3 M0. Each migration is
+independently testable with the same pattern. If two consecutive
+migrations find the pattern doesn't apply cleanly, pause and
+investigate — that's the signal of a sub-case the first migration
+didn't teach us.
 
 ### Mechanism vs dividend discipline
 
@@ -1415,7 +1570,7 @@ Use this as a standing discipline for v3 work:
 |---|---|---|---|
 | Rule-table transforms | validated (Exp 3) | banked | done |
 | Observational lenses | validated (Exp 4) | banked | done |
-| Facts carried through bindings | validated (Exp 2) | **NOT banked** — old path not deleted | ~1 day: delete classify_let_value reconstruction, verify CX stable |
+| Facts carried through bindings | validated (Exp 2) | **BANKED** — classify_let_value reconstruction deleted, CX stable | done (remaining: 20 incremental migrations) |
 | Lambda = function | validated (Exp 1) | partially banked — closure rule identified | small: closure rule is 2 fields on Define (capture_context, iteration_bound). Not a redesign — the physics model already supports it. |
 | ExprData tax is real | measured (Exp 5) | target: 8-11x → 1x | v3 construction (the whole project) |
 
