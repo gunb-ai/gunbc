@@ -150,10 +150,13 @@ dimensions. So Bound dissolves to:
 ```
 type Bound {
   dimension: IterationDimension   // derived from the type's algebra
-  origin: String                  // which parameter/value (immediate only)
+  produced_by: String             // which parameter/value (immediate only)
   count: Port                     // the actual number
 }
 ```
+
+Uses `produced_by` for consistency with Port.produced_by — same
+concept ("where did this come from?") should use the same name.
 
 The dimension comes FROM the algebra profile, not from a growing
 enum. New algebraic structure → new dimension falls out.
@@ -161,11 +164,11 @@ IterationDimension has 3 values (TreeDescent, CollectionFold,
 ArithmeticRepeat) tracing to the 3 iteration primitives — small,
 stable, irreducible.
 
-**Why immediate origin, not full path:** if a consumer needs to
-trace further back, it follows edges in the DAG. Storing the full
-path would duplicate the graph structure. The immediate origin tells
-the cost lens what it needs: "is this bound input-dependent or
-constant?"
+**Why immediate produced_by, not full path:** if a consumer needs
+to trace further back, it follows edges in the DAG. Storing the
+full path would duplicate the graph structure. The immediate
+produced_by tells the cost lens what it needs: "is this bound
+input-dependent or constant?"
 
 ### Path — std/ (proposed)
 
@@ -740,8 +743,13 @@ via test-driven development. The lowering boundary (surface syntax
 should verify:
 - Single self-call → Loop with correct bound
 - Mutual recursion (A→B→A) → single Loop with phase
-- 3-way mutual recursion → single Loop with 3-phase
+- 3-way mutual recursion (A→B→C→A) → single Loop with 3-phase
 - Self-call with same argument → repeat(Forever)
+- Mutual recursion with same argument (ping/pong with no descent)
+  → repeat(Forever) — must detect the implicit forever loop
+- Recursion with accumulator vs without (different ownership)
+- Recursion inside a fold body — legal (bounded by fold × descent)
+  but composition must be correct
 - Mixed: mutual recursion where one branch terminates → Loop + Branch
 
 ---
@@ -772,8 +780,9 @@ The compiler reads std/ declarations to know what to do. No enum
 to maintain. No match arms to add when a new structure appears.
 
 ### SizeBound dissolves:
-From 5-variant coproduct → Bound { dimension, origin, count }.
-Dimension derived from algebra profile. Origin is immediate only.
+From 5-variant coproduct → Bound { dimension, produced_by, count }.
+Dimension derived from algebra profile. produced_by is immediate
+only — same naming as Port.produced_by for consistency.
 
 ### BinOp/UnaryOp dissolve:
 Syntax token stays in syntax.dag. Semantic operation resolves to
