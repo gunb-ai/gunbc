@@ -11,6 +11,43 @@
 - Every decision should trace to a validation experiment or a v2 lesson.
 - v2 is the reference implementation and test oracle.
 
+## Sketch vs Oracle framing (M0–M2)
+
+**The Rust at `src/v3/compiler/` is a sketch, not an oracle.**
+
+During M0–M2, the Rust implementation exists to validate the
+substrate design — to discover whether the L1 decomposition, the
+port invariants, the lens architecture, and the diagnostic system
+actually work when you build against them. Its purpose is
+*discovery*, not *specification*. The .dag version (M3) is the
+real v3, and it will be written fresh against the same test suite,
+using the Rust as a reference for "did we think of this case?" and
+"does the architecture hold?" — not as a structural template.
+
+Consequences:
+- **Style matches Rust, not .dag.** Imperative patterns (mutable
+  Dag, HashMap scope mutation, fixpoint loops with a `changed`
+  flag) are fine when they fit Rust's affordances. Style
+  consistency with .dag is nice-to-have, not load-bearing.
+- **Refactor only where the pattern is structurally gapped.**
+  If the Rust pattern relies on something .dag genuinely cannot
+  express (mutable references in a recursive parameter position,
+  for example), refactor now. If the gap is "functional Rust
+  would be prettier," defer to M3.
+- **The M0.6 immutable-scope refactor is an example of the first
+  category.** `&mut HashMap` as a recursive parameter has no .dag
+  analogue, so lower.rs threads scope by value.
+
+**At M3**, the Rust's role transitions. During the port attempt,
+re-evaluate which patterns need restructuring before translating.
+That's the first time you have enough information to know what
+maps mechanically and what requires redesign. Pre-emptive
+restructuring at M0 would be guessing about M3's needs.
+
+Do NOT re-litigate "should the Rust be more functional" in every
+review. The answer for M0–M2 is: no, it's a sketch. The answer
+at M3 is: look at the port attempt.
+
 ## Architecture
 
 ```

@@ -1,8 +1,17 @@
 // SurfaceAst -> Dag lowering.
 //
 // Walks the surface tree and builds the L1 behavior graph. A
-// HashMap<String, PortId> tracks let-binding names in scope so that
-// a later reference to a name resolves to the same port.
+// HashMap<String, PortId> tracks let-binding names in scope.
+//
+// Scope threading is functional by contract: `lower_item` and
+// `lower_fn_item` take a `HashMap` by value and return an updated
+// `HashMap`. There are no `&mut` references to the scope because
+// `&mut` in a recursive parameter position has no .dag analogue;
+// the .dag port threads scope as a value through each recursive
+// call. The function bodies may use local `mut` bindings to call
+// `HashMap::insert`, but the external contract is value-in /
+// value-out. See src/v3/ROADMAP.md "Sketch vs Oracle framing"
+// for why this particular refactor matters while others don't.
 //
 // Facts flow forward: every SurfaceExpr has a span, and every
 // Behavior we create carries that span as a structural field
@@ -35,33 +44,26 @@ pub fn lower(module: &SurfaceModule) -> Dag {
     let mut dag = Dag::new();
     let mut scope: HashMap<String, PortId> = HashMap::new();
     for item in &module.items {
-        lower_item(item, &mut dag, &mut scope);
+        scope = lower_item(item, &mut dag, scope);
     }
     dag
 }
 
-fn lower_item(item: &SurfaceItem, dag: &mut Dag, scope: &mut HashMap<String, PortId>) {
+fn lower_item(
+    item: &SurfaceItem,
+    dag: &mut Dag,
+    scope: HashMap<String, PortId>,
+) -> HashMap<String, PortId> {
+    let mut scope = scope;
     match item {
         SurfaceItem::Let {
             name,
             type_ann,
             expr,
         } => {
-            let value_port = lower_expr(expr, dag, scope);
+            let value_port = lower_expr(expr, dag, &scope);
             if let Some(ty) = type_ann {
                 let declared = lower_type(ty);
-                // Pre-set the declared type before inference runs.
-                // If the expression's inferred type conflicts, infer
-                // will detect it via the apply-level check and route
-                // the mismatch through mark_unresolved with a
-                // diagnostic that uses the annotation's span.
-                if let Some(producer_id) = dag.port(value_port).produced_by {
-                    // Override the producer's span with the annotation
-                    // span for diagnostic precision. We do this by
-                    // stashing the annotation span on the bind below;
-                    // the diagnostic uses bind_span.
-                    let _ = producer_id;
-                }
                 dag.set_port_type(value_port, declared);
             }
             let bind_id = dag.alloc_node_id();
@@ -77,15 +79,14 @@ fn lower_item(item: &SurfaceItem, dag: &mut Dag, scope: &mut HashMap<String, Por
                 span: bind_span,
             }));
             scope.insert(name.clone(), value_port);
+            scope
         }
         SurfaceItem::Fn {
             name,
             params,
             return_type,
             body,
-        } => {
-            lower_fn_item(name, params, return_type, body, dag, scope);
-        }
+        } => lower_fn_item(name, params, return_type, body, dag, scope),
     }
 }
 
@@ -95,8 +96,8 @@ fn lower_fn_item(
     return_type: &SurfaceType,
     body: &SurfaceExpr,
     dag: &mut Dag,
-    outer_scope: &mut HashMap<String, PortId>,
-) {
+    outer_scope: HashMap<String, PortId>,
+) -> HashMap<String, PortId> {
     // 1. Allocate parameter ports and set their declared types.
     let mut param_ports: Vec<PortId> = Vec::with_capacity(params.len());
     let mut param_types: Vec<TypeShape> = Vec::with_capacity(params.len());
@@ -163,7 +164,9 @@ fn lower_fn_item(
         params: param_ports,
         span: body_span,
     }));
+    let mut outer_scope = outer_scope;
     outer_scope.insert(name.to_string(), value_port);
+    outer_scope
 }
 
 fn lower_type(ty: &SurfaceType) -> TypeShape {
