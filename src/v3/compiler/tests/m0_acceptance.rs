@@ -5,11 +5,25 @@
 // error-path inputs.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, Dag, FunctionRef, LiteralValue, PortState};
+use v3_compiler::dag::{Behavior, Dag, DeclarationId, LiteralBits, PortState};
 use v3_compiler::lens_depth::DepthLens;
 use v3_compiler::lens_provenance::{Origin, ProvenanceLens};
 use v3_compiler::types::{Prim, TypeShape};
 use v3_compiler::CompileError;
+
+/// Assert that a Transform.target DeclarationId points to a declaration
+/// whose `name` field equals `expected`. Replaces the M0-era
+/// `add.target == FunctionRef::new("std::int::add")` shape with a walk
+/// through the declaration table, matching the §8.9 target-as-Declaration
+/// model.
+fn assert_target_name(dag: &Dag, target: DeclarationId, expected: &str) {
+    let decl = dag.declaration(target);
+    assert_eq!(
+        decl.name.as_deref(),
+        Some(expected),
+        "Transform.target declaration name mismatch"
+    );
+}
 
 /// Test helper: extract the Dag regardless of whether the compile
 /// succeeded or failed with semantic errors. Panics on tokenize/parse
@@ -48,7 +62,7 @@ fn test_let_binding_produces_dag_shape() {
         .node(producer_id)
         .as_transform()
         .expect("producer is a Transform");
-    assert_eq!(add.target, FunctionRef::new("std::int::add"));
+    assert_target_name(&dag, add.target, "+");
     assert_eq!(add.inputs.len(), 2);
 
     let lhs_producer = dag
@@ -61,8 +75,8 @@ fn test_let_binding_produces_dag_shape() {
         .expect("rhs port has a producer");
     let lhs = dag.node(lhs_producer).as_value().expect("lhs is Value");
     let rhs = dag.node(rhs_producer).as_value().expect("rhs is Value");
-    assert_eq!(lhs.data, LiteralValue::Int(1));
-    assert_eq!(rhs.data, LiteralValue::Int(2));
+    assert_eq!(lhs.data, LiteralBits::Int(1));
+    assert_eq!(rhs.data, LiteralBits::Int(2));
 
     assert_eq!(
         dag.port(add.output).value_type(),
@@ -107,7 +121,7 @@ fn test_if_then_else_produces_branch_dag() {
         .node(cmp_id)
         .as_transform()
         .expect("branch input is a Transform");
-    assert_eq!(cmp.target, FunctionRef::new("std::int::gt"));
+    assert_target_name(&dag, cmp.target, ">");
 
     assert_eq!(
         dag.port(branch.input).value_type(),
@@ -187,7 +201,7 @@ fn test_recursive_function_produces_loop_dag() {
         .node(call_id)
         .as_transform()
         .expect("call site is a Transform");
-    assert_eq!(call.target, FunctionRef::new("count_down"));
+    assert_target_name(&dag, call.target, "count_down");
     assert_eq!(call.inputs.len(), 1);
 
     assert_eq!(
@@ -221,7 +235,7 @@ fn test_provenance_lens_reads_produced_by() {
         .node(add_id)
         .as_transform()
         .expect("add_id points to a Transform");
-    assert_eq!(add.target, FunctionRef::new("std::int::add"));
+    assert_target_name(&dag, add.target, "+");
 
     for input in &add.inputs {
         match lens.origin_of(*input) {
@@ -230,7 +244,7 @@ fn test_provenance_lens_reads_produced_by() {
                     .node(node_id)
                     .as_value()
                     .expect("the lens reported a Value source");
-                assert!(matches!(value_node.data, LiteralValue::Int(_)));
+                assert!(matches!(value_node.data, LiteralBits::Int(_)));
             }
             other => panic!("expected Origin::Source from Value, got {other:?}"),
         }
@@ -355,7 +369,7 @@ fn test_unknown_function_produces_diagnostic() {
 #[test]
 fn test_bool_literal_true() {
     // `let x = true` — the value port producer is a Value node
-    // carrying LiteralValue::Bool(true), and inference resolves the
+    // carrying LiteralBits::Bool(true), and inference resolves the
     // port to Prim::Bool.
     let dag = compile_to_dag("let x = true", "test.v3").expect("compiles");
 
@@ -374,7 +388,7 @@ fn test_bool_literal_true() {
         .node(producer)
         .as_value()
         .expect("producer is a Value node");
-    assert_eq!(value_node.data, LiteralValue::Bool(true));
+    assert_eq!(value_node.data, LiteralBits::Bool(true));
 
     assert_eq!(
         dag.port(bind_x.value).value_type(),
@@ -403,7 +417,7 @@ fn test_bool_literal_false() {
         .node(producer)
         .as_value()
         .expect("producer is a Value node");
-    assert_eq!(value_node.data, LiteralValue::Bool(false));
+    assert_eq!(value_node.data, LiteralBits::Bool(false));
 
     assert_eq!(
         dag.port(bind_x.value).value_type(),
@@ -416,7 +430,7 @@ fn test_bool_literal_false() {
 #[test]
 fn test_string_literal() {
     // `let x = "hello"` — the value port producer is a Value node
-    // carrying LiteralValue::String("hello"), and inference resolves
+    // carrying LiteralBits::String("hello"), and inference resolves
     // the port to Prim::String.
     let dag = compile_to_dag("let x = \"hello\"", "test.v3").expect("compiles");
 
@@ -435,7 +449,7 @@ fn test_string_literal() {
         .node(producer)
         .as_value()
         .expect("producer is a Value node");
-    assert_eq!(value_node.data, LiteralValue::String("hello".to_string()));
+    assert_eq!(value_node.data, LiteralBits::String("hello".to_string()));
 
     assert_eq!(
         dag.port(bind_x.value).value_type(),
@@ -478,7 +492,7 @@ fn test_bool_literal_in_conditional() {
         .node(cond_producer)
         .as_value()
         .expect("branch condition is a Value node");
-    assert_eq!(cond_value.data, LiteralValue::Bool(true));
+    assert_eq!(cond_value.data, LiteralBits::Bool(true));
 
     assert_eq!(
         dag.port(branch.input).value_type(),
@@ -771,7 +785,7 @@ fn test_composition_if_inside_function_call() {
         .node(call_id)
         .as_transform()
         .expect("producer is a Transform");
-    assert_eq!(call.target, FunctionRef::new("f"));
+    assert_target_name(&dag, call.target, "f");
     assert_eq!(call.inputs.len(), 1);
 
     // The argument is a Branch output.
@@ -812,7 +826,7 @@ fn test_composition_two_functions_later_calls_earlier() {
         .node(g_call_id)
         .as_transform()
         .expect("producer is a Transform");
-    assert_eq!(g_call.target, FunctionRef::new("g"));
+    assert_target_name(&dag, g_call.target, "g");
 
     // Both f and g should be registered as Bind nodes with
     // non-empty params (function definitions).

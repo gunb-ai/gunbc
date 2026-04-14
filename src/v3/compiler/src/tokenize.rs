@@ -1,11 +1,13 @@
-// Minimal tokenizer for M0 test subset.
+// Tokenizer for the v3 surface grammar.
 //
-// Recognizes keywords (`let`, `if`, `then`, `else`, `fn`, `true`,
-// `false`, `Int`, `Bool`, `String`), identifiers, integer literals,
-// double-quoted string literals, and punctuation (`=`, `==`, `!=`,
-// `<`, `<=`, `>`, `>=`, `+`, `-`, `*`, `/`, `:`, `->`, `(`, `)`,
-// `,`). Whitespace is skipped. Tokenizer errors flow through the
-// Diagnostic path — no panics.
+// Keywords: `let`, `if`, `then`, `else`, `fn`, `type`, `true`, `false`.
+// Identifiers, integer literals, double-quoted string literals, and punctuation
+// (`=`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `+`, `-`, `*`, `/`, `:`, `->`, `(`, `)`,
+// `,`, `|`, `?`, `{`, `}`, `;`). Whitespace is skipped. Tokenizer errors flow
+// through the Diagnostic path — no panics.
+//
+// `<`/`>` tokenize as comparison operators; the parser disambiguates them as
+// type-parameter delimiters by context (M1_DESIGN.md §8.8).
 
 use crate::diagnostics::{Diagnostic, SourceSpan};
 
@@ -16,6 +18,7 @@ pub enum TokenKind {
     KwThen,
     KwElse,
     KwFn,
+    KwType,
     KwTrue,
     KwFalse,
     Ident(String),
@@ -36,7 +39,12 @@ pub enum TokenKind {
     Arrow,
     LParen,
     RParen,
+    LBrace,
+    RBrace,
     Comma,
+    Semicolon,
+    Pipe,
+    Question,
     Eof,
 }
 
@@ -56,6 +64,15 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
 
         if byte.is_ascii_whitespace() {
             pos += 1;
+            continue;
+        }
+
+        // Line comments: `// ...` to end of line.
+        if byte == b'/' && bytes.get(pos + 1) == Some(&b'/') {
+            pos += 2;
+            while pos < bytes.len() && bytes[pos] != b'\n' {
+                pos += 1;
+            }
             continue;
         }
 
@@ -102,6 +119,7 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
                 "then" => TokenKind::KwThen,
                 "else" => TokenKind::KwElse,
                 "fn" => TokenKind::KwFn,
+                "type" => TokenKind::KwType,
                 "true" => TokenKind::KwTrue,
                 "false" => TokenKind::KwFalse,
                 _ => TokenKind::Ident(text.to_string()),
@@ -173,7 +191,12 @@ fn punctuation_token(bytes: &[u8], pos: usize) -> Option<(TokenKind, usize)> {
         (b':', _) => Some((TokenKind::Colon, 1)),
         (b'(', _) => Some((TokenKind::LParen, 1)),
         (b')', _) => Some((TokenKind::RParen, 1)),
+        (b'{', _) => Some((TokenKind::LBrace, 1)),
+        (b'}', _) => Some((TokenKind::RBrace, 1)),
         (b',', _) => Some((TokenKind::Comma, 1)),
+        (b';', _) => Some((TokenKind::Semicolon, 1)),
+        (b'|', _) => Some((TokenKind::Pipe, 1)),
+        (b'?', _) => Some((TokenKind::Question, 1)),
         _ => None,
     }
 }

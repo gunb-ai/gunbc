@@ -52,3 +52,9 @@ jobs:
       - name: CI Timing
         if: always()
         run: cat /tmp/v2-ci-timing.txt 2>/dev/null || echo "no timing data"
+
+      - name: v3 Compiler Tests
+        run: cargo test -p v3-compiler
+
+      - name: v3 Compiler Clippy
+        run: cargo clippy -p v3-compiler --all-targets -- -D warnings

@@ -439,3 +439,28 @@ explicitly defers to M1: how lenses store results. **(Post-M1(2.7)
 update: this deferred question resolved by dissolution — lenses
 don't store anything. See the postscript at the top of the "Success
 bar" section above.)**
+
+## M1(2.5) addendum — substrate rework
+
+M1(2.5) supersedes the scaffolded primitive substrate from M0.1/M1(1).
+`LiteralValue`, `FunctionRef { name: String }`, `Signature`,
+`primitive_signature`, `register_signature`, and `lookup_function` are
+all deleted. Their replacement is the six-variant `TypeConnective` enum
+(`Atom`, `Conj`, `Disj`, `Arrow`, `Cardinality`, `Instantiation`) carried
+by `Declaration`s in a new `Dag.declarations` table, plus `ArrowBody`
+with `UserDefined(NodeId) | ExternalRealization(DeclarationId) | Pending`
+(M1_DESIGN.md §3, §Q7).
+
+Bootstrap (`src/v3/compiler/src/bootstrap.rs`) is the replacement for
+the inline primitives table: at `Dag::new()` time it parses four minimal
+fixture modules (`logic`, `bit`, `algebra`, `types`) from embedded
+strings, then injects primitive operator Arrow declarations so user-code
+dispatch (`1 + 2`) works. Full `dsl/std/*.dag` parseability is deferred
+to M1(2.6) — the fixture subset is narrower than the production std
+files because the v3 parser doesn't yet handle `data` declarations,
+record literals, `match` expressions, or `module`/`import` directives.
+
+M0 test count grew from 38 to 40; the M1(2.5) PR kept all 40 green
+and added two new substrate tests (`parse_std_algebra_and_walk_int_add`
+and `parse_synthetic_service_all_layers`) for a total of 42 green
+tests. No diagnostics infrastructure changes.

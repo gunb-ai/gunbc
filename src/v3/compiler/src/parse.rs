@@ -1,33 +1,38 @@
-// Surface AST + minimal hand-recursive parser.
+// Surface AST + hand-recursive parser for the v3 surface grammar.
 //
-// G3 guardrail: parse.rs exports SurfaceAst / SurfaceExpr; it does
-// NOT mention Dag or any L1 behavior type. Lowering from surface to
-// DAG happens in lower.rs — the two stages are structurally separated
-// so an alternative frontend can plug in at the SurfaceAst layer
-// without contaminating the DAG.
+// G3 guardrail: parse.rs exports SurfaceModule / SurfaceItem / SurfaceExpr /
+// SurfaceType; it does NOT mention Dag or any L1 behavior type. Lowering from
+// surface to DAG happens in lower.rs.
 //
-// Operators and function calls share a single SurfaceExpr::Call
-// variant. `1 + 2` produces Call { target: "std::int::add", args:
-// [1, 2] }. `f(x, y)` produces Call { target: "f", args: [x, y] }.
-// The substrate sees no operator-vs-call distinction, and parse.rs
-// doesn't either once the initial dispatch is done.
+// Operators compile to identifier-shaped Calls per M1_DESIGN.md §8.9 Option A:
+// `1 + 2` → Call { target: "+", args: [1, 2] }. Resolution to the concrete Arrow
+// happens later during inference via inhabitance walks (not at parse time).
 //
-// M0.3 grammar:
+// Grammar (M1(2.5)):
 //   module     := item*
-//   item       := `fn` ident `(` params `)` `->` type_ann `=` expr
-//              | `let` ident `=` expr
-//   params     := ( ident `:` type_ann ( `,` ident `:` type_ann )* )?
-//   type_ann   := ident                          (Int | Bool | String)
+//   item       := let_item | fn_item | type_item
+//   let_item   := `let` ident (`:` type_expr)? `=` expr
+//   fn_item    := `fn` ident `(` params `)` `->` type_expr `=` expr
+//   type_item  := `type` ident type_params? type_body?
+//   type_body  := `{` record_fields `}`                       -- TypeRecord
+//              |  `=` ( sum_variants | type_expr )             -- TypeSum | TypeAlias
+//                                                              -- (no body) TypeAtom
+//   type_params := `<` ident ( `,` ident )* `>`
+//   type_expr  := atom_type ( `?` )?
+//   atom_type  := ident type_args?                             -- Named | Parameterized
+//              |  `fn` `(` type_expr_list `)` `->` type_expr   -- Arrow
+//   type_args  := `<` type_expr ( `,` type_expr )* `>`
+//   record_fields := field_decl*                               -- whitespace-separated
+//   field_decl := ident `:` type_expr (`,` | `;`)?
+//   sum_variants := variant ( `|` variant )*
+//   variant    := ident ( `(` type_expr_list `)` )?
 //   expr       := comparison
 //   comparison := additive ( cmp_op additive )?
 //   additive   := term ( (`+` | `-`) term )*
 //   term       := primary ( (`*` | `/`) primary )*
-//   primary    := int_lit
-//              | bool_lit                        (`true` | `false`)
-//              | string_lit                      (`"..."`)
-//              | ident ( `(` args `)` )?
-//              | `if` expr `then` expr `else` expr
-//   args       := ( expr ( `,` expr )* )?
+//   primary    := int_lit | bool_lit | string_lit
+//              |  ident ( `(` args `)` )?
+//              |  `if` expr `then` expr `else` expr
 
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::tokenize::{Token, TokenKind};
@@ -50,6 +55,30 @@ pub enum SurfaceItem {
         return_type: SurfaceType,
         body: SurfaceExpr,
     },
+    TypeAtom {
+        name: String,
+        #[allow(dead_code)]
+        type_params: Vec<String>,
+        span: SourceSpan,
+    },
+    TypeRecord {
+        name: String,
+        type_params: Vec<String>,
+        fields: Vec<SurfaceField>,
+        span: SourceSpan,
+    },
+    TypeSum {
+        name: String,
+        type_params: Vec<String>,
+        variants: Vec<SurfaceVariant>,
+        span: SourceSpan,
+    },
+    TypeAlias {
+        name: String,
+        type_params: Vec<String>,
+        target: SurfaceType,
+        span: SourceSpan,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -58,15 +87,48 @@ pub struct SurfaceParam {
     pub ty: SurfaceType,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
+pub struct SurfaceField {
+    pub name: String,
+    pub ty: SurfaceType,
+}
+
+#[derive(Debug, Clone)]
+pub struct SurfaceVariant {
+    pub name: String,
+    pub payload: Vec<SurfaceType>,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone)]
 pub enum SurfaceType {
-    Named { name: String, span: SourceSpan },
+    Named {
+        name: String,
+        span: SourceSpan,
+    },
+    Parameterized {
+        name: String,
+        args: Vec<SurfaceType>,
+        span: SourceSpan,
+    },
+    Optional {
+        inner: Box<SurfaceType>,
+        span: SourceSpan,
+    },
+    Arrow {
+        inputs: Vec<SurfaceType>,
+        output: Box<SurfaceType>,
+        span: SourceSpan,
+    },
 }
 
 impl SurfaceType {
     pub fn span(&self) -> &SourceSpan {
         match self {
-            SurfaceType::Named { span, .. } => span,
+            SurfaceType::Named { span, .. }
+            | SurfaceType::Parameterized { span, .. }
+            | SurfaceType::Optional { span, .. }
+            | SurfaceType::Arrow { span, .. } => span,
         }
     }
 }
@@ -152,8 +214,9 @@ impl<'a> Parser<'a> {
         match &self.peek().kind {
             TokenKind::KwLet => self.parse_let_item(),
             TokenKind::KwFn => self.parse_fn_item(),
+            TokenKind::KwType => self.parse_type_item(),
             other => Err(Diagnostic::ParseError {
-                message: format!("expected `let` or `fn`, got {other:?}"),
+                message: format!("expected `let`, `fn`, or `type`, got {other:?}"),
                 span: self.peek().span.clone(),
             }),
         }
@@ -164,7 +227,7 @@ impl<'a> Parser<'a> {
         let name = self.parse_ident()?;
         let type_ann = if matches!(self.peek().kind, TokenKind::Colon) {
             self.bump();
-            Some(self.parse_type_ann()?)
+            Some(self.parse_type_expr()?)
         } else {
             None
         };
@@ -184,7 +247,7 @@ impl<'a> Parser<'a> {
         let params = self.parse_params()?;
         self.expect_kind(TokenKind::RParen)?;
         self.expect_kind(TokenKind::Arrow)?;
-        let return_type = self.parse_type_ann()?;
+        let return_type = self.parse_type_expr()?;
         self.expect_kind(TokenKind::Eq)?;
         let body = self.parse_expr()?;
         Ok(SurfaceItem::Fn {
@@ -195,6 +258,191 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_type_item(&mut self) -> Result<SurfaceItem, Diagnostic> {
+        let type_kw = self.expect_kind(TokenKind::KwType)?;
+        let name_token = self.bump().clone();
+        let name = match &name_token.kind {
+            TokenKind::Ident(n) => n.clone(),
+            other => {
+                return Err(Diagnostic::ParseError {
+                    message: format!("expected type name, got {other:?}"),
+                    span: name_token.span.clone(),
+                });
+            }
+        };
+        let type_params = self.parse_optional_type_params()?;
+
+        match &self.peek().kind {
+            TokenKind::LBrace => {
+                self.bump();
+                let fields = self.parse_record_fields()?;
+                let close = self.expect_kind(TokenKind::RBrace)?;
+                Ok(SurfaceItem::TypeRecord {
+                    name,
+                    type_params,
+                    fields,
+                    span: SourceSpan::new(
+                        self.file,
+                        type_kw.span.byte_start,
+                        close.span.byte_end,
+                    ),
+                })
+            }
+            TokenKind::Eq => {
+                self.bump();
+                self.parse_type_rhs_after_eq(name, type_params, type_kw.span)
+            }
+            _ => Ok(SurfaceItem::TypeAtom {
+                name,
+                type_params,
+                span: SourceSpan::new(
+                    self.file,
+                    type_kw.span.byte_start,
+                    name_token.span.byte_end,
+                ),
+            }),
+        }
+    }
+
+    fn parse_optional_type_params(&mut self) -> Result<Vec<String>, Diagnostic> {
+        if !matches!(self.peek().kind, TokenKind::Lt) {
+            return Ok(Vec::new());
+        }
+        self.bump();
+        let mut params = vec![self.parse_ident()?];
+        while matches!(self.peek().kind, TokenKind::Comma) {
+            self.bump();
+            params.push(self.parse_ident()?);
+        }
+        self.expect_kind(TokenKind::Gt)?;
+        Ok(params)
+    }
+
+    fn parse_record_fields(&mut self) -> Result<Vec<SurfaceField>, Diagnostic> {
+        let mut fields = Vec::new();
+        while !matches!(self.peek().kind, TokenKind::RBrace) {
+            let name = self.parse_ident()?;
+            self.expect_kind(TokenKind::Colon)?;
+            let ty = self.parse_type_expr()?;
+            fields.push(SurfaceField { name, ty });
+            if matches!(
+                self.peek().kind,
+                TokenKind::Comma | TokenKind::Semicolon
+            ) {
+                self.bump();
+            }
+        }
+        Ok(fields)
+    }
+
+    /// After `type Name<T> =`, decide between TypeSum (one-or-more variants
+    /// separated by `|`) and TypeAlias (a single type expression). A variant
+    /// looks like `Ident` or `Ident(payload)`. A type expression can start with
+    /// `Ident<...>` (parameterized), `fn(...)` (arrow), or a bare `Ident` that
+    /// happens not to be followed by `|`.
+    fn parse_type_rhs_after_eq(
+        &mut self,
+        name: String,
+        type_params: Vec<String>,
+        type_kw_span: SourceSpan,
+    ) -> Result<SurfaceItem, Diagnostic> {
+        if !self.rhs_is_sum() {
+            let target = self.parse_type_expr()?;
+            let end = target.span().byte_end;
+            return Ok(SurfaceItem::TypeAlias {
+                name,
+                type_params,
+                target,
+                span: SourceSpan::new(self.file, type_kw_span.byte_start, end),
+            });
+        }
+
+        let variants = self.parse_sum_variants()?;
+        let end = variants
+            .last()
+            .map(|v| v.span.byte_end)
+            .unwrap_or(type_kw_span.byte_end);
+        Ok(SurfaceItem::TypeSum {
+            name,
+            type_params,
+            variants,
+            span: SourceSpan::new(self.file, type_kw_span.byte_start, end),
+        })
+    }
+
+    /// Lookahead: after `=`, is the RHS a sum (contains `|` at top level before
+    /// the next item boundary)? Tracks paren/brace depth so a `|` inside a
+    /// payload list doesn't confuse the scan.
+    fn rhs_is_sum(&self) -> bool {
+        let mut i = self.pos;
+        let mut depth: i32 = 0;
+        while i < self.tokens.len() {
+            match &self.tokens[i].kind {
+                TokenKind::LParen | TokenKind::LBrace => depth += 1,
+                TokenKind::RParen | TokenKind::RBrace => {
+                    if depth == 0 {
+                        return false;
+                    }
+                    depth -= 1;
+                }
+                TokenKind::Pipe if depth == 0 => return true,
+                TokenKind::KwLet
+                | TokenKind::KwFn
+                | TokenKind::KwType
+                | TokenKind::Eof
+                    if depth == 0 =>
+                {
+                    return false;
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        false
+    }
+
+    fn parse_sum_variants(&mut self) -> Result<Vec<SurfaceVariant>, Diagnostic> {
+        let mut variants = vec![self.parse_variant()?];
+        while matches!(self.peek().kind, TokenKind::Pipe) {
+            self.bump();
+            variants.push(self.parse_variant()?);
+        }
+        Ok(variants)
+    }
+
+    fn parse_variant(&mut self) -> Result<SurfaceVariant, Diagnostic> {
+        let name_token = self.bump().clone();
+        let name = match &name_token.kind {
+            TokenKind::Ident(n) => n.clone(),
+            other => {
+                return Err(Diagnostic::ParseError {
+                    message: format!("expected variant name, got {other:?}"),
+                    span: name_token.span.clone(),
+                });
+            }
+        };
+        if matches!(self.peek().kind, TokenKind::LParen) {
+            self.bump();
+            let payload = self.parse_type_expr_list_until(TokenKind::RParen)?;
+            let close = self.expect_kind(TokenKind::RParen)?;
+            Ok(SurfaceVariant {
+                name,
+                payload,
+                span: SourceSpan::new(
+                    self.file,
+                    name_token.span.byte_start,
+                    close.span.byte_end,
+                ),
+            })
+        } else {
+            Ok(SurfaceVariant {
+                name,
+                payload: Vec::new(),
+                span: name_token.span,
+            })
+        }
+    }
+
     fn parse_params(&mut self) -> Result<Vec<SurfaceParam>, Diagnostic> {
         let mut params = Vec::new();
         if matches!(self.peek().kind, TokenKind::RParen) {
@@ -203,7 +451,7 @@ impl<'a> Parser<'a> {
         loop {
             let name = self.parse_ident()?;
             self.expect_kind(TokenKind::Colon)?;
-            let ty = self.parse_type_ann()?;
+            let ty = self.parse_type_expr()?;
             params.push(SurfaceParam { name, ty });
             if matches!(self.peek().kind, TokenKind::Comma) {
                 self.bump();
@@ -214,18 +462,93 @@ impl<'a> Parser<'a> {
         Ok(params)
     }
 
-    fn parse_type_ann(&mut self) -> Result<SurfaceType, Diagnostic> {
+    fn parse_type_expr(&mut self) -> Result<SurfaceType, Diagnostic> {
+        let mut ty = self.parse_atom_type()?;
+        while matches!(self.peek().kind, TokenKind::Question) {
+            let q = self.bump().clone();
+            let start = ty.span().byte_start;
+            ty = SurfaceType::Optional {
+                inner: Box::new(ty),
+                span: SourceSpan::new(self.file, start, q.span.byte_end),
+            };
+        }
+        Ok(ty)
+    }
+
+    fn parse_atom_type(&mut self) -> Result<SurfaceType, Diagnostic> {
+        if matches!(self.peek().kind, TokenKind::KwFn) {
+            let fn_tok = self.bump().clone();
+            self.expect_kind(TokenKind::LParen)?;
+            let inputs = self.parse_type_expr_list_until(TokenKind::RParen)?;
+            self.expect_kind(TokenKind::RParen)?;
+            self.expect_kind(TokenKind::Arrow)?;
+            let output = self.parse_type_expr()?;
+            let end = output.span().byte_end;
+            return Ok(SurfaceType::Arrow {
+                inputs,
+                output: Box::new(output),
+                span: SourceSpan::new(self.file, fn_tok.span.byte_start, end),
+            });
+        }
+
         let token = self.bump().clone();
-        match token.kind {
-            TokenKind::Ident(name) => Ok(SurfaceType::Named {
+        let name = match token.kind {
+            TokenKind::Ident(n) => n,
+            other => {
+                return Err(Diagnostic::ParseError {
+                    message: format!("expected type name, got {other:?}"),
+                    span: token.span,
+                });
+            }
+        };
+
+        if matches!(self.peek().kind, TokenKind::Lt) && self.looks_like_type_args() {
+            self.bump();
+            let args = self.parse_type_expr_list_until(TokenKind::Gt)?;
+            let close = self.expect_kind(TokenKind::Gt)?;
+            Ok(SurfaceType::Parameterized {
+                name,
+                args,
+                span: SourceSpan::new(
+                    self.file,
+                    token.span.byte_start,
+                    close.span.byte_end,
+                ),
+            })
+        } else {
+            Ok(SurfaceType::Named {
                 name,
                 span: token.span,
-            }),
-            other => Err(Diagnostic::ParseError {
-                message: format!("expected type name, got {other:?}"),
-                span: token.span,
-            }),
+            })
         }
+    }
+
+    /// `<` is ambiguous: type-parameter delimiter vs. less-than operator. In
+    /// type position (parse_atom_type), we only see `<` after a bare Ident, so
+    /// it's always type args. In expression position (parse_comparison),
+    /// parse_atom_type is not called. This helper exists for defensive future
+    /// callers and currently always returns true.
+    fn looks_like_type_args(&self) -> bool {
+        true
+    }
+
+    fn parse_type_expr_list_until(
+        &mut self,
+        end: TokenKind,
+    ) -> Result<Vec<SurfaceType>, Diagnostic> {
+        let mut types = Vec::new();
+        if self.peek().kind == end {
+            return Ok(types);
+        }
+        loop {
+            types.push(self.parse_type_expr()?);
+            if matches!(self.peek().kind, TokenKind::Comma) {
+                self.bump();
+                continue;
+            }
+            break;
+        }
+        Ok(types)
     }
 
     fn parse_ident(&mut self) -> Result<String, Diagnostic> {
@@ -246,12 +569,12 @@ impl<'a> Parser<'a> {
     fn parse_comparison(&mut self) -> Result<SurfaceExpr, Diagnostic> {
         let lhs = self.parse_additive()?;
         let target = match &self.peek().kind {
-            TokenKind::EqEq => Some("std::int::eq"),
-            TokenKind::NotEq => Some("std::int::ne"),
-            TokenKind::Lt => Some("std::int::lt"),
-            TokenKind::Le => Some("std::int::le"),
-            TokenKind::Gt => Some("std::int::gt"),
-            TokenKind::Ge => Some("std::int::ge"),
+            TokenKind::EqEq => Some("=="),
+            TokenKind::NotEq => Some("!="),
+            TokenKind::Lt => Some("<"),
+            TokenKind::Le => Some("<="),
+            TokenKind::Gt => Some(">"),
+            TokenKind::Ge => Some(">="),
             _ => None,
         };
         if let Some(target) = target {
@@ -273,8 +596,8 @@ impl<'a> Parser<'a> {
         let mut lhs = self.parse_term()?;
         loop {
             let target = match &self.peek().kind {
-                TokenKind::Plus => "std::int::add",
-                TokenKind::Minus => "std::int::sub",
+                TokenKind::Plus => "+",
+                TokenKind::Minus => "-",
                 _ => break,
             };
             self.bump();
@@ -294,8 +617,8 @@ impl<'a> Parser<'a> {
         let mut lhs = self.parse_primary()?;
         loop {
             let target = match &self.peek().kind {
-                TokenKind::Star => "std::int::mul",
-                TokenKind::Slash => "std::int::div",
+                TokenKind::Star => "*",
+                TokenKind::Slash => "/",
                 _ => break,
             };
             self.bump();

@@ -1,67 +1,120 @@
-// SurfaceAst -> Dag lowering.
+// Surface → Dag lowering.
 //
-// Walks the surface tree and builds the L1 behavior graph. A
-// HashMap<String, PortId> tracks let-binding names in scope.
+// Two-pass. Pass 1 walks all top-level items and allocates placeholder
+// Declarations for each named type/fn, populating a symbol table
+// (name → DeclarationId). Pass 2 fills in each declaration's connective
+// and lowers function/let bodies to L1 behaviors, using the symbol table
+// to resolve identifier references. See M1_DESIGN.md §8.1.
 //
-// Scope threading is functional by contract: `lower_item` and
-// `lower_fn_item` take a `HashMap` by value and return an updated
-// `HashMap`. There are no `&mut` references to the scope because
-// `&mut` in a recursive parameter position has no .dag analogue;
-// the .dag port threads scope as a value through each recursive
-// call. The function bodies may use local `mut` bindings to call
-// `HashMap::insert`, but the external contract is value-in /
-// value-out. See src/v3/ROADMAP.md "Sketch vs Oracle framing"
-// for why this particular refactor matters while others don't.
+// Computation-side lowering follows M0 semantics unchanged:
 //
-// Facts flow forward: every SurfaceExpr has a span, and every
-// Behavior we create carries that span as a structural field
-// (not a side table). Downstream stages (infer, lenses, emission)
-// read the span directly from the node. No reconstruction.
+//   IntLit/BoolLit/StringLit → Value(LiteralBits::*)
+//   Var (local)              → scope lookup
+//   Var (unresolved)         → placeholder port + ResolveError
+//   Call                     → Transform { target: DeclarationId, inputs }
+//   If                       → Branch with 2 Paths
+//   Fn item                  → Bind with non-empty params + optional Loop wrapper
+//   Let item                 → Bind with empty params
 //
-// Surface -> L1 map:
-//   IntLit             -> Value(LiteralValue::Int)
-//   BoolLit            -> Value(LiteralValue::Bool)
-//   StringLit          -> Value(LiteralValue::String)
-//   Var (local)        -> scope lookup (no new node; reuses producer's port)
-//   Var (unresolved)   -> placeholder port + ResolveError diagnostic
-//   Call               -> Transform { target: FunctionRef, inputs }
-//                         (operators like `+` pre-resolved to
-//                         "std::int::add" etc. by parse.rs)
-//   If/then/else       -> Branch with 2 Paths
-//   Fn item            -> Bind with non-empty params field
-//                         + Loop wrapper when body is recursive
-//   Let item           -> Bind with empty params field
+// Transform.target is a DeclarationId. User function calls resolve at
+// lower time via the symbol table (pass 1 allocated the fn's Declaration).
+// Operator calls (target "+", "-", ...) resolve to an anonymous Identifier
+// Atom declaration with resolved=None; inference later walks inhabitance
+// to fill in the concrete algebra field (M1_DESIGN.md §8.9).
 
 use std::collections::{HashMap, HashSet};
 
 use crate::dag::{
-    Behavior, BindNode, Bound, BranchNode, Dag, FunctionRef, LiteralValue, LoopNode, NodeId, Path,
-    PortId, Signature, TransformNode, ValueNode,
+    ArrowBody, AtomPayload, Behavior, BindNode, Bound, BranchNode, CardinalityBound, Dag,
+    Declaration, DeclarationId, Field, LiteralBits, LoopNode, NodeId, Path, PortId,
+    TemplateArgument, TransformNode, TypeConnective, ValueNode,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
-use crate::parse::{SurfaceExpr, SurfaceItem, SurfaceModule, SurfaceParam, SurfaceType};
+use crate::parse::{
+    SurfaceExpr, SurfaceField, SurfaceItem, SurfaceModule, SurfaceParam, SurfaceType,
+    SurfaceVariant,
+};
 use crate::types::{Prim, TypeShape};
 
 pub fn lower(module: &SurfaceModule) -> Dag {
     let mut dag = Dag::new();
-    // M0.11: detect mutual recursion BEFORE lowering any bodies.
-    // Any fn in an SCC of size > 1 is rejected at its own Bind
-    // level so body lowering never emits call-cycle Transforms —
-    // those would otherwise stall the fixpoint on Retry forever
-    // and leave the pre-seeded declared return type as a fake
-    // Resolved result for call sites.
+    lower_into(&mut dag, module);
+    dag
+}
+
+/// Lower a surface module into an existing Dag. Used by bootstrap.rs to
+/// layer the four fixture modules (logic, bit, algebra, types) onto the
+/// same declaration table; each call's symbol collection seeds from the
+/// declarations already present from prior calls.
+pub(crate) fn lower_into(dag: &mut Dag, module: &SurfaceModule) {
+    let symbols = collect_symbols(dag, &module.items);
     let mutually_recursive = compute_mutually_recursive(&module.items);
     let mut scope: HashMap<String, PortId> = HashMap::new();
     for item in &module.items {
-        scope = lower_item(item, &mut dag, scope, &mutually_recursive);
+        scope = lower_item(item, dag, scope, &symbols, &mutually_recursive);
     }
-    dag
+}
+
+/// Pass 1: allocate a placeholder Declaration for every named top-level
+/// item and record `name → DeclarationId` in the symbol table. Let items
+/// are skipped — they produce behaviors, not declarations.
+fn collect_symbols(
+    dag: &mut Dag,
+    items: &[SurfaceItem],
+) -> HashMap<String, DeclarationId> {
+    let mut symbols: HashMap<String, DeclarationId> = dag
+        .declarations()
+        .iter()
+        .filter_map(|d| d.name.as_ref().map(|n| (n.clone(), d.id)))
+        .collect();
+
+    for item in items {
+        let name = match item {
+            SurfaceItem::Let { .. } => continue,
+            SurfaceItem::Fn { name, .. } => name.clone(),
+            SurfaceItem::TypeAtom { name, .. } => name.clone(),
+            SurfaceItem::TypeRecord { name, .. } => name.clone(),
+            SurfaceItem::TypeSum { name, .. } => name.clone(),
+            SurfaceItem::TypeAlias { name, .. } => name.clone(),
+        };
+        let span = item_span(item);
+        let id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id,
+            name: Some(name.clone()),
+            connective: placeholder_connective(&name),
+            meta_tag: None,
+            inhabits: None,
+            span,
+        });
+        symbols.insert(name, id);
+    }
+    symbols
+}
+
+fn placeholder_connective(name: &str) -> TypeConnective {
+    TypeConnective::Atom(AtomPayload::Identifier {
+        name: name.to_string(),
+        resolved: None,
+    })
+}
+
+fn item_span(item: &SurfaceItem) -> SourceSpan {
+    match item {
+        SurfaceItem::Let { expr, .. } => expr_span(expr).clone(),
+        SurfaceItem::Fn { body, .. } => expr_span(body).clone(),
+        SurfaceItem::TypeAtom { span, .. }
+        | SurfaceItem::TypeRecord { span, .. }
+        | SurfaceItem::TypeSum { span, .. }
+        | SurfaceItem::TypeAlias { span, .. } => span.clone(),
+    }
 }
 
 fn lower_item(
     item: &SurfaceItem,
     dag: &mut Dag,
     scope: HashMap<String, PortId>,
+    symbols: &HashMap<String, DeclarationId>,
     mutually_recursive: &HashSet<String>,
 ) -> HashMap<String, PortId> {
     let mut scope = scope;
@@ -71,9 +124,9 @@ fn lower_item(
             type_ann,
             expr,
         } => {
-            let value_port = lower_expr(expr, dag, &scope);
+            let value_port = lower_expr(expr, dag, &scope, symbols);
             if let Some(ty) = type_ann {
-                match lower_type(ty) {
+                match lower_type_for_port(ty) {
                     Ok(declared) => dag.set_port_type(value_port, declared),
                     Err(diag) => dag.mark_unresolved(value_port, diag),
                 }
@@ -105,11 +158,369 @@ fn lower_item(
             body,
             dag,
             scope,
+            symbols,
             mutually_recursive,
         ),
+        SurfaceItem::TypeAtom { name, .. } => {
+            let decl_id = symbols[name];
+            // Empty product — equivalent to a unit type.
+            dag.declaration_mut(decl_id).connective = TypeConnective::Conj {
+                children: Vec::new(),
+            };
+            scope
+        }
+        SurfaceItem::TypeRecord {
+            name,
+            type_params,
+            fields,
+            ..
+        } => {
+            lower_type_record(dag, symbols, name, type_params, fields);
+            scope
+        }
+        SurfaceItem::TypeSum {
+            name,
+            type_params,
+            variants,
+            ..
+        } => {
+            lower_type_sum(dag, symbols, name, type_params, variants);
+            scope
+        }
+        SurfaceItem::TypeAlias {
+            name,
+            type_params,
+            target,
+            ..
+        } => {
+            lower_type_alias(dag, symbols, name, type_params, target);
+            scope
+        }
     }
 }
 
+fn lower_type_record(
+    dag: &mut Dag,
+    symbols: &HashMap<String, DeclarationId>,
+    name: &str,
+    type_params: &[String],
+    fields: &[SurfaceField],
+) {
+    let decl_id = symbols[name];
+    let mut local: HashMap<String, DeclarationId> = HashMap::new();
+    let mut children: Vec<Field> = Vec::with_capacity(type_params.len() + fields.len());
+    for param in type_params {
+        let param_id = dag.alloc_declaration_id();
+        let span = dag.declaration(decl_id).span.clone();
+        dag.push_declaration(Declaration {
+            id: param_id,
+            name: Some(param.clone()),
+            connective: TypeConnective::Atom(AtomPayload::TypeParam(param.clone())),
+            meta_tag: None,
+            inhabits: None,
+            span,
+        });
+        local.insert(param.clone(), param_id);
+        children.push(Field {
+            label: param.clone(),
+            ty: param_id,
+        });
+    }
+    for field in fields {
+        let ty_id = type_to_declaration_id(&field.ty, symbols, &local, dag);
+        children.push(Field {
+            label: field.name.clone(),
+            ty: ty_id,
+        });
+    }
+    dag.declaration_mut(decl_id).connective = TypeConnective::Conj { children };
+}
+
+fn lower_type_sum(
+    dag: &mut Dag,
+    symbols: &HashMap<String, DeclarationId>,
+    name: &str,
+    type_params: &[String],
+    variants: &[SurfaceVariant],
+) {
+    let decl_id = symbols[name];
+    let mut local: HashMap<String, DeclarationId> = HashMap::new();
+    let mut variant_fields: Vec<Field> = Vec::with_capacity(type_params.len() + variants.len());
+    for param in type_params {
+        let param_id = dag.alloc_declaration_id();
+        let span = dag.declaration(decl_id).span.clone();
+        dag.push_declaration(Declaration {
+            id: param_id,
+            name: Some(param.clone()),
+            connective: TypeConnective::Atom(AtomPayload::TypeParam(param.clone())),
+            meta_tag: None,
+            inhabits: None,
+            span,
+        });
+        local.insert(param.clone(), param_id);
+        variant_fields.push(Field {
+            label: param.clone(),
+            ty: param_id,
+        });
+    }
+    for variant in variants {
+        let variant_id = dag.alloc_declaration_id();
+        let connective = if variant.payload.is_empty() {
+            TypeConnective::Conj {
+                children: Vec::new(),
+            }
+        } else {
+            let children: Vec<Field> = variant
+                .payload
+                .iter()
+                .enumerate()
+                .map(|(idx, ty)| Field {
+                    label: format!("_{idx}"),
+                    ty: type_to_declaration_id(ty, symbols, &local, dag),
+                })
+                .collect();
+            TypeConnective::Conj { children }
+        };
+        dag.push_declaration(Declaration {
+            id: variant_id,
+            name: Some(variant.name.clone()),
+            connective,
+            meta_tag: None,
+            inhabits: None,
+            span: variant.span.clone(),
+        });
+        variant_fields.push(Field {
+            label: variant.name.clone(),
+            ty: variant_id,
+        });
+    }
+    dag.declaration_mut(decl_id).connective = TypeConnective::Disj {
+        variants: variant_fields,
+    };
+}
+
+fn lower_type_alias(
+    dag: &mut Dag,
+    symbols: &HashMap<String, DeclarationId>,
+    name: &str,
+    type_params: &[String],
+    target: &SurfaceType,
+) {
+    let decl_id = symbols[name];
+    let mut local: HashMap<String, DeclarationId> = HashMap::new();
+    for param in type_params {
+        let param_id = dag.alloc_declaration_id();
+        let span = dag.declaration(decl_id).span.clone();
+        dag.push_declaration(Declaration {
+            id: param_id,
+            name: Some(param.clone()),
+            connective: TypeConnective::Atom(AtomPayload::TypeParam(param.clone())),
+            meta_tag: None,
+            inhabits: None,
+            span,
+        });
+        local.insert(param.clone(), param_id);
+    }
+    let connective = type_to_connective(target, symbols, &local, dag);
+    dag.declaration_mut(decl_id).connective = connective;
+}
+
+/// Lower a `SurfaceType` to a fresh DeclarationId. Used for field types,
+/// Arrow parameters, and template arguments. Allocates anonymous (unnamed)
+/// declarations for composite shapes; looks up named references against
+/// `local` (type params in scope) first, then `symbols` (top-level names).
+/// Unknown names get an Identifier Atom stub with `resolved: None` — pass
+/// 2 and inference are responsible for filling it in or reporting.
+fn type_to_declaration_id(
+    ty: &SurfaceType,
+    symbols: &HashMap<String, DeclarationId>,
+    local: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+) -> DeclarationId {
+    match ty {
+        SurfaceType::Named { name, .. } => {
+            if let Some(id) = local.get(name) {
+                return *id;
+            }
+            if let Some(id) = symbols.get(name) {
+                return *id;
+            }
+            alloc_identifier_stub(dag, name, ty.span())
+        }
+        SurfaceType::Parameterized { name, args, span } => {
+            let template_id = local
+                .get(name)
+                .or_else(|| symbols.get(name))
+                .copied()
+                .unwrap_or_else(|| alloc_identifier_stub(dag, name, span));
+            let arguments: Vec<TemplateArgument> = args
+                .iter()
+                .enumerate()
+                .map(|(idx, arg)| {
+                    let value = type_to_declaration_id(arg, symbols, local, dag);
+                    let parameter = template_param_id(dag, template_id, idx).unwrap_or(value);
+                    TemplateArgument { parameter, value }
+                })
+                .collect();
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Instantiation {
+                    template: template_id,
+                    arguments,
+                },
+                meta_tag: None,
+                inhabits: None,
+                span: span.clone(),
+            });
+            id
+        }
+        SurfaceType::Optional { inner, span } => {
+            let element = type_to_declaration_id(inner, symbols, local, dag);
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Cardinality {
+                    element,
+                    bound: CardinalityBound::AtMostOne,
+                },
+                meta_tag: None,
+                inhabits: None,
+                span: span.clone(),
+            });
+            id
+        }
+        SurfaceType::Arrow {
+            inputs,
+            output,
+            span,
+        } => {
+            let input_ids: Vec<DeclarationId> = inputs
+                .iter()
+                .map(|i| type_to_declaration_id(i, symbols, local, dag))
+                .collect();
+            let output_id = type_to_declaration_id(output, symbols, local, dag);
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Arrow {
+                    inputs: input_ids,
+                    output: output_id,
+                    body: ArrowBody::Pending,
+                },
+                meta_tag: None,
+                inhabits: None,
+                span: span.clone(),
+            });
+            id
+        }
+    }
+}
+
+/// Lower a `SurfaceType` directly to a connective (not a new declaration).
+/// Used for `TypeAlias` targets where we want the alias declaration itself
+/// to carry the aliased shape, not a one-level-indirect wrapper.
+fn type_to_connective(
+    ty: &SurfaceType,
+    symbols: &HashMap<String, DeclarationId>,
+    local: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+) -> TypeConnective {
+    match ty {
+        SurfaceType::Named { name, .. } => {
+            let template = local
+                .get(name)
+                .or_else(|| symbols.get(name))
+                .copied()
+                .unwrap_or_else(|| alloc_identifier_stub(dag, name, ty.span()));
+            TypeConnective::Instantiation {
+                template,
+                arguments: Vec::new(),
+            }
+        }
+        SurfaceType::Parameterized { name, args, span } => {
+            let template = local
+                .get(name)
+                .or_else(|| symbols.get(name))
+                .copied()
+                .unwrap_or_else(|| alloc_identifier_stub(dag, name, span));
+            let arguments: Vec<TemplateArgument> = args
+                .iter()
+                .enumerate()
+                .map(|(idx, arg)| {
+                    let value = type_to_declaration_id(arg, symbols, local, dag);
+                    let parameter = template_param_id(dag, template, idx).unwrap_or(value);
+                    TemplateArgument { parameter, value }
+                })
+                .collect();
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            }
+        }
+        SurfaceType::Optional { inner, .. } => TypeConnective::Cardinality {
+            element: type_to_declaration_id(inner, symbols, local, dag),
+            bound: CardinalityBound::AtMostOne,
+        },
+        SurfaceType::Arrow { inputs, output, .. } => TypeConnective::Arrow {
+            inputs: inputs
+                .iter()
+                .map(|i| type_to_declaration_id(i, symbols, local, dag))
+                .collect(),
+            output: type_to_declaration_id(output, symbols, local, dag),
+            body: ArrowBody::Pending,
+        },
+    }
+}
+
+fn alloc_identifier_stub(
+    dag: &mut Dag,
+    name: &str,
+    span: &SourceSpan,
+) -> DeclarationId {
+    let id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id,
+        name: None,
+        connective: TypeConnective::Atom(AtomPayload::Identifier {
+            name: name.to_string(),
+            resolved: None,
+        }),
+        meta_tag: None,
+        inhabits: None,
+        span: span.clone(),
+    });
+    id
+}
+
+/// Return the `idx`-th type parameter declaration of a template. A template
+/// parameter is a Conj child whose target declaration has a TypeParam
+/// payload. For placeholder declarations (not yet filled in), returns None.
+fn template_param_id(
+    dag: &Dag,
+    template: DeclarationId,
+    idx: usize,
+) -> Option<DeclarationId> {
+    let children = match &dag.declaration(template).connective {
+        TypeConnective::Conj { children } => children,
+        _ => return None,
+    };
+    children
+        .iter()
+        .filter(|c| {
+            matches!(
+                &dag.declaration(c.ty).connective,
+                TypeConnective::Atom(AtomPayload::TypeParam(_))
+            )
+        })
+        .nth(idx)
+        .map(|c| c.ty)
+}
+
+#[allow(clippy::too_many_arguments)]
 fn lower_fn_item(
     name: &str,
     params: &[SurfaceParam],
@@ -117,19 +528,22 @@ fn lower_fn_item(
     body: &SurfaceExpr,
     dag: &mut Dag,
     outer_scope: HashMap<String, PortId>,
+    symbols: &HashMap<String, DeclarationId>,
     mutually_recursive: &HashSet<String>,
 ) -> HashMap<String, PortId> {
-    // 1. Allocate parameter ports and set their declared types.
-    //    On unknown type names, mark the param port Unresolved with
-    //    a ResolveError and fall through with a sentinel Int type.
-    //    This propagates via the cascade logic in infer to every
-    //    call site that touches this parameter.
+    let fn_decl_id = symbols[name];
+
+    // 1. Allocate parameter ports and set declared port types. Unknown
+    //    names land as TypeShape::Primitive(Prim::Int) sentinel with a
+    //    ResolveError, preserving M0 fail-closed behavior.
     let mut param_ports: Vec<PortId> = Vec::with_capacity(params.len());
     let mut param_types: Vec<TypeShape> = Vec::with_capacity(params.len());
     let mut body_scope: HashMap<String, PortId> = outer_scope.clone();
+    let mut param_decl_inputs: Vec<DeclarationId> = Vec::with_capacity(params.len());
+    let local: HashMap<String, DeclarationId> = HashMap::new();
     for param in params {
         let port = dag.alloc_port(None);
-        let ty = match lower_type(&param.ty) {
+        let ty = match lower_type_for_port(&param.ty) {
             Ok(ty) => {
                 dag.set_port_type(port, ty.clone());
                 ty
@@ -142,16 +556,12 @@ fn lower_fn_item(
         body_scope.insert(param.name.clone(), port);
         param_ports.push(port);
         param_types.push(ty);
+        let input_decl = type_to_declaration_id(&param.ty, symbols, &local, dag);
+        param_decl_inputs.push(input_decl);
     }
 
-    // 2. Register the function's declared signature BEFORE lowering
-    //    the body, so recursive Transforms in the body can resolve
-    //    their own function's return type without a cycle.
-    //    On unknown return type name, we still register (with a
-    //    sentinel) so that the structure of the DAG is complete,
-    //    but we also allocate a placeholder port to carry the
-    //    ResolveError so the fail-closed invariant holds.
-    let return_ty = match lower_type(return_type) {
+    // 2. Compute return type (both port-side and declaration-side).
+    let return_ty = match lower_type_for_port(return_type) {
         Ok(ty) => ty,
         Err(diag) => {
             let err_port = dag.alloc_port(None);
@@ -159,25 +569,11 @@ fn lower_fn_item(
             TypeShape::Primitive(Prim::Int)
         }
     };
-    dag.register_signature(
-        name,
-        Signature {
-            params: param_types.clone(),
-            return_type: return_ty.clone(),
-        },
-    );
+    let return_decl_id = type_to_declaration_id(return_type, symbols, &local, dag);
 
-    // 2.5. Mutual recursion check. If this function is part of a
-    //      call cycle of size > 1, skip body lowering entirely and
-    //      emit a rejection Bind whose value port is Unresolved.
-    //      The signature remains registered (so other functions
-    //      that call this one can look it up and cascade Fail),
-    //      but the Bind.value port's Unresolved state prevents
-    //      callers from trusting the signature. This is the
-    //      existing Bind-state check from M0.8 in reverse: here,
-    //      we preemptively mark the Bind invalid because we know
-    //      the body can't be typed without support we haven't
-    //      built yet.
+    // 3. Mutual recursion check — same as M0. Reject with an Unresolved
+    //    placeholder and keep the fn's Declaration as a placeholder Arrow
+    //    with body=Pending so call sites produce a cascade.
     if mutually_recursive.contains(name) {
         let err_port = dag.alloc_port(None);
         let body_span = expr_span(body).clone();
@@ -185,7 +581,7 @@ fn lower_fn_item(
             err_port,
             Diagnostic::ResolveError {
                 name: format!(
-                    "function `{name}` is part of a mutual recursion cycle; mutual recursion is not yet supported in v3 M0"
+                    "function `{name}` is part of a mutual recursion cycle; mutual recursion is not yet supported in v3"
                 ),
                 span: body_span.clone(),
             },
@@ -198,36 +594,25 @@ fn lower_fn_item(
             params: param_ports,
             span: body_span,
         }));
+        dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
+            inputs: param_decl_inputs,
+            output: return_decl_id,
+            body: ArrowBody::Pending,
+        };
         let mut outer_scope = outer_scope;
         outer_scope.insert(name.to_string(), err_port);
         return outer_scope;
     }
 
-    // 3. Lower the body in the extended scope.
-    let body_return_port = lower_expr(body, dag, &body_scope);
+    // 4. Lower the body.
+    let body_return_port = lower_expr(body, dag, &body_scope, symbols);
     let body_root = dag.port(body_return_port).produced_by;
     let body_span = expr_span(body).clone();
 
-    // 4. Decide how to wire up the function's Bind.value port
-    //    depending on the shape of the body:
-    //
-    //    - Not recursive: Bind.value is the body's return port.
-    //
-    //    - Recursive with zero parameters: non-terminating. Reject
-    //      and give the Bind an unresolved placeholder port.
-    //
-    //    - Recursive, descent provable (first arg to recursive
-    //      calls is `first_param - positive_int`): wrap the body in
-    //      a Loop node bounded by the first parameter. This is the
-    //      M0 partial descent analysis — more sophisticated measures
-    //      (lexicographic orderings, multi-param descent) are
-    //      deferred.
-    //
-    //    - Recursive, descent NOT provable: reject and give the
-    //      Bind an unresolved placeholder port with an
-    //      UnprovenDescent diagnostic. Conservative failure mode:
-    //      reject more programs than strictly necessary, never
-    //      accept a program that could diverge.
+    // 5. Handle recursion: bounded Loop wrapping (descent-provable) or
+    //    fail-closed rejection (unprovable or zero-arg). Same M0 logic; the
+    //    descent check operates on the unresolved operator-identifier shape
+    //    (SurfaceExpr::Call with target "-"), per §8.9 Option A.
     let value_port = if is_recursive(body, name) {
         if param_ports.is_empty() {
             let err_port = dag.alloc_port(None);
@@ -276,12 +661,7 @@ fn lower_fn_item(
         body_return_port
     };
 
-    // 5. Create the Bind for the function. The value port's type is
-    //    the declared return type — pre-set so inference for call
-    //    sites can trust it (subject to the Bind-state check in
-    //    infer's Transform decide, which catches body/signature
-    //    mismatches).
-    dag.set_port_type(value_port, return_ty);
+    dag.set_port_type(value_port, return_ty.clone());
     let bind_id = dag.alloc_node_id();
     dag.push_node(Behavior::Bind(BindNode {
         id: bind_id,
@@ -290,12 +670,20 @@ fn lower_fn_item(
         params: param_ports,
         span: body_span,
     }));
+
+    // 6. Fill in the function's Declaration with the Arrow connective.
+    dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
+        inputs: param_decl_inputs,
+        output: return_decl_id,
+        body: ArrowBody::UserDefined(bind_id),
+    };
+
     let mut outer_scope = outer_scope;
     outer_scope.insert(name.to_string(), value_port);
     outer_scope
 }
 
-fn lower_type(ty: &SurfaceType) -> Result<TypeShape, Diagnostic> {
+fn lower_type_for_port(ty: &SurfaceType) -> Result<TypeShape, Diagnostic> {
     match ty {
         SurfaceType::Named { name, span } => match name.as_str() {
             "Int" => Ok(TypeShape::Primitive(Prim::Int)),
@@ -306,6 +694,13 @@ fn lower_type(ty: &SurfaceType) -> Result<TypeShape, Diagnostic> {
                 span: span.clone(),
             }),
         },
+        SurfaceType::Parameterized { span, .. }
+        | SurfaceType::Optional { span, .. }
+        | SurfaceType::Arrow { span, .. } => Err(Diagnostic::ResolveError {
+            name: "compound type annotations are not yet supported in user code"
+                .to_string(),
+            span: span.clone(),
+        }),
     }
 }
 
@@ -313,6 +708,7 @@ fn lower_expr(
     expr: &SurfaceExpr,
     dag: &mut Dag,
     scope: &HashMap<String, PortId>,
+    symbols: &HashMap<String, DeclarationId>,
 ) -> PortId {
     match expr {
         SurfaceExpr::IntLit { value, span } => {
@@ -320,7 +716,7 @@ fn lower_expr(
             let output = dag.alloc_port(Some(node_id));
             dag.push_node(Behavior::Value(ValueNode {
                 id: node_id,
-                data: LiteralValue::Int(*value),
+                data: LiteralBits::Int(*value),
                 output,
                 span: span.clone(),
             }));
@@ -331,7 +727,7 @@ fn lower_expr(
             let output = dag.alloc_port(Some(node_id));
             dag.push_node(Behavior::Value(ValueNode {
                 id: node_id,
-                data: LiteralValue::Bool(*value),
+                data: LiteralBits::Bool(*value),
                 output,
                 span: span.clone(),
             }));
@@ -342,7 +738,7 @@ fn lower_expr(
             let output = dag.alloc_port(Some(node_id));
             dag.push_node(Behavior::Value(ValueNode {
                 id: node_id,
-                data: LiteralValue::String(value.clone()),
+                data: LiteralBits::String(value.clone()),
                 output,
                 span: span.clone(),
             }));
@@ -351,10 +747,6 @@ fn lower_expr(
         SurfaceExpr::Var { name, span } => match scope.get(name) {
             Some(port) => *port,
             None => {
-                // Forward reference: the name isn't in scope yet.
-                // Fail-closed: allocate a placeholder port and mark
-                // it Unresolved with a ResolveError diagnostic. The
-                // pipeline continues so more errors can accumulate.
                 let port = dag.alloc_port(None);
                 dag.mark_unresolved(
                     port,
@@ -367,13 +759,18 @@ fn lower_expr(
             }
         },
         SurfaceExpr::Call { target, args, span } => {
-            let input_ports: Vec<PortId> =
-                args.iter().map(|a| lower_expr(a, dag, scope)).collect();
+            let input_ports: Vec<PortId> = args
+                .iter()
+                .map(|a| lower_expr(a, dag, scope, symbols))
+                .collect();
+            let target_decl = symbols.get(target).copied().unwrap_or_else(|| {
+                alloc_identifier_stub(dag, target, span)
+            });
             let node_id = dag.alloc_node_id();
             let output = dag.alloc_port(Some(node_id));
             dag.push_node(Behavior::Transform(TransformNode {
                 id: node_id,
-                target: FunctionRef::new(target.clone()),
+                target: target_decl,
                 inputs: input_ports,
                 output,
                 span: span.clone(),
@@ -386,9 +783,9 @@ fn lower_expr(
             else_branch,
             span,
         } => {
-            let cond_port = lower_expr(cond, dag, scope);
-            let then_port = lower_expr(then_branch, dag, scope);
-            let else_port = lower_expr(else_branch, dag, scope);
+            let cond_port = lower_expr(cond, dag, scope, symbols);
+            let then_port = lower_expr(then_branch, dag, scope, symbols);
+            let else_port = lower_expr(else_branch, dag, scope, symbols);
             let branch_id = dag.alloc_node_id();
             let branch_output = dag.alloc_port(Some(branch_id));
             let then_body = producer_of(dag, then_port).unwrap_or(branch_id);
@@ -443,22 +840,11 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
     }
 }
 
-/// Partial termination analysis for M0. Walks the body and, for
-/// every recursive self-call, verifies that its first argument is
-/// of the form `first_param - <positive int>` — i.e. strictly
-/// smaller than the first parameter by a constant amount. Returns
-/// false if any recursive call fails the check.
-///
-/// This is intentionally narrow:
-/// - Accepts: `f(n - 1)`, `f(n - 2)`, `f(n - 3) + f(n - 1)`
-/// - Rejects: `f(n)`, `f(n + 1)`, `f(n * 2)`, `f(m - 1)` where
-///   m is not the first param, `f(n - 0)`, `f(1)`, zero-arg calls
-///
-/// More sophisticated termination analysis (lexicographic orderings
-/// on multiple parameters, structural recursion on containers,
-/// measure functions that aren't simple subtraction) is M1+ work.
-/// The failure mode is conservative: reject more programs than
-/// strictly necessary, never accept a program that could diverge.
+/// Partial termination analysis: every recursive self-call's first argument
+/// must be `first_param - <positive int>`. The surface shape is
+/// `SurfaceExpr::Call { target: "-", args: [Var(first_param), IntLit(k)] }`
+/// per §8.9 Option A — operators emit raw identifiers, not pre-resolved
+/// path names.
 fn descent_provable(expr: &SurfaceExpr, self_name: &str, first_param: &str) -> bool {
     match expr {
         SurfaceExpr::IntLit { .. }
@@ -495,15 +881,11 @@ fn descent_provable(expr: &SurfaceExpr, self_name: &str, first_param: &str) -> b
     }
 }
 
-/// Returns true iff `expr` is syntactically `first_param - k` for
-/// some positive integer constant `k`. Matches the form emitted by
-/// parse.rs for `n - 1` (SurfaceExpr::Call with target
-/// "std::int::sub" and two args).
 fn is_strictly_smaller(expr: &SurfaceExpr, first_param: &str) -> bool {
     let SurfaceExpr::Call { target, args, .. } = expr else {
         return false;
     };
-    if target != "std::int::sub" || args.len() != 2 {
+    if target != "-" || args.len() != 2 {
         return false;
     }
     let lhs_is_param = matches!(
@@ -528,21 +910,6 @@ fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
     }
 }
 
-/// Compute the set of user function names that participate in a
-/// mutual recursion cycle (a call-graph SCC of size > 1). Returns
-/// the set of names to reject at lowering time.
-///
-/// Singleton SCCs (a function that directly calls itself, or a
-/// function that doesn't call any function at all) are not in the
-/// returned set — direct recursion is handled by `is_recursive` +
-/// `descent_provable`, and non-recursive functions are fine.
-///
-/// Algorithm: for each function, BFS its forward call set. If two
-/// distinct functions f and g both reach each other, they (and any
-/// function transitively in the same cycle) are mutually recursive.
-/// Brute-force O(n²) reachability is fine for M0's small modules;
-/// a proper Tarjan's SCC pass is worth doing when module sizes
-/// grow or when we need to report the specific cycle.
 fn compute_mutually_recursive(items: &[SurfaceItem]) -> HashSet<String> {
     let fn_names: HashSet<String> = items
         .iter()
@@ -552,7 +919,6 @@ fn compute_mutually_recursive(items: &[SurfaceItem]) -> HashSet<String> {
         })
         .collect();
 
-    // Build calls[f] = set of fn names f's body calls directly.
     let mut calls: HashMap<String, HashSet<String>> = HashMap::new();
     for item in items {
         if let SurfaceItem::Fn { name, body, .. } = item {
@@ -562,11 +928,6 @@ fn compute_mutually_recursive(items: &[SurfaceItem]) -> HashSet<String> {
         }
     }
 
-    // For each fn f, compute reachable(f) — the transitive closure
-    // of calls. Then f and g are mutually recursive iff f ∈ reachable(g)
-    // AND g ∈ reachable(f) AND f != g. Direct self-recursion (f ∈
-    // reachable(f) via the self-edge) is NOT in this set — it's
-    // handled by `is_recursive` downstream.
     let mut reach_cache: HashMap<String, HashSet<String>> = HashMap::new();
     for f in &fn_names {
         reach_cache.insert(f.clone(), transitive_reach(f, &calls));
@@ -605,11 +966,6 @@ fn transitive_reach(
             }
         }
     }
-    // Strip the start node itself from the reach set so "f ∈
-    // reachable(f)" means "f can be reached via at least one
-    // non-trivial path." This matters for the singleton-direct-
-    // recursion case: f ∈ calls[f] means reach(f) contains f via
-    // the self-edge, which is direct recursion (not mutual).
     visited.remove(start);
     visited
 }

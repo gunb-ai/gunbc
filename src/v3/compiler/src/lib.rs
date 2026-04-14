@@ -21,6 +21,7 @@ pub mod lens_depth;
 pub mod lens_provenance;
 pub mod types;
 
+mod bootstrap;
 mod infer;
 mod lower;
 mod parse;
