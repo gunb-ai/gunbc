@@ -4,6 +4,9 @@
 > where each belongs, and show how TransformRule dissolves into algebra.
 >
 > This doc is the design phase. Code changes follow from decisions here.
+>
+> Structure: "Current State" sections describe what exists today.
+> "Proposed" sections describe what should change. Clearly separated.
 
 ## Principle
 
@@ -12,20 +15,22 @@ Two buckets:
 1. **std/** — general concepts from math and computing. True regardless
    of this compiler. Algebra, iteration, type constructors, data flow.
 
-2. **compiler lib/** — implementation details specific to THIS compiler.
-   Organized per layer (parse, resolve, infer, emit) to prevent
-   contamination. The compiler imports from std/ but std/ never imports
-   from the compiler.
+2. **compiler src/v3/** — implementation details specific to THIS compiler.
+   Organized per layer (parse, resolve, infer, emit). Shared types that
+   multiple layers need go in a common upstream lib (like Google C++ style)
+   — no dependency cycles. Each layer can depend on layers above it
+   (parse feeds resolve feeds infer feeds emit) but never the reverse.
+   Facts flow forward through typed boundaries, computed once.
 
 If a type traces to a math concept or a universal computing concept,
 it belongs in std/. If it's about how this specific compiler works,
-it belongs in compiler lib/.
+it belongs in src/v3/.
 
 ---
 
 ## V3 Spec Types — Where They Belong
 
-### Value — std/
+### Value — std/ (proposed)
 
 A known thing. No inputs, one output. Literal, constant, data.
 
@@ -33,11 +38,16 @@ A known thing. No inputs, one output. Literal, constant, data.
 morphism from the terminal object (unit) to a type. "3" is the
 morphism Unit → Int that picks 3.
 
-**Already modeled:** std/syntax.dag has `LiteralValue` (the data).
-std/constructors.dag has `Terminal` (the structural shape). Value
-composes these: a Terminal-shaped node carrying a LiteralValue.
+**Current state:** std/syntax.dag has `LiteralValue` (the data).
+std/constructors.dag describes Terminal in comments but does NOT
+yet declare it as a type. Value needs both: a Terminal declaration
+in constructors.dag and composition with LiteralValue.
 
-### Transform — std/
+**First consumer:** v3 parser (DAG construction).
+**Deletes:** ExprLitStr, ExprLitInt, ExprLitFloat, ExprLitBool
+variants from v2's ExprData enum.
+
+### Transform — std/ (proposed)
 
 Do something to inputs, get an output. The workhorse.
 
@@ -47,7 +57,12 @@ by the type's algebraic structure.
 
 **The rule is NOT an enum.** See "TransformRule Dissolution" below.
 
-### Branch — std/
+**First consumer:** v3 parser.
+**Deletes:** ExprCall, ExprFieldAccess, ExprBinOp, ExprUnaryOp,
+ExprRecordLit, ExprListLit, ExprCast, ExprStringInterp — 8 of 22
+ExprData variants.
+
+### Branch — std/ (proposed)
 
 Look at something, take a path. `if`, `match`, pattern matching.
 
@@ -55,11 +70,14 @@ Look at something, take a path. `if`, `match`, pattern matching.
 declares Coproduct. Branch is its elimination form — the universal
 way to consume a coproduct is to handle each variant.
 
-**Already modeled:** constructors.dag has `Coproduct`. What's missing:
+**Current state:** constructors.dag has `Coproduct`. What's missing:
 the explicit connection between Coproduct and Branch (the elimination
 form).
 
-### Loop — std/
+**First consumer:** v3 parser.
+**Deletes:** ExprIf, ExprMatch — 2 ExprData variants.
+
+### Loop — std/ (proposed)
 
 Repeat something, bounded.
 
@@ -67,21 +85,28 @@ Repeat something, bounded.
 already declares fold, descend, repeat. Loop is the general form
 that these are instances of.
 
-**Already modeled:** iteration.dag has the three primitives.
-computation.dag has `SizeBound` and the lowering table. Loop
-composes: an iteration primitive with a bound and a body.
+**Current state:** iteration.dag has the three primitives.
+computation.dag has the lowering table. Loop composes: an iteration
+primitive with a bound and a body.
 
-### Bind — std/
+**First consumer:** v3 parser (recursive function lowering).
+**Deletes:** recursive function handling spread across 04_infer.dag,
+complexity.dag, ownership.dag.
+
+### Bind — std/ (proposed)
 
 Give something a name. Not computation — just wiring.
 
 **Traces to:** variable binding / let-abstraction. Universal in
 lambda calculus, type theory, every programming language.
 
-**Already modeled:** std/binding.dag has `Binding { key, value }`.
+**Current state:** std/binding.dag has `Binding { key, value }`.
 Bind extends this with scope.
 
-### Port — std/
+**First consumer:** v3 parser.
+**Deletes:** ExprLet, ExprVar — 2 ExprData variants.
+
+### Port — std/ (proposed)
 
 Typed connection between behaviors. Data flows forward through ports.
 
@@ -89,22 +114,60 @@ Typed connection between behaviors. Data flows forward through ports.
 the edges; behaviors are the nodes. This is the fundamental data
 flow concept.
 
-**Not yet modeled.** Needs a std/ definition. Relates to:
-- constructors.dag (port carries a value of some Product/Coproduct shape)
-- types.dag (port has a value_type from the type system)
+**Current state:** not yet modeled. Needs a std/ definition.
+Note: std/types.dag has `type Port = Int` for network ports.
+Module namespacing disambiguates (`std.types.Port` vs the
+data flow Port in a different module). No rename needed.
 
-### Bound — std/
+**First consumer:** v3 DAG construction + all lenses.
+**Deletes:** ad-hoc edge tracking in v2's ownership.dag and
+complexity.dag.
 
-How many times a Loop repeats. An integer — finite by construction.
+### Bound — std/ (proposed, revision)
+
+How many times a Loop repeats. Finite by construction.
 
 **Traces to:** well-founded measure / termination measure.
 
-**Already modeled:** computation.dag has `SizeBound` with 5 variants
-(CollectionSize, TreeSize, ArithmeticParam, ExplicitCount, Forever).
-This is the right concept but may be over-specified — the compiler
-determines the source; the bound itself is just "a finite number."
+**Current state:** computation.dag has `SizeBound` — a 5-variant
+coproduct (CollectionSize, TreeSize, ArithmeticParam, ExplicitCount,
+Forever). This is the right concept but the coproduct should dissolve.
 
-### Path — std/
+**Proposed dissolution:** SizeBound's 5 variants encode two facts:
+a dimension (what's being counted) and an origin (which parameter).
+The dimension traces to the type's algebraic structure:
+
+- FreeMonoid (List, String, Set, Map) → collection length
+- Inductive structure (Tree) → tree node count
+- OrderedRing (Int) → numeric magnitude
+- Literal → constant (input-independent)
+- System → Forever (externally terminated)
+
+computation.dag already has `IterationDimension` and
+`algebra_profile_to_dimension` that maps algebra profiles to
+dimensions. So Bound dissolves to:
+
+```
+type Bound {
+  dimension: IterationDimension   // derived from the type's algebra
+  origin: String                  // which parameter/value (immediate only)
+  count: Port                     // the actual number
+}
+```
+
+The dimension comes FROM the algebra profile, not from a growing
+enum. New algebraic structure → new dimension falls out.
+IterationDimension has 3 values (TreeDescent, CollectionFold,
+ArithmeticRepeat) tracing to the 3 iteration primitives — small,
+stable, irreducible.
+
+**Why immediate origin, not full path:** if a consumer needs to
+trace further back, it follows edges in the DAG. Storing the full
+path would duplicate the graph structure. The immediate origin tells
+the cost lens what it needs: "is this bound input-dependent or
+constant?"
+
+### Path — std/ (proposed)
 
 One arm of a Branch. Pattern + bindings + body.
 
@@ -112,17 +175,19 @@ One arm of a Branch. Pattern + bindings + body.
 identifies which variant, bindings extract the components, body
 handles it.
 
-**Not yet modeled as a standalone concept.** Relates to Branch.
+**First consumer:** v3 parser (Branch construction).
 
-### Pattern — std/
+### Pattern — std/ (proposed)
 
 What activates a path in a Branch. Structural match.
 
 **Traces to:** destructuring / Coproduct case discrimination.
 
-**Partially modeled:** std/patterns.dag exists but is about DAG
-workflow patterns (ensure, upsert), not pattern matching. Pattern
-matching is a different concept that needs its own modeling.
+Note: std/patterns.dag is about DAG workflow patterns (ensure,
+upsert) — a different concept. Pattern matching needs its own
+modeling.
+
+**First consumer:** v3 parser (match expressions).
 
 ---
 
@@ -130,19 +195,28 @@ matching is a different concept that needs its own modeling.
 
 | Type | Bucket | Reason |
 |------|--------|--------|
-| NodeId | compiler lib/ | this compiler's identity scheme |
-| PortId | compiler lib/ | this compiler's identity scheme |
-| TypeShape | split | constructors (Product/Coproduct/Terminal) are std/; representation is compiler lib/ |
+| NodeId | src/v3/ | this compiler's identity scheme |
+| PortId | src/v3/ | this compiler's identity scheme |
+| TypeShape | split | constructors (Product/Coproduct) are std/; representation is src/v3/ |
 | LiteralValue | std/ | already in std/syntax.dag |
-| BinOp | std/ | already in std/syntax.dag; should trace to algebra operations |
-| UnaryOpKind | std/ | should trace to algebra operations |
-| FieldRef | compiler lib/ | this compiler's reference to a product field |
-| MethodRef | compiler lib/ | this compiler's dispatched application target |
-| NodeRef | compiler lib/ | this compiler's reference to a subgraph |
-| TypeRef | compiler lib/ | this compiler's reference to a type declaration |
-| BindingId | compiler lib/ | this compiler's naming scheme |
-| BuiltinKind | compiler lib/ | this compiler's set of primitives |
+| BinOp | dissolves | syntax token stays in syntax.dag; semantic operation resolves to algebra |
+| UnaryOpKind | dissolves | same as BinOp |
+| FieldRef | src/v3/ | this compiler's reference to a product field |
+| MethodRef | src/v3/ | this compiler's dispatched application target |
+| NodeRef | src/v3/ | this compiler's reference to a subgraph |
+| TypeRef | src/v3/ | this compiler's reference to a type declaration |
+| BindingId | src/v3/ | this compiler's naming scheme |
+| BuiltinKind | src/v3/ | this compiler's set of primitives |
 | ParamPort | std/ | a port with a name — parameter |
+
+### BinOp/UnaryOp dissolution
+
+`+` is syntax (the parser sees a token). The semantic operation is
+"Ring addition" — determined by the operand type's algebra profile.
+std/syntax.dag keeps OperatorSpec (token → binding power → algebra
+field mapping). The compiler IR references the algebra operation,
+not a BinOp enum. The parser resolves syntax to algebra at
+construction time.
 
 ---
 
@@ -208,7 +282,7 @@ algebraic structure declarations, not hand-written per variant.
 reads the declaration and generates the matching code. The compiler
 itself has zero edits.
 
-### What's missing from std/
+### What's missing from std/ (proposed additions)
 
 The **function space** (exponential object) isn't modeled:
 
@@ -221,6 +295,9 @@ Function space A → B:
 This is the same intro/elim pattern as Product and FreeMonoid. It
 should be declared in std/ alongside them. Then Define, Call, Method,
 and Builtin all trace to it.
+
+**First consumer:** v3 parser (function/lambda construction).
+**Deletes:** ExprLambda variant + lambda-specific paths in v2.
 
 ### The general pattern
 
@@ -240,98 +317,52 @@ in std/ is what dissolves TransformRule.
 
 ---
 
-## std/ Audit — What Doesn't Belong
+## std/ Audit
 
-Types currently in std/ that are about THIS compiler, not general concepts:
+### What doesn't belong (current state)
 
-### node.dag — compiler-specific
+Types currently in std/ that are about THIS compiler, not general:
 
-Declares InductiveField entries for Node, InferredNode, MatchPattern,
-MethodSemantics. These are this compiler's data structures.
-
-**Move to:** compiler lib/ (analysis layer). The CONCEPT of inductive
-fields and recursion shapes is general (and stays in std/induction.dag).
+**node.dag — compiler-specific instances.** Declares InductiveField
+entries for Node, InferredNode, MatchPattern, MethodSemantics.
+The CONCEPT of inductive fields is general (stays in induction.dag).
 The INSTANCES for specific compiler types are compiler data.
+Move to: src/v3/ analysis layer.
 
-### graph.dag — mixed
+**graph.dag — mixed.** Graph algorithms (DFS, Kosaraju SCC) are
+general. CallGraph with String keys + ProofEdge imports are
+compiler-specific. Split: generalize algorithms, move specific
+types to src/v3/.
 
-The graph algorithms (DFS, Kosaraju SCC) are general. But the specific
-types (CallGraph with String keys, imports from termination.dag's
-ProofEdge) are compiler-specific.
+**fidelity.dag — compiler-specific.** TransportClass, TestClass,
+DerivedClassification. Move to: src/v3/.
 
-**Split:**
-- General graph algorithms → stay in std/ (generalized)
-- CallGraph, proof validation → compiler lib/ (analysis layer)
+### What stays (reviewer-corrected)
 
-### computation.dag — mixed
+**computation.dag CallPattern/LoweringTarget — stays in std/.**
+The bounded lowering table (every recursive pattern → bounded
+primitive) is a LANGUAGE GUARANTEE (decidability), not compiler
+policy. The model stays. Only compiler-specific evidence/
+classification plumbing moves to src/v3/.
 
-SizeBound, IterationPrimitive, IterationDimension are general concepts.
-CallPattern (ChildAccessorCall, CollectionShrinkCall, etc.) is about
-how THIS compiler classifies recursive calls.
+**effects.dag ComposedEffect/ModifierAgreement — stays in std/.**
+Effect composition is algebraic (idempotency, cancellation,
+redundancy are one mechanism). Track 17 says wire these into
+real operations, not hollow them out. The algebra stays in std/.
+Only compiler-specific reporting wrappers move.
 
-**Split:**
-- SizeBound, IterationPrimitive, IterationDimension → stay in std/
-- CallPattern, LoweringTarget, lower_call_pattern → compiler lib/
+### What's missing (proposed additions)
 
-### fidelity.dag — compiler-specific
+1. **Terminal declaration** in constructors.dag (described in
+   comments but not declared as a type)
+2. **Function space** (exponential) — intro/elim for functions
+3. **Port** — typed data flow edge
+4. **Intro/elim declarations** on existing algebraic structures
+5. **Pattern matching types** (Coproduct elimination vocabulary)
+6. **Lens composition algebras** (cost, ownership, effect lattices)
 
-TransportClass, TestClass, DerivedClassification — about how this
-compiler classifies tests and transport declarations.
-
-**Move to:** compiler lib/ (analysis layer).
-
-### effects.dag — mixed
-
-EffectShape (Pure, ServiceCall, etc.) is a general concept. The
-specific composition rules (ComposedEffect, ModifierAgreement) are
-this compiler's policy.
-
-**Split:**
-- Effect vocabulary (Pure, Read, Write, etc.) → std/
-- Composition policy → compiler lib/
-
----
-
-## std/ Audit — What's Missing
-
-### Function space (exponential)
-
-The intro/elim structure for functions. Every language has:
-- Define: create a callable (function, lambda, closure)
-- Apply: call a callable with arguments
-- Capture: a define that references outer scope (closure)
-
-Should live in std/ alongside constructors.dag's Product/Coproduct.
-
-### Port / typed data flow
-
-The concept of a typed, directed edge between computation nodes.
-Forward-only. No cycles. Carries a value of a declared type.
-
-This is the substrate that connects behaviors. Currently only in
-the v3 spec as design notation.
-
-### Intro/elim declarations on algebraic structures
-
-algebra.dag declares the algebraic hierarchy (Magma → Ring → Field).
-It declares the OPERATIONS that emerge. It does NOT declare the
-INTRODUCTION and ELIMINATION forms.
-
-Adding these makes TransformRule dissolve:
-- Product: intro = construct from fields, elim = project field
-- FreeMonoid: intro = empty + cons/concat, elim = index/fold/length
-- Ring: ops already declared (add, sub, mul, negate)
-- BooleanAlgebra: ops already declared (and, or, not)
-- Function: intro = define, elim = apply
-
-### Pattern matching
-
-Pattern matching as Coproduct elimination. Currently std/patterns.dag
-is about workflow patterns (different concept). Match patterns need:
-- Wildcard: match anything
-- Literal: match specific value
-- Variant: match coproduct variant, bind fields
-- Nested: compose patterns
+Each needs a first consumer and a concrete deletion target before
+implementation. A type with zero consumers is a paper exercise.
 
 ---
 
@@ -341,62 +372,27 @@ The v3 spec describes 7 lenses. Their CONCEPTS are general (cost
 composition, ownership tracking, effect classification). Their
 IMPLEMENTATION reads compiler-specific DAG structure.
 
-| Lens | Concept (std/) | Implementation (compiler lib/) |
+| Lens | Concept (std/) | Implementation (src/v3/) |
 |------|------|------|
 | Cost | CostAlgebra: add for sequence, mul for loops, max for branches | Reads specific DAG behaviors |
 | Ownership | FanOut: count of consumers per port | Reads specific port edges |
 | Effect | EffectLattice: Pure < Read < Write < Service | Reads specific behaviors |
 | Termination | WellFoundedOrder: every Loop has a bound | Reads Loop nodes |
-| Provenance | produced_by: follow edges backward | Reads Port.produced_by |
+| Origin | produced_by: follow edges backward | Reads Port.produced_by |
 | Algebra | IntroElimLaws: involution, inverse, fusion | Reads adjacent transforms |
 | Space | same composition as Cost but tracks allocation | Reads specific DAG behaviors |
 
 The composition rules (add, max, multiply for cost; lattice join for
 effects) are math — they belong in std/. The specific traversal of
-THIS compiler's DAG structure is compiler lib/.
-
----
-
-## Summary: What Changes
-
-### std/ gains:
-1. L1 behavior type declarations (Value, Transform, Branch, Loop, Bind)
-2. Port / typed data flow
-3. Function space (exponential) — intro/elim
-4. Explicit intro/elim declarations on existing algebraic structures
-5. Pattern matching types (Coproduct elimination)
-6. Lens composition algebras (cost, ownership, effect lattices)
-
-### std/ loses:
-1. node.dag compiler-type instances → compiler lib/
-2. graph.dag compiler-specific types → compiler lib/
-3. computation.dag CallPattern/LoweringTarget → compiler lib/
-4. fidelity.dag → compiler lib/
-5. effects.dag composition policy → compiler lib/
-
-### TransformRule dissolves:
-From 14-variant enum → algebraic structure + form (intro/elim/op).
-The compiler reads std/ declarations to know what to do. No enum
-to maintain. No match arms to add when a new structure appears.
-
-### Compiler lives under src/v3/:
-Organized by layer. Each layer imports from std/ but not from other
-layers. Prevents the contamination where parse types leak into emit.
-
-### BinOp/UnaryOp dissolve into algebra:
-`+` is syntax (the parser sees a token). The semantic operation is
-"Ring addition" — determined by the operand type's algebra profile.
-std/syntax.dag keeps OperatorSpec (token → binding power → algebra
-field mapping). The compiler IR references the algebra operation,
-not a BinOp enum. The parser resolves syntax to algebra at
-construction time.
+THIS compiler's DAG structure is src/v3/.
 
 ---
 
 ## Compiler Layer Breakdown (src/v3/)
 
-Each layer has its own types. No layer imports from another layer.
-All layers import from std/. This prevents contamination.
+Layers depend downward only (parse → resolve → infer → emit).
+Shared types that multiple layers need go in a common upstream lib.
+No dependency cycles. All layers import from std/.
 
 ### tokenize — source text → tokens
 
@@ -474,7 +470,7 @@ parse and infer read from.
 
 **Imports from std/:**
 - Algebraic structure profiles — to determine valid operations
-- Coercion vocabulary — to validate casts (see below)
+- Coercion vocabulary — to validate casts
 - Type constructors — to check structural compatibility
 
 **Job:** every Port gets a value_type. The DAG already has the
@@ -515,7 +511,7 @@ it needs to know how to render the constructed type in the target.
 The intro/elim form tells it WHAT operation. The coercion system
 tells it HOW to render the types involved.
 
-### v2's coercion system (already data-driven)
+### v2's coercion system (current state — already data-driven)
 
 v2 uses a two-stage data lookup:
 
@@ -664,6 +660,131 @@ concat + coercion instead of building ExprStringInterp nodes.
 
 ---
 
+## Forever and Bounded Iteration
+
+### What "forever" means
+
+In a Bit/Word64 system, there is no infinity. `true` is a Bit
+(a signal, a data value), not a philosophical statement about
+truth. Classical logic True (a proposition that holds) exists at
+a different layer — it's in the logic, not the data.
+
+A "forever" loop means: "run until externally terminated." The
+developer wants "until the heat death of the universe" — this is
+an engineering system, not a mathematical proof. The system models
+this honestly: Forever is the largest representable bound, which
+means "the system guarantees the loop body executes; termination
+comes from outside (process killed, signal received, resources
+exhausted)."
+
+Forever is NOT "iterate exactly 2^63 times." It is a named
+sentinel meaning "externally terminated." The cost algebra uses
+it for worst-case reasoning, not as an iteration target.
+
+### Why not float infinity?
+
+Float infinity would lose information:
+- infinity × body_cost = infinity (can't distinguish cheap vs
+  expensive forever loops)
+- infinity × infinity = infinity (nested costs collapse)
+- 2^63 × 2^63 = 2^126 is a meaningful number for nested analysis
+- infinity breaks decidability (not representable in Word64)
+
+The integer sentinel preserves cost algebra precision. The cost
+lens can report "this forever loop costs Forever × O(n) per
+iteration" — meaningful for comparing alternatives.
+
+### Parallelism safety
+
+Can the system accidentally parallelize a forever loop and "finish"
+it? No, because:
+
+1. **Parallelism requires independence** — no shared edges between
+   iterations in the DAG.
+2. **Forever loops have accumulator state** (server state, event
+   loop state) that persists across iterations.
+3. **If iterations WERE independent**, the compiler raises to Map.
+   But Map requires a finite source collection. Forever isn't a
+   collection — it's a repeat bound.
+4. `repeat(Forever, f)` is sequential by construction — each
+   iteration feeds the next.
+
+### Composition cases
+
+- **Forever containing fold:** `repeat(Forever, fn(state) { items |> fold(...) })`
+  Cost = Forever × |items| × body. Sequential outer, inner fold
+  may parallelize if independent.
+
+- **Forever inside branch:** `if cond then repeat(Forever, ...) else x`
+  Cost = max(Forever × body, cost(x)). Branch is exclusive.
+
+- **Fold containing forever:** structurally invalid. You can't fold
+  over elements where each runs forever — the inner loop must
+  terminate to produce a value for the accumulator.
+
+- **Map over forever:** impossible. Map requires a finite source.
+
+### Recursion and forever
+
+Mutual recursion lowers to a single Loop with a phase tag (v3 spec
+Scenario 2). So mutual recursion composes with the same primitives
+as everything else. The phase tag is data, not structure.
+
+Self-call with same argument → `repeat(Forever, ...)`. The bound
+is honest: this might run for 292 years at 1ns/iteration. The cost
+lens reports it.
+
+**TDD priority:** mutual recursion lowering should be tested first
+via test-driven development. The lowering boundary (surface syntax
+→ DAG with Loop+Bound) is where the real complexity lives. Tests
+should verify:
+- Single self-call → Loop with correct bound
+- Mutual recursion (A→B→A) → single Loop with phase
+- 3-way mutual recursion → single Loop with 3-phase
+- Self-call with same argument → repeat(Forever)
+- Mixed: mutual recursion where one branch terminates → Loop + Branch
+
+---
+
+## Summary: What Changes
+
+### std/ gains (proposed, each needs first consumer):
+1. Terminal declaration in constructors.dag
+2. L1 behavior type declarations (Value, Transform, Branch, Loop, Bind)
+3. Port — typed data flow edge
+4. Function space (exponential) — intro/elim for functions
+5. Explicit intro/elim declarations on existing algebraic structures
+6. Pattern matching types (Coproduct elimination vocabulary)
+7. Lens composition algebras (cost, ownership, effect lattices)
+
+### std/ loses (proposed):
+1. node.dag compiler-type instances → src/v3/
+2. graph.dag compiler-specific types → src/v3/
+3. fidelity.dag → src/v3/
+
+### std/ stays (reviewer-confirmed):
+1. computation.dag CallPattern/LoweringTarget — language guarantee
+2. effects.dag ComposedEffect/ModifierAgreement — algebraic
+
+### TransformRule dissolves:
+From 14-variant enum → algebraic structure + form (intro/elim/op).
+The compiler reads std/ declarations to know what to do. No enum
+to maintain. No match arms to add when a new structure appears.
+
+### SizeBound dissolves:
+From 5-variant coproduct → Bound { dimension, origin, count }.
+Dimension derived from algebra profile. Origin is immediate only.
+
+### BinOp/UnaryOp dissolve:
+Syntax token stays in syntax.dag. Semantic operation resolves to
+algebra at construction time.
+
+### Compiler lives under src/v3/:
+Layers depend downward only. Shared types in upstream lib. No
+dependency cycles. Facts flow forward, computed once.
+
+---
+
 ## Open Questions
 
 1. **How much of this is v3 vs v2-compatible?**
@@ -675,3 +796,8 @@ concat + coercion instead of building ExprStringInterp nodes.
 2. **Parser state model:** v2 uses integer position. v3 should use
    list consumption for structural descent evidence. Design the
    ParseState type before implementing.
+
+3. **Coproduct minimization:** any remaining coproducts in std/
+   should be audited for dissolution opportunities. If a coproduct's
+   variants trace to different algebraic structures, it can likely
+   dissolve into algebra-derived data.
