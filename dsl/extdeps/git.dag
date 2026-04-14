@@ -72,10 +72,6 @@ type DiffHunk {
   lines: List<DiffLine>
 }
 
-// -- Working tree status -------------------------------------------
-
-type GitFileStatus = GitClean | GitModified | GitAdded | GitDeleted | GitRenamed | GitUntracked
-
 // -- Constants -----------------------------------------------------
 
 data default_remote: String = "origin"

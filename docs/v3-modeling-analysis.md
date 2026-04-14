@@ -199,6 +199,35 @@ the argument for keeping this rely on current consumer count, or
 on structural irreducibility?" If the former, dissolve. If the
 latter, accept.
 
+### Three classification buckets
+
+Not two. The conversation collapsed "terminal" and "deferred" early
+on, hiding unfinished work behind terminal labels.
+
+1. **Terminal** — no richer source exists. The coproduct is at the
+   user-input boundary (names, literals, spans) where the user is
+   the author of the reality.
+2. **Deferred-with-trigger** — richer source exists but extracting
+   it requires substrate work that isn't ready. Named trigger says
+   when to revisit. Example: Subject in Diagnostic pending typed
+   program references.
+3. **Dissolvable-now** — richer source exists and extraction is
+   cheap. Do it immediately.
+
+### Ledger rule
+
+Every coproduct classified as "terminal" or "deferred-with-trigger"
+includes a one-paragraph record of the dissolution attempt: which
+patterns were tried, what axes or richer sources were considered,
+and why the attempt stopped.
+
+The paragraph is the evidence that the classification was earned
+rather than assumed. A coproduct without a ledger entry is an
+unfinished analysis, not a terminal. This makes the "all coproducts
+dissolve" search discipline falsifiable — someone can pick up the
+ledger, find a failed attempt, and succeed where the original
+session didn't.
+
 ---
 
 ## V3 Spec Types — Where They Belong
@@ -630,6 +659,21 @@ This prevents the "two sources of truth" problem: value_type and
 the diagnostic table are not independent — they're linked by this
 invariant. Upstream (infer) enforces it. Downstream (emit) relies
 on it.
+
+**Enforcement: API-level, not convention.** The only way to set
+value_type to None is through an API that takes both arguments
+atomically:
+
+```
+fn mark_unresolved(port: PortId, diagnostic: Diagnostic) -> ()
+```
+
+This makes the invariant mechanically enforceable at every write
+site. Convention ("every lens author promises to write a diagnostic")
+fails under cognitive load. Post-hoc validation (walk ports and
+check) catches violations but doesn't prevent them. API-level
+enforcement prevents them by construction — you literally cannot
+create a None port without providing the diagnostic.
 
 TypeVariable is algorithm-internal scratch state. It never appears
 on any Port or in the diagnostic table. If unification fails,
@@ -1279,18 +1323,170 @@ to address vs what's fine.
 | TcoExprShape | 5 | TCO classification — gone when recursion → Loop lowering |
 | BackendCapability | 5 | capability flags — becomes boolean fields on LanguageSpec |
 
-**NEEDS DESIGN DECISION (v3-relevant, 8 types):**
+**DESIGN DECISIONS RESOLVED (4 non-trivial, 4 mechanical):**
 
-| Type | Variants | Question |
+The 4 non-trivial cases have concrete v3 type declarations.
+The 4 mechanical cases (NodeFieldRole, FunctionSizeEffect, ItemKind,
+AliasKind) dissolve automatically when their substrate changes land.
+
+#### OwnershipDecision — DELETED (fact placement #1)
+
+No type declaration needed. Ownership is a derived query on Ports:
+
+```
+fan_out(port) == 1                            → move-eligible
+fan_out(port) > 1                             → shared; diagnostic if uniqueness required
+fan_out(port) == 0 AND node is pure           → dead code diagnostic
+fan_out(port) == 0 AND node has effect        → valid (effect is the "use")
+```
+
+Consumers that asked "is this SoleOwner?" now ask `fan_out(port) == 1`.
+Errors go to the diagnostic table. The Port.value_type = None invariant
+extends: if a port has fan_out > 1 in a uniqueness context, a diagnostic
+is written with binding, consumer_count, and sites as structured data.
+
+Note: fan_out=0 rule accounts for effects — effectful ports with no
+consumers are valid (the effect IS the use), not dead code.
+
+#### EdgeKind — dimensional (SourceEffect × ControlRole)
+
+```
+type SourceEffect = Intact | Partial | Consumed
+type ControlRole  = DataFlow | IterationCarry
+
+type Edge {
+  source_port: PortId
+  consumer_port: PortId
+  source_effect: SourceEffect
+  control_role: ControlRole
+}
+```
+
+v2's Threaded = (Consumed, IterationCarry). Consumer migration:
+- `semantic_consumer_count` → `source_effect == Consumed && control_role == DataFlow`
+- `binding_fan_out` → `control_role == DataFlow`
+- `build_read_only_params` → `source_effect != Consumed OR control_role == IterationCarry`
+
+The third filter mixes dimensions — a hint that "read-only params" may
+be a v2-ism that mixed two concepts. Flag for audit during v3 ownership.
+
+Naming: "control_role" replaces "administrative" — structural property
+of the edge in the data-flow graph, not compiler bookkeeping category.
+
+#### MatchPattern — dimensional (Activation × BindingSet)
+
+```
+type Activation =
+    Always
+  | Literal { value: LiteralValue }
+  | Variant { variant_ref: VariantRef }
+
+type BindingSet =
+    NoBinding
+  | Single { name: Name }
+  | PerField { fields: List<(FieldName, Pattern)> }
+
+type Pattern {
+  activation: Activation
+  binding: BindingSet
+  span: SourceSpan
+}
+```
+
+v2's 4 variants are specific points in a 3×3 space:
+- Wildcard       = (Always, NoBinding)
+- Bind           = (Always, Single)
+- LitPattern     = (Literal, NoBinding)
+- VariantPattern = (Variant, PerField)
+
+Uninhabited: (Always, PerField) and (Literal, PerField) — "destructure
+anything" and "destructure a literal" are nonsensical. Enforced by
+validity rule, not type structure.
+
+Free extensions at zero consumer cost: at-patterns like `n @ 42`
+(Literal, Single) and `s @ Some(_)` (Variant, Single).
+
+PerField uses named field bindings `(FieldName, Pattern)` rather than
+positional — prevents wrong-field bugs. Change from v2's positional model.
+
+Exhaustiveness checking simplifies: the checker folds over patterns
+along the activation axis. "Is this exhaustive?" = "does the set of
+activations cover all values of the scrutinee type?"
+
+#### CompilerDiagnostic — 5-field record with residual coproducts
+
+```
+// No Severity coproduct. Per INVARIANTS.md (C-8, fixed 2026-04-01):
+// "There is no warning severity." All diagnostics are errors.
+// A condition is either wrong (diagnostic emitted) or not (no diagnostic).
+
+type Category = Module | Type | Pattern | Parse | Analysis | Internal
+
+type Subject =
+    OfName     { name: Name }
+  | OfType     { type_ref: TypeRef }
+  | OfField    { field_ref: FieldRef }
+  | OfModule   { module_path: ModulePath }
+  | OfFunction { function_ref: FunctionRef }
+  | OfBinding  { binding_ref: BindingRef }
+  | OfVariant  { variant_ref: VariantRef }
+
+type Detail =
+    NoDetail
+  | Comparison    { expected: TypeRef, got: TypeRef }
+  | ArityCompare  { expected: Int, got: Int }
+  | MissingItems  { missing: List<Name> }
+  | ItemChain     { chain: List<ModulePath> }
+  | ConsumerList  { consumers: List<BindingRef> }
+  | Reason        { text: String }
+
+type Diagnostic {
+  span: SourceSpan
+  category: Category
+  subject: Subject
+  detail: Detail
+  producing_node: NodeId
+}
+```
+
+**Subject is a residual coproduct, NOT terminal.** The richer source
+(typed program references with uniform identity) doesn't fully exist
+yet. When typed references land, Subject decomposes to dimensional
+form: `Reference { ref_kind, identity }`. This is honest deferral
+with a named trigger, not accepted compression.
+
+**Detail is a terminal coproduct.** The variants carry genuinely
+different structured payloads (two TypeRefs vs a List<Name> vs Int
+pair). No coordinate space exists — they're different small record
+types. The smallest possible set of genuinely different shapes.
+
+**Reason is an escape hatch.** Prefer structured Detail variants.
+Every Reason use is a deferred modeling task. Over time, Reason
+uses should decrease as structured variants are added.
+
+Consumer wins:
+- `diagnostic_to_span(d)` → `d.span` (field read, was 16-way match)
+- `is_error_diagnostic(d)` → always true (all diagnostics are errors per C-8; was hand-maintained list)
+- `diagnostic_to_message(d)` → formatted by category + detail kind,
+  driven by a template table. New diagnostic = new row, not new branch.
+
+v2 → v3 migration (sample):
+```
+v2: TypeMismatch { expected, got, span }
+v3: Diagnostic { span, category: Type,
+     subject: OfType { type_ref: expected },
+     detail: Comparison { expected, got },
+     producing_node: <node_id> }
+```
+
+#### Remaining 4 mechanical dissolutions
+
+| Type | Variants | Dissolution |
 |---|---|---|
-| MatchPattern | 4 (Bind, LitPattern, VariantPattern, Wildcard) | Part of Branch (Coproduct elimination). These have genuinely different fields. Dimensional: Pattern { kind, bindings }? Or is this irreducible because each variant carries structurally different data? |
-| CompilerDiagnostic | 16 | All variants carry span + context fields. Dimensional: Diagnostic { category, severity, span, context }? Category is variant-is-data. Severity can be derived from category. Most variants share the same structure — only NonExhaustiveMatch (carries List<String>) and ArityMismatch (carries expected/got counts) differ. |
-| NodeFieldRole | 3 | Classification of Node fields for CX. Goes away when Node moves to std/ and fields are declared with inductive structure (already in node.dag). |
-| FunctionSizeEffect | 3 | Classification of function size effects. Goes away when the cost lens reads algebraic properties instead of function-specific tables. |
-| EdgeKind | 4 (Consumed, Read, Threaded, Projected) | Ownership edge types. These trace to ownership lens concepts. Dimensional: edge has {mutability, lifetime} dimensions? Or irreducible because the ownership algebra needs exactly these 4 cases? |
-| OwnershipDecision | 3 (SoleOwner, SharedError, Unclassified) | Output of ownership analysis. SoleOwner is the happy path. SharedError and Unclassified are diagnostic states. Fact placement: decision is a field, errors go to diagnostic table. |
-| ItemKind | 7 | Parser classification of declaration types. Variant-is-data: all items have the same structure (name, params, body, type annotation) with ItemForm driving the differences. Already modeled in SyntaxSpec.item_forms. |
-| AliasKind | 3 | Type alias classification. Variant-is-data: all aliases are name → type, the kind determines resolution strategy. |
+| NodeFieldRole | 3 | Dissolves when Node moves to std/ — fields declared with inductive structure (already in node.dag) |
+| FunctionSizeEffect | 3 | Dissolves when cost lens reads algebraic properties instead of function-specific tables |
+| ItemKind | 7 | Variant-is-data: all items have same structure, ItemForm drives differences. Already modeled in SyntaxSpec.item_forms |
+| AliasKind | 3 | Variant-is-data: all aliases are name → type, kind determines resolution strategy |
 
 **DOMAIN MODELING (external facts, ~70 types):**
 
@@ -1345,11 +1541,11 @@ dissolution energy on types that v3 inherits.
 
 | Category | Types | Action |
 |---|---|---|
-| Already dissolved | 11 | design done |
-| Dissolves with v3 | 8 | no action needed |
-| Needs design decision | 8 | resolve before v3 construction |
-| Domain modeling | ~70 | leave as-is (external facts) |
-| std/ modeling | ~40 | audit individually |
+| Already dissolved | 15 | design done (11 prior + 4 resolved) |
+| Dissolves with v3 | 7 | no action needed (BackendCapability → delete, dead code) |
+| Mechanical (v3 substrate) | 4 | NodeFieldRole, FunctionSizeEffect, ItemKind, AliasKind |
+| Domain modeling | ~68 | UNEXAMINED. Spot-check 4/5 failed. 2 dead types deleted. Full pass blocks thesis completion, not M0. |
+| std/ modeling | ~39 | Spot-check 3/5 non-terminal. 1 dead type deleted. Full pass blocks thesis. |
 | Compiler infrastructure | ~30 | v3 replaces entirely |
 | **Total** | **~280** | |
 
@@ -1389,23 +1585,30 @@ the v3 direction. Status matters because the doc builds on them:
 | 4 | Purity lens | **PASS (full)** | 1 new file, zero compiler changes, 3117 pure / 36 effectful. Validates observational lens mechanism. |
 | 5 | ExprData variant cost | **MEASURED** | 8-11 files, ~30 match arms per new variant. Validates the disease is real. |
 
-**Experiment 2 is a gate on v3 construction.**
+**Experiment 2 gate: CLEARED.**
 
-The carry path works, but the old reconstruction runs in parallel.
-This is strictly worse than v2's starting state — two sources of
-truth for provenance instead of one. The "dividend is enabled but
-not banked" framing understates it: there is active debt. Every
-day both paths coexist, new code might silently read from the old
-reconstruction and depend on it, making the eventual deletion
-harder. The parallel implementation IS the construct-discard-
-reconstruct pattern, just with "also construct" added.
+The classify_let_value reconstruction path has been deleted for
+ExprVar and ExprFieldAccess cases. scope_locals (carried facts)
+covers inference-time let bindings. Match-arm and variant-provenance
+bindings still flow only through sub_value_vars — extending
+scope_locals to those contexts is the next step, not restoring
+the fallback. 415 tests pass, CX ratchet 0 diagnostics (stable),
+no compensating skip annotations.
 
-**Gate:** Experiment 2 must complete (at least one reconstruction
-function DELETED, CX violations not increased) before the v3 spec
-is considered validated for "lenses read physics." The mechanism
-works. The dividend is not banked. Finishing is probably a day of
-work and turns a partial into a full. Cheap to do, expensive to
-skip.
+**Experiment 2 completion proves the physics-and-lens architecture
+holds when tested.** One reconstruction path has been deleted with
+zero CX regression and no compensating mechanism. The remaining
+20 migrations are incremental work under the same pattern. This is
+the first banked dividend in the project, and it confirms that
+dissolution removes code rather than relocating complexity.
+
+The 20 remaining sub_value_vars reads (classify_argument,
+resolve_collection_field, annotate_descent match/lambda/foreach)
+are a parallel track alongside v3 M0. Each migration is
+independently testable with the same pattern. If two consecutive
+migrations find the pattern doesn't apply cleanly, pause and
+investigate — that's the signal of a sub-case the first migration
+didn't teach us.
 
 ### Mechanism vs dividend discipline
 
@@ -1415,7 +1618,7 @@ Use this as a standing discipline for v3 work:
 |---|---|---|---|
 | Rule-table transforms | validated (Exp 3) | banked | done |
 | Observational lenses | validated (Exp 4) | banked | done |
-| Facts carried through bindings | validated (Exp 2) | **NOT banked** — old path not deleted | ~1 day: delete classify_let_value reconstruction, verify CX stable |
+| Facts carried through bindings | validated (Exp 2) | **BANKED** — classify_let_value reconstruction deleted, CX stable | done (remaining: 20 incremental migrations) |
 | Lambda = function | validated (Exp 1) | partially banked — closure rule identified | small: closure rule is 2 fields on Define (capture_context, iteration_bound). Not a redesign — the physics model already supports it. |
 | ExprData tax is real | measured (Exp 5) | target: 8-11x → 1x | v3 construction (the whole project) |
 
@@ -1470,19 +1673,233 @@ dependency cycles. Facts flow forward, computed once.
 
 ---
 
+## M0 Scope
+
+M0 proves the substrate works end-to-end for a trivial case.
+It is not useful software — it is a proof that the architecture
+holds under construction.
+
+**What M0 builds:**
+- Parser that takes a small .dag subset (types, let bindings,
+  one expression form, one iteration primitive)
+- Resolve layer that maps names to declarations and lowers to
+  L1 behaviors (Value, Transform, Branch, Loop, Bind) with Ports
+- Infer layer that propagates types through Ports
+- Diagnostic table with API-level enforcement (mark_unresolved)
+- One lens (provenance/origin) that reads carried facts from Ports
+- Output: either typed DAG or diagnostics. No emission.
+
+**What M0 does NOT build:**
+- Emission (no Rust/Go/Python output)
+- Full type system (no generics, no containers beyond List)
+- Self-hosting
+- All lenses (just provenance to prove the mechanism)
+- Pattern matching beyond simple if/match on Bool
+
+**How we know M0 is done:**
+- Can parse `let x = 1 + 2` and produce a DAG with Value + Transform
+- Can parse `if x > 0 then a else b` and produce a DAG with Branch
+- Can parse a recursive function and lower to Loop with Bound
+- Provenance lens reads produced_by from Ports without reconstruction
+- Type errors produce diagnostics in the diagnostic table
+- All of the above from the same pipeline, not separate test harnesses
+
+**Bootstrap transition strategy:**
+v3 is built as a separate compiler under src/v3/. v2 continues to
+work independently. No shared IR, no shim layer, no incremental
+replacement. v3 reads the same std/ and extdeps/ but produces its
+own DAG representation. This is the cleanest separation — v3's
+physics doesn't bottleneck on v2's IR.
+
+The transition sequence:
+1. M0: v3 parses + lowers + infers for a tiny subset
+2. M1: v3 emits Rust for the subset (validates the full pipeline)
+3. M2: v3 covers enough of .dag to compile non-trivial programs
+4. M3: v3 compiles itself (self-hosting — v2 compiles v3 stage0,
+   v3 compiles v3 → fixed point)
+5. v2 is retired when v3 reaches feature parity
+
+v2's 415 tests serve as the oracle: every test that passes in v2
+must produce equivalent output in v3. The test corpus transfers
+even though the IR doesn't.
+
+**BackendCapability: DEAD CODE (still declared in 05_emit.dag).**
+Declared but never pattern-matched, never consumed. No artifact
+planner exists to consume it. v3 does not inherit it. Deletion
+deferred — not blocking, but should be cleaned up.
+
+---
+
+## Complete Thesis Accounting
+
+Every THESIS claim, cross-referenced. No silent drops.
+
+### Tier 1 — Structural bugs impossible by construction
+
+| # | Bug class | Status | Milestone |
+|---|---|---|---|
+| 1 | Field typos in generated code | DONE | v2, inherits |
+| 2 | Field typos in .dag source | DONE | v2, inherits |
+| 3 | Non-exhaustive match | DONE | v2, inherits |
+| 4 | Type mismatches | DONE | v2, inherits |
+| 5 | Bare container types | DONE | v2, inherits |
+| 6 | Map key type mismatch | DONE | v2, inherits |
+| 7 | Stale imports | DONE | v2, inherits |
+| 8 | Circular dependencies | DONE | v2, inherits |
+| 9 | Cross-target drift | DONE | v2, inherits |
+| 10 | Diamond dependency divergence | DONE | v2, inherits |
+| 11 | Non-termination | DONE (CX gate 0; DIAG_RATCHET=357 is parser diagnostics, not termination) | v2 ratchet, v3 by construction |
+| 12 | Non-idempotent workflow | NOT STARTED | v3 M2+ (wire effect algebra) |
+| 13 | Record literal completeness | PARTIAL | v3 M1 (needs audit of current coverage) |
+| 14 | Coercion completeness | PARTIAL | v3 M1 (single emitter reads LanguageSpec) |
+
+### Tier 2 — Runtime safety
+
+| Bug class | Status | Milestone |
+|---|---|---|
+| Division by zero | NOT STARTED, REQUIRED | v3 M2 (refinement types or checked ops) |
+| Integer overflow | NOT STARTED, REQUIRED | v3 M2 |
+| Out-of-bounds | NOT STARTED, REQUIRED | v3 M2 |
+| Optional force-unwrap | NOT STARTED, REQUIRED | v3 M2 (non-consensual optionality) |
+| Partial functions | NOT STARTED, REQUIRED | v3 M2 (make all runtime functions total) |
+
+### Tier 3 — Verification from structure
+
+| Level | What it proves | Status | Milestone |
+|---|---|---|---|
+| L0 | Coercion mappings complete | DONE | v2 |
+| L1 | Pipeline unit tests | DONE (415 tests) | v2 |
+| L2 | Bootstrap self-hosting | DONE | v2 |
+| L3 | Syntax validity | DONE | v2 |
+| L4 | Emitted code matches .dag evaluation | NOT STARTED | v3 M3 |
+| L5 | Cross-language equivalence | NOT STARTED | v3 M3+ |
+| L6 | Every structural form compiles to every target | NOT STARTED | v3 M3 |
+| L7 | Algebraic law verification | NOT STARTED | v3 M4 |
+
+### Concept unifications
+
+| # | Unification | Status | Evidence | Milestone |
+|---|---|---|---|---|
+| 1 | Coercion cost = complexity | PARTIAL | CX proves function bounds | v3 M1 (coercion fns get CX bounds) |
+| 2 | Coercion = emission | VALIDATED | Exp 3 (3 files) | v3 M1 (single emitter) |
+| 3 | Target spec = transport spec = interpreter runtime | PARTIAL | interpreter reads transport specs | v3 M2 |
+| 4 | Idempotency + cancellation + redundancy = algebra | DECLARED, NOT CONSUMED | std/effects.dag + std/algebra.dag | v3 M2 (Track 17: wire into ops) |
+| 5 | Structural decompression | NEW (this session) | 4 patterns, ledger, theorem | Applied during v3 construction |
+
+### Core thesis claims (beyond zero-bugs)
+
+| # | Claim | Status | Evidence | What's left |
+|---|---|---|---|---|
+| Core2 | Omni-emission: one intent graph → many coordinated artifacts, cross-artifact consistency enforced | Thesis goal, not tested | — | v3 M2+: full-stack example (e.g. Rust API + TS frontend + SQL schema) with cross-artifact type agreement enforced at compile time |
+| Core3 | Frontend agnosticism: IR independent of surface syntax; alternative frontends can feed the same causal graph | Structurally in v3 spec (L1 behaviors are syntax-neutral), not validated | v3 spec | Not gated in M0; testable when second frontend is attempted. M0 constraint: keep IR free of .dag-specific assumptions |
+| Core4 | Meta-process modeling: bootstrap, CI, dev process as .dag workflows; `dag run` as primary execution path | v2 partial — interpreter exists, workflows not yet modeled in .dag | `dag run` works | v3: bootstrap + CI expressible as .dag artifacts. Compiler's own meta-process becomes first non-trivial omni-emission test case |
+
+### Free consequences (fall out when Tiers 1-2 close)
+
+| Consequence | Status | Milestone |
+|---|---|---|
+| Automatic parallelism | MODELED (v3 spec: independence from DAG) | v3 M2 (emission with parallelism) |
+| Automatic memoization | NOT TRACKED until now | v3 M4 (requires purity + cost lenses) |
+| Space bound proofs | NOT STARTED (space lens not modeled) | v3 M4 |
+| Cross-language optimization | NOT TRACKED until now | v3 M4 (requires per-target cost in LanguageSpec) |
+| Meta-process modeling | PARTIAL (CI is .dag workflow) | v3 M3 (dag run as primary path) |
+
+### Modeling discipline
+
+| Discipline | Status | Evidence |
+|---|---|---|
+| Every type has a structural consumer | DONE (ledger rule) | Ledger rule in this doc |
+| Service boundaries use typed enums | PARTIAL | Needs audit of remaining String proxies |
+| No fabrication sentinels | **43 references remain** | `__BUG_*` / `__EMIT_BUG_*` in 16 files — dissolution target |
+| No duplicate record shapes | ADDRESSED | Dissolution work this session |
+| Missing facts = compile-time errors | ADDRESSED | Diagnostic table invariant |
+
+### Lenses
+
+| Lens | Modeled | Implemented | v3 status |
+|---|---|---|---|
+| Cost | computation.dag | v2: complexity.dag (5000 lines) | M1: reads Bound on Ports. Must expose per-target cost hooks for Free2 (cross-language optimization) |
+| Ownership | EdgeKind → dimensional, OwnershipDecision → deleted | v2: ownership.dag (separate pass) | M1: fan-out on Ports |
+| Effect | std/effects.dag | v2: declared, not consumed | M2: lens reads effect from behaviors |
+| Termination | computation.dag lowering table | v2: CX gate (0 violations) | M0: structural (Loop requires Bound) |
+| Origin/Provenance | Port.produced_by, Bound.produced_by | v2: Exp 2 BANKED (first path) | M0: on every Port |
+| Algebra | std/algebra.dag hierarchy | v2: not implemented as lens | M1: normalization during construction |
+| Space | not yet modeled | v2: not started | M4: parallel to cost lens |
+| Closure rule | Define-in-Loop → fan-out=N, Loop's termination | v2: Exp 1 partial | M1: 2 fields on Define |
+
+### M0 substrate constraints (from omni-emission thesis claims)
+
+These are not M0 features. They are "don't foreclose" constraints the
+substrate work must honor so that later milestones aren't accidentally
+made expensive.
+
+| Constraint | Rationale |
+|---|---|
+| Types in the v3 IR must be representable without implicit privilege to any single target language | Omni-emission (Core2) requires the same declared type to emit coherently to Rust, Go, TypeScript, SQL, etc. Litmus test during M0: "does this type make sense if the target were simultaneously Rust, Go, Python, TypeScript, and SQL?" |
+| The diagnostic system must be able to represent diagnostics whose subject spans multiple artifacts | Omni-emission bugs include cross-artifact disagreements ("Rust API returns Foo but TypeScript client expects Bar"). The diagnostic structure needs cross-artifact context even if M0 doesn't produce such diagnostics yet |
+| The IR must remain independent of .dag's surface syntax; parser-specific assumptions must not leak into L1 behaviors | Frontend agnosticism (Core3) requires the IR to be reachable from alternative frontends. Parser concerns belong in the parse layer, not the substrate |
+| The LanguageSpec data model must support per-target cost characteristics, not just syntax templates | Cross-language optimization (Free2) depends on the emitter reading per-target concurrency, memory, and async cost models from declared data. Designing LanguageSpec as syntax-only forecloses Free2 |
+
+### Experiments — mechanism vs dividend (corrected)
+
+| Claim | Mechanism | Dividend | Remaining |
+|---|---|---|---|
+| Rule-table transforms | validated (Exp 3) | BANKED | done |
+| Observational lenses | validated (Exp 4) | BANKED | done |
+| Facts through bindings | validated (Exp 2) | FIRST PATH BANKED | 19 incremental migrations |
+| Lambda = function | validated (Exp 1) | partially banked | 2 fields on Define |
+| ExprData tax | measured (Exp 5) | target: 8-11x → 1x | v3 construction |
+
+### Coproduct dissolution (corrected split)
+
+| Category | Count | Status |
+|---|---|---|
+| Design fully specified (type declarations) | 6 | OwnershipDecision, EdgeKind, MatchPattern, Diagnostic, TokenShape, Bound |
+| Dissolution direction identified | 9 | ExprData, TransformRule, Connective, FieldAccessStyle, InferredNode, BinOp, UnaryOp, VarBindingKind, ExprErrorKind |
+| Automatic with v3 (concrete recipe) | 5 | MethodSemantics, CallSemantics, StringPart, OperationModifier, ExprCategory |
+| Automatic with v3 (vague recipe) | 2 | FuncBodyShape, TcoExprShape — need work |
+| Mechanical | 4 | NodeFieldRole, FunctionSizeEffect, ItemKind, AliasKind |
+| Domain modeling | ~68 | UNEXAMINED. Spot-check 4/5 failed. Full pass blocks thesis completion. |
+| std/ modeling | ~40 | Audit individually |
+| Compiler infrastructure | ~30 | v3 replaces |
+| Dead code (still declared, zero consumers) | 1 | BackendCapability — in 05_emit.dag, deletion deferred |
+
+---
+
 ## Open Questions
 
-1. **How much of this is v3 vs v2-compatible?**
-   The std/ declarations (intro/elim on structures, function space,
-   port) can be added now without changing v2. The compiler reading
-   them is v3 work. The std/ audit (moving compiler types out) can
-   happen incrementally.
+1. **Parser state model:** v2 uses integer position. v3 should use
+   list consumption for structural descent evidence.
 
-2. **Parser state model:** v2 uses integer position. v3 should use
-   list consumption for structural descent evidence. Design the
-   ParseState type before implementing.
+2. **Fabrication sentinels:** 43 references across 16 files. These
+   are the modeling discipline's "no fabrication" rule being
+   violated. Dissolution target for v3.
 
-3. **Coproduct minimization:** any remaining coproducts in std/
-   should be audited for dissolution opportunities. If a coproduct's
-   variants trace to different algebraic structures, it can likely
-   dissolve into algebra-derived data.
+3. **Service boundary typed-enum audit:** how many String proxies
+   remain at service boundaries? Needs spot-check.
+
+5. **HttpMethod dissolution (from spot-check).** effects.dag groups
+   HttpMethod variants into safety/operation classes via match arms.
+   Dimensional decomposition: `{ name: String, safety: Safe | Unsafe,
+   idempotent: Bool, operation: Read | Create | Replace | Delete }`.
+   The match arms in effects.dag dissolve into field reads.
+
+6. **std/ modeling spot-check: DONE. Better than domain, still not clean.**
+   5 random entries tested. 2/5 terminal (CostBound — well-designed
+   output type, all construction via named functions; RecursionShape —
+   never directly queried, threaded via InductiveField). 2/5 unfinished
+   (BodyKind — hidden prefix dimension in parser dispatch; Certainty —
+   4 variants in std/ but complexity.dag defines its own 2-variant
+   duplicate). 1/5 dead (Fragment — 10-variant type, zero consumers,
+   deleted). At 3/5 non-terminal rate, the ~40 bucket has ~24 items
+   needing attention. Not blocking M0, blocks thesis completion.
+
+4. **Domain-modeling spot-check: DONE. Bucket is NOT honest.**
+   5 random entries tested. 1/5 terminal (Role — direct API
+   transcription, opaque use). 4/5 unfinished: HttpMethod has
+   dimensional structure hiding in effects.dag grouping,
+   GitFileStatus and CargoCommand are completely unused (zero
+   consumers — dead types), WorkflowTrigger has zero matches and
+   latent source×filters decomposition. At 4/5 failure rate, the
+   ~70 bucket likely contains 50+ types needing a pass. Not before
+   M0, but before domain modeling is considered complete.
