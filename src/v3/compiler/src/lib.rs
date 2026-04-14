@@ -24,11 +24,32 @@ pub mod types;
 mod bootstrap;
 mod infer;
 mod lower;
+mod operators;
 mod parse;
 mod tokenize;
 
 pub use dag::Dag;
 pub use diagnostics::{Diagnostic, SourceSpan};
+
+/// Test-only hook: tokenize a source string. Used by the
+/// `real_stdlib_parse_smoke` integration test to verify the parser
+/// accepts production `dsl/std/*.dag` files before bootstrap migration.
+#[doc(hidden)]
+pub fn tokenize_for_test(
+    source: &str,
+    file: &str,
+) -> Result<Vec<tokenize::Token>, Diagnostic> {
+    tokenize::tokenize(source, file)
+}
+
+/// Test-only hook: parse a token stream into a surface module.
+#[doc(hidden)]
+pub fn parse_for_test(
+    tokens: &[tokenize::Token],
+    file: &str,
+) -> Result<parse::SurfaceModule, Diagnostic> {
+    parse::parse(tokens, file)
+}
 
 /// Top-level compile failure. Distinguishes three structural
 /// categories of failure by phase of the pipeline where they occurred.

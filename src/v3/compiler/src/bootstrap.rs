@@ -1,111 +1,55 @@
 // Dag::new() bootstrap.
 //
-// Parses four minimal fixture modules in dependency order (logic → bit →
-// algebra → types) and lowers them into the freshly-created Dag so that the
-// declaration table is primed with primitive types, algebraic structures,
-// and named primitives (`Int`, `Bool`, `String`) before any user code runs.
+// Parses the production `dsl/std/*.dag` files (logic → bit → algebra →
+// types) and lowers them into the freshly-created Dag so that the
+// declaration table is primed with primitive types and algebraic
+// structures before any user code runs. The four files are embedded via
+// `include_str!` so bootstrap is hermetic at runtime and the declaration
+// table stays in sync with the `.dag` source at build time.
 //
-// After fixture loading, a small set of primitive operator arrows (`+`, `-`,
-// ..., `==`, ...) are injected as named Arrow declarations. These are the
-// M1(2.5) bridge for user-code operator dispatch: user code emits
-// `Call { target: "+" }` and inference looks up the "+" declaration. A full
-// §8.9 inhabitance walk (resolve "+" by walking the Int inhabitance chain
-// to OrderedRing.add) is deferred to M1(2.6).
-//
-// Per M1_DESIGN.md §8.6 Risk 2, these fixtures are narrower than the full
-// `dsl/std/*.dag` files — the v3 parser doesn't yet handle `data`
-// declarations, record literals, `match` expressions, or `module`/`import`
-// directives that the production std files use. The fixtures only cover
-// what the substrate test and M0 tests exercise.
+// Before M1(2.6), bootstrap embedded narrower fixture strings and
+// injected hardcoded `"+"`/`"-"`/... Arrow declarations to bridge
+// user-code dispatch. Both are deleted: operators resolve via §8.9
+// inhabitance walks in `infer.rs` (see `resolve_arrow`), and primitive
+// types come from parsing the real files. This closes the FACTS FLOW
+// FORWARD and SINGLE AUTHORITY concerns from PR #445's review.
 
-use crate::dag::{
-    ArrowBody, AtomPayload, Dag, Declaration, DeclarationId, TypeConnective,
-};
+use crate::dag::{ArrowBody, AtomPayload, Dag, Declaration, TypeConnective};
 use crate::diagnostics::SourceSpan;
 use crate::lower::{lower_into, resolve_pending_identifiers};
 use crate::parse::parse;
 use crate::tokenize::tokenize;
 
-const LOGIC_SUBSET: &str = r#"
-type Classical = True | False
-"#;
-
-const BIT_SUBSET: &str = r#"
-type Bit = Classical
-type Word8 { }
-type Word16 { }
-type Word32 { }
-type Word64 { }
-"#;
-
-const ALGEBRA_SUBSET: &str = r#"
-type Magma<T> {
-  op: fn(T, T) -> T
-}
-
-type Semigroup<T> {
-  op: fn(T, T) -> T
-}
-
-type Monoid<T> {
-  op: fn(T, T) -> T
-  identity: T
-}
-
-type Group<T> {
-  op: fn(T, T) -> T
-  identity: T
-  inverse: fn(T) -> T
-}
-
-type Ring<T> {
-  add: fn(T, T) -> T
-  zero: T
-  negate: fn(T) -> T
-  mul: fn(T, T) -> T
-  one: T
-}
-
-type OrderedRing<T> {
-  add: fn(T, T) -> T
-  sub: fn(T, T) -> T
-  zero: T
-  negate: fn(T) -> T
-  mul: fn(T, T) -> T
-  one: T
-  div: fn(T, T) -> T
-  eq: fn(T, T) -> Bool
-  ne: fn(T, T) -> Bool
-  lt: fn(T, T) -> Bool
-  le: fn(T, T) -> Bool
-  gt: fn(T, T) -> Bool
-  ge: fn(T, T) -> Bool
-}
-
-type Ordering = Less | Equal | Greater
-"#;
-
-const TYPES_SUBSET: &str = r#"
-type Int = OrderedRing<Word64>
-type Bool = Classical
-type String { }
-"#;
+const LOGIC_DAG: &str = include_str!("../../../../dsl/std/logic.dag");
+const BIT_DAG: &str = include_str!("../../../../dsl/std/bit.dag");
+const ALGEBRA_DAG: &str = include_str!("../../../../dsl/std/algebra.dag");
+const INTEGER_DAG: &str = include_str!("../../../../dsl/std/integer.dag");
+const FLOAT_DAG: &str = include_str!("../../../../dsl/std/float.dag");
+const STRING_TYPE_DAG: &str = include_str!("../../../../dsl/std/string_type.dag");
+const TYPES_DAG: &str = include_str!("../../../../dsl/std/types.dag");
 
 pub(crate) fn bootstrap(dag: &mut Dag) {
+    // Load order: `logic` → `bit` (needs Classical) → `algebra` (no deps)
+    // → `integer`/`float` (need algebra + bit) → `string_type` (needs
+    // algebra + types for Char, but the final sweep resolves the
+    // cross-file forward ref) → `types` (needs integer for Int64).
     for (file, source) in &[
-        ("<bootstrap:logic>", LOGIC_SUBSET),
-        ("<bootstrap:bit>", BIT_SUBSET),
-        ("<bootstrap:algebra>", ALGEBRA_SUBSET),
-        ("<bootstrap:types>", TYPES_SUBSET),
+        ("dsl/std/logic.dag", LOGIC_DAG),
+        ("dsl/std/bit.dag", BIT_DAG),
+        ("dsl/std/algebra.dag", ALGEBRA_DAG),
+        ("dsl/std/integer.dag", INTEGER_DAG),
+        ("dsl/std/float.dag", FLOAT_DAG),
+        ("dsl/std/types.dag", TYPES_DAG),
+        ("dsl/std/string_type.dag", STRING_TYPE_DAG),
     ] {
         parse_and_lower_fixture(dag, source, file);
     }
-    inject_primitive_operators(dag);
     inject_realization_stub(dag);
-    // Batch-final resolution for cross-fixture forward references
-    // (algebra.dag fields referencing `Bool` which types.dag declares).
-    // Any identifier still unresolved after all fixtures loaded is a
-    // genuine bootstrap bug and will surface as a diagnostic on the Dag.
+    // Batch-final resolution for cross-file forward references (e.g.,
+    // algebra.dag fields referencing `Bool` which types.dag declares).
+    // Any identifier still unresolved after all four files load is a
+    // genuine bootstrap bug and will surface as a diagnostic on the Dag
+    // — at which point the panic below stops `Dag::new()` cold.
     resolve_pending_identifiers(dag);
     if !dag.diagnostics().is_empty() {
         panic!(
@@ -123,51 +67,6 @@ fn parse_and_lower_fixture(dag: &mut Dag, source: &str, file: &str) {
         panic!("v3 bootstrap parse failed in {file}: {diag:?}")
     });
     lower_into(dag, &module);
-}
-
-/// Add primitive operator arrow declarations after the algebra fixtures
-/// have populated `Int` and `Bool`. User-code operator calls target these
-/// by name (`"+"`, `"-"`, ...) during lowering.
-fn inject_primitive_operators(dag: &mut Dag) {
-    let int_id = dag
-        .declaration_by_name("Int")
-        .expect("bootstrap: Int missing after fixtures")
-        .id;
-    let bool_id = dag
-        .declaration_by_name("Bool")
-        .expect("bootstrap: Bool missing after fixtures")
-        .id;
-    let span = SourceSpan::new("<bootstrap:operators>", 0, 0);
-
-    for op in ["+", "-", "*", "/"] {
-        push_operator_arrow(dag, op, &[int_id, int_id], int_id, span.clone());
-    }
-    for op in ["==", "!=", "<", "<=", ">", ">="] {
-        push_operator_arrow(dag, op, &[int_id, int_id], bool_id, span.clone());
-    }
-}
-
-fn push_operator_arrow(
-    dag: &mut Dag,
-    name: &str,
-    inputs: &[DeclarationId],
-    output: DeclarationId,
-    span: SourceSpan,
-) {
-    let id = dag.alloc_declaration_id();
-    dag.push_declaration(Declaration {
-        id,
-        name: Some(name.to_string()),
-        connective: TypeConnective::Arrow {
-            inputs: inputs.to_vec(),
-            output,
-            body: ArrowBody::Pending,
-        },
-        type_params: Vec::new(),
-        meta_tag: None,
-        inhabits: None,
-        span,
-    });
 }
 
 /// M1_DESIGN.md §6.5 realization smoke test scaffold. Constructs the minimal

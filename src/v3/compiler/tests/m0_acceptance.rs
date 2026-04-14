@@ -5,21 +5,36 @@
 // error-path inputs.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, Dag, DeclarationId, LiteralBits, PortState};
+use v3_compiler::dag::{
+    AtomPayload, Behavior, Dag, DeclarationId, LiteralBits, PortState, TypeConnective,
+};
 use v3_compiler::lens_depth::DepthLens;
 use v3_compiler::lens_provenance::{Origin, ProvenanceLens};
 use v3_compiler::types::{Prim, TypeShape};
 use v3_compiler::CompileError;
 
 /// Assert that a Transform.target DeclarationId points to a declaration
-/// whose `name` field equals `expected`. Replaces the M0-era
-/// `add.target == FunctionRef::new("std::int::add")` shape with a walk
-/// through the declaration table, matching the §8.9 target-as-Declaration
-/// model.
+/// whose surface-visible name equals `expected`. The M1(2.6) target shape
+/// depends on whether it's an operator or a user function:
+///
+/// - Operators (`+`, `-`, ...): anonymous `Atom(Identifier { name })`
+///   stubs created by lowering; the payload name carries the symbol.
+///   Inference resolves them at Transform-decide time via §8.9 walks.
+/// - User functions (`f`, `count_down`, ...): named Arrow declarations
+///   allocated during `collect_symbols` and filled in by `lower_fn_item`.
+///
+/// The helper reads the Identifier payload first, falling back to the
+/// declaration's `name` field — so both shapes produce the right answer.
 fn assert_target_name(dag: &Dag, target: DeclarationId, expected: &str) {
     let decl = dag.declaration(target);
+    let actual = match &decl.connective {
+        TypeConnective::Atom(AtomPayload::Identifier { name, .. }) => {
+            Some(name.as_str())
+        }
+        _ => decl.name.as_deref(),
+    };
     assert_eq!(
-        decl.name.as_deref(),
+        actual,
         Some(expected),
         "Transform.target declaration name mismatch"
     );

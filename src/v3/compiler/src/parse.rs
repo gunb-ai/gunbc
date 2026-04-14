@@ -49,11 +49,19 @@ pub enum SurfaceItem {
         type_ann: Option<SurfaceType>,
         expr: SurfaceExpr,
     },
+    /// Function definition. `body` is `Some` for expression-body form
+    /// (`fn f(x) -> T = expr`); `None` for block-body form
+    /// (`fn f(x) -> T { body }`) where the body is consumed opaquely as
+    /// a brace-balanced token range. Block-body fn items lower to an
+    /// `ArrowBody::Pending` declaration with no computation sub-DAG —
+    /// their bodies are out of scope until the full surface grammar
+    /// (match/pipe/lambda/named-args) lands in M2+.
     Fn {
         name: String,
         params: Vec<SurfaceParam>,
         return_type: SurfaceType,
-        body: SurfaceExpr,
+        body: Option<SurfaceExpr>,
+        span: SourceSpan,
     },
     TypeAtom {
         name: String,
@@ -79,6 +87,37 @@ pub enum SurfaceItem {
         target: SurfaceType,
         span: SourceSpan,
     },
+    /// `module std.foo` — no-op item. Captured for span purposes; no
+    /// semantic effect on the declaration graph. Lowering discards.
+    Module {
+        #[allow(dead_code)]
+        path: Vec<String>,
+        span: SourceSpan,
+    },
+    /// `import std.foo { Name1, Name2 }` — no-op item. Name resolution
+    /// against the full bootstrap declaration table happens via
+    /// `resolve_pending_identifiers`, so explicit import lists are
+    /// unnecessary at M1(2.6); the declaration would still appear in
+    /// `declaration_by_name` regardless of whether the current file
+    /// listed it in its imports.
+    Import {
+        #[allow(dead_code)]
+        path: Vec<String>,
+        #[allow(dead_code)]
+        names: Vec<String>,
+        span: SourceSpan,
+    },
+    /// `data name: Type = { body }` — the body is consumed opaquely as
+    /// a brace-balanced token range. Lowering produces a placeholder
+    /// Declaration whose connective is a bare `Conj` with empty
+    /// children; the actual body contents (record literals, list
+    /// literals, etc.) are M2+ work.
+    DataDecl {
+        name: String,
+        #[allow(dead_code)]
+        ty: SurfaceType,
+        span: SourceSpan,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -96,8 +135,18 @@ pub struct SurfaceField {
 #[derive(Debug, Clone)]
 pub struct SurfaceVariant {
     pub name: String,
-    pub payload: Vec<SurfaceType>,
+    pub payload: VariantPayload,
     pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone)]
+pub enum VariantPayload {
+    /// Unit variant — no payload, e.g. `True` in `type Classical = True | False`.
+    Unit,
+    /// Positional payload — e.g. `Ok(T)` in `type Result<T, E> = Ok(T) | Err(E)`.
+    Positional(Vec<SurfaceType>),
+    /// Record-style payload — e.g. `WorkloadIdentity { audience: NonEmptyStr, ... }`.
+    Record(Vec<SurfaceField>),
 }
 
 #[derive(Debug, Clone)]
@@ -215,10 +264,113 @@ impl<'a> Parser<'a> {
             TokenKind::KwLet => self.parse_let_item(),
             TokenKind::KwFn => self.parse_fn_item(),
             TokenKind::KwType => self.parse_type_item(),
+            TokenKind::KwModule => self.parse_module_item(),
+            TokenKind::KwImport => self.parse_import_item(),
+            TokenKind::KwData => self.parse_data_item(),
             other => Err(Diagnostic::ParseError {
-                message: format!("expected `let`, `fn`, or `type`, got {other:?}"),
+                message: format!(
+                    "expected `let`, `fn`, `type`, `module`, `import`, or `data`, got {other:?}"
+                ),
                 span: self.peek().span.clone(),
             }),
+        }
+    }
+
+    fn parse_module_item(&mut self) -> Result<SurfaceItem, Diagnostic> {
+        let module_kw = self.expect_kind(TokenKind::KwModule)?;
+        let path = self.parse_dotted_path()?;
+        let end = self
+            .tokens
+            .get(self.pos.saturating_sub(1))
+            .map(|t| t.span.byte_end)
+            .unwrap_or(module_kw.span.byte_end);
+        Ok(SurfaceItem::Module {
+            path,
+            span: SourceSpan::new(self.file, module_kw.span.byte_start, end),
+        })
+    }
+
+    fn parse_import_item(&mut self) -> Result<SurfaceItem, Diagnostic> {
+        let import_kw = self.expect_kind(TokenKind::KwImport)?;
+        let path = self.parse_dotted_path()?;
+        let mut names = Vec::new();
+        let end = if matches!(self.peek().kind, TokenKind::LBrace) {
+            self.bump();
+            if !matches!(self.peek().kind, TokenKind::RBrace) {
+                loop {
+                    names.push(self.parse_ident()?);
+                    if matches!(self.peek().kind, TokenKind::Comma) {
+                        self.bump();
+                        continue;
+                    }
+                    break;
+                }
+            }
+            let close = self.expect_kind(TokenKind::RBrace)?;
+            close.span.byte_end
+        } else {
+            self.tokens
+                .get(self.pos.saturating_sub(1))
+                .map(|t| t.span.byte_end)
+                .unwrap_or(import_kw.span.byte_end)
+        };
+        Ok(SurfaceItem::Import {
+            path,
+            names,
+            span: SourceSpan::new(self.file, import_kw.span.byte_start, end),
+        })
+    }
+
+    fn parse_data_item(&mut self) -> Result<SurfaceItem, Diagnostic> {
+        let data_kw = self.expect_kind(TokenKind::KwData)?;
+        let name = self.parse_ident()?;
+        self.expect_kind(TokenKind::Colon)?;
+        let ty = self.parse_type_expr()?;
+        self.expect_kind(TokenKind::Eq)?;
+        // Body is brace-balanced and consumed opaquely — data value
+        // semantics (record literals, keys, etc.) are M2+ work.
+        let end = self.skip_brace_balanced()?;
+        Ok(SurfaceItem::DataDecl {
+            name,
+            ty,
+            span: SourceSpan::new(self.file, data_kw.span.byte_start, end),
+        })
+    }
+
+    fn parse_dotted_path(&mut self) -> Result<Vec<String>, Diagnostic> {
+        let mut path = vec![self.parse_ident()?];
+        while matches!(self.peek().kind, TokenKind::Dot) {
+            self.bump();
+            path.push(self.parse_ident()?);
+        }
+        Ok(path)
+    }
+
+    /// Consume a brace-balanced token range starting at the current
+    /// `{` and returning the byte offset of the matching `}`. Used for
+    /// opaque fn/data bodies at M1(2.6). Errors if EOF is reached
+    /// before the braces balance.
+    fn skip_brace_balanced(&mut self) -> Result<u32, Diagnostic> {
+        let open = self.expect_kind(TokenKind::LBrace)?;
+        let mut depth: i32 = 1;
+        loop {
+            if self.at_eof() {
+                return Err(Diagnostic::ParseError {
+                    message: "unterminated block body: reached EOF before closing `}`".to_string(),
+                    span: open.span,
+                });
+            }
+            let token = self.bump().clone();
+            match token.kind {
+                TokenKind::LBrace => depth += 1,
+                TokenKind::RBrace => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Ok(token.span.byte_end);
+                    }
+                }
+                _ => {}
+            }
         }
     }
 
@@ -241,21 +393,47 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_fn_item(&mut self) -> Result<SurfaceItem, Diagnostic> {
-        self.expect_kind(TokenKind::KwFn)?;
+        let fn_kw = self.expect_kind(TokenKind::KwFn)?;
         let name = self.parse_ident()?;
         self.expect_kind(TokenKind::LParen)?;
         let params = self.parse_params()?;
         self.expect_kind(TokenKind::RParen)?;
         self.expect_kind(TokenKind::Arrow)?;
         let return_type = self.parse_type_expr()?;
-        self.expect_kind(TokenKind::Eq)?;
-        let body = self.parse_expr()?;
-        Ok(SurfaceItem::Fn {
-            name,
-            params,
-            return_type,
-            body,
-        })
+        match &self.peek().kind {
+            TokenKind::Eq => {
+                // Expression-body form: `fn f(x) -> T = expr`.
+                self.bump();
+                let body_expr = self.parse_expr()?;
+                let end = expr_span(&body_expr).byte_end;
+                Ok(SurfaceItem::Fn {
+                    name,
+                    params,
+                    return_type,
+                    body: Some(body_expr),
+                    span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
+                })
+            }
+            TokenKind::LBrace => {
+                // Block-body form: `fn f(x) -> T { body }`. Body is
+                // consumed opaquely; match/pipe/lambda/named-args/etc.
+                // inside the body are out of scope at M1(2.6).
+                let end = self.skip_brace_balanced()?;
+                Ok(SurfaceItem::Fn {
+                    name,
+                    params,
+                    return_type,
+                    body: None,
+                    span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
+                })
+            }
+            other => Err(Diagnostic::ParseError {
+                message: format!(
+                    "expected `=` or `{{` after fn return type, got {other:?}"
+                ),
+                span: self.peek().span.clone(),
+            }),
+        }
     }
 
     fn parse_type_item(&mut self) -> Result<SurfaceItem, Diagnostic> {
@@ -337,9 +515,13 @@ impl<'a> Parser<'a> {
 
     /// After `type Name<T> =`, decide between TypeSum (one-or-more variants
     /// separated by `|`) and TypeAlias (a single type expression). A variant
-    /// looks like `Ident` or `Ident(payload)`. A type expression can start with
-    /// `Ident<...>` (parameterized), `fn(...)` (arrow), or a bare `Ident` that
-    /// happens not to be followed by `|`.
+    /// looks like `Ident` or `Ident(payload)`. A type expression can start
+    /// with `Ident<...>` (parameterized), `fn(...)` (arrow), or a bare
+    /// `Ident` that happens not to be followed by `|`.
+    ///
+    /// Handles optional `where constraint(...) [, constraint(...)]` clauses
+    /// on alias forms by consuming tokens until the next item boundary —
+    /// refinement semantics are M2+ work.
     fn parse_type_rhs_after_eq(
         &mut self,
         name: String,
@@ -348,7 +530,10 @@ impl<'a> Parser<'a> {
     ) -> Result<SurfaceItem, Diagnostic> {
         if !self.rhs_is_sum() {
             let target = self.parse_type_expr()?;
-            let end = target.span().byte_end;
+            let mut end = target.span().byte_end;
+            if matches!(self.peek().kind, TokenKind::KwWhere) {
+                end = self.skip_where_clause()?;
+            }
             return Ok(SurfaceItem::TypeAlias {
                 name,
                 type_params,
@@ -370,6 +555,44 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Consume a `where constraint1(args), constraint2(args)` clause
+    /// and return the final byte offset. The clause ends at the next
+    /// top-level item keyword (`let`/`fn`/`type`/`data`/`module`/
+    /// `import`) or EOF. Refinement predicates land in M2+; at M1(2.6)
+    /// we drop them after consuming their tokens.
+    fn skip_where_clause(&mut self) -> Result<u32, Diagnostic> {
+        let where_kw = self.expect_kind(TokenKind::KwWhere)?;
+        let mut end = where_kw.span.byte_end;
+        let mut depth: i32 = 0;
+        while !self.at_eof() {
+            match &self.peek().kind {
+                TokenKind::LParen | TokenKind::LBrace | TokenKind::LBracket => {
+                    depth += 1;
+                }
+                TokenKind::RParen | TokenKind::RBrace | TokenKind::RBracket => {
+                    if depth == 0 {
+                        break;
+                    }
+                    depth -= 1;
+                }
+                TokenKind::KwLet
+                | TokenKind::KwFn
+                | TokenKind::KwType
+                | TokenKind::KwData
+                | TokenKind::KwModule
+                | TokenKind::KwImport
+                    if depth == 0 =>
+                {
+                    break;
+                }
+                _ => {}
+            }
+            end = self.peek().span.byte_end;
+            self.bump();
+        }
+        Ok(end)
+    }
+
     /// Lookahead: after `=`, is the RHS a sum (contains `|` at top level before
     /// the next item boundary)? Tracks paren/brace depth so a `|` inside a
     /// payload list doesn't confuse the scan.
@@ -378,8 +601,10 @@ impl<'a> Parser<'a> {
         let mut depth: i32 = 0;
         while i < self.tokens.len() {
             match &self.tokens[i].kind {
-                TokenKind::LParen | TokenKind::LBrace => depth += 1,
-                TokenKind::RParen | TokenKind::RBrace => {
+                TokenKind::LParen | TokenKind::LBrace | TokenKind::LBracket => {
+                    depth += 1;
+                }
+                TokenKind::RParen | TokenKind::RBrace | TokenKind::RBracket => {
                     if depth == 0 {
                         return false;
                     }
@@ -389,6 +614,10 @@ impl<'a> Parser<'a> {
                 TokenKind::KwLet
                 | TokenKind::KwFn
                 | TokenKind::KwType
+                | TokenKind::KwData
+                | TokenKind::KwModule
+                | TokenKind::KwImport
+                | TokenKind::KwWhere
                 | TokenKind::Eof
                     if depth == 0 =>
                 {
@@ -421,25 +650,40 @@ impl<'a> Parser<'a> {
                 });
             }
         };
-        if matches!(self.peek().kind, TokenKind::LParen) {
-            self.bump();
-            let payload = self.parse_type_expr_list_until(TokenKind::RParen)?;
-            let close = self.expect_kind(TokenKind::RParen)?;
-            Ok(SurfaceVariant {
+        match &self.peek().kind {
+            TokenKind::LParen => {
+                self.bump();
+                let payload = self.parse_type_expr_list_until(TokenKind::RParen)?;
+                let close = self.expect_kind(TokenKind::RParen)?;
+                Ok(SurfaceVariant {
+                    name,
+                    payload: VariantPayload::Positional(payload),
+                    span: SourceSpan::new(
+                        self.file,
+                        name_token.span.byte_start,
+                        close.span.byte_end,
+                    ),
+                })
+            }
+            TokenKind::LBrace => {
+                self.bump();
+                let fields = self.parse_record_fields()?;
+                let close = self.expect_kind(TokenKind::RBrace)?;
+                Ok(SurfaceVariant {
+                    name,
+                    payload: VariantPayload::Record(fields),
+                    span: SourceSpan::new(
+                        self.file,
+                        name_token.span.byte_start,
+                        close.span.byte_end,
+                    ),
+                })
+            }
+            _ => Ok(SurfaceVariant {
                 name,
-                payload,
-                span: SourceSpan::new(
-                    self.file,
-                    name_token.span.byte_start,
-                    close.span.byte_end,
-                ),
-            })
-        } else {
-            Ok(SurfaceVariant {
-                name,
-                payload: Vec::new(),
+                payload: VariantPayload::Unit,
                 span: name_token.span,
-            })
+            }),
         }
     }
 

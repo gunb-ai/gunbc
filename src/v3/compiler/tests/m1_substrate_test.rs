@@ -40,32 +40,27 @@ fn field<'a>(fields: &'a [Field], label: &str) -> &'a Field {
 
 #[test]
 fn parse_std_algebra_and_walk_int_add() {
+    // M1_DESIGN.md §5 canonical walk. The real `dsl/std/integer.dag`
+    // declares `Int = Int64` and `Int64 = OrderedRing<Word64>`, so Int
+    // reaches the OrderedRing algebra through two Instantiation hops
+    // rather than one. The test walks that chain accumulating template
+    // arguments on a SubstStack-equivalent HashMap, finds the `add`
+    // field on OrderedRing, and asserts the substituted Arrow's inputs
+    // and output both point at Word64.
     let dag = Dag::new();
 
-    // Int must be present and shaped as Instantiation(OrderedRing, [T := Word64]).
     let int_id = find_named(&dag, "Int");
     let word64_id = find_named(&dag, "Word64");
     let ordered_ring_id = find_named(&dag, "OrderedRing");
 
-    let (template, arguments) = match &dag.declaration(int_id).connective {
-        TypeConnective::Instantiation {
-            template,
-            arguments,
-        } => (*template, arguments.clone()),
-        other => panic!("expected Int to be Instantiation, got {other:?}"),
-    };
+    // Walk Int's Instantiation chain to the first Conj, accumulating
+    // substitutions along the way. `subst` maps TypeParam DeclarationIds
+    // to the concrete DeclarationIds they're bound to.
+    let mut subst: HashMap<DeclarationId, DeclarationId> = HashMap::new();
+    let algebra_id = walk_instantiation_chain(&dag, int_id, &mut subst);
     assert_eq!(
-        template, ordered_ring_id,
-        "Int's template must be OrderedRing"
-    );
-    assert_eq!(
-        arguments.len(),
-        1,
-        "Int's template has one parameter (T := Word64)"
-    );
-    assert_eq!(
-        arguments[0].value, word64_id,
-        "Int's T must bind to Word64"
+        algebra_id, ordered_ring_id,
+        "Int's instantiation chain must root at OrderedRing"
     );
 
     // Walk OrderedRing's Conj to find the `add` field.
@@ -92,14 +87,6 @@ fn parse_std_algebra_and_walk_int_add() {
     );
     assert_eq!(arrow_inputs.len(), 2, "add takes two arguments");
 
-    // Build the substitution map [T := Word64] from Int's Instantiation.
-    let mut subst: HashMap<DeclarationId, DeclarationId> = HashMap::new();
-    for arg in &arguments {
-        subst.insert(arg.parameter, arg.value);
-    }
-
-    // Substitute the Arrow's inputs and output. A TypeParam resolves to
-    // itself (as a DeclarationId) and the subst lookup maps T to Word64.
     let substitute = |id: DeclarationId| -> DeclarationId {
         *subst.get(&id).unwrap_or(&id)
     };
@@ -110,6 +97,33 @@ fn parse_std_algebra_and_walk_int_add() {
     assert_eq!(sub_input0, word64_id);
     assert_eq!(sub_input1, word64_id);
     assert_eq!(sub_output, word64_id);
+}
+
+/// Walk a declaration's Instantiation chain, accumulating
+/// `[parameter := value]` bindings into `subst`, until a non-
+/// Instantiation declaration (typically a Conj algebra) is reached.
+/// Returns the terminal declaration's id.
+fn walk_instantiation_chain(
+    dag: &Dag,
+    start: DeclarationId,
+    subst: &mut HashMap<DeclarationId, DeclarationId>,
+) -> DeclarationId {
+    let mut current = start;
+    for _ in 0..16 {
+        match &dag.declaration(current).connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                for arg in arguments {
+                    subst.insert(arg.parameter, arg.value);
+                }
+                current = *template;
+            }
+            _ => return current,
+        }
+    }
+    current
 }
 
 #[test]

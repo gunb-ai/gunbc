@@ -30,9 +30,10 @@ use crate::dag::{
     TemplateArgument, TransformNode, TypeConnective, ValueNode,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
+use crate::operators::is_operator_name;
 use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceModule, SurfaceParam, SurfaceType,
-    SurfaceVariant,
+    SurfaceVariant, VariantPayload,
 };
 use crate::types::{Prim, TypeShape};
 
@@ -79,11 +80,13 @@ fn collect_symbols(
     for item in items {
         let name = match item {
             SurfaceItem::Let { .. } => continue,
+            SurfaceItem::Module { .. } | SurfaceItem::Import { .. } => continue,
             SurfaceItem::Fn { name, .. } => name.clone(),
             SurfaceItem::TypeAtom { name, .. } => name.clone(),
             SurfaceItem::TypeRecord { name, .. } => name.clone(),
             SurfaceItem::TypeSum { name, .. } => name.clone(),
             SurfaceItem::TypeAlias { name, .. } => name.clone(),
+            SurfaceItem::DataDecl { name, .. } => name.clone(),
         };
         let span = item_span(item);
         let id = dag.alloc_declaration_id();
@@ -111,11 +114,14 @@ fn placeholder_connective(name: &str) -> TypeConnective {
 fn item_span(item: &SurfaceItem) -> SourceSpan {
     match item {
         SurfaceItem::Let { expr, .. } => expr_span(expr).clone(),
-        SurfaceItem::Fn { body, .. } => expr_span(body).clone(),
-        SurfaceItem::TypeAtom { span, .. }
+        SurfaceItem::Fn { span, .. }
+        | SurfaceItem::TypeAtom { span, .. }
         | SurfaceItem::TypeRecord { span, .. }
         | SurfaceItem::TypeSum { span, .. }
-        | SurfaceItem::TypeAlias { span, .. } => span.clone(),
+        | SurfaceItem::TypeAlias { span, .. }
+        | SurfaceItem::Module { span, .. }
+        | SurfaceItem::Import { span, .. }
+        | SurfaceItem::DataDecl { span, .. } => span.clone(),
     }
 }
 
@@ -160,16 +166,27 @@ fn lower_item(
             params,
             return_type,
             body,
-        } => lower_fn_item(
-            name,
-            params,
-            return_type,
-            body,
-            dag,
-            scope,
-            symbols,
-            mutually_recursive,
-        ),
+            span,
+        } => {
+            if let Some(body_expr) = body {
+                lower_fn_item_expr_body(
+                    name,
+                    params,
+                    return_type,
+                    body_expr,
+                    dag,
+                    scope,
+                    symbols,
+                    mutually_recursive,
+                )
+            } else {
+                // Block-body form (`fn f(x) -> T { body }`) — body is
+                // opaque at M1(2.6). Produce an Arrow declaration with
+                // `ArrowBody::Pending` and no computation sub-DAG.
+                lower_fn_item_pending(name, params, return_type, dag, &scope, symbols, span);
+                scope
+            }
+        }
         SurfaceItem::TypeAtom { name, .. } => {
             let decl_id = symbols[name];
             // Empty product — equivalent to a unit type.
@@ -203,6 +220,19 @@ fn lower_item(
             ..
         } => {
             lower_type_alias(dag, symbols, name, type_params, target);
+            scope
+        }
+        SurfaceItem::Module { .. } | SurfaceItem::Import { .. } => {
+            // No-op items: they don't appear in the declaration graph.
+            // Cross-file forward references are resolved by the sweep.
+            scope
+        }
+        SurfaceItem::DataDecl { name, .. } => {
+            // Placeholder Conj at M1(2.6); value-level semantics are M2+.
+            let decl_id = symbols[name];
+            dag.declaration_mut(decl_id).connective = TypeConnective::Conj {
+                children: Vec::new(),
+            };
             scope
         }
     }
@@ -275,21 +305,31 @@ fn lower_type_sum(
         // the dense-sequential invariant on `Dag.declarations` because the
         // child declarations push into slots between the variant's reserved
         // id and its eventual push.
-        let connective = if variant.payload.is_empty() {
-            TypeConnective::Conj {
+        let connective = match &variant.payload {
+            VariantPayload::Unit => TypeConnective::Conj {
                 children: Vec::new(),
+            },
+            VariantPayload::Positional(payload_types) => {
+                let children: Vec<Field> = payload_types
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, ty)| Field {
+                        label: format!("_{idx}"),
+                        ty: type_to_declaration_id(ty, symbols, &local, dag),
+                    })
+                    .collect();
+                TypeConnective::Conj { children }
             }
-        } else {
-            let children: Vec<Field> = variant
-                .payload
-                .iter()
-                .enumerate()
-                .map(|(idx, ty)| Field {
-                    label: format!("_{idx}"),
-                    ty: type_to_declaration_id(ty, symbols, &local, dag),
-                })
-                .collect();
-            TypeConnective::Conj { children }
+            VariantPayload::Record(fields) => {
+                let children: Vec<Field> = fields
+                    .iter()
+                    .map(|f| Field {
+                        label: f.name.clone(),
+                        ty: type_to_declaration_id(&f.ty, symbols, &local, dag),
+                    })
+                    .collect();
+                TypeConnective::Conj { children }
+            }
         };
         let variant_id = dag.alloc_declaration_id();
         dag.push_declaration(Declaration {
@@ -466,13 +506,15 @@ fn type_to_connective(
     }
 }
 
-/// Build the `TemplateArgument` list for an Instantiation, fail-closed on
-/// template/argument arity mismatch. When the template exposes no parameter
-/// at position `idx`, we emit a declaration-level diagnostic (via a phantom
-/// port) and substitute the arg's own DeclarationId as the parameter slot so
-/// the resulting Declaration is structurally well-formed. The diagnostic
-/// means the compile will fail at the fail-closed boundary regardless of
-/// the fallback choice.
+/// Build the `TemplateArgument` list for an Instantiation. Fail-closed on
+/// template/argument arity mismatch — **only when the template is a real
+/// declaration** with a populated `type_params` slot. Forward references
+/// (an unresolved Identifier stub that gets resolved later by the
+/// `resolve_pending_identifiers` sweep) skip arity validation here; the
+/// sweep's post-fixup pass (`fixup_instantiation_template_params`) walks
+/// every Instantiation after resolution and either rewrites the
+/// `TemplateArgument.parameter` fields against the real template's
+/// type_params or emits a late arity error.
 fn build_template_arguments(
     dag: &mut Dag,
     symbols: &HashMap<String, DeclarationId>,
@@ -482,8 +524,12 @@ fn build_template_arguments(
     args: &[SurfaceType],
     span: &SourceSpan,
 ) -> Vec<TemplateArgument> {
+    let template_is_stub = matches!(
+        &dag.declaration(template).connective,
+        TypeConnective::Atom(AtomPayload::Identifier { resolved: None, .. })
+    );
     let template_param_count = dag.declaration(template).type_params.len();
-    if template_param_count != args.len() {
+    if !template_is_stub && template_param_count != args.len() {
         report_declaration_error(
             dag,
             Diagnostic::ArityMismatch {
@@ -498,19 +544,26 @@ fn build_template_arguments(
         .enumerate()
         .map(|(idx, arg)| {
             let value = type_to_declaration_id(arg, symbols, local, dag);
-            let parameter = match template_param_id(dag, template, idx) {
-                Some(param_id) => param_id,
-                None => {
-                    report_declaration_error(
-                        dag,
-                        Diagnostic::ResolveError {
-                            name: format!(
-                                "template `{template_name}` has no parameter at position {idx}"
-                            ),
-                            span: span.clone(),
-                        },
-                    );
-                    value
+            // For stubbed templates, use the arg's own id as a
+            // self-reference placeholder; `fixup_instantiation_template_params`
+            // rewrites it to the real parameter id after the sweep.
+            let parameter = if template_is_stub {
+                value
+            } else {
+                match template_param_id(dag, template, idx) {
+                    Some(param_id) => param_id,
+                    None => {
+                        report_declaration_error(
+                            dag,
+                            Diagnostic::ResolveError {
+                                name: format!(
+                                    "template `{template_name}` has no parameter at position {idx}"
+                                ),
+                                span: span.clone(),
+                            },
+                        );
+                        value
+                    }
                 }
             };
             TemplateArgument { parameter, value }
@@ -581,6 +634,13 @@ pub(crate) fn resolve_pending_identifiers(dag: &mut Dag) {
         .collect();
 
     for (decl_id, name, span) in snapshot {
+        // Operator identifiers (`+`, `-`, ...) stay unresolved through
+        // lowering. Inference resolves them via §8.9 inhabitance walks
+        // at `resolve_operator_arrow` dispatch time, not by name lookup
+        // against the declaration table. The sweep skips them.
+        if is_operator_name(&name) {
+            continue;
+        }
         if let Some(target) = dag.declaration_by_name(&name).map(|d| d.id) {
             if target == decl_id {
                 report_declaration_error(
@@ -598,15 +658,100 @@ pub(crate) fn resolve_pending_identifiers(dag: &mut Dag) {
                 *resolved = Some(target);
             }
         } else {
-            report_declaration_error(
-                dag,
-                Diagnostic::ResolveError {
-                    name: format!("unresolved type identifier `{name}`"),
-                    span,
-                },
-            );
+            // Unknown type identifier at sweep time. Emit a ResolveError
+            // ONLY if the identifier is reachable from a real Arrow's
+            // inputs/output — stubs created purely for fn/data bodies we
+            // skip opaquely are noise at M1(2.6). For now, we allow
+            // unresolved stubs to survive the sweep as long as they're
+            // not load-bearing for inference; the Transform-decide path
+            // fails closed if a resolve hits one.
+            //
+            // TODO(M2): track reachability and error on unreached stubs
+            // once data/fn body semantics land.
         }
     }
+
+    fixup_instantiation_template_params(dag);
+}
+
+/// Post-sweep fixup for Instantiation declarations whose templates were
+/// unresolved stubs at lower time (forward references). Now that
+/// `resolve_pending_identifiers` has populated the Identifier resolution
+/// slots, walk every Instantiation and rewrite its TemplateArgument
+/// parameters against the real template's `type_params`. Emits an
+/// ArityMismatch diagnostic if the real template has a different number
+/// of type parameters.
+fn fixup_instantiation_template_params(dag: &mut Dag) {
+    let instantiations: Vec<(DeclarationId, DeclarationId, usize, SourceSpan)> = dag
+        .declarations()
+        .iter()
+        .filter_map(|d| match &d.connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => Some((d.id, *template, arguments.len(), d.span.clone())),
+            _ => None,
+        })
+        .collect();
+
+    for (inst_id, template_id, arg_count, inst_span) in instantiations {
+        // Follow the template through any Identifier resolution hops to
+        // find the real underlying declaration.
+        let real_template_id = resolve_to_real_template(dag, template_id);
+        let real_template = dag.declaration(real_template_id);
+        // Stubs that survived the sweep (unreached) stay as stubs — no
+        // fixup needed.
+        if matches!(
+            &real_template.connective,
+            TypeConnective::Atom(AtomPayload::Identifier { resolved: None, .. })
+        ) {
+            continue;
+        }
+        let real_param_count = real_template.type_params.len();
+        if real_param_count != arg_count {
+            report_declaration_error(
+                dag,
+                Diagnostic::ArityMismatch {
+                    function: real_template
+                        .name
+                        .clone()
+                        .unwrap_or_else(|| format!("declaration#{}", real_template_id.raw())),
+                    expected: real_param_count,
+                    actual: arg_count,
+                    span: inst_span,
+                },
+            );
+            continue;
+        }
+        // Clone the type_params before mutating — borrow checker can't
+        // overlap &dag.declarations()[template] with &mut .declarations[inst].
+        let real_params: Vec<DeclarationId> =
+            dag.declaration(real_template_id).type_params.clone();
+        if let TypeConnective::Instantiation { arguments, .. } =
+            &mut dag.declaration_mut(inst_id).connective
+        {
+            for (arg, real_param) in arguments.iter_mut().zip(real_params.iter()) {
+                arg.parameter = *real_param;
+            }
+        }
+    }
+}
+
+fn resolve_to_real_template(dag: &Dag, template: DeclarationId) -> DeclarationId {
+    let mut current = template;
+    for _ in 0..16 {
+        let decl = dag.declaration(current);
+        match &decl.connective {
+            TypeConnective::Atom(AtomPayload::Identifier {
+                resolved: Some(next),
+                ..
+            }) => {
+                current = *next;
+            }
+            _ => return current,
+        }
+    }
+    current
 }
 
 /// Return the `idx`-th type parameter declaration of a template. Reads the
@@ -622,8 +767,36 @@ fn template_param_id(
     dag.declaration(template).type_params.get(idx).copied()
 }
 
+/// Lower a block-body `fn` item (`fn f(x: T) -> U { body }`) where the
+/// body is opaque at M1(2.6). Produces an Arrow declaration with
+/// `ArrowBody::Pending` and does not emit any computation sub-DAG.
+/// Used for functions in real `dsl/std/*.dag` files whose bodies contain
+/// match/pipe/lambda/named-arg syntax the M1(2.6) parser doesn't handle.
+fn lower_fn_item_pending(
+    name: &str,
+    params: &[SurfaceParam],
+    return_type: &SurfaceType,
+    dag: &mut Dag,
+    _outer_scope: &HashMap<String, PortId>,
+    symbols: &HashMap<String, DeclarationId>,
+    _span: &SourceSpan,
+) {
+    let fn_decl_id = symbols[name];
+    let local: HashMap<String, DeclarationId> = HashMap::new();
+    let param_decl_inputs: Vec<DeclarationId> = params
+        .iter()
+        .map(|p| type_to_declaration_id(&p.ty, symbols, &local, dag))
+        .collect();
+    let return_decl_id = type_to_declaration_id(return_type, symbols, &local, dag);
+    dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
+        inputs: param_decl_inputs,
+        output: return_decl_id,
+        body: ArrowBody::Pending,
+    };
+}
+
 #[allow(clippy::too_many_arguments)]
-fn lower_fn_item(
+fn lower_fn_item_expr_body(
     name: &str,
     params: &[SurfaceParam],
     return_type: &SurfaceType,
@@ -1023,9 +1196,12 @@ fn compute_mutually_recursive(items: &[SurfaceItem]) -> HashSet<String> {
 
     let mut calls: HashMap<String, HashSet<String>> = HashMap::new();
     for item in items {
-        if let SurfaceItem::Fn { name, body, .. } = item {
+        if let SurfaceItem::Fn {
+            name, body: Some(body_expr), ..
+        } = item
+        {
             let mut callees = HashSet::new();
-            collect_calls(body, &fn_names, &mut callees);
+            collect_calls(body_expr, &fn_names, &mut callees);
             calls.insert(name.clone(), callees);
         }
     }
