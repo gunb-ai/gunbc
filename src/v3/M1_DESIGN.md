@@ -1119,7 +1119,7 @@ ExternalRealization path:
    ```dag
    module extdeps.languages.rust
 
-   import std.types { Int64 }
+   import std.integer { Int64 }
 
    realization Int64_add {
      for:    Int64.add   // the .dag concept being realized
@@ -1300,7 +1300,7 @@ element: T, bound: Exact(3) }`. Surface syntax covers both.
 Cardinality literal with `Exact(3)` and inline String-Atom
 children.
 
-### 8.6: Bootstrap file order — **logic → bit → algebra → types → user**
+### 8.6: Bootstrap file order — **logic → bit → algebra → types → realization stub → user**
 
 `Dag::new()` parses in this order, synchronously, before any
 user source:
@@ -1315,15 +1315,31 @@ user source:
 3. **`dsl/std/algebra.dag`** — Magma through OrderedRing, Field,
    Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid,
    PartialFunction. The algebra hierarchy parsed in one pass.
-4. **`dsl/std/types.dag`** — Int = OrderedRing<Word64>, Bool =
-   Classical (Bit), String = FreeMonoid<Char>, List<T> =
-   FreeMonoid<T>, etc. Inhabitance declarations.
+4. **`dsl/std/integer.dag`** + **`dsl/std/types.dag`** —
+   Int64 = OrderedRing<Word64> lives in `integer.dag` (per
+   v2's actual layout: `module std.integer` declares `type Int64`).
+   `types.dag` declares Bool = Classical (Bit), String =
+   FreeMonoid<Char>, List<T> = FreeMonoid<T>, and re-exports
+   `Int = Int64` as the short alias. Inhabitance declarations.
+5. **`dsl/extdeps/languages/rust.dag`** (§6.5 stub) — the
+   one-realization fixture for the smoke test. Parses the
+   `realization` meta-type declaration plus one concrete
+   `realization Int64_add { for: Int64.add; target: rust;
+   body: "i64::wrapping_add" }` entry. This step MUST come
+   after types/integer.dag so that the `Int64.add` reference
+   resolves correctly. If the parser cannot yet handle the
+   `realization` record-literal shape, the fallback is to
+   inject the equivalent declaration chain directly in Rust
+   via a `bootstrap::inject_realization_stub` helper;
+   `smoke_int_add_external_realization` validates either
+   path. See M1_FOLLOWUPS for the parser-gap tracking.
 
 Post-bootstrap, additional std/ files (iteration, containers,
 graph, etc.) get parsed lazily when user code imports them.
 
 This order matches MODELING.md's root-to-leaves layering: roots
-(logic) → carriers (bit) → algebras → concrete types → user code.
+(logic) → carriers (bit) → algebras → concrete types → smoke
+realization stub → user code.
 
 ### 8.7: Sum-type parser syntax — **`type Name = A | B(payload)`**
 
