@@ -97,6 +97,83 @@ program but doesn't. Internal review (my own triage) excels at "missing
 tests" — coverage gaps on already-correct code. Both feedback paths are
 necessary; neither catches the other's bug class.
 
+## Late-M0 review round (blockers 1–4)
+
+A final external review after M0.9 caught four substantive issues.
+Three were real correctness bugs and the fourth was a discipline gap.
+All landed in M0.10–M0.12 before M0 close:
+
+**Blocker 1 (recursion annotated not rewritten):** the Loop wrapper
+for recursive functions is structural decoration — its body still
+contains literal self-referential Transform nodes (e.g., `count_down(n - 1)`
+as a Transform with target "count_down"). The thesis claim that
+recursion reduces to bounded iteration is half-true: the Loop exists,
+but the recursive call nodes inside it are still function calls that
+the substrate doesn't interpret specially. **Partial fix in M0.10**
+(Loop/body reconciliation catches the fact that the body's actual type
+must match the declared return type). **Residual deferred to M1**: the
+self-referential Transforms inside Loop bodies are not yet rewritten to
+a substrate primitive like `Recur`. A full fix connects to M1's
+declaration-table restructuring — once function references are
+DeclarationIds rather than strings, the self-call can become a
+recognized "this is the enclosing Loop's function" rather than a
+generic Transform. Flagged as a known M0 limitation in this
+retrospective rather than hidden.
+
+**Blocker 2 (pre-seeded Loop.output never reconnected):** `lower_fn_item`
+pre-seeded `loop_output` with the declared return type — load-bearing
+for the fixpoint, since recursive calls inside the body need the
+function's Bind.value port Resolved to infer their own types. But
+nothing reconciled the pre-seeded type with the body's actual return
+type, so `fn bad(n: Int) -> Bool = if n == 0 then 0 else bad(n - 1)`
+(where the then-branch is Int and the declaration says Bool) silently
+typed as Bool at every call site. The producer-fact-reaches-consumer
+property failed for recursive functions — the v2 disease recurring in
+a new costume. **Fixed in M0.10**: infer's `decide()` for `LoopNode`
+no longer returns Retry unconditionally. It reads the body's output
+port and returns `Decision::Set(l.output, body_type)`, letting the
+apply loop's existing conflict detection catch pre-seed/actual
+mismatches. Regression test: `test_recursive_function_with_wrong_body_type_is_rejected`.
+
+**Blocker 3 (mutual recursion silently accepted):** `is_recursive`
+only catches direct self-calls, so `fn even(n) = odd(n - 1)` paired
+with `fn odd(n) = even(n - 1)` evaded both the Loop wrap path AND
+any rejection. Body inference stalled on Retry forever, leaving the
+body_return_port pre-seeded value as a fake Resolved answer. The
+thesis claim "termination by construction" failed silently.
+**Fixed in M0.11**: a pre-lowering pass (`compute_mutually_recursive`)
+builds the call graph over fn items, computes transitive reachability,
+and identifies cycles of size > 1. Functions in those cycles are
+rejected at lowering with a specific "mutual recursion is not yet
+supported" diagnostic before any body lowering happens. Regression
+test: `test_mutual_recursion_is_rejected`.
+
+**Blocker 4 (missing dissolution ledger):** discipline gap. Four
+enums — `PortState`, `LiteralValue`, `Origin`, `CompileError` —
+lacked the dissolution receipts the modeling doc requires (every
+kept enum names either a terminal argument or a deferred-dissolution
+trigger). **Fixed in M0.12**: added receipts to each. PortState and
+CompileError are terminal. LiteralValue is deferred (dissolves with
+the primitive substrate refactor at M1). Origin is a judgment call —
+it's a Pattern 1 candidate (redundant with Behavior kind) kept as an
+enum for readability, with an explicit revisit trigger if consumer
+patterns change.
+
+**Also in M0.12: no-annotations invariant.** The user's direction
+during this review round was to rule out annotation mechanisms at
+every layer of the stack through M3. `INVARIANTS.md` §"Modeling
+Faithfulness" now extends "Annotations are not facts" (which already
+covered `.dag` source level) to compiler data model level and lens
+level. Lenses are pure functions from `&Dag` to derived values, not
+annotation mechanisms that write back to nodes. Concrete implication:
+the Dag carries only Port/Behavior/Declaration/diagnostics, with no
+annotation tables, no attribute maps, no lens-result side storage.
+The success bar for new lenses is "pure function, zero substrate
+modifications, its own file." This rule is ruled out now because the
+core language is still being discovered — allowing annotations as an
+escape hatch would fill real gaps with a decorative layer and make
+the gaps invisible.
+
 ## The primitive substrate gap (parallel-representation debt)
 
 M0 built the control-flow substrate (L1 behaviors, Ports, diagnostics)
