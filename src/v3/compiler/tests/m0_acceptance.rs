@@ -1038,6 +1038,103 @@ fn reviewer_descent_on_growing_arg_is_rejected() {
 }
 
 #[test]
+fn test_bool_literal_fails_when_int_expected() {
+    // Lane B follow-up: failure-mode for bool literals. The
+    // annotation direction (Int expected, Bool actual) exercises
+    // the apply-level conflict check opposite from
+    // test_type_mismatch_produces_diagnostic_entry (Bool expected,
+    // Int actual).
+    let dag = compile_any("let x: Int = true", "test.v3");
+    let bind_x = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "x")
+        .expect("Bind(x) exists");
+    assert!(
+        matches!(dag.port(bind_x.value).state(), PortState::Unresolved),
+        "Bool literal where Int is expected produces Unresolved"
+    );
+    let diag = dag
+        .diagnostics()
+        .get(bind_x.value)
+        .expect("diagnostic recorded");
+    match diag {
+        v3_compiler::Diagnostic::TypeMismatch {
+            expected, actual, ..
+        } => {
+            assert_eq!(*expected, TypeShape::Primitive(Prim::Int));
+            assert_eq!(*actual, TypeShape::Primitive(Prim::Bool));
+        }
+        other => panic!("expected TypeMismatch Int/Bool, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_string_literal_fails_when_int_expected() {
+    // Lane B follow-up: String actual, Int expected. Covers the
+    // third primitive pair that the existing type_mismatch tests
+    // didn't exercise.
+    let dag = compile_any("let x: Int = \"hello\"", "test.v3");
+    let bind_x = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "x")
+        .expect("Bind(x) exists");
+    assert!(
+        matches!(dag.port(bind_x.value).state(), PortState::Unresolved),
+        "String literal where Int is expected produces Unresolved"
+    );
+    let diag = dag
+        .diagnostics()
+        .get(bind_x.value)
+        .expect("diagnostic recorded");
+    match diag {
+        v3_compiler::Diagnostic::TypeMismatch {
+            expected, actual, ..
+        } => {
+            assert_eq!(*expected, TypeShape::Primitive(Prim::Int));
+            assert_eq!(*actual, TypeShape::Primitive(Prim::String));
+        }
+        other => panic!("expected TypeMismatch Int/String, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_string_branch_condition_is_rejected() {
+    // Lane B follow-up: non-Bool branch condition that is String
+    // rather than Int. Exercises the Branch Bool check on the third
+    // primitive type — reviewer_non_bool_branch_condition_is_rejected
+    // only covered Int. Together these prove the check rejects ANY
+    // non-Bool, not just Int specifically.
+    let dag = compile_any("let x = if \"foo\" then 1 else 2", "test.v3");
+    let bind_x = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "x")
+        .expect("Bind(x) exists");
+    assert!(
+        matches!(dag.port(bind_x.value).state(), PortState::Unresolved),
+        "String branch condition is rejected"
+    );
+    let diag = dag
+        .diagnostics()
+        .get(bind_x.value)
+        .expect("diagnostic recorded");
+    match diag {
+        v3_compiler::Diagnostic::TypeMismatch {
+            expected, actual, ..
+        } => {
+            assert_eq!(*expected, TypeShape::Primitive(Prim::Bool));
+            assert_eq!(*actual, TypeShape::Primitive(Prim::String));
+        }
+        other => panic!("expected TypeMismatch Bool/String, got {other:?}"),
+    }
+}
+
+#[test]
 fn reviewer_unknown_type_name_is_rejected() {
     // `let x: NotARealType = 1` — the type annotation references
     // an unknown name. The lower_type Result path must surface a
@@ -1109,6 +1206,10 @@ fn invariant_port_state_matches_diagnostic_table() {
         "fn f(n: Int) -> Int = f(n)",
         "fn f(n: Int) -> Int = f(n + 1)",
         "let x: NotARealType = 1",
+        // Lane B follow-up: failure-mode primitive pairs
+        "let x: Int = true",
+        "let x: Int = \"hello\"",
+        "let x = if \"foo\" then 1 else 2",
     ];
     for src in sources {
         let dag = compile_any(src, "invariant.v3");
