@@ -28,19 +28,84 @@ it belongs in src/v3/.
 
 ## Coproduct Dissolution Principle
 
-A coproduct is a symptom. Before accepting it, ask: what substrate
-is missing that would let these cases live in separate places? If
-you can identify the missing substrate, add it and the coproduct
-dissolves. If you genuinely can't — the cases share one structural
-home and only differ in label — then the coproduct is real, but it
-should be the minimum possible size.
+### The t-shirt analogy
 
-This principle works because proper modeling is cheap in .dag.
-The code is generated from the model — you don't maintain it.
-In hand-written codebases, "add the missing substrate" is expensive,
-so teams live with coproducts as compression artifacts. Here, the
-right answer is always "add the structure." The economic argument
-sits next to the technical one.
+A coproduct is a t-shirt size — a categorical compression of a
+richer coordinate space. S/M/L compresses (chest × length ×
+shoulder) into a tag because garment manufacturers don't own both
+sides of the transaction: they don't know who buys the shirts,
+and the cost of communicating full dimensions exceeds the benefit.
+
+**We own both sides.** We are the only manufacturer (the compiler
+generates the code) and the only consumer (the compiler reads its
+own model). Communication cost is zero because the model generates
+the access code. So every economic reason for categorical
+compression disappears.
+
+Every coproduct in v2 is a t-shirt size laid over a space we
+defined:
+- TokenShape::ShPlus is the "M" of (operator family × arity ×
+  algebraic structure × precedence)
+- InferredNode::CompilerError is the "L" of (inference succeeded ×
+  failure kind × who needs to know)
+- SizeBound::CollectionSize is the "XL" of (algebraic structure ×
+  parameter × count)
+
+The t-shirt sizes exist not because they're right, but because
+whoever designed them was importing habits from codebases where
+categorical compression was rational — where someone else would
+maintain the matching code. In our system, that instinct is wrong.
+
+### The dissolution test
+
+When encountering a coproduct, ask: **what's the underlying
+coordinate space this is a tag system over?**
+
+If you can name the space — "this is really (family × arity ×
+position)" — the coproduct dissolves into the fact-level model
+of that space.
+
+If you can't name any underlying space — the variants truly are
+an unordered set of distinct things with no common coordinates —
+it's a genuine terminal.
+
+### The stopping rule
+
+**Dissolve until you hit the user-input boundary.**
+
+Anything on the user's side of that boundary is terminal because
+it's not ours to define: identifiers (arbitrary strings the user
+chose), literal values (arbitrary bits the user wrote), source
+spans (byte offsets into files). These are atoms because the
+user's choice is input from outside our closed world.
+
+Anything on the compiler's side is structural because we defined
+it. Structure we defined is always coordinate-expressible. So
+everything on the compiler side dissolves.
+
+### Watch for lossy compression
+
+Some categorical compressions lose information that matters.
+v2's TypeBinding = {name, resolved} compressed away provenance
+during inference, and complexity.dag rebuilt it from heuristics —
+5,000 lines of reconstruction because the coordinate-level fact
+was compressed away at source. The audit should ask: **what
+information is this coproduct losing compared to the coordinate
+model?** If the lost information is being reconstructed downstream,
+dissolution isn't just cleaner — it's required for correctness.
+
+### Why people keep doing it
+
+Categorical thinking is cognitively cheaper than coordinate
+thinking. "It's an L" is easier to hold in your head than "42"
+chest × 28" length × 18" shoulder." The compression is valuable
+to the designer at design time, even when it's costly to the
+system at runtime.
+
+In a generated-code system, the coordinate model lives in the
+spec (expensive to design once), the categorical ergonomics live
+in query helpers on top of it (cheap to generate), and nobody
+holds both in their head at once. The hard work happens once.
 
 ### Three dissolution patterns
 
