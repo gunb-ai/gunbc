@@ -49,44 +49,71 @@ pub fn lower(module: &SurfaceModule) -> Dag {
 }
 
 /// Lower a surface module into an existing Dag. Used by bootstrap.rs to
-/// layer the four fixture modules (logic, bit, algebra, types) onto the
-/// same declaration table; each call's symbol collection seeds from the
-/// declarations already present from prior calls. Intentionally does NOT
-/// run `resolve_pending_identifiers` — callers are responsible for
-/// batching the sweep so cross-file forward references (algebra → Bool
-/// from types) resolve at the batch boundary.
+/// layer the std/ modules onto the same declaration table; each call's
+/// symbol collection seeds from the declarations already present from
+/// prior calls. Intentionally does NOT run `resolve_pending_identifiers`
+/// — callers are responsible for batching the sweep so cross-file
+/// forward references (algebra → Bool from types) resolve at the batch
+/// boundary.
 pub(crate) fn lower_into(dag: &mut Dag, module: &SurfaceModule) {
-    let symbols = collect_symbols(dag, &module.items);
+    let (symbols, is_first) = collect_symbols(dag, &module.items);
     let mutually_recursive = compute_mutually_recursive(&module.items);
     let mut scope: HashMap<String, PortId> = HashMap::new();
-    for item in &module.items {
+    for (idx, item) in module.items.iter().enumerate() {
+        if !is_first[idx] {
+            // Duplicate declaration — skipped at lower time so the
+            // first-of-name's filled connective is not overwritten.
+            // `collect_symbols` already emitted a fail-closed
+            // diagnostic for the duplicate.
+            continue;
+        }
         scope = lower_item(item, dag, scope, &symbols, &mutually_recursive);
     }
 }
 
 /// Pass 1: allocate a placeholder Declaration for every named top-level
-/// item and record `name → DeclarationId` in the symbol table. Let items
-/// are skipped — they produce behaviors, not declarations.
+/// item and record `name → DeclarationId` in the symbol table. Let /
+/// Module / Import items produce no declaration.
+///
+/// Returns `(symbols, is_first)`. `symbols` maps each name to its
+/// **first** declaration id (consistent with `Dag::declaration_by_name`'s
+/// linear first-match semantics). `is_first[idx]` is false for items
+/// whose name already appears in the symbols table at the time they're
+/// processed — i.e., duplicates. `lower_into` skips duplicates so the
+/// first-of-name's filled connective is not overwritten later.
+///
+/// Duplicate declarations emit a fail-closed `ResolveError` via a
+/// phantom port, so the compile surfaces through
+/// `Err(CompileError::Semantic)`. The duplicate's own declaration slot
+/// is still allocated (for structural consistency in the declaration
+/// table), but it stays as a placeholder and is unreachable by name.
 fn collect_symbols(
     dag: &mut Dag,
     items: &[SurfaceItem],
-) -> HashMap<String, DeclarationId> {
-    let mut symbols: HashMap<String, DeclarationId> = dag
-        .declarations()
-        .iter()
-        .filter_map(|d| d.name.as_ref().map(|n| (n.clone(), d.id)))
-        .collect();
+) -> (HashMap<String, DeclarationId>, Vec<bool>) {
+    // Seed from already-present declarations with first-match semantics
+    // (matches `Dag::declaration_by_name`). If a name appears multiple
+    // times in the prior bootstrap batch — e.g., a cross-file duplicate
+    // — the seed is idempotent: the first id wins.
+    let mut symbols: HashMap<String, DeclarationId> = HashMap::new();
+    for d in dag.declarations() {
+        if let Some(name) = &d.name {
+            symbols.entry(name.clone()).or_insert(d.id);
+        }
+    }
 
-    for item in items {
+    let mut is_first = vec![true; items.len()];
+    for (idx, item) in items.iter().enumerate() {
         let name = match item {
-            SurfaceItem::Let { .. } => continue,
-            SurfaceItem::Module { .. } | SurfaceItem::Import { .. } => continue,
-            SurfaceItem::Fn { name, .. } => name.clone(),
-            SurfaceItem::TypeAtom { name, .. } => name.clone(),
-            SurfaceItem::TypeRecord { name, .. } => name.clone(),
-            SurfaceItem::TypeSum { name, .. } => name.clone(),
-            SurfaceItem::TypeAlias { name, .. } => name.clone(),
-            SurfaceItem::DataDecl { name, .. } => name.clone(),
+            SurfaceItem::Let { .. }
+            | SurfaceItem::Module { .. }
+            | SurfaceItem::Import { .. } => continue,
+            SurfaceItem::Fn { name, .. }
+            | SurfaceItem::TypeAtom { name, .. }
+            | SurfaceItem::TypeRecord { name, .. }
+            | SurfaceItem::TypeSum { name, .. }
+            | SurfaceItem::TypeAlias { name, .. }
+            | SurfaceItem::DataDecl { name, .. } => name.clone(),
         };
         let span = item_span(item);
         let id = dag.alloc_declaration_id();
@@ -97,11 +124,29 @@ fn collect_symbols(
             type_params: Vec::new(),
             meta_tag: None,
             inhabits: None,
-            span,
+            span: span.clone(),
         });
-        symbols.insert(name, id);
+
+        if let Some(&existing_id) = symbols.get(&name) {
+            is_first[idx] = false;
+            let existing_span = dag.declaration(existing_id).span.clone();
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "duplicate declaration `{name}` (first declared in `{}` at bytes {}..{})",
+                        existing_span.file,
+                        existing_span.byte_start,
+                        existing_span.byte_end,
+                    ),
+                    span,
+                },
+            );
+        } else {
+            symbols.insert(name, id);
+        }
     }
-    symbols
+    (symbols, is_first)
 }
 
 fn placeholder_connective(name: &str) -> TypeConnective {
@@ -238,11 +283,18 @@ fn lower_item(
     }
 }
 
-/// Allocate TypeParam Atom declarations for each surface type parameter and
-/// populate the parent declaration's canonical `type_params` slot. Returns
-/// the local scope map from parameter name to DeclarationId for field-type
-/// lookups. All three generic-carrying lowering paths share this helper
-/// so `type_params` is the single authority for generics.
+/// Allocate TypeParam Atom declarations for each surface type parameter
+/// and populate the parent declaration's canonical `type_params` slot.
+/// Returns the local scope map from parameter name to DeclarationId for
+/// field-type lookups.
+///
+/// **TypeParam declarations are anonymous** (`name: None`). The binder
+/// name lives structurally in the `Atom(TypeParam(name))` payload, not
+/// in the top-level name slot. This keeps `Dag::declaration_by_name`
+/// from leaking `T` / `U` / etc. into cross-module name resolution:
+/// outside the parent's body, a type parameter is unreferenceable by
+/// name and any stray `Identifier { name: "T" }` in user code correctly
+/// fails to resolve.
 fn allocate_type_params(
     dag: &mut Dag,
     parent_id: DeclarationId,
@@ -255,7 +307,7 @@ fn allocate_type_params(
         let span = dag.declaration(parent_id).span.clone();
         dag.push_declaration(Declaration {
             id: param_id,
-            name: Some(param.clone()),
+            name: None,
             connective: TypeConnective::Atom(AtomPayload::TypeParam(param.clone())),
             type_params: Vec::new(),
             meta_tag: None,
@@ -331,10 +383,15 @@ fn lower_type_sum(
                 TypeConnective::Conj { children }
             }
         };
+        // Sum variant declarations are anonymous. The variant name
+        // lives structurally in the parent `Disj.variants` Field label,
+        // not in the child declaration's name slot. Keeps variant names
+        // (`True`, `False`, `Less`, `Equal`, `Greater`) out of
+        // `Dag::declaration_by_name`'s flat scan.
         let variant_id = dag.alloc_declaration_id();
         dag.push_declaration(Declaration {
             id: variant_id,
-            name: Some(variant.name.clone()),
+            name: None,
             connective,
             type_params: Vec::new(),
             meta_tag: None,

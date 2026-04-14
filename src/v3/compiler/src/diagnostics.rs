@@ -134,6 +134,12 @@ impl DiagnosticTable {
         self.entries.len()
     }
 
+    /// Iterate `(port, diagnostic)` pairs. Used by tests and callers
+    /// that need to scan all diagnostics for a specific kind.
+    pub fn iter(&self) -> impl Iterator<Item = (PortId, &Diagnostic)> {
+        self.entries.iter().map(|(p, d)| (*p, d))
+    }
+
     /// Insert a diagnostic entry for a port. pub(crate) because the
     /// only callers are Dag::mark_unresolved (which atomically also
     /// clears the port's value_type) and should never be called

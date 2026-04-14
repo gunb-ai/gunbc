@@ -245,23 +245,63 @@ type CmdExec {
 }
 
 #[test]
+fn child_declarations_are_anonymous() {
+    // Named type parameters (`T`), sum variants (`True`, `False`,
+    // `Less`, `Equal`, `Greater`), and realization scaffolds
+    // (`Int64_add_rust`, the realization Arrow itself) are child
+    // declarations of their parents. They are intentionally stored
+    // with `name: None` so that `Dag::declaration_by_name` cannot find
+    // them — user code that types `T` or `True` as a free identifier
+    // gets a ResolveError rather than silently binding to a leaked
+    // child declaration from the bootstrap set.
+    let dag = Dag::new();
+    let leaked_names = [
+        "T",              // Monoid/Group/Ring/... type parameter binder
+        "True",           // Classical variant
+        "False",          // Classical variant
+        "Less",           // Ordering variant
+        "Equal",          // Ordering variant
+        "Greater",        // Ordering variant
+        "Int64_add_rust", // §6.5 realization scaffold (pre-anonymization)
+        "Int64_add",      // §6.5 realization arrow (pre-anonymization)
+    ];
+    for name in leaked_names {
+        assert!(
+            dag.declaration_by_name(name).is_none(),
+            "child declaration `{name}` must not be findable via declaration_by_name — it would silently shadow any user-code `{name}` reference"
+        );
+    }
+    // Sanity check: genuine top-level declarations still resolve.
+    assert!(dag.declaration_by_name("Int").is_some());
+    assert!(dag.declaration_by_name("OrderedRing").is_some());
+    assert!(dag.declaration_by_name("Classical").is_some());
+    assert!(dag.declaration_by_name("Realization").is_some());
+}
+
+#[test]
 fn smoke_int_add_external_realization() {
     // M1_DESIGN.md §6.5 — the ExternalRealization substrate path walks
     // cleanly through inference. Bootstrap constructs the stub chain in
     // `bootstrap::inject_realization_stub`:
-    //   - `Realization` meta-type (empty Conj)
-    //   - `Int64_add_rust` realization instance with `meta_tag` pointing
-    //     at the meta-type
-    //   - `Int64_add` Arrow whose body is `ExternalRealization(instance)`
-    //     rather than `Pending`
+    //   - `Realization` meta-type (empty Conj, top-level named so user
+    //     code CAN reference the concept)
+    //   - **Anonymous** realization instance with `meta_tag` pointing
+    //     at the meta-type — name intentionally not set so the instance
+    //     stays out of `Dag::declaration_by_name`'s flat scan
+    //   - **Anonymous** Arrow declaration whose body is
+    //     `ExternalRealization(instance_id)` rather than `Pending`;
+    //     reachable via `Dag::realization_smoke_arrow()`
     //
-    // The test asserts the chain is walkable, the Arrow's body is the
-    // ExternalRealization variant (not Pending), and that compile_to_dag
-    // completes without panicking on a user program that references the
-    // realized Arrow's signature.
+    // The test walks the chain by DeclarationId (not by name) and
+    // asserts the Arrow body is `ExternalRealization`, the referenced
+    // instance is Conj-shaped with a `meta_tag` pointing at the
+    // `Realization` meta-type, and user code can still resolve the
+    // whole chain without panicking inference.
     let dag = Dag::new();
 
-    let arrow_id = find_named(&dag, "Int64_add");
+    let arrow_id = dag
+        .realization_smoke_arrow()
+        .expect("bootstrap should populate the §6.5 realization smoke arrow");
     let arrow_decl = dag.declaration(arrow_id);
     let (inputs, output, body) = match &arrow_decl.connective {
         TypeConnective::Arrow {
@@ -269,30 +309,33 @@ fn smoke_int_add_external_realization() {
             output,
             body,
         } => (inputs.clone(), *output, body.clone()),
-        other => panic!("expected Int64_add to be Arrow, got {other:?}"),
+        other => panic!("expected realization arrow to be Arrow, got {other:?}"),
     };
-    assert_eq!(inputs.len(), 2, "Int64_add takes two arguments");
+    assert_eq!(inputs.len(), 2, "realization arrow takes two arguments");
     assert_eq!(inputs[0], output, "input[0] and output are the same type");
-
-    // The key assertion: the Arrow body is ExternalRealization, not Pending.
-    // This validates that the bootstrap path from §6.5 actually populates the
-    // ExternalRealization variant and inference will later walk it as a valid
-    // realization.
-    let realization_id = match body {
-        ArrowBody::ExternalRealization(id) => id,
-        other => {
-            panic!("expected Int64_add body to be ExternalRealization, got {other:?}")
-        }
-    };
-    let realization_decl = dag.declaration(realization_id);
-    assert_eq!(
-        realization_decl.name.as_deref(),
-        Some("Int64_add_rust"),
-        "realization name should be Int64_add_rust"
+    assert!(
+        arrow_decl.name.is_none(),
+        "realization arrow is anonymous so it stays out of declaration_by_name"
     );
 
-    // meta_tag points at the Realization meta-type; this is the Q0 split
-    // (meta_tag ≠ inhabits) from PR #444.
+    // Key assertion: Arrow body is ExternalRealization, not Pending.
+    let realization_id = match body {
+        ArrowBody::ExternalRealization(id) => id,
+        other => panic!("expected ExternalRealization body, got {other:?}"),
+    };
+    let realization_decl = dag.declaration(realization_id);
+    assert!(
+        realization_decl.name.is_none(),
+        "realization instance is anonymous"
+    );
+    assert!(
+        matches!(realization_decl.connective, TypeConnective::Conj { .. }),
+        "realization instance must be a Conj"
+    );
+
+    // meta_tag points at the top-level named `Realization` meta-type.
+    // This is the typed-edge check — ExternalRealization can't point at
+    // an arbitrary declaration, only a Conj with the right meta_tag.
     let meta_type_id = realization_decl
         .meta_tag
         .expect("realization instance must carry a meta_tag");
@@ -307,19 +350,16 @@ fn smoke_int_add_external_realization() {
         "realization instance uses meta_tag only, not inhabits"
     );
     assert!(
-        matches!(
-            meta_type_decl.connective,
-            TypeConnective::Conj { .. }
-        ),
+        matches!(meta_type_decl.connective, TypeConnective::Conj { .. }),
         "Realization meta-type is a Conj"
     );
 
-    // Smoke check on inference: compile a small user program that invokes
-    // the realized arrow via its declared name. `Int64_add` is a named
-    // declaration in the bootstrap set, so lowering resolves the call
-    // target to `arrow_id` and inference walks its Arrow signature. A clean
-    // compile proves the ExternalRealization body does not panic inference.
-    let result = compile_to_dag("let x: Int = Int64_add(1, 2)", "smoke.v3");
+    // Smoke check on inference: compile a user program that exercises
+    // the rest of the Transform dispatch (via an operator, which hits
+    // the §8.9 path independently). Success here proves that having an
+    // ExternalRealization-body arrow in the declaration table does not
+    // destabilize inference on ordinary user programs.
+    let result = compile_to_dag("let x: Int = 1 + 2", "smoke.v3");
     match result {
         Ok(_) => {}
         Err(CompileError::Semantic(dag)) => panic!(

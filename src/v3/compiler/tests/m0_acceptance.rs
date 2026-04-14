@@ -668,6 +668,43 @@ fn test_unknown_function_span_points_at_call_site() {
 }
 
 #[test]
+fn test_duplicate_type_declaration_is_rejected() {
+    // Two `type Foo` declarations in the same module surface as a
+    // fail-closed ResolveError via `collect_symbols`. The compile must
+    // return `Err(CompileError::Semantic)` with the duplicate diagnostic
+    // in the Dag's diagnostic table.
+    let src = "\
+type Foo
+type Foo
+";
+    let result = compile_to_dag(src, "dup.v3");
+    let dag = match result {
+        Ok(_) => panic!("duplicate declaration should fail to compile"),
+        Err(CompileError::Semantic(dag)) => dag,
+        Err(other) => panic!("unexpected structural error: {other:?}"),
+    };
+    let diagnostics = dag.diagnostics();
+    let has_duplicate_diag = diagnostics
+        .iter()
+        .any(|(_, diag)| match diag {
+            v3_compiler::diagnostics::Diagnostic::ResolveError { name, .. } => {
+                name.contains("duplicate declaration `Foo`")
+            }
+            _ => false,
+        });
+    assert!(
+        has_duplicate_diag,
+        "expected duplicate-declaration diagnostic, got {diagnostics:?}"
+    );
+    // First-wins consistency: `declaration_by_name("Foo")` returns the
+    // first declaration, not the duplicate.
+    let foo_decl = dag
+        .declaration_by_name("Foo")
+        .expect("Foo first declaration still exists in the table");
+    assert_eq!(foo_decl.name.as_deref(), Some("Foo"));
+}
+
+#[test]
 fn test_provenance_lens_branch_origin() {
     // When a Bind's value port is produced by a Branch, the
     // provenance lens reports Origin::Selected pointing at the

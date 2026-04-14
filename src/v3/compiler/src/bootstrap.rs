@@ -69,24 +69,31 @@ fn parse_and_lower_fixture(dag: &mut Dag, source: &str, file: &str) {
     lower_into(dag, &module);
 }
 
-/// M1_DESIGN.md §6.5 realization smoke test scaffold. Constructs the minimal
-/// set of declarations needed to exercise the `ArrowBody::ExternalRealization`
-/// substrate path end-to-end:
+/// M1_DESIGN.md §6.5 realization smoke test scaffold. Constructs the
+/// minimal declaration chain needed to exercise the
+/// `ArrowBody::ExternalRealization` substrate path end-to-end:
 ///
-///   1. A `Realization` meta-type declaration (empty Conj — shape placeholder).
-///   2. A concrete realization instance `Int64_add_rust` whose `meta_tag` edge
-///      points at the meta-type.
-///   3. A named Arrow declaration `Int64_add` whose `body` is
-///      `ExternalRealization(instance_id)` rather than `Pending`.
+///   1. A `Realization` meta-type declaration (empty Conj, top-level
+///      named — callers may refer to it as a type).
+///   2. An **anonymous** concrete realization instance whose `meta_tag`
+///      edge points at the meta-type. The instance is unreferenceable
+///      by name so it stays out of `Dag::declaration_by_name`'s scan.
+///   3. An **anonymous** Arrow declaration whose `body` is
+///      `ExternalRealization(instance_id)` rather than `Pending`. The
+///      Arrow's id is stashed in `Dag.realization_smoke_arrow` so the
+///      substrate test can find it without a name lookup.
 ///
-/// The substrate test `smoke_int_add_external_realization` walks this chain
-/// and asserts inference accepts the declared Arrow without panicking. Per
-/// M1_FOLLOWUPS.md, PR #444's spec has this data coming from a parsed
-/// `dsl/extdeps/languages/rust.dag` stub — that requires parser support for
-/// record literals and a `realization` item keyword, deferred to M1(2.6). The
-/// Rust construction here is a placeholder that validates the substrate
-/// shape; the M1(2.6) follow-up swaps it for fixture parsing without
-/// substrate changes.
+/// The typed-edge check from PR #445's review: before constructing the
+/// `ExternalRealization`, assert the instance has a `Conj` connective
+/// AND a `meta_tag` pointing at the `Realization` meta-type. Fails
+/// construction (panic) if the chain is malformed — this is the narrow
+/// shape guarantee `ArrowBody::ExternalRealization` needs without
+/// introducing a full `RealizationId` newtype.
+///
+/// Per `src/v3/ROADMAP.md` M2, the Rust construction here is a
+/// placeholder that validates the substrate shape; the follow-up swaps
+/// it for fixture parsing (a `realization` item keyword + record
+/// literal support) without substrate changes.
 fn inject_realization_stub(dag: &mut Dag) {
     let span = SourceSpan::new("<bootstrap:realization>", 0, 0);
 
@@ -106,7 +113,7 @@ fn inject_realization_stub(dag: &mut Dag) {
     let instance_id = dag.alloc_declaration_id();
     dag.push_declaration(Declaration {
         id: instance_id,
-        name: Some("Int64_add_rust".to_string()),
+        name: None,
         connective: TypeConnective::Conj {
             children: Vec::new(),
         },
@@ -116,6 +123,13 @@ fn inject_realization_stub(dag: &mut Dag) {
         span: span.clone(),
     });
 
+    // Typed-edge check: verify the instance is realization-shaped
+    // before encoding it in `ArrowBody::ExternalRealization`. Bootstrap
+    // owns both sides so this is always true here — the check exists
+    // as a self-documenting invariant and would catch any future drift
+    // that tries to store a non-realization declaration in the body.
+    assert_realization_shape(dag, instance_id, meta_type_id);
+
     let int_id = dag
         .declaration_by_name("Int")
         .expect("bootstrap: Int missing after fixtures")
@@ -123,7 +137,7 @@ fn inject_realization_stub(dag: &mut Dag) {
     let arrow_id = dag.alloc_declaration_id();
     dag.push_declaration(Declaration {
         id: arrow_id,
-        name: Some("Int64_add".to_string()),
+        name: None,
         connective: TypeConnective::Arrow {
             inputs: vec![int_id, int_id],
             output: int_id,
@@ -134,6 +148,30 @@ fn inject_realization_stub(dag: &mut Dag) {
         inhabits: None,
         span,
     });
+
+    dag.set_realization_smoke_arrow(arrow_id);
+}
+
+/// Invariant check: a declaration used as the target of
+/// `ArrowBody::ExternalRealization` must be a `Conj` whose `meta_tag`
+/// edge points at the `Realization` meta-type. Bootstrap owns both
+/// sides so this holds by construction; the assertion documents the
+/// invariant and catches future drift.
+fn assert_realization_shape(
+    dag: &Dag,
+    instance_id: crate::dag::DeclarationId,
+    expected_meta: crate::dag::DeclarationId,
+) {
+    let decl = dag.declaration(instance_id);
+    assert!(
+        matches!(decl.connective, TypeConnective::Conj { .. }),
+        "realization instance must be a Conj declaration"
+    );
+    assert_eq!(
+        decl.meta_tag,
+        Some(expected_meta),
+        "realization instance's meta_tag must point at the Realization meta-type"
+    );
 }
 
 // Re-export AtomPayload so future bootstrap work that adds Atom declarations
