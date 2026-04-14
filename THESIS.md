@@ -158,6 +158,94 @@ the new concept is really distinct. In a closed system, new concepts
 should compose from existing ones. A parallel mechanism is evidence
 of a missed unification.
 
+### Structural decompression
+
+In a closed system we define, every categorical classification
+(coproduct / enum / sum type) is a compression artifact — a
+t-shirt size laid over a richer coordinate space.
+
+A t-shirt size (S/M/L/XL) compresses a continuous space (chest ×
+length × shoulder) into a discrete tag because garment manufacturers
+don't own both sides of the transaction: they don't know who buys
+the shirts, the communication cost of full dimensions exceeds the
+benefit, and discrete sizing enables economies of scale. The tags
+are lossy — two shirts labeled "M" can differ by inches — and the
+lossiness is acceptable because the downstream consumer (a shopper)
+can't measure themselves precisely anyway.
+
+**In a closed generated-code system, every economic reason for
+categorical compression disappears.** We are the only manufacturer
+(the compiler generates the code) and the only consumer (the
+compiler reads its own model). Communication cost is zero — the
+model generates the access code. The consumer (generated code) can
+read any coordinate precisely. So there is no reason to compress.
+
+**Structural decompression** is the practice of replacing categorical
+tags with their underlying coordinate-level facts. The name encodes
+the insight: the coproduct is COMPRESSED structure. Decompressing it
+recovers the facts that were compressed away.
+
+The test: when encountering a coproduct, ask **"what's the
+coordinate space this is a tag system over?"** If you can name the
+space, the coproduct decompresses into the coordinate-level model.
+If you genuinely can't — the variants truly are an unordered set
+with no common coordinates — it's a terminal at the user-input
+boundary (an identifier, a literal, a source span — input from
+outside the closed world that we don't define).
+
+Four decompression patterns, depending on what kind of compression
+is hiding:
+
+1. **Fact placement** — a coproduct mixes concerns from different
+   locations in the substrate. Decompress by placing each fact
+   where its consumer naturally reads it.
+   *Example:* `InferredNode = Resolved | CompilerError | TypeVariable`
+   → type goes on Port, errors go in diagnostic table, unification
+   is algorithm-internal.
+
+2. **Variant-is-data** — variants differ in WHAT (which value) but
+   not in HOW (same structure). Compress to one structural shape
+   with the variation as data in a table.
+   *Example:* keywords → single `Keyword` shape with identity in
+   Token.text. TransformRule variants → rule-table entries.
+
+3. **Algebraic form** — variants trace to introduction or
+   elimination forms of algebraic structures already declared in
+   `std/`. The algebra declarations generate the dispatch.
+   *Example:* `Construct` = Product introduction.
+   `FieldAccess` = Product elimination. `ListBuild` = FreeMonoid
+   introduction. All from `std/algebra.dag`.
+
+4. **Dimensional** — a flat N-variant coproduct hides an
+   M-dimensional record. Replace the flat enum with a record
+   whose fields are the dimensions.
+   *Example:* 6 delimiter tokens → `Delimiter { shape: BracketShape,
+   side: Side }` where `BracketShape = Curly | Round | Square` and
+   `Side = Open | Close`.
+
+**Priority: decompress single-consumer coproducts first.** In a
+generated-code system, decompression cost is constant (model
+editing) while deferral cost grows monotonically (new consumers
+bolt on because the coproduct exists). `ExprData` started as the
+parser's discriminator — one consumer. It accreted to 22 variants
+with 665 match arms across 7 consumers because each new consumer
+was easier to bolt on than to redesign. "Single consumer" is a
+temporal accident, not a design property.
+
+**Lossy compression is a correctness bug.** When downstream code
+reconstructs information that a coproduct compressed away, the
+disease is active. v2's `TypeBinding = {name, resolved}` discarded
+provenance during inference. `complexity.dag` spent 5,000 lines
+rebuilding it from heuristics. Structural decompression isn't just
+cleaner — it's required when the compressed-away facts are needed
+downstream.
+
+**The sustainability test:** when the system grows by one concept,
+how many files need editing? If the answer is more than the
+declaration file, there's a categorical compression somewhere that
+is forcing consumers to enumerate variants instead of reading
+coordinates. Find it. Decompress it.
+
 ## Correctness dimensions
 
 Correctness is not one property — it is many orthogonal dimensions:
