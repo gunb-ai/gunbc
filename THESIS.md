@@ -240,6 +240,47 @@ rebuilding it from heuristics. Structural decompression isn't just
 cleaner — it's required when the compressed-away facts are needed
 downstream.
 
+### Why decompression always works in a closed system
+
+A coproduct is a compressed reference to a reality the modeler
+has already defined. In an open system, the reality may not be
+fully owned by the modeler, so the compression can be irreducible
+— natural kinds (species, elements) resist decomposition because
+the underlying space is discovered, not defined. The modeler
+is a consumer of a reality they don't control.
+
+In a closed system we define, we own the reality by construction.
+Every coproduct is a compressed reference to something we wrote
+down somewhere — either elsewhere in the substrate, in data tables,
+in `std/` vocabulary, or in coordinate spaces we can name.
+Dissolution is replacing the compressed reference with a pointer
+to the richer source.
+
+The four decompression patterns are four ways of finding the
+richer source:
+1. **Fact placement** → richer source elsewhere in the DAG
+2. **Variant-is-data** → richer source in a data table
+3. **Algebraic form** → richer source in `std/` declarations
+4. **Dimensional** → richer source in a coordinate space
+
+The only genuinely irreducible coproducts are those whose richer
+source is outside the system — user-chosen names, literal values,
+source spans — where the user is the author of the reality and
+we are a consumer. Everything else dissolves.
+
+This means the real design work is not writing types — it is
+writing richer sources. Every `std/` addition (Terminal, function
+space, intro/elim declarations, lens algebras) is a richer source
+that enables dissolution of compressed coproducts elsewhere. The
+additions are not "new types to build" — they are "sources to
+point at so the rest of the system stops pointing at compressions."
+
+**Corollary:** when the agent finds a coproduct it thinks can't
+dissolve, exactly two possibilities exist: (a) it's terminal input
+from the user (outside the closed world), or (b) the richer source
+hasn't been written yet. Case (a) is the stopping rule. Case (b)
+is unfinished work pretending to be a terminal.
+
 **The sustainability test:** when the system grows by one concept,
 how many files need editing? If the answer is more than the
 declaration file, there's a categorical compression somewhere that
