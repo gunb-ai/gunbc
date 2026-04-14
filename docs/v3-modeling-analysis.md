@@ -199,6 +199,35 @@ the argument for keeping this rely on current consumer count, or
 on structural irreducibility?" If the former, dissolve. If the
 latter, accept.
 
+### Three classification buckets
+
+Not two. The conversation collapsed "terminal" and "deferred" early
+on, hiding unfinished work behind terminal labels.
+
+1. **Terminal** — no richer source exists. The coproduct is at the
+   user-input boundary (names, literals, spans) where the user is
+   the author of the reality.
+2. **Deferred-with-trigger** — richer source exists but extracting
+   it requires substrate work that isn't ready. Named trigger says
+   when to revisit. Example: Subject in Diagnostic pending typed
+   program references.
+3. **Dissolvable-now** — richer source exists and extraction is
+   cheap. Do it immediately.
+
+### Ledger rule
+
+Every coproduct classified as "terminal" or "deferred-with-trigger"
+includes a one-paragraph record of the dissolution attempt: which
+patterns were tried, what axes or richer sources were considered,
+and why the attempt stopped.
+
+The paragraph is the evidence that the classification was earned
+rather than assumed. A coproduct without a ledger entry is an
+unfinished analysis, not a terminal. This makes the "all coproducts
+dissolve" search discipline falsifiable — someone can pick up the
+ledger, find a failed attempt, and succeed where the original
+session didn't.
+
 ---
 
 ## V3 Spec Types — Where They Belong
@@ -630,6 +659,21 @@ This prevents the "two sources of truth" problem: value_type and
 the diagnostic table are not independent — they're linked by this
 invariant. Upstream (infer) enforces it. Downstream (emit) relies
 on it.
+
+**Enforcement: API-level, not convention.** The only way to set
+value_type to None is through an API that takes both arguments
+atomically:
+
+```
+fn mark_unresolved(port: PortId, diagnostic: Diagnostic) -> ()
+```
+
+This makes the invariant mechanically enforceable at every write
+site. Convention ("every lens author promises to write a diagnostic")
+fails under cognitive load. Post-hoc validation (walk ports and
+check) catches violations but doesn't prevent them. API-level
+enforcement prevents them by construction — you literally cannot
+create a None port without providing the diagnostic.
 
 TypeVariable is algorithm-internal scratch state. It never appears
 on any Port or in the diagnostic table. If unification fails,
@@ -1622,6 +1666,62 @@ algebra at construction time.
 ### Compiler lives under src/v3/:
 Layers depend downward only. Shared types in upstream lib. No
 dependency cycles. Facts flow forward, computed once.
+
+---
+
+## M0 Scope
+
+M0 proves the substrate works end-to-end for a trivial case.
+It is not useful software — it is a proof that the architecture
+holds under construction.
+
+**What M0 builds:**
+- Parser that takes a small .dag subset (types, let bindings,
+  one expression form, one iteration primitive)
+- Resolve layer that maps names to declarations and lowers to
+  L1 behaviors (Value, Transform, Branch, Loop, Bind) with Ports
+- Infer layer that propagates types through Ports
+- Diagnostic table with API-level enforcement (mark_unresolved)
+- One lens (provenance/origin) that reads carried facts from Ports
+- Output: either typed DAG or diagnostics. No emission.
+
+**What M0 does NOT build:**
+- Emission (no Rust/Go/Python output)
+- Full type system (no generics, no containers beyond List)
+- Self-hosting
+- All lenses (just provenance to prove the mechanism)
+- Pattern matching beyond simple if/match on Bool
+
+**How we know M0 is done:**
+- Can parse `let x = 1 + 2` and produce a DAG with Value + Transform
+- Can parse `if x > 0 then a else b` and produce a DAG with Branch
+- Can parse a recursive function and lower to Loop with Bound
+- Provenance lens reads produced_by from Ports without reconstruction
+- Type errors produce diagnostics in the diagnostic table
+- All of the above from the same pipeline, not separate test harnesses
+
+**Bootstrap transition strategy:**
+v3 is built as a separate compiler under src/v3/. v2 continues to
+work independently. No shared IR, no shim layer, no incremental
+replacement. v3 reads the same std/ and extdeps/ but produces its
+own DAG representation. This is the cleanest separation — v3's
+physics doesn't bottleneck on v2's IR.
+
+The transition sequence:
+1. M0: v3 parses + lowers + infers for a tiny subset
+2. M1: v3 emits Rust for the subset (validates the full pipeline)
+3. M2: v3 covers enough of .dag to compile non-trivial programs
+4. M3: v3 compiles itself (self-hosting — v2 compiles v3 stage0,
+   v3 compiles v3 → fixed point)
+5. v2 is retired when v3 reaches feature parity
+
+v2's 415 tests serve as the oracle: every test that passes in v2
+must produce equivalent output in v3. The test corpus transfers
+even though the IR doesn't.
+
+**BackendCapability: DELETED.** Dead code in v2 — declared but
+never pattern-matched, never consumed. No artifact planner exists
+to consume it. v3 does not inherit dead code.
 
 ---
 
