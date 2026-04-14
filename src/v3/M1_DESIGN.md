@@ -552,13 +552,18 @@ pub struct NodeId(u32);          // index into Dag::nodes
    has the function's signature. Inference uses this crossing
    to type-check the Transform.
 
-2. **`Arrow::body: Option<NodeId>`** — an Arrow declaration in
-   the type substrate optionally holds a `NodeId` pointing at
-   the root of the function's computation sub-DAG. For user
-   functions, `body` is `Some(node_id)`. For primitives whose
-   realization lives in an extdeps language spec, `body` is
-   `None` — see Q7 and the updated Q7-bis below for the
-   realization edge mechanism.
+2. **`Arrow::body: ArrowBody`** — an Arrow declaration in the
+   type substrate holds an `ArrowBody` tag (see §3's data model
+   and Q7). For user functions the variant is
+   `UserDefined(NodeId)` pointing at the root of the function's
+   computation sub-DAG. For primitives whose realization lives
+   in an extdeps language spec the variant is
+   `ExternalRealization(DeclarationId)` pointing at the realization
+   declaration. For algebras at M1(2.5) bootstrap (before extdeps
+   language specs are loaded) the variant is `Pending`, a
+   scaffolded state with a CI ratchet enforcing resolution to
+   one of the other two variants before M3 completes. All three
+   variants are typed edges; no name-based lookup. See Q7.
 
 **Keeping `DeclarationId` and `NodeId` as separate newtypes
 prevents cross-substrate ID mixing bugs.** A function that
@@ -792,7 +797,7 @@ Walking `Int.add`:
    `OrderedRing_T_param`.
 6. Look up `OrderedRing_T_param` in substitution stack → find `Word64`.
 7. Substitute each input/output with `Word64`.
-8. Yield `Arrow { inputs: [Word64, Word64], output: Word64, body: None }`.
+8. Yield `Arrow { inputs: [Word64, Word64], output: Word64, body: Pending }`.
 9. Pop substitution frame on exit.
 
 **Pure structural walk. No hardcoded knowledge of Int, Ring, add, or
@@ -941,7 +946,7 @@ Focused, small, one PR. No scope creep.
 | `src/v3/compiler/src/tokenize.rs` | Minor — add `<` and `>` as type-parameter delimiters, `|` as top-level sum-type separator, `fn(...)` arrow-type prefix if needed. | ~30m |
 | `src/v3/compiler/src/parse.rs` | Extensions per §8: `type Foo<T> { ... }` into Conj with TypeParam children (§8.2/8.3); `type Foo = Bar<X>` into Instantiation (§Q0); `type Name = A \| B(payload)` into Disj with payload variants (§8.7); `fn(A, B) -> C` as type-position expression (§8.8); infix operators as Conj-with-function-label (§8.9). Drop the flat `fn std::int::add(...)` primitive-signature shortcut. | ~4h |
 | `src/v3/compiler/src/lower.rs` | Two-pass lowering: (1) collect declaration names into symbol table; (2) resolve Identifier atoms and build the connective tree (§8.1). Handle substitution scopes for parameterized declarations. | ~2h |
-| `src/v3/compiler/src/infer.rs` | Replace old `DeclKind` dispatch with connective-pattern walks. Implement `SubstStack` per §8.4 (`Vec<Vec<TemplateArgument>>`). Lazy substitution at walk time. Handle `body: None` as realization-pending, not as an error (§Q7). Inference resolves `Int.add` by walking inhabits chain through OrderedRing and substituting. | ~3h |
+| `src/v3/compiler/src/infer.rs` | Replace old `DeclKind` dispatch with connective-pattern walks. Implement `SubstStack` per §8.4 (`Vec<Vec<TemplateArgument>>`). Lazy substitution at walk time. Handle `ArrowBody::Pending` as realization-pending (signature type-checks via inhabitance, body-checking skipped) per §Q7. Handle `ArrowBody::ExternalRealization(decl_id)` by walking the realization declaration and verifying signature compatibility. Inference resolves `Int.add` by walking the inhabits chain through OrderedRing and substituting. | ~3h |
 | `src/v3/compiler/tests/m0_acceptance.rs` | Update test helpers to build connective nodes. Semantics unchanged; all 40 M0 tests should pass against the new shape. | ~1h |
 | `dsl/std/core.dag` | DELETE per-primitive function declarations (`fn std::int::add` etc.). They become inhabitance-derived via OrderedRing. | ~5m |
 | `dsl/std/logic.dag` | VERIFY or CREATE. Parse Bit = Disj{On, Off} and True/False Atoms per §8.6. Stub file if v2 doesn't have one. | ~15m |

@@ -518,12 +518,13 @@ Connective meanings:
 - **Arrow.** Function signature from input Nodes to an output
   Node. The `op: fn(T, T) -> T` field inside `Magma<T>` is an
   Arrow Node with three positional type children. An Arrow
-  declaration's **body** is a reference into the computation
-  substrate (a sub-DAG of L1 behaviors) for user functions, or
-  into a realization declaration in `extdeps/` for primitives (or
-  `None` until the realization lands — see §"Two groundings"
-  below for why `body: None` is valid). This is where the two
-  substrates meet.
+  declaration's **body** is a typed edge to either a sub-DAG of
+  L1 behaviors (for user functions) or a realization declaration
+  in `dsl/extdeps/languages/` (for primitives). See §"Two
+  groundings" below for how the user-defined vs external-
+  realization distinction works, and `src/v3/M1_DESIGN.md` §Q7
+  for the concrete `ArrowBody` enum. In neither case is the body
+  a name-based lookup — both are structural typed edges.
 - **Cardinality.** Repetition over a child Node with a (possibly
   symbolic) count. `argv: ["sh", "-lc", "{script}"]` is a
   `Cardinality(3)` with three String-Atom children. `List<T>` is
@@ -762,23 +763,31 @@ every opaque intrinsic, runtime-native helper, or bolt-on
 analyzer is "unfinished composition." That reading is correct for
 the static grounding — at the `.dag` level, every concept must
 decompose completely. But it's wrong if you apply it to
-realization: `.dag Int.add` at M1(2.5) has `body: None` because
-its realization lives in `extdeps/languages/rust.dag` (or will,
-when that file lands). That is NOT an ungrounded concept; it is
+realization: `.dag Int.add` at M1(2.5) has its realization
+binding in a **`Pending`** state (see `src/v3/M1_DESIGN.md` §Q7's
+`ArrowBody` enum) because its target-world mapping lives in
+`dsl/extdeps/languages/rust.dag` — which will be declared as
+an ordinary Declaration reachable via a typed edge, not a
+name-based lookup. That is NOT an ungrounded concept; it is
 a **concept whose static grounding is complete and whose
-realization grounding is declared at the target boundary.** The
-stop signal applies to static grounding (no concept without a
-compositional chain), not to realization grounding (which is
-deliberately target-specific and shallow by design).
+realization grounding edge is pending declaration loading.**
+The stop signal applies to static grounding (no concept without
+a compositional chain), not to realization grounding (which is
+deliberately target-specific and shallow by design, but still
+structural when it lands).
 
-**For M1(2.5):** primitive Arrows with `body: None` are allowed.
-Their static grounding walks through inhabitance (e.g., `Int.add`
-walks through OrderedRing); their realization grounding will be
-declared in the Rust language spec when that work lands. The
-absence of the realization declaration is a milestone-scope issue,
-not a thesis violation. The C-checkpoint for "ungrounded concept"
-fires only when a concept cannot be walked through its static
-chain — which `Int.add` can, via OrderedRing<Word64>.
+**For M1(2.5):** primitive Arrows in `dsl/std/algebra.dag` carry
+`body: Pending` — a scaffolded bootstrap state. Their static
+grounding walks through inhabitance (e.g., `Int.add` walks
+through `Instantiation(OrderedRing, [T := Word64])`); their
+realization grounding will be declared in the Rust language spec
+when that work lands, after which `Pending` resolves to either
+`UserDefined(NodeId)` or `ExternalRealization(DeclarationId)`
+— both structural edges. A CI ratchet enforces that no `Pending`
+remains once the M3 extdeps work completes. The C-checkpoint for
+"ungrounded concept" fires only when a concept cannot be walked
+through its static chain — which `Int.add` can, via
+`OrderedRing<Word64>`.
 
 ### Target realization efficiency
 
