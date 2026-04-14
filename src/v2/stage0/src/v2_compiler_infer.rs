@@ -2813,7 +2813,14 @@ pub fn classify_let_value(val: &Rc<Node>, ctx: &Rc<DescentContext>) -> Option<Rc
     match (*val.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
         let vname = expr_var_name_at(val.clone(), ctx.type_env.clone().source_indices.clone());
-v2_rt::map_get(&ctx.sub_value_vars.clone(), vname)
+// Check scope_locals first (carried facts), then sub_value_vars (legacy)
+match v2_rt::map_get(&ctx.scope_locals.clone(), vname.clone()) {
+    Some(binding) => match (*binding.provenance.clone()).clone() {
+        SubValueRelation::SubValueUnknown => v2_rt::map_get(&ctx.sub_value_vars.clone(), vname),
+        _ => Some(binding.provenance.clone()),
+    },
+    None => v2_rt::map_get(&ctx.sub_value_vars.clone(), vname),
+}
 },
     ExprData::ExprFieldAccess { .. } => {
         let base = field_access_base(val.clone());
@@ -2828,7 +2835,10 @@ let from_per_field = match v2_rt::map_get(&ctx.per_field_vars.clone(), bname.clo
 match from_per_field {
     Some(rel) => Some(rel.clone()),
     None => {
-                let type_name = match v2_rt::map_get(&ctx.param_names.clone(), bname.clone()) {
+                // Check scope_locals for base type, then param_names, then sub_value_vars
+                let type_name = match v2_rt::map_get(&ctx.scope_locals.clone(), bname.clone()) {
+    Some(binding) => authored_name_at(ctx.type_env.clone().source_indices.clone(), &binding.resolved.clone()),
+    None => match v2_rt::map_get(&ctx.param_names.clone(), bname.clone()) {
     Some(t) => t.clone(),
     None => match v2_rt::map_get(&ctx.sub_value_vars.clone(), bname.clone()) {
     Some(rel) => match (*rel.clone()).clone() {
@@ -2837,6 +2847,7 @@ match from_per_field {
     _ => "".to_string(),
 },
     None => "".to_string(),
+},
 },
 };
 if (type_name.clone().as_str() != "".to_string().as_str()) {

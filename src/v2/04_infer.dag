@@ -2678,7 +2678,15 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
   match val.expr_data {
     ExprVar { binding_kind: _ } =>
       let vname = expr_var_name_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      map_get(ctx.sub_value_vars, vname)
+      // Check scope_locals first (carried facts), then sub_value_vars (legacy)
+      match map_get(ctx.scope_locals, vname) {
+        Some { value: binding } =>
+          match binding.provenance {
+            SubValueUnknown => map_get(ctx.sub_value_vars, vname)
+            _ => Some { value: binding.provenance }
+          }
+        None => map_get(ctx.sub_value_vars, vname)
+      }
     ExprFieldAccess { summary: _ } =>
       let base = field_access_base(texpr: val)
       let field = field_access_field_at(texpr: val, source_indices: ctx.type_env.source_indices)
@@ -2693,18 +2701,22 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
           match from_per_field {
             Some { value: rel } => Some { value: rel }
             None =>
-              // Fall through to inductive field lookup
-              let type_name = match map_get(ctx.param_names, bname) {
-                Some { value: t } => t
+              // Check scope_locals for base type, then param_names, then sub_value_vars
+              let type_name = match map_get(ctx.scope_locals, bname) {
+                Some { value: binding } => authored_name_at(source_indices: ctx.type_env.source_indices, node: binding.resolved)
                 None =>
-                  match map_get(ctx.sub_value_vars, bname) {
-                    Some { value: rel } =>
-                      match rel {
-                        StrictSubValue { field: f, factor: _ } => f.element_type
-                        IteratedSubValue { field: f } => f.element_type
-                        _ => ""
+                  match map_get(ctx.param_names, bname) {
+                    Some { value: t } => t
+                    None =>
+                      match map_get(ctx.sub_value_vars, bname) {
+                        Some { value: rel } =>
+                          match rel {
+                            StrictSubValue { field: f, factor: _ } => f.element_type
+                            IteratedSubValue { field: f } => f.element_type
+                            _ => ""
+                          }
+                        None => ""
                       }
-                    None => ""
                   }
               }
               if type_name != "" {
