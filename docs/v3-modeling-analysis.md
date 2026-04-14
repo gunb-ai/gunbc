@@ -684,8 +684,9 @@ No dependency cycles. All layers import from std/.
 
 **Reusable from v2 (proven, no rework needed):**
 - Token { text, span, shape } — payload-insensitive shape + text
-- TokenShape — reusable concept, but restructured from 35 flat
-  variants to ~12 via dimensional dissolution (see coproduct audit)
+- TokenShape — temporary carry-forward for bootstrap continuity.
+  Subject to structural decompression (35 → ~9) before v3
+  canonizes it. See coproduct audit.
 - SourceRef { file, text, source_chars } — pre-decomposed code points
 - NewlineIndex — O(log n) byte-offset → line:col translation
 - String interpolation multi-token model (StrBegin/StrMid/StrEnd)
