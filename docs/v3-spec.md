@@ -100,10 +100,22 @@ type TransformRule =
   | ListBuild
   | StringBuild
 
-    // define (a deferred transform — lambda / function body)
+    // define (a deferred transform — lambda / function body / callback)
     // A lambda is sugar: x => x + y desugars to a Define where y is
     // an explicit input edge, same as any other dependency in the DAG.
     // No special capture mechanism — the dependency is just visible.
+    //
+    // CALLBACK RULE: a Define is just code. WHO CALLS IT determines
+    // the execution context. When a Define has an edge into a Loop
+    // (e.g., passed as the body of map/fold), the lenses read the
+    // Loop's bound for the Define's captures:
+    //   - Ownership: captured values have fan-out = Loop's bound (N),
+    //     not 1. They're used N times, so borrow or clone, not move.
+    //   - Termination: self-calls inside the Define are bounded by
+    //     the Loop, not the enclosing function's recursion.
+    // This isn't a new behavior. It's the lens following the edge
+    // from the Define to its consumer and applying the consumer's
+    // context. No scheduler, no interrupt model, no async.
   | Define { params: List<ParamPort>, body: NodeRef }
 
 // ---------------------------------------------------------------------------
