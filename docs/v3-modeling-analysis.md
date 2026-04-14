@@ -379,38 +379,193 @@ From 14-variant enum → algebraic structure + form (intro/elim/op).
 The compiler reads std/ declarations to know what to do. No enum
 to maintain. No match arms to add when a new structure appears.
 
-### Compiler gets a lib/:
+### Compiler lives under src/v3/:
 Organized by layer. Each layer imports from std/ but not from other
 layers. Prevents the contamination where parse types leak into emit.
+
+### BinOp/UnaryOp dissolve into algebra:
+`+` is syntax (the parser sees a token). The semantic operation is
+"Ring addition" — determined by the operand type's algebra profile.
+std/syntax.dag keeps OperatorSpec (token → binding power → algebra
+field mapping). The compiler IR references the algebra operation,
+not a BinOp enum. The parser resolves syntax to algebra at
+construction time.
+
+---
+
+## Compiler Layer Breakdown (src/v3/)
+
+Each layer has its own types. No layer imports from another layer.
+All layers import from std/. This prevents contamination.
+
+### tokenize — source text → tokens
+
+**Owns:** TokenizerState, ScanResult
+
+**Imports from std/:**
+- SourceSpan (types.dag) — byte offsets for source locations
+- LiteralValue (syntax.dag) — classified literal data
+- OperatorSpec, SyntaxSpec (syntax.dag) — operator/keyword tables
+
+**Reusable from v2 (proven, no rework needed):**
+- Token { text, span, shape } — payload-insensitive shape + text
+- TokenShape — flat enum of structural classifiers (35 variants)
+- SourceRef { file, text, source_chars } — pre-decomposed code points
+- NewlineIndex — O(log n) byte-offset → line:col translation
+- String interpolation multi-token model (StrBegin/StrMid/StrEnd)
+- Keyword open-set via SyntaxSpec map lookup
+
+**Unicode handling (solved in v2):**
+The tokenizer pre-decomposes UTF-8 to a List<Int> of code points
+at the I/O boundary (once, O(n)). All internal scanning uses O(1)
+list indexing on code points. This eliminated O(n^2) behavior on
+non-ASCII input that caused OOM on large files. The pattern is:
+compute encoding facts once at boundary, never re-derive.
+
+Character positions (for scanning) are code point indices.
+SourceSpan offsets are byte positions (for source text slicing).
+Conversion happens at tokenize() entry. No mixing.
+
+### parse — tokens → DAG with L1 behaviors
+
+**Owns:** ParseContext, ParseResult, and per-construct result types
+
+**Imports from std/:**
+- L1 behavior types (Value, Transform, Branch, Loop, Bind)
+- Port — typed data flow edges
+- Algebraic structure declarations — to determine intro/elim forms
+- SyntaxSpec — grammar tables
+
+**The parser's job in v3:**
+Read tokens, look up type declarations from std/ to determine
+algebraic structure, and emit L1 behavior nodes with Ports:
+- `Person { name: "alice" }` → Product introduction (constructors.dag)
+- `person.name` → Product elimination (constructors.dag)
+- `[1, 2, 3]` → FreeMonoid introduction (algebra.dag)
+- `items[0]` → FreeMonoid elimination (algebra.dag)
+- `x + y` → resolve `+` via OperatorSpec → algebra field → Ring operation
+- `x => x + 1` → Function space introduction
+- `f(x)` → Function space elimination
+- `if cond then a else b` → Coproduct elimination (Branch on Bool)
+
+No TransformRule enum. The parser reads std/ declarations.
+
+**v2 parser rework needed:**
+v2's parser uses integer position into a token list. The structural
+parser design (parser-design.md) proposes list consumption instead,
+which gives the complexity analyzer structural descent evidence.
+v3 should start with list consumption from day one.
+
+### resolve — names → declarations
+
+**Owns:** ModuleGraph, ResolvedModule, ResolvedImport
+
+**Imports from std/:**
+- Module/import vocabulary
+- Type declarations (to build the type environment)
+
+**Job:** map string names to actual type/function declarations.
+Wire imports. Detect cycles. Build the type environment that
+parse and infer read from.
+
+### infer — propagate types through ports
+
+**Owns:** InferScope, TypeBinding, inference result types
+
+**Imports from std/:**
+- Algebraic structure profiles — to determine valid operations
+- Coercion vocabulary — to validate casts (see below)
+- Type constructors — to check structural compatibility
+
+**Job:** every Port gets a value_type. The DAG already has the
+structure from parse; inference fills in the types and validates
+that every port connection is type-compatible.
+
+### emit — DAG + LanguageSpec → target source code
+
+**Owns:** EmitResult, rendering state, per-target formatting
+
+**Imports from std/:**
+- LanguageSpec (languages.dag) — syntax templates per target
+- Coercion data (coercion.dag) — type rendering rules
+- AlgebraFieldTemplate (algebra.dag) — operation rendering
+
+**Job:** read behaviors, read lens results, render target code.
+Pure translation — no semantic decisions. The emitter asks:
+"how does this target language spell Product introduction?"
+and reads the answer from LanguageSpec data.
+
+---
+
+## Intro/Elim and Coercion
+
+Intro/elim forms and coercion are related but distinct:
+
+**Intro/elim** = structural operations on a type's algebraic form.
+"How do I build a List?" (FreeMonoid introduction.)
+"How do I access a struct field?" (Product elimination.)
+
+**Coercion** = mapping between types, especially across the
+.dag → target language boundary.
+"How does .dag Int render in Rust?" (TypeCheckpoint: i64.)
+"How does .dag List<T> render in Rust?" (InhabitantDecl: Vec<{0}>.)
+
+**The connection:** when the emitter sees a Product introduction,
+it needs to know how to render the constructed type in the target.
+The intro/elim form tells it WHAT operation. The coercion system
+tells it HOW to render the types involved.
+
+### v2's coercion system (already data-driven)
+
+v2 uses a two-stage data lookup:
+
+1. **TypeCheckpoint (fast path):** direct .dag name → target type.
+   `Int → i64`, `String → String`, `Bool → bool`.
+   Includes metadata: is_copy, literal_suffix, default_expr.
+   Lives in extdeps/languages/*/types.dag — per-target instances
+   of schema defined in std/coercion.dag.
+
+2. **InhabitantDecl (algebra fallback):** when no checkpoint matches,
+   resolve via the type's algebra profile.
+   `List<T>` inhabits FreeMonoid → renders as `Vec<{0}>` in Rust.
+   `Set<A>` inhabits BooleanAlgebra → renders as `BTreeSet<{0}>`.
+   Includes identity_expr, import_path, arity.
+
+3. **Cast validation:** two levels.
+   - .dag level: dag_cast_rules in std/coercion.dag (numeric types only)
+   - Per-target: CastSyntax.cast_rules (Rust strict, Python/Go fail-open)
+
+**What v3 gets for free from the DAG:**
+Since every transform traces to an algebraic structure, and the
+coercion system maps algebras to target types, the rendering chain
+is automatic:
+
+```
+Parser sees [1, 2, 3]
+  → FreeMonoid introduction (from algebra.dag)
+  → element type Int (from inference)
+  → FreeMonoid<Int> (structural)
+  → InhabitantDecl: Vec<{0}> with {0}=i64 (from coercion)
+  → Rust: vec![1_i64, 2_i64, 3_i64] (from LanguageSpec)
+```
+
+No special "ListBuild" emit path. The algebra + coercion data
+drives the entire chain.
 
 ---
 
 ## Open Questions
 
-1. **How does the compiler look up intro/elim forms at compile time?**
-   The std/ declarations are .dag data. The compiler reads them at
-   startup and builds an index: given a type's algebra profile, what
-   are the valid intro/elim/operation forms? This index replaces the
-   TransformRule enum.
+1. **String interpolation:** builds a String from heterogeneous parts.
+   Is this FreeMonoid introduction where each part is coerced to
+   the FreeMonoid's element type? Or a distinct operation?
 
-2. **What about operations that don't trace to a single algebraic structure?**
-   Example: string interpolation builds a String but uses values from
-   multiple types. Is this a FreeMonoid introduction with heterogeneous
-   inputs (each coerced to Char via the algebra)? Or something else?
-
-3. **How much of this is v3 vs v2-compatible?**
+2. **How much of this is v3 vs v2-compatible?**
    The std/ declarations (intro/elim on structures, function space,
    port) can be added now without changing v2. The compiler reading
    them is v3 work. The std/ audit (moving compiler types out) can
    happen incrementally.
 
-4. **Where exactly does compiler lib/ live?**
-   Options: src/v3/lib/, dsl/compiler/, or organized within src/v3/
-   by stage. Need to decide before moving types.
-
-5. **Do BinOp/UnaryOp survive as std/ types or dissolve into algebra?**
-   Currently in std/syntax.dag. BinOp { Add, Sub, Mul, ... } traces
-   to Ring operations. But BinOp is also a SYNTAX concept (the parser
-   sees `+` and produces a BinOp). Should syntax.dag keep BinOp as
-   surface syntax, with the compiler resolving it to the algebra's
-   operation at construction time?
+3. **Parser state model:** v2 uses integer position. v3 should use
+   list consumption for structural descent evidence. Design the
+   ParseState type before implementing.
