@@ -190,9 +190,9 @@ Bootstrap D ├─ Lane B: Emission ──────────────�
 | Gate | Command | Status |
 |------|---------|--------|
 | Lint | `cargo clippy --workspace -- -D warnings` | GREEN |
-| Tests | `cargo test -p v2-compiler-tests` | GREEN (394 pass) |
+| Tests | `cargo test -p v2-compiler-tests` | GREEN (415 pass) |
 | Full DSL | `full_dsl_compiles -- --ignored` | GREEN |
-| Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 424 (honest, non-blocking) |
+| Diagnostic ratchet | `strict_compile_diagnostic_count -- --ignored` | 357 (honest, non-blocking) |
 | L1 gate | `scripts/l1-ratchet.sh --check` | GREEN (0, hard gate) |
 | Stage0 freshness | `scripts/check-stage0-freshness.sh` | GREEN (blocking) |
 

@@ -1416,7 +1416,9 @@ activations cover all values of the scrutinee type?"
 #### CompilerDiagnostic — 5-field record with residual coproducts
 
 ```
-type Severity = Error | Warning | Info
+// No Severity coproduct. Per INVARIANTS.md (C-8, fixed 2026-04-01):
+// "There is no warning severity." All diagnostics are errors.
+// A condition is either wrong (diagnostic emitted) or not (no diagnostic).
 
 type Category = Module | Type | Pattern | Parse | Analysis | Internal
 
@@ -1440,7 +1442,6 @@ type Detail =
 
 type Diagnostic {
   span: SourceSpan
-  severity: Severity
   category: Category
   subject: Subject
   detail: Detail
@@ -1743,7 +1744,7 @@ Every THESIS claim, cross-referenced. No silent drops.
 | 8 | Circular dependencies | DONE | v2, inherits |
 | 9 | Cross-target drift | DONE | v2, inherits |
 | 10 | Diamond dependency divergence | DONE | v2, inherits |
-| 11 | Non-termination | DONE (0 CX violations) | v2 ratchet, v3 by construction |
+| 11 | Non-termination | DONE (CX gate 0; DIAG_RATCHET=357 is parser diagnostics, not termination) | v2 ratchet, v3 by construction |
 | 12 | Non-idempotent workflow | NOT STARTED | v3 M2+ (wire effect algebra) |
 | 13 | Record literal completeness | PARTIAL | v3 M1 (needs audit of current coverage) |
 | 14 | Coercion completeness | PARTIAL | v3 M1 (single emitter reads LanguageSpec) |
