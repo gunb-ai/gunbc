@@ -26,6 +26,62 @@ If a type traces to a math concept or a universal computing concept,
 it belongs in std/. If it's about how this specific compiler works,
 it belongs in src/v3/.
 
+## Coproduct Dissolution Principle
+
+A coproduct is a symptom. Before accepting it, ask: what substrate
+is missing that would let these cases live in separate places? If
+you can identify the missing substrate, add it and the coproduct
+dissolves. If you genuinely can't — the cases share one structural
+home and only differ in label — then the coproduct is real, but it
+should be the minimum possible size.
+
+This principle works because proper modeling is cheap in .dag.
+The code is generated from the model — you don't maintain it.
+In hand-written codebases, "add the missing substrate" is expensive,
+so teams live with coproducts as compression artifacts. Here, the
+right answer is always "add the structure." The economic argument
+sits next to the technical one.
+
+### Three dissolution patterns
+
+**1. Fact placement** — "one field, multiple consumers, different
+needs." The coproduct exists because the substrate didn't give
+each concern a separate home. Add the substrate (ports, tables,
+algorithm-internal state) and the coproduct dissolves.
+
+Example: InferredNode (Resolved | CompilerError | TypeVariable)
+→ Port.value_type carries the type, diagnostic table carries
+errors, unification is algorithm-internal. Three questions, three
+places, no coproduct.
+
+Test: if a coproduct's variants serve different consumers or answer
+different questions, it's a missed fact placement.
+
+**2. Variant-is-data** — "one consumer, one question, but variants
+are really data on a single structural shape." The variants differ
+in WHAT (which operator, which keyword) but not in HOW (same parse
+dispatch, same emission pattern). Compress to one structural shape
+with the variation as data in a table.
+
+Example: TransformRule 14 variants → algebraic structure + form.
+Keywords → ShKeyword with identity in Token.text.
+
+Test: if consumers handle every variant identically except for a
+data lookup, the variant is data, not structure.
+
+**3. Algebraic-form** — "the variants trace to introduction or
+elimination forms of known algebraic structures." The structures'
+std/ declarations generate the dispatch. This is variant-is-data
+specialized to algebra.
+
+Example: Construct = Product intro, FieldAccess = Product elim,
+ListBuild = FreeMonoid intro. All trace to std/algebra.dag.
+
+Each dissolution needs the right pattern. Running the wrong pattern
+gives a worse result — e.g., applying fact placement to
+TransformRule would scatter transform rules across the DAG and
+lose their shared machinery.
+
 ---
 
 ## V3 Spec Types — Where They Belong
@@ -274,15 +330,19 @@ are typed by the algebraic structure, not by a flat enum:
 ### Why this dissolves matching code
 
 When std/ declares a new algebraic structure with its intro/elim
-forms, the compiler automatically knows how to handle transforms
-involving that structure. The matching code is GENERATED from the
+forms, the compiler can handle transforms involving that structure
+by reading the declaration. The matching code is generated from the
 algebraic structure declarations, not hand-written per variant.
 
 **v2 disease:** add ListBuild → edit 8-11 files, add ~30 match arms.
 
-**v3 target:** add a new algebraic structure to std/ → the compiler
-reads the declaration and generates the matching code. The compiler
-itself has zero edits for the new structure.
+**v3 target:** add a new transform WITHIN an existing algebraic
+structure → zero consumer edits (validated by Experiment 3). Adding
+an entirely new algebraic structure is a stronger claim — it requires
+the structure to map to one of the three iteration primitives (fold,
+descend, repeat) and to have intro/elim forms that the emitter can
+render via LanguageSpec. This is the expected path but is not yet
+validated by experiment.
 
 Note: the 3-way intro/elim/op distinction IS still a small enum.
 It's probably irreducible — these are the three fundamental things
@@ -434,6 +494,58 @@ emit layer READS the results. The lens algebra (how costs compose,
 how effects join) lives in std/. The specific computation lives
 in src/v3/infer.
 
+### Diagnostic table invariant
+
+Port.value_type is `Option<TypeShape>`. None means "inference did
+not produce a type for this port." The invariant:
+
+> **If Port.value_type is None, the diagnostic table MUST have an
+> entry for the node that produced this port.**
+
+Emit never reads value_type without this invariant guaranteed
+upstream. There is no "check the table and see" — the invariant
+is structural. If value_type is Some, the type is trustworthy.
+If it's None, the diagnostic explains why. No third state.
+
+This prevents the "two sources of truth" problem: value_type and
+the diagnostic table are not independent — they're linked by this
+invariant. Upstream (infer) enforces it. Downstream (emit) relies
+on it.
+
+TypeVariable is algorithm-internal scratch state. It never appears
+on any Port or in the diagnostic table. If unification fails,
+the algorithm writes a diagnostic and leaves value_type as None.
+Debugging unification failures uses the diagnostic table, not IR
+inspection — different affordance than v2, but the diagnostic
+message should include the unification state that failed.
+
+### Parse vs resolve boundary
+
+The doc says parse emits L1 behaviors by looking up type
+declarations, and resolve builds the type environment. This is
+NOT a simple left-to-right pipeline. Concretely:
+
+1. **Parse (surface):** tokens → surface AST. No type knowledge.
+   Produces structural nodes (expressions, declarations, patterns).
+
+2. **Resolve:** surface AST → resolved AST. Maps names to
+   declarations, builds type environment, wires imports. This is
+   where the compiler learns WHAT types exist and what algebraic
+   structures they inhabit.
+
+3. **Lower (part of resolve or a sub-step):** resolved AST → DAG
+   with L1 behaviors. NOW the compiler knows the algebraic
+   structures and can emit intro/elim forms. `[1,2,3]` becomes
+   FreeMonoid introduction because resolve established that List
+   inhabits FreeMonoid.
+
+4. **Infer:** DAG → typed DAG. Propagates types through ports.
+
+The key: parse does NOT look up algebraic structures. Resolve does.
+Parse produces surface structure; resolve lowers to L1 behaviors
+using the type environment it built. This avoids the question of
+"who owns type knowledge" — resolve owns it, exclusively.
+
 ---
 
 ## Compiler Layer Breakdown (src/v3/)
@@ -470,29 +582,17 @@ Character positions (for scanning) are code point indices.
 SourceSpan offsets are byte positions (for source text slicing).
 Conversion happens at tokenize() entry. No mixing.
 
-### parse — tokens → DAG with L1 behaviors
+### parse — tokens → surface AST
 
 **Owns:** ParseContext, ParseResult, and per-construct result types
 
 **Imports from std/:**
-- L1 behavior types (Value, Transform, Branch, Loop, Bind)
-- Port — typed data flow edges
-- Algebraic structure declarations — to determine intro/elim forms
-- SyntaxSpec — grammar tables
+- SyntaxSpec — grammar tables, operator specs
 
 **The parser's job in v3:**
-Read tokens, look up type declarations from std/ to determine
-algebraic structure, and emit L1 behavior nodes with Ports:
-- `Person { name: "alice" }` → Product introduction (constructors.dag)
-- `person.name` → Product elimination (constructors.dag)
-- `[1, 2, 3]` → FreeMonoid introduction (algebra.dag)
-- `items[0]` → FreeMonoid elimination (algebra.dag)
-- `x + y` → resolve `+` via OperatorSpec → algebra field → Ring operation
-- `x => x + 1` → Function space introduction
-- `f(x)` → Function space elimination
-- `if cond then a else b` → Coproduct elimination (Branch on Bool)
-
-No TransformRule enum. The parser reads std/ declarations.
+Tokens → surface AST. No type knowledge. Produces structural nodes
+(expressions, declarations, patterns). The parser does NOT look up
+algebraic structures — that's resolve's job.
 
 **v2 parser rework needed:**
 v2's parser uses integer position into a token list. The structural
@@ -500,17 +600,35 @@ parser design (parser-design.md) proposes list consumption instead,
 which gives the complexity analyzer structural descent evidence.
 v3 should start with list consumption from day one.
 
-### resolve — names → declarations
+### resolve — names → declarations → L1 lowering
 
-**Owns:** ModuleGraph, ResolvedModule, ResolvedImport
+**Owns:** ModuleGraph, ResolvedModule, ResolvedImport, type environment
 
 **Imports from std/:**
+- L1 behavior types (Value, Transform, Branch, Loop, Bind)
+- Port — typed data flow edges
+- Algebraic structure declarations — to determine intro/elim forms
 - Module/import vocabulary
-- Type declarations (to build the type environment)
 
-**Job:** map string names to actual type/function declarations.
-Wire imports. Detect cycles. Build the type environment that
-parse and infer read from.
+**The resolve layer's job in v3:**
+1. Map names to declarations, wire imports, detect cycles
+2. Build the type environment (learn what types exist, what
+   algebraic structures they inhabit)
+3. Lower surface AST → DAG with L1 behaviors, using the type
+   environment to determine algebraic forms:
+   - `Person { name: "alice" }` → Product introduction
+   - `person.name` → Product elimination
+   - `[1, 2, 3]` → FreeMonoid introduction
+   - `items[0]` → FreeMonoid elimination
+   - `x + y` → resolve `+` via OperatorSpec → Ring operation
+   - `x => x + 1` → Function space introduction
+   - `f(x)` → Function space elimination
+   - `if cond then a else b` → Branch on Bool
+
+No TransformRule enum. Resolve reads std/ declarations.
+
+Resolve owns type knowledge exclusively. Parse doesn't know types.
+Infer doesn't discover types — it propagates them through ports.
 
 ### infer — propagate types through ports
 
