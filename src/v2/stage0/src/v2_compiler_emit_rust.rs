@@ -2345,7 +2345,7 @@ match call_args.last().cloned() {
     Some(a) => match (*arg_value(&a).expr_data.clone()).clone() {
     ExprData::ExprLambda => {
                     let lps = lambda_param_names_at(arg_value(&a), scope.type_env.clone().source_indices.clone());
-lambda_scope_from_children(scope.clone(), lps, Rc::new(arg_value(&a).children.iter().cloned().skip(1 as usize).collect::<Vec<_>>()))
+lambda_scope_from_children(scope.clone(), lps, Rc::new(arg_value(&a).children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()))
 },
     _ => scope.clone(),
 },
@@ -2606,17 +2606,14 @@ if (elem_is_error || elem_is_type_var) {
 }
 
 pub fn lambda_scope_from_children(scope: Rc<InferScope>, params: Rc<Vec<String>>, param_nodes: Rc<Vec<Rc<Node>>>) -> Rc<InferScope> {
-    Rc::new(params.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(scope, |acc: Rc<InferScope>, pair: (i64, String)| {
+    Rc::new(params.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(scope.clone(), |acc: Rc<InferScope>, pair: (i64, String)| {
         let idx = pair.0.clone();
 let param_name = pair.1.clone();
-let param_type = match param_nodes.get(idx.clone() as usize).cloned() {
-    Some(pn) => match pn.inferred.clone() {
-        Some(inf) => match (*inf).clone() {
-            InferredNode::Resolved { node: resolved_type, .. } => resolved_type.clone(),
-            _ => type_variable_node("lambda_param".to_string()),
-        },
-        None => type_variable_node("lambda_param".to_string()),
-    },
+let param_type = match param_nodes.clone().get(idx.clone() as usize).cloned() {
+    Some(pn) => match pn.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: resolved_type, .. }) => resolved_type.clone(),
+    _ => type_variable_node("lambda_param".to_string()),
+},
     None => type_variable_node("lambda_param".to_string()),
 };
 extend_scope(&acc, &param_name, param_type.clone(), Rc::new(SubValueRelation::SubValueUnknown))
@@ -2627,30 +2624,27 @@ pub fn lambda_param_type_strs(params: Rc<Vec<String>>, param_nodes: Rc<Vec<Rc<No
     Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(params.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { __result.push({
         let idx = pair.0.clone();
 let param_name = pair.1.clone();
-let inferred_type = match param_nodes.get(idx.clone() as usize).cloned() {
-    Some(pn) => match pn.inferred.clone() {
-        Some(inf) => match (*inf).clone() {
-            InferredNode::Resolved { node: param_type, .. } => {
-                let param_is_error = if (param_type.inferred.clone() != None) {
-                    is_compiler_error(param_type.inferred.clone().clone().unwrap())
-                } else {
-                    false
-                };
+let inferred_type = match param_nodes.clone().get(idx.clone() as usize).cloned() {
+    Some(pn) => match pn.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: param_type, .. }) => {
+            let param_is_error = if (param_type.inferred.clone() != None) {
+                is_compiler_error(param_type.inferred.clone().clone().unwrap())
+            } else {
+                false
+            };
 let param_is_type_var = if (param_type.inferred.clone() != None) {
-                    is_type_variable(param_type.inferred.clone().clone().unwrap())
-                } else {
-                    false
-                };
+                is_type_variable(param_type.inferred.clone().clone().unwrap())
+            } else {
+                false
+            };
 if (param_is_type_var.clone() || param_is_error.clone()) {
-                    None
-                } else {
-                    Some(render_rust_type(param_type.clone(), shared_types.clone(), source_indices.clone()))
-                }
-            },
-            _ => None,
-        },
-        None => None,
-    },
+                None
+            } else {
+                Some(render_rust_type(param_type.clone(), shared_types.clone(), source_indices.clone()))
+            }
+},
+    _ => None,
+},
     None => None,
 };
 let fallback_type = match fallback_types.clone().get(idx.clone() as usize).cloned() {
@@ -2671,10 +2665,10 @@ pub fn emit_typed_collection_lambda(lambda_expr: &Rc<Node>, elem_type_str: Strin
     ExprData::ExprLambda => {
         let ps = lambda_param_names_at(lambda_expr.clone(), scope.type_env.clone().source_indices.clone());
 let bd = lambda_body(lambda_expr.clone());
-let pn = Rc::new(lambda_expr.children.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let pn = Rc::new(lambda_expr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 let param_strs = lambda_param_type_strs(ps.clone(), pn.clone(), Rc::new(vec![elem_type_str]), shared_types.clone(), scope.type_env.clone().source_indices.clone());
 let params_str = param_strs.join(&", ".to_string());
-let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), pn);
+let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), pn.clone());
 let body_str = emit_typed_expr(bd, registry, &lambda_scope, depth, shared_types.clone(), emit_info, 1024);
 v2_rt::concat(v2_rt::concat(v2_rt::concat("|".to_string(), params_str), "| ".to_string()), body_str)
 },
@@ -2687,7 +2681,7 @@ pub fn emit_typed_fold_lambda(lambda_expr: &Rc<Node>, acc_type_str: &String, ele
     ExprData::ExprLambda => {
         let ps = lambda_param_names_at(lambda_expr.clone(), scope.type_env.clone().source_indices.clone());
 let bd = lambda_body(lambda_expr.clone());
-let pn = Rc::new(lambda_expr.children.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let pn = Rc::new(lambda_expr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 let safe_acc_type = if (((acc_type_str.clone().as_str() == "Rc<Vec<()>>".to_string().as_str()) || (acc_type_str.clone().as_str() == "Vec<()>".to_string().as_str())) || (acc_type_str.clone().as_str() == "Option<()>".to_string().as_str())) {
             "_".to_string()
         } else {
@@ -2920,7 +2914,7 @@ let dag_name = match ps.clone().first().cloned() {
     None => "__x".to_string(),
 };
 let p = emit_ident(dag_name, RenderTarget::Rust);
-let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), Rc::new(arg_value(&a).children.iter().cloned().skip(1 as usize).collect::<Vec<_>>()));
+let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), Rc::new(arg_value(&a).children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()));
 let body_str = emit_typed_expr(bd, registry.clone(), &lambda_scope, depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str, ".map(|".to_string()), p), "| ".to_string()), body_str), ")".to_string())
 },
@@ -2945,7 +2939,7 @@ let dag_name = match ps.clone().first().cloned() {
     None => "__x".to_string(),
 };
 let p = emit_ident(dag_name, RenderTarget::Rust);
-let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), Rc::new(arg_value(&a).children.iter().cloned().skip(1 as usize).collect::<Vec<_>>()));
+let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), Rc::new(arg_value(&a).children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()));
 let body_str = emit_typed_expr(bd, registry.clone(), &lambda_scope, depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc::new({ let mut __result = Vec::new(); for ".to_string(), p), " in ".to_string()), iter_str), " { __result.push(".to_string()), body_str), "); } __result })".to_string())
 },
@@ -2977,7 +2971,7 @@ let dag_name = match ps.clone().first().cloned() {
     None => "__x".to_string(),
 };
 let p = emit_ident(dag_name, RenderTarget::Rust);
-let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), Rc::new(arg_value(&a).children.iter().cloned().skip(1 as usize).collect::<Vec<_>>()));
+let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), Rc::new(arg_value(&a).children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()));
 let body_str = emit_typed_expr(bd, registry.clone(), &lambda_scope, depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
 let inner_iter = apply_type_template1(sharing.iter_owned.clone(), v2_rt::concat(v2_rt::concat("(*".to_string(), body_str.clone()), ")".to_string()));
 let bindings = v2_rt::rc_map_insert(v2_rt::rc_map_insert(v2_rt::rc_map_insert(seed_bindings("param".to_string(), p), "body".to_string(), body_str.clone()), "iter".to_string(), iter_str), "inner_iter".to_string(), inner_iter);

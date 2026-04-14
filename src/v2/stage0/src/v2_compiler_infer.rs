@@ -1988,22 +1988,39 @@ let body_scope = Rc::new(InferScope {
 let body_result = infer_expr(&lam_body, &body_scope, &body_expected);
 let body_typed = body_result.typed.clone();
 let body_diags = body_result.diagnostics.clone();
-let typed_param_nodes: Rc<Vec<Rc<Node>>> = Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(lam_param_nodes.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() {
-    let pn = pair.1.clone();
-    let param_name = match lam_params.get(pair.0.clone() as usize).cloned() { Some(n) => n, None => "".to_string() };
-    let param_type: Option<Rc<InferredNode>> = match v2_rt::map_get(&lam_scope.locals.clone(), param_name.clone()) {
-        Some(binding) => Some(Rc::new(InferredNode::Resolved { node: binding.resolved.clone() })),
-        None => None,
-    };
-    __result.push(Rc::new(Node {
-        name: pn.name.clone(), ident: pn.ident.clone(), span: pn.span.clone(), ident_span: pn.ident_span.clone(), children: pn.children.clone(),
-        connective: pn.connective.clone(), params: pn.params.clone(), inferred: param_type,
-        return_cardinality: pn.return_cardinality.clone(), uses: pn.uses.clone(), body: pn.body.clone(),
-        transport: pn.transport.clone(), properties: pn.properties.clone(), type_annotation: pn.type_annotation.clone(),
-        is_self_recursive: pn.is_self_recursive.clone(), has_non_tail_self_call: pn.has_non_tail_self_call.clone(),
-        match_pattern: pn.match_pattern.clone(), expr_data: pn.expr_data.clone(),
-    }));
-} __result });
+let typed_param_nodes = Rc::new({ let mut __result = Vec::new(); for pair in Rc::new(lam_param_nodes.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { __result.push({
+                let pn = pair.1.clone();
+let param_name = match lam_params.clone().get(pair.0.clone() as usize).cloned() {
+    Some(n) => n.clone(),
+    None => "".to_string(),
+};
+let param_type = match v2_rt::map_get(&lam_scope.locals.clone(), param_name.clone()) {
+    Some(binding) => Some(Rc::new(InferredNode::Resolved {
+    node: binding.resolved.clone(),
+})),
+    None => None,
+};
+Rc::new(Node {
+    name: pn.name.clone(),
+    ident: pn.ident.clone(),
+    span: pn.span.clone(),
+    ident_span: pn.ident_span.clone(),
+    children: pn.children.clone(),
+    connective: pn.connective.clone(),
+    params: pn.params.clone(),
+    inferred: param_type.clone(),
+    return_cardinality: pn.return_cardinality.clone(),
+    uses: pn.uses.clone(),
+    body: pn.body.clone(),
+    transport: pn.transport.clone(),
+    properties: pn.properties.clone(),
+    type_annotation: pn.type_annotation.clone(),
+    is_self_recursive: pn.is_self_recursive.clone(),
+    has_non_tail_self_call: pn.has_non_tail_self_call.clone(),
+    match_pattern: pn.match_pattern.clone(),
+    expr_data: pn.expr_data.clone(),
+})
+}); } __result });
 let lam_texpr = make_expr_node(Rc::new(ExprData::ExprLambda), v2_rt::concat(Rc::new(vec![body_typed.clone()]), typed_param_nodes), body_typed.inferred.clone(), span.clone());
 Rc::new(InferResult {
     typed: lam_texpr,
@@ -2813,13 +2830,12 @@ pub fn classify_let_value(val: &Rc<Node>, ctx: &Rc<DescentContext>) -> Option<Rc
     match (*val.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => {
         let vname = expr_var_name_at(val.clone(), ctx.type_env.clone().source_indices.clone());
-// Check scope_locals first (carried facts), then sub_value_vars (legacy)
 match v2_rt::map_get(&ctx.scope_locals.clone(), vname.clone()) {
     Some(binding) => match (*binding.provenance.clone()).clone() {
-        SubValueRelation::SubValueUnknown => v2_rt::map_get(&ctx.sub_value_vars.clone(), vname),
-        _ => Some(binding.provenance.clone()),
-    },
-    None => v2_rt::map_get(&ctx.sub_value_vars.clone(), vname),
+    SubValueRelation::SubValueUnknown => v2_rt::map_get(&ctx.sub_value_vars.clone(), vname.clone()),
+    _ => Some(binding.provenance.clone()),
+},
+    None => v2_rt::map_get(&ctx.sub_value_vars.clone(), vname.clone()),
 }
 },
     ExprData::ExprFieldAccess { .. } => {
@@ -2835,7 +2851,6 @@ let from_per_field = match v2_rt::map_get(&ctx.per_field_vars.clone(), bname.clo
 match from_per_field {
     Some(rel) => Some(rel.clone()),
     None => {
-                // Check scope_locals for base type, then param_names, then sub_value_vars
                 let type_name = match v2_rt::map_get(&ctx.scope_locals.clone(), bname.clone()) {
     Some(binding) => authored_name_at(ctx.type_env.clone().source_indices.clone(), &binding.resolved.clone()),
     None => match v2_rt::map_get(&ctx.param_names.clone(), bname.clone()) {
@@ -3807,7 +3822,11 @@ Rc::new(DescentContext {
     type_env: ctx.type_env.clone(),
     sub_value_vars: v2_rt::rc_map_insert(ctx.sub_value_vars.clone(), binding_name.clone(), rel.clone()),
     size_aliases: inner_size_aliases,
-    scope_locals: v2_rt::rc_map_insert(ctx.scope_locals.clone(), binding_name.clone(), Rc::new(TypeBinding { name: binding_name.clone(), resolved: resolved_type(val.clone()), provenance: rel.clone() })),
+    scope_locals: v2_rt::rc_map_insert(ctx.scope_locals.clone(), binding_name.clone(), Rc::new(TypeBinding {
+    name: binding_name.clone(),
+    resolved: resolved_type(val.clone()),
+    provenance: rel.clone(),
+})),
     func_sigs: ctx.func_sigs.clone(),
     per_field_vars: inner_per_field,
 })
@@ -3819,7 +3838,11 @@ Rc::new(DescentContext {
     type_env: ctx.type_env.clone(),
     sub_value_vars: ctx.sub_value_vars.clone(),
     size_aliases: inner_size_aliases,
-    scope_locals: v2_rt::rc_map_insert(ctx.scope_locals.clone(), binding_name.clone(), Rc::new(TypeBinding { name: binding_name.clone(), resolved: resolved_type(val.clone()), provenance: Rc::new(SubValueRelation::SubValueUnknown) })),
+    scope_locals: v2_rt::rc_map_insert(ctx.scope_locals.clone(), binding_name.clone(), Rc::new(TypeBinding {
+    name: binding_name.clone(),
+    resolved: resolved_type(val.clone()),
+    provenance: Rc::new(SubValueRelation::SubValueUnknown),
+})),
     func_sigs: ctx.func_sigs.clone(),
     per_field_vars: inner_per_field,
 }),
@@ -3884,7 +3907,11 @@ Rc::new(DescentContext {
     type_env: acc.ctx.clone().type_env.clone(),
     sub_value_vars: v2_rt::rc_map_insert(acc.ctx.clone().sub_value_vars.clone(), bname.clone(), rel.clone()),
     size_aliases: new_sa.clone(),
-    scope_locals: v2_rt::rc_map_insert(acc.ctx.clone().scope_locals.clone(), bname.clone(), Rc::new(TypeBinding { name: bname.clone(), resolved: resolved_type(val.clone()), provenance: rel.clone() })),
+    scope_locals: v2_rt::rc_map_insert(acc.ctx.clone().scope_locals.clone(), bname.clone(), Rc::new(TypeBinding {
+    name: bname.clone(),
+    resolved: resolved_type(val.clone()),
+    provenance: rel.clone(),
+})),
     func_sigs: acc.ctx.clone().func_sigs.clone(),
     per_field_vars: acc.ctx.clone().per_field_vars.clone(),
 })
@@ -3896,7 +3923,11 @@ Rc::new(DescentContext {
     type_env: acc.ctx.clone().type_env.clone(),
     sub_value_vars: acc.ctx.clone().sub_value_vars.clone(),
     size_aliases: new_sa.clone(),
-    scope_locals: v2_rt::rc_map_insert(acc.ctx.clone().scope_locals.clone(), bname.clone(), Rc::new(TypeBinding { name: bname.clone(), resolved: resolved_type(val.clone()), provenance: Rc::new(SubValueRelation::SubValueUnknown) })),
+    scope_locals: v2_rt::rc_map_insert(acc.ctx.clone().scope_locals.clone(), bname.clone(), Rc::new(TypeBinding {
+    name: bname.clone(),
+    resolved: resolved_type(val.clone()),
+    provenance: Rc::new(SubValueRelation::SubValueUnknown),
+})),
     func_sigs: acc.ctx.clone().func_sigs.clone(),
     per_field_vars: acc.ctx.clone().per_field_vars.clone(),
 }),
