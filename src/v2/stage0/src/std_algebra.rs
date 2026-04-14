@@ -321,6 +321,13 @@ pub fn ordered_ring_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     size_effect: None,
     cost_shape: None,
     callback_element_position: None,
+}), Rc::new(AlgebraFieldTemplate {
+    name: "clamp".to_string(),
+    param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::ReceiverSelf), Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+    return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
+    size_effect: None,
+    cost_shape: Some(CostShape::ShapeConstant),
+    callback_element_position: None,
 })])
 }
 

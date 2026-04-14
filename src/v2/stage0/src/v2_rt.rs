@@ -58,6 +58,10 @@ pub fn str_eq(a: String, b: String) -> bool { a == b }
 
 pub fn to_string(value: i64) -> String { value.to_string() }
 
+pub fn clamp(val: i64, min_val: i64, max_val: i64) -> i64 {
+    val.clamp(min_val, max_val)
+}
+
 pub fn lookup<V: Clone>(table: &HashMap<String, V>, key: String) -> Option<V> {
     table.get(&key).cloned()
 }
