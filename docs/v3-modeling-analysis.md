@@ -1466,14 +1466,14 @@ uses should decrease as structured variants are added.
 
 Consumer wins:
 - `diagnostic_to_span(d)` → `d.span` (field read, was 16-way match)
-- `is_error_diagnostic(d)` → `d.severity == Error` (was hand-maintained list)
+- `is_error_diagnostic(d)` → always true (all diagnostics are errors per C-8; was hand-maintained list)
 - `diagnostic_to_message(d)` → formatted by category + detail kind,
   driven by a template table. New diagnostic = new row, not new branch.
 
 v2 → v3 migration (sample):
 ```
 v2: TypeMismatch { expected, got, span }
-v3: Diagnostic { span, severity: Error, category: Type,
+v3: Diagnostic { span, category: Type,
      subject: OfType { type_ref: expected },
      detail: Comparison { expected, got },
      producing_node: <node_id> }
@@ -1589,8 +1589,11 @@ the v3 direction. Status matters because the doc builds on them:
 
 The classify_let_value reconstruction path has been deleted for
 ExprVar and ExprFieldAccess cases. scope_locals (carried facts)
-covers these paths. 415 tests pass, CX ratchet 0 diagnostics
-(stable), no compensating skip annotations.
+covers inference-time let bindings. Match-arm and variant-provenance
+bindings still flow only through sub_value_vars — extending
+scope_locals to those contexts is the next step, not restoring
+the fallback. 415 tests pass, CX ratchet 0 diagnostics (stable),
+no compensating skip annotations.
 
 **Experiment 2 completion proves the physics-and-lens architecture
 holds when tested.** One reconstruction path has been deleted with
@@ -1720,9 +1723,10 @@ v2's 415 tests serve as the oracle: every test that passes in v2
 must produce equivalent output in v3. The test corpus transfers
 even though the IR doesn't.
 
-**BackendCapability: DELETED.** Dead code in v2 — declared but
-never pattern-matched, never consumed. No artifact planner exists
-to consume it. v3 does not inherit dead code.
+**BackendCapability: DEAD CODE (still declared in 05_emit.dag).**
+Declared but never pattern-matched, never consumed. No artifact
+planner exists to consume it. v3 does not inherit it. Deletion
+deferred — not blocking, but should be cleaned up.
 
 ---
 
@@ -1858,7 +1862,7 @@ made expensive.
 | Domain modeling | ~68 | UNEXAMINED. Spot-check 4/5 failed. Full pass blocks thesis completion. |
 | std/ modeling | ~40 | Audit individually |
 | Compiler infrastructure | ~30 | v3 replaces |
-| Deleted (dead code) | 1 | BackendCapability |
+| Dead code (still declared, zero consumers) | 1 | BackendCapability — in 05_emit.dag, deletion deferred |
 
 ---
 
