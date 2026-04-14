@@ -32,7 +32,7 @@
 //                         + Loop wrapper when body is recursive
 //   Let item           -> Bind with empty params field
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::dag::{
     Behavior, BindNode, Bound, BranchNode, Dag, FunctionRef, LiteralValue, LoopNode, NodeId, Path,
@@ -44,9 +44,16 @@ use crate::types::{Prim, TypeShape};
 
 pub fn lower(module: &SurfaceModule) -> Dag {
     let mut dag = Dag::new();
+    // M0.11: detect mutual recursion BEFORE lowering any bodies.
+    // Any fn in an SCC of size > 1 is rejected at its own Bind
+    // level so body lowering never emits call-cycle Transforms —
+    // those would otherwise stall the fixpoint on Retry forever
+    // and leave the pre-seeded declared return type as a fake
+    // Resolved result for call sites.
+    let mutually_recursive = compute_mutually_recursive(&module.items);
     let mut scope: HashMap<String, PortId> = HashMap::new();
     for item in &module.items {
-        scope = lower_item(item, &mut dag, scope);
+        scope = lower_item(item, &mut dag, scope, &mutually_recursive);
     }
     dag
 }
@@ -55,6 +62,7 @@ fn lower_item(
     item: &SurfaceItem,
     dag: &mut Dag,
     scope: HashMap<String, PortId>,
+    mutually_recursive: &HashSet<String>,
 ) -> HashMap<String, PortId> {
     let mut scope = scope;
     match item {
@@ -90,7 +98,15 @@ fn lower_item(
             params,
             return_type,
             body,
-        } => lower_fn_item(name, params, return_type, body, dag, scope),
+        } => lower_fn_item(
+            name,
+            params,
+            return_type,
+            body,
+            dag,
+            scope,
+            mutually_recursive,
+        ),
     }
 }
 
@@ -101,6 +117,7 @@ fn lower_fn_item(
     body: &SurfaceExpr,
     dag: &mut Dag,
     outer_scope: HashMap<String, PortId>,
+    mutually_recursive: &HashSet<String>,
 ) -> HashMap<String, PortId> {
     // 1. Allocate parameter ports and set their declared types.
     //    On unknown type names, mark the param port Unresolved with
@@ -149,6 +166,42 @@ fn lower_fn_item(
             return_type: return_ty.clone(),
         },
     );
+
+    // 2.5. Mutual recursion check. If this function is part of a
+    //      call cycle of size > 1, skip body lowering entirely and
+    //      emit a rejection Bind whose value port is Unresolved.
+    //      The signature remains registered (so other functions
+    //      that call this one can look it up and cascade Fail),
+    //      but the Bind.value port's Unresolved state prevents
+    //      callers from trusting the signature. This is the
+    //      existing Bind-state check from M0.8 in reverse: here,
+    //      we preemptively mark the Bind invalid because we know
+    //      the body can't be typed without support we haven't
+    //      built yet.
+    if mutually_recursive.contains(name) {
+        let err_port = dag.alloc_port(None);
+        let body_span = expr_span(body).clone();
+        dag.mark_unresolved(
+            err_port,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "function `{name}` is part of a mutual recursion cycle; mutual recursion is not yet supported in v3 M0"
+                ),
+                span: body_span.clone(),
+            },
+        );
+        let bind_id = dag.alloc_node_id();
+        dag.push_node(Behavior::Bind(BindNode {
+            id: bind_id,
+            name: name.to_string(),
+            value: err_port,
+            params: param_ports,
+            span: body_span,
+        }));
+        let mut outer_scope = outer_scope;
+        outer_scope.insert(name.to_string(), err_port);
+        return outer_scope;
+    }
 
     // 3. Lower the body in the extended scope.
     let body_return_port = lower_expr(body, dag, &body_scope);
@@ -472,5 +525,122 @@ fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
         | SurfaceExpr::Var { span, .. }
         | SurfaceExpr::Call { span, .. }
         | SurfaceExpr::If { span, .. } => span,
+    }
+}
+
+/// Compute the set of user function names that participate in a
+/// mutual recursion cycle (a call-graph SCC of size > 1). Returns
+/// the set of names to reject at lowering time.
+///
+/// Singleton SCCs (a function that directly calls itself, or a
+/// function that doesn't call any function at all) are not in the
+/// returned set — direct recursion is handled by `is_recursive` +
+/// `descent_provable`, and non-recursive functions are fine.
+///
+/// Algorithm: for each function, BFS its forward call set. If two
+/// distinct functions f and g both reach each other, they (and any
+/// function transitively in the same cycle) are mutually recursive.
+/// Brute-force O(n²) reachability is fine for M0's small modules;
+/// a proper Tarjan's SCC pass is worth doing when module sizes
+/// grow or when we need to report the specific cycle.
+fn compute_mutually_recursive(items: &[SurfaceItem]) -> HashSet<String> {
+    let fn_names: HashSet<String> = items
+        .iter()
+        .filter_map(|i| match i {
+            SurfaceItem::Fn { name, .. } => Some(name.clone()),
+            _ => None,
+        })
+        .collect();
+
+    // Build calls[f] = set of fn names f's body calls directly.
+    let mut calls: HashMap<String, HashSet<String>> = HashMap::new();
+    for item in items {
+        if let SurfaceItem::Fn { name, body, .. } = item {
+            let mut callees = HashSet::new();
+            collect_calls(body, &fn_names, &mut callees);
+            calls.insert(name.clone(), callees);
+        }
+    }
+
+    // For each fn f, compute reachable(f) — the transitive closure
+    // of calls. Then f and g are mutually recursive iff f ∈ reachable(g)
+    // AND g ∈ reachable(f) AND f != g. Direct self-recursion (f ∈
+    // reachable(f) via the self-edge) is NOT in this set — it's
+    // handled by `is_recursive` downstream.
+    let mut reach_cache: HashMap<String, HashSet<String>> = HashMap::new();
+    for f in &fn_names {
+        reach_cache.insert(f.clone(), transitive_reach(f, &calls));
+    }
+
+    let mut mutually = HashSet::new();
+    for f in &fn_names {
+        let reach_f = &reach_cache[f];
+        for g in reach_f {
+            if g == f {
+                continue;
+            }
+            let reach_g = &reach_cache[g];
+            if reach_g.contains(f) {
+                mutually.insert(f.clone());
+                mutually.insert(g.clone());
+            }
+        }
+    }
+    mutually
+}
+
+fn transitive_reach(
+    start: &str,
+    calls: &HashMap<String, HashSet<String>>,
+) -> HashSet<String> {
+    let mut visited = HashSet::new();
+    let mut queue = vec![start.to_string()];
+    while let Some(f) = queue.pop() {
+        if !visited.insert(f.clone()) {
+            continue;
+        }
+        if let Some(callees) = calls.get(&f) {
+            for c in callees {
+                queue.push(c.clone());
+            }
+        }
+    }
+    // Strip the start node itself from the reach set so "f ∈
+    // reachable(f)" means "f can be reached via at least one
+    // non-trivial path." This matters for the singleton-direct-
+    // recursion case: f ∈ calls[f] means reach(f) contains f via
+    // the self-edge, which is direct recursion (not mutual).
+    visited.remove(start);
+    visited
+}
+
+fn collect_calls(
+    expr: &SurfaceExpr,
+    fn_names: &HashSet<String>,
+    out: &mut HashSet<String>,
+) {
+    match expr {
+        SurfaceExpr::IntLit { .. }
+        | SurfaceExpr::BoolLit { .. }
+        | SurfaceExpr::StringLit { .. }
+        | SurfaceExpr::Var { .. } => {}
+        SurfaceExpr::Call { target, args, .. } => {
+            if fn_names.contains(target) {
+                out.insert(target.clone());
+            }
+            for a in args {
+                collect_calls(a, fn_names, out);
+            }
+        }
+        SurfaceExpr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            collect_calls(cond, fn_names, out);
+            collect_calls(then_branch, fn_names, out);
+            collect_calls(else_branch, fn_names, out);
+        }
     }
 }

@@ -1280,6 +1280,60 @@ fn test_recursive_function_with_wrong_body_type_is_rejected() {
     );
 }
 
+// ════════════════════════════════════════════════════════════════
+// M0.11 — mutual recursion rejection. `is_recursive` only finds
+// direct self-calls, so `fn even(n) = odd(n-1)` paired with
+// `fn odd(n) = even(n-1)` neither hits the Loop wrap path nor
+// gets rejected. The fix adds a pre-lowering pass that computes
+// the call graph, finds SCCs, and rejects any function in an SCC
+// of size > 1 with a specific "mutual recursion not yet supported"
+// diagnostic.
+// ════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_mutual_recursion_is_rejected() {
+    let src = "fn even(n: Int) -> Bool = if n == 0 then true else odd(n - 1)\nfn odd(n: Int) -> Bool = if n == 0 then false else even(n - 1)";
+    let dag = compile_any(src, "test.v3");
+    let even_bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "even")
+        .expect("Bind(even) must exist");
+    assert!(
+        matches!(dag.port(even_bind.value).state(), PortState::Unresolved),
+        "even's value port is Unresolved because mutual recursion is not supported; got {:?}",
+        dag.port(even_bind.value).state()
+    );
+    let odd_bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "odd")
+        .expect("Bind(odd) must exist");
+    assert!(
+        matches!(dag.port(odd_bind.value).state(), PortState::Unresolved),
+        "odd's value port is Unresolved because mutual recursion is not supported; got {:?}",
+        dag.port(odd_bind.value).state()
+    );
+    // The diagnostic should be specific: a ResolveError whose name
+    // field mentions "mutual recursion", not a generic
+    // "(inference did not resolve this port)" post-sweep fallback.
+    let diag = dag
+        .diagnostics()
+        .get(even_bind.value)
+        .expect("diagnostic recorded for even");
+    match diag {
+        v3_compiler::Diagnostic::ResolveError { name, .. } => {
+            assert!(
+                name.contains("mutual recursion"),
+                "diagnostic should mention mutual recursion; got `{name}`"
+            );
+        }
+        other => panic!("expected ResolveError, got {other:?}"),
+    }
+}
+
 #[test]
 fn invariant_port_state_matches_diagnostic_table() {
     // Structural audit of the enforced mark_unresolved API.
@@ -1327,6 +1381,8 @@ fn invariant_port_state_matches_diagnostic_table() {
         "let x = if \"foo\" then 1 else 2",
         // M0.10: recursive function body/signature mismatch
         "fn bad(n: Int) -> Bool = if n == 0 then 0 else bad(n - 1)\nlet x = bad(5)",
+        // M0.11: mutual recursion
+        "fn even(n: Int) -> Bool = if n == 0 then true else odd(n - 1)\nfn odd(n: Int) -> Bool = if n == 0 then false else even(n - 1)",
     ];
     for src in sources {
         let dag = compile_any(src, "invariant.v3");
