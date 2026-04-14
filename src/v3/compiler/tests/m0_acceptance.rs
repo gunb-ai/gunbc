@@ -6,6 +6,7 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Dag, FunctionRef, LiteralValue, PortState};
+use v3_compiler::lens_depth::DepthLens;
 use v3_compiler::lens_provenance::{Origin, ProvenanceLens};
 use v3_compiler::types::{Prim, TypeShape};
 use v3_compiler::CompileError;
@@ -1163,6 +1164,70 @@ fn reviewer_unknown_type_name_is_rejected() {
         matches!(diag, v3_compiler::Diagnostic::ResolveError { .. }),
         "diagnostic is a ResolveError, got {diag:?}"
     );
+}
+
+// ════════════════════════════════════════════════════════════════
+// Depth lens — second observational lens. Validates the success
+// bar empirically: adding a new read-only analysis should cost
+// tens of lines and zero substrate modifications. lens_depth.rs
+// is 66 lines (incl. doc comment) and touches no substrate file.
+// ════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_depth_lens_let_binding() {
+    // `let x = 1 + 2`
+    //   Value(1) depth 0, Value(2) depth 0
+    //   Add.output depth = 1 + max(0, 0) = 1
+    //   Bind(x).value = Add.output, depth 1
+    let dag = compile_to_dag("let x = 1 + 2", "test.v3").expect("compiles");
+    let lens = DepthLens::new(&dag);
+    let bind_x = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "x")
+        .unwrap();
+    assert_eq!(lens.depth_of(bind_x.value), 1);
+}
+
+#[test]
+fn test_depth_lens_nested_arithmetic() {
+    // `let z = 1 + 2 + 3`
+    //   left-associative: ((1 + 2) + 3)
+    //   inner Add depth 1, Value(3) depth 0
+    //   outer Add depth = 1 + max(1, 0) = 2
+    let dag = compile_to_dag("let z = 1 + 2 + 3", "test.v3").expect("compiles");
+    let lens = DepthLens::new(&dag);
+    let bind_z = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "z")
+        .unwrap();
+    assert_eq!(lens.depth_of(bind_z.value), 2);
+}
+
+#[test]
+fn test_depth_lens_branch_takes_max_of_paths_and_condition() {
+    // `let r = if 1 > 0 then 10 else 20 + 30`
+    //   condition: Value(1), Value(0) -> Gt, depth 1
+    //   then:      Value(10), depth 0
+    //   else:      Value(20), Value(30) -> Add, depth 1
+    //   Branch depth = 1 + max(cond_depth, max(paths_depths))
+    //               = 1 + max(1, max(0, 1)) = 1 + 1 = 2
+    let dag = compile_to_dag(
+        "let r = if 1 > 0 then 10 else 20 + 30",
+        "test.v3",
+    )
+    .expect("compiles");
+    let lens = DepthLens::new(&dag);
+    let bind_r = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "r")
+        .unwrap();
+    assert_eq!(lens.depth_of(bind_r.value), 2);
 }
 
 #[test]

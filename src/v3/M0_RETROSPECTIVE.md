@@ -148,16 +148,90 @@ necessary; neither catches the other's bug class.
 - Ownership/effect lenses if the M1 test corpus forces them
 - More sophisticated descent analysis if any M1 test program needs it
 
+## Success bar: trivial to add new analyses
+
+The v3 thesis claims that adding a new analysis (a new lens over the DAG)
+should be trivial — proportional to the analysis's conceptual complexity,
+not proportional to substrate modifications required. v2 failed this bar
+catastrophically: `complexity.dag` was 5000 lines of provenance
+reconstruction because v2 had thrown away origin information during
+inference. v3's equivalent is 50 lines because the facts are carried
+forward.
+
+**Status at end of M0: validated for observational lenses (read-only).**
+Two independent data points:
+
+- **Provenance lens** (M0.4) — 50 lines, one method
+  (`Origin::origin_of(port)`), reads `produced_by` and dispatches on
+  the producer's behavior kind. Zero substrate modifications.
+- **Depth lens** (post-M0.9 follow-up) — 66 lines including 20 of doc
+  comment, one method (`DepthLens::depth_of(port)`), walks ports
+  backward through input chains and returns the longest path to any
+  leaf. Zero substrate modifications. Three tests pass, including
+  Branch-path-max composition.
+
+Two lenses both landed in tens of lines each with zero substrate
+edits. The bar holds for observational lenses by demonstration, not
+just by design claim.
+
+**Not yet validated: computational lenses (writer analyses that produce
+new facts for downstream consumption).** M0 has no writer lenses. The
+mechanism for "how does a lens store its results" is not yet committed —
+there are three or four plausible options, each with different cost
+profiles:
+
+- **Option A:** add a `cost: Option<Cost>` (or similar) field to Port.
+  Works, but privileges the cost lens and doesn't generalize. Port
+  grows unbounded.
+- **Option B:** each lens owns a side table `HashMap<PortId, LensResult>`.
+  Works, cheap, doesn't privilege any lens. Cross-lens queries require
+  threading multiple tables.
+- **Option C:** general-purpose annotations on Port —
+  `annotations: HashMap<LensName, LensValue>`. Unified place, cross-lens
+  reads uniform, but introduces questions about invariants across
+  annotations.
+- **Option D:** generalize the diagnostic table pattern. Rename
+  `DiagnosticTable` to something like `PortAnnotations`, with
+  `Diagnostic` as one annotation kind among many. Most ambitious and
+  most thesis-aligned — everything is an annotation, diagnostics are
+  just the annotations that cause compile failure.
+
+M0 makes no commitment. M1 will force the decision when the cost lens
+is built.
+
+**M1 forcing function: the cost lens is the first M1 work, before Rust
+emission.** Rationale: the cost lens is a writer (first test of write
+cost), is pure (no external dependencies, no target language), is
+thesis-load-bearing (Tier 2 runtime safety story depends on it), and
+is where "how do lenses store results" gets answered. Emission comes
+second, after the substrate extensibility question is answered under
+real pressure.
+
+**Explicit acceptance criterion for M1:** by the end of M1, the following
+question must have a confident answer — *"If we came up with a new lens
+tomorrow, what's the minimum line count of substrate modifications
+needed?"* The target answer is **zero**. Any other answer is a
+substrate gap that must be closed before M2.
+
+The agent should attempt to build the cost lens as a new file
+(`lens_cost.rs`) that imports from `dag.rs` and reads the DAG, with no
+modifications to Port, Behavior, Dag, or any substrate type. If the
+agent hits a wall where it needs to write results and no existing
+place works, that's the signal to pause and design the lens-storage
+mechanism explicitly, once, as a substrate-level commitment.
+
 ## One meta-observation
 
 M0 is compressed relative to typical project milestones — 10 commits,
-35 tests, 3 review rounds, 1 structural refactor. The shape is the
-right shape for a mature project (substrate validation → hardening →
-feature work → parallelized extension), just faster. The review-and-
-respond loop is now a working feedback mechanism: external reviewers
-catch missing checks, the agent produces correct fixes, and the cycle
-produces code that tightens under pressure rather than loosening.
+38 tests, 3 review rounds, 1 structural refactor, 2 observational
+lenses. The shape is the right shape for a mature project (substrate
+validation → hardening → feature work → parallelized extension), just
+faster. The review-and-respond loop is now a working feedback mechanism:
+external reviewers catch missing checks, the agent produces correct
+fixes, and the cycle produces code that tightens under pressure rather
+than loosening.
 
 The theory work for M0 is done. The closure work (the retrospective,
 this document) closes the milestone. M1 should feel like
-implementation, not design.
+implementation, not design — except for the one design question M0
+explicitly defers to M1: how lenses store results.

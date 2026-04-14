@@ -105,10 +105,34 @@ first ask: can the algebra express this?
 - [ ] Can parse and build DAG for a trivial program
 
 ### M1: Self-contained compilation
-- [ ] Emit Rust from DAG (single target, minimal)
+
+**Ordering note (post-M0 retrospective):** cost lens comes BEFORE
+emission, not after. The cost lens is the first writer lens in v3 —
+it produces new facts (computed costs per node) that downstream
+analyses consume. Building it first forces the "how do lenses store
+results" decision under real pressure, rather than guessing at the
+answer while building emission. If the cost lens can't be added
+without substrate modifications, the substrate is not yet at the
+success bar and needs fixing before emission lands.
+
+- [ ] **Cost lens (writer lens #1)** — reads the DAG, writes computed
+  costs per node/port. Implementation must live in `lens_cost.rs`
+  as a new file with no substrate file changes. If substrate changes
+  are required, pause and design the lens-storage mechanism once,
+  then proceed. Acceptance: line count of substrate mods = 0.
+- [ ] **Success bar validated for writer lenses.** By the end of the
+  cost lens work, the question "if we came up with a new lens
+  tomorrow, what's the minimum substrate change?" has a confident
+  answer of zero. This is the gating acceptance criterion for
+  moving on to emission. See `src/v3/M0_RETROSPECTIVE.md` for the
+  framing.
+- [ ] **Ownership lens (writer lens #2)** — second writer lens.
+  Reuses the storage mechanism chosen for cost. If the mechanism
+  doesn't generalize, that's a signal to fix it before adding more
+  lenses.
+- [ ] Emit Rust from DAG (single target, minimal). Only after cost
+  + ownership lenses prove the substrate is extensible.
 - [ ] Emitted code compiles and runs
-- [ ] Lenses: cost lens reads the DAG
-- [ ] Lenses: ownership lens reads fan-out
 - [ ] Transform rules from std/ algebra (not hardcoded enum)
 
 ### M2: Feature parity with v2 subset
