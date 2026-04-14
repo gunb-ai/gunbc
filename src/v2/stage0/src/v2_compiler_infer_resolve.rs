@@ -1343,7 +1343,7 @@ Rc::new(ExprResolveResult {
     diagnostics: r.diagnostics.clone(),
 })
 },
-    ExprData::ExprLambda { semantics: s, .. } => {
+    ExprData::ExprLambda => {
             let lam_param_nodes = Rc::new(texpr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 let r = match texpr.children.clone().first().cloned() {
     Some(b) => resolve_expr_types(&b, &env, module_name.clone()),
@@ -1353,9 +1353,7 @@ let r = match texpr.children.clone().first().cloned() {
 }),
 };
 Rc::new(ExprResolveResult {
-    expr: make_expr_node(Rc::new(ExprData::ExprLambda {
-    semantics: s.clone(),
-}), v2_rt::concat(Rc::new(vec![r.expr.clone()]), lam_param_nodes), texpr.inferred.clone(), texpr.span.clone()),
+    expr: make_expr_node(Rc::new(ExprData::ExprLambda), v2_rt::concat(Rc::new(vec![r.expr.clone()]), lam_param_nodes), texpr.inferred.clone(), texpr.span.clone()),
     diagnostics: r.diagnostics.clone(),
 })
 },

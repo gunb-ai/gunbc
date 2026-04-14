@@ -907,7 +907,7 @@ let own = if (f.as_str() == func_name.clone().as_str()) {
 let arg_calls = body.children.clone().iter().cloned().fold(0, |acc: i64, child: Rc<Node>| {
                 let val = arg_value(&child);
 match (*val.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => (acc.clone() + max_path_self_calls_with_cont(&lambda_body(val.clone()), &func_name, 0, &si)),
+    ExprData::ExprLambda => (acc.clone() + max_path_self_calls_with_cont(&lambda_body(val.clone()), &func_name, 0, &si)),
     _ => (acc.clone() + max_path_self_calls_with_cont(&val, &func_name, 0, &si)),
 }
 });
@@ -954,7 +954,7 @@ let body_calls = match let_body(body.clone()) {
 let arg_calls = method_arg_nodes(body.clone()).iter().cloned().fold(0, |acc: i64, arg_node: Rc<Node>| {
                 let val = arg_value(&arg_node);
 match (*val.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => (acc.clone() + max_path_self_calls_with_cont(&lambda_body(val.clone()), &func_name, 0, &si)),
+    ExprData::ExprLambda => (acc.clone() + max_path_self_calls_with_cont(&lambda_body(val.clone()), &func_name, 0, &si)),
     _ => (acc.clone() + max_path_self_calls_with_cont(&val, &func_name, 0, &si)),
 }
 });
@@ -1048,7 +1048,7 @@ let body_calls = match let_body(body.clone()) {
 let arg_calls = method_arg_nodes(body.clone()).iter().cloned().fold(0, |acc: i64, arg_node: Rc<Node>| {
                 let val = arg_value(&arg_node);
 match (*val.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => (acc.clone() + max_path_target_calls_with_cont(&lambda_body(val.clone()), &target_set, 0, &si)),
+    ExprData::ExprLambda => (acc.clone() + max_path_target_calls_with_cont(&lambda_body(val.clone()), &target_set, 0, &si)),
     _ => (acc.clone() + max_path_target_calls_with_cont(&val, &target_set, 0, &si)),
 }
 });
@@ -1706,7 +1706,7 @@ pub fn all_self_calls_descend(body: Rc<Node>, func_name: String, param_name: Str
 pub fn all_self_calls_descend_inc(body: &Rc<Node>, func_name: &String, param_name: &String, vars: &Rc<HashMap<String, bool>>, check_child: bool, check_list: bool, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => true,
+    ExprData::ExprLambda => true,
     ExprData::ExprLet => {
             let val = let_value(body.clone());
 let val_ok = all_self_calls_descend_inc(&val, &func_name, &param_name, &vars, check_child.clone(), check_list.clone(), &si);
@@ -1823,7 +1823,7 @@ if (is_iter && is_struct) {
 let args_ok = { let mut __all = true; for arg_node in method_arg_nodes(body.clone()).iter().cloned() { if !({
                         let arg_val = arg_value(&arg_node);
 match (*arg_val.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => match iteration_element_name(ms.clone(), arg_val.clone(), si.clone()) {
+    ExprData::ExprLambda => match iteration_element_name(ms.clone(), arg_val.clone(), si.clone()) {
     Some(iter_name) => {
                             let ext_vars = v2_rt::rc_map_insert(vars.clone(), iter_name.clone(), true);
 all_self_calls_descend_inc(&lambda_body(arg_val.clone()), &func_name, &param_name, &ext_vars, check_child.clone(), check_list.clone(), &si)
@@ -2023,7 +2023,7 @@ pub fn merge_optional_evidence(a: Option<DescentEvidence>, b: Option<DescentEvid
 pub fn collect_evidence_incremental(body: &Rc<Node>, func_name: &String, param_name: &String, vars: &Rc<HashMap<String, bool>>, check_child: bool, check_list: bool, branching_only: bool, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<DescentEvidence> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => None,
+    ExprData::ExprLambda => None,
     ExprData::ExprLet => {
             let val = let_value(body.clone());
 let val_ev = collect_evidence_incremental(&val, &func_name, &param_name, &vars, check_child.clone(), check_list.clone(), branching_only.clone(), &si);
@@ -2221,7 +2221,7 @@ if (is_iter && is_struct) {
 let args_ev = method_arg_nodes(body.clone()).iter().cloned().fold(None, |acc: _, arg_node: Rc<Node>| {
                         let arg_val = arg_value(&arg_node);
 let ev = match (*arg_val.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => match iteration_element_name(ms.clone(), arg_val.clone(), si.clone()) {
+    ExprData::ExprLambda => match iteration_element_name(ms.clone(), arg_val.clone(), si.clone()) {
     Some(iter_name) => {
                             let ext_vars = v2_rt::rc_map_insert(vars.clone(), iter_name.clone(), true);
 collect_evidence_incremental(&lambda_body(arg_val.clone()), &func_name, &param_name, &ext_vars, check_child.clone(), check_list.clone(), branching_only.clone(), &si)
@@ -2825,7 +2825,7 @@ match recv_progress {
 pub fn collect_scc_child_edges(body: &Rc<Node>, caller: &String, param_name: &String, descent_vars: &Rc<HashMap<String, bool>>, target_set: &Rc<HashMap<String, bool>>, check_child: bool, check_list: bool, scc_measure_params: &Rc<HashMap<String, Rc<HashMap<String, String>>>>, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Vec<Rc<ParserProgressEdge>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => Rc::new(vec![]),
+    ExprData::ExprLambda => Rc::new(vec![]),
     ExprData::ExprCall { .. } => {
             let callee = expr_call_func_at(body.clone(), si.clone());
 let own_edges = if set_has(target_set.clone(), callee.clone()) {
@@ -2877,7 +2877,7 @@ if (is_iter && is_struct) {
 let args_edges = Rc::new({ let mut __result = Vec::new(); for arg_node in method_arg_nodes(body.clone()).iter().cloned() { __result.extend((*{
                         let arg_val = arg_value(&arg_node);
 match (*arg_val.expr_data.clone()).clone() {
-    ExprData::ExprLambda { .. } => match iteration_element_name(ms.clone(), arg_val.clone(), si.clone()) {
+    ExprData::ExprLambda => match iteration_element_name(ms.clone(), arg_val.clone(), si.clone()) {
     Some(iter_name) => {
                             let ext_vars = v2_rt::rc_map_insert(descent_vars.clone(), iter_name.clone(), true);
 collect_scc_child_edges(&lambda_body(arg_val.clone()), &caller, &param_name, &ext_vars, &target_set, check_child.clone(), check_list.clone(), &scc_measure_params, &si)

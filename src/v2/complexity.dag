@@ -2308,7 +2308,7 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
     // Lambda bodies are iteration-bounded (fold/map/any callbacks).
     // Self-calls inside lambdas don't contribute to branching factor.
     // Skip: callback-local evidence must not justify outer recursion.
-    ExprLambda { semantics: _ } => true
+    ExprLambda => true
     ExprLet =>
       let val = let_value(texpr: body)
       // Check self-calls in the let-value with CURRENT vars (binding not yet visible)
@@ -2419,7 +2419,7 @@ fn all_self_calls_descend_inc(body: Node, func_name: String, param_name: String,
         let args_ok = method_arg_nodes(texpr: body) |> all(arg_node =>
           let arg_val = arg_value(n: arg_node)
           match arg_val.expr_data {
-            ExprLambda { semantics: _ } =>
+            ExprLambda =>
               // S7: element variable from algebra template's callback_element_position.
               match iteration_element_name(method_semantics: ms, lambda: arg_val, si: si) {
                 Some { value: iter_name } =>
@@ -2621,7 +2621,7 @@ fn merge_optional_evidence(a: DescentEvidence?, b: DescentEvidence?) -> DescentE
 fn collect_evidence_incremental(body: Node, func_name: String, param_name: String, vars: Map<String, Bool>, check_child: Bool, check_list: Bool, branching_only: Bool, si: Map<String, NewlineIndex>) -> DescentEvidence? {
   match body.expr_data {
     // Skip lambda bodies — callback-local evidence must not justify outer recursion
-    ExprLambda { semantics: _ } => none
+    ExprLambda => none
     ExprLet =>
       let val = let_value(texpr: body)
       // Check self-calls in let-value with CURRENT vars (binding not yet visible)
@@ -2795,7 +2795,7 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
         let args_ev = method_arg_nodes(texpr: body) |> fold(init: none, f: (acc, arg_node) =>
           let arg_val = arg_value(n: arg_node)
           let ev = match arg_val.expr_data {
-            ExprLambda { semantics: _ } =>
+            ExprLambda =>
               // S7: element variable from algebra template's callback_element_position.
               match iteration_element_name(method_semantics: ms, lambda: arg_val, si: si) {
                 Some { value: iter_name } =>
@@ -3308,7 +3308,7 @@ fn classify_scc_call_progress(arg_expr: Node, param_name: String, descent_vars: 
 // mirroring collect_evidence_incremental's var threading.
 fn collect_scc_child_edges(body: Node, caller: String, param_name: String, descent_vars: Map<String, Bool>, target_set: Map<String, Bool>, check_child: Bool, check_list: Bool, scc_measure_params: Map<String, Map<String, String>>, si: Map<String, NewlineIndex>) -> List<ParserProgressEdge> {
   match body.expr_data {
-    ExprLambda { semantics: _ } => []
+    ExprLambda => []
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: body, source_indices: si)
       let own_edges = if set_has(m: target_set, key: callee) {
@@ -3364,7 +3364,7 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
         let args_edges = method_arg_nodes(texpr: body) |> flat_map(arg_node =>
           let arg_val = arg_value(n: arg_node)
           match arg_val.expr_data {
-            ExprLambda { semantics: _ } =>
+            ExprLambda =>
               // S7: element variable from algebra template's callback_element_position.
               match iteration_element_name(method_semantics: ms, lambda: arg_val, si: si) {
                 Some { value: iter_name } =>

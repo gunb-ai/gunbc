@@ -29,7 +29,6 @@ import v2.std.core {
   ExprStringInterp, ExprBlock, ExprCast, ExprForEach,
   ExprIndex, ExprSlice, ExprReturn,
   make_expr_node,
-  LambdaSemantics,
   FieldSummary,
   StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond, OptionalValue,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding, MatchBoundBinding,
@@ -2440,9 +2439,9 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
     match call_args |> last {
       Some { value: a } =>
         match arg_value(n: a).expr_data {
-          ExprLambda { semantics: semantics } =>
+          ExprLambda =>
             let lps = lambda_param_names_at(texpr: arg_value(n: a), source_indices: scope.type_env.source_indices)
-            lambda_scope_from_semantics(scope: scope, params: lps, semantics: semantics)
+            lambda_scope_from_children(scope: scope, params: lps, param_nodes: arg_value(n: a).children |> skip(1))
           _ => scope
         }
       None => scope
@@ -2657,30 +2656,30 @@ fn collection_element_type(receiver_type: InferredNode?, shared_types: Map<Strin
   }
 }
 
-fn lambda_scope_from_semantics(scope: InferScope, params: List<String>, semantics: LambdaSemantics?) -> InferScope {
-  match semantics {
-    Some { value: lambda_semantics } =>
-      params |> enumerate |> fold(init: scope, f: (acc, pair) =>
-        let idx = pair.first
-        let param_name = pair.second
-        let param_type = match lambda_semantics.param_types |> skip(idx) |> first {
-          Some { value: resolved_type } => resolved_type
-          None => type_variable_node(id: "lambda_param")
+fn lambda_scope_from_children(scope: InferScope, params: List<String>, param_nodes: List<Node>) -> InferScope {
+  params |> enumerate |> fold(init: scope, f: (acc, pair) =>
+    let idx = pair.first
+    let param_name = pair.second
+    let param_type = match param_nodes |> skip(idx) |> first {
+      Some { value: pn } =>
+        match pn.inferred {
+          Some { value: Resolved { node: resolved_type } } => resolved_type
+          _ => type_variable_node(id: "lambda_param")
         }
-        extend_scope(scope: acc, name: param_name, resolved: param_type, provenance: SubValueUnknown)
-      )
-    None => scope
-  }
+      None => type_variable_node(id: "lambda_param")
+    }
+    extend_scope(scope: acc, name: param_name, resolved: param_type, provenance: SubValueUnknown)
+  )
 }
 
-fn lambda_param_type_strs(params: List<String>, semantics: LambdaSemantics?, fallback_types: List<String>, shared_types: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+fn lambda_param_type_strs(params: List<String>, param_nodes: List<Node>, fallback_types: List<String>, shared_types: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> List<String> {
   params |> enumerate |> map(pair =>
     let idx = pair.first
     let param_name = pair.second
-    let inferred_type = match semantics {
-      Some { value: lambda_semantics } =>
-        match lambda_semantics.param_types |> skip(idx) |> first {
-          Some { value: param_type } =>
+    let inferred_type = match param_nodes |> skip(idx) |> first {
+      Some { value: pn } =>
+        match pn.inferred {
+          Some { value: Resolved { node: param_type } } =>
             let param_is_error = if param_type.inferred != none { is_compiler_error(inferred: param_type.inferred.value) } else { false }
             let param_is_type_var = if param_type.inferred != none { is_type_variable(inferred: param_type.inferred.value) } else { false }
             if param_is_type_var || param_is_error {
@@ -2688,7 +2687,7 @@ fn lambda_param_type_strs(params: List<String>, semantics: LambdaSemantics?, fal
             } else {
               Some { value: render_rust_type(n: param_type, shared_types: shared_types, source_indices: source_indices) }
             }
-          None => none
+          _ => none
         }
       None => none
     }
@@ -2710,12 +2709,13 @@ fn lambda_param_type_strs(params: List<String>, semantics: LambdaSemantics?, fal
 // If the expression is a Lambda, annotate params with elem_type_str. Otherwise emit normally.
 fn emit_typed_collection_lambda(lambda_expr: Node, elem_type_str: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match lambda_expr.expr_data {
-    ExprLambda { semantics: semantics } =>
+    ExprLambda =>
       let ps = lambda_param_names_at(texpr: lambda_expr, source_indices: scope.type_env.source_indices)
       let bd = lambda_body(texpr: lambda_expr)
-      let param_strs = lambda_param_type_strs(params: ps, semantics: semantics, fallback_types: [elem_type_str], shared_types: shared_types, source_indices: scope.type_env.source_indices)
+      let pn = lambda_expr.children |> skip(1)
+      let param_strs = lambda_param_type_strs(params: ps, param_nodes: pn, fallback_types: [elem_type_str], shared_types: shared_types, source_indices: scope.type_env.source_indices)
       let params_str = param_strs |> join(separator: ", ")
-      let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
+      let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: pn)
       let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       concat("|", params_str, "| ", body_str)
     _ => emit_typed_expr(texpr: lambda_expr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -2730,17 +2730,18 @@ fn emit_typed_collection_lambda(lambda_expr: Node, elem_type_str: String, regist
 // instead of Map<String, Rc<T>>). Rust can infer the correct type from init and body.
 fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match lambda_expr.expr_data {
-    ExprLambda { semantics: semantics } =>
+    ExprLambda =>
       let ps = lambda_param_names_at(texpr: lambda_expr, source_indices: scope.type_env.source_indices)
       let bd = lambda_body(texpr: lambda_expr)
+      let pn = lambda_expr.children |> skip(1)
       // BRIDGE: Known unresolved acc type patterns → emit "_" to let Rust infer
       let safe_acc_type = if acc_type_str == "Rc<Vec<()>>" || acc_type_str == "Vec<()>" || acc_type_str == "Option<()>" { "_" } else { acc_type_str }
       let fallback_types = ps |> enumerate |> map(pair =>
         if pair.first == 0 { safe_acc_type } else { elem_type_str }
       )
-      let param_strs = lambda_param_type_strs(params: ps, semantics: none, fallback_types: fallback_types, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+      let param_strs = lambda_param_type_strs(params: ps, param_nodes: [], fallback_types: fallback_types, shared_types: shared_types, source_indices: scope.type_env.source_indices)
       let params_str = param_strs |> join(separator: ", ")
-      let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
+      let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: pn)
       let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       // If the accumulator is in owned_bindings, unwrap Rc at iteration start.
       // This rebinds the acc from Rc<T> to owned T so field accesses move
@@ -2797,7 +2798,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
     None => type_variable_node(id: "")
   }
   let acc_param_name = match fold_lambda_node.expr_data {
-    ExprLambda { semantics: _ } => match lambda_param_names_at(texpr: fold_lambda_node, source_indices: scope.type_env.source_indices) |> first {
+    ExprLambda => match lambda_param_names_at(texpr: fold_lambda_node, source_indices: scope.type_env.source_indices) |> first {
       Some { value: n } => n
       None => ""
     }
@@ -2809,7 +2810,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
   let acc_unwrap = structural_unwrap && emit_map_has(m: shared_types, key: acc_type_name)
   let fold_emit_info = if acc_unwrap {
     match fold_lambda_node.expr_data {
-      ExprLambda { semantics: _ } =>
+      ExprLambda =>
         let ps = lambda_param_names_at(texpr: fold_lambda_node, source_indices: scope.type_env.source_indices)
         match ps |> first {
           Some { value: acc_name } =>
@@ -2831,7 +2832,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
     }
   } else if structural_move {
     match fold_lambda_node.expr_data {
-      ExprLambda { semantics: _ } =>
+      ExprLambda =>
         let ps = lambda_param_names_at(texpr: fold_lambda_node, source_indices: scope.type_env.source_indices)
         match ps |> first {
           Some { value: acc_name } =>
@@ -2931,12 +2932,12 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
     match args |> first {
       Some { value: a } =>
         match arg_value(n: a).expr_data {
-          ExprLambda { semantics: semantics } =>
+          ExprLambda =>
             let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
             let ps = lambda_param_names_at(texpr: arg_value(n: a), source_indices: scope.type_env.source_indices)
             let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
             let p = emit_ident(name: dag_name, target: Rust)
-            let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
+            let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: arg_value(n: a).children |> skip(1))
             let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
             concat(recv_str, ".map(|", p, "| ", body_str, ")")
           _ => concat(recv_str, ".map(", first_arg_str, ")")
@@ -2949,12 +2950,12 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
     match args |> first {
       Some { value: a } =>
         match arg_value(n: a).expr_data {
-          ExprLambda { semantics: semantics } =>
+          ExprLambda =>
             let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
             let ps = lambda_param_names_at(texpr: arg_value(n: a), source_indices: scope.type_env.source_indices)
             let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
             let p = emit_ident(name: dag_name, target: Rust)
-            let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
+            let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: arg_value(n: a).children |> skip(1))
             let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
             concat("Rc::new({ let mut __result = Vec::new(); for ", p, " in ", iter_str, " { __result.push(", body_str, "); } __result })")
           _ => concat("Rc::new(", iter_str, ".map(", first_arg_str, ").collect::<Vec<_>>())")
@@ -2972,12 +2973,12 @@ fn emit_rust_higher_order_method(ho_spec: HigherOrderMethodSpec, receiver: Node,
   match args |> first {
     Some { value: a } =>
       match arg_value(n: a).expr_data {
-        ExprLambda { semantics: semantics } =>
+        ExprLambda =>
           let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
           let ps = lambda_param_names_at(texpr: arg_value(n: a), source_indices: scope.type_env.source_indices)
           let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
           let p = emit_ident(name: dag_name, target: Rust)
-          let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
+          let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: arg_value(n: a).children |> skip(1))
           let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
           let inner_iter = apply_type_template1(template: sharing.iter_owned, arg0: concat("(*", body_str, ")"))
           let bindings = seed_bindings(key: "param", value: p) |> map_insert("body", body_str) |> map_insert("iter", iter_str) |> map_insert("inner_iter", inner_iter)

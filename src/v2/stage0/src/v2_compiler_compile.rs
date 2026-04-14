@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::v2_rt;
 use crate::NonEmptyVec;
 use crate::NonEmptyBTreeSet;
-pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, no_span, Connective, Cardinality, resource_use_name_at, resource_use_resource, param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span, module_imports, module_items, import_is_all, import_specific_names_at, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, MethodSemantics, ExprErrorKind, ExprData, MatchPattern, field_binding_name_at, field_binding_pattern, arg_name_at, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name_at, field_init_node_value, LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index, field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at, foreach_variable_at, expr_method_name_at, InternTable, InternResult, empty_intern_table, intern};
+pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, no_span, Connective, Cardinality, resource_use_name_at, resource_use_resource, param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span, module_imports, module_items, import_is_all, import_specific_names_at, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, MethodSemantics, ExprErrorKind, ExprData, MatchPattern, field_binding_name_at, field_binding_pattern, arg_name_at, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name_at, field_init_node_value, LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index, field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at, foreach_variable_at, expr_method_name_at, InternTable, InternResult, empty_intern_table, intern};
 use crate::v2_std_core::CompilerDiagnostic::{InternalError, OwnershipViolation};
 use crate::v2_std_core::Connective::{NoConnective, Arrow};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError, TypeVariable};
@@ -331,13 +331,6 @@ pub fn serialize_call_semantics(value: Option<CallSemantics>) -> String {
 }
 }
 
-pub fn serialize_lambda_semantics(value: Option<Rc<LambdaSemantics>>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    match value {
-    Some(inner) => v2_rt::concat(v2_rt::concat("{\"param_types\": ".to_string(), json_list(Rc::new({ let mut __result = Vec::new(); for p in inner.param_types.clone().iter().cloned() { __result.push(serialize_node(&p, &source_indices)); } __result }))), "}".to_string()),
-    None => "null".to_string(),
-}
-}
-
 pub fn serialize_method_semantics(value: Option<Rc<MethodSemantics>>, source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
     match value.as_deref().cloned() {
     Some(MethodSemantics::PlainMethodSemantics) => "{\"kind\": \"PlainMethodSemantics\"}".to_string(),
@@ -424,9 +417,9 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
     None => "null".to_string(),
 }), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string()),
     ExprData::ExprUnaryOp { op, .. } => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprUnaryOp\", \"op\": ".to_string(), json_quote(unary_op_name(op.clone()))), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string()),
-    ExprData::ExprLambda { semantics, .. } => {
+    ExprData::ExprLambda => {
             let params = lambda_param_names_at(expr_node.clone(), source_indices.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprLambda\", \"params\": ".to_string(), json_list(Rc::new({ let mut __result = Vec::new(); for p in params.iter().cloned() { __result.push(json_quote(p.clone())); } __result }))), ", \"semantics\": ".to_string()), serialize_lambda_semantics(semantics.clone(), source_indices.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprLambda\", \"params\": ".to_string(), json_list(Rc::new({ let mut __result = Vec::new(); for p in params.iter().cloned() { __result.push(json_quote(p.clone())); } __result }))), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string())
 },
     ExprData::ExprLet => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ExprLet\", \"name\": ".to_string(), json_quote(name)), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for c in ch.iter().cloned() { __result.push(serialize_node(&c, &source_indices)); } __result }))), "}".to_string()),
     ExprData::ExprRecordLit { parent_enum, .. } => {

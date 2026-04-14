@@ -23,7 +23,7 @@ import v2.std.core {
   module_imports, module_items, import_is_all, import_specific_names_at,
   FieldAccessStyle, FieldValueShape, FieldSummary,
   InferredNode, Resolved, CompilerError, TypeVariable,
-  VarBindingKind, CallSemantics, LambdaSemantics,
+  VarBindingKind, CallSemantics,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
   ExprErrorKind, ExprData, MatchPattern, field_binding_name_at, field_binding_pattern,
   arg_name_at, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name_at, field_init_node_value,
@@ -405,17 +405,6 @@ fn serialize_call_semantics(value: CallSemantics?) -> String {
   }
 }
 
-fn serialize_lambda_semantics(value: LambdaSemantics?, source_indices: Map<String, NewlineIndex>) -> String {
-  match value {
-    Some { value: inner } =>
-      concat(
-        "{\"param_types\": ",
-        json_list(items: inner.param_types |> map(p => serialize_node(node: p, source_indices: source_indices))),
-        "}")
-    None => "null"
-  }
-}
-
 fn serialize_method_semantics(value: MethodSemantics?, source_indices: Map<String, NewlineIndex>) -> String {
   match value {
     Some { value: PlainMethodSemantics } =>
@@ -555,11 +544,10 @@ fn serialize_expr_data(expr_node: Node, source_indices: Map<String, NewlineIndex
         "{\"kind\": \"ExprUnaryOp\", \"op\": ", json_quote(s: unary_op_name(value: op)),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_indices: source_indices))),
         "}")
-    ExprLambda { semantics: semantics } =>
+    ExprLambda =>
       let params = lambda_param_names_at(texpr: expr_node, source_indices: source_indices)
       concat(
         "{\"kind\": \"ExprLambda\", \"params\": ", json_list(items: params |> map(p => json_quote(s: p))),
-        ", \"semantics\": ", serialize_lambda_semantics(value: semantics, source_indices: source_indices),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c, source_indices: source_indices))),
         "}")
     ExprLet =>

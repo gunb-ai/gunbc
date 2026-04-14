@@ -90,12 +90,6 @@ pub fn compiler_inductive_fields() -> Rc<Vec<Rc<InductiveField>>> {
     field_name: "op_params".to_string(),
     shape: RecursionShape::ListRecursion,
     element_type: "Node".to_string(),
-}), Rc::new(InductiveField {
-    type_name: "LambdaSemantics".to_string(),
-    variant_name: "".to_string(),
-    field_name: "param_types".to_string(),
-    shape: RecursionShape::ListRecursion,
-    element_type: "Node".to_string(),
 })])
         };
     }
@@ -110,7 +104,6 @@ pub fn compiler_recursive_types() -> Rc<HashMap<String, bool>> {
             __m.insert("InferredNode".to_string(), true);
             __m.insert("MatchPattern".to_string(), true);
             __m.insert("MethodSemantics".to_string(), true);
-            __m.insert("LambdaSemantics".to_string(), true);
             Rc::new(__m)
         };
     }

@@ -165,10 +165,6 @@ type CallSemantics
   = PlainCallSemantics
   | LookupCallSemantics
 
-type LambdaSemantics {
-  param_types: List<Node>
-}
-
 type MethodSemantics
   = PlainMethodSemantics
   | AlgebraMethodSemantics { method_def: Node, fold_accumulator_type: Node?, size_effect: CollectionSizeEffect?, cost_shape: CostShape?, algebra_template: AlgebraFieldTemplate? }
@@ -209,7 +205,7 @@ type ExprData
   | ExprListLit
   | ExprBinOp { op: BinOp, algebra_field: AlgebraFieldKind? }
   | ExprUnaryOp { op: UnaryOpKind }
-  | ExprLambda { semantics: LambdaSemantics? }
+  | ExprLambda
   | ExprStringInterp
   | ExprBlock
   | ExprCast

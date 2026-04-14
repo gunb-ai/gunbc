@@ -492,7 +492,7 @@ fn eval_expr_inner(
             Ok(Value::List(Rc::new(items)))
         }
 
-        ExprData::ExprLambda { .. } => {
+        ExprData::ExprLambda => {
             let param_names: Vec<String> = lambda_param_names_at(node.clone(), si)
                 .iter().cloned().collect();
             let body = lambda_body(node.clone());
