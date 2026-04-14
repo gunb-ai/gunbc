@@ -947,18 +947,19 @@ skip.
 
 Use this as a standing discipline for v3 work:
 
-| Claim | Mechanism | Dividend |
-|---|---|---|
-| Rule-table transforms | validated (Exp 3) | banked |
-| Observational lenses | validated (Exp 4) | banked |
-| Facts carried through bindings | validated (Exp 2) | **NOT banked** — old path not deleted |
-| Lambda = function | validated (Exp 1) | partially banked — closure rule identified |
-| ExprData tax is real | measured (Exp 5) | target: 8-11x → 1x |
+| Claim | Mechanism | Dividend | Cost to bank |
+|---|---|---|---|
+| Rule-table transforms | validated (Exp 3) | banked | done |
+| Observational lenses | validated (Exp 4) | banked | done |
+| Facts carried through bindings | validated (Exp 2) | **NOT banked** — old path not deleted | ~1 day: delete classify_let_value reconstruction, verify CX stable |
+| Lambda = function | validated (Exp 1) | partially banked — closure rule identified | small: closure rule is 2 fields on Define (capture_context, iteration_bound). Not a redesign — the physics model already supports it. |
+| ExprData tax is real | measured (Exp 5) | target: 8-11x → 1x | v3 construction (the whole project) |
 
-The spec only claims credit when both columns are green. Exp 3+4
-justify the TransformRule dissolution and lens mechanism. Exp 2
-justifies the "physics carries facts" claim ONLY when the old
-reconstruction is gone.
+The spec only claims credit when mechanism AND dividend are green.
+Exp 3+4 justify the TransformRule dissolution and lens mechanism.
+Exp 2 justifies the "physics carries facts" claim ONLY when the
+old reconstruction is gone. The cost column prevents "partially
+banked" from hiding material vs trivial remaining work.
 
 All experiments keep 415 tests green and CX ratchet stable.
 
