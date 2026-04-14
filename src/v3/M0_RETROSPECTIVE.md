@@ -1,0 +1,163 @@
+# M0 Retrospective
+
+**Status:** Complete. 35 acceptance tests passing on `quick-ant-526`. PR #441
+ready for final review. The M0 substrate proves the v3 thesis primitives
+work under adversarial review.
+
+## Substrate decisions and whether they held
+
+The five L1 behaviors — Value, Transform, Branch, Loop, Bind — held through
+10 milestones and three reviewer rounds without modification. The C1 STOP
+signal ("wanting a 6th variant") never fired. The thesis claim that these
+are the terminal decomposition survived contact with building against it.
+
+**Decisions that held without changes:**
+
+- Five L1 behaviors as terminal (C1)
+- `FunctionRef` on Transform (C2 dissolved to nothing at M0.3 — no
+  TransformRule variants, operators resolve to `std::int::add` etc.
+  at parse time)
+- Define as a Bind with non-empty `params`, not a Transform variant
+- Fail-closed compile boundary via `Err(CompileError::Semantic(dag))`
+- `mark_unresolved` as the single authority for port state transitions
+- Direct Vec indexing on `Dag::node` with topological invariant
+- The provenance lens at 50 lines — under the 60-line physics-gap
+  threshold
+
+**Decisions that bent under review:**
+
+- `Port.value_type: Option<TypeShape>` started as a two-valued type
+  maintaining a runtime invariant. ChatGPT's state-space audit at M0.1
+  caught it as structurally wrong: `None` conflated three meanings
+  (Uninferred, Unresolved, and failed). M0.6 refactored to
+  `PortState::{Uninferred, Resolved(T), Unresolved}`. The illegal mixed
+  state became unrepresentable by type. One commit, no cascading
+  changes. The invariant is now structural, not behavioral.
+- Spans were originally tracked in a `node_spans` side table. Codex's
+  "facts flow forward" audit pointed out this was the same pattern as
+  v2's provenance reconstruction bug. M0.6 moved the span to a field on
+  every `Behavior` variant. Side table deleted.
+
+## Substrate constraints exercised
+
+| Constraint | Exercised? | Notes |
+|---|---|---|
+| G1 target-agnostic types | Yes | `Prim::Int` stayed symbolic; no `as i64` outside the tokenizer |
+| G2 cross-artifact spans | Partially | `SourceSpan.file` always populated; M0 only has one source file per compile |
+| G3 parser-agnostic IR | Yes | `parse.rs` has zero `Dag` code references |
+| G4 per-target cost characteristics | No | Cost lens deferred to M1 — first exercise will be emission |
+| G5 no `TypeError` in `Err` | Yes | Semantic errors stay on the Dag; `CompileError::Semantic(Dag)` is a handoff, not a classification |
+
+G4 is the one unexercised guardrail. It becomes load-bearing the moment
+M1 starts emission, since the cost lens has to read per-target costs from
+`LanguageSpec` declarations.
+
+## Coproduct dissolution status
+
+- **C1** (`Behavior`) — **kept at 5 variants**. Terminal by the 4-pattern
+  check. All four dissolution patterns attempted; all failed. Pressure
+  never materialized.
+- **C2** (`TransformRule`) — **dissolved to nothing at M0.3**. Transform
+  is `Apply(FunctionRef)`. The dissolution was triggered by Test 3
+  needing `Call` and `Define` variants, and the answer was to delete
+  TransformRule entirely rather than extend.
+- **C3** (`TypeShape`) — **kept at 1 variant scaffold** (`Primitive(Prim)`).
+  Pressure never materialized because M0 doesn't need Record/Sum/List/
+  Function. Dissolution target `{connective, children}` requires std/
+  Product/Coproduct declarations — deferred to M1+.
+- **`Diagnostic`** — **extended from 3 to 5 variants** at M0.5/M0.8
+  (added `ArityMismatch`, `ResolveError`). This is deferred dissolution:
+  the 5-field target shape `{span, category, subject, detail,
+  producing_node}` requires typed references (`TypeRef`, `FieldRef`)
+  that don't exist yet. Extension is documented with justification at
+  the top of `diagnostics.rs`.
+
+## Reviewer feedback loops
+
+Three review rounds, all producing correct fixes.
+
+**Round 1 (M0.1 reviews by ChatGPT and Codex):** caught state-space
+ambiguity, silent failures in inference, panic on forward references,
+span drops, and linear node lookup. Triggered M0.5 (fail-closed
+discipline) and M0.6 (PortState + spans + compile boundary).
+
+**Round 2 (M0.5 review by ChatGPT):** caught unknown-type-name silent
+default, branch Bool check missing, call-site signature trust when body
+conflicts, recursion/Loop fabrication, test audit too narrow. Triggered
+M0.8 (reviewer blockers + 7 regression tests).
+
+**Round 3 (M0.6 review by ChatGPT):** near-identical to the M0.5 review
+(likely re-read stale snapshot). The 4 items the M0.6 snapshot actually
+contained were fixed in M0.8; the 3 items the review claimed were already
+fixed in M0.6.
+
+The pattern the three rounds collectively revealed: external reviewers
+excel at "missing checks" — places where the compiler should reject a
+program but doesn't. Internal review (my own triage) excels at "missing
+tests" — coverage gaps on already-correct code. Both feedback paths are
+necessary; neither catches the other's bug class.
+
+## Deferred limitations
+
+| Item | Reason | Target |
+|---|---|---|
+| Full descent analysis (lexicographic, non-subtraction, structural) | M0 partial analysis rejects the obvious cases; full analysis is 2–3 hours of substantive work | M1+ |
+| Diagnostic 5-field target shape | Requires typed references (TypeRef, FieldRef) not yet in substrate | M1+ |
+| `TypeShape` dissolution to `{connective, children}` | Requires std/ Product/Coproduct/Function declarations | M1+ |
+| Mutual recursion detection | Current `is_recursive` finds only direct self-calls | M1+ |
+| Imperative fixpoint loop with `changed: bool` | Sketch-mode OK; the recursive form fights Rust's lack of TCO | M3 port attempt |
+| Counter-based `NodeId` allocation | Sketch-mode OK; dissolves in .dag via fold-accumulator | M3 port attempt |
+| Property-based invariant testing | Needs proptest wiring; valuable but not urgent | M1+ |
+| Full structural pre-infer/post-infer phase split on Dag | M0.6 refactor made the biconditional structural enough; full phase split is a larger change | M1+ |
+
+## What M1 inherits
+
+- A working `tokenize → parse → lower → infer` pipeline, 35 acceptance
+  tests
+- Five L1 behaviors with structural spans, central Port table, PortState
+  enum
+- Fail-closed compile boundary (`Err(CompileError::Semantic(Dag))`)
+- `mark_unresolved` as the single authority for port state transitions
+- Provenance lens at 50 lines (the v3-vs-v2 proof point for "lenses read
+  physics")
+- Partial descent analysis (zero-arg rejected, syntactic `param - const`
+  required)
+- Producer-fact-reaches-consumer path: call sites read the function's
+  `Bind.value` state, so body/signature mismatches propagate to every
+  call site
+- User function signature registry (`dag.signatures`) that breaks
+  inference fixpoint cycles for recursion
+- Sketch-mode framing in ROADMAP so the functional-vs-imperative question
+  stays answered
+- 10+ feedback memories encoding the review discipline, checkpoint
+  patterns, and dissolution rules
+- v2's test suite available as an oracle for equivalence checks when M1
+  emission starts
+
+## What M1 has to build fresh
+
+- Emission to a target language (Rust first, per the ROADMAP — matches
+  v3's own implementation language, so emission can be cross-checked
+  against the reference)
+- `LanguageSpec` with per-target cost characteristics (G4 guardrail
+  finally gets exercised)
+- Cost lens (second lens after provenance)
+- `std/`-backed algebra declarations — this is what dissolves the
+  remaining M0 scaffolds (TypeShape C3, Diagnostic variants, the
+  hardcoded primitive signature table in `infer.rs`)
+- Ownership/effect lenses if the M1 test corpus forces them
+- More sophisticated descent analysis if any M1 test program needs it
+
+## One meta-observation
+
+M0 is compressed relative to typical project milestones — 10 commits,
+35 tests, 3 review rounds, 1 structural refactor. The shape is the
+right shape for a mature project (substrate validation → hardening →
+feature work → parallelized extension), just faster. The review-and-
+respond loop is now a working feedback mechanism: external reviewers
+catch missing checks, the agent produces correct fixes, and the cycle
+produces code that tightens under pressure rather than loosening.
+
+The theory work for M0 is done. The closure work (the retrospective,
+this document) closes the milestone. M1 should feel like
+implementation, not design.
