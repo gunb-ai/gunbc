@@ -377,6 +377,362 @@ fn test_compile_boundary_is_fail_closed() {
     );
 }
 
+// ════════════════════════════════════════════════════════════════
+// M0.7 Lane A — span correctness, Branch/Loop lens origins, and
+// composition stress tests.
+// ════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_type_mismatch_span_points_at_value_expression() {
+    // `let x: Bool = 1` — the TypeMismatch diagnostic's span should
+    // point at the `1` literal, not at a synthetic location. Byte
+    // offsets:
+    //   l  e  t     x  :     B  o  o  l     =     1
+    //   0  1  2  3  4  5  6  7  8  9 10 11 12 13 14
+    // The value expression `1` is at byte [14, 15).
+    let src = "let x: Bool = 1";
+    let dag = compile_any(src, "test.v3");
+    let bind_x = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "x")
+        .expect("Bind(x) exists");
+    let diag = dag
+        .diagnostics()
+        .get(bind_x.value)
+        .expect("mismatch diagnostic recorded");
+    let span = diag.span();
+    assert_eq!(span.file, "test.v3");
+    assert_eq!(
+        span.byte_start, 14,
+        "span points at the `1` literal, not a synthetic location"
+    );
+    assert_eq!(span.byte_end, 15);
+}
+
+#[test]
+fn test_forward_reference_span_points_at_reference() {
+    // `let y = x\nlet x = 1` — the ResolveError span should point
+    // at the `x` reference, not at the `let y` prefix.
+    //   l  e  t     y  =     x
+    //   0  1  2  3  4  5  6  7
+    // The `x` reference is at byte [8, 9).
+    let src = "let y = x\nlet x = 1";
+    let dag = compile_any(src, "test.v3");
+    let bind_y = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "y")
+        .expect("Bind(y) exists");
+    let diag = dag
+        .diagnostics()
+        .get(bind_y.value)
+        .expect("resolve error recorded");
+    let span = diag.span();
+    assert_eq!(span.file, "test.v3");
+    assert_eq!(span.byte_start, 8, "span points at the `x` reference");
+    assert_eq!(span.byte_end, 9);
+}
+
+#[test]
+fn test_arity_mismatch_span_points_at_call_site() {
+    // `fn f(a: Int) -> Int = a\nlet x = f(1, 2)`
+    //   l  e  t     x  =     f  (  1  ,     2  )
+    //  24 25 26 27 28 29 30 31 32 33 34 35 36 37
+    // The call expression `f(1, 2)` starts at byte 32 and ends at 39.
+    let src = "fn f(a: Int) -> Int = a\nlet x = f(1, 2)";
+    let dag = compile_any(src, "test.v3");
+    let bind_x = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "x")
+        .expect("Bind(x) exists");
+    let diag = dag
+        .diagnostics()
+        .get(bind_x.value)
+        .expect("arity mismatch recorded");
+    let span = diag.span();
+    assert_eq!(span.file, "test.v3");
+    // The diagnostic points at the Transform node's span — the
+    // whole `f(1, 2)` call.
+    assert!(
+        span.byte_start >= 32 && span.byte_end > span.byte_start,
+        "span covers the call site, got [{}, {})",
+        span.byte_start,
+        span.byte_end
+    );
+    assert!(
+        span.byte_end <= src.len() as u32,
+        "span is within source bounds"
+    );
+}
+
+#[test]
+fn test_unknown_function_span_points_at_call_site() {
+    // `let x = unknown_fn(1)` — the ResolveError span should
+    // cover the call, not be a synthetic `<inferred>` span.
+    let src = "let x = unknown_fn(1)";
+    let dag = compile_any(src, "test.v3");
+    let bind_x = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "x")
+        .expect("Bind(x) exists");
+    let diag = dag
+        .diagnostics()
+        .get(bind_x.value)
+        .expect("resolve error recorded");
+    let span = diag.span();
+    assert_eq!(span.file, "test.v3");
+    assert_ne!(
+        span.file, "<inferred>",
+        "span should come from the source, not a synthetic fallback"
+    );
+    assert!(span.byte_end > span.byte_start);
+    assert!(span.byte_end <= src.len() as u32);
+}
+
+#[test]
+fn test_provenance_lens_branch_origin() {
+    // When a Bind's value port is produced by a Branch, the
+    // provenance lens reports Origin::Selected pointing at the
+    // Branch node. The lens reads only produced_by and the
+    // producer's behavior kind — no reconstruction.
+    let src = "let x = if 1 > 0 then 42 else 0";
+    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+    let lens = ProvenanceLens::new(&dag);
+
+    let bind_x = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "x")
+        .expect("Bind(x) exists");
+
+    match lens.origin_of(bind_x.value) {
+        Origin::Selected { by } => {
+            assert!(
+                dag.node(by).as_branch().is_some(),
+                "Selected origin points at a Branch node"
+            );
+        }
+        other => panic!("expected Origin::Selected for Branch output, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_provenance_lens_loop_origin() {
+    // A recursive function's Bind.value port is produced by a
+    // Loop node (the bounded-recursion wrapper). The provenance
+    // lens reports Origin::Accumulated pointing at the Loop node.
+    let src = "fn count(n: Int) -> Int = if n == 0 then 0 else n + count(n - 1)\nlet answer = count(3)";
+    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+    let lens = ProvenanceLens::new(&dag);
+
+    let count_bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "count")
+        .expect("Bind(count) exists");
+
+    match lens.origin_of(count_bind.value) {
+        Origin::Accumulated { by } => {
+            assert!(
+                dag.node(by).as_loop().is_some(),
+                "Accumulated origin points at a Loop node"
+            );
+        }
+        other => panic!("expected Origin::Accumulated for Loop output, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_composition_nested_let_bindings() {
+    // Three-deep let chain where each binding references the previous.
+    let src = "let a = 1\nlet b = a + 1\nlet c = b + a";
+    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+    // Expected shape: Value(1) + Bind(a)
+    //                 + Transform(Add) + Bind(b)     (uses a)
+    //                 + Transform(Add) + Bind(c)     (uses b, a)
+    let c_bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "c")
+        .expect("Bind(c) exists");
+    assert_eq!(
+        dag.port(c_bind.value).value_type(),
+        Some(&TypeShape::Primitive(Prim::Int)),
+        "c is typed Int through composition"
+    );
+    assert!(dag.diagnostics().is_empty());
+}
+
+#[test]
+fn test_composition_nested_if_expressions() {
+    // Nested if in the else branch: `if a then b else (if c then d else e)`.
+    let src = "let r = if 1 > 0 then 10 else if 2 > 0 then 20 else 30";
+    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+    let bind_r = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "r")
+        .expect("Bind(r) exists");
+    let outer_branch_id = dag
+        .port(bind_r.value)
+        .produced_by
+        .expect("producer exists");
+    let outer_branch = dag
+        .node(outer_branch_id)
+        .as_branch()
+        .expect("producer is a Branch");
+    assert_eq!(outer_branch.paths.len(), 2);
+
+    // The else path should itself be a Branch (the nested if).
+    let else_path = &outer_branch.paths[1];
+    let inner = dag
+        .node(else_path.body)
+        .as_branch()
+        .expect("else path body is a nested Branch");
+    assert_eq!(inner.paths.len(), 2);
+
+    assert_eq!(
+        dag.port(bind_r.value).value_type(),
+        Some(&TypeShape::Primitive(Prim::Int)),
+        "nested-if unification gives Int"
+    );
+    assert!(dag.diagnostics().is_empty());
+}
+
+#[test]
+fn test_composition_if_inside_function_call() {
+    // If-expression as a function-call argument.
+    let src = "fn f(x: Int) -> Int = x + 1\nlet y = f(if 1 > 0 then 10 else 20)";
+    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+    let bind_y = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "y")
+        .expect("Bind(y) exists");
+    let call_id = dag
+        .port(bind_y.value)
+        .produced_by
+        .expect("producer exists");
+    let call = dag
+        .node(call_id)
+        .as_transform()
+        .expect("producer is a Transform");
+    assert_eq!(call.target, FunctionRef::new("f"));
+    assert_eq!(call.inputs.len(), 1);
+
+    // The argument is a Branch output.
+    let arg_producer = dag
+        .port(call.inputs[0])
+        .produced_by
+        .expect("arg has producer");
+    assert!(
+        dag.node(arg_producer).as_branch().is_some(),
+        "function argument is an if-expression lowered to a Branch"
+    );
+
+    assert_eq!(
+        dag.port(bind_y.value).value_type(),
+        Some(&TypeShape::Primitive(Prim::Int)),
+        "f returns Int regardless of which path the if chose"
+    );
+    assert!(dag.diagnostics().is_empty());
+}
+
+#[test]
+fn test_composition_two_functions_later_calls_earlier() {
+    // Function `g` defined after `f` and calls `f`. Multiple
+    // functions in sequence with forward dependency from g into f.
+    let src = "fn f(x: Int) -> Int = x + 1\nfn g(y: Int) -> Int = f(y) + 1\nlet r = g(5)";
+    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+    let bind_r = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "r")
+        .expect("Bind(r) exists");
+    let g_call_id = dag
+        .port(bind_r.value)
+        .produced_by
+        .expect("producer exists");
+    let g_call = dag
+        .node(g_call_id)
+        .as_transform()
+        .expect("producer is a Transform");
+    assert_eq!(g_call.target, FunctionRef::new("g"));
+
+    // Both f and g should be registered as Bind nodes with
+    // non-empty params (function definitions).
+    let f_bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "f")
+        .expect("Bind(f) exists");
+    let g_bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "g")
+        .expect("Bind(g) exists");
+    assert_eq!(f_bind.params.len(), 1);
+    assert_eq!(g_bind.params.len(), 1);
+
+    assert_eq!(
+        dag.port(bind_r.value).value_type(),
+        Some(&TypeShape::Primitive(Prim::Int)),
+    );
+    assert!(dag.diagnostics().is_empty());
+}
+
+#[test]
+fn test_composition_branch_with_function_calls_in_both_paths() {
+    // Both paths of an if contain function calls — exercise the
+    // Branch path-unification with non-trivial path bodies.
+    let src = "fn f(x: Int) -> Int = x\nfn g(x: Int) -> Int = x + 1\nlet r = if 1 > 0 then f(10) else g(20)";
+    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+    let bind_r = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "r")
+        .expect("Bind(r) exists");
+    let branch_id = dag
+        .port(bind_r.value)
+        .produced_by
+        .expect("producer exists");
+    let branch = dag
+        .node(branch_id)
+        .as_branch()
+        .expect("producer is a Branch");
+    assert_eq!(branch.paths.len(), 2);
+
+    // Each path body is a Transform (the function calls).
+    for path in &branch.paths {
+        let body = dag.node(path.body);
+        assert!(
+            body.as_transform().is_some(),
+            "path body is a Transform (function call)"
+        );
+    }
+    assert_eq!(
+        dag.port(bind_r.value).value_type(),
+        Some(&TypeShape::Primitive(Prim::Int)),
+    );
+    assert!(dag.diagnostics().is_empty());
+}
+
 #[test]
 fn invariant_port_state_matches_diagnostic_table() {
     // Structural audit of the enforced mark_unresolved API.
@@ -399,6 +755,12 @@ fn invariant_port_state_matches_diagnostic_table() {
         "let y = x\nlet x = 1",
         "fn f(a: Int) -> Int = a\nlet x = f(1, 2)",
         "let x = unknown_fn(1)",
+        // M0.7 Lane A: composition stress
+        "let a = 1\nlet b = a + 1\nlet c = b + a",
+        "let r = if 1 > 0 then 10 else if 2 > 0 then 20 else 30",
+        "fn f(x: Int) -> Int = x + 1\nlet y = f(if 1 > 0 then 10 else 20)",
+        "fn f(x: Int) -> Int = x + 1\nfn g(y: Int) -> Int = f(y) + 1\nlet r = g(5)",
+        "fn f(x: Int) -> Int = x\nfn g(x: Int) -> Int = x + 1\nlet r = if 1 > 0 then f(10) else g(20)",
     ];
     for src in sources {
         let dag = compile_any(src, "invariant.v3");
