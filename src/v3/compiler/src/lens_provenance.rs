@@ -13,6 +13,32 @@
 
 use crate::dag::{Behavior, Dag, NodeId, PortId};
 
+/// Provenance classification for a Port. Tells you "where this value
+/// came from" in terms of the producing Behavior's kind.
+///
+/// **Dissolution receipt: JUDGMENT CALL — kept as four variants for
+/// readability, NOT terminal by the dissolution patterns.** This is
+/// a Pattern 1 (fact placement) candidate — the origin kind is
+/// redundant with the producer's Behavior variant, which consumers
+/// can already query via `dag.node(producer_id)`. A strict dissolution
+/// would have the lens return just `Option<NodeId>` and let consumers
+/// read the Behavior kind directly.
+///
+/// Kept as an enum because the named variants document the semantic
+/// meaning (Source vs Computed vs Selected vs Accumulated) and make
+/// the lens output greppable without requiring consumers to pattern-
+/// match on Behavior themselves. This is readability-over-
+/// parsimony and it costs five match arms in the lens body.
+///
+/// **Not an annotation.** Per INVARIANTS.md "No annotation mechanisms
+/// at any layer," Origin values are NOT stored on ports. The lens
+/// computes them on demand via `ProvenanceLens::origin_of(port)` and
+/// returns them to the caller. No side table, no persistent map.
+///
+/// Revisit: if consumers routinely ask "what kind of origin is this"
+/// vs just "which node produced it," the dissolution to `Option<NodeId>`
+/// is worth doing to eliminate the four variants. At M0 with one
+/// observational lens test, the judgment is to keep the readable form.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Origin {
     /// Parameter of an enclosing function, or a literal Value. Both

@@ -65,6 +65,22 @@ impl NodeId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PortId(u32);
 
+/// Literal value carried by a Value node. One variant per primitive
+/// type the substrate understands.
+///
+/// **Dissolution receipt: DEFERRED — dissolves with the primitive
+/// substrate refactor (first M1 task).** LiteralValue is one of the
+/// three parallel-representation scaffolds flagged in the M0
+/// retrospective (see `src/v3/M0_RETROSPECTIVE.md` §"The primitive
+/// substrate gap"). The right shape is `{ declaration: DeclarationId,
+/// data: LiteralData }` where the declaration points at the
+/// primitive type's entry in the Dag's Declaration table and the
+/// data is a carrier for the concrete value. Until that refactor
+/// lands, this enum is parallel to `Prim` / `TypeShape::Primitive`
+/// and dissolves at the same time.
+///
+/// Trigger: when the Declaration table exists on Dag and primitive
+/// types are registered there. See ROADMAP.md §M1 steps (1)–(2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LiteralValue {
     Int(i64),
@@ -105,6 +121,18 @@ impl FunctionRef {
 ///
 /// Biconditional (checked by the invariant audit test):
 ///   state == Unresolved  iff  diagnostics.contains(port.id())
+///
+/// **Dissolution receipt: TERMINAL.** PortState is substrate, not an
+/// annotation. The three states are mutually exclusive structural
+/// states of a port — collapsing them into a flatter form (e.g.,
+/// `Option<TypeShape>` plus convention, which is what M0.1–M0.5 had)
+/// would make the biconditional behavioral instead of structural,
+/// which is precisely what M0.6's refactor moved away from. Adding
+/// a 4th variant would require a structural reason — e.g., a genuine
+/// new state a port can occupy — not a convenience for consumers.
+/// Per INVARIANTS.md "No annotation mechanisms at any layer," this
+/// enum is NOT an attribute system; its variants are load-bearing
+/// for the fail-closed (C-8) invariant.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PortState {
     Uninferred,
