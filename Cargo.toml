@@ -6,6 +6,8 @@ members = [
     "src/v2/stage0",
     # v2 self-hosted compiler tests
     "src/v2/tests",
+    # v3 compiler — M0: hand-written substrate skeleton
+    "src/v3/compiler",
     # v1 compiler — ARCHIVED. No longer in the build or generation path.
     # Retained in src/v1/ for historical reference. Can be deleted.
 ]
