@@ -417,6 +417,190 @@ Lineage: this principle traces to the intersubjectivity and
 epistemic-stacking work in the `definitely-not-agi` papers; see
 `docs/design-lineage.md` §"Stage 4: definitely-not-agi" for origin.
 
+### The substrate: two coordinated shapes
+
+The epistemic stacking section above tests any candidate compiler
+substrate against a concrete question: *can it host the Node-tree
+form of `dsl/std/algebra.dag`?* The thesis commits here to two
+coordinated substrate shapes that pass the test. Neither is
+invented in this document; both are inherited from earlier design
+work. `MODELING.md` already gives the architecture explicitly:
+
+```
+Surface sugar:      service, fn, type, operation    (user intent)
+Composition layer:  Node, children, edges           (how things connect)
+Semantic kernel:    types, effects, contracts       (what flows through)
+Foundation:         logical algebra                 (why it's sound)
+```
+
+The thesis's "type substrate" is the composition layer of that
+architecture — `service`, `fn`, `type`, and `operation` are
+surface sugar on top of it, and any compiler representation that
+treats them as distinct substrate-level kinds (e.g.,
+`DeclKind::Service`, `DeclKind::Operation`) is carrying the
+parallel-representation disease the modeling discipline forbids.
+See also `docs/design-lineage.md` §"Stage 3: gunbc v2" and
+§"Stage 5: v3 spec," and the core-invariant memory
+`feedback_compiler_is_dag_processor.md`. The thesis pins both
+substrates down together because the epistemic chain rests on
+them, and M1 substrate decisions need a single authoritative
+statement to measure against.
+
+**Types are Node trees with connectives.** Every type declaration
+— a primitive, a record, a sum type, a function signature, a
+parameterized generic, a service, an algebra, a correctness
+dimension, a user-defined domain meta-model — is a Node with:
+
+- A **connective**: `Atom | Conj | Disj | Arrow | Cardinality | Instance`
+- **Children**: labeled (`Conj`, `Disj`) or positional
+  (`Cardinality`) edges to other Nodes in the type substrate
+- An optional **inhabits** edge: a reference to an algebra
+  declaration whose children become derived accessors on this Node
+  via the §"Epistemic stacking" mechanism
+
+Connective meanings:
+
+- **Atom.** Terminal at the user-input boundary — identifiers,
+  literals, source spans from outside the closed world. Atoms
+  carry a payload (the literal bits or identifier name). Every
+  other connective decomposes; Atoms do not.
+- **Conj.** Product / record with named children. Hosts type
+  declarations (`Monoid<T> { op: fn(T, T) -> T; identity: T }`),
+  services (`service shell.Exec { operation Run { ... } }`),
+  operation definitions, user-defined domain meta-models, and
+  correctness dimension declarations.
+- **Disj.** Coproduct / sum with labeled alternatives. Hosts
+  explicit sum types (`type Result<T, E> = Ok(T) | Err(E)`), exit
+  patterns (`exit { 0 => Unit; nonzero => String }`), and the
+  elimination forms consumed by the computation substrate's Branch
+  behavior.
+- **Arrow.** Function signature from input Nodes to an output
+  Node. The `op: fn(T, T) -> T` field inside `Magma<T>` is an
+  Arrow Node with three positional type children. An Arrow
+  declaration's **body** is a reference into the computation
+  substrate (a sub-DAG of L1 behaviors) for user functions, or
+  into a realization declaration in `extdeps/` for primitives.
+  This is where the two substrates meet.
+- **Cardinality.** Repetition over a child Node with a (possibly
+  symbolic) count. `argv: ["sh", "-lc", "{script}"]` is a
+  `Cardinality(3)` with three String-Atom children. `List<T>` is
+  `Cardinality(n)` over `T`. Bounded iteration falls out of
+  `List<T>` having a finite `n`.
+- **Instance.** Instantiation of a parameterized Node with
+  children bound to concrete Nodes. `Int64 = OrderedRing<Word64>`
+  is an Instance whose template is `OrderedRing` and whose
+  parameter binding is `{ T := Word64 }`. `transport shell { argv:
+  [...] }` is an Instance of the `transport` meta-declaration.
+  **Inhabitance is Instance**: "Int inhabits OrderedRing<Word64>"
+  is realized as an `inhabits` edge from Int's declaration to an
+  Instance Node whose template is OrderedRing and whose parameter
+  is Word64.
+
+**Computation is five L1 behaviors.** Every function body is a
+sub-DAG of Nodes in a separate substrate with exactly five
+primitive behaviors:
+
+- **Value.** A literal carried into the graph on a Port with no
+  inputs.
+- **Transform.** Apply a `FunctionRef` (a cross-substrate edge to
+  an Arrow declaration in the type substrate) to input Ports,
+  producing an output Port.
+- **Branch.** Select between sub-DAGs based on a Bit-valued
+  (Disj-eliminated) input Port; outputs are unified into a single
+  output Port. Exhaustiveness is structural: a Branch whose cases
+  don't cover the input's Disj is a compile-time unbound-child
+  error.
+- **Loop.** Bounded iteration over a source Port whose type is a
+  `Cardinality` Node in the type substrate, with an accumulator
+  Port and a body sub-DAG. Termination is structural rather than
+  behavioral because the source's cardinality is finite.
+- **Bind.** Name a sub-DAG's output Port so downstream Transforms
+  can reference it.
+
+No sixth behavior. M0 validated these five under three reviewer
+rounds and never hit a stop signal (see
+`src/v3/M0_RETROSPECTIVE.md`); the five-behavior claim is the
+project's strongest empirical substrate commitment and is not
+revisited here.
+
+**The two substrates compose via FunctionRef and Arrow-body.** A
+Transform Node in the computation substrate holds a FunctionRef,
+which is a typed edge to an Arrow declaration in the type
+substrate. The Arrow declaration's `body` child is a Node
+reference into the computation substrate (for user functions) or
+into `extdeps/` (for primitives). So the two substrates meet at
+exactly two points: the `Transform → Arrow` lookup on one side
+and the `Arrow → body` lookup on the other. Inference resolves
+types across this boundary; emission projects across it. There is
+no third substrate.
+
+**The load-bearing test: host `dsl/std/algebra.dag`.** For any
+candidate compiler-internal Declaration shape, the check is: *can
+it host the Node-tree form of `std/algebra.dag` as-is?*
+Specifically, the shape must carry four things:
+
+1. **Parameterization over T.** `Magma<T>`, `Monoid<T>`, `Ring<T>`
+   — type declarations whose children reference a free type
+   parameter. The substrate must represent `T` as a child Node
+   (probably an Atom with a parameter marker) that gets bound at
+   Instance time, not as a string name with ad-hoc substitution.
+
+2. **Structural children.** `Monoid<T>` as a Conj with children
+   `{ op: Arrow(T, T, T); identity: T }`. The substrate must carry
+   these children as typed Node edges, not as serialized metadata
+   on a nominal declaration.
+
+3. **The `fn(T, T) -> T` morphism shape.** An Arrow Node with
+   three positional `T`-references. The substrate must represent
+   function types as first-class Node shapes, not as separate
+   Function declarations with inline signatures disconnected from
+   the algebra they belong to.
+
+4. **The inhabitance relation.** `Int inhabits OrderedRing<Word64>`
+   — an `inhabits` edge from Int's declaration to an Instance Node
+   whose template is OrderedRing and whose parameter is Word64.
+   The substrate must carry this edge structurally so that
+   `Int.add` resolves by walking `inhabits → OrderedRing → add
+   child → Arrow(T, T, T)` with `T := Word64` substituted at each
+   position — with no separate `add` declaration attached directly
+   to Int.
+
+If the substrate hosts `algebra.dag` through this walk, it
+automatically hosts `shell.dag`, domain meta-models, user-defined
+correctness dimensions, `service OrderAPI via rest::server`
+declarations, and every other compositional declaration in the
+project — because they are all Node-tree compositions in the
+same substrate with the same six connectives. **If it cannot
+host `algebra.dag`, the substrate is too narrow** and is carrying
+parallel-representation debt that will force special-case handling
+in every lens and every emission target. The test is not "what is
+convenient to ship first"; it is "does the substrate preserve the
+epistemic chain?"
+
+**Substrate extension is a C1-class stop signal.** Adding a
+seventh connective to the type substrate, or a sixth L1 behavior
+to the computation substrate, is a substrate-level commitment
+that requires the same discipline as any coproduct extension:
+*all four dissolution patterns from §"Structural decompression"
+must be attempted, and extension is only valid if all four fail
+with structural arguments.* "A new kind of thing we need" is
+never sufficient — the new thing must be shown to not decompose
+into existing connectives or behaviors. This stop signal applies
+to both substrates symmetrically.
+
+**Future candidate (not committed): unified substrate.** A
+stronger redesign that dissolves the five L1 behaviors into
+patterns over the type substrate — treating Value as an Atom
+carrying a literal, Transform as an Instance of an Arrow, Branch
+as an Instance of Disj elimination, Loop as an Instance of
+`fold`, Bind as a local-scoped Declaration — has been discussed
+as a candidate for concept-unification applied to the substrate
+itself. **The thesis does NOT commit to this collapse.** M0's
+validation of the five behaviors as substrate primitives stands;
+revisiting them requires new failure pressure, not just aesthetic
+or theoretical preference. Recorded here as a candidate for
+future consideration only.
+
 ## Correctness dimensions
 
 Correctness is not one property — it is many orthogonal dimensions:
@@ -663,27 +847,228 @@ zero parallel code.
 
 ### Omni-emission: one intent graph, many artifacts
 
-A single `.dag` program can describe an entire system — API
-server, frontend, database schema, CLI tool, deployment config.
-Different subgraphs of the intent emit to different targets.
-The emission topology is itself part of the declared intent:
+A single `.dag` program can describe an entire system —
+frontend client, middleware, backend service, database schema,
+simulation netlist, API documentation, infrastructure config —
+with the compiler projecting different subgraphs onto different
+targets. The **coherence across targets is structural, not
+checked**: every artifact is a walk over the same Node tree
+through a different language spec, so drift between layers is
+structurally impossible.
+
+**A concrete full-stack example.** Consider an order-management
+workflow:
 
 ```dag
-service OrderAPI via rest::server(lang: Rust, port: 8080) { ... }
-service OrderUI  via web::frontend(lang: TypeScript) { ... }
-type   OrderSchema via sql::migration(target: Postgres) { ... }
+// Shared domain — declared once, projected everywhere.
+type Money = Field<Word64>              // inhabits Field → arithmetic free
+type OrderItem { sku: String; qty: Int; price: Money }
+type Order {
+  customer_id: CustomerId
+  items: List<OrderItem>
+  total: Money
+  status: OrderStatus
+}
+type OrderStatus = Pending | Confirmed | Shipped | Delivered | Cancelled
+
+// The workflow — a composition over shared types.
+workflow create_order(draft: Order) -> OrderId {
+  let validated = validate_items(draft.items)
+  let stock_ok  = check_inventory(validated)
+  let payment   = charge_payment(draft.customer_id, draft.total)
+  let record    = insert_order(validated, payment)
+  let _notify   = notify_customer(draft.customer_id, record)
+  record.id
+}
+
+// Projection specs — bind subgraphs to target artifacts.
+service OrderAPI via rest::server(lang: Rust, path: "/orders") {
+  operation POST create_order
+}
+
+service OrderUI via web::frontend(lang: TypeScript, framework: React) {
+  form_for  Order
+  submit_to OrderAPI.create_order
+}
+
+persistence OrderRecord via sql::postgres(table: "orders") {
+  schema_from Order
+  constraints status
+  operations  insert_order, select_by_id, update_status
+}
 ```
 
-The compiler validates the full causal graph across all
-artifacts — the Rust API server and the TypeScript frontend
-agree on types because they derive from the same declarations.
-The compiler owns the glue: serialization contracts, shared
-type definitions, API surface consistency. Each artifact is a
-projection of the validated intent onto a specific target.
+From this one source, the compiler projects every layer of a
+real application, coherent by construction:
 
-Emission is independent of intent. You declare what the system
-does; separately, you declare what artifacts it becomes. The
-compiler handles everything in between.
+| Layer | Target | Comes from |
+|---|---|---|
+| **DB migration** | Postgres DDL | `persistence OrderRecord` walks `Order`'s Node tree. `CREATE TABLE orders (...)` with a `CHECK (status IN (...))` constraint derived from the `OrderStatus` Disj variants. |
+| **Backend struct + handler** | Rust | `struct Order { ... }` + `async fn create_order_handler(Json(draft): Json<Order>) -> ...` where the body is emission of the workflow's L1 behaviors. |
+| **Backend service logic** | Rust | Each workflow step emitted from its own function body in `.dag`. Rust-specific error handling, `Rc` wrapping, and async insertions are projection-rule consequences of the Rust language spec. |
+| **Client-side API binding** | TypeScript | `async function createOrder(draft: Order): Promise<OrderId> { ... }` — emitted from the `service OrderAPI` Instance by walking the REST transport spec with the TypeScript language spec. |
+| **Client-side type definitions** | TypeScript | `interface Order { ... }` + `type OrderStatus = 'Pending' \| 'Confirmed' \| ...` — same Node tree, TypeScript projection rules (camelCase field rewrite, string-union for unit-variant Disj, `number` for `Money`'s Word64 carrier). |
+| **Client-side form component** | React | `<form>` with fields for each `Order` child, dynamic list for `items`, dropdown for `status` — walked from `form_for Order` through the React spec's "Conj → form fields, Disj-of-units → dropdown, Cardinality<T> → dynamic list" rules. |
+
+**Coherence is structural, not checked.** If you edit the `.dag`
+source:
+
+- Add `delivery_address: Address` to `Order` → the form gets a
+  new input, the DB gets a new column, the Rust struct gets a new
+  field, the TypeScript interface gets a new field, the API
+  client serializes it, the migration script includes `ALTER
+  TABLE`.
+- Rename `status` to `state` → all six layers use `state`.
+- Add a `Refunded` variant to `OrderStatus` → the dropdown has a
+  new option, the Postgres `CHECK` constraint includes it, the
+  Rust enum has a new variant, the TypeScript union has a new
+  string literal, and any existing `match` on status that didn't
+  handle `Refunded` is an exhaustiveness error at compile time.
+
+**You cannot have drift between these layers** because they are
+not separate artifacts that need synchronization. They are
+projections of the same Node tree — same declarations, walked
+through different language specs. Drift is not checked; it is
+structurally impossible. Traditional full-stack projects have
+"is the frontend interface in sync with the backend DTO in sync
+with the DB schema?" as a recurring question with no structural
+answer. In `.dag`, the question is dissolved: there is only one
+`Order`, and asking if the frontend's Order matches the
+backend's Order is like asking if `7` equals `7`.
+
+**Targets are declarations, not compiler features.** The Rust,
+TypeScript, React, Postgres, and REST specs in the example above
+are declarations in `dsl/extdeps/languages/` and
+`dsl/extdeps/transports/`. Each spec is itself a Node-tree
+composition in the same substrate, declaring: what primitive
+shapes the target has, what its syntax is, how each connective
+in the type substrate projects onto target constructs, and how
+service/transport bindings map to target API calls. Adding a new
+target — say, Swift for iOS clients — means writing a Swift
+language spec in `dsl/extdeps/languages/swift.dag`. **Zero
+compiler changes, zero emitter changes, zero workflow changes,
+zero risk of drift into existing targets.** The spec IS the
+implementation.
+
+**This generalizes beyond programming languages.** The mechanism
+does not care whether a target is Turing-complete, general-purpose,
+or even textual. Any artifact class with a structured
+representation and a defined projection surface is a valid
+target:
+
+- **SPICE netlists.** An analog filter declared in `.dag` —
+  components inhabiting Ring/Field algebras, topology as a Conj
+  of typed connection children — projects to a SPICE netlist. If
+  the filter is modified, the netlist updates. If there is also a
+  simulation-result consumer (spectrum analyzer, transfer-function
+  plot), it updates too, from the same source.
+- **Natural language / documentation.** A walk over the Node tree
+  through a natural-language projection spec maps each connective
+  to a linguistic pattern: Conj with named children → "X has Y
+  and Z"; Disj with unit variants → "X is one of A, B, or C";
+  Arrow → "given X, returns Y." API reference material, user-
+  facing help strings, error message text, generated book chapters
+  — all first-class emission classes. Adding a new natural
+  language (French, Japanese) is adding a language spec.
+- **Infrastructure-as-code.** Terraform HCL, Kubernetes
+  manifests, CloudFormation templates — structured artifact
+  classes projected from a workflow declaration via an IaC
+  language spec. Change a service's scaling requirements in
+  `.dag`, the Terraform module updates.
+- **CI pipeline definitions.** GitHub Actions YAML, GitLab CI,
+  Jenkinsfile — each a Node-tree walk with a different
+  projection spec. The thesis's existing claim that "the CI
+  pipeline is the canonical dependency-modeling example" (see
+  §"The core abstraction") becomes omni-emission specifically:
+  one pipeline declaration, arbitrary CI-system targets.
+- **Hardware description languages.** Verilog, VHDL, Chisel —
+  for digital circuits declared as compositional workflows with
+  clock-domain annotations.
+- **Data-transformation languages.** SQL, Pandas, Spark — any
+  declared analytics computation projects onto whichever target
+  environment the consumer needs.
+
+**The rule that makes this cheap: treat every target as an
+extdep.** The compiler does not know Rust, or TypeScript, or
+SPICE, or English. It reads a language spec from
+`dsl/extdeps/languages/` (or the analogous transport/persistence/
+platform spec directory), and the spec declares — as ordinary
+`.dag` compositional modeling — how each connective in the type
+substrate and each L1 behavior in the computation substrate
+projects onto the target's constructs. Adding a new target is
+writing a new spec against whatever API that target provides.
+The spec is reusable across every workflow; the workflows are
+reusable across every spec. **N workflows × M targets is handled
+by N + M declarations, not N × M handwritten integrations.**
+
+**Cost-scaling consequence.** Adding a new emission target is
+`O(language spec)`, not `O(existing targets × workflow size)`.
+Adding SPICE projection for the Order workflow above would
+require a SPICE language spec in `dsl/extdeps/languages/`. Once
+that spec exists, *every* `.dag` workflow with appropriate
+compositional content can emit to SPICE — not just Order. A team
+using `.dag` omni-emission pays for:
+
+1. Their workflow declarations (the conceptual content of their
+   system).
+2. Language specs for each target they want (reusable across
+   workflows, written once).
+
+They do **not** pay for:
+
+- Synchronizing separate artifact codebases (frontend, backend,
+  DB migration, docs).
+- Maintaining API contracts between layers.
+- Writing parsers, serializers, or type mappers for cross-layer
+  communication.
+- Keeping documentation in sync with implementation.
+- Onboarding developers to N different toolchains — there is one.
+- Adding a new target platform (cost = one language spec, once).
+
+This is the 1:1 effort property applied to full-stack
+development: effort scales with the system's conceptual content,
+not with the number of layers, languages, or target environments
+the system projects onto.
+
+**Why this works (connection to §"Epistemic stacking").** The
+coherence-by-construction and the cost-scaling properties both
+rest on the same foundation: *every artifact emission is a walk
+over the same Node tree.* The walk bottoms out at primitives —
+the language spec's atomic realizations for each connective —
+which is where the epistemic chain hands off to the target world.
+Because the walk is deterministic and the Node tree is the
+single source of truth, two projections cannot disagree about a
+shared type. Because the walk's depth is proportional to
+conceptual structure rather than consumer count, adding a new
+target does not require rewriting existing ones. This is the
+§"Epistemic stacking" substrate test applied to emission rather
+than to type inhabitance.
+
+**Why this works (connection to §"The substrate").** The
+substrate has to host not just the domain types (`Order`,
+`OrderStatus`, `Money`), but also the workflow declarations
+(compositions of L1 behaviors over those types) AND the language
+specs themselves (Node-tree declarations that describe target-
+world shapes and projection rules). The substrate test "can it
+host `dsl/std/algebra.dag` as-is?" is precisely what unlocks
+this: the same connective set that holds `Monoid<T>` also holds
+`service OrderAPI via rest::server { ... }`, the same `Instance`
+connective that binds `T := Word64` for `Int64` also binds `lang:
+Rust` for the REST server target, and the same `inhabits` edge
+that connects `Int` to `OrderedRing` connects `create_order` to
+the workflow-projection rules in the Rust spec. **One substrate,
+one walk, arbitrarily many targets.**
+
+**Emission is independent of intent.** You declare what the
+system does; separately, you declare what artifacts it becomes.
+The compiler handles everything in between. And because both the
+system declaration and the artifact declaration are compositional
+Node trees in the same substrate, they evolve together
+automatically: adding a workflow instantly becomes available to
+every bound target; adding a target instantly applies to every
+existing workflow; refactoring the workflow cascades to every
+projection; refactoring a projection rule cascades to every
+workflow that uses that target.
 
 ### Automatic parallelism (structural, not scheduled)
 
@@ -981,11 +1366,49 @@ that's a gap.
 - Substrate test for any candidate Declaration shape: can it host
   `dsl/std/algebra.dag` as-is? If not, the shape is too narrow.
 
+**Substrate shape (two coordinated substrates — must not be flattened):**
+- Types are Node trees with six connectives: `Atom | Conj | Disj |
+  Arrow | Cardinality | Instance`. `service`, `fn`, `type`,
+  `operation` are surface sugar over this layer
+  (`MODELING.md` §"Composition layer").
+- Computation is five L1 behaviors: `Value | Transform | Branch |
+  Loop | Bind`. Validated by M0 under three reviewer rounds; the
+  stop signal never fired.
+- Composition: Transform holds a FunctionRef to an Arrow declaration
+  in the type substrate; the Arrow's body is a sub-DAG of L1
+  behaviors (for user functions) or a realization declaration in
+  `extdeps/` (for primitives).
+- Substrate extension is a C1-class stop signal (seventh connective
+  or sixth behavior) — all four dissolution patterns from §"Structural
+  decompression" must fail with structural arguments before extension
+  is allowed.
+- Future candidate (NOT committed): unified substrate dissolving the
+  five behaviors into patterns over Node. Recorded for future
+  consideration only; revisiting requires new failure pressure, not
+  aesthetic preference.
+
 **Free consequences (fall out when Tiers 1-2 close):**
 - Automatic parallelism from dependency graph.
 - Automatic memoization from purity + cost.
 - Space bound proofs from CX.
 - Cross-language optimization from shared cost algebra.
+
+**Omni-emission (1:1 effort applied to full-stack systems):**
+- One workflow declaration projects onto every layer of a real
+  application: DB schema, backend service, API client, frontend
+  form, documentation — from one source.
+- Coherence between layers is structural, not checked — drift is
+  impossible because every layer is a walk over the same Node
+  tree through a different language spec.
+- Emission targets are declarations in `dsl/extdeps/languages/`
+  and `dsl/extdeps/transports/`. Adding a new target (Swift,
+  SPICE netlists, Terraform, natural-language docs, Verilog,
+  SQL) costs one language spec. Zero compiler/emitter changes.
+- Cost scaling: N workflows × M targets handled by `N + M`
+  declarations, not `N × M` handwritten integrations. Effort
+  scales with conceptual content, not with layer or target count.
+- Emission is independent of intent. You declare what the system
+  does; separately, you declare what artifacts it becomes.
 
 **Meta-process modeling:**
 - Bootstrap, CI, dev process modeled as .dag workflows.
