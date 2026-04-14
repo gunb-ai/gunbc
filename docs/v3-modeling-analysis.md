@@ -134,41 +134,40 @@ coproduct (CollectionSize, TreeSize, ArithmeticParam, ExplicitCount,
 Forever). This is the right concept but the coproduct should dissolve.
 
 **Proposed dissolution:** SizeBound's 5 variants encode two facts:
-a dimension (what's being counted) and an origin (which parameter).
-The dimension traces to the type's algebraic structure:
+a dimension (what's being counted) and a source (which parameter).
+The dimension is DERIVABLE from the source's type via its algebra
+profile — computation.dag already has `algebra_profile_to_dimension`
+for this. Since it's derivable, don't store it:
 
+```
+type Bound {
+  produced_by: PortId             // typed reference, not String
+  count: Port                     // the actual number
+}
+```
+
+The dimension is a FUNCTION of the type at produced_by, computed
+when the cost lens needs it:
 - FreeMonoid (List, String, Set, Map) → collection length
 - Inductive structure (Tree) → tree node count
 - OrderedRing (Int) → numeric magnitude
 - Literal → constant (input-independent)
 - System → Forever (externally terminated)
 
-computation.dag already has `IterationDimension` and
-`algebra_profile_to_dimension` that maps algebra profiles to
-dimensions. So Bound dissolves to:
-
-```
-type Bound {
-  dimension: IterationDimension   // derived from the type's algebra
-  produced_by: String             // which parameter/value (immediate only)
-  count: Port                     // the actual number
-}
-```
+**produced_by is a typed reference, not a String.** The v2
+retrospective identified "string-based name matching (45+ sites)"
+as an architectural anti-pattern. Using `origin: String` would
+reintroduce that disease — six months later the cost lens would
+be doing `if origin == "items" then ...`. PortId (or BindingId)
+makes "follow the edge backward" a graph operation on typed
+identity.
 
 Uses `produced_by` for consistency with Port.produced_by — same
 concept ("where did this come from?") should use the same name.
 
-The dimension comes FROM the algebra profile, not from a growing
-enum. New algebraic structure → new dimension falls out.
-IterationDimension has 3 values (TreeDescent, CollectionFold,
-ArithmeticRepeat) tracing to the 3 iteration primitives — small,
-stable, irreducible.
-
 **Why immediate produced_by, not full path:** if a consumer needs
 to trace further back, it follows edges in the DAG. Storing the
-full path would duplicate the graph structure. The immediate
-produced_by tells the cost lens what it needs: "is this bound
-input-dependent or constant?"
+full path would duplicate the graph structure.
 
 ### Path — std/ (proposed)
 
@@ -283,7 +282,13 @@ algebraic structure declarations, not hand-written per variant.
 
 **v3 target:** add a new algebraic structure to std/ → the compiler
 reads the declaration and generates the matching code. The compiler
-itself has zero edits.
+itself has zero edits for the new structure.
+
+Note: the 3-way intro/elim/op distinction IS still a small enum.
+It's probably irreducible — these are the three fundamental things
+you can do with any algebraic structure. The win is not "no enum"
+but "the enum is fixed at 3 and growth happens in std/ declarations,
+not compiler match arms."
 
 ### What's missing from std/ (proposed additions)
 
@@ -388,6 +393,46 @@ IMPLEMENTATION reads compiler-specific DAG structure.
 The composition rules (add, max, multiply for cost; lattice join for
 effects) are math — they belong in std/. The specific traversal of
 THIS compiler's DAG structure is src/v3/.
+
+### Closure rule (from Experiment 1)
+
+When a Define has an edge into a Loop, the Define's free variables
+inherit the Loop's bound for fan-out, and the Define's body is
+evaluated under the Loop's termination context, not the enclosing
+function's.
+
+This affects two lenses:
+- **Ownership:** captured values have fan-out = Loop's bound (N),
+  not 1. They're used N times → borrow or clone, not move.
+- **Termination:** self-calls inside the Define are bounded by
+  the Loop, not the enclosing function's recursion.
+
+Without this rule, closures compile but the ownership lens gets
+fan-out wrong — treats captures as fan-out=1 instead of fan-out=N.
+This manifests as either over-cloning (defensive) or aliased
+mutation (unsound). Neither is acceptable.
+
+### Where do lenses live in the layering?
+
+Lenses are NOT a separate post-infer pass. They are computed at
+binding sites during DAG construction (option b from the retro).
+This is the Experiment 2 lesson: carry facts through bindings,
+don't reconstruct them afterward.
+
+Concretely: when the parser/infer layer creates a Bind, it
+computes the lens facts (fan-out, effect, cost) for that binding
+and stores them on the Port. Lenses are fields, not passes. A
+downstream consumer reads them — no re-derivation.
+
+If lenses were a separate pass (option a), we'd recreate the v2
+problem: construct facts during inference, discard them, then
+rebuild them in a 5,000-line analysis. If they were external
+scripts (option c), compile-time enforcement claims fall apart.
+
+This means the infer layer owns the lens COMPUTATION, and the
+emit layer READS the results. The lens algebra (how costs compose,
+how effects join) lives in std/. The specific computation lives
+in src/v3/infer.
 
 ---
 
@@ -700,17 +745,38 @@ iteration" — meaningful for comparing alternatives.
 ### Parallelism safety
 
 Can the system accidentally parallelize a forever loop and "finish"
-it? No, because:
+it? No — but the guarantee is structural + effect, not structural
+alone.
 
-1. **Parallelism requires independence** — no shared edges between
+**Structural argument (covers most cases):**
+1. Parallelism requires independence — no shared edges between
    iterations in the DAG.
-2. **Forever loops have accumulator state** (server state, event
-   loop state) that persists across iterations.
-3. **If iterations WERE independent**, the compiler raises to Map.
+2. Forever loops typically have accumulator state (server state,
+   event loop state) that persists across iterations.
+3. If iterations WERE independent, the compiler raises to Map.
    But Map requires a finite source collection. Forever isn't a
    collection — it's a repeat bound.
 4. `repeat(Forever, f)` is sequential by construction — each
    iteration feeds the next.
+
+**Edge case: stateless effectful forever loop.**
+`repeat(Forever, fn() { handle_request() })` where handle_request
+reads from a shared queue. There's no value-level accumulator —
+each iteration is independent at the data flow level. The
+dependency is effectful (the queue), not structural.
+
+The safety net here is the **effect lens**: handle_request has a
+ServiceCall or Mutation effect, so the compiler refuses to
+parallelize because effects don't generally commute.
+
+This means parallelism safety for forever loops DEPENDS on the
+effect lens being correct. If the effect lens has a hole,
+parallelism over a forever loop becomes possible. The effect lens
+is load-bearing for parallelism — not optional.
+
+The fully pure case (`repeat(Forever, fn() { 1 + 1 })`) is safe
+even if "parallelized" — there's nothing to compute and no
+observable effect. Dead code.
 
 ### Composition cases
 
@@ -797,6 +863,78 @@ verify human understanding; the property tests verify the system.
 
 ---
 
+## V2 Coproducts to Dissolve in V3
+
+The doc audited new L1 behaviors but not existing v2 coproducts.
+If v3 inherits these, the same audit happens again under "v4."
+Here's the inventory from 00_core.dag:
+
+| Type | Variants | Dissolution path |
+|---|---|---|
+| ExprData | 22 | Already addressed — becomes L1 behaviors + algebraic forms |
+| TokenShape | 35 | Doc says "reusable" — but 35 variants deserves audit. Keyword tail may compress. Revisit during v3 tokenizer. |
+| Connective | 4 (Conj, Disj, NoConnective, Arrow) | Traces to Product, Coproduct, Terminal, Function. Once those are first-class in std/, Connective is redundant. |
+| FieldAccessStyle | 5 (StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond) | All 5 are intro/elim instances: TupleFirst/TupleSecond = positional Product elimination, StoredField = named Product elimination, OptionalUnwrap = Optional elimination, EnumAccessor = Coproduct projection. Dissolves via the same intro/elim mechanism. |
+| MethodSemantics | 3 (Plain, Algebra, Service) | God-coproduct in miniature. AlgebraMethodSemantics carries 4 fields, ServiceMethodSemantics carries 2. Algebra method = elimination of an algebraic structure, Service method = elimination across a transport boundary. |
+| InferredNode | 3 (Resolved, CompilerError, TypeVariable) | Three states of one process. CompilerError doesn't belong in the result type — should live in a diagnostic table keyed by NodeId. TypeVariable is unification scratch state. Probably reduces to Optional<Node> plus side tables. |
+| VarBindingKind | 4 (Local, Function, Variant, MatchBound) | Origin tags — structurally indistinguishable, different labels. "Label is data, not structure" pattern. Dissolves into a single binding type with origin as data. |
+| ExprErrorKind | 3 | Classification metadata. Single field on unified error type. |
+
+**Priority for v3:** Connective and FieldAccessStyle dissolve
+naturally when intro/elim forms land (they're just unmodeled
+instances). MethodSemantics dissolves when algebraic and transport
+operations are unified under the function space. InferredNode and
+VarBindingKind dissolve when diagnostics and bindings are redesigned.
+
+Not all need to dissolve on day one. But they need to be tracked
+so they don't get inherited by default.
+
+### Why 04_infer fragmented into 13 files
+
+v2's stage 4 has 13 sub-files (access, cycle, emit_info, env,
+infer, items, lookup, method, patterns, resolve, service, sigs,
+types). This happened because infer has too many concerns:
+
+- Name resolution (should be a separate layer — it is in v3)
+- Type checking (the actual job)
+- Method dispatch (really algebra profile lookup)
+- Pattern matching validation (really Coproduct elimination check)
+- Service wiring (really transport boundary check)
+- Cycle detection (really call graph analysis)
+- Emit info construction (should be emit's job)
+
+v3 splits this: resolve is its own layer, method dispatch reads
+algebra profiles, pattern matching reads Coproduct structure,
+service wiring reads transport declarations. What remains in infer
+is type propagation through ports — a focused job. If v3's infer
+starts growing sub-files, it's a signal that a concern belongs
+elsewhere.
+
+---
+
+## Experiment Status
+
+These experiments (docs/v3-validation-experiments.md) validated
+the v3 direction. Status matters because the doc builds on them:
+
+| # | Experiment | Result | Status |
+|---|---|---|---|
+| 1 | Lambda → Bind + Define | **PASS (partial)** | LambdaSemantics deleted, -30 lines. 43 ExprLambda refs remain — justified by closure semantics (fresh scope, capture fan-out, iteration context). Lesson: the closure/Define-in-Loop rule (above). |
+| 2 | Provenance on binding | **PASS (partial)** | Carry path works: classify_let_value reads scope_locals first (carried facts) before sub_value_vars (reconstruction). **Reconstruction not yet fully deleted** — the old path runs in parallel. This is a parallel implementation, not a dissolved heuristic. The dividend is enabled but not banked. |
+| 3 | Add clamp builtin | **PASS (full)** | 3 files edited, zero consumer edits. Validates rule-table mechanism. |
+| 4 | Purity lens | **PASS (full)** | 1 new file, zero compiler changes, 3117 pure / 36 effectful. Validates observational lens mechanism. |
+| 5 | ExprData variant cost | **MEASURED** | 8-11 files, ~30 match arms per new variant. Validates the disease is real. |
+
+**Experiment 2 is the honest partial.** The carry path works at
+the substrate level, but the old reconstruction hasn't been deleted.
+Until at least one reconstruction function is DELETED (not just
+bypassed), the v3 spec's "lenses read physics" claim rests on a
+half-proof. The mechanism is validated; the full dividend is not.
+
+All experiments keep 415 tests green and CX ratchet stable.
+
+---
+
 ## Summary: What Changes
 
 ### std/ gains (proposed, each needs first consumer):
@@ -819,13 +957,14 @@ verify human understanding; the property tests verify the system.
 
 ### TransformRule dissolves:
 From 14-variant enum → algebraic structure + form (intro/elim/op).
-The compiler reads std/ declarations to know what to do. No enum
-to maintain. No match arms to add when a new structure appears.
+The 3-way form distinction is a small, irreducible enum. The win:
+growth happens in std/ declarations, not compiler match arms.
 
 ### SizeBound dissolves:
-From 5-variant coproduct → Bound { dimension, produced_by, count }.
-Dimension derived from algebra profile. produced_by is immediate
-only — same naming as Port.produced_by for consistency.
+From 5-variant coproduct → Bound { produced_by: PortId, count: Port }.
+Dimension is derivable from the type at produced_by — it's a
+function, not a stored field. produced_by is a typed reference,
+not a String (avoids reintroducing string-matching anti-pattern).
 
 ### BinOp/UnaryOp dissolve:
 Syntax token stays in syntax.dag. Semantic operation resolves to
