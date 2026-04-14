@@ -287,6 +287,136 @@ declaration file, there's a categorical compression somewhere that
 is forcing consumers to enumerate variants instead of reading
 coordinates. Find it. Decompress it.
 
+### Epistemic stacking: every concept grounds in primitives
+
+Everything in the system is a node in an ontological DAG rooted at
+a minimal set of primitives. No concept is defined in isolation;
+every concept is a composition, and the composition is traceable
+all the way down to primitives whose only role is to be
+irreducible. "Dependency modeling software" is therefore true in
+two senses at once: the program is a runtime data-flow graph *and*
+the system itself is a conceptual derivation graph. Every
+declaration's meaning comes from walking its composition back to
+primitives.
+
+The root primitives are a small set of logical and algebraic
+structures declared in `dsl/std/algebra.dag`:
+
+- **Closure.** `fn(T, T) -> T` is the primitive shape of "operation
+  on a carrier" — no laws, just closure. Appears in `Magma<T>` and
+  is inherited by every structure above.
+- **Monoid.** Closure + associativity + identity. The root of
+  counting, concatenation, effect composition, and the meet/join
+  structure used by every lattice-valued correctness dimension.
+- **Classical logic.** `BooleanAlgebra` over two elements. The root
+  of decision, exhaustiveness, filter, set membership, and the
+  meet/join/complement structure of every two-valued lens.
+- **Free constructions.** `FreeMonoid<T>`, `FreeGroup<T>`, and
+  similar — the canonical "generate from nothing" shapes that root
+  strings, lists, syntax trees.
+
+Higher structures compose upward: `Semigroup = Magma + associativity`,
+`Monoid = Semigroup + identity`, `Ring = Semiring + additive
+inverse`, `OrderedRing = Ring + total order`. The chain is declared
+in `.dag`; the compiler reads it as ordinary compositional modeling,
+not as a special-cased algebra hierarchy.
+
+Concrete types attach to this chain by **inhabitance**:
+
+```
+Bool     inhabits BooleanAlgebra
+Nat      inhabits CommutativeSemiring
+Int      inhabits OrderedCommutativeRing
+String   inhabits FreeMonoid<Char>
+List<T>  inhabits FreeMonoid<T>
+Set<A>   inhabits BooleanAlgebra<A>    (via A -> Bool encoding)
+Map<K,V> inhabits PartialFunction<K,V>
+```
+
+`Int.add` is not declared anywhere as a primitive — it falls out
+because Int walks to OrderedRing and OrderedRing has an `add` field.
+Adding `Int256 = OrderedRing<Word256>` costs one declaration and
+inherits all the arithmetic. The cost-of-change test in its purest
+form.
+
+**Load-bearing for codegen.** Emission is not a separate act from
+concept construction — it is the same walk in the opposite
+direction. To emit code for any expression, the compiler walks the
+expression's concept chain down to primitives, and the primitives
+are the points where it hands off to target-language realizations.
+When a concept is *grounded* (has a full chain to primitives) the
+emission is mechanical. When a concept is *ungrounded* (an opaque
+intrinsic, a bolt-on annotation, a string label, a runtime-native
+helper) the emitter has nothing to walk and must contain a special
+case. Every special case in the emitter is evidence of an
+ungrounded concept upstream. **The epistemic chain IS the emission
+algorithm; breaking the chain breaks codegen.**
+
+The same walk projects to any target and to any domain. A user who
+declares `service shell.Exec { operation Run { input {...} output
+{...} transport shell { argv: [...] } } }` is composing
+declarations (service, operation, input, output, transport) that
+themselves ground in the same algebraic primitives Int does. The
+compiler's job is identical: walk the chain, hand off to target
+realizations at the primitive boundary. There is no "math modeling
+path" and a separate "domain modeling path" — they share one
+substrate and one emission walk.
+
+**Domain compositional models encoding other compositional models
+are the direct consequence.** A user can declare their own
+meta-model — `type CIWorkflow<Step>`, `type ControlPlane<Resource>`,
+`type Understanding<System> { behaviors: List<Behavior>, ... }` —
+and instances of that meta-model project onto code the same way
+`Int` does. The substrate doesn't distinguish math primitives from
+domain primitives; a primitive is anything the user hasn't yet
+decomposed, and everything above it is a composition. This is the
+property that lets gunbc target dependency surface area of
+arbitrary depth: the deeper the domain's compositional structure,
+the more load the epistemic chain carries, and the more leverage
+the user gets per declaration.
+
+**Corollary: no concept is opaque.** When a declaration resists
+decomposition, exactly two cases are possible:
+
+1. It bottoms out at a genuine primitive — a logical/algebraic root,
+   or a user-input boundary (identifiers, literals, source spans
+   from outside the closed world).
+2. It hasn't been composed yet; its composition is unfinished work.
+
+There is no third case. "Opaque intrinsic," "runtime-native helper,"
+"bolt-on analyzer" are all case 2 — unfinished composition
+masquerading as a primitive. The modeling discipline rejects them
+not for style but because they break the epistemic chain codegen
+walks.
+
+**The substrate test.** For any candidate Declaration shape in the
+compiler, the check is: *can it host `dsl/std/algebra.dag` as-is?*
+— `Magma<T>`, `Monoid<T>`, `Ring<T>`, the parameterization over
+`T`, the inhabitance relation connecting `Int` to
+`OrderedRing<Word64>`, and the `fn(T, T) -> T` morphism shape that
+appears in every algebra's `op` field. If the shape hosts this, it
+naturally hosts every domain compositional model built the same
+way. If the shape cannot host it, the project is carrying a
+parallel representation somewhere — a hardcoded primitives table,
+a special-cased variant, a Rust-native type system — that breaks
+the epistemic chain and will force every downstream consumer to
+compensate. The test is not "what is convenient to ship first"; it
+is "does the substrate preserve the chain?"
+
+**This principle must not be dropped.** It is the reason codegen
+can be mechanical, the reason new lenses are cheap to add, the
+reason user-defined correctness dimensions work the same as
+built-in ones, and the reason the project's cost of change stays
+proportional to conceptual complexity instead of exploding with
+consumer count. Every design decision that flattens the chain —
+even "temporarily" — accumulates migration debt that compounds,
+because each flattening becomes another ungrounded concept
+downstream consumers must work around.
+
+Lineage: this principle traces to the intersubjectivity and
+epistemic-stacking work in the `definitely-not-agi` papers; see
+`docs/design-lineage.md` §"Stage 4: definitely-not-agi" for origin.
+
 ## Correctness dimensions
 
 Correctness is not one property — it is many orthogonal dimensions:
@@ -833,6 +963,23 @@ that's a gap.
 - Coercion = emission.
 - Target language spec = transport spec = interpreter runtime.
 - Idempotency + cancellation + redundancy = algebraic simplification.
+
+**Epistemic stacking (load-bearing for codegen — must not be dropped):**
+- Every concept is a node in an ontological DAG rooted at a minimal
+  set of primitives. No concept is opaque.
+- Root primitives: Magma (closure), Monoid, BooleanAlgebra (classical
+  logic), FreeMonoid<T> (free constructions). Declared in
+  `dsl/std/algebra.dag`.
+- Concrete types attach by inhabitance (Int inhabits OrderedRing,
+  String inhabits FreeMonoid<Char>, etc.). Operations fall out; they
+  are never declared separately.
+- The epistemic chain IS the emission algorithm. Every emitter
+  special case is evidence of an ungrounded concept upstream.
+- Math primitives and domain primitives share one substrate. A user
+  declares `type CIWorkflow<Step>` the same way `Int` is declared,
+  and it projects onto code the same way.
+- Substrate test for any candidate Declaration shape: can it host
+  `dsl/std/algebra.dag` as-is? If not, the shape is too narrow.
 
 **Free consequences (fall out when Tiers 1-2 close):**
 - Automatic parallelism from dependency graph.
