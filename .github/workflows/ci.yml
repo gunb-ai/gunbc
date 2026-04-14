@@ -53,6 +53,33 @@ jobs:
         if: always()
         run: cat /tmp/v2-ci-timing.txt 2>/dev/null || echo "no timing data"
 
+  v3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93.0"
+
+      - name: Cache Cargo (v3)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: cargo-v3-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}
+          restore-keys: |
+            cargo-v3-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
+            cargo-v3-${{ runner.os }}-
+
       - name: v3 Compiler Tests
         run: cargo test -p v3-compiler
 

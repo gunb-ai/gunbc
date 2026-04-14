@@ -83,27 +83,55 @@ impl DeclarationId {
 /// inner types of Cardinality bounds, Arrow inputs, etc.) also live here; only the
 /// `name` field distinguishes them.
 ///
-/// `meta_tag` and `inhabits` are separate edges with distinct semantics per
-/// M1_DESIGN.md §Q0 (and PR #444's refinement):
+/// `type_params`, `meta_tag`, and `inhabits` are separate edges with distinct
+/// semantics:
+/// - `type_params`: the canonical carrier for generic parameters declared on
+///   `type Foo<T, U> { ... }` / sum / alias items. Each entry is a
+///   DeclarationId whose connective is `Atom(TypeParam(name))`. Keeping type
+///   params off the connective axis means `Conj.children` stays pure record
+///   fields and `Disj.variants` stays pure sum alternatives — type params no
+///   longer share a slot with either. Empty for most declarations.
 /// - `meta_tag`: "this Conj's shape is constrained by the linked meta-type
-///   declaration." Used for value construction (records, services, transports).
-///   Empty across the M1(2.5) bootstrap set.
-/// - `inhabits`: "this declaration additionally satisfies the linked algebra's
-///   laws." Used for secondary algebra inhabitance on declarations with their
-///   own primary structure. Empty across the M1(2.5) bootstrap set.
+///   declaration." Used for value construction (records, services,
+///   transports) per M1_DESIGN.md §Q0. Empty across the M1(2.5) bootstrap
+///   set except for the §6.5 realization stub.
+/// - `inhabits`: "this declaration additionally satisfies the linked
+///   algebra's laws." Used for secondary algebra inhabitance on declarations
+///   with their own primary structure. Empty across M1(2.5).
 #[derive(Debug, Clone)]
 pub struct Declaration {
     pub id: DeclarationId,
     pub name: Option<String>,
     pub connective: TypeConnective,
+    pub type_params: Vec<DeclarationId>,
     pub meta_tag: Option<DeclarationId>,
     pub inhabits: Option<DeclarationId>,
     pub span: SourceSpan,
 }
 
-/// The six-variant type substrate. Terminal at M1(2.5). Extension requires the
-/// C1-class stop signal in M1_DESIGN.md §8.10 / THESIS.md §"Substrate extension"
-/// — all four dissolution patterns must be attempted before adding a 7th variant.
+/// The six-variant type substrate. Terminal at M1(2.5).
+///
+/// Dissolution ledger (4-pattern check per THESIS §"Structural decompression"):
+/// - **Pattern 1 (fact placement)**: fails. Each variant carries a
+///   structurally distinct shape (Atom is a payload enum, Conj holds a
+///   labeled product, Disj a labeled coproduct, Arrow a typed function,
+///   Cardinality a repetition, Instantiation a template reference).
+///   Scattering them into per-variant side tables duplicates dispatch.
+/// - **Pattern 2 (variant-is-data)**: fails. Different variants have
+///   different payload types; a unified representation would be a tagged
+///   union (which is what we already have).
+/// - **Pattern 3 (algebraic form)**: passes. The six variants map to the
+///   six category-theoretic forms of a type algebra (intro + AND + OR +
+///   function + repetition + parametric specialization). The substrate
+///   matches the thesis's type-substrate shape exactly.
+/// - **Pattern 4 (dimensional)**: fails. No shared coordinate space
+///   underlies all six variants.
+///
+/// Verdict: terminal at M1(2.5). Extension requires the C1-class stop
+/// signal in M1_DESIGN.md §8.10 — all four patterns must be re-run
+/// before adding a 7th variant. See also the related §8.11 Pending
+/// elimination ratchet that dissolves `ArrowBody::Pending` (not a
+/// TypeConnective variant) by M3.
 #[derive(Debug, Clone)]
 pub enum TypeConnective {
     /// Irreducible leaf. See AtomPayload.
@@ -142,27 +170,57 @@ pub struct Field {
     pub ty: DeclarationId,
 }
 
+/// Dissolution ledger (per M1_DESIGN.md §"AtomPayload dissolution ledger"):
+/// each variant represents a distinct user-input boundary — a terminal
+/// fact the compiler receives from outside the closed world.
+///
+/// 4-pattern check:
+/// - Pattern 1 (fact placement): fails. Literal/Identifier/TypeParam
+///   serve different downstream consumers; scattering creates four
+///   parallel atom carriers.
+/// - Pattern 2 (variant-is-data): fails. Different payload types per
+///   variant (bit pattern vs string vs type-parameter name).
+/// - Pattern 3 (algebraic form): fails. The variants are terminal facts
+///   at distinct user-input boundaries, not intro/elim forms of one
+///   algebra.
+/// - Pattern 4 (dimensional): fails. No shared coordinate space.
+///
+/// Verdict: genuinely terminal. 3-variant form is load-bearing. Any
+/// future extension (e.g., `Char` literal) is a variant extension
+/// subject to §8.10's substrate-extension audit. See also the known
+/// compression debt on `Identifier::resolved` — M1_FOLLOWUPS.md tracks
+/// the open question of whether Option<DeclarationId> hides a phase
+/// coproduct that should be split into a `Resolved(DeclarationId)` vs
+/// `Unresolved(String)` pair.
 #[derive(Debug, Clone)]
 pub enum AtomPayload {
     /// A literal bit pattern carried at the type level (e.g., the 3 in
     /// `Cardinality::Exact(3)`, a default value in a type declaration).
     /// Computation-side literals live in ValueNode.data, not here.
     Literal(LiteralBits),
-    /// An identifier reference. `resolved` is None after parse/lower pass 1 and
-    /// Some(_) after pass 2. Stored as a nullable slot rather than a variant
-    /// split so the bit flag is structural, not semantic.
+    /// An identifier reference. `resolved` is None during lowering and
+    /// Some(_) after `resolve_pending_identifiers` has walked the
+    /// declaration table. The None → Some transition is the lowering
+    /// pass's fail-closed resolution step; any stub still carrying None
+    /// after the sweep emits a ResolveError diagnostic.
     Identifier {
         name: String,
         resolved: Option<DeclarationId>,
     },
-    /// A type parameter declaration slot. Appears as a child of a parameterized
-    /// declaration; referenced from inside the body by Identifier atoms that
-    /// resolve to this slot's DeclarationId. Per M1_DESIGN.md §8.3, a single
-    /// TypeParam Atom is shared across all references in the body — the
-    /// substrate is a DAG of declarations, not a tree.
+    /// A type parameter declaration slot. Declared at the top of a
+    /// parameterized declaration (via `Declaration.type_params`);
+    /// referenced from inside the body by Identifier atoms that resolve
+    /// to this slot's DeclarationId. A single TypeParam Atom is shared
+    /// across all references to it — the substrate is a DAG of
+    /// declarations, not a tree.
     TypeParam(String),
 }
 
+/// Terminal literal payload. 3 variants, each corresponds to a distinct
+/// user-input boundary (integer literal, boolean literal, string literal
+/// from source text). Pattern-check is trivial: fact placement, variant-
+/// is-data, algebraic form, and dimensional all fail on disjoint payload
+/// types. Any future `Float`/`Char` additions go through §8.10's audit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LiteralBits {
     Int(i64),
@@ -170,6 +228,24 @@ pub enum LiteralBits {
     String(String),
 }
 
+/// Dissolution ledger: CardinalityBound is a 3-variant coproduct that
+/// encodes the "how many?" dimension of field/element repetition.
+/// Required/Optional/List distinctions that v2 carried in separate
+/// attributes collapse into this one axis.
+///
+/// 4-pattern check:
+/// - Pattern 1 (fact placement): fails. Callers dispatch on bound.
+/// - Pattern 2 (variant-is-data): partial. `Exact(n)` differs from
+///   `AtMostOne`/`Unbounded` structurally (carries a u32), but
+///   `AtMostOne` is distinct from `Exact(1)` because it admits the
+///   zero case.
+/// - Pattern 3 (algebraic form): passes. The three variants cover the
+///   `{n}` / `[0..1]` / `[0..∞)` range algebra.
+/// - Pattern 4 (dimensional): fails. No orthogonal coordinate space.
+///
+/// Verdict: terminal at M1(2.5). Adding `AtLeast(n)` / `Range(lo, hi)`
+/// would be a variant extension subject to §8.10's audit; neither is
+/// motivated by current std/ or shell.dag consumers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CardinalityBound {
     /// Exact count. Required = Exact(1); fixed-size arrays = Exact(n); argv
@@ -191,6 +267,27 @@ pub struct TemplateArgument {
     pub value: DeclarationId,
 }
 
+/// Dissolution ledger (per M1_DESIGN.md §Q7 "ArrowBody dissolution ledger"):
+/// ArrowBody is a **mixed-lifecycle coproduct** — two terminal variants
+/// (`UserDefined`, `ExternalRealization`) plus one scaffolded variant
+/// (`Pending`) that dissolves out of the variant set by M3 via the §8.11
+/// monotonic-decrease ratchet. Terminal form is 2 variants; the 3-variant
+/// shape is only valid during the M1(2.5) → M3 transition.
+///
+/// 4-pattern check on the terminal pair (UserDefined, ExternalRealization):
+/// - Pattern 1 (fact placement): fails. Both are Arrow-level facts with
+///   different structural targets (NodeId vs DeclarationId).
+/// - Pattern 2 (variant-is-data): fails. Different payload types.
+/// - Pattern 3 (algebraic form): partial. Both are "realization
+///   reference" but with structurally different reference types;
+///   collapsing would require a sum over NodeId/DeclarationId — a
+///   worse coproduct.
+/// - Pattern 4 (dimensional): fails. No shared coordinate space.
+///
+/// Verdict: terminal form is 2 variants. Pending is a scaffold subject
+/// to the §8.11 ratchet — by M3 completion, `inject_realization_stub`
+/// and any bootstrap Pending arrows must resolve, and the Pending
+/// variant is removed via a reverse substrate-extension PR.
 #[derive(Debug, Clone)]
 pub enum ArrowBody {
     /// User-defined function. NodeId is the root of a sub-DAG of L1 behavior
@@ -201,10 +298,10 @@ pub enum ArrowBody {
     /// DeclarationId points at the realization declaration via a typed edge;
     /// inference verifies signature compatibility.
     ExternalRealization(DeclarationId),
-    /// Bootstrap state. Signature type-checks via inhabitance; body-walking is
-    /// skipped. Scaffolded at M1(2.5) — the CI ratchet in M1_DESIGN.md §8.10
-    /// (deferred to M1(3)) enforces Pending → UserDefined | ExternalRealization
-    /// before M3.
+    /// Bootstrap scaffold. Signature type-checks via inhabitance; body-
+    /// walking is skipped. Dissolves by M3 via the §8.11 Pending-elimination
+    /// monotonic-decrease ratchet (distinct from §8.10's substrate-extension
+    /// audit, deferred to M1(3)).
     Pending,
 }
 

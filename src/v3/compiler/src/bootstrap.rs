@@ -22,7 +22,7 @@ use crate::dag::{
     ArrowBody, AtomPayload, Dag, Declaration, DeclarationId, TypeConnective,
 };
 use crate::diagnostics::SourceSpan;
-use crate::lower::lower_into;
+use crate::lower::{lower_into, resolve_pending_identifiers};
 use crate::parse::parse;
 use crate::tokenize::tokenize;
 
@@ -102,6 +102,17 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
     }
     inject_primitive_operators(dag);
     inject_realization_stub(dag);
+    // Batch-final resolution for cross-fixture forward references
+    // (algebra.dag fields referencing `Bool` which types.dag declares).
+    // Any identifier still unresolved after all fixtures loaded is a
+    // genuine bootstrap bug and will surface as a diagnostic on the Dag.
+    resolve_pending_identifiers(dag);
+    if !dag.diagnostics().is_empty() {
+        panic!(
+            "v3 bootstrap produced unresolved identifiers: {:?}",
+            dag.diagnostics()
+        );
+    }
 }
 
 fn parse_and_lower_fixture(dag: &mut Dag, source: &str, file: &str) {
@@ -152,6 +163,7 @@ fn push_operator_arrow(
             output,
             body: ArrowBody::Pending,
         },
+        type_params: Vec::new(),
         meta_tag: None,
         inhabits: None,
         span,
@@ -186,6 +198,7 @@ fn inject_realization_stub(dag: &mut Dag) {
         connective: TypeConnective::Conj {
             children: Vec::new(),
         },
+        type_params: Vec::new(),
         meta_tag: None,
         inhabits: None,
         span: span.clone(),
@@ -198,6 +211,7 @@ fn inject_realization_stub(dag: &mut Dag) {
         connective: TypeConnective::Conj {
             children: Vec::new(),
         },
+        type_params: Vec::new(),
         meta_tag: Some(meta_type_id),
         inhabits: None,
         span: span.clone(),
@@ -216,6 +230,7 @@ fn inject_realization_stub(dag: &mut Dag) {
             output: int_id,
             body: ArrowBody::ExternalRealization(instance_id),
         },
+        type_params: Vec::new(),
         meta_tag: None,
         inhabits: None,
         span,

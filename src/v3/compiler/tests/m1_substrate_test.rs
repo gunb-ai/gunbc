@@ -198,19 +198,36 @@ type CmdExec {
         );
     }
 
-    // Spot-check: a TypeParam atom is distinguishable from a regular
-    // Atom — Magma<T> (from bootstrap) has a TypeParam child.
+    // Spot-check: Magma<T>'s type parameter lives in the canonical
+    // `Declaration.type_params` slot, not mixed into Conj.children.
+    // Magma.children should contain only the `op` field; T is reachable
+    // via dag.declaration(magma_id).type_params.
     let magma_id = find_named(&dag, "Magma");
-    let magma_children = match &dag.declaration(magma_id).connective {
-        TypeConnective::Conj { children } => children.clone(),
+    let magma_decl = dag.declaration(magma_id);
+    let magma_children = match &magma_decl.connective {
+        TypeConnective::Conj { children } => children,
         _ => panic!("Magma should be Conj"),
     };
-    let t_field = field(&magma_children, "T");
+    assert_eq!(
+        magma_children.len(),
+        1,
+        "Magma's Conj children are pure record fields (just `op`), not TypeParams"
+    );
+    assert_eq!(magma_children[0].label, "op");
+    assert_eq!(
+        magma_decl.type_params.len(),
+        1,
+        "Magma has exactly one type parameter (T)"
+    );
+    let t_id = magma_decl.type_params[0];
     let is_type_param = matches!(
-        &dag.declaration(t_field.ty).connective,
+        &dag.declaration(t_id).connective,
         TypeConnective::Atom(AtomPayload::TypeParam(_))
     );
-    assert!(is_type_param, "Magma's T child should be a TypeParam atom");
+    assert!(
+        is_type_param,
+        "Magma.type_params[0] should be a TypeParam atom declaration"
+    );
 }
 
 #[test]

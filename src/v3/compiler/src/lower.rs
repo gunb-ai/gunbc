@@ -39,13 +39,21 @@ use crate::types::{Prim, TypeShape};
 pub fn lower(module: &SurfaceModule) -> Dag {
     let mut dag = Dag::new();
     lower_into(&mut dag, module);
+    // User-module lowering may have emitted Identifier stubs for forward
+    // references (`let x: Foo = ...` before `type Foo`). The sweep either
+    // fills in each stub's `resolved` slot or surfaces a fail-closed
+    // ResolveError via a phantom port.
+    resolve_pending_identifiers(&mut dag);
     dag
 }
 
 /// Lower a surface module into an existing Dag. Used by bootstrap.rs to
 /// layer the four fixture modules (logic, bit, algebra, types) onto the
 /// same declaration table; each call's symbol collection seeds from the
-/// declarations already present from prior calls.
+/// declarations already present from prior calls. Intentionally does NOT
+/// run `resolve_pending_identifiers` — callers are responsible for
+/// batching the sweep so cross-file forward references (algebra → Bool
+/// from types) resolve at the batch boundary.
 pub(crate) fn lower_into(dag: &mut Dag, module: &SurfaceModule) {
     let symbols = collect_symbols(dag, &module.items);
     let mutually_recursive = compute_mutually_recursive(&module.items);
@@ -83,6 +91,7 @@ fn collect_symbols(
             id,
             name: Some(name.clone()),
             connective: placeholder_connective(&name),
+            type_params: Vec::new(),
             meta_tag: None,
             inhabits: None,
             span,
@@ -199,6 +208,37 @@ fn lower_item(
     }
 }
 
+/// Allocate TypeParam Atom declarations for each surface type parameter and
+/// populate the parent declaration's canonical `type_params` slot. Returns
+/// the local scope map from parameter name to DeclarationId for field-type
+/// lookups. All three generic-carrying lowering paths share this helper
+/// so `type_params` is the single authority for generics.
+fn allocate_type_params(
+    dag: &mut Dag,
+    parent_id: DeclarationId,
+    type_params: &[String],
+) -> HashMap<String, DeclarationId> {
+    let mut local = HashMap::with_capacity(type_params.len());
+    let mut ids = Vec::with_capacity(type_params.len());
+    for param in type_params {
+        let param_id = dag.alloc_declaration_id();
+        let span = dag.declaration(parent_id).span.clone();
+        dag.push_declaration(Declaration {
+            id: param_id,
+            name: Some(param.clone()),
+            connective: TypeConnective::Atom(AtomPayload::TypeParam(param.clone())),
+            type_params: Vec::new(),
+            meta_tag: None,
+            inhabits: None,
+            span,
+        });
+        local.insert(param.clone(), param_id);
+        ids.push(param_id);
+    }
+    dag.declaration_mut(parent_id).type_params = ids;
+    local
+}
+
 fn lower_type_record(
     dag: &mut Dag,
     symbols: &HashMap<String, DeclarationId>,
@@ -207,25 +247,8 @@ fn lower_type_record(
     fields: &[SurfaceField],
 ) {
     let decl_id = symbols[name];
-    let mut local: HashMap<String, DeclarationId> = HashMap::new();
-    let mut children: Vec<Field> = Vec::with_capacity(type_params.len() + fields.len());
-    for param in type_params {
-        let param_id = dag.alloc_declaration_id();
-        let span = dag.declaration(decl_id).span.clone();
-        dag.push_declaration(Declaration {
-            id: param_id,
-            name: Some(param.clone()),
-            connective: TypeConnective::Atom(AtomPayload::TypeParam(param.clone())),
-            meta_tag: None,
-            inhabits: None,
-            span,
-        });
-        local.insert(param.clone(), param_id);
-        children.push(Field {
-            label: param.clone(),
-            ty: param_id,
-        });
-    }
+    let local = allocate_type_params(dag, decl_id, type_params);
+    let mut children: Vec<Field> = Vec::with_capacity(fields.len());
     for field in fields {
         let ty_id = type_to_declaration_id(&field.ty, symbols, &local, dag);
         children.push(Field {
@@ -244,27 +267,14 @@ fn lower_type_sum(
     variants: &[SurfaceVariant],
 ) {
     let decl_id = symbols[name];
-    let mut local: HashMap<String, DeclarationId> = HashMap::new();
-    let mut variant_fields: Vec<Field> = Vec::with_capacity(type_params.len() + variants.len());
-    for param in type_params {
-        let param_id = dag.alloc_declaration_id();
-        let span = dag.declaration(decl_id).span.clone();
-        dag.push_declaration(Declaration {
-            id: param_id,
-            name: Some(param.clone()),
-            connective: TypeConnective::Atom(AtomPayload::TypeParam(param.clone())),
-            meta_tag: None,
-            inhabits: None,
-            span,
-        });
-        local.insert(param.clone(), param_id);
-        variant_fields.push(Field {
-            label: param.clone(),
-            ty: param_id,
-        });
-    }
+    let local = allocate_type_params(dag, decl_id, type_params);
+    let mut variant_fields: Vec<Field> = Vec::with_capacity(variants.len());
     for variant in variants {
-        let variant_id = dag.alloc_declaration_id();
+        // Build payload children FIRST, then allocate the variant declaration.
+        // Allocating the variant id before its payload children would wedge
+        // the dense-sequential invariant on `Dag.declarations` because the
+        // child declarations push into slots between the variant's reserved
+        // id and its eventual push.
         let connective = if variant.payload.is_empty() {
             TypeConnective::Conj {
                 children: Vec::new(),
@@ -281,10 +291,12 @@ fn lower_type_sum(
                 .collect();
             TypeConnective::Conj { children }
         };
+        let variant_id = dag.alloc_declaration_id();
         dag.push_declaration(Declaration {
             id: variant_id,
             name: Some(variant.name.clone()),
             connective,
+            type_params: Vec::new(),
             meta_tag: None,
             inhabits: None,
             span: variant.span.clone(),
@@ -307,20 +319,7 @@ fn lower_type_alias(
     target: &SurfaceType,
 ) {
     let decl_id = symbols[name];
-    let mut local: HashMap<String, DeclarationId> = HashMap::new();
-    for param in type_params {
-        let param_id = dag.alloc_declaration_id();
-        let span = dag.declaration(decl_id).span.clone();
-        dag.push_declaration(Declaration {
-            id: param_id,
-            name: Some(param.clone()),
-            connective: TypeConnective::Atom(AtomPayload::TypeParam(param.clone())),
-            meta_tag: None,
-            inhabits: None,
-            span,
-        });
-        local.insert(param.clone(), param_id);
-    }
+    let local = allocate_type_params(dag, decl_id, type_params);
     let connective = type_to_connective(target, symbols, &local, dag);
     dag.declaration_mut(decl_id).connective = connective;
 }
@@ -353,15 +352,9 @@ fn type_to_declaration_id(
                 .or_else(|| symbols.get(name))
                 .copied()
                 .unwrap_or_else(|| alloc_identifier_stub(dag, name, span));
-            let arguments: Vec<TemplateArgument> = args
-                .iter()
-                .enumerate()
-                .map(|(idx, arg)| {
-                    let value = type_to_declaration_id(arg, symbols, local, dag);
-                    let parameter = template_param_id(dag, template_id, idx).unwrap_or(value);
-                    TemplateArgument { parameter, value }
-                })
-                .collect();
+            let arguments = build_template_arguments(
+                dag, symbols, local, template_id, name, args, span,
+            );
             let id = dag.alloc_declaration_id();
             dag.push_declaration(Declaration {
                 id,
@@ -370,6 +363,7 @@ fn type_to_declaration_id(
                     template: template_id,
                     arguments,
                 },
+                type_params: Vec::new(),
                 meta_tag: None,
                 inhabits: None,
                 span: span.clone(),
@@ -386,6 +380,7 @@ fn type_to_declaration_id(
                     element,
                     bound: CardinalityBound::AtMostOne,
                 },
+                type_params: Vec::new(),
                 meta_tag: None,
                 inhabits: None,
                 span: span.clone(),
@@ -411,6 +406,7 @@ fn type_to_declaration_id(
                     output: output_id,
                     body: ArrowBody::Pending,
                 },
+                type_params: Vec::new(),
                 meta_tag: None,
                 inhabits: None,
                 span: span.clone(),
@@ -447,15 +443,9 @@ fn type_to_connective(
                 .or_else(|| symbols.get(name))
                 .copied()
                 .unwrap_or_else(|| alloc_identifier_stub(dag, name, span));
-            let arguments: Vec<TemplateArgument> = args
-                .iter()
-                .enumerate()
-                .map(|(idx, arg)| {
-                    let value = type_to_declaration_id(arg, symbols, local, dag);
-                    let parameter = template_param_id(dag, template, idx).unwrap_or(value);
-                    TemplateArgument { parameter, value }
-                })
-                .collect();
+            let arguments = build_template_arguments(
+                dag, symbols, local, template, name, args, span,
+            );
             TypeConnective::Instantiation {
                 template,
                 arguments,
@@ -476,6 +466,64 @@ fn type_to_connective(
     }
 }
 
+/// Build the `TemplateArgument` list for an Instantiation, fail-closed on
+/// template/argument arity mismatch. When the template exposes no parameter
+/// at position `idx`, we emit a declaration-level diagnostic (via a phantom
+/// port) and substitute the arg's own DeclarationId as the parameter slot so
+/// the resulting Declaration is structurally well-formed. The diagnostic
+/// means the compile will fail at the fail-closed boundary regardless of
+/// the fallback choice.
+fn build_template_arguments(
+    dag: &mut Dag,
+    symbols: &HashMap<String, DeclarationId>,
+    local: &HashMap<String, DeclarationId>,
+    template: DeclarationId,
+    template_name: &str,
+    args: &[SurfaceType],
+    span: &SourceSpan,
+) -> Vec<TemplateArgument> {
+    let template_param_count = dag.declaration(template).type_params.len();
+    if template_param_count != args.len() {
+        report_declaration_error(
+            dag,
+            Diagnostic::ArityMismatch {
+                function: format!("type `{template_name}`"),
+                expected: template_param_count,
+                actual: args.len(),
+                span: span.clone(),
+            },
+        );
+    }
+    args.iter()
+        .enumerate()
+        .map(|(idx, arg)| {
+            let value = type_to_declaration_id(arg, symbols, local, dag);
+            let parameter = match template_param_id(dag, template, idx) {
+                Some(param_id) => param_id,
+                None => {
+                    report_declaration_error(
+                        dag,
+                        Diagnostic::ResolveError {
+                            name: format!(
+                                "template `{template_name}` has no parameter at position {idx}"
+                            ),
+                            span: span.clone(),
+                        },
+                    );
+                    value
+                }
+            };
+            TemplateArgument { parameter, value }
+        })
+        .collect()
+}
+
+/// Allocate a stub Identifier-atom declaration. Callers reach this path when
+/// name resolution fails against the local type-parameter scope and the
+/// current top-level symbol table snapshot. The stub deliberately carries
+/// `resolved: None` and stays in the declaration graph so that a later
+/// `resolve_pending_identifiers` sweep can either fill it in (forward
+/// references across bootstrap fixtures) or emit a fail-closed diagnostic.
 fn alloc_identifier_stub(
     dag: &mut Dag,
     name: &str,
@@ -489,6 +537,7 @@ fn alloc_identifier_stub(
             name: name.to_string(),
             resolved: None,
         }),
+        type_params: Vec::new(),
         meta_tag: None,
         inhabits: None,
         span: span.clone(),
@@ -496,28 +545,81 @@ fn alloc_identifier_stub(
     id
 }
 
-/// Return the `idx`-th type parameter declaration of a template. A template
-/// parameter is a Conj child whose target declaration has a TypeParam
-/// payload. For placeholder declarations (not yet filled in), returns None.
+/// Emit a declaration-level diagnostic via a phantom port. Declaration-level
+/// failures (unresolved identifiers, template metadata mismatch) do not have
+/// a natural PortId anchor; we allocate a detached port purely as a
+/// diagnostic carrier so the Dag's existing fail-closed biconditional
+/// (port state ↔ diagnostic entry) surfaces the error through
+/// `compile_to_dag` without a parallel diagnostic channel.
+fn report_declaration_error(dag: &mut Dag, diag: Diagnostic) {
+    let phantom = dag.alloc_port(None);
+    dag.mark_unresolved(phantom, diag);
+}
+
+/// Final-pass resolution over anonymous Identifier-atom declarations. Any
+/// declaration with `Atom(Identifier { name, resolved: None })` whose name
+/// appears in the declaration table at sweep time gets its `resolved` slot
+/// filled in-place. Anything still unresolved after the sweep emits a
+/// fail-closed ResolveError diagnostic via a phantom port.
+///
+/// This is the post-lowering pass that closes the fail-closed gap: stubs
+/// created during lowering (forward references, unknown names) either
+/// resolve or surface as diagnostics by the time `lower` / `bootstrap`
+/// returns. Called once at the end of `lower_into` for user modules and
+/// once at the end of `bootstrap::bootstrap` for the primitive fixtures.
+pub(crate) fn resolve_pending_identifiers(dag: &mut Dag) {
+    let snapshot: Vec<(DeclarationId, String, SourceSpan)> = dag
+        .declarations()
+        .iter()
+        .filter_map(|d| match &d.connective {
+            TypeConnective::Atom(AtomPayload::Identifier {
+                name,
+                resolved: None,
+            }) => Some((d.id, name.clone(), d.span.clone())),
+            _ => None,
+        })
+        .collect();
+
+    for (decl_id, name, span) in snapshot {
+        if let Some(target) = dag.declaration_by_name(&name).map(|d| d.id) {
+            if target == decl_id {
+                report_declaration_error(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!("type `{name}` resolves to itself"),
+                        span,
+                    },
+                );
+                continue;
+            }
+            if let TypeConnective::Atom(AtomPayload::Identifier { resolved, .. }) =
+                &mut dag.declaration_mut(decl_id).connective
+            {
+                *resolved = Some(target);
+            }
+        } else {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!("unresolved type identifier `{name}`"),
+                    span,
+                },
+            );
+        }
+    }
+}
+
+/// Return the `idx`-th type parameter declaration of a template. Reads the
+/// canonical `Declaration.type_params` slot rather than filtering
+/// `Conj.children` — type params are first-class on `Declaration` per
+/// M1(2.5)'s refactor. Returns None when the template has fewer params than
+/// `idx` requires; callers must fail-closed (not substitute a fallback).
 fn template_param_id(
     dag: &Dag,
     template: DeclarationId,
     idx: usize,
 ) -> Option<DeclarationId> {
-    let children = match &dag.declaration(template).connective {
-        TypeConnective::Conj { children } => children,
-        _ => return None,
-    };
-    children
-        .iter()
-        .filter(|c| {
-            matches!(
-                &dag.declaration(c.ty).connective,
-                TypeConnective::Atom(AtomPayload::TypeParam(_))
-            )
-        })
-        .nth(idx)
-        .map(|c| c.ty)
+    dag.declaration(template).type_params.get(idx).copied()
 }
 
 #[allow(clippy::too_many_arguments)]
