@@ -3,6 +3,24 @@
 // This module owns the single source of truth for everything flowing
 // through the compiler. Other modules (parse, lower, infer, lenses)
 // read from here, and write via the narrow mutator API.
+//
+// Dissolution receipt — M0.3:
+//
+//   Checkpoint C2 RESOLVED by deletion. TransformRule no longer
+//   exists. Transform is now Apply(FunctionRef): a single shape that
+//   covers operators, primitive calls, and user function calls
+//   uniformly. Operators like `+` resolve to FunctionRef("std::int::add")
+//   at parse/lowering; the substrate sees no operator-vs-call
+//   distinction. This is the v3-vs-v2 disease prevention — v2's
+//   ExprData had 22 variants, v3 has one-variant Transform.
+//
+//   Checkpoint C2 is now a NEGATIVE guardrail: if you ever add a
+//   variant to Transform, re-read feedback_checkpoint_dissolution_default
+//   and feedback_coproduct_dissolution before proceeding.
+//
+//   Define (function definition) is a BIND whose params: Vec<PortId>
+//   field is non-empty, NOT a TransformRule variant. The function body
+//   is a sub-DAG whose return port is the Bind's value.
 
 use std::collections::HashMap;
 
@@ -22,35 +40,22 @@ pub enum LiteralValue {
     String(String),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BinOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Eq,
-    Ne,
-    Lt,
-    Le,
-    Gt,
-    Ge,
+// A reference to a function — the target of every Transform.
+//
+// At M0, this is a symbolic path string. Primitive operators resolve
+// to stable names like "std::int::add", "std::int::gt". User functions
+// resolve to their own names ("count_down"). The primitive signatures
+// are hardcoded in infer.rs at M0, migrating to std/ declarations in
+// M1+ without changing this shape.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionRef {
+    pub name: String,
 }
 
-// Checkpoint C2.
-//
-// Started at 1 variant for M0.1. Dissolution target per
-// docs/v3-modeling-analysis.md §TransformRule is
-// { AlgebraRef, IntroElim } — the structure should be read from
-// std/ algebra declarations instead of a Rust enum. That requires
-// std/ to declare intro/elim forms, which is M1 work.
-//
-// STOP SIGNAL: adding any variant to this enum. At that moment,
-// pause and ask: (a) is std/ ready to dissolve, or (b) does the
-// scaffold extend by one? Neither answer is wrong; making the
-// decision is what matters.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TransformRule {
-    BinaryOp(BinOp),
+impl FunctionRef {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self { name: name.into() }
+    }
 }
 
 // A Port carries a typed value forward in time.
@@ -62,7 +67,8 @@ pub enum TransformRule {
 // The value_type field is module-private. The only code paths that
 // can write it are:
 //   - Dag::alloc_port          (births a port with None)
-//   - Dag::set_port_type       (None -> Some during inference)
+//   - Dag::set_port_type       (None -> Some during inference or
+//                               from declared type annotations)
 //   - Dag::clear_port_type     (Some -> None, called ONLY from
 //                               DiagnosticTable::mark_unresolved,
 //                               which atomically writes a diagnostic)
@@ -94,7 +100,7 @@ pub struct ValueNode {
 #[derive(Debug, Clone)]
 pub struct TransformNode {
     pub id: NodeId,
-    pub rule: TransformRule,
+    pub target: FunctionRef,
     pub inputs: Vec<PortId>,
     pub output: PortId,
 }
@@ -133,6 +139,12 @@ pub struct BindNode {
     pub id: NodeId,
     pub name: String,
     pub value: PortId,
+    /// Parameter ports for function bindings. Empty for value
+    /// bindings. A non-empty `params` is the structural distinction
+    /// between a function definition and a value definition — no
+    /// Optional marker, no coproduct, no type tag. See Checkpoint C2
+    /// dissolution receipt at the top of this file.
+    pub params: Vec<PortId>,
     pub scope: Option<NodeId>,
 }
 
@@ -143,33 +155,32 @@ pub struct BindNode {
 // of computation. M0 validates the claim by trying to build against
 // it.
 //
-// Dissolution-patterns check (all four attempted):
+// Dissolution-patterns check (all four attempted at M0.1):
 //
 //   - Pattern 1 (fact placement): fails. Every consumer dispatches
 //     on "which behavior" first — cost adds for sequence, multiplies
-//     for Loop, maxes for Branch (per spec). Scattering fields into
-//     side tables would recreate the dispatch in every lens.
+//     for Loop, maxes for Branch. Scattering fields into side tables
+//     recreates the dispatch in every lens.
 //
-//   - Pattern 2 (variant-is-data): fails. Value has `data`,
-//     Transform has `inputs + rule`, Branch has `paths`, Loop has
-//     `bound + source + init + body`, Bind has no output. These are
-//     structurally different shapes, not one shape with a tag.
+//   - Pattern 2 (variant-is-data): fails. Value has `data`, Transform
+//     has `inputs + target`, Branch has `paths`, Loop has `bound +
+//     source + init + body`, Bind has `value + params`. Structurally
+//     different shapes, not one shape with a tag.
 //
 //   - Pattern 3 (algebraic-form): confirms terminality.
 //     Value    = Terminal intro
-//     Transform= morphism application
+//     Transform= morphism application (Apply(FunctionRef))
 //     Branch   = Coproduct elim
 //     Loop     = well-founded recursion
-//     Bind     = let-abstraction
-//     Five different algebras, not one tag over one algebra. The
-//     compression is BY algebra kind, not a coordinate.
+//     Bind     = let-abstraction (with params for function defs)
+//     Five different algebras, not one tag over one algebra.
 //
 //   - Pattern 4 (dimensional): fails. No common M-dim coordinate
 //     space generates all five.
 //
-// STOP SIGNAL: wanting a 6th variant. If that happens, the
-// terminality assumption is wrong and the L1 spec needs revisiting.
-// Pause and escalate rather than silently extending.
+// STOP SIGNAL: wanting a 6th variant. The terminality assumption
+// would be wrong, and the L1 spec needs revisiting. Pause and
+// escalate rather than silently extending.
 #[derive(Debug, Clone)]
 pub enum Behavior {
     Value(ValueNode),
@@ -231,10 +242,27 @@ impl Behavior {
     }
 }
 
+/// Declared signature of a user function. Populated during lowering
+/// from annotation data, BEFORE the function body is lowered. This
+/// breaks inference fixpoint cycles for recursion: when the body's
+/// recursive Transform needs to know its own function's return type,
+/// it reads this registry instead of re-deriving from the body
+/// (which would be circular).
+///
+/// Primitives (`std::int::add`, etc.) are NOT in this registry — they
+/// live in a hardcoded table inside infer.rs until M1 migrates them
+/// to std/ declarations.
+#[derive(Debug, Clone)]
+pub struct Signature {
+    pub params: Vec<TypeShape>,
+    pub return_type: TypeShape,
+}
+
 pub struct Dag {
     nodes: Vec<Behavior>,
     ports: HashMap<PortId, Port>,
     diagnostics: DiagnosticTable,
+    signatures: HashMap<String, Signature>,
     next_node_id: u32,
     next_port_id: u32,
 }
@@ -245,6 +273,7 @@ impl Dag {
             nodes: Vec::new(),
             ports: HashMap::new(),
             diagnostics: DiagnosticTable::new(),
+            signatures: HashMap::new(),
             next_node_id: 0,
             next_port_id: 0,
         }
@@ -273,6 +302,24 @@ impl Dag {
         &self.diagnostics
     }
 
+    /// Look up a function definition (Bind with non-empty params)
+    /// by name. Returns the BindNode for the most recent matching
+    /// binding, or None if no such binding exists.
+    pub fn lookup_function(&self, name: &str) -> Option<&BindNode> {
+        self.nodes
+            .iter()
+            .rev()
+            .filter_map(Behavior::as_bind)
+            .find(|b| b.name == name && !b.params.is_empty())
+    }
+
+    /// Look up a declared signature by name. Consulted by inference
+    /// when a Transform's target is a user function; cycles through
+    /// this registry are how recursion avoids fixpoint traps.
+    pub fn signature(&self, name: &str) -> Option<&Signature> {
+        self.signatures.get(name)
+    }
+
     // --- crate-private mutators: construction + inference ---
 
     pub(crate) fn alloc_node_id(&mut self) -> NodeId {
@@ -299,9 +346,13 @@ impl Dag {
         self.nodes.push(behavior);
     }
 
-    /// Inference: upgrade a port from None to Some(type).
-    /// Never sets None. Guardrail: the None path is clear_port_type,
-    /// which is only called from DiagnosticTable::mark_unresolved.
+    pub(crate) fn register_signature(&mut self, name: impl Into<String>, sig: Signature) {
+        self.signatures.insert(name.into(), sig);
+    }
+
+    /// Upgrade a port from None to Some(type). Used by both
+    /// inference (computed types) and lowering (declared type
+    /// annotations from parse).
     pub(crate) fn set_port_type(&mut self, id: PortId, ty: TypeShape) {
         if let Some(port) = self.ports.get_mut(&id) {
             port.value_type = Some(ty);

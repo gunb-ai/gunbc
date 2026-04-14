@@ -1,8 +1,9 @@
 // Minimal tokenizer for M0 test subset.
 //
-// Recognizes: `let`, `if`, `then`, `else`, identifiers, integer
-// literals, `=`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `+`, whitespace
-// (skipped), EOF. Everything else is a tokenizer error routed
+// Recognizes keywords (`let`, `if`, `then`, `else`, `fn`, `Int`,
+// `Bool`, `String`), identifiers, integer literals, and punctuation
+// (`=`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `+`, `-`, `*`, `/`, `:`,
+// `->`, `(`, `)`, `,`). Whitespace is skipped. Tokenizer errors flow
 // through the Diagnostic path — no panics.
 
 use crate::diagnostics::{Diagnostic, SourceSpan};
@@ -13,6 +14,7 @@ pub enum TokenKind {
     KwIf,
     KwThen,
     KwElse,
+    KwFn,
     Ident(String),
     IntLit(i64),
     Eq,
@@ -23,6 +25,14 @@ pub enum TokenKind {
     Gt,
     Ge,
     Plus,
+    Minus,
+    Star,
+    Slash,
+    Colon,
+    Arrow,
+    LParen,
+    RParen,
+    Comma,
     Eof,
 }
 
@@ -87,6 +97,7 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
                 "if" => TokenKind::KwIf,
                 "then" => TokenKind::KwThen,
                 "else" => TokenKind::KwElse,
+                "fn" => TokenKind::KwFn,
                 _ => TokenKind::Ident(text.to_string()),
             };
             tokens.push(Token {
@@ -118,10 +129,18 @@ fn punctuation_token(bytes: &[u8], pos: usize) -> Option<(TokenKind, usize)> {
         (b'!', Some(b'=')) => Some((TokenKind::NotEq, 2)),
         (b'<', Some(b'=')) => Some((TokenKind::Le, 2)),
         (b'>', Some(b'=')) => Some((TokenKind::Ge, 2)),
+        (b'-', Some(b'>')) => Some((TokenKind::Arrow, 2)),
         (b'=', _) => Some((TokenKind::Eq, 1)),
         (b'<', _) => Some((TokenKind::Lt, 1)),
         (b'>', _) => Some((TokenKind::Gt, 1)),
         (b'+', _) => Some((TokenKind::Plus, 1)),
+        (b'-', _) => Some((TokenKind::Minus, 1)),
+        (b'*', _) => Some((TokenKind::Star, 1)),
+        (b'/', _) => Some((TokenKind::Slash, 1)),
+        (b':', _) => Some((TokenKind::Colon, 1)),
+        (b'(', _) => Some((TokenKind::LParen, 1)),
+        (b')', _) => Some((TokenKind::RParen, 1)),
+        (b',', _) => Some((TokenKind::Comma, 1)),
         _ => None,
     }
 }
