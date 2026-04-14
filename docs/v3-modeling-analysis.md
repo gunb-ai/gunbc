@@ -1725,19 +1725,132 @@ to consume it. v3 does not inherit dead code.
 
 ---
 
+## Complete Thesis Accounting
+
+Every THESIS claim, cross-referenced. No silent drops.
+
+### Tier 1 — Structural bugs impossible by construction
+
+| # | Bug class | Status | Milestone |
+|---|---|---|---|
+| 1 | Field typos in generated code | DONE | v2, inherits |
+| 2 | Field typos in .dag source | DONE | v2, inherits |
+| 3 | Non-exhaustive match | DONE | v2, inherits |
+| 4 | Type mismatches | DONE | v2, inherits |
+| 5 | Bare container types | DONE | v2, inherits |
+| 6 | Map key type mismatch | DONE | v2, inherits |
+| 7 | Stale imports | DONE | v2, inherits |
+| 8 | Circular dependencies | DONE | v2, inherits |
+| 9 | Cross-target drift | DONE | v2, inherits |
+| 10 | Diamond dependency divergence | DONE | v2, inherits |
+| 11 | Non-termination | DONE (0 CX violations) | v2 ratchet, v3 by construction |
+| 12 | Non-idempotent workflow | NOT STARTED | v3 M2+ (wire effect algebra) |
+| 13 | Record literal completeness | PARTIAL | v3 M1 (needs audit of current coverage) |
+| 14 | Coercion completeness | PARTIAL | v3 M1 (single emitter reads LanguageSpec) |
+
+### Tier 2 — Runtime safety
+
+| Bug class | Status | Milestone |
+|---|---|---|
+| Division by zero | NOT STARTED, REQUIRED | v3 M2 (refinement types or checked ops) |
+| Integer overflow | NOT STARTED, REQUIRED | v3 M2 |
+| Out-of-bounds | NOT STARTED, REQUIRED | v3 M2 |
+| Optional force-unwrap | NOT STARTED, REQUIRED | v3 M2 (non-consensual optionality) |
+| Partial functions | NOT STARTED, REQUIRED | v3 M2 (make all runtime functions total) |
+
+### Tier 3 — Verification from structure
+
+| Level | What it proves | Status | Milestone |
+|---|---|---|---|
+| L0 | Coercion mappings complete | DONE | v2 |
+| L1 | Pipeline unit tests | DONE (415 tests) | v2 |
+| L2 | Bootstrap self-hosting | DONE | v2 |
+| L3 | Syntax validity | DONE | v2 |
+| L4 | Emitted code matches .dag evaluation | NOT STARTED | v3 M3 |
+| L5 | Cross-language equivalence | NOT STARTED | v3 M3+ |
+| L6 | Every structural form compiles to every target | NOT STARTED | v3 M3 |
+| L7 | Algebraic law verification | NOT STARTED | v3 M4 |
+
+### Concept unifications
+
+| # | Unification | Status | Evidence | Milestone |
+|---|---|---|---|---|
+| 1 | Coercion cost = complexity | PARTIAL | CX proves function bounds | v3 M1 (coercion fns get CX bounds) |
+| 2 | Coercion = emission | VALIDATED | Exp 3 (3 files) | v3 M1 (single emitter) |
+| 3 | Target spec = transport spec = interpreter runtime | PARTIAL | interpreter reads transport specs | v3 M2 |
+| 4 | Idempotency + cancellation + redundancy = algebra | DECLARED, NOT CONSUMED | std/effects.dag + std/algebra.dag | v3 M2 (Track 17: wire into ops) |
+| 5 | Structural decompression | NEW (this session) | 4 patterns, ledger, theorem | Applied during v3 construction |
+
+### Free consequences (fall out when Tiers 1-2 close)
+
+| Consequence | Status | Milestone |
+|---|---|---|
+| Automatic parallelism | MODELED (v3 spec: independence from DAG) | v3 M2 (emission with parallelism) |
+| Automatic memoization | NOT TRACKED until now | v3 M4 (requires purity + cost lenses) |
+| Space bound proofs | NOT STARTED (space lens not modeled) | v3 M4 |
+| Cross-language optimization | NOT TRACKED until now | v3 M4 (requires cost algebra per target) |
+| Meta-process modeling | PARTIAL (CI is .dag workflow) | v3 M3 (dag run as primary path) |
+
+### Modeling discipline
+
+| Discipline | Status | Evidence |
+|---|---|---|
+| Every type has a structural consumer | DONE (ledger rule) | Ledger rule in this doc |
+| Service boundaries use typed enums | PARTIAL | Needs audit of remaining String proxies |
+| No fabrication sentinels | **43 references remain** | `__BUG_*` / `__EMIT_BUG_*` in 16 files — dissolution target |
+| No duplicate record shapes | ADDRESSED | Dissolution work this session |
+| Missing facts = compile-time errors | ADDRESSED | Diagnostic table invariant |
+
+### Lenses
+
+| Lens | Modeled | Implemented | v3 status |
+|---|---|---|---|
+| Cost | computation.dag | v2: complexity.dag (5000 lines) | M1: reads Bound on Ports |
+| Ownership | EdgeKind → dimensional, OwnershipDecision → deleted | v2: ownership.dag (separate pass) | M1: fan-out on Ports |
+| Effect | std/effects.dag | v2: declared, not consumed | M2: lens reads effect from behaviors |
+| Termination | computation.dag lowering table | v2: CX gate (0 violations) | M0: structural (Loop requires Bound) |
+| Origin/Provenance | Port.produced_by, Bound.produced_by | v2: Exp 2 BANKED (first path) | M0: on every Port |
+| Algebra | std/algebra.dag hierarchy | v2: not implemented as lens | M1: normalization during construction |
+| Space | not yet modeled | v2: not started | M4: parallel to cost lens |
+| Closure rule | Define-in-Loop → fan-out=N, Loop's termination | v2: Exp 1 partial | M1: 2 fields on Define |
+
+### Experiments — mechanism vs dividend (corrected)
+
+| Claim | Mechanism | Dividend | Remaining |
+|---|---|---|---|
+| Rule-table transforms | validated (Exp 3) | BANKED | done |
+| Observational lenses | validated (Exp 4) | BANKED | done |
+| Facts through bindings | validated (Exp 2) | FIRST PATH BANKED | 19 incremental migrations |
+| Lambda = function | validated (Exp 1) | partially banked | 2 fields on Define |
+| ExprData tax | measured (Exp 5) | target: 8-11x → 1x | v3 construction |
+
+### Coproduct dissolution (corrected split)
+
+| Category | Count | Status |
+|---|---|---|
+| Design fully specified (type declarations) | 6 | OwnershipDecision, EdgeKind, MatchPattern, Diagnostic, TokenShape, Bound |
+| Dissolution direction identified | 9 | ExprData, TransformRule, Connective, FieldAccessStyle, InferredNode, BinOp, UnaryOp, VarBindingKind, ExprErrorKind |
+| Automatic with v3 (concrete recipe) | 5 | MethodSemantics, CallSemantics, StringPart, OperationModifier, ExprCategory |
+| Automatic with v3 (vague recipe) | 2 | FuncBodyShape, TcoExprShape — need work |
+| Mechanical | 4 | NodeFieldRole, FunctionSizeEffect, ItemKind, AliasKind |
+| Domain modeling | ~70 | External facts (spot-check pending) |
+| std/ modeling | ~40 | Audit individually |
+| Compiler infrastructure | ~30 | v3 replaces |
+| Deleted (dead code) | 1 | BackendCapability |
+
+---
+
 ## Open Questions
 
-1. **How much of this is v3 vs v2-compatible?**
-   The std/ declarations (intro/elim on structures, function space,
-   port) can be added now without changing v2. The compiler reading
-   them is v3 work. The std/ audit (moving compiler types out) can
-   happen incrementally.
+1. **Parser state model:** v2 uses integer position. v3 should use
+   list consumption for structural descent evidence.
 
-2. **Parser state model:** v2 uses integer position. v3 should use
-   list consumption for structural descent evidence. Design the
-   ParseState type before implementing.
+2. **Fabrication sentinels:** 43 references across 16 files. These
+   are the modeling discipline's "no fabrication" rule being
+   violated. Dissolution target for v3.
 
-3. **Coproduct minimization:** any remaining coproducts in std/
-   should be audited for dissolution opportunities. If a coproduct's
-   variants trace to different algebraic structures, it can likely
-   dissolve into algebra-derived data.
+3. **Service boundary typed-enum audit:** how many String proxies
+   remain at service boundaries? Needs spot-check.
+
+4. **Domain-modeling spot-check:** 5 random entries from the ~70
+   bucket, tested with the richer-source question.
