@@ -733,6 +733,200 @@ fn test_composition_branch_with_function_calls_in_both_paths() {
     assert!(dag.diagnostics().is_empty());
 }
 
+// ════════════════════════════════════════════════════════════════
+// M0.8 — Reviewer regression tests for the 5 blockers caught in
+// external review. Each test corresponds to one bug class that
+// Tests 1-5 did not exercise.
+// ════════════════════════════════════════════════════════════════
+
+#[test]
+fn reviewer_type_annotation_does_not_override_unresolved() {
+    // `let x: Bool = y` where `y` is undefined.
+    //
+    // Sequence: (1) lowering the `y` reference marks its placeholder
+    // port Unresolved with a ResolveError. (2) The type annotation
+    // would normally call set_port_type(value_port, Bool), but
+    // set_port_type checks for Unresolved state and refuses to
+    // transition out. (3) End state: port stays Unresolved, the
+    // biconditional holds.
+    //
+    // This test documents the M0.6 structural fix and serves as a
+    // regression guard against a future refactor that forgets the
+    // Unresolved-check in set_port_type.
+    let dag = compile_any("let x: Bool = y", "test.v3");
+    let bind_x = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "x")
+        .expect("Bind(x) exists");
+    assert!(
+        matches!(dag.port(bind_x.value).state(), PortState::Unresolved),
+        "value port stays Unresolved even after the Bool annotation attempt"
+    );
+    assert!(
+        dag.diagnostics().contains(bind_x.value),
+        "diagnostic entry exists (from the original ResolveError)"
+    );
+}
+
+#[test]
+fn reviewer_non_bool_branch_condition_is_rejected() {
+    // `if 1 then 2 else 3` — the condition is Int, not Bool. The
+    // Branch input Bool check must fire and mark the Branch output
+    // Unresolved with a TypeMismatch diagnostic.
+    let dag = compile_any("let x = if 1 then 2 else 3", "test.v3");
+    let bind_x = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "x")
+        .expect("Bind(x) exists");
+    assert!(
+        matches!(dag.port(bind_x.value).state(), PortState::Unresolved),
+        "non-Bool branch condition makes the Branch output Unresolved"
+    );
+    let diag = dag
+        .diagnostics()
+        .get(bind_x.value)
+        .expect("diagnostic recorded");
+    match diag {
+        v3_compiler::Diagnostic::TypeMismatch {
+            expected, actual, ..
+        } => {
+            assert_eq!(*expected, TypeShape::Primitive(Prim::Bool));
+            assert_eq!(*actual, TypeShape::Primitive(Prim::Int));
+        }
+        other => panic!("expected TypeMismatch Bool/Int, got {other:?}"),
+    }
+}
+
+#[test]
+fn reviewer_call_site_rejects_function_with_invalid_body() {
+    // `fn f(a: Int) -> Bool = 1` declares return type Bool but the
+    // body is `1` (Int). The apply-level conflict check catches the
+    // body/declaration mismatch and marks f's value port Unresolved.
+    //
+    // Then `let x = f(1)` looks up f. The Bind-state check in
+    // Transform decide() sees f.value is Unresolved and refuses to
+    // trust the registered signature. x's value port also becomes
+    // Unresolved.
+    //
+    // Before the M0.8 fix, the signature registry was consulted
+    // without checking the Bind state, so f(1) would type as Bool
+    // even though the function body was wrong. The v2 disease
+    // recurring in v3.
+    let dag = compile_any("fn f(a: Int) -> Bool = 1\nlet x = f(1)", "test.v3");
+    let bind_x = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "x")
+        .expect("Bind(x) exists");
+    assert!(
+        matches!(dag.port(bind_x.value).state(), PortState::Unresolved),
+        "call site rejects function whose body conflicts with signature"
+    );
+    let f_bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "f")
+        .expect("Bind(f) exists");
+    assert!(
+        matches!(dag.port(f_bind.value).state(), PortState::Unresolved),
+        "the function's own value port is Unresolved from the body/declaration conflict"
+    );
+}
+
+#[test]
+fn reviewer_zero_arg_recursion_is_rejected() {
+    // A function with no parameters that calls itself has no
+    // termination measure. It must be rejected at lower time, not
+    // silently accepted as an infinite loop.
+    //
+    // Note: `loop` is not a Rust keyword inside identifier context,
+    // and the v3 tokenizer recognizes it as a plain identifier.
+    let dag = compile_any("fn endless() -> Int = endless()", "test.v3");
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "endless")
+        .expect("Bind(endless) exists");
+    assert!(
+        matches!(dag.port(bind.value).state(), PortState::Unresolved),
+        "zero-arg recursion is rejected"
+    );
+}
+
+#[test]
+fn reviewer_non_decreasing_recursion_is_rejected() {
+    // `fn f(n: Int) -> Int = f(n)` recurses with the same argument.
+    // The descent check requires `first_param - <positive int>` and
+    // this fails (first arg is `n`, not `n - k`). Must be rejected.
+    let dag = compile_any("fn f(n: Int) -> Int = f(n)", "test.v3");
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "f")
+        .expect("Bind(f) exists");
+    assert!(
+        matches!(dag.port(bind.value).state(), PortState::Unresolved),
+        "non-decreasing recursion is rejected"
+    );
+}
+
+#[test]
+fn reviewer_descent_on_growing_arg_is_rejected() {
+    // `fn f(n: Int) -> Int = f(n + 1)` grows the argument. The
+    // descent check only accepts `n - <positive>`, not `n + <...>`.
+    // Conservative: reject anything that's not obviously decreasing.
+    let dag = compile_any("fn f(n: Int) -> Int = f(n + 1)", "test.v3");
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "f")
+        .expect("Bind(f) exists");
+    assert!(
+        matches!(dag.port(bind.value).state(), PortState::Unresolved),
+        "`n + 1` as recursive argument is rejected"
+    );
+}
+
+#[test]
+fn reviewer_unknown_type_name_is_rejected() {
+    // `let x: NotARealType = 1` — the type annotation references
+    // an unknown name. The lower_type Result path must surface a
+    // ResolveError and mark the value port Unresolved, not silently
+    // default to Int.
+    //
+    // Before the M0.8 fix, lower_type had a silent `_ => Int`
+    // default, so this program compiled as if it said `let x: Int
+    // = 1` with no diagnostic.
+    let dag = compile_any("let x: NotARealType = 1", "test.v3");
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "x")
+        .expect("Bind(x) exists");
+    assert!(
+        matches!(dag.port(bind.value).state(), PortState::Unresolved),
+        "unknown type name on let produces Unresolved port"
+    );
+    let diag = dag
+        .diagnostics()
+        .get(bind.value)
+        .expect("diagnostic recorded");
+    assert!(
+        matches!(diag, v3_compiler::Diagnostic::ResolveError { .. }),
+        "diagnostic is a ResolveError, got {diag:?}"
+    );
+}
+
 #[test]
 fn invariant_port_state_matches_diagnostic_table() {
     // Structural audit of the enforced mark_unresolved API.
@@ -761,6 +955,14 @@ fn invariant_port_state_matches_diagnostic_table() {
         "fn f(x: Int) -> Int = x + 1\nlet y = f(if 1 > 0 then 10 else 20)",
         "fn f(x: Int) -> Int = x + 1\nfn g(y: Int) -> Int = f(y) + 1\nlet r = g(5)",
         "fn f(x: Int) -> Int = x\nfn g(x: Int) -> Int = x + 1\nlet r = if 1 > 0 then f(10) else g(20)",
+        // M0.8: reviewer regression sources
+        "let x: Bool = y",
+        "let x = if 1 then 2 else 3",
+        "fn f(a: Int) -> Bool = 1\nlet x = f(1)",
+        "fn endless() -> Int = endless()",
+        "fn f(n: Int) -> Int = f(n)",
+        "fn f(n: Int) -> Int = f(n + 1)",
+        "let x: NotARealType = 1",
     ];
     for src in sources {
         let dag = compile_any(src, "invariant.v3");

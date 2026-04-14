@@ -63,8 +63,10 @@ fn lower_item(
         } => {
             let value_port = lower_expr(expr, dag, &scope);
             if let Some(ty) = type_ann {
-                let declared = lower_type(ty);
-                dag.set_port_type(value_port, declared);
+                match lower_type(ty) {
+                    Ok(declared) => dag.set_port_type(value_port, declared),
+                    Err(diag) => dag.mark_unresolved(value_port, diag),
+                }
             }
             let bind_id = dag.alloc_node_id();
             let bind_span = match type_ann {
@@ -99,13 +101,25 @@ fn lower_fn_item(
     outer_scope: HashMap<String, PortId>,
 ) -> HashMap<String, PortId> {
     // 1. Allocate parameter ports and set their declared types.
+    //    On unknown type names, mark the param port Unresolved with
+    //    a ResolveError and fall through with a sentinel Int type.
+    //    This propagates via the cascade logic in infer to every
+    //    call site that touches this parameter.
     let mut param_ports: Vec<PortId> = Vec::with_capacity(params.len());
     let mut param_types: Vec<TypeShape> = Vec::with_capacity(params.len());
     let mut body_scope: HashMap<String, PortId> = outer_scope.clone();
     for param in params {
         let port = dag.alloc_port(None);
-        let ty = lower_type(&param.ty);
-        dag.set_port_type(port, ty.clone());
+        let ty = match lower_type(&param.ty) {
+            Ok(ty) => {
+                dag.set_port_type(port, ty.clone());
+                ty
+            }
+            Err(diag) => {
+                dag.mark_unresolved(port, diag);
+                TypeShape::Primitive(Prim::Int)
+            }
+        };
         body_scope.insert(param.name.clone(), port);
         param_ports.push(port);
         param_types.push(ty);
@@ -114,7 +128,18 @@ fn lower_fn_item(
     // 2. Register the function's declared signature BEFORE lowering
     //    the body, so recursive Transforms in the body can resolve
     //    their own function's return type without a cycle.
-    let return_ty = lower_type(return_type);
+    //    On unknown return type name, we still register (with a
+    //    sentinel) so that the structure of the DAG is complete,
+    //    but we also allocate a placeholder port to carry the
+    //    ResolveError so the fail-closed invariant holds.
+    let return_ty = match lower_type(return_type) {
+        Ok(ty) => ty,
+        Err(diag) => {
+            let err_port = dag.alloc_port(None);
+            dag.mark_unresolved(err_port, diag);
+            TypeShape::Primitive(Prim::Int)
+        }
+    };
     dag.register_signature(
         name,
         Signature {
@@ -128,33 +153,79 @@ fn lower_fn_item(
     let body_root = dag.port(body_return_port).produced_by;
     let body_span = expr_span(body).clone();
 
-    // 4. If the body is recursive, wrap it in a Loop with the first
-    //    parameter as the bound count (the M0 pattern: structurally
-    //    smaller argument on each recursive call).
-    let value_port = if is_recursive(body, name) && !param_ports.is_empty() {
-        let loop_id = dag.alloc_node_id();
-        let loop_output = dag.alloc_port(Some(loop_id));
-        dag.set_port_type(loop_output, return_ty.clone());
-        let loop_body_node = body_root.unwrap_or(loop_id);
-        dag.push_node(Behavior::Loop(LoopNode {
-            id: loop_id,
-            source: param_ports[0],
-            init: param_ports[0],
-            body: loop_body_node,
-            bound: Bound {
-                count: param_ports[0],
-            },
-            output: loop_output,
-            span: body_span.clone(),
-        }));
-        loop_output
+    // 4. Decide how to wire up the function's Bind.value port
+    //    depending on the shape of the body:
+    //
+    //    - Not recursive: Bind.value is the body's return port.
+    //
+    //    - Recursive with zero parameters: non-terminating. Reject
+    //      and give the Bind an unresolved placeholder port.
+    //
+    //    - Recursive, descent provable (first arg to recursive
+    //      calls is `first_param - positive_int`): wrap the body in
+    //      a Loop node bounded by the first parameter. This is the
+    //      M0 partial descent analysis — more sophisticated measures
+    //      (lexicographic orderings, multi-param descent) are
+    //      deferred.
+    //
+    //    - Recursive, descent NOT provable: reject and give the
+    //      Bind an unresolved placeholder port with an
+    //      UnprovenDescent diagnostic. Conservative failure mode:
+    //      reject more programs than strictly necessary, never
+    //      accept a program that could diverge.
+    let value_port = if is_recursive(body, name) {
+        if param_ports.is_empty() {
+            let err_port = dag.alloc_port(None);
+            dag.mark_unresolved(
+                err_port,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "function `{name}` is recursive but has no parameters; cannot terminate"
+                    ),
+                    span: body_span.clone(),
+                },
+            );
+            err_port
+        } else if !descent_provable(body, name, &params[0].name) {
+            let err_port = dag.alloc_port(None);
+            dag.mark_unresolved(
+                err_port,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "cannot prove recursion in `{name}` terminates; expected each recursive call's first argument to be `{param} - <positive int>`",
+                        param = &params[0].name,
+                    ),
+                    span: body_span.clone(),
+                },
+            );
+            err_port
+        } else {
+            let loop_id = dag.alloc_node_id();
+            let loop_output = dag.alloc_port(Some(loop_id));
+            dag.set_port_type(loop_output, return_ty.clone());
+            let loop_body_node = body_root.unwrap_or(loop_id);
+            dag.push_node(Behavior::Loop(LoopNode {
+                id: loop_id,
+                source: param_ports[0],
+                init: param_ports[0],
+                body: loop_body_node,
+                bound: Bound {
+                    count: param_ports[0],
+                },
+                output: loop_output,
+                span: body_span.clone(),
+            }));
+            loop_output
+        }
     } else {
         body_return_port
     };
 
     // 5. Create the Bind for the function. The value port's type is
     //    the declared return type — pre-set so inference for call
-    //    sites can trust it immediately.
+    //    sites can trust it (subject to the Bind-state check in
+    //    infer's Transform decide, which catches body/signature
+    //    mismatches).
     dag.set_port_type(value_port, return_ty);
     let bind_id = dag.alloc_node_id();
     dag.push_node(Behavior::Bind(BindNode {
@@ -169,13 +240,16 @@ fn lower_fn_item(
     outer_scope
 }
 
-fn lower_type(ty: &SurfaceType) -> TypeShape {
+fn lower_type(ty: &SurfaceType) -> Result<TypeShape, Diagnostic> {
     match ty {
-        SurfaceType::Named { name, .. } => match name.as_str() {
-            "Int" => TypeShape::Primitive(Prim::Int),
-            "Bool" => TypeShape::Primitive(Prim::Bool),
-            "String" => TypeShape::Primitive(Prim::String),
-            _ => TypeShape::Primitive(Prim::Int),
+        SurfaceType::Named { name, span } => match name.as_str() {
+            "Int" => Ok(TypeShape::Primitive(Prim::Int)),
+            "Bool" => Ok(TypeShape::Primitive(Prim::Bool)),
+            "String" => Ok(TypeShape::Primitive(Prim::String)),
+            _ => Err(Diagnostic::ResolveError {
+                name: format!("unknown type `{name}`"),
+                span: span.clone(),
+            }),
         },
     }
 }
@@ -287,6 +361,77 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
                 || is_recursive(else_branch, self_name)
         }
     }
+}
+
+/// Partial termination analysis for M0. Walks the body and, for
+/// every recursive self-call, verifies that its first argument is
+/// of the form `first_param - <positive int>` — i.e. strictly
+/// smaller than the first parameter by a constant amount. Returns
+/// false if any recursive call fails the check.
+///
+/// This is intentionally narrow:
+/// - Accepts: `f(n - 1)`, `f(n - 2)`, `f(n - 3) + f(n - 1)`
+/// - Rejects: `f(n)`, `f(n + 1)`, `f(n * 2)`, `f(m - 1)` where
+///   m is not the first param, `f(n - 0)`, `f(1)`, zero-arg calls
+///
+/// More sophisticated termination analysis (lexicographic orderings
+/// on multiple parameters, structural recursion on containers,
+/// measure functions that aren't simple subtraction) is M1+ work.
+/// The failure mode is conservative: reject more programs than
+/// strictly necessary, never accept a program that could diverge.
+fn descent_provable(expr: &SurfaceExpr, self_name: &str, first_param: &str) -> bool {
+    match expr {
+        SurfaceExpr::IntLit { .. } | SurfaceExpr::Var { .. } => true,
+        SurfaceExpr::Call { target, args, .. } => {
+            if target == self_name {
+                match args.first() {
+                    None => false,
+                    Some(first_arg) => {
+                        if !is_strictly_smaller(first_arg, first_param) {
+                            return false;
+                        }
+                        args.iter()
+                            .skip(1)
+                            .all(|a| descent_provable(a, self_name, first_param))
+                    }
+                }
+            } else {
+                args.iter().all(|a| descent_provable(a, self_name, first_param))
+            }
+        }
+        SurfaceExpr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            descent_provable(cond, self_name, first_param)
+                && descent_provable(then_branch, self_name, first_param)
+                && descent_provable(else_branch, self_name, first_param)
+        }
+    }
+}
+
+/// Returns true iff `expr` is syntactically `first_param - k` for
+/// some positive integer constant `k`. Matches the form emitted by
+/// parse.rs for `n - 1` (SurfaceExpr::Call with target
+/// "std::int::sub" and two args).
+fn is_strictly_smaller(expr: &SurfaceExpr, first_param: &str) -> bool {
+    let SurfaceExpr::Call { target, args, .. } = expr else {
+        return false;
+    };
+    if target != "std::int::sub" || args.len() != 2 {
+        return false;
+    }
+    let lhs_is_param = matches!(
+        &args[0],
+        SurfaceExpr::Var { name, .. } if name == first_param
+    );
+    let rhs_is_positive = matches!(
+        &args[1],
+        SurfaceExpr::IntLit { value, .. } if *value > 0
+    );
+    lhs_is_param && rhs_is_positive
 }
 
 fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {

@@ -131,6 +131,42 @@ fn decide(dag: &Dag, index: usize) -> Decision {
             Decision::Set(v.output, ty)
         }
         Behavior::Transform(t) => {
+            // User-function Bind-state check: if the target is a
+            // user function, verify that its Bind.value port is in
+            // Resolved state. An Unresolved function means the body
+            // conflicted with the declared signature (caught by the
+            // apply-level conflict check on the function's return
+            // port), and the declared signature is no longer
+            // trustworthy. An Uninferred function means the body
+            // hasn't been processed yet this iteration; Retry.
+            //
+            // This is the producer-fact-reaches-consumer path: the
+            // body-validity fact lives on the function's Bind port,
+            // and call sites consult it before trusting the
+            // registered signature. Without this check, a function
+            // with a body/signature mismatch silently propagates
+            // its declared return type to all call sites.
+            if dag.signature(&t.target.name).is_some() {
+                if let Some(bind) = dag.lookup_function(&t.target.name) {
+                    match dag.port(bind.value).state() {
+                        PortState::Uninferred => return Decision::Retry,
+                        PortState::Unresolved => {
+                            return Decision::Fail(
+                                t.output,
+                                Diagnostic::ResolveError {
+                                    name: format!(
+                                        "function `{}` has an invalid body",
+                                        t.target.name
+                                    ),
+                                    span: t.span.clone(),
+                                },
+                            );
+                        }
+                        PortState::Resolved(_) => {}
+                    }
+                }
+            }
+
             let Some(sig) = lookup_signature(dag, &t.target) else {
                 return Decision::Fail(
                     t.output,
@@ -179,6 +215,35 @@ fn decide(dag: &Dag, index: usize) -> Decision {
             Decision::Set(t.output, sig.return_type)
         }
         Behavior::Branch(b) => {
+            // Branch input must be Bool — the condition selects
+            // which path fires. Not checking this was the embarrassing
+            // miss from the M0.1-M0.6 review: `if 1 then 2 else 3`
+            // typed as Int with no diagnostic.
+            let bool_ty = TypeShape::Primitive(Prim::Bool);
+            match dag.port(b.input).state() {
+                PortState::Uninferred => return Decision::Retry,
+                PortState::Unresolved => {
+                    return Decision::Fail(
+                        b.output,
+                        Diagnostic::ResolveError {
+                            name: "(upstream failure in branch condition)".to_string(),
+                            span: b.span.clone(),
+                        },
+                    );
+                }
+                PortState::Resolved(ty) if *ty == bool_ty => {}
+                PortState::Resolved(ty) => {
+                    return Decision::Fail(
+                        b.output,
+                        Diagnostic::TypeMismatch {
+                            expected: bool_ty,
+                            actual: ty.clone(),
+                            span: b.span.clone(),
+                        },
+                    );
+                }
+            }
+
             let mut iter = b.paths.iter();
             let Some(first_path) = iter.next() else {
                 return Decision::Retry;
