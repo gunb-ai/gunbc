@@ -77,10 +77,32 @@ specialized to algebra.
 Example: Construct = Product intro, FieldAccess = Product elim,
 ListBuild = FreeMonoid intro. All trace to std/algebra.dag.
 
+**4. Dimensional** — "a flat coproduct of N variants hides an
+M-dimensional structure." The variants are points in an M-space.
+Replace the flat enum with a record whose fields are the
+dimensions, each dimension being a small coproduct. Queries along
+any single dimension become field reads instead of N-way matches,
+and the structure grows along known axes, not unboundedly.
+
+Example: 6 delimiter variants (LBrace, RBrace, LParen, RParen,
+LBracket, RBracket) → Delimiter { shape: BracketShape, side: Side }
+where BracketShape = Curly | Round | Square and Side = Open | Close.
+"Is this any closer?" becomes `side == Close` instead of matching
+three variants.
+
 Each dissolution needs the right pattern. Running the wrong pattern
 gives a worse result — e.g., applying fact placement to
 TransformRule would scatter transform rules across the DAG and
 lose their shared machinery.
+
+### Default: assume dissolvable
+
+The default should be: every coproduct is dissolvable. The burden
+is on PROVING irreducibility with a structural argument ("these
+cases share no common fields or dimensions"), not an operational
+one ("the parser does different things with them"). Operational
+arguments describe current code; structural arguments describe
+the model. The project is about the second.
 
 ---
 
@@ -565,7 +587,8 @@ No dependency cycles. All layers import from std/.
 
 **Reusable from v2 (proven, no rework needed):**
 - Token { text, span, shape } — payload-insensitive shape + text
-- TokenShape — flat enum of structural classifiers (35 variants)
+- TokenShape — reusable concept, but restructured from 35 flat
+  variants to ~12 via dimensional dissolution (see coproduct audit)
 - SourceRef { file, text, source_chars } — pre-decomposed code points
 - NewlineIndex — O(log n) byte-offset → line:col translation
 - String interpolation multi-token model (StrBegin/StrMid/StrEnd)
@@ -990,7 +1013,7 @@ Here's the inventory from 00_core.dag:
 | Type | Variants | Dissolution path |
 |---|---|---|
 | ExprData | 22 | Already addressed — becomes L1 behaviors + algebraic forms |
-| TokenShape | 35 | Doc says "reusable" — but 35 variants deserves audit. Keyword tail may compress. Revisit during v3 tokenizer. |
+| TokenShape | 35 | Dimensional dissolution (pattern 4). See analysis below. |
 | Connective | 4 (Conj, Disj, NoConnective, Arrow) | Traces to Product, Coproduct, Terminal, Function. Once those are first-class in std/, Connective is redundant. |
 | FieldAccessStyle | 5 (StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond) | All 5 are intro/elim instances: TupleFirst/TupleSecond = positional Product elimination, StoredField = named Product elimination, OptionalUnwrap = Optional elimination, EnumAccessor = Coproduct projection. Dissolves via the same intro/elim mechanism. |
 | MethodSemantics | 3 (Plain, Algebra, Service) | God-coproduct in miniature. AlgebraMethodSemantics carries 4 fields, ServiceMethodSemantics carries 2. Algebra method = elimination of an algebraic structure, Service method = elimination across a transport boundary. |
@@ -1006,6 +1029,90 @@ VarBindingKind dissolve when diagnostics and bindings are redesigned.
 
 Not all need to dissolve on day one. But they need to be tracked
 so they don't get inherited by default.
+
+### TokenShape dimensional dissolution (pattern 4)
+
+TokenShape has 35 flat variants. One consumer (parser), one question
+("what kind of token?"). Not a fact placement problem. But the flat
+list hides dimensional structure — many variants are points in a
+small M-dimensional space, not genuinely atomic.
+
+**Operators (18 variants → 1).** Pattern 2 (variant-is-data).
+The parser already dispatches operators by text via
+`find_operator_bp(symbol: t.text)`, not by shape. ShPlus, ShMinus,
+ShStar, etc. are dead structural weight — the real dispatch is
+OperatorSpec. Collapse to ShOperator; the text + OperatorSpec table
+does the work.
+
+**Delimiters (6 variants → 1).** Pattern 4 (dimensional).
+LBrace/RBrace/LParen/RParen/LBracket/RBracket are a 3×2 space:
+```
+Delimiter { shape: BracketShape, side: Side }
+BracketShape = Curly | Round | Square
+Side = Open | Close
+```
+"Is this any closer?" → `side == Close` (field read, not 3-way match).
+"Does this closer match that opener?" → `opener.shape == closer.shape`.
+Currently requires 3 separate `is_rbrace/rparen/rbracket` predicates.
+
+**Literals (3 variants → 1).** Pattern 4 (dimensional).
+LitStr/LitInt/LitFloat share the same structure — a token whose
+text carries a literal value. The parser's job is to produce a
+LiteralValue (already in std/syntax.dag). Collapse to:
+```
+Literal { kind: LiteralKind }
+LiteralKind = Str | Int | Float
+```
+"Is this any literal?" → `match t { Literal(_) => ... }` (one arm).
+Currently requires 3 separate `is_lit_*_shape` predicates.
+
+**String parts (3 variants → 1).** Pattern 4 (dimensional).
+StrBegin/StrMid/StrEnd are position tags on a string template:
+```
+StrPart { position: StrPosition }
+StrPosition = Begin | Mid | End
+```
+"Is this any string part?" → `match t { StrPart(_) => ... }`.
+In v3 where string interpolation dissolves into FreeMonoid concat,
+these tokens exist only to signal grouping — the position tag
+makes that explicit.
+
+**Genuinely atomic tokens (~12):**
+- ShIdent — a name (genuinely different from literals)
+- ShKeyword — text carries identity (already pattern 2)
+- ShColon, ShComma — structural separators
+- ShDot, ShDotDot — field access vs range (related but parser
+  uses them in different contexts, structurally minimal)
+- ShArrow, ShFatArrow — return type vs match arm (related but
+  different grammatical roles)
+- ShEq — assignment (distinct from == which is an operator)
+- ShNewline, ShEof — control tokens
+- ShUnknown — error recovery sentinel
+
+**Result: 35 → ~12 top-level variants.**
+
+| Category | Current | Proposed | Pattern |
+|---|---|---|---|
+| Operators | 18 | 1 (ShOperator + OperatorSpec) | variant-is-data |
+| Delimiters | 6 | 1 (ShDelimiter { shape, side }) | dimensional |
+| Literals | 3 | 1 (ShLiteral { kind }) | dimensional |
+| String parts | 3 | 1 (ShStrPart { position }) | dimensional |
+| Ident | 1 | 1 | atomic |
+| Keyword | 1 | 1 | already dissolved (text) |
+| Punctuation | 6 | 4-6 (Colon, Comma, Dot, DotDot, Arrow, FatArrow) | mostly atomic |
+| Control | 2 | 2 (Newline, Eof) | atomic |
+| Assignment | 1 | 1 (Eq) | atomic |
+| Unknown | 1 | 1 | atomic |
+| **Total** | **35** | **~12** | |
+
+The internal mini-coproducts (BracketShape=3, Side=2, LiteralKind=3,
+StrPosition=3) are all small, coherent, and structurally stable —
+they won't grow over time.
+
+This is an architectural win, not an optimization. Every parser
+site that asks "is this any kind of X?" goes from N-way match to
+one-arm match or field read. Same kind of win Experiment 5 measured
+for ExprData (~30 arms per new variant).
 
 ### Why 04_infer fragmented into 13 files
 
