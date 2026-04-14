@@ -737,10 +737,10 @@ Self-call with same argument → `repeat(Forever, ...)`. The bound
 is honest: this might run for 292 years at 1ns/iteration. The cost
 lens reports it.
 
-**TDD priority:** mutual recursion lowering should be tested first
-via test-driven development. The lowering boundary (surface syntax
-→ DAG with Loop+Bound) is where the real complexity lives. Tests
-should verify:
+**Testing strategy:** the lowering boundary (surface syntax → DAG
+with Loop+Bound) is where the real complexity lives. Two layers:
+
+**Seed cases (hand-written TDD, for understanding):**
 - Single self-call → Loop with correct bound
 - Mutual recursion (A→B→A) → single Loop with phase
 - 3-way mutual recursion (A→B→C→A) → single Loop with 3-phase
@@ -751,6 +751,49 @@ should verify:
 - Recursion inside a fold body — legal (bounded by fold × descent)
   but composition must be correct
 - Mixed: mutual recursion where one branch terminates → Loop + Branch
+
+**Property tests (randomized, the real safety net):**
+
+Hand-written cases are seeds for understanding. Randomized property
+tests cover the space that hand-written cases miss — N-way cycles,
+mixed descent patterns, deeply nested compositions.
+
+Properties to verify:
+
+1. **Lowering totality:** for any randomly generated call graph
+   (N functions, random call edges, random descent/non-descent),
+   the lowering step ALWAYS produces a Loop with a finite Bound.
+   Never crashes, never returns "unknown."
+
+2. **Bound correctness:** if all calls in a cycle pass arguments
+   unchanged → bound = Forever. If any call descends on its
+   argument → bound = TreeSize or CollectionSize. The bound type
+   matches the call pattern.
+
+3. **Cost composition finiteness:** for any random nesting of
+   Loop/Branch/Transform, the cost algebra produces a finite cost
+   expression. No infinity, no NaN, no overflow in the algebra.
+
+4. **Parallelism conservatism:** for any randomly generated DAG,
+   if the system marks something parallelizable, every iteration
+   is truly independent (no shared edges to accumulator or prior
+   iterations). False negatives (missing parallelism) are safe.
+   False positives (incorrect parallelism) are bugs.
+
+5. **Ownership consistency:** for any random DAG, fan-out counts
+   are consistent with actual edge counts. No port has fan-out=1
+   (move) but is actually used twice.
+
+Generation strategy: build random call graphs by:
+- Picking N functions (2-20)
+- For each, randomly choosing 0-3 call targets from the set
+- For each call, randomly choosing descent (pass child) or
+  non-descent (pass same arg or unrelated arg)
+- Randomly nesting some functions inside fold/branch contexts
+
+This covers N-way mutual recursion, mixed patterns, and edge
+cases far better than enumeration. The hand-written seed cases
+verify human understanding; the property tests verify the system.
 
 ---
 
