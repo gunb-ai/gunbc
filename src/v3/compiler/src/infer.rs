@@ -444,37 +444,94 @@ impl SubstStack {
 
 const WALK_DEPTH_LIMIT: usize = 32;
 
-/// §8.9 operator dispatch. At M1(2.7), operator signature checking is
-/// a structural match on `OperatorKind`:
+/// §8.9 operator dispatch via structural algebra walk.
 ///
-/// - `Arithmetic(_)`: signature is `(T, T) -> T` where T is the
-///   operand type.
-/// - `Comparison(_)`: signature is `(T, T) -> Bool`.
+/// Walks the LHS type's declaration chain (following `Instantiation`
+/// and `ResolvedIdentifier` edges) until it reaches an algebra
+/// `Conj` declaration, then looks up the operator's field by name
+/// (via `OperatorKind::algebra_field_name`). The field's Arrow
+/// signature is read from the declaration graph — the compiler
+/// consumes `std/algebra.dag` as authority rather than fabricating
+/// signatures in Rust.
 ///
-/// The output-type rule is encoded in the `OperatorKind` variant
-/// itself (Arithmetic vs Comparison), not in a sibling string match.
-/// `OPERATOR_FIELD_MAP` is gone — the whole operator dispatch path is
-/// structural.
+/// **Receiver substitution rule.** The algebra's first type
+/// parameter is the "receiver" — it represents "the inhabitant of
+/// this algebra." When the algebra field's Arrow has `(T, T) -> T`,
+/// the resolved signature substitutes `T → source_id` (the user's
+/// `lhs_type` declaration, e.g., `Int`), not `T → Word64` (the
+/// algebra instantiation's template argument). This keeps port
+/// types consistent with user-facing primitives. Non-receiver
+/// positions (`Bool` in the comparison arrows, `Ordering` in
+/// `compare`) stay as-is.
 ///
-/// The real `dsl/std/algebra.dag` expresses these through algebra
-/// fields that are either primitive (`add`, `mul`) or derived
-/// (`sub = add(a, negate(b))`, `div = mul(a, reciprocal(b))`,
-/// `lt = compare(a, b) == Less`). Walking a derivation chain at
-/// compile time would require evaluating `.dag` expressions inside
-/// arrow bodies — a surface-grammar feature deferred to M2+. Until
-/// then, signature checking is the structural split above; the
-/// derivation lives in runtime/emission layers.
+/// **Current coverage.** Works for scalar algebras whose receiver
+/// is the first type parameter used directly: `OrderedRing<T>`,
+/// `Ring<T>`, `Semiring<T>`, `Field<T>`, `Lattice<T>`,
+/// `BooleanAlgebra<T>`. This is sufficient for `Int`, `Float`, and
+/// any user type that aliases an `OrderedRing`/`Ring`/`Field`
+/// instantiation.
 ///
-/// Dissolution trigger: when the surface grammar exposes algebra
-/// field access directly (`Int.add(a, b)` instead of `a + b`),
-/// `SurfaceExpr::Operator` disappears, `TransformTarget::Operator`
-/// disappears, `OperatorKind` disappears. Operators become regular
-/// `Callable`s dispatching through the ordinary `resolve_arrow` walk.
+/// **Not yet covered** (tracked in DOWNSTREAM_REQUIREMENTS.md as
+/// class-5 gaps):
+/// - `Bool`: no structural link from `Classical` to
+///   `BooleanAlgebra`. Requires either `inhabits` surface syntax
+///   and a `logic.dag` edit, or consumption of the
+///   `kernel_algebra_profile` data table.
+/// - `String` / collection-level algebras whose receiver is
+///   `FreeMonoid<T>` / `Set<T>` / `Map<K, V>` (the whole
+///   instantiation, not just `T`): needs a refinement to the
+///   substitution rule.
+///
+/// For those cases the resolver falls back to a Rust-side bridge
+/// with a `(T, T) -> T` / `(T, T) -> Bool` signature. The fallback
+/// is explicit about being a scaffold (see OperatorKind's
+/// dissolution receipt).
 fn resolve_operator_arrow(
     dag: &Dag,
     op_kind: OperatorKind,
     lhs_type: &TypeShape,
 ) -> Option<ResolvedArrow> {
+    let source_id = lhs_type.declaration;
+    // Walk the source type's declaration chain to find the algebra
+    // Conj. We follow Instantiation/ResolvedIdentifier edges; at
+    // each step the template argument bindings are intentionally
+    // discarded — see the receiver substitution rule in the doc
+    // comment.
+    let mut current = source_id;
+    for _ in 0..WALK_DEPTH_LIMIT {
+        let decl = dag.declaration(current);
+        match &decl.connective {
+            TypeConnective::Conj { children } => {
+                // Found the algebra. Look up the operator's field by
+                // name.
+                let field_name = op_kind.algebra_field_name();
+                if let Some(field) = children.iter().find(|f| f.label == field_name) {
+                    return read_algebra_field(
+                        dag, decl, field.ty, source_id, op_kind, lhs_type,
+                    );
+                }
+                // Algebra doesn't declare this operator's field —
+                // fall back to the Rust-side scaffold bridge below.
+                break;
+            }
+            TypeConnective::Instantiation { template, .. } => {
+                current = *template;
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                current = *next;
+            }
+            // Terminal non-follow cases — no algebra in this chain.
+            TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+            | TypeConnective::Atom(AtomPayload::TypeParam(_))
+            | TypeConnective::Atom(AtomPayload::Literal(_))
+            | TypeConnective::Disj { .. }
+            | TypeConnective::Arrow { .. }
+            | TypeConnective::Cardinality { .. } => break,
+        }
+    }
+    // Fallback: Rust-side scaffold bridge for primitives whose
+    // structural walk doesn't terminate at an algebra Conj (Bool,
+    // Classical; collection-level algebras). Documented class-5 gap.
     let output = match op_kind {
         OperatorKind::Arithmetic(_) => *lhs_type,
         OperatorKind::Comparison(_) => dag.bool_shape()?,
@@ -484,6 +541,105 @@ fn resolve_operator_arrow(
         output,
         body: ArrowBody::Pending,
     })
+}
+
+/// Read an algebra field's Arrow signature and substitute the
+/// algebra's receiver type parameter to the source declaration.
+///
+/// The algebra field `field_ty` points at an Arrow declaration
+/// emitted by `type_to_declaration_id` when lowering the algebra's
+/// record type (e.g., `OrderedRing<T>`'s `add: fn(T, T) -> T`).
+/// The Arrow's input/output DeclarationIds reference the algebra's
+/// receiver type parameter directly. Substitution replaces those
+/// references with `source_id`; non-receiver positions walk to
+/// their named anchor via the same walk `walk_to_type_shape` does.
+fn read_algebra_field(
+    dag: &Dag,
+    algebra_decl: &crate::dag::Declaration,
+    field_ty: DeclarationId,
+    source_id: DeclarationId,
+    op_kind: OperatorKind,
+    lhs_type: &TypeShape,
+) -> Option<ResolvedArrow> {
+    // The algebra's first type parameter is the receiver. For
+    // `OrderedRing<T>` this is T's DeclarationId.
+    let receiver_param = algebra_decl.type_params.first().copied();
+    // Unwrap the field's connective to the underlying Arrow. The
+    // field declaration was emitted by `type_to_declaration_id`'s
+    // Arrow arm as `TypeConnective::Arrow { inputs, output, body }`.
+    let field_decl = dag.declaration(field_ty);
+    let (arrow_inputs, arrow_output, arrow_body) = match &field_decl.connective {
+        TypeConnective::Arrow {
+            inputs,
+            output,
+            body,
+        } => (inputs.clone(), *output, body.clone()),
+        // Algebra field that isn't an Arrow (e.g., the `zero: T`
+        // constant). Not a callable operator — fall back.
+        _ => return None,
+    };
+    // Translate each input / output DeclarationId through the
+    // receiver-substitution rule.
+    let input_shapes: Vec<TypeShape> = arrow_inputs
+        .iter()
+        .map(|id| substitute_receiver(dag, *id, receiver_param, source_id))
+        .collect::<Option<_>>()?;
+    let output_shape = substitute_receiver(dag, arrow_output, receiver_param, source_id)?;
+    // Sanity check: the arity is always 2 for binary operators.
+    // If algebra.dag ever declares a field under one of our
+    // operator names with a different arity, the check downstream
+    // in `decide_transform` catches the mismatch as a
+    // `Diagnostic::ArityMismatch`, but we also want to preserve
+    // `lhs_type` in the signature as a debug fallback if the walk
+    // succeeds but the shape is unexpectedly wrong.
+    let _ = lhs_type;
+    let _ = op_kind;
+    Some(ResolvedArrow {
+        inputs: input_shapes,
+        output: output_shape,
+        body: arrow_body,
+    })
+}
+
+/// Substitute a declaration id through the receiver-substitution
+/// rule: if the id matches the algebra's receiver type parameter,
+/// return the source type; otherwise walk to the nearest named
+/// declaration (same model as `walk_to_type_shape` but with the
+/// receiver case short-circuited).
+fn substitute_receiver(
+    dag: &Dag,
+    current: DeclarationId,
+    receiver_param: Option<DeclarationId>,
+    source_id: DeclarationId,
+) -> Option<TypeShape> {
+    if Some(current) == receiver_param {
+        return Some(TypeShape::new(source_id));
+    }
+    let decl = dag.declaration(current);
+    // Named top-level declaration (Bool, Ordering, etc.) is the
+    // anchor.
+    if decl.name.is_some() {
+        return Some(TypeShape::new(current));
+    }
+    match &decl.connective {
+        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            substitute_receiver(dag, *next, receiver_param, source_id)
+        }
+        TypeConnective::Instantiation { template, .. } => {
+            substitute_receiver(dag, *template, receiver_param, source_id)
+        }
+        // Non-receiver TypeParam in an algebra field (e.g., a
+        // second generic parameter) isn't resolvable at M1(2.7).
+        // Multi-parameter algebra operator dispatch is a class-5
+        // gap; M2 will refine `substitute_receiver` to cover it.
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => None,
+        TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_)) => None,
+        TypeConnective::Atom(AtomPayload::Literal(_)) => None,
+        TypeConnective::Conj { .. } => None,
+        TypeConnective::Disj { .. } => None,
+        TypeConnective::Arrow { .. } => None,
+        TypeConnective::Cardinality { .. } => None,
+    }
 }
 
 /// Dispatch-time invariant check on an `ExternalRealization` target:

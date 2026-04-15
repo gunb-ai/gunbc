@@ -19,7 +19,7 @@ substrate fields.
 | **M0** Skeleton | ✅ Complete | 40 acceptance tests green. PR #441 merged. M0_RETROSPECTIVE.md closes it. |
 | **M1(2.5)** Substrate rework | ✅ Landed on PR #445 | Substrate = six-variant `TypeConnective`, Declaration table, `meta_tag`/`inhabits` split, `ArrowBody` with `Pending` scaffold. Initial handoff was 42 green (40 M0 + 2 substrate); see `M0_RETROSPECTIVE.md` §"M1(2.5) addendum" for the historical snapshot. |
 | **M1(2.6)** FACTS FLOW + SINGLE AUTHORITY | ✅ Landed on PR #445 | Rolled into the same PR per Option C. Parser extensions for real `dsl/std/*.dag` files, `include_str!` bootstrap over seven std modules, SubstStack + §8.9 operator dispatch, deleted `inject_primitive_operators`, anonymized TypeParam/variant/realization child declarations, duplicate-name fail-closed, `ExternalRealization` typed-edge check at both construction and dispatch, bootstrap drift routed through `Dag::attach_diagnostic` instead of panic. |
-| **M1(2.7)** Enumeration-driven substrate fix | ✅ Landed on PR #445 | Enumeration pass produced `DOWNSTREAM_REQUIREMENTS.md` (14 gaps across 4 classes); fix PR resolved all gaps structurally. Primitive identity cache (`Dag::int_shape` / `bool_shape` / `string_shape` / `realization_meta_id`); `TransformTarget { Callable, Operator }` + `OperatorKind { Arithmetic, Comparison }` coproducts; `ArrowBody::Unparsed(SourceSpan)` for block-body scaffolds; `SurfaceItem::{Fn, FnExternalBody, Data, Module, Import}` split so parser-absorbed items become real facts that flow forward; `TemplateArgument` stub self-reference branch deleted. **Current: 41 M0 + 11 M1 substrate + 7 real-stdlib parse smoke + 1 realization smoke = 60 green.** |
+| **M1(2.7)** Enumeration-driven substrate fix | ✅ Landed on PR #445 (R7 + R9) | R7: primitive identity cache, `TransformTarget`/`OperatorKind` coproducts, `ArrowBody::Unparsed`, `SurfaceItem::{Fn, FnExternalBody, Data, Module, Import}` split, `TemplateArgument` stub branch deleted. R9 (ChatGPT follow-up): `std/algebra.dag` extended with direct operator fields (`sub`, `div`, `eq`, `ne`, `lt`, `le`, `gt`, `ge` on `OrderedRing<T>`); `resolve_operator_arrow` rewritten as a structural §8.9 walk that reads algebra field signatures and substitutes the receiver type parameter to the source declaration; `Declaration.value_body: Option<ValueBody>` added so data items are structurally distinguishable from type aliases. **Current: 41 M0 + 16 M1 substrate + 7 real-stdlib parse smoke + 1 realization smoke = 65 green.** New class-5 gaps (Bool operator grounding, collection-algebra receivers, data body parsing) tracked in `DOWNSTREAM_REQUIREMENTS.md` as M2 work. |
 | **M1(3)** Cost lens | ⏸ Deferred | First writer lens. Forces the lens storage decision. |
 | **M1(4)** Rust emitter | ⏸ Deferred | Single target. |
 | **M2** Feature parity | ⏸ Deferred | Generics in user code, match in user code, transport declarations, interpreter, recursion → Loop. |
@@ -230,21 +230,37 @@ by the same PrimitiveCache introduced in Class 1. Q8's
 comparing a name to the literal `"Realization"`. QW5 is addressed
 alongside Class 1.
 
-### The one remaining scaffold
+### Remaining scaffolds after M1(2.7)
 
-After M1(2.7), the only substrate scaffold is `ArrowBody::Pending`
-(realization lag) and `ArrowBody::Unparsed(SourceSpan)` (block-body
-lag). Both have named dissolution triggers:
+Four tracked scaffolds, each with a named dissolution trigger:
 
-- **`Pending`** dissolves via the §8.11 monotonic-decrease ratchet
-  when every realization arrow binds to a real `ExternalRealization`
-  declaration (M3).
-- **`Unparsed`** dissolves when the M2+ surface grammar adopts
-  match/pipe/lambda/etc. so block bodies lower to full
-  `UserDefined(NodeId)` arrows.
+- **`ArrowBody::Pending`** — realization lag. Dissolves via the
+  §8.11 monotonic-decrease ratchet when every realization arrow
+  binds to a real `ExternalRealization` declaration (M3).
+- **`ArrowBody::Unparsed`** — block-body lag. Dissolves when the
+  M2+ surface grammar adopts match/pipe/lambda/etc. so block
+  bodies lower to full `UserDefined(NodeId)` arrows.
+- **`ValueBody::Unparsed`** — data-body lag. Dissolves when the
+  M2+ parser adopts record/map/list literal `SurfaceExpr`s so
+  data declarations lower to `ValueBody::Structural(NodeId)`
+  pointing at a value sub-DAG.
+- **`TransformTarget::Operator` + `OperatorKind`** — surface
+  operator shim. Dissolves when the M2+ parser desugars `a + b`
+  to direct algebra-field `Call`s (or adds explicit field-access
+  syntax like `Int.add(a, b)`).
 
-Both are tracked and non-spreading. The `OPERATOR_FIELD_MAP`
-bridge is gone entirely; operator dispatch is fully structural.
+All four are documented in dissolution ledgers with explicit
+triggers; none are spreading. The `OPERATOR_FIELD_MAP` name
+bridge is gone; operator dispatch walks `std/algebra.dag`
+algebra fields as consumed authority.
+
+Three **class-5 gaps** surfaced by M1(2.7) R9 remain open as M2
+work: Bool operator grounding (no structural link from
+`Classical` to `BooleanAlgebra`), collection-algebra receivers
+(`FreeMonoid`/`Set`/`Map` receivers are the parameterized
+algebra, not the type parameter), and data body parsing
+(`kernel_algebra_profile` et al. still aren't structurally
+consumable). See `DOWNSTREAM_REQUIREMENTS.md` class 5.
 
 ## M1(3)+ — deferred work (unchanged since PR #441)
 

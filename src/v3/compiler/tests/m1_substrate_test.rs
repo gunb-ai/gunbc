@@ -497,6 +497,120 @@ fn m17_module_and_import_preserve_parsed_facts() {
 }
 
 #[test]
+fn m17_r9_arithmetic_operator_walks_to_algebra_field() {
+    // M1(2.7) review round 9: resolve_operator_arrow must walk the
+    // LHS type's algebra chain and read the operator's signature
+    // from the actual algebra field declaration in std/algebra.dag,
+    // substituting the receiver type parameter to the source type.
+    //
+    // For `let x = 1 + 2`, the walk path is:
+    //   Int (source) → Int64 → OrderedRing<Word64> (algebra Conj)
+    //   → "add" field → Arrow(T, T) -> T
+    //   → substitute T → Int → signature (Int, Int) -> Int
+    //
+    // If the walk is wrong or returns Word64 (the old failing
+    // mode), the operator output port's type won't match the Int
+    // ports of the operands and the compile will fail with a
+    // TypeMismatch. This test asserts the happy path compiles
+    // cleanly and the operator output is typed as Int.
+    let dag = compile_to_dag("let x = 1 + 2", "test.v3").expect("compiles");
+    let bind_x = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "x")
+        .expect("Bind(x) exists");
+    let int_shape = dag.int_shape().expect("Int cached at bootstrap");
+    match dag.port(bind_x.value).state() {
+        v3_compiler::dag::PortState::Resolved(ty) if *ty == int_shape => {}
+        other => panic!(
+            "expected Bind(x).value to be Resolved(Int), got {other:?}"
+        ),
+    }
+}
+
+#[test]
+fn m17_r9_comparison_operator_walks_to_algebra_field() {
+    // Same as the arithmetic test but for `<`: the walk looks up
+    // the "lt" field on OrderedRing (added in M1(2.7) R9) and
+    // reads its Arrow signature. OrderedRing.lt: fn(T, T) -> Bool.
+    // Substituting receiver T → Int gives (Int, Int) -> Bool.
+    let dag = compile_to_dag("let y = 1 < 2", "test.v3").expect("compiles");
+    let bind_y = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "y")
+        .expect("Bind(y) exists");
+    let bool_shape = dag.bool_shape().expect("Bool cached at bootstrap");
+    match dag.port(bind_y.value).state() {
+        v3_compiler::dag::PortState::Resolved(ty) if *ty == bool_shape => {}
+        other => panic!(
+            "expected Bind(y).value to be Resolved(Bool), got {other:?}"
+        ),
+    }
+}
+
+#[test]
+fn m17_r9_ordered_ring_carries_direct_operator_fields() {
+    // Verify algebra.dag was extended with the direct operator
+    // fields the §8.9 walk looks up. If any is missing the walk
+    // falls back to the Rust scaffold bridge, which would make
+    // the two tests above silently pass via the wrong path.
+    let dag = Dag::new();
+    let ordered_ring = find_named(&dag, "OrderedRing");
+    let fields = match &dag.declaration(ordered_ring).connective {
+        TypeConnective::Conj { children } => children.clone(),
+        other => panic!("expected OrderedRing Conj, got {other:?}"),
+    };
+    for required in [
+        "add", "sub", "mul", "div", "eq", "ne", "lt", "le", "gt", "ge",
+    ] {
+        assert!(
+            fields.iter().any(|f| f.label == required),
+            "OrderedRing missing direct operator field `{required}` — the §8.9 walk will fall back to the Rust scaffold bridge"
+        );
+    }
+}
+
+#[test]
+fn m17_r9_data_item_has_unparsed_value_body_scaffold() {
+    // M1(2.7) review round 9, QW2 + structural scaffold honesty:
+    // data items must be structurally distinguishable from type
+    // aliases. `data foo: Int = {...}` lowers to a declaration
+    // whose connective is the resolved type AND whose value_body
+    // is Some(ValueBody::Unparsed(body_span)). A plain
+    // `type foo = Int` has value_body = None.
+    let dag = compile_any("data foo: Int = { 42 }", "data.v3");
+    let foo_id = find_named(&dag, "foo");
+    let foo_decl = dag.declaration(foo_id);
+    // Structural check: the value_body field carries an Unparsed
+    // scaffold with the body's source span preserved.
+    match &foo_decl.value_body {
+        Some(v3_compiler::dag::ValueBody::Unparsed(_span)) => {}
+        None => panic!(
+            "data item must have value_body = Some(Unparsed), got None — \
+             the declaration is structurally identical to a type alias"
+        ),
+    }
+}
+
+#[test]
+fn m17_r9_type_alias_has_no_value_body() {
+    // Converse of the data test: `type foo = Int` (a pure type
+    // alias) must have value_body = None, so consumers can
+    // discriminate on this field alone.
+    let dag = compile_to_dag("type Foo = Int", "alias.v3").expect("compiles");
+    let foo_id = find_named(&dag, "Foo");
+    let foo_decl = dag.declaration(foo_id);
+    assert!(
+        foo_decl.value_body.is_none(),
+        "type alias must have value_body = None, got {:?}",
+        foo_decl.value_body
+    );
+}
+
+#[test]
 fn m17_template_argument_stub_branch_is_gone() {
     // Class 3 (QW4): `build_template_arguments` no longer produces
     // self-referential `TemplateArgument { parameter: value, value }`

@@ -184,6 +184,8 @@ fn collect_symbols(
             type_params: Vec::new(),
             meta_tag: None,
             inhabits: None,
+
+            value_body: None,
             span: span.clone(),
         });
 
@@ -209,6 +211,8 @@ fn collect_symbols(
                     type_params: Vec::new(),
                     meta_tag: None,
                     inhabits: None,
+
+                    value_body: None,
                     span: span.clone(),
                 });
                 param_ids.push(param_id);
@@ -322,10 +326,10 @@ fn lower_item(
         SurfaceItem::Data {
             name,
             ty,
-            body_span: _,
+            body_span,
             span: _,
         } => {
-            lower_data_item(name, ty, dag, symbols);
+            lower_data_item(name, ty, body_span, dag, symbols);
             scope
         }
         SurfaceItem::Module { .. } | SurfaceItem::Import { .. } => {
@@ -473,6 +477,8 @@ fn lower_type_sum(
             type_params: Vec::new(),
             meta_tag: None,
             inhabits: None,
+
+            value_body: None,
             span: variant.span.clone(),
         });
         variant_fields.push(Field {
@@ -540,6 +546,8 @@ fn type_to_declaration_id(
                 type_params: Vec::new(),
                 meta_tag: None,
                 inhabits: None,
+
+                value_body: None,
                 span: span.clone(),
             });
             id
@@ -557,6 +565,8 @@ fn type_to_declaration_id(
                 type_params: Vec::new(),
                 meta_tag: None,
                 inhabits: None,
+
+                value_body: None,
                 span: span.clone(),
             });
             id
@@ -583,6 +593,8 @@ fn type_to_declaration_id(
                 type_params: Vec::new(),
                 meta_tag: None,
                 inhabits: None,
+
+                value_body: None,
                 span: span.clone(),
             });
             id
@@ -737,6 +749,8 @@ fn alloc_identifier_stub(
         type_params: Vec::new(),
         meta_tag: None,
         inhabits: None,
+
+        value_body: None,
         span: span.clone(),
     });
     id
@@ -878,28 +892,40 @@ fn lower_fn_item_unparsed(
 }
 
 /// Lower a `SurfaceItem::Data` — a typed constant whose body is not
-/// yet parseable. The declaration's connective becomes the resolved
-/// type annotation (walked through `type_to_connective` so aliases
-/// land as `Instantiation`s, not one-level-indirect wrappers). The
-/// body span is preserved on the SurfaceItem for M2+ but is not
-/// re-stored on the declaration itself — lowering just commits the
-/// type fact.
+/// yet parseable as a `SurfaceExpr`. The declaration carries two
+/// facts:
 ///
-/// **Scaffold honesty** (QW2): `dsl/std/*.dag` data declarations like
-/// `data kernel_algebra_profile: KernelAlgebraProfile = { ... }` now
-/// survive into the declaration table as named declarations typed by
-/// `KernelAlgebraProfile`. The body payload is still dropped, but
-/// the fact that the name exists with that type flows forward.
+/// - `connective` = the resolved type annotation (via
+///   `type_to_connective`). The declaration's type is accessible
+///   through the same path as type aliases.
+/// - `value_body = Some(ValueBody::Unparsed(body_span))`. This
+///   makes the declaration structurally distinguishable from a
+///   type alias (which has `value_body = None`) so consumers can
+///   tell "data value with this type" from "type alias of this
+///   type" by reading the substrate directly.
+///
+/// **QW2 + structural scaffold honesty** (M1(2.7) review round 9):
+/// before this fix, lowering dropped the body entirely and set
+/// the connective to the type. The declaration was structurally
+/// identical to a type alias — the substrate admitted a state
+/// where "data vs type" had no distinction. Now the fact survives
+/// as an Unparsed scaffold with an explicit dissolution trigger
+/// (M2+ record/map/list literal parser extension), and the
+/// declaration carries both the declared type and the body span
+/// for future parser passes to consume.
 fn lower_data_item(
     name: &str,
     ty: &SurfaceType,
+    body_span: &SourceSpan,
     dag: &mut Dag,
     symbols: &HashMap<String, DeclarationId>,
 ) {
     let decl_id = symbols[name];
     let local: HashMap<String, DeclarationId> = HashMap::new();
     let connective = type_to_connective(ty, symbols, &local, dag);
-    dag.declaration_mut(decl_id).connective = connective;
+    let decl = dag.declaration_mut(decl_id);
+    decl.connective = connective;
+    decl.value_body = Some(crate::dag::ValueBody::Unparsed(body_span.clone()));
 }
 
 #[allow(clippy::too_many_arguments)]

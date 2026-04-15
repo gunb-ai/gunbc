@@ -161,6 +161,8 @@ mod tests {
             type_params: Vec::new(),
             meta_tag: None,
             inhabits: None,
+
+            value_body: None,
             span: span.clone(),
         });
 
@@ -174,6 +176,8 @@ mod tests {
             type_params: Vec::new(),
             meta_tag: Some(meta_type_id),
             inhabits: None,
+
+            value_body: None,
             span: span.clone(),
         });
 
@@ -212,6 +216,8 @@ mod tests {
             type_params: Vec::new(),
             meta_tag: None,
             inhabits: None,
+
+            value_body: None,
             span,
         });
 

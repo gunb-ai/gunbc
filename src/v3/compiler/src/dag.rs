@@ -83,8 +83,8 @@ impl DeclarationId {
 /// inner types of Cardinality bounds, Arrow inputs, etc.) also live here; only the
 /// `name` field distinguishes them.
 ///
-/// `type_params`, `meta_tag`, and `inhabits` are separate edges with distinct
-/// semantics:
+/// `type_params`, `meta_tag`, `inhabits`, and `value_body` are separate edges
+/// with distinct semantics:
 /// - `type_params`: the canonical carrier for generic parameters declared on
 ///   `type Foo<T, U> { ... }` / sum / alias items. Each entry is a
 ///   DeclarationId whose connective is `Atom(TypeParam(name))`. Keeping type
@@ -98,6 +98,12 @@ impl DeclarationId {
 /// - `inhabits`: "this declaration additionally satisfies the linked
 ///   algebra's laws." Used for secondary algebra inhabitance on declarations
 ///   with their own primary structure. Empty across M1(2.5).
+/// - `value_body`: "this declaration is a data value of the declared type,
+///   not a type alias." Distinguishes `data foo: Int = {...}` from
+///   `type foo = Int` at the substrate level. `None` for type
+///   declarations; `Some(ValueBody::Unparsed(span))` for data items whose
+///   body source is preserved but not yet lowered to a value sub-DAG.
+///   See M1(2.7) QW2 resolution in DOWNSTREAM_REQUIREMENTS.md.
 #[derive(Debug, Clone)]
 pub struct Declaration {
     pub id: DeclarationId,
@@ -106,7 +112,41 @@ pub struct Declaration {
     pub type_params: Vec<DeclarationId>,
     pub meta_tag: Option<DeclarationId>,
     pub inhabits: Option<DeclarationId>,
+    pub value_body: Option<ValueBody>,
     pub span: SourceSpan,
+}
+
+/// Scaffold-with-trigger for data values. A `data foo: T = { body }`
+/// declaration lowers to a `Declaration` whose `connective` describes
+/// the declared type and whose `value_body` records that the body
+/// exists but is not yet structurally represented.
+///
+/// **Dissolution ledger** — mixed-lifecycle coproduct, currently
+/// 1-variant scaffold. Terminal form (when the parser adopts
+/// record/map/list literal `SurfaceExpr`s in M2+) replaces
+/// `Unparsed(SourceSpan)` with a `Structural(NodeId)` variant that
+/// points at a lowered value sub-DAG in the computation substrate.
+/// Until then, `Unparsed` carries the body's source span so M2+
+/// parser extensions can reach in and complete the lowering.
+///
+/// 4-pattern check against the current single variant:
+/// - Pattern 1 (fact placement): fails. The body span is a
+///   data-item-specific fact with no natural home on
+///   `TypeConnective` or the existing edges.
+/// - Pattern 2 (variant-is-data): partial. One variant today, but
+///   its payload (a `SourceSpan`) is structurally distinct from
+///   what the M2+ terminal shape will carry.
+/// - Pattern 3 (algebraic form): the scaffold is an explicit
+///   "unparseable value body" state, not reducible.
+/// - Pattern 4 (dimensional): fails.
+///
+/// Verdict: scaffold. Dissolves when M2 parser extension lands.
+#[derive(Debug, Clone)]
+pub enum ValueBody {
+    /// The body exists in source at the given span but is not yet
+    /// lowered to a value sub-DAG. The body's shape (record / map /
+    /// list / variant literal) awaits M2+ parser extension.
+    Unparsed(SourceSpan),
 }
 
 /// The six-variant type substrate. Terminal at M1(2.5).
@@ -412,30 +452,41 @@ pub struct ValueNode {
 /// Dispatch target of a `TransformNode`. Structural coproduct that
 /// replaces the old single `target: DeclarationId` field.
 ///
-/// **Dissolution receipt — Q3 operator dispatch.** Before M1(2.7) the
-/// target was always a `DeclarationId`, and primitive operators were
-/// represented by an anonymous declaration whose connective was
-/// `Atom(UnresolvedIdentifier("+"))`. Infer.rs then string-matched
-/// the identifier payload to decide operator vs callable. The string
-/// was the discriminator for a phase/job coproduct hiding inside
-/// `UnresolvedIdentifier`. This variant makes the distinction
-/// visible to the type system: the parser commits to one variant or
-/// the other at call-site lowering time.
+/// **🟡 Mixed-lifecycle coproduct — M1(2.7).** `Callable` is
+/// terminal (the long-term shape for all user function calls and
+/// resolved named declarations). `Operator` is a **scaffold**
+/// with a named dissolution trigger: the M2+ parser / desugarer
+/// replaces `SurfaceExpr::Operator` with direct algebra-field
+/// `Call`s, and this variant disappears back into
+/// `Callable(DeclarationId)`. Terminal form is 1 variant.
 ///
-/// 4-pattern check:
-/// - Pattern 1 (fact placement): fails. Callable dispatches through
-///   the declaration's Arrow body; Operator dispatches through the
-///   operand type's algebra. Different substrate paths.
+/// **Dissolution receipt — Q3 + R9 operator dispatch.** Before
+/// M1(2.7) the target was always a `DeclarationId` and primitive
+/// operators were represented by an anonymous declaration whose
+/// connective was `Atom(UnresolvedIdentifier("+"))`. Infer.rs then
+/// string-matched the identifier payload to decide operator vs
+/// callable. The string was the discriminator for a phase/job
+/// coproduct hiding inside `UnresolvedIdentifier`. M1(2.7) split
+/// the discriminator onto the `TransformTarget` variant itself,
+/// and the operator walk in `infer::resolve_operator_arrow` reads
+/// the operator's signature from the actual
+/// `std/algebra.dag` field (e.g., `OrderedRing.add`) — the Rust
+/// `OperatorKind` enum is only a lookup key, not a parallel
+/// authority.
+///
+/// 4-pattern check on (Callable, Operator):
+/// - Pattern 1 (fact placement): fails. Callable dispatches via
+///   the declaration's Arrow body; Operator dispatches via the
+///   operand type's algebra walk.
 /// - Pattern 2 (variant-is-data): fails. Callable carries a
 ///   DeclarationId; Operator carries an OperatorKind.
 /// - Pattern 3 (algebraic form): fails.
 /// - Pattern 4 (dimensional): fails.
 ///
-/// Verdict: terminal at M1(2.7). When M2 extends the surface grammar
-/// to support explicit algebra field access (`Int.add(a, b)` instead
-/// of `a + b`), the `Operator` variant dissolves back into
-/// `Callable(DeclarationId)` — the dissolution trigger is the
-/// surface grammar, not this enum.
+/// Verdict: mixed lifecycle. `Callable` is terminal;
+/// `Operator` is 🟡 scaffold with an explicit M2+ dissolution
+/// trigger (surface grammar adoption of direct algebra field
+/// access or a parse-time desugaring pass).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TransformTarget {
     /// A user function or resolved declaration. Inference walks the

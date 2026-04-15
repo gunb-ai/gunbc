@@ -39,12 +39,165 @@ fact-placement classes. **All 14 now resolved.**
 | **QW4** TemplateArgument stub self-ref | `lower.rs:664-672` `TemplateArgument { parameter: value, value }` | Stub branch deleted; `build_template_arguments` returns `Vec::new()` for stub templates |
 | **QW5** `lower_type_for_port` whitelist | `lower.rs:988-1014` `"Int"\|"Bool"\|"String"` | Routed through `type_to_declaration_id`; fresh-stub fail-closed check preserves port diagnostic anchoring |
 
-**Test coverage.** Eight new `m17_*` regression tests in
+**Test coverage.** Eight `m17_*` regression tests in
 `tests/m1_substrate_test.rs` verify the primitive cache, operator
 dispatch shape (arithmetic + comparison + user-callable), block-body
 scaffold, data declaration, module/import preservation, and the
-TemplateArgument stub-branch deletion. Total: 60/60 green, clippy
-clean.
+TemplateArgument stub-branch deletion. Plus five `m17_r9_*` tests
+for round 9 (see below). Total: 65/65 green, clippy clean.
+
+## Round 9 — ChatGPT review, post-M1(2.7) landing
+
+After the initial M1(2.7) commit landed on PR #445, a deeper
+ChatGPT review flagged two structural gaps that the first fix
+didn't fully close:
+
+### R9-A: Operators still bypass declaration-backed arrows
+
+**Pre-R9 state.** `resolve_operator_arrow` fabricated
+`(T, T) -> T` / `(T, T) -> Bool` from `OperatorKind` without
+consuming `std/algebra.dag`. The structural coproduct
+`TransformTarget::Operator(OperatorKind)` was better than the
+old string bridge, but Rust still owned the signature semantics.
+
+**R9 fix.** Two parts:
+
+1. **Extended `std/algebra.dag`** — `OrderedRing<T>` gained
+   direct operator fields (`sub`, `div`, `eq`, `ne`, `lt`, `le`,
+   `gt`, `ge`) so every arithmetic/comparison operator maps to
+   a named algebra field with a declared Arrow signature. No
+   grammar extension — just additional field declarations using
+   the existing `name: fn(T, T) -> T / Bool` shape. The runtime
+   semantics (sub = add + negate, lt = compare == Less) still
+   live in the realization layer; the field declaration is the
+   compiler's *signature authority*, not the implementation.
+2. **Rewrote `resolve_operator_arrow` as a structural walk.**
+   It walks the LHS type's declaration chain through
+   `Instantiation`/`ResolvedIdentifier` edges to an algebra
+   `Conj`, looks up the operator's field by name (via
+   `OperatorKind::algebra_field_name()`), reads the field's
+   `Arrow` from the declaration graph, and substitutes the
+   algebra's receiver type parameter to the source declaration
+   (not the template argument) so user-facing ports match. See
+   `infer.rs::read_algebra_field` and `substitute_receiver`.
+
+**Result for Int.** `let x = 1 + 2` walks
+`Int → Int64 → OrderedRing<Word64>`, finds
+`OrderedRing.add: fn(T, T) -> T`, substitutes `T → Int`,
+returns signature `(Int, Int) -> Int` matching user ports. The
+compiler consumes `std/algebra.dag` as authority rather than
+fabricating in Rust. Same for `-`, `*`, `/`, `==`, `!=`, `<`,
+`<=`, `>`, `>=`.
+
+### R9-B: Data items dropped their body
+
+**Pre-R9 state.** `lower_data_item` set the declaration's
+`connective` = the annotated type, making
+`data foo: Int = {...}` structurally identical to
+`type foo = Int`. Reviewer's thesis point: values are
+structural inhabitants, not another copy of the type connective.
+
+**R9 fix.** Added `Declaration.value_body: Option<ValueBody>`
+with `ValueBody::Unparsed(SourceSpan)` as the M1(2.7) scaffold
+form. `lower_data_item` sets both:
+- `connective` = the resolved type annotation (so the type fact
+  is accessible).
+- `value_body = Some(Unparsed(body_span))` (so the body is
+  preserved AND the declaration is structurally distinct from a
+  type alias).
+
+`ValueBody::Unparsed` has an explicit M2+ dissolution trigger
+(record/map/list literal `SurfaceExpr` parsing). Until then the
+body span is preserved and consumers can discriminate
+"data value" from "type alias" by reading `value_body`.
+
+## Class 5 — remaining structural gaps after R9
+
+These are substrate-level gaps that R9 surfaced but did not
+close. Tracked as the next substrate milestone.
+
+### Class 5 gap 1: Bool operator grounding
+
+**What's missing.** `Bool` is `Classical = True | False` (a
+`Disj`), with no structural link from `Classical` to
+`BooleanAlgebra`. The R9 operator walk terminates at a `Disj`
+with no field lookup path — the walker falls back to the
+Rust-side `(T, T) -> T` / `(T, T) -> Bool` scaffold bridge for
+any type whose chain doesn't land on an algebra `Conj`.
+
+**Why it's hard.** The link "Bool inhabits BooleanAlgebra" is
+commented in `algebra.dag` and encoded in the
+`kernel_algebra_profile` data table, but the substrate doesn't
+have an `inhabits` edge you can walk. Options:
+- Add `inhabits TypeExpr` syntax to `type_item` parsing, then
+  edit `logic.dag` to say
+  `type Classical inhabits BooleanAlgebra<Classical> = True | False`.
+  The walker consults `inhabits` as a second-chance edge when
+  the Instantiation chain terminates without an algebra. This
+  is a parser extension but structurally clean.
+- Consume `kernel_algebra_profile`'s body at bootstrap, build
+  an in-memory `name → algebra` map, and have the walker check
+  that map when the chain doesn't find an algebra. This avoids
+  parser work but requires record-literal body parsing (another
+  deferred class).
+- Treat Bool specially in the walker with a hardcoded
+  `classical_algebra_id` cached at bootstrap. A bridge, not a
+  structural fix.
+
+**Current status.** Bool operators still dispatch through the
+Rust scaffold fallback inside `resolve_operator_arrow`. The
+fallback is explicitly documented and returns
+`(Bool, Bool) -> Bool` / `(Bool, Bool) -> Bool` (arithmetic on
+Bool is nonsensical but the path exists for safety). Tests
+that exercise Bool operators still work because the
+fallback signature is shape-compatible.
+
+### Class 5 gap 2: Collection-level algebra receivers
+
+**What's missing.** `FreeMonoid<T>`,
+`BooleanAlgebra<T>` (for `Set<T>`), and `PartialFunction<K, V>`
+(for `Map<K, V>`) have operator fields whose receiver is the
+*parameterized algebra itself*, not the type parameter:
+`concat: fn(FreeMonoid<T>, FreeMonoid<T>) -> FreeMonoid<T>`.
+
+The R9 walk's substitution rule ("algebra's first type
+parameter is the receiver, substitute T → source") doesn't
+cover this shape — for `FreeMonoid`, the receiver is
+`FreeMonoid<T>`, not `T`. The walker would need to identify
+the receiver position differently (e.g., "the first input
+parameter's declaration *is* the receiver, replace all of its
+occurrences in the Arrow with source").
+
+**Why it's deferred.** At M1(2.7), `type_to_declaration_id`
+allocates a fresh declaration for each syntactic occurrence
+of `FreeMonoid<T>` in the algebra field, so they don't share
+a DeclarationId and can't be matched structurally. Hash-consing
+or a "first input IS the receiver" convention would work but
+requires more thought.
+
+**Current status.** String operators (`"a" + "b"`) fall back
+to the Rust scaffold bridge. No existing user-facing tests
+exercise String operators, so the bridge is latent.
+
+### Class 5 gap 3: Data body parsing
+
+**What's missing.** `ValueBody::Unparsed` preserves the body
+source span but doesn't make the body structurally consumable.
+`kernel_algebra_profile` / `kernel_type_set` / etc. — the
+load-bearing data tables — still aren't readable by the
+compiler at M1(2.7).
+
+**Why it's deferred.** Parsing record/map/list literal
+`SurfaceExpr`s is a full M2 parser extension: new `SurfaceExpr`
+variants, new `lower_expr` paths, new `Value`-shaped behavior
+nodes for composite values, infer support for structurally
+typing record values against their annotation. Substantial.
+
+**Current status.** Data items are now structurally honest
+(`value_body = Some(Unparsed)`), just not consumed. When M2
+lands the parser extension, `ValueBody::Unparsed(SourceSpan)`
+dissolves into `ValueBody::Structural(NodeId)` pointing at a
+lowered value sub-DAG.
 
 ---
 
