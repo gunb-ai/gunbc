@@ -17,7 +17,7 @@ use v3_compiler::dag::{
     TypeConnective,
 };
 use v3_compiler::operators::{ArithmeticOp, ComparisonOp, OperatorKind};
-use v3_compiler::CompileError;
+use v3_compiler::{CompileError, Diagnostic};
 
 fn compile_any(src: &str, file: &str) -> Dag {
     match compile_to_dag(src, file) {
@@ -1347,5 +1347,82 @@ fn m17_template_argument_stub_branch_is_gone() {
     assert!(
         found_stub_inst,
         "test did not observe a stub Instantiation; the negative invariant is vacuous"
+    );
+}
+
+#[test]
+fn prereq1_field_access_lowers_to_field_project() {
+    // Prereq 1: a local dotted path lowers to a TransformTarget::FieldProject,
+    // not a synthesized accessor declaration. The record uses two Int fields so
+    // the field label is the only fact distinguishing the projection target.
+    let src = "\
+type Point { x: Int y: Int }
+fn get_x(point: Point) -> Int = point.x
+";
+    let dag = compile_to_dag(src, "field_access.v3").expect("compiles");
+
+    let point_id = find_named(&dag, "Point");
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "get_x")
+        .expect("Bind(get_x) exists");
+    let body_node_id = dag
+        .port(bind.value)
+        .produced_by
+        .expect("Bind value has a producer");
+    let projection = match dag.node(body_node_id) {
+        Behavior::Transform(t) => t,
+        other => panic!("expected Transform field projection, got {other:?}"),
+    };
+    assert_eq!(projection.inputs, vec![bind.params[0]]);
+    match &projection.target {
+        TransformTarget::FieldProject {
+            parent_type,
+            field_label,
+        } => {
+            assert_eq!(*parent_type, point_id);
+            assert_eq!(field_label, "x");
+        }
+        other => panic!("expected FieldProject target, got {other:?}"),
+    }
+    match dag.port(bind.value).state() {
+        v3_compiler::dag::PortState::Resolved(ty) => {
+            assert_eq!(*ty, dag.int_shape().expect("Int cached"))
+        }
+        other => panic!("field projection output should resolve to Int, got {other:?}"),
+    }
+}
+
+#[test]
+fn prereq1_field_access_on_non_conj_type_is_rejected() {
+    let dag = compile_any("fn bad(flag: Bool) -> Int = flag.x", "bad_field_access.v3");
+    assert!(
+        dag.diagnostics().iter().any(|(_, diag)| matches!(
+            diag,
+            Diagnostic::ResolveError { name, .. }
+                if name.contains("field `x`") && name.contains("Conj")
+        )),
+        "expected a non-Conj field-access diagnostic naming `x`, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn prereq1_nonexistent_field_is_rejected_with_field_name() {
+    let src = "\
+type Point { x: Int }
+fn bad(point: Point) -> Int = point.y
+";
+    let dag = compile_any(src, "missing_field.v3");
+    assert!(
+        dag.diagnostics().iter().any(|(_, diag)| matches!(
+            diag,
+            Diagnostic::ResolveError { name, .. }
+                if name.contains("field `y` does not exist")
+        )),
+        "expected a missing-field diagnostic naming `y`, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
     );
 }

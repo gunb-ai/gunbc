@@ -27,7 +27,7 @@ use std::collections::{HashMap, HashSet};
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, Bound, BranchNode, BranchPattern,
     CardinalityBound, Dag, Declaration, DeclarationId, Field, LiteralBits, LoopNode, NodeId,
-    Path, PortId, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
+    Path, PortId, PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::operators::{ArithmeticOp, OperatorKind};
@@ -1078,6 +1078,13 @@ fn walk_to_conj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
     None
 }
 
+fn declaration_display_name(dag: &Dag, decl_id: DeclarationId) -> String {
+    dag.declaration(decl_id)
+        .name
+        .clone()
+        .unwrap_or_else(|| format!("declaration#{}", decl_id.raw()))
+}
+
 /// Attempt to lower a parsed record literal body into a
 /// `ValueBody::Structural { fields }` by matching each record field
 /// against the declared type's Conj children. Returns `None` (and
@@ -1777,6 +1784,117 @@ fn sentinel_type_shape(dag: &Dag) -> TypeShape {
         .unwrap_or_else(|| TypeShape::new(dag.declarations()[0].id))
 }
 
+fn unresolved_port(dag: &mut Dag, diagnostic: Diagnostic) -> PortId {
+    let port = dag.alloc_port(None);
+    dag.mark_unresolved(port, diagnostic);
+    port
+}
+
+fn lower_field_path_expr(
+    segments: &[String],
+    span: &SourceSpan,
+    dag: &mut Dag,
+    scope: &HashMap<String, PortId>,
+) -> PortId {
+    let Some((head, rest)) = segments.split_first() else {
+        return unresolved_port(
+            dag,
+            Diagnostic::ResolveError {
+                name: "empty dotted path expression".to_string(),
+                span: span.clone(),
+            },
+        );
+    };
+    let Some(mut current_port) = scope.get(head).copied() else {
+        return unresolved_port(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "dotted path `{}` is not a local field access; expression-position dotted paths currently require a local-variable head",
+                    segments.join("."),
+                ),
+                span: span.clone(),
+            },
+        );
+    };
+    let first_field = rest.first().cloned().unwrap_or_default();
+    let mut current_decl = match dag.port(current_port).state() {
+        PortState::Resolved(ty) => ty.declaration,
+        PortState::Unresolved => {
+            return unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "local `{head}` is unresolved, so field `{first_field}` cannot be projected"
+                    ),
+                    span: span.clone(),
+                },
+            )
+        }
+        PortState::Uninferred => {
+            return unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "local `{head}` does not have a resolved type during lowering, so field `{first_field}` cannot be projected yet"
+                    ),
+                    span: span.clone(),
+                },
+            )
+        }
+    };
+
+    for field_label in rest {
+        let Some(conj_id) = walk_to_conj_decl(dag, current_decl) else {
+            let parent_name = declaration_display_name(dag, current_decl);
+            return unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "field `{field_label}` cannot be projected from `{parent_name}` because it does not walk to a Conj type"
+                    ),
+                    span: span.clone(),
+                },
+            );
+        };
+        let children = match &dag.declaration(conj_id).connective {
+            TypeConnective::Conj { children } => children,
+            _ => unreachable!("walk_to_conj_decl returned a non-Conj declaration"),
+        };
+        let Some(field_decl_id) = children
+            .iter()
+            .find(|field| field.label == *field_label)
+            .map(|field| field.ty)
+        else {
+            let parent_name = declaration_display_name(dag, current_decl);
+            return unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!("field `{field_label}` does not exist on `{parent_name}`"),
+                    span: span.clone(),
+                },
+            );
+        };
+
+        let node_id = dag.alloc_node_id();
+        let output = dag.alloc_port(Some(node_id));
+        dag.push_node(Behavior::Transform(TransformNode {
+            id: node_id,
+            target: TransformTarget::FieldProject {
+                parent_type: current_decl,
+                field_label: field_label.clone(),
+            },
+            inputs: vec![current_port],
+            output,
+            span: span.clone(),
+        }));
+        current_port = output;
+        current_decl = field_decl_id;
+    }
+
+    current_port
+}
+
 fn lower_expr(
     expr: &SurfaceExpr,
     dag: &mut Dag,
@@ -1949,36 +2067,17 @@ fn lower_expr(
             // (`let x = { a: 1 }`) is a class-5 gap #3 follow-up.
             // Emit a fail-closed diagnostic so the user sees a
             // clean error instead of a silent pass-through.
-            let port = dag.alloc_port(None);
-            dag.mark_unresolved(
-                port,
+            unresolved_port(
+                dag,
                 Diagnostic::ResolveError {
                     name: "record literals are not yet supported in user-code expression position; at M1(3) they are only accepted as `data name: Type = { ... }` body values"
                         .to_string(),
                     span: span.clone(),
                 },
-            );
-            port
+            )
         }
-        SurfaceExpr::Path { span, .. } => {
-            // Dotted-path expressions (`OrderedRing.add`) are
-            // recognized only inside record-literal field values
-            // declared as the `Declaration` sentinel meta-type
-            // (see `lower_record_to_structural`). User-code
-            // expression position has no semantics for them yet —
-            // resolving a dotted name to a port type, value, or
-            // function call needs more context than M1(3) carries.
-            // Fail-closed with a clean diagnostic.
-            let port = dag.alloc_port(None);
-            dag.mark_unresolved(
-                port,
-                Diagnostic::ResolveError {
-                    name: "dotted path expressions are not yet supported in user-code expression position; at M1(3) they are only accepted as record-literal field values whose declared type is the `Declaration` sentinel meta-type"
-                        .to_string(),
-                    span: span.clone(),
-                },
-            );
-            port
+        SurfaceExpr::Path { segments, span } => {
+            lower_field_path_expr(segments, span, dag, scope)
         }
     }
 }

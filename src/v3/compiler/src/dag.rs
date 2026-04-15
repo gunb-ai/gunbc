@@ -600,24 +600,36 @@ pub struct ValueNode {
 /// `OperatorKind` enum is only a lookup key, not a parallel
 /// authority.
 ///
-/// 4-pattern check on (Callable, Operator):
+/// 4-pattern check on (Callable, FieldProject, Operator):
 /// - Pattern 1 (fact placement): fails. Callable dispatches via
-///   the declaration's Arrow body; Operator dispatches via the
+///   the declaration's Arrow body; FieldProject dispatches via a
+///   parent Conj + field label; Operator dispatches via the
 ///   operand type's algebra walk.
 /// - Pattern 2 (variant-is-data): fails. Callable carries a
-///   DeclarationId; Operator carries an OperatorKind.
+///   DeclarationId; FieldProject carries a `(DeclarationId,
+///   String)` pair; Operator carries an OperatorKind.
 /// - Pattern 3 (algebraic form): fails.
 /// - Pattern 4 (dimensional): fails.
 ///
-/// Verdict: mixed lifecycle. `Callable` is terminal;
+/// Verdict: mixed lifecycle. `Callable` and `FieldProject` are
+/// terminal;
 /// `Operator` is 🟡 scaffold with an explicit M2+ dissolution
 /// trigger (surface grammar adoption of direct algebra field
 /// access or a parse-time desugaring pass).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TransformTarget {
     /// A user function or resolved declaration. Inference walks the
     /// referenced declaration's `Arrow` connective via `resolve_arrow`.
     Callable(DeclarationId),
+    /// Structural projection on a Conj-typed parent value. The
+    /// `parent_type` is the declaration lowered from the input
+    /// port's type at the point the projection is emitted; the
+    /// `field_label` names the child field to project. No synthesized
+    /// accessor declaration, no name recovery from an Arrow target.
+    FieldProject {
+        parent_type: DeclarationId,
+        field_label: String,
+    },
     /// A primitive binary operator. Inference dispatches on the
     /// `OperatorKind` variant directly: arithmetic returns the operand
     /// type, comparison returns Bool. No declaration is allocated.

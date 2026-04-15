@@ -487,6 +487,12 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
     // `resolve_arrow` through any Instantiation / ResolvedIdentifier
     // chain to recover the concrete Arrow signature.
     let signature = match &t.target {
+        TransformTarget::FieldProject {
+            parent_type,
+            field_label,
+        } => {
+            return decide_field_project(dag, t, *parent_type, field_label);
+        }
         TransformTarget::Operator(op_kind) => {
             let lhs_type = match t.inputs.first() {
                 None => {
@@ -697,6 +703,109 @@ impl SubstStack {
         }
         None
     }
+}
+
+fn decide_field_project(
+    dag: &Dag,
+    t: &TransformNode,
+    parent_type: DeclarationId,
+    field_label: &str,
+) -> Decision {
+    if t.inputs.len() != 1 {
+        return Decision::Fail(
+            t.output,
+            Diagnostic::ArityMismatch {
+                function: format!(".{field_label}"),
+                expected: 1,
+                actual: t.inputs.len(),
+                span: t.span.clone(),
+            },
+        );
+    }
+
+    let input_ty = match dag.port(t.inputs[0]).state() {
+        PortState::Uninferred => return Decision::Retry,
+        PortState::Unresolved => {
+            return Decision::Fail(
+                t.output,
+                Diagnostic::ResolveError {
+                    name: format!("(upstream failure in field `{field_label}`)"),
+                    span: t.span.clone(),
+                },
+            );
+        }
+        PortState::Resolved(ty) => *ty,
+    };
+
+    let Some(expected_conj_id) = walk_to_conj_decl(dag, parent_type) else {
+        return Decision::Fail(
+            t.output,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "field `{field_label}` cannot be projected from `{}` because it does not walk to a Conj type",
+                    target_display_name(dag, parent_type),
+                ),
+                span: t.span.clone(),
+            },
+        );
+    };
+    let Some(actual_conj_id) = walk_to_conj_decl(dag, input_ty.declaration) else {
+        return Decision::Fail(
+            t.output,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "field `{field_label}` cannot be projected from `{}` because it does not walk to a Conj type",
+                    target_display_name(dag, input_ty.declaration),
+                ),
+                span: t.span.clone(),
+            },
+        );
+    };
+    if expected_conj_id != actual_conj_id {
+        return Decision::Fail(
+            t.output,
+            Diagnostic::TypeMismatch {
+                expected: TypeShape::new(parent_type),
+                actual: input_ty,
+                span: t.span.clone(),
+            },
+        );
+    }
+
+    let children = match &dag.declaration(expected_conj_id).connective {
+        TypeConnective::Conj { children } => children,
+        _ => unreachable!("walk_to_conj_decl returned a non-Conj declaration"),
+    };
+    let Some(field_decl_id) = children
+        .iter()
+        .find(|field| field.label == field_label)
+        .map(|field| field.ty)
+    else {
+        return Decision::Fail(
+            t.output,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "field `{field_label}` does not exist on `{}`",
+                    target_display_name(dag, parent_type),
+                ),
+                span: t.span.clone(),
+            },
+        );
+    };
+    let Some(output_ty) = walk_to_type_shape(dag, field_decl_id, &SubstStack::new(), 0) else {
+        return Decision::Fail(
+            t.output,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "field `{field_label}` on `{}` does not resolve to a port type",
+                    target_display_name(dag, parent_type),
+                ),
+                span: t.span.clone(),
+            },
+        );
+    };
+
+    Decision::Set(t.output, output_ty)
 }
 
 const WALK_DEPTH_LIMIT: usize = 32;
@@ -1043,6 +1152,24 @@ fn walk_to_type_shape(
     }
 }
 
+fn walk_to_conj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
+    let mut current = start;
+    for _ in 0..WALK_DEPTH_LIMIT {
+        let decl = dag.declaration(current);
+        match &decl.connective {
+            TypeConnective::Conj { .. } => return Some(current),
+            TypeConnective::Instantiation { template, .. } => {
+                current = *template;
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                current = *next;
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
 /// Best-effort human-readable name for a Transform.target DeclarationId,
 /// used in diagnostics. Walks through resolved Identifier atoms to find
 /// something nameable.
@@ -1066,6 +1193,10 @@ fn target_display_name(dag: &Dag, target: DeclarationId) -> String {
 fn transform_target_display_name(dag: &Dag, target: &TransformTarget) -> String {
     match target {
         TransformTarget::Callable(id) => target_display_name(dag, *id),
+        TransformTarget::FieldProject {
+            parent_type,
+            field_label,
+        } => format!("{}.{}", target_display_name(dag, *parent_type), field_label),
         TransformTarget::Operator(op_kind) => op_kind.symbol().to_string(),
     }
 }

@@ -550,13 +550,31 @@ impl<'a> Ctx<'a> {
     }
 
     fn render_transform(&self, t: &TransformNode) -> Result<String, EmitError> {
-        match t.target {
-            TransformTarget::Operator(op) => self.render_operator(t, op),
+        match &t.target {
+            TransformTarget::Operator(op) => self.render_operator(t, *op),
+            TransformTarget::FieldProject { field_label, .. } => {
+                self.render_field_project(t, field_label)
+            }
             TransformTarget::Callable(_) => Err(EmitError::UnsupportedBehavior(
                 "TransformTarget::Callable (user function call) is not yet supported by emit_rust"
                     .to_string(),
             )),
         }
+    }
+
+    fn render_field_project(
+        &self,
+        t: &TransformNode,
+        field_label: &str,
+    ) -> Result<String, EmitError> {
+        if t.inputs.len() != 1 {
+            return Err(EmitError::UnsupportedBehavior(format!(
+                "field projection .{field_label} arity {} is not supported; expected exactly one parent input",
+                t.inputs.len()
+            )));
+        }
+        let parent_expr = self.render_port(t.inputs[0])?;
+        Ok(format!("{parent_expr}.{field_label}"))
     }
 
     fn render_operator(
@@ -825,4 +843,45 @@ fn walk_to_algebra_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagnostics::SourceSpan;
+
+    #[test]
+    fn render_field_project_emits_parent_dot_field() {
+        let mut dag = Dag::new();
+        let parent_port = dag.alloc_port(None);
+        let node_id = dag.alloc_node_id();
+        let output = dag.alloc_port(Some(node_id));
+        let parent_type = dag.declarations()[0].id;
+        dag.push_node(Behavior::Transform(TransformNode {
+            id: node_id,
+            target: TransformTarget::FieldProject {
+                parent_type,
+                field_label: "value".to_string(),
+            },
+            inputs: vec![parent_port],
+            output,
+            span: SourceSpan::new("<test>", 0, 0),
+        }));
+
+        let indexes = RealizationIndexes::build(&dag).expect("indexes build");
+        let mut bound_names = HashMap::new();
+        bound_names.insert(parent_port, "parent".to_string());
+        let ctx = Ctx {
+            dag: &dag,
+            indexes: &indexes,
+            branch_marker: dag.branch_marker().expect("branch marker"),
+            bound_names: &bound_names,
+        };
+
+        let rendered = match dag.node(node_id) {
+            Behavior::Transform(t) => ctx.render_transform(t).expect("field project renders"),
+            other => panic!("expected Transform node, got {other:?}"),
+        };
+        assert_eq!(rendered, "parent.value");
+    }
 }
