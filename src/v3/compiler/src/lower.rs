@@ -990,9 +990,24 @@ fn lower_fn_item_expr_body(
         }
     };
 
-    // 3. Mutual recursion check — same as M0. Reject with an Unresolved
-    //    placeholder and keep the fn's Declaration as a placeholder Arrow
-    //    with body=Pending so call sites produce a cascade.
+    // 3. Mutual recursion check — same as M0. Reject with an
+    //    Unresolved Bind value port AND set the Arrow body to
+    //    `UserDefined(bind_id)` pointing at that Bind. `decide_transform`'s
+    //    `UserDefined` arm reads the Bind's value port state: if it's
+    //    Unresolved, every caller fails with "function has an invalid
+    //    body," cascading the rejection through the normal
+    //    upstream-failure mechanism.
+    //
+    //    **R13 fix.** Earlier revisions set `body = ArrowBody::Pending`
+    //    here, which `decide_transform` accepts as a realization-lag
+    //    scaffold (signature type-checks, body walking skipped). That
+    //    path doesn't read the Bind, so callers got Resolved types
+    //    from an invalid fn — a FAIL-CLOSED violation. Using
+    //    `UserDefined(bind_id)` routes callers through the
+    //    Unresolved-body guard that poisons them correctly. The
+    //    non-mutually-recursive rejection paths below (zero-param
+    //    recursion, non-descent-provable recursion) already use this
+    //    shape via the common bottom-of-function code.
     if mutually_recursive.contains(name) {
         let err_port = dag.alloc_port(None);
         let body_span = expr_span(body).clone();
@@ -1016,7 +1031,7 @@ fn lower_fn_item_expr_body(
         dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
             inputs: param_decl_inputs,
             output: return_decl_id,
-            body: ArrowBody::Pending,
+            body: ArrowBody::UserDefined(bind_id),
         };
         let mut outer_scope = outer_scope;
         outer_scope.insert(name.to_string(), err_port);

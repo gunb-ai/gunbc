@@ -699,6 +699,48 @@ fn bad(s: Sign) -> Int = match s { Plus => 0, Plus => 1, Minus => 2 }
 }
 
 #[test]
+fn m18_r13_mutual_recursion_poisons_callers() {
+    // M1(2.8) R13: the mutually-recursive fn rejection path used to
+    // store ArrowBody::Pending, which decide_transform accepts as
+    // scaffold (signature type-checks, body walking skipped).
+    // Downstream callers of a mutually-recursive fn got Resolved
+    // types even though the callee's Bind value port was already
+    // Unresolved — a FAIL-CLOSED leak.
+    //
+    // Fix: emit ArrowBody::UserDefined(bind_id) so decide_transform's
+    // UserDefined arm reads the Bind's value port state and
+    // cascades Decision::Fail to callers when it's Unresolved.
+    //
+    // Regression shape: define two mutually recursive fns, then a
+    // let binding that calls one of them. After R13, the let port
+    // must cascade to Unresolved.
+    let src = "\
+fn a(n: Int) -> Int = b(n)
+fn b(n: Int) -> Int = a(n)
+let c = a(1)
+";
+    let dag = compile_any(src, "mutual_recursion_cascade.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "mutual recursion should produce a diagnostic"
+    );
+    let bind_c = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "c")
+        .expect("Bind(c) exists");
+    assert!(
+        matches!(
+            dag.port(bind_c.value).state(),
+            v3_compiler::dag::PortState::Unresolved
+        ),
+        "caller of a mutually-recursive fn must cascade to Unresolved; got {:?}",
+        dag.port(bind_c.value).state()
+    );
+}
+
+#[test]
 fn m18_r12_invalid_match_cascades_to_downstream_callers() {
     // M1(2.8) R12: pattern resolution and coverage checks run
     // inside the fixpoint loop so non-exhaustive / duplicate
