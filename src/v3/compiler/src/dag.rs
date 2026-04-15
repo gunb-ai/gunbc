@@ -707,6 +707,18 @@ impl Dag {
         }
         self.diagnostics.insert(port, diagnostic);
     }
+
+    /// Attach a diagnostic to the Dag without a pre-existing port anchor.
+    /// Allocates a detached phantom port as the diagnostic carrier so the
+    /// existing fail-closed biconditional still holds. Used by
+    /// bootstrap / lowering for failures that don't have a natural
+    /// PortId (unresolved declarations, tokenize/parse errors on
+    /// bootstrap fixtures, duplicate top-level declarations, etc.).
+    /// `compile_to_dag` surfaces these through `Err(CompileError::Semantic)`.
+    pub(crate) fn attach_diagnostic(&mut self, diagnostic: Diagnostic) {
+        let port = self.alloc_port(None);
+        self.mark_unresolved(port, diagnostic);
+    }
 }
 
 impl Default for Dag {

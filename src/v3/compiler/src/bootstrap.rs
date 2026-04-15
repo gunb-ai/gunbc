@@ -33,6 +33,14 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
     // → `integer`/`float` (need algebra + bit) → `string_type` (needs
     // algebra + types for Char, but the final sweep resolves the
     // cross-file forward ref) → `types` (needs integer for Int64).
+    //
+    // Bootstrap failures (tokenize/parse/lower errors on std/ files,
+    // unresolved cross-file references) attach to the Dag's diagnostic
+    // table via `Dag::attach_diagnostic` rather than panicking, so
+    // `compile_to_dag` surfaces them through `Err(CompileError::Semantic(dag))`
+    // on every subsequent call — the same structural channel user errors
+    // go through. A failed bootstrap is visible to callers without a
+    // side channel.
     for (file, source) in &[
         ("dsl/std/logic.dag", LOGIC_DAG),
         ("dsl/std/bit.dag", BIT_DAG),
@@ -47,25 +55,28 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
     inject_realization_stub(dag);
     // Batch-final resolution for cross-file forward references (e.g.,
     // algebra.dag fields referencing `Bool` which types.dag declares).
-    // Any identifier still unresolved after all four files load is a
-    // genuine bootstrap bug and will surface as a diagnostic on the Dag
-    // — at which point the panic below stops `Dag::new()` cold.
+    // Any identifier still unresolved after the sweep emits a
+    // fail-closed diagnostic via the phantom-port channel; bootstrap
+    // completes cleanly even on drift, and the drift surfaces through
+    // the ordinary compile boundary.
     resolve_pending_identifiers(dag);
-    if !dag.diagnostics().is_empty() {
-        panic!(
-            "v3 bootstrap produced unresolved identifiers: {:?}",
-            dag.diagnostics()
-        );
-    }
 }
 
 fn parse_and_lower_fixture(dag: &mut Dag, source: &str, file: &str) {
-    let tokens = tokenize(source, file).unwrap_or_else(|diag| {
-        panic!("v3 bootstrap tokenize failed in {file}: {diag:?}")
-    });
-    let module = parse(&tokens, file).unwrap_or_else(|diag| {
-        panic!("v3 bootstrap parse failed in {file}: {diag:?}")
-    });
+    let tokens = match tokenize(source, file) {
+        Ok(t) => t,
+        Err(diag) => {
+            dag.attach_diagnostic(diag);
+            return;
+        }
+    };
+    let module = match parse(&tokens, file) {
+        Ok(m) => m,
+        Err(diag) => {
+            dag.attach_diagnostic(diag);
+            return;
+        }
+    };
     lower_into(dag, &module);
 }
 
@@ -130,10 +141,13 @@ fn inject_realization_stub(dag: &mut Dag) {
     // that tries to store a non-realization declaration in the body.
     assert_realization_shape(dag, instance_id, meta_type_id);
 
-    let int_id = dag
-        .declaration_by_name("Int")
-        .expect("bootstrap: Int missing after fixtures")
-        .id;
+    // Bootstrap drift: if earlier std/ files failed to parse, `Int`
+    // may not be present in the declaration table. Skip the scaffold
+    // rather than panicking — the underlying failure is already in
+    // `dag.diagnostics()` from `parse_and_lower_fixture`.
+    let Some(int_id) = dag.declaration_by_name("Int").map(|d| d.id) else {
+        return;
+    };
     let arrow_id = dag.alloc_declaration_id();
     dag.push_declaration(Declaration {
         id: arrow_id,

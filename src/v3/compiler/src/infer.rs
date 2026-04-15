@@ -266,25 +266,63 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
         sig
     };
 
-    // User-function Bind-state check: if the Arrow body is UserDefined,
-    // verify the Bind.value port is Resolved before trusting the signature.
-    // An Unresolved function body means the body conflicts with the
-    // declared signature (caught at the function's own return port), so
-    // call sites should not propagate the declared return type downstream.
-    if let ArrowBody::UserDefined(bind_id) = signature.body {
-        match dag.port(dag.node(bind_id).as_bind().map(|b| b.value).unwrap_or(t.output)).state() {
-            PortState::Uninferred => return Decision::Retry,
-            PortState::Unresolved => {
+    // Arrow-body state check. The three variants demand three different
+    // dispatch-time invariants; each failure surfaces as a fail-closed
+    // diagnostic on the call site's output port.
+    match &signature.body {
+        ArrowBody::UserDefined(bind_id) => {
+            // User function: the call site's signature is only trustworthy
+            // once the function's Bind.value port has reached Resolved.
+            // Uninferred → Retry; Unresolved → fail the call site.
+            let bind_id = *bind_id;
+            match dag
+                .port(
+                    dag.node(bind_id)
+                        .as_bind()
+                        .map(|b| b.value)
+                        .unwrap_or(t.output),
+                )
+                .state()
+            {
+                PortState::Uninferred => return Decision::Retry,
+                PortState::Unresolved => {
+                    let name = target_display_name(dag, t.target);
+                    return Decision::Fail(
+                        t.output,
+                        Diagnostic::ResolveError {
+                            name: format!("function `{name}` has an invalid body"),
+                            span: t.span.clone(),
+                        },
+                    );
+                }
+                PortState::Resolved(_) => {}
+            }
+        }
+        ArrowBody::ExternalRealization(realization_id) => {
+            // Primitive realization: the target declaration must be a
+            // Conj whose `meta_tag` edge points at the `Realization`
+            // meta-type. The typed-edge check was already asserted at
+            // bootstrap construction (`assert_realization_shape`), but
+            // re-validating here catches drift from any future mutation
+            // path that stores a non-realization declaration in the
+            // body and bypasses the construction-time invariant.
+            if !is_realization_shape(dag, *realization_id) {
                 let name = target_display_name(dag, t.target);
                 return Decision::Fail(
                     t.output,
                     Diagnostic::ResolveError {
-                        name: format!("function `{name}` has an invalid body"),
+                        name: format!(
+                            "arrow `{name}` carries an ExternalRealization body whose target is not a realization declaration"
+                        ),
                         span: t.span.clone(),
                     },
                 );
             }
-            PortState::Resolved(_) => {}
+        }
+        ArrowBody::Pending => {
+            // Scaffold state: signature type-checks via inhabitance,
+            // body-walking is skipped. `Pending` dissolves by M3 per
+            // the §8.11 ratchet; at M1(2.6) it's valid at dispatch time.
         }
     }
 
@@ -438,6 +476,21 @@ fn resolve_operator_arrow(
 
 fn is_comparison_operator(op: &str) -> bool {
     matches!(op, "==" | "!=" | "<" | "<=" | ">" | ">=")
+}
+
+/// Dispatch-time invariant check on an `ExternalRealization` target:
+/// the linked declaration must be a `Conj` whose `meta_tag` edge
+/// points at the `Realization` meta-type. Mirrors the assertion in
+/// `bootstrap::assert_realization_shape` as a runtime safety net.
+fn is_realization_shape(dag: &Dag, realization_id: DeclarationId) -> bool {
+    let decl = dag.declaration(realization_id);
+    if !matches!(decl.connective, TypeConnective::Conj { .. }) {
+        return false;
+    }
+    let Some(meta_tag) = decl.meta_tag else {
+        return false;
+    };
+    dag.declaration(meta_tag).name.as_deref() == Some("Realization")
 }
 
 /// Walk `Transform.target` to its terminal `Arrow` declaration without

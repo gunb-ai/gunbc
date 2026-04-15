@@ -655,15 +655,12 @@ fn alloc_identifier_stub(
     id
 }
 
-/// Emit a declaration-level diagnostic via a phantom port. Declaration-level
-/// failures (unresolved identifiers, template metadata mismatch) do not have
-/// a natural PortId anchor; we allocate a detached port purely as a
-/// diagnostic carrier so the Dag's existing fail-closed biconditional
-/// (port state ↔ diagnostic entry) surfaces the error through
-/// `compile_to_dag` without a parallel diagnostic channel.
+/// Emit a declaration-level diagnostic via `Dag::attach_diagnostic`.
+/// Thin wrapper kept for naming symmetry with the per-item fail-closed
+/// call sites in lowering; bootstrap and tests use
+/// `Dag::attach_diagnostic` directly.
 fn report_declaration_error(dag: &mut Dag, diag: Diagnostic) {
-    let phantom = dag.alloc_port(None);
-    dag.mark_unresolved(phantom, diag);
+    dag.attach_diagnostic(diag);
 }
 
 /// Final-pass resolution over anonymous Identifier-atom declarations. Any
