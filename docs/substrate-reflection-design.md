@@ -66,6 +66,65 @@ registration + documentation update. That's a four-file minimum.
 In canonical form, adding a new lens is one `.dag` file loaded
 by the manifest. One file. That's the thesis target.
 
+## §1.5 The motivating consumers already exist
+
+Reflection is not a decorative framework in search of users. It
+is the mechanism by which **6500+ lines of existing v2 analysis
+code** migrate into v3 as `.dag` lenses, without being rewritten
+as Rust modules and without losing the thesis's physics-plus-lens
+compression. The consumers are already written. They are waiting
+for the substrate to host them.
+
+| v2 consumer | Lines | What it does | v3 current state | Migration target |
+|---|---|---|---|---|
+| `src/v2/complexity.dag` | **5490** | Symbolic cost terms (work + span), termination proofs, descent evidence, iteration dimensions, cost shapes. v2's most mature analysis. | **`lens_cost.rs` at 80 lines** — a placeholder that counts structural Transform / Branch / Loop ops. Not complexity; just a first data point on the "lens lands in tens of lines" curve. | `dsl/lenses/complexity.dag` — **a port of the algorithm**, not a rewrite. The shape stays; the substrate changes. |
+| `src/v2/ownership.dag` | 719 | Move / borrow / clone inference, lifetime tracking, ref-counting decisions. Feeds directly into Rust emission. | Nothing in v3. | `dsl/lenses/ownership.dag` |
+| `src/v2/effect_derivation.dag` | 66 | Pure vs effectful function classification. Experiment 4 from the v3 validation experiments shipped a prototype version. | Nothing in v3 beyond the experiment. | `dsl/lenses/effects.dag` |
+| `src/v2/trace.dag` | 223 | Execution trace extraction for debugging. | Nothing in v3. | `dsl/lenses/trace.dag` |
+
+**The critical framing: `lens_cost.rs` (80 lines) is v3's
+placeholder for `complexity.dag` (5490 lines).** The reflection
+framework's job is to be the migration path. When complexity
+lands as `dsl/lenses/complexity.dag`, it should read substrate
+facts v2 currently reconstructs — termination evidence via
+descent edges, iteration dimensions via Cardinality, cost
+shapes via algebra-inhabitance — instead of re-deriving them.
+**Every heuristic in v2's complexity that dissolves into a v3
+substrate field is a physics-plus-lens win.** Every one that
+doesn't dissolve reveals a substrate gap that a prerequisite PR
+has to close.
+
+This is a direct test of Experiment 2 from
+`docs/v3-validation-experiments.md` at full scope. Experiment 2
+validated "carry facts through bindings" for one reconstruction
+pattern (`classify_let_value`). Migrating complexity to a v3
+lens is the same experiment at 5490-line scope: every
+reconstruction in v2's complexity.dag either (a) dissolves into
+a v3 substrate field that the lens reads directly, or (b) reveals
+a substrate gap that blocks the migration until the gap closes.
+Both outcomes are valuable; either way the migration is forward
+progress.
+
+**What this means for scope.** The reflection PR itself
+(migrating `lens_unused_parameters` as the proof point) is the
+smallest end-to-end demonstration that the framework works. The
+**motivating consumers** — complexity, ownership, effects,
+trace — are scoped as follow-up work, but they are not optional.
+Each one is tracked as an explicit milestone in §11.5, not as
+"future ideas." The framework exists because they exist;
+shipping reflection without a plan for their migration would be
+exactly the "decorative lens library" the critique names.
+
+**The "new consumers" critique answered.** The codex and
+ChatGPT reviews of earlier rounds flagged "no new consumers —
+this is accumulating debt, not retiring it." The structural
+answer is: **the consumers are not new. They are existing v2
+code that this framework is specifically designed to host.** A
+PR that ships reflection without at least one consumer migration
+is incomplete; a PR that ships the framework plus the
+`lens_unused_parameters` migration plus a scoped migration plan
+for complexity/ownership/effects/trace is retiring debt.
+
 ---
 
 ## §2. Scope of this document
@@ -1550,6 +1609,150 @@ prereqs, can land in parallel with any of them.**
 
 ---
 
+## §12.5 Consumer migration as first-class scope
+
+Per §1.5, the motivating consumers for reflection are v2's
+existing analyses (complexity, ownership, effect derivation,
+trace). They are not optional follow-ups; they are the
+structural answer to the "this framework is decorative"
+critique. Each one is tracked here with an explicit migration
+milestone. **The reflection PR is complete when at least one
+migration milestone is in flight; the framework is justified
+when all four have a scoped plan.**
+
+### §12.5.1 Migration M1 — `dsl/lenses/complexity.dag` (the big one)
+
+**Source:** `src/v2/complexity.dag` (5490 lines).
+
+**Blocker:** the reflection PR itself, plus Prereq 0–5. Cannot
+start until lenses-as-`.dag`-programs is real and `std/list.dag`
+is loaded.
+
+**Scope:** port the algorithm in shape. Every reconstruction in
+v2's complexity either dissolves into a v3 substrate field
+(termination evidence on bindings, iteration dimensions on
+Cardinality, cost shapes via algebra inhabitance) or reveals a
+substrate gap. The migration is therefore an **audit disguised
+as a port**: walking v2's complexity line by line and asking
+"does v3 carry this structurally?" for each reconstructed fact.
+
+**Acceptance criteria:**
+
+- [ ] Every `annotate_*` helper in v2's complexity that
+      reconstructs a fact from the IR has a disposition: either
+      (a) DELETED because v3 carries the fact as a substrate
+      field, or (b) TRACKED as a prerequisite substrate extension
+      in a new design note.
+- [ ] `dsl/lenses/complexity.dag` exists and parses under the
+      grammar available after the reflection PR's prereq slate.
+- [ ] For a canonical test input (e.g., a small v2 sub-module
+      both compilers can parse), complexity's v2 output and
+      v3 output match on the subset of facts v3 currently
+      carries structurally.
+- [ ] Substrate gaps identified during the port are either
+      closed in prerequisite PRs before complexity lands, OR
+      tracked in `DOWNSTREAM_REQUIREMENTS.md` with a concrete
+      dissolution plan.
+
+**Expected substrate extensions surfaced by the port** (each
+tracked as its own prerequisite if the migration needs it):
+
+- **Termination evidence as typed edges on bindings.** v2's
+  complexity walks `TypeBinding` and reconstructs `sub_value_vars`
+  via `annotate_descent()`. v3's thesis says bindings should
+  carry a typed `provenance` edge. Experiment 2 validated the
+  shape partially; full migration forces the remaining work.
+- **Iteration dimension on Cardinality / Loop.** v2's complexity
+  computes iteration dimensions from loop source + body shape.
+  v3's `Cardinality(bound, element)` + `Loop { source, init, body }`
+  should carry the dimension structurally, not by reconstruction.
+- **Cost shape as algebra-inhabitance.** v2's complexity enumerates
+  cost shapes (`ShapeConstant`, `ShapeLinearScan`, etc.). v3's
+  algebra inhabitance should carry the shape via which algebra
+  a declaration inhabits (e.g., `inhabits Monoid → ShapeConstant`
+  for the monoid op).
+
+Each of these is a substrate question that complexity's migration
+surfaces empirically. The migration isn't "port the 5490 lines;"
+it's "port what ports cleanly, pin what doesn't, let the
+reconstruction dissolution direct the remaining substrate work."
+
+### §12.5.2 Migration M2 — `dsl/lenses/ownership.dag`
+
+**Source:** `src/v2/ownership.dag` (719 lines).
+
+**Blocker:** reflection PR, plus complexity migration (M1)
+because ownership reads several of the same substrate facts
+complexity reads.
+
+**Scope:** move/borrow/clone inference as a pure reader over
+v3's substrate. The callback rule from Experiment 1 (closures
+in Loops get fan-out = N, not 1) is the ownership lens's
+responsibility to implement; v3 currently has no ownership code
+at all.
+
+**Acceptance criteria:**
+
+- [ ] `dsl/lenses/ownership.dag` parses.
+- [ ] For every function in the test corpus, the lens's
+      move/borrow/clone decisions match v2's for the shared
+      substrate subset.
+- [ ] The callback rule is tested: a closure body flowing into
+      a Loop reports fan-out = N, not 1.
+
+### §12.5.3 Migration M3 — `dsl/lenses/effects.dag`
+
+**Source:** `src/v2/effect_derivation.dag` (66 lines). Small.
+Experiment 4 from v3-validation-experiments already shipped a
+prototype "purity lens" as a `.dag` function.
+
+**Blocker:** reflection PR (to give it the lens-framework
+handle). Experiment 4 proved the shape works at v2 level; v3
+migration is a straight port.
+
+**Acceptance criteria:**
+
+- [ ] `dsl/lenses/effects.dag` parses.
+- [ ] Classifies functions as pure / effectful consistently
+      with v2.
+
+### §12.5.4 Migration M4 — `dsl/lenses/trace.dag`
+
+**Source:** `src/v2/trace.dag` (223 lines).
+
+**Blocker:** reflection PR. Low priority — trace is debug
+tooling, not load-bearing for correctness.
+
+**Acceptance criteria:**
+
+- [ ] `dsl/lenses/trace.dag` parses and produces readable trace
+      output for at least one v3 test fixture.
+
+### §12.5.5 Migration order and gating
+
+The four migrations don't need to be done in any specific
+order after reflection lands, BUT:
+
+1. **M1 (complexity) is the highest priority** because it's the
+   biggest, the most substrate-dependent, and the one that most
+   directly tests Experiment 2. Starting it reveals substrate
+   gaps that might also affect M2.
+2. **M2 (ownership) blocks any v3 work on code generation
+   optimization.** v3 currently emits Rust with no ownership
+   analysis (everything is owned or cloned uniformly). Shipping
+   M2 is the path to idiomatic Rust emission.
+3. **M3 (effects) and M4 (trace) are small and independent.**
+   Either can ship on any cadence.
+
+**The framework is justified empirically when M1 lands.** Until
+then, reflection is "we expect the compression to work." When
+complexity.dag's 5490 lines come into v3 as a .dag lens and
+demonstrably reads substrate facts instead of reconstructing
+them, the physics-plus-lens claim moves from "thesis" to
+"measured result."
+
+---
+
 ## §13. Recent-conversation threads captured
 
 Cross-reference for the user's "make sure nothing is missed" ask.
@@ -1558,6 +1761,7 @@ deferred with a note.
 
 | Thread | Status |
 |---|---|
+| **Existing consumers (complexity, ownership, effects, trace) must be reframed in the new lens stuff** — structural answer to "accumulating debt, no new consumers" critique | §1.5 — motivating consumers enumerated; §12.5 — explicit migration milestones M1-M4 with acceptance criteria; reflection framework is justified empirically when complexity.dag migrates |
 | **Queries fall out of compositional modeling** ("I expected the queries to fall out of proper compositional modeling") | §3.2 — collapsed the query-primitive layer, replaced with field access on declared records |
 | **Higher-order function calls as the deepest substrate question** (from the List modeling exercise) | §3.5 — three options (1a substrate variant, 1b monomorphization, 1c template instantiation); recommendation 1c; codified as Prereq 0 |
 | **`behavior_output_port` resolved compositionally** | §3.2.1 — replaced with `result_port: PortId` field on every Behavior variant payload, accessed by field read |
