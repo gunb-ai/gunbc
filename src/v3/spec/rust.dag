@@ -46,9 +46,9 @@
 // at render time. Dissolves when the tokenizer learns escape
 // sequences.
 
-module dsl.extdeps.languages.rust
+module v3.spec.rust
 
-import dsl.std.v3_l1 { Bind, Branch, Main, Declaration }
+import v3.spec.v3_l1 { Bind, Branch, Main, Declaration }
 
 // ─────────────────────────────────────────────────────────────────
 // Realization meta-types — three distinct shapes.

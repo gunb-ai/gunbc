@@ -43,15 +43,25 @@ const TYPES_DAG: &str = include_str!("../../../../dsl/std/types.dag");
 // for readability). Per-target language spec files import these
 // markers via typed `Declaration` field references, eliminating
 // the need to identify behaviors by string name. See
-// `dsl/std/v3_l1.dag` and `Dag.substrate_markers` for the bootstrap
-// cache populated from this file.
-const V3_L1_DAG: &str = include_str!("../../../../dsl/std/v3_l1.dag");
+// `src/v3/spec/v3_l1.dag` and `Dag.substrate_markers` for the
+// bootstrap cache populated from this file.
+//
+// **Why this lives in `src/v3/spec/` instead of `dsl/std/`.** v2's
+// CI pipeline scans `dsl/` recursively and tries to resolve every
+// identifier in every record-literal field value. v2 doesn't know
+// about v3's `Declaration` sentinel meta-type, so a rust.dag
+// declaration like `target: Int` (a typed reference) reads as an
+// undefined-variable error in v2's scope. The cleanest separation
+// is to keep v3-only spec files outside the v2-scanned tree
+// entirely. v3 reads them via `include_str!` from the path below
+// — no source-root scanning involved.
+const V3_L1_DAG: &str = include_str!("../../spec/v3_l1.dag");
 // M1(3) PR-B — the first target language spec v3 consumes
 // structurally. Loads after v3_l1.dag so the substrate markers
 // (Bind/Branch/Main/Declaration) are resolved by the time
 // rust.dag's Realization fields reference them. See
-// `dsl/extdeps/languages/rust.dag` for the file's role.
-const RUST_DAG: &str = include_str!("../../../../dsl/extdeps/languages/rust.dag");
+// `src/v3/spec/rust.dag` for the file's role.
+const RUST_DAG: &str = include_str!("../../spec/rust.dag");
 
 pub(crate) fn bootstrap(dag: &mut Dag) {
     // Two-phase loading across all seven std/ files. Phase 1 parses and
@@ -75,8 +85,8 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
         ("dsl/std/float.dag", FLOAT_DAG),
         ("dsl/std/types.dag", TYPES_DAG),
         ("dsl/std/string_type.dag", STRING_TYPE_DAG),
-        ("dsl/std/v3_l1.dag", V3_L1_DAG),
-        ("dsl/extdeps/languages/rust.dag", RUST_DAG),
+        ("src/v3/spec/v3_l1.dag", V3_L1_DAG),
+        ("src/v3/spec/rust.dag", RUST_DAG),
     ];
 
     // Phase 0: parse every fixture. Tokenize/parse errors attach to

@@ -27,14 +27,17 @@
 //    `target_name: "Int"` (a string the emitter has to dispatch
 //    on).
 //
-// **Why these live in std/v3_l1.dag rather than in a sub-module:**
-// the markers are part of v3's substrate vocabulary, not a domain
-// model. They belong with the other primitive-substrate
-// declarations (`Bool`, `Int`, `String`, `OrderedRing`) so that
-// every per-target spec file can `import` them from one stable
-// location.
+// **Why these live in src/v3/spec/ rather than dsl/std/.** v2's
+// CI pipeline scans `dsl/` recursively and tries to resolve every
+// identifier in every record-literal field value. v2 has no
+// concept of v3's `Declaration` sentinel meta-type, so a target
+// spec file like rust.dag carrying `target: Int` (a typed
+// declaration reference) reads as an undefined-variable error in
+// v2's scope. Moving v3-only spec files to `src/v3/spec/` keeps
+// them outside v2's scan tree entirely. v3 reads them via
+// `include_str!` from `src/v3/compiler/src/bootstrap.rs`.
 
-module dsl.std.v3_l1
+module v3.spec.v3_l1
 
 // L1 behavior markers. One per Behavior variant in dag.rs plus
 // Main for the program-entry-point wrapper. Each marker is an

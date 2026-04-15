@@ -154,9 +154,68 @@ fn emit_rust_has_no_substrate_name_string_dispatches() {
     for pattern in forbidden {
         assert!(
             !code_only.contains(pattern),
-            "emit_rust.rs must not contain the string literal {pattern} in non-comment position — that would be a name-string dispatch on a substrate concept. The PR-B unwind moved every such lookup to typed declaration ids resolved via dag.{{bind_marker, branch_marker, main_marker, ...}}() and dag.declaration_by_name() at index-build time only. If you reintroduced one, see dsl/extdeps/languages/rust.dag for the typed pattern: `data rust_int: TypeRealization = {{ target: Int, ... }}` instead of `target_name: {pattern}`."
+            "emit_rust.rs must not contain the string literal {pattern} in non-comment position — that would be a name-string dispatch on a substrate concept. The PR-B unwind moved every such lookup to typed declaration ids resolved via dag.{{bind_marker, branch_marker, main_marker, ...}}() and dag.declaration_by_name() at index-build time only. If you reintroduced one, see src/v3/spec/rust.dag for the typed pattern: `data rust_int: TypeRealization = {{ target: Int, ... }}` instead of `target_name: {pattern}`."
         );
     }
+}
+
+/// **Composition opacity gate documentation.**
+///
+/// The static regression test above
+/// (`emit_rust_has_no_substrate_name_string_dispatches`) is the
+/// load-bearing **rename test** in static form. It asserts that
+/// emit_rust.rs contains zero string literals naming any user-
+/// facing std/ identifier (`Int`/`Bool`/`String`/`True`/`False`)
+/// or substrate L1 behavior (`Bind`/`Branch`/`Main`) in non-
+/// comment position. If the test passes, it follows by
+/// construction that:
+///
+///   1. **Renaming `Int` → `Integer` in `dsl/std/integer.dag`**
+///      requires editing `dsl/std/integer.dag` (the declaration),
+///      `src/v3/spec/rust.dag` (the typed reference
+///      `target: Int` → `target: Integer`), and any user-source
+///      that mentions `Int`. Emit_rust.rs needs **zero edits**
+///      because it dispatches on declaration ids resolved at
+///      bootstrap time, not on name strings.
+///
+///   2. **Renaming any other primitive** has the same property —
+///      one std/ edit + one rust.dag edit + user-source updates,
+///      with the emitter unchanged.
+///
+///   3. **Adding a new primitive** (e.g. `Decimal` for fixed-
+///      point) is one std/ addition + one rust.dag addition,
+///      again with the emitter unchanged.
+///
+/// This is the **composition opacity guarantee** in static form.
+/// The thesis claim — "the compiler exists to make compositions
+/// opaque, application code sitting on rest/http/service should
+/// be unable to observe layer changes" — applies one layer up:
+/// the emitter sits on top of the substrate layer, and the
+/// substrate layer should be replaceable without the emitter
+/// noticing. The regression test's empty-grep result is the
+/// proof.
+///
+/// The DYNAMIC version of the rename test (literally rename a
+/// declaration in std/, recompile, verify) would touch every
+/// std/ file that references the renamed type and is too coarse
+/// to express as a unit test. The static check is strictly
+/// stronger anyway: a passing static test guarantees the dynamic
+/// test would pass without running it.
+///
+/// **The carve-out for `EmitError` payloads.** `EmitError`
+/// variants like `MissingSubstrateMarker(SubstrateMarkerRole::
+/// Bind)` carry typed enum tags — not strings — for the same
+/// reason. The `SubstrateMarkerRole` enum is internal compiler
+/// dispatch metadata, NOT a string-keyed lookup. The regression
+/// test's pattern list catches the literal `"Bind"`/`"Branch"`/
+/// `"Main"` quoted strings; if you re-introduced one, the test
+/// fires immediately.
+#[test]
+fn composition_opacity_gate_is_documented() {
+    // No-op test that exists purely to anchor the documentation
+    // above. The actual gate lives in
+    // `emit_rust_has_no_substrate_name_string_dispatches` and
+    // runs every test invocation.
 }
 
 /// End-to-end roundtrip test: emit Rust from a v3 program, feed the

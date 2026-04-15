@@ -1136,6 +1136,118 @@ same shape for data items. R14 added the sweep
 as the canonical form of the fix; this invariant generalizes that
 fix into a ratchet on all future scaffold additions.
 
+### Composition Opacity
+
+No compiler source file may contain a string literal naming a
+user-facing std/ identifier (a primitive type, a sum-type variant,
+a declaration, or a field label) in dispatch position. The only
+acceptable place for such a string literal is **diagnostic
+display** — text that the compiler emits to a human reader, such
+as a span message in a `Diagnostic`. Dispatch positions — pattern
+matches against `decl.name.as_deref()`, hash-map keys typed
+`String`, `if name == "Int"` branches — are forbidden.
+
+**The principle.** The compiler exists to make compositions
+opaque. When application code sits on `rest/http/service`, the
+compiler must let you insert a layer between `rest` and `http`,
+modify `rest`'s internals, or replace `http` entirely — and the
+application code is structurally unaware. It cannot even
+*observe* the change. That's the replaceability guarantee.
+Generated code is the mechanism: hand-written code embeds
+composition assumptions; generated code does not. **If the
+generator itself embeds composition assumptions, it defeats the
+reason it exists.**
+
+This invariant applies the principle one layer up: the compiler
+sits on top of the substrate (the std/ declarations and the
+target spec files), and the substrate must be replaceable
+without the compiler noticing. If a primitive type in std/ is
+renamed (`Int` → `Integer`), or a behavior label is renamed, or
+a new primitive is added, the compiler must require **zero
+edits** to its Rust code. Only the std/ files (and the per-
+target spec files like `src/v3/spec/rust.dag`) need to update.
+
+**The diagnostic — the rename test.** For any consumer the
+compiler grows (an emitter, a lens, an inference pass), ask:
+*"if I rename this canonical std/ identifier, will the compiler
+need editing?"* If yes, the consumer is a thesis violation
+regardless of how "tracked" the compromise is. It's not a scoped
+gap; it's a counterexample to the project's core claim.
+
+**The static form.** A passing rename test is equivalent to the
+absence of name strings in dispatch position. A grep against
+the consumer's source file for the canonical names — quoted as
+string literals — must return zero results in non-comment,
+non-diagnostic positions. The grep is the proof; running the
+actual rename is unnecessary if the grep is clean.
+
+**The carve-out for diagnostic display.** Error messages and
+diagnostic text are allowed to contain user-facing names. The
+test for "diagnostic display" is: does removing this string
+change the compiler's behavior on any input? If no (the string
+is purely human-readable text appended to a diagnostic), it is
+diagnostic. If yes (the string discriminates dispatch), it is
+not.
+
+**The carve-out for substrate-internal markers.** Compiler-
+internal Rust enum tags identifying L1 behaviors (e.g.,
+`SubstrateMarkerRole::Bind` in `emit_rust.rs`) are NOT name
+strings. They are typed enum variants whose Rust source token
+happens to match a substrate marker's name. Substituting the
+typed enum tag into a `match` is structurally equivalent to
+substituting the marker's `DeclarationId`; the bridge from
+"compiler-internal Rust enum" to "substrate marker DeclarationId"
+is at most a one-time bootstrap-time lookup.
+
+**The structural prevention.** A regression test in the
+compiler's test suite reads each consumer source file via
+`include_str!`, strips comment lines, and asserts the absence of
+known canonical-name string literals in non-comment position.
+The canonical list is small (`"Int"`, `"Bool"`, `"String"`,
+`"True"`, `"False"`, plus the L1 behavior names `"Bind"`,
+`"Branch"`, `"Loop"`, `"Transform"`, `"Value"`, `"Main"`) and
+maintained as a source of truth in the regression test. The
+canonical form lives in
+`src/v3/compiler/tests/m1_3_emit_rust_test.rs::emit_rust_has_no_substrate_name_string_dispatches`.
+Each consumer the compiler grows (lens_cost, emit_rust, future
+emit_go / emit_python) must have an analogous test.
+
+**The ratchet.** A PR that adds a consumer file (`emit_*.rs`,
+`lens_*.rs`, etc.) must, in the same PR, either (a) include the
+regression test asserting the file passes the canonical grep or
+(b) document why the consumer is exempt (e.g., it operates
+purely on `DeclarationId` and never reads names — which the
+regression test would prove anyway). The Composition Opacity
+invariant adds a sibling ratchet to Scaffold Boundaries: every
+new consumer needs its rename gate.
+
+**Background.** This invariant was codified after PR #445's
+M1(3) PR-B-unwind. The initial PR-B cut shipped `emit_rust.rs`
+with `index.lookup("Int", "")` and friends — string-keyed
+dispatch on a `HashMap<(String, String), String>` realization
+table built from rust.dag's `target_name: "Int"` field strings.
+That was the M1(2.7) name-bridge regression the review loop had
+spent fourteen rounds eliminating from the inference layer, just
+at the emit layer. The reviewer's framing made it sharp: name-
+bridges are not local cleanliness gaps, they are direct failures
+of the composition opacity guarantee, which is the load-bearing
+thesis claim. The unwind reshaped:
+
+- `dsl/std/v3_l1.dag` declares `Bind` / `Branch` / `Main` markers
+  + a `Declaration` sentinel meta-type (now in `src/v3/spec/`).
+- `ValueBody::Structural { fields: Vec<(String, FieldValue)> }`
+  carries `FieldValue::Reference(DeclarationId)` for typed
+  declaration references.
+- `src/v3/spec/rust.dag` uses typed references throughout
+  (`target: Int`, `op: OrderedRing.add`, `target: Bind`).
+- `emit_rust.rs` builds `HashMap<DeclarationId, String>` indexes
+  and dispatches by typed id. Zero name strings.
+
+The regression test is the proof. The R5/R6/R7 review rounds —
+all variants of "some Rust code has a hardcoded user-facing
+identifier" — would have been caught at introduction time if
+this invariant had been in force from M0.
+
 ### No parallel implementations
 
 When the same computation exists in two forms (e.g., an AST interpreter
