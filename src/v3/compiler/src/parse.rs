@@ -101,6 +101,7 @@ pub enum SurfaceItem {
     /// sub-DAG.
     Fn {
         name: String,
+        type_params: Vec<String>,
         params: Vec<SurfaceParam>,
         return_type: SurfaceType,
         body: SurfaceExpr,
@@ -115,6 +116,7 @@ pub enum SurfaceItem {
     /// scaffolded until the parser adopts match/pipe/lambda.
     FnExternalBody {
         name: String,
+        type_params: Vec<String>,
         params: Vec<SurfaceParam>,
         return_type: SurfaceType,
         body_span: SourceSpan,
@@ -406,6 +408,11 @@ pub enum SurfaceExpr {
     Operator {
         op: crate::operators::OperatorKind,
         args: Vec<SurfaceExpr>,
+        span: SourceSpan,
+    },
+    Lambda {
+        params: Vec<String>,
+        body: Box<SurfaceExpr>,
         span: SourceSpan,
     },
     If {
@@ -822,6 +829,7 @@ impl<'a> Parser<'a> {
     fn parse_fn_item(&mut self) -> Result<SurfaceItem, Diagnostic> {
         let fn_kw = self.expect_kind(TokenKind::KwFn)?;
         let name = self.parse_ident()?;
+        let type_params = self.parse_optional_type_params()?;
         self.expect_kind(TokenKind::LParen)?;
         let params = self.parse_params()?;
         self.expect_kind(TokenKind::RParen)?;
@@ -835,6 +843,7 @@ impl<'a> Parser<'a> {
                 let end = expr_span(&body_expr).byte_end;
                 Ok(SurfaceItem::Fn {
                     name,
+                    type_params,
                     params,
                     return_type,
                     body: body_expr,
@@ -854,6 +863,7 @@ impl<'a> Parser<'a> {
                 let body_span = SourceSpan::new(self.file, open.byte_start, end);
                 Ok(SurfaceItem::FnExternalBody {
                     name,
+                    type_params,
                     params,
                     return_type,
                     body_span,
@@ -1356,6 +1366,7 @@ impl<'a> Parser<'a> {
                 value: SurfaceLiteral::String(value),
                 span: token.span,
             }),
+            TokenKind::Pipe => self.parse_lambda(token.span),
             TokenKind::Ident(name) => {
                 if matches!(self.peek().kind, TokenKind::LParen) {
                     self.bump();
@@ -1411,6 +1422,39 @@ impl<'a> Parser<'a> {
                 span: token.span,
             }),
         }
+    }
+
+    fn parse_lambda(&mut self, open_span: SourceSpan) -> Result<SurfaceExpr, Diagnostic> {
+        let mut params = Vec::new();
+        if !matches!(self.peek().kind, TokenKind::Pipe) {
+            loop {
+                let token = self.bump().clone();
+                match token.kind {
+                    TokenKind::Ident(name) => params.push(name),
+                    other => {
+                        return Err(Diagnostic::ParseError {
+                            message: format!(
+                                "expected identifier in lambda parameter list, got {other:?}"
+                            ),
+                            span: token.span,
+                        });
+                    }
+                }
+                if matches!(self.peek().kind, TokenKind::Comma) {
+                    self.bump();
+                    continue;
+                }
+                break;
+            }
+        }
+        self.expect_kind(TokenKind::Pipe)?;
+        let body = self.parse_expr()?;
+        let end = expr_span(&body).byte_end;
+        Ok(SurfaceExpr::Lambda {
+            params,
+            body: Box::new(body),
+            span: SourceSpan::new(self.file, open_span.byte_start, end),
+        })
     }
 
     fn parse_call_args(&mut self) -> Result<Vec<SurfaceExpr>, Diagnostic> {
@@ -1538,6 +1582,7 @@ fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
         | SurfaceExpr::Path { span, .. }
         | SurfaceExpr::Call { span, .. }
         | SurfaceExpr::Operator { span, .. }
+        | SurfaceExpr::Lambda { span, .. }
         | SurfaceExpr::If { span, .. }
         | SurfaceExpr::Match { span, .. }
         | SurfaceExpr::Record { span, .. } => span,

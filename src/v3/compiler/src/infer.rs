@@ -854,6 +854,27 @@ impl SubstStack {
     }
 }
 
+fn declaration_is_callable(dag: &Dag, current: DeclarationId, depth: usize) -> bool {
+    if depth >= WALK_DEPTH_LIMIT {
+        return false;
+    }
+    match &dag.declaration(current).connective {
+        TypeConnective::Arrow { .. } => true,
+        TypeConnective::Instantiation { template, .. } => {
+            declaration_is_callable(dag, *template, depth + 1)
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            declaration_is_callable(dag, *next, depth + 1)
+        }
+        TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+        | TypeConnective::Atom(AtomPayload::TypeParam(_))
+        | TypeConnective::Atom(AtomPayload::Literal(_))
+        | TypeConnective::Conj { .. }
+        | TypeConnective::Disj { .. }
+        | TypeConnective::Cardinality { .. } => false,
+    }
+}
+
 fn walk_to_conj_decl_with_subst(
     dag: &Dag,
     start: DeclarationId,
@@ -1292,10 +1313,13 @@ fn resolve_arrow_walk(
             output,
             body,
         } => {
-            let input_shapes: Vec<TypeShape> = inputs
-                .iter()
-                .map(|id| walk_to_type_shape(dag, *id, subst, depth + 1))
-                .collect::<Option<_>>()?;
+            let mut input_shapes: Vec<TypeShape> = Vec::new();
+            for id in inputs {
+                if subst.lookup(*id).is_some() && declaration_is_callable(dag, *id, depth + 1) {
+                    continue;
+                }
+                input_shapes.push(walk_to_type_shape(dag, *id, subst, depth + 1)?);
+            }
             let output_shape = walk_to_type_shape(dag, *output, subst, depth + 1)?;
             Some(ResolvedArrow {
                 inputs: input_shapes,
@@ -1354,8 +1378,11 @@ fn walk_to_type_shape(
     // Anonymous declaration: follow the chain through the substrate.
     match &decl.connective {
         TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
-            let bound = subst.lookup(current)?;
-            walk_to_type_shape(dag, bound, subst, depth + 1)
+            if let Some(bound) = subst.lookup(current) {
+                walk_to_type_shape(dag, bound, subst, depth + 1)
+            } else {
+                Some(TypeShape::new(current))
+            }
         }
         TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
             walk_to_type_shape(dag, *next, subst, depth + 1)
