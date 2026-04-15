@@ -42,6 +42,50 @@ pub struct SurfaceModule {
     pub items: Vec<SurfaceItem>,
 }
 
+/// Dissolution ledger — **SurfaceItem**:
+///
+/// 🟡 **Mixed-lifecycle coproduct.** Nine variants; six are terminal
+/// surface-grammar constructs, three are transitional scaffolds that
+/// dissolve as the surface grammar + declaration-graph model stabilize.
+///
+/// 4-pattern check:
+/// - Pattern 1 (fact placement): fails. Each variant has different
+///   downstream consumers (`collect_symbols` filters by kind, lowering
+///   dispatches on kind, lenses read different shapes).
+/// - Pattern 2 (variant-is-data): fails. Different payload types per
+///   variant — a tagged union over a uniform shape would require
+///   boxing every variant's payload, which isn't a dissolution.
+/// - Pattern 3 (algebraic form): partial. The four `Type*` variants
+///   (TypeAtom/Record/Sum/Alias) could collapse into a single
+///   `Type { name, type_params, shape: TypeShape }` where `TypeShape`
+///   is an inner coproduct (Atom/Record/Sum/Alias). That refactor is
+///   a wash at M1(2.6) — it trades a nine-variant outer enum for a
+///   six-variant outer enum plus a four-variant inner enum — but
+///   becomes worthwhile when surface types grow a fifth form (e.g.,
+///   newtype declarations in M2+). Scheduled revisit: M2.
+/// - Pattern 4 (dimensional): fails. No shared coordinate space.
+///
+/// Per-variant classification:
+/// - 🟢 `Let`, `Fn`, `TypeAtom`, `TypeRecord`, `TypeSum`, `TypeAlias`
+///   — terminal surface constructs; any dissolution is Pattern-3
+///   restructuring, not deletion.
+/// - 🟡 `Module`, `Import` — **scaffolded no-ops**. At M1(2.6) they
+///   parse as items but lowering discards them (name resolution
+///   spans the whole bootstrap table; explicit imports add nothing).
+///   They dissolve when M2+ introduces a real module-scoped
+///   declaration table: module declarations become scope boundaries,
+///   imports become scoped symbol-table seeds. **Dissolution trigger:
+///   M2 module system.**
+/// - 🟡 `DataDecl` — **scaffolded body placeholder**. The `ty` field
+///   is parsed but the body is brace-balanced-skipped; lowering
+///   produces an empty `Conj`. Dissolves when the surface grammar
+///   handles record / list / match literals inside data bodies.
+///   **Dissolution trigger: M2 value-construction semantics.**
+///
+/// STOP SIGNAL: adding a 10th variant before the Type* collapse
+/// or before Module/Import/DataDecl land their real semantics —
+/// the enum is near the Pattern-3 dissolution frontier and a new
+/// variant should prompt the decision instead of delaying it.
 #[derive(Debug, Clone)]
 pub enum SurfaceItem {
     Let {
@@ -139,6 +183,32 @@ pub struct SurfaceVariant {
     pub span: SourceSpan,
 }
 
+/// Dissolution ledger — **VariantPayload**:
+///
+/// 🟡 **Mixed — `Unit` is absorbable into `Positional(vec![])`,**
+/// but kept distinct for parser ergonomics and so `collect_symbols`
+/// doesn't pay the Vec allocation cost on the common case.
+///
+/// 4-pattern check:
+/// - Pattern 1 (fact placement): fails. Each variant's children
+///   have different shapes downstream.
+/// - Pattern 2 (variant-is-data): partial. `Unit` is structurally
+///   `Positional(vec![])`. The distinction is cosmetic — if the
+///   parser emits `Unit` for `True | False` instead of
+///   `Positional(vec![])`, the resulting Disj declaration is
+///   indistinguishable from a 0-arity positional variant at the
+///   substrate level.
+/// - Pattern 3 (algebraic form): fails. Each variant represents a
+///   distinct user-input shape from the surface grammar.
+/// - Pattern 4 (dimensional): fails.
+///
+/// Classification: 🟡. Collapsing `Unit` → `Positional(vec![])`
+/// would save three lines and remove a surface-vs-substrate
+/// distinction. Not done at M1(2.6) because the parser's `.dag`
+/// reader is still actively growing and every shape-change
+/// churns the Disj-lowering path. **Dissolution trigger: when the
+/// next round of surface-grammar changes lands, fold Unit into
+/// Positional.**
 #[derive(Debug, Clone)]
 pub enum VariantPayload {
     /// Unit variant — no payload, e.g. `True` in `type Classical = True | False`.
@@ -149,6 +219,30 @@ pub enum VariantPayload {
     Record(Vec<SurfaceField>),
 }
 
+/// Dissolution ledger — **SurfaceType**:
+///
+/// 🟢 **Terminal at M1(2.6).** Four variants cover the four surface
+/// type-expression shapes: bare name, parameterized, optional,
+/// function type. Each maps onto a distinct `TypeConnective` variant
+/// during lowering (Atom(Identifier), Instantiation, Cardinality,
+/// Arrow) so the coproduct mirrors the substrate.
+///
+/// 4-pattern check:
+/// - Pattern 1 (fact placement): fails. Each variant lowers via a
+///   distinct `type_to_declaration_id` arm.
+/// - Pattern 2 (variant-is-data): fails. Different payload types.
+/// - Pattern 3 (algebraic form): the variants correspond 1:1 to
+///   distinct `TypeConnective` variants — this is the surface
+///   projection of the type substrate. Collapsing is a category
+///   error.
+/// - Pattern 4 (dimensional): fails.
+///
+/// STOP SIGNAL: adding a variant that doesn't correspond to a
+/// `TypeConnective` shape (e.g., intersection types, type-level
+/// literals) triggers a substrate question — is the surface
+/// grammar running ahead of the substrate, or is the substrate
+/// missing a sixth connective? Re-run the `TypeConnective`
+/// dissolution audit in `dag.rs` before extending this enum.
 #[derive(Debug, Clone)]
 pub enum SurfaceType {
     Named {
@@ -182,6 +276,44 @@ impl SurfaceType {
     }
 }
 
+/// Dissolution ledger — **SurfaceExpr**:
+///
+/// 🟡 **Terminal in shape, partially duplicates `LiteralBits`.**
+/// Six variants for the five M0 expression forms (literal × 3,
+/// Var, Call, If). Each has a clear lowering target among the five
+/// L1 behaviors:
+///   IntLit/BoolLit/StringLit → Value(LiteralBits::*)
+///   Var                      → scope lookup (no new node)
+///   Call                     → Transform
+///   If                       → Branch
+/// The three literal variants are a surface-side duplication of
+/// `LiteralBits` — they parse separately because tokens carry
+/// distinct kinds (`IntLit(i64)`, `KwTrue/KwFalse`, `StringLit`),
+/// not because the downstream shape differs.
+///
+/// 4-pattern check:
+/// - Pattern 1 (fact placement): fails for the non-literal variants
+///   (each has its own lowering path). **Passes for the three
+///   literal variants** — they could share a single
+///   `Literal { bits: LiteralBits, span }` variant with no
+///   downstream consumer change.
+/// - Pattern 2 (variant-is-data): passes for the literal trio for
+///   the same reason.
+/// - Pattern 3 (algebraic form): Var/Call/If/Literal are four
+///   distinct expression kinds in every expression DAG.
+/// - Pattern 4 (dimensional): fails.
+///
+/// Classification: 🟡 because of the literal duplication. The
+/// M1(2.6) parser keeps the three separate variants because
+/// tokens carry distinct kinds and the parser reads them
+/// directly; collapsing into `Literal(LiteralBits)` at parse
+/// time would require threading `LiteralBits` up from the
+/// substrate into the surface AST, which crosses a layer
+/// boundary. **Dissolution trigger: when `LiteralBits` grows a
+/// fourth variant (e.g., `Char`, `Float`), revisit and fold the
+/// surface literal trio into a single variant.** At M1(2.6)
+/// there's no new literal kind on the roadmap so the
+/// duplication is accepted.
 #[derive(Debug, Clone)]
 pub enum SurfaceExpr {
     IntLit {

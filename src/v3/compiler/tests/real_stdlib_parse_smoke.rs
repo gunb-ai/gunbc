@@ -39,3 +39,27 @@ fn algebra_dag_parses() {
 fn types_dag_parses() {
     parse_file(include_str!("../../../../dsl/std/types.dag"), "types.dag");
 }
+
+#[test]
+fn integer_dag_parses() {
+    parse_file(
+        include_str!("../../../../dsl/std/integer.dag"),
+        "integer.dag",
+    );
+}
+
+#[test]
+fn float_dag_parses() {
+    parse_file(
+        include_str!("../../../../dsl/std/float.dag"),
+        "float.dag",
+    );
+}
+
+#[test]
+fn string_type_dag_parses() {
+    parse_file(
+        include_str!("../../../../dsl/std/string_type.dag"),
+        "string_type.dag",
+    );
+}
