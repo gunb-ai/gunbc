@@ -69,13 +69,21 @@ pub struct Ring<T> {
 #[derive(Clone)]
 pub struct OrderedRing<T> {
     pub add: Rc<dyn Fn(T, T) -> T>,
+    pub sub: Rc<dyn Fn(T, T) -> T>,
     pub zero: Box<T>,
     pub negate: Rc<dyn Fn(T) -> T>,
     pub mul: Rc<dyn Fn(T, T) -> T>,
+    pub div: Rc<dyn Fn(T, T) -> T>,
     pub one: Box<T>,
     pub compare: Rc<dyn Fn(T, T) -> Ordering>,
     pub quotient: Rc<dyn Fn(T, T) -> T>,
     pub remainder: Rc<dyn Fn(T, T) -> T>,
+    pub eq: Rc<dyn Fn(T, T) -> bool>,
+    pub ne: Rc<dyn Fn(T, T) -> bool>,
+    pub lt: Rc<dyn Fn(T, T) -> bool>,
+    pub le: Rc<dyn Fn(T, T) -> bool>,
+    pub gt: Rc<dyn Fn(T, T) -> bool>,
+    pub ge: Rc<dyn Fn(T, T) -> bool>,
 }
 
 #[derive(Clone)]
