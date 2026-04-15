@@ -35,28 +35,62 @@ use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceModule, SurfaceParam, SurfaceType,
     SurfaceVariant, VariantPayload,
 };
-use crate::types::{Prim, TypeShape};
+use crate::types::TypeShape;
 
 pub fn lower(module: &SurfaceModule) -> Dag {
     let mut dag = Dag::new();
+    let user_start = dag.declarations().len();
     lower_into(&mut dag, module);
-    // User-module lowering may have emitted Identifier stubs for forward
-    // references (`let x: Foo = ...` before `type Foo`). The sweep either
-    // fills in each stub's `resolved` slot or surfaces a fail-closed
-    // ResolveError via a phantom port.
-    resolve_pending_identifiers(&mut dag);
+    // User-module sweep: every Identifier stub allocated during
+    // `lower_into` (id >= user_start) must resolve, or it becomes a
+    // fail-closed ResolveError. Stubs in the bootstrap range are
+    // resolved opportunistically but tolerated — the canonical std/
+    // files (`dsl/std/algebra.dag`, etc.) have dangling references to
+    // types that live in std/ modules outside the M1(2.6) load set
+    // (e.g., `Tuple`), and those aren't user errors.
+    resolve_pending_identifiers_strict(&mut dag, user_start);
     dag
 }
 
-/// Lower a surface module into an existing Dag. Used by bootstrap.rs to
-/// layer the std/ modules onto the same declaration table; each call's
-/// symbol collection seeds from the declarations already present from
-/// prior calls. Intentionally does NOT run `resolve_pending_identifiers`
-/// — callers are responsible for batching the sweep so cross-file
-/// forward references (algebra → Bool from types) resolve at the batch
-/// boundary.
+/// Lower a surface module into an existing Dag as a single-shot call.
+/// Used by user-code compilation (`lower()` above) where there's only
+/// one module in the pass. Bootstrap calls
+/// `collect_symbols_phase` + `lower_bodies_phase` separately so it can
+/// run phase 1 over ALL std/ files before phase 2 on any of them,
+/// which is required for cross-file forward references (e.g.,
+/// `bit.dag`'s `Word64 { bytes: List<Byte> }` references `List` from
+/// `types.dag`, which loads later).
 pub(crate) fn lower_into(dag: &mut Dag, module: &SurfaceModule) {
-    let (symbols, is_first) = collect_symbols(dag, &module.items);
+    let (symbols, is_first) = collect_symbols_phase(dag, &module.items);
+    lower_bodies_phase(dag, module, &symbols, &is_first);
+}
+
+/// Phase 1 of two-phase lowering. Allocates placeholder declarations
+/// and TypeParam children for every top-level named item in `items`,
+/// updates the declaration table in place, and returns the symbols
+/// map plus the duplicate-detection vector. Safe to call multiple
+/// times for different modules — later calls seed their symbols from
+/// earlier calls' declarations, so cross-module forward references
+/// resolve via `resolve_pending_identifiers` at the end of phase 2.
+pub(crate) fn collect_symbols_phase(
+    dag: &mut Dag,
+    items: &[SurfaceItem],
+) -> (HashMap<String, DeclarationId>, Vec<bool>) {
+    collect_symbols(dag, items)
+}
+
+/// Phase 2 of two-phase lowering. Given the already-allocated
+/// placeholder declarations + type_params from phase 1, fills in each
+/// item's connective and emits any behavior sub-DAGs. Intentionally
+/// does NOT run `resolve_pending_identifiers` — bootstrap batches the
+/// sweep across all files, and the user-code `lower()` entry point
+/// runs the strict sweep itself.
+pub(crate) fn lower_bodies_phase(
+    dag: &mut Dag,
+    module: &SurfaceModule,
+    symbols: &HashMap<String, DeclarationId>,
+    is_first: &[bool],
+) {
     let mutually_recursive = compute_mutually_recursive(&module.items);
     let mut scope: HashMap<String, PortId> = HashMap::new();
     for (idx, item) in module.items.iter().enumerate() {
@@ -67,7 +101,7 @@ pub(crate) fn lower_into(dag: &mut Dag, module: &SurfaceModule) {
             // diagnostic for the duplicate.
             continue;
         }
-        scope = lower_item(item, dag, scope, &symbols, &mutually_recursive);
+        scope = lower_item(item, dag, scope, symbols, &mutually_recursive);
     }
 }
 
@@ -104,16 +138,39 @@ fn collect_symbols(
 
     let mut is_first = vec![true; items.len()];
     for (idx, item) in items.iter().enumerate() {
-        let name = match item {
+        // Extract the surface-level name and type parameter list. Let /
+        // Module / Import / block-bodied Fn items don't create
+        // declarations. Block-bodied fns in particular are skipped
+        // because their ArrowBody is undefined at M1(2.6) — the thesis
+        // licenses `ArrowBody::Pending` strictly for primitive
+        // realization lag, not "user body not lowered yet."
+        let (name, surface_type_params): (String, &[String]) = match item {
             SurfaceItem::Let { .. }
             | SurfaceItem::Module { .. }
             | SurfaceItem::Import { .. } => continue,
-            SurfaceItem::Fn { name, .. }
-            | SurfaceItem::TypeAtom { name, .. }
-            | SurfaceItem::TypeRecord { name, .. }
-            | SurfaceItem::TypeSum { name, .. }
-            | SurfaceItem::TypeAlias { name, .. }
-            | SurfaceItem::DataDecl { name, .. } => name.clone(),
+            SurfaceItem::Fn { body: None, .. } => continue,
+            SurfaceItem::Fn { name, .. } => (name.clone(), &[]),
+            SurfaceItem::TypeAtom {
+                name,
+                type_params,
+                ..
+            }
+            | SurfaceItem::TypeRecord {
+                name,
+                type_params,
+                ..
+            }
+            | SurfaceItem::TypeSum {
+                name,
+                type_params,
+                ..
+            }
+            | SurfaceItem::TypeAlias {
+                name,
+                type_params,
+                ..
+            } => (name.clone(), type_params.as_slice()),
+            SurfaceItem::DataDecl { name, .. } => (name.clone(), &[]),
         };
         let span = item_span(item);
         let id = dag.alloc_declaration_id();
@@ -126,6 +183,35 @@ fn collect_symbols(
             inhabits: None,
             span: span.clone(),
         });
+
+        // Allocate TypeParam declarations for this item's generic
+        // parameters and link them via `Declaration.type_params`.
+        // Doing this in collect_symbols (pass 1) instead of
+        // lower_type_* (pass 2) means that by the time ANY other
+        // module's body references `List<Byte>`, List's
+        // `type_params` slot is already populated — so
+        // `build_template_arguments` can always look up the real
+        // template parameter id at construction time. No half-valid
+        // state, no post-sweep fixup pass.
+        if !surface_type_params.is_empty() {
+            let mut param_ids = Vec::with_capacity(surface_type_params.len());
+            for param in surface_type_params {
+                let param_id = dag.alloc_declaration_id();
+                dag.push_declaration(Declaration {
+                    id: param_id,
+                    name: None,
+                    connective: TypeConnective::Atom(AtomPayload::TypeParam(
+                        param.clone(),
+                    )),
+                    type_params: Vec::new(),
+                    meta_tag: None,
+                    inhabits: None,
+                    span: span.clone(),
+                });
+                param_ids.push(param_id);
+            }
+            dag.declaration_mut(id).type_params = param_ids;
+        }
 
         if let Some(&existing_id) = symbols.get(&name) {
             is_first[idx] = false;
@@ -186,7 +272,7 @@ fn lower_item(
         } => {
             let value_port = lower_expr(expr, dag, &scope, symbols);
             if let Some(ty) = type_ann {
-                match lower_type_for_port(ty) {
+                match lower_type_for_port(ty, dag) {
                     Ok(declared) => dag.set_port_type(value_port, declared),
                     Err(diag) => dag.mark_unresolved(value_port, diag),
                 }
@@ -211,7 +297,7 @@ fn lower_item(
             params,
             return_type,
             body,
-            span,
+            span: _,
         } => {
             if let Some(body_expr) = body {
                 lower_fn_item_expr_body(
@@ -225,10 +311,12 @@ fn lower_item(
                     mutually_recursive,
                 )
             } else {
-                // Block-body form (`fn f(x) -> T { body }`) — body is
-                // opaque at M1(2.6). Produce an Arrow declaration with
-                // `ArrowBody::Pending` and no computation sub-DAG.
-                lower_fn_item_pending(name, params, return_type, dag, &scope, symbols, span);
+                // Block-body form (`fn f(x) -> T { body }`) — skipped
+                // at collect_symbols time. `lower_item` should never
+                // reach this arm because `is_first[idx]` is false for
+                // block-bodied fns (no declaration was allocated). The
+                // arm exists to keep the match exhaustive. If inference
+                // reaches it somehow, return scope unchanged.
                 scope
             }
         }
@@ -283,53 +371,39 @@ fn lower_item(
     }
 }
 
-/// Allocate TypeParam Atom declarations for each surface type parameter
-/// and populate the parent declaration's canonical `type_params` slot.
-/// Returns the local scope map from parameter name to DeclarationId for
-/// field-type lookups.
-///
-/// **TypeParam declarations are anonymous** (`name: None`). The binder
-/// name lives structurally in the `Atom(TypeParam(name))` payload, not
-/// in the top-level name slot. This keeps `Dag::declaration_by_name`
-/// from leaking `T` / `U` / etc. into cross-module name resolution:
-/// outside the parent's body, a type parameter is unreferenceable by
-/// name and any stray `Identifier { name: "T" }` in user code correctly
-/// fails to resolve.
-fn allocate_type_params(
-    dag: &mut Dag,
-    parent_id: DeclarationId,
-    type_params: &[String],
-) -> HashMap<String, DeclarationId> {
-    let mut local = HashMap::with_capacity(type_params.len());
-    let mut ids = Vec::with_capacity(type_params.len());
-    for param in type_params {
-        let param_id = dag.alloc_declaration_id();
-        let span = dag.declaration(parent_id).span.clone();
-        dag.push_declaration(Declaration {
-            id: param_id,
-            name: None,
-            connective: TypeConnective::Atom(AtomPayload::TypeParam(param.clone())),
-            type_params: Vec::new(),
-            meta_tag: None,
-            inhabits: None,
-            span,
-        });
-        local.insert(param.clone(), param_id);
-        ids.push(param_id);
-    }
-    dag.declaration_mut(parent_id).type_params = ids;
-    local
+/// Read a parent declaration's pre-populated `type_params` slot and
+/// build a `name → DeclarationId` local scope map for field-type and
+/// variant-payload lookups. The actual TypeParam declarations were
+/// allocated up front in `collect_symbols` so every declaration
+/// reaches `lower_type_*` with its `type_params` slot already filled.
+/// This is the shape that lets `build_template_arguments` look up real
+/// parameter ids at construction time — no half-valid state, no
+/// post-sweep fixup pass.
+fn local_scope_from_parent(dag: &Dag, parent_id: DeclarationId) -> HashMap<String, DeclarationId> {
+    dag.declaration(parent_id)
+        .type_params
+        .iter()
+        .filter_map(|pid| {
+            if let TypeConnective::Atom(AtomPayload::TypeParam(name)) =
+                &dag.declaration(*pid).connective
+            {
+                Some((name.clone(), *pid))
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 fn lower_type_record(
     dag: &mut Dag,
     symbols: &HashMap<String, DeclarationId>,
     name: &str,
-    type_params: &[String],
+    _type_params: &[String],
     fields: &[SurfaceField],
 ) {
     let decl_id = symbols[name];
-    let local = allocate_type_params(dag, decl_id, type_params);
+    let local = local_scope_from_parent(dag, decl_id);
     let mut children: Vec<Field> = Vec::with_capacity(fields.len());
     for field in fields {
         let ty_id = type_to_declaration_id(&field.ty, symbols, &local, dag);
@@ -345,11 +419,11 @@ fn lower_type_sum(
     dag: &mut Dag,
     symbols: &HashMap<String, DeclarationId>,
     name: &str,
-    type_params: &[String],
+    _type_params: &[String],
     variants: &[SurfaceVariant],
 ) {
     let decl_id = symbols[name];
-    let local = allocate_type_params(dag, decl_id, type_params);
+    let local = local_scope_from_parent(dag, decl_id);
     let mut variant_fields: Vec<Field> = Vec::with_capacity(variants.len());
     for variant in variants {
         // Build payload children FIRST, then allocate the variant declaration.
@@ -412,11 +486,11 @@ fn lower_type_alias(
     dag: &mut Dag,
     symbols: &HashMap<String, DeclarationId>,
     name: &str,
-    type_params: &[String],
+    _type_params: &[String],
     target: &SurfaceType,
 ) {
     let decl_id = symbols[name];
-    let local = allocate_type_params(dag, decl_id, type_params);
+    let local = local_scope_from_parent(dag, decl_id);
     let connective = type_to_connective(target, symbols, &local, dag);
     dag.declaration_mut(decl_id).connective = connective;
 }
@@ -563,15 +637,22 @@ fn type_to_connective(
     }
 }
 
-/// Build the `TemplateArgument` list for an Instantiation. Fail-closed on
-/// template/argument arity mismatch — **only when the template is a real
-/// declaration** with a populated `type_params` slot. Forward references
-/// (an unresolved Identifier stub that gets resolved later by the
-/// `resolve_pending_identifiers` sweep) skip arity validation here; the
-/// sweep's post-fixup pass (`fixup_instantiation_template_params`) walks
-/// every Instantiation after resolution and either rewrites the
-/// `TemplateArgument.parameter` fields against the real template's
-/// type_params or emits a late arity error.
+/// Build the `TemplateArgument` list for an `Instantiation`.
+///
+/// Two-phase bootstrap means every real declaration's `type_params`
+/// slot is populated by the time lowering runs, so real templates
+/// always produce well-formed `TemplateArgument`s. **Stub templates**
+/// — anonymous `Atom(Identifier { resolved: None })` stubs created
+/// when a name can't be resolved at lower time — take a tolerated
+/// path: the arity check is skipped and the parameter id is a
+/// self-reference to the argument's own value. The stub itself is
+/// caught separately by `resolve_pending_identifiers` (bootstrap
+/// mode tolerates bootstrap-range dangling refs like `Tuple` in
+/// algebra.dag; user-code mode fails closed).
+///
+/// There is no fixup pass — TemplateArguments are either fully
+/// resolved (real template) or tolerated along with their stub
+/// (dangling template). No third, half-valid state.
 fn build_template_arguments(
     dag: &mut Dag,
     symbols: &HashMap<String, DeclarationId>,
@@ -601,10 +682,12 @@ fn build_template_arguments(
         .enumerate()
         .map(|(idx, arg)| {
             let value = type_to_declaration_id(arg, symbols, local, dag);
-            // For stubbed templates, use the arg's own id as a
-            // self-reference placeholder; `fixup_instantiation_template_params`
-            // rewrites it to the real parameter id after the sweep.
             let parameter = if template_is_stub {
+                // Stub tolerance: self-reference. The stub itself is
+                // caught by `resolve_pending_identifiers`; this
+                // TemplateArgument is either dead code (bootstrap
+                // dangling ref) or unreachable (user-code strict
+                // mode catches the stub before inference walks it).
                 value
             } else {
                 match template_param_id(dag, template, idx) {
@@ -663,18 +746,30 @@ fn report_declaration_error(dag: &mut Dag, diag: Diagnostic) {
     dag.attach_diagnostic(diag);
 }
 
-/// Final-pass resolution over anonymous Identifier-atom declarations. Any
-/// declaration with `Atom(Identifier { name, resolved: None })` whose name
-/// appears in the declaration table at sweep time gets its `resolved` slot
-/// filled in-place. Anything still unresolved after the sweep emits a
-/// fail-closed ResolveError diagnostic via a phantom port.
-///
-/// This is the post-lowering pass that closes the fail-closed gap: stubs
-/// created during lowering (forward references, unknown names) either
-/// resolve or surface as diagnostics by the time `lower` / `bootstrap`
-/// returns. Called once at the end of `lower_into` for user modules and
-/// once at the end of `bootstrap::bootstrap` for the primitive fixtures.
+/// Final-pass resolution over anonymous Identifier-atom declarations in
+/// **bootstrap** mode. Resolves every stub whose name is in the
+/// declaration table; **tolerates** stubs whose name is dangling.
+/// Tolerance is bootstrap-specific: the canonical `dsl/std/*.dag`
+/// files carry forward references to types that live in std/ modules
+/// outside the M1(2.6) load set (e.g., `Tuple` referenced from
+/// `algebra.dag` with no defining `.dag` file among the seven loaded),
+/// and those are not bootstrap errors. User-facing code uses the
+/// strict variant below.
 pub(crate) fn resolve_pending_identifiers(dag: &mut Dag) {
+    run_identifier_sweep(dag, /*strict_from=*/ usize::MAX);
+}
+
+/// Final-pass resolution in **strict** mode: every Identifier stub at
+/// a declaration id `>= strict_from` that cannot resolve emits a
+/// fail-closed `ResolveError`. Used by `lower` for user modules, where
+/// `strict_from` is the declaration count before user lowering began.
+/// Stubs in the bootstrap range (id < strict_from) are still resolved
+/// opportunistically but tolerated.
+pub(crate) fn resolve_pending_identifiers_strict(dag: &mut Dag, strict_from: usize) {
+    run_identifier_sweep(dag, strict_from);
+}
+
+fn run_identifier_sweep(dag: &mut Dag, strict_from: usize) {
     let snapshot: Vec<(DeclarationId, String, SourceSpan)> = dag
         .declarations()
         .iter()
@@ -711,101 +806,24 @@ pub(crate) fn resolve_pending_identifiers(dag: &mut Dag) {
             {
                 *resolved = Some(target);
             }
-        } else {
-            // Unknown type identifier at sweep time. Emit a ResolveError
-            // ONLY if the identifier is reachable from a real Arrow's
-            // inputs/output — stubs created purely for fn/data bodies we
-            // skip opaquely are noise at M1(2.6). For now, we allow
-            // unresolved stubs to survive the sweep as long as they're
-            // not load-bearing for inference; the Transform-decide path
-            // fails closed if a resolve hits one.
-            //
-            // TODO(M2): track reachability and error on unreached stubs
-            // once data/fn body semantics land.
-        }
-    }
-
-    fixup_instantiation_template_params(dag);
-}
-
-/// Post-sweep fixup for Instantiation declarations whose templates were
-/// unresolved stubs at lower time (forward references). Now that
-/// `resolve_pending_identifiers` has populated the Identifier resolution
-/// slots, walk every Instantiation and rewrite its TemplateArgument
-/// parameters against the real template's `type_params`. Emits an
-/// ArityMismatch diagnostic if the real template has a different number
-/// of type parameters.
-fn fixup_instantiation_template_params(dag: &mut Dag) {
-    let instantiations: Vec<(DeclarationId, DeclarationId, usize, SourceSpan)> = dag
-        .declarations()
-        .iter()
-        .filter_map(|d| match &d.connective {
-            TypeConnective::Instantiation {
-                template,
-                arguments,
-            } => Some((d.id, *template, arguments.len(), d.span.clone())),
-            _ => None,
-        })
-        .collect();
-
-    for (inst_id, template_id, arg_count, inst_span) in instantiations {
-        // Follow the template through any Identifier resolution hops to
-        // find the real underlying declaration.
-        let real_template_id = resolve_to_real_template(dag, template_id);
-        let real_template = dag.declaration(real_template_id);
-        // Stubs that survived the sweep (unreached) stay as stubs — no
-        // fixup needed.
-        if matches!(
-            &real_template.connective,
-            TypeConnective::Atom(AtomPayload::Identifier { resolved: None, .. })
-        ) {
-            continue;
-        }
-        let real_param_count = real_template.type_params.len();
-        if real_param_count != arg_count {
+        } else if (decl_id.raw() as usize) >= strict_from {
+            // Strict mode for user-lowering stubs: `resolved: None`
+            // now means exactly one thing ("not yet resolved, pre-
+            // sweep"), and after this loop every user-range Identifier
+            // atom either has `resolved: Some(id)` or has attached a
+            // fail-closed diagnostic.
             report_declaration_error(
                 dag,
-                Diagnostic::ArityMismatch {
-                    function: real_template
-                        .name
-                        .clone()
-                        .unwrap_or_else(|| format!("declaration#{}", real_template_id.raw())),
-                    expected: real_param_count,
-                    actual: arg_count,
-                    span: inst_span,
+                Diagnostic::ResolveError {
+                    name: format!("unresolved type identifier `{name}`"),
+                    span,
                 },
             );
-            continue;
         }
-        // Clone the type_params before mutating — borrow checker can't
-        // overlap &dag.declarations()[template] with &mut .declarations[inst].
-        let real_params: Vec<DeclarationId> =
-            dag.declaration(real_template_id).type_params.clone();
-        if let TypeConnective::Instantiation { arguments, .. } =
-            &mut dag.declaration_mut(inst_id).connective
-        {
-            for (arg, real_param) in arguments.iter_mut().zip(real_params.iter()) {
-                arg.parameter = *real_param;
-            }
-        }
+        // else: bootstrap-range dangling ref, tolerated. The canonical
+        // std/ files may forward-reference types that live in std/
+        // modules outside the M1(2.6) load set; those are not errors.
     }
-}
-
-fn resolve_to_real_template(dag: &Dag, template: DeclarationId) -> DeclarationId {
-    let mut current = template;
-    for _ in 0..16 {
-        let decl = dag.declaration(current);
-        match &decl.connective {
-            TypeConnective::Atom(AtomPayload::Identifier {
-                resolved: Some(next),
-                ..
-            }) => {
-                current = *next;
-            }
-            _ => return current,
-        }
-    }
-    current
 }
 
 /// Return the `idx`-th type parameter declaration of a template. Reads the
@@ -819,34 +837,6 @@ fn template_param_id(
     idx: usize,
 ) -> Option<DeclarationId> {
     dag.declaration(template).type_params.get(idx).copied()
-}
-
-/// Lower a block-body `fn` item (`fn f(x: T) -> U { body }`) where the
-/// body is opaque at M1(2.6). Produces an Arrow declaration with
-/// `ArrowBody::Pending` and does not emit any computation sub-DAG.
-/// Used for functions in real `dsl/std/*.dag` files whose bodies contain
-/// match/pipe/lambda/named-arg syntax the M1(2.6) parser doesn't handle.
-fn lower_fn_item_pending(
-    name: &str,
-    params: &[SurfaceParam],
-    return_type: &SurfaceType,
-    dag: &mut Dag,
-    _outer_scope: &HashMap<String, PortId>,
-    symbols: &HashMap<String, DeclarationId>,
-    _span: &SourceSpan,
-) {
-    let fn_decl_id = symbols[name];
-    let local: HashMap<String, DeclarationId> = HashMap::new();
-    let param_decl_inputs: Vec<DeclarationId> = params
-        .iter()
-        .map(|p| type_to_declaration_id(&p.ty, symbols, &local, dag))
-        .collect();
-    let return_decl_id = type_to_declaration_id(return_type, symbols, &local, dag);
-    dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
-        inputs: param_decl_inputs,
-        output: return_decl_id,
-        body: ArrowBody::Pending,
-    };
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -863,8 +853,9 @@ fn lower_fn_item_expr_body(
     let fn_decl_id = symbols[name];
 
     // 1. Allocate parameter ports and set declared port types. Unknown
-    //    names land as TypeShape::Primitive(Prim::Int) sentinel with a
-    //    ResolveError, preserving M0 fail-closed behavior.
+    //    names fail-closed via mark_unresolved; the sentinel TypeShape
+    //    returned from the Err arm is never observed by inference
+    //    (the port is already Unresolved).
     let mut param_ports: Vec<PortId> = Vec::with_capacity(params.len());
     let mut param_types: Vec<TypeShape> = Vec::with_capacity(params.len());
     let mut body_scope: HashMap<String, PortId> = outer_scope.clone();
@@ -872,14 +863,14 @@ fn lower_fn_item_expr_body(
     let local: HashMap<String, DeclarationId> = HashMap::new();
     for param in params {
         let port = dag.alloc_port(None);
-        let ty = match lower_type_for_port(&param.ty) {
+        let ty = match lower_type_for_port(&param.ty, dag) {
             Ok(ty) => {
-                dag.set_port_type(port, ty.clone());
+                dag.set_port_type(port, ty);
                 ty
             }
             Err(diag) => {
                 dag.mark_unresolved(port, diag);
-                TypeShape::Primitive(Prim::Int)
+                sentinel_type_shape(dag)
             }
         };
         body_scope.insert(param.name.clone(), port);
@@ -890,12 +881,12 @@ fn lower_fn_item_expr_body(
     }
 
     // 2. Compute return type (both port-side and declaration-side).
-    let return_ty = match lower_type_for_port(return_type) {
+    let return_ty = match lower_type_for_port(return_type, dag) {
         Ok(ty) => ty,
         Err(diag) => {
             let err_port = dag.alloc_port(None);
             dag.mark_unresolved(err_port, diag);
-            TypeShape::Primitive(Prim::Int)
+            sentinel_type_shape(dag)
         }
     };
     let return_decl_id = type_to_declaration_id(return_type, symbols, &local, dag);
@@ -971,7 +962,7 @@ fn lower_fn_item_expr_body(
         } else {
             let loop_id = dag.alloc_node_id();
             let loop_output = dag.alloc_port(Some(loop_id));
-            dag.set_port_type(loop_output, return_ty.clone());
+            dag.set_port_type(loop_output, return_ty);
             let loop_body_node = body_root.unwrap_or(loop_id);
             dag.push_node(Behavior::Loop(LoopNode {
                 id: loop_id,
@@ -990,7 +981,7 @@ fn lower_fn_item_expr_body(
         body_return_port
     };
 
-    dag.set_port_type(value_port, return_ty.clone());
+    dag.set_port_type(value_port, return_ty);
     let bind_id = dag.alloc_node_id();
     dag.push_node(Behavior::Bind(BindNode {
         id: bind_id,
@@ -1012,12 +1003,24 @@ fn lower_fn_item_expr_body(
     outer_scope
 }
 
-fn lower_type_for_port(ty: &SurfaceType) -> Result<TypeShape, Diagnostic> {
+/// Convert a surface type annotation into a port-level `TypeShape`.
+/// User code at M1(2.6) only accepts primitive type annotations
+/// (`Int`/`Bool`/`String`) — anything else surfaces as a
+/// `ResolveError`. The returned `TypeShape` wraps the declaration id
+/// found via `Dag::declaration_by_name`.
+fn lower_type_for_port(ty: &SurfaceType, dag: &Dag) -> Result<TypeShape, Diagnostic> {
     match ty {
         SurfaceType::Named { name, span } => match name.as_str() {
-            "Int" => Ok(TypeShape::Primitive(Prim::Int)),
-            "Bool" => Ok(TypeShape::Primitive(Prim::Bool)),
-            "String" => Ok(TypeShape::Primitive(Prim::String)),
+            "Int" | "Bool" | "String" => {
+                dag.declaration_by_name(name)
+                    .map(|d| TypeShape::new(d.id))
+                    .ok_or_else(|| Diagnostic::ResolveError {
+                        name: format!(
+                            "primitive `{name}` missing from declaration table — bootstrap failed"
+                        ),
+                        span: span.clone(),
+                    })
+            }
             _ => Err(Diagnostic::ResolveError {
                 name: format!("unknown type `{name}`"),
                 span: span.clone(),
@@ -1031,6 +1034,19 @@ fn lower_type_for_port(ty: &SurfaceType) -> Result<TypeShape, Diagnostic> {
             span: span.clone(),
         }),
     }
+}
+
+/// Sentinel TypeShape returned when a type annotation failed to
+/// resolve. The port it's assigned to has already been `mark_unresolved`ed
+/// with the underlying diagnostic, so the sentinel value itself is
+/// never observed by inference — it exists only to satisfy Rust's
+/// "must initialize" requirement. We use the `Int` declaration's id if
+/// available, falling back to a best-effort guess (`DeclarationId(0)`)
+/// if even Int is missing, which is unreachable post-bootstrap.
+fn sentinel_type_shape(dag: &Dag) -> TypeShape {
+    dag.declaration_by_name("Int")
+        .map(|d| TypeShape::new(d.id))
+        .unwrap_or_else(|| TypeShape::new(dag.declarations()[0].id))
 }
 
 fn lower_expr(

@@ -531,14 +531,6 @@ pub struct Dag {
     declarations: Vec<Declaration>,
     ports: HashMap<PortId, Port>,
     diagnostics: DiagnosticTable,
-    /// Scaffolded pointer to the `Int64_add` Arrow declaration built by
-    /// `bootstrap::inject_realization_stub` for M1_DESIGN.md §6.5. The
-    /// scaffold's constituent declarations are anonymous (name: None)
-    /// so they stay out of `declaration_by_name`'s flat scan; the
-    /// smoke test finds the Arrow through this pointer instead.
-    /// Dissolves when M2 replaces the Rust-constructed stub with a
-    /// real parsed `dsl/extdeps/languages/rust.dag` fixture.
-    realization_smoke_arrow: Option<DeclarationId>,
     next_node_id: u32,
     next_declaration_id: u32,
     next_port_id: u32,
@@ -551,25 +543,12 @@ impl Dag {
             declarations: Vec::new(),
             ports: HashMap::new(),
             diagnostics: DiagnosticTable::new(),
-            realization_smoke_arrow: None,
             next_node_id: 0,
             next_declaration_id: 0,
             next_port_id: 0,
         };
         crate::bootstrap::bootstrap(&mut dag);
         dag
-    }
-
-    /// Accessor for the §6.5 realization smoke test scaffold Arrow.
-    /// Only populated after bootstrap; tests use this instead of
-    /// `declaration_by_name` so the realization chain's child
-    /// declarations can stay anonymous.
-    pub fn realization_smoke_arrow(&self) -> Option<DeclarationId> {
-        self.realization_smoke_arrow
-    }
-
-    pub(crate) fn set_realization_smoke_arrow(&mut self, id: DeclarationId) {
-        self.realization_smoke_arrow = Some(id);
     }
 
     pub fn nodes(&self) -> &[Behavior] {

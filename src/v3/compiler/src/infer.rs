@@ -28,7 +28,7 @@ use crate::dag::{
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::operators::operator_field_name;
-use crate::types::{Prim, TypeShape};
+use crate::types::TypeShape;
 
 pub fn infer(dag: &mut Dag) {
     loop {
@@ -98,19 +98,49 @@ enum Decision {
     Retry,
 }
 
+/// Look up a primitive type's declaration id and wrap it in a TypeShape.
+/// Returns None if the primitive isn't in the declaration table — that
+/// only happens if bootstrap failed to load `dsl/std/integer.dag` /
+/// `dsl/std/types.dag` / `dsl/std/string_type.dag`, in which case the
+/// bootstrap diagnostic is already on the Dag and the compile fails
+/// through the ordinary channel.
+fn primitive_shape(dag: &Dag, name: &str) -> Option<TypeShape> {
+    dag.declaration_by_name(name).map(|d| TypeShape::new(d.id))
+}
+
 fn decide(dag: &Dag, index: usize) -> Decision {
     match &dag.nodes()[index] {
         Behavior::Value(v) => {
-            let ty = match &v.data {
-                LiteralBits::Int(_) => TypeShape::Primitive(Prim::Int),
-                LiteralBits::Bool(_) => TypeShape::Primitive(Prim::Bool),
-                LiteralBits::String(_) => TypeShape::Primitive(Prim::String),
+            let name = match &v.data {
+                LiteralBits::Int(_) => "Int",
+                LiteralBits::Bool(_) => "Bool",
+                LiteralBits::String(_) => "String",
+            };
+            let Some(ty) = primitive_shape(dag, name) else {
+                return Decision::Fail(
+                    v.output,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "primitive `{name}` missing from declaration table — bootstrap failed"
+                        ),
+                        span: v.span.clone(),
+                    },
+                );
             };
             Decision::Set(v.output, ty)
         }
         Behavior::Transform(t) => decide_transform(dag, t),
         Behavior::Branch(b) => {
-            let bool_ty = TypeShape::Primitive(Prim::Bool);
+            let Some(bool_ty) = primitive_shape(dag, "Bool") else {
+                return Decision::Fail(
+                    b.output,
+                    Diagnostic::ResolveError {
+                        name: "primitive `Bool` missing from declaration table — bootstrap failed"
+                            .to_string(),
+                        span: b.span.clone(),
+                    },
+                );
+            };
             match dag.port(b.input).state() {
                 PortState::Uninferred => return Decision::Retry,
                 PortState::Unresolved => {
@@ -128,7 +158,7 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                         b.output,
                         Diagnostic::TypeMismatch {
                             expected: bool_ty,
-                            actual: ty.clone(),
+                            actual: *ty,
                             span: b.span.clone(),
                         },
                     );
@@ -150,7 +180,7 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                         },
                     );
                 }
-                PortState::Resolved(t) => t.clone(),
+                PortState::Resolved(t) => *t,
             };
             for path in iter {
                 match dag.port(path.output).state() {
@@ -169,8 +199,8 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                         return Decision::Fail(
                             b.output,
                             Diagnostic::TypeMismatch {
-                                expected: first_type.clone(),
-                                actual: other.clone(),
+                                expected: first_type,
+                                actual: *other,
                                 span: b.span.clone(),
                             },
                         );
@@ -194,7 +224,7 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                         span: l.span.clone(),
                     },
                 ),
-                PortState::Resolved(body_ty) => Decision::Set(l.output, body_ty.clone()),
+                PortState::Resolved(body_ty) => Decision::Set(l.output, *body_ty),
             }
         }
         Behavior::Bind(_) => Decision::Retry,
@@ -235,7 +265,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                         },
                     );
                 }
-                PortState::Resolved(ty) => ty.clone(),
+                PortState::Resolved(ty) => *ty,
             },
         };
         match resolve_operator_arrow(dag, op_name, &lhs_type) {
@@ -357,8 +387,8 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                 return Decision::Fail(
                     t.output,
                     Diagnostic::TypeMismatch {
-                        expected: expected_ty.clone(),
-                        actual: actual.clone(),
+                        expected: *expected_ty,
+                        actual: *actual,
                         span: t.span.clone(),
                     },
                 );
@@ -455,7 +485,7 @@ fn unresolved_operator_name(decl: &Declaration) -> Option<&str> {
 /// resolved type aliases) where the walk is direct — no algebra-field
 /// indirection required.
 fn resolve_operator_arrow(
-    _dag: &Dag,
+    dag: &Dag,
     op_symbol: &str,
     lhs_type: &TypeShape,
 ) -> Option<ResolvedArrow> {
@@ -463,12 +493,12 @@ fn resolve_operator_arrow(
     // precondition: if the operator isn't in the table, dispatch fails.
     operator_field_name(op_symbol)?;
     let output = if is_comparison_operator(op_symbol) {
-        TypeShape::Primitive(Prim::Bool)
+        primitive_shape(dag, "Bool")?
     } else {
-        lhs_type.clone()
+        *lhs_type
     };
     Some(ResolvedArrow {
-        inputs: vec![lhs_type.clone(), lhs_type.clone()],
+        inputs: vec![*lhs_type, *lhs_type],
         output,
         body: ArrowBody::Pending,
     })
@@ -553,13 +583,13 @@ fn resolve_arrow_walk(
 
 /// Walk a type declaration down to a port-level `TypeShape`.
 ///
-/// The walk stops at the **first named declaration that maps to a
-/// primitive** — so `Int` short-circuits to `Primitive(Int)` without
-/// descending into its `Instantiation(Int64)` chain, and `Word64`
-/// short-circuits similarly. For anonymous declarations (e.g., an
-/// anonymous `Instantiation` created by a user-code generic), the walk
-/// descends: `TypeParam` → subst lookup, resolved `Identifier` → follow
-/// link, anonymous `Instantiation` → recurse into template.
+/// `TypeShape` is a newtype around `DeclarationId` — port types ARE
+/// declaration identities. The walk descends through anonymous
+/// declarations (TypeParam via subst stack, resolved Identifier link,
+/// anonymous Instantiation template) until it hits the first named
+/// top-level declaration, and wraps that declaration's id as the
+/// port's type. There is no name-keyed bridge back to a coarse
+/// primitive tag — the declaration graph IS the type identity.
 fn walk_to_type_shape(
     dag: &Dag,
     current: DeclarationId,
@@ -569,11 +599,12 @@ fn walk_to_type_shape(
     if depth >= WALK_DEPTH_LIMIT {
         return None;
     }
-    // Short-circuit at the first named primitive declaration.
-    if let Some(shape) = declaration_to_type_shape(dag, current) {
-        return Some(shape);
-    }
     let decl = dag.declaration(current);
+    // Named top-level declaration: this is the port's type identity.
+    if decl.name.is_some() {
+        return Some(TypeShape::new(current));
+    }
+    // Anonymous declaration: follow the chain through the substrate.
     match &decl.connective {
         TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
             let bound = subst.lookup(current)?;
@@ -583,38 +614,9 @@ fn walk_to_type_shape(
             resolved: Some(next),
             ..
         }) => walk_to_type_shape(dag, *next, subst, depth + 1),
-        TypeConnective::Instantiation { template, .. } if decl.name.is_none() => {
-            // Anonymous Instantiation (e.g., anonymous List<Int> carrier
-            // in a field type). Follow the template.
+        TypeConnective::Instantiation { template, .. } => {
             walk_to_type_shape(dag, *template, subst, depth + 1)
         }
-        _ => None,
-    }
-}
-
-/// Map a `DeclarationId` to a port-level `TypeShape`. The bridge is
-/// name-based at the root: once the walk reaches a named declaration,
-/// the declaration's name determines the `Prim` variant. This is the
-/// last name-keyed bridge in the compiler and dissolves in M2 when
-/// `TypeShape` itself becomes `DeclarationId`-carrying.
-fn declaration_to_type_shape(dag: &Dag, id: DeclarationId) -> Option<TypeShape> {
-    let decl = dag.declaration(id);
-    let name = match decl.name.as_deref() {
-        Some(n) => n,
-        None => {
-            if let TypeConnective::Atom(AtomPayload::Identifier { name, .. }) = &decl.connective {
-                name.as_str()
-            } else {
-                return None;
-            }
-        }
-    };
-    match name {
-        "Int" | "Int64" | "Word64" | "Word32" | "Word16" | "Word8" => {
-            Some(TypeShape::Primitive(Prim::Int))
-        }
-        "Bool" | "Classical" | "Bit" => Some(TypeShape::Primitive(Prim::Bool)),
-        "String" | "FreeMonoid" => Some(TypeShape::Primitive(Prim::String)),
         _ => None,
     }
 }

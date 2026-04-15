@@ -10,8 +10,20 @@ use v3_compiler::dag::{
 };
 use v3_compiler::lens_depth::DepthLens;
 use v3_compiler::lens_provenance::{Origin, ProvenanceLens};
-use v3_compiler::types::{Prim, TypeShape};
+use v3_compiler::types::TypeShape;
 use v3_compiler::CompileError;
+
+/// Look up a primitive type's `TypeShape` by name. After M1(2.6),
+/// `TypeShape` is a newtype around `DeclarationId`, so primitive
+/// shapes are always resolved via `Dag::declaration_by_name` rather
+/// than a hardcoded `Prim::X` enum.
+fn primitive_shape(dag: &Dag, name: &str) -> TypeShape {
+    TypeShape::new(
+        dag.declaration_by_name(name)
+            .unwrap_or_else(|| panic!("primitive `{name}` missing from bootstrap"))
+            .id,
+    )
+}
 
 /// Assert that a Transform.target DeclarationId points to a declaration
 /// whose surface-visible name equals `expected`. The M1(2.6) target shape
@@ -95,7 +107,7 @@ fn test_let_binding_produces_dag_shape() {
 
     assert_eq!(
         dag.port(add.output).value_type(),
-        Some(&TypeShape::Primitive(Prim::Int)),
+        Some(&primitive_shape(&dag, "Int")),
         "inference propagated Int through the Add output port",
     );
 
@@ -140,20 +152,20 @@ fn test_if_then_else_produces_branch_dag() {
 
     assert_eq!(
         dag.port(branch.input).value_type(),
-        Some(&TypeShape::Primitive(Prim::Bool)),
+        Some(&primitive_shape(&dag, "Bool")),
         "comparison produces Bool",
     );
 
     assert_eq!(
         dag.port(branch.output).value_type(),
-        Some(&TypeShape::Primitive(Prim::Int)),
+        Some(&primitive_shape(&dag, "Int")),
         "both paths produce Int; unified branch output is Int",
     );
 
     for path in &branch.paths {
         assert_eq!(
             dag.port(path.output).value_type(),
-            Some(&TypeShape::Primitive(Prim::Int)),
+            Some(&primitive_shape(&dag, "Int")),
             "each path's output port is typed Int",
         );
     }
@@ -177,7 +189,7 @@ fn test_recursive_function_produces_loop_dag() {
     let param_port = count_down.params[0];
     assert_eq!(
         dag.port(param_port).value_type(),
-        Some(&TypeShape::Primitive(Prim::Int)),
+        Some(&primitive_shape(&dag, "Int")),
         "parameter n annotated as Int",
     );
 
@@ -221,7 +233,7 @@ fn test_recursive_function_produces_loop_dag() {
 
     assert_eq!(
         dag.port(answer.value).value_type(),
-        Some(&TypeShape::Primitive(Prim::Int)),
+        Some(&primitive_shape(&dag, "Int")),
         "answer is typed Int via count_down's declared return type",
     );
 
@@ -301,8 +313,8 @@ fn test_type_mismatch_produces_diagnostic_entry() {
         v3_compiler::Diagnostic::TypeMismatch {
             expected, actual, ..
         } => {
-            assert_eq!(*expected, TypeShape::Primitive(Prim::Bool));
-            assert_eq!(*actual, TypeShape::Primitive(Prim::Int));
+            assert_eq!(*expected, primitive_shape(&dag, "Bool"));
+            assert_eq!(*actual, primitive_shape(&dag, "Int"));
         }
         other => panic!("expected TypeMismatch, got {other:?}"),
     }
@@ -407,7 +419,7 @@ fn test_bool_literal_true() {
 
     assert_eq!(
         dag.port(bind_x.value).value_type(),
-        Some(&TypeShape::Primitive(Prim::Bool)),
+        Some(&primitive_shape(&dag, "Bool")),
         "bool literal infers to Bool",
     );
     assert!(dag.diagnostics().is_empty());
@@ -436,7 +448,7 @@ fn test_bool_literal_false() {
 
     assert_eq!(
         dag.port(bind_x.value).value_type(),
-        Some(&TypeShape::Primitive(Prim::Bool)),
+        Some(&primitive_shape(&dag, "Bool")),
         "bool literal infers to Bool",
     );
     assert!(dag.diagnostics().is_empty());
@@ -468,7 +480,7 @@ fn test_string_literal() {
 
     assert_eq!(
         dag.port(bind_x.value).value_type(),
-        Some(&TypeShape::Primitive(Prim::String)),
+        Some(&primitive_shape(&dag, "String")),
         "string literal infers to String",
     );
     assert!(dag.diagnostics().is_empty());
@@ -511,12 +523,12 @@ fn test_bool_literal_in_conditional() {
 
     assert_eq!(
         dag.port(branch.input).value_type(),
-        Some(&TypeShape::Primitive(Prim::Bool)),
+        Some(&primitive_shape(&dag, "Bool")),
         "branch condition is typed Bool",
     );
     assert_eq!(
         dag.port(branch.output).value_type(),
-        Some(&TypeShape::Primitive(Prim::Int)),
+        Some(&primitive_shape(&dag, "Int")),
         "unified branch output is Int (both arms are Int)",
     );
     assert!(dag.diagnostics().is_empty());
@@ -775,7 +787,7 @@ fn test_composition_nested_let_bindings() {
         .expect("Bind(c) exists");
     assert_eq!(
         dag.port(c_bind.value).value_type(),
-        Some(&TypeShape::Primitive(Prim::Int)),
+        Some(&primitive_shape(&dag, "Int")),
         "c is typed Int through composition"
     );
     assert!(dag.diagnostics().is_empty());
@@ -812,7 +824,7 @@ fn test_composition_nested_if_expressions() {
 
     assert_eq!(
         dag.port(bind_r.value).value_type(),
-        Some(&TypeShape::Primitive(Prim::Int)),
+        Some(&primitive_shape(&dag, "Int")),
         "nested-if unification gives Int"
     );
     assert!(dag.diagnostics().is_empty());
@@ -852,7 +864,7 @@ fn test_composition_if_inside_function_call() {
 
     assert_eq!(
         dag.port(bind_y.value).value_type(),
-        Some(&TypeShape::Primitive(Prim::Int)),
+        Some(&primitive_shape(&dag, "Int")),
         "f returns Int regardless of which path the if chose"
     );
     assert!(dag.diagnostics().is_empty());
@@ -899,7 +911,7 @@ fn test_composition_two_functions_later_calls_earlier() {
 
     assert_eq!(
         dag.port(bind_r.value).value_type(),
-        Some(&TypeShape::Primitive(Prim::Int)),
+        Some(&primitive_shape(&dag, "Int")),
     );
     assert!(dag.diagnostics().is_empty());
 }
@@ -936,7 +948,7 @@ fn test_composition_branch_with_function_calls_in_both_paths() {
     }
     assert_eq!(
         dag.port(bind_r.value).value_type(),
-        Some(&TypeShape::Primitive(Prim::Int)),
+        Some(&primitive_shape(&dag, "Int")),
     );
     assert!(dag.diagnostics().is_empty());
 }
@@ -1002,8 +1014,8 @@ fn reviewer_non_bool_branch_condition_is_rejected() {
         v3_compiler::Diagnostic::TypeMismatch {
             expected, actual, ..
         } => {
-            assert_eq!(*expected, TypeShape::Primitive(Prim::Bool));
-            assert_eq!(*actual, TypeShape::Primitive(Prim::Int));
+            assert_eq!(*expected, primitive_shape(&dag, "Bool"));
+            assert_eq!(*actual, primitive_shape(&dag, "Int"));
         }
         other => panic!("expected TypeMismatch Bool/Int, got {other:?}"),
     }
@@ -1130,8 +1142,8 @@ fn test_bool_literal_fails_when_int_expected() {
         v3_compiler::Diagnostic::TypeMismatch {
             expected, actual, ..
         } => {
-            assert_eq!(*expected, TypeShape::Primitive(Prim::Int));
-            assert_eq!(*actual, TypeShape::Primitive(Prim::Bool));
+            assert_eq!(*expected, primitive_shape(&dag, "Int"));
+            assert_eq!(*actual, primitive_shape(&dag, "Bool"));
         }
         other => panic!("expected TypeMismatch Int/Bool, got {other:?}"),
     }
@@ -1161,8 +1173,8 @@ fn test_string_literal_fails_when_int_expected() {
         v3_compiler::Diagnostic::TypeMismatch {
             expected, actual, ..
         } => {
-            assert_eq!(*expected, TypeShape::Primitive(Prim::Int));
-            assert_eq!(*actual, TypeShape::Primitive(Prim::String));
+            assert_eq!(*expected, primitive_shape(&dag, "Int"));
+            assert_eq!(*actual, primitive_shape(&dag, "String"));
         }
         other => panic!("expected TypeMismatch Int/String, got {other:?}"),
     }
@@ -1194,8 +1206,8 @@ fn test_string_branch_condition_is_rejected() {
         v3_compiler::Diagnostic::TypeMismatch {
             expected, actual, ..
         } => {
-            assert_eq!(*expected, TypeShape::Primitive(Prim::Bool));
-            assert_eq!(*actual, TypeShape::Primitive(Prim::String));
+            assert_eq!(*expected, primitive_shape(&dag, "Bool"));
+            assert_eq!(*actual, primitive_shape(&dag, "String"));
         }
         other => panic!("expected TypeMismatch Bool/String, got {other:?}"),
     }
