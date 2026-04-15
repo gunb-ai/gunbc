@@ -1,10 +1,11 @@
 # v3 Roadmap
 
 Single source of truth for v3 status, active work, and deferred items.
-Supersedes `src/v3/M1_FOLLOWUPS.md` (now a stub redirect). Historical
-M1(2.5) task list lives in `src/v3/M1_TASKS.md`; design oracle in
-`src/v3/M1_DESIGN.md`; M0 retrospective in `src/v3/M0_RETROSPECTIVE.md`.
-Substrate-consumer gap enumeration in
+Supersedes `src/v3/M1_FOLLOWUPS.md` (now a stub redirect). The shipped
+M1(2.5)–M1(3) substrate design rationale is preserved as a historical
+record in `src/v3/M1_DESIGN.md` (marked historical; authoritative
+docs are the code itself). M0 retrospective in
+`src/v3/M0_RETROSPECTIVE.md`. Substrate-consumer gap enumeration in
 `src/v3/DOWNSTREAM_REQUIREMENTS.md` — read before proposing new
 substrate fields.
 
@@ -21,7 +22,7 @@ substrate fields.
 | **M1(2.6)** FACTS FLOW + SINGLE AUTHORITY | ✅ Landed on PR #445 | Rolled into the same PR per Option C. Parser extensions for real `dsl/std/*.dag` files, `include_str!` bootstrap over seven std modules, SubstStack + §8.9 operator dispatch, deleted `inject_primitive_operators`, anonymized TypeParam/variant/realization child declarations, duplicate-name fail-closed, `ExternalRealization` typed-edge check at both construction and dispatch, bootstrap drift routed through `Dag::attach_diagnostic` instead of panic. |
 | **M1(2.7)** Enumeration-driven substrate fix | ✅ Landed on PR #445 (R7 + R9) | R7: primitive identity cache, `TransformTarget`/`OperatorKind` coproducts, `ArrowBody::Unparsed`, `SurfaceItem::{Fn, FnExternalBody, Data, Module, Import}` split, `TemplateArgument` stub branch deleted. R9 (ChatGPT follow-up): `std/algebra.dag` extended with direct operator fields (`sub`, `div`, `eq`, `ne`, `lt`, `le`, `gt`, `ge` on `OrderedRing<T>`); `resolve_operator_arrow` rewritten as a structural §8.9 walk that reads algebra field signatures and substitutes the receiver type parameter to the source declaration; `Declaration.value_body: Option<ValueBody>` added so data items are structurally distinguishable from type aliases. Class-5 gaps (Bool operator grounding, collection-algebra receivers, data body parsing) tracked in `DOWNSTREAM_REQUIREMENTS.md`. |
 | **M1(2.8)** Match expression parser catch-up | ✅ Landed on PR #445 | Added `SurfaceExpr::Match` + `SurfacePattern::BareVariant` parsing. Extended `Path` with `BranchPattern { UnresolvedVariant, ResolvedVariant }` phase coproduct. Generalized Branch input check from "must be Bool" to "must be Disj" — `if`/`else` still works because Bool IS a Disj in types.dag. `if`/`else` lowering rewired to emit explicit `UnresolvedVariant{"True"}/{"False"}` patterns instead of positional convention. New infer-time pattern resolution pass walks each Branch's scrutinee type and resolves each path's variant name scoped against the Disj children. New class-5 gap #4 (variant RHS expressions blocked on anonymization) tracked for logic.dag's `classical_not`/`and`/`or` which still load as `FnExternalBody`. **Current: 41 M0 + 22 M1 substrate + 7 real-stdlib parse smoke + 1 realization smoke = 71 green.** |
-| **M1(3)** First downstream consumer (PR-B) | ✅ Landed on PR #445 | The first v3 emitter pipeline ran end-to-end: `compile_to_dag("let x: Int = 1 + 2") → emit_rust → rustc → execute → "3"`. Substrate additions: `ValueBody::Structural { fields: Vec<(String, LiteralBits)> }` for record-literal data bodies, `SurfaceExpr::Record` parser support, `lower_record_to_structural` inhabitance check (walks the type's Conj, fail-closed on extras / missing / wrong-type fields), `dsl/extdeps/languages/rust.dag` as the first extdeps fixture in production bootstrap (declaring `Realization` + 18 `data rust_*` items covering primitives, operators, and structural templates). New lenses + emitter: `lens_cost.rs` (third pure-reader lens, ~80 lines, follows the lens_depth/lens_provenance template), `emit_rust.rs` (~340 lines, builds a `(target_name, op_name) → carrier` index from rust.dag declarations and walks the DAG translating per Behavior). End-to-end roundtrip test gated behind `#[ignore]` so CI doesn't depend on a Rust toolchain. **Current: 41 M0 + 35 M1 substrate + 6 lens_cost + 7 emit_rust + 7 real-stdlib parse smoke + 1 realization smoke = 97 green.** |
+| **M1(3)** First downstream consumer (PR-B) | ✅ Landed on PR #445 | The first v3 emitter pipeline ran end-to-end: `compile_to_dag("let x: Int = 1 + 2") → emit_rust → rustc → execute → "3"`. Substrate additions: `ValueBody::Structural { fields: Vec<(String, LiteralBits)> }` for record-literal data bodies, `SurfaceExpr::Record` parser support, `lower_record_to_structural` inhabitance check (walks the type's Conj, fail-closed on extras / missing / wrong-type fields), `src/v3/spec/rust.dag` as the first extdeps fixture in production bootstrap (declaring `Realization` + 18 `data rust_*` items covering primitives, operators, and structural templates). New lenses + emitter: `lens_cost.rs` (third pure-reader lens, ~80 lines, follows the lens_depth/lens_provenance template), `emit_rust.rs` (~340 lines, builds a `(target_name, op_name) → carrier` index from rust.dag declarations and walks the DAG translating per Behavior). End-to-end roundtrip test gated behind `#[ignore]` so CI doesn't depend on a Rust toolchain. **Current: 41 M0 + 35 M1 substrate + 6 lens_cost + 7 emit_rust + 7 real-stdlib parse smoke + 1 realization smoke = 97 green.** |
 | **M1(4)** Multi-target emission | ⏸ Deferred | Add `go.dag` / `python.dag` as parallel extdeps fixtures and parallel `emit_go` / `emit_python` walks reusing PR-B's RealizationIndex pattern. Validates the thesis claim "add a new emission target = one spec-file edit." |
 | **M2** Feature parity | ⏸ Deferred | Generics in user code, match in user code, transport declarations, interpreter, recursion → Loop. |
 | **M3** Self-hosting | ⏸ Deferred | `.dag` rewrite of the compiler. |
@@ -74,7 +75,9 @@ Source text → tokenize → parse → lower → Dag (declarations + behaviors)
 Five L1 behaviors: `Value`, `Transform`, `Branch`, `Loop`, `Bind`.
 Six type connectives: `Atom`, `Conj`, `Disj`, `Arrow`, `Cardinality`,
 `Instantiation`. Both sets are terminal at M1(2.5); extension requires
-the C1-class stop signal in `M1_DESIGN.md` §8.10.
+the C1-class stop signal (all four dissolution patterns must be re-run
+before any new variant lands — see `INVARIANTS.md` §"Scaffold boundaries"
+and §"Semantic authority after lowering").
 
 ## M0 — Skeleton (complete)
 
@@ -87,10 +90,10 @@ See `M0_RETROSPECTIVE.md` for the full retrospective. Highlights:
 - Declaration of terminal status: five behaviors, documented. Adding
   a 6th triggers the C1 stop signal.
 
-## M1(2.5) — Substrate rework (in PR #445)
+## M1(2.5) — Substrate rework (shipped in PR #445)
 
-See `M1_TASKS.md` for the implementer checklist and `M1_DESIGN.md` for
-the design oracle. Substrate changes landed:
+Historical design oracle preserved in `M1_DESIGN.md` (marked
+historical). Substrate changes landed:
 - `TypeConnective` six-variant enum
 - `Declaration` struct with canonical `type_params`, separate `meta_tag`
   and `inhabits` edges
@@ -98,7 +101,7 @@ the design oracle. Substrate changes landed:
 - Two-pass lowering with `resolve_pending_identifiers` post-sweep
   (fail-closed for unresolved identifier stubs)
 - `build_template_arguments` for fail-closed template arity check
-- Dissolution ledger receipts in `dag.rs` (mirrors `M1_DESIGN.md` §Q7)
+- Dissolution ledger receipts in `dag.rs`
 - §6.5 realization smoke test (`inject_realization_stub` +
   `smoke_int_add_external_realization`)
 - v3 CI job runs `cargo test -p v3-compiler` + clippy in its own job
@@ -290,8 +293,8 @@ file. PR-B answered each:
   earlier roadmap deferred to M1(3) **dissolved** — no PR-B lens
   needs storage. Pure-reader walks return on demand and
   memoization, if ever needed, is a transparent local concern.
-- **(c) Spec-file → emission isomorphism.** `dsl/extdeps/languages/
-  rust.dag` is the only Rust-syntax source in the codebase.
+- **(c) Spec-file → emission isomorphism.** `src/v3/spec/rust.dag`
+  is the only Rust-syntax source in the codebase.
   emit_rust contains zero hardcoded operator strings, type names,
   or template fragments — every per-target token traces to a
   rust.dag carrier read through the RealizationIndex. Editing

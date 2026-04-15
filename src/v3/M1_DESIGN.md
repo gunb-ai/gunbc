@@ -1,5 +1,17 @@
 # M1 Design Note: Substrate Rework
 
+> **⚠️ HISTORICAL.** This is the design oracle for M1(2.5), M1(2.6), and
+> M1(2.7) substrate work that shipped in PR #445. The authoritative
+> substrate documentation now lives in the code itself —
+> `src/v3/compiler/src/dag.rs` for the type layer, `src/v3/compiler/src/
+> infer.rs` / `lower.rs` for the inference and lowering stages. This
+> document is preserved as a historical record of the design rationale
+> (especially §Q7 ArrowBody variants, §8.10 substrate-extension audit,
+> §8.11 Pending-elimination ratchet) because those sections are still
+> cross-referenced by code comments. New design work does NOT go here —
+> see the live design docs under `docs/` and the top-level `THESIS.md` /
+> `INVARIANTS.md` / `ROADMAP.md`.
+
 **Status:** design-first spec for M1(2.5). Answers load-bearing representation
 choices before any code changes. Paired with `THESIS.md` §"The substrate: two
 coordinated shapes" and §"Epistemic stacking."
@@ -730,8 +742,7 @@ pub enum ArrowBody {
     /// requires either extending INVARIANTS.md with a parallel
     /// exception + numeric ratchet, extending the grammar so
     /// match/pipe/lambda parse, or rewriting affected std/
-    /// functions. Tracked in `M1_IMPLEMENTATION_PLAN.md` §3.3
-    /// catalogue row 16.
+    /// functions.
     Unparsed(SourceSpan),
 }
 ```
@@ -741,7 +752,7 @@ At M1(2.5), std/algebra.dag declares `Magma<T>.op`, `Ring<T>.add`,
 etc., as Arrows. Their *signatures* are well-defined (they
 resolve through inhabitance via the substitution stack). Their
 *realizations* — what these operations map onto in Rust / Python
-/ Go — need `dsl/extdeps/languages/rust.dag` and friends to
+/ Go — need `src/v3/spec/rust.dag` and friends to
 declare the target mapping, and those files don't exist yet.
 `Pending` names the state "this Arrow has a valid static
 grounding via inhabitance, but no realization declaration has
@@ -795,7 +806,6 @@ variants tracked separately by dissolution trigger:
   ratchet whose dissolution trigger is "M2 grammar extension
   parses match/pipe/lambda," or (b) extend the grammar, or (c)
   rewrite affected std/ functions to fit the current grammar.
-  Tracked in `M1_IMPLEMENTATION_PLAN.md` §3.3 catalogue row 16.
 
 Once both ratchets reach zero, the enum becomes 2 variants
 (terminal form) via a substrate-extension PR (reverse of §8.10's
@@ -1161,7 +1171,7 @@ ExternalRealization path:
    `dsl/std/algebra.dag`, `dsl/std/types.dag` as normal
    (producing primitive Arrows with `body: Pending`).
 2. **Additionally**, bootstrap parses a one-file stub
-   `dsl/extdeps/languages/rust.dag` that declares exactly ONE
+   `src/v3/spec/rust.dag` that declares exactly ONE
    realization: `Int64.add` maps to the Rust `i64::wrapping_add`
    intrinsic. The stub is a Conj declaration:
 
@@ -1235,7 +1245,7 @@ Focused, small, one PR. No scope creep.
 | `dsl/std/types.dag` | VERIFY Int = OrderedRing<Word64>, Bool = Classical, String = FreeMonoid<Char> all parse as Instantiation declarations. | ~15m |
 | `src/v3/compiler/src/bootstrap.rs` | NEW or UPDATE. Parse logic.dag → bit.dag → algebra.dag → types.dag in order at `Dag::new()` time (§8.6). | ~1h |
 | `src/v3/compiler/tests/m1_substrate_test.rs` | NEW. Three test cases: `parse_std_algebra_and_walk_int_add`, `parse_synthetic_service_all_layers`, and `smoke_int_add_external_realization` (§6.5). | ~2h |
-| `dsl/extdeps/languages/rust.dag` | NEW stub. One-file declaration containing the `realization` meta-type declaration and one concrete `realization Int64_add { for: Int64.add; target: rust; body: "i64::wrapping_add" }` entry. Parsed during bootstrap as part of §8.6's file order. | ~30m |
+| `src/v3/spec/rust.dag` | NEW stub. One-file declaration containing the `realization` meta-type declaration and one concrete `realization Int64_add { for: Int64.add; target: rust; body: "i64::wrapping_add" }` entry. Parsed during bootstrap as part of §8.6's file order. | ~30m |
 
 **Total estimate: 14–16 hours.** Scope expanded from original
 10–12h estimate after the review pass identified additional
@@ -1256,7 +1266,7 @@ tree in an incoherent state between PRs.
    structure matches. Static substrate shape test — see §6 "Scope
    of the synthetic oracle" for what this does and doesn't validate.
 4. **`smoke_int_add_external_realization`** (§6.5) — parse the
-   one-entry `dsl/extdeps/languages/rust.dag` stub, assert that
+   one-entry `src/v3/spec/rust.dag` stub, assert that
    `Int64.add`'s Arrow body resolves to
    `ExternalRealization(_)` (not `Pending`), walk the referenced
    declaration, and confirm inference accepts the Arrow as
@@ -1370,14 +1380,13 @@ user source:
    `types.dag` declares Bool = Classical (Bit), String =
    FreeMonoid<Char>, List<T> = FreeMonoid<T>, and re-exports
    `Int = Int64` as the short alias. Inhabitance declarations.
-5. **`dsl/extdeps/languages/rust.dag`** (§6.5 realization via
+5. **`src/v3/spec/rust.dag`** (§6.5 realization via
    ordinary declarations). Parses the `realization` meta-type
    declaration plus one concrete realization entry for the
    smoke test. The realization item lowers to an **ordinary
    `Conj` declaration** with typed fields: `for: DeclarationId`,
-   `target: DeclarationId`, `body: String`, `cost: Int` — see
-   `M1_IMPLEMENTATION_PLAN.md` §11 question 7 for the pinned
-   schema. The declaration's `meta_tag` edge points at the
+   `target: DeclarationId`, `body: String`, `cost: Int`. The
+   declaration's `meta_tag` edge points at the
    `Realization` meta-type declaration, distinguishing realization
    declarations from ordinary records via the typed-edge
    discipline. **No compiler-native `Realization` struct in

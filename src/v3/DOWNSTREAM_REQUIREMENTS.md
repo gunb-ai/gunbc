@@ -413,7 +413,7 @@ typing record values against their annotation. Substantial.
 slice of this gap: `SurfaceExpr::Record { fields }`,
 `ValueBody::Structural { fields: Vec<(String, LiteralBits)> }`,
 `lower_record_to_structural` inhabitance checking, and the
-`dsl/extdeps/languages/rust.dag` consumer that reads
+`src/v3/spec/rust.dag` consumer that reads
 `(target_name, op_name, carrier, cost)` literal fields off
 realization records. The substrate now structurally consumes
 data bodies whose field values are scalar literals (Int / Bool

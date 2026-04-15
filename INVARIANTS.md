@@ -828,11 +828,12 @@ that looks like a short-term solution is allowed.
    is forbidden. If the output is target source code via a
    language spec declaration, it is emission and is allowed.
 2. **Scaffolded primitive realization** (see THESIS.md §"Two
-   groundings" and M1_DESIGN.md §Q7). Primitive Arrows may
-   carry `ArrowBody::Pending` in the short window between
+   groundings" and the `ArrowBody` enum in
+   `src/v3/compiler/src/dag.rs`). Primitive Arrows may carry
+   `ArrowBody::Pending` in the short window between
    substrate-shape commitment and extdeps language spec
-   declarations landing. This is tracked via the §8.11
-   monotonic-decrease ratchet. The exception is narrow and
+   declarations landing. This is tracked via a
+   monotonic-decrease CI ratchet. The exception is narrow and
    explicit: only primitives, only during the specific
    M1(2.5) → M3 transition, only covered by a numeric CI
    ratchet that strictly decreases.
