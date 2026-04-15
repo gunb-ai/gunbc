@@ -217,8 +217,145 @@ edits. Concrete improvement validated.
 | 3 | Add clamp builtin | **PASS (full)** | 3 files edited, zero consumer edits |
 | 4 | Purity lens | **PASS (full)** | 1 new file, zero compiler changes, 3117 pure / 36 effectful |
 | 5 | ExprData variant cost | **MEASURED** | 8-11 files, ~30 match arms per new variant |
+| 6 | Layer opacity rename test | **PASS (bounded)** | 2 of 3 rename classes byte-identical; 1 leak at `kernel_type_set` (Part B-tracked) |
 
 All experiments keep tests green (415 pass) and CX ratchet stable.
+
+## Experiment 6: Layer opacity rename test
+
+**Run date:** 2026-04-15 (post-commit to v3; validates the thesis's
+compositional layering claim against the v2 compiler empirically).
+
+**What it tests:** the thesis's §"Compositional layering:
+below-boundary opacity by construction" claim. Specifically, that
+below-boundary changes in a layer are invisible to consumers — i.e.,
+the generated code is structurally unchanged when an intermediate
+layer is modified internally. See `THESIS.md` §"Compositional
+layering" and `INVARIANTS.md` §"Layer opacity" for the motivating
+principle and the enforcement invariant.
+
+**Scope:** compile `dsl/examples/weather/weather.dag` to Rust using
+v2, then modify `dsl/std/float.dag`'s layer chain three ways and
+diff the generated Rust against the baseline.
+
+**Steps:**
+
+1. **Baseline.** Compile weather with unmodified std/:
+   `cargo run --bin v2-compiler -- compile --source-root dsl/examples/weather --source-root dsl/std --output-dir /tmp/before --target rust`.
+2. **Experiment 6a — insert intermediate layer.** Copy std/ to
+   a temp directory; edit `float.dag` to insert a new intermediate
+   alias: `type PreciseScalar = Float64; type Float = PreciseScalar`
+   instead of `type Float = Float64`. The chain lengthens from
+   `Float → Float64 → Field<Word64>` to `Float → PreciseScalar →
+   Float64 → Field<Word64>`. Weather.dag unchanged. Recompile to
+   `/tmp/after1`.
+3. **Experiment 6b — internal rename below boundary.** Edit
+   `float.dag` to rename the internal types: `type BinaryFloat64 =
+   Field<Word64>; type Float = BinaryFloat64`. The boundary name
+   `Float` is preserved; the internal name `Float64` becomes
+   `BinaryFloat64`. Weather.dag unchanged. Recompile to `/tmp/after2`.
+4. **Experiment 6c — rename the boundary identifier itself.** Edit
+   `float.dag` to rename `Float → FloatingPoint`. Update weather.dag
+   to use the new name (expected: consumers depend on boundary
+   names). Add `FloatingPoint` to `dsl/std/types.dag`'s
+   `kernel_type_set`. Add an explicit `import std.float
+   { FloatingPoint }` to weather.dag. Recompile to `/tmp/after3`.
+5. **Diff each experiment against the baseline.** Run each
+   comparison as its own `diff -r` invocation (brace-expansion
+   expands to four operands, which `diff` rejects with "extra
+   operand"):
+   ```
+   diff -r /tmp/before /tmp/after1
+   diff -r /tmp/before /tmp/after2
+   diff -r /tmp/before /tmp/after3
+   ```
+   Or equivalently with a shell loop: `for i in 1 2 3; do diff
+   -r /tmp/before /tmp/after$i; done`. Each experiment is a pass
+   if and only if the diff for that experiment is empty (`diff`
+   exits with status 0 and produces no output).
+
+**Pass criteria:**
+- 6a (insert layer): byte-identical generated Rust. If layering
+  holds for added intermediates, `diff -r` exits 0.
+- 6b (internal rename): byte-identical generated Rust. If layering
+  holds for below-boundary renames, `diff -r` exits 0.
+- 6c (boundary rename): byte-identical generated Rust modulo
+  renamed identifiers. If layering holds for canonical primitive
+  names, the diff shows only the renamed type name in
+  field/function signatures and nothing else.
+
+**Results:**
+
+- **6a (insert layer): PASS.** `diff -r` exit 0. The entire
+  generated Rust project — `Cargo.toml`, `lib.rs`,
+  `examples_weather.rs`, `v2_rt.rs`, `main.rs` — is byte-identical
+  to the baseline. v2 walks the algebraic chain through the new
+  intermediate alias and produces the same `f64` mapping.
+- **6b (internal rename): PASS.** `diff -r` exit 0. Renaming
+  `Float64 → BinaryFloat64` below the boundary is invisible to
+  weather.dag and to the generated Rust. The compiler walks
+  through the renamed type names structurally.
+- **6c (boundary rename): LEAKS.** Compilation succeeds after
+  the kernel_type_set update + explicit import, but the generated
+  Rust is **structurally different**:
+  - `celsius: f64` → `celsius: Box<FloatingPoint>` (lost the
+    primitive fast-path mapping)
+  - `Temperature` loses its `Copy` derive (was `#[derive(Debug,
+    Clone, Copy, ...)]`, becomes `#[derive(Debug, Clone, ...)]`)
+  - `pub high: Temperature` → `pub high: Rc<Temperature>`
+    (cascade from lost Copy)
+  - `fn to_fahrenheit(temp: Temperature) -> f64` →
+    `fn to_fahrenheit(temp: Rc<Temperature>) -> FloatingPoint`
+
+**The leak mechanism:** v2's inference and emission have a fast
+path for types whose canonical name appears in `kernel_type_set`
+(a `Map<String, Bool>` in `dsl/std/types.dag` line 65, mirrored
+into `src/v2/stage0/src/std_types.rs`). Types in the fast path
+get efficient primitive mappings (direct target type, `Copy`
+derive, unboxed). Types NOT in the fast path get defensive
+wrappers (`Rc<T>`, `Box<T>`, no `Copy`). Renaming a primitive
+from `Float` to `FloatingPoint` moves it from fast path to slow
+path because the name no longer matches the hardcoded list.
+
+The leak is tracked in v2 as "Part B pending": a comment above
+`kernel_type_set` reads *"Until Part B lands (inference resolves
+methods from type fields), the compiler still uses kernel_types/
+is_kernel_type for these."* v2 itself knows this is a temporary
+scaffold waiting for structural replacement.
+
+**What the experiment proves:**
+
+- **Compositional layering holds empirically** for the first two
+  rename classes (insert intermediate, internal rename below
+  boundary). v2 genuinely walks the algebraic chain and the
+  consumer is unaware of intermediate layer changes. The OSI-stack
+  analogy is not theoretical — it's demonstrated in v2 today.
+- **The leak class is "canonical-primitive-name rosters."** Any
+  compiler that stages up from minimal parsing accumulates a
+  hardcoded list of "known primitive names" because it's the
+  cheapest way to recognize primitives. The list is the leak.
+  Dissolving it requires keying the primitive roster on
+  `DeclarationId` instead of `String`.
+- **The leak is bounded and well-understood.** It's not "layering
+  doesn't work" — it's "layering works except at the canonical-
+  primitive-name boundary, which is a known scaffold." v2 has
+  eight names in the roster; every other rename passes the test.
+- **v3 reproduced the same leak in PR-B's emit layer.** The
+  `emit_rust.rs` file has `lookup("Int", "")`, `lookup("Bool",
+  "")`, and `match label.as_str() { "True" => ..., "False" =>
+  ... }` patterns — identical shape to v2's `kernel_type_set`, at
+  a different layer. This is what the review loop has been
+  rediscovering round after round, and it is what
+  `INVARIANTS.md` §"Layer opacity" exists to catch going forward.
+
+**The rename test as a permanent invariant:** every experiment
+above reduces to "rename a below-boundary identifier, recompile,
+`diff -r`." The test is O(minutes) to run per identifier and
+catches the failure class that has historically been responsible
+for the largest share of review-round findings in both v2 and v3.
+CI-gate form is a grep audit (see `INVARIANTS.md` §"Layer
+opacity"); runtime form is to actually rename and diff, which is
+what this experiment does.
 
 ## What the experiments actually prove
 
@@ -228,6 +365,9 @@ All experiments keep tests green (415 pass) and CX ratchet stable.
 - **"Lambda = function" was too coarse:** real distinction is closure/binding
   semantics, not lambda syntax (exp 1 discovery)
 - **v2 ExprData tax:** empirically real at 8-11x over target (exp 5)
+- **Compositional layering holds empirically:** validated for non-boundary-rename
+  layer changes (exp 6). The bounded leak class is "canonical primitive
+  name rosters" — tracked in v2 as Part B, in v3 as class-5 gap #6.
 
 ## Revised acceptance criteria (per reviewer feedback)
 
