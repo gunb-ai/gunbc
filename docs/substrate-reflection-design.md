@@ -1753,6 +1753,109 @@ them, the physics-plus-lens claim moves from "thesis" to
 
 ---
 
+## §12.6 Self-hosting as the eventual horizon
+
+Reflection is not the endpoint. It is **the unblocker for full
+self-hosting** — the milestone at which v3's compiler pipeline
+(parse, lower, infer, emit) is itself rewritten in `.dag`, with
+Rust code reduced to a bootstrap stage. Self-hosting is
+explicitly a **post-reflection** concern; this section exists
+to name where it fits in the progression so the reflection PR's
+relationship to M3 is load-bearing visible.
+
+**The dependency order, start to endpoint:**
+
+```
+L0 — Substrate stable                      [SHIPPED at M1(3)]
+       │
+L1 — Reflection (this PR + prereqs 0–5)    [in design]
+       │    substrate types in .dag
+       │    field access, pattern match, lambda, higher-order calls
+       │    first lens (lens_unused_parameters) migrates
+       │
+L2 — v2 consumer migrations                [§12.5 — M1/M2/M3/M4]
+       │    complexity (5490 lines)
+       │    ownership (719)
+       │    effects (66)
+       │    trace (223)
+       │
+L3 — Pipeline stages in .dag               [post-L2 — see SELF_HOSTING.md]
+       │    parse.dag   — tokens → SurfaceItems
+       │    lower.dag   — SurfaceItems → Declarations + Behaviors
+       │    infer.dag   — Dag → Dag with port state populated
+       │    emit.dag    — Dag → target source strings
+       │
+L4 — Full self-hosting (M3)                [long-term]
+            v3's compiler is .dag code
+            Rust stage0 is vestigial (kept as bootstrap seed)
+```
+
+**Why reflection is prerequisite for L3, not a parallel track.**
+Pipeline stages operate over substrate data. The parser
+produces `SurfaceItem`/`SurfaceExpr` trees; lowering transforms
+those into Declarations and Behaviors; inference walks the Dag
+and populates port state; emission reads the Dag and produces
+target source. **Every single pipeline stage reads or writes
+substrate types.** Without reflection, `SurfaceItem` and `Dag`
+aren't expressible in `.dag`, so a `.dag` parser can't produce
+them and a `.dag` lowering pass can't consume them. L3 cannot
+start until L1 ships.
+
+**Why L2 (consumer migrations) comes before L3 (pipeline
+migrations).** Consumer migrations are less integrated — porting
+complexity from v2 to v3 doesn't break the compile loop. Pipeline
+migrations are self-referential — porting the parser means the
+compiler that reads `.dag` code needs to run through the stage
+that's being ported. That's the meta-circular evaluator problem.
+Doing consumer migrations first gives us a test corpus for
+pipeline migrations (the migrated lenses exercise the substrate
+in the same ways pipeline stages will) and keeps the bootstrap
+loop from turning meta-circular too early.
+
+**The four pipeline stages, in the order they should port:**
+
+| Stage | Current Rust file | Lines | Why this order |
+|---|---|---|---|
+| **1. `emit.dag`** | `emit_rust.rs` | ~340 | Easiest to port because it's already structured as a walk over substrate + realization lookup. The rust.dag realization mechanism already exists; emit's `.dag` form reads substrate via reflection + concatenates strings via `std/string.dag` (prerequisite). Proves the pipeline-in-dag model on the simplest stage. |
+| **2. `lower.dag`** | `lower.rs` | ~2000 | Second cleanest. SurfaceItem → Declaration is a walk + construction. The tricky part is the cross-file forward-reference resolution (`resolve_pending_identifiers` sweep), which has its own substrate shape. Requires `std/string.dag` and pattern matching on SurfaceItem variants (which themselves become substrate types). |
+| **3. `infer.dag`** | `infer.rs` | ~1100 | The trickiest stage. Inference is mutation-shaped in Rust (populates `Port.state` in place). The functional `.dag` form takes a Dag and returns a new Dag with inferred state. This requires the substrate to treat inference state as a first-class field OR requires each inference step to produce a new Dag value (copy-on-write model). Open substrate question. |
+| **4. `parse.dag`** | `parse.rs` | ~1600 | Hardest AND most transformative. The end state is grammar-as-data: parser rules become `.dag` declarations, the parser is a generic rule-interpreter. At that point, "ingest Python" becomes a new declaration file, not a compiler rewrite. But the intermediate step (port `parse.rs` as-is to `.dag` functions on a List<Token>) is its own substantial project. |
+
+Each stage is a multi-PR project. Each gates on substrate
+extensions that its port surfaces (same pattern as §12.5's
+expected-substrate-extensions for complexity). None of them
+starts during the reflection PR; they start after the reflection
+PR lands and at least M1 (complexity migration) is underway.
+
+**Full detail is deferred to `src/v3/SELF_HOSTING.md`** — a
+design note that expands this section with per-stage acceptance
+criteria, blocker dependencies, expected substrate extensions,
+and the meta-circular bootstrap model. The reflection design
+doc stays scoped to reflection; `SELF_HOSTING.md` carries the
+pipeline-migration plan so it can evolve independently without
+making this doc unwieldy.
+
+**For warm-elk's current work context:** the prerequisite slate
+in §11 is L1 foundation work. Prereq 1 (field-access lowering)
+lands toward L1. Prereqs 2/3/5 land toward L1. Prereq 4
+(`list.dag`) lands toward L1. Every prereq PR is a brick in the
+L1 foundation; reflection itself is L1's capstone. After
+reflection lands, L2 migrations begin, and the four pipeline
+stages in L3 start once L2 has enough running code to prove the
+model. No single PR touches L3; every PR in the slate is L1.
+
+**The structural claim self-hosting validates.** Once v3
+compiles itself — when `parse.dag` parses its own source,
+`lower.dag` lowers it, `infer.dag` walks the result, `emit.dag`
+produces Rust that matches the hand-written stage0 byte-for-byte
+— the thesis's "every facet is a substrate fact" claim moves
+from direction to empirical fact. Every consumer the project
+ever needs (analyses, lenses, emitters, even the compiler
+itself) lives in the substrate the substrate describes. That's
+the endgame.
+
+---
+
 ## §13. Recent-conversation threads captured
 
 Cross-reference for the user's "make sure nothing is missed" ask.
@@ -1761,6 +1864,7 @@ deferred with a note.
 
 | Thread | Status |
 |---|---|
+| **Where does self-hosting fit in all of this?** | §12.6 — pipeline stages (parse/lower/infer/emit) are L3 post-reflection; reflection is the unblocker, not a parallel track; full plan in `src/v3/SELF_HOSTING.md` |
 | **Existing consumers (complexity, ownership, effects, trace) must be reframed in the new lens stuff** — structural answer to "accumulating debt, no new consumers" critique | §1.5 — motivating consumers enumerated; §12.5 — explicit migration milestones M1-M4 with acceptance criteria; reflection framework is justified empirically when complexity.dag migrates |
 | **Queries fall out of compositional modeling** ("I expected the queries to fall out of proper compositional modeling") | §3.2 — collapsed the query-primitive layer, replaced with field access on declared records |
 | **Higher-order function calls as the deepest substrate question** (from the List modeling exercise) | §3.5 — three options (1a substrate variant, 1b monomorphization, 1c template instantiation); recommendation 1c; codified as Prereq 0 |
