@@ -3,14 +3,23 @@
 This note records the outcome of **Experiment I0** from
 `docs/inference-as-data-experiments.md` on the implementation
 branch that landed Prereq 0 and the first lambda pass. The
-canonical experiment doc lives on the docs branch; this note is the
-implementation-side result so the finding is captured in-tree.
+canonical experiment framing lives in
+`docs/inference-as-data-experiments.md` §3.0; this note is the
+implementation-side result so the finding is captured alongside the
+code it references.
 
 ## Outcome
 
 **Pass.** The representative inference rule checked for I0 is
 decidability-compatible under the current `.dag` bounded-iteration
 invariant, and a second bounded-walk spot-check also passes.
+
+For completeness: the **full I0 gate** is split across two docs.
+This note records the implementation-side representative rule checks;
+the outer fixpoint-loop analysis lives in
+`docs/inference-as-data-experiments.md` §3.0, which reframes I0
+around `infer.rs`'s convergence loop and records the bound as
+`2 * port_count()`.
 
 ## Rule 1 — Literal Type Filling
 
