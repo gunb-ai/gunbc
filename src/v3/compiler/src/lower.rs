@@ -27,7 +27,8 @@ use std::collections::{HashMap, HashSet};
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, Bound, BranchNode, BranchPattern,
     CardinalityBound, Dag, Declaration, DeclarationId, Field, LiteralBits, LoopNode, NodeId,
-    Path, PortId, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
+    Path, PayloadBinding, PortId, TemplateArgument, TransformNode, TransformTarget,
+    TypeConnective, ValueNode,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::operators::{ArithmeticOp, OperatorKind};
@@ -1777,6 +1778,77 @@ fn sentinel_type_shape(dag: &Dag) -> TypeShape {
         .unwrap_or_else(|| TypeShape::new(dag.declarations()[0].id))
 }
 
+fn unresolved_port(dag: &mut Dag, diagnostic: Diagnostic) -> PortId {
+    let port = dag.alloc_port(None);
+    dag.mark_unresolved(port, diagnostic);
+    port
+}
+
+fn lower_field_path_expr(
+    segments: &[String],
+    span: &SourceSpan,
+    dag: &mut Dag,
+    scope: &HashMap<String, PortId>,
+) -> PortId {
+    let Some((head, rest)) = segments.split_first() else {
+        return unresolved_port(
+            dag,
+            Diagnostic::ResolveError {
+                name: "empty dotted path expression".to_string(),
+                span: span.clone(),
+            },
+        );
+    };
+    let Some(mut current_port) = scope.get(head).copied() else {
+        return unresolved_port(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "dotted path `{}` is not a local field access; expression-position dotted paths currently require a local-variable head",
+                    segments.join("."),
+                ),
+                span: span.clone(),
+            },
+        );
+    };
+
+    for field_label in rest {
+        let node_id = dag.alloc_node_id();
+        let output = dag.alloc_port(Some(node_id));
+        dag.push_node(Behavior::Transform(TransformNode {
+            id: node_id,
+            target: TransformTarget::FieldProject {
+                field_label: field_label.clone(),
+            },
+            inputs: vec![current_port],
+            output,
+            span: span.clone(),
+        }));
+        current_port = output;
+    }
+
+    current_port
+}
+
+fn lower_payload_binding(
+    dag: &mut Dag,
+    binding_name: &str,
+) -> PayloadBinding {
+    let payload_port = dag.alloc_port(None);
+    PayloadBinding {
+        binding_name: binding_name.to_string(),
+        payload_port,
+    }
+}
+
+struct LoweredMatchArm {
+    output: PortId,
+    body_node: Option<NodeId>,
+    pattern_name: String,
+    pattern_span: SourceSpan,
+    binding: Option<PayloadBinding>,
+}
+
 fn lower_expr(
     expr: &SurfaceExpr,
     dag: &mut Dag,
@@ -1878,6 +1950,7 @@ fn lower_expr(
                             name: "True".to_string(),
                             span: expr_span(then_branch).clone(),
                         },
+                        binding: None,
                     },
                     Path {
                         body: else_body,
@@ -1886,6 +1959,7 @@ fn lower_expr(
                             name: "False".to_string(),
                             span: expr_span(else_branch).clone(),
                         },
+                        binding: None,
                     },
                 ],
                 output: branch_output,
@@ -1903,33 +1977,50 @@ fn lower_expr(
             // at push time (arm lowering pushes its own nodes). Same
             // ordering pattern as the `If` arm above.
             let scrutinee_port = lower_expr(scrutinee, dag, scope, symbols);
-            let lowered_arms: Vec<(
-                PortId,
-                Option<NodeId>,
-                String,
-                SourceSpan,
-            )> = arms
-                .iter()
-                .map(|arm| {
-                    let arm_output_port =
-                        lower_expr(&arm.body, dag, scope, symbols);
-                    let body_node = producer_of(dag, arm_output_port);
-                    let (pattern_name, pattern_span) = match &arm.pattern {
-                        SurfacePattern::BareVariant { name, span } => {
-                            (name.clone(), span.clone())
-                        }
-                    };
-                    (arm_output_port, body_node, pattern_name, pattern_span)
-                })
-                .collect();
+            let mut lowered_arms: Vec<LoweredMatchArm> =
+                Vec::with_capacity(arms.len());
+            for arm in arms {
+                let mut arm_scope = scope.clone();
+                let (pattern_name, pattern_span, binding) = match &arm.pattern {
+                    SurfacePattern::BareVariant { name, span } => {
+                        (name.clone(), span.clone(), None)
+                    }
+                    SurfacePattern::VariantWith {
+                        name,
+                        binding,
+                        span,
+                    } => {
+                        let payload_binding = lower_payload_binding(dag, binding);
+                        arm_scope.insert(
+                            payload_binding.binding_name.clone(),
+                            payload_binding.payload_port,
+                        );
+                        (name.clone(), span.clone(), Some(payload_binding))
+                    }
+                };
+                let arm_output_port =
+                    lower_expr(&arm.body, dag, &arm_scope, symbols);
+                let body_node = producer_of(dag, arm_output_port);
+                lowered_arms.push(LoweredMatchArm {
+                    output: arm_output_port,
+                    body_node,
+                    pattern_name,
+                    pattern_span,
+                    binding,
+                });
+            }
             let branch_id = dag.alloc_node_id();
             let branch_output = dag.alloc_port(Some(branch_id));
             let paths: Vec<Path> = lowered_arms
                 .into_iter()
-                .map(|(out_port, body_node, name, span)| Path {
-                    body: body_node.unwrap_or(branch_id),
-                    output: out_port,
-                    pattern: BranchPattern::UnresolvedVariant { name, span },
+                .map(|arm| Path {
+                    body: arm.body_node.unwrap_or(branch_id),
+                    output: arm.output,
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: arm.pattern_name,
+                        span: arm.pattern_span,
+                    },
+                    binding: arm.binding,
                 })
                 .collect();
             dag.push_node(Behavior::Branch(BranchNode {
@@ -1949,36 +2040,17 @@ fn lower_expr(
             // (`let x = { a: 1 }`) is a class-5 gap #3 follow-up.
             // Emit a fail-closed diagnostic so the user sees a
             // clean error instead of a silent pass-through.
-            let port = dag.alloc_port(None);
-            dag.mark_unresolved(
-                port,
+            unresolved_port(
+                dag,
                 Diagnostic::ResolveError {
                     name: "record literals are not yet supported in user-code expression position; at M1(3) they are only accepted as `data name: Type = { ... }` body values"
                         .to_string(),
                     span: span.clone(),
                 },
-            );
-            port
+            )
         }
-        SurfaceExpr::Path { span, .. } => {
-            // Dotted-path expressions (`OrderedRing.add`) are
-            // recognized only inside record-literal field values
-            // declared as the `DeclarationRef` sentinel meta-type
-            // (see `lower_record_to_structural`). User-code
-            // expression position has no semantics for them yet —
-            // resolving a dotted name to a port type, value, or
-            // function call needs more context than M1(3) carries.
-            // Fail-closed with a clean diagnostic.
-            let port = dag.alloc_port(None);
-            dag.mark_unresolved(
-                port,
-                Diagnostic::ResolveError {
-                    name: "dotted path expressions are not yet supported in user-code expression position; at M1(3) they are only accepted as record-literal field values whose declared type is the `DeclarationRef` sentinel meta-type"
-                        .to_string(),
-                    span: span.clone(),
-                },
-            );
-            port
+        SurfaceExpr::Path { segments, span } => {
+            lower_field_path_expr(segments, span, dag, scope)
         }
     }
 }

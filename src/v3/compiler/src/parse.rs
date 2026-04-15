@@ -378,12 +378,17 @@ pub enum SurfaceExpr {
     /// downstream lowering can tell whether it was looking at a
     /// bare name (top-level scope lookup) or a dotted reference
     /// (top-level lookup followed by Conj-child walk by label).
-    /// At M1(3) PR-B-unwind only `lower_record_to_structural`
-    /// resolves Path values — it accepts them as field values when
-    /// the declared field type is the `DeclarationRef` sentinel from
-    /// `src/v3/spec/v3_l1.dag`. User-code expression position lowers
-    /// Path through `lower_expr` with a fail-closed diagnostic
-    /// (no semantics yet beyond the realization spec use case).
+    /// At M1(3), two lowering routes consume `Path`:
+    ///
+    /// - `lower_expr` lowers a Path whose head resolves to a local
+    ///   variable into one `TransformTarget::FieldProject` per
+    ///   segment.
+    /// - `lower_record_to_structural` accepts Path as a typed
+    ///   declaration reference when a record-literal field's
+    ///   declared type is the `DeclarationRef` sentinel from
+    ///   `src/v3/spec/v3_l1.dag`.
+    ///
+    /// Other expression-position uses fail closed.
     Path {
         segments: Vec<String>,
         span: SourceSpan,
@@ -457,18 +462,21 @@ pub struct SurfaceMatchArm {
 
 /// Dissolution ledger — **SurfacePattern**:
 ///
-/// 🟡 **M1(2.8) scaffold.** Single variant today: bare variant
-/// patterns like `True`, `None`, `Plus` — a parse-time name that
-/// the inference pass resolves scoped against the scrutinee's
-/// `Disj` connective. Future extensions (wildcard `_`, record
-/// destructure `Some { value: x }`, nested patterns, literal
-/// patterns) go through §8.10's substrate-extension audit.
+/// 🟡 **M1(2.8) scaffold.** Two variants today: bare variant
+/// patterns like `True`, `None`, `Plus`, and single-binding
+/// payload captures like `Some(value)`. Both are parse-time names
+/// that the lowering / inference pipeline resolve scoped against
+/// the scrutinee's `Disj` connective. Future extensions (wildcard
+/// `_`, record destructure `Some { value: x }`, nested patterns,
+/// literal patterns) go through §8.10's substrate-extension audit.
 ///
-/// 4-pattern check against the current single variant:
+/// 4-pattern check:
 /// - Pattern 1 (fact placement): fails. The pattern is per-arm
 ///   data that `BranchPattern::UnresolvedVariant` consumes; no
 ///   alternative structural placement.
-/// - Pattern 2 (variant-is-data): not applicable (single variant).
+/// - Pattern 2 (variant-is-data): fails. BareVariant carries a
+///   variant name; VariantWith carries a variant name plus a
+///   payload-binding name.
 /// - Pattern 3 (algebraic form): fails.
 /// - Pattern 4 (dimensional): fails.
 ///
@@ -480,6 +488,16 @@ pub enum SurfacePattern {
     /// `match a { True => x, False => y }`. Resolves at infer
     /// time against the scrutinee's Disj children by label.
     BareVariant { name: String, span: SourceSpan },
+    /// A single-binding payload capture, e.g. the `Some(value)`
+    /// in `match opt { Some(value) => value, None => 0 }`.
+    /// Lowering resolves the payload's type from the matched
+    /// variant declaration and inserts `binding` into the arm-
+    /// local scope.
+    VariantWith {
+        name: String,
+        binding: String,
+        span: SourceSpan,
+    },
 }
 
 /// Parse-local literal value. Mirrors `dag::LiteralBits` but lives
@@ -1458,24 +1476,52 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_match_arm(&mut self) -> Result<SurfaceMatchArm, Diagnostic> {
-        let pattern_token = self.bump().clone();
-        let pattern = match &pattern_token.kind {
-            TokenKind::Ident(name) => SurfacePattern::BareVariant {
-                name: name.clone(),
-                span: pattern_token.span.clone(),
-            },
+        let name_token = self.bump().clone();
+        let pattern = match &name_token.kind {
+            TokenKind::Ident(name) => {
+                if matches!(self.peek().kind, TokenKind::LParen) {
+                    self.bump();
+                    let binding_token = self.bump().clone();
+                    let binding_name = match &binding_token.kind {
+                        TokenKind::Ident(binding) => binding.clone(),
+                        other => {
+                            return Err(Diagnostic::ParseError {
+                                message: format!(
+                                    "expected binding name in payload match pattern after `{name}(`, got {other:?}"
+                                ),
+                                span: binding_token.span,
+                            });
+                        }
+                    };
+                    let close = self.expect_kind(TokenKind::RParen)?;
+                    SurfacePattern::VariantWith {
+                        name: name.clone(),
+                        binding: binding_name,
+                        span: SourceSpan::new(
+                            self.file,
+                            name_token.span.byte_start,
+                            close.span.byte_end,
+                        ),
+                    }
+                } else {
+                    SurfacePattern::BareVariant {
+                        name: name.clone(),
+                        span: name_token.span.clone(),
+                    }
+                }
+            }
             other => {
                 return Err(Diagnostic::ParseError {
                     message: format!(
-                        "expected variant name in match pattern, got {other:?} — M1(2.8) supports bare-variant patterns only (e.g. `True => expr`)"
+                        "expected variant name in match pattern, got {other:?} — M1(2.8) supports `Variant => expr` and `Variant(binding) => expr`"
                     ),
-                    span: pattern_token.span,
+                    span: name_token.span,
                 });
             }
         };
         self.expect_kind(TokenKind::FatArrow)?;
         let body = self.parse_expr()?;
-        let start = pattern_token.span.byte_start;
+        let start = name_token.span.byte_start;
         let end = expr_span(&body).byte_end;
         Ok(SurfaceMatchArm {
             pattern,

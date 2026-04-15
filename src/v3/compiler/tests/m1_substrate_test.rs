@@ -17,7 +17,7 @@ use v3_compiler::dag::{
     TypeConnective,
 };
 use v3_compiler::operators::{ArithmeticOp, ComparisonOp, OperatorKind};
-use v3_compiler::CompileError;
+use v3_compiler::{CompileError, Diagnostic};
 
 fn compile_any(src: &str, file: &str) -> Dag {
     match compile_to_dag(src, file) {
@@ -1347,5 +1347,364 @@ fn m17_template_argument_stub_branch_is_gone() {
     assert!(
         found_stub_inst,
         "test did not observe a stub Instantiation; the negative invariant is vacuous"
+    );
+}
+
+#[test]
+fn prereq1_field_access_lowers_to_field_project() {
+    // Prereq 1: a local dotted path lowers to a TransformTarget::FieldProject,
+    // not a synthesized accessor declaration. The input port is the authority
+    // for the parent type; the target only needs the projected field label.
+    let src = "\
+type Point { x: Int y: Int }
+fn get_x(point: Point) -> Int = point.x
+";
+    let dag = compile_to_dag(src, "field_access.v3").expect("compiles");
+
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "get_x")
+        .expect("Bind(get_x) exists");
+    let body_node_id = dag
+        .port(bind.value)
+        .produced_by
+        .expect("Bind value has a producer");
+    let projection = match dag.node(body_node_id) {
+        Behavior::Transform(t) => t,
+        other => panic!("expected Transform field projection, got {other:?}"),
+    };
+    assert_eq!(projection.inputs, vec![bind.params[0]]);
+    match &projection.target {
+        TransformTarget::FieldProject { field_label } => assert_eq!(field_label, "x"),
+        other => panic!("expected FieldProject target, got {other:?}"),
+    }
+    match dag.port(bind.value).state() {
+        v3_compiler::dag::PortState::Resolved(ty) => {
+            assert_eq!(*ty, dag.int_shape().expect("Int cached"))
+        }
+        other => panic!("field projection output should resolve to Int, got {other:?}"),
+    }
+}
+
+#[test]
+fn prereq1_multi_hop_field_access_lowers_to_chained_field_projects() {
+    let src = "\
+type Inner { x: Int }
+type Outer { inner: Inner }
+fn get_nested_x(outer: Outer) -> Int = outer.inner.x
+";
+    let dag = compile_to_dag(src, "field_access_multi_hop.v3").expect("compiles");
+
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "get_nested_x")
+        .expect("Bind(get_nested_x) exists");
+
+    let final_projection = match dag.node(
+        dag.port(bind.value)
+            .produced_by
+            .expect("Bind value has a producer"),
+    ) {
+        Behavior::Transform(t) => t,
+        other => panic!("expected final Transform field projection, got {other:?}"),
+    };
+    match &final_projection.target {
+        TransformTarget::FieldProject { field_label } => assert_eq!(field_label, "x"),
+        other => panic!("expected final FieldProject target, got {other:?}"),
+    }
+
+    let intermediate_projection = match dag.node(
+        dag.port(final_projection.inputs[0])
+            .produced_by
+            .expect("final projection input has a producer"),
+    ) {
+        Behavior::Transform(t) => t,
+        other => panic!("expected intermediate Transform field projection, got {other:?}"),
+    };
+    assert_eq!(intermediate_projection.inputs, vec![bind.params[0]]);
+    assert_eq!(intermediate_projection.output, final_projection.inputs[0]);
+    match &intermediate_projection.target {
+        TransformTarget::FieldProject { field_label } => assert_eq!(field_label, "inner"),
+        other => panic!("expected intermediate FieldProject target, got {other:?}"),
+    }
+}
+
+#[test]
+fn prereq1_field_access_on_instantiated_record_substitutes_template_args() {
+    let src = "\
+type Box<T> { value: T }
+fn read(boxed: Box<Int>) -> Int = boxed.value
+";
+    let dag = compile_to_dag(src, "field_access_generic.v3").expect("compiles");
+
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "read")
+        .expect("Bind(read) exists");
+    let projection = match dag.node(
+        dag.port(bind.value)
+            .produced_by
+            .expect("Bind value has a producer"),
+    ) {
+        Behavior::Transform(t) => t,
+        other => panic!("expected Transform field projection, got {other:?}"),
+    };
+    match &projection.target {
+        TransformTarget::FieldProject { field_label } => assert_eq!(field_label, "value"),
+        other => panic!("expected FieldProject target, got {other:?}"),
+    }
+    match dag.port(bind.value).state() {
+        v3_compiler::dag::PortState::Resolved(ty) => {
+            assert_eq!(*ty, dag.int_shape().expect("Int cached"))
+        }
+        other => panic!("generic field projection output should resolve to Int, got {other:?}"),
+    }
+}
+
+#[test]
+fn prereq1_field_access_on_non_conj_type_is_rejected() {
+    let dag = compile_any("fn bad(flag: Bool) -> Int = flag.x", "bad_field_access.v3");
+    assert!(
+        dag.diagnostics().iter().any(|(_, diag)| matches!(
+            diag,
+            Diagnostic::ResolveError { name, .. }
+                if name.contains("field `x`") && name.contains("Conj")
+        )),
+        "expected a non-Conj field-access diagnostic naming `x`, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn prereq1_nonexistent_field_is_rejected_with_field_name() {
+    let src = "\
+type Point { x: Int }
+fn bad(point: Point) -> Int = point.y
+";
+    let dag = compile_any(src, "missing_field.v3");
+    assert!(
+        dag.diagnostics().iter().any(|(_, diag)| matches!(
+            diag,
+            Diagnostic::ResolveError { name, .. }
+                if name.contains("field `y` does not exist")
+        )),
+        "expected a missing-field diagnostic naming `y`, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn prereq2_payload_binding_compiles_and_types_the_payload_port() {
+    // Covers both the basic payload-capture case and the mixed bare +
+    // with-payload arm shape in one source program.
+    let src = "\
+type BoxedInt = Boxed(Int) | Empty
+fn unwrap_or_zero(b: BoxedInt) -> Int = match b { Boxed(value) => value, Empty => 0 }
+";
+    let dag = compile_to_dag(src, "payload_binding.v3").expect("compiles");
+
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "unwrap_or_zero")
+        .expect("Bind(unwrap_or_zero) exists");
+    let branch = match dag.node(
+        dag.port(bind.value)
+            .produced_by
+            .expect("Bind value has a producer"),
+    ) {
+        Behavior::Branch(b) => b,
+        other => panic!("expected Branch at match root, got {other:?}"),
+    };
+    let payload_path = branch
+        .paths
+        .iter()
+        .find(|path| path.binding.is_some())
+        .expect("payload-capturing path exists");
+    assert!(
+        branch.paths.iter().any(|path| path.binding.is_none()),
+        "mixed bare + with-payload arms should preserve `binding: None` on the bare arm"
+    );
+    match &payload_path.pattern {
+        BranchPattern::ResolvedVariant(_) => {}
+        other => panic!("expected resolved match pattern, got {other:?}"),
+    }
+    let binding = payload_path
+        .binding
+        .as_ref()
+        .expect("binding payload stored on Path");
+    assert_eq!(binding.binding_name, "value");
+    match dag.port(binding.payload_port).state() {
+        v3_compiler::dag::PortState::Resolved(ty) => {
+            assert_eq!(*ty, dag.int_shape().expect("Int cached"))
+        }
+        other => panic!("payload port should resolve to Int, got {other:?}"),
+    }
+}
+
+#[test]
+fn prereq2_payload_binding_integrates_with_field_access() {
+    let src = "\
+type Point { x: Int y: Int }
+type MaybePoint = Some(Point) | None
+fn id(m: MaybePoint) -> MaybePoint = m
+fn get_or_zero(m: MaybePoint) -> Int = match id(m) { Some(point) => point.x, None => 0 }
+";
+    let dag = compile_to_dag(src, "payload_field_access.v3").expect("compiles");
+
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "get_or_zero")
+        .expect("Bind(get_or_zero) exists");
+    let branch = match dag.node(
+        dag.port(bind.value)
+            .produced_by
+            .expect("Bind value has a producer"),
+    ) {
+        Behavior::Branch(b) => b,
+        other => panic!("expected Branch at match root, got {other:?}"),
+    };
+    let payload_path = branch
+        .paths
+        .iter()
+        .find(|path| path.binding.is_some())
+        .expect("payload-capturing path exists");
+    let binding = payload_path
+        .binding
+        .as_ref()
+        .expect("binding payload stored on Path");
+    let body_node_id = dag
+        .port(payload_path.output)
+        .produced_by
+        .expect("payload arm body should be the field projection");
+    let projection = match dag.node(body_node_id) {
+        Behavior::Transform(t) => t,
+        other => panic!("expected Transform field projection, got {other:?}"),
+    };
+    assert_eq!(projection.inputs, vec![binding.payload_port]);
+    match &projection.target {
+        TransformTarget::FieldProject { field_label } => assert_eq!(field_label, "x"),
+        other => panic!("expected FieldProject target, got {other:?}"),
+    }
+}
+
+#[test]
+fn prereq2_payload_binding_on_inferred_scrutinee_compiles() {
+    let src = "\
+type BoxedInt = Boxed(Int) | Empty
+fn id(b: BoxedInt) -> BoxedInt = b
+fn unwrap_or_zero(b: BoxedInt) -> Int = match id(b) { Boxed(value) => value, Empty => 0 }
+";
+    let dag = compile_to_dag(src, "payload_binding_inferred.v3").expect("compiles");
+
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "unwrap_or_zero")
+        .expect("Bind(unwrap_or_zero) exists");
+    let branch = match dag.node(
+        dag.port(bind.value)
+            .produced_by
+            .expect("Bind value has a producer"),
+    ) {
+        Behavior::Branch(b) => b,
+        other => panic!("expected Branch at match root, got {other:?}"),
+    };
+    let payload_path = branch
+        .paths
+        .iter()
+        .find(|path| path.binding.is_some())
+        .expect("payload-capturing path exists");
+    let binding = payload_path
+        .binding
+        .as_ref()
+        .expect("binding payload stored on Path");
+    match dag.port(binding.payload_port).state() {
+        v3_compiler::dag::PortState::Resolved(ty) => {
+            assert_eq!(*ty, dag.int_shape().expect("Int cached"))
+        }
+        other => panic!(
+            "payload port for inferred scrutinee should resolve to Int, got {other:?}"
+        ),
+    }
+}
+
+#[test]
+fn prereq2_payload_binding_on_instantiated_sum_substitutes_template_args() {
+    let src = "\
+type Maybe<T> = Some(T) | None
+fn unwrap_or_zero(m: Maybe<Int>) -> Int = match m { Some(value) => value, None => 0 }
+";
+    let dag = compile_to_dag(src, "payload_binding_generic.v3").expect("compiles");
+
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "unwrap_or_zero")
+        .expect("Bind(unwrap_or_zero) exists");
+    let branch = match dag.node(
+        dag.port(bind.value)
+            .produced_by
+            .expect("Bind value has a producer"),
+    ) {
+        Behavior::Branch(b) => b,
+        other => panic!("expected Branch at match root, got {other:?}"),
+    };
+    let payload_path = branch
+        .paths
+        .iter()
+        .find(|path| path.binding.is_some())
+        .expect("payload-capturing path exists");
+    let binding = payload_path
+        .binding
+        .as_ref()
+        .expect("binding payload stored on Path");
+    match dag.port(binding.payload_port).state() {
+        v3_compiler::dag::PortState::Resolved(ty) => {
+            assert_eq!(*ty, dag.int_shape().expect("Int cached"))
+        }
+        other => panic!(
+            "payload port for instantiated sum should resolve to Int, got {other:?}"
+        ),
+    }
+}
+
+#[test]
+fn prereq2_payload_binding_on_non_disj_scrutinee_fails_closed() {
+    let dag =
+        compile_any("fn bad(i: Int) -> Int = match i { Nope(v) => v }", "payload_non_disj.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "payload binding on a non-Disj scrutinee must fail closed"
+    );
+}
+
+#[test]
+fn prereq2_payload_binding_rejects_single_field_record_variants() {
+    let src = "\
+type Point { x: Int }
+type Wrapped = Wrap { inner: Point } | Empty
+fn bad(w: Wrapped) -> Int = match w { Wrap(point) => point.x, Empty => 0 }
+";
+    let dag = compile_any(src, "payload_record_variant.v3");
+    assert!(
+        dag.diagnostics().iter().any(|(_, diag)| matches!(
+            diag,
+            Diagnostic::ResolveError { name, .. }
+                if name.contains("variant `Wrap` does not carry a single positional payload")
+        )),
+        "expected a record-payload binding diagnostic for `Wrap`, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
     );
 }

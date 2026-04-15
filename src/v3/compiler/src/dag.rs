@@ -600,24 +600,34 @@ pub struct ValueNode {
 /// `OperatorKind` enum is only a lookup key, not a parallel
 /// authority.
 ///
-/// 4-pattern check on (Callable, Operator):
+/// 4-pattern check on (Callable, FieldProject, Operator):
 /// - Pattern 1 (fact placement): fails. Callable dispatches via
-///   the declaration's Arrow body; Operator dispatches via the
-///   operand type's algebra walk.
+///   the declaration's Arrow body; FieldProject dispatches via
+///   the input port's resolved Conj + field label; Operator
+///   dispatches via the operand type's algebra walk.
 /// - Pattern 2 (variant-is-data): fails. Callable carries a
-///   DeclarationId; Operator carries an OperatorKind.
+///   DeclarationId; FieldProject carries a field label;
+///   Operator carries an OperatorKind.
 /// - Pattern 3 (algebraic form): fails.
 /// - Pattern 4 (dimensional): fails.
 ///
-/// Verdict: mixed lifecycle. `Callable` is terminal;
+/// Verdict: mixed lifecycle. `Callable` and `FieldProject` are
+/// terminal;
 /// `Operator` is 🟡 scaffold with an explicit M2+ dissolution
 /// trigger (surface grammar adoption of direct algebra field
 /// access or a parse-time desugaring pass).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TransformTarget {
     /// A user function or resolved declaration. Inference walks the
     /// referenced declaration's `Arrow` connective via `resolve_arrow`.
     Callable(DeclarationId),
+    /// Structural projection on a Conj-typed parent value. The
+    /// input port is the single authority for the parent type;
+    /// inference walks that input through any Instantiation /
+    /// ResolvedIdentifier edges, looks up `field_label` on the
+    /// reached Conj, and resolves the output through the same
+    /// substitution context. No synthesized accessor declaration.
+    FieldProject { field_label: String },
     /// A primitive binary operator. Inference dispatches on the
     /// `OperatorKind` variant directly: arithmetic returns the operand
     /// type, comparison returns Bool. No declaration is allocated.
@@ -688,6 +698,20 @@ pub enum BranchPattern {
 }
 
 #[derive(Debug, Clone)]
+pub struct PayloadBinding {
+    /// Authored arm-local name from the surface pattern
+    /// (`Some(payload)` -> `"payload"`). Lowering consumes it to
+    /// extend the arm-local scope. It remains on the substrate as
+    /// carry-forward for readable downstream rendering.
+    pub binding_name: String,
+    /// Port carrying the variant payload value for this arm.
+    /// Lowering allocates the port so the binding can exist in
+    /// arm-local scope immediately; inference later validates the
+    /// matched variant shape and populates the payload type.
+    pub payload_port: PortId,
+}
+
+#[derive(Debug, Clone)]
 pub struct Path {
     pub body: NodeId,
     pub output: PortId,
@@ -695,6 +719,10 @@ pub struct Path {
     /// Discriminator for both `if`/`else` (on Bool) and `match`
     /// (on any Disj). See `BranchPattern`.
     pub pattern: BranchPattern,
+    /// Optional payload extraction for this arm. Present for
+    /// `Variant(binding)` surface patterns; absent for bare-variant
+    /// arms and `if`/`else`.
+    pub binding: Option<PayloadBinding>,
 }
 
 #[derive(Debug, Clone)]
