@@ -298,6 +298,43 @@ lands the parser extension, `ValueBody::Unparsed(SourceSpan)`
 dissolves into `ValueBody::Structural(NodeId)` pointing at a
 lowered value sub-DAG.
 
+### Class 5 gap 5: `where` clause refinement facts
+
+**What's missing.** `type_alias` items in `std/*.dag` can carry
+a `where <constraint>(...)` clause that refines the alias's
+valid value space — e.g. `type CommitSha = String where sha1(.)`
+or `type Port = Int where in_range(1, 65535)`. The parser
+accepts the syntax via `skip_where_clause` at
+`src/v3/compiler/src/parse.rs:801` but drops the entire clause
+span without lowering anything. The refinement fact doesn't
+survive parse → lower, and downstream consumers treat
+`CommitSha` as a plain alias for `String` with no validation.
+
+**Why it's hard.** Refinement is a Tier-2 safety concept — the
+declaration needs to carry a predicate reference, lowering
+needs a place to put it on the `Declaration` struct, and
+inference needs to check the predicate at every value-boundary
+where the refined type is produced. It's neither a 🟡 scaffold
+(the fact is lost, not tracked) nor a simple parser extension
+(lowering has no target shape for "refinement predicate"
+yet).
+
+**Options.** Add a `Declaration.refinement: Option<RefinementSpec>`
+field that carries the predicate name + span; lower
+`where <name>(.)` clauses into it; downstream inference emits
+a diagnostic at value-producing boundaries when the refinement
+isn't enforceable. Or: lower refinements into a structural
+`Conj` whose only child is the refined carrier type plus a
+`Predicate` child — but that reshapes how refined types render.
+
+**Current status.** `skip_where_clause` is the bridge.
+Bootstrapped aliases like `CommitSha` and `Port` currently
+behave as plain aliases; no tests exercise refinement
+validation at M1(2.8). Flagged by codex in earlier reviews
+(`5d6030a8`, `5d0fc6dd`) as a previously-flagged blocker that
+remains open — tracked here as a class-5 gap so the next
+substrate pass doesn't skip it.
+
 ---
 
 Motivation: every review round on PR #445 has found the same bug
