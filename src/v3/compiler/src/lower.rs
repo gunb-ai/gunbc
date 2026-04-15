@@ -1982,7 +1982,14 @@ fn lower_payload_binding(
     };
 
     let payload_type_decl = match &dag.declaration(variant_decl_id).connective {
-        TypeConnective::Conj { children } if children.len() == 1 => children[0].ty,
+        // Sum variants lower both positional and record payloads through Conj.
+        // Only the single-positional `_0` case is a valid `Variant(binding)`
+        // match arm payload; a one-field record variant is not.
+        TypeConnective::Conj { children }
+            if children.len() == 1 && children[0].label.as_str() == "_0" =>
+        {
+            children[0].ty
+        }
         TypeConnective::Conj { .. } => {
             dag.mark_unresolved(
                 payload_port,

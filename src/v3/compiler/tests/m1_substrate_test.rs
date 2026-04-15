@@ -1396,6 +1396,65 @@ fn get_x(point: Point) -> Int = point.x
 }
 
 #[test]
+fn prereq1_multi_hop_field_access_lowers_to_chained_field_projects() {
+    let src = "\
+type Inner { x: Int }
+type Outer { inner: Inner }
+fn get_nested_x(outer: Outer) -> Int = outer.inner.x
+";
+    let dag = compile_to_dag(src, "field_access_multi_hop.v3").expect("compiles");
+
+    let inner_id = find_named(&dag, "Inner");
+    let outer_id = find_named(&dag, "Outer");
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "get_nested_x")
+        .expect("Bind(get_nested_x) exists");
+
+    let final_projection = match dag.node(
+        dag.port(bind.value)
+            .produced_by
+            .expect("Bind value has a producer"),
+    ) {
+        Behavior::Transform(t) => t,
+        other => panic!("expected final Transform field projection, got {other:?}"),
+    };
+    match &final_projection.target {
+        TransformTarget::FieldProject {
+            parent_type,
+            field_label,
+        } => {
+            assert_eq!(*parent_type, inner_id);
+            assert_eq!(field_label, "x");
+        }
+        other => panic!("expected final FieldProject target, got {other:?}"),
+    }
+
+    let intermediate_projection = match dag.node(
+        dag.port(final_projection.inputs[0])
+            .produced_by
+            .expect("final projection input has a producer"),
+    ) {
+        Behavior::Transform(t) => t,
+        other => panic!("expected intermediate Transform field projection, got {other:?}"),
+    };
+    assert_eq!(intermediate_projection.inputs, vec![bind.params[0]]);
+    assert_eq!(intermediate_projection.output, final_projection.inputs[0]);
+    match &intermediate_projection.target {
+        TransformTarget::FieldProject {
+            parent_type,
+            field_label,
+        } => {
+            assert_eq!(*parent_type, outer_id);
+            assert_eq!(field_label, "inner");
+        }
+        other => panic!("expected intermediate FieldProject target, got {other:?}"),
+    }
+}
+
+#[test]
 fn prereq1_field_access_on_non_conj_type_is_rejected() {
     let dag = compile_any("fn bad(flag: Bool) -> Int = flag.x", "bad_field_access.v3");
     assert!(
@@ -1538,5 +1597,24 @@ fn prereq2_payload_binding_on_non_disj_scrutinee_fails_closed() {
     assert!(
         !dag.diagnostics().is_empty(),
         "payload binding on a non-Disj scrutinee must fail closed"
+    );
+}
+
+#[test]
+fn prereq2_payload_binding_rejects_single_field_record_variants() {
+    let src = "\
+type Point { x: Int }
+type Wrapped = Wrap { inner: Point } | Empty
+fn bad(w: Wrapped) -> Int = match w { Wrap(point) => point.x, Empty => 0 }
+";
+    let dag = compile_any(src, "payload_record_variant.v3");
+    assert!(
+        dag.diagnostics().iter().any(|(_, diag)| matches!(
+            diag,
+            Diagnostic::ResolveError { name, .. }
+                if name.contains("variant `Wrap` does not carry a single positional payload")
+        )),
+        "expected a record-payload binding diagnostic for `Wrap`, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
     );
 }
