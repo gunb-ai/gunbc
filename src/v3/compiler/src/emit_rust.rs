@@ -55,6 +55,61 @@ use crate::operators::OperatorKind;
 /// structural cause — no catch-all `Unknown` — so consumers can
 /// classify the failure against `dsl/extdeps/languages/rust.dag`'s
 /// coverage.
+///
+/// **Dissolution receipt — 🟢 TERMINAL.** Eight variants, each
+/// classifying a structurally distinct failure mode at a different
+/// boundary in the emitter pipeline. The variants partition into
+/// three categories:
+///
+///   1. **Realization-table gaps** (`MissingTypeRealization`,
+///      `MissingOperatorRealization`, `MissingBehaviorRealization`):
+///      the declaration the DAG references has no matching
+///      realization in `dsl/extdeps/languages/rust.dag`. Each
+///      payload is a typed `DeclarationId` (no string keys) so the
+///      caller can pinpoint which declaration is uncovered.
+///
+///   2. **Substrate-side bugs** (`MissingSubstrateMarker`,
+///      `UntypedPort`, `UnresolvedBranchPattern`): the substrate
+///      handed the emitter a state inference should have driven
+///      to a terminal form. Reaching any of these is a bug in
+///      bootstrap, infer, or lowering — not a target-language
+///      coverage issue.
+///
+///   3. **Out-of-scope DAG shapes** (`UnsupportedBehavior`,
+///      `NonBooleanBranch`): the DAG carries a structurally valid
+///      shape that PR-B's emit scope doesn't cover yet (Loop,
+///      Callable, non-Bool branches). Each is a follow-up boundary,
+///      not a substrate gap.
+///
+/// 4-pattern check:
+/// - **Pattern 1 (fact placement)**: fails. Each variant has a
+///   structurally distinct payload: typed `DeclarationId` values
+///   for realization-table gaps, a typed `SubstrateMarkerRole`
+///   tag for marker absence, a `PortId` for untyped ports, a
+///   string-named variant for unresolved branch patterns. Each
+///   payload type lives at a different boundary.
+/// - **Pattern 2 (variant-is-data)**: fails. Different payload
+///   types per variant; no unified record shape.
+/// - **Pattern 3 (algebraic form)**: fails. The eight variants do
+///   not factor into a smaller algebra — the three categories
+///   above are descriptive groupings, not algebraic dimensions.
+/// - **Pattern 4 (dimensional)**: fails. No shared coordinate
+///   space across the eight failure modes.
+///
+/// Verdict: **🟢 TERMINAL** at PR-B-unwind scope. Future emit
+/// extensions (Callable dispatch, Loop emission, multi-target
+/// emission shared across emit_rust/emit_go/emit_python) may add
+/// new variants, each with its own substrate-extension audit per
+/// `M1_DESIGN.md` §8.10. The three categories above are stable;
+/// new variants slot into the appropriate one.
+///
+/// **`UnsupportedBehavior(String)` payload note.** The string
+/// payload is a human-readable description of which shape was
+/// hit, not a dispatch key. Callers do not match on the string;
+/// they match on the variant tag and treat the string as
+/// diagnostic detail. The 🟢 verdict above accounts for it as
+/// "category 3 — out-of-scope shape" rather than as a string-
+/// dispatch axis.
 #[derive(Debug, Clone)]
 pub enum EmitError {
     /// No `TypeRealization` was declared in rust.dag for the given
