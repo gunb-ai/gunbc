@@ -700,6 +700,20 @@ pub enum BranchPattern {
 }
 
 #[derive(Debug, Clone)]
+pub struct PayloadBinding {
+    /// Authored arm-local name from the surface pattern
+    /// (`Some(payload)` -> `"payload"`). Lowering consumes it to
+    /// extend the arm-local scope; inference does not consult it.
+    /// It remains on the substrate as carry-forward for readable
+    /// downstream rendering.
+    pub binding_name: String,
+    /// Typed port carrying the variant payload value for this arm.
+    /// Lowering allocates and types the port when it unwraps a
+    /// single-positional variant payload.
+    pub payload_port: PortId,
+}
+
+#[derive(Debug, Clone)]
 pub struct Path {
     pub body: NodeId,
     pub output: PortId,
@@ -707,6 +721,10 @@ pub struct Path {
     /// Discriminator for both `if`/`else` (on Bool) and `match`
     /// (on any Disj). See `BranchPattern`.
     pub pattern: BranchPattern,
+    /// Optional payload extraction for this arm. Present for
+    /// `Variant(binding)` surface patterns; absent for bare-variant
+    /// arms and `if`/`else`.
+    pub binding: Option<PayloadBinding>,
 }
 
 #[derive(Debug, Clone)]

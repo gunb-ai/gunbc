@@ -1426,3 +1426,117 @@ fn bad(point: Point) -> Int = point.y
         dag.diagnostics().iter().collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn prereq2_payload_binding_compiles_and_types_the_payload_port() {
+    // Covers both the basic payload-capture case and the mixed bare +
+    // with-payload arm shape in one source program.
+    let src = "\
+type BoxedInt = Boxed(Int) | Empty
+fn unwrap_or_zero(b: BoxedInt) -> Int = match b { Boxed(value) => value, Empty => 0 }
+";
+    let dag = compile_to_dag(src, "payload_binding.v3").expect("compiles");
+
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "unwrap_or_zero")
+        .expect("Bind(unwrap_or_zero) exists");
+    let branch = match dag.node(
+        dag.port(bind.value)
+            .produced_by
+            .expect("Bind value has a producer"),
+    ) {
+        Behavior::Branch(b) => b,
+        other => panic!("expected Branch at match root, got {other:?}"),
+    };
+    let payload_path = branch
+        .paths
+        .iter()
+        .find(|path| path.binding.is_some())
+        .expect("payload-capturing path exists");
+    assert!(
+        branch.paths.iter().any(|path| path.binding.is_none()),
+        "mixed bare + with-payload arms should preserve `binding: None` on the bare arm"
+    );
+    match &payload_path.pattern {
+        BranchPattern::ResolvedVariant(_) => {}
+        other => panic!("expected resolved match pattern, got {other:?}"),
+    }
+    let binding = payload_path
+        .binding
+        .as_ref()
+        .expect("binding payload stored on Path");
+    assert_eq!(binding.binding_name, "value");
+    match dag.port(binding.payload_port).state() {
+        v3_compiler::dag::PortState::Resolved(ty) => {
+            assert_eq!(*ty, dag.int_shape().expect("Int cached"))
+        }
+        other => panic!("payload port should resolve to Int, got {other:?}"),
+    }
+}
+
+#[test]
+fn prereq2_payload_binding_integrates_with_field_access() {
+    let src = "\
+type Point { x: Int y: Int }
+type MaybePoint = Some(Point) | None
+fn get_or_zero(m: MaybePoint) -> Int = match m { Some(point) => point.x, None => 0 }
+";
+    let dag = compile_to_dag(src, "payload_field_access.v3").expect("compiles");
+
+    let point_id = find_named(&dag, "Point");
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "get_or_zero")
+        .expect("Bind(get_or_zero) exists");
+    let branch = match dag.node(
+        dag.port(bind.value)
+            .produced_by
+            .expect("Bind value has a producer"),
+    ) {
+        Behavior::Branch(b) => b,
+        other => panic!("expected Branch at match root, got {other:?}"),
+    };
+    let payload_path = branch
+        .paths
+        .iter()
+        .find(|path| path.binding.is_some())
+        .expect("payload-capturing path exists");
+    let binding = payload_path
+        .binding
+        .as_ref()
+        .expect("binding payload stored on Path");
+    let body_node_id = dag
+        .port(payload_path.output)
+        .produced_by
+        .expect("payload arm body should be the field projection");
+    let projection = match dag.node(body_node_id) {
+        Behavior::Transform(t) => t,
+        other => panic!("expected Transform field projection, got {other:?}"),
+    };
+    assert_eq!(projection.inputs, vec![binding.payload_port]);
+    match &projection.target {
+        TransformTarget::FieldProject {
+            parent_type,
+            field_label,
+        } => {
+            assert_eq!(*parent_type, point_id);
+            assert_eq!(field_label, "x");
+        }
+        other => panic!("expected FieldProject target, got {other:?}"),
+    }
+}
+
+#[test]
+fn prereq2_payload_binding_on_non_disj_scrutinee_fails_closed() {
+    let dag =
+        compile_any("fn bad(i: Int) -> Int = match i { Nope(v) => v }", "payload_non_disj.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "payload binding on a non-Disj scrutinee must fail closed"
+    );
+}

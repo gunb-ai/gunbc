@@ -27,7 +27,8 @@ use std::collections::{HashMap, HashSet};
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, Bound, BranchNode, BranchPattern,
     CardinalityBound, Dag, Declaration, DeclarationId, Field, LiteralBits, LoopNode, NodeId,
-    Path, PortId, PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
+    Path, PayloadBinding, PortId, PortState, TemplateArgument, TransformNode, TransformTarget,
+    TypeConnective, ValueNode,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::operators::{ArithmeticOp, OperatorKind};
@@ -1078,6 +1079,24 @@ fn walk_to_conj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
     None
 }
 
+fn walk_to_disj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
+    let mut current = start;
+    for _ in 0..32 {
+        let decl = dag.declaration(current);
+        match &decl.connective {
+            TypeConnective::Disj { .. } => return Some(current),
+            TypeConnective::Instantiation { template, .. } => {
+                current = *template;
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                current = *next;
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
 fn declaration_display_name(dag: &Dag, decl_id: DeclarationId) -> String {
     dag.declaration(decl_id)
         .name
@@ -1895,6 +1914,126 @@ fn lower_field_path_expr(
     current_port
 }
 
+fn lower_payload_binding(
+    dag: &mut Dag,
+    scrutinee_port: PortId,
+    variant_name: &str,
+    binding_name: &str,
+    span: &SourceSpan,
+) -> PayloadBinding {
+    let payload_port = dag.alloc_port(None);
+    let Some(scrutinee_decl_id) = (match dag.port(scrutinee_port).state() {
+        PortState::Resolved(ty) => Some(ty.declaration),
+        PortState::Unresolved | PortState::Uninferred => None,
+    }) else {
+        dag.mark_unresolved(
+            payload_port,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "cannot bind payload `{binding_name}` for variant `{variant_name}` because the match scrutinee type is not resolved during lowering"
+                ),
+                span: span.clone(),
+            },
+        );
+        return PayloadBinding {
+            binding_name: binding_name.to_string(),
+            payload_port,
+        };
+    };
+
+    let Some(disj_decl_id) = walk_to_disj_decl(dag, scrutinee_decl_id) else {
+        dag.mark_unresolved(
+            payload_port,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "cannot bind payload `{binding_name}` for variant `{variant_name}` because the match scrutinee does not walk to a Disj type"
+                ),
+                span: span.clone(),
+            },
+        );
+        return PayloadBinding {
+            binding_name: binding_name.to_string(),
+            payload_port,
+        };
+    };
+
+    let variants = match &dag.declaration(disj_decl_id).connective {
+        TypeConnective::Disj { variants } => variants,
+        _ => unreachable!("walk_to_disj_decl returned a non-Disj declaration"),
+    };
+    let Some(variant_decl_id) = variants
+        .iter()
+        .find(|field| field.label == variant_name)
+        .map(|field| field.ty)
+    else {
+        dag.mark_unresolved(
+            payload_port,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "variant `{variant_name}` is not a constructor of this match's scrutinee type"
+                ),
+                span: span.clone(),
+            },
+        );
+        return PayloadBinding {
+            binding_name: binding_name.to_string(),
+            payload_port,
+        };
+    };
+
+    let payload_type_decl = match &dag.declaration(variant_decl_id).connective {
+        TypeConnective::Conj { children } if children.len() == 1 => children[0].ty,
+        TypeConnective::Conj { .. } => {
+            dag.mark_unresolved(
+                payload_port,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "variant `{variant_name}` does not carry a single positional payload and cannot bind `{binding_name}`"
+                    ),
+                    span: span.clone(),
+                },
+            );
+            return PayloadBinding {
+                binding_name: binding_name.to_string(),
+                payload_port,
+            };
+        }
+        _ => {
+            dag.mark_unresolved(
+                payload_port,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "variant `{variant_name}` does not lower to a payload Conj and cannot bind `{binding_name}`"
+                    ),
+                    span: span.clone(),
+                },
+            );
+            return PayloadBinding {
+                binding_name: binding_name.to_string(),
+                payload_port,
+            };
+        }
+    };
+
+    match declaration_to_port_shape(payload_type_decl, dag, span) {
+        Ok(ty) => dag.set_port_type(payload_port, ty),
+        Err(diag) => dag.mark_unresolved(payload_port, diag),
+    }
+
+    PayloadBinding {
+        binding_name: binding_name.to_string(),
+        payload_port,
+    }
+}
+
+struct LoweredMatchArm {
+    output: PortId,
+    body_node: Option<NodeId>,
+    pattern_name: String,
+    pattern_span: SourceSpan,
+    binding: Option<PayloadBinding>,
+}
+
 fn lower_expr(
     expr: &SurfaceExpr,
     dag: &mut Dag,
@@ -1996,6 +2135,7 @@ fn lower_expr(
                             name: "True".to_string(),
                             span: expr_span(then_branch).clone(),
                         },
+                        binding: None,
                     },
                     Path {
                         body: else_body,
@@ -2004,6 +2144,7 @@ fn lower_expr(
                             name: "False".to_string(),
                             span: expr_span(else_branch).clone(),
                         },
+                        binding: None,
                     },
                 ],
                 output: branch_output,
@@ -2021,33 +2162,56 @@ fn lower_expr(
             // at push time (arm lowering pushes its own nodes). Same
             // ordering pattern as the `If` arm above.
             let scrutinee_port = lower_expr(scrutinee, dag, scope, symbols);
-            let lowered_arms: Vec<(
-                PortId,
-                Option<NodeId>,
-                String,
-                SourceSpan,
-            )> = arms
-                .iter()
-                .map(|arm| {
-                    let arm_output_port =
-                        lower_expr(&arm.body, dag, scope, symbols);
-                    let body_node = producer_of(dag, arm_output_port);
-                    let (pattern_name, pattern_span) = match &arm.pattern {
-                        SurfacePattern::BareVariant { name, span } => {
-                            (name.clone(), span.clone())
-                        }
-                    };
-                    (arm_output_port, body_node, pattern_name, pattern_span)
-                })
-                .collect();
+            let mut lowered_arms: Vec<LoweredMatchArm> =
+                Vec::with_capacity(arms.len());
+            for arm in arms {
+                let mut arm_scope = scope.clone();
+                let (pattern_name, pattern_span, binding) = match &arm.pattern {
+                    SurfacePattern::BareVariant { name, span } => {
+                        (name.clone(), span.clone(), None)
+                    }
+                    SurfacePattern::VariantWith {
+                        name,
+                        binding,
+                        span,
+                    } => {
+                        let payload_binding = lower_payload_binding(
+                            dag,
+                            scrutinee_port,
+                            name,
+                            binding,
+                            span,
+                        );
+                        arm_scope.insert(
+                            payload_binding.binding_name.clone(),
+                            payload_binding.payload_port,
+                        );
+                        (name.clone(), span.clone(), Some(payload_binding))
+                    }
+                };
+                let arm_output_port =
+                    lower_expr(&arm.body, dag, &arm_scope, symbols);
+                let body_node = producer_of(dag, arm_output_port);
+                lowered_arms.push(LoweredMatchArm {
+                    output: arm_output_port,
+                    body_node,
+                    pattern_name,
+                    pattern_span,
+                    binding,
+                });
+            }
             let branch_id = dag.alloc_node_id();
             let branch_output = dag.alloc_port(Some(branch_id));
             let paths: Vec<Path> = lowered_arms
                 .into_iter()
-                .map(|(out_port, body_node, name, span)| Path {
-                    body: body_node.unwrap_or(branch_id),
-                    output: out_port,
-                    pattern: BranchPattern::UnresolvedVariant { name, span },
+                .map(|arm| Path {
+                    body: arm.body_node.unwrap_or(branch_id),
+                    output: arm.output,
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: arm.pattern_name,
+                        span: arm.pattern_span,
+                    },
+                    binding: arm.binding,
                 })
                 .collect();
             dag.push_node(Behavior::Branch(BranchNode {
