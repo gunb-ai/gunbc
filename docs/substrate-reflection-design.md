@@ -32,48 +32,97 @@ etc.) live only in Rust source. They're not DAG declarations.
 Nothing in `.dag` can observe them. This is the last untested
 load-bearing claim in the experiments log.
 
-**The concrete failure mode this work prevents.** Lenses are the
-thesis's invariant-enforcement primitive. The four lenses that
-ship today (`lens_provenance`, `lens_depth`, `lens_cost`,
-`lens_unused_parameters`) are all Rust modules. Every new lens
-added as a Rust module grows a registry of known lens names, a
-dispatch pattern keyed on those names, and shared Rust-lens
-infrastructure. That is the same failure class as v2's
-`kernel_type_set` — a name-roster leak at a different layer. The
-project calls this the **`kernel_lens_set`** failure: by the time
-you have five or six Rust lenses, the compiler has a hardcoded
-list of known lens names and a special handler per lens, and
-migrating them to `.dag` is a meta-refactor. The rule from
-[`lens-library-design.md`](lens-library-design.md) §1.5 — "stop
-and build the reflection primitive before the scaffold ossifies"
-— is this work's charter.
+**Reflection is the prerequisite for anything that reads
+substrate-about-substrate.** That's a bigger set than "lenses"
+and the framing matters. The earlier draft of this doc pitched
+reflection as "it enables canonical lenses," which is about 40%
+of what the work actually buys. The other 60% is schema
+migration: a program that compares two versions of the
+substrate's declarations and emits a structural diff so
+compatibility changes can be applied mechanically instead of
+patched by hand. Both use cases — lenses AND schema diffs — are
+consumers of the same primitive (a `.dag` program that reads
+substrate declarations as data). Anything else that needs to
+observe the substrate's own shape (cross-version regression
+detection, automated type-migration bots, substrate-aware
+refactoring tools) joins the same set.
 
-**Composability was the user-facing framing.** The second reason
+**The two near-term consumers are not on the same critical
+path, but they are the same mechanism.**
+
+1. **Lenses as `.dag` programs** — the structural
+   invariant-enforcement primitive. `lens_unused_parameters`
+   migrates first as the proof point. The 6500+ lines of v2
+   analysis code in §1.5 follow as L2 consumer migrations.
+2. **Schema migration as `.dag` programs** — the mechanism by
+   which v3 eliminates manual stage0 edits when the substrate
+   schema changes. Per `SELF_HOSTING.md` §11: the schema-diff
+   lens reads old and new substrate declarations, classifies
+   each delta into a `ChangeKind` (AddField, AddVariant, Rename,
+   RemoveField, etc.), and emits a structural patch over Rust
+   source. The patch applier is a follow-up PR after reflection.
+
+**The concrete failure mode this work prevents — for lenses.**
+The four lenses that ship today (`lens_provenance`, `lens_depth`,
+`lens_cost`, `lens_unused_parameters`) are all Rust modules.
+Every new lens added as a Rust module grows a registry of known
+lens names, a dispatch pattern keyed on those names, and shared
+Rust-lens infrastructure. That is the same failure class as
+v2's `kernel_type_set` — a name-roster leak at a different
+layer. The project calls this the **`kernel_lens_set`** failure:
+by the time you have five or six Rust lenses, the compiler has
+a hardcoded list of known lens names and a special handler per
+lens, and migrating them to `.dag` is a meta-refactor. The rule
+from [`lens-library-design.md`](lens-library-design.md) §1.5 —
+"stop and build the reflection primitive before the scaffold
+ossifies" — is this work's charter.
+
+**The concrete failure mode this work prevents — for schema
+migration.** v2's bootstrap pain is documented: manual stage0
+edits to bridge TwoPhase changes, fixed-point failures that
+report at the wrong layer, `bootstrap.dag` with 195 lines of
+decorative modeling and zero consumers. The structural answer
+is a schema-diff lens + a patch generator, both as `.dag`
+programs over the reflection surface. Without reflection, they
+can't be written — the diff lens needs to walk two Dag values
+from two substrate versions and compare them structurally,
+which requires substrate declarations to be data. Reflection
+is the unblocker.
+
+**Composability was the user-facing framing.** The third reason
 this matters: a `.dag` lens can be analyzed by another `.dag`
 lens (including itself). A Rust lens cannot — analyzing it would
 require a meta-language separate from the substrate. Once lenses
 live in the substrate, `lens_unused_parameters` can run against
 its own source, `lens_layer_opacity` can check that other lenses
 don't dispatch on names, `lens_cost` can estimate the cost of
-running a lens. This is the "DAG that looks inward" the user has
-been pointing at — and the composition property lenses need if
-they're ever going to be used to analyze each other.
+running a lens, and a schema-diff lens can run against the
+substrate's own declaration set. This is the "DAG that looks
+inward" the user has been pointing at.
 
-**The third reason: cost of change.** The thesis's load-bearing
+**The fourth reason: cost of change.** The thesis's load-bearing
 metric is "one file edit per new feature." For lenses, the
 current metric is: new Rust file + build graph edit + test module
 registration + documentation update. That's a four-file minimum.
 In canonical form, adding a new lens is one `.dag` file loaded
-by the manifest. One file. That's the thesis target.
+by the manifest. One file. For schema migration, the current
+metric is: hand-edit stage0 + hand-write a bridge + regenerate
++ debug the fixed-point failure by hand. In canonical form,
+schema change becomes: write the new substrate declaration,
+run the schema-diff lens, apply the generated patch, verify
+the fixed point. Zero manual steps. Both are thesis targets.
 
 ## §1.5 The motivating consumers already exist
 
 Reflection is not a decorative framework in search of users. It
 is the mechanism by which **6500+ lines of existing v2 analysis
-code** migrate into v3 as `.dag` lenses, without being rewritten
-as Rust modules and without losing the thesis's physics-plus-lens
-compression. The consumers are already written. They are waiting
-for the substrate to host them.
+code plus the entire schema-migration pain class** become
+structural operations in v3. The consumers are already written
+(or, in the schema-migration case, already modeled in v2's
+`bootstrap.dag` but without working implementations). They are
+waiting for the substrate to host them.
+
+**Consumer class A — v2 analyses that migrate to `.dag` lenses:**
 
 | v2 consumer | Lines | What it does | v3 current state | Migration target |
 |---|---|---|---|---|
@@ -81,6 +130,30 @@ for the substrate to host them.
 | `src/v2/ownership.dag` | 719 | Move / borrow / clone inference, lifetime tracking, ref-counting decisions. Feeds directly into Rust emission. | Nothing in v3. | `dsl/lenses/ownership.dag` |
 | `src/v2/effect_derivation.dag` | 66 | Pure vs effectful function classification. Experiment 4 from the v3 validation experiments shipped a prototype version. | Nothing in v3 beyond the experiment. | `dsl/lenses/effects.dag` |
 | `src/v2/trace.dag` | 223 | Execution trace extraction for debugging. | Nothing in v3. | `dsl/lenses/trace.dag` |
+
+**Consumer class B — schema migration as a structural operation:**
+
+| v2 consumer | Status in v2 | Purpose | v3 equivalent | Migration target |
+|---|---|---|---|---|
+| `dsl/gunbc/bootstrap.dag` types (`CompilerStage`, `TransformContract`, `ChangeClassification`, `BootstrapStrategy`, `FixedPointCheck`, `FieldPropagation`) | **Declared but unused.** 195 lines of vocabulary with zero consumers wired into the actual regen flow. | The *model* exists; the *dissolution* never happened. v2 ships with the blueprint for fixing its own self-hosting pain, not wired. | `dsl/lenses/schema_diff.dag` + `dsl/lenses/schema_patch.dag` + a driver in `regen.dag` | **Schema-diff lens** reads two substrate versions and produces a `ChangeClassification`; **schema-patch lens** reads the classification and emits a structural Rust-source patch; **regen driver** composes them. All three are `.dag` programs over the reflection surface. See `src/v3/SELF_HOSTING.md` §11. |
+
+**The Consumer B class is the second 60% of reflection's value.**
+The lens-migration story (class A) is about 40% of what
+reflection buys because the four v2 analyses already work —
+they just currently live in v2. Reflection moves them without
+losing behavior. **Schema migration (class B) is new capability**:
+v2 has the pain, has the model, does NOT have the dissolution.
+Reflection is the first time gunbc can actually wire the
+bootstrap model to its consumers.
+
+**Both consumer classes are tests of the same claim.** The
+class A migrations (complexity et al.) test "physics plus lens,
+zero heuristics" on analyses. The class B schema-migration work
+tests the same claim on the compiler's own bootstrap loop. Every
+v2 `annotate_*` helper that dissolves in class A is a win; every
+manual stage0 edit that becomes a structural operation in
+class B is the same win for a different consumer. Both are
+Experiment 2 at scope.
 
 **The critical framing: `lens_cost.rs` (80 lines) is v3's
 placeholder for `complexity.dag` (5490 lines).** The reflection
@@ -735,7 +808,7 @@ substitutes a type parameter.
   have a way to thread the binding. This case needs more
   thought.
 
-**My recommendation: 1c.** Three reasons:
+**Decision: 1c.** Locked in. Three reasons:
 
 1. **Thesis alignment.** The substrate already treats template
    arguments as "the parameter is filled in at the call site
@@ -751,16 +824,32 @@ substitutes a type parameter.
    "walk-the-compiler-internal-state" the thesis forbids.
 3. **No substrate variant addition.** Option 1a is clean but
    adds `TransformTarget::PortValue`, which has to pass the
-   §8.10 audit. It probably would, but it's a higher bar than
-   1c, which is a field-semantics extension.
+   §8.10 audit. More importantly, 1a enables runtime function
+   values — a feature v3 doesn't need at the substrate level
+   because every higher-order call in lenses is compile-time
+   monomorphizable. Adding a substrate variant for a feature
+   we don't need is accumulating a scaffold.
 
-**Decision point for the user.** This is the deepest substrate
-question in the prerequisite slate. 1c is my recommendation,
-but 1a and 1b are both defensible. **Prereq 0 in §11 codifies
-this as a design decision that must happen before any other
-prereq lands** — field access, pattern-with-payload, and
-lambda are all independent of the choice, but `std/list.dag`
-(Prereq 4) depends on this decision being made.
+**The call-chain threading question is answered by SubstStack
+propagation.** When a higher-order function like `fn twice<T>
+(x: T, f: fn(T) -> T) -> T = apply(apply(x, f), f)` is
+instantiated with `twice[T := Int, f := negate]`, the inner
+calls to `apply(x, f)` inherit the outer instantiation's
+`SubstStack` frame. Inside `apply`'s body, `f(x)` resolves
+through the SubstStack chain: `apply.f → twice.f → negate`,
+arriving at `negate(x)` as a concrete Transform with
+`TransformTarget::Callable(negate_decl_id)`. This is the same
+substitution machinery v3 already uses for type-parameter
+threading; extending it to function-typed parameters is a
+SubstStack-frame addition, not new substrate.
+
+**Prereq 0 codifies this as the implementation target.** The
+implementation extends `TemplateArgument`'s value slot to
+accept function references (as `DeclarationId`), extends the
+inference walker to resolve function parameters through
+SubstStack instead of through Transform input lookup, and
+leaves Transform's existing `TransformTarget::Callable` shape
+unchanged. No substrate variant growth.
 
 ---
 
@@ -1455,16 +1544,23 @@ Reflection is the PR that closes the slate.
 ### Prerequisite slate (independent PRs, lands before reflection)
 
 **Prereq 0 — Template instantiation for function-typed
-parameters.** The deepest substrate question. Pick one of the
-three options in §3.5 (my recommendation: **1c**, extending
-`TemplateArgument` to bind function-typed parameters). Land the
-substrate/inference extension, add test coverage for a
-higher-order call (e.g., `fn apply<T>(x: T, f: fn(T) -> T) -> T
-= f(x)` called as `apply(3, negate)`). **Blocker for Prereq 4.**
+parameters.** The deepest substrate question. **Decision locked
+as 1c per §3.5:** extend `TemplateArgument`'s value slot to
+accept function references (as `DeclarationId`) alongside type
+arguments. The inference walker resolves function parameters
+through the existing `SubstStack` machinery — same way type
+parameters propagate. No new substrate variant, no runtime
+function dispatch, no monomorphization sprawl. Land the
+substrate extension, add test coverage for a higher-order
+call (e.g., `fn apply<T>(x: T, f: fn(T) -> T) -> T = f(x)`
+called as `apply(3, negate)`). **Blocker for Prereq 4.**
 
-- [ ] §3.5 decision committed (1a, 1b, or 1c)
-- [ ] Substrate/inference extension shipped
-- [ ] Test: a higher-order call compiles and runs correctly
+- [x] §3.5 decision committed (1c — locked)
+- [ ] `TemplateArgument` extended to accept function-reference values
+- [ ] Inference walker threads function bindings through SubstStack
+- [ ] Test: a single-level higher-order call compiles and runs
+- [ ] Test: a two-level nested higher-order call resolves via
+      SubstStack propagation (the `twice(apply(x, f), f)` pattern)
 - [ ] No regressions on existing v3 tests
 
 **Prereq 1 — Field-access lowering.** Extend `lower_expr` to
@@ -1867,7 +1963,7 @@ deferred with a note.
 | **Where does self-hosting fit in all of this?** | §12.6 — pipeline stages (parse/lower/infer/emit) are L3 post-reflection; reflection is the unblocker, not a parallel track; full plan in `src/v3/SELF_HOSTING.md` |
 | **Existing consumers (complexity, ownership, effects, trace) must be reframed in the new lens stuff** — structural answer to "accumulating debt, no new consumers" critique | §1.5 — motivating consumers enumerated; §12.5 — explicit migration milestones M1-M4 with acceptance criteria; reflection framework is justified empirically when complexity.dag migrates |
 | **Queries fall out of compositional modeling** ("I expected the queries to fall out of proper compositional modeling") | §3.2 — collapsed the query-primitive layer, replaced with field access on declared records |
-| **Higher-order function calls as the deepest substrate question** (from the List modeling exercise) | §3.5 — three options (1a substrate variant, 1b monomorphization, 1c template instantiation); recommendation 1c; codified as Prereq 0 |
+| **Higher-order function calls as the deepest substrate question** (from the List modeling exercise) | §3.5 — three options (1a substrate variant, 1b monomorphization, 1c template instantiation); **decision locked as 1c** with SubstStack propagation for call-chain threading; codified as Prereq 0 |
 | **`behavior_output_port` resolved compositionally** | §3.2.1 — replaced with `result_port: PortId` field on every Behavior variant payload, accessed by field read |
 | **`std.list` modeled as the free monoid on T** | `src/v3/std/list.dag` (committed alongside this doc), §3.2 prereq list |
 | **Pipe operator `\|>` — function or sugar?** | §4.3 — unary form is a function, multi-arg form is parser-level sugar with first-arg injection |

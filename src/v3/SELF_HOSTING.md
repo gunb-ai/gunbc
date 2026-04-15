@@ -548,7 +548,356 @@ source.
 
 ---
 
-## §10. When this doc updates
+## §10. Schema migration as a structural operation
+
+v2's bootstrap pain reveals three failure modes that v3 must
+NOT repeat:
+
+1. **Fixed-point failures report at the wrong layer.** When
+   `regenerate-stage0.sh`'s pass1 output differs from pass2,
+   the error is "fixed-point failed" with a file-level diff.
+   Localizing which pipeline stage diverged requires hours of
+   hand-bisection. ROADMAP's M5 Phase 4 Level 1 names the fix
+   (per-stage structural diffs during regen); it was never
+   shipped.
+2. **Manual stage0 edits come from TwoPhase schema changes,
+   not drift.** A schema change that isn't backward-compatible
+   (new required field, removed field, rename) forces a manual
+   Rust patch to bridge one bootstrap cycle. v2 has a model
+   for this (`dsl/gunbc/bootstrap.dag`'s `BootstrapStrategy`,
+   `ChangeClassification`, `TransformContract`) but **the model
+   has zero consumers**. 195 lines of decorative modeling; the
+   regen flow doesn't read any of it.
+3. **`dsl/gunbc/bootstrap.dag` is decorative.** The types
+   `CompilerStage`, `TransformContract`, `ChangeClassification`,
+   `BootstrapStrategy`, `FixedPointCheck`, `FieldPropagation`
+   exist but no code consumes them. v2 shipped with the
+   blueprint for fixing its own self-hosting pain, not wired.
+   This is the Track 17 "decorative types" failure mode
+   `ROADMAP.md` keeps naming.
+
+**v3's structural answer: make schema migration a compile-time
+operation over the substrate's own declarations.** The schema
+diff is a lens. The patch is a data structure. The bridge build
+is a mechanical application of the patch. Zero manual edits.
+
+**Why this is possible in gunbc specifically.** gunbc emits
+Rust **text**, not binary blobs. In GCC-style bootstrap, each
+stage's output is an executable; you can compare bit-for-bit
+and run it, but you can't structurally transform it. In gunbc,
+every stage's output is source code — which means a schema
+migration becomes a **patch over that source code**. The old
+compiler doesn't need to understand the new schema; it emits
+its own Rust, and a separate transformation applies the delta
+the new schema implies. The patch applier operates on source
+text, not on binaries.
+
+### §10.1 The five-step schema migration pipeline
+
+A schema change migrates without manual edits via this sequence:
+
+1. **Structural diff.** A `.dag` lens walks old and new
+   `substrate.dag` declarations, compares them, and produces a
+   `ChangeClassification` — a list of `ChangeKind` entries each
+   describing one delta. Built over reflection (§3 of the
+   reflection design doc); the diff reads declarations as data
+   because reflection makes them data.
+2. **Patch generation.** A second `.dag` lens reads the
+   `ChangeClassification` and emits a structural patch over
+   the compiler's Rust source. Each `ChangeKind` has a patch
+   template; the generator composes templates.
+3. **Bridge build.** The committed stage0 compiles the OLD
+   `.dag` source → reproduces the committed Rust state. The
+   patch from step 2 applies to that Rust → patched Rust →
+   rebuild → **bridge binary that understands the new schema**.
+4. **Bridge compile.** The bridge binary compiles the NEW
+   `.dag` source → stage1 Rust. (This is where the new schema
+   is first seen by a compiler that knows about it.)
+5. **Fixed-point verification.** Stage1 compiles the NEW `.dag`
+   source → stage2 Rust. Assert `stage1 == stage2` by
+   construction. If the patch was correct, convergence holds
+   in one step.
+
+Every step is either structural (walks substrate as data) or
+mechanical (applies a patch). Zero manual intervention. Every
+decision is either "what does the diff lens report" or "what
+does the patch template expand to" — both are data.
+
+### §10.2 `ChangeKind` enumeration
+
+The schema-diff lens produces one of these per delta. Phase 1
+targets the first five (~80% of real changes in v2 history);
+Phase 2 subsumes the rest as L3 completes.
+
+| ChangeKind | Example | Patch shape | Phase |
+|---|---|---|---|
+| **`AddField { decl, name, type, default }`** | Adding `result_port: PortId` to `BindNode` | Walk every `BindNode { … }` literal in Rust source, insert `result_port: <default>` in the initializer. Add field to the struct def. | 1 |
+| **`AddVariant { enum, name, payload_type }`** | Adding a new `Behavior::NewThing(NewThingNode)` variant | Add variant to the enum def. For every `match behavior` in Rust source that's not `#[non_exhaustive]`, add a `Behavior::NewThing(_) => unimplemented!("scaffolded")` arm with a ratchet comment. New emitter/infer paths for the variant land via `rust.dag` and `infer.dag` declarations — NOT as hand-written Rust. | 1 |
+| **`RenameField { decl, old, new }`** | `BindNode.value` → `BindNode.result_port` | Mechanical find-and-replace on the field name, scoped to the containing struct. Handles field-access sites and struct-literal sites. | 1 |
+| **`RenameType { old, new }`** | `Declaration` → `DeclarationRef` (the v3_l1 sentinel rename warm-elk just landed) | Find-and-replace on the type name. Needs to handle both `type Declaration` in `.dag` and all Rust-side consumers. Scoped to not touch unrelated identifiers with the same string. | 1 |
+| **`RemoveField { decl, name }`** | Deleting a deprecated field | Audit every reader of the field. If the field has become derivable from other fields, route readers through the derivation. If not, fail-closed — manual review required. Phase 1 tolerates "fail with diagnostic listing every reader" as acceptable output. | 1 |
+| **`ChangeFieldType { decl, name, old_type, new_type }`** | `String` → `DeclarationId` (exactly what happened in PR #445's name-to-id migration) | Requires a **value converter** — a `.dag` function that takes `old_type` and returns `new_type`. For simple cases (string → structured ID via lookup) the converter is declarable. For complex cases the converter is a follow-up PR. | 1 for simple converters, 2 for complex |
+| **`NewInferenceRule`** | Adding a new inference rule for a new substrate variant | Not a patch — it's additive `.dag` source the old compiler doesn't understand semantically but CAN parse. Falls out of Prereq 0 (template instantiation) + L3 Stage 3 (infer as `.dag`). | 2 |
+| **`NewEmitterPath`** | Adding emit support for a new variant | Not a patch — it's a new `rust.dag` declaration. The emitter reads `rust.dag` as data. Falls out of L3 Stage 1 (emit as `.dag`). | 2 |
+| **`Arbitrary`** | Anything not classifiable above | Fail-closed, escape-hatch "manual stage0 edit required." Tracked by a numeric ratchet; each use reduces the ratchet budget. | 1 escape hatch |
+
+**Phase 1 covers the common cases.** AddField, AddVariant,
+RenameField, RenameType, RemoveField, and simple
+ChangeFieldType. In v2's history, these account for the vast
+majority of schema changes. The escape hatch (`Arbitrary`)
+handles the remaining edge cases with an explicit manual-edit
+receipt — not silently, visibly.
+
+**Phase 2 is not a separate design project.** When L3 (pipeline
+stages in `.dag`) completes, the compiler's own behavior is
+expressed as declarations — new inference rules, new emitter
+paths, new lowering paths are all data edits. At that point,
+every schema change classifies as one of the Phase 1 patches
+over the substrate declarations, and the "new semantics"
+cases become declaration additions in the companion files
+(`rust.dag`, `infer.dag`, etc.). The Phase 2 patch language
+is the declaration language; no separate Phase 2 effort.
+
+### §10.3 Patch language technology — Option C upfront
+
+Three ways to build the patch layer in Phase 1:
+
+- **Option A — syn-based Rust transformer.** Build the patch
+  generator in Rust using `syn`/`quote` to parse old Rust,
+  structurally transform, emit new Rust. Rust-native, leverages
+  existing tooling. Fastest path to a working Phase 1. **But**
+  creates a Rust-side scaffold that has to retire when L3
+  completes — and retirement friction tends to delay retirement.
+- **Option B — string-level search-and-replace.** Simpler but
+  brittle, silent failures on edge cases. **Rejected.**
+- **Option C — native `.dag` patch language, compiled into
+  Rust-source transformations at emit time.** The patch
+  generator is a `.dag` lens that reads `ChangeClassification`
+  declarations and produces patch declarations. The patch
+  applier is another `.dag` program that walks those
+  declarations and emits transformed Rust source via the same
+  `emit_rust` pipeline everything else uses. No Rust-side
+  scaffold; the patch language is `.dag` from the start.
+
+**Decision: Option C upfront.** Rationale:
+
+1. **Front-loads the decisions.** Going C upfront means the
+   schema-migration work directly exercises reflection's second
+   consumer (the schema-diff lens) and forces any substrate
+   extensions the lens surfaces to land as prerequisites.
+   Option A would defer those decisions behind a Rust scaffold
+   that later has to retire.
+2. **Phase 2 falls out of Phase 1 without a redesign.** In
+   Option C, the patch language IS `.dag`. As L3 stages
+   migrate, the emitter-side components of the patch language
+   come into `.dag` alongside the rest of the emitter. The
+   patch language doesn't shrink or dissolve; it grows through
+   the same migrations everything else does.
+3. **The patch language is the first real user of reflection
+   beyond lenses.** Building it validates that reflection works
+   for consumers that aren't toy analyses. That's the
+   strongest possible test of the framework.
+4. **Same discipline as lenses-as-`.dag`-native.** If the
+   project's commitment is "lenses are `.dag` programs, not
+   Rust modules," then patches should be `.dag` programs too.
+   Different abstraction, same rule.
+
+**The cost of Option C is that Phase 1 takes longer to ship
+than Option A would.** That cost is absorbed by the explicit
+commitment: schema migration is a follow-up PR AFTER reflection
+lands, not bundled with it. We're already paying for the wait
+by staging the work; we might as well pay it for the purer
+design.
+
+### §10.4 Phase 1 as follow-up PR
+
+Phase 1 schema migration is its own PR, NOT part of the
+reflection PR. Reasons:
+
+- The reflection PR is already carrying substantial scope
+  (substrate declarations, prereq slate, `lens_unused_parameters`
+  migration). Bundling schema migration doubles that scope.
+- Phase 1 needs reflection + `std/string.dag` + potentially
+  `std/ast/rust.dag` (declaring Rust's AST as a substrate type
+  for the patch emitter to walk). These are substantial
+  prerequisites that aren't needed for the reflection PR's
+  core.
+- Separating the PRs gives clean review focus. Reflection's
+  reviewers don't have to reason about schema migration; schema
+  migration's reviewers don't have to re-litigate reflection.
+
+**Acceptance criteria for the Phase 1 PR:**
+
+- [ ] `dsl/lenses/schema_diff.dag` exists, walks two Dag values
+      from two substrate versions, and produces a
+      `ChangeClassification`
+- [ ] `dsl/lenses/schema_patch.dag` exists, reads a
+      `ChangeClassification` and produces a structural patch
+      declaration
+- [ ] Patch applier emits transformed Rust source for AddField,
+      AddVariant, RenameField, RenameType, RemoveField, and
+      simple ChangeFieldType
+- [ ] `Arbitrary` escape hatch exists with a numeric ratchet
+      (starts at some count representing "manual edits allowed,"
+      monotonically decreasing toward zero)
+- [ ] At least one real v2 → v3 schema migration history
+      incident is reproduced via the pipeline, with byte-identical
+      output to whatever v2 produced historically
+- [ ] `dsl/gunbc/bootstrap.dag`'s decorative types (`CompilerStage`,
+      `TransformContract`, etc.) are either wired to real
+      consumers or deleted as dead code. The decorative-modeling
+      debt from v2 is retired.
+
+**Dependency on reflection:** Phase 1 cannot start until
+reflection ships (it needs the substrate-as-data for the
+schema-diff lens). Phase 1 CAN proceed in parallel with L2
+consumer migrations once reflection lands — they're independent
+work streams.
+
+---
+
+## §11. Per-stage fixed-point from day one
+
+**Problem.** v2's regen fixed-point check fires at a file-level
+diff. When pass1 != pass2, the output is "some file differs"
+with no indication of which compiler stage produced the
+divergence. The 2024 dark-emu-36-pr3 incident spent hours
+localizing the divergence to the Resolve stage by hand.
+
+**Fix (v3 should build from day one).** The regen loop captures
+per-stage output and compares pass1 and pass2 at every stage
+boundary. When divergence is detected, the error names the
+first stage that diverged, emits a per-stage structural diff,
+and points at the specific declaration or behavior that
+differs.
+
+**Implementation shape.** A `.dag` lens walks two Dag values
+(pass1 and pass2 outputs) and produces a structural diff. This
+is **the same lens** used by the schema-migration work in §10
+— `dsl/lenses/dag_diff.dag` or similar. The fixed-point check
+in regen reuses it with different inputs: compare pass1 pre-
+and-post each pipeline stage.
+
+**Why from day one.** v3's regen flow is simpler than v2's
+right now because there's less accreted tooling. Adding per-
+stage diffing at first regen is cheap; retrofitting it after
+pain is expensive (exactly what v2 is discovering).
+
+**Acceptance criteria:**
+
+- [ ] `regen.sh` (or equivalent) captures per-stage Dag snapshots
+      during pass1 and pass2
+- [ ] Fixed-point check runs `dag_diff.dag` at each stage
+      boundary
+- [ ] Divergence reports the first stage that diverged and
+      the structural delta
+- [ ] Tested against a synthetic divergence (intentionally break
+      one stage, verify the error correctly identifies it)
+
+**This section graduates to L1 (part of the reflection PR or
+immediate follow-up) because it uses the same schema-diff lens
+that §10 builds.** The lens has two consumers: schema migration
+(comparing substrate versions) and per-stage fixed-point
+(comparing compile passes). Building it once for both is
+cheaper than building it twice.
+
+---
+
+## §12. Hand-maintained file inventory at M3 start
+
+**Problem.** v2 has two hand-maintained Rust files in stage0
+(`cli_run.rs` for the Run handler, `v2_interpreter.rs` for the
+interpreter) that are excluded from the fixed-point diff.
+Those two files aren't documented as "permanently hand-
+maintained" anywhere authoritative; they're discovered by
+people hitting the exclusion list. Neither has a named plan
+for eventual dissolution.
+
+**Fix.** v3's M3 plan declares **explicitly** which files are
+permanently hand-maintained, with the chicken-and-egg for each.
+Declaration not discovery.
+
+**The invariant:** a file in the hand-maintained set MUST have
+a receipt that names (a) the specific chicken-and-egg dependency
+that makes it hand-maintained, (b) the dissolution trigger that
+would retire it, and (c) whether retirement is realistic
+(examples: "needs the interpreter in `.dag`" — likely retirable;
+"needs a Rust runtime binding for stdin/stdout" — probably
+permanent).
+
+**v3's hand-maintained set at M3 start — TO BE FILLED IN during
+M3 planning.** Placeholder entries, each with a planned
+receipt:
+
+- **`src/v3/compiler/src/bootstrap.rs`** — the file that
+  registers the V3_SPECS list and composes the bootstrap Dag.
+  Hand-maintained because it's the seed that compiles the
+  `.dag` pipeline; it has to exist in Rust before any `.dag`
+  can run. **Dissolution:** when the `.dag` pipeline is fully
+  self-hosting, `bootstrap.rs` shrinks to "read the files, call
+  parse.dag's compiled function" — ~20 lines of glue. Probably
+  never zero, but bounded.
+- **A minimal Rust tokenizer** — probably needed to bootstrap
+  `parse.dag`. The tokenizer is the innermost layer and is
+  likely the last thing to migrate. **Dissolution:** when
+  `tokenize.dag` (if it lands) can produce the same token
+  sequence. Maybe never; tokenizers are string-heavy and the
+  cost of a `.dag` version vs a tiny Rust version may not be
+  worth it.
+- **TBD** as M3 scope crystallizes. Each entry follows the
+  receipt template above.
+
+**The rule: the set is declared, not accreted.** Every PR that
+adds a file to the hand-maintained set MUST update this section
+with the receipt. No silent additions. If the set is larger
+than 3 files by M3 start, that's a signal the bootstrap is too
+ambitious and scope needs revisiting.
+
+**This section updates as M3 planning begins.** Today it's a
+placeholder; it becomes load-bearing when the M3 milestone is
+active.
+
+---
+
+## §13. Perf audit pattern
+
+**Lesson from v2.** v2's self-compile perf cliff was never
+clones. The actual cost was **fact re-derivation** — functions
+named `merge_envs`, `combine_*`, `build_*_from_*` that walked
+upstream data and reconstructed facts the upstream already had.
+The 2024 dark-emu fix was 6 lines: stop rebuilding the
+`InternTable` in merge_envs, thread the existing one through.
+68× speedup on reconcile.
+
+**The audit pattern.** A grep for `merge_*`, `combine_*`,
+`build_*_from_*` (and similar "take things apart and put them
+back together" verbs) finds the candidate sites. For each hit,
+ask: **is this function computing a fact that an upstream
+stage already had?** If yes, it's a re-derivation. The fix is
+to thread the upstream fact through instead of recomputing.
+
+**This is `feedback_perf_is_dependency_modeling` applied
+concretely.** The memory entry already says "re-derivation =
+poor dependency modeling." §13 gives the audit tool: grep for
+verbs of reconstruction, inspect each, thread the upstream
+fact where found.
+
+**v3 perf work should start with this audit.** Every
+performance concern on v3's self-compile loop goes through the
+re-derivation filter first. Clone-counting comes second, if
+ever. The thesis-aligned claim is: **if v3 has perf problems,
+they'll be in the places where the compiler is recomputing
+substrate facts that should be carried forward as typed edges.**
+
+**Cross-reference with consumer migrations.** Every v2 `annotate_*`
+helper that becomes a substrate field read in the complexity
+lens migration (see `docs/substrate-reflection-design.md` §12.5
+M1) is also a perf win by the same mechanism: the facts stop
+being reconstructed and start being read.
+
+---
+
+## §14. When this doc updates
 
 `SELF_HOSTING.md` is a living design note. It evolves as:
 
