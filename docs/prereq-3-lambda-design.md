@@ -37,6 +37,14 @@ the substrate as a typed edge; the lambda body reads it as an
 ordinary input. This matches how v3 already handles every
 other non-lambda function's inputs.
 
+**First-landing implementation scope.** Lambdas lower when the
+construction site already provides an expected function type
+(for example a function-typed argument position or an annotated
+`let` binding). An unannotated standalone lambda like
+`let f = |x| x` is not guessed into a function type implicitly;
+it fails closed until function-value inference is designed
+explicitly.
+
 **Prereq 3 does NOT land the callback rule tests** for
 Experiment 1's closure-in-Loop semantics. That's a lens-level
 concern (ownership lens treats captures as fan-out=N when the
@@ -516,23 +524,23 @@ later if required).
 
 ## §7. Acceptance criteria
 
-- [ ] `SurfaceExpr::Lambda { params, body, span }` added to
+- [x] `SurfaceExpr::Lambda { params, body, span }` added to
       `parse.rs`
-- [ ] Parser rule `|ident (, ident)*| expr` accepts in
+- [x] Parser rule `|ident (, ident)*| expr` accepts in
       expression position, produces `SurfaceExpr::Lambda`
 - [ ] Zero-argument lambda (`|| body`) accepts
 - [ ] Block-body lambdas (`|x| { let y = ...; y }`) accept
       if §6.3 is addressed
-- [ ] `free_vars` walker in `lower.rs` identifies captures
+- [x] `free_vars` walker in `lower.rs` identifies captures
       correctly for all test cases in §5
-- [ ] `lower_lambda` produces a synthetic Arrow declaration
+- [x] `lower_lambda` produces a synthetic Arrow declaration
       with correct input ordering (captures + declared params)
-- [ ] `lower_lambda` produces a Bind at the construction site
+- [x] `lower_lambda` produces a Bind at the construction site
       with captures as input edges
 - [ ] Tests §5.1 through §5.7 all pass (modulo §5.5 which
       depends on Prereq 0)
 - [ ] Clippy clean
-- [ ] No regressions on existing v3 tests
+- [x] No regressions on existing v3 tests
 - [ ] Commit message names the capture-ordering choice (§6.1)
       and the synthetic-naming choice (§6.2) for future review
 

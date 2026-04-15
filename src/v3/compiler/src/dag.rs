@@ -174,9 +174,7 @@ pub enum ValueBody {
     /// checked against the declared type. Each field holds either
     /// a scalar literal value or a typed declaration reference;
     /// the label matches a field on the type's Conj children.
-    Structural {
-        fields: Vec<(String, FieldValue)>,
-    },
+    Structural { fields: Vec<(String, FieldValue)> },
 }
 
 /// Per-field value payload inside a `ValueBody::Structural`. The
@@ -403,7 +401,9 @@ pub struct TemplateArgument {
     /// The template parameter being bound. References a TypeParam Atom declared
     /// as a child of the template.
     pub parameter: DeclarationId,
-    /// The concrete type the parameter binds to.
+    /// The concrete declaration the parameter binds to. This is a type
+    /// declaration for ordinary generics and may also be a callable
+    /// declaration for higher-order-function instantiation.
     pub value: DeclarationId,
 }
 
@@ -1281,8 +1281,7 @@ impl Dag {
         // typed handle via `bind_marker()` / `branch_marker()` /
         // etc. without any runtime name strings.
         self.substrate_markers.value = self.declaration_by_name("Value").map(|d| d.id);
-        self.substrate_markers.transform =
-            self.declaration_by_name("Transform").map(|d| d.id);
+        self.substrate_markers.transform = self.declaration_by_name("Transform").map(|d| d.id);
         self.substrate_markers.branch = self.declaration_by_name("Branch").map(|d| d.id);
         self.substrate_markers.r#loop = self.declaration_by_name("Loop").map(|d| d.id);
         self.substrate_markers.bind = self.declaration_by_name("Bind").map(|d| d.id);
@@ -1299,10 +1298,12 @@ impl Dag {
         // downstream consumer reads the typed accessor.
         self.realization_metas.type_realization =
             self.declaration_by_name("TypeRealization").map(|d| d.id);
-        self.realization_metas.operator_realization =
-            self.declaration_by_name("OperatorRealization").map(|d| d.id);
-        self.realization_metas.behavior_realization =
-            self.declaration_by_name("BehaviorRealization").map(|d| d.id);
+        self.realization_metas.operator_realization = self
+            .declaration_by_name("OperatorRealization")
+            .map(|d| d.id);
+        self.realization_metas.behavior_realization = self
+            .declaration_by_name("BehaviorRealization")
+            .map(|d| d.id);
     }
 }
 
