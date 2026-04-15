@@ -42,7 +42,7 @@
 module v3.std.substrate
 
 // ─────────────────────────────────────────────────────────────────
-// Atomic identity handles.
+// §1. Atomic identity handles.
 // ─────────────────────────────────────────────────────────────────
 //
 // These are **opaque atoms** — declarations with no structural
@@ -68,3 +68,295 @@ module v3.std.substrate
 type NodeId
 type PortId
 type DeclarationId
+
+// ─────────────────────────────────────────────────────────────────
+// §2. Leaf structural types.
+// ─────────────────────────────────────────────────────────────────
+//
+// Types with no recursive self-reference and few / trivial
+// dependencies. Declared before the larger sums that reference
+// them so a reader of this file can read top-to-bottom and see
+// each concept defined before it's used. Two-phase bootstrap
+// would also accept any order, but top-down reading is clearer.
+
+// Literal scalar payload carried at the type level (e.g. the
+// `3` in `Cardinality::Exact(3)`). Matches Rust's
+// `LiteralBits` enum in dag.rs — the three variant names are
+// qualified (`LitInt`, `LitBool`, `LitString`) to avoid
+// visually shadowing the `Int` / `Bool` / `String` primitive
+// type names at read time. (Variant names are not top-level
+// symbols in v3, so there is no actual resolution collision;
+// the rename is purely for readability.)
+type LiteralBits
+  = LitInt(Int)
+  | LitBool(Bool)
+  | LitString(String)
+
+// Atom payload variant — the 4-way sum describing a
+// TypeConnective::Atom's inner content. Mirrors Rust's
+// `AtomPayload` in dag.rs.
+type AtomPayload
+  = Literal(LiteralBits)
+  | UnresolvedIdentifier(String)
+  | ResolvedIdentifier(DeclarationId)
+  | TypeParam(String)
+
+// CardinalityBound — the "how many?" dimension of field /
+// element repetition. 3 variants. Matches Rust's
+// `CardinalityBound` in dag.rs.
+type CardinalityBound
+  = Exact(Int)
+  | AtMostOne
+  | Unbounded
+
+// ConjField — one label:type slot on a Conj. The substrate's
+// `Field` name (per §3.1 of the design doc) is adapted to
+// `ConjField` here to avoid collision with `dsl/std/algebra.dag`'s
+// `Field<T>` (the mathematical field / division ring with
+// reciprocal and divide). Both names are legitimate for their
+// respective domains; the collision is avoided by name, not by
+// semantic conflation. Matches Rust's `Field` struct in dag.rs.
+type ConjField {
+  label: String
+  ty: DeclarationId
+}
+
+// TemplateArgument — binds a template parameter to a concrete
+// type. Matches Rust's `TemplateArgument` in dag.rs.
+type TemplateArgument {
+  parameter: DeclarationId
+  value: DeclarationId
+}
+
+// FieldValue — per-field payload inside a ValueBody::Structural.
+// Each field carries either a scalar literal or a typed
+// reference to another declaration. Matches Rust's `FieldValue`
+// in dag.rs.
+type FieldValue
+  = FieldLiteral(LiteralBits)
+  | FieldReference(DeclarationId)
+
+// One (label, value) entry in a Structural value body. Rust
+// represents these as `Vec<(String, FieldValue)>`; .dag has no
+// tuple type so the pair is hoisted to a named record. Same
+// information, different container shape.
+type NamedFieldValue {
+  label: String
+  value: FieldValue
+}
+
+// ValueBody — the body of a `data foo: T = { ... }`
+// declaration. Matches Rust's `ValueBody` in dag.rs.
+type ValueBody
+  = ValueBodyUnparsed(SourceSpan)
+  | ValueBodyStructural { fields: List<NamedFieldValue> }
+
+// ─────────────────────────────────────────────────────────────────
+// §3. Type substrate.
+// ─────────────────────────────────────────────────────────────────
+
+// ArrowBody — mixed-lifecycle 4-variant coproduct describing
+// how an Arrow's body is carried. Matches Rust's `ArrowBody`
+// in dag.rs. Terminal form is `UserDefined` / `ExternalRealization`;
+// `Pending` / `Unparsed` are scaffold variants with named
+// dissolution triggers in the Rust dissolution ledger.
+type ArrowBody
+  = UserDefined(NodeId)
+  | ExternalRealization(DeclarationId)
+  | Pending
+  | Unparsed(SourceSpan)
+
+// TypeConnective — the 6-variant type substrate. Matches
+// Rust's `TypeConnective` in dag.rs. Terminal at M1(2.5).
+type TypeConnective
+  = Atom(AtomPayload)
+  | Conj { children: List<ConjField> }
+  | Disj { variants: List<ConjField> }
+  | Arrow {
+      inputs: List<DeclarationId>
+      output: DeclarationId
+      body: ArrowBody
+    }
+  | Cardinality {
+      element: DeclarationId
+      bound: CardinalityBound
+    }
+  | Instantiation {
+      template: DeclarationId
+      arguments: List<TemplateArgument>
+    }
+
+// Declaration — the unit of the type substrate. Matches Rust's
+// `Declaration` struct in dag.rs. Free from `DeclarationRef`
+// (the v3_l1.dag sentinel) since the rename that preceded this
+// commit; this is the canonical name for "a declaration in
+// the substrate's type table."
+//
+// Note on Option<T> fields: v3 uses `T?` for optional types.
+// Rust's `Option<DeclarationId>` lowers to
+// Cardinality::AtMostOne here, matching types.dag's
+// `expires_at: Timestamp?` pattern.
+type Declaration {
+  id: DeclarationId
+  name: String
+  connective: TypeConnective
+  type_params: List<DeclarationId>
+  meta_tag: DeclarationId?
+  inhabits: DeclarationId?
+  value_body: ValueBody?
+  span: SourceSpan
+}
+
+// ─────────────────────────────────────────────────────────────────
+// §4. Computation substrate — the five L1 behaviors.
+// ─────────────────────────────────────────────────────────────────
+//
+// Each L1 behavior is a distinct record shape. Matching Rust's
+// concrete node types (ValueNode, TransformNode, …) lets the
+// inhabitance check do field-by-field drift detection against
+// dag.rs rather than having to flatten the variant into an
+// abstract shape.
+
+// Per-Branch-arm pattern. Matches Rust's `BranchPattern` phase
+// coproduct.
+type BranchPattern
+  = UnresolvedVariant { name: String, span: SourceSpan }
+  | ResolvedVariant(DeclarationId)
+
+// Path through a Branch. Named `BranchPath` here to avoid the
+// collision with `dsl/std/types.dag`'s `Path = String where
+// non_empty` (a refinement type for filesystem paths). Rust's
+// dag.rs calls this `Path`; the rename is cosmetic and the
+// inhabitance check will look up this declaration by its role
+// (a field of BranchNode), not by Rust name.
+type BranchPath {
+  body: NodeId
+  output: PortId
+  pattern: BranchPattern
+}
+
+// Loop bound — carries the iteration count port. Matches
+// Rust's `Bound` struct in dag.rs. Renamed to `LoopBound` here
+// because `Bound` is a generic name; `LoopBound` makes clear
+// which substrate concept owns this shape.
+type LoopBound {
+  count: PortId
+}
+
+// Value behavior — a literal carried as a node.
+//
+// **Field elision.** The Rust `ValueNode` struct carries a
+// `data: LiteralBits` field (the literal's bit pattern). The
+// v3 tokenizer reserves `data` as a keyword for `data foo: T
+// = { ... }` item declarations, so `data: LiteralBits` cannot
+// appear as a field name inside a `type` record at M1(3). The
+// .dag declaration below omits the field pending one of three
+// dissolution triggers:
+//   (a) parser extension for quoting keyword-name fields
+//       (e.g. `\`data\`: LiteralBits`), or
+//   (b) rename the Rust field to `payload` (~10 sites: two
+//       consumers in `emit_rust.rs` / `infer.rs`, tests in
+//       `m0_acceptance.rs`, the `dag.rs` doc comment), or
+//   (c) expose `value_node_data(v: ValueNode) -> LiteralBits`
+//       as a query primitive that sidesteps the field view
+//       entirely.
+// Tracked as a substrate reflection follow-up; the current
+// lens needing reflection (`lens_unused_parameters`) does not
+// read `ValueNode.data`, so the elision doesn't block the
+// reflection surface's first use case.
+type ValueNode {
+  id: NodeId
+  output: PortId
+  span: SourceSpan
+}
+
+// Transform behavior — one Apply of a target Arrow.
+//
+// **Terminal-form target.** Rust's TransformNode carries
+// `target: TransformTarget` where TransformTarget is a mixed-
+// lifecycle 2-variant coproduct: `Callable(DeclarationId)` is
+// terminal, `Operator(OperatorKind)` is a scheduled-to-dissolve
+// scaffold (the dissolution trigger per the M1(2.7) dispatch
+// receipt is the M2+ parser / desugarer collapsing Operator
+// back into Callable via direct algebra-field calls). The .dag
+// substrate declares `target: DeclarationId` directly — the
+// post-dissolution shape — so the reflection surface shows the
+// terminal form. The scaffold variant is not observable through
+// the reflection surface; a lens that inspects a TransformNode
+// with a live Operator(...) target sees the DeclarationId of
+// the resolved operator field (not the Rust OperatorKind enum),
+// which is the same information the inference layer resolves at
+// dispatch time.
+//
+// This is not the same as "ignore the scaffold": the scaffold
+// still exists in Rust, but the inhabitance check treats the
+// .dag declaration as the authoritative terminal shape, and
+// the Rust→.dag drift here is a tracked dissolution remainder,
+// not a substrate bug.
+type TransformNode {
+  id: NodeId
+  target: DeclarationId
+  inputs: List<PortId>
+  output: PortId
+  span: SourceSpan
+}
+
+// Branch behavior — coproduct elimination with one Path per
+// arm.
+type BranchNode {
+  id: NodeId
+  input: PortId
+  paths: List<BranchPath>
+  output: PortId
+  span: SourceSpan
+}
+
+// Loop behavior — well-founded recursion with a bound.
+type LoopNode {
+  id: NodeId
+  source: PortId
+  init: PortId
+  body: NodeId
+  bound: LoopBound
+  output: PortId
+  span: SourceSpan
+}
+
+// Bind behavior — let-abstraction. Function bindings have
+// non-empty `params`; value bindings have empty `params`
+// (C2 dissolution receipt in dag.rs).
+type BindNode {
+  id: NodeId
+  name: String
+  value: PortId
+  params: List<PortId>
+  span: SourceSpan
+}
+
+// The 5 L1 behaviors as a sum. Matches Rust's `Behavior` enum.
+// Variant names are NOT registered as top-level declarations
+// in v3's flat symbol table (parser only registers top-level
+// items), so there is no collision with v3_l1.dag's
+// `type Value {}` / `type Transform {}` / etc. substrate
+// markers.
+type Behavior
+  = Value(ValueNode)
+  | Transform(TransformNode)
+  | Branch(BranchNode)
+  | Loop(LoopNode)
+  | Bind(BindNode)
+
+// ─────────────────────────────────────────────────────────────────
+// §5. The Dag container.
+// ─────────────────────────────────────────────────────────────────
+
+// Dag — the substrate's top-level container. Holds the
+// declaration table and the behavior table. Matches Rust's
+// `Dag` struct in dag.rs (minus the private caches:
+// substrate_markers, realization_metas, primitives — those are
+// internal acceleration structures, not part of the semantic
+// substrate surface).
+type Dag {
+  declarations: List<Declaration>
+  nodes: List<Behavior>
+}

@@ -1354,26 +1354,24 @@ fn m17_template_argument_stub_branch_is_gone() {
 fn m1_3_substrate_reflection_opaque_atoms_loaded() {
     // Step 2 of docs/substrate-reflection-design.md implementation.
     //
-    // The first landable bite of the reflection surface: three
-    // opaque-atom declarations in `src/v3/std/substrate.dag` for
-    // the atomic identity handles NodeId, PortId, DeclarationId.
-    // `SourceSpan` already lives in `dsl/std/types.dag` as a
-    // structural record and is reachable without a new
-    // declaration.
+    // Three opaque-atom declarations in `src/v3/std/substrate.dag`
+    // for the atomic identity handles NodeId, PortId,
+    // DeclarationId. `SourceSpan` already lives in
+    // `dsl/std/types.dag` as a structural record and is reachable
+    // without a new declaration.
     //
     // The test proves two invariants at once:
     //
     //   1. `build.rs` picks up `src/v3/std/*.dag` and the
     //      generated V3_SPECS list includes substrate.dag —
     //      otherwise the three names below would not resolve.
-    //   2. Opaque atoms lower to a placeholder-resolved
-    //      `TypeConnective::Atom(UnresolvedIdentifier(_))`
-    //      declaration shape with no structural body. The
-    //      bootstrap tolerance for stubs (opaque atoms are
-    //      terminal in their own right — they are the handles
-    //      seed primitives realize) is consistent with existing
-    //      std/ opaque atoms like `Unit` and `Json` in
-    //      types.dag.
+    //   2. Opaque atoms lower to `Conj { children: [] }` via
+    //      `SurfaceItem::TypeAtom` (see
+    //      `src/v3/compiler/src/lower.rs` line 360 — empty
+    //      product = unit type = opaque handle). Same form
+    //      v3_l1.dag's behavior markers (`type Value {}`,
+    //      `type Bind {}`, etc.) and types.dag's `type Unit` /
+    //      `type Json` produce.
     //
     // When later commits add TypeRealization entries in rust.dag
     // for each handle, the post-bootstrap resolution will attach
@@ -1384,15 +1382,6 @@ fn m1_3_substrate_reflection_opaque_atoms_loaded() {
         let decl = dag
             .declaration_by_name(name)
             .unwrap_or_else(|| panic!("`{name}` must be declared by src/v3/std/substrate.dag"));
-        // Opaque atoms from the parser lower through
-        // `SurfaceItem::TypeAtom` → `TypeConnective::Conj { children: [] }`
-        // (see `src/v3/compiler/src/lower.rs` line 360 — empty
-        // product = unit type = opaque handle). This is the same
-        // form v3_l1.dag's behavior markers (`type Value {}`,
-        // `type Bind {}`, etc.) and types.dag's `type Unit` /
-        // `type Json` produce. The "no structural body" shape is
-        // what makes these valid handles that programs can pass
-        // around without inspecting.
         let children = match &decl.connective {
             TypeConnective::Conj { children } => children,
             other => panic!(
@@ -1404,6 +1393,80 @@ fn m1_3_substrate_reflection_opaque_atoms_loaded() {
             children.is_empty(),
             "`{name}` should have zero children, got {} children",
             children.len()
+        );
+    }
+}
+
+#[test]
+fn m1_3_substrate_reflection_structural_types_loaded() {
+    // Step 3 of docs/substrate-reflection-design.md implementation.
+    //
+    // Asserts the full first-pass structural substrate from
+    // `src/v3/std/substrate.dag` is in the declaration table
+    // post-bootstrap with the expected shape (sum vs record)
+    // for each name.
+    //
+    // This is a smoke / parity test — it checks presence and
+    // top-level connective shape, not field-by-field inhabitance
+    // against the Rust structs. The actual inhabitance check
+    // against `src/v3/compiler/src/dag.rs` is a later commit
+    // that resolves the tracked drift items (ValueNode.data
+    // keyword elision, single-variant TransformTarget inline,
+    // private Dag fields elided from the reflection surface).
+    let dag = Dag::new();
+
+    // Records — declared with `type Foo { ... }`, lower to
+    // non-empty Conj (empty Conj would mean an opaque atom).
+    for name in [
+        "ConjField",
+        "TemplateArgument",
+        "NamedFieldValue",
+        "Declaration",
+        "BranchPath",
+        "LoopBound",
+        "ValueNode",
+        "TransformNode",
+        "BranchNode",
+        "LoopNode",
+        "BindNode",
+        "Dag",
+    ] {
+        let decl = dag
+            .declaration_by_name(name)
+            .unwrap_or_else(|| panic!("`{name}` must be declared by substrate.dag"));
+        let children = match &decl.connective {
+            TypeConnective::Conj { children } => children,
+            other => panic!("`{name}` should be a Conj record, got {:?}", other),
+        };
+        assert!(
+            !children.is_empty(),
+            "`{name}` should have at least one field (non-empty Conj)"
+        );
+    }
+
+    // Sums — declared with `type Foo = V1 | V2 | ...`, lower
+    // to non-empty Disj.
+    for name in [
+        "LiteralBits",
+        "AtomPayload",
+        "CardinalityBound",
+        "FieldValue",
+        "ValueBody",
+        "ArrowBody",
+        "TypeConnective",
+        "BranchPattern",
+        "Behavior",
+    ] {
+        let decl = dag
+            .declaration_by_name(name)
+            .unwrap_or_else(|| panic!("`{name}` must be declared by substrate.dag"));
+        let variants = match &decl.connective {
+            TypeConnective::Disj { variants } => variants,
+            other => panic!("`{name}` should be a Disj sum, got {:?}", other),
+        };
+        assert!(
+            !variants.is_empty(),
+            "`{name}` should have at least one variant"
         );
     }
 }
