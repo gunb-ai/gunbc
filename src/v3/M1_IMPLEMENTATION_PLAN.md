@@ -197,6 +197,8 @@ eliminates it.
 | 12 | Operator dispatch before parse completes | **Not representable ✅** | **M1(2.7) Class 2** — parser calls `OperatorKind::from_symbol` at parse time; post-parse every operator is a typed variant. |
 | 13 | Primitive identity resolved by name lookup (e.g. `declaration_by_name("Int")` at dispatch time) | **No ✅** | **M1(2.7) Class 1** — `Dag::int_shape() / bool_shape() / string_shape() / realization_meta_id()` cached at bootstrap; dispatch-time lookups compare `DeclarationId`, not `String`. (New row: the plan didn't enumerate this invariant; the implementer added the fix anyway.) |
 | 14 | `is_realization_shape` comparing realization meta-type by name | **No ✅** | **M1(2.7) Class 4** — compares cached `DeclarationId` via `dag.realization_meta_id()`. (New row, same reason as 13.) |
+| 15 | Growing the set of operators requires a Rust-side compiler edit (`OperatorKind` enum variant) | **Yes** — open | **Deferred, tracked.** As long as `OperatorKind` exists as a compiler-defined coproduct, adding a new operator (e.g., `%`, `&&`, unary `-`) requires a Rust enum variant. This is a dual-authority pattern: operator identity lives in both `operators.rs` and `dsl/std/algebra.dag`. The full dissolution is "operators become regular `Callable`s on algebra-field declarations" — see operators.rs:45-48 dissolution trigger. Until that lands in M2+, the row stays open as acknowledged debt. §9 non-goals intentionally excludes all operator-set growth from M1 to prevent this row from ratcheting in the wrong direction. |
+| 16 | `ArrowBody::Unparsed(SourceSpan)` is a scaffold state on a core substrate boundary with no sanctioned exception in `INVARIANTS.md` | **Yes** — open, blocked on INVARIANTS.md decision | **Deferred, tracked.** `INVARIANTS.md` §"No short-term solutions" sanctions exactly two exceptions: emission via language spec and `ArrowBody::Pending` for primitive realization lag under a numeric ratchet. `ArrowBody::Unparsed` was added in M1(2.7) for block-body `fn` declarations whose bodies use grammar not yet parseable (e.g., `match` in `classical_and`). It is structurally parallel to `Pending` — "the compiler knows a fact but the structure can't fully express it yet" — but is not currently sanctioned. Resolution requires either (a) extending `INVARIANTS.md` with a parallel exception + numeric ratchet, (b) extending the grammar so match/pipe/lambda parse, or (c) rewriting std/ functions to avoid the unparseable forms. **This row blocks substrate-level cleanup until the choice is made.** |
 
 **Status summary:** rows 1, 2, 3a, 3b, 6, 7, 12, 13, 14 are closed in
 M1(2.7). Row 3 (`Pending` at emission) is closed at inference time
@@ -285,7 +287,7 @@ All S. Zero reconstruction. v3 success-bar proof point #1.
 
 All S. Zero reconstruction. v3 success-bar proof point #2.
 
-### §4.3 `infer.rs` (653 lines, mostly working — 3 open R-rows)
+### §4.3 `infer.rs` (653 lines, all R-rows closed in M1(2.7))
 
 | # | Question | Producer | Status | Notes |
 |---|---|---|---|---|
@@ -293,7 +295,7 @@ All S. Zero reconstruction. v3 success-bar proof point #2.
 | 2 | What's a Node's Behavior variant? | `lower(bodies)` | S | `dag.node()` pattern match |
 | 3 | What's a Declaration's TypeConnective? | `lower(collect)` + `lower(bodies)` | S | `decl.connective` pattern match |
 | 4 | For Arrow: inputs/output? | `lower(bodies)` | S | `TypeConnective::Arrow { .. }` |
-| 5 | For Arrow: body kind? | `lower(bodies)` / `bootstrap` | S | `ArrowBody` 3 variants |
+| 5 | For Arrow: body kind? | `lower(bodies)` / `bootstrap` | S | `ArrowBody` 4 variants (`UserDefined`, `ExternalRealization`, `Pending`, `Unparsed`) — see §2 baseline |
 | 6 | Is a Bind's value Port resolved? | `infer` | S | Port state check |
 | 7 | Is a Transform target callable or operator? | `parse` | **S ✅** | Closed in M1(2.7). `SurfaceExpr::Operator` is a first-class parser variant; lower builds `TransformTarget::Callable \| Operator` directly. |
 | 8 | What kind of operator is this (arithmetic vs comparison)? | `parse` (via `OperatorKind::from_symbol`) | **S ✅** | Closed in M1(2.7). `OperatorKind::Arithmetic(_) \| Comparison(_)` is the structural split. |
@@ -572,13 +574,25 @@ no storage-mechanism decision.
 
 **Substrate additions:**
 
+- **Realization schema pinned (see §11 question 7).** A realization
+  item lowers to an ordinary `Conj` declaration with typed fields:
+  `for: DeclarationId`, `target: DeclarationId`, `body: String`,
+  `cost: Int`. The declaration's `meta_tag` points at the
+  `Realization` meta-type declaration to distinguish realization
+  declarations from ordinary records. **No compiler-native
+  `Realization` struct in `dag.rs`.** Realizations participate in
+  the normal declaration table, declaration_by_name, resolve sweep,
+  and walks — just like any other `Conj`.
 - Parser support in `parse.rs` for `realization { for: X.add; target:
-  rust; body: "i64::wrapping_add"; cost: 1 }` item syntax — the one
-  remaining parser gap from M1_FOLLOWUPS.md. Body and cost both live
-  on the same realization declaration.
+  rust_target; body: "i64::wrapping_add"; cost: 1 }` item syntax —
+  the one remaining parser gap from M1_FOLLOWUPS.md. The `target`
+  field references a target-language Declaration (e.g., `rust_target`
+  as a module-level marker in `rust.dag`), not a loose `"rust"` string.
 - `dsl/extdeps/languages/rust.dag` parsed as an 8th bootstrap file.
-  Each entry is a `realization` declaration with typed fields.
-  `bootstrap::inject_realization_stub` deleted in the same commit.
+  Each entry is a `realization` declaration with the typed fields
+  above. **`bootstrap::inject_realization_stub` is already deleted
+  in M1(2.7); the comment reference in M1_DESIGN.md §8.6 is stale
+  and gets cleaned up in this PR.**
 - `ArrowBody::Pending` ratchet hits zero once `rust.dag` populates
   primitive Arrows directly with `ExternalRealization(decl_id)`.
   PR-B ends with `Pending` ready to delete as a variant; the variant
@@ -911,24 +925,42 @@ something and the enumeration needs an update before proceeding.
    is an invariant violation, and god tables upstream are also not
    the answer.
 
-**Still open (hard prerequisite for PR-B):**
+**Closed by reviewer push in this cleanup:**
 
-7. **`rust.dag` realization schema.** What fields does a `realization`
-   declaration carry? At minimum: `for: DeclarationId` (the primitive
-   being realized), `target: String` (the target language name),
-   `body: String` (the emission body), `cost: u64` (cycle cost). But
-   the shape of the cost field is the question — single `u64`?
-   `{cycles, allocations, io}` record? Something target-specific?
-   PR-B must pin the schema in its design doc before any code lands.
-   The schema IS the authority per §3.1 language-spec row; picking it
-   wrong means every future language spec forks the shape.
+7. ~~**`rust.dag` realization schema.**~~ **PINNED: realizations are ordinary
+   `Conj` declarations.** A `realization` item in `rust.dag` lowers to a
+   regular `Declaration` whose connective is a `Conj` with named fields:
+   - `for: DeclarationId` — the primitive being realized (typed edge,
+     not a name string)
+   - `target: DeclarationId` — the target language declaration itself
+     (e.g., the `Rust` target declaration in a future `targets.dag` or
+     the `rust.dag` module-level marker). NOT a loose `"rust"` string.
+   - `body: String` — the target-language body text (the one part that
+     is inherently string-valued because it's emission-side source code)
+   - `cost: Int` — an Int-typed field at M1 scope. The shape of cost
+     (single cycle count vs. `{cycles, allocations, io}` record) is
+     deferred to when a second cost-sensitive consumer forces the
+     question; at M1 one `Int` field suffices.
 
-8. **Is `Realization` its own substrate shape, or a `Conj` with typed
-   field accessors?** Either way the typed-edge discipline applies —
-   `for:` must be a `DeclarationId`, not a name string. The question
-   is whether the compiler gets a `Realization` struct alongside
-   `TransformNode` etc., or whether it stays inside the declaration
-   table with a field-lookup convention. PR-B's design doc pins this.
+   **No compiler-native `Realization` schema in `dag.rs`.** A realization
+   is a Declaration like any other; it participates in `declaration_by_name`,
+   `resolve_sweep`, `TypeConnective::Conj`, and the normal walk. The
+   `meta_tag` field already points at the `Realization` meta-type
+   Declaration to distinguish realization declarations from ordinary
+   records — the existing substrate carries this discipline.
+
+   **Why this is the thesis-consistent choice.** Per §3.1 language-spec
+   authority row and THESIS.md's "one spec file edit per new target"
+   claim, introducing a new target language must be a `dsl/extdeps/
+   languages/<target>.dag` edit, not a `dag.rs` edit. A compiler-native
+   `Realization { target, body, cost }` struct would fork the shape at
+   every new target (Go, Python, Swift, each needs a new compiler edit).
+   Ordinary Conj declarations keep new targets in spec-file-edit
+   territory.
+
+8. ~~**Is `Realization` its own substrate shape?**~~ **Answered by #7
+   above.** No. Ordinary `Conj` declarations with the `meta_tag` edge
+   to a `Realization` meta-type. The compiler gets no new struct.
 
 ---
 

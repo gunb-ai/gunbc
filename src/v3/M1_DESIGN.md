@@ -711,6 +711,28 @@ pub enum ArrowBody {
     /// resolve via inhabitance. A post-bootstrap sweep
     /// ratchets "no Pending remains once extdeps are wired."
     Pending,
+    /// Surface-grammar scaffold: the arrow's signature is
+    /// resolved and callers can type-check against it, but
+    /// the body source is not yet parseable under the
+    /// M1(2.7) surface grammar. Used by block-bodied fn
+    /// declarations in std/ files whose bodies contain
+    /// match/pipe/lambda/etc. The SourceSpan points at the
+    /// unparsed body range so M2+ can complete the lowering.
+    /// Dissolves when the surface grammar adopts those forms.
+    ///
+    /// **NOTE (post-M1(2.7) cleanup):** this variant was added
+    /// in M1(2.7) as a structural honesty measure — it surfaces
+    /// the fact "parser can't parse this body" into the
+    /// substrate instead of silently dropping declarations.
+    /// It is NOT yet sanctioned by `INVARIANTS.md` §"No short-
+    /// term solutions" (which currently sanctions only
+    /// `Pending` for primitive realization lag). Resolution
+    /// requires either extending INVARIANTS.md with a parallel
+    /// exception + numeric ratchet, extending the grammar so
+    /// match/pipe/lambda parse, or rewriting affected std/
+    /// functions. Tracked in `M1_IMPLEMENTATION_PLAN.md` §3.3
+    /// catalogue row 16.
+    Unparsed(SourceSpan),
 }
 ```
 
@@ -730,15 +752,16 @@ every commit after M1(2.5) either preserves or reduces the
 count of Pending Arrows in the loaded declaration table, until
 the count reaches zero by M3.
 
-**Dissolution ledger entry.** ArrowBody is a 3-variant coproduct
-that MIXES two terminal semantic cases (`UserDefined`,
-`ExternalRealization`) with one scaffolded-state case
-(`Pending`). This is a mixed-lifecycle coproduct: `Pending` is
-expected to dissolve out of the variant set by M3, leaving only
-the two terminal cases. The §"Structural decompression" four
-pattern check classifies ArrowBody as follows:
+**Dissolution ledger entry (updated post-M1(2.7)).** ArrowBody is
+a **4-variant** coproduct that MIXES two terminal semantic cases
+(`UserDefined`, `ExternalRealization`) with **two scaffolded-state
+cases** (`Pending`, `Unparsed`). This is a mixed-lifecycle
+coproduct: both scaffold variants are expected to dissolve out
+of the variant set, leaving only the two terminal cases. The
+§"Structural decompression" four-pattern check classifies
+ArrowBody as follows:
 
-- **Pattern 1 (fact placement)**: fails — both UserDefined and
+- **Pattern 1 (fact placement)**: fails — UserDefined and
   ExternalRealization are Arrow-level facts with different
   structural targets (NodeId vs DeclarationId); scattering is
   not simplification.
@@ -753,12 +776,30 @@ pattern check classifies ArrowBody as follows:
   coordinate space underlying the two terminal cases.
 
 ArrowBody's **terminal form is 2 variants** (UserDefined,
-ExternalRealization). Pending is the 3rd variant ONLY during
-the M1(2.5) → M3 transition. The ratchet at §8.11 enforces that
-the 3-variant form is not permanent. Once the ratchet count
-reaches zero, §8.11 requires the Pending variant be removed
-from the enum definition itself via a substrate-extension PR
-(reverse of §8.10's check).
+ExternalRealization). `Pending` and `Unparsed` are transient
+variants tracked separately by dissolution trigger:
+
+- **`Pending`** — primitive realization lag. Sanctioned by
+  INVARIANTS.md §"No short-term solutions" exception 2.
+  Dissolution trigger: §8.11 monotonic-decrease ratchet;
+  reaches zero when every primitive Arrow has an
+  `ExternalRealization(decl_id)` pointing at a realization
+  declaration in `dsl/extdeps/languages/<target>.dag`.
+- **`Unparsed(SourceSpan)`** — surface-grammar scaffold, added
+  in M1(2.7). **Not currently sanctioned by INVARIANTS.md.**
+  The invariant file lists only two sanctioned exceptions
+  (emission via language spec, `Pending` for primitive
+  realization lag) — `Unparsed` is a third category that
+  surfaced in M1(2.7) and needs explicit resolution: either
+  (a) extend `INVARIANTS.md` with a parallel exception + numeric
+  ratchet whose dissolution trigger is "M2 grammar extension
+  parses match/pipe/lambda," or (b) extend the grammar, or (c)
+  rewrite affected std/ functions to fit the current grammar.
+  Tracked in `M1_IMPLEMENTATION_PLAN.md` §3.3 catalogue row 16.
+
+Once both ratchets reach zero, the enum becomes 2 variants
+(terminal form) via a substrate-extension PR (reverse of §8.10's
+check).
 
 **This matches `body` for user functions.** A `UserDefined`
 body is a `NodeId` into the computation substrate — a typed
@@ -768,7 +809,7 @@ edge, not a name lookup. An `ExternalRealization` is a
 also not a name lookup. Both are structural; both are walkable
 by any consumer without name resolution.
 
-**Inference handling:**
+**Inference handling (post-M1(2.7), 4-variant match):**
 
 - `UserDefined(node_id)`: type-check the sub-DAG body against
   the declared input/output types.
@@ -778,6 +819,14 @@ by any consumer without name resolution.
 - `Pending`: accept as realization-pending; the signature
   type-checks via inhabitance. Emission of this Arrow
   requires the `Pending` to resolve before the emitter runs.
+- `Unparsed(span)`: accept at signature-check time; the
+  signature type-checks against the declared inputs/output.
+  Body-walking is skipped. Emission MUST fail closed —
+  an `Unparsed` body cannot be lowered to target source
+  because its body is literally unparsed. The failure is
+  enforced at `emit.rs` in PR-B by exhaustive match on
+  `ArrowBody` with both `Pending` and `Unparsed` as
+  fail-closed arms.
 
 **For M1(2.5):** primitive Arrows in algebra.dag land with
 `body: Pending`. Inference treats them as ok-for-signature-
@@ -1321,18 +1370,37 @@ user source:
    `types.dag` declares Bool = Classical (Bit), String =
    FreeMonoid<Char>, List<T> = FreeMonoid<T>, and re-exports
    `Int = Int64` as the short alias. Inhabitance declarations.
-5. **`dsl/extdeps/languages/rust.dag`** (§6.5 stub) — the
-   one-realization fixture for the smoke test. Parses the
-   `realization` meta-type declaration plus one concrete
-   `realization Int64_add { for: Int64.add; target: rust;
-   body: "i64::wrapping_add" }` entry. This step MUST come
-   after types/integer.dag so that the `Int64.add` reference
-   resolves correctly. If the parser cannot yet handle the
-   `realization` record-literal shape, the fallback is to
-   inject the equivalent declaration chain directly in Rust
-   via a `bootstrap::inject_realization_stub` helper;
-   `smoke_int_add_external_realization` validates either
-   path. See M1_FOLLOWUPS for the parser-gap tracking.
+5. **`dsl/extdeps/languages/rust.dag`** (§6.5 realization via
+   ordinary declarations). Parses the `realization` meta-type
+   declaration plus one concrete realization entry for the
+   smoke test. The realization item lowers to an **ordinary
+   `Conj` declaration** with typed fields: `for: DeclarationId`,
+   `target: DeclarationId`, `body: String`, `cost: Int` — see
+   `M1_IMPLEMENTATION_PLAN.md` §11 question 7 for the pinned
+   schema. The declaration's `meta_tag` edge points at the
+   `Realization` meta-type declaration, distinguishing realization
+   declarations from ordinary records via the typed-edge
+   discipline. **No compiler-native `Realization` struct in
+   `dag.rs`.** This step MUST come after types/integer.dag so
+   that the `Int64.add` reference resolves correctly.
+
+   **Post-M1(2.7) note:** earlier drafts of this spec mentioned
+   a `bootstrap::inject_realization_stub` fallback that would
+   inject the declaration chain directly in Rust if the parser
+   couldn't handle the realization record-literal shape. That
+   helper is **deleted in M1(2.7)** and the fallback path is
+   no longer sanctioned — the thesis's "spec IS the
+   implementation" claim and `INVARIANTS.md` §"No bridges" /
+   §"No short-term solutions" forbid Rust-side declaration
+   manufacturing on production paths. The test-only realization
+   smoke in `bootstrap.rs`'s `#[cfg(test)] mod tests` is the
+   only remaining in-Rust realization construction and stays
+   test-scoped (never touches production bootstrap).
+
+   If the parser cannot yet handle the `realization`
+   record-literal shape at PR-B ship time, the correct response
+   is to extend the parser, NOT to reintroduce the stub.
+   See `M1_FOLLOWUPS.md` for parser-gap tracking.
 
 Post-bootstrap, additional std/ files (iteration, containers,
 graph, etc.) get parsed lazily when user code imports them.
@@ -1429,11 +1497,31 @@ cadences, different files. Both deferred to M1(3) to implement;
 both documented here so the implementer knows what scaffolding
 commitments M1(2.5) creates.
 
-**Scoping note for M1(2.5).** The ratchet file does not have
-to exist at M1(2.5) ship time — what must exist is the decision
-to track Pending separately. A one-line note in `src/v3/ROADMAP.md`
-under the M1(3) milestone is sufficient. Actual CI wiring is
-M1(3) work.
+**Scoping note (updated post-M1(2.7)).** `INVARIANTS.md` §"No
+short-term solutions" sanctions `ArrowBody::Pending` **only
+under an active numeric CI ratchet that strictly decreases**
+(exception 2, lines 830-838). The earlier draft of this section
+said the ratchet file "does not have to exist at M1(2.5) ship
+time" — that language is rescinded. The invariant requires
+present enforcement, not future enforcement. A `Pending` that
+is not covered by an active ratchet is not a sanctioned scaffold
+— it is a bridge.
+
+**Action required before PR-B merge:** the ratchet file must
+exist, the CI gate must block any PR that regresses the
+Pending count, and the starting count must be captured from
+the current post-bootstrap state. Scoping this to PR-B (the
+same PR that introduces the dissolution mechanism via
+`rust.dag` realizations) is natural — PR-B both creates the
+mechanism that drives the count toward zero and locks in the
+ratchet enforcement.
+
+If PR-B cannot ship with the ratchet (e.g., because M1(2.5) →
+M1(2.7) already accumulated `Pending` without enforcement), the
+correct response is to ship the ratchet in its own prerequisite
+PR before PR-B starts, freezing the current count as the
+starting baseline. Either way the ratchet exists at or before
+PR-B merge, not after.
 
 ## 9. What "done" looks like for M1(2.5)
 
