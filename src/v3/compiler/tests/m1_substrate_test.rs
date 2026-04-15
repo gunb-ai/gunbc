@@ -1616,10 +1616,33 @@ fn get_first(p: Pair) -> Int = p.first
         ),
     };
     let target_decl_ref = dag.declaration(target_decl);
-    assert!(
-        target_decl_ref.name.is_none(),
-        "synthetic field accessor should be anonymous"
+
+    // **Field identity encoding.** The accessor's name IS the
+    // field label, and its meta_tag points at the FieldAccessor
+    // marker from substrate.dag. Together these let an emit-time
+    // consumer (the reflection PR's FieldBinding dispatch) recover:
+    //   - "this Transform is a field access" — via meta_tag
+    //   - "which field" — via name + the parent type from
+    //     `Arrow.inputs[0]`
+    // Without this encoding, a record with two fields of the same
+    // type (e.g. `{ first: Int, second: Int }`) would produce two
+    // indistinguishable Arrow shapes and emit_rust couldn't pick
+    // the right field.
+    assert_eq!(
+        target_decl_ref.name.as_deref(),
+        Some("first"),
+        "synthetic field accessor should carry the field label as its name"
     );
+    let field_accessor_marker = dag
+        .declaration_by_name("FieldAccessor")
+        .expect("FieldAccessor marker must be declared by substrate.dag")
+        .id;
+    assert_eq!(
+        target_decl_ref.meta_tag,
+        Some(field_accessor_marker),
+        "synthetic field accessor should be meta-tagged as FieldAccessor"
+    );
+
     let (inputs, output, body) = match &target_decl_ref.connective {
         TypeConnective::Arrow {
             inputs,
@@ -1638,6 +1661,19 @@ fn get_first(p: Pair) -> Int = p.first
         body
     );
 
+    // The Arrow's input[0] is the parent declaration (Pair).
+    // Combined with the accessor's `name: "first"`, this gives
+    // emit_rust the (parent_type, field_label) pair needed for
+    // FieldBinding lookup.
+    let pair_decl = dag
+        .declaration_by_name("Pair")
+        .expect("Pair type should be declared by this test's source")
+        .id;
+    assert_eq!(
+        inputs[0], pair_decl,
+        "accessor Arrow input should be the parent Pair declaration"
+    );
+
     // The output type of the Arrow must be Int (the `first`
     // field's declared type).
     let int_decl = dag
@@ -1648,6 +1684,62 @@ fn get_first(p: Pair) -> Int = p.first
         output, int_decl,
         "field `first` has type Int, so the accessor Arrow's output should be Int"
     );
+}
+
+#[test]
+fn prereq1_same_type_fields_distinguishable_by_label() {
+    // **Regression test for the field-identity bug.** A record
+    // with two fields of the same type used to produce
+    // indistinguishable accessor Arrows because the Arrow shape
+    // encoded only (parent, field_type). The fix: each accessor
+    // carries the field label in its `name`, so emit_rust can
+    // pick the right field at dispatch time.
+    //
+    // This test verifies that `pair.first` and `pair.second` on
+    // a `{ first: Int, second: Int }` produce accessor
+    // declarations with different names, even though their
+    // Arrow shapes (Pair → Int) are identical.
+    let src = "\
+type Pair { first: Int, second: Int }
+fn get_first(p: Pair) -> Int = p.first
+fn get_second(p: Pair) -> Int = p.second
+";
+    let dag = compile_any(src, "same_type_fields.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "both field accesses should compile cleanly, got diagnostics: {:?}",
+        dag.diagnostics()
+    );
+
+    // Find the accessor used by each function. Both should be
+    // Arrow(Pair → Int) with a Pending body, but their names
+    // should differ: "first" vs "second".
+    let accessor_name = |fn_name: &str| -> String {
+        let bind = dag
+            .nodes()
+            .iter()
+            .find_map(|b| match b {
+                Behavior::Bind(b) if b.name == fn_name => Some(b),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("{fn_name} Bind must exist"));
+        let producer = dag.port(bind.value).produced_by.expect("body producer");
+        let transform = match dag.node(producer) {
+            Behavior::Transform(t) => t,
+            other => panic!("{fn_name} body should be a Transform, got {:?}", other),
+        };
+        let target_decl = match transform.target {
+            TransformTarget::Callable(id) => id,
+            other => panic!("expected Callable target, got {:?}", other),
+        };
+        dag.declaration(target_decl)
+            .name
+            .clone()
+            .unwrap_or_else(|| panic!("{fn_name}'s accessor should be named"))
+    };
+
+    assert_eq!(accessor_name("get_first"), "first");
+    assert_eq!(accessor_name("get_second"), "second");
 }
 
 #[test]

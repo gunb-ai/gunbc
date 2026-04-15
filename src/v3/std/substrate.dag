@@ -69,6 +69,31 @@ type NodeId
 type PortId
 type DeclarationId
 
+// FieldAccessor — marker meta-type for synthetic declarations
+// emitted by Prereq 1 field-access lowering (see
+// `lower_field_chain` in `src/v3/compiler/src/lower.rs`).
+// Each `p.field` expression in user code lowers to a Transform
+// whose `target` is a synthetic Arrow declaration tagged with
+// this marker. The accessor's own `name` is the field label
+// (the structural key on the parent Conj's children), and its
+// Arrow shape is `(parent) -> field_type` with a `Pending`
+// body.
+//
+// At emit time, a consumer that recognizes this marker reads:
+//   - `accessor.connective.Arrow.inputs[0]` → parent type
+//   - `accessor.name` → field label
+//   - looks up the parent type's TypeRealization →
+//     finds the FieldBinding whose `dag_name` matches the
+//     label → renders the Rust-side field access
+//
+// This is the mechanism the reflection PR's §4.1 FieldBinding
+// extension plugs into. Storing the label via the existing
+// name+meta_tag edges avoids inventing a new coproduct or
+// stuffing a string into a payload we don't have a slot for.
+// An empty Conj — carries no fields, its role is to be the
+// typed meta-tag handle.
+type FieldAccessor {}
+
 // ─────────────────────────────────────────────────────────────────
 // §2. Leaf structural types.
 // ─────────────────────────────────────────────────────────────────

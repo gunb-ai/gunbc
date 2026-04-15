@@ -2103,6 +2103,31 @@ fn lower_field_chain(
     rest: &[String],
     span: &SourceSpan,
 ) -> PortId {
+    // Look up the FieldAccessor marker from src/v3/std/substrate.dag.
+    // The marker is the typed meta-tag every synthetic accessor
+    // carries, so emit-time consumers can filter
+    // `Transform { target.meta_tag == FieldAccessor_marker }`
+    // and dispatch to field-access rendering. Absent the marker
+    // (bootstrap failed to load substrate.dag), field access
+    // cannot produce emit-distinguishable declarations — fail
+    // closed before allocating anything so the diagnostic
+    // points at the substrate prerequisite, not at the user's
+    // source location.
+    let Some(field_accessor_marker) = dag
+        .declaration_by_name("FieldAccessor")
+        .map(|d| d.id)
+    else {
+        let err_port = dag.alloc_port(None);
+        dag.mark_unresolved(
+            err_port,
+            Diagnostic::ResolveError {
+                name: "field-access lowering requires `FieldAccessor` marker from `src/v3/std/substrate.dag` — substrate.dag failed to load".to_string(),
+                span: span.clone(),
+            },
+        );
+        return err_port;
+    };
+
     // Start from the head port's type. Inference doesn't run at
     // this phase, so the port's TypeShape must already be set —
     // which it is for parameter ports (see `lower_fn_item` step 1)
@@ -2169,20 +2194,45 @@ fn lower_field_chain(
         };
 
         // Allocate the synthetic field accessor declaration.
-        // Anonymous (name: None), Arrow shape (parent → field),
-        // Pending body (no concrete realization at M1(3); the
-        // reflection PR wires emit_rust's FieldBinding dispatch).
+        //
+        // **Field identity encoding.** The accessor carries the
+        // field label in its `name` and the FieldAccessor marker
+        // in its `meta_tag`. Together these let an emit-time
+        // consumer recover:
+        //
+        //   1. "This Transform is a field access" — via
+        //      `target.meta_tag == field_accessor_marker`.
+        //   2. "Which field is being read" — via
+        //      `target.name == Some(label)` combined with
+        //      `target.connective.Arrow.inputs[0]` (the parent
+        //      type). The (parent_type, label) pair is the
+        //      structural key into the parent's TypeRealization's
+        //      `fields: List<FieldBinding>` extension proposed
+        //      in §4.1 of the reflection design.
+        //
+        // Earlier drafts used `name: None` and encoded only
+        // `(parent_type, field_type)` in the Arrow shape. That
+        // loses field identity when a record has multiple fields
+        // of the same type (e.g., `{ first: Int, second: Int }`),
+        // so emit_rust would have no way to pick which field to
+        // render. The fix is to propagate the structural label
+        // forward as the accessor's name — the label is a fact
+        // from the parent Conj's children, not an invented key.
+        //
+        // Arrow shape (parent → field_type), Pending body (no
+        // concrete realization at M1(3); the reflection PR
+        // wires emit_rust's FieldBinding dispatch).
         let accessor_decl = dag.alloc_declaration_id();
         dag.push_declaration(Declaration {
             id: accessor_decl,
-            name: None,
+            name: Some(segment_name.clone()),
             connective: TypeConnective::Arrow {
                 inputs: vec![current_decl_id],
                 output: field_type_decl,
                 body: ArrowBody::Pending,
             },
             type_params: Vec::new(),
-            meta_tag: None,
+            meta_tag: Some(field_accessor_marker),
             inhabits: None,
             value_body: None,
             span: span.clone(),
