@@ -3,14 +3,21 @@
 > Part of: [THESIS.md](../THESIS.md), [INVARIANTS.md](../INVARIANTS.md),
 > [lens-library-design.md](lens-library-design.md)
 >
-> **Purpose:** make v3's substrate self-describing. Move substrate
-> types (`Dag`, `Node`, `Behavior`, `Declaration`, …) into `dsl/std/`
-> as declarations in the substrate's own language, expose query
+> **Purpose:** make v3's substrate self-describing. Declare
+> substrate types (`Dag`, `Node`, `Behavior`, `Declaration`, …)
+> as ordinary substrate-language declarations, expose query
 > primitives that let a `.dag` program walk compiled substrate
-> data, and migrate the existing lenses from Rust bootstrap form to
-> their canonical `.dag` form. After this work, adding a new lens
-> is a new `.dag` file — no Rust, no compiler edits, no
-> `kernel_lens_set` forming.
+> data, and migrate the existing lenses from Rust bootstrap
+> form to their canonical `.dag` form. After this work, adding
+> a new lens is a new `.dag` file — no Rust, no compiler edits,
+> no `kernel_lens_set` forming.
+>
+> **File locations.** Per `src/v3/compiler/src/bootstrap.rs`,
+> v3-only fixture files live in `src/v3/std/` and `src/v3/spec/`
+> during the v2→v3 transition window, not in `dsl/std/`. v2's
+> CI pipeline scans `dsl/` recursively and cannot parse v3's
+> substrate types. The canonical logical home for these files
+> is `dsl/std/`; staged location is `src/v3/std/`. See §3.1.
 
 ---
 
@@ -66,7 +73,7 @@ by the manifest. One file. That's the thesis target.
 **In scope:**
 
 1. Moving the substrate's structural type layer into
-   `dsl/std/substrate.dag` (a regular `std/` file, not a
+   `src/v3/std/substrate.dag` (a regular `std/` file, not a
    subdirectory) as ordinary `.dag` declarations — `Dag`,
    `Declaration`, `Behavior`, `TypeConnective`, `ArrowBody`,
    `Field`, `AtomPayload`, `CardinalityBound`, `TemplateArgument`.
@@ -129,8 +136,10 @@ by the manifest. One file. That's the thesis target.
   a parser feature that doesn't exist, the feature is scoped as a
   prerequisite PR, not bundled here.
 - Any substrate variant additions. This work is purely additive
-  to `dsl/std/`; no new `TypeConnective` variants, no new
-  `Behavior` variants, no new `AtomPayload` variants.
+  — new `.dag` files in `src/v3/std/` (bootstrap staging), new
+  Rust query module, extended `emit_rust` path. No new
+  `TypeConnective` variants, no new `Behavior` variants, no new
+  `AtomPayload` variants.
 - Any change to the `lens_unused_parameters` algorithm. Same
   walk, same output, different host language.
 
@@ -138,55 +147,123 @@ by the manifest. One file. That's the thesis target.
 
 ## §3. The reflection surface
 
-The reflection surface is the minimum set of `.dag` declarations
-and query primitives a lens needs to express its walk over the
-substrate. Everything is an ordinary declaration in `dsl/std/` —
-there is no separate "substrate subdirectory" or meta layer.
-The substrate is self-describing by virtue of declaring its own
-shape as data **inside** itself.
+The reflection surface is the set of `.dag` declarations a lens
+needs in order to express its walk over the substrate. **There
+are no "query primitives" as a separate category.** If the
+substrate is declared correctly — every type is a record or a
+sum, every field is addressable by name — then reading those
+fields IS the query. A lens is just a normal `.dag` function
+that takes a `Dag` value as input and reads its fields, the same
+way any other `.dag` function reads fields on a record parameter.
+
+**Where "query primitives" came from and why they're dissolved.**
+An earlier draft of this design doc proposed a separate
+`substrate_query.dag` file with functions like `fn declarations
+(d: Dag) -> List<Declaration>` as explicit query primitives.
+Those functions were re-declaring the structural fields of `Dag`
+under different names — a parallel representation of data that
+already exists on the declared record. That's exactly the
+failure class everything else in this project is trying to
+prevent: naming the same fact twice in two different places.
+The cleaner model: declare `Dag` once, with its fields, and let
+every consumer read those fields directly. This section reflects
+the cleaner model.
+
+**What the "query primitive layer" collapse reveals.** When you
+try to write `lens_unused_parameters` as a `.dag` function that
+reads fields on a `Dag` argument, several grammar features turn
+out to be prerequisites: field access on local variables,
+pattern matching with payload binding, higher-order function
+calls (for `fold`/`map`/`filter`), lambda expressions, and a
+`List<T>` standard library. These are parser/lowering extensions
+that don't yet exist in v3's M1(3) grammar. §11 of this document
+enumerates them as a prerequisite slate — each one is its own
+PR, reflection lands after the slate is complete. The reason
+for this ordering is **architectural honesty**: collapsing the
+query-primitive layer into field access is only meaningful if
+the grammar actually supports field access. Without the
+prerequisites, we'd either ship a compromised design (the
+query-primitive scaffold we just rejected) or ship a design
+that lies about being compositional.
 
 ### §3.0 Seed minimality as an invariant
 
-The bootstrap seed is deliberately narrow:
+The bootstrap seed is deliberately narrow. **The seed is the
+parser plus the realization mechanism**, NOT a Rust-only type
+registry. Every type that appears in a `.dag` file is declared
+in some `.dag` file — including the substrate's own types. What
+makes an "atomic identity handle" special is that its declaration
+is **minimal** (no fields, no variants), and its authority lives
+in a realization entry that binds it to a Rust backing type.
 
-- **The parser.** Written in Rust. Produces `SurfaceItem` / `SurfaceExpr`
-  trees from `.dag` source text.
-- **Atomic-identity primitives.** `NodeId`, `PortId`, `DeclarationId`,
-  `SourceSpan` — opaque Rust atoms that `.dag` programs compare
-  for equality and pass around but never structurally inspect.
-  Each has a realization entry in `src/v3/spec/rust.dag` the same
-  way `Int` does.
-- **The existing arithmetic primitives.** `Int`, `Bool`, `String`
-  — already shipped, already realized.
+The seed by component:
+
+- **The parser.** Written in Rust. Produces `SurfaceItem` /
+  `SurfaceExpr` trees from `.dag` source text. This is the only
+  thing that has to exist before any `.dag` file parses.
+- **The realization mechanism.** Already shipped for the
+  arithmetic primitives. A `.dag` declaration binds to a Rust
+  backing type via a `TypeRealization` entry in `rust.dag`.
 - **The inhabitance / resolve sweep.** `resolve_pending_identifiers`
   + the forward-reference resolution v3 already has working for
-  `std/algebra.dag → std/types.dag::Bool`.
+  `std/algebra.dag → std/types.dag::Bool`. Handles the circular
+  references in the substrate's self-description.
 
-**Everything else is declared in `.dag`.** `Dag`, `Declaration`,
-`TypeConnective`, `Behavior`, `Field`, `ArrowBody`, `AtomPayload`,
-`CardinalityBound`, `TemplateArgument`, and every other structural
-substrate type lives as an ordinary `Conj` / `Disj` declaration
-in `dsl/std/`. The Rust structs in `src/v3/compiler/src/dag.rs`
-are **realizations** of these declarations — kept consistent by
-an inhabitance check, not by parallel representation.
+**Atomic identity handles as minimal declarations.** `NodeId`,
+`PortId`, `DeclarationId` are declared in `src/v3/std/substrate.dag`
+as opaque atoms (no RHS, no fields, no variants) and each has
+a `TypeRealization` entry in `src/v3/spec/rust.dag` binding it
+to a Rust newtype. The declaration form is necessary so name
+resolution can find the identifier when it appears elsewhere
+in substrate.dag (e.g., `fn port_producer(d: Dag, p: PortId)
+-> NodeId?`). The declaration form is minimal because `.dag`
+programs cannot pattern-match on opaque atoms — they can only
+compare for equality and pass them around.
+
+`SourceSpan` is already declared in `std/types.dag` as a record
+and is reused — no new declaration in `substrate.dag`.
+
+`Int`, `Bool`, `String` are already declared in the existing
+`std/` fixtures and are reused unchanged.
+
+**Everything else is a structural `.dag` declaration.** `Dag`,
+`Declaration`, `TypeConnective`, `ConjField`, `ArrowBody`,
+`Behavior`, `AtomPayload`, `CardinalityBound`, `TemplateArgument`,
+and every other substrate type lives as an ordinary `Conj` /
+`Disj` declaration in `substrate.dag`. The Rust structs in
+`src/v3/compiler/src/dag.rs` are **realizations** of these
+declarations — kept consistent by an inhabitance check, not
+by parallel representation.
 
 **The invariant this PR codifies** (new `INVARIANTS.md` entry —
-see §7.2): the seed MUST NOT grow. Every new substrate concept
-that could be declared in `.dag` must be declared there, not
-added as a Rust-only primitive. New Rust primitive additions
-are blocked unless (a) the concept is truly atomic (can't be
-decomposed further) or (b) it's an ID-like handle that programs
-pass around without inspecting. The seed is five atomic handles
-plus the parser plus the sweep — and that's the ceiling.
+see §7.2): every type that *could* be declared as a structural
+`Conj` / `Disj` in `.dag` MUST be declared that way. The only
+permitted "minimal-declaration" forms are opaque atomic identity
+handles that programs never structurally inspect. New substrate
+types that ship as "Rust-only primitives with no `.dag`
+declaration" are a **fail-closed blocker**; new minimal-atom
+declarations with realization backing are permitted but the
+count is ratcheted downward over time.
+
+**The ratchet.** A CI check counts minimal-atom declarations in
+`substrate.dag` that exist only as name targets for realization
+entries. The count is stored in a ratchet file (same mechanism
+as the `Pending` ratchet) and must monotonically decrease or
+stay flat. A PR that adds a new minimal-atom declaration fails
+CI unless it also deletes an equal or greater count of existing
+atoms, OR the new atom meets the narrow "opaque identity handle
+programs never inspect" exception and the PR inline-receipts
+that justification.
 
 **Why the ceiling matters.** The thesis's self-hosting claim
 ("the project is a meta-compiler — the substrate can describe
 any computational system including itself") only holds if the
-substrate actually hosts itself. Every Rust primitive the seed
-contains is a fact `.dag` cannot analyze. A ten-primitive seed
-leaves ten blind spots; a five-primitive seed leaves five. The
-direction is toward zero, and the seed ratchet ensures we don't
-drift the other way under pressure.
+substrate actually hosts itself. Every minimal-atom declaration
+is a fact `.dag` cannot structurally analyze — a lens can walk
+it by equality but not by field shape. A substrate with five
+opaque atoms is a substrate with five blind spots; one with
+zero has none. The direction is toward zero, and the seed
+ratchet ensures we don't drift the other way under pressure.
 
 **How this answers the bootstrap question.** The circular
 dependency `Dag → Declaration → TypeConnective → Declaration` is
@@ -194,15 +271,35 @@ the same shape as `OrderedRing<T> → Ring<T> → Monoid<T>`. v3
 resolves the latter today via `resolve_pending_identifiers`.
 Applying the same mechanism to substrate-type declarations is
 zero new bootstrap machinery — it's one more file in the
-`include_str!` list.
+`include_str!`-based `V3_SPECS` list that `src/v3/compiler/
+src/bootstrap.rs` already uses for `rust.dag` and `v3_l1.dag`.
 
 ### §3.1 Substrate types as `.dag` declarations
 
-New file: `dsl/std/substrate.dag` — sibling to `std/algebra.dag`,
-`std/types.dag`, `std/integer.dag`, etc. No subdirectory. Loaded
-by the bootstrap alongside the other `std/` files, in dependency
-order after `std/types.dag` (which it depends on for `Bool`,
-`String`, etc.).
+New file: `src/v3/std/substrate.dag`. Sibling to the existing
+`src/v3/spec/rust.dag` and `src/v3/spec/v3_l1.dag` (both of which
+live outside `dsl/` for the same reason). Loaded by v3's bootstrap
+via the build-script-generated `V3_SPECS` include list, parsed in
+dependency order after the bootstrap `std/` fixtures.
+
+**Why not `dsl/std/substrate.dag`?** Per `src/v3/compiler/src/
+bootstrap.rs:58-66`: v2's CI pipeline scans `dsl/` recursively
+and attempts to resolve every identifier in every record-literal
+field. v2 doesn't know about v3's substrate types
+(`TypeConnective`, `Behavior`, `NodeId`, etc.) and would flag
+every reference in `substrate.dag` as an undefined-variable
+error. Keeping v3-only spec files outside the v2-scanned tree
+is the existing pattern for `rust.dag` and `v3_l1.dag`; it
+applies identically to `substrate.dag`.
+
+**Canonical-home note.** The canonical logical home for
+`substrate.dag` — once v2 retires — is `dsl/std/substrate.dag`
+or similar, sibling to `dsl/std/algebra.dag` and friends. The
+`src/v3/std/` location is bootstrap staging for the v2→v3
+transition window. Same shape as `src/v3/spec/rust.dag` staging
+for the eventual `dsl/extdeps/languages/rust.dag` canonical
+location. The `THESIS.md` §"Two groundings" bootstrap-staging
+note applies to both files.
 
 ```
 module std.substrate
@@ -211,14 +308,37 @@ module std.substrate
 // in src/v3/compiler/src/dag.rs, kept consistent by the inhabitance
 // check that runs at bootstrap time.
 
+// Atomic identity handles. These are declared but minimal — no
+// fields, no variants. The declarations exist ONLY so that name
+// resolution can find them when they appear in type expressions
+// elsewhere in this file. The authoritative backing is the
+// TypeRealization entry in src/v3/spec/rust.dag that binds each
+// atom to its Rust newtype. A .dag lens can pass these values
+// around and compare for equality; it CANNOT pattern-match on
+// them because they have no structure. The substrate-honest
+// pattern: identity without structure.
+type NodeId
+type PortId
+type DeclarationId
+// SourceSpan already declared in std/types.dag — reused, not
+// redeclared.
+
 // Type connective — six-way sum matching Rust's TypeConnective.
 type TypeConnective
   = Atom(AtomPayload)
-  | Conj { fields: List<Field> }
+  | Conj { fields: List<ConjField> }
   | Disj { variants: List<Declaration> }
   | Arrow { inputs: List<DeclarationId>, output: DeclarationId, body: ArrowBody }
   | Cardinality(CardinalityBound, DeclarationId)
   | Instantiation { template: DeclarationId, args: List<TemplateArgument> }
+
+// ConjField — a named field in a Conj. Named this way to avoid
+// a collision with algebra.dag's `Field<T>` (the mathematical
+// field / division ring, a wholly different concept).
+type ConjField {
+  name: String
+  declaration: DeclarationId
+}
 
 type ArrowBody
   = UserDefined(NodeId)
@@ -253,15 +373,34 @@ type Dag {
 }
 ```
 
-**`NodeId`, `PortId`, `DeclarationId`, `SourceSpan` are NOT
-re-declared here.** They are seed primitives (§3.0) — atomic
-handles that the substrate passes around but never inspects.
-Their realization entries in `src/v3/spec/rust.dag` bind them to
-their Rust counterparts (newtype-wrapped integers and a span
-struct), but there is no `type NodeId` in `.dag`. If a lens
-needs to compare two `NodeId` values it uses equality; if it
-needs to turn one into a `Behavior` it uses a query primitive
-(`node_by_id(dag, id)`).
+**On opaque atoms being declarations, not Rust-only primitives.**
+An earlier draft of this section said "there is no `type NodeId`
+in `.dag`." That framing was wrong. For any identifier to resolve
+at parse time, the substrate needs SOMETHING for name resolution
+to bind against. The `Int` precedent is authoritative: `type Int`
+is a `.dag` declaration in `integer.dag` even though the Rust
+backing is `i64`; the realization in `rust.dag` is what connects
+the two. `NodeId`/`PortId`/`DeclarationId` follow the same
+pattern — they are declared in `substrate.dag` as minimal atoms
+(no fields, no variants), and their realization in `rust.dag`
+binds each to its Rust newtype. The "seed" is the parser plus
+the realization mechanism, not a Rust-only type registry.
+
+**Name collisions with existing v3 code:**
+
+- **`type Declaration` in `src/v3/spec/v3_l1.dag`** — an empty
+  `Conj` sentinel used by `lower.rs` and `rust.dag` as a type
+  marker for "this field carries a typed reference to another
+  declaration." Collides with `substrate.dag`'s central
+  `Declaration` record type. **Resolution:** rename the sentinel
+  → `DeclarationRef` (~10 mechanical edits across `lower.rs`,
+  `dag.rs`, `rust.dag`, and a test). The substrate's central
+  record type keeps the natural name `Declaration`.
+- **`type Field<T>` in `dsl/std/algebra.dag:197`** — the
+  mathematical field (division ring), completely unrelated to
+  record fields. **Resolution:** substrate's record-field type
+  is named `ConjField` above to avoid the collision. Algebra's
+  `Field<T>` keeps its correct name.
 
 **Inhabitance check.** A post-bootstrap pass walks every
 declaration in `std.substrate` and asserts the corresponding
@@ -273,143 +412,137 @@ same inhabitance mechanism `src/v3/spec/rust.dag` uses today to
 bind `.dag Int → Rust i64` — the only new thing is applying it
 to the compiler's own struct types.
 
-### §3.2 Query primitives
+### §3.2 Queries ARE field access
 
-New file: `dsl/std/substrate_query.dag`. Declares the minimal
-walking primitives every lens needs. Each is an Arrow with
-`ArrowBody::ExternalRealization` — the body is declared
-structurally but realized by a Rust method call at emit time.
+**There is no `substrate_query.dag` file.** Queries are not
+primitives. If `Dag` is declared with a `nodes: List<Behavior>`
+field, then a lens writes `d.nodes` directly — the substrate
+already carries the fact, no separate accessor function is
+needed. The earlier draft of this section proposed an explicit
+query-primitive layer (`fn declarations(d: Dag) -> List
+<Declaration>`, etc.); those functions were all re-declarations
+of fields on already-declared records. They were the scaffold,
+not the model.
+
+**What a lens ACTUALLY needs from the substrate** (assuming the
+grammar catches up — see §11 for the prerequisite slate):
+
+1. **Field access on local variables.** `d.nodes`, `bind.params`,
+   `behavior.span`. Today v3 parses `Ident.Ident.…` as
+   `SurfaceExpr::Path` but only lowers it for declaration
+   references, not for field-reads on local variables. **Prereq 1**
+   in §11 — small lowering extension.
+2. **Pattern matching with payload binding.** `match b { Bind
+   (bind) => …, Transform(t) => … }`. Today v3 only supports
+   `BareVariant` patterns that don't capture payloads. **Prereq 2**
+   in §11 — adds `SurfacePattern::VariantWith`.
+3. **Higher-order function calls.** `fold` takes a `fn(U, T) -> U`
+   parameter and calls it inside its own body — `f(acc, head)`
+   where `f` is a parameter. Today v3's `TransformTarget::Callable
+   (DeclarationId)` requires the call target to be a declaration,
+   not a local port carrying a function value. **Prereq 0** in
+   §11 — the deepest substrate question. See §3.5 for the three
+   options.
+4. **Lambda expressions.** `|acc, x| acc + x`. Today v3 has no
+   lambda surface form. Per v3-spec.md §Principle 5 and
+   Experiment 1, lambdas lower to ordinary `Bind` declarations
+   with captures as explicit additional parameters (no special
+   "capture" concept). **Prereq 3** in §11 — parser + lowering
+   extension.
+5. **`List<T>` standard library.** `fold`, `map`, `filter`,
+   `length`, `enumerate`, `contains`. `List<T>` is modeled as
+   the **free monoid on T** (a Disj of `Empty | Cons(T, List<T>)`
+   inhabiting `Monoid<List<T>>`). See `src/v3/std/list.dag` — the
+   file has been committed as a design artifact alongside this
+   doc; it ships once **prereqs 0, 2, 3** land. **Prereq 4** in
+   §11 — declaration only, depends on 0, 2, 3.
+
+**All five prereqs are parser/lowering/std extensions, NOT new
+substrate variants.** The v3 substrate is already expressive
+enough to express lenses; it just doesn't have the surface
+grammar or standard library yet.
+
+**The `behavior_output_port` question — resolved compositionally.**
+The ChatGPT review of an earlier `lens_unused_parameters` iteration
+flagged that a five-arm match over all `Behavior` variants,
+returning "the primary result port," was the start of a canonical
+substrate query — if duplicated across consumers, it becomes a
+`lens_authority_drift` leak in the same family as `kernel_type_set`.
+
+The earlier draft of this doc answered the concern by adding
+`behavior_output_port` as a query primitive. With the compositional
+model, there's a cleaner answer: **make the primary-result port a
+declared field on every `Behavior` variant.**
+
+Instead of:
+```
+type Behavior
+  = Value(ValueNode)
+  | Transform(TransformNode)
+  | Branch(BranchNode)
+  | Loop(LoopNode)
+  | Bind(BindNode)
+```
+
+…each variant's payload carries `result_port: PortId` as a field:
 
 ```
-module std.substrate_query
-
-import std.substrate { Dag, Declaration, Behavior, Node, Port, Bind, NodeId, PortId, DeclarationId }
-
-// Whole-DAG readers.
-fn declarations(d: Dag) -> List<Declaration>
-fn nodes(d: Dag) -> List<Behavior>
-fn declaration_by_id(d: Dag, id: DeclarationId) -> Declaration
-fn node_by_id(d: Dag, id: NodeId) -> Behavior
-
-// Per-declaration readers.
-fn connective(decl: Declaration) -> TypeConnective
-fn declaration_name(decl: Declaration) -> String
-
-// Per-behavior readers.
-fn behavior_id(b: Behavior) -> NodeId
-fn is_bind(b: Behavior) -> Bool
-fn is_transform(b: Behavior) -> Bool
-// … one per Behavior variant
-
-// Bind readers.
-fn bind_params(b: Bind) -> List<PortId>
-fn bind_value(b: Bind) -> PortId
-
-// Port readers.
-fn port_producer(d: Dag, p: PortId) -> NodeId?
-
-// Transform readers.
-fn transform_inputs(t: Transform) -> List<PortId>
-
-// Branch readers.
-fn branch_input(br: Branch) -> PortId
-fn branch_paths(br: Branch) -> List<Path>
-fn path_output(p: Path) -> PortId
-
-// Loop readers.
-fn loop_source(l: Loop) -> PortId
-fn loop_init(l: Loop) -> PortId
-fn loop_body(l: Loop) -> NodeId
-
-// Primary-result readers — the single substrate authority for
-// "which port carries the semantic result of a behavior."
-// Consumers that walk sub-DAGs (cost lens, unused_parameters,
-// complexity, any future lens) MUST go through this query rather
-// than reimplementing the match-on-variant locally. See §3.2.1
-// below for the reason this primitive is load-bearing.
-fn behavior_output_port(b: Behavior) -> PortId
-
-// (Complete list matches the walking primitives every lens needs.
-// New primitives go through a design review — the set is
-// deliberately small.)
+type ValueNode { result_port: PortId, … }
+type TransformNode { result_port: PortId, … }
+type BranchNode { result_port: PortId, … }
+type LoopNode { result_port: PortId, … }
+type BindNode { result_port: PortId, … }
 ```
 
-### §3.2.1 `behavior_output_port` as a canonical substrate query
+A lens that needs the primary-result port reads `b.result_port`
+after pattern-matching the variant — just field access. No helper
+function. No five-arm match. No drift risk, because any consumer
+that re-implements the mapping is just re-reading a field that
+already exists on the declared record.
 
-**Why this primitive is called out specifically.** During the
-PR #451 review cycle, a ChatGPT review of a `lens_unused_parameters`
-iteration flagged that its private `behavior_output_port(b:
-&Behavior) -> PortId` helper — a match over all five L1 behavior
-variants returning "the primary result port" — was the beginning
-of a canonical substrate query, not a lens-local convenience.
-The review's point: if a second lens, interpreter helper, or
-emitter walker ever needs the same mapping and reimplements it,
-the project immediately has competing authorities for one
-substrate fact. That is a `lens_authority_drift` failure mode
-in the same family as `kernel_type_set` and `kernel_lens_set` —
-a single fact duplicated across consumers because the substrate
-didn't host it in the first place.
+**This is an inhabitance constraint on the Rust substrate.** The
+Rust `BindNode`/`TransformNode`/etc. structs all already have a
+field carrying the primary result port (`bind.value: PortId`,
+`transform.output: PortId`, etc.). The constraint that comes out
+of the compositional model is: **the inhabitance check MUST
+verify that every Behavior variant's payload has a reachable
+`result_port: PortId` edge**, either as a direct field or as a
+structurally-derivable one. If Rust's `BindNode` has `value:
+PortId` and the `.dag` `BindNode` declaration names it
+`result_port`, the inhabitance check either (a) fails with a
+field-mismatch diagnostic, pushing Rust to rename to `result_port`,
+or (b) the `.dag` declaration uses a structural alias matching
+the Rust name. The cleanup direction is "rename the Rust field to
+match the `.dag` declaration's canonical name" — one-time
+structural rename, no runtime cost.
 
-**The fix this design doc commits to.** `behavior_output_port`
-lands in `std.substrate_query` as a first-class query primitive
-in this PR's reflection work. Every lens (and every future
-consumer that walks sub-DAGs) reads the primary-result port
-through this one query. The rule is: if you find yourself
-writing `match behavior { Value(_) => ..., Transform(_) =>
-..., Branch(_) => ..., Loop(_) => ..., Bind(_) => ... }` to
-answer "which port is the result," stop — call
-`behavior_output_port` instead. This makes the substrate the
-single authority per §"Semantic authority after lowering" in
-`INVARIANTS.md`.
+**Why this answer is strictly better than the query-primitive
+answer.** A query primitive `fn behavior_output_port(b: Behavior)
+-> PortId` is a function that is definitionally `b.result_port`
+under a different name. Anyone can inline it, and every inlining
+is a parallel representation. A declared field, in contrast, is
+the authority — there's nothing to inline because there's no
+alternative representation. "Field access on a declared record"
+is exactly the shape of authority the substrate already uses
+for everything else.
 
-**Structural enforcement.** A grep-style layer-opacity check
-(eventually a lens, for now a CI gate) verifies no consumer
-source file outside `substrate_query.rs` contains a five-arm
-match on `Behavior` variants that extracts a PortId. The single
-exception is `behavior_output_port`'s own implementation. This
-is the same shape as the rename test for `kernel_type_set` —
-one place holds the authority, everyone else reads through it.
+### §3.3 Lens output type
 
-**Why this is a reflection-design concern, not a patch.** The
-review flagged the pattern on a PR that predates the reflection
-primitive. Without reflection, fixing it means adding yet another
-public method to the Rust `Dag`/`Behavior` API, which grows the
-Rust-side scaffold surface the §1 motivation argues against.
-With reflection, the primitive lands in `.dag` — once — and
-every lens, compiled from `.dag`, reads through it. The design
-point the review made is answered by the reflection primitive
-itself: the substrate hosts the fact, lenses walk it through
-the substrate interface, and no consumer outside the substrate's
-own realization layer can reinvent the mapping.
-
-**Minimality.** The query primitive set is derived from what
-the existing four lenses actually need. Each primitive corresponds
-to a specific Rust method on `Dag` or one of its sub-types. The
-set is not open-ended — adding a new primitive is a design
-decision, not a free action. Primitives are the substrate's
-public interface to `.dag` lens code; a smaller set is better.
-
-**Realization.** Each query primitive is backed by a Rust
-function in `src/v3/compiler/src/substrate_query.rs` (new file).
-The realization declarations for each primitive live in
-`src/v3/spec/rust.dag` alongside the existing type and operator
-realizations — same mechanism, same `ArrowBody::ExternalRealization`
-pattern.
-
-### §3.3 Violation output type
-
-A lens returns a list of violations. The violation type is a
-per-lens record — `UnusedParameter` for `lens_unused_parameters`,
-`Duplicate` for `lens_structural_duplicates`, etc. The `.dag`
-form declares this record as a `Conj` in the lens's own module:
+A lens returns a value of its own lens-specific output type. For
+`lens_unused_parameters`, that's `List<UnusedParameter>`; for
+`lens_cost`, a per-node cost structure; for `lens_provenance`, a
+per-port origin map; for `lens_structural_duplicates`, a list of
+duplicates. The `.dag` form declares the output type as a `Conj`
+(or `Disj`, or `List<Conj>`) in the lens's own module:
 
 ```
-// dsl/lenses/unused_parameters.dag
+// src/v3/lenses/unused_parameters.dag
+// (bootstrap staging — canonical home is dsl/lenses/ post-v2)
 
 module lenses.unused_parameters
 
-import std.substrate { NodeId, PortId, SourceSpan }
-import std.substrate_query as q
+import std.substrate { Dag, Behavior, BindNode, NodeId, PortId, SourceSpan }
+import std.list { List, fold, filter, map, enumerate }
 
 type UnusedParameter {
   function: NodeId
@@ -418,133 +551,340 @@ type UnusedParameter {
   function_span: SourceSpan
 }
 
-fn check(d: Dag) -> List<UnusedParameter> {
-  // ... algorithm walks the Dag via q.* primitives
-}
+fn check(d: Dag) -> List<UnusedParameter> =
+  // See §5 below for the full compositional form.
+  // (Uses field access + pattern match + higher-order calls.)
+  ...
 ```
 
 The returned `List<UnusedParameter>` is compiled to a Rust
 `Vec<UnusedParameter>` where the Rust struct is derived from the
-`.dag` record declaration (same mechanism PR #445 uses for data
-bodies via `ValueBody::Structural`).
+`.dag` record declaration — same mechanism PR #445 uses for data
+bodies via `ValueBody::Structural`. No new substrate paths; the
+existing record-emission path handles the lens return type the
+same way it handles any other record in return position.
+
+### §3.5 The deepest substrate question: higher-order function calls
+
+**Problem.** `fold`, `map`, `filter`, and every other compositional
+list operation takes a function-typed parameter and **calls** it
+inside its body. For example:
+
+```
+fn fold<T, U>(list: List<T>, init: U, f: fn(U, T) -> U) -> U =
+  match list {
+    Empty            => init
+    Cons(head, tail) => fold(tail, f(init, head), f)
+  }
+```
+
+The call `f(init, head)` — where `f` is a parameter, not a
+declared function — does not fit v3's current substrate shape.
+`TransformTarget::Callable(DeclarationId)` requires the call
+target to be a declaration with a known `DeclarationId`. When
+`f` is a parameter, `f` is carried by a PortId inside the Bind's
+body, not a DeclarationId.
+
+This question is **not specific to reflection** — it's a general
+property of higher-order functions. It shows up the moment any
+`.dag` program takes a function as a parameter and calls it.
+Reflection's lens layer happens to need it because lenses walk
+lists, but `lens_complexity` / `lens_ownership` / any future
+collection-walking lens hits the same wall.
+
+**Three options.** Each has a different substrate/lowering cost.
+
+**Option 1a — Substrate extension: `TransformTarget::PortValue
+(PortId)`.** Add a new `TransformTarget` variant so `Transform`
+can dispatch on a function value carried by a port. The port's
+type is an `Arrow` connective, and at emit time the call becomes
+an indirect call through whatever the port carries.
+
+- **Pro:** clean, direct, matches the thesis's "functions are
+  first-class values" claim. A lens walking a Transform with
+  `TransformTarget::PortValue(p)` sees "this Transform calls
+  whatever function the port `p` carries" — structurally
+  honest.
+- **Con:** new substrate variant. Must pass `INVARIANTS.md`
+  §"Scaffold boundaries" and the §8.10 substrate-extension
+  audit. The thesis explicitly says terminal forms shouldn't
+  grow casually.
+- **Pro on the con:** the 4-pattern dissolution check passes
+  straightforwardly. Pattern 1 (fact placement) — the fact "call
+  a port-carried function" doesn't fit anywhere else. Pattern 2
+  (variant-is-data) — the call target IS the variant
+  distinction, not data on a common shape. Pattern 3 (algebraic
+  form) — Callable vs PortValue is dispatch-on-origin, not
+  dispatch-on-algebra. Pattern 4 (dimensional) — the two
+  variants are categorically different (static declaration
+  reference vs runtime value). Verdict: **TERMINAL.**
+
+**Option 1b — Monomorphization at lowering time.** No substrate
+change. Every call site where a function is passed as an
+argument gets specialized into a declaration. `filter(xs,
+is_bind)` at the call site generates `filter_is_bind(xs)` as a
+specialized declaration with `is_bind` inlined. The generated
+declaration is a `Transform` with `TransformTarget::Callable`
+pointing at the real `is_bind` declaration.
+
+- **Pro:** zero substrate change. Uses existing mechanism.
+- **Pro:** no runtime indirect calls — every call resolves to a
+  specific declaration at compile time. Rust-idiomatic.
+- **Con:** substrate grows by the specialization factor. Every
+  unique `(filter, predicate)` pair becomes a distinct
+  declaration in the Dag. Three calls to `filter` with three
+  different predicates produce three `filter_*` specializations.
+- **Con:** a lens analyzing "what does `filter` do" sees many
+  `filter_*` variants instead of one canonical `filter`. That's
+  a layering opacity leak — the specialization is a compiler
+  artifact, not a program fact.
+- **Con:** higher-order functions with function-valued returns
+  are harder to express — you'd need to materialize the return
+  value as a specialized declaration too, which cascades.
+
+**Option 1c — Template instantiation extension.** Extend
+`TemplateArgument` (which v3 already uses for type parameters)
+to bind function-typed parameters alongside type parameters.
+When `filter<T, P>` is called with a specific predicate, the
+Instantiation carries `T := Behavior, P := is_bind` as template
+arguments. Inference walks the Instantiation at the call site
+and substitutes the function reference the same way it
+substitutes a type parameter.
+
+- **Pro:** reuses existing Instantiation mechanism — no new
+  substrate variant, no parallel dispatch path. The thesis's
+  "generics and higher-order functions share one mechanism"
+  claim lands directly.
+- **Pro:** a lens analyzing `filter<T, P>` sees ONE canonical
+  declaration with two template slots, one type, one function.
+  No specialization sprawl. Template instantiation at call
+  sites is a structural fact, not a compiler artifact.
+- **Pro on thesis alignment:** `TemplateArgument` already
+  carries `parameter: DeclarationId` and a value slot. Extending
+  the value slot to accept function-typed arguments (as
+  `DeclarationId` references to declared functions) is a
+  minimal change to the existing field, not a new variant.
+- **Con:** requires `TemplateArgument`'s value slot to accept a
+  union of (literal constant, function reference) or to treat
+  function references as first-class template values. The
+  inference walker needs a new case: when walking an Arrow with
+  a function-typed parameter, look up the template binding
+  instead of the parameter's port.
+- **Con:** when a function parameter is **not** at a template
+  instantiation boundary (e.g., a callback passed through
+  several layers of functions), the template machinery may not
+  have a way to thread the binding. This case needs more
+  thought.
+
+**My recommendation: 1c.** Three reasons:
+
+1. **Thesis alignment.** The substrate already treats template
+   arguments as "the parameter is filled in at the call site
+   with a specific value." Function parameters naturally fit
+   that frame — the value is a `DeclarationId` of the function
+   being passed. Reusing Instantiation makes "generics" and
+   "higher-order functions" share one substrate mechanism,
+   which is the thesis's compression principle.
+2. **No layering opacity leak.** Option 1b (monomorphization)
+   creates compiler-artifact declarations that aren't
+   program-visible facts. A lens walking them has to know they
+   came from specialization — which is exactly the kind of
+   "walk-the-compiler-internal-state" the thesis forbids.
+3. **No substrate variant addition.** Option 1a is clean but
+   adds `TransformTarget::PortValue`, which has to pass the
+   §8.10 audit. It probably would, but it's a higher bar than
+   1c, which is a field-semantics extension.
+
+**Decision point for the user.** This is the deepest substrate
+question in the prerequisite slate. 1c is my recommendation,
+but 1a and 1b are both defensible. **Prereq 0 in §11 codifies
+this as a design decision that must happen before any other
+prereq lands** — field access, pattern-with-payload, and
+lambda are all independent of the choice, but `std/list.dag`
+(Prereq 4) depends on this decision being made.
 
 ---
 
 ## §4. The mechanism, step-by-step
 
 How a `.dag` lens becomes a running check over a `Dag` value at
-CI time:
+CI time, assuming the §11 prerequisite slate has landed:
 
-1. **Substrate types loaded.** `dsl/std/substrate.dag`
-   parses at bootstrap time via `include_str!` (same pattern as
-   `dsl/std/algebra.dag`). The types are Declarations in the
-   bootstrap Dag.
-2. **Inhabitance check.** A startup pass walks the Rust substrate
-   types (via `realization_meta_id`-style markers) and asserts
-   each `.dag` declaration in `std.substrate::*` has a
-   matching Rust struct. Mismatches are fail-closed diagnostics.
-3. **Query primitives loaded.** `dsl/std/substrate_query.dag`
-   parses. Each Arrow gets its `ArrowBody::ExternalRealization`
-   resolved to a Rust function declaration in
-   `src/v3/spec/rust.dag`. The bootstrap already has the
-   `ExternalRealization` mechanism for `Int.add`, `Int.sub`,
-   etc. — this is the same pattern applied to a different set of
-   primitives.
-4. **Lens file loaded.** `dsl/lenses/unused_parameters.dag` is
-   compiled to a `Dag` via the standard `compile_to_dag` pipeline.
-   The lens's `check` function becomes a Bind with body sub-DAG.
-   The query primitive calls in the body are Transforms targeting
-   the declarations from step 3.
+1. **Substrate types loaded.** `src/v3/std/substrate.dag` is
+   added to the `V3_SPECS` include list and parses at bootstrap
+   via `include_str!` (same pattern as `rust.dag` and `v3_l1.dag`
+   today). Cross-file forward references resolve via
+   `resolve_pending_identifiers`.
+2. **Inhabitance check.** A startup pass walks every declaration
+   in `std.substrate::*` and asserts the corresponding Rust
+   struct in `src/v3/compiler/src/dag.rs` matches the declared
+   field shape. Mismatches are fail-closed diagnostics. This is
+   the same inhabitance mechanism `rust.dag` already uses for
+   arithmetic primitives — applied to the compiler's own types.
+3. **`std.list` loaded.** `src/v3/std/list.dag` is added to
+   `V3_SPECS`. Declares `List<T>` as a Disj, `fold`/`map`/
+   `filter`/`length`/etc. as higher-order functions. The
+   higher-order functions work because **Prereq 0** (template
+   instantiation for function-typed parameters — see §3.5)
+   landed first.
+4. **Lens file loaded.** `src/v3/lenses/unused_parameters.dag`
+   is parsed into a Dag via the standard `compile_to_dag`
+   pipeline. The lens's `check(d: Dag) -> List<UnusedParameter>`
+   function becomes an Arrow declaration whose body is a Bind
+   sub-DAG. Every field read in the lens (`d.nodes`, `bind.params`,
+   `b.span`) lowers to the corresponding substrate field-access
+   form (**Prereq 1** — field-access lowering).
 5. **Lens compiled to Rust.** `emit_rust` runs on the lens Dag
    and produces a Rust function `fn check(d: &Dag) ->
-   Vec<UnusedParameter>`. This is the same `emit_rust` pipeline
-   that ships `let x: Int = 1 + 2` → Rust; no new path needed.
-   The only extension: `emit_rust` must recognize Transforms
-   targeting query-primitive declarations and emit Rust method
-   calls (e.g., `d.declarations()`) instead of arithmetic
-   operators.
-6. **Compiled lens invoked.** A test, CI runner, or (eventually)
-   the lens manifest subcommand calls the compiled function with
-   a `Dag` value and collects violations. Zero Rust lens code
-   involved. The lens lives in `.dag`, was compiled by v3's own
-   pipeline, and runs as Rust at check time.
+   Vec<UnusedParameter>`. Field access on `Dag` / `Behavior` /
+   etc. compiles to the corresponding Rust field access or
+   accessor method via the inhabitance binding established in
+   step 2. Pattern matching on `Behavior` variants compiles to
+   Rust `match` arms. The lens becomes idiomatic Rust code that
+   reads the compiler's own internal state through the same
+   surface every other consumer uses.
+6. **Compiled lens invoked.** A test or CI runner calls the
+   compiled function with a `Dag` value and collects the
+   returned violations. Zero Rust lens source code. The lens is
+   `.dag`, compiled by v3's own pipeline, executed as Rust.
 
-**What's new.** Only step 5's extension — `emit_rust` needs to
-handle query-primitive Transforms. Everything else is pattern-
-matching existing machinery. This is deliberately minimal: the
-reflection primitive is small because most of the work is
-already done.
+**What's new in emit_rust.** The existing pipeline handles
+`OperatorKind` transforms (arithmetic, comparison) and
+`FunctionRealization` transforms (via the `rust.dag` realization
+index). The extension is: when a Transform reads a field off a
+value of a realized substrate type (e.g., `d.nodes` where `d:
+Dag`), emit the corresponding Rust field access. The binding is
+declared in `rust.dag` — for `Dag.nodes`, the realization says
+"the Rust `Dag` struct's `nodes` field has type `Vec<Behavior>`
+and is read as `dag.nodes`." This is roughly ~100 lines in
+`emit_rust.rs`, following the existing realization-dispatch
+shape.
 
-### §4.1 `emit_rust` extension
+### §4.1 Field-access realization in `rust.dag`
 
-The existing `emit_rust` handles `OperatorKind` transforms by
-looking up `(target, op_name) → carrier` in the realization
-index and substituting via template placeholders. The extension:
-when a Transform's target is a declaration with
-`ArrowBody::ExternalRealization` pointing at a Rust function
-(as opposed to a type/operator/template), emit a direct method
-call.
-
-Concretely, `rust.dag` grows a new realization category:
+A new realization category — **or, more cleanly, an extension
+of the existing `TypeRealization` shape to carry per-field
+bindings.** Every `TypeRealization` for a realized substrate
+type declares, alongside its Rust type name, a mapping from
+`.dag` field names to Rust field names / accessor methods.
 
 ```
-// src/v3/spec/rust.dag
-
-// ... existing TypeRealization, OperatorRealization, BehaviorRealization ...
-
-// NEW: Rust function-call realization. Binds a .dag Arrow to a
-// Rust method on a receiver value. The receiver is always the
-// first Arrow input; subsequent inputs become call arguments.
-type FunctionRealization {
-  for: Arrow              // the .dag Arrow declaration
-  receiver_type: Declaration  // which Rust type hosts the method
-  method_name: String     // the Rust method name
+// src/v3/spec/rust.dag — extended TypeRealization
+type TypeRealization {
+  for: Declaration              // the .dag type being realized
+  rust_name: String             // the Rust type name
+  fields: List<FieldBinding>    // per-field Rust mappings
 }
 
-data declarations_realization: FunctionRealization = {
-  for: std.substrate_query.declarations
-  receiver_type: std.substrate.Dag
-  method_name: "declarations"
+type FieldBinding {
+  dag_name: String              // field name in the .dag declaration
+  rust_access: RustFieldAccess  // how to read it from a Rust value
 }
 
-// ... one per query primitive in §3.2 ...
+type RustFieldAccess
+  = DirectField(String)         // struct.field_name
+  | AccessorMethod(String)      // struct.method_name()
 ```
 
-**Why a new realization category.** The three existing
-categories (`TypeRealization`, `OperatorRealization`,
-`BehaviorRealization`) each serve a distinct emit path. A
-function-call realization is its own shape: it has a receiver
-type + a method name + a structural Arrow declaration it
-realizes. Packing it into the existing categories would overload
-the meaning of their fields (layer opacity violation by analogy).
+Example entries (illustrative; real syntax TBD during
+implementation):
 
-**Size estimate:** ~150 lines in `emit_rust.rs` — a new
-`FunctionRealization` index, a dispatch arm in the Transform
-handler, template generation for method calls. The algorithm
-follows the same shape as the existing operator dispatch.
+```
+data dag_realization: TypeRealization = {
+  for: std.substrate.Dag
+  rust_name: "Dag"
+  fields: [
+    { dag_name: "nodes",        rust_access: DirectField("nodes") },
+    { dag_name: "declarations", rust_access: DirectField("declarations") },
+  ]
+}
 
-### §4.2 Query primitive Rust impls
-
-New file: `src/v3/compiler/src/substrate_query.rs`. Each query
-primitive becomes a method (or free function) on `Dag` /
-`Behavior` / etc. The Rust impls are trivial — they're existing
-field accessors wrapped in a stable public interface.
-
-```rust
-impl Dag {
-    pub fn declarations(&self) -> Vec<Declaration> { ... }
-    pub fn nodes(&self) -> Vec<Behavior> { ... }
-    pub fn declaration_by_id(&self, id: DeclarationId) -> Declaration { ... }
-    // ... ~20 methods total
+data bind_node_realization: TypeRealization = {
+  for: std.substrate.BindNode
+  rust_name: "BindNode"
+  fields: [
+    { dag_name: "params",      rust_access: DirectField("params") },
+    { dag_name: "value",       rust_access: DirectField("value") },
+    { dag_name: "span",        rust_access: DirectField("span") },
+    { dag_name: "result_port", rust_access: AccessorMethod("result_port") },
+  ]
 }
 ```
 
-**Why a dedicated module.** The Rust impls are the bridge between
-the `.dag` reflection surface and the compiler's internal state.
-Gathering them in one file makes the inhabitance check mechanical
-(every method in `substrate_query.rs` corresponds to exactly one
-query primitive in `std.substrate_query`) and gives future
-reviewers one place to audit for leaks.
+**Why this shape instead of a separate `FunctionRealization`
+category.** Field access is the natural compositional form, and
+a realization that says "field `X` on `.dag` type `T` maps to
+Rust field `Y`" is exactly the bridge we need. Every lens that
+reads a field goes through this mapping; nothing else does. A
+separate category for "function calls as Rust methods" is only
+needed if we have standalone functions that aren't field reads
+— and once the compositional model replaces query primitives,
+we don't.
+
+**Exception for `List<T>` operations.** `fold`/`map`/`filter`/etc.
+are NOT field reads — they're higher-order function calls that
+walk the list structure. Their realization path goes through
+**Prereq 0** (template instantiation for function-typed
+parameters), not through field access. See §3.5.
+
+### §4.2 No `substrate_query.rs` Rust module
+
+The earlier draft proposed a dedicated `src/v3/compiler/src/
+substrate_query.rs` module holding Rust impls for every query
+primitive. That file goes away. **Field access binds directly
+to existing Rust struct fields via the inhabitance check.** The
+lens compiler doesn't call a Rust accessor function; it emits
+`dag.nodes` (or whatever the `rust_access` binding says) inline.
+No bridge module. No parallel Rust API surface to maintain.
+
+**One caveat.** The inhabitance check may fail if the Rust
+struct's field names or shapes don't match the `.dag` declaration
+exactly. The cleanup direction is **rename Rust fields to match
+the `.dag` declaration's canonical names**, one-time structural
+rename, no runtime cost. If a Rust field genuinely cannot be
+renamed (name collision, history reasons), `FieldBinding` carries
+the Rust name via `DirectField("old_name")` — the translation
+layer, but scoped to per-field aliasing, not a whole accessor
+module.
+
+### §4.3 Pipe operator (`|>`) — parser sugar, not a function
+
+Per the §3 modeling discussion, pipe has a natural function form
+for the unary case:
+
+```
+// unary pipe — in std.list or std.pipe
+fn pipe<A, B>(x: A, f: fn(A) -> B) -> B = f(x)
+```
+
+…but the general multi-arg form `x |> f(y)` cannot be expressed
+as a function without currying, which v3 deliberately does not
+have. **Multi-arg pipe is parser-level sugar.** At parse time,
+`x |> f(y, z)` desugars to `f(x, y, z)` — first-arg injection,
+matching F# and Elm conventions. The desugaring happens during
+parsing; by the time lowering runs, there is no pipe — just a
+normal function call.
+
+**Why first-arg injection (not last-arg).** Three reasons:
+1. It treats `x |> f` and `x |> f(y)` uniformly. In both cases
+   `x` is the "subject" being threaded through.
+2. It matches method-chaining idioms: `x |> length` reads as
+   "the length of x."
+3. Last-arg injection (Elixir-style) is harder to read in the
+   `x |> fold(0, add)` case, where the piped value ends up
+   buried three arguments deep in the call site.
+
+**Parser prerequisite.** Add a `SurfaceExpr::Pipe { left, right,
+span }` variant that parses `x |> <call_expr>` with call-expr
+having a hole for the first argument. Desugar in `parse_expr`
+during parsing — not a lowering-time transform. This keeps the
+grammar rule self-contained in parse.rs.
+
+**Scope.** The pipe operator is a **cosmetic ergonomic**. Lenses
+can be written without it (using nested `fold(filter(map(...)),
+...)` expressions instead). Its place in the prereq slate is
+**Prereq 5** — small parser extension, no substrate change, no
+lowering change. Can land independently of the other prereqs.
 
 ---
 
@@ -581,13 +921,13 @@ impl<'a> UnusedParametersLens<'a> {
 }
 ```
 
-**After** (`.dag`, `dsl/lenses/unused_parameters.dag`):
+**After** (`.dag`, `src/v3/lenses/unused_parameters.dag`):
 
 ```
 module lenses.unused_parameters
 
-import std.substrate { Dag, Behavior, Bind, NodeId, PortId, SourceSpan }
-import std.substrate_query as q
+import std.substrate { Dag, Behavior, BindNode, NodeId, PortId, SourceSpan }
+import std.list { List, fold, filter, map, enumerate, concat, empty, contains }
 
 type UnusedParameter {
   function: NodeId
@@ -596,44 +936,74 @@ type UnusedParameter {
   function_span: SourceSpan
 }
 
-fn check(d: Dag) -> List<UnusedParameter> {
-  q.nodes(d)
-    .filter(is_function_bind)
-    .flat_map(fn(b) = check_bind(d, b))
-}
+// Entry point: walk the Dag, check every function-shaped Bind.
+fn check(d: Dag) -> List<UnusedParameter> =
+  fold(d.nodes, empty(), |acc, behavior|
+    concat(acc, check_behavior(d, behavior))
+  )
 
-fn is_function_bind(b: Behavior) -> Bool =
+// For each Behavior, return the violations it produces. Only
+// function-shaped Binds produce violations; everything else is
+// skipped.
+fn check_behavior(d: Dag, b: Behavior) -> List<UnusedParameter> =
   match b {
-    Bind(bind) => not(q.bind_params(bind).is_empty()),
-    _          => false,
+    Bind(bind) =>
+      if length(bind.params) > 0 then
+        check_bind(d, bind)
+      else
+        empty()
+    _ =>
+      empty()
   }
 
-fn check_bind(d: Dag, b: Bind) -> List<UnusedParameter> {
-  let referenced = referenced_ports(d, q.bind_value(b))
-  q.bind_params(b)
-    .enumerate()
-    .filter(fn((_, port)) = not(referenced.contains(port)))
-    .map(fn((idx, port)) = UnusedParameter {
-      function: q.bind_owner_node(b),
-      parameter: port,
-      parameter_index: idx,
-      function_span: q.bind_span(b),
-    })
+// Walk the function body's sub-DAG, collect referenced ports,
+// and return a violation for every parameter not in the
+// referenced set.
+fn check_bind(d: Dag, bind: BindNode) -> List<UnusedParameter> {
+  let referenced = referenced_ports(d, bind.value)
+  filter(
+    map(
+      enumerate(bind.params),
+      |ie| UnusedParameter {
+        function: bind.id,
+        parameter: ie.value,
+        parameter_index: ie.index,
+        function_span: bind.span,
+      }
+    ),
+    |violation| !contains(referenced, violation.parameter)
+  )
 }
 
-fn referenced_ports(d: Dag, root: PortId) -> Set<PortId> {
-  // Iterative work-list walking through q.port_producer + input sets.
-  // Structurally the same as collect_referenced_ports in the Rust form.
+// Iterative work-list walk from root_port backwards through
+// produced_by edges. Collects every port the walk touches as
+// "referenced."
+fn referenced_ports(d: Dag, root: PortId) -> List<PortId> =
+  // Structural form: recursive walk via pattern matching on
+  // Behavior variants to find each producer's input ports.
+  // Implementation details elided in this sketch — see the
+  // Rust form for the exact algorithm. The point is: every
+  // operation here is field access + pattern match + list
+  // ops, no query primitives.
   ...
-}
 ```
 
 **What changed:**
 
-- The `.dag` form uses query primitives (`q.nodes`, `q.bind_params`,
-  `q.port_producer`) instead of direct field access.
-- The algorithm is identical — same walk, same output.
-- The host language is the substrate itself.
+- Field access replaces query primitives: `d.nodes`,
+  `bind.params`, `bind.value`, `bind.span`, `bind.id`,
+  `ie.index`, `ie.value` — all direct reads off declared
+  record fields.
+- `match` with payload binding replaces variant-inspection
+  helpers: `match b { Bind(bind) => ... }` captures the
+  `BindNode` payload as a local.
+- Standard list operations (`fold`, `filter`, `map`,
+  `enumerate`, `concat`, `length`, `contains`) come from
+  `std/list.dag` — not from a `substrate_query` layer.
+- Higher-order calls (`filter(list, predicate)`) resolve via
+  the template instantiation mechanism from §3.5.
+- The algorithm is identical to the Rust form — same walk,
+  same output. The host language is the substrate itself.
 
 **What didn't change:**
 
@@ -672,14 +1042,18 @@ specific field. This is the binding contract — if the Rust
 substrate drifts from the `.dag` declaration, the test catches
 it immediately.
 
-### §6.2 Query primitive parity
+### §6.2 Field-access binding parity
 
-New test: `tests/m2_query_primitive_test.rs`. For each query
-primitive in `std.substrate_query::*`, asserts (a) it has an
-`ExternalRealization` body, (b) the realization resolves to a
-Rust method in `substrate_query.rs`, (c) calling the primitive on
-a test Dag returns the same value as calling the Rust method
-directly on the same Dag.
+New test: `tests/m2_field_access_binding_test.rs`. For each
+realized substrate type declaration (`Dag`, `BindNode`,
+`TransformNode`, etc.), assert that every `.dag`-declared field
+has a `FieldBinding` entry in `rust.dag` with either a
+`DirectField` or `AccessorMethod` mapping. Compile a tiny `.dag`
+snippet that reads each field, run it against a test Dag, and
+assert the compiled Rust reads the corresponding Rust struct
+field and produces the expected value. This validates the
+inhabitance binding end-to-end: `.dag` declaration → realization
+entry → Rust struct field → correct runtime value.
 
 ### §6.3 Lens migration parity
 
@@ -711,7 +1085,7 @@ subsection:
 > **Self-inspection: the substrate is its own subject.** The
 > substrate's structural type layer — `Dag`, `Declaration`,
 > `Behavior`, `TypeConnective` — is declared in
-> `dsl/std/substrate.dag` as ordinary `.dag` declarations,
+> `src/v3/std/substrate.dag` as ordinary `.dag` declarations,
 > sibling to `std/algebra.dag` and `std/types.dag`. There is no
 > separate "meta substrate" and no subdirectory: the substrate
 > describes itself as data **inside** itself, and the
@@ -930,78 +1304,219 @@ query primitive set — not two (Rust fields + user-facing `.dag`).
 
 ## §10. Open questions
 
-1. **How are atomic identity handles (`NodeId`, `PortId`,
-   `DeclarationId`, `SourceSpan`) seeded?** Per §3.0 they stay
-   as Rust primitives and get realization entries in
-   `src/v3/spec/rust.dag` — the same mechanism `Int → i64` uses.
-   The question to audit: does the existing `TypeRealization`
-   shape support opaque-handle types (not just arithmetic
-   primitives)? If yes, no new work. If it requires a
-   `HandleRealization` sibling category, the addition is
-   scoped as part of this PR.
-2. **Higher-order functions in `.dag`.** The `.dag` lens form
-   uses `filter`, `flat_map`, `enumerate` — do these exist in
-   `dsl/std/list.dag` today? If not, they're prerequisite
-   declarations. Audit before writing the lens.
-3. **`Set<PortId>` semantics.** The Rust lens uses a `HashSet`;
-   the `.dag` form needs a set-shaped collection type. Does v3
-   have `Set<T>` in `std/collections.dag`? If not, it's a
-   prerequisite.
-4. **Lens entry point convention.** The `.dag` form declares
-   `fn check(d: Dag) -> List<_>`. Is "check" the canonical name,
-   or does each lens pick its own? Convention: `check` is the
-   entry point every lens must define. The runner looks up
-   `{lens_module}.check` by structural path, not by string
-   match (layer opacity).
-5. **How does the lens result's violation record type get wired
-   to Rust?** When `emit_rust` compiles `lenses.unused_parameters`,
-   the `UnusedParameter` record needs a Rust type. PR #445's
-   `ValueBody::Structural` handles literal data; this is a
-   structural record type in function-return position. Does the
-   existing path support it, or is there a small extension?
-   Audit during implementation.
-6. **Does the check function need any configuration?** The Rust
-   form takes `&UnusedParametersConfig`; the `.dag` form has no
-   parameter beyond `Dag`. Config for future lenses (e.g.,
-   `BoundarySpec` for `lens_layer_opacity`) can be a second
-   parameter to `check`: `fn check(d: Dag, cfg: Config) ->
-   List<_>`. Leave the single-parameter form for lenses that
-   don't need config.
+Most of the original §10 questions are either **resolved** (Q1:
+atomic handles are minimal declarations; see §3.1) or **moved**
+to the prerequisite slate in §11 (higher-order functions →
+Prereq 0; list ops → Prereq 4; match-with-payload → Prereq 2;
+field access → Prereq 1; lambda → Prereq 3). What remains are
+questions the implementer will hit during the actual work.
 
-These resolve during implementation. None are blockers for
-starting.
+1. **Pattern 2 of the template-instantiation decision (§3.5).**
+   Option 1c proposes extending `TemplateArgument` to bind
+   function-typed parameters alongside type parameters. The open
+   detail: when a function parameter is **not** at a template
+   instantiation boundary (e.g., a callback threaded through
+   several layers of functions), how does the template machinery
+   propagate the binding? Option: each function that takes a
+   function-typed parameter becomes implicitly template-
+   parameterized over that function, and the binding propagates
+   through the call chain. Needs implementation thought; not a
+   blocker for starting because the first pass can handle
+   direct callsites only and defer threading.
+2. **`result_port` canonical field name.** §3.2.1 proposes
+   every `Behavior` variant's payload record carries a
+   `result_port: PortId` field for the primary-result query.
+   Today Rust's `BindNode.value`, `TransformNode.output`,
+   `BranchNode` (no direct field — the output is per-path),
+   `LoopNode.source` (no, that's the input), etc. are not
+   uniform. The cleanup direction: rename the Rust fields so
+   every variant has `result_port` as its canonical name. Open
+   question: does `BranchNode` have a well-defined primary
+   result port, or is the answer "it depends on which path
+   executed"? If the latter, `behavior_output_port` is not a
+   structural property; it's a runtime fact that depends on
+   control flow. Needs investigation before the prereq slate
+   starts; affects inhabitance-check design.
+3. **List realization — Disj vs Cardinality.** §3.1 declares
+   `List<T>` as a Disj (`Empty | Cons(T, List<T>)`) because
+   that's the structural shape for pattern matching. But v3's
+   substrate also has `Cardinality(Unbounded, T)` as the
+   repetition primitive for iterating over sequences. Are these
+   two shapes the same at realization time, or is one the
+   static grounding and the other the realization grounding?
+   Per the two-groundings distinction in `THESIS.md`, I
+   suspect: Disj is static (for pattern matching, L1 lens
+   walks), Cardinality is realization (for contiguous-memory
+   target types like `Vec<T>`). The L4 verification lens would
+   check the two are consistent. Prereq 4 (`list.dag`) needs to
+   pin this down.
+4. **Lens entry point convention.** The `.dag` form declares
+   `fn check(d: Dag) -> List<_>`. Is `check` the canonical
+   entry-point name, or does each lens pick its own? Proposal:
+   **the entry point is discovered by `meta_tag`, not by
+   string match.** A lens declares itself via `data
+   my_lens_entry: Lens = { check_fn: my_lens.check }` where
+   `Lens` is a meta-type in `std/lens.dag`. The runner walks
+   declarations whose `meta_tag == Lens` and calls `check_fn`
+   structurally. Layer opacity is preserved: no string match
+   on "check," no hardcoded registry.
+5. **Parser handling of function-typed parameters at call
+   sites.** When a call site writes `filter(xs, is_bind)`,
+   how does the parser know `is_bind` is meant as a function
+   reference rather than a variable reference? Probably: the
+   type inference walks the call target's signature, sees the
+   parameter is `fn(T) -> Bool`, and binds `is_bind` as a
+   declaration reference. Straightforward in principle but
+   needs the inference walker to handle function-typed
+   arguments specifically. Prereq 0 implementation detail.
+6. **v2 CI behavior during the transition.** `src/v3/std/
+   substrate.dag`, `src/v3/std/list.dag`, and
+   `src/v3/lenses/unused_parameters.dag` live outside the
+   v2-scanned `dsl/` tree and so are invisible to v2 CI.
+   But when reflection lands, the v3 compiler ships with these
+   files bootstrap-loaded and parsed via `V3_SPECS`. The
+   cross-check: v3's test suite must load all three files
+   cleanly, while v2 CI stays green. Both conditions are
+   expected to hold, but worth validating during implementation.
+
+These resolve during the prerequisite slate or during the
+reflection PR itself. None of them are design blockers; they're
+implementation details that need care.
 
 ---
 
 ## §11. What counts as done
 
-- [ ] `dsl/std/substrate.dag` exists as a regular `std/` file
+Reflection cannot ship in isolation. It depends on a slate of
+**six prerequisite PRs** that lift the grammar and standard
+library to the point where lenses can be written compositionally.
+Each prereq is independently reviewable and lands as its own PR.
+Reflection is the PR that closes the slate.
+
+### Prerequisite slate (independent PRs, lands before reflection)
+
+**Prereq 0 — Template instantiation for function-typed
+parameters.** The deepest substrate question. Pick one of the
+three options in §3.5 (my recommendation: **1c**, extending
+`TemplateArgument` to bind function-typed parameters). Land the
+substrate/inference extension, add test coverage for a
+higher-order call (e.g., `fn apply<T>(x: T, f: fn(T) -> T) -> T
+= f(x)` called as `apply(3, negate)`). **Blocker for Prereq 4.**
+
+- [ ] §3.5 decision committed (1a, 1b, or 1c)
+- [ ] Substrate/inference extension shipped
+- [ ] Test: a higher-order call compiles and runs correctly
+- [ ] No regressions on existing v3 tests
+
+**Prereq 1 — Field-access lowering.** Extend `lower_expr` to
+resolve `SurfaceExpr::Path` against local-variable Declarations
+and walk to the named field. Today the parser already produces
+`Path` for `a.b.c`; only lowering for user-code expression
+position needs the new path. No parser change, no substrate
+change — pure lowering extension. **Independent of other
+prereqs, can land first.**
+
+- [ ] Lowering extension in `lower_expr`
+- [ ] Test: `fn first(pair: (Int, Int)) -> Int = pair.0` (or
+      similar record access) compiles and runs
+- [ ] Test: field access that resolves to a type-mismatched or
+      nonexistent field fails with a fail-closed diagnostic
+      pointing at the specific field name
+
+**Prereq 2 — Match-with-payload-binding.** Add
+`SurfacePattern::VariantWith { name, binding, span }` variant
+and parser rule. Extend lowering so a match arm
+`Bind(bind) => body` binds `bind` as a local in `body`'s scope,
+pointing at the variant's payload port.
+
+- [ ] `SurfacePattern::VariantWith` added to parse.rs
+- [ ] Parser accepts `match b { Bind(bind) => …, … }`
+- [ ] Lowering wires the local binding into the path's body scope
+- [ ] Test: pattern match that captures a variant payload
+      compiles and runs
+
+**Prereq 3 — Lambda parser + lowering.** Add `SurfaceExpr::Lambda
+{ params, body, span }`. Parser rule: `|ident (, ident)*| body`
+(Rust-ish, avoids overlap with v3's existing block-body
+syntax). Lowering: per v3-spec.md §Principle 5, lower to an
+ordinary Bind declaration with captures from the outer scope
+materialized as additional positional parameters. Captures are
+detected by walking the body's free variables. No new
+substrate variants.
+
+- [ ] `SurfaceExpr::Lambda` added to parse.rs
+- [ ] Parser rule accepts `|x| x + 1` and multi-param forms
+- [ ] Lowering produces a Bind with captures as explicit inputs
+- [ ] Test: a lambda that captures from outer scope compiles,
+      the captured value flows through as a typed edge, and the
+      lens walking the resulting Bind sees params = [declared +
+      captured] with no distinction
+- [ ] Test: the callback rule from v3-validation-experiments
+      Experiment 1 — a lambda body that flows into a Loop gets
+      fan-out = Loop's bound in the ownership lens, termination
+      bounded by Loop in the termination lens
+
+**Prereq 4 — `src/v3/std/list.dag` ships.** Add the design file
+(already committed to this PR as `src/v3/std/list.dag`) to
+`V3_SPECS`. Depends on Prereqs 0 (for higher-order calls), 2
+(for pattern matching), 3 (for lambdas). Once these three are
+in, `list.dag` parses, type-checks, and becomes available to
+subsequent declarations.
+
+- [ ] `list.dag` added to `V3_SPECS`
+- [ ] Bootstrap loads `list.dag` cleanly after prereqs 0, 2, 3
+- [ ] Test: `fold([1, 2, 3], 0, |acc, x| acc + x)` evaluates to
+      6 via v3's compile → emit → run pipeline
+- [ ] Test: `filter([1, 2, 3, 4], |x| x > 2)` produces `[3, 4]`
+- [ ] Test: `map([1, 2, 3], |x| x * 2)` produces `[2, 4, 6]`
+
+**Prereq 5 — Pipe operator `|>` parser sugar.** Add
+`SurfaceExpr::Pipe` or a desugar-at-parse-time transform.
+`x |> f(y)` becomes `f(x, y)` (first-arg injection). Parser-only
+change, no substrate, no lowering. **Independent of other
+prereqs, can land in parallel with any of them.**
+
+- [ ] `|>` tokenizes
+- [ ] Parser rule handles `x |> f` and `x |> f(args…)` via
+      first-arg injection
+- [ ] Test: `5 |> negate` produces `-5`
+- [ ] Test: `[1, 2, 3] |> length` produces `3`
+
+### Reflection PR itself (lands after all prereqs)
+
+- [ ] `src/v3/std/substrate.dag` exists as a flat file
       (no subdirectory), parses cleanly, inhabitance check
       passes against the Rust substrate structs in `dag.rs`.
 - [ ] Atomic identity handles (`NodeId`, `PortId`,
-      `DeclarationId`, `SourceSpan`) have realization entries
-      in `src/v3/spec/rust.dag` and are **not** declared in
-      `.dag`. The seed is four handles plus the existing
-      arithmetic primitives.
-- [ ] Seed ratchet file exists, CI gate counts seed primitives,
-      a PR that adds a new seed primitive without a receipted
-      exception fails CI.
-- [ ] `dsl/std/substrate_query.dag` exists, all primitives have
-      `ExternalRealization` bodies resolved at lower time.
-- [ ] `src/v3/compiler/src/substrate_query.rs` exists; every
-      primitive has a Rust impl; the impls are called through a
-      stable interface and never via direct field access.
-- [ ] `src/v3/spec/rust.dag` grows `FunctionRealization` entries
-      for each query primitive.
-- [ ] `emit_rust.rs` handles `FunctionRealization` Transforms
-      and emits Rust method calls.
-- [ ] `dsl/lenses/unused_parameters.dag` exists, compiles
+      `DeclarationId`) declared in `substrate.dag` as minimal
+      opaque atoms with `TypeRealization` entries in
+      `rust.dag`. `SourceSpan` reused from `std/types.dag`.
+- [ ] Every Behavior variant's payload record has a canonical
+      `result_port: PortId` field (either directly or via
+      per-field aliasing in `rust.dag`). The earlier
+      `behavior_output_port` query function is NOT added;
+      field access on `result_port` replaces it.
+- [ ] Seed ratchet file exists, CI gate counts minimal-atom
+      declarations in `substrate.dag`, a PR that adds a new one
+      without a receipted exception fails CI.
+- [ ] `src/v3/spec/rust.dag` grows per-field `FieldBinding`
+      entries for every realized substrate type. Each field
+      maps to either `DirectField` or `AccessorMethod`.
+- [ ] `emit_rust.rs` handles field access on realized substrate
+      types via the `FieldBinding` lookup. No `FunctionRealization`
+      category, no `substrate_query.rs` module.
+- [ ] `src/v3/lenses/unused_parameters.dag` exists, compiles
       cleanly, produces the same output as the Rust form for
-      every test fixture.
+      every test fixture. Uses field access + match-with-payload
+      + higher-order calls + `std.list` — all via the prereqs.
 - [ ] `src/v3/compiler/src/lens_unused_parameters.rs` is
       deleted.
-- [ ] `m2_substrate_inhabitance_test.rs` passes.
-- [ ] `m2_query_primitive_test.rs` passes.
+- [ ] `m2_substrate_inhabitance_test.rs` passes (every
+      `.dag` declaration in `substrate.dag` has a matching Rust
+      struct).
+- [ ] `m2_field_access_binding_test.rs` passes (every field on
+      every realized type reads correctly through the
+      `FieldBinding` mapping).
 - [ ] `m2_lens_unused_parameters_migration_test.rs` passes
       (byte-for-byte with the Rust form's previous output).
 - [ ] `m2_lens_self_analysis_test.rs` passes (the lens analyzing
@@ -1009,6 +1524,8 @@ starting.
 - [ ] `THESIS.md` §"Self-inspection" landed.
 - [ ] `INVARIANTS.md` §"Bounded substrate seed" landed.
 - [ ] `INVARIANTS.md` §"Lenses are substrate declarations"
+      landed.
+- [ ] `INVARIANTS.md` §"Every dependency is a substrate fact"
       landed.
 - [ ] `lens-library-design.md` §1.5 rewritten, §2.3 rewritten,
       §7 updated.
@@ -1041,23 +1558,33 @@ deferred with a note.
 
 | Thread | Status |
 |---|---|
+| **Queries fall out of compositional modeling** ("I expected the queries to fall out of proper compositional modeling") | §3.2 — collapsed the query-primitive layer, replaced with field access on declared records |
+| **Higher-order function calls as the deepest substrate question** (from the List modeling exercise) | §3.5 — three options (1a substrate variant, 1b monomorphization, 1c template instantiation); recommendation 1c; codified as Prereq 0 |
+| **`behavior_output_port` resolved compositionally** | §3.2.1 — replaced with `result_port: PortId` field on every Behavior variant payload, accessed by field read |
+| **`std.list` modeled as the free monoid on T** | `src/v3/std/list.dag` (committed alongside this doc), §3.2 prereq list |
+| **Pipe operator `\|>` — function or sugar?** | §4.3 — unary form is a function, multi-arg form is parser-level sugar with first-arg injection |
+| **Lambda = Bind + Define from Experiment 1** | §11 Prereq 3 — parser + lowering extension only, substrate already complete per v3-spec.md §Principle 5 |
+| **Callback rule for closures-in-Loops** | §11 Prereq 3 test requirement — lens-level validation of ownership fan-out and termination bounding |
+| **Captures as anonymous inputs** | §11 Prereq 3 — captures become additional positional parameters, no special capture concept |
+| **Grammar-as-data / omni-ingestion** | Flagged in §1 as a parallel work stream, not blocking reflection |
 | "Everything is Dag/Node" / project as meta-compiler | §3.0, §3.1, §7.1 — substrate is self-describing, no meta layer, no substrate subdirectory |
-| Primitives vs declarations ("l0 primitives vs declare them") | §3.0 — declare everything structural, four seed handles only, ratcheted |
+| Primitives vs declarations ("l0 primitives vs declare them") | §3.0 — declare everything structural; atomic identity handles are minimal declarations backed by realization entries, not Rust-only primitives |
 | Bootstrap problem ("how does this not cycle?") | §3.0 — same mechanism v3 already uses for algebra.dag → types.dag forward refs |
 | Seed-minimality invariant | §7.2a — new `INVARIANTS.md` entry with ratchet |
-| ChatGPT review: `behavior_output_port` as canonical query | §3.2, §3.2.1 — landed as a first-class query primitive |
 | Reflection primitive as canonical form | §1, §3, §4 — the core of this doc |
 | Rust lenses as bootstrap scaffolds | §1 motivation, §5 migration |
 | Thin-wrapper-vs-deepening-scaffold gate | §7.3 (retrospective after this PR) |
 | `kernel_lens_set` failure class | §1, §7.1 thesis, §7.2 invariant |
-| Substrate-as-data | §3.1 substrate types in std/ |
-| Query primitives for `.dag` programs | §3.2 |
-| Interpreter binding (.dag receives Dag) | §4 step-by-step, §4.1 emit_rust extension |
+| Substrate-as-data | §3.1 substrate types in substrate.dag |
+| Interpreter binding (.dag receives Dag) | §4 step-by-step, §4.1 field-access realization |
 | Composition Opacity = Layer Opacity | already reconciled (PR #445), cross-ref in §8 |
 | Semantic authority after lowering | §8 — this PR extends it |
 | Scaffold boundaries | §8 — Rust lenses are tracked scaffolds |
 | `lens_unused_parameters` as first migration | §5 |
-| `lens_complexity` as v2/v3 comparison | §8 — deferred follow-up |
+| `lens_complexity` as v2/v3 comparison | §8 — deferred follow-up, unblocked by reflection |
+| **v2 CI scanning constraint on file location** | §3.1 — `src/v3/std/` is bootstrap staging; `dsl/std/` is canonical post-v2 |
+| **Name collisions — v3_l1.Declaration sentinel, algebra.Field\<T\>** | §3.1 — rename sentinel → `DeclarationRef`, use `ConjField` for substrate record-field type |
+| **Every dependency is a substrate fact** (module/import/buffer lifting, user_start elimination) | §8, prerequisite to reflection — scoped as separate PR, not yet designed in full detail |
 | `content_upsert` blocked on parser gaps | §5 — migration preserves the existing pinned tests |
 | Positional identity (parameter_index) | §5 — preserved |
 | No ghost config fields | §3.3, §10 Q6 — lens config is a real parameter |
