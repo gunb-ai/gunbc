@@ -372,6 +372,22 @@ pub enum SurfaceExpr {
         name: String,
         span: SourceSpan,
     },
+    /// Dotted-path identifier — `OrderedRing.add`,
+    /// `dsl.std.v3_l1.Bind`, etc. Produced by `parse_primary` when
+    /// it sees `Ident . Ident (. Ident)*`. Distinct from `Var` so
+    /// downstream lowering can tell whether it was looking at a
+    /// bare name (top-level scope lookup) or a dotted reference
+    /// (top-level lookup followed by Conj-child walk by label).
+    /// At M1(3) PR-B-unwind only `lower_record_to_structural`
+    /// resolves Path values — it accepts them as field values when
+    /// the declared field type is the `Declaration` sentinel from
+    /// `dsl/std/v3_l1.dag`. User-code expression position lowers
+    /// Path through `lower_expr` with a fail-closed diagnostic
+    /// (no semantics yet beyond the realization spec use case).
+    Path {
+        segments: Vec<String>,
+        span: SourceSpan,
+    },
     Call {
         target: String,
         args: Vec<SurfaceExpr>,
@@ -1334,6 +1350,37 @@ impl<'a> Parser<'a> {
                         args,
                         span: SourceSpan::new(self.file, start, end),
                     })
+                } else if matches!(self.peek().kind, TokenKind::Dot) {
+                    // Member-access chain: Ident (. Ident)+. Always
+                    // reads at least one additional segment because
+                    // the Dot is in the peek. Lowers to
+                    // `SurfaceExpr::Path` for downstream resolution
+                    // via top-level symbol + Conj-child walk by label.
+                    let mut segments = vec![name];
+                    let start = token.span.byte_start;
+                    let mut end = token.span.byte_end;
+                    while matches!(self.peek().kind, TokenKind::Dot) {
+                        self.bump();
+                        let next = self.bump().clone();
+                        match next.kind {
+                            TokenKind::Ident(n) => {
+                                end = next.span.byte_end;
+                                segments.push(n);
+                            }
+                            other => {
+                                return Err(Diagnostic::ParseError {
+                                    message: format!(
+                                        "expected identifier after `.` in dotted path, got {other:?}"
+                                    ),
+                                    span: next.span,
+                                });
+                            }
+                        }
+                    }
+                    Ok(SurfaceExpr::Path {
+                        segments,
+                        span: SourceSpan::new(self.file, start, end),
+                    })
                 } else {
                     Ok(SurfaceExpr::Var {
                         name,
@@ -1442,6 +1489,7 @@ fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
     match expr {
         SurfaceExpr::Literal { span, .. }
         | SurfaceExpr::Var { span, .. }
+        | SurfaceExpr::Path { span, .. }
         | SurfaceExpr::Call { span, .. }
         | SurfaceExpr::Operator { span, .. }
         | SurfaceExpr::If { span, .. }

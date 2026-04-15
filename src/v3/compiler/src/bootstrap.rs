@@ -37,10 +37,20 @@ const INTEGER_DAG: &str = include_str!("../../../../dsl/std/integer.dag");
 const FLOAT_DAG: &str = include_str!("../../../../dsl/std/float.dag");
 const STRING_TYPE_DAG: &str = include_str!("../../../../dsl/std/string_type.dag");
 const TYPES_DAG: &str = include_str!("../../../../dsl/std/types.dag");
+// M1(3) PR-B unwind — substrate marker types for v3's L1 behaviors
+// and the `Declaration` sentinel meta-type. Loads after types.dag
+// (no cross-file dependency, but kept after the "domain" std files
+// for readability). Per-target language spec files import these
+// markers via typed `Declaration` field references, eliminating
+// the need to identify behaviors by string name. See
+// `dsl/std/v3_l1.dag` and `Dag.substrate_markers` for the bootstrap
+// cache populated from this file.
+const V3_L1_DAG: &str = include_str!("../../../../dsl/std/v3_l1.dag");
 // M1(3) PR-B — the first target language spec v3 consumes
-// structurally. Loads after string_type.dag so `String` is
-// resolved by the time rust.dag's Realization fields reference
-// it. See dsl/extdeps/languages/rust.dag for the file's role.
+// structurally. Loads after v3_l1.dag so the substrate markers
+// (Bind/Branch/Main/Declaration) are resolved by the time
+// rust.dag's Realization fields reference them. See
+// `dsl/extdeps/languages/rust.dag` for the file's role.
 const RUST_DAG: &str = include_str!("../../../../dsl/extdeps/languages/rust.dag");
 
 pub(crate) fn bootstrap(dag: &mut Dag) {
@@ -65,6 +75,7 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
         ("dsl/std/float.dag", FLOAT_DAG),
         ("dsl/std/types.dag", TYPES_DAG),
         ("dsl/std/string_type.dag", STRING_TYPE_DAG),
+        ("dsl/std/v3_l1.dag", V3_L1_DAG),
         ("dsl/extdeps/languages/rust.dag", RUST_DAG),
     ];
 

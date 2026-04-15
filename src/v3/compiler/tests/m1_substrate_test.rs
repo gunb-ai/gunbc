@@ -277,27 +277,61 @@ fn child_declarations_are_anonymous() {
     assert!(dag.declaration_by_name("Int").is_some());
     assert!(dag.declaration_by_name("OrderedRing").is_some());
     assert!(dag.declaration_by_name("Classical").is_some());
-    // Starting at M1(3) PR-B, `Realization` is a production bootstrap
-    // declaration — the first `dsl/extdeps/languages/*` fixture
-    // (`rust.dag`) declares it as a Conj type carrying
-    // `target_name`/`op_name`/`carrier`/`cost` fields, and the v3
-    // emitter reads `data rust_*: Realization = {...}` items through
-    // `meta_tag` filtering. This is the thesis-aligned end-state: the
-    // realization meta-type lives in extdeps where every
+    // Starting at M1(3) PR-B-unwind, three Realization meta-types
+    // are production bootstrap declarations from the first
+    // `dsl/extdeps/languages/*` fixture (`rust.dag`):
+    //
+    //   - `TypeRealization`     — primitive type → target type
+    //   - `OperatorRealization` — (operand type, algebra field)
+    //                             → target operator symbol
+    //   - `BehaviorRealization` — substrate marker → target
+    //                             template
+    //
+    // The v3 emitter reads `data rust_*: <RealizationKind> = {...}`
+    // items through `meta_tag` filtering against each meta-type
+    // declaration. This is the thesis-aligned end-state: the
+    // realization meta-types live in extdeps where every
     // per-target-language fact lives, not in compiler code.
-    // Pre-PR-B (through M1(2.8) R16) this assertion was inverted:
-    // bootstrap loaded only `dsl/std/*` and Realization was absent.
-    let realization_id = dag
-        .declaration_by_name("Realization")
-        .expect("Realization is declared by dsl/extdeps/languages/rust.dag — the first extdeps fixture in M1(3) PR-B's bootstrap set")
-        .id;
-    assert!(
-        matches!(
-            dag.declaration(realization_id).connective,
-            TypeConnective::Conj { .. }
-        ),
-        "Realization must lower to a Conj — the rust.dag declaration is a record type, not a sum/alias/atom"
-    );
+    //
+    // The unwind also added marker types from `dsl/std/v3_l1.dag`
+    // (Bind, Branch, Loop, Transform, Value, Main) plus the
+    // `Declaration` sentinel meta-type that lets target spec files
+    // carry typed declaration references in record-literal field
+    // values. Each is a Conj (empty body) by construction.
+    for meta in ["TypeRealization", "OperatorRealization", "BehaviorRealization"] {
+        let id = dag
+            .declaration_by_name(meta)
+            .unwrap_or_else(|| panic!("`{meta}` must be declared by dsl/extdeps/languages/rust.dag"))
+            .id;
+        assert!(
+            matches!(
+                dag.declaration(id).connective,
+                TypeConnective::Conj { .. }
+            ),
+            "`{meta}` must lower to a Conj"
+        );
+    }
+    for marker in [
+        "Bind",
+        "Branch",
+        "Loop",
+        "Transform",
+        "Value",
+        "Main",
+        "Declaration",
+    ] {
+        let id = dag
+            .declaration_by_name(marker)
+            .unwrap_or_else(|| panic!("`{marker}` must be declared by dsl/std/v3_l1.dag"))
+            .id;
+        assert!(
+            matches!(
+                dag.declaration(id).connective,
+                TypeConnective::Conj { .. }
+            ),
+            "v3_l1 marker `{marker}` must lower to a Conj"
+        );
+    }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -626,17 +660,25 @@ data test_local_item: LocalMeta = { target_name: \"Int\", cost: 1 }
             "expected Structural value_body, got Unparsed — inhabitance checking didn't run or failed"
         ),
     };
-    // Fields are emitted in the type's declared order.
+    // Fields are emitted in the type's declared order. PR-B
+    // unwind: each field value is a `FieldValue::Literal` (since
+    // `LocalMeta`'s declared field types are `String` / `Int` —
+    // not the `Declaration` sentinel), so we match against the
+    // wrapped LiteralBits.
     assert_eq!(fields.len(), 2);
     assert_eq!(fields[0].0, "target_name");
     match &fields[0].1 {
-        v3_compiler::dag::LiteralBits::String(s) => assert_eq!(s, "Int"),
-        other => panic!("expected String literal for target_name, got {other:?}"),
+        v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::String(s)) => {
+            assert_eq!(s, "Int")
+        }
+        other => panic!("expected Literal(String) for target_name, got {other:?}"),
     }
     assert_eq!(fields[1].0, "cost");
     match &fields[1].1 {
-        v3_compiler::dag::LiteralBits::Int(n) => assert_eq!(*n, 1),
-        other => panic!("expected Int literal for cost, got {other:?}"),
+        v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(n)) => {
+            assert_eq!(*n, 1)
+        }
+        other => panic!("expected Literal(Int) for cost, got {other:?}"),
     }
 }
 
@@ -677,14 +719,14 @@ data test_local_bad: LocalMeta2 = { cost: \"not a number\" }
 
 #[test]
 fn m1_3_prb_rust_dag_bootstrap_loads_structurally() {
-    // M1(3) PR-B: verify rust.dag loaded cleanly during
+    // M1(3) PR-B-unwind: verify rust.dag loaded cleanly during
     // Dag::new() bootstrap and that `rust_int_add` lowered to a
-    // structural data item (meta_tag → Realization, value_body
-    // carrying the four Realization fields as literal bits). This
-    // is the end-to-end receipt that Phase 4 shipped: a real
-    // extdeps/languages/* file is now a production fixture and
-    // its declarations are queryable by name through the ordinary
-    // declaration table.
+    // structural data item with **typed declaration references**
+    // for the `target` and `op` fields (not strings). This is the
+    // end-to-end receipt that the unwind succeeded: every
+    // realization now carries DeclarationId edges to the
+    // declarations it realizes, and consumers (emit_rust) read
+    // those edges directly without name-string dispatch.
     let dag = Dag::new();
     assert!(
         dag.diagnostics().is_empty(),
@@ -692,13 +734,15 @@ fn m1_3_prb_rust_dag_bootstrap_loads_structurally() {
         dag.diagnostics()
     );
 
-    let realization_id = find_named(&dag, "Realization");
+    // The unwind splits Realization into three meta-types. The
+    // `rust_int_add` declaration is an OperatorRealization.
+    let op_realization_meta = find_named(&dag, "OperatorRealization");
     let rust_int_add_id = find_named(&dag, "rust_int_add");
     let rust_int_add = dag.declaration(rust_int_add_id);
     assert_eq!(
         rust_int_add.meta_tag,
-        Some(realization_id),
-        "rust_int_add's meta_tag must point at the Realization Conj"
+        Some(op_realization_meta),
+        "rust_int_add's meta_tag must point at OperatorRealization"
     );
     let fields = match rust_int_add
         .value_body
@@ -710,28 +754,54 @@ fn m1_3_prb_rust_dag_bootstrap_loads_structurally() {
             panic!("rust_int_add's value_body must be Structural, not Unparsed")
         }
     };
-    // Fields appear in the order Realization declares them:
-    // target_name, op_name, carrier, cost.
+    // Fields appear in OperatorRealization's declared order:
+    // target, op, carrier, cost.
     assert_eq!(fields.len(), 4);
-    assert_eq!(fields[0].0, "target_name");
-    assert!(matches!(
-        &fields[0].1,
-        v3_compiler::dag::LiteralBits::String(s) if s == "Int"
-    ));
-    assert_eq!(fields[1].0, "op_name");
-    assert!(matches!(
-        &fields[1].1,
-        v3_compiler::dag::LiteralBits::String(s) if s == "add"
-    ));
+
+    // target → Int (typed Reference)
+    assert_eq!(fields[0].0, "target");
+    let int_id = find_named(&dag, "Int");
+    match &fields[0].1 {
+        v3_compiler::dag::FieldValue::Reference(id) => assert_eq!(
+            *id, int_id,
+            "rust_int_add's target should reference the Int declaration"
+        ),
+        other => panic!("expected Reference for target, got {other:?}"),
+    }
+
+    // op → OrderedRing.add (typed Reference resolved via
+    // dotted-path lowering). Walk OrderedRing to find its `add`
+    // child declaration id and compare structurally.
+    assert_eq!(fields[1].0, "op");
+    let ordered_ring_id = find_named(&dag, "OrderedRing");
+    let ordered_ring_add_id = match &dag.declaration(ordered_ring_id).connective {
+        TypeConnective::Conj { children } => children
+            .iter()
+            .find(|f| f.label == "add")
+            .expect("OrderedRing has an add field")
+            .ty,
+        other => panic!("OrderedRing should be a Conj, got {other:?}"),
+    };
+    match &fields[1].1 {
+        v3_compiler::dag::FieldValue::Reference(id) => assert_eq!(
+            *id, ordered_ring_add_id,
+            "rust_int_add's op should reference OrderedRing.add"
+        ),
+        other => panic!("expected Reference for op, got {other:?}"),
+    }
+
+    // carrier → "+" (Literal String)
     assert_eq!(fields[2].0, "carrier");
     assert!(matches!(
         &fields[2].1,
-        v3_compiler::dag::LiteralBits::String(s) if s == "+"
+        v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::String(s)) if s == "+"
     ));
+
+    // cost → 1 (Literal Int)
     assert_eq!(fields[3].0, "cost");
     assert!(matches!(
         &fields[3].1,
-        v3_compiler::dag::LiteralBits::Int(1)
+        v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(1))
     ));
 }
 

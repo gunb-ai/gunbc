@@ -93,6 +93,72 @@ fn emit_rust_preserves_rust_dag_is_the_only_rust_syntax_source() {
     assert!(out.contains("let x: i64 = (1 + 2);"));
 }
 
+/// **PR-B-unwind regression test.** The emitter must NOT contain
+/// any Rust string literal that names a substrate concept (the
+/// canonical primitive name "Int", behavior names "Bind"/"Branch"/
+/// "Main", etc.) in dispatch position. This test scans the
+/// emitter source file (excluding comment lines) and asserts the
+/// absence of the specific patterns that the unwind fixed.
+///
+/// **Why this is a runtime test instead of a static lint.** The
+/// emitter file is loaded with `include_str!` so the assertion
+/// runs at test time. Rust's macro hygiene doesn't give us a
+/// proper compile-time grep, so we accept the runtime cost — the
+/// test runs in <1ms.
+///
+/// **Comment-line filtering.** Lines whose first non-whitespace
+/// content is `//` are excluded. The unwind's documentation talks
+/// about the bad pattern explicitly (so future readers understand
+/// what was removed) and those mentions must not trip the check.
+/// This is a coarse heuristic — it doesn't handle block comments
+/// or strings-on-comment-lines — but it's sufficient for the
+/// emit_rust.rs file as written.
+///
+/// If anyone re-introduces a `.lookup("Int", ...)` or similar
+/// dispatch, this test fails and the reviewer sees the
+/// reintroduction immediately. The failure message points at the
+/// rust.dag typed-reference shape that should be used instead.
+#[test]
+fn emit_rust_has_no_substrate_name_string_dispatches() {
+    const EMITTER_SOURCE: &str = include_str!("../src/emit_rust.rs");
+
+    // Strip comment-only lines (// ... and ///-style doc comments)
+    // before scanning for forbidden patterns. This avoids false
+    // positives on the file's documentation, which describes the
+    // bad pattern explicitly so future readers know what was
+    // removed.
+    let code_only: String = EMITTER_SOURCE
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("//"))
+        .collect::<Vec<&str>>()
+        .join("\n");
+
+    // Each forbidden substring is a Rust string literal naming a
+    // substrate concept. The check is "does the emitter code
+    // contain a string literal of this exact form in non-comment
+    // position?" — using the double-quote framing makes it a
+    // literal search, not a bare-name search (so identifier
+    // mentions in doc strings don't trip the check).
+    let forbidden = [
+        "\"Int\"",
+        "\"Bool\"",
+        "\"String\"",
+        "\"Bind\"",
+        "\"Branch\"",
+        "\"Main\"",
+        "\"True\"",
+        "\"False\"",
+        "\"target_name\"",
+        "\"op_name\"",
+    ];
+    for pattern in forbidden {
+        assert!(
+            !code_only.contains(pattern),
+            "emit_rust.rs must not contain the string literal {pattern} in non-comment position — that would be a name-string dispatch on a substrate concept. The PR-B unwind moved every such lookup to typed declaration ids resolved via dag.{{bind_marker, branch_marker, main_marker, ...}}() and dag.declaration_by_name() at index-build time only. If you reintroduced one, see dsl/extdeps/languages/rust.dag for the typed pattern: `data rust_int: TypeRealization = {{ target: Int, ... }}` instead of `target_name: {pattern}`."
+        );
+    }
+}
+
 /// End-to-end roundtrip test: emit Rust from a v3 program, feed the
 /// Rust source to `rustc`, run the resulting binary, assert stdout.
 /// Gated behind `#[ignore]` because CI runners often don't have a

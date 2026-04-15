@@ -1,0 +1,57 @@
+// std/v3_l1.dag — substrate marker types for v3's L1 behaviors and
+// the meta-type sentinel `Declaration`.
+//
+// Two distinct purposes live in this file:
+//
+// 1. **L1 behavior markers.** Every Behavior variant in
+//    `src/v3/compiler/src/dag.rs` (Value, Transform, Branch, Loop,
+//    Bind) plus the Main-wrapper concept needs a structural anchor
+//    that per-target language spec files can reference. Without
+//    these markers, target spec files would have to identify
+//    behaviors by string name (e.g. `target_name: "Bind"`), which
+//    pushes the dispatch keys into Rust strings on the emitter
+//    side. With markers, the spec files reference a typed
+//    Declaration, the lowerer resolves the reference to a
+//    DeclarationId, and the emitter uses that DeclarationId as the
+//    realization-index key. Zero name strings cross the
+//    substrate/emitter boundary.
+//
+// 2. **`Declaration` sentinel meta-type.** A field type that means
+//    "any declaration reference." When a record-literal field's
+//    declared type walks to this sentinel, the lowerer accepts an
+//    identifier (or dotted path) as the field value and emits
+//    `FieldValue::Reference(decl_id)` instead of
+//    `FieldValue::Literal(...)`. This is what unlocks target spec
+//    files writing `target: Int` (a typed reference to the Int
+//    declaration in std/integer.dag) instead of
+//    `target_name: "Int"` (a string the emitter has to dispatch
+//    on).
+//
+// **Why these live in std/v3_l1.dag rather than in a sub-module:**
+// the markers are part of v3's substrate vocabulary, not a domain
+// model. They belong with the other primitive-substrate
+// declarations (`Bool`, `Int`, `String`, `OrderedRing`) so that
+// every per-target spec file can `import` them from one stable
+// location.
+
+module dsl.std.v3_l1
+
+// L1 behavior markers. One per Behavior variant in dag.rs plus
+// Main for the program-entry-point wrapper. Each marker is an
+// empty Conj — it carries no fields because its only role is to
+// be the typed handle that realizations point at.
+type Value {}
+type Transform {}
+type Branch {}
+type Loop {}
+type Bind {}
+type Main {}
+
+// Sentinel meta-type. A field declared `target: Declaration`
+// accepts an identifier value instead of a literal value at the
+// data-body parse site, and that identifier is resolved to a
+// DeclarationId during lowering. This is the structural
+// alternative to passing declaration names as strings — the
+// substrate carries the typed reference forward, no name-bridge
+// lookup at consumption time.
+type Declaration {}

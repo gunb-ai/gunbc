@@ -1040,6 +1040,7 @@ fn lower_data_item(
                 record_fields,
                 ty_decl_id,
                 body_span,
+                symbols,
                 dag,
             )
         });
@@ -1099,6 +1100,7 @@ fn lower_record_to_structural(
     record_fields: &[crate::parse::SurfaceRecordField],
     ty_decl_id: DeclarationId,
     body_span: &SourceSpan,
+    symbols: &HashMap<String, DeclarationId>,
     dag: &mut Dag,
 ) -> Option<crate::dag::ValueBody> {
     let Some(conj_id) = walk_to_conj_decl(dag, ty_decl_id) else {
@@ -1158,77 +1160,166 @@ fn lower_record_to_structural(
     // matches the Conj child's declared type. Fields are emitted
     // in the type's declared order (not the record literal's
     // written order) for stable output.
-    let mut structural_fields: Vec<(String, LiteralBits)> =
+    //
+    // Two acceptable shapes for a field value at M1(3) PR-B-unwind:
+    //
+    //   1. A scalar literal whose primitive type matches the
+    //      declared field type. Lowers to `FieldValue::Literal`.
+    //
+    //   2. A bare identifier (or dotted path) whose declared field
+    //      type walks to the `Declaration` sentinel marker from
+    //      `dsl/std/v3_l1.dag`. Lowers to `FieldValue::Reference`
+    //      with the resolved DeclarationId. This is what unblocks
+    //      typed declaration references in target language spec
+    //      files (e.g. rust.dag's `target: Int` → reference to the
+    //      Int declaration in std/integer.dag).
+    //
+    // Anything else (operator expression, call, branch, etc.)
+    // fails-closed with a class-5 gap #3 / #6 diagnostic.
+    let int_decl_id = dag.declaration_by_name("Int").map(|d| d.id);
+    let bool_decl_id = dag.declaration_by_name("Bool").map(|d| d.id);
+    let string_decl_id = dag.declaration_by_name("String").map(|d| d.id);
+    // `lower_record_to_structural` runs during Phase 2 of bootstrap
+    // — BEFORE `populate_primitive_cache` populates the substrate
+    // marker cache. Resolve the sentinel by name here (Phase 1's
+    // `collect_symbols_phase` has already registered every top-
+    // level declaration across all fixtures, so `declaration_by_name`
+    // works). Downstream consumers read the cached typed handle via
+    // `dag.declaration_ref_marker()`.
+    let declaration_marker_id = dag.declaration_by_name("Declaration").map(|d| d.id);
+
+    let mut structural_fields: Vec<(String, crate::dag::FieldValue)> =
         Vec::with_capacity(type_fields.len());
     for (type_label, type_field_id) in &type_fields {
         let record_field = record_fields
             .iter()
             .find(|f| f.name == *type_label)
             .expect("checked above");
-        let literal = match &record_field.value {
-            SurfaceExpr::Literal { value, .. } => value,
-            _ => {
+        // Branch on whether the declared field type is the
+        // Declaration sentinel — that decides which value shapes
+        // are acceptable.
+        let field_type_is_declaration = declaration_marker_id
+            .map(|m| walks_to(dag, *type_field_id, m))
+            .unwrap_or(false);
+        let field_value = if field_type_is_declaration {
+            // Accept identifier or dotted-path. Resolve to a
+            // DeclarationId via the symbols map (top-level) and
+            // optional Conj-child walk (for member-access chains).
+            match resolve_field_value_as_declaration_ref(
+                &record_field.value,
+                symbols,
+                dag,
+            ) {
+                Some(decl_id) => crate::dag::FieldValue::Reference(decl_id),
+                None => {
+                    report_declaration_error(
+                        dag,
+                        Diagnostic::ResolveError {
+                            name: format!(
+                                "data `{data_name}` field `{type_label}` is declared as `Declaration` but its value is not a resolvable identifier or dotted path"
+                            ),
+                            span: record_field.span.clone(),
+                        },
+                    );
+                    return None;
+                }
+            }
+        } else {
+            // Require a scalar literal and type-check against the
+            // declared field type.
+            let literal = match &record_field.value {
+                SurfaceExpr::Literal { value, .. } => value,
+                _ => {
+                    report_declaration_error(
+                        dag,
+                        Diagnostic::ResolveError {
+                            name: format!(
+                                "data `{data_name}` field `{type_label}` must be a scalar literal (its declared type is not the `Declaration` sentinel); nested records, list literals, and computed expressions remain class-5 gap #3 follow-ups"
+                            ),
+                            span: record_field.span.clone(),
+                        },
+                    );
+                    return None;
+                }
+            };
+            let literal_bits = match literal {
+                SurfaceLiteral::Int(v) => LiteralBits::Int(*v),
+                SurfaceLiteral::Bool(v) => LiteralBits::Bool(*v),
+                SurfaceLiteral::String(v) => LiteralBits::String(v.clone()),
+            };
+            let expected_is_int = int_decl_id
+                .map(|id| walks_to(dag, *type_field_id, id))
+                .unwrap_or(false);
+            let expected_is_bool = bool_decl_id
+                .map(|id| walks_to(dag, *type_field_id, id))
+                .unwrap_or(false);
+            let expected_is_string = string_decl_id
+                .map(|id| walks_to(dag, *type_field_id, id))
+                .unwrap_or(false);
+            let type_ok = match &literal_bits {
+                LiteralBits::Int(_) => expected_is_int,
+                LiteralBits::Bool(_) => expected_is_bool,
+                LiteralBits::String(_) => expected_is_string,
+            };
+            if !type_ok {
                 report_declaration_error(
                     dag,
                     Diagnostic::ResolveError {
                         name: format!(
-                            "data `{data_name}` field `{type_label}` must be a scalar literal at M1(3) PR-B; nested records, variable references, and computed expressions are class-5 gap #3 follow-ups"
+                            "data `{data_name}` field `{type_label}` has a literal whose type doesn't match the declared field type"
                         ),
                         span: record_field.span.clone(),
                     },
                 );
                 return None;
             }
+            crate::dag::FieldValue::Literal(literal_bits)
         };
-        let literal_bits = match literal {
-            SurfaceLiteral::Int(v) => LiteralBits::Int(*v),
-            SurfaceLiteral::Bool(v) => LiteralBits::Bool(*v),
-            SurfaceLiteral::String(v) => LiteralBits::String(v.clone()),
-        };
-        // Type check: walk the type field's declaration to a
-        // primitive and compare against the literal's kind.
-        //
-        // `lower_record_to_structural` is called during Phase 2 of
-        // bootstrap — BEFORE `populate_primitive_cache` runs — so
-        // `dag.int_shape()` and friends are still `None` and cannot
-        // be used here. Phase 1 (`collect_symbols_phase`) has already
-        // registered `Int`/`Bool`/`String` as top-level declarations
-        // across every fixture, so `declaration_by_name` is the
-        // available channel at this point in bootstrap.
-        let int_decl_id = dag.declaration_by_name("Int").map(|d| d.id);
-        let bool_decl_id = dag.declaration_by_name("Bool").map(|d| d.id);
-        let string_decl_id = dag.declaration_by_name("String").map(|d| d.id);
-        let expected_is_int = int_decl_id
-            .map(|id| walks_to(dag, *type_field_id, id))
-            .unwrap_or(false);
-        let expected_is_bool = bool_decl_id
-            .map(|id| walks_to(dag, *type_field_id, id))
-            .unwrap_or(false);
-        let expected_is_string = string_decl_id
-            .map(|id| walks_to(dag, *type_field_id, id))
-            .unwrap_or(false);
-        let type_ok = match &literal_bits {
-            LiteralBits::Int(_) => expected_is_int,
-            LiteralBits::Bool(_) => expected_is_bool,
-            LiteralBits::String(_) => expected_is_string,
-        };
-        if !type_ok {
-            report_declaration_error(
-                dag,
-                Diagnostic::ResolveError {
-                    name: format!(
-                        "data `{data_name}` field `{type_label}` has a literal whose type doesn't match the declared field type"
-                    ),
-                    span: record_field.span.clone(),
-                },
-            );
-            return None;
-        }
-        structural_fields.push((type_label.clone(), literal_bits));
+        structural_fields.push((type_label.clone(), field_value));
     }
     Some(crate::dag::ValueBody::Structural {
         fields: structural_fields,
     })
+}
+
+/// Resolve a record-literal field value as a typed declaration
+/// reference. Accepts:
+///
+///   - `SurfaceExpr::Var { name }` — top-level identifier looked up
+///     in the symbols map.
+///   - `SurfaceExpr::Path { segments }` — dotted-path. The first
+///     segment is a top-level identifier; subsequent segments walk
+///     the parent's `Conj` children by label, returning the child
+///     declaration's `ty` (the field's type declaration).
+///
+/// Returns `None` if the expression is not a recognized reference
+/// shape or any segment fails to resolve.
+fn resolve_field_value_as_declaration_ref(
+    expr: &SurfaceExpr,
+    symbols: &HashMap<String, DeclarationId>,
+    dag: &Dag,
+) -> Option<DeclarationId> {
+    let segments: Vec<&str> = match expr {
+        SurfaceExpr::Var { name, .. } => vec![name.as_str()],
+        SurfaceExpr::Path { segments, .. } => segments.iter().map(|s| s.as_str()).collect(),
+        _ => return None,
+    };
+    let (first, rest) = segments.split_first()?;
+    let mut current = *symbols.get(*first)?;
+    for segment in rest {
+        // Walk `current` through aliases / instantiation to a Conj,
+        // then find the child field whose label matches `segment`.
+        // The child's `ty` becomes the new `current` for the next
+        // segment (or the final answer if this was the last one).
+        let conj_id = walk_to_conj_decl(dag, current)?;
+        let children = match &dag.declaration(conj_id).connective {
+            TypeConnective::Conj { children } => children,
+            _ => return None,
+        };
+        let next = children.iter().find(|f| f.label == *segment)?;
+        current = next.ty;
+    }
+    Some(current)
 }
 
 /// Walk a declaration chain looking for a specific target
@@ -1676,6 +1767,26 @@ fn lower_expr(
             );
             port
         }
+        SurfaceExpr::Path { span, .. } => {
+            // Dotted-path expressions (`OrderedRing.add`) are
+            // recognized only inside record-literal field values
+            // declared as the `Declaration` sentinel meta-type
+            // (see `lower_record_to_structural`). User-code
+            // expression position has no semantics for them yet —
+            // resolving a dotted name to a port type, value, or
+            // function call needs more context than M1(3) carries.
+            // Fail-closed with a clean diagnostic.
+            let port = dag.alloc_port(None);
+            dag.mark_unresolved(
+                port,
+                Diagnostic::ResolveError {
+                    name: "dotted path expressions are not yet supported in user-code expression position; at M1(3) they are only accepted as record-literal field values whose declared type is the `Declaration` sentinel meta-type"
+                        .to_string(),
+                    span: span.clone(),
+                },
+            );
+            port
+        }
     }
 }
 
@@ -1685,7 +1796,9 @@ fn producer_of(dag: &Dag, port: PortId) -> Option<NodeId> {
 
 fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
     match expr {
-        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } => false,
+        SurfaceExpr::Literal { .. }
+        | SurfaceExpr::Var { .. }
+        | SurfaceExpr::Path { .. } => false,
         SurfaceExpr::Call { target, args, .. } => {
             if target == self_name {
                 return true;
@@ -1742,7 +1855,9 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
 /// that's a substrate extension, not a bridge to dissolve here.
 fn descent_provable(expr: &SurfaceExpr, self_name: &str, first_param: &str) -> bool {
     match expr {
-        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } => true,
+        SurfaceExpr::Literal { .. }
+        | SurfaceExpr::Var { .. }
+        | SurfaceExpr::Path { .. } => true,
         SurfaceExpr::Call { target, args, .. } => {
             if target == self_name {
                 match args.first() {
@@ -1811,6 +1926,7 @@ fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
     match expr {
         SurfaceExpr::Literal { span, .. }
         | SurfaceExpr::Var { span, .. }
+        | SurfaceExpr::Path { span, .. }
         | SurfaceExpr::Call { span, .. }
         | SurfaceExpr::Operator { span, .. }
         | SurfaceExpr::If { span, .. }
@@ -1889,7 +2005,9 @@ fn collect_calls(
     out: &mut HashSet<String>,
 ) {
     match expr {
-        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } => {}
+        SurfaceExpr::Literal { .. }
+        | SurfaceExpr::Var { .. }
+        | SurfaceExpr::Path { .. } => {}
         SurfaceExpr::Call { target, args, .. } => {
             if fn_names.contains(target) {
                 out.insert(target.clone());

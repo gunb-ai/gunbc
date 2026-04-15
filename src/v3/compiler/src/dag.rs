@@ -117,7 +117,7 @@ pub struct Declaration {
 }
 
 /// Value-body shape for `data foo: T = { body }` declarations. Two
-/// variants at M1(3) PR-B:
+/// variants at M1(3) PR-B-unwind:
 ///
 /// - **`Unparsed(SourceSpan)`** — the parser could not lower the
 ///   body (it isn't a record literal shape the M1(3) parser
@@ -131,40 +131,39 @@ pub struct Declaration {
 ///
 /// - **`Structural { fields }`** — the body parsed as a record
 ///   literal and lowering ran inhabitance checking against the
-///   declared type. Each field's value is restricted to a scalar
-///   `LiteralBits` (Int/Bool/String) at PR-B scope; nested
-///   records, port-carried field values, and declaration
-///   references are class-5 gap #3 / #4 / #6 follow-ups for
-///   M2+. This is the shape that `dsl/extdeps/languages/rust.dag`
-///   uses — every Realization data item has scalar fields only.
+///   declared type. Each field is a `(String, FieldValue)` pair
+///   where `FieldValue` is either a scalar literal or a typed
+///   declaration reference (the unwind shape — PR-B's initial
+///   payload was `Vec<(String, LiteralBits)>` and it forced
+///   downstream consumers like `emit_rust.rs` to dispatch on
+///   string keys, regenerating the name-bridge pattern that
+///   M1(2.7) had eliminated at the inference layer).
 ///
 /// **Dissolution ledger** — mixed-lifecycle coproduct. `Unparsed`
 /// is the bounded scaffold (named dissolution trigger: M2+ parser
 /// extensions close class-5 gap #3); `Structural` is the
-/// structurally-grounded form for what the parser already handles.
-/// When the M2+ parser catches up, the non-record shapes currently
-/// landing in `Unparsed` move to `Structural`, and `Unparsed` is
-/// removed via a reverse substrate-extension PR. Until then the
-/// two variants coexist — one for each side of the parser gap.
+/// structurally-grounded form. When the M2+ parser catches up to
+/// nested records / list literals / map literals, those non-record
+/// shapes currently landing in `Unparsed` move to `Structural`
+/// (probably via an extended `FieldValue` payload — see below),
+/// and `Unparsed` is removed via a reverse substrate-extension PR.
 ///
 /// 4-pattern check on `Structural`:
-/// - Pattern 1 (fact placement): fails. The inline literal field
-///   list is a data-item-specific record-construction fact with no
-///   natural home on the other substrate edges.
-/// - Pattern 2 (variant-is-data): fails. `Structural` payload
-///   (`fields: Vec<(String, LiteralBits)>`) is structurally
-///   distinct from `Unparsed`'s source span.
+/// - Pattern 1 (fact placement): fails. The inline `(label,
+///   FieldValue)` list is a data-item-specific record-construction
+///   fact with no natural home on the other substrate edges.
+/// - Pattern 2 (variant-is-data): fails. `Structural`'s payload is
+///   structurally distinct from `Unparsed`'s source span.
 /// - Pattern 3 (algebraic form): fails. The two variants represent
-///   two different parser-boundary states (structurally lowered vs
+///   two parser-boundary states (structurally lowered vs
 ///   scaffolded), not two points in a single algebra.
 /// - Pattern 4 (dimensional): fails. No shared coordinate space.
 ///
-/// Verdict: `Structural` is terminal-at-PR-B-scope but will grow
-/// as the parser catches up — at M2 it either gains a richer
-/// payload (`Vec<(String, PortId)>` for port-carried values,
-/// nested records, declaration references) or gets joined by a
-/// new variant. Either way it's bounded by the Scaffold Boundaries
-/// invariant in `INVARIANTS.md`.
+/// Verdict: `Structural` is terminal-at-current-scope, with the
+/// `FieldValue` enum carrying the literal-vs-reference distinction
+/// internally. Future extensions (port-carried values, nested
+/// records) grow `FieldValue`, not `ValueBody`. Bounded by the
+/// Scaffold Boundaries invariant in `INVARIANTS.md`.
 #[derive(Debug, Clone)]
 pub enum ValueBody {
     /// The body exists in source at the given span but is not yet
@@ -172,12 +171,63 @@ pub enum ValueBody {
     /// list / variant literal) awaits M2+ parser extension.
     Unparsed(SourceSpan),
     /// The body parsed as a record literal and was inhabitance-
-    /// checked against the declared type. Each field holds a
-    /// scalar literal value; the label matches a field on the
-    /// type's Conj children.
+    /// checked against the declared type. Each field holds either
+    /// a scalar literal value or a typed declaration reference;
+    /// the label matches a field on the type's Conj children.
     Structural {
-        fields: Vec<(String, LiteralBits)>,
+        fields: Vec<(String, FieldValue)>,
     },
+}
+
+/// Per-field value payload inside a `ValueBody::Structural`. The
+/// two variants encode the structural distinction between "this
+/// field carries a primitive scalar" and "this field carries a
+/// typed reference to another declaration."
+///
+/// **Why both variants exist.** PR-B's initial payload was
+/// `LiteralBits` only, which forced `dsl/extdeps/languages/rust.dag`
+/// to encode declaration identities as strings (`target_name:
+/// "Int"`) — and that pushed string-dispatch back into
+/// `emit_rust.rs`, undoing the M1(2.7) cleanup at the inference
+/// layer one layer down. The unwind adds the `Reference` variant
+/// so target spec files write `target: Int` (typed edge to the
+/// `Int` declaration in std/integer.dag) and downstream consumers
+/// read a `DeclarationId` directly.
+///
+/// Lowering recognizes when a record-literal field's declared type
+/// walks to the `Declaration` sentinel marker (declared in
+/// `dsl/std/v3_l1.dag`) and accepts identifier / dotted-path
+/// expressions as field values, resolving them to declaration ids.
+/// For non-`Declaration` field types lowering requires a literal.
+///
+/// 4-pattern check:
+/// - Pattern 1 (fact placement): fails. Each variant has a
+///   distinct payload type; the discriminant is load-bearing for
+///   downstream readers (the realization index, the cost lens, etc).
+/// - Pattern 2 (variant-is-data): fails. `Literal(LiteralBits)`
+///   carries a 3-variant scalar enum; `Reference(DeclarationId)`
+///   carries a typed substrate id.
+/// - Pattern 3 (algebraic form): fails. The two variants are not
+///   two points in a single algebra; they are two structurally
+///   different value spaces (primitive value vs declaration handle).
+/// - Pattern 4 (dimensional): fails.
+///
+/// Verdict: terminal at M1(3) PR-B-unwind. Future extensions for
+/// nested records and list literals add new `FieldValue` variants
+/// (e.g. `Record(Vec<(String, FieldValue)>)`, `List(Vec<FieldValue>)`),
+/// each with its own 4-pattern receipt at extension time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FieldValue {
+    /// A scalar primitive value: Int, Bool, or String. Validated
+    /// at lowering time against the declared field type via the
+    /// primitive cache.
+    Literal(LiteralBits),
+    /// A typed reference to another declaration. The
+    /// `DeclarationId` was resolved at lowering time from a
+    /// `SurfaceExpr::Var` or `SurfaceExpr::Path`. Used by
+    /// per-target language spec files (e.g. rust.dag) to point at
+    /// realization targets without going through string keys.
+    Reference(DeclarationId),
 }
 
 /// The six-variant type substrate. Terminal at M1(2.5).
@@ -807,6 +857,63 @@ pub(crate) struct PrimitiveCache {
     pub string: Option<TypeShape>,
 }
 
+/// Substrate-marker handles populated at bootstrap end. Each field
+/// resolves a marker declaration from `dsl/std/v3_l1.dag` to its
+/// `DeclarationId`. The handles are the typed dispatch keys that
+/// `lower_record_to_structural` and `emit_rust` use to recognize
+/// behavior templates and the `Declaration` sentinel meta-type
+/// without round-tripping through string names.
+///
+/// **Why this is not a name-bridge regression.** PrimitiveCache's
+/// dissolution ledger says "adding a new role to this cache is a
+/// C1-class stop signal." SubstrateMarkers is a separate cache for
+/// a different category of role: not "which declaration is the
+/// canonical X" (which the primitive cache answers for user-facing
+/// types) but "which declaration is the structural marker for v3's
+/// L1 behavior X" — a substrate-internal question that consumers
+/// (lower, emit) need to answer at every dispatch site. The cache
+/// turns those dispatch sites into typed `decl_id == cache.bind`
+/// comparisons instead of `decl.name.as_deref() == Some("Bind")`
+/// string matches. The name lookup happens once at bootstrap end
+/// from the standard module path; every consumer downstream reads
+/// the typed handle.
+///
+/// **Why one cache per category.** Mixing "user primitive" and
+/// "substrate marker" roles in a single cache would conflate two
+/// distinct stability classes. Primitives change with v3's user-
+/// facing type system; substrate markers change with v3's L1
+/// behavior set. Splitting the caches keeps each one's invariants
+/// independent.
+#[derive(Debug, Default)]
+pub(crate) struct SubstrateMarkers {
+    /// `dsl/std/v3_l1.dag` `Value` marker. Targets values
+    /// (literals) in target language realizations.
+    pub value: Option<DeclarationId>,
+    /// `Transform` marker. Targets generic transform-shaped
+    /// emissions (currently unused — operators dispatch via the
+    /// algebra field walk).
+    pub transform: Option<DeclarationId>,
+    /// `Branch` marker. Targets the per-target if/else template.
+    pub branch: Option<DeclarationId>,
+    /// `Loop` marker. Targets per-target loop emission templates
+    /// (M2+ once recursion lowers to Loop).
+    pub r#loop: Option<DeclarationId>,
+    /// `Bind` marker. Targets the per-target let-statement
+    /// template.
+    pub bind: Option<DeclarationId>,
+    /// `Main` marker. Targets the per-target program-entry-point
+    /// wrapper template.
+    pub main: Option<DeclarationId>,
+    /// `Declaration` sentinel meta-type. When a record-literal
+    /// field's declared type walks to this declaration, the
+    /// lowerer accepts identifier / dotted-path expressions as the
+    /// field value and emits `FieldValue::Reference(decl_id)`
+    /// instead of `FieldValue::Literal(...)`. This is the
+    /// structural escape hatch that lets target spec files write
+    /// typed declaration references inside data bodies.
+    pub declaration_ref: Option<DeclarationId>,
+}
+
 #[derive(Debug)]
 pub struct Dag {
     /// Behaviors in construction order. NodeId(k) lives at `nodes[k]`; a forward
@@ -823,6 +930,11 @@ pub struct Dag {
     /// Cached typed pointers to declarations the compiler asks about by
     /// role. Populated at the end of `bootstrap()`; empty before then.
     primitives: PrimitiveCache,
+    /// Cached substrate marker DeclarationIds resolved from
+    /// `dsl/std/v3_l1.dag`. Populated alongside the primitive
+    /// cache at bootstrap end. See `SubstrateMarkers` for the
+    /// rationale behind splitting markers from primitives.
+    substrate_markers: SubstrateMarkers,
 }
 
 impl Dag {
@@ -836,6 +948,7 @@ impl Dag {
             next_declaration_id: 0,
             next_port_id: 0,
             primitives: PrimitiveCache::default(),
+            substrate_markers: SubstrateMarkers::default(),
         };
         crate::bootstrap::bootstrap(&mut dag);
         dag
@@ -859,6 +972,54 @@ impl Dag {
     /// bootstrap-failure semantics as `int_shape`.
     pub fn string_shape(&self) -> Option<TypeShape> {
         self.primitives.string
+    }
+
+    /// Typed accessor for the v3_l1 `Bind` marker. `None` only when
+    /// bootstrap failed to load `dsl/std/v3_l1.dag`. Used by emit
+    /// passes to look up the per-target Bind realization without a
+    /// name string.
+    pub fn bind_marker(&self) -> Option<DeclarationId> {
+        self.substrate_markers.bind
+    }
+
+    /// Typed accessor for the v3_l1 `Branch` marker. Same bootstrap-
+    /// failure semantics as `bind_marker`.
+    pub fn branch_marker(&self) -> Option<DeclarationId> {
+        self.substrate_markers.branch
+    }
+
+    /// Typed accessor for the v3_l1 `Loop` marker. Same bootstrap-
+    /// failure semantics as `bind_marker`.
+    pub fn loop_marker(&self) -> Option<DeclarationId> {
+        self.substrate_markers.r#loop
+    }
+
+    /// Typed accessor for the v3_l1 `Transform` marker. Same
+    /// bootstrap-failure semantics as `bind_marker`.
+    pub fn transform_marker(&self) -> Option<DeclarationId> {
+        self.substrate_markers.transform
+    }
+
+    /// Typed accessor for the v3_l1 `Value` marker. Same bootstrap-
+    /// failure semantics as `bind_marker`.
+    pub fn value_marker(&self) -> Option<DeclarationId> {
+        self.substrate_markers.value
+    }
+
+    /// Typed accessor for the v3_l1 `Main` marker. Same bootstrap-
+    /// failure semantics as `bind_marker`.
+    pub fn main_marker(&self) -> Option<DeclarationId> {
+        self.substrate_markers.main
+    }
+
+    /// Typed accessor for the `Declaration` sentinel meta-type
+    /// declared in `dsl/std/v3_l1.dag`. Used by
+    /// `lower_record_to_structural` to recognize record-literal
+    /// fields whose declared type means "any declaration reference"
+    /// (and therefore accept identifier / dotted-path expressions
+    /// as field values instead of requiring scalar literals).
+    pub fn declaration_ref_marker(&self) -> Option<DeclarationId> {
+        self.substrate_markers.declaration_ref
     }
 
     pub fn nodes(&self) -> &[Behavior] {
@@ -1035,6 +1196,23 @@ impl Dag {
         self.primitives.string = self
             .declaration_by_name("String")
             .map(|d| TypeShape::new(d.id));
+
+        // Substrate marker resolution. Pulls each marker
+        // declaration from `dsl/std/v3_l1.dag` by its declared
+        // name and stores the typed handle. The lookup happens
+        // once at bootstrap end; downstream consumers
+        // (`lower_record_to_structural`, `emit_rust`) read the
+        // typed handle via `bind_marker()` / `branch_marker()` /
+        // etc. without any runtime name strings.
+        self.substrate_markers.value = self.declaration_by_name("Value").map(|d| d.id);
+        self.substrate_markers.transform =
+            self.declaration_by_name("Transform").map(|d| d.id);
+        self.substrate_markers.branch = self.declaration_by_name("Branch").map(|d| d.id);
+        self.substrate_markers.r#loop = self.declaration_by_name("Loop").map(|d| d.id);
+        self.substrate_markers.bind = self.declaration_by_name("Bind").map(|d| d.id);
+        self.substrate_markers.main = self.declaration_by_name("Main").map(|d| d.id);
+        self.substrate_markers.declaration_ref =
+            self.declaration_by_name("Declaration").map(|d| d.id);
     }
 }
 
