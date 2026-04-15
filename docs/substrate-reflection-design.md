@@ -2003,20 +2003,18 @@ PR #453's synthesized-accessor attempt.**
 - [x] §3.6 decision committed (1a — locked)
 - [ ] `TransformTarget::FieldProject` variant added to `dag.rs`
 - [ ] Lowering extension in `lower_expr` emits the new variant
-- [ ] `substrate.dag`'s `FieldAccessor` marker deleted (no
-      longer needed — field identity is carried by the typed
-      variant)
-- [ ] `emit_rust` dispatches `FieldProject` to the parent type's
-      TypeRealization's FieldBinding entry
-- [ ] Test: `fn first(pair: (Int, Int)) -> Int = pair.0` (or
-      similar record access) compiles and runs
-- [ ] Test: field access that resolves to a type-mismatched or
-      nonexistent field fails with a fail-closed diagnostic
-      pointing at the specific field name
-- [ ] Test: same-type fields (`{ first: Int, second: Int }`)
-      produce distinguishable Transforms — regression test
-      from PR #453 ports over with the assertion shape updated
-      to check the typed variant
+- [ ] `emit_rust` dispatches `FieldProject` via field-label
+      string on the parent value (no FieldBinding needed until
+      the reflection PR wires realized substrate types)
+- [ ] `infer.rs` `decide_field_project` resolves output type
+      from Conj children
+- [ ] Test: field access on a record-typed parameter compiles
+      and produces a `FieldProject` target
+- [ ] Test: field access on a non-Conj type fails with a
+      fail-closed diagnostic
+- [ ] Test: nonexistent field fails with diagnostic naming the
+      specific field
+- [ ] Test: multi-hop field access (`p.inner.x`) compiles
 
 **Prereq 2 — Match-with-payload-binding.** Add
 `SurfacePattern::VariantWith { name, binding, span }` variant
@@ -2065,14 +2063,19 @@ substrate variants.
 - [ ] `SurfaceExpr::Lambda` added to parse.rs
 - [ ] Parser rule accepts `|x| x + 1` and multi-param forms
 - [ ] Lowering produces a Bind with captures as explicit inputs
+- [ ] Call-site rewrite: callers pass only declared runtime
+      params; captures are baked into the lambda Bind
 - [ ] Test: a lambda that captures from outer scope compiles,
       the captured value flows through as a typed edge, and the
       lens walking the resulting Bind sees params = [declared +
       captured] with no distinction
-- [ ] Test: the callback rule from v3-validation-experiments
-      Experiment 1 — a lambda body that flows into a Loop gets
-      fan-out = Loop's bound in the ownership lens, termination
-      bounded by Loop in the termination lens
+- [ ] Test: unannotated standalone lambda fails closed
+- [ ] **Scope note (first landing):** contextual lambdas only —
+      lambdas lower when an expected function type is available
+      (annotated let, HOF argument position). Unannotated
+      standalone lambda values fail closed. Zero-arg/block-body
+      lambdas and the callback-rule lens test (v3-validation-
+      experiments Experiment 1) are follow-ups.
 
 **Prereq 4 — `src/v3/std/list.dag` ships.** Add the design file
 (already committed to this PR as `src/v3/std/list.dag`) to
