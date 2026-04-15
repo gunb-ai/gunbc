@@ -42,56 +42,61 @@ one push.
 
 ---
 
-## §2. Baseline: `free-cod-972` current state
+## §2. Baseline: `free-cod-972` current state (M1(2.7))
 
-**Substrate shape** (after round-6 + latest dissolutions):
+**Substrate shape** (after M1(2.7) structural fix PR):
 
 - `TypeConnective`: 6 variants (Atom, Conj, Disj, Arrow, Cardinality, Instantiation)
-- `AtomPayload`: `UnresolvedIdentifier(String) | ResolvedIdentifier(DeclarationId) | TypeParam(String) | Literal(LiteralBits)` — phase coproduct dissolved in the last round
-- `ArrowBody`: `UserDefined(NodeId) | ExternalRealization(DeclarationId) | Pending` — 3 variants, Pending restricted (per thesis §Q7) to primitive realization lag
+- `AtomPayload`: `UnresolvedIdentifier(String) | ResolvedIdentifier(DeclarationId) | TypeParam(String) | Literal(LiteralBits)` — phase coproduct dissolved in M1(2.6)
+- `ArrowBody`: `UserDefined(NodeId) | ExternalRealization(DeclarationId) | Pending | Unparsed(SourceSpan)` — **4 variants**. `Pending` is the bootstrap-realization scaffold (dissolves by M3 via §8.11 ratchet). `Unparsed(SourceSpan)` is the block-body surface-grammar scaffold added in M1(2.7) for `fn f(x) -> T { body }` forms the grammar can't yet parse (dissolves when M2 grammar adopts match/pipe/lambda).
+- `TransformTarget`: **2 variants** — `Callable(DeclarationId) | Operator(crate::operators::OperatorKind)`. Added in M1(2.7). **No `Unresolved` variant** — unresolved names live in the `Declaration` connective as `UnresolvedIdentifier` and are authoritatively rewritten by the resolve sweep. The plan's earlier draft proposed a third `Unresolved` variant; the implementer's cleaner factoring dodges it.
+- `OperatorKind`: `Arithmetic(ArithmeticOp) | Comparison(ComparisonOp)` — 10 total variants (4+6). Lives in `operators.rs`, which is a 120-line surface-syntax-to-typed-kind table with `from_symbol` + `symbol` + dissolution-receipt header. No semantic functions (no `signature`, no `primitive_cost`, no `descent_shrink`) — those belong to `std/algebra.dag` and `dsl/extdeps/languages/*.dag`.
 - `CardinalityBound`: `Exact(u32) | AtMostOne | Unbounded`
 - `Declaration`: `meta_tag` + `inhabits` split (value-construction vs algebra-inhabitance)
-- `DeclarationId` + `NodeId` distinct newtypes
+- `DeclarationId` + `NodeId` distinct newtypes; cached `int_shape()` / `bool_shape()` / `string_shape()` / `realization_meta_id()` getters on `Dag` (added M1(2.7), replaces name-keyed primitive lookups)
 - Five L1 behaviors unchanged since M0 (Value, Transform, Branch, Loop, Bind)
 
-**Test status:** 51 green (40 M0 acceptance + 4 M1 substrate + 7 real_stdlib
-parse smoke), clippy clean, all real `dsl/std/*.dag` bootstrap files
-parsing.
+**Test status:** **60 green** (1 lib realization smoke + 41 m0_acceptance
++ 11 m1_substrate + 7 real_stdlib_parse_smoke), clippy clean, all real
+`dsl/std/*.dag` bootstrap files parsing. Grew from 51 → 60 in M1(2.7)
+via 8 new `m17_*` tests covering each resolved structural gap.
 
-**Known open structural concerns** from the latest review rounds (6 and 7):
+**Structural concerns from rounds 6 and 7: all closed in M1(2.7).**
+The six items the earlier draft of this plan enumerated as open
+(operator dispatch via `UnresolvedIdentifier`, string-match descent,
+scattered operator helpers, untyped `TransformNode.target`,
+`lower_type_for_port` primitive whitelist, `resolve_pending_identifiers`
+block-body `Fn` silent-skip) are all dissolved. Verification receipts
+inline in the code at:
+- `operators.rs` header — dissolution trigger for the whole enum
+- `lower.rs:1079-1094` — `QW5 SINGLE AUTHORITY` receipt (port-type whitelist gone)
+- `lower.rs:1266` — structural descent check receipt (no `target == "-"`)
+- `infer.rs:456` — `OPERATOR_FIELD_MAP is gone` receipt
 
-1. Operator dispatch threads through `UnresolvedIdentifier("+")` — reuses
-   the unresolved-identifier shape as an operator-token sentinel
-2. `lower.rs` descent check still does `target == "-"` string match
-3. Operator knowledge scattered across `operators.rs`, `infer::is_comparison_operator`,
-   `lower::is_strictly_smaller`
-4. `TransformNode.target: DeclarationId` has no type-level distinction
-   between callable Arrow, operator token, and placeholder
-5. **`lower::lower_type_for_port` string-matches `"Int"|"Bool"|"String"`** —
-   same name-dispatch bridge as #1, relocated to a different function
-6. **`resolve_pending_identifiers` silently skips block-body `Fn` items** —
-   fail-closed discipline violation AND catalogue violation (post-sweep
-   `UnresolvedIdentifier` should be unreachable)
-
-Rounds 1–5 resolved earlier instances of the same root cause. Rounds 6 and
-7 are open. The §3 Design Oracle below pins the answers that will close
-them structurally rather than by another round of patching.
+This document now functions as **design oracle + retrospective for
+PR-A (done) + forward plan for PR-B (not started)**. §6.1 is a
+retrospective; §6.2 remains forward-looking, revised for the
+reader-only lens invariant (§12.6).
 
 ---
 
-## §3. Design Oracle — pin these before §4 starts
+## §3. Design Oracle
 
-This section answers four substrate-design questions before any consumer
-row in §4 can be closed. The postmortem on `free-cod-972` concluded that
-reviewer rounds kept discovering new bridges because each round was an
-implementation sketch exerting gravity on design, rather than an oracle
-committed to in advance. The cost of pinning answers here is low; the
-cost of unpinning them later is the pattern that produced this document.
+This section answers four substrate-design questions that govern how
+§4 classifies consumer rows. The postmortem on `free-cod-972` concluded
+that reviewer rounds kept discovering new bridges because each round
+was an implementation sketch exerting gravity on design, rather than
+an oracle committed to in advance. The cost of pinning answers here
+is low; the cost of unpinning them later is the pattern that produced
+this document.
 
-A Design Oracle section is load-bearing BEFORE the consumer-enumeration
-§4 because §4's S/R/N classifications depend on §3's answers. Without
-§3, the same row could be "S" under one oracle and "R" under another,
-and reviewers cannot tell which oracle the plan commits to.
+The Design Oracle is load-bearing for §4's S/R/N classifications —
+without §3, the same row could be "S" under one oracle and "R" under
+another. As of M1(2.7), most of §3's answers have been validated in
+practice: some of the implementer's cleaner factoring choices
+(dropping `TransformTarget::Unresolved`, dropping `DescentEvidence`)
+actually updated the oracle rather than the other way around. That
+loop is the process working as intended.
 
 ### §3.1 Authority model
 
@@ -106,10 +111,10 @@ authority — they do NOT re-derive from another fact.
 | Template parameters | The owning `Declaration`'s `type_params: Vec<TypeParamId>`. `TypeParamId` is a distinct newtype. | `SubstStack` for substitution; the owning declaration's `type_params` slot for enumeration. Never via `declaration_by_name`. |
 | Sum variants | The parent Disj `Declaration`'s `variants: Vec<VariantId>`. Variants are NOT top-level. | Pattern-match code reads `decl.variants` on the match subject's type. Never resolved globally. |
 | Operator **surface syntax** (`+`, `<`, ...) | `operators.rs` from PR-A onwards. The `operators` module is the ONLY place that maps symbol strings to `OperatorKind`. It is a surface-syntax-to-typed-kind table, NOT a semantic authority. | Parser calls `operators::from_symbol` at parse time; downstream only sees `TransformTarget::Operator(OperatorKind)`. Grep-enforced in §8. |
-| Operator **semantics** (signature, primitive cost, descent shrink) | `dsl/std/algebra.dag` for signatures and descent; `dsl/extdeps/languages/<target>.dag` for primitive realization + target cost. `operators.rs` forwards queries via `operators::kind_to_algebra_ref(kind) -> DeclarationId`; it does NOT manufacture signatures, costs, or descent semantics itself. | `infer`, `lens_cost`, `emit` each read the referenced algebra / language-spec declaration directly. Dual authority with `std/algebra.dag` is forbidden — if you're tempted to put a `signature(kind)` function in `operators.rs`, that's the reviewer flag from round 7 telling you a second semantic universe is being born. |
+| Operator **semantics** (signature, primitive cost, descent shrink) | At M1(2.7): signature is encoded structurally in the `OperatorKind` variant (`Arithmetic(_) → operand type`, `Comparison(_) → Bool`) via `infer::resolve_operator_arrow`. Primitive cost lives in `dsl/extdeps/languages/<target>.dag` realization declarations, read by `lens_cost` in PR-B. Descent shrink is hard-coded to `ArithmeticOp::Sub` at M1 scope; M2+ extensions move to algebra-declaration annotations. | `operators.rs` does NOT manufacture these facts. Dual authority with `std/algebra.dag` or `rust.dag` is forbidden — if you're tempted to put a `signature(kind)` function in `operators.rs`, that's the round-7 reviewer flag telling you a second semantic universe is being born. |
 | Primitive operator realizations (`Int.add → i64::wrapping_add`) | `dsl/extdeps/languages/<target>.dag`. No Rust file manufactures realizations. | `emit` and `lens_cost` both read the same language-spec declaration. PR-B closes this. |
-| **Writer-lens outputs** (first added in PR-B) | The writing lens module itself. Once a writer lens has a storage mechanism (PR-B decides), the lens's output IS the authoritative producer of its fact for every downstream reader. | The storage mechanism chosen in PR-B applies to every future writer lens. No writer lens may land without its downstream consumer in the same PR, and the consumer must read the lens output as authority (not as hint). This is the invariant-grade form of "no new fact layer without a consumer." |
-| Descent evidence (is this call strictly smaller?) | Set at lowering time on `TransformNode.descent: DescentEvidence`. Lowering is the only stage with operator kind + literal + argument shapes simultaneously in scope. | `lens_termination` and future bounded-recursion lens. Never re-walked from SurfaceExpr. |
+| **Lens outputs** | **There are no writer lenses.** Every lens is a pure reader over substrate + language spec. If a lens "needs" to write a fact, the fact is actually a substrate field that was missing upstream — add it to the substrate, do not put it in lens-side storage. Caching the result of a pure-reader lens is a separate optimization that can be added later based on profiling; it is not part of the lens contract. | Per §12.6. The M0 reader lenses (`lens_provenance`, `lens_depth`) already follow this pattern; PR-B's `lens_cost` extends it. No side tables, no `Dag::lens_results` map, no per-Port annotations for lens output. |
+| Descent evidence (is this call strictly smaller?) | `lower::is_strictly_smaller` reads the raw `SurfaceExpr::Operator` structurally (`matches!(op, ArithmeticOp::Sub)` + positive-literal check). The plan proposed a typed `DescentEvidence` struct on `TransformNode`; the implementer dropped it and the direct SurfaceExpr walk is leaner. | `lower::descent_provable` and future bounded-recursion lens. At M1 scope, the check runs pre-lowering on `SurfaceExpr`; M2+ extensions (lexicographic, structural) become algebra-declaration annotations read post-lowering. |
 | Diagnostics (what went wrong and where) | `dag.diagnostics()`. Every error path attaches there. | CLI, tests, any stage that needs to fail-closed. Produced at point of discovery, not inferred from downstream state. |
 | Sub-value / descent structure | Parser produces the field-binding list; lower records it on the parent `Declaration`. | Descent termination lens, `infer::classify_let_value`. Never inferred from names matching "child" patterns. |
 | Identifier resolution phase | `resolve_pending_identifiers` is the SINGLE writer of the `UnresolvedIdentifier → ResolvedIdentifier` transition. | Every read after the sweep sees `ResolvedIdentifier` or a diagnostic. Post-sweep `UnresolvedIdentifier` IS a diagnostic-bearing error state, not a valid live-path shape. |
@@ -176,47 +181,48 @@ eliminates it.
 
 | # | Invalid state | Representable today? | Eliminated by |
 |---|---|---|---|
-| 1 | `TemplateArgument { parameter: p, value: p }` (self-reference stub) | Yes — `lower::build_template_arguments` has the stub path | PR-A: parser/lower emit resolved arguments from the start; stub path deleted |
-| 2 | Post-sweep `AtomPayload::UnresolvedIdentifier(name)` reachable from a well-formed program | Yes — `resolve_pending_identifiers` skips operator names AND block-body `Fn` items | PR-A: operators never become `UnresolvedIdentifier`; block-body `Fn` silent-skip removed |
-| 3 | `ArrowBody::Pending` reachable at emission time | Yes — bootstrap writes `Pending` and relies on post-pass to patch | PR-B: §8.11 ratchet hits zero in the same commit that adds the dissolution mechanism |
-| 3a | **`TransformTarget::Unresolved` reached by a downstream stage without fail-closing** | Yes — no exhaustive-match enforcement on `TransformTarget` readers | PR-A: every reader of `TransformTarget` (infer, lens_*, emit) matches exhaustively; `Unresolved` arm is fail-closed with required diagnostic. Compile-time match exhaustiveness + §8 gate 9 prove no silent skip. **Named boundary: `resolve_sweep`** — post-sweep, encountering `Unresolved` means the sweep's own error path ran; downstream must propagate, not ignore. |
-| 3b | **`ArrowBody::Pending` reached by a downstream stage without fail-closing** | Yes — same reason as 3a | PR-A: every reader of `ArrowBody` matches exhaustively; `Pending` arm is fail-closed with required diagnostic. Compile-time match exhaustiveness + §8 gate 9 prove no silent skip. **Named boundary: `Dag::new()` return** — post-return, ratchet test asserts zero `Pending` in production declarations. PR-B removes the variant entirely, upgrading the boundary from "ratchet-enforced zero" to "impossible by type." |
-| 4 | Type parameter appearing in `dag.declarations()` top-level iteration | Yes — round-5 bug was an instance | PR-A: §3.2 typed-ID table separation |
-| 5 | Sum variant resolved via `declaration_by_name` | Yes — variants share the top-level name space with declarations | PR-A: separate `variants` table per §3.2 |
-| 6 | `TransformTarget` distinguishing callable vs operator via `UnresolvedIdentifier(name)` | Yes — current `free-cod-972` state | PR-A: `TransformTarget` enum |
-| 7 | `DescentEvidence` re-derivable by string-matching `target == "-"` | Yes — current `is_strictly_smaller` | PR-A: descent classified at lowering time, stored on `TransformNode` |
-| 8 | `lower_type_for_port` accepting only `"Int"\|"Bool"\|"String"` via whitelist | Yes — round-7 finding | PR-A: delete the whitelist; route through `resolve_type_expr` like every other type reference |
-| 9 | Block-body `Fn` item silently skipped by `resolve_pending_identifiers` with no diagnostic | Yes — round-7 finding | PR-A: remove silent skip; emit diagnostic if not yet supported, or fully lower it |
+| 1 | `TemplateArgument { parameter: p, value: p }` (self-reference stub) | **No ✅** | **M1(2.7) Class 3** — `build_template_arguments` returns `Vec::new()` on stub templates and on arity mismatch. The self-reference branch is deleted. |
+| 2 | Post-sweep `AtomPayload::UnresolvedIdentifier(name)` reachable from a well-formed program | **No ✅** | **M1(2.7) Class 2/3** — operators never become `UnresolvedIdentifier` (parser emits `SurfaceExpr::Operator` directly); block-body `Fn` is a distinct `SurfaceItem::FnExternalBody` that lowers to `ArrowBody::Unparsed`. The resolve sweep's two skip branches are gone. |
+| 3 | `ArrowBody::Pending` reachable at emission time | Yes (at M1(2.7)); no (post-PR-B) | PR-B: §8.11 ratchet hits zero in the same commit that adds the dissolution mechanism. At M1(2.7) `Pending` is structurally valid at inference time (signature type-checks via inhabitance, body-walking skipped); its emission-time invalidity is enforced by future emitter code that fails on the variant. |
+| 3a | `TransformTarget` error state reached without fail-closing | **Not representable ✅** | **M1(2.7) Class 2** — `TransformTarget` has only 2 variants (`Callable`, `Operator`). There is no error-state variant; unresolved names live in the referenced `Declaration`'s connective and downstream readers follow resolved-identifier chains. The plan's earlier draft proposed `Unresolved` as a third variant; the implementer's cleaner factoring dodges it. Compile-time match exhaustiveness confirms the two arms are handled at every reader (infer.rs:232). |
+| 3b | `ArrowBody` error state reached at inference without explicit variant handling | **Not representable ✅** | **M1(2.7) Class 3** — all 4 variants (`UserDefined`, `ExternalRealization`, `Pending`, `Unparsed`) matched exhaustively at infer.rs:297. `Pending` and `Unparsed` are documented scaffolded-state allowances at inference time; their emission-time fail-closed enforcement lands in PR-B. |
+| 4 | Type parameter appearing in `dag.declarations()` top-level iteration | Verify | Pre-existing in free-cod-972; not touched by M1(2.7). Catalogue row stays open for future verification. |
+| 5 | Sum variant resolved via `declaration_by_name` | Verify | Same — not touched by M1(2.7). Catalogue row stays open. |
+| 6 | `TransformTarget` distinguishing callable vs operator via `UnresolvedIdentifier(name)` | **No ✅** | **M1(2.7) Class 2** — `TransformTarget` is a structural coproduct; operators never allocate a stub declaration. |
+| 7 | `DescentEvidence` re-derivable by string-matching `target == "-"` | **No ✅** | **M1(2.7) Class 2** — `is_strictly_smaller` checks `matches!(op, OperatorKind::Arithmetic(ArithmeticOp::Sub))` at lower.rs:1309. Note: the plan proposed a `DescentEvidence` enum; the implementer dropped it and the result is leaner. |
+| 8 | ~~`lower_type_for_port` accepting only `"Int"\|"Bool"\|"String"` via whitelist~~ | **STALE — never landed** | This row was added based on a misread of round-7 review feedback. The whitelist was already dissolved before the plan draft (QW5 SINGLE AUTHORITY receipt at lower.rs:1079-1094). Row retained as history, not a live invariant. |
+| 9 | ~~Block-body `Fn` item silently skipped by `resolve_pending_identifiers`~~ | **STALE — never landed** | Same — this row was added based on a misread. Block-body `Fn` was already handled via `ArrowBody::Unparsed` + `lower_fn_item_unparsed` before the plan draft. Row retained as history. |
 | 10 | `Declaration.inhabits: Some(id)` where `id` doesn't exist or isn't an algebra | Yes — no well-formedness check | Deferred to M1(3)+; captured here for tracking |
 | 11 | `Declaration.meta_tag: Some(id)` where `id` is not itself a meta-type | Yes — no structural marker for "this IS a meta-type" | Deferred to M1(5)+; captured here for tracking |
-| 12 | Operator dispatch before parse completes | Yes by construction today (name dispatch is stage-agnostic) | PR-A: operators are classified at parse time; post-parse everything is typed |
+| 12 | Operator dispatch before parse completes | **Not representable ✅** | **M1(2.7) Class 2** — parser calls `OperatorKind::from_symbol` at parse time; post-parse every operator is a typed variant. |
+| 13 | Primitive identity resolved by name lookup (e.g. `declaration_by_name("Int")` at dispatch time) | **No ✅** | **M1(2.7) Class 1** — `Dag::int_shape() / bool_shape() / string_shape() / realization_meta_id()` cached at bootstrap; dispatch-time lookups compare `DeclarationId`, not `String`. (New row: the plan didn't enumerate this invariant; the implementer added the fix anyway.) |
+| 14 | `is_realization_shape` comparing realization meta-type by name | **No ✅** | **M1(2.7) Class 4** — compares cached `DeclarationId` via `dag.realization_meta_id()`. (New row, same reason as 13.) |
 
-Rows 1–9 (plus 3a, 3b) are actionable in this plan and block PR-A merge.
-Rows 10–12 are tracked as future substrate work; the catalogue exists
-so that when a downstream consumer needs them, the need does not arrive
-as a surprise.
+**Status summary:** rows 1, 2, 3a, 3b, 6, 7, 12, 13, 14 are closed in
+M1(2.7). Row 3 (`Pending` at emission) is closed at inference time
+and becomes impossible-by-type when PR-B deletes the variant. Rows 4, 5
+are inherited from the earlier plan and need verification in free-cod-972
+(the plan never audited them against the actual code). Rows 8, 9 were
+stale when added and retained only as history. Rows 10, 11 are deferred
+to M1(3)+ and M1(5)+.
 
-**Lifecycle-boundary clarification (rows 2, 3, 3a, 3b).** The invariant is
-"no invalid semantic state representable at a given stage's output."
-Two enforcement shapes are available:
+**How the M1(2.7) implementation actually enforces lifecycle
+boundaries.** The plan's earlier draft described two enforcement
+shapes — structural (split the type) vs exhaustive-match + diagnostic
+(keep the type, fail-closed arms). The implementer did something even
+cleaner for `TransformTarget`: dropped the error variant entirely, so
+the type has only valid-state variants. For `ArrowBody`, the four
+variants are matched exhaustively in infer.rs with scaffolded-state
+arms (`Pending`, `Unparsed`) that allow signature type-checking and
+explicitly defer body-walking with a documented dissolution trigger.
+Compile-time match exhaustiveness is the structural enforcement;
+documented dissolution triggers are the audit trail. No grep gate
+needed.
 
-1. **Structural:** split the type so the invalid variant does not exist
-   in the post-boundary form (phantom type parameter, or pre-sweep vs
-   post-sweep types).
-2. **Exhaustive-match + diagnostic:** keep the unified type, but every
-   downstream reader matches on every variant, and the error variants
-   have fail-closed arms that produce (or propagate) diagnostics. The
-   match exhaustiveness is compile-time; the diagnostic requirement is
-   §8 gate 9.
-
-PR-A commits to shape (2) for `TransformTarget::Unresolved` and
-`ArrowBody::Pending`. Shape (1) was considered and rejected as
-unnecessary machinery: match exhaustiveness does the same work as a
-phantom type for this many variants, and PR-B eliminates `Pending`
-entirely, making the boundary literally impossible-by-type at that
-point. `Unresolved` stays as a terminal error state forever — it is
-not a transitional value waiting to be resolved, it is "this failed,
-diagnostic attached, downstream propagate."
+This is a stronger invariant than the plan originally committed to,
+and it changes the scoring on the "make illegal states unrepresentable"
+invariant from "partially satisfied by exhaustive-match discipline"
+to "structurally satisfied — the illegal variant doesn't exist."
 
 ### §3.4 Boundary fact flow
 
@@ -289,72 +295,57 @@ All S. Zero reconstruction. v3 success-bar proof point #2.
 | 4 | For Arrow: inputs/output? | `lower(bodies)` | S | `TypeConnective::Arrow { .. }` |
 | 5 | For Arrow: body kind? | `lower(bodies)` / `bootstrap` | S | `ArrowBody` 3 variants |
 | 6 | Is a Bind's value Port resolved? | `infer` | S | Port state check |
-| 7 | **Is a Transform target callable, operator, or unresolved?** | SHOULD be `parse` (PR-A) | **R** | Currently reconstructed via `unresolved_operator_name(decl)` — string match on `UnresolvedIdentifier.name` against `OPERATOR_FIELD_MAP`. Producer authority moves to `parse` in PR-A. |
-| 8 | **What kind of operator is this (arithmetic vs comparison)?** | SHOULD be `parse` (PR-A) | **R** | Reconstructed via `is_comparison_operator(name)` — separate string match. PR-A makes this a field on `OperatorKind`. |
-| 9 | **What's the operator's return type semantics (returns T or Bool)?** | SHOULD be `operators.rs` (PR-A) | **R** | Hard-coded dispatch: comparison → Bool, else → T from inhabitance walk. PR-A derives from `OperatorKind::signature`. |
+| 7 | Is a Transform target callable or operator? | `parse` | **S ✅** | Closed in M1(2.7). `SurfaceExpr::Operator` is a first-class parser variant; lower builds `TransformTarget::Callable \| Operator` directly. |
+| 8 | What kind of operator is this (arithmetic vs comparison)? | `parse` (via `OperatorKind::from_symbol`) | **S ✅** | Closed in M1(2.7). `OperatorKind::Arithmetic(_) \| Comparison(_)` is the structural split. |
+| 9 | What's the operator's return type semantics (returns T or Bool)? | `infer::resolve_operator_arrow` reading `OperatorKind` variant | **S ✅** | Closed in M1(2.7). infer.rs:473 encodes "Arithmetic → operand type, Comparison → `bool_shape()`" as a structural match, not a sibling string match. |
 | 10 | What DeclarationId does an Identifier resolve to? | `resolve_sweep` | S | `ResolvedIdentifier(DeclarationId)` carries it |
 | 11 | What does a DeclarationId map to at port-level? | `infer::walk_to_type_shape` over `decl.connective` | S | Returns `TypeShape::new(current)` for named decls |
 | 12 | For Instantiation: template + arguments? | `lower(bodies)` | S | `Instantiation { template, arguments }` |
 | 13 | Walk substitution context? | `infer` | S | `SubstStack` |
 
-**Three R-rows** — all related to operator dispatch. Producer for each
-moves from "post-parse reconstruction" to "parse-time classification via
-`operators.rs`" in PR-A.
+**All three closed in M1(2.7).** Operator identity flows forward from
+parse through lower to infer without any name-matching reconstruction.
+Verification: §8 gates grep for the deleted helpers return zero matches
+in production code.
 
-### §4.4 Descent evidence (currently in `lower.rs`, `is_strictly_smaller`)
-
-| # | Question | Producer | Status | Notes |
-|---|---|---|---|---|
-| 1 | **Is this call operating on a structurally smaller sub-value?** | SHOULD be `lower(bodies)` | **R** | Walks SurfaceExpr, matches `target == "-"` + constant pattern. Producer authority is `lower(bodies)` per §3.1 — lowering is the only stage with operator kind + constant literal + argument shapes simultaneously in scope. |
-| 2 | **What's the "smaller-by-1" pattern for each operator?** | SHOULD be `dsl/std/algebra.dag` (declaration, read via `operators::kind_to_algebra_ref`) | **R** | Hard-coded for subtraction only in current `is_strictly_smaller`; lexicographic / structural descent not supported. PR-A moves this to a descent-annotation field on the algebra declaration in `dsl/std/algebra.dag`, read via `operators::kind_to_algebra_ref(kind)` + field lookup on the returned `Declaration`. `operators.rs` does not manufacture the answer; it forwards to the algebra authority per §3.1. |
-
-**Two R-rows** — descent evidence reconstruction. Facts known at parse/lower
-time (the typed operator kind + the constant literal), dropped at lowering,
-reconstructed by re-reading SurfaceExpr.
-
-### §4.5 `lower::lower_type_for_port` (round-7 finding)
+### §4.4 Descent evidence (`lower::is_strictly_smaller`)
 
 | # | Question | Producer | Status | Notes |
 |---|---|---|---|---|
-| 1 | **What declaration does a port's type name reference?** | SHOULD be `lower(bodies)` via `resolve_type_expr` | **R** | Current code string-matches `"Int"\|"Bool"\|"String"` and falls back to a placeholder for any other name. This is the same name-dispatch bridge as §4.3's rows 7–9, relocated to a different function. Round-5 "eliminate all name bridges" was incomplete because it only touched type-shape collapse; `lower_type_for_port` escaped the sweep. |
+| 1 | Is this call operating on a structurally smaller sub-value? | `lower(bodies)` | **S ✅** | Closed in M1(2.7). `is_strictly_smaller` structurally matches `OperatorKind::Arithmetic(ArithmeticOp::Sub)` on the SurfaceExpr::Operator, checks operand identity and positive-literal shrink. No string matching. The plan earlier proposed a `DescentEvidence` struct on `TransformNode`; the implementer dropped it and the SurfaceExpr walk is leaner. |
+| 2 | What's the "smaller-by-1" pattern for each operator? | Hard-coded to `ArithmeticOp::Sub` at M1(2.7); extends via `dsl/std/algebra.dag` descent annotations when M2+ needs lexicographic/structural descent | **S ✅** | Closed at M1(2.7) scope. Future extensions (lex/structural descent) become substrate fields on algebra declarations; the current hard-coding is honest about M1 scope rather than pretending the general case is supported. |
 
-**One R-row.** PR-A deletes the whitelist and routes every port type
-reference through `resolve_type_expr` — the same path every other type
-reference in the compiler uses. Grep gate in §8 prevents reintroduction.
+**Both closed in M1(2.7).** No `DescentEvidence` struct was introduced —
+the direct SurfaceExpr walk is lean enough. Termination checking
+extensions move into substrate (algebra-declaration fields) rather than
+inventing a parallel descent vocabulary.
 
-### §4.6 `resolve_pending_identifiers` Fn silent-skip (round-7 finding)
+**Note on the plan's mid-draft proposal.** The earlier plan introduced
+a `DescentEvidence { StrictSubValue | PreservedValue | Unrelated }` enum
+and a `ShrinkFactor { Constant(u32) | Structural }` enum as §6.1
+substrate additions. Neither shipped. The review feedback that pushed
+back on "unclassified coproducts" was correct — both enums were
+premature formalization of a concern that didn't yet need its own
+vocabulary. The implementer's decision to keep `is_strictly_smaller` as
+a direct SurfaceExpr reader at M1 scope, with algebra-declaration
+annotations as the M2+ extension path, is the right shape.
 
-| # | Question | Producer | Status | Notes |
-|---|---|---|---|---|
-| 1 | **What happens when an unresolved identifier names a `Fn` item appearing in a block body?** | SHOULD be `resolve_sweep` | **R** | Currently silently skipped — the sweep emits no diagnostic, the identifier persists as `UnresolvedIdentifier` past the sweep, violating §3.3 row 2 (post-sweep `UnresolvedIdentifier` should be unreachable). Fail-closed invariant violation per `feedback_fail_closed_discipline.md` — every detectable problem must produce a Diagnostic. |
-
-**One R-row.** PR-A removes the silent skip. Two valid fix shapes:
-
-1. **If block-body `Fn` is not yet supported:** emit a diagnostic
-   ("block-body function declarations are not yet implemented"),
-   attach to the sweep stage, fail-closed at the lowering boundary.
-2. **If block-body `Fn` is supposed to resolve:** implement the
-   lowering path (lift the Fn to a top-level declaration with a
-   synthetic scope marker, or add a parent-edge + scoped lookup
-   table consistent with §3.2).
-
-PR-A picks (1) unless the implementer verifies (2) is tractable within
-PR-A's scope. Either way, the silent-skip path is deleted in PR-A.
-
-### §4.7 `lens_cost.rs` (future, M1(3))
+### §4.5 `lens_cost.rs` (future, M1(3)) — reader-only
 
 | # | Question | Producer | Status | Notes |
 |---|---|---|---|---|
-| 1 | What's a Node's per-op cost? | SHOULD be `lang_spec` (PR-B) | N | Needs cost-per-primitive declared in `rust.dag` |
-| 2 | What's a Transform's target cost? | SHOULD be `operators.rs` (PR-A) + `lang_spec` (PR-B) | N | Depends on typed operator kind (§4.3 rows 7–9) |
-| 3 | How do costs compose across Behavior kinds? | `lens_cost` itself | N | Sequence / Loop / Branch composition rules |
-| 4 | **Where does the lens STORE its results?** | `lens_cost` substrate decision | N | Deferred from M0 — first writer lens forces the decision |
-| 5 | For ExternalRealization: target-world cost? | `lang_spec` (PR-B) | N | Blocked on language spec declaring realization costs per primitive |
+| 1 | What's a Node's per-op cost? | `lang_spec` (PR-B) | N | Cost-per-primitive is a field on the primitive's realization declaration in `rust.dag`. The lens reads on demand; no per-node storage. |
+| 2 | What's a Transform's target cost? | `OperatorKind` (substrate) + `lang_spec` declaration | N | Pure function of `TransformTarget`: `Callable(id)` walks through the Arrow body; `Operator(kind)` looks up the algebra declaration's realization. No intermediate storage. |
+| 3 | How do costs compose across Behavior kinds? | `lens_cost` composition kernel | N | Sequence / Loop / Branch composition is a pure function of the Node's Behavior variant + input Port costs. Each query walks the Dag fresh. |
+| 4 | ~~Where does the lens STORE its results?~~ | **Moot — minimal system has no storage to pick** | **N/A** | Per §12.6, the minimality invariant dissolves the storage question: if cost is derivable from substrate + `rust.dag`, there is nothing to store. Memoization, if profiling ever demands it, is a transparent local cache — never a substrate-level decision and never shared across lenses. |
+| 5 | For ExternalRealization: target-world cost? | `lang_spec` (PR-B) | N | Blocked on `rust.dag` declaring realization costs. Same pure-read pattern as row 1. |
 
-**Five N-rows.** Rows 1–3 are blocked on §4.3 R-rows being closed.
-Row 4 is a substrate decision that applies to every future writer lens.
+**Four live N-rows, one moot.** All blocked on PR-B's `rust.dag`
+realization-schema decision, not on a lens-storage mechanism. The
+storage question from earlier drafts is closed by the minimality
+invariant, not postponed.
 
-### §4.8 Rust emitter skeleton (future, M1(4))
+### §4.6 Rust emitter skeleton (future, M1(4))
 
 | # | Question | Producer | Status | Notes |
 |---|---|---|---|---|
@@ -369,14 +360,14 @@ Row 4 is a substrate decision that applies to every future writer lens.
 `realization { ... }` record literals. Row 6 is orthogonal (different
 lens, different milestone).
 
-### §4.9 Interpreter (future, later)
+### §4.7 Interpreter (future, later)
 
 | # | Question | Producer | Status | Notes |
 |---|---|---|---|---|
 | 1 | For each Node: evaluate its value given input Port bindings | `interp` consumes substrate | N | Tree walker over L1 behaviors |
 | 2 | For Transform over primitive: call host primitive | `lang_spec` (PR-B) | N | Reads ExternalRealization for runtime binding |
 | 3 | For Transform over user function: recursively evaluate sub-DAG | `interp` consumes substrate | N | Same substrate as emission |
-| 4 | Termination: is the current walk bounded? | `lower(bodies)` via `DescentEvidence` | N | Reads descent evidence (blocked on §4.4) |
+| 4 | Termination: is the current walk bounded? | `lower::is_strictly_smaller` at M1 scope; algebra-declaration descent annotations at M2+ | N | Reads the existing descent check; no new vocabulary required. |
 
 **Four N-rows.** All depend on §4.3 + §4.4 R-rows being closed.
 
@@ -384,42 +375,46 @@ lens, different milestone).
 
 ## §5. Gap analysis
 
-**Open R-rows (reconstructive facts currently in the codebase):** 7
+**Open R-rows (reconstructive facts currently in the codebase): 0**
 
-1. Transform target kind (callable/operator/unresolved) — §4.3
-2. Operator kind (arithmetic/comparison) — §4.3
-3. Operator return type semantics — §4.3
-4. "Is this a smaller sub-value?" (descent evidence) — §4.4
-5. "What's the smaller-by-1 pattern?" (descent shrink factor) — §4.4
-6. **Port-type name whitelist (`Int|Bool|String`)** — §4.5
-7. **Block-body `Fn` silent-skip** — §4.6
+All five genuine R-rows from the plan's original enumeration are
+closed in M1(2.7):
 
-R-rows 6 and 7 were discovered in round 7 after the first draft of this
-plan was written; they are named explicitly because their discovery
-during planning is live proof that the original enumeration was
-incomplete — see `feedback_enumerate_before_substrate.md`. The plan
-is stronger for catching them in design rather than in review.
+1. ✅ Transform target kind (callable/operator) — §4.3 via `TransformTarget` coproduct
+2. ✅ Operator kind (arithmetic/comparison) — §4.3 via `OperatorKind` coproduct
+3. ✅ Operator return type semantics — §4.3 via `resolve_operator_arrow` structural dispatch
+4. ✅ Descent evidence — §4.4 via `is_strictly_smaller` structural match on `OperatorKind::Arithmetic(ArithmeticOp::Sub)`
+5. ✅ Descent shrink factor — §4.4 hard-coded at M1 scope; M2+ extends via algebra-declaration annotations
 
-**Open N-rows (future consumer questions):** 15 (5 cost, 6 emit, 4 interp)
+Two R-rows (ports 6 and 7, the port-type whitelist and block-body `Fn`
+silent-skip) were added to the plan based on a misread of round-7
+review feedback — both had already been dissolved before the plan
+draft was written. Those are documented as history in §3.3 rows 8–9,
+not as closed work.
 
-**Dependency analysis of N-rows on R-rows:**
+**Beyond-plan fixes the M1(2.7) implementation added that were not in
+§4:** Class 1 primitive identity caching (`Dag::int_shape()` etc.) and
+Class 4 realization shape comparison by `DeclarationId` instead of
+name. Both address invariants the plan did not enumerate and landed in
+§3.3 as new catalogue rows 13 and 14. Their absence from the original
+§4 enumeration is honest evidence that the plan's consumer walk was
+not exhaustive; the implementer caught what the planner missed. §6.1
+retrospective treats this as a process data point, not a failure.
 
-- All 5 cost lens questions depend on R-rows 1–3 (cost lookup needs typed
-  operator kinds; target cost needs typed call kind)
-- Emit rows 1, 3 depend on R-rows 1–3 (typed dispatch at emission)
-- All 4 interpreter questions depend on R-rows 1–5 (interpreting operators
-  + descent)
-- R-rows 6 and 7 are orthogonal to the N-rows but load-bearing for the
-  "post-sweep `UnresolvedIdentifier` is unreachable" invariant (§3.3
-  row 2), which every downstream consumer assumes
+**Open N-rows (future consumer questions): 15** (5 cost, 6 emit, 4 interp)
 
-**Conclusion:** closing the 7 R-rows in one PR (PR-A below) unblocks 11 of
-15 future consumer questions AND eliminates the catalogue violations
-that would otherwise force every downstream stage to carry defensive
-"did the sweep actually resolve this?" logic. The remaining 4 N-rows
-(cost lens storage mechanism, emission ownership, emission language
-spec reading, interpreter) are independent substrate additions addressed
-in PR-B.
+- 5 cost lens questions now block only on PR-B's `rust.dag` schema
+  decision; the storage-mechanism question from earlier drafts is
+  moot per §12.6 minimality invariant
+- 6 emit questions block on parser support for `realization { ... }`
+  literals + `rust.dag` bootstrap; row 6 (ownership) stays orthogonal
+- 4 interpreter questions block on M1(3)+ interpreter skeleton
+
+**Conclusion:** PR-A is done. PR-B is unblocked except for its own
+design-doc work on `rust.dag` realization schema. Every R-row that
+ever existed for PR-A's scope is closed in M1(2.7); every fact PR-B
+consumes is either already in substrate or will become a substrate
+field before any lens reads it.
 
 ---
 
@@ -430,305 +425,253 @@ simultaneously. No intermediate states, no bridges.
 
 ### §6.1 PR-A: Structural operator handling + round-7 cleanup (est. 10–14 hours)
 
-**Purpose:** close all 7 R-rows by lifting operator knowledge out of
-string-matching and descent-evidence reconstruction into structural types.
-Consolidate operator knowledge into a single authority. Eliminate the
-two round-7 name-dispatch / silent-skip bridges in the same push.
+**Status:** ✅ **Complete.** M1(2.7) structural fix PR shipped
+2026-04-14 — 60/60 tests green, clippy clean, 10 files
+(+1276/−493 LOC), 14 enumeration gaps closed across 4 classes. This
+section is now a retrospective receipt rather than a forward plan.
 
-**Substrate changes (`dag.rs`):**
+**What the implementer shipped (4 classes, 14 gaps):**
 
-```rust
-pub struct TransformNode {
-    pub id: NodeId,
-    pub target: TransformTarget,           // was DeclarationId
-    pub descent: DescentEvidence,          // new structural field
-    pub inputs: Vec<PortId>,
-    pub output: PortId,
-    pub span: SourceSpan,
-}
+- **Class 1 — primitive identity (4 gaps).** `Dag::int_shape() /
+  bool_shape() / string_shape() / realization_meta_id()` cached at
+  bootstrap; dispatch-time lookups compare `DeclarationId`, not
+  `String`. `lower_type_for_port` dissolved into `type_to_declaration_id`
+  with a fresh-stub guard (QW5 SINGLE AUTHORITY receipt at
+  lower.rs:1079).
+- **Class 2 — operator dispatch (2 gaps).**
+  `TransformTarget = Callable(DeclarationId) | Operator(OperatorKind)`.
+  `SurfaceExpr::Operator` is a first-class parser variant; operators
+  never allocate stub declarations. `OperatorKind =
+  Arithmetic(ArithmeticOp) | Comparison(ComparisonOp)` encodes the
+  output-type rule in the variant. `is_strictly_smaller` structurally
+  matches `ArithmeticOp::Sub`. Deleted: `OPERATOR_FIELD_MAP`,
+  `is_operator_name`, `is_comparison_operator`, `unresolved_operator_name`.
+- **Class 3 — scaffold honesty (3 gaps + module/import).**
+  `ArrowBody::Unparsed(SourceSpan)` fourth variant with a distinct
+  dissolution trigger. `SurfaceItem::Fn` requires a `SurfaceExpr` body;
+  `FnExternalBody` is a sibling variant lowering to `Unparsed`.
+  `SurfaceItem::Data / Module / Import` emit real facts at the parser
+  boundary. `TemplateArgument` stub self-reference branch deleted —
+  stub templates yield `Vec::new()` arguments.
+- **Class 4 — parallel authorities (2 gaps).** `is_realization_shape`
+  compares cached `DeclarationId` instead of name. Port-type authority
+  dissolved via Class 1.
 
-pub enum TransformTarget {
-    Callable(DeclarationId),
-    Operator(OperatorKind),
-    // Terminal error state: sweep attached a diagnostic before producing
-    // this. Every downstream reader matches exhaustively and fail-closes
-    // on this arm. NOT a transitional waiting-to-be-resolved value.
-    Unresolved { name: String, span: SourceSpan, diagnostic: DiagnosticId },
-}
+**Where the implementer's factoring diverged from the plan (cleaner):**
 
-// M1(2.6) commits to exactly this operator set:
-//   Arith(Add, Sub, Mul, Div)   ← 4 variants
-//   Cmp(Eq, Ne, Lt, Le, Gt, Ge) ← 6 variants
-// Total 10. See §9 for the explicit non-goal list (`%`, boolean ops,
-// unary, null-coalescing). Any post-M1 extension goes through §12.
-pub enum OperatorKind {
-    Arith(ArithOp),
-    Cmp(CmpOp),
-}
-pub enum ArithOp { Add, Sub, Mul, Div }
-pub enum CmpOp { Eq, Ne, Lt, Le, Gt, Ge }
+1. **No `TransformTarget::Unresolved` variant.** The plan's earlier
+   draft proposed three variants including
+   `Unresolved { name, span, diagnostic }`. The implementer dropped
+   it — unresolved names live in the `Declaration` connective as
+   `UnresolvedIdentifier` and the resolve sweep is authoritative.
+   Only two valid-state variants remain. Compile-time match
+   exhaustiveness is trivially satisfied at every reader (infer.rs:232).
 
-// All fields use typed IDs — no `parameter: String` name proxy. Names
-// live in diagnostics only, read from the port's backing declaration
-// when needed for display. Downstream analysis code reads PortId
-// structurally and never key-matches on author-supplied identifiers.
-pub enum DescentEvidence {
-    StrictSubValue { parameter: PortId, shrink: ShrinkFactor },
-    PreservedValue { parameter: PortId },
-    Unrelated,
-}
-pub enum ShrinkFactor { Constant(u32), Structural }
-```
+2. **No `DescentEvidence` struct and no `ShrinkFactor` enum.** The
+   plan proposed a typed descent-proof vocabulary on `TransformNode`.
+   The implementer kept `is_strictly_smaller` as a direct SurfaceExpr
+   reader (structurally matching `ArithmeticOp::Sub` + positive
+   literal at lower.rs:1309). No second vocabulary, no invariant
+   drift. The earlier reviewer pushback on "unclassified coproducts"
+   was correct — both types were premature formalization of a
+   concern that didn't need its own vocabulary.
 
-**Scope-and-visibility scaffolding (§3.2):**
+3. **`operators.rs` smaller than planned.** The plan proposed
+   `from_symbol` + `kind_to_algebra_ref`. The implementer shipped
+   `from_symbol` + `symbol` (a diagnostic-display helper). Algebra-ref
+   linking is deferred to M2+ when the surface grammar exposes
+   algebra-field access directly; at that point `SurfaceExpr::Operator`,
+   `TransformTarget::Operator`, and `OperatorKind` ALL dissolve into
+   regular algebra-field calls. The dissolution trigger is documented
+   inline at operators.rs:45-48.
 
-If `TypeParamId` / `VariantId` are not already distinct newtypes in
-`dag.rs`, PR-A introduces them as part of the atomic push. The goal is
-that `dag.declarations()` return top-level only and that
-`declaration_by_name` cannot possibly return a type param or variant
-by construction.
+**Where the plan missed what the implementer caught:**
 
-**`operators.rs` is surface-syntax authority ONLY:**
+1. **Class 1 primitive identity caching** was not in the §4
+   enumeration. The plan's §3.1 named primitives as "resolved once
+   at bootstrap" but did not audit the cached-getter API or flag
+   dispatch-time name lookups as an R-row. Row 13 in §3.3 now tracks
+   it.
+2. **Class 4 `is_realization_shape`** was also not in §4. Row 14 in
+   §3.3 now tracks it.
+3. **`SurfaceItem::Module / Import` first-class representation.** The
+   plan did not enumerate these as facts that should flow forward
+   through the parser boundary. The implementer made them first-class
+   `SurfaceItem` variants even though lowering is a no-op at M1(2.7)
+   (consumed later in M2+ module scoping).
 
-Per §3.1, `operators.rs` is the surface-syntax-to-typed-kind table and
-nothing more. Signatures, costs, and descent semantics live in
-`dsl/std/algebra.dag` (for the abstract side) and
-`dsl/extdeps/languages/<target>.dag` (for the realization side).
-`operators.rs` has TWO functions:
+These catches are honest evidence that the plan's consumer walk was
+not exhaustive. §12's design-doc-first process does NOT guarantee
+exhaustive enumeration — it guarantees that an incomplete enumeration
+is visible up front and correctable in review. M1(2.7) exercised that
+correction loop in practice, and the correction loop worked.
 
-```rust
-// Parser calls this at parse time to classify a surface symbol.
-pub fn from_symbol(s: &str) -> Option<OperatorKind> { ... }
-
-// Every downstream consumer that needs signature / cost / descent
-// walks this into `dsl/std/algebra.dag`. operators.rs does NOT
-// manufacture these facts — it forwards to the algebra authority.
-pub fn kind_to_algebra_ref(kind: OperatorKind) -> DeclarationId { ... }
-```
-
-**Explicitly NOT in `operators.rs`** (previously proposed, removed
-after round-7 reviewer feedback):
-
-- `signature(kind) -> OperatorSignature` — lives on the algebra
-  declaration; `infer` reads `decl.connective` from the algebra-ref
-- `primitive_cost(kind) -> CostUnit` — lives in the language spec;
-  `lens_cost` reads the cost field from `dsl/extdeps/languages/rust.dag`
-- `descent_shrink(kind) -> Option<ShrinkFactor>` — lives on the
-  algebra declaration as a descent annotation; `lower(bodies)` reads
-  it when classifying `DescentEvidence`
-
-Putting any of the three inside `operators.rs` would create a second
-semantic authority in parallel with `std/algebra.dag`. That is exactly
-the dual-authority trap `INVARIANTS.md` §"No bridges" forbids — a
-cleaner API is still a bridge if it's a bridge to a redundant
-representation. `operators.rs` stays at ~30 lines of lookup table
-forever.
-
-**Round-7 cleanup:**
-
-- `lower::lower_type_for_port` whitelist deleted. Port type references
-  route through the same `resolve_type_expr` path the rest of the
-  compiler uses. If `resolve_type_expr` does not yet exist as the
-  unified entry point, PR-A introduces it (this is the same change as
-  "every type reference has one authoritative resolver").
-- `resolve_pending_identifiers` block-body `Fn` silent-skip deleted.
-  Emits a diagnostic if block-body `Fn` is not yet supported, OR fully
-  lowers it. See §4.6 for the two valid fix shapes.
-
-**Files touched:**
-
-- `parse.rs` — parser emits typed operator kinds at parse time via
-  `operators::from_symbol`
-- `lower.rs` — `TransformTarget` dispatch; descent evidence classification
-  at lowering time; deletes `is_strictly_smaller`; deletes
-  `lower_type_for_port` whitelist; routes port types through
-  `resolve_type_expr`
-- `infer.rs` — dispatches on `TransformTarget` variants structurally;
-  deletes `unresolved_operator_name`, `is_comparison_operator`
-- `operators.rs` — surface-syntax-to-typed-kind table ONLY (~30 lines).
-  Two functions: `from_symbol` and `kind_to_algebra_ref`. No
-  signature / cost / descent logic lives here — those are read from
-  `dsl/std/algebra.dag` and `dsl/extdeps/languages/*.dag`.
-- `dag.rs` — adds `TransformTarget`, `OperatorKind`, `DescentEvidence`;
-  refactors `TransformNode`; adds `TypeParamId`/`VariantId` if missing
-- `bootstrap.rs` — removes any remaining name-dispatch that reads
-  `decl.name` for semantic purposes (should be zero post-PR-A)
-- `m0_acceptance.rs` — updates test helpers; recursive descent tests read
-  `DescentEvidence` structurally
-- `m1_substrate_test.rs` — new tests:
-  - new operator can be added by editing ONLY `operators.rs`
-  - port-type resolution accepts any user-defined type, not just primitives
-  - block-body `Fn` either lowers correctly OR emits a diagnostic (no silent skip)
-
-**Deletions:**
+**Deletions in M1(2.7) (verified by grep — zero live references):**
 
 - `infer::unresolved_operator_name`
 - `infer::is_comparison_operator`
-- `operators::is_operator_name` (operators are structural post-parse, not
-  name-matched)
-- `lower::is_strictly_smaller`
-- `lower::lower_type_for_port` whitelist branch (replaced with single-path resolution)
+- `operators::is_operator_name`
+- `operators::OPERATOR_FIELD_MAP`
+- `lower::is_strictly_smaller` string-match against `"-"` (rewritten structural)
+- `lower::lower_type_for_port` primitive whitelist (already gone — QW5)
 - `resolve_pending_identifiers` operator-skip branch
 - `resolve_pending_identifiers` block-body `Fn` silent-skip branch
 
-**Horizontal collapse opportunities (5):**
+**Verification receipts (inline in free-cod-972):**
 
-1. **Three dispatch paths become one.** Currently callable goes through
-   `decide_transform` + Arrow walk, operator goes through
-   `unresolved_operator_name` + `OPERATOR_FIELD_MAP` + `is_comparison_operator`,
-   unresolved goes through sweep-error. After: one match on `TransformTarget`
-   in `decide_transform`. Every consumer gets the same structural shape.
+- `operators.rs:3-48` — whole-module dissolution receipt + 4-pattern audit + dissolution trigger
+- `lower.rs:1079-1094` — `QW5 SINGLE AUTHORITY` receipt for `lower_type_for_port`
+- `lower.rs:1262-1267` — structural descent check receipt
+- `infer.rs:447-472` — `resolve_operator_arrow` + `OPERATOR_FIELD_MAP is gone` receipt
+- `infer.rs:489-494` — `is_realization_shape` DeclarationId-compare receipt
+- 8 new `m17_*` tests in `tests/m1_substrate_test.rs`, one per class gap
 
-2. **Descent evidence is no longer operator-special.** `DescentEvidence`
-   is a general structural fact on every Transform. Adding lexicographic
-   descent or structural descent over children lists means adding a variant
-   — no new string matches, no new reconstruction.
+**Closes:** all 5 genuine R-rows from the plan's original §4
+enumeration (R-rows 6, 7 were stale when added and retained only as
+history in §3.3 rows 8-9), plus the substrate-level invariants from
+§3.3 rows 1, 2, 3a, 3b, 6, 7, 12, 13, 14.
 
-3. **`operators.rs` collapses to a lookup table by construction.** With
-   signature / cost / descent_shrink moved out per §3.1 and the PR-A
-   narrowing, `operators.rs` becomes `pub const OPERATOR_SYMBOLS:
-   &[(&str, OperatorKind)]` + `pub const OPERATOR_ALGEBRA_REFS:
-   &[(OperatorKind, &str)]` — two pure-data tables, zero semantic
-   authority. The horizontal collapse isn't "the three functions shared
-   a struct" (the version round-7 flagged); it's "once the semantic
-   functions are gone, the file is data, not logic."
+**Verdict on the plan's contribution:** The Design Oracle discipline
+(§3 + §12) made PR-A's correction loop fast — reviewer findings
+mapped to specific oracle rows rather than requiring full re-review.
+Specific type proposals (`TransformTarget::Unresolved`, `DescentEvidence`,
+`kind_to_algebra_ref`) were over-formalized and the implementer's
+simpler factoring won on every axis. The plan's load-bearing
+contributions were the **authority model** (§3.1), the
+**invalid-state catalogue** (§3.3), the **boundary-flow discipline**
+(§3.4), and the **process commitment** (§12). The specific substrate
+shapes belonged in the implementation, not the plan.
 
-4. **Every type reference goes through `resolve_type_expr`.**
-   `lower_type_for_port` whitelist deletion isn't a local fix — it's an
-   instance of the broader "every type reference uses the same resolver"
-   pattern. The same path handles Arrow input/output, Bind value types,
-   Port types, and Instantiation arguments. Before PR-A: four call sites,
-   one with a three-name whitelist. After PR-A: one entry point, no
-   whitelist, consistent error reporting for every type-reference context.
+### §6.2 PR-B: M1(3) + M1(4) — cost lens + Rust emitter (reader-only, est. 10–14 hours)
 
-5. **`resolve_pending_identifiers` simplifies twice over.** Currently two
-   skip branches (operator-name and block-body `Fn`). After PR-A: both
-   deletions land in the same commit, and the sweep body shrinks to
-   "resolve every pending identifier, fail-closed on non-matches." This
-   is the single largest structural simplification in the file and
-   removes the two catalogue violations that made post-sweep
-   `UnresolvedIdentifier` representable.
+**Status:** Not started. Design-closed except for the `rust.dag`
+realization schema (see §11 remaining open question).
 
-**Acceptance gates (in addition to §8 universal gates):**
+**Purpose:** first cost analysis, first real target-language emission,
+`rust.dag` as the first real language spec, `ArrowBody::Pending`
+dissolution at emission time — all as one atomic unit under the
+**minimality invariant (§12.6)**: no writer lenses, no side tables,
+no storage-mechanism decision.
 
-- `grep -E "target == \"|name == \"|is_operator_name|unresolved_operator_name|is_comparison_operator|is_strictly_smaller" src/v3/compiler/src/` → zero matches
-- `grep -E '"Int" =>|"Bool" =>|"String" =>' src/v3/compiler/src/lower.rs` → zero matches (whitelist deletion gate)
-- `grep -E 'Fn.*skip|skip.*Fn' src/v3/compiler/src/lower.rs` → zero matches (silent-skip gate)
-- `grep -E 'fn (signature|primitive_cost|descent_shrink)' src/v3/compiler/src/operators.rs` → zero matches (operators.rs has no semantic functions — gate for §3.1 authority narrowing)
-- `TransformTarget` has exactly 3 variants (compile-time assertion)
-- `OperatorKind` has exactly 2 variants; `ArithOp` has 4; `CmpOp` has 6
-  (compile-time assertions — the exact M1 operator subset per §9)
-- `DescentEvidence::StrictSubValue.parameter` is type `PortId`, not
-  `String` (compile-time type assertion; prevents the name-proxy regression)
-- Every reader of `TransformTarget` and `ArrowBody` in `infer.rs`,
-  `lower.rs`, `lens_*.rs`, and `emit.rs` must produce an exhaustive match
-  with the error variants' arms calling `dag.attach_diagnostic(...)` or
-  propagating one. Enforcement: §8 gate 9. (This is the lifecycle-
-  boundary mechanism from §3.3 rows 3a and 3b.)
-- New test: adding a new operator symbol to the enum updates ONE file
-  (`operators.rs`); parser/lowerer/infer/descent all read the new variant
-  structurally without edits
-- New test: port type references accept any user-defined type (at least
-  one test case uses a std-library type that is NOT Int/Bool/String)
-- New test: block-body `Fn` produces either a correctly-lowered Declaration
-  OR a diagnostic (no silent-skip path remains)
-- New test: a program that parses but fails to resolve produces a
-  `TransformTarget::Unresolved` whose attached diagnostic is present in
-  `dag.diagnostics()` AND is surfaced by every downstream stage that
-  reaches the Transform (no silent propagation)
+**What PR-B is NOT doing:**
 
-**Closes:** R-rows 1, 2, 3, 4, 5, 6, 7 (all 7 open reconstructive facts)
-plus the lifecycle-boundary pins from §3.3 rows 3a, 3b.
-
-### §6.2 PR-B: M1(3) + M1(4) — cost lens + Rust emitter (est. 12–18 hours)
-
-**Purpose:** first writer lens, first real target-language emission,
-parser support for `realization` literals, `ArrowBody::Pending` dissolution
-— all as one atomic unit because they share reading patterns and
-interact.
+- Not building a writer-lens storage mechanism. No per-lens side
+  tables, no `Dag::lens_results` map, no per-Port annotations for
+  lens output. Per §12.6.
+- Not caching cost-per-node — cost is a pure function of
+  `(substrate, rust.dag)`, recomputed on demand at every query. If
+  profiling ever demands caching, it's a transparent local cache
+  added later, not a substrate-level or shared-lens decision.
+- Not moving operator cost / signature / descent into `operators.rs`
+  — those stay in `std/algebra.dag` + `rust.dag` per §3.1 authority
+  model. `operators.rs` remains surface-syntax-only.
+- Not inventing a god table upstream to make lenses cheap to write.
+  If a cost-composition kernel is shared across lenses, it lives as
+  a pure-function module (`cost_composition.rs`) — not as a field on
+  `Dag` or `Node`. Per §12.6 minimality.
 
 **Substrate additions:**
 
-- Lens storage mechanism (deferred from M0 retrospective — first writer
-  lens forces the decision). Options: per-lens side tables vs `Dag::lens_results:
-  HashMap<LensId, Box<dyn LensResult>>` vs annotations map on Port. PR-B
-  picks one and all subsequent writer lenses follow.
 - Parser support in `parse.rs` for `realization { for: X.add; target:
-  rust; body: "i64::wrapping_add" }` item syntax (the one remaining
-  parser gap identified in M1_FOLLOWUPS.md)
+  rust; body: "i64::wrapping_add"; cost: 1 }` item syntax — the one
+  remaining parser gap from M1_FOLLOWUPS.md. Body and cost both live
+  on the same realization declaration.
+- `dsl/extdeps/languages/rust.dag` parsed as an 8th bootstrap file.
+  Each entry is a `realization` declaration with typed fields.
+  `bootstrap::inject_realization_stub` deleted in the same commit.
+- `ArrowBody::Pending` ratchet hits zero once `rust.dag` populates
+  primitive Arrows directly with `ExternalRealization(decl_id)`.
+  PR-B ends with `Pending` ready to delete as a variant; the variant
+  deletion itself lands as a follow-up once any non-primitive uses
+  are audited.
 
 **New files:**
 
-- `src/v3/compiler/src/lens_cost.rs` — first writer lens; reads substrate
-  + OperatorKind + ArrowBody; produces per-Node cost
-- `src/v3/compiler/src/emit.rs` — walks Dag via language spec; produces
-  Rust source
-- `dsl/extdeps/languages/rust.dag` — first real language spec; declares
-  Rust primitive realizations; replaces `inject_realization_stub`
+- `src/v3/compiler/src/lens_cost.rs` — pure reader. Given a `NodeId`
+  and `SubstStack`, returns a `CostSummary` by walking the Dag.
+  No persistent storage. Kernel is a straight match on `Behavior`
+  variant with recursive composition via input Ports. Cost-per-primitive
+  read from the referenced realization declaration's `cost` field.
+- `src/v3/compiler/src/emit.rs` — pure reader. Given a `Dag` and a
+  target name (`"rust"`), walks the Dag and produces Rust source via
+  the language spec. Fails closed on `ArrowBody::Pending` and
+  `ArrowBody::Unparsed` (both invalid at emission). No hardcoded
+  `"i64::"` / `quote!` strings — every target-side fact is read
+  from `rust.dag`.
+- `dsl/extdeps/languages/rust.dag` — first real language spec.
+  `realization` declarations for each primitive operator and
+  primitive type.
 
 **Files touched:**
 
 - `parse.rs` — adds `realization` item parsing + record-literal body
 - `bootstrap.rs` — deletes `inject_realization_stub`; parses
   `dsl/extdeps/languages/rust.dag` as the 8th bootstrap file
-- Tests: new `smoke_compile_and_run` takes a user program through
-  parse → lower → infer → lens_cost → emit → `cargo check` → run
+- `dag.rs` — adds a `Realization` field-schema (typed cost, body
+  string, target name) or reuses `Declaration.connective` with
+  typed field accessors — decision pinned in the PR-B design doc
+- Tests: new `smoke_compile_and_run` takes `let x: Int = 1 + 2`
+  through parse → lower → infer → lens_cost → emit → `cargo check`
+  → run returning `3`. Test asserts `lens_cost` is a pure function:
+  two back-to-back queries with no intervening mutation return
+  identical results structurally.
 
 **Horizontal collapse opportunities (5):**
 
 1. **Cost lens and emitter share a `StructuralVisitor` trait.** Both
-   walk `TypeConnective` variants, both dispatch on `ArrowBody`, both
-   consume `OperatorKind` from PR-A. Writing them together reveals the
-   shared "walk a Dag, produce a per-node output" pattern. Writing them
-   separately would produce two walkers and notice the duplication
-   later.
-
-2. **The language spec IS the unified cost + realization source.** The
-   `rust.dag` declaration for `Int.add` contains both "realizes as
-   `i64::wrapping_add`" (emission) and "costs 1 machine instruction"
-   (cost analysis). Both consumers read the SAME declaration. Building
-   cost lens first with a temporary cost table and then realizing the
-   emitter should read the same table is exactly the bridge pattern
-   the invariants forbid.
-
-3. **`ArrowBody::Pending` eliminates in the same PR that introduces the
-   mechanism to populate `ExternalRealization`.** Before: bootstrap
-   initializes with Pending, fixed up later. After: bootstrap parses
-   `rust.dag`, primitive Arrows land with `ExternalRealization(decl_id)`
-   from the start. Pending is never written to production declarations.
-   §8.11 ratchet reaches zero in the same commit that introduces the
-   dissolution mechanism. This is the cleanest possible scaffolded-state
-   dissolution.
-
-4. **`inject_realization_stub` deletion is the natural falling-out.** The
-   stub exists because parse couldn't handle `realization` literal syntax.
-   PR-B adds the parser support AND deletes the stub. Before → after:
-   compiler bootstrap has zero Rust-manufactured declarations in
-   production paths.
-
-5. **Lens storage decision applies to every future writer lens.** Cost
-   is the first; ownership, effects, purity, space-bounds will all
-   follow the same pattern. Getting storage right in PR-B means PR-C
-   through PR-N have zero substrate impact — the v3 thesis's "new lens
-   = new file, zero substrate edits" success bar becomes provable by
-   construction.
+   walk `TypeConnective` variants, dispatch on `ArrowBody`, consume
+   `OperatorKind`. Writing them together reveals the shared walker.
+   Extracting it after the fact would be a separate refactor; doing
+   it together avoids the bridge.
+2. **`rust.dag` IS the unified cost + realization + body source.**
+   One declaration per primitive, typed fields for everything needed
+   at emission and cost-query time. Cost lens and emitter read the
+   SAME declaration. No temporary cost table that the emitter later
+   rereads.
+3. **`ArrowBody::Pending` dissolution lands in the same PR as the
+   mechanism to populate `ExternalRealization`.** Primitive Arrows
+   are constructed directly with `ExternalRealization(decl_id)` from
+   `rust.dag` parse. Post-bootstrap, zero `Pending` in production
+   declarations in the same commit as the dissolution mechanism
+   arrives.
+4. **`inject_realization_stub` deletion is the natural falling-out.**
+   PR-B adds parser support AND deletes the stub. Zero Rust-manufactured
+   declarations in production bootstrap.
+5. **Reader-only lens discipline generalizes across lenses.**
+   `lens_cost` is the first M1(3) lens; ownership, effects, purity,
+   space-bounds will follow the same pattern. Because the storage
+   question is moot (§12.6), every future lens is a same-shape pure
+   reader. Substrate edits happen only when a NEW fact needs to exist
+   as an authoritative field, which is a substrate decision, not a
+   lens decision. The v3 thesis's "new lens = new file, zero
+   substrate edits" success bar is provable by construction.
 
 **Acceptance gates (in addition to §8 universal gates):**
 
 - End-to-end: `compile("let x: Int = 1 + 2").emit_rust()` produces Rust
-  source that compiles under `cargo check` and runs returning `3`
-- `grep "inject_realization_stub\|Pending" src/v3/compiler/src/` → only
-  historical / doc references, zero active code paths
-- `lens_cost.rs` is < 250 lines (success-bar budget)
+  source that compiles under `cargo check` and runs returning `3`.
+- **Purity gate:** `lens_cost::query(&dag, node_id)` is a pure
+  function. Two back-to-back invocations with no intervening mutation
+  return identical results. Test asserts this structurally and
+  structurally rules out a hidden side table via `#[deny(mutable_state)]`
+  or equivalent module-level discipline.
+- **Minimality gate:** `lens_cost.rs` and `emit.rs` MUST NOT introduce
+  any `Dag::*_results`, any `HashMap<NodeId, *>` side table, or any
+  `Port` / `Node` annotation field for their own output. Enforcement:
+  any new field on `Dag`, `Port`, or `Node` added by PR-B must be an
+  inherently-substrate fact (an input authored by the user or computed
+  at lower time), not a derived fact computed by a lens.
+- `grep "inject_realization_stub\|Pending" src/v3/compiler/src/` →
+  only `#[cfg(test)]` and dissolution-receipt comments; zero
+  production code paths.
+- `lens_cost.rs` is < 250 lines (success-bar budget).
 - `grep "\"i64::\\|quote!\\|\"Rust " src/v3/compiler/src/emit.rs` → zero
-  matches (the emitter has no hardcoded target knowledge; it reads
-  language spec declarations)
-- Cost lens + emit both go through a shared `StructuralVisitor`-like
-  pattern (proven by refactoring, not mandated in advance — the PR may
-  discover the right abstraction shape)
+  matches (the emitter has no hardcoded target knowledge).
+- Cost lens + emit both go through a shared walker pattern (proven by
+  refactoring, not mandated in advance).
 
-**Closes:** 11 of 15 N-rows (all 5 cost; 5 of 6 emit; last emit row is
-ownership, deferred).
+**Closes:** 4 live cost N-rows (all except the moot storage question)
++ 5 emit N-rows (all except ownership, which is M1(5)+).
 
 ---
 
@@ -806,21 +749,24 @@ change, not the consumer updates.
    — only diagnostic/display code is allowed.
 9. **Lifecycle-boundary exhaustive-match gate** — every downstream
    reader of `TransformTarget` and `ArrowBody` must match every variant
-   and must either produce a diagnostic or propagate one in the error-
-   variant arms (`TransformTarget::Unresolved`, `ArrowBody::Pending`).
-   Enforcement is a combination of:
+   with no wildcard arm. `TransformTarget` has only valid-state variants
+   (`Callable`, `Operator`) post-M1(2.7), so exhaustive match is
+   trivially satisfied. `ArrowBody` has 4 variants at M1(2.7) —
+   `UserDefined`, `ExternalRealization`, `Pending`, `Unparsed` — all
+   must be matched explicitly. `Pending` and `Unparsed` are
+   scaffolded-state allowances at inference time (signature type-checks,
+   body-walking deferred) but MUST fail-closed at emission time
+   (PR-B). Enforcement:
    - Rust's compile-time `match` exhaustiveness (no wildcard `_ => ...`
-     arms are allowed in `infer.rs`, `lower.rs`, `lens_*.rs`, or
-     `emit.rs` when scrutinizing these types; grep: `grep -E
-     'match .*\.target.*\{[^}]*_ =>|match .*\.body.*\{[^}]*_ =>'`
+     arms allowed in `infer.rs`, `lower.rs`, `lens_*.rs`, or
+     `emit.rs` when scrutinizing these types; grep pattern:
+     `grep -E 'match .*\.target.*\{[^}]*_ =>|match .*\.body.*\{[^}]*_ =>'`
      returns zero).
-   - A per-stage test that feeds a deliberately-unresolved program
-     through the stage and asserts `dag.diagnostics()` contains the
-     sweep's error AND the stage's propagation marker.
+   - Per-stage test that feeds a deliberately-scaffolded program
+     through the stage and asserts the stage behaves correctly:
+     inference allows scaffolded variants with documented dissolution
+     triggers; emission fails closed with a diagnostic.
    This is the invariant-grade enforcement for §3.3 rows 2, 3, 3a, 3b.
-   Without this gate, an error variant can be silently skipped and the
-   downstream stage looks "green" on success inputs while corrupting
-   on failure inputs — exactly the round-7 silent-skip pattern.
 
 These gates enforce invariants structurally rather than by convention.
 Any PR failing one is not mergeable.
@@ -831,23 +777,22 @@ Any PR failing one is not mergeable.
 
 Out of scope for M1(2.6) → M1(4):
 
-- **Operator extensions beyond PR-A's committed set.** PR-A ships exactly
-  `Arith(Add, Sub, Mul, Div)` + `Cmp(Eq, Ne, Lt, Le, Gt, Ge)` — 10
-  `OperatorKind` variants total. Explicit non-goals:
-  - `%` (modulo / remainder) — post-M1, adds `ArithOp::Mod`
+- **Operator extensions beyond M1(2.7)'s shipped set.** `OperatorKind`
+  is exactly `Arithmetic(ArithmeticOp) | Comparison(ComparisonOp)` — 10
+  variants total (4 arithmetic: Add, Sub, Mul, Div; 6 comparison:
+  Eq, Ne, Lt, Le, Gt, Ge). Explicit non-goals:
+  - `%` (modulo / remainder) — post-M1, adds `ArithmeticOp::Mod` or dissolves directly into algebra-field call
   - Boolean operators (`&&`, `||`, `!`) — post-M1, may require a new
-    `OperatorKind::Bool(BoolOp)` family since the return-type
-    invariants differ from `Cmp`
-  - Unary operators (unary `-`, `!x`) — post-M1, likely a separate
-    `UnaryOperatorKind` enum since `TransformNode.inputs` shape
-    differs (one input, not two)
+    `OperatorKind::Bool(BoolOp)` family since return-type invariants
+    differ from `Comparison`
+  - Unary operators (unary `-`, `!x`) — post-M1, `TransformNode.inputs`
+    shape differs (one input, not two)
   - Null-coalescing, ternary, bitwise ops, shifts — post-M1, deferred
     until a user-code driver forces the question
   Every post-M1 operator addition goes through the §12 design-doc
-  process. PR-A intentionally does NOT pre-bake seams for these; the
-  reviewer flag from round 7 was that pre-baking extension points is
-  itself a bridge pattern (the seam carries implicit design
-  commitments that have not been examined).
+  process OR dissolves `OperatorKind` entirely if the M2 grammar
+  exposes algebra-field access (see operators.rs:45-48 dissolution
+  trigger). Pre-baking extension seams is itself a bridge pattern.
 - Ownership analysis / lattice-on-bindings (M1(5)+)
 - Interpreter (deferred; revisit when omni-emission starts)
 - Omni-emission Shape B user-program artifacts (YAML, Terraform,
@@ -916,65 +861,74 @@ something and the enumeration needs an update before proceeding.
 
 ---
 
-## §11. Open questions (to resolve before starting PR-A)
+## §11. Open questions
 
-**Pinned by round-7 reviewer feedback** (closed before PR-A starts):
+**Closed by M1(2.7) implementation** (all 5 earlier questions):
 
 1. ~~**Should `TransformTarget::Unresolved` carry the failed name and
-   span?**~~ **PINNED:** yes, plus the attached `DiagnosticId`. The
-   struct form in §6.1 is `Unresolved { name, span, diagnostic }`. The
-   `DiagnosticId` is load-bearing because §8 gate 9 requires every
-   downstream reader to propagate the diagnostic — carrying the
-   `DiagnosticId` structurally makes that propagation trivial instead
-   of forcing a cross-reference to `dag.diagnostics()`.
+   span?**~~ **Moot — the variant doesn't exist.** Implementer dropped
+   it; unresolved names live in the `Declaration` connective and the
+   resolve sweep is authoritative. Cleaner than any of the
+   plan-proposed shapes.
 
 2. ~~**Is `OperatorKind` the right split (Arith vs Cmp), or flatter?**~~
-   **PINNED:** hierarchical (Arith vs Cmp), with exactly 10 variants
-   as listed in §6.1. The Cmp family shares return type `Bool`, the
-   Arith family shares `T → T`, and that distinction is structurally
-   real. Extensions (Mod, Bool, Unary) do not land in PR-A — see §9
-   non-goals.
+   **SHIPPED:** hierarchical, exactly `Arithmetic(ArithmeticOp) |
+   Comparison(ComparisonOp)` with 10 total variants. The output-type
+   rule is encoded in the variant: `resolve_operator_arrow` at
+   infer.rs:473 matches on `Arithmetic(_) → operand type` vs
+   `Comparison(_) → bool_shape()`.
 
-3. ~~**Where does `DescentEvidence` live?**~~ **PINNED:** on `TransformNode`,
-   with `parameter: PortId` (not `String`). Per round-7 reviewer
-   feedback, if the field were `String` it would become a name-proxy
-   and plant exactly the seed this document is trying to weed out.
-   Using `PortId` ensures downstream descent analysis reads structural
-   identity; names appear only in diagnostics, read from the port's
-   backing declaration when needed.
+3. ~~**Where does `DescentEvidence` live?**~~ **Moot — the struct
+   doesn't exist.** Implementer kept `is_strictly_smaller` as a direct
+   SurfaceExpr reader (structurally matching `ArithmeticOp::Sub` +
+   positive literal). No second vocabulary. The reviewer pushback on
+   "unclassified coproducts" was correct.
 
-**Still open** (must be pinned before PR-A starts but not yet):
+4. ~~**`CostUnit` for primitive cost in `operators.rs`?**~~ **Moot —
+   `operators.rs` has no cost function.** Cost lives on `rust.dag`
+   realization declarations, read by `lens_cost` in PR-B as a pure
+   function.
 
-4. **What's the `CostUnit` type for primitive cost in PR-A's operator
-   table?** Now moot per §3.1 operator-semantics authority narrowing —
-   `operators.rs` has no `primitive_cost` function. Cost lives on the
-   language spec and is read by `lens_cost` in PR-B. PR-A does not
-   need a `CostUnit` type at all.
+5. ~~**Does `resolve_type_expr` exist as a unified entry point?**~~
+   **YES — named `type_to_declaration_id`** (lower.rs:507). The
+   unified entry point predates the plan draft. `lower_type_for_port`
+   already delegates to it; the plan's proposed introduction step
+   was unnecessary. Reviewer's hard-blocker concern on this question
+   is satisfied.
 
-5. **Does `resolve_type_expr` already exist as a unified entry point,
-   or does PR-A need to introduce it?** Must be verified before PR-A
-   starts. If it exists, `lower_type_for_port` simply delegates to it.
-   If not, PR-A's scope grows to include unifying every current
-   type-reference path. Grep-check: `grep -n 'fn resolve_type_expr'
-   src/v3/compiler/src/lower.rs`. Action: implementer runs the grep
-   as the first step of PR-A and pins the answer in the PR
-   description.
+**Closed by §12.6 minimality invariant:**
 
-6. **Exact shape of the lens storage mechanism for PR-B.** Per §3.1's
-   writer-lens authority row, this is a hard prerequisite for PR-B.
-   Not a prerequisite for PR-A. The three candidates (per-lens side
-   table, `Dag::lens_results` map, per-Port annotations) have
-   different invariants:
-   - Side table: cleanest for "lens output is authoritative," each
-     lens owns its own storage; risk is cross-lens read patterns
-     requiring a table-locator.
-   - `Dag::lens_results` map: one place to look; risk is type-erased
-     storage (`Box<dyn LensResult>`) recreating the variant-count
-     problem at a different layer.
-   - Per-Port annotations: closest to "facts flow forward on the
-     node"; risk is Port struct bloat as lenses multiply.
-   PR-B must pick one BEFORE writing `lens_cost.rs`; the choice is
-   itself a design-doc-worthy decision per §12.
+6. ~~**Exact shape of the lens storage mechanism for PR-B.**~~ **Moot
+   — no writer lenses.** Per §12.6, the minimality invariant dissolves
+   the storage question entirely. Cost is a pure function of
+   `(substrate, rust.dag)`. Caching, if ever needed, is a transparent
+   local optimization — not a substrate decision, not shared across
+   lenses. The earlier reviewer who preferred per-lens side tables was
+   answering a question that turns out not to need an answer: if the
+   fact is pure, it has no storage. The refinement over either
+   "reader-only" or "per-lens side tables" is the user's own:
+   minimality is the tiebreaker; side-table duplication across lenses
+   is an invariant violation, and god tables upstream are also not
+   the answer.
+
+**Still open (hard prerequisite for PR-B):**
+
+7. **`rust.dag` realization schema.** What fields does a `realization`
+   declaration carry? At minimum: `for: DeclarationId` (the primitive
+   being realized), `target: String` (the target language name),
+   `body: String` (the emission body), `cost: u64` (cycle cost). But
+   the shape of the cost field is the question — single `u64`?
+   `{cycles, allocations, io}` record? Something target-specific?
+   PR-B must pin the schema in its design doc before any code lands.
+   The schema IS the authority per §3.1 language-spec row; picking it
+   wrong means every future language spec forks the shape.
+
+8. **Is `Realization` its own substrate shape, or a `Conj` with typed
+   field accessors?** Either way the typed-edge discipline applies —
+   `for:` must be a `DeclarationId`, not a name string. The question
+   is whether the compiler gets a `Realization` struct alongside
+   `TransformNode` etc., or whether it stays inside the declaration
+   table with a field-lookup convention. PR-B's design doc pins this.
 
 ---
 
@@ -1075,60 +1029,114 @@ scoped to M1(2.6)+ until the discipline has been exercised at least
 twice end-to-end and shown to prevent round-trips. Early elevation is
 premature abstraction; late elevation is acceptable.
 
-### §12.6 Writer-lens contract (load-bearing for PR-B and beyond)
+### §12.6 Minimality invariant — lenses are pure readers; no duplication
 
-Writer lenses — lenses that produce new facts, not just observe existing
-ones — are a load-bearing substrate mechanism. Getting the contract wrong
-once means every subsequent writer lens inherits the wrong shape. Per
-§3.1 (writer-lens output authority row) and per the round-7 reviewer's
-pin, every writer lens must satisfy:
+**The winning design is the cheapest to implement and maintain.**
+Minimality is the tiebreaker between competing substrate shapes. This
+section pins three related rules that together rule out the most
+expensive failure modes: writer lenses with persistent storage,
+parallel side tables across lenses, and god tables upstream.
 
-1. **Exact derivation from upstream structure.** The lens's output is a
-   deterministic function of substrate state. No heuristics, no inferred
-   defaults, no "good enough for now" fallbacks. If the lens cannot
-   produce its output from substrate alone, the substrate is missing
-   a fact — add it upstream before writing the lens, not on the lens's
-   scratch space.
+**Rule 1 — Lenses are pure readers over substrate.** Every lens is a
+function `(&Dag, &LangSpec, Query) -> Result`. No persistent storage,
+no internal cache, no mutation. If you find yourself wanting a lens
+to "write a fact," one of two things is true:
 
-2. **Committed downstream consumer in the same PR.** A writer lens
-   without a consumer is dead weight accumulating bridge potential.
-   The PR that introduces the lens must also introduce at least one
-   consumer that reads the lens's output AS AUTHORITY (not as hint,
-   not as annotation, not as "we'll use this later"). If the consumer
-   isn't ready, the lens isn't ready.
+- (a) The fact is **derivable** from `(substrate, lang_spec)`. Then
+  recomputing on each query is free relative to the substrate walk,
+  and the lens stays pure. Caching is a transparent optimization
+  that can be added later based on profiling; it is NOT part of the
+  lens contract, and it MUST NOT leak into substrate.
+- (b) The fact is **authoritative** — it is a piece of truth about
+  the program that cannot be computed from what's already in
+  substrate. Then it is a substrate fact, and it belongs on the
+  `Dag` / `Declaration` / `Node` / `Port` / language-spec
+  declaration at the grain that fits. The substrate field is added
+  BEFORE the lens that consumes it, in the same PR or an earlier
+  one. "Lens writes a fact" is the wrong factoring of (b) — the
+  fact is upstream, not lateral.
 
-3. **Authoritative reads only.** Downstream consumers of a writer lens
-   must read its output via the lens's designated API, not by
-   re-computing from substrate. Any consumer that bypasses the lens
-   and re-derives the fact is a bridge; the §8 no-bridges gate applies.
+Writer lenses as a category do not exist in this codebase. M0's
+reader lenses (`lens_provenance`, `lens_depth`) already embody the
+pattern. PR-B's `lens_cost` extends it.
 
-4. **Storage mechanism consistency.** PR-B picks one storage mechanism
-   for writer lens outputs (per-lens side table, `Dag::lens_results`
-   map, per-Port annotations, or another shape if one emerges). Every
-   future writer lens MUST use the same mechanism. A lens that invents
-   its own storage is a substrate-level fork and gets bounced in
-   review.
+**Rule 2 — No duplication of lens-local state across lenses.** If
+lens A and lens B both want to cache the same composition kernel
+(e.g., "walk a Dag, compute something per-Node"), that kernel lives
+as a shared pure-function module (`src/v3/compiler/src/visitor.rs`
+or similar). NOT as a field on `Dag`, NOT as a per-Port annotation,
+NOT as a hashmap in some analysis struct reached via trait. If lens A
+ships a side table and lens B reinvents a near-identical side table,
+the second side table is a red flag — it's signaling that either (i)
+the fact belongs in substrate per Rule 1(b), or (ii) the two lenses
+share a computation and the shared computation belongs in a single
+pure-function module. Either remediation is cheaper than two side
+tables.
 
-5. **Variant-count closure applies.** If the lens's output is an enum,
-   it gets the same `const _ASSERT_*` match-exhaustiveness treatment
-   §8 gate 6 applies to substrate enums. Writer lenses do not get a
-   free pass on variant-count discipline.
+**Rule 3 — No god tables upstream.** Rule 1(b) is not a license to
+shove every derived fact into a mega-field on `Dag`. Each upstream
+fact must earn its place: it must be an authority that multiple
+downstream readers need, it must have a single natural grain
+(per-Declaration, per-Node, per-Port, etc.), and it must be
+independently justified. "I might need this later" is not
+justification. "Lens A and lens B both need this" is not
+justification if the shared need can be served by a shared
+pure-function kernel. Upstream state is always cheaper to add than
+to remove, so adding it is the exception, not the default.
 
-**What this rules out:** `lens_cost.rs` producing a `HashMap<NodeId,
-u64>` as a "tentative" cost table that `emit.rs` later consults "if
-needed." Either `emit.rs` is a committed consumer of the lens output
-in the same PR (good), or `lens_cost.rs` doesn't land (also good).
-The "tentative" middle ground is the failure mode this section exists
-to prevent.
+**What these rules rule out (concrete failure modes):**
 
-**Writer lenses vs reader lenses.** `lens_provenance` and `lens_depth`
-are reader lenses — they query substrate and return derived values on
-demand without storing anything. Reader lenses have none of §12.6's
-requirements because they produce nothing persistent. The distinction
-matters because the storage-mechanism question only arises when a
-lens starts writing; the M0 success-bar was built on reader lenses
-specifically to defer the writer-lens decision until it was forced.
-PR-B is when it gets forced.
+- `Dag::lens_results: HashMap<LensId, Box<dyn LensResult>>` — a
+  type-erased global scratch space for lens outputs. Violates Rule 1
+  and recreates the variant-count problem at a different layer.
+- `Port::cost: Option<u64>` — a per-Port annotation field that
+  `lens_cost` writes and `emit` reads. Violates Rule 3 by bloating
+  the substrate `Port` with a derived fact.
+- `lens_cost.rs` side table + `lens_ownership.rs` side table where
+  both internally cache "walked-arrow result for callable X" —
+  violates Rule 2. Fix: extract the shared kernel.
+- `Dag::inherit_cached_facts(&mut self)` — a method that walks the
+  Dag and populates per-node analysis fields. Violates all three
+  rules at once.
+
+**What these rules DO allow:**
+
+- Adding a new field to a `Declaration` or `Node` when the field
+  represents an authoritative fact with a single natural grain and
+  multiple consumers (per Rule 1(b)). Example: `Node::span: SourceSpan`
+  (already substrate — authoritative, multi-consumer).
+- Transparent memoization inside a single lens module when profiling
+  shows a walk is hot, provided the memoization does not leak out of
+  the lens and provided the lens remains a pure function of its
+  inputs from the caller's perspective. This is a last-resort
+  optimization and must be justified in the PR description.
+- Shared pure-function utility modules (`visitor.rs`, `walk.rs`,
+  `cost_composition.rs`) that multiple lenses call. These are not
+  substrate and not lens-local state — they are reusable algorithms.
+
+**How this interacts with §3.1.** The authority model names `Dag`,
+`Declaration`, language-spec declarations, etc. as producers of
+specific facts. §12.6 adds a negative constraint: lens output is NOT
+a producer. If a lens's output needs to be consumed by another
+component as authority, that means the lens should not have existed
+as a lens — its "output" is actually a substrate fact at the wrong
+layer. Remediation: identify the grain, move to substrate, delete the
+lens.
+
+**M0 reader lens compliance.** `lens_provenance` and `lens_depth`
+already satisfy the invariant by construction — both are pure
+functions over substrate with no internal state. They can be rewritten
+as free functions (`fn provenance_for(dag: &Dag, port: PortId) -> ...`)
+without loss. The "lens" terminology is a convenience for organizing
+reader logic, not a commitment to a mutable analysis pass.
+
+**PR-B compliance.** `lens_cost.rs` and `emit.rs` ship as pure
+readers. Cost-per-primitive lives in `rust.dag` as a realization
+field. Cost composition lives as a pure function (on-node or in a
+`cost_composition.rs` helper, TBD in PR-B). Zero side tables, zero
+annotation fields on `Port` or `Node`, zero storage decisions. If
+PR-B cannot ship under these constraints, the design is wrong — back
+up and audit what fact is missing from substrate, per Rule 1(b).
 
 ---
 
