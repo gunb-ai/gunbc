@@ -14,8 +14,8 @@ M1(2.5) task list lives in `src/v3/M1_TASKS.md`; design oracle in
 | Milestone | State | Notes |
 |-----------|-------|-------|
 | **M0** Skeleton | ✅ Complete | 40 acceptance tests green. PR #441 merged. M0_RETROSPECTIVE.md closes it. |
-| **M1(2.5)** Substrate rework | ⏳ In review | PR #445 open. 40 M0 + 3 M1 substrate = 43 green. Substrate = six-variant `TypeConnective`, Declaration table, `meta_tag`/`inhabits` split, `ArrowBody` with `Pending` scaffold. |
-| **M1(2.6)** FACTS FLOW + SINGLE AUTHORITY | 🚧 Active | Rolled into PR #445 per Option C from the ChatGPT review. Parser extensions, real `dsl/std/*.dag` consumption, SubstStack + §8.9 inhabitance walks, delete `inject_primitive_operators`. |
+| **M1(2.5)** Substrate rework | ✅ Landed on PR #445 | Substrate = six-variant `TypeConnective`, Declaration table, `meta_tag`/`inhabits` split, `ArrowBody` with `Pending` scaffold. Initial handoff was 42 green (40 M0 + 2 substrate); see `M0_RETROSPECTIVE.md` §"M1(2.5) addendum" for the historical snapshot. |
+| **M1(2.6)** FACTS FLOW + SINGLE AUTHORITY | ⏳ In review on PR #445 | Rolled into the same PR per Option C. Parser extensions for real `dsl/std/*.dag` files, `include_str!` bootstrap over seven std modules, SubstStack + §8.9 operator dispatch, deleted `inject_primitive_operators`, anonymized TypeParam/variant/realization child declarations, duplicate-name fail-closed, `ExternalRealization` typed-edge check at both construction and dispatch, bootstrap drift routed through `Dag::attach_diagnostic` instead of panic. **Current: 41 M0 + 4 M1 substrate + 4 real-stdlib parse smoke = 49 green.** |
 | **M1(3)** Cost lens | ⏸ Deferred | First writer lens. Forces the lens storage decision. |
 | **M1(4)** Rust emitter | ⏸ Deferred | Single target. |
 | **M2** Feature parity | ⏸ Deferred | Generics in user code, match in user code, transport declarations, interpreter, recursion → Loop. |
