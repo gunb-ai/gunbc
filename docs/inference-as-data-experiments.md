@@ -161,9 +161,15 @@ bundled under the label "inference":
 6. **Diagnostic emission** — attach diagnostics to ports that
    fail to resolve, via the existing fail-closed diagnostic
    mechanism.
-7. **Cross-file forward reference resolution** — the
-   `resolve_pending_identifiers` sweep that fills in stubs
-   once all files have parsed.
+7. ~~Cross-file forward reference resolution~~ — the
+   `resolve_pending_identifiers` sweep belongs to **lowering**
+   (`lower.rs` / `bootstrap.rs`), not inference. It runs during
+   the two-phase bootstrap, before `infer()` is called. Moved
+   here from the original list after codex review correctly
+   flagged the compositional layering violation —
+   `SELF_HOSTING.md` places this in Stage 2 (lowering), not
+   Stage 3 (inference). Not part of the inference-as-data
+   experiment sequence.
 
 These have **different hardness profiles**. Identifier
 resolution is a scoped walk; template substitution is
@@ -242,73 +248,95 @@ algorithm is expressible under the decidability invariant.
 Runs as a paper exercise — no substrate changes, no grammar
 extensions, no code. One implementer + `infer.rs` + a pencil.
 
-**The rule to transliterate:** the simplest real rule in
-`infer.rs` — probably **literal type filling for `Value`
-nodes**. Specifically:
+**What to check: the outer fixpoint loop, not a leaf rule.**
+The original I0 framing targeted the trivial `Behavior::Value`
+leaf rule (literal type filling). A codex review correctly
+flagged this as a dud gate: leaf rules are trivially decidable
+(they're finite matches over Disj variants with no iteration).
+The real decidability risk is in the **fixpoint convergence
+loop** at `infer.rs:46-90`:
 
-> A `Value` node whose payload is an integer literal has port
-> type `Int`. A `Value` node whose payload is a boolean
-> literal has port type `Bool`. A `Value` node whose payload
-> is a string literal has port type `String`.
+```rust
+loop {
+    let mut changed = false;
+    for i in 0..node_count {
+        match decide(dag, i) { ... }  // sets port types
+    }
+    if resolve_branch_patterns(dag) { changed = true; }
+    if !changed { break; }
+}
+```
 
-In the current Rust `infer.rs`, this is the `Behavior::Value`
-match arm. It reads the literal's kind and sets
-`Port.state = PortState::Resolved(literal_type)`.
+This `loop { ... if !changed { break; } }` pattern is an
+unbounded-looking iteration. The decidability question is:
+**can it be expressed as a bounded iteration in `.dag`?**
+
+**The transliteration:**
+
+```
+fn infer(d: Dag) -> Dag =
+  repeat(2 * d.port_count(), d, |dag|
+    dag.nodes()
+    |> fold(dag, |d, node| decide_node(d, node))
+    |> resolve_branch_patterns
+  )
+```
+
+The bound is `2 * port_count()` because each port can
+transition at most twice: `Uninferred → Resolved` (set a
+type) and `Resolved → Unresolved` (conflict detected). Once
+a port is `Unresolved`, it stays there — no further
+transitions. So the total number of state changes across all
+ports is bounded by `2 * port_count`, and each fixpoint
+iteration must produce at least one state change or the loop
+terminates. The extra iterations (after convergence) are
+no-ops.
 
 **Instructions:**
 
-1. **Find the rule in `src/v3/compiler/src/infer.rs`.** Search
-   for the `Behavior::Value` arm in the main inference walker
-   (likely in a function named something like `infer_behavior`
-   or `walk_node`).
-2. **Write it in pseudo-`.dag` syntax** assuming the
-   reflection prerequisites (field access, match-with-payload,
-   higher-order calls) have already landed. Rough shape:
+1. **Verify the bound.** Read `infer.rs:46-90` and confirm
+   that each iteration either (a) changes at least one port
+   state or (b) breaks. Confirm that each port has at most 2
+   state transitions in its lifecycle.
 
-   ```
-   fn infer_value(v: ValueNode, d: Dag) -> Dag =
-     match v.payload {
-       IntLit(_)    => d.with_port_type(v.result_port, Int)
-       BoolLit(_)   => d.with_port_type(v.result_port, Bool)
-       StringLit(_) => d.with_port_type(v.result_port, String)
-     }
-   ```
-
-   The `d.with_port_type(port, type)` is a pseudo-operation
-   representing the write surface from §2.1 Option (b) — it
-   returns a new Dag with one additional port state populated.
-   The real form once I3 lands may look different; the paper
-   exercise doesn't care about the exact syntax, only the
-   shape.
-
-3. **Check each structural element against the decidability
+2. **Check each structural element against the decidability
    rules:**
 
    | Element | Decidability check | Pass/Fail |
    |---|---|---|
-   | `match v.payload { ... }` | Exhaustive match over a finite Disj (the payload variants). No iteration. Bounded by number of variants. | ✅ decidable |
-   | `d.with_port_type(...)` | A single function call with no implicit iteration. The write surface function itself must be decidable, but that's I3's problem, not I0's. | ✅ decidable at call site |
-   | Return value | A new Dag; no mutation, no side effects. | ✅ decidable |
-   | Whole function | No recursion, no iteration, no unbounded search. Strictly linear in the number of Value variants. | ✅ decidable |
+   | `repeat(2 * port_count, ...)` | Bounded iteration with a statically computable bound from the input Dag. The bound is a function of the input, not a runtime guess. | ✅ decidable |
+   | Inner `fold(dag.nodes(), ...)` | Bounded by node count. Each node produces one `Decision` (Set/Fail/Retry). No unbounded search. | ✅ decidable |
+   | `decide_node(d, node)` per-node | Exhaustive match over 5 Behavior variants. Each arm is a finite pattern match over port states and connective shapes. No recursion. | ✅ decidable |
+   | `resolve_branch_patterns` | Bounded fold over Branch nodes × paths. Each path resolves against the scrutinee's Disj children — finite. | ✅ decidable |
+   | Return value | A new Dag; functional, no mutation. | ✅ decidable |
+   | **Whole function** | **`repeat(2n, fold(m, ...))` where n = ports, m = nodes. Total work is O(n × m) per pass × O(n) passes = O(n²m). Decidable.** | ✅ decidable |
+
+3. **Check that `decide()` doesn't hide unbounded work.**
+   Read each `Behavior::*` match arm in `decide()` and
+   verify none performs unbounded search, recursion, or
+   state-dependent iteration. The current arms are all
+   structural reads of port states + connective shapes.
 
 4. **Document the result.** Write a short note (1 paragraph)
-   at the bottom of this doc in §5 Open questions, naming the
-   rule you checked, the outcome (pass / pass-with-caveats /
-   fail), and any surprises.
+   at the bottom of this doc in §6 Open questions Q6, naming
+   the bound (`2 * port_count`), the outcome (pass /
+   pass-with-caveats / fail), and any surprises (e.g., a
+   `decide()` arm that's harder to bound than expected).
 
-**Success criterion:** the rule fits the decidability model
-without introducing patterns that v3's current `.dag` grammar
-can't express under the invariant.
+**Success criterion:** the fixpoint loop fits the decidability
+model as `repeat(2 * port_count, dag, apply_all_rules)` with
+the bound derivable from the input Dag's structure.
 
-**Failure criterion:** the rule requires (a) unbounded
-iteration, (b) unstructured recursion without a descent
-measure, (c) a dependency on state external to the Dag input,
-or (d) a side-channel that can't be expressed as "take Dag,
-return Dag." Any of these is a structural blocker that
-predates the experiment sequence and must be addressed
-before I1 runs.
+**Failure criterion:** the fixpoint requires (a) unbounded
+iteration whose bound can't be derived from the input, (b) a
+`decide()` arm with unstructured recursion or external state
+dependency, (c) a convergence guarantee that depends on
+rule-ordering rather than monotonic state transitions, or (d)
+a state transition that can cycle (port goes back from
+Unresolved to Uninferred). Any of these is a structural
+blocker.
 
-**Estimated effort:** 1-4 hours of focused reading +
+**Estimated effort:** 2-4 hours of focused reading +
 transliteration + checking. **This is the cheapest experiment
 in the sequence and should run immediately** — before any
 implementation work on reflection or prereqs, since its
