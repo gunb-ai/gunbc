@@ -1,6 +1,7 @@
 # DOWNSTREAM_REQUIREMENTS — v3 substrate consumer enumeration
 
-**Status: all 14 gaps resolved at M1(2.7).** This document was
+**Status: all 14 original gaps resolved at M1(2.7); class 5
+remains open with M1(3) PR-B partial closes.** This document was
 originally drafted diagnostic-only during PR #445 review. It
 catalogued every structural question that v3's consumers ask about
 a `Node`, `Declaration`, or `Port`, and cross-referenced each
@@ -10,6 +11,43 @@ entries structurally in one coherent substrate change (rather than
 reactive per-reviewer fixes). The enumeration sections below are
 preserved verbatim as historical record; the resolution summary
 maps each gap to its fix.
+
+## PR-B validation summary (M1(3))
+
+PR-B was the first real downstream consumer to read structurally
+through the M1(2.8) substrate. Each open class-5 gap was checked
+against its pipeline; the verdicts:
+
+| Gap | PR-B verdict |
+|-----|--------------|
+| #1 Bool operator grounding | Did not block PR-B. Operator dispatch in PR-B's success program (`let x: Int = 1 + 2`) reads OrderedRing's `add` field directly via the existing §8.9 walk; Bool operator emission is exercised by the `if 1 > 0 then ...` test and works through the same path with `Classical` as the scrutinee. |
+| #2 Collection-level algebra receivers | Did not block PR-B. PR-B's emit scope is scalar Int/Bool/String — no FreeMonoid/Set/Map operations. |
+| #3 Data body parsing | **Partially closed by PR-B.** The literal-only slice landed via `ValueBody::Structural { fields: Vec<(String, LiteralBits)> }`, `SurfaceExpr::Record`, and `lower_record_to_structural`. The remaining gap is port-carried field values (nested records, list literals, declaration references, Var references). See the gap entry below. |
+| #4 Variant constructor expressions | Did not block PR-B. PR-B's emitter doesn't construct sum-type values; the `if/else` branch test uses ordinary if-expression lowering. |
+| #5 `where` clause refinement facts | Did not block PR-B. PR-B's Realization meta-type uses no refinement clauses. |
+| #6 Declaration references as values | Did not block PR-B. The Realization meta-type was deliberately designed to use scalar field values instead of declaration references; M2+ would let `target: Declaration` replace `target_name: String`. |
+
+Net: **PR-B validated that the M1(2.8) substrate is sufficient for
+the first downstream consumer, with one substrate addition
+(`ValueBody::Structural`) and zero new behavior variants.** The
+remaining class-5 gaps are correctly characterized as M2+ extension
+work, not missing substrate facts that PR-B revealed.
+
+### M1(3) PR-B class-6 gap: tokenizer escape sequences
+
+Surfaced during Phase 4 of PR-B when `rust_main_wrap`'s carrier
+needed to emit `println!("{}", x)` and a literal `"` couldn't go
+inside a string literal. The v3 tokenizer at M1(3) explicitly has
+**no escape sequences** — `\"` inside a string is impossible
+because the closing `"` terminates the literal at the backslash.
+The PR-B workaround uses `%Q` as a literal-quote placeholder that
+the emitter substitutes at render time, alongside `%N`, `%T`, etc.
+
+This is a tokenizer extension, not a substrate gap. Dissolves
+when the v3 tokenizer learns standard escape sequences (`\"`,
+`\\`, `\n`, etc.). The `%Q` placeholder in `rust.dag` is the
+visible scaffold; remove the placeholder and rewrite the carrier
+when the tokenizer extension lands.
 
 **Scope.** Covers both the read side (`infer.rs`, `lens_depth.rs`,
 `lens_provenance.rs`) and the write side (`parse.rs` →
@@ -292,11 +330,27 @@ variants, new `lower_expr` paths, new `Value`-shaped behavior
 nodes for composite values, infer support for structurally
 typing record values against their annotation. Substantial.
 
-**Current status.** Data items are now structurally honest
-(`value_body = Some(Unparsed)`), just not consumed. When M2
-lands the parser extension, `ValueBody::Unparsed(SourceSpan)`
-dissolves into `ValueBody::Structural(NodeId)` pointing at a
-lowered value sub-DAG.
+**M1(3) PR-B partial close.** PR-B added the **literal-only**
+slice of this gap: `SurfaceExpr::Record { fields }`,
+`ValueBody::Structural { fields: Vec<(String, LiteralBits)> }`,
+`lower_record_to_structural` inhabitance checking, and the
+`dsl/extdeps/languages/rust.dag` consumer that reads
+`(target_name, op_name, carrier, cost)` literal fields off
+realization records. The substrate now structurally consumes
+data bodies whose field values are scalar literals (Int / Bool
+/ String). PR-B's Realization meta-type was deliberately
+designed to fit inside that scope. The remaining gap is **port-
+carried field values** (a record field whose value is another
+declaration reference, a nested record, a list literal, or a
+`Var` of an outer binding). When the next consumer needs one of
+those, `ValueBody::Structural { fields }` upgrades from
+`Vec<(String, LiteralBits)>` to `Vec<(String, PortId)>` (or
+similar), and the literal-bits inline form becomes a special
+case — not a separate variant.
+
+**Current status.** Literal-field bodies: ✅ closed at M1(3).
+Port-carried field bodies: ⏸ deferred to the M2+ consumer that
+forces the upgrade.
 
 ### Class 5 gap 5: `where` clause refinement facts
 

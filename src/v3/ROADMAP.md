@@ -21,8 +21,8 @@ substrate fields.
 | **M1(2.6)** FACTS FLOW + SINGLE AUTHORITY | ✅ Landed on PR #445 | Rolled into the same PR per Option C. Parser extensions for real `dsl/std/*.dag` files, `include_str!` bootstrap over seven std modules, SubstStack + §8.9 operator dispatch, deleted `inject_primitive_operators`, anonymized TypeParam/variant/realization child declarations, duplicate-name fail-closed, `ExternalRealization` typed-edge check at both construction and dispatch, bootstrap drift routed through `Dag::attach_diagnostic` instead of panic. |
 | **M1(2.7)** Enumeration-driven substrate fix | ✅ Landed on PR #445 (R7 + R9) | R7: primitive identity cache, `TransformTarget`/`OperatorKind` coproducts, `ArrowBody::Unparsed`, `SurfaceItem::{Fn, FnExternalBody, Data, Module, Import}` split, `TemplateArgument` stub branch deleted. R9 (ChatGPT follow-up): `std/algebra.dag` extended with direct operator fields (`sub`, `div`, `eq`, `ne`, `lt`, `le`, `gt`, `ge` on `OrderedRing<T>`); `resolve_operator_arrow` rewritten as a structural §8.9 walk that reads algebra field signatures and substitutes the receiver type parameter to the source declaration; `Declaration.value_body: Option<ValueBody>` added so data items are structurally distinguishable from type aliases. Class-5 gaps (Bool operator grounding, collection-algebra receivers, data body parsing) tracked in `DOWNSTREAM_REQUIREMENTS.md`. |
 | **M1(2.8)** Match expression parser catch-up | ✅ Landed on PR #445 | Added `SurfaceExpr::Match` + `SurfacePattern::BareVariant` parsing. Extended `Path` with `BranchPattern { UnresolvedVariant, ResolvedVariant }` phase coproduct. Generalized Branch input check from "must be Bool" to "must be Disj" — `if`/`else` still works because Bool IS a Disj in types.dag. `if`/`else` lowering rewired to emit explicit `UnresolvedVariant{"True"}/{"False"}` patterns instead of positional convention. New infer-time pattern resolution pass walks each Branch's scrutinee type and resolves each path's variant name scoped against the Disj children. New class-5 gap #4 (variant RHS expressions blocked on anonymization) tracked for logic.dag's `classical_not`/`and`/`or` which still load as `FnExternalBody`. **Current: 41 M0 + 22 M1 substrate + 7 real-stdlib parse smoke + 1 realization smoke = 71 green.** |
-| **M1(3)** Cost lens | ⏸ Deferred | First writer lens. Forces the lens storage decision. |
-| **M1(4)** Rust emitter | ⏸ Deferred | Single target. |
+| **M1(3)** First downstream consumer (PR-B) | ✅ Landed on PR #445 | The first v3 emitter pipeline ran end-to-end: `compile_to_dag("let x: Int = 1 + 2") → emit_rust → rustc → execute → "3"`. Substrate additions: `ValueBody::Structural { fields: Vec<(String, LiteralBits)> }` for record-literal data bodies, `SurfaceExpr::Record` parser support, `lower_record_to_structural` inhabitance check (walks the type's Conj, fail-closed on extras / missing / wrong-type fields), `dsl/extdeps/languages/rust.dag` as the first extdeps fixture in production bootstrap (declaring `Realization` + 18 `data rust_*` items covering primitives, operators, and structural templates). New lenses + emitter: `lens_cost.rs` (third pure-reader lens, ~80 lines, follows the lens_depth/lens_provenance template), `emit_rust.rs` (~340 lines, builds a `(target_name, op_name) → carrier` index from rust.dag declarations and walks the DAG translating per Behavior). End-to-end roundtrip test gated behind `#[ignore]` so CI doesn't depend on a Rust toolchain. **Current: 41 M0 + 35 M1 substrate + 6 lens_cost + 7 emit_rust + 7 real-stdlib parse smoke + 1 realization smoke = 97 green.** |
+| **M1(4)** Multi-target emission | ⏸ Deferred | Add `go.dag` / `python.dag` as parallel extdeps fixtures and parallel `emit_go` / `emit_python` walks reusing PR-B's RealizationIndex pattern. Validates the thesis claim "add a new emission target = one spec-file edit." |
 | **M2** Feature parity | ⏸ Deferred | Generics in user code, match in user code, transport declarations, interpreter, recursion → Loop. |
 | **M3** Self-hosting | ⏸ Deferred | `.dag` rewrite of the compiler. |
 | **M4** Thesis completion | ⏸ Deferred | All lenses, verification, omni-emission. |
@@ -263,24 +263,58 @@ algebra, not the type parameter), and data body parsing
 (`kernel_algebra_profile` et al. still aren't structurally
 consumable). See `DOWNSTREAM_REQUIREMENTS.md` class 5.
 
-## M1(3)+ — deferred work (unchanged since PR #441)
+## M1(3) — What PR-B validated
 
-- **(3) Cost lens** — first writer lens. Forces the lens-storage
-  decision (Node field vs side table vs computed fresh). 2–4 days for
-  the first cut. Until this lands, the v3 vs v2 performance proof of
-  concept is not exercised.
-- **(4) Success bar validated for writer lenses.** By the end of cost
-  lens work, "minimum substrate change for a new lens" should be
-  zero. Gating acceptance for emission work.
-- **(5) Ownership lens** — second writer lens. Reuses the cost lens'
-  storage mechanism; if it doesn't generalize, that's a signal.
-- **(6) Emit Rust from DAG** — single target, minimal. Only after cost
-  + ownership prove extensibility.
-- **§8.11 Pending ratchet** — CI count of `ArrowBody::Pending`
-  declarations; monotonic decrease through M3. Doc-only today. CI
-  wiring is M1(3) work.
-- **`ArrowBody::Pending` removal** — once the ratchet hits zero by M3,
-  delete the variant.
+The deferred items above were structured around three open
+questions: (a) does the substrate at M1(2.8) actually support a
+downstream consumer, (b) does the lens template generalize beyond
+the first two reader lenses, and (c) does "add a new emission
+target = one spec-file edit" survive contact with a real spec
+file. PR-B answered each:
+
+- **(a) Substrate sufficiency.** PR-B added one substrate variant
+  (`ValueBody::Structural`) and one parser surface form (record
+  literals in data-item position). Every other piece of
+  emit_rust + lens_cost reads through existing connectives. The
+  thesis assumption that reader lenses + structural emission cost
+  zero substrate work for "the next consumer" is validated for the
+  PR-B class of consumers: anything whose facts can ride on
+  Realization records with literal-only fields. Class-5 gaps #3
+  (nested records / port-carried field values), #4 (variant
+  constructors as values), and #6 (declaration references as
+  values) are still open and will surface as new consumers push
+  past PR-B's scope.
+- **(b) Lens template scaling.** Cost lens landed at ~80 lines,
+  matching depth (~50) and provenance (~40) shapes. Three data
+  points on the same curve. The "lens-storage" decision the
+  earlier roadmap deferred to M1(3) **dissolved** — no PR-B lens
+  needs storage. Pure-reader walks return on demand and
+  memoization, if ever needed, is a transparent local concern.
+- **(c) Spec-file → emission isomorphism.** `dsl/extdeps/languages/
+  rust.dag` is the only Rust-syntax source in the codebase.
+  emit_rust contains zero hardcoded operator strings, type names,
+  or template fragments — every per-target token traces to a
+  rust.dag carrier read through the RealizationIndex. Editing
+  `"i64"` to `"int64_t"` in rust.dag would propagate to every
+  emitted let statement without touching emit_rust.rs.
+
+The follow-up work the previous M1(3) plan named (writer lenses,
+multi-target emission, §8.11 ratchet) shifts shape:
+
+- **Writer lenses** — superseded. PR-B proved the dissolution.
+  When a future lens has a real reason to persist intermediate
+  state (e.g., cross-program optimization fixpoints), the storage
+  question fires then on its own merits, not as a pre-emptive
+  M1 milestone.
+- **Multi-target emission (M1(4))** — go.dag and python.dag, each
+  built as a parallel extdeps fixture with ~40 declarations and a
+  parallel ~340-line `emit_go` / `emit_python`. The emit walks
+  reuse PR-B's RealizationIndex pattern; the "one spec-file edit"
+  claim becomes empirical.
+- **§8.11 Pending ratchet** — still doc-only. CI wiring is a
+  separate housekeeping task tracked in DOWNSTREAM_REQUIREMENTS.
+- **`ArrowBody::Pending` removal** — once the ratchet hits zero by
+  M3, delete the variant.
 
 ## M2 — Feature parity with v2 subset (deferred)
 
