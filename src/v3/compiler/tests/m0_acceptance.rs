@@ -48,17 +48,7 @@ fn assert_target_name(dag: &Dag, target: &TransformTarget, expected: &str) {
                 _ => decl.name.clone(),
             }
         }
-        TransformTarget::FieldProject {
-            parent_type,
-            field_label,
-        } => {
-            let parent_name = dag
-                .declaration(*parent_type)
-                .name
-                .clone()
-                .unwrap_or_else(|| format!("declaration#{}", parent_type.raw()));
-            Some(format!("{parent_name}.{field_label}"))
-        }
+        TransformTarget::FieldProject { field_label } => Some(format!(".{field_label}")),
         TransformTarget::Operator(op_kind) => Some(op_kind.symbol().to_string()),
     };
     assert_eq!(

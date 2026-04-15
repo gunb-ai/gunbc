@@ -84,6 +84,9 @@ pub fn infer(dag: &mut Dag) {
         if resolve_branch_patterns(dag) {
             changed = true;
         }
+        if resolve_branch_payload_bindings(dag) {
+            changed = true;
+        }
         if !changed {
             break;
         }
@@ -337,6 +340,155 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
     changed
 }
 
+fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
+    struct BindingRewrite {
+        port: PortId,
+        span: SourceSpan,
+        result: Result<TypeShape, Diagnostic>,
+    }
+
+    let mut rewrites: Vec<BindingRewrite> = Vec::new();
+
+    for node in dag.nodes() {
+        let Behavior::Branch(b) = node else {
+            continue;
+        };
+
+        match dag.port(b.input).state() {
+            PortState::Uninferred => continue,
+            PortState::Unresolved => {
+                for path in &b.paths {
+                    let Some(binding) = &path.binding else {
+                        continue;
+                    };
+                    rewrites.push(BindingRewrite {
+                        port: binding.payload_port,
+                        span: payload_binding_span(path, &b.span),
+                        result: Err(Diagnostic::ResolveError {
+                            name: "(upstream failure in match payload binding)".to_string(),
+                            span: payload_binding_span(path, &b.span),
+                        }),
+                    });
+                }
+            }
+            PortState::Resolved(scrutinee_ty) => {
+                let mut subst = SubstStack::new();
+                let disj_decl_id = walk_to_disj_decl_with_subst(
+                    dag,
+                    scrutinee_ty.declaration,
+                    &mut subst,
+                );
+                let variants = disj_decl_id.map(|id| match &dag.declaration(id).connective {
+                    TypeConnective::Disj { variants } => variants
+                        .iter()
+                        .map(|field| (field.label.clone(), field.ty))
+                        .collect::<Vec<_>>(),
+                    _ => unreachable!("walk_to_disj_decl_with_subst returned a non-Disj declaration"),
+                });
+
+                for path in &b.paths {
+                    let Some(binding) = &path.binding else {
+                        continue;
+                    };
+                    let span = payload_binding_span(path, &b.span);
+                    let result = match &variants {
+                        None => Err(Diagnostic::ResolveError {
+                            name: format!(
+                                "cannot bind payload `{}` because the match scrutinee does not walk to a Disj type",
+                                binding.binding_name
+                            ),
+                            span: span.clone(),
+                        }),
+                        Some(variants) => {
+                            let variant = match &path.pattern {
+                                crate::dag::BranchPattern::ResolvedVariant(id) => {
+                                    variants.iter().find(|(_, ty)| *ty == *id)
+                                }
+                                crate::dag::BranchPattern::UnresolvedVariant { name, .. } => {
+                                    variants.iter().find(|(label, _)| label == name)
+                                }
+                            };
+                            match variant {
+                                Some((variant_name, variant_id)) => resolve_payload_binding_type(
+                                    dag,
+                                    *variant_id,
+                                    &subst,
+                                    variant_name,
+                                    &binding.binding_name,
+                                    &span,
+                                ),
+                                None => {
+                                    let arm_name = match &path.pattern {
+                                        crate::dag::BranchPattern::ResolvedVariant(id) => variants
+                                            .iter()
+                                            .find(|(_, ty)| *ty == *id)
+                                            .map(|(label, _)| label.clone())
+                                            .unwrap_or_else(|| format!("declaration#{}", id.raw())),
+                                        crate::dag::BranchPattern::UnresolvedVariant { name, .. } => {
+                                            name.clone()
+                                        }
+                                    };
+                                    Err(Diagnostic::ResolveError {
+                                        name: format!(
+                                            "variant `{arm_name}` is not a constructor of this match's scrutinee type"
+                                        ),
+                                        span: span.clone(),
+                                    })
+                                }
+                            }
+                        }
+                    };
+                    rewrites.push(BindingRewrite {
+                        port: binding.payload_port,
+                        span,
+                        result,
+                    });
+                }
+            }
+        }
+    }
+
+    let mut changed = false;
+    for rewrite in rewrites {
+        match rewrite.result {
+            Ok(ty) => match dag.port(rewrite.port).state().clone() {
+                PortState::Unresolved => {}
+                PortState::Uninferred => {
+                    dag.set_port_type(rewrite.port, ty);
+                    changed = true;
+                }
+                PortState::Resolved(existing) if existing == ty => {}
+                PortState::Resolved(existing) => {
+                    dag.mark_unresolved(
+                        rewrite.port,
+                        Diagnostic::TypeMismatch {
+                            expected: existing,
+                            actual: ty,
+                            span: rewrite.span,
+                        },
+                    );
+                    changed = true;
+                }
+            },
+            Err(diag) => {
+                if !matches!(dag.port(rewrite.port).state(), PortState::Unresolved) {
+                    dag.mark_unresolved(rewrite.port, diag);
+                    changed = true;
+                }
+            }
+        }
+    }
+
+    changed
+}
+
+fn payload_binding_span(path: &crate::dag::Path, branch_span: &SourceSpan) -> SourceSpan {
+    match &path.pattern {
+        crate::dag::BranchPattern::UnresolvedVariant { span, .. } => span.clone(),
+        crate::dag::BranchPattern::ResolvedVariant(_) => branch_span.clone(),
+    }
+}
+
 enum Decision {
     Set(PortId, TypeShape),
     Fail(PortId, Diagnostic),
@@ -487,11 +639,8 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
     // `resolve_arrow` through any Instantiation / ResolvedIdentifier
     // chain to recover the concrete Arrow signature.
     let signature = match &t.target {
-        TransformTarget::FieldProject {
-            parent_type,
-            field_label,
-        } => {
-            return decide_field_project(dag, t, *parent_type, field_label);
+        TransformTarget::FieldProject { field_label } => {
+            return decide_field_project(dag, t, field_label);
         }
         TransformTarget::Operator(op_kind) => {
             let lhs_type = match t.inputs.first() {
@@ -705,10 +854,109 @@ impl SubstStack {
     }
 }
 
+fn walk_to_conj_decl_with_subst(
+    dag: &Dag,
+    start: DeclarationId,
+    subst: &mut SubstStack,
+) -> Option<DeclarationId> {
+    let mut current = start;
+    for _ in 0..WALK_DEPTH_LIMIT {
+        let decl = dag.declaration(current);
+        match &decl.connective {
+            TypeConnective::Conj { .. } => return Some(current),
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                subst.push(arguments.clone());
+                current = *template;
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                current = *next;
+            }
+            TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+                current = subst.lookup(current)?;
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn walk_to_disj_decl_with_subst(
+    dag: &Dag,
+    start: DeclarationId,
+    subst: &mut SubstStack,
+) -> Option<DeclarationId> {
+    let mut current = start;
+    for _ in 0..WALK_DEPTH_LIMIT {
+        let decl = dag.declaration(current);
+        match &decl.connective {
+            TypeConnective::Disj { .. } => return Some(current),
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                subst.push(arguments.clone());
+                current = *template;
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                current = *next;
+            }
+            TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+                current = subst.lookup(current)?;
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn resolve_payload_binding_type(
+    dag: &Dag,
+    variant_decl_id: DeclarationId,
+    subst: &SubstStack,
+    variant_name: &str,
+    binding_name: &str,
+    span: &SourceSpan,
+) -> Result<TypeShape, Diagnostic> {
+    let payload_type_decl = match &dag.declaration(variant_decl_id).connective {
+        TypeConnective::Conj { children }
+            if children.len() == 1 && children[0].label.as_str() == "_0" =>
+        {
+            children[0].ty
+        }
+        TypeConnective::Conj { .. } => {
+            return Err(Diagnostic::ResolveError {
+                name: format!(
+                    "variant `{variant_name}` does not carry a single positional payload and cannot bind `{binding_name}`"
+                ),
+                span: span.clone(),
+            });
+        }
+        _ => {
+            return Err(Diagnostic::ResolveError {
+                name: format!(
+                    "variant `{variant_name}` does not lower to a payload Conj and cannot bind `{binding_name}`"
+                ),
+                span: span.clone(),
+            });
+        }
+    };
+
+    walk_to_type_shape(dag, payload_type_decl, subst, 0).ok_or_else(|| {
+        Diagnostic::ResolveError {
+            name: format!(
+                "variant `{variant_name}` payload does not resolve to a port type for binding `{binding_name}`"
+            ),
+            span: span.clone(),
+        }
+    })
+}
+
 fn decide_field_project(
     dag: &Dag,
     t: &TransformNode,
-    parent_type: DeclarationId,
     field_label: &str,
 ) -> Decision {
     if t.inputs.len() != 1 {
@@ -737,19 +985,10 @@ fn decide_field_project(
         PortState::Resolved(ty) => *ty,
     };
 
-    let Some(expected_conj_id) = walk_to_conj_decl(dag, parent_type) else {
-        return Decision::Fail(
-            t.output,
-            Diagnostic::ResolveError {
-                name: format!(
-                    "field `{field_label}` cannot be projected from `{}` because it does not walk to a Conj type",
-                    target_display_name(dag, parent_type),
-                ),
-                span: t.span.clone(),
-            },
-        );
-    };
-    let Some(actual_conj_id) = walk_to_conj_decl(dag, input_ty.declaration) else {
+    let mut subst = SubstStack::new();
+    let Some(actual_conj_id) =
+        walk_to_conj_decl_with_subst(dag, input_ty.declaration, &mut subst)
+    else {
         return Decision::Fail(
             t.output,
             Diagnostic::ResolveError {
@@ -761,18 +1000,8 @@ fn decide_field_project(
             },
         );
     };
-    if expected_conj_id != actual_conj_id {
-        return Decision::Fail(
-            t.output,
-            Diagnostic::TypeMismatch {
-                expected: TypeShape::new(parent_type),
-                actual: input_ty,
-                span: t.span.clone(),
-            },
-        );
-    }
 
-    let children = match &dag.declaration(expected_conj_id).connective {
+    let children = match &dag.declaration(actual_conj_id).connective {
         TypeConnective::Conj { children } => children,
         _ => unreachable!("walk_to_conj_decl returned a non-Conj declaration"),
     };
@@ -786,19 +1015,19 @@ fn decide_field_project(
             Diagnostic::ResolveError {
                 name: format!(
                     "field `{field_label}` does not exist on `{}`",
-                    target_display_name(dag, parent_type),
+                    target_display_name(dag, input_ty.declaration),
                 ),
                 span: t.span.clone(),
             },
         );
     };
-    let Some(output_ty) = walk_to_type_shape(dag, field_decl_id, &SubstStack::new(), 0) else {
+    let Some(output_ty) = walk_to_type_shape(dag, field_decl_id, &subst, 0) else {
         return Decision::Fail(
             t.output,
             Diagnostic::ResolveError {
                 name: format!(
                     "field `{field_label}` on `{}` does not resolve to a port type",
-                    target_display_name(dag, parent_type),
+                    target_display_name(dag, input_ty.declaration),
                 ),
                 span: t.span.clone(),
             },
@@ -1152,24 +1381,6 @@ fn walk_to_type_shape(
     }
 }
 
-fn walk_to_conj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
-    let mut current = start;
-    for _ in 0..WALK_DEPTH_LIMIT {
-        let decl = dag.declaration(current);
-        match &decl.connective {
-            TypeConnective::Conj { .. } => return Some(current),
-            TypeConnective::Instantiation { template, .. } => {
-                current = *template;
-            }
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
-                current = *next;
-            }
-            _ => return None,
-        }
-    }
-    None
-}
-
 /// Best-effort human-readable name for a Transform.target DeclarationId,
 /// used in diagnostics. Walks through resolved Identifier atoms to find
 /// something nameable.
@@ -1193,10 +1404,7 @@ fn target_display_name(dag: &Dag, target: DeclarationId) -> String {
 fn transform_target_display_name(dag: &Dag, target: &TransformTarget) -> String {
     match target {
         TransformTarget::Callable(id) => target_display_name(dag, *id),
-        TransformTarget::FieldProject {
-            parent_type,
-            field_label,
-        } => format!("{}.{}", target_display_name(dag, *parent_type), field_label),
+        TransformTarget::FieldProject { field_label } => format!(".{field_label}"),
         TransformTarget::Operator(op_kind) => op_kind.symbol().to_string(),
     }
 }

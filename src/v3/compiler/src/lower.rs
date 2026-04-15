@@ -27,7 +27,7 @@ use std::collections::{HashMap, HashSet};
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, Bound, BranchNode, BranchPattern,
     CardinalityBound, Dag, Declaration, DeclarationId, Field, LiteralBits, LoopNode, NodeId,
-    Path, PayloadBinding, PortId, PortState, TemplateArgument, TransformNode, TransformTarget,
+    Path, PayloadBinding, PortId, TemplateArgument, TransformNode, TransformTarget,
     TypeConnective, ValueNode,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
@@ -1079,31 +1079,6 @@ fn walk_to_conj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
     None
 }
 
-fn walk_to_disj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
-    let mut current = start;
-    for _ in 0..32 {
-        let decl = dag.declaration(current);
-        match &decl.connective {
-            TypeConnective::Disj { .. } => return Some(current),
-            TypeConnective::Instantiation { template, .. } => {
-                current = *template;
-            }
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
-                current = *next;
-            }
-            _ => return None,
-        }
-    }
-    None
-}
-
-fn declaration_display_name(dag: &Dag, decl_id: DeclarationId) -> String {
-    dag.declaration(decl_id)
-        .name
-        .clone()
-        .unwrap_or_else(|| format!("declaration#{}", decl_id.raw()))
-}
-
 /// Attempt to lower a parsed record literal body into a
 /// `ValueBody::Structural { fields }` by matching each record field
 /// against the declared type's Conj children. Returns `None` (and
@@ -1836,71 +1811,13 @@ fn lower_field_path_expr(
             },
         );
     };
-    let first_field = rest.first().cloned().unwrap_or_default();
-    let mut current_decl = match dag.port(current_port).state() {
-        PortState::Resolved(ty) => ty.declaration,
-        PortState::Unresolved => {
-            return unresolved_port(
-                dag,
-                Diagnostic::ResolveError {
-                    name: format!(
-                        "local `{head}` is unresolved, so field `{first_field}` cannot be projected"
-                    ),
-                    span: span.clone(),
-                },
-            )
-        }
-        PortState::Uninferred => {
-            return unresolved_port(
-                dag,
-                Diagnostic::ResolveError {
-                    name: format!(
-                        "local `{head}` does not have a resolved type during lowering, so field `{first_field}` cannot be projected yet"
-                    ),
-                    span: span.clone(),
-                },
-            )
-        }
-    };
 
     for field_label in rest {
-        let Some(conj_id) = walk_to_conj_decl(dag, current_decl) else {
-            let parent_name = declaration_display_name(dag, current_decl);
-            return unresolved_port(
-                dag,
-                Diagnostic::ResolveError {
-                    name: format!(
-                        "field `{field_label}` cannot be projected from `{parent_name}` because it does not walk to a Conj type"
-                    ),
-                    span: span.clone(),
-                },
-            );
-        };
-        let children = match &dag.declaration(conj_id).connective {
-            TypeConnective::Conj { children } => children,
-            _ => unreachable!("walk_to_conj_decl returned a non-Conj declaration"),
-        };
-        let Some(field_decl_id) = children
-            .iter()
-            .find(|field| field.label == *field_label)
-            .map(|field| field.ty)
-        else {
-            let parent_name = declaration_display_name(dag, current_decl);
-            return unresolved_port(
-                dag,
-                Diagnostic::ResolveError {
-                    name: format!("field `{field_label}` does not exist on `{parent_name}`"),
-                    span: span.clone(),
-                },
-            );
-        };
-
         let node_id = dag.alloc_node_id();
         let output = dag.alloc_port(Some(node_id));
         dag.push_node(Behavior::Transform(TransformNode {
             id: node_id,
             target: TransformTarget::FieldProject {
-                parent_type: current_decl,
                 field_label: field_label.clone(),
             },
             inputs: vec![current_port],
@@ -1908,7 +1825,6 @@ fn lower_field_path_expr(
             span: span.clone(),
         }));
         current_port = output;
-        current_decl = field_decl_id;
     }
 
     current_port
@@ -1916,117 +1832,9 @@ fn lower_field_path_expr(
 
 fn lower_payload_binding(
     dag: &mut Dag,
-    scrutinee_port: PortId,
-    variant_name: &str,
     binding_name: &str,
-    span: &SourceSpan,
 ) -> PayloadBinding {
     let payload_port = dag.alloc_port(None);
-    let Some(scrutinee_decl_id) = (match dag.port(scrutinee_port).state() {
-        PortState::Resolved(ty) => Some(ty.declaration),
-        PortState::Unresolved | PortState::Uninferred => None,
-    }) else {
-        dag.mark_unresolved(
-            payload_port,
-            Diagnostic::ResolveError {
-                name: format!(
-                    "cannot bind payload `{binding_name}` for variant `{variant_name}` because the match scrutinee type is not resolved during lowering"
-                ),
-                span: span.clone(),
-            },
-        );
-        return PayloadBinding {
-            binding_name: binding_name.to_string(),
-            payload_port,
-        };
-    };
-
-    let Some(disj_decl_id) = walk_to_disj_decl(dag, scrutinee_decl_id) else {
-        dag.mark_unresolved(
-            payload_port,
-            Diagnostic::ResolveError {
-                name: format!(
-                    "cannot bind payload `{binding_name}` for variant `{variant_name}` because the match scrutinee does not walk to a Disj type"
-                ),
-                span: span.clone(),
-            },
-        );
-        return PayloadBinding {
-            binding_name: binding_name.to_string(),
-            payload_port,
-        };
-    };
-
-    let variants = match &dag.declaration(disj_decl_id).connective {
-        TypeConnective::Disj { variants } => variants,
-        _ => unreachable!("walk_to_disj_decl returned a non-Disj declaration"),
-    };
-    let Some(variant_decl_id) = variants
-        .iter()
-        .find(|field| field.label == variant_name)
-        .map(|field| field.ty)
-    else {
-        dag.mark_unresolved(
-            payload_port,
-            Diagnostic::ResolveError {
-                name: format!(
-                    "variant `{variant_name}` is not a constructor of this match's scrutinee type"
-                ),
-                span: span.clone(),
-            },
-        );
-        return PayloadBinding {
-            binding_name: binding_name.to_string(),
-            payload_port,
-        };
-    };
-
-    let payload_type_decl = match &dag.declaration(variant_decl_id).connective {
-        // Sum variants lower both positional and record payloads through Conj.
-        // Only the single-positional `_0` case is a valid `Variant(binding)`
-        // match arm payload; a one-field record variant is not.
-        TypeConnective::Conj { children }
-            if children.len() == 1 && children[0].label.as_str() == "_0" =>
-        {
-            children[0].ty
-        }
-        TypeConnective::Conj { .. } => {
-            dag.mark_unresolved(
-                payload_port,
-                Diagnostic::ResolveError {
-                    name: format!(
-                        "variant `{variant_name}` does not carry a single positional payload and cannot bind `{binding_name}`"
-                    ),
-                    span: span.clone(),
-                },
-            );
-            return PayloadBinding {
-                binding_name: binding_name.to_string(),
-                payload_port,
-            };
-        }
-        _ => {
-            dag.mark_unresolved(
-                payload_port,
-                Diagnostic::ResolveError {
-                    name: format!(
-                        "variant `{variant_name}` does not lower to a payload Conj and cannot bind `{binding_name}`"
-                    ),
-                    span: span.clone(),
-                },
-            );
-            return PayloadBinding {
-                binding_name: binding_name.to_string(),
-                payload_port,
-            };
-        }
-    };
-
-    match declaration_to_port_shape(payload_type_decl, dag, span) {
-        Ok(ty) => dag.set_port_type(payload_port, ty),
-        Err(diag) => dag.mark_unresolved(payload_port, diag),
-    }
-
     PayloadBinding {
         binding_name: binding_name.to_string(),
         payload_port,
@@ -2182,13 +1990,7 @@ fn lower_expr(
                         binding,
                         span,
                     } => {
-                        let payload_binding = lower_payload_binding(
-                            dag,
-                            scrutinee_port,
-                            name,
-                            binding,
-                            span,
-                        );
+                        let payload_binding = lower_payload_binding(dag, binding);
                         arm_scope.insert(
                             payload_binding.binding_name.clone(),
                             payload_binding.payload_port,

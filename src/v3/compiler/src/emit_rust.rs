@@ -552,7 +552,7 @@ impl<'a> Ctx<'a> {
     fn render_transform(&self, t: &TransformNode) -> Result<String, EmitError> {
         match &t.target {
             TransformTarget::Operator(op) => self.render_operator(t, *op),
-            TransformTarget::FieldProject { field_label, .. } => {
+            TransformTarget::FieldProject { field_label } => {
                 self.render_field_project(t, field_label)
             }
             TransformTarget::Callable(_) => Err(EmitError::UnsupportedBehavior(
@@ -856,11 +856,9 @@ mod tests {
         let parent_port = dag.alloc_port(None);
         let node_id = dag.alloc_node_id();
         let output = dag.alloc_port(Some(node_id));
-        let parent_type = dag.declarations()[0].id;
         dag.push_node(Behavior::Transform(TransformNode {
             id: node_id,
             target: TransformTarget::FieldProject {
-                parent_type,
                 field_label: "value".to_string(),
             },
             inputs: vec![parent_port],

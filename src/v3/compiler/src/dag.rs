@@ -602,12 +602,12 @@ pub struct ValueNode {
 ///
 /// 4-pattern check on (Callable, FieldProject, Operator):
 /// - Pattern 1 (fact placement): fails. Callable dispatches via
-///   the declaration's Arrow body; FieldProject dispatches via a
-///   parent Conj + field label; Operator dispatches via the
-///   operand type's algebra walk.
+///   the declaration's Arrow body; FieldProject dispatches via
+///   the input port's resolved Conj + field label; Operator
+///   dispatches via the operand type's algebra walk.
 /// - Pattern 2 (variant-is-data): fails. Callable carries a
-///   DeclarationId; FieldProject carries a `(DeclarationId,
-///   String)` pair; Operator carries an OperatorKind.
+///   DeclarationId; FieldProject carries a field label;
+///   Operator carries an OperatorKind.
 /// - Pattern 3 (algebraic form): fails.
 /// - Pattern 4 (dimensional): fails.
 ///
@@ -622,14 +622,12 @@ pub enum TransformTarget {
     /// referenced declaration's `Arrow` connective via `resolve_arrow`.
     Callable(DeclarationId),
     /// Structural projection on a Conj-typed parent value. The
-    /// `parent_type` is the declaration lowered from the input
-    /// port's type at the point the projection is emitted; the
-    /// `field_label` names the child field to project. No synthesized
-    /// accessor declaration, no name recovery from an Arrow target.
-    FieldProject {
-        parent_type: DeclarationId,
-        field_label: String,
-    },
+    /// input port is the single authority for the parent type;
+    /// inference walks that input through any Instantiation /
+    /// ResolvedIdentifier edges, looks up `field_label` on the
+    /// reached Conj, and resolves the output through the same
+    /// substitution context. No synthesized accessor declaration.
+    FieldProject { field_label: String },
     /// A primitive binary operator. Inference dispatches on the
     /// `OperatorKind` variant directly: arithmetic returns the operand
     /// type, comparison returns Bool. No declaration is allocated.
@@ -703,13 +701,13 @@ pub enum BranchPattern {
 pub struct PayloadBinding {
     /// Authored arm-local name from the surface pattern
     /// (`Some(payload)` -> `"payload"`). Lowering consumes it to
-    /// extend the arm-local scope; inference does not consult it.
-    /// It remains on the substrate as carry-forward for readable
-    /// downstream rendering.
+    /// extend the arm-local scope. It remains on the substrate as
+    /// carry-forward for readable downstream rendering.
     pub binding_name: String,
-    /// Typed port carrying the variant payload value for this arm.
-    /// Lowering allocates and types the port when it unwraps a
-    /// single-positional variant payload.
+    /// Port carrying the variant payload value for this arm.
+    /// Lowering allocates the port so the binding can exist in
+    /// arm-local scope immediately; inference later validates the
+    /// matched variant shape and populates the payload type.
     pub payload_port: PortId,
 }
 
