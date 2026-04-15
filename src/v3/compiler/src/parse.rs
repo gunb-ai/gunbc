@@ -44,48 +44,42 @@ pub struct SurfaceModule {
 
 /// Dissolution ledger — **SurfaceItem**:
 ///
-/// 🟡 **Mixed-lifecycle coproduct.** Nine variants; six are terminal
-/// surface-grammar constructs, three are transitional scaffolds that
-/// dissolve as the surface grammar + declaration-graph model stabilize.
+/// 🟢 **Terminal at M1(2.6).** Six variants — Let, Fn, and the four
+/// Type* shapes (TypeAtom, TypeRecord, TypeSum, TypeAlias). Every
+/// variant has a concrete semantic effect on lowering. The three
+/// former scaffold variants (`Module`, `Import`, `DataDecl`) are
+/// gone — they're absorbed by the parser at parse time (consumed
+/// from the token stream but not emitted as SurfaceItem values)
+/// because their M1(2.6) semantics is "no effect on the declaration
+/// graph."
 ///
 /// 4-pattern check:
-/// - Pattern 1 (fact placement): fails. Each variant has different
-///   downstream consumers (`collect_symbols` filters by kind, lowering
-///   dispatches on kind, lenses read different shapes).
-/// - Pattern 2 (variant-is-data): fails. Different payload types per
-///   variant — a tagged union over a uniform shape would require
-///   boxing every variant's payload, which isn't a dissolution.
+/// - Pattern 1 (fact placement): fails. Each variant has a distinct
+///   lowering path (`collect_symbols` + `lower_item`) and carries
+///   different downstream shape.
+/// - Pattern 2 (variant-is-data): fails. Different payload types.
 /// - Pattern 3 (algebraic form): partial. The four `Type*` variants
-///   (TypeAtom/Record/Sum/Alias) could collapse into a single
-///   `Type { name, type_params, shape: TypeShape }` where `TypeShape`
-///   is an inner coproduct (Atom/Record/Sum/Alias). That refactor is
-///   a wash at M1(2.6) — it trades a nine-variant outer enum for a
-///   six-variant outer enum plus a four-variant inner enum — but
-///   becomes worthwhile when surface types grow a fifth form (e.g.,
-///   newtype declarations in M2+). Scheduled revisit: M2.
-/// - Pattern 4 (dimensional): fails. No shared coordinate space.
+///   could collapse into a single `Type { name, type_params, shape }`
+///   where `shape` is an inner coproduct. That's a Pattern-3
+///   restructure scheduled for M2 when user-facing type surface
+///   grows a fifth form (newtype declarations).
+/// - Pattern 4 (dimensional): fails.
 ///
-/// Per-variant classification:
-/// - 🟢 `Let`, `Fn`, `TypeAtom`, `TypeRecord`, `TypeSum`, `TypeAlias`
-///   — terminal surface constructs; any dissolution is Pattern-3
-///   restructuring, not deletion.
-/// - 🟡 `Module`, `Import` — **scaffolded no-ops**. At M1(2.6) they
-///   parse as items but lowering discards them (name resolution
-///   spans the whole bootstrap table; explicit imports add nothing).
-///   They dissolve when M2+ introduces a real module-scoped
-///   declaration table: module declarations become scope boundaries,
-///   imports become scoped symbol-table seeds. **Dissolution trigger:
-///   M2 module system.**
-/// - 🟡 `DataDecl` — **scaffolded body placeholder**. The `ty` field
-///   is parsed but the body is brace-balanced-skipped; lowering
-///   produces an empty `Conj`. Dissolves when the surface grammar
-///   handles record / list / match literals inside data bodies.
-///   **Dissolution trigger: M2 value-construction semantics.**
+/// Verdict: terminal at M1(2.6) modulo the M2 Type* collapse.
 ///
-/// STOP SIGNAL: adding a 10th variant before the Type* collapse
-/// or before Module/Import/DataDecl land their real semantics —
-/// the enum is near the Pattern-3 dissolution frontier and a new
-/// variant should prompt the decision instead of delaying it.
+/// When module / import / data value-construction land in M2, the
+/// parser will re-enter the SurfaceItem enum with structural
+/// variants carrying real semantic load — `Module` becomes a
+/// scope boundary, `Import` a scoped symbol-table seed, and
+/// `DataDecl` a typed constant with its body parsed as real
+/// record/list/match expressions. Those aren't dissolutions of the
+/// current shape; they're additions that require re-running the
+/// 4-pattern check at that milestone.
+///
+/// STOP SIGNAL: adding a 7th variant triggers the M2 Type*
+/// collapse question — is the substrate ready for `Type { shape }`
+/// restructuring, or is the new variant a pre-M2 scaffold that
+/// should be parser-absorbed?
 #[derive(Debug, Clone)]
 pub enum SurfaceItem {
     Let {
@@ -95,11 +89,12 @@ pub enum SurfaceItem {
     },
     /// Function definition. `body` is `Some` for expression-body form
     /// (`fn f(x) -> T = expr`); `None` for block-body form
-    /// (`fn f(x) -> T { body }`) where the body is consumed opaquely as
-    /// a brace-balanced token range. Block-body fn items lower to an
-    /// `ArrowBody::Pending` declaration with no computation sub-DAG —
-    /// their bodies are out of scope until the full surface grammar
-    /// (match/pipe/lambda/named-args) lands in M2+.
+    /// (`fn f(x) -> T { body }`) where the body is consumed opaquely
+    /// as a brace-balanced token range. Block-body fn items are
+    /// skipped by `collect_symbols` (no Declaration allocated) because
+    /// their ArrowBody is undefined at M1(2.6) — the thesis licenses
+    /// `ArrowBody::Pending` strictly for primitive realization lag,
+    /// not "user body not lowered yet."
     Fn {
         name: String,
         params: Vec<SurfaceParam>,
@@ -131,37 +126,6 @@ pub enum SurfaceItem {
         target: SurfaceType,
         span: SourceSpan,
     },
-    /// `module std.foo` — no-op item. Captured for span purposes; no
-    /// semantic effect on the declaration graph. Lowering discards.
-    Module {
-        #[allow(dead_code)]
-        path: Vec<String>,
-        span: SourceSpan,
-    },
-    /// `import std.foo { Name1, Name2 }` — no-op item. Name resolution
-    /// against the full bootstrap declaration table happens via
-    /// `resolve_pending_identifiers`, so explicit import lists are
-    /// unnecessary at M1(2.6); the declaration would still appear in
-    /// `declaration_by_name` regardless of whether the current file
-    /// listed it in its imports.
-    Import {
-        #[allow(dead_code)]
-        path: Vec<String>,
-        #[allow(dead_code)]
-        names: Vec<String>,
-        span: SourceSpan,
-    },
-    /// `data name: Type = { body }` — the body is consumed opaquely as
-    /// a brace-balanced token range. Lowering produces a placeholder
-    /// Declaration whose connective is a bare `Conj` with empty
-    /// children; the actual body contents (record literals, list
-    /// literals, etc.) are M2+ work.
-    DataDecl {
-        name: String,
-        #[allow(dead_code)]
-        ty: SurfaceType,
-        span: SourceSpan,
-    },
 }
 
 #[derive(Debug, Clone)]
@@ -185,35 +149,27 @@ pub struct SurfaceVariant {
 
 /// Dissolution ledger — **VariantPayload**:
 ///
-/// 🟡 **Mixed — `Unit` is absorbable into `Positional(vec![])`,**
-/// but kept distinct for parser ergonomics and so `collect_symbols`
-/// doesn't pay the Vec allocation cost on the common case.
+/// 🟢 **Terminal at M1(2.6).** Two variants: `Positional` and
+/// `Record`. Unit variants like `True | False` are represented as
+/// `Positional(vec![])` — there is no separate `Unit` variant
+/// because it was structurally equivalent to an empty positional.
 ///
 /// 4-pattern check:
-/// - Pattern 1 (fact placement): fails. Each variant's children
-///   have different shapes downstream.
-/// - Pattern 2 (variant-is-data): partial. `Unit` is structurally
-///   `Positional(vec![])`. The distinction is cosmetic — if the
-///   parser emits `Unit` for `True | False` instead of
-///   `Positional(vec![])`, the resulting Disj declaration is
-///   indistinguishable from a 0-arity positional variant at the
-///   substrate level.
-/// - Pattern 3 (algebraic form): fails. Each variant represents a
-///   distinct user-input shape from the surface grammar.
+/// - Pattern 1 (fact placement): fails. Record vs positional
+///   have different downstream field shapes (labeled vs
+///   anonymous).
+/// - Pattern 2 (variant-is-data): fails. Record carries
+///   `Vec<SurfaceField>`, positional carries `Vec<SurfaceType>`.
+/// - Pattern 3 (algebraic form): fails.
 /// - Pattern 4 (dimensional): fails.
 ///
-/// Classification: 🟡. Collapsing `Unit` → `Positional(vec![])`
-/// would save three lines and remove a surface-vs-substrate
-/// distinction. Not done at M1(2.6) because the parser's `.dag`
-/// reader is still actively growing and every shape-change
-/// churns the Disj-lowering path. **Dissolution trigger: when the
-/// next round of surface-grammar changes lands, fold Unit into
-/// Positional.**
+/// Verdict: terminal. A future `Tuple` variant or named-indexed
+/// payload would extend through §8.10's substrate-extension
+/// audit, not replace this enum.
 #[derive(Debug, Clone)]
 pub enum VariantPayload {
-    /// Unit variant — no payload, e.g. `True` in `type Classical = True | False`.
-    Unit,
-    /// Positional payload — e.g. `Ok(T)` in `type Result<T, E> = Ok(T) | Err(E)`.
+    /// Positional payload — e.g. `Ok(T)` in `type Result<T, E> = Ok(T) | Err(E)`,
+    /// or an empty `vec![]` for unit variants like `True` / `False`.
     Positional(Vec<SurfaceType>),
     /// Record-style payload — e.g. `WorkloadIdentity { audience: NonEmptyStr, ... }`.
     Record(Vec<SurfaceField>),
@@ -278,54 +234,39 @@ impl SurfaceType {
 
 /// Dissolution ledger — **SurfaceExpr**:
 ///
-/// 🟡 **Terminal in shape, partially duplicates `LiteralBits`.**
-/// Six variants for the five M0 expression forms (literal × 3,
-/// Var, Call, If). Each has a clear lowering target among the five
-/// L1 behaviors:
-///   IntLit/BoolLit/StringLit → Value(LiteralBits::*)
-///   Var                      → scope lookup (no new node)
-///   Call                     → Transform
-///   If                       → Branch
-/// The three literal variants are a surface-side duplication of
-/// `LiteralBits` — they parse separately because tokens carry
-/// distinct kinds (`IntLit(i64)`, `KwTrue/KwFalse`, `StringLit`),
-/// not because the downstream shape differs.
+/// 🟢 **Terminal at M1(2.6).** Four variants for the four M0
+/// expression forms: Literal, Var, Call, If. Each has a distinct
+/// lowering target among the five L1 behaviors:
+///   Literal → Value(LiteralBits::*)
+///   Var     → scope lookup (no new node)
+///   Call    → Transform
+///   If      → Branch
+///
+/// The former IntLit/BoolLit/StringLit trio is collapsed into a
+/// single `Literal(SurfaceLiteral)` variant. `SurfaceLiteral` is a
+/// parse-local enum that mirrors `LiteralBits` — the duplication is
+/// preserved at the enum level (respecting the G3 parse-vs-dag
+/// layer boundary) but absent at the variant level of SurfaceExpr
+/// itself.
 ///
 /// 4-pattern check:
-/// - Pattern 1 (fact placement): fails for the non-literal variants
-///   (each has its own lowering path). **Passes for the three
-///   literal variants** — they could share a single
-///   `Literal { bits: LiteralBits, span }` variant with no
-///   downstream consumer change.
-/// - Pattern 2 (variant-is-data): passes for the literal trio for
-///   the same reason.
-/// - Pattern 3 (algebraic form): Var/Call/If/Literal are four
-///   distinct expression kinds in every expression DAG.
+/// - Pattern 1 (fact placement): fails. Each variant has a distinct
+///   downstream lowering path.
+/// - Pattern 2 (variant-is-data): fails. Literal's payload is a
+///   sum, Var's is a String, Call's is a String + Vec, If's is
+///   three boxed sub-expressions.
+/// - Pattern 3 (algebraic form): these ARE the four expression
+///   kinds that M1(2.6) supports — collapsing would erase
+///   structure, not dissolve it.
 /// - Pattern 4 (dimensional): fails.
 ///
-/// Classification: 🟡 because of the literal duplication. The
-/// M1(2.6) parser keeps the three separate variants because
-/// tokens carry distinct kinds and the parser reads them
-/// directly; collapsing into `Literal(LiteralBits)` at parse
-/// time would require threading `LiteralBits` up from the
-/// substrate into the surface AST, which crosses a layer
-/// boundary. **Dissolution trigger: when `LiteralBits` grows a
-/// fourth variant (e.g., `Char`, `Float`), revisit and fold the
-/// surface literal trio into a single variant.** At M1(2.6)
-/// there's no new literal kind on the roadmap so the
-/// duplication is accepted.
+/// Verdict: terminal. Future expression kinds (match, pipe,
+/// lambda) will extend the enum through §8.10's substrate-
+/// extension audit.
 #[derive(Debug, Clone)]
 pub enum SurfaceExpr {
-    IntLit {
-        value: i64,
-        span: SourceSpan,
-    },
-    BoolLit {
-        value: bool,
-        span: SourceSpan,
-    },
-    StringLit {
-        value: String,
+    Literal {
+        value: SurfaceLiteral,
         span: SourceSpan,
     },
     Var {
@@ -345,6 +286,24 @@ pub enum SurfaceExpr {
     },
 }
 
+/// Parse-local literal value. Mirrors `dag::LiteralBits` but lives
+/// in the parse layer so the G3 guardrail ("parse.rs does not
+/// mention any Dag type") is preserved: an alternative frontend
+/// that plugs in at the SurfaceAst boundary works against
+/// `SurfaceLiteral`, not `LiteralBits`. The surface→substrate
+/// translation in `lower.rs` is the bridge.
+///
+/// Dissolution ledger — 🟢 terminal. Each variant is a distinct
+/// user-input boundary (integer literal, boolean literal, string
+/// literal) with no shared structure. A future `Char` or `Float`
+/// addition extends through §8.10.
+#[derive(Debug, Clone)]
+pub enum SurfaceLiteral {
+    Int(i64),
+    Bool(bool),
+    String(String),
+}
+
 pub fn parse(tokens: &[Token], file: &str) -> Result<SurfaceModule, Diagnostic> {
     let mut parser = Parser {
         tokens,
@@ -353,7 +312,9 @@ pub fn parse(tokens: &[Token], file: &str) -> Result<SurfaceModule, Diagnostic> 
     };
     let mut items = Vec::new();
     while !parser.at_eof() {
-        items.push(parser.parse_item()?);
+        if let Some(item) = parser.parse_item()? {
+            items.push(item);
+        }
     }
     Ok(SurfaceModule { items })
 }
@@ -391,14 +352,28 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_item(&mut self) -> Result<SurfaceItem, Diagnostic> {
+    /// Parse (or absorb) the next top-level item. Returns
+    /// `Ok(Some(item))` for semantic items the caller must lower,
+    /// `Ok(None)` for items the parser absorbs (module / import /
+    /// data declarations — no-ops at M1(2.6)), and `Err` for parse
+    /// errors.
+    fn parse_item(&mut self) -> Result<Option<SurfaceItem>, Diagnostic> {
         match &self.peek().kind {
-            TokenKind::KwLet => self.parse_let_item(),
-            TokenKind::KwFn => self.parse_fn_item(),
-            TokenKind::KwType => self.parse_type_item(),
-            TokenKind::KwModule => self.parse_module_item(),
-            TokenKind::KwImport => self.parse_import_item(),
-            TokenKind::KwData => self.parse_data_item(),
+            TokenKind::KwLet => self.parse_let_item().map(Some),
+            TokenKind::KwFn => self.parse_fn_item().map(Some),
+            TokenKind::KwType => self.parse_type_item().map(Some),
+            TokenKind::KwModule => {
+                self.absorb_module_item()?;
+                Ok(None)
+            }
+            TokenKind::KwImport => {
+                self.absorb_import_item()?;
+                Ok(None)
+            }
+            TokenKind::KwData => {
+                self.absorb_data_item()?;
+                Ok(None)
+            }
             other => Err(Diagnostic::ParseError {
                 message: format!(
                     "expected `let`, `fn`, `type`, `module`, `import`, or `data`, got {other:?}"
@@ -408,29 +383,29 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_module_item(&mut self) -> Result<SurfaceItem, Diagnostic> {
-        let module_kw = self.expect_kind(TokenKind::KwModule)?;
-        let path = self.parse_dotted_path()?;
-        let end = self
-            .tokens
-            .get(self.pos.saturating_sub(1))
-            .map(|t| t.span.byte_end)
-            .unwrap_or(module_kw.span.byte_end);
-        Ok(SurfaceItem::Module {
-            path,
-            span: SourceSpan::new(self.file, module_kw.span.byte_start, end),
-        })
+    /// Consume a `module std.foo` declaration from the token stream
+    /// without emitting a SurfaceItem. M1(2.6) lowering doesn't act on
+    /// module declarations (name resolution spans the whole bootstrap
+    /// declaration table), so the parser absorbs them at parse time.
+    /// Real module-scoped semantics land in M2+.
+    fn absorb_module_item(&mut self) -> Result<(), Diagnostic> {
+        self.expect_kind(TokenKind::KwModule)?;
+        self.parse_dotted_path()?;
+        Ok(())
     }
 
-    fn parse_import_item(&mut self) -> Result<SurfaceItem, Diagnostic> {
-        let import_kw = self.expect_kind(TokenKind::KwImport)?;
-        let path = self.parse_dotted_path()?;
-        let mut names = Vec::new();
-        let end = if matches!(self.peek().kind, TokenKind::LBrace) {
+    /// Consume an `import std.foo { Name1, Name2 }` declaration without
+    /// emitting a SurfaceItem. `resolve_pending_identifiers` spans the
+    /// full declaration table, so explicit imports don't add anything at
+    /// M1(2.6). Parser-absorbed.
+    fn absorb_import_item(&mut self) -> Result<(), Diagnostic> {
+        self.expect_kind(TokenKind::KwImport)?;
+        self.parse_dotted_path()?;
+        if matches!(self.peek().kind, TokenKind::LBrace) {
             self.bump();
             if !matches!(self.peek().kind, TokenKind::RBrace) {
                 loop {
-                    names.push(self.parse_ident()?);
+                    self.parse_ident()?;
                     if matches!(self.peek().kind, TokenKind::Comma) {
                         self.bump();
                         continue;
@@ -438,35 +413,24 @@ impl<'a> Parser<'a> {
                     break;
                 }
             }
-            let close = self.expect_kind(TokenKind::RBrace)?;
-            close.span.byte_end
-        } else {
-            self.tokens
-                .get(self.pos.saturating_sub(1))
-                .map(|t| t.span.byte_end)
-                .unwrap_or(import_kw.span.byte_end)
-        };
-        Ok(SurfaceItem::Import {
-            path,
-            names,
-            span: SourceSpan::new(self.file, import_kw.span.byte_start, end),
-        })
+            self.expect_kind(TokenKind::RBrace)?;
+        }
+        Ok(())
     }
 
-    fn parse_data_item(&mut self) -> Result<SurfaceItem, Diagnostic> {
-        let data_kw = self.expect_kind(TokenKind::KwData)?;
-        let name = self.parse_ident()?;
+    /// Consume a `data name: Type = { body }` declaration without
+    /// emitting a SurfaceItem. At M1(2.6) the body is brace-balanced-
+    /// skipped and lowering would produce an empty `Conj` with no
+    /// value semantics — the whole construct is parser-absorbed until
+    /// M2+ supports record / list / match literals inside data bodies.
+    fn absorb_data_item(&mut self) -> Result<(), Diagnostic> {
+        self.expect_kind(TokenKind::KwData)?;
+        self.parse_ident()?;
         self.expect_kind(TokenKind::Colon)?;
-        let ty = self.parse_type_expr()?;
+        self.parse_type_expr()?;
         self.expect_kind(TokenKind::Eq)?;
-        // Body is brace-balanced and consumed opaquely — data value
-        // semantics (record literals, keys, etc.) are M2+ work.
-        let end = self.skip_brace_balanced()?;
-        Ok(SurfaceItem::DataDecl {
-            name,
-            ty,
-            span: SourceSpan::new(self.file, data_kw.span.byte_start, end),
-        })
+        self.skip_brace_balanced()?;
+        Ok(())
     }
 
     fn parse_dotted_path(&mut self) -> Result<Vec<String>, Diagnostic> {
@@ -813,7 +777,7 @@ impl<'a> Parser<'a> {
             }
             _ => Ok(SurfaceVariant {
                 name,
-                payload: VariantPayload::Unit,
+                payload: VariantPayload::Positional(Vec::new()),
                 span: name_token.span,
             }),
         }
@@ -1016,20 +980,20 @@ impl<'a> Parser<'a> {
         }
         let token = self.bump().clone();
         match token.kind {
-            TokenKind::IntLit(value) => Ok(SurfaceExpr::IntLit {
-                value,
+            TokenKind::IntLit(value) => Ok(SurfaceExpr::Literal {
+                value: SurfaceLiteral::Int(value),
                 span: token.span,
             }),
-            TokenKind::KwTrue => Ok(SurfaceExpr::BoolLit {
-                value: true,
+            TokenKind::KwTrue => Ok(SurfaceExpr::Literal {
+                value: SurfaceLiteral::Bool(true),
                 span: token.span,
             }),
-            TokenKind::KwFalse => Ok(SurfaceExpr::BoolLit {
-                value: false,
+            TokenKind::KwFalse => Ok(SurfaceExpr::Literal {
+                value: SurfaceLiteral::Bool(false),
                 span: token.span,
             }),
-            TokenKind::StringLit(value) => Ok(SurfaceExpr::StringLit {
-                value,
+            TokenKind::StringLit(value) => Ok(SurfaceExpr::Literal {
+                value: SurfaceLiteral::String(value),
                 span: token.span,
             }),
             TokenKind::Ident(name) => {
@@ -1095,9 +1059,7 @@ impl<'a> Parser<'a> {
 
 fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
     match expr {
-        SurfaceExpr::IntLit { span, .. }
-        | SurfaceExpr::BoolLit { span, .. }
-        | SurfaceExpr::StringLit { span, .. }
+        SurfaceExpr::Literal { span, .. }
         | SurfaceExpr::Var { span, .. }
         | SurfaceExpr::Call { span, .. }
         | SurfaceExpr::If { span, .. } => span,

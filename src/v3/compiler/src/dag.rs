@@ -170,49 +170,68 @@ pub struct Field {
     pub ty: DeclarationId,
 }
 
-/// Dissolution ledger (per M1_DESIGN.md §"AtomPayload dissolution ledger"):
-/// each variant represents a distinct user-input boundary — a terminal
-/// fact the compiler receives from outside the closed world.
+/// Dissolution ledger — **AtomPayload**:
+///
+/// 🟢 **Terminal at M1(2.6).** Four variants covering the four
+/// user-input kinds at the type-atom level:
+///
+///   - `Literal(LiteralBits)` — a literal bit pattern carried at
+///     the type level (e.g., the `3` in `Cardinality::Exact(3)`).
+///   - `UnresolvedIdentifier(String)` — a name reference that has
+///     not yet been resolved against the declaration table.
+///     Produced during lowering and eliminated at
+///     `resolve_pending_identifiers` time.
+///   - `ResolvedIdentifier(DeclarationId)` — a name reference that
+///     has been resolved. Structurally distinct from the unresolved
+///     form (no `Option` field hiding a phase coproduct).
+///   - `TypeParam(String)` — a type parameter declaration slot.
+///     Shared across references inside a parameterized declaration.
 ///
 /// 4-pattern check:
-/// - Pattern 1 (fact placement): fails. Literal/Identifier/TypeParam
-///   serve different downstream consumers; scattering creates four
-///   parallel atom carriers.
-/// - Pattern 2 (variant-is-data): fails. Different payload types per
-///   variant (bit pattern vs string vs type-parameter name).
-/// - Pattern 3 (algebraic form): fails. The variants are terminal facts
-///   at distinct user-input boundaries, not intro/elim forms of one
-///   algebra.
-/// - Pattern 4 (dimensional): fails. No shared coordinate space.
+/// - Pattern 1 (fact placement): fails. Each variant has distinct
+///   downstream consumers (literal constant folding, identifier
+///   resolution via `declaration_by_name`, SubstStack lookup).
+/// - Pattern 2 (variant-is-data): fails. Different payload types
+///   per variant.
+/// - Pattern 3 (algebraic form): fails. Each variant is a terminal
+///   fact from a distinct user-input boundary.
+/// - Pattern 4 (dimensional): fails.
 ///
-/// Verdict: genuinely terminal. 3-variant form is load-bearing. Any
-/// future extension (e.g., `Char` literal) is a variant extension
-/// subject to §8.10's substrate-extension audit. See also the known
-/// compression debt on `Identifier::resolved` — M1_FOLLOWUPS.md tracks
-/// the open question of whether Option<DeclarationId> hides a phase
-/// coproduct that should be split into a `Resolved(DeclarationId)` vs
-/// `Unresolved(String)` pair.
+/// Pre/post-sweep phase is now **structural**. Before M1(2.6)
+/// review round 7 the shape was
+/// `Identifier { name: String, resolved: Option<DeclarationId> }`
+/// which hid a phase coproduct inside the Option. The split into
+/// `UnresolvedIdentifier` and `ResolvedIdentifier` makes that
+/// phase distinction visible to the type system: pattern matches
+/// for unresolved stubs and resolved references are on separate
+/// variants, not on `Some`/`None`.
+///
+/// Verdict: terminal. Future extensions (Span-backed metadata
+/// atoms for diagnostic-only uses, Char / Float literals) go
+/// through §8.10's substrate-extension audit.
 #[derive(Debug, Clone)]
 pub enum AtomPayload {
-    /// A literal bit pattern carried at the type level (e.g., the 3 in
-    /// `Cardinality::Exact(3)`, a default value in a type declaration).
+    /// A literal bit pattern carried at the type level.
     /// Computation-side literals live in ValueNode.data, not here.
     Literal(LiteralBits),
-    /// An identifier reference. `resolved` is None during lowering and
-    /// Some(_) after `resolve_pending_identifiers` has walked the
-    /// declaration table. The None → Some transition is the lowering
-    /// pass's fail-closed resolution step; any stub still carrying None
-    /// after the sweep emits a ResolveError diagnostic.
-    Identifier {
-        name: String,
-        resolved: Option<DeclarationId>,
-    },
+    /// An unresolved identifier. Produced during lowering when a
+    /// name reference can't be resolved against the current symbol
+    /// table (forward references, pending cross-file imports, the
+    /// bootstrap's dangling refs to types in un-loaded std/ modules).
+    /// `resolve_pending_identifiers` either converts to
+    /// `ResolvedIdentifier` or emits a fail-closed diagnostic.
+    UnresolvedIdentifier(String),
+    /// A resolved identifier. Produced by
+    /// `resolve_pending_identifiers` or directly by lowering when
+    /// a name is already in the symbol table. Carries the typed
+    /// edge to the referent declaration.
+    ResolvedIdentifier(DeclarationId),
     /// A type parameter declaration slot. Declared at the top of a
     /// parameterized declaration (via `Declaration.type_params`);
-    /// referenced from inside the body by Identifier atoms that resolve
-    /// to this slot's DeclarationId. A single TypeParam Atom is shared
-    /// across all references to it — the substrate is a DAG of
-    /// declarations, not a tree.
+    /// referenced from inside the body by ResolvedIdentifier atoms
+    /// that resolve to this slot's DeclarationId. A single TypeParam
+    /// Atom is shared across all references to it — the substrate
+    /// is a DAG of declarations, not a tree.
     TypeParam(String),
 }
 

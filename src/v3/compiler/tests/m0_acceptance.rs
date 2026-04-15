@@ -25,28 +25,28 @@ fn primitive_shape(dag: &Dag, name: &str) -> TypeShape {
     )
 }
 
-/// Assert that a Transform.target DeclarationId points to a declaration
-/// whose surface-visible name equals `expected`. The M1(2.6) target shape
-/// depends on whether it's an operator or a user function:
+/// Assert that a Transform.target DeclarationId resolves to a
+/// declaration whose surface-visible name equals `expected`. The
+/// M1(2.6) target shape is one of:
 ///
-/// - Operators (`+`, `-`, ...): anonymous `Atom(Identifier { name })`
-///   stubs created by lowering; the payload name carries the symbol.
-///   Inference resolves them at Transform-decide time via §8.9 walks.
-/// - User functions (`f`, `count_down`, ...): named Arrow declarations
-///   allocated during `collect_symbols` and filled in by `lower_fn_item`.
-///
-/// The helper reads the Identifier payload first, falling back to the
-/// declaration's `name` field — so both shapes produce the right answer.
+/// - `Atom(UnresolvedIdentifier(name))` — operator stubs created
+///   by lowering; inference resolves them at Transform-decide
+///   time via §8.9 walks.
+/// - `Atom(ResolvedIdentifier(target_id))` — name references
+///   filled in by `resolve_pending_identifiers`; the target's
+///   own `decl.name` carries the surface name.
+/// - A named top-level declaration (user function Arrow).
 fn assert_target_name(dag: &Dag, target: DeclarationId, expected: &str) {
     let decl = dag.declaration(target);
-    let actual = match &decl.connective {
-        TypeConnective::Atom(AtomPayload::Identifier { name, .. }) => {
-            Some(name.as_str())
+    let actual: Option<String> = match &decl.connective {
+        TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name)) => Some(name.clone()),
+        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            dag.declaration(*next).name.clone()
         }
-        _ => decl.name.as_deref(),
+        _ => decl.name.clone(),
     };
     assert_eq!(
-        actual,
+        actual.as_deref(),
         Some(expected),
         "Transform.target declaration name mismatch"
     );

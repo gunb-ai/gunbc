@@ -442,16 +442,12 @@ impl SubstStack {
 const WALK_DEPTH_LIMIT: usize = 32;
 
 /// Detect whether a target declaration is an unresolved operator
-/// identifier (e.g., an `Atom(Identifier { name: "+", resolved: None })`
-/// whose name matches the `OPERATOR_FIELD_MAP` in `crate::operators`).
+/// identifier (e.g., `Atom(UnresolvedIdentifier("+"))` whose name
+/// matches the `OPERATOR_FIELD_MAP` in `crate::operators`).
 /// Operators stay unresolved through lowering and are dispatched at
 /// inference time via `resolve_operator_arrow`.
 fn unresolved_operator_name(decl: &Declaration) -> Option<&str> {
-    if let TypeConnective::Atom(AtomPayload::Identifier {
-        name,
-        resolved: None,
-    }) = &decl.connective
-    {
+    if let TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name)) = &decl.connective {
         if operator_field_name(name).is_some() {
             return Some(name.as_str());
         }
@@ -573,10 +569,9 @@ fn resolve_arrow_walk(
             subst.pop();
             result
         }
-        TypeConnective::Atom(AtomPayload::Identifier {
-            resolved: Some(next),
-            ..
-        }) => resolve_arrow_walk(dag, *next, subst, depth + 1),
+        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            resolve_arrow_walk(dag, *next, subst, depth + 1)
+        }
         _ => None,
     }
 }
@@ -610,10 +605,9 @@ fn walk_to_type_shape(
             let bound = subst.lookup(current)?;
             walk_to_type_shape(dag, bound, subst, depth + 1)
         }
-        TypeConnective::Atom(AtomPayload::Identifier {
-            resolved: Some(next),
-            ..
-        }) => walk_to_type_shape(dag, *next, subst, depth + 1),
+        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            walk_to_type_shape(dag, *next, subst, depth + 1)
+        }
         TypeConnective::Instantiation { template, .. } => {
             walk_to_type_shape(dag, *template, subst, depth + 1)
         }
@@ -629,10 +623,13 @@ fn target_display_name(dag: &Dag, target: DeclarationId) -> String {
     if let Some(name) = &decl.name {
         return name.clone();
     }
-    if let TypeConnective::Atom(AtomPayload::Identifier { name, .. }) = &decl.connective {
-        return name.clone();
+    match &decl.connective {
+        TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name)) => name.clone(),
+        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            target_display_name(dag, *next)
+        }
+        _ => format!("declaration#{}", target.raw()),
     }
-    format!("declaration#{}", target.raw())
 }
 
 fn behavior_output_port(node: &Behavior) -> PortId {

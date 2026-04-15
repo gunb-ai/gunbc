@@ -32,8 +32,8 @@ use crate::dag::{
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::operators::is_operator_name;
 use crate::parse::{
-    SurfaceExpr, SurfaceField, SurfaceItem, SurfaceModule, SurfaceParam, SurfaceType,
-    SurfaceVariant, VariantPayload,
+    SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceModule, SurfaceParam,
+    SurfaceType, SurfaceVariant, VariantPayload,
 };
 use crate::types::TypeShape;
 
@@ -138,16 +138,15 @@ fn collect_symbols(
 
     let mut is_first = vec![true; items.len()];
     for (idx, item) in items.iter().enumerate() {
-        // Extract the surface-level name and type parameter list. Let /
-        // Module / Import / block-bodied Fn items don't create
-        // declarations. Block-bodied fns in particular are skipped
-        // because their ArrowBody is undefined at M1(2.6) — the thesis
+        // Extract the surface-level name and type parameter list. Let
+        // items don't create declarations; block-bodied fn items are
+        // skipped (their ArrowBody is undefined at M1(2.6) — the thesis
         // licenses `ArrowBody::Pending` strictly for primitive
-        // realization lag, not "user body not lowered yet."
+        // realization lag, not "user body not lowered yet"). Module /
+        // import / data declarations are parser-absorbed upstream and
+        // never reach `SurfaceItem`.
         let (name, surface_type_params): (String, &[String]) = match item {
-            SurfaceItem::Let { .. }
-            | SurfaceItem::Module { .. }
-            | SurfaceItem::Import { .. } => continue,
+            SurfaceItem::Let { .. } => continue,
             SurfaceItem::Fn { body: None, .. } => continue,
             SurfaceItem::Fn { name, .. } => (name.clone(), &[]),
             SurfaceItem::TypeAtom {
@@ -170,7 +169,6 @@ fn collect_symbols(
                 type_params,
                 ..
             } => (name.clone(), type_params.as_slice()),
-            SurfaceItem::DataDecl { name, .. } => (name.clone(), &[]),
         };
         let span = item_span(item);
         let id = dag.alloc_declaration_id();
@@ -236,10 +234,7 @@ fn collect_symbols(
 }
 
 fn placeholder_connective(name: &str) -> TypeConnective {
-    TypeConnective::Atom(AtomPayload::Identifier {
-        name: name.to_string(),
-        resolved: None,
-    })
+    TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name.to_string()))
 }
 
 fn item_span(item: &SurfaceItem) -> SourceSpan {
@@ -249,10 +244,7 @@ fn item_span(item: &SurfaceItem) -> SourceSpan {
         | SurfaceItem::TypeAtom { span, .. }
         | SurfaceItem::TypeRecord { span, .. }
         | SurfaceItem::TypeSum { span, .. }
-        | SurfaceItem::TypeAlias { span, .. }
-        | SurfaceItem::Module { span, .. }
-        | SurfaceItem::Import { span, .. }
-        | SurfaceItem::DataDecl { span, .. } => span.clone(),
+        | SurfaceItem::TypeAlias { span, .. } => span.clone(),
     }
 }
 
@@ -355,19 +347,6 @@ fn lower_item(
             lower_type_alias(dag, symbols, name, type_params, target);
             scope
         }
-        SurfaceItem::Module { .. } | SurfaceItem::Import { .. } => {
-            // No-op items: they don't appear in the declaration graph.
-            // Cross-file forward references are resolved by the sweep.
-            scope
-        }
-        SurfaceItem::DataDecl { name, .. } => {
-            // Placeholder Conj at M1(2.6); value-level semantics are M2+.
-            let decl_id = symbols[name];
-            dag.declaration_mut(decl_id).connective = TypeConnective::Conj {
-                children: Vec::new(),
-            };
-            scope
-        }
     }
 }
 
@@ -432,9 +411,10 @@ fn lower_type_sum(
         // child declarations push into slots between the variant's reserved
         // id and its eventual push.
         let connective = match &variant.payload {
-            VariantPayload::Unit => TypeConnective::Conj {
-                children: Vec::new(),
-            },
+            // Unit variants surface as `Positional(vec![])` — the
+            // empty-positional case handles them with zero Field
+            // children, which is structurally indistinguishable
+            // from a Unit variant and avoids a dedicated enum arm.
             VariantPayload::Positional(payload_types) => {
                 let children: Vec<Field> = payload_types
                     .iter()
@@ -664,7 +644,7 @@ fn build_template_arguments(
 ) -> Vec<TemplateArgument> {
     let template_is_stub = matches!(
         &dag.declaration(template).connective,
-        TypeConnective::Atom(AtomPayload::Identifier { resolved: None, .. })
+        TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
     );
     let template_param_count = dag.declaration(template).type_params.len();
     if !template_is_stub && template_param_count != args.len() {
@@ -726,10 +706,7 @@ fn alloc_identifier_stub(
     dag.push_declaration(Declaration {
         id,
         name: None,
-        connective: TypeConnective::Atom(AtomPayload::Identifier {
-            name: name.to_string(),
-            resolved: None,
-        }),
+        connective: TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name.to_string())),
         type_params: Vec::new(),
         meta_tag: None,
         inhabits: None,
@@ -774,10 +751,9 @@ fn run_identifier_sweep(dag: &mut Dag, strict_from: usize) {
         .declarations()
         .iter()
         .filter_map(|d| match &d.connective {
-            TypeConnective::Atom(AtomPayload::Identifier {
-                name,
-                resolved: None,
-            }) => Some((d.id, name.clone(), d.span.clone())),
+            TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name)) => {
+                Some((d.id, name.clone(), d.span.clone()))
+            }
             _ => None,
         })
         .collect();
@@ -801,17 +777,18 @@ fn run_identifier_sweep(dag: &mut Dag, strict_from: usize) {
                 );
                 continue;
             }
-            if let TypeConnective::Atom(AtomPayload::Identifier { resolved, .. }) =
-                &mut dag.declaration_mut(decl_id).connective
-            {
-                *resolved = Some(target);
-            }
+            // Structural phase transition: rewrite the connective from
+            // `UnresolvedIdentifier(name)` to `ResolvedIdentifier(target)`.
+            // The phase is now visible in the variant, not hidden in
+            // an Option field.
+            dag.declaration_mut(decl_id).connective =
+                TypeConnective::Atom(AtomPayload::ResolvedIdentifier(target));
         } else if (decl_id.raw() as usize) >= strict_from {
-            // Strict mode for user-lowering stubs: `resolved: None`
-            // now means exactly one thing ("not yet resolved, pre-
-            // sweep"), and after this loop every user-range Identifier
-            // atom either has `resolved: Some(id)` or has attached a
-            // fail-closed diagnostic.
+            // Strict mode for user-lowering stubs: any
+            // `UnresolvedIdentifier` that survives the sweep is a
+            // fail-closed ResolveError. After this loop every
+            // user-range Identifier atom is either a
+            // ResolvedIdentifier or has attached a diagnostic.
             report_declaration_error(
                 dag,
                 Diagnostic::ResolveError {
@@ -1056,34 +1033,17 @@ fn lower_expr(
     symbols: &HashMap<String, DeclarationId>,
 ) -> PortId {
     match expr {
-        SurfaceExpr::IntLit { value, span } => {
+        SurfaceExpr::Literal { value, span } => {
             let node_id = dag.alloc_node_id();
             let output = dag.alloc_port(Some(node_id));
+            let data = match value {
+                SurfaceLiteral::Int(v) => LiteralBits::Int(*v),
+                SurfaceLiteral::Bool(v) => LiteralBits::Bool(*v),
+                SurfaceLiteral::String(v) => LiteralBits::String(v.clone()),
+            };
             dag.push_node(Behavior::Value(ValueNode {
                 id: node_id,
-                data: LiteralBits::Int(*value),
-                output,
-                span: span.clone(),
-            }));
-            output
-        }
-        SurfaceExpr::BoolLit { value, span } => {
-            let node_id = dag.alloc_node_id();
-            let output = dag.alloc_port(Some(node_id));
-            dag.push_node(Behavior::Value(ValueNode {
-                id: node_id,
-                data: LiteralBits::Bool(*value),
-                output,
-                span: span.clone(),
-            }));
-            output
-        }
-        SurfaceExpr::StringLit { value, span } => {
-            let node_id = dag.alloc_node_id();
-            let output = dag.alloc_port(Some(node_id));
-            dag.push_node(Behavior::Value(ValueNode {
-                id: node_id,
-                data: LiteralBits::String(value.clone()),
+                data,
                 output,
                 span: span.clone(),
             }));
@@ -1162,10 +1122,7 @@ fn producer_of(dag: &Dag, port: PortId) -> Option<NodeId> {
 
 fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
     match expr {
-        SurfaceExpr::IntLit { .. }
-        | SurfaceExpr::BoolLit { .. }
-        | SurfaceExpr::StringLit { .. }
-        | SurfaceExpr::Var { .. } => false,
+        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } => false,
         SurfaceExpr::Call { target, args, .. } => {
             if target == self_name {
                 return true;
@@ -1192,10 +1149,7 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
 /// path names.
 fn descent_provable(expr: &SurfaceExpr, self_name: &str, first_param: &str) -> bool {
     match expr {
-        SurfaceExpr::IntLit { .. }
-        | SurfaceExpr::BoolLit { .. }
-        | SurfaceExpr::StringLit { .. }
-        | SurfaceExpr::Var { .. } => true,
+        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } => true,
         SurfaceExpr::Call { target, args, .. } => {
             if target == self_name {
                 match args.first() {
@@ -1239,16 +1193,16 @@ fn is_strictly_smaller(expr: &SurfaceExpr, first_param: &str) -> bool {
     );
     let rhs_is_positive = matches!(
         &args[1],
-        SurfaceExpr::IntLit { value, .. } if *value > 0
+        SurfaceExpr::Literal {
+            value: SurfaceLiteral::Int(v), ..
+        } if *v > 0
     );
     lhs_is_param && rhs_is_positive
 }
 
 fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
     match expr {
-        SurfaceExpr::IntLit { span, .. }
-        | SurfaceExpr::BoolLit { span, .. }
-        | SurfaceExpr::StringLit { span, .. }
+        SurfaceExpr::Literal { span, .. }
         | SurfaceExpr::Var { span, .. }
         | SurfaceExpr::Call { span, .. }
         | SurfaceExpr::If { span, .. } => span,
@@ -1324,10 +1278,7 @@ fn collect_calls(
     out: &mut HashSet<String>,
 ) {
     match expr {
-        SurfaceExpr::IntLit { .. }
-        | SurfaceExpr::BoolLit { .. }
-        | SurfaceExpr::StringLit { .. }
-        | SurfaceExpr::Var { .. } => {}
+        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } => {}
         SurfaceExpr::Call { target, args, .. } => {
             if fn_names.contains(target) {
                 out.insert(target.clone());
