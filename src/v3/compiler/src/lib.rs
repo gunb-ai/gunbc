@@ -17,6 +17,7 @@
 
 pub mod dag;
 pub mod diagnostics;
+pub mod emit_rust;
 pub mod lens_cost;
 pub mod lens_depth;
 pub mod lens_provenance;
