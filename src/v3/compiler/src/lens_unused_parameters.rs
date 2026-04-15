@@ -53,39 +53,40 @@
 
 use std::collections::HashSet;
 
-use crate::dag::{Behavior, BindNode, Dag, DeclarationId, NodeId, PortId};
+use crate::dag::{Behavior, BindNode, Dag, NodeId, PortId};
 use crate::diagnostics::SourceSpan;
 
 /// Configuration for the unused-parameters lens.
 ///
 /// **Dissolution receipt — 🟢 TERMINAL at current substrate
-/// scope.** One field: `scope`, optional restriction to specific
-/// function declarations. Pattern 1 (fact placement) fails — the
-/// scope filter is a per-application configuration that doesn't
-/// belong on the substrate. Pattern 2 (variant-is-data) is N/A
-/// for a struct. Pattern 3 (algebraic form) fails. Pattern 4
-/// (dimensional) fails. Verdict: terminal at the lens-library-
-/// initial-three scope.
+/// scope.** Empty struct: the lens has no configurable knobs at
+/// the current substrate scope, so the type exists for API
+/// consistency with the other lens-library `*Config` types and
+/// to give downstream consumers a stable place to add knobs
+/// when the substrate grows the prerequisites. Pattern checks
+/// are N/A for an empty struct. Verdict: terminal at the lens-
+/// library-initial-three scope.
+///
+/// **Why no `scope` field.** A `Vec<DeclarationId>` scope filter
+/// would require BindNode to carry a back-pointer to its
+/// declaration so the filter could compare. v3's substrate
+/// doesn't have that edge at this scope — every BindNode is
+/// addressed only by its NodeId in the behavior list. Adding
+/// the field without the substrate prerequisite would create a
+/// misleading API: consumers set a non-empty scope, the lens
+/// silently ignores it (no-op), the consumer's expectations
+/// silently break. Same ghost-field pattern as
+/// `ignore_underscore_prefix` was earlier; same fix (remove the
+/// field until it can be implemented). When the substrate grows
+/// `BindNode → DeclarationId`, the field can land alongside its
+/// real implementation.
 ///
 /// **Why no `ignore_underscore_prefix` field.** v3's substrate
 /// doesn't carry per-parameter names past lowering, so the lens
-/// has no way to read a parameter's name. A `_unused`-style
-/// underscore filter would require name access; adding the
-/// field without backing implementation would create a
-/// misleading API surface (consumers set the flag, the lens
-/// silently ignores it). The filter is intentionally absent. If
-/// a future substrate change exposes per-parameter names, the
-/// field can land then alongside its real implementation.
+/// has no way to read a parameter's name. Same ghost-field
+/// reasoning: removed pending substrate prerequisite.
 #[derive(Debug, Clone, Default)]
-pub struct UnusedParametersConfig {
-    /// Restrict the scan to specific function declarations. If
-    /// empty, scan every function-shaped Bind in the Dag. The
-    /// declaration-id form (rather than name strings) keeps the
-    /// scope description in the substrate's identity space —
-    /// callers walk the Dag to pick which declarations to scan
-    /// rather than naming them by string.
-    pub scope: Vec<DeclarationId>,
-}
+pub struct UnusedParametersConfig {}
 
 /// One reported violation: a parameter declared on a function
 /// Bind that the function body never reads. Carries enough
@@ -123,10 +124,16 @@ impl<'a> UnusedParametersLens<'a> {
     }
 
     /// Run the lens against every function-shaped Bind in the
-    /// Dag (or the subset selected by `config.scope`). Returns
-    /// one `UnusedParameter` per parameter port that the
-    /// function body never reads.
-    pub fn query(&self, config: &UnusedParametersConfig) -> Vec<UnusedParameter> {
+    /// Dag. Returns one `UnusedParameter` per parameter port that
+    /// the function body never reads.
+    ///
+    /// `_config` is currently unused but accepted to keep the
+    /// `(Dag, &Config) → Vec<Violation>` signature aligned with
+    /// the rest of the lens library. When the substrate grows
+    /// the prerequisites for scope filters / convention filters,
+    /// the fields land in `UnusedParametersConfig` and the
+    /// signature stays the same.
+    pub fn query(&self, _config: &UnusedParametersConfig) -> Vec<UnusedParameter> {
         let mut violations = Vec::new();
         for node in self.dag.nodes() {
             let Behavior::Bind(bind) = node else {
@@ -136,18 +143,6 @@ impl<'a> UnusedParametersLens<'a> {
             // parameters means there's nothing to be unused).
             if bind.params.is_empty() {
                 continue;
-            }
-            // Optional scope filter: if a non-empty scope is set,
-            // only check binds whose own underlying declaration
-            // matches. v3's BindNode doesn't carry a back-pointer
-            // to its declaration at this scope, so the scope
-            // filter currently checks against an empty list (no-op
-            // when scope is empty). When the substrate grows a
-            // bind→declaration edge, this filter activates.
-            if !config.scope.is_empty() {
-                // No-op until BindNode → DeclarationId is plumbed.
-                // Documented as future work; for now the scope is
-                // effectively "all functions in the Dag."
             }
             self.check_bind(bind, &mut violations);
         }
@@ -207,10 +202,15 @@ impl<'a> UnusedParametersLens<'a> {
 /// - Value: no inputs (leaf).
 /// - Transform: every PortId in `t.inputs`.
 /// - Branch: `b.input` (scrutinee) + every `path.output`.
-/// - Loop: `l.source` + `l.init`. The body sub-DAG via
-///   `l.body` is its own NodeId; this lens does not recurse
-///   into nested function bodies — each function gets its own
-///   lens invocation via `query`.
+/// - Loop: `l.source` + `l.init` + `l.bound.count` + the body
+///   sub-DAG's primary output port (from `l.body`). The body
+///   descent is required: parameters used only inside a
+///   recursive call's body would be falsely flagged unused
+///   without it. Cycle protection comes from `referenced`
+///   doubling as the visited set — pushing the loop's own
+///   output port (which can happen when `l.body == loop_id`,
+///   v3's lower fallback) hits the already-visited check and
+///   stops.
 /// - Bind: `b.value`. A nested Bind passes through to its
 ///   value port, same way the cost lens treats it.
 fn collect_referenced_ports(dag: &Dag, root_port: PortId) -> HashSet<PortId> {
@@ -248,6 +248,18 @@ fn collect_referenced_ports(dag: &Dag, root_port: PortId) -> HashSet<PortId> {
             Behavior::Loop(l) => {
                 queue.push(l.source);
                 queue.push(l.init);
+                queue.push(l.bound.count);
+                // Descend into the body sub-DAG. The body is a
+                // NodeId, not a port; finding the body node's
+                // primary output port lets the walk continue
+                // backwards through the body's own data flow,
+                // catching parameters that the recursive call
+                // reads. The cycle case (body NodeId == loop
+                // NodeId, lower's fallback) is harmless because
+                // the loop's output port is already visited by
+                // the time we get here.
+                let body_node = dag.node(l.body);
+                queue.push(behavior_output_port(body_node));
             }
             Behavior::Bind(b) => {
                 queue.push(b.value);
@@ -256,4 +268,27 @@ fn collect_referenced_ports(dag: &Dag, root_port: PortId) -> HashSet<PortId> {
     }
 
     referenced
+}
+
+/// Return a Behavior's primary output port — the port that
+/// downstream consumers read to obtain the behavior's result.
+/// Used by the unused-parameters walker to descend into nested
+/// sub-DAGs (currently only `Loop.body`, but the helper applies
+/// uniformly to every behavior variant for future use).
+///
+/// Each L1 behavior carries exactly one output port:
+///   - Value: `output` (the literal's port)
+///   - Transform: `output` (the call's result)
+///   - Branch: `output` (the chosen path's output)
+///   - Loop: `output` (the loop's per-call result)
+///   - Bind: `value` (the bound expression's port — name is
+///     historical but semantically it IS the bind's "output")
+fn behavior_output_port(behavior: &Behavior) -> PortId {
+    match behavior {
+        Behavior::Value(v) => v.output,
+        Behavior::Transform(t) => t.output,
+        Behavior::Branch(b) => b.output,
+        Behavior::Loop(l) => l.output,
+        Behavior::Bind(b) => b.value,
+    }
 }
