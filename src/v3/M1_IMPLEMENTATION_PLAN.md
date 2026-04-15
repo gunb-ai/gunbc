@@ -105,8 +105,10 @@ authority — they do NOT re-derive from another fact.
 | What counts as a top-level declaration | `dag.declarations()`. A top-level declaration has no parent. Type parameters and sum variants are NOT top-level and do not appear here. | `dag.declarations()` iteration or `declaration_by_name` — both filtered to top-level by construction, not by caller discipline. |
 | Template parameters | The owning `Declaration`'s `type_params: Vec<TypeParamId>`. `TypeParamId` is a distinct newtype. | `SubstStack` for substitution; the owning declaration's `type_params` slot for enumeration. Never via `declaration_by_name`. |
 | Sum variants | The parent Disj `Declaration`'s `variants: Vec<VariantId>`. Variants are NOT top-level. | Pattern-match code reads `decl.variants` on the match subject's type. Never resolved globally. |
-| Operator dispatch (`+`, `<`, ...) | `operators.rs` from PR-A onwards. The `operators` module is the ONLY place that maps symbols to `OperatorKind`. | Parser calls `operators::from_symbol` at parse time; downstream only sees `TransformTarget::Operator(OperatorKind)`. Grep-enforced in §8. |
+| Operator **surface syntax** (`+`, `<`, ...) | `operators.rs` from PR-A onwards. The `operators` module is the ONLY place that maps symbol strings to `OperatorKind`. It is a surface-syntax-to-typed-kind table, NOT a semantic authority. | Parser calls `operators::from_symbol` at parse time; downstream only sees `TransformTarget::Operator(OperatorKind)`. Grep-enforced in §8. |
+| Operator **semantics** (signature, primitive cost, descent shrink) | `dsl/std/algebra.dag` for signatures and descent; `dsl/extdeps/languages/<target>.dag` for primitive realization + target cost. `operators.rs` forwards queries via `operators::kind_to_algebra_ref(kind) -> DeclarationId`; it does NOT manufacture signatures, costs, or descent semantics itself. | `infer`, `lens_cost`, `emit` each read the referenced algebra / language-spec declaration directly. Dual authority with `std/algebra.dag` is forbidden — if you're tempted to put a `signature(kind)` function in `operators.rs`, that's the reviewer flag from round 7 telling you a second semantic universe is being born. |
 | Primitive operator realizations (`Int.add → i64::wrapping_add`) | `dsl/extdeps/languages/<target>.dag`. No Rust file manufactures realizations. | `emit` and `lens_cost` both read the same language-spec declaration. PR-B closes this. |
+| **Writer-lens outputs** (first added in PR-B) | The writing lens module itself. Once a writer lens has a storage mechanism (PR-B decides), the lens's output IS the authoritative producer of its fact for every downstream reader. | The storage mechanism chosen in PR-B applies to every future writer lens. No writer lens may land without its downstream consumer in the same PR, and the consumer must read the lens output as authority (not as hint). This is the invariant-grade form of "no new fact layer without a consumer." |
 | Descent evidence (is this call strictly smaller?) | Set at lowering time on `TransformNode.descent: DescentEvidence`. Lowering is the only stage with operator kind + literal + argument shapes simultaneously in scope. | `lens_termination` and future bounded-recursion lens. Never re-walked from SurfaceExpr. |
 | Diagnostics (what went wrong and where) | `dag.diagnostics()`. Every error path attaches there. | CLI, tests, any stage that needs to fail-closed. Produced at point of discovery, not inferred from downstream state. |
 | Sub-value / descent structure | Parser produces the field-binding list; lower records it on the parent `Declaration`. | Descent termination lens, `infer::classify_let_value`. Never inferred from names matching "child" patterns. |
@@ -177,6 +179,8 @@ eliminates it.
 | 1 | `TemplateArgument { parameter: p, value: p }` (self-reference stub) | Yes — `lower::build_template_arguments` has the stub path | PR-A: parser/lower emit resolved arguments from the start; stub path deleted |
 | 2 | Post-sweep `AtomPayload::UnresolvedIdentifier(name)` reachable from a well-formed program | Yes — `resolve_pending_identifiers` skips operator names AND block-body `Fn` items | PR-A: operators never become `UnresolvedIdentifier`; block-body `Fn` silent-skip removed |
 | 3 | `ArrowBody::Pending` reachable at emission time | Yes — bootstrap writes `Pending` and relies on post-pass to patch | PR-B: §8.11 ratchet hits zero in the same commit that adds the dissolution mechanism |
+| 3a | **`TransformTarget::Unresolved` reached by a downstream stage without fail-closing** | Yes — no exhaustive-match enforcement on `TransformTarget` readers | PR-A: every reader of `TransformTarget` (infer, lens_*, emit) matches exhaustively; `Unresolved` arm is fail-closed with required diagnostic. Compile-time match exhaustiveness + §8 gate 9 prove no silent skip. **Named boundary: `resolve_sweep`** — post-sweep, encountering `Unresolved` means the sweep's own error path ran; downstream must propagate, not ignore. |
+| 3b | **`ArrowBody::Pending` reached by a downstream stage without fail-closing** | Yes — same reason as 3a | PR-A: every reader of `ArrowBody` matches exhaustively; `Pending` arm is fail-closed with required diagnostic. Compile-time match exhaustiveness + §8 gate 9 prove no silent skip. **Named boundary: `Dag::new()` return** — post-return, ratchet test asserts zero `Pending` in production declarations. PR-B removes the variant entirely, upgrading the boundary from "ratchet-enforced zero" to "impossible by type." |
 | 4 | Type parameter appearing in `dag.declarations()` top-level iteration | Yes — round-5 bug was an instance | PR-A: §3.2 typed-ID table separation |
 | 5 | Sum variant resolved via `declaration_by_name` | Yes — variants share the top-level name space with declarations | PR-A: separate `variants` table per §3.2 |
 | 6 | `TransformTarget` distinguishing callable vs operator via `UnresolvedIdentifier(name)` | Yes — current `free-cod-972` state | PR-A: `TransformTarget` enum |
@@ -187,10 +191,32 @@ eliminates it.
 | 11 | `Declaration.meta_tag: Some(id)` where `id` is not itself a meta-type | Yes — no structural marker for "this IS a meta-type" | Deferred to M1(5)+; captured here for tracking |
 | 12 | Operator dispatch before parse completes | Yes by construction today (name dispatch is stage-agnostic) | PR-A: operators are classified at parse time; post-parse everything is typed |
 
-Rows 1–9 are actionable in this plan and block PR-A merge. Rows 10–12
-are tracked as future substrate work; the catalogue exists so that
-when a downstream consumer needs them, the need does not arrive as a
-surprise.
+Rows 1–9 (plus 3a, 3b) are actionable in this plan and block PR-A merge.
+Rows 10–12 are tracked as future substrate work; the catalogue exists
+so that when a downstream consumer needs them, the need does not arrive
+as a surprise.
+
+**Lifecycle-boundary clarification (rows 2, 3, 3a, 3b).** The invariant is
+"no invalid semantic state representable at a given stage's output."
+Two enforcement shapes are available:
+
+1. **Structural:** split the type so the invalid variant does not exist
+   in the post-boundary form (phantom type parameter, or pre-sweep vs
+   post-sweep types).
+2. **Exhaustive-match + diagnostic:** keep the unified type, but every
+   downstream reader matches on every variant, and the error variants
+   have fail-closed arms that produce (or propagate) diagnostics. The
+   match exhaustiveness is compile-time; the diagnostic requirement is
+   §8 gate 9.
+
+PR-A commits to shape (2) for `TransformTarget::Unresolved` and
+`ArrowBody::Pending`. Shape (1) was considered and rejected as
+unnecessary machinery: match exhaustiveness does the same work as a
+phantom type for this many variants, and PR-B eliminates `Pending`
+entirely, making the boundary literally impossible-by-type at that
+point. `Unresolved` stays as a terminal error state forever — it is
+not a transitional value waiting to be resolved, it is "this failed,
+diagnostic attached, downstream propagate."
 
 ### §3.4 Boundary fact flow
 
@@ -280,7 +306,7 @@ moves from "post-parse reconstruction" to "parse-time classification via
 | # | Question | Producer | Status | Notes |
 |---|---|---|---|---|
 | 1 | **Is this call operating on a structurally smaller sub-value?** | SHOULD be `lower(bodies)` | **R** | Walks SurfaceExpr, matches `target == "-"` + constant pattern. Producer authority is `lower(bodies)` per §3.1 — lowering is the only stage with operator kind + constant literal + argument shapes simultaneously in scope. |
-| 2 | **What's the "smaller-by-1" pattern for each operator?** | SHOULD be `operators.rs` (PR-A) | **R** | Hard-coded for subtraction only; lexicographic / structural descent not supported. PR-A moves to `operators::descent_shrink(kind)`. |
+| 2 | **What's the "smaller-by-1" pattern for each operator?** | SHOULD be `dsl/std/algebra.dag` (declaration, read via `operators::kind_to_algebra_ref`) | **R** | Hard-coded for subtraction only in current `is_strictly_smaller`; lexicographic / structural descent not supported. PR-A moves this to a descent-annotation field on the algebra declaration in `dsl/std/algebra.dag`, read via `operators::kind_to_algebra_ref(kind)` + field lookup on the returned `Declaration`. `operators.rs` does not manufacture the answer; it forwards to the algebra authority per §3.1. |
 
 **Two R-rows** — descent evidence reconstruction. Facts known at parse/lower
 time (the typed operator kind + the constant literal), dropped at lowering,
@@ -424,9 +450,17 @@ pub struct TransformNode {
 pub enum TransformTarget {
     Callable(DeclarationId),
     Operator(OperatorKind),
-    Unresolved(String, SourceSpan),        // must have diagnostic attached
+    // Terminal error state: sweep attached a diagnostic before producing
+    // this. Every downstream reader matches exhaustively and fail-closes
+    // on this arm. NOT a transitional waiting-to-be-resolved value.
+    Unresolved { name: String, span: SourceSpan, diagnostic: DiagnosticId },
 }
 
+// M1(2.6) commits to exactly this operator set:
+//   Arith(Add, Sub, Mul, Div)   ← 4 variants
+//   Cmp(Eq, Ne, Lt, Le, Gt, Ge) ← 6 variants
+// Total 10. See §9 for the explicit non-goal list (`%`, boolean ops,
+// unary, null-coalescing). Any post-M1 extension goes through §12.
 pub enum OperatorKind {
     Arith(ArithOp),
     Cmp(CmpOp),
@@ -434,9 +468,13 @@ pub enum OperatorKind {
 pub enum ArithOp { Add, Sub, Mul, Div }
 pub enum CmpOp { Eq, Ne, Lt, Le, Gt, Ge }
 
+// All fields use typed IDs — no `parameter: String` name proxy. Names
+// live in diagnostics only, read from the port's backing declaration
+// when needed for display. Downstream analysis code reads PortId
+// structurally and never key-matches on author-supplied identifiers.
 pub enum DescentEvidence {
-    StrictSubValue { parameter: String, shrink: ShrinkFactor },
-    PreservedValue { parameter: String },
+    StrictSubValue { parameter: PortId, shrink: ShrinkFactor },
+    PreservedValue { parameter: PortId },
     Unrelated,
 }
 pub enum ShrinkFactor { Constant(u32), Structural }
@@ -450,18 +488,41 @@ that `dag.declarations()` return top-level only and that
 `declaration_by_name` cannot possibly return a type param or variant
 by construction.
 
-**`operators.rs` becomes the single authority:**
+**`operators.rs` is surface-syntax authority ONLY:**
+
+Per §3.1, `operators.rs` is the surface-syntax-to-typed-kind table and
+nothing more. Signatures, costs, and descent semantics live in
+`dsl/std/algebra.dag` (for the abstract side) and
+`dsl/extdeps/languages/<target>.dag` (for the realization side).
+`operators.rs` has TWO functions:
 
 ```rust
+// Parser calls this at parse time to classify a surface symbol.
 pub fn from_symbol(s: &str) -> Option<OperatorKind> { ... }
-pub fn signature(kind: OperatorKind) -> OperatorSignature { ... }
-pub fn descent_shrink(kind: OperatorKind) -> Option<ShrinkFactor> { ... }
-pub fn primitive_cost(kind: OperatorKind) -> CostUnit { ... }
+
+// Every downstream consumer that needs signature / cost / descent
+// walks this into `dsl/std/algebra.dag`. operators.rs does NOT
+// manufacture these facts — it forwards to the algebra authority.
+pub fn kind_to_algebra_ref(kind: OperatorKind) -> DeclarationId { ... }
 ```
 
-(If implementation reveals all four functions are field lookups on a
-single `OperatorSpec` record, collapse to `pub const OPERATOR_SPECS:
-&[OperatorSpec]`. See collapse opportunity #3 below.)
+**Explicitly NOT in `operators.rs`** (previously proposed, removed
+after round-7 reviewer feedback):
+
+- `signature(kind) -> OperatorSignature` — lives on the algebra
+  declaration; `infer` reads `decl.connective` from the algebra-ref
+- `primitive_cost(kind) -> CostUnit` — lives in the language spec;
+  `lens_cost` reads the cost field from `dsl/extdeps/languages/rust.dag`
+- `descent_shrink(kind) -> Option<ShrinkFactor>` — lives on the
+  algebra declaration as a descent annotation; `lower(bodies)` reads
+  it when classifying `DescentEvidence`
+
+Putting any of the three inside `operators.rs` would create a second
+semantic authority in parallel with `std/algebra.dag`. That is exactly
+the dual-authority trap `INVARIANTS.md` §"No bridges" forbids — a
+cleaner API is still a bridge if it's a bridge to a redundant
+representation. `operators.rs` stays at ~30 lines of lookup table
+forever.
 
 **Round-7 cleanup:**
 
@@ -484,8 +545,10 @@ single `OperatorSpec` record, collapse to `pub const OPERATOR_SPECS:
   `resolve_type_expr`
 - `infer.rs` — dispatches on `TransformTarget` variants structurally;
   deletes `unresolved_operator_name`, `is_comparison_operator`
-- `operators.rs` — becomes single authority for symbol/kind/signature/
-  cost/descent
+- `operators.rs` — surface-syntax-to-typed-kind table ONLY (~30 lines).
+  Two functions: `from_symbol` and `kind_to_algebra_ref`. No
+  signature / cost / descent logic lives here — those are read from
+  `dsl/std/algebra.dag` and `dsl/extdeps/languages/*.dag`.
 - `dag.rs` — adds `TransformTarget`, `OperatorKind`, `DescentEvidence`;
   refactors `TransformNode`; adds `TypeParamId`/`VariantId` if missing
 - `bootstrap.rs` — removes any remaining name-dispatch that reads
@@ -521,12 +584,14 @@ single `OperatorSpec` record, collapse to `pub const OPERATOR_SPECS:
    descent or structural descent over children lists means adding a variant
    — no new string matches, no new reconstruction.
 
-3. **`operators.rs` may collapse to declarative data.** If `signature`,
-   `descent_shrink`, and `primitive_cost` are all field lookups on a
-   single `OperatorSpec` record, the module becomes
-   `pub const OPERATOR_SPECS: &[OperatorSpec]` — pure data, not scattered
-   functions. This collapse is not visible in the enumeration but emerges
-   when PR-A writes the three functions side by side.
+3. **`operators.rs` collapses to a lookup table by construction.** With
+   signature / cost / descent_shrink moved out per §3.1 and the PR-A
+   narrowing, `operators.rs` becomes `pub const OPERATOR_SYMBOLS:
+   &[(&str, OperatorKind)]` + `pub const OPERATOR_ALGEBRA_REFS:
+   &[(OperatorKind, &str)]` — two pure-data tables, zero semantic
+   authority. The horizontal collapse isn't "the three functions shared
+   a struct" (the version round-7 flagged); it's "once the semantic
+   functions are gone, the file is data, not logic."
 
 4. **Every type reference goes through `resolve_type_expr`.**
    `lower_type_for_port` whitelist deletion isn't a local fix — it's an
@@ -549,10 +614,17 @@ single `OperatorSpec` record, collapse to `pub const OPERATOR_SPECS:
 - `grep -E "target == \"|name == \"|is_operator_name|unresolved_operator_name|is_comparison_operator|is_strictly_smaller" src/v3/compiler/src/` → zero matches
 - `grep -E '"Int" =>|"Bool" =>|"String" =>' src/v3/compiler/src/lower.rs` → zero matches (whitelist deletion gate)
 - `grep -E 'Fn.*skip|skip.*Fn' src/v3/compiler/src/lower.rs` → zero matches (silent-skip gate)
-- `grep 'OPERATOR_FIELD_MAP' src/` → matches only inside `operators.rs`
+- `grep -E 'fn (signature|primitive_cost|descent_shrink)' src/v3/compiler/src/operators.rs` → zero matches (operators.rs has no semantic functions — gate for §3.1 authority narrowing)
 - `TransformTarget` has exactly 3 variants (compile-time assertion)
 - `OperatorKind` has exactly 2 variants; `ArithOp` has 4; `CmpOp` has 6
-  (compile-time assertions)
+  (compile-time assertions — the exact M1 operator subset per §9)
+- `DescentEvidence::StrictSubValue.parameter` is type `PortId`, not
+  `String` (compile-time type assertion; prevents the name-proxy regression)
+- Every reader of `TransformTarget` and `ArrowBody` in `infer.rs`,
+  `lower.rs`, `lens_*.rs`, and `emit.rs` must produce an exhaustive match
+  with the error variants' arms calling `dag.attach_diagnostic(...)` or
+  propagating one. Enforcement: §8 gate 9. (This is the lifecycle-
+  boundary mechanism from §3.3 rows 3a and 3b.)
 - New test: adding a new operator symbol to the enum updates ONE file
   (`operators.rs`); parser/lowerer/infer/descent all read the new variant
   structurally without edits
@@ -560,8 +632,13 @@ single `OperatorSpec` record, collapse to `pub const OPERATOR_SPECS:
   one test case uses a std-library type that is NOT Int/Bool/String)
 - New test: block-body `Fn` produces either a correctly-lowered Declaration
   OR a diagnostic (no silent-skip path remains)
+- New test: a program that parses but fails to resolve produces a
+  `TransformTarget::Unresolved` whose attached diagnostic is present in
+  `dag.diagnostics()` AND is surfaced by every downstream stage that
+  reaches the Transform (no silent propagation)
 
-**Closes:** R-rows 1, 2, 3, 4, 5, 6, 7 (all 7 open reconstructive facts).
+**Closes:** R-rows 1, 2, 3, 4, 5, 6, 7 (all 7 open reconstructive facts)
+plus the lifecycle-boundary pins from §3.3 rows 3a, 3b.
 
 ### §6.2 PR-B: M1(3) + M1(4) — cost lens + Rust emitter (est. 12–18 hours)
 
@@ -727,6 +804,23 @@ change, not the consumer updates.
    in the PR description with explicit justification. Grep pattern:
    `grep -E 'decl\.name|\.name ==|\.name\.starts_with|\.name\.ends_with' src/v3/compiler/src/`
    — only diagnostic/display code is allowed.
+9. **Lifecycle-boundary exhaustive-match gate** — every downstream
+   reader of `TransformTarget` and `ArrowBody` must match every variant
+   and must either produce a diagnostic or propagate one in the error-
+   variant arms (`TransformTarget::Unresolved`, `ArrowBody::Pending`).
+   Enforcement is a combination of:
+   - Rust's compile-time `match` exhaustiveness (no wildcard `_ => ...`
+     arms are allowed in `infer.rs`, `lower.rs`, `lens_*.rs`, or
+     `emit.rs` when scrutinizing these types; grep: `grep -E
+     'match .*\.target.*\{[^}]*_ =>|match .*\.body.*\{[^}]*_ =>'`
+     returns zero).
+   - A per-stage test that feeds a deliberately-unresolved program
+     through the stage and asserts `dag.diagnostics()` contains the
+     sweep's error AND the stage's propagation marker.
+   This is the invariant-grade enforcement for §3.3 rows 2, 3, 3a, 3b.
+   Without this gate, an error variant can be silently skipped and the
+   downstream stage looks "green" on success inputs while corrupting
+   on failure inputs — exactly the round-7 silent-skip pattern.
 
 These gates enforce invariants structurally rather than by convention.
 Any PR failing one is not mergeable.
@@ -737,6 +831,23 @@ Any PR failing one is not mergeable.
 
 Out of scope for M1(2.6) → M1(4):
 
+- **Operator extensions beyond PR-A's committed set.** PR-A ships exactly
+  `Arith(Add, Sub, Mul, Div)` + `Cmp(Eq, Ne, Lt, Le, Gt, Ge)` — 10
+  `OperatorKind` variants total. Explicit non-goals:
+  - `%` (modulo / remainder) — post-M1, adds `ArithOp::Mod`
+  - Boolean operators (`&&`, `||`, `!`) — post-M1, may require a new
+    `OperatorKind::Bool(BoolOp)` family since the return-type
+    invariants differ from `Cmp`
+  - Unary operators (unary `-`, `!x`) — post-M1, likely a separate
+    `UnaryOperatorKind` enum since `TransformNode.inputs` shape
+    differs (one input, not two)
+  - Null-coalescing, ternary, bitwise ops, shifts — post-M1, deferred
+    until a user-code driver forces the question
+  Every post-M1 operator addition goes through the §12 design-doc
+  process. PR-A intentionally does NOT pre-bake seams for these; the
+  reviewer flag from round 7 was that pre-baking extension points is
+  itself a bridge pattern (the seam carries implicit design
+  commitments that have not been examined).
 - Ownership analysis / lattice-on-bindings (M1(5)+)
 - Interpreter (deferred; revisit when omni-emission starts)
 - Omni-emission Shape B user-program artifacts (YAML, Terraform,
@@ -807,45 +918,63 @@ something and the enumeration needs an update before proceeding.
 
 ## §11. Open questions (to resolve before starting PR-A)
 
-Small design decisions that would benefit from being pinned before
-implementation begins:
+**Pinned by round-7 reviewer feedback** (closed before PR-A starts):
 
-1. **Should `TransformTarget::Unresolved` carry the failed name and span,
-   or just a generic "unresolved" marker with the name living in the
-   attached Diagnostic?** Trade-off: carrying the name makes
-   diagnostics self-contained but couples `TransformTarget` to
-   diagnostic text; not carrying it requires consumers to cross-
-   reference the diagnostic table. Likely answer: carry it — the
-   name is a structural fact, not just diagnostic metadata.
+1. ~~**Should `TransformTarget::Unresolved` carry the failed name and
+   span?**~~ **PINNED:** yes, plus the attached `DiagnosticId`. The
+   struct form in §6.1 is `Unresolved { name, span, diagnostic }`. The
+   `DiagnosticId` is load-bearing because §8 gate 9 requires every
+   downstream reader to propagate the diagnostic — carrying the
+   `DiagnosticId` structurally makes that propagation trivial instead
+   of forcing a cross-reference to `dag.diagnostics()`.
 
-2. **Is `OperatorKind` the right split (Arith vs Cmp), or should it be
-   flatter (10 variants directly)?** Trade-off: the hierarchical form
-   lets some dispatch code match just on the category (`if matches!(k,
-   OperatorKind::Cmp(_))`) without enumerating operators; the flat form
-   is simpler but loses that. Likely answer: hierarchical — the Cmp
-   family shares a return type `Bool`, the Arith family shares `T →
-   T`, and that distinction is structurally real.
+2. ~~**Is `OperatorKind` the right split (Arith vs Cmp), or flatter?**~~
+   **PINNED:** hierarchical (Arith vs Cmp), with exactly 10 variants
+   as listed in §6.1. The Cmp family shares return type `Bool`, the
+   Arith family shares `T → T`, and that distinction is structurally
+   real. Extensions (Mod, Bool, Unary) do not land in PR-A — see §9
+   non-goals.
 
-3. **Where does `DescentEvidence` live — on `TransformNode` directly, or
-   on a separate analysis table?** On-node is more honest (facts flow
-   forward on the node); side table is more flexible for late analysis.
-   Likely answer: on-node, per §"facts flow forward" invariant. Cost
-   is a small struct per Transform; storage overhead is negligible.
+3. ~~**Where does `DescentEvidence` live?**~~ **PINNED:** on `TransformNode`,
+   with `parameter: PortId` (not `String`). Per round-7 reviewer
+   feedback, if the field were `String` it would become a name-proxy
+   and plant exactly the seed this document is trying to weed out.
+   Using `PortId` ensures downstream descent analysis reads structural
+   identity; names appear only in diagnostics, read from the port's
+   backing declaration when needed.
+
+**Still open** (must be pinned before PR-A starts but not yet):
 
 4. **What's the `CostUnit` type for primitive cost in PR-A's operator
-   table?** A single `u64` cycle-count? A `{cycles, allocations,
-   io}` record? Defer: `u64` is enough for PR-A's purposes, the real
-   cost-algebra decision happens in PR-B's `lens_cost.rs`. PR-A just
-   reserves a field.
+   table?** Now moot per §3.1 operator-semantics authority narrowing —
+   `operators.rs` has no `primitive_cost` function. Cost lives on the
+   language spec and is read by `lens_cost` in PR-B. PR-A does not
+   need a `CostUnit` type at all.
 
 5. **Does `resolve_type_expr` already exist as a unified entry point,
-   or does PR-A need to introduce it?** If it exists, `lower_type_for_port`
-   simply delegates to it. If not, PR-A's scope grows to include
-   unifying every current type-reference path. Must be verified before
-   PR-A starts.
+   or does PR-A need to introduce it?** Must be verified before PR-A
+   starts. If it exists, `lower_type_for_port` simply delegates to it.
+   If not, PR-A's scope grows to include unifying every current
+   type-reference path. Grep-check: `grep -n 'fn resolve_type_expr'
+   src/v3/compiler/src/lower.rs`. Action: implementer runs the grep
+   as the first step of PR-A and pins the answer in the PR
+   description.
 
-These are intentionally left open — they get pinned in the PR itself,
-not in this plan.
+6. **Exact shape of the lens storage mechanism for PR-B.** Per §3.1's
+   writer-lens authority row, this is a hard prerequisite for PR-B.
+   Not a prerequisite for PR-A. The three candidates (per-lens side
+   table, `Dag::lens_results` map, per-Port annotations) have
+   different invariants:
+   - Side table: cleanest for "lens output is authoritative," each
+     lens owns its own storage; risk is cross-lens read patterns
+     requiring a table-locator.
+   - `Dag::lens_results` map: one place to look; risk is type-erased
+     storage (`Box<dyn LensResult>`) recreating the variant-count
+     problem at a different layer.
+   - Per-Port annotations: closest to "facts flow forward on the
+     node"; risk is Port struct bloat as lenses multiply.
+   PR-B must pick one BEFORE writing `lens_cost.rs`; the choice is
+   itself a design-doc-worthy decision per §12.
 
 ---
 
@@ -945,6 +1074,61 @@ subsection of `INVARIANTS.md`. This document intentionally keeps them
 scoped to M1(2.6)+ until the discipline has been exercised at least
 twice end-to-end and shown to prevent round-trips. Early elevation is
 premature abstraction; late elevation is acceptable.
+
+### §12.6 Writer-lens contract (load-bearing for PR-B and beyond)
+
+Writer lenses — lenses that produce new facts, not just observe existing
+ones — are a load-bearing substrate mechanism. Getting the contract wrong
+once means every subsequent writer lens inherits the wrong shape. Per
+§3.1 (writer-lens output authority row) and per the round-7 reviewer's
+pin, every writer lens must satisfy:
+
+1. **Exact derivation from upstream structure.** The lens's output is a
+   deterministic function of substrate state. No heuristics, no inferred
+   defaults, no "good enough for now" fallbacks. If the lens cannot
+   produce its output from substrate alone, the substrate is missing
+   a fact — add it upstream before writing the lens, not on the lens's
+   scratch space.
+
+2. **Committed downstream consumer in the same PR.** A writer lens
+   without a consumer is dead weight accumulating bridge potential.
+   The PR that introduces the lens must also introduce at least one
+   consumer that reads the lens's output AS AUTHORITY (not as hint,
+   not as annotation, not as "we'll use this later"). If the consumer
+   isn't ready, the lens isn't ready.
+
+3. **Authoritative reads only.** Downstream consumers of a writer lens
+   must read its output via the lens's designated API, not by
+   re-computing from substrate. Any consumer that bypasses the lens
+   and re-derives the fact is a bridge; the §8 no-bridges gate applies.
+
+4. **Storage mechanism consistency.** PR-B picks one storage mechanism
+   for writer lens outputs (per-lens side table, `Dag::lens_results`
+   map, per-Port annotations, or another shape if one emerges). Every
+   future writer lens MUST use the same mechanism. A lens that invents
+   its own storage is a substrate-level fork and gets bounced in
+   review.
+
+5. **Variant-count closure applies.** If the lens's output is an enum,
+   it gets the same `const _ASSERT_*` match-exhaustiveness treatment
+   §8 gate 6 applies to substrate enums. Writer lenses do not get a
+   free pass on variant-count discipline.
+
+**What this rules out:** `lens_cost.rs` producing a `HashMap<NodeId,
+u64>` as a "tentative" cost table that `emit.rs` later consults "if
+needed." Either `emit.rs` is a committed consumer of the lens output
+in the same PR (good), or `lens_cost.rs` doesn't land (also good).
+The "tentative" middle ground is the failure mode this section exists
+to prevent.
+
+**Writer lenses vs reader lenses.** `lens_provenance` and `lens_depth`
+are reader lenses — they query substrate and return derived values on
+demand without storing anything. Reader lenses have none of §12.6's
+requirements because they produce nothing persistent. The distinction
+matters because the storage-mechanism question only arises when a
+lens starts writing; the M0 success-bar was built on reader lenses
+specifically to defer the writer-lens decision until it was forced.
+PR-B is when it gets forced.
 
 ---
 
