@@ -25,15 +25,15 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, BindNode, Bound, BranchNode, CardinalityBound, Dag,
-    Declaration, DeclarationId, Field, LiteralBits, LoopNode, NodeId, Path, PortId,
-    TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
+    ArrowBody, AtomPayload, Behavior, BindNode, Bound, BranchNode, BranchPattern,
+    CardinalityBound, Dag, Declaration, DeclarationId, Field, LiteralBits, LoopNode, NodeId,
+    Path, PortId, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::operators::{ArithmeticOp, OperatorKind};
 use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceModule, SurfaceParam,
-    SurfaceType, SurfaceVariant, VariantPayload,
+    SurfacePattern, SurfaceType, SurfaceVariant, VariantPayload,
 };
 use crate::types::TypeShape;
 
@@ -1239,6 +1239,11 @@ fn lower_expr(
             let branch_output = dag.alloc_port(Some(branch_id));
             let then_body = producer_of(dag, then_port).unwrap_or(branch_id);
             let else_body = producer_of(dag, else_port).unwrap_or(branch_id);
+            // if-then-else is a match on Bool with two arms. Emit
+            // explicit pattern labels so the discriminator lives
+            // structurally on Path, not by positional convention.
+            // Infer resolves each "True"/"False" against Bool's
+            // Disj children.
             dag.push_node(Behavior::Branch(BranchNode {
                 id: branch_id,
                 input: cond_port,
@@ -1246,12 +1251,68 @@ fn lower_expr(
                     Path {
                         body: then_body,
                         output: then_port,
+                        pattern: BranchPattern::UnresolvedVariant {
+                            name: "True".to_string(),
+                            span: expr_span(then_branch).clone(),
+                        },
                     },
                     Path {
                         body: else_body,
                         output: else_port,
+                        pattern: BranchPattern::UnresolvedVariant {
+                            name: "False".to_string(),
+                            span: expr_span(else_branch).clone(),
+                        },
                     },
                 ],
+                output: branch_output,
+                span: span.clone(),
+            }));
+            branch_output
+        }
+        SurfaceExpr::Match {
+            scrutinee,
+            arms,
+            span,
+        } => {
+            // Lower scrutinee and all arm bodies FIRST. `alloc_node_id`
+            // comes after so the Branch's id matches `nodes.len()`
+            // at push time (arm lowering pushes its own nodes). Same
+            // ordering pattern as the `If` arm above.
+            let scrutinee_port = lower_expr(scrutinee, dag, scope, symbols);
+            let lowered_arms: Vec<(
+                PortId,
+                Option<NodeId>,
+                String,
+                SourceSpan,
+            )> = arms
+                .iter()
+                .map(|arm| {
+                    let arm_output_port =
+                        lower_expr(&arm.body, dag, scope, symbols);
+                    let body_node = producer_of(dag, arm_output_port);
+                    let (pattern_name, pattern_span) = match &arm.pattern {
+                        SurfacePattern::BareVariant { name, span } => {
+                            (name.clone(), span.clone())
+                        }
+                    };
+                    (arm_output_port, body_node, pattern_name, pattern_span)
+                })
+                .collect();
+            let branch_id = dag.alloc_node_id();
+            let branch_output = dag.alloc_port(Some(branch_id));
+            let paths: Vec<Path> = lowered_arms
+                .into_iter()
+                .map(|(out_port, body_node, name, span)| Path {
+                    body: body_node.unwrap_or(branch_id),
+                    output: out_port,
+                    pattern: BranchPattern::UnresolvedVariant { name, span },
+                })
+                .collect();
+            dag.push_node(Behavior::Branch(BranchNode {
+                id: branch_id,
+                input: scrutinee_port,
+                paths,
                 output: branch_output,
                 span: span.clone(),
             }));
@@ -1285,6 +1346,10 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
             is_recursive(cond, self_name)
                 || is_recursive(then_branch, self_name)
                 || is_recursive(else_branch, self_name)
+        }
+        SurfaceExpr::Match { scrutinee, arms, .. } => {
+            is_recursive(scrutinee, self_name)
+                || arms.iter().any(|arm| is_recursive(&arm.body, self_name))
         }
     }
 }
@@ -1347,6 +1412,12 @@ fn descent_provable(expr: &SurfaceExpr, self_name: &str, first_param: &str) -> b
                 && descent_provable(then_branch, self_name, first_param)
                 && descent_provable(else_branch, self_name, first_param)
         }
+        SurfaceExpr::Match { scrutinee, arms, .. } => {
+            descent_provable(scrutinee, self_name, first_param)
+                && arms
+                    .iter()
+                    .all(|arm| descent_provable(&arm.body, self_name, first_param))
+        }
     }
 }
 
@@ -1378,7 +1449,8 @@ fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
         | SurfaceExpr::Var { span, .. }
         | SurfaceExpr::Call { span, .. }
         | SurfaceExpr::Operator { span, .. }
-        | SurfaceExpr::If { span, .. } => span,
+        | SurfaceExpr::If { span, .. }
+        | SurfaceExpr::Match { span, .. } => span,
     }
 }
 
@@ -1477,6 +1549,12 @@ fn collect_calls(
             collect_calls(cond, fn_names, out);
             collect_calls(then_branch, fn_names, out);
             collect_calls(else_branch, fn_names, out);
+        }
+        SurfaceExpr::Match { scrutinee, arms, .. } => {
+            collect_calls(scrutinee, fn_names, out);
+            for arm in arms {
+                collect_calls(&arm.body, fn_names, out);
+            }
         }
     }
 }

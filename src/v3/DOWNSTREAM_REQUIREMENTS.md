@@ -111,10 +111,74 @@ form. `lower_data_item` sets both:
 body span is preserved and consumers can discriminate
 "data value" from "type alias" by reading `value_body`.
 
-## Class 5 — remaining structural gaps after R9
+## M1(2.8) — match expressions + Branch generalization
 
-These are substrate-level gaps that R9 surfaced but did not
-close. Tracked as the next substrate milestone.
+After R9 landed, the next increment tackled match expression
+parsing so v3's parser begins catching up to v2's grammar surface.
+The work was framed by the user as "parser catch-up, not design
+discovery" — v2 has match parsing; v3 didn't yet; writing it is
+just the next increment.
+
+### M1(2.8) fix
+
+- **Branch input generalization.** The M0-era "Branch input must
+  be `Bool`" check is the degenerate special case of "Branch
+  input must be a `Disj`." Bool, Classical, user-defined sum
+  types, etc. all satisfy `TypeConnective::Disj`. String, Int,
+  Float, etc. don't — so `if "foo" then ...` still fails the
+  same way it did at M0. This is a widening, not a compromise:
+  Branch becomes "dispatch on any sum type," which is what it
+  should have meant from the start.
+- **`BranchPattern` + `Path.pattern`.** Each `Path` now carries
+  an explicit variant discriminator. Phase coproduct:
+  `UnresolvedVariant { name, span }` at lower time →
+  `ResolvedVariant(DeclarationId)` after a new infer-time
+  pattern resolution pass. Same shape as
+  `AtomPayload::Unresolved/ResolvedIdentifier`. Replaces the
+  positional convention (`paths[0] = then`, `paths[1] = else`)
+  with structural labels.
+- **`if`/`else` lowering rewired.** Generates explicit
+  `UnresolvedVariant { name: "True" }` and `{ "False" }` arms
+  instead of relying on positional convention. Resolution walks
+  `Bool`'s `Disj` children.
+- **`SurfaceExpr::Match`, `SurfacePattern::BareVariant`, parser
+  for `match <expr> { <Ident> => <expr> ... }`.** At M1(2.8)
+  patterns are limited to bare variant constructors — wildcards
+  (`_`), record destructure (`Some { value: x }`), and nested
+  patterns are deferred to M1(2.9)+.
+- **Pattern resolution pass** in `infer.rs`. After the main
+  inference loop converges, walks each Branch and rewrites each
+  `UnresolvedVariant.name` against the scrutinee's `Disj`
+  children (scoped, so `Classical.True` and `Bool.True` don't
+  conflict). Unknown variant names fail-closed with a diagnostic
+  on the Branch's output port.
+
+Coverage: 41 M0 + 22 M1 substrate (17 R7/R9 + 5 new M1(2.8)
+match tests) + 7 real-stdlib smoke + 1 realization smoke = 71
+green. Clippy clean.
+
+### M1(2.8) does NOT dissolve logic.dag's FnExternalBody scaffolds
+
+`logic.dag` has three functions (`classical_not`, `classical_and`,
+`classical_or`) whose bodies use match. Match parsing alone
+doesn't dissolve their `FnExternalBody` scaffolds because the arm
+bodies contain **bare variant expressions** — the RHS `False` in
+`True => False` is a free expression that needs to resolve to
+`Classical.False`, but R7's variant anonymization made variant
+declarations unfindable via `declaration_by_name`. This is a
+separate resolution problem from match patterns (which resolve
+scoped against the scrutinee type); variant RHS expressions have
+no scrutinee context and need either a variant-constructor
+surface syntax, a targeted anonymization rollback, or infer-time
+re-resolution against the Branch output type.
+
+This is tracked as **class-5 gap #4** below.
+
+## Class 5 — remaining structural gaps after R9 and M1(2.8)
+
+These are substrate-level gaps that the R9 + M1(2.8) passes
+surfaced but did not close. Tracked as the next substrate
+milestone.
 
 ### Class 5 gap 1: Bool operator grounding
 
@@ -178,6 +242,41 @@ requires more thought.
 **Current status.** String operators (`"a" + "b"`) fall back
 to the Rust scaffold bridge. No existing user-facing tests
 exercise String operators, so the bridge is latent.
+
+### Class 5 gap 4: Variant constructor expressions
+
+**What's missing.** Bare variant names in expression position
+(e.g. the `False` in `match a { True => False, False => True }`'s
+arm bodies) don't resolve. R7's anonymization set
+`decl.name = None` on sum variant children, so
+`declaration_by_name("False")` returns None even when
+`False` is a declared constructor of `Classical`. The
+name-resolution path in `lower.rs` falls through to an
+identifier stub, which the strict sweep flags as unresolved.
+
+**Why it's hard.** Match patterns resolve scoped against the
+scrutinee's Disj children, which sidesteps the anonymization —
+but variant RHS expressions have no scrutinee context. Options:
+- **Variant-constructor surface syntax** (`Classical.False` or
+  similar) so the resolution is explicit. Parser extension,
+  user-visible.
+- **Targeted anonymization rollback**: make sum variants
+  findable by name (reverting that part of R7) while keeping
+  TypeParams anonymous. Adds namespace ambiguity
+  (`Classical.True` vs `Bool.True` share the name `True`;
+  first-match-wins or fail-closed on duplicates).
+- **Infer-time re-resolution**: for `Var` expressions that
+  didn't resolve at lower time, infer could re-try resolution
+  against a contextual type (the Branch output type, a
+  surrounding let annotation, etc.). Biggest substrate lift
+  but most general.
+
+**Current status.** Match parses, type-checks, resolves
+patterns. Arm bodies can use literals, primitives, user function
+calls, operators — anything that doesn't require bare variant
+expressions. `logic.dag`'s `classical_not` / `classical_and` /
+`classical_or` still load as `FnExternalBody` scaffolds because
+their RHS uses `True` / `False` as expressions.
 
 ### Class 5 gap 3: Data body parsing
 

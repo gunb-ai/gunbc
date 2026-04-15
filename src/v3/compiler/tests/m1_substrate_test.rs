@@ -13,7 +13,8 @@
 use std::collections::HashMap;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    ArrowBody, AtomPayload, Behavior, Dag, DeclarationId, Field, TransformTarget, TypeConnective,
+    ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, Field, TransformTarget,
+    TypeConnective,
 };
 use v3_compiler::operators::{ArithmeticOp, ComparisonOp, OperatorKind};
 use v3_compiler::CompileError;
@@ -591,6 +592,142 @@ fn m17_r9_data_item_has_unparsed_value_body_scaffold() {
         None => panic!(
             "data item must have value_body = Some(Unparsed), got None — \
              the declaration is structurally identical to a type alias"
+        ),
+    }
+}
+
+#[test]
+fn m18_match_on_user_sum_type_compiles() {
+    // M1(2.8): match lowers to a Branch node with one Path per arm,
+    // each carrying a BranchPattern::ResolvedVariant(DeclarationId)
+    // after inference. The scrutinee's declaration must be a Disj;
+    // each arm's pattern name must match one of the Disj's variant
+    // labels (scoped against the scrutinee type, not globally).
+    //
+    // This test uses literal RHS bodies so it doesn't hit the
+    // variant-expression RHS class-5 gap (bare `True`/`False` as
+    // expressions).
+    let src = "\
+type Sign = Plus | Minus
+fn always_zero(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }
+let answer = always_zero(Plus)
+";
+    // The `Plus` in the call site `always_zero(Plus)` IS a variant
+    // expression — it falls into the class-5 gap. Use a simpler
+    // harness that avoids that by compiling just the fn body.
+    let src_without_call = "\
+type Sign = Plus | Minus
+fn always_zero(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }
+";
+    let dag = compile_any(src_without_call, "match.v3");
+    // Find the always_zero fn declaration; its connective should
+    // be an Arrow, and the Bind's sub-DAG should contain a Branch
+    // with exactly two paths, each pattern ResolvedVariant(...).
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "always_zero")
+        .expect("Bind(always_zero) exists");
+    // Walk the Bind's value port back to its producer Behavior.
+    let body_node_id = dag
+        .port(bind.value)
+        .produced_by
+        .expect("Bind value port has a producer");
+    let branch = match dag.node(body_node_id) {
+        Behavior::Branch(b) => b,
+        other => panic!("expected Branch at match root, got {other:?}"),
+    };
+    assert_eq!(branch.paths.len(), 2, "two arms produce two paths");
+    for path in &branch.paths {
+        match &path.pattern {
+            BranchPattern::ResolvedVariant(_) => {}
+            other => panic!(
+                "expected ResolvedVariant after infer, got {other:?} — \
+                 pattern resolution pass did not run or failed"
+            ),
+        }
+    }
+    let _ = src;
+}
+
+#[test]
+fn m18_match_on_non_disj_scrutinee_is_rejected() {
+    // M1(2.8): the Branch input relaxation accepts Bool OR any
+    // Disj. String is Instantiation(FreeMonoid<Char>), NOT Disj —
+    // match on a String scrutinee must fail.
+    let src = "\
+type Sign = Plus | Minus
+fn bad(s: String) -> Int = match s { Plus => 0, Minus => 1 }
+";
+    let dag = compile_any(src, "bad_match.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "match on String scrutinee should produce a diagnostic"
+    );
+}
+
+#[test]
+fn m18_match_with_unknown_variant_is_rejected() {
+    // M1(2.8): variant resolution scoped against the scrutinee's
+    // Disj. An arm referencing a variant name that isn't declared
+    // on the scrutinee's type fails fail-closed.
+    let src = "\
+type Sign = Plus | Minus
+fn bad(s: Sign) -> Int = match s { Plus => 0, Zero => 1 }
+";
+    let dag = compile_any(src, "unknown_variant.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "unknown variant in match arm should produce a diagnostic"
+    );
+}
+
+#[test]
+fn m18_if_then_else_populates_branch_pattern() {
+    // M1(2.8): `if`/`else` lowering no longer relies on positional
+    // convention (paths[0]=then, paths[1]=else). Each path carries
+    // an explicit BranchPattern — UnresolvedVariant{name:"True"}
+    // for the then-branch and {name:"False"} for the else-branch,
+    // resolved to Bool's True/False variant declarations after
+    // inference.
+    let dag = compile_to_dag(
+        "let r = if 1 > 0 then 10 else 20",
+        "if.v3",
+    )
+    .expect("compiles");
+    let branch = dag
+        .nodes()
+        .iter()
+        .find_map(Behavior::as_branch)
+        .expect("Branch exists");
+    assert_eq!(branch.paths.len(), 2);
+    // Both paths must be ResolvedVariant post-infer.
+    for path in &branch.paths {
+        match &path.pattern {
+            BranchPattern::ResolvedVariant(_) => {}
+            other => panic!(
+                "if/else paths should resolve to Bool variants, got {other:?}"
+            ),
+        }
+    }
+}
+
+#[test]
+fn m18_bool_is_structurally_a_disj() {
+    // Substrate sanity check: the Branch input relaxation hinges
+    // on Bool being a Disj declaration. If types.dag ever changes
+    // Bool to a non-Disj shape, `if`/`else` will break — this
+    // test pins the invariant.
+    let dag = Dag::new();
+    let bool_id = find_named(&dag, "Bool");
+    match &dag.declaration(bool_id).connective {
+        TypeConnective::Disj { variants } => {
+            assert!(variants.iter().any(|f| f.label == "True"));
+            assert!(variants.iter().any(|f| f.label == "False"));
+        }
+        other => panic!(
+            "Bool must be a Disj for if/else to type-check, got {other:?}"
         ),
     }
 }

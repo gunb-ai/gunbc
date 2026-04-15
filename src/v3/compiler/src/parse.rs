@@ -338,6 +338,49 @@ pub enum SurfaceExpr {
         else_branch: Box<SurfaceExpr>,
         span: SourceSpan,
     },
+    /// `match <scrutinee> { <pattern> => <expr> <pattern> => <expr> ... }`
+    /// Lowers to a `Branch` behavior with the scrutinee as input
+    /// and one `Path` per arm carrying the arm's pattern.
+    Match {
+        scrutinee: Box<SurfaceExpr>,
+        arms: Vec<SurfaceMatchArm>,
+        span: SourceSpan,
+    },
+}
+
+/// A single arm of a `match` expression. Pattern plus body.
+#[derive(Debug, Clone)]
+pub struct SurfaceMatchArm {
+    pub pattern: SurfacePattern,
+    pub body: SurfaceExpr,
+    pub span: SourceSpan,
+}
+
+/// Dissolution ledger — **SurfacePattern**:
+///
+/// 🟡 **M1(2.8) scaffold.** Single variant today: bare variant
+/// patterns like `True`, `None`, `Plus` — a parse-time name that
+/// the inference pass resolves scoped against the scrutinee's
+/// `Disj` connective. Future extensions (wildcard `_`, record
+/// destructure `Some { value: x }`, nested patterns, literal
+/// patterns) go through §8.10's substrate-extension audit.
+///
+/// 4-pattern check against the current single variant:
+/// - Pattern 1 (fact placement): fails. The pattern is per-arm
+///   data that `BranchPattern::UnresolvedVariant` consumes; no
+///   alternative structural placement.
+/// - Pattern 2 (variant-is-data): not applicable (single variant).
+/// - Pattern 3 (algebraic form): fails.
+/// - Pattern 4 (dimensional): fails.
+///
+/// Verdict: scaffold. The set of patterns grows as the parser
+/// grammar catches up to v2.
+#[derive(Debug, Clone)]
+pub enum SurfacePattern {
+    /// A bare constructor name, e.g. the `True` in
+    /// `match a { True => x, False => y }`. Resolves at infer
+    /// time against the scrutinee's Disj children by label.
+    BareVariant { name: String, span: SourceSpan },
 }
 
 /// Parse-local literal value. Mirrors `dag::LiteralBits` but lives
@@ -1068,6 +1111,9 @@ impl<'a> Parser<'a> {
         if matches!(self.peek().kind, TokenKind::KwIf) {
             return self.parse_if();
         }
+        if matches!(self.peek().kind, TokenKind::KwMatch) {
+            return self.parse_match();
+        }
         let token = self.bump().clone();
         match token.kind {
             TokenKind::IntLit(value) => Ok(SurfaceExpr::Literal {
@@ -1145,6 +1191,61 @@ impl<'a> Parser<'a> {
             span: SourceSpan::new(self.file, start, end),
         })
     }
+
+    /// Parse a `match <scrutinee> { <pattern> => <expr> ... }`
+    /// expression. At M1(2.8) patterns are limited to bare variant
+    /// constructors (`Ident`) — no wildcards, destructuring, or
+    /// nested patterns. Arms are brace-separated with optional
+    /// comma between them for readability; we accept either.
+    fn parse_match(&mut self) -> Result<SurfaceExpr, Diagnostic> {
+        let match_token = self.bump().clone();
+        debug_assert!(matches!(match_token.kind, TokenKind::KwMatch));
+        let scrutinee = self.parse_expr()?;
+        self.expect_kind(TokenKind::LBrace)?;
+        let mut arms: Vec<SurfaceMatchArm> = Vec::new();
+        while !matches!(self.peek().kind, TokenKind::RBrace) {
+            arms.push(self.parse_match_arm()?);
+            // Accept an optional comma between arms.
+            if matches!(self.peek().kind, TokenKind::Comma) {
+                self.bump();
+            }
+        }
+        let close = self.expect_kind(TokenKind::RBrace)?;
+        let start = match_token.span.byte_start;
+        let end = close.span.byte_end;
+        Ok(SurfaceExpr::Match {
+            scrutinee: Box::new(scrutinee),
+            arms,
+            span: SourceSpan::new(self.file, start, end),
+        })
+    }
+
+    fn parse_match_arm(&mut self) -> Result<SurfaceMatchArm, Diagnostic> {
+        let pattern_token = self.bump().clone();
+        let pattern = match &pattern_token.kind {
+            TokenKind::Ident(name) => SurfacePattern::BareVariant {
+                name: name.clone(),
+                span: pattern_token.span.clone(),
+            },
+            other => {
+                return Err(Diagnostic::ParseError {
+                    message: format!(
+                        "expected variant name in match pattern, got {other:?} — M1(2.8) supports bare-variant patterns only (e.g. `True => expr`)"
+                    ),
+                    span: pattern_token.span,
+                });
+            }
+        };
+        self.expect_kind(TokenKind::FatArrow)?;
+        let body = self.parse_expr()?;
+        let start = pattern_token.span.byte_start;
+        let end = expr_span(&body).byte_end;
+        Ok(SurfaceMatchArm {
+            pattern,
+            body,
+            span: SourceSpan::new(self.file, start, end),
+        })
+    }
 }
 
 fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
@@ -1153,6 +1254,7 @@ fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
         | SurfaceExpr::Var { span, .. }
         | SurfaceExpr::Call { span, .. }
         | SurfaceExpr::Operator { span, .. }
-        | SurfaceExpr::If { span, .. } => span,
+        | SurfaceExpr::If { span, .. }
+        | SurfaceExpr::Match { span, .. } => span,
     }
 }

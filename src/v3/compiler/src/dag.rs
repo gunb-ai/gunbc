@@ -520,10 +520,55 @@ pub struct BranchNode {
     pub span: SourceSpan,
 }
 
+/// Per-arm pattern on a `Path`. Encodes which variant of the
+/// scrutinee's Disj this arm handles. Unifies `if`/`else` with
+/// `match` — both lower to `Branch` with one `Path` per arm, and
+/// the discriminator lives on the pattern instead of on positional
+/// convention.
+///
+/// **Phase coproduct — M1(2.8).** Lowering emits
+/// `UnresolvedVariant { name, span }`; inference walks the
+/// scrutinee's Disj children, matches the arm's variant name
+/// scoped against that Disj, and mutates the Path's pattern
+/// in-place to `ResolvedVariant(DeclarationId)`. The resolved
+/// form is the stable post-infer shape; the unresolved form is
+/// the transient lowering-output shape. Same pattern the substrate
+/// uses for `AtomPayload::Unresolved/ResolvedIdentifier`.
+///
+/// 4-pattern check:
+/// - Pattern 1 (fact placement): fails. Variant identity is a
+///   per-arm fact that downstream code (exhaustiveness checks,
+///   emission) must read per-Path.
+/// - Pattern 2 (variant-is-data): fails. Unresolved carries a
+///   name + span; Resolved carries a DeclarationId.
+/// - Pattern 3 (algebraic form): fails. The two variants are
+///   two phases of the same fact, not an algebra.
+/// - Pattern 4 (dimensional): fails.
+///
+/// Verdict: terminal at M1(2.8). Future pattern extensions
+/// (wildcard, record destructure, nested patterns) go through
+/// §8.10's substrate-extension audit.
+#[derive(Debug, Clone)]
+pub enum BranchPattern {
+    /// Arm pattern as written in surface syntax. Populated by
+    /// lowering; the name is the variant identifier the user wrote
+    /// (or `"True"` / `"False"` for an `if`/`else`'s two branches).
+    /// Must be resolved by the end of inference.
+    UnresolvedVariant { name: String, span: SourceSpan },
+    /// Arm pattern resolved to a variant declaration. The
+    /// `DeclarationId` points at the anonymous variant child of
+    /// the scrutinee's Disj.
+    ResolvedVariant(DeclarationId),
+}
+
 #[derive(Debug, Clone)]
 pub struct Path {
     pub body: NodeId,
     pub output: PortId,
+    /// Which variant of the scrutinee's Disj this path handles.
+    /// Discriminator for both `if`/`else` (on Bool) and `match`
+    /// (on any Disj). See `BranchPattern`.
+    pub pattern: BranchPattern,
 }
 
 #[derive(Debug, Clone)]
@@ -834,6 +879,15 @@ impl Dag {
             "push_node out of sequence — topological invariant broken"
         );
         self.nodes.push(behavior);
+    }
+
+    /// Mutable access to the computation-graph node vector. Scoped to
+    /// the post-infer pattern resolution pass that rewrites
+    /// `BranchPattern::UnresolvedVariant` entries into
+    /// `ResolvedVariant(DeclarationId)` — a localized structural
+    /// update, not a general mutation channel.
+    pub(crate) fn nodes_mut(&mut self) -> &mut [Behavior] {
+        &mut self.nodes
     }
 
     pub(crate) fn push_declaration(&mut self, declaration: Declaration) {

@@ -74,6 +74,14 @@ pub fn infer(dag: &mut Dag) {
         }
     }
 
+    // Pattern resolution pass: once every Branch's input port has
+    // settled to a Resolved type, walk each Branch's paths and
+    // rewrite each `BranchPattern::UnresolvedVariant { name }` to
+    // `ResolvedVariant(DeclarationId)` by looking up the name scoped
+    // against the scrutinee's Disj children. Fail-closed on
+    // unknown variant names.
+    resolve_branch_patterns(dag);
+
     // Post-sweep: any port still Uninferred means decide() missed a case.
     let uninferred_ports: Vec<PortId> = dag
         .all_ports()
@@ -89,6 +97,82 @@ pub fn infer(dag: &mut Dag) {
                 span,
             },
         );
+    }
+}
+
+/// For every Branch node, resolve each Path's `BranchPattern` by
+/// matching the arm's variant name against the scrutinee's Disj
+/// children. Mutates the Path in place. Fails-closed on unknown
+/// variant names. Skips Branches whose input port is not Resolved
+/// (those already have a diagnostic from the main infer pass).
+fn resolve_branch_patterns(dag: &mut Dag) {
+    // Collect the rewrites first (immutable borrow of nodes + ports +
+    // declarations), then apply them (mutable borrow of nodes). This
+    // two-phase pattern avoids borrow conflicts while still reading
+    // declaration bodies.
+    struct Rewrite {
+        node_index: usize,
+        path_index: usize,
+        result: Result<DeclarationId, Diagnostic>,
+        output_port: PortId,
+    }
+    let mut rewrites: Vec<Rewrite> = Vec::new();
+    for (node_index, node) in dag.nodes().iter().enumerate() {
+        let Behavior::Branch(b) = node else {
+            continue;
+        };
+        let scrutinee_ty = match dag.port(b.input).state() {
+            PortState::Resolved(ty) => *ty,
+            PortState::Unresolved | PortState::Uninferred => continue,
+        };
+        let scrutinee_decl = dag.declaration(scrutinee_ty.declaration);
+        let disj_variants: Vec<(String, DeclarationId)> =
+            match &scrutinee_decl.connective {
+                TypeConnective::Disj { variants } => variants
+                    .iter()
+                    .map(|f| (f.label.clone(), f.ty))
+                    .collect(),
+                _ => {
+                    // Scrutinee is not a Disj — the main infer pass
+                    // caught this as a TypeMismatch already. Skip.
+                    continue;
+                }
+            };
+        for (path_index, path) in b.paths.iter().enumerate() {
+            let result = match &path.pattern {
+                crate::dag::BranchPattern::ResolvedVariant(_) => continue,
+                crate::dag::BranchPattern::UnresolvedVariant { name, span } => {
+                    match disj_variants.iter().find(|(label, _)| label == name) {
+                        Some((_, ty)) => Ok(*ty),
+                        None => Err(Diagnostic::ResolveError {
+                            name: format!(
+                                "variant `{name}` is not a constructor of this match's scrutinee type"
+                            ),
+                            span: span.clone(),
+                        }),
+                    }
+                }
+            };
+            rewrites.push(Rewrite {
+                node_index,
+                path_index,
+                result,
+                output_port: b.output,
+            });
+        }
+    }
+    for rewrite in rewrites {
+        match rewrite.result {
+            Ok(variant_id) => {
+                if let Behavior::Branch(b) = &mut dag.nodes_mut()[rewrite.node_index] {
+                    b.paths[rewrite.path_index].pattern =
+                        crate::dag::BranchPattern::ResolvedVariant(variant_id);
+                }
+            }
+            Err(diag) => {
+                dag.mark_unresolved(rewrite.output_port, diag);
+            }
+        }
     }
 }
 
@@ -122,16 +206,15 @@ fn decide(dag: &Dag, index: usize) -> Decision {
         }
         Behavior::Transform(t) => decide_transform(dag, t),
         Behavior::Branch(b) => {
-            let Some(bool_ty) = dag.bool_shape() else {
-                return Decision::Fail(
-                    b.output,
-                    Diagnostic::ResolveError {
-                        name: "primitive `Bool` missing from declaration table — bootstrap failed"
-                            .to_string(),
-                        span: b.span.clone(),
-                    },
-                );
-            };
+            // Branch dispatches on a sum type. Its input must
+            // resolve to a declaration whose connective is
+            // `TypeConnective::Disj { .. }`. Bool and Classical are
+            // Disj declarations (True | False), so `if` lowers here
+            // naturally. User-defined sums like
+            // `type Sign = Plus | Minus` also pass. String, Int,
+            // Float, etc. fail this check — the previous M0 "must
+            // be Bool" rule was the degenerate case of this
+            // broader rule.
             match dag.port(b.input).state() {
                 PortState::Uninferred => return Decision::Retry,
                 PortState::Unresolved => {
@@ -143,16 +226,31 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                         },
                     );
                 }
-                PortState::Resolved(ty) if *ty == bool_ty => {}
                 PortState::Resolved(ty) => {
-                    return Decision::Fail(
-                        b.output,
-                        Diagnostic::TypeMismatch {
-                            expected: bool_ty,
-                            actual: *ty,
-                            span: b.span.clone(),
-                        },
-                    );
+                    let scrutinee_decl = dag.declaration(ty.declaration);
+                    if !matches!(
+                        scrutinee_decl.connective,
+                        TypeConnective::Disj { .. }
+                    ) {
+                        let Some(bool_ty) = dag.bool_shape() else {
+                            return Decision::Fail(
+                                b.output,
+                                Diagnostic::ResolveError {
+                                    name: "primitive `Bool` missing from declaration table — bootstrap failed"
+                                        .to_string(),
+                                    span: b.span.clone(),
+                                },
+                            );
+                        };
+                        return Decision::Fail(
+                            b.output,
+                            Diagnostic::TypeMismatch {
+                                expected: bool_ty,
+                                actual: *ty,
+                                span: b.span.clone(),
+                            },
+                        );
+                    }
                 }
             }
 
