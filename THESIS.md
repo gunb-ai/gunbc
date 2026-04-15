@@ -522,9 +522,11 @@ Connective meanings:
   L1 behaviors (for user functions) or a realization declaration
   in `src/v3/spec/` (for primitives). See §"Two
   groundings" below for how the user-defined vs external-
-  realization distinction works, and `src/v3/M1_DESIGN.md` §Q7
-  for the concrete `ArrowBody` enum. In neither case is the body
-  a name-based lookup — both are structural typed edges.
+  realization distinction works; the concrete `ArrowBody` enum
+  is defined in `src/v3/compiler/src/dag.rs` with four variants
+  (`UserDefined`, `ExternalRealization`, `Pending`, `Unparsed`).
+  In neither case is the body a name-based lookup — both are
+  structural typed edges.
 - **Cardinality.** Repetition over a child Node with a (possibly
   symbolic) count. `argv: ["sh", "-lc", "{script}"]` is a
   `Cardinality(3)` with three String-Atom children. `List<T>` is
@@ -921,9 +923,10 @@ M1(3)+ as language-spec declarations in
 some primitive Arrows carry a scaffolded `Pending` realization
 state: their concept decomposes completely via inhabitance, but
 their target-language realization is declared later. A CI
-ratchet (see `src/v3/M1_DESIGN.md` §8.11) requires that every
-Pending Arrow resolves to `UserDefined` or `ExternalRealization`
-before M3 completes. The top-level executability claim is
+ratchet (tracked in `INVARIANTS.md` §"No short-term solutions"
+exception 2) requires that the Pending count monotonically
+decreases and every Pending Arrow resolves to `UserDefined` or
+`ExternalRealization` before M3 completes. The top-level executability claim is
 therefore **milestone-conditional**: fully satisfied once M3's
 realization declarations land, not before.
 
@@ -1000,9 +1003,10 @@ analyzer is "unfinished composition." That reading is correct for
 the static grounding — at the `.dag` level, every concept must
 decompose completely. But it's wrong if you apply it to
 realization: `.dag Int.add` at M1(2.5) has its realization
-binding in a **`Pending`** state (see `src/v3/M1_DESIGN.md` §Q7's
-`ArrowBody` enum) because its target-world mapping lives in
-`src/v3/spec/rust.dag` — which will be declared as
+binding in a **`Pending`** state (one of the four `ArrowBody`
+variants defined in `src/v3/compiler/src/dag.rs`) because its
+target-world mapping lives in `src/v3/spec/rust.dag` — which
+will be declared as
 an ordinary Declaration reachable via a typed edge, not a
 name-based lookup. That is NOT an ungrounded concept; it is
 a **concept whose static grounding is complete and whose

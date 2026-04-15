@@ -16,6 +16,5 @@ v3 status, active work, and deferred items.
   ROADMAP §"M2 — Feature parity with v2 subset"
 
 See also:
-- `src/v3/M1_TASKS.md` — historical M1(2.5) implementer checklist
-- `src/v3/M1_DESIGN.md` — M1(2.5) design oracle
+- `src/v3/M1_DESIGN.md` — historical M1(2.5)–M1(3) design oracle
 - `src/v3/M0_RETROSPECTIVE.md` — M0 retrospective + M1(2.5) addendum

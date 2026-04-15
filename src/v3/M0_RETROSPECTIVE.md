@@ -355,10 +355,10 @@ just by design claim.
 
 > **Postscript (2026-04-15).** The question below — "how does a lens
 > store its results?" — is now closed. The answer is that the question
-> itself was the wrong framing. Per `M1_IMPLEMENTATION_PLAN.md` §12.6
-> (minimality invariant), **lenses are pure readers over substrate +
-> language spec; they do not persist state and do not need a storage
-> mechanism.** The four options enumerated below (Port field, per-lens
+> itself was the wrong framing. Per the minimality invariant that
+> landed in the M1(2.7) review cycle, **lenses are pure readers over
+> substrate + language spec; they do not persist state and do not
+> need a storage mechanism.** The four options enumerated below (Port field, per-lens
 > side table, Port annotations, generalized diagnostic table) are all
 > rescinded — none of them land. Cost, ownership, effects, purity, and
 > any future lens are all pure functions of `(substrate, lang_spec)`,
@@ -397,8 +397,9 @@ options, each with different cost profiles:
 
 **Resolution (M1(2.7)+):** Option **E** — none of the above. Lenses
 are readers. The storage question is moot because there is nothing
-to store. See `M1_IMPLEMENTATION_PLAN.md` §12.6 for the full
-minimality invariant and the three rules that follow from it.
+to store. The minimality invariant (pure-reader lenses, no
+persistent state, memoization is a transparent local concern if
+ever needed) is now doctrine.
 
 **M1 forcing function (historical context).** The M0 retrospective
 originally expected the cost lens to force the storage decision

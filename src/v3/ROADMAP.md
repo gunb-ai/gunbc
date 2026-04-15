@@ -1,10 +1,11 @@
 # v3 Roadmap
 
 Single source of truth for v3 status, active work, and deferred items.
-Supersedes `src/v3/M1_FOLLOWUPS.md` (now a stub redirect). Historical
-M1(2.5) task list lives in `src/v3/M1_TASKS.md`; design oracle in
-`src/v3/M1_DESIGN.md`; M0 retrospective in `src/v3/M0_RETROSPECTIVE.md`.
-Substrate-consumer gap enumeration in
+Supersedes `src/v3/M1_FOLLOWUPS.md` (now a stub redirect). The shipped
+M1(2.5)–M1(3) substrate design rationale is preserved as a historical
+record in `src/v3/M1_DESIGN.md` (marked historical; authoritative
+docs are the code itself). M0 retrospective in
+`src/v3/M0_RETROSPECTIVE.md`. Substrate-consumer gap enumeration in
 `src/v3/DOWNSTREAM_REQUIREMENTS.md` — read before proposing new
 substrate fields.
 
@@ -74,7 +75,9 @@ Source text → tokenize → parse → lower → Dag (declarations + behaviors)
 Five L1 behaviors: `Value`, `Transform`, `Branch`, `Loop`, `Bind`.
 Six type connectives: `Atom`, `Conj`, `Disj`, `Arrow`, `Cardinality`,
 `Instantiation`. Both sets are terminal at M1(2.5); extension requires
-the C1-class stop signal in `M1_DESIGN.md` §8.10.
+the C1-class stop signal (all four dissolution patterns must be re-run
+before any new variant lands — see `INVARIANTS.md` §"Scaffold boundaries"
+and §"Semantic authority after lowering").
 
 ## M0 — Skeleton (complete)
 
@@ -87,10 +90,10 @@ See `M0_RETROSPECTIVE.md` for the full retrospective. Highlights:
 - Declaration of terminal status: five behaviors, documented. Adding
   a 6th triggers the C1 stop signal.
 
-## M1(2.5) — Substrate rework (in PR #445)
+## M1(2.5) — Substrate rework (shipped in PR #445)
 
-See `M1_TASKS.md` for the implementer checklist and `M1_DESIGN.md` for
-the design oracle. Substrate changes landed:
+Historical design oracle preserved in `M1_DESIGN.md` (marked
+historical). Substrate changes landed:
 - `TypeConnective` six-variant enum
 - `Declaration` struct with canonical `type_params`, separate `meta_tag`
   and `inhabits` edges
@@ -98,7 +101,7 @@ the design oracle. Substrate changes landed:
 - Two-pass lowering with `resolve_pending_identifiers` post-sweep
   (fail-closed for unresolved identifier stubs)
 - `build_template_arguments` for fail-closed template arity check
-- Dissolution ledger receipts in `dag.rs` (mirrors `M1_DESIGN.md` §Q7)
+- Dissolution ledger receipts in `dag.rs`
 - §6.5 realization smoke test (`inject_realization_stub` +
   `smoke_int_add_external_realization`)
 - v3 CI job runs `cargo test -p v3-compiler` + clippy in its own job

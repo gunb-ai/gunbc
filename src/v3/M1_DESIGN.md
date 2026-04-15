@@ -1,5 +1,17 @@
 # M1 Design Note: Substrate Rework
 
+> **⚠️ HISTORICAL.** This is the design oracle for M1(2.5), M1(2.6), and
+> M1(2.7) substrate work that shipped in PR #445. The authoritative
+> substrate documentation now lives in the code itself —
+> `src/v3/compiler/src/dag.rs` for the type layer, `src/v3/compiler/src/
+> infer.rs` / `lower.rs` for the inference and lowering stages. This
+> document is preserved as a historical record of the design rationale
+> (especially §Q7 ArrowBody variants, §8.10 substrate-extension audit,
+> §8.11 Pending-elimination ratchet) because those sections are still
+> cross-referenced by code comments. New design work does NOT go here —
+> see the live design docs under `docs/` and the top-level `THESIS.md` /
+> `INVARIANTS.md` / `ROADMAP.md`.
+
 **Status:** design-first spec for M1(2.5). Answers load-bearing representation
 choices before any code changes. Paired with `THESIS.md` §"The substrate: two
 coordinated shapes" and §"Epistemic stacking."
@@ -730,8 +742,7 @@ pub enum ArrowBody {
     /// requires either extending INVARIANTS.md with a parallel
     /// exception + numeric ratchet, extending the grammar so
     /// match/pipe/lambda parse, or rewriting affected std/
-    /// functions. Tracked in `M1_IMPLEMENTATION_PLAN.md` §3.3
-    /// catalogue row 16.
+    /// functions.
     Unparsed(SourceSpan),
 }
 ```
@@ -795,7 +806,6 @@ variants tracked separately by dissolution trigger:
   ratchet whose dissolution trigger is "M2 grammar extension
   parses match/pipe/lambda," or (b) extend the grammar, or (c)
   rewrite affected std/ functions to fit the current grammar.
-  Tracked in `M1_IMPLEMENTATION_PLAN.md` §3.3 catalogue row 16.
 
 Once both ratchets reach zero, the enum becomes 2 variants
 (terminal form) via a substrate-extension PR (reverse of §8.10's
@@ -1375,9 +1385,8 @@ user source:
    declaration plus one concrete realization entry for the
    smoke test. The realization item lowers to an **ordinary
    `Conj` declaration** with typed fields: `for: DeclarationId`,
-   `target: DeclarationId`, `body: String`, `cost: Int` — see
-   `M1_IMPLEMENTATION_PLAN.md` §11 question 7 for the pinned
-   schema. The declaration's `meta_tag` edge points at the
+   `target: DeclarationId`, `body: String`, `cost: Int`. The
+   declaration's `meta_tag` edge points at the
    `Realization` meta-type declaration, distinguishing realization
    declarations from ordinary records via the typed-edge
    discipline. **No compiler-native `Realization` struct in
