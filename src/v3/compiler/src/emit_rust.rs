@@ -34,7 +34,7 @@
 //   - Record / enum construction
 //
 // Template placeholders the substitution engine recognizes (see
-// dsl/extdeps/languages/rust.dag for the authoritative list):
+// src/v3/spec/rust.dag for the authoritative list):
 //   %N  Bind name               %C  branch condition
 //   %T  Rust type name          %H  then-arm body
 //   %V  bind value expression   %E  else-arm body
@@ -53,7 +53,7 @@ use crate::operators::OperatorKind;
 /// Errors the Rust emitter surfaces when the DAG reaches a shape it
 /// cannot render under the PR-B scope. Each variant names a specific
 /// structural cause — no catch-all `Unknown` — so consumers can
-/// classify the failure against `dsl/extdeps/languages/rust.dag`'s
+/// classify the failure against `src/v3/spec/rust.dag`'s
 /// coverage.
 ///
 /// **Dissolution receipt — 🟢 TERMINAL.** Eleven variants, each

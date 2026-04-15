@@ -741,7 +741,7 @@ At M1(2.5), std/algebra.dag declares `Magma<T>.op`, `Ring<T>.add`,
 etc., as Arrows. Their *signatures* are well-defined (they
 resolve through inhabitance via the substitution stack). Their
 *realizations* — what these operations map onto in Rust / Python
-/ Go — need `dsl/extdeps/languages/rust.dag` and friends to
+/ Go — need `src/v3/spec/rust.dag` and friends to
 declare the target mapping, and those files don't exist yet.
 `Pending` names the state "this Arrow has a valid static
 grounding via inhabitance, but no realization declaration has
@@ -1161,7 +1161,7 @@ ExternalRealization path:
    `dsl/std/algebra.dag`, `dsl/std/types.dag` as normal
    (producing primitive Arrows with `body: Pending`).
 2. **Additionally**, bootstrap parses a one-file stub
-   `dsl/extdeps/languages/rust.dag` that declares exactly ONE
+   `src/v3/spec/rust.dag` that declares exactly ONE
    realization: `Int64.add` maps to the Rust `i64::wrapping_add`
    intrinsic. The stub is a Conj declaration:
 
@@ -1235,7 +1235,7 @@ Focused, small, one PR. No scope creep.
 | `dsl/std/types.dag` | VERIFY Int = OrderedRing<Word64>, Bool = Classical, String = FreeMonoid<Char> all parse as Instantiation declarations. | ~15m |
 | `src/v3/compiler/src/bootstrap.rs` | NEW or UPDATE. Parse logic.dag → bit.dag → algebra.dag → types.dag in order at `Dag::new()` time (§8.6). | ~1h |
 | `src/v3/compiler/tests/m1_substrate_test.rs` | NEW. Three test cases: `parse_std_algebra_and_walk_int_add`, `parse_synthetic_service_all_layers`, and `smoke_int_add_external_realization` (§6.5). | ~2h |
-| `dsl/extdeps/languages/rust.dag` | NEW stub. One-file declaration containing the `realization` meta-type declaration and one concrete `realization Int64_add { for: Int64.add; target: rust; body: "i64::wrapping_add" }` entry. Parsed during bootstrap as part of §8.6's file order. | ~30m |
+| `src/v3/spec/rust.dag` | NEW stub. One-file declaration containing the `realization` meta-type declaration and one concrete `realization Int64_add { for: Int64.add; target: rust; body: "i64::wrapping_add" }` entry. Parsed during bootstrap as part of §8.6's file order. | ~30m |
 
 **Total estimate: 14–16 hours.** Scope expanded from original
 10–12h estimate after the review pass identified additional
@@ -1256,7 +1256,7 @@ tree in an incoherent state between PRs.
    structure matches. Static substrate shape test — see §6 "Scope
    of the synthetic oracle" for what this does and doesn't validate.
 4. **`smoke_int_add_external_realization`** (§6.5) — parse the
-   one-entry `dsl/extdeps/languages/rust.dag` stub, assert that
+   one-entry `src/v3/spec/rust.dag` stub, assert that
    `Int64.add`'s Arrow body resolves to
    `ExternalRealization(_)` (not `Pending`), walk the referenced
    declaration, and confirm inference accepts the Arrow as
@@ -1370,7 +1370,7 @@ user source:
    `types.dag` declares Bool = Classical (Bit), String =
    FreeMonoid<Char>, List<T> = FreeMonoid<T>, and re-exports
    `Int = Int64` as the short alias. Inhabitance declarations.
-5. **`dsl/extdeps/languages/rust.dag`** (§6.5 realization via
+5. **`src/v3/spec/rust.dag`** (§6.5 realization via
    ordinary declarations). Parses the `realization` meta-type
    declaration plus one concrete realization entry for the
    smoke test. The realization item lowers to an **ordinary

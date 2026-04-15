@@ -301,7 +301,7 @@ fn child_declarations_are_anonymous() {
     for meta in ["TypeRealization", "OperatorRealization", "BehaviorRealization"] {
         let id = dag
             .declaration_by_name(meta)
-            .unwrap_or_else(|| panic!("`{meta}` must be declared by dsl/extdeps/languages/rust.dag"))
+            .unwrap_or_else(|| panic!("`{meta}` must be declared by src/v3/spec/rust.dag"))
             .id;
         assert!(
             matches!(
@@ -625,7 +625,7 @@ fn m1_3_prb_data_item_record_body_lowers_structurally() {
     // record literal body whose type annotation resolves to a Conj
     // produces a declaration whose value_body is
     // Some(Structural { fields: [...] }) — not Unparsed. This is
-    // the shape `dsl/extdeps/languages/rust.dag` uses to ground
+    // the shape `src/v3/spec/rust.dag` uses to ground
     // every Realization structurally.
     //
     // Uses `LocalMeta` / `test_local_item` (not `Realization` /

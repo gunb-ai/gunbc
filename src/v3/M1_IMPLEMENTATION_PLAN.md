@@ -375,7 +375,7 @@ invariant, not postponed.
 
 | # | Question | Producer | Status | Notes |
 |---|---|---|---|---|
-| 1 | How does each TypeConnective project to Rust syntax? | `lang_spec` (PR-B) — `dsl/extdeps/languages/rust.dag` | N | Reads language spec declaratively |
+| 1 | How does each TypeConnective project to Rust syntax? | `lang_spec` (PR-B) — `src/v3/spec/rust.dag` | N | Reads language spec declaratively |
 | 2 | For Arrow UserDefined: emit sub-DAG as Rust fn body | `emit` consumes substrate | N | Walks computation substrate |
 | 3 | For Arrow ExternalRealization: emit target-language binding | `lang_spec` (PR-B) | N | Reads realization declaration |
 | 4 | For Arrow Pending: fail-closed | `emit` (invariant) | N | Enforced by §8.11 ratchet; must not reach emission |
@@ -615,7 +615,7 @@ no storage-mechanism decision.
   the one remaining parser gap from M1_FOLLOWUPS.md. The `target`
   field references a target-language Declaration (e.g., `rust_target`
   as a module-level marker in `rust.dag`), not a loose `"rust"` string.
-- `dsl/extdeps/languages/rust.dag` parsed as an 8th bootstrap file.
+- `src/v3/spec/rust.dag` parsed as an 8th bootstrap file.
   Each entry is a `realization` declaration with the typed fields
   above. **`bootstrap::inject_realization_stub` is already deleted
   in M1(2.7); the comment reference in M1_DESIGN.md §8.6 is stale
@@ -641,7 +641,7 @@ no storage-mechanism decision.
   invalid at emission). No hardcoded `"i64::"` / `quote!` strings
   — every target-side fact is read from `rust.dag`. Target identity
   is a typed edge per §11 question 7.
-- `dsl/extdeps/languages/rust.dag` — first real language spec.
+- `src/v3/spec/rust.dag` — first real language spec.
   `realization` declarations for each primitive operator and
   primitive type.
 
@@ -649,7 +649,7 @@ no storage-mechanism decision.
 
 - `parse.rs` — adds `realization` item parsing + record-literal body
 - `bootstrap.rs` — deletes `inject_realization_stub`; parses
-  `dsl/extdeps/languages/rust.dag` as the 8th bootstrap file
+  `src/v3/spec/rust.dag` as the 8th bootstrap file
 - `dag.rs` — **no new struct.** Realization declarations reuse the
   existing `TypeConnective::Conj` shape with field accessors reading
   `for`, `target`, `body`, `cost` off the children list. Per §11

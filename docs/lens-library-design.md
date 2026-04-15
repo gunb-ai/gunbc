@@ -89,6 +89,79 @@ The library replaces:
 Each is a fallback the project has used at various points. The
 lens library is the structural replacement.
 
+## §1.5 Canonical form: lenses as `.dag` programs
+
+The load-bearing form of a lens is a `.dag` program that takes
+a `Dag` as input and returns a list of violations. Lenses written
+as Rust modules are a **bootstrap shortcut**, not the endgame.
+
+**Why `.dag` form is canonical:**
+
+1. **Composability with the rest of the substrate.** A `.dag`
+   lens is a Declaration like any other. It can be walked by
+   other lenses, type-checked by inhabitance, inhabited by test
+   data, grounded through the epistemic chain, and analyzed by
+   every future tool the substrate gains. A Rust lens is a black
+   box to the substrate; nothing in `.dag` can observe it.
+2. **Self-inspection.** A `.dag` lens can be analyzed by another
+   `.dag` lens — including itself. `lens_unused_parameters` could
+   run against its own source and report unused parameters in its
+   own algorithm. A Rust lens can't; you'd need a meta-language
+   to analyze it, which means accumulating another scaffold.
+3. **No `kernel_lens_set`.** Every compiler that ships
+   analyses-as-built-in-modules eventually accumulates a hardcoded
+   list of "known lens names." That list is the same failure
+   class as v2's `kernel_type_set` — a name-roster leak at a
+   different layer. Keeping lenses in the substrate prevents this
+   from forming in the first place.
+4. **Extension stays a data edit.** Adding a new lens in the
+   canonical form is a new `.dag` file loaded by the manifest,
+   not a new Rust module + build-graph edit + CI integration
+   step. This is the thesis's "cost of change = 1 file" applied
+   to invariant enforcement.
+
+**The missing primitive.** Canonical form requires a **reflection
+API**: the substrate's own types (`Behavior`, `NodeId`, `PortId`,
+`Dag`) expressible as `.dag` types, and a mechanism for a `.dag`
+program to receive a compiled `Dag` as its input. v3 does not
+have this yet at M1(3) scope. Until it does, lenses ship as Rust
+modules.
+
+**Current Rust lenses are M1 bootstrap.** `lens_provenance`,
+`lens_depth`, `lens_cost`, `lens_unused_parameters`, and any
+future lens added before the reflection primitive lands are
+bootstrap scaffolds. They provide immediate value (catching real
+violations, validating the per-lens algorithm) and are
+structurally identical in shape to what the canonical `.dag`
+form will be — pure reader, config-driven, returns
+`Vec<Violation>`. When the reflection primitive lands, each
+bootstrap lens migrates to `.dag` as a thin rewrite; the
+algorithm stays the same, the host language changes.
+
+**Gate for new lens additions.** Before adding a new lens as
+Rust, ask: does this thicken the Rust-lens scaffold, or is it a
+thin wrapper that will migrate cleanly once reflection lands?
+Specifically:
+
+- **Thin wrapper.** Algorithm is ~50-100 lines, pure reader,
+  follows the template of existing lenses, no cross-lens
+  interaction, no state outside `Vec<Violation>`. Adding one is
+  cheap and the migration cost is a mechanical port.
+- **Deepening scaffold.** Algorithm grows Rust-specific infra
+  (shared types across lenses, a per-lens trait hierarchy, a
+  registration framework, dependency wiring between lenses).
+  Stop and build the reflection primitive first — otherwise the
+  scaffold ossifies and the canonical form is blocked.
+
+This rule applies to every lens in this document. The initial
+three are thin wrappers by design. Future lenses in §6 should
+be audited against the gate before landing.
+
+**Tracking.** Move this section's pointer to `INVARIANTS.md` when
+the reflection primitive has a concrete design note; the
+canonical-form gate becomes a compiler-architecture ratchet at
+that point, tracked alongside other substrate growth work.
+
 ## §2. The initial library: three lenses
 
 The first three lenses in the library. Each is minimum-viable
@@ -199,9 +272,9 @@ impl StructuralDuplicatesLens {
 - Regression test: after the expected duplicates are fixed,
   re-run the lens and assert the output is empty.
 
-**Effort estimate:** 1-2 days. The lens is ~50-100 lines of Rust
-plus tests. No substrate changes. No new configuration schema
-beyond what the lens's own struct defines.
+**Shape notes:** ~50-100 lines of Rust plus tests. No substrate
+changes. No new configuration schema beyond what the lens's own
+struct defines.
 
 ---
 
@@ -351,9 +424,9 @@ impl LayerOpacityLens {
   lens with `boundary = [Float]` and asserting zero violations
   after the intermediate-layer and internal-rename experiments.
 
-**Effort estimate:** 2-3 days. The lens is ~150-200 lines of Rust
-plus tests. The main work is the reverse-index construction and
-the walker for each `ConsumerKind`. No substrate changes.
+**Shape notes:** ~150-200 lines of Rust plus tests. The main work
+is the reverse-index construction and the walker for each
+`ConsumerKind`. No substrate changes.
 
 **Dependencies:** none — works today on the existing v3 Dag
 shape. The tests that assert specific findings depend on v3
@@ -386,76 +459,98 @@ because:
   collect referenced port IDs, compare against the function's
   parameter ports.
 
-**Signature:**
+**Signature** (as shipped in `src/v3/compiler/src/lens_unused_parameters.rs`):
 
 ```rust
-// src/v3/compiler/src/lens_unused_parameters.rs
-
-pub struct UnusedParametersLens;
+pub struct UnusedParametersLens<'a> {
+    dag: &'a Dag,
+}
 
 pub struct UnusedParametersConfig {
-    /// Function declarations to check. If empty, check all
-    /// functions in the Dag.
+    /// Restrict the scan to specific function declarations. If
+    /// empty, scan every function-shaped Bind in the Dag.
     pub scope: Vec<DeclarationId>,
-    /// Parameter names prefixed with `_` are conventionally
-    /// unused; ignore them when true.
-    pub ignore_underscore_prefix: bool,
 }
 
 pub struct UnusedParameter {
-    pub function: DeclarationId,
+    pub function: NodeId,
     pub parameter: PortId,
-    pub parameter_name: String,
-    pub location: SourceSpan,
+    /// Positional index in the parameter list. v3's substrate
+    /// does not carry per-parameter names past lowering.
+    pub parameter_index: usize,
+    pub function_span: SourceSpan,
 }
 
-impl UnusedParametersLens {
-    pub fn query(
-        dag: &Dag,
-        config: &UnusedParametersConfig,
-    ) -> Vec<UnusedParameter> { ... }
+impl<'a> UnusedParametersLens<'a> {
+    pub fn query(&self, config: &UnusedParametersConfig) -> Vec<UnusedParameter>;
 }
 ```
 
-**Algorithm sketch:**
+**No `ignore_underscore_prefix` field.** An earlier draft of this
+design proposed one. It was deliberately removed before ship: v3's
+substrate doesn't carry per-parameter names past lowering, so the
+field would have no backing implementation and would silently
+no-op — a misleading API surface that violates layer opacity
+itself (consumers would dispatch on a name-based config that
+promises name-based filtering). If a future substrate change
+exposes per-parameter names (e.g., a `BindNode.param_names`
+field), the filter can land then alongside a real implementation.
+**Rule codified by this episode: a lens config field must not be
+added before its backing data exists on the substrate.**
 
-1. For each function in scope (or every function if `scope` is
-   empty), find its parameter ports (from the Arrow declaration's
-   input list).
-2. Walk the function's body sub-DAG (via `ArrowBody::UserDefined
-   (bind_id)`). Collect every `PortId` that appears as an input
-   to any `Transform`, `Branch`, `Loop`, `Bind`, or `Value` node.
-3. The set of read ports is the set of "used" ports.
-4. For each parameter port not in the used set, emit an
-   `UnusedParameter`.
-5. If `ignore_underscore_prefix` is set, skip parameters whose
-   name starts with `_`.
+**Positional identity, not name.** `UnusedParameter.parameter_index:
+usize` is the substrate-honest way to name a parameter. Names are
+part of surface syntax (`SurfaceItem::Fn`) and not preserved past
+lowering. Indexing makes the violation addressable without
+inventing a naming layer the substrate doesn't support.
 
-**Expected initial findings:**
+**Algorithm** (as shipped):
 
-- `content_upsert`'s unused `path` parameter.
-- Probably a few others in `dsl/std/` and `dsl/extdeps/` that
-  nobody has noticed.
-- Probably zero in v3's own compiler source, because Rust's
-  unused-parameter warning would have caught them already.
+1. For each `Behavior::Bind` in the Dag with non-empty `params`
+   (function-shape filter — value bindings have no parameters),
+   walk the body sub-DAG starting at `bind.value` backwards
+   through `produced_by` edges.
+2. Collect every `PortId` that appears as an input to any visited
+   Behavior (Transform inputs, Branch scrutinee + path outputs,
+   Loop source/init, nested Bind value). The root port is added
+   too, which covers trivial-body functions whose body is
+   literally a parameter port (`fn first(a, b) = a`).
+3. Compare each parameter port against the referenced set. Any
+   parameter port absent from the set is unused.
 
-**Test plan:**
+Note that the shipped form walks `Bind.value` directly rather
+than routing through `ArrowBody::UserDefined` — ArrowBody is a
+declaration-level concept; the lens operates at the Bind level
+where the body sub-DAG already lives. When post-PR-B work adds
+`Bind → Declaration` edges, the scope filter (currently a no-op)
+activates and the lens can accept `DeclarationId`s.
 
-- Unit test: construct a function with two parameters, body
-  referencing only one; assert the lens reports the unreferenced
-  one.
-- Unit test: construct a function with a parameter named `_ignored`;
-  assert the lens does NOT report it when
-  `ignore_underscore_prefix` is true.
-- Unit test: construct a function with all parameters used;
-  assert the lens reports nothing.
-- Integration test: apply the lens to `dsl/std/patterns.dag` and
-  assert `content_upsert`'s `path` parameter is in the output.
+**Test plan** (as shipped in
+`src/v3/compiler/tests/m1_3_lens_unused_parameters_test.rs`):
 
-**Effort estimate:** 1 day. The lens is ~50 lines of Rust plus
-tests. The port-reading walk is straightforward because v3's
-substrate already carries `produced_by` and input port lists on
-every node. No substrate changes.
+- Empty result for `fn add(a, b) = a + b` (every param used).
+- Single violation at index 1 for `fn first(a, b) = a`.
+- All-params violation for `fn always_one(x, y, z) = 1` (constant
+  body).
+- Zero violations for `let x = 1 + 2` (value binding skipped).
+- Branch-body coverage: `fn pick(a, b) = if a > 0 then a else b`
+  vs `fn always_a(a, b) = if a > 0 then a else a`.
+- Bootstrap baseline test (zero violations against v3's
+  bootstrap-loaded std/).
+- **Canonical target test.** Lens library spec names
+  `content_upsert` in `dsl/std/patterns.dag:136-139` as the known
+  concrete finding. v3's M1(3) parser cannot yet handle the literal
+  source (anonymous record returns, block bodies, record literals
+  in expression position — all class-5 gap follow-ups), so the test
+  suite pins both: (a) the literal source fails to parse today,
+  and (b) a v3-parseable synthetic equivalent (`fn
+  content_upsert(content: Int, path: Int) -> Int = content + 0`)
+  produces the expected violation at parameter index 1. When the
+  parser grows the missing features, test (a) flips to a positive
+  assertion against the literal source. **Rule codified by this
+  episode: every lens that names a canonical target in its design
+  must have a test that either reaches the literal target or pins
+  the parser gap that blocks it.**
 
 ---
 
@@ -518,9 +613,8 @@ data std_duplicates: LensApplication = {
 data stub_detection: LensApplication = {
   lens: "unused_parameters"
   applies_to: ["dsl/std/**/*.dag", "dsl/extdeps/**/*.dag"]
-  config: {
-    ignore_underscore_prefix: true
-  }
+  // No config fields: lens_unused_parameters ships with a scope
+  // restriction only, no name-based filters (see §2.3).
   severity: "warning"
 }
 ```
@@ -611,27 +705,32 @@ CLI lives).
 
 The recommended order for building the initial library:
 
-1. **`lens_unused_parameters`** — simplest, ~1 day. Good first
-   lens because the algorithm is trivial (set difference between
-   declared params and referenced ports) and the dataflow it
-   exercises is the foundation for more sophisticated lenses
-   later. Catches `content_upsert`'s stub immediately.
-2. **`lens_structural_duplicates`** — second, ~1-2 days. Simple
-   structural hash + collision detection. Expected to catch the
+1. **`lens_unused_parameters`** — simplest (shipped as of PR #445).
+   The algorithm is trivial (set difference between declared
+   params and referenced ports) and the dataflow it exercises is
+   the foundation for more sophisticated lenses later. Catches
+   `content_upsert`'s stub via the synthetic-equivalent test; the
+   literal target is blocked on three class-5 parser gaps (anon
+   record return, block body, record literal in expression position)
+   and pinned by a parse-failure test that flips when the parser
+   grows those features.
+2. **`lens_structural_duplicates`** — next. Simple structural hash
+   + collision detection. Expected to catch the
    `FileClassification`/`FileEntry` duplicate, the `wire_contract`
    duplicates, `default_edition` duplication, and probably others.
    Gives immediate value on existing std/ and extdeps/ code.
-3. **`lens_layer_opacity`** — third, ~2-3 days. The most
-   sophisticated of the three because it needs the `BoundarySpec`
-   reverse index and multiple consumer kinds. But it's the one
-   that validates the thesis's layering claim end-to-end.
-4. **Manifest parser + CLI subcommand** — fourth, ~1-2 days.
-   Ties everything together. Before this lands, each lens is
-   runnable directly via a hand-written test binary; after it
-   lands, the lens library is invocable as a CI gate.
+3. **`lens_layer_opacity`** — third, the most sophisticated of the
+   three because it needs the `BoundarySpec` reverse index and
+   multiple consumer kinds. The one that validates the thesis's
+   layering claim end-to-end.
+4. **Manifest parser + CLI subcommand** — fourth. Ties everything
+   together. Before this lands, each lens is runnable directly via
+   a hand-written test binary; after it lands, the lens library is
+   invocable as a CI gate.
 
-Total estimate: 5-8 days for the initial library plus CI
-integration. After this ships, the project has:
+Ordering is a recommendation, not a requirement — if one lens is
+structurally easier than another given the current substrate, the
+order can change. After this ships, the project has:
 
 - Three working structural-invariant lenses
 - A declarative application manifest
@@ -675,27 +774,34 @@ library should grow as new invariants surface. Candidates:
   but structural.
 
 Each of these follows the same template as the initial three.
-Adding a new one should take 1-3 days of focused work.
+Every future lens should pass the §1.5 canonical-form gate (thin
+wrapper, not a deepening Rust-lens scaffold) before landing.
 
 ## §7. Relationship to the existing lens infrastructure
 
-v3 already has three reader lenses:
+v3 already has four reader lenses:
 
 - `lens_provenance.rs` (M0) — reads `produced_by` edges,
   returns the origin of each port.
 - `lens_depth.rs` (post-M0) — reads the substrate walker,
   returns port depth.
-- `lens_cost.rs` (PR-B) — reads substrate + language spec,
+- `lens_cost.rs` (M1) — reads substrate + language spec,
   returns per-node cost.
+- `lens_unused_parameters.rs` (M1, PR #445) — walks function
+  body sub-DAGs and reports parameter ports the body never
+  references. First library lens to ship; same reader-lens
+  template as the three above.
 
 The new lenses in this document follow the same shape: pure
 function over `Dag` + configuration, returns structured output.
-They're sibling modules to the existing three and can be added
-without touching existing lens code.
+They're sibling modules to the existing ones and can be added
+without touching existing lens code. All of the above are Rust
+bootstrap form (§1.5); canonical `.dag` form awaits the
+reflection primitive.
 
 The substrate already carries enough information for all three
-initial lenses. No substrate changes are required — the lenses
-are additive.
+remaining initial lenses. No substrate changes are required —
+the lenses are additive.
 
 ## §8. What the lens library is NOT
 

@@ -306,7 +306,7 @@ impl SurfaceType {
 ///              list/map/map-body parsing follows in M2+).
 ///
 /// **M1(3) PR-B change:** `SurfaceExpr::Record { fields, span }`
-/// joined the enum to let `dsl/extdeps/languages/rust.dag` exist
+/// joined the enum to let `src/v3/spec/rust.dag` exist
 /// as a structurally-grounded language spec file that the Rust
 /// emitter reads at compile time. The parser accepts record
 /// literals only in `data foo: T = { ... }` body position via

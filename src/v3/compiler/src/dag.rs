@@ -185,7 +185,7 @@ pub enum ValueBody {
 /// typed reference to another declaration."
 ///
 /// **Why both variants exist.** PR-B's initial payload was
-/// `LiteralBits` only, which forced `dsl/extdeps/languages/rust.dag`
+/// `LiteralBits` only, which forced `src/v3/spec/rust.dag`
 /// to encode declaration identities as strings (`target_name:
 /// "Int"`) — and that pushed string-dispatch back into
 /// `emit_rust.rs`, undoing the M1(2.7) cleanup at the inference
