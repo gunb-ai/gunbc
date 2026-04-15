@@ -10,7 +10,7 @@
 // review loop spent fourteen rounds eliminating from the inference
 // layer, just at the emit layer. The unwind reshapes both ends:
 //
-//   - rust.dag carries typed `Declaration` field references via
+//   - rust.dag carries typed `DeclarationRef` field references via
 //     identifier and dotted-path values resolved at lower time.
 //   - emit_rust.rs builds three typed indexes keyed by
 //     `DeclarationId` and tuples thereof. Lookups read declaration

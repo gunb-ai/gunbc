@@ -16,7 +16,7 @@
 //    realization-index key. Zero name strings cross the
 //    substrate/emitter boundary.
 //
-// 2. **`Declaration` sentinel meta-type.** A field type that means
+// 2. **`DeclarationRef` sentinel meta-type.** A field type that means
 //    "any declaration reference." When a record-literal field's
 //    declared type walks to this sentinel, the lowerer accepts an
 //    identifier (or dotted path) as the field value and emits
@@ -27,10 +27,19 @@
 //    `target_name: "Int"` (a string the emitter has to dispatch
 //    on).
 //
+//    Previously named `Declaration`; renamed so the substrate's
+//    central structural record type (declared in
+//    `src/v3/std/substrate.dag` as the reflection surface's
+//    `Declaration` type) can take the natural name. The sentinel
+//    role is "a reference to any declaration," so `DeclarationRef`
+//    is a strictly more accurate name — and frees `Declaration`
+//    for the record type that IS a declaration, rather than a
+//    marker for fields that accept one.
+//
 // **Why these live in src/v3/spec/ rather than dsl/std/.** v2's
 // CI pipeline scans `dsl/` recursively and tries to resolve every
 // identifier in every record-literal field value. v2 has no
-// concept of v3's `Declaration` sentinel meta-type, so a target
+// concept of v3's `DeclarationRef` sentinel meta-type, so a target
 // spec file like rust.dag carrying `target: Int` (a typed
 // declaration reference) reads as an undefined-variable error in
 // v2's scope. Moving v3-only spec files to `src/v3/spec/` keeps
@@ -50,11 +59,11 @@ type Loop {}
 type Bind {}
 type Main {}
 
-// Sentinel meta-type. A field declared `target: Declaration`
+// Sentinel meta-type. A field declared `target: DeclarationRef`
 // accepts an identifier value instead of a literal value at the
 // data-body parse site, and that identifier is resolved to a
 // DeclarationId during lowering. This is the structural
 // alternative to passing declaration names as strings — the
 // substrate carries the typed reference forward, no name-bridge
 // lookup at consumption time.
-type Declaration {}
+type DeclarationRef {}
