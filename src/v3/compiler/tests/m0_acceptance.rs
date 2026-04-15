@@ -5,11 +5,57 @@
 // error-path inputs.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{Behavior, Dag, FunctionRef, LiteralValue, PortState};
+use v3_compiler::dag::{
+    AtomPayload, Behavior, Dag, LiteralBits, PortState, TransformTarget, TypeConnective,
+};
 use v3_compiler::lens_depth::DepthLens;
 use v3_compiler::lens_provenance::{Origin, ProvenanceLens};
-use v3_compiler::types::{Prim, TypeShape};
+use v3_compiler::types::TypeShape;
 use v3_compiler::CompileError;
+
+/// Look up a primitive type's `TypeShape` by name. After M1(2.7),
+/// primitive shapes are cached on `Dag` — these tests still exercise
+/// the `declaration_by_name` path for parity with user-defined types
+/// until M2 moves both under the structural walk.
+fn primitive_shape(dag: &Dag, name: &str) -> TypeShape {
+    TypeShape::new(
+        dag.declaration_by_name(name)
+            .unwrap_or_else(|| panic!("primitive `{name}` missing from bootstrap"))
+            .id,
+    )
+}
+
+/// Assert that a `Transform.target` renders to the expected surface
+/// name. After M1(2.7) the target is a `TransformTarget` coproduct:
+///
+/// - `Callable(DeclarationId)` — user function calls and resolved
+///   named declarations. The target declaration's name (or its
+///   resolved-identifier chain) carries the surface label.
+/// - `Operator(OperatorKind)` — primitive binary operators. The
+///   `OperatorKind::symbol()` renders the source symbol directly
+///   (`"+"`, `">="`, etc.).
+fn assert_target_name(dag: &Dag, target: &TransformTarget, expected: &str) {
+    let actual: Option<String> = match target {
+        TransformTarget::Callable(id) => {
+            let decl = dag.declaration(*id);
+            match &decl.connective {
+                TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name)) => {
+                    Some(name.clone())
+                }
+                TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                    dag.declaration(*next).name.clone()
+                }
+                _ => decl.name.clone(),
+            }
+        }
+        TransformTarget::Operator(op_kind) => Some(op_kind.symbol().to_string()),
+    };
+    assert_eq!(
+        actual.as_deref(),
+        Some(expected),
+        "Transform.target name mismatch"
+    );
+}
 
 /// Test helper: extract the Dag regardless of whether the compile
 /// succeeded or failed with semantic errors. Panics on tokenize/parse
@@ -48,7 +94,7 @@ fn test_let_binding_produces_dag_shape() {
         .node(producer_id)
         .as_transform()
         .expect("producer is a Transform");
-    assert_eq!(add.target, FunctionRef::new("std::int::add"));
+    assert_target_name(&dag, &add.target, "+");
     assert_eq!(add.inputs.len(), 2);
 
     let lhs_producer = dag
@@ -61,12 +107,12 @@ fn test_let_binding_produces_dag_shape() {
         .expect("rhs port has a producer");
     let lhs = dag.node(lhs_producer).as_value().expect("lhs is Value");
     let rhs = dag.node(rhs_producer).as_value().expect("rhs is Value");
-    assert_eq!(lhs.data, LiteralValue::Int(1));
-    assert_eq!(rhs.data, LiteralValue::Int(2));
+    assert_eq!(lhs.data, LiteralBits::Int(1));
+    assert_eq!(rhs.data, LiteralBits::Int(2));
 
     assert_eq!(
         dag.port(add.output).value_type(),
-        Some(&TypeShape::Primitive(Prim::Int)),
+        Some(&primitive_shape(&dag, "Int")),
         "inference propagated Int through the Add output port",
     );
 
@@ -107,24 +153,24 @@ fn test_if_then_else_produces_branch_dag() {
         .node(cmp_id)
         .as_transform()
         .expect("branch input is a Transform");
-    assert_eq!(cmp.target, FunctionRef::new("std::int::gt"));
+    assert_target_name(&dag, &cmp.target, ">");
 
     assert_eq!(
         dag.port(branch.input).value_type(),
-        Some(&TypeShape::Primitive(Prim::Bool)),
+        Some(&primitive_shape(&dag, "Bool")),
         "comparison produces Bool",
     );
 
     assert_eq!(
         dag.port(branch.output).value_type(),
-        Some(&TypeShape::Primitive(Prim::Int)),
+        Some(&primitive_shape(&dag, "Int")),
         "both paths produce Int; unified branch output is Int",
     );
 
     for path in &branch.paths {
         assert_eq!(
             dag.port(path.output).value_type(),
-            Some(&TypeShape::Primitive(Prim::Int)),
+            Some(&primitive_shape(&dag, "Int")),
             "each path's output port is typed Int",
         );
     }
@@ -148,7 +194,7 @@ fn test_recursive_function_produces_loop_dag() {
     let param_port = count_down.params[0];
     assert_eq!(
         dag.port(param_port).value_type(),
-        Some(&TypeShape::Primitive(Prim::Int)),
+        Some(&primitive_shape(&dag, "Int")),
         "parameter n annotated as Int",
     );
 
@@ -187,12 +233,12 @@ fn test_recursive_function_produces_loop_dag() {
         .node(call_id)
         .as_transform()
         .expect("call site is a Transform");
-    assert_eq!(call.target, FunctionRef::new("count_down"));
+    assert_target_name(&dag, &call.target, "count_down");
     assert_eq!(call.inputs.len(), 1);
 
     assert_eq!(
         dag.port(answer.value).value_type(),
-        Some(&TypeShape::Primitive(Prim::Int)),
+        Some(&primitive_shape(&dag, "Int")),
         "answer is typed Int via count_down's declared return type",
     );
 
@@ -221,7 +267,7 @@ fn test_provenance_lens_reads_produced_by() {
         .node(add_id)
         .as_transform()
         .expect("add_id points to a Transform");
-    assert_eq!(add.target, FunctionRef::new("std::int::add"));
+    assert_target_name(&dag, &add.target, "+");
 
     for input in &add.inputs {
         match lens.origin_of(*input) {
@@ -230,7 +276,7 @@ fn test_provenance_lens_reads_produced_by() {
                     .node(node_id)
                     .as_value()
                     .expect("the lens reported a Value source");
-                assert!(matches!(value_node.data, LiteralValue::Int(_)));
+                assert!(matches!(value_node.data, LiteralBits::Int(_)));
             }
             other => panic!("expected Origin::Source from Value, got {other:?}"),
         }
@@ -272,8 +318,8 @@ fn test_type_mismatch_produces_diagnostic_entry() {
         v3_compiler::Diagnostic::TypeMismatch {
             expected, actual, ..
         } => {
-            assert_eq!(*expected, TypeShape::Primitive(Prim::Bool));
-            assert_eq!(*actual, TypeShape::Primitive(Prim::Int));
+            assert_eq!(*expected, primitive_shape(&dag, "Bool"));
+            assert_eq!(*actual, primitive_shape(&dag, "Int"));
         }
         other => panic!("expected TypeMismatch, got {other:?}"),
     }
@@ -355,7 +401,7 @@ fn test_unknown_function_produces_diagnostic() {
 #[test]
 fn test_bool_literal_true() {
     // `let x = true` — the value port producer is a Value node
-    // carrying LiteralValue::Bool(true), and inference resolves the
+    // carrying LiteralBits::Bool(true), and inference resolves the
     // port to Prim::Bool.
     let dag = compile_to_dag("let x = true", "test.v3").expect("compiles");
 
@@ -374,11 +420,11 @@ fn test_bool_literal_true() {
         .node(producer)
         .as_value()
         .expect("producer is a Value node");
-    assert_eq!(value_node.data, LiteralValue::Bool(true));
+    assert_eq!(value_node.data, LiteralBits::Bool(true));
 
     assert_eq!(
         dag.port(bind_x.value).value_type(),
-        Some(&TypeShape::Primitive(Prim::Bool)),
+        Some(&primitive_shape(&dag, "Bool")),
         "bool literal infers to Bool",
     );
     assert!(dag.diagnostics().is_empty());
@@ -403,11 +449,11 @@ fn test_bool_literal_false() {
         .node(producer)
         .as_value()
         .expect("producer is a Value node");
-    assert_eq!(value_node.data, LiteralValue::Bool(false));
+    assert_eq!(value_node.data, LiteralBits::Bool(false));
 
     assert_eq!(
         dag.port(bind_x.value).value_type(),
-        Some(&TypeShape::Primitive(Prim::Bool)),
+        Some(&primitive_shape(&dag, "Bool")),
         "bool literal infers to Bool",
     );
     assert!(dag.diagnostics().is_empty());
@@ -416,7 +462,7 @@ fn test_bool_literal_false() {
 #[test]
 fn test_string_literal() {
     // `let x = "hello"` — the value port producer is a Value node
-    // carrying LiteralValue::String("hello"), and inference resolves
+    // carrying LiteralBits::String("hello"), and inference resolves
     // the port to Prim::String.
     let dag = compile_to_dag("let x = \"hello\"", "test.v3").expect("compiles");
 
@@ -435,11 +481,11 @@ fn test_string_literal() {
         .node(producer)
         .as_value()
         .expect("producer is a Value node");
-    assert_eq!(value_node.data, LiteralValue::String("hello".to_string()));
+    assert_eq!(value_node.data, LiteralBits::String("hello".to_string()));
 
     assert_eq!(
         dag.port(bind_x.value).value_type(),
-        Some(&TypeShape::Primitive(Prim::String)),
+        Some(&primitive_shape(&dag, "String")),
         "string literal infers to String",
     );
     assert!(dag.diagnostics().is_empty());
@@ -478,16 +524,16 @@ fn test_bool_literal_in_conditional() {
         .node(cond_producer)
         .as_value()
         .expect("branch condition is a Value node");
-    assert_eq!(cond_value.data, LiteralValue::Bool(true));
+    assert_eq!(cond_value.data, LiteralBits::Bool(true));
 
     assert_eq!(
         dag.port(branch.input).value_type(),
-        Some(&TypeShape::Primitive(Prim::Bool)),
+        Some(&primitive_shape(&dag, "Bool")),
         "branch condition is typed Bool",
     );
     assert_eq!(
         dag.port(branch.output).value_type(),
-        Some(&TypeShape::Primitive(Prim::Int)),
+        Some(&primitive_shape(&dag, "Int")),
         "unified branch output is Int (both arms are Int)",
     );
     assert!(dag.diagnostics().is_empty());
@@ -639,6 +685,43 @@ fn test_unknown_function_span_points_at_call_site() {
 }
 
 #[test]
+fn test_duplicate_type_declaration_is_rejected() {
+    // Two `type Foo` declarations in the same module surface as a
+    // fail-closed ResolveError via `collect_symbols`. The compile must
+    // return `Err(CompileError::Semantic)` with the duplicate diagnostic
+    // in the Dag's diagnostic table.
+    let src = "\
+type Foo
+type Foo
+";
+    let result = compile_to_dag(src, "dup.v3");
+    let dag = match result {
+        Ok(_) => panic!("duplicate declaration should fail to compile"),
+        Err(CompileError::Semantic(dag)) => dag,
+        Err(other) => panic!("unexpected structural error: {other:?}"),
+    };
+    let diagnostics = dag.diagnostics();
+    let has_duplicate_diag = diagnostics
+        .iter()
+        .any(|(_, diag)| match diag {
+            v3_compiler::diagnostics::Diagnostic::ResolveError { name, .. } => {
+                name.contains("duplicate declaration `Foo`")
+            }
+            _ => false,
+        });
+    assert!(
+        has_duplicate_diag,
+        "expected duplicate-declaration diagnostic, got {diagnostics:?}"
+    );
+    // First-wins consistency: `declaration_by_name("Foo")` returns the
+    // first declaration, not the duplicate.
+    let foo_decl = dag
+        .declaration_by_name("Foo")
+        .expect("Foo first declaration still exists in the table");
+    assert_eq!(foo_decl.name.as_deref(), Some("Foo"));
+}
+
+#[test]
 fn test_provenance_lens_branch_origin() {
     // When a Bind's value port is produced by a Branch, the
     // provenance lens reports Origin::Selected pointing at the
@@ -709,7 +792,7 @@ fn test_composition_nested_let_bindings() {
         .expect("Bind(c) exists");
     assert_eq!(
         dag.port(c_bind.value).value_type(),
-        Some(&TypeShape::Primitive(Prim::Int)),
+        Some(&primitive_shape(&dag, "Int")),
         "c is typed Int through composition"
     );
     assert!(dag.diagnostics().is_empty());
@@ -746,7 +829,7 @@ fn test_composition_nested_if_expressions() {
 
     assert_eq!(
         dag.port(bind_r.value).value_type(),
-        Some(&TypeShape::Primitive(Prim::Int)),
+        Some(&primitive_shape(&dag, "Int")),
         "nested-if unification gives Int"
     );
     assert!(dag.diagnostics().is_empty());
@@ -771,7 +854,7 @@ fn test_composition_if_inside_function_call() {
         .node(call_id)
         .as_transform()
         .expect("producer is a Transform");
-    assert_eq!(call.target, FunctionRef::new("f"));
+    assert_target_name(&dag, &call.target, "f");
     assert_eq!(call.inputs.len(), 1);
 
     // The argument is a Branch output.
@@ -786,7 +869,7 @@ fn test_composition_if_inside_function_call() {
 
     assert_eq!(
         dag.port(bind_y.value).value_type(),
-        Some(&TypeShape::Primitive(Prim::Int)),
+        Some(&primitive_shape(&dag, "Int")),
         "f returns Int regardless of which path the if chose"
     );
     assert!(dag.diagnostics().is_empty());
@@ -812,7 +895,7 @@ fn test_composition_two_functions_later_calls_earlier() {
         .node(g_call_id)
         .as_transform()
         .expect("producer is a Transform");
-    assert_eq!(g_call.target, FunctionRef::new("g"));
+    assert_target_name(&dag, &g_call.target, "g");
 
     // Both f and g should be registered as Bind nodes with
     // non-empty params (function definitions).
@@ -833,7 +916,7 @@ fn test_composition_two_functions_later_calls_earlier() {
 
     assert_eq!(
         dag.port(bind_r.value).value_type(),
-        Some(&TypeShape::Primitive(Prim::Int)),
+        Some(&primitive_shape(&dag, "Int")),
     );
     assert!(dag.diagnostics().is_empty());
 }
@@ -870,7 +953,7 @@ fn test_composition_branch_with_function_calls_in_both_paths() {
     }
     assert_eq!(
         dag.port(bind_r.value).value_type(),
-        Some(&TypeShape::Primitive(Prim::Int)),
+        Some(&primitive_shape(&dag, "Int")),
     );
     assert!(dag.diagnostics().is_empty());
 }
@@ -936,8 +1019,8 @@ fn reviewer_non_bool_branch_condition_is_rejected() {
         v3_compiler::Diagnostic::TypeMismatch {
             expected, actual, ..
         } => {
-            assert_eq!(*expected, TypeShape::Primitive(Prim::Bool));
-            assert_eq!(*actual, TypeShape::Primitive(Prim::Int));
+            assert_eq!(*expected, primitive_shape(&dag, "Bool"));
+            assert_eq!(*actual, primitive_shape(&dag, "Int"));
         }
         other => panic!("expected TypeMismatch Bool/Int, got {other:?}"),
     }
@@ -1064,8 +1147,8 @@ fn test_bool_literal_fails_when_int_expected() {
         v3_compiler::Diagnostic::TypeMismatch {
             expected, actual, ..
         } => {
-            assert_eq!(*expected, TypeShape::Primitive(Prim::Int));
-            assert_eq!(*actual, TypeShape::Primitive(Prim::Bool));
+            assert_eq!(*expected, primitive_shape(&dag, "Int"));
+            assert_eq!(*actual, primitive_shape(&dag, "Bool"));
         }
         other => panic!("expected TypeMismatch Int/Bool, got {other:?}"),
     }
@@ -1095,8 +1178,8 @@ fn test_string_literal_fails_when_int_expected() {
         v3_compiler::Diagnostic::TypeMismatch {
             expected, actual, ..
         } => {
-            assert_eq!(*expected, TypeShape::Primitive(Prim::Int));
-            assert_eq!(*actual, TypeShape::Primitive(Prim::String));
+            assert_eq!(*expected, primitive_shape(&dag, "Int"));
+            assert_eq!(*actual, primitive_shape(&dag, "String"));
         }
         other => panic!("expected TypeMismatch Int/String, got {other:?}"),
     }
@@ -1128,8 +1211,8 @@ fn test_string_branch_condition_is_rejected() {
         v3_compiler::Diagnostic::TypeMismatch {
             expected, actual, ..
         } => {
-            assert_eq!(*expected, TypeShape::Primitive(Prim::Bool));
-            assert_eq!(*actual, TypeShape::Primitive(Prim::String));
+            assert_eq!(*expected, primitive_shape(&dag, "Bool"));
+            assert_eq!(*actual, primitive_shape(&dag, "String"));
         }
         other => panic!("expected TypeMismatch Bool/String, got {other:?}"),
     }

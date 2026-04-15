@@ -1,33 +1,53 @@
 // Types flowing through Ports.
 //
-// Checkpoint C3.
+// **M1(2.6) terminal shape.** `TypeShape` is a thin newtype around
+// `DeclarationId`: every port carries the identity of the declaration
+// it refers to, and consumers walk the declaration table for any
+// further information. There is no second type-identity layer; no
+// `Prim::{Int, Bool, String}` enum, no name-keyed bridge back from
+// declarations to primitive tags.
 //
-// Started at 1 variant for M0.1 (Primitive only). Test 1 only needs
-// Primitive(Int); Record/Sum/List/Function are deferred until a later
-// test forces them.
+// History: M0 shipped `TypeShape::Primitive(Prim)` as a coarse
+// port-level tag because the declaration table did not yet exist.
+// M1(2.5) built the declaration table but did not touch the port
+// representation, leaving `declaration_to_type_shape` as a name-keyed
+// collapse at the port boundary. M1(2.6) eliminates that bridge by
+// making `TypeShape` carry the declaration identity directly — the
+// boundary is now structural on both sides.
 //
-// Highest-probability dissolution target:
-//   { connective: Conn, children: Vec<(Label, TypeShape)> }
-// with Primitive reinterpreted as { connective: Atom, children: [] }.
-// That dissolution becomes valid only when std/ declares
-// Product / Coproduct / Function as first-class structures — M1 work.
+// Dissolution ledger (4-pattern check, post-refactor):
+// - Pattern 1 (fact placement): fails. Port types are load-bearing for
+//   inference; scattering them off Port.state would duplicate dispatch.
+// - Pattern 2 (variant-is-data): fails. TypeShape is one variant (a
+//   newtype over DeclarationId); the underlying declaration carries
+//   the structural shape.
+// - Pattern 3 (algebraic form): the shape IS the declaration. Port
+//   types are a pointer into the type substrate, not a separate
+//   algebra.
+// - Pattern 4 (dimensional): N/A (single-variant).
 //
-// STOP SIGNAL: adding Record, Sum, List, or Function variants. At that
-// moment, pause and ask: is std/ ready to dissolve to
-// { connective, children }, or does the scaffold extend by one?
-// Neither answer is wrong; making the decision is what matters.
-//
-// DO NOT add Rust type-width assumptions (`Prim::Int` is symbolic, not
-// `i64`). Target-agnostic types is guardrail G1.
+// Verdict: terminal at M1(2.6). Adding new port-level constructors
+// (e.g., for linearity annotations, effect rows) would require
+// re-opening the declaration-table-is-authority invariant.
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TypeShape {
-    Primitive(Prim),
+use crate::dag::DeclarationId;
+
+/// A port's type, carried as the identity of the declaration the port
+/// refers to. Structural equality (`==`) is declaration-id equality;
+/// no name comparison, no string bridging.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TypeShape {
+    pub declaration: DeclarationId,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Prim {
-    Int,
-    Bool,
-    String,
+impl TypeShape {
+    pub fn new(declaration: DeclarationId) -> Self {
+        Self { declaration }
+    }
+}
+
+impl From<DeclarationId> for TypeShape {
+    fn from(declaration: DeclarationId) -> Self {
+        Self { declaration }
+    }
 }

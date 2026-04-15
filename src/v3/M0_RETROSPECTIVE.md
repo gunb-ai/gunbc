@@ -439,3 +439,41 @@ explicitly defers to M1: how lenses store results. **(Post-M1(2.7)
 update: this deferred question resolved by dissolution — lenses
 don't store anything. See the postscript at the top of the "Success
 bar" section above.)**
+
+## M1(2.5) addendum — substrate rework (historical snapshot)
+
+> **Historical note.** This section captures the substrate rework
+> at the M1(2.5) handoff. Several concrete details here (the embedded
+> fixture strings, `inject_primitive_operators`, the initial 42-green
+> test count) were explicitly transitional and were removed during
+> M1(2.6). For current v3 status and test counts, read
+> [`src/v3/ROADMAP.md`](./ROADMAP.md) — the retrospective is closed
+> history.
+
+M1(2.5) supersedes the scaffolded primitive substrate from M0.1/M1(1).
+`LiteralValue`, `FunctionRef { name: String }`, `Signature`,
+`primitive_signature`, `register_signature`, and `lookup_function` are
+all deleted. Their replacement is the six-variant `TypeConnective` enum
+(`Atom`, `Conj`, `Disj`, `Arrow`, `Cardinality`, `Instantiation`) carried
+by `Declaration`s in a new `Dag.declarations` table, plus `ArrowBody`
+with `UserDefined(NodeId) | ExternalRealization(DeclarationId) | Pending`
+(M1_DESIGN.md §3, §Q7).
+
+**At the M1(2.5) handoff** (superseded by M1(2.6), see ROADMAP):
+bootstrap (`src/v3/compiler/src/bootstrap.rs`) parsed four minimal
+fixture modules (`logic`, `bit`, `algebra`, `types`) from embedded
+strings at `Dag::new()` time, and injected primitive operator Arrow
+declarations so user-code dispatch (`1 + 2`) worked without a §8.9
+inhabitance walk. Both mechanisms were explicitly scaffolded and both
+were removed in M1(2.6) — bootstrap now consumes the real
+`dsl/std/*.dag` files via `include_str!`, and operator dispatch goes
+through `infer::resolve_operator_arrow`. See ROADMAP §"M1(2.6)" for
+the current shape.
+
+**Handoff test count** (M1(2.5) only, superseded):
+M0 test count grew from 38 to 40; the M1(2.5) PR kept all 40 green
+and added two new substrate tests (`parse_std_algebra_and_walk_int_add`
+and `parse_synthetic_service_all_layers`) for a total of 42 green
+tests. Every subsequent push to PR #445 (the M1(2.5)/M1(2.6) PR)
+added more tests — see ROADMAP §"Status at a glance" for the current
+count.

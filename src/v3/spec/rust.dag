@@ -1,0 +1,232 @@
+// M1(3) PR-B-unwind — Rust target realization with typed
+// declaration references throughout.
+//
+// **What changed from the initial PR-B cut.** The original
+// `Realization` meta-type used `target_name: String` and
+// `op_name: String` — string keys that the emitter dispatched on
+// via `index.lookup("Int", "")` etc. That regenerated the
+// name-bridge dispatch pattern that M1(2.7) had spent fourteen
+// review rounds eliminating from the inference layer, just at the
+// emit layer instead. The unwind reshapes every realization to
+// carry typed `Declaration` references (resolved at lower time
+// from identifier / dotted-path expressions in the data body) so
+// the emitter looks up by `DeclarationId` and zero name strings
+// cross the substrate/emitter boundary.
+//
+// **Three meta-types, one per realization category.** Earlier
+// drafts attempted to fit every realization under a single
+// `Realization` meta-type with overloaded `target` / `op` fields.
+// That conflated three distinct fact shapes:
+//   1. Type realizations: a primitive type → its target-language
+//      type name (Int → "i64").
+//   2. Operator realizations: a (operand_type, algebra_field) pair
+//      → its target-language operator symbol ((Int, OrderedRing.add)
+//      → "+").
+//   3. Behavior template realizations: a v3_l1 marker → a target-
+//      language template string with placeholder slots (Bind →
+//      "let %N: %T = %V;").
+// Each shape needs its own index keyed differently. Splitting the
+// meta-types makes the emitter's three lookup tables type-safe and
+// each meta-type's 4-pattern dissolution receipt independent.
+//
+// **The placeholder template language (`%N/%T/%V/%C/%H/%E/%B/%X/
+// %Q`)** stays as-is: it is a bounded scaffold inside the
+// per-target template carrier strings. Each placeholder is
+// documented in the BehaviorRealization comment block below; the
+// substitution engine lives in `emit_rust.rs::render_template`.
+// The full dissolution would move the template language itself
+// into a structural form (e.g. a sub-DAG of placeholder edges
+// referencing the substrate's named slots) — that's deferred
+// follow-up work tracked in DOWNSTREAM_REQUIREMENTS.
+//
+// **`%Q` placeholder** stands in for a literal `"` (double-quote)
+// inside a carrier string. The v3 tokenizer at M1(3) has no
+// string escape sequences, so `\"` inside a string literal is
+// impossible and `%Q` is the workaround the emitter substitutes
+// at render time. Dissolves when the tokenizer learns escape
+// sequences.
+
+module v3.spec.rust
+
+import v3.spec.v3_l1 { Bind, Branch, Main, Declaration }
+
+// ─────────────────────────────────────────────────────────────────
+// Realization meta-types — three distinct shapes.
+// ─────────────────────────────────────────────────────────────────
+
+// Type realization. Maps a primitive type declaration to its
+// target-language type name. Looked up by the emitter via
+// `(target: Declaration)` to produce `let x: <carrier> = ...`.
+type TypeRealization {
+  target: Declaration
+  carrier: String
+  cost: Int
+}
+
+// Operator realization. Maps a `(operand_type, algebra_field)`
+// pair to its target-language operator symbol. The operand type
+// is the LHS operand's primitive type (Int / Bool / String /
+// etc.); the algebra field is the corresponding field on the
+// operand type's algebra (e.g. OrderedRing.add). The emitter
+// looks up by `(target: Declaration, op: Declaration)` when
+// rendering a `Transform { target: Operator(_), .. }`.
+type OperatorRealization {
+  target: Declaration
+  op: Declaration
+  carrier: String
+  cost: Int
+}
+
+// Behavior template realization. Maps a substrate marker from
+// `dsl/std/v3_l1.dag` to a target-language template string with
+// placeholders for downstream substitution. Looked up by the
+// emitter via `(target: Declaration)` where target is one of the
+// L1 behavior markers (Bind / Branch / Main / etc.).
+//
+// Placeholders the template engine recognizes:
+//   %N  — the Bind's name
+//   %T  — the resolved target-language type name (looked up via
+//         the corresponding TypeRealization)
+//   %V  — the value sub-expression rendered into target syntax
+//   %C  — Branch condition expression
+//   %H  — Branch "then" arm body
+//   %E  — Branch "else" arm body
+//   %B  — the joined sequence of let-statements in main body
+//   %X  — the name of the final let-binding (printed by main)
+//   %Q  — a literal `"` character (workaround for the M1(3)
+//         tokenizer having no escape sequences)
+type BehaviorRealization {
+  target: Declaration
+  carrier: String
+  cost: Int
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Type realizations — primitive type mappings.
+// ─────────────────────────────────────────────────────────────────
+
+data rust_int: TypeRealization = {
+  target: Int
+  carrier: "i64"
+  cost: 1
+}
+
+data rust_bool: TypeRealization = {
+  target: Bool
+  carrier: "bool"
+  cost: 1
+}
+
+data rust_string: TypeRealization = {
+  target: String
+  carrier: "String"
+  cost: 1
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Operator realizations — arithmetic on Int.
+// ─────────────────────────────────────────────────────────────────
+//
+// `op` references the algebra field declaration via dotted path:
+// `OrderedRing.add` resolves at lower time to the child
+// declaration of OrderedRing's Conj whose label is "add". The
+// emitter looks up by the (operand_type_decl, algebra_field_decl)
+// pair built from the Transform's input port type and the
+// OperatorKind's algebra field name resolved against the operand
+// type's algebra chain.
+
+data rust_int_add: OperatorRealization = {
+  target: Int
+  op: OrderedRing.add
+  carrier: "+"
+  cost: 1
+}
+
+data rust_int_sub: OperatorRealization = {
+  target: Int
+  op: OrderedRing.sub
+  carrier: "-"
+  cost: 1
+}
+
+data rust_int_mul: OperatorRealization = {
+  target: Int
+  op: OrderedRing.mul
+  carrier: "*"
+  cost: 1
+}
+
+data rust_int_div: OperatorRealization = {
+  target: Int
+  op: OrderedRing.div
+  carrier: "/"
+  cost: 1
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Operator realizations — comparisons on Int.
+// ─────────────────────────────────────────────────────────────────
+
+data rust_int_eq: OperatorRealization = {
+  target: Int
+  op: OrderedRing.eq
+  carrier: "=="
+  cost: 1
+}
+
+data rust_int_ne: OperatorRealization = {
+  target: Int
+  op: OrderedRing.ne
+  carrier: "!="
+  cost: 1
+}
+
+data rust_int_lt: OperatorRealization = {
+  target: Int
+  op: OrderedRing.lt
+  carrier: "<"
+  cost: 1
+}
+
+data rust_int_le: OperatorRealization = {
+  target: Int
+  op: OrderedRing.le
+  carrier: "<="
+  cost: 1
+}
+
+data rust_int_gt: OperatorRealization = {
+  target: Int
+  op: OrderedRing.gt
+  carrier: ">"
+  cost: 1
+}
+
+data rust_int_ge: OperatorRealization = {
+  target: Int
+  op: OrderedRing.ge
+  carrier: ">="
+  cost: 1
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Behavior template realizations — substrate-shaped emissions.
+// ─────────────────────────────────────────────────────────────────
+
+data rust_let_stmt: BehaviorRealization = {
+  target: Bind
+  carrier: "let %N: %T = %V;"
+  cost: 0
+}
+
+data rust_if_expr: BehaviorRealization = {
+  target: Branch
+  carrier: "if %C { %H } else { %E }"
+  cost: 0
+}
+
+data rust_main_wrap: BehaviorRealization = {
+  target: Main
+  carrier: "fn main() { %B println!(%Q{}%Q, %X); }"
+  cost: 0
+}

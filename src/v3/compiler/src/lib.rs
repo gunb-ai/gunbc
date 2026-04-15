@@ -17,10 +17,15 @@
 
 pub mod dag;
 pub mod diagnostics;
+pub mod emit_rust;
+pub mod lens_cost;
 pub mod lens_depth;
 pub mod lens_provenance;
+pub mod lens_unused_parameters;
+pub mod operators;
 pub mod types;
 
+mod bootstrap;
 mod infer;
 mod lower;
 mod parse;
@@ -28,6 +33,26 @@ mod tokenize;
 
 pub use dag::Dag;
 pub use diagnostics::{Diagnostic, SourceSpan};
+
+/// Test-only hook: tokenize a source string. Used by the
+/// `real_stdlib_parse_smoke` integration test to verify the parser
+/// accepts production `dsl/std/*.dag` files before bootstrap migration.
+#[doc(hidden)]
+pub fn tokenize_for_test(
+    source: &str,
+    file: &str,
+) -> Result<Vec<tokenize::Token>, Diagnostic> {
+    tokenize::tokenize(source, file)
+}
+
+/// Test-only hook: parse a token stream into a surface module.
+#[doc(hidden)]
+pub fn parse_for_test(
+    tokens: &[tokenize::Token],
+    file: &str,
+) -> Result<parse::SurfaceModule, Diagnostic> {
+    parse::parse(tokens, file)
+}
 
 /// Top-level compile failure. Distinguishes three structural
 /// categories of failure by phase of the pipeline where they occurred.
@@ -67,6 +92,15 @@ pub enum CompileError {
     Semantic(Dag),
 }
 
+// `result_large_err`: clippy flags `Result<Dag, CompileError>`
+// because `CompileError::Semantic(Dag)` carries a `Dag` payload
+// (~264 bytes after the M1(3) PR-B-unwind R1 added the realization
+// meta cache). Boxing the Dag would touch every pattern-match
+// against `CompileError::Semantic` in the test suite, and the
+// payload is on the cold failure path where the indirection would
+// matter less than the API churn. Targeted `allow` on the function
+// signature only — the rest of the crate keeps the lint enforced.
+#[allow(clippy::result_large_err)]
 pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
     let tokens = tokenize::tokenize(source, file).map_err(CompileError::Tokenize)?;
     let surface = parse::parse(&tokens, file).map_err(CompileError::Parse)?;
