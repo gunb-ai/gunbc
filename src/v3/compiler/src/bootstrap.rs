@@ -58,7 +58,7 @@ const TYPES_DAG: &str = include_str!("../../../../dsl/std/types.dag");
 // **Why these live in `src/v3/spec/` instead of `dsl/std/`.** v2's
 // CI pipeline scans `dsl/` recursively and tries to resolve every
 // identifier in every record-literal field value. v2 doesn't know
-// about v3's `Declaration` sentinel meta-type, so a rust.dag
+// about v3's `DeclarationRef` sentinel meta-type, so a rust.dag
 // declaration like `target: Int` (a typed reference) reads as an
 // undefined-variable error in v2's scope. Keeping v3-only spec
 // files outside the v2-scanned tree entirely is the cleanest

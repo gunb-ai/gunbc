@@ -195,10 +195,10 @@ pub enum ValueBody {
 /// read a `DeclarationId` directly.
 ///
 /// Lowering recognizes when a record-literal field's declared type
-/// walks to the `Declaration` sentinel marker (declared in
-/// `dsl/std/v3_l1.dag`) and accepts identifier / dotted-path
+/// walks to the `DeclarationRef` sentinel marker (declared in
+/// `src/v3/spec/v3_l1.dag`) and accepts identifier / dotted-path
 /// expressions as field values, resolving them to declaration ids.
-/// For non-`Declaration` field types lowering requires a literal.
+/// For non-`DeclarationRef` field types lowering requires a literal.
 ///
 /// 4-pattern check:
 /// - Pattern 1 (fact placement): fails. Each variant has a
@@ -858,10 +858,10 @@ pub(crate) struct PrimitiveCache {
 }
 
 /// Substrate-marker handles populated at bootstrap end. Each field
-/// resolves a marker declaration from `dsl/std/v3_l1.dag` to its
+/// resolves a marker declaration from `src/v3/spec/v3_l1.dag` to its
 /// `DeclarationId`. The handles are the typed dispatch keys that
 /// `lower_record_to_structural` and `emit_rust` use to recognize
-/// behavior templates and the `Declaration` sentinel meta-type
+/// behavior templates and the `DeclarationRef` sentinel meta-type
 /// without round-tripping through string names.
 ///
 /// **Why this is not a name-bridge regression.** PrimitiveCache's
@@ -923,7 +923,7 @@ pub(crate) struct SubstrateMarkers {
     /// `Main` marker. Targets the per-target program-entry-point
     /// wrapper template.
     pub main: Option<DeclarationId>,
-    /// `Declaration` sentinel meta-type. When a record-literal
+    /// `DeclarationRef` sentinel meta-type. When a record-literal
     /// field's declared type walks to this declaration, the
     /// lowerer accepts identifier / dotted-path expressions as the
     /// field value and emits `FieldValue::Reference(decl_id)`
@@ -1039,8 +1039,8 @@ impl Dag {
         self.substrate_markers.main
     }
 
-    /// Typed accessor for the `Declaration` sentinel meta-type
-    /// declared in `dsl/std/v3_l1.dag`. Used by
+    /// Typed accessor for the `DeclarationRef` sentinel meta-type
+    /// declared in `src/v3/spec/v3_l1.dag`. Used by
     /// `lower_record_to_structural` to recognize record-literal
     /// fields whose declared type means "any declaration reference"
     /// (and therefore accept identifier / dotted-path expressions
@@ -1260,7 +1260,7 @@ impl Dag {
         self.substrate_markers.bind = self.declaration_by_name("Bind").map(|d| d.id);
         self.substrate_markers.main = self.declaration_by_name("Main").map(|d| d.id);
         self.substrate_markers.declaration_ref =
-            self.declaration_by_name("Declaration").map(|d| d.id);
+            self.declaration_by_name("DeclarationRef").map(|d| d.id);
 
         // Realization meta-type resolution. Pulls each realization
         // category meta-type from `src/v3/spec/rust.dag` (and any
