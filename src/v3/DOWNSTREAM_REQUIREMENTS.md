@@ -335,6 +335,96 @@ validation at M1(2.8). Flagged by codex in earlier reviews
 remains open — tracked here as a class-5 gap so the next
 substrate pass doesn't skip it.
 
+## Scaffold boundary audit (M1(2.8) R16)
+
+After R14 closed the `ArrowBody::Unparsed` / `ValueBody::Unparsed`
+user-range leak, the natural follow-up question is whether
+*every* scaffold variant in the substrate has an unreachability
+gate. The new **Scaffold Boundaries** invariant in
+`INVARIANTS.md` formalizes the rule; this audit walks every
+scaffold variant in the v3 substrate and reports its boundary
+status, so the next substrate PR that adds a variant has a
+concrete checklist to extend.
+
+The audit covers every "transient" or "scaffold" variant in
+the substrate — variants that represent "this position has a
+fact the compiler cannot yet validate" or "this position is
+awaiting a later resolution pass." Terminal variants
+(`UserDefined`, `ExternalRealization`, `ResolvedIdentifier`,
+`ResolvedVariant`, `Literal`, `TypeParam`, etc.) are not in
+scope.
+
+| Scaffold | Producers | User-reach? | Boundary | Test |
+|---|---|---|---|---|
+| `ArrowBody::Unparsed(SourceSpan)` | `lower_fn_item_unparsed` | Yes (block-body fn in user source) | R14's `reject_user_unparsed_scaffolds` sweep | `m18_r14_user_block_bodied_fn_is_rejected` |
+| `ValueBody::Unparsed(SourceSpan)` | `lower_data_item` | Yes (data item in user source) | R14's sweep (same function) | `m18_r14_user_data_with_opaque_body_is_rejected` |
+| `AtomPayload::UnresolvedIdentifier(String)` | `alloc_identifier_stub` | Yes (unknown type / callable name in user source) | `resolve_pending_identifiers_strict` fails-closed for user-range stubs that cannot resolve | `reviewer_unknown_type_name_is_rejected` |
+| `BranchPattern::UnresolvedVariant { name, span }` | `lower_expr::Match`, `lower_expr::If` | Yes (match arm / if-then-else) | `resolve_branch_patterns` inside the infer fixpoint; unknown variant fails closed, coverage check fails closed | `m18_match_with_unknown_variant_is_rejected`, `m18_r11_non_exhaustive_match_is_rejected`, `m18_r11_duplicate_match_arm_is_rejected` |
+| `ArrowBody::Pending` | `type_to_declaration_id` (Arrow arm), `resolve_operator_arrow` fallback, algebra field signatures | No (latent at M1(2.8)) | Implicit via grammar — first-class function values are not callable at M1(2.8), so Pending arrows produced by user type annotations are never reached by `decide_transform`; Pending arrows produced by the operator fallback bridge return through `decide_transform`'s Pending arm which legitimately accepts "no body needed"; algebra field arrows are only walked structurally, never dispatched | N/A (no user-reachable scenario) |
+
+### Findings
+
+1. **`ArrowBody::Pending` dissolution ledger was inaccurate.**
+   The earlier ledger described Pending as "bootstrap realization
+   lag" that would dissolve via a §8.11 monotonic-decrease ratchet
+   when every Pending arrow binds to `ExternalRealization`. But
+   production bootstrap has zero realization-lag arrows and
+   hundreds of Pending arrows in three legitimate "no concrete
+   body required" roles (bootstrap algebra field signatures,
+   user Arrow type annotations, operator fallback bridge). Fixed
+   in this pass: ledger in `dag.rs` now honestly describes all
+   three roles. No code change — the semantics are unchanged,
+   only the receipt.
+
+2. **`ArrowBody::Pending` has no explicit user-range rejection
+   sweep**, but the boundary is implicit: the three production
+   roles are either structurally not reachable via user dispatch
+   (user type annotations — no first-class fn calls at M1(2.8))
+   or legitimately scaffold by design (algebra field signatures,
+   operator fallback). If M2 adds first-class fn call syntax,
+   this becomes a reachability concern and the variant must
+   either split (to distinguish "type annotation pending" from
+   the other two uses) or grow a user-range rejection gate.
+
+3. **`BranchPattern::UnresolvedVariant` has a latent edge case.**
+   `resolve_branch_patterns` skips Branches whose input port is
+   not Resolved. If an input port never resolves (cascaded
+   upstream failure), the Branch's paths remain in
+   `UnresolvedVariant` state. The Branch's output port cascades
+   to Unresolved via `decide_transform`'s Branch arm, so
+   downstream consumers don't read the stale pattern. But a
+   future emitter reading `Path.pattern` directly for a Branch
+   whose output is Unresolved would see stale data. **Mitigation:**
+   emit consumers must gate on the Branch's output port state
+   (`PortState::Resolved`), not on `Path.pattern` directly.
+   Documented here so the emit-stage PR has a pre-flight check.
+
+4. **Four of five scaffold variants now have explicit
+   user-range rejection gates.** Only `ArrowBody::Pending` is
+   bounded implicitly, and its implicit boundary is legitimate
+   at M1(2.8). The Scaffold Boundaries invariant in
+   `INVARIANTS.md` makes this ratchet permanent: any future
+   substrate variant must land with its gate and test in the
+   same PR.
+
+### What this audit does NOT cover
+
+- **Terminal variants.** `ArrowBody::{UserDefined,
+  ExternalRealization}`, `AtomPayload::{Literal, TypeParam,
+  ResolvedIdentifier}`, `BranchPattern::ResolvedVariant` — all
+  require no boundary because they represent the fully-resolved
+  state. The 4-pattern dissolution check on these is in the
+  respective declaration ledgers.
+- **Non-v3-substrate scaffolds.** Parse-surface scaffolds like
+  `FnExternalBody`, `SurfacePattern::BareVariant`, etc. are
+  pre-substrate and don't need boundary gates — they lower into
+  substrate forms that do.
+- **Data-body scaffolds beyond `ValueBody::Unparsed`.** When
+  M2 adds `ValueBody::Structural(NodeId)`, that variant will
+  be terminal and needs no boundary — but the transition away
+  from `Unparsed` itself will be covered by the ratchet step
+  in `INVARIANTS.md`.
+
 ---
 
 Motivation: every review round on PR #445 has found the same bug

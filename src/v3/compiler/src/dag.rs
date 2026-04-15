@@ -343,23 +343,68 @@ pub struct TemplateArgument {
 /// - Pattern 4 (dimensional): fails. No shared coordinate space.
 ///
 /// Scaffold variants with their dissolution triggers:
-/// - **`Pending`** — bootstrap realization lag. Dissolves via the
-///   §8.11 Pending-elimination monotonic-decrease ratchet; by M3
-///   completion, every Pending arrow must bind to a real
-///   ExternalRealization declaration, and the variant is removed.
+///
+/// - **`Pending`** — "no concrete body required." Used in three
+///   production positions, all of which are legitimately
+///   body-less and not "awaiting realization":
+///
+///   1. **Bootstrap algebra field signatures.** Every
+///      `std/algebra.dag` record field that declares an arrow
+///      shape (`add: fn(T, T) -> T`, `compare: fn(T, T) -> Ordering`,
+///      etc.) lowers via `type_to_declaration_id`'s Arrow arm,
+///      which emits `body: Pending`. The algebra declaration
+///      owns the signature; the realization lives in extdeps
+///      (M2+) and is never attached back to the algebra field.
+///
+///   2. **User Arrow type annotations.** A user-code declaration
+///      like `let f: fn(Int) -> Int = g` produces an anonymous
+///      Arrow declaration with `body: Pending` for the type
+///      annotation. This declaration is a type-level fact, not a
+///      dispatch target — the surface grammar at M1(2.8) does
+///      NOT allow calling a first-class function value, so this
+///      Pending arrow is never reached by `decide_transform`.
+///      Latent if M2 adds first-class fn call syntax, at which
+///      point it either becomes reachable and needs a
+///      rejection gate (M1(2.8) Scaffold Boundaries invariant)
+///      or gets split from Pending into its own variant.
+///
+///   3. **Operator fallback bridge.** `infer::resolve_operator_arrow`
+///      falls back to a synthetic `(T, T) -> T` /
+///      `(T, T) -> Bool` signature with `body: Pending` when
+///      the structural algebra walk can't find an algebra
+///      Conj (Bool, collection-level algebras). Class-5 gaps
+///      #1 and #2 in DOWNSTREAM_REQUIREMENTS.md. Dissolves when
+///      those gaps close.
+///
+///   **Round-16 honesty update.** Earlier ledgers described
+///   Pending as "bootstrap realization lag" dissolving via a
+///   §8.11 monotonic-decrease ratchet "when every realization
+///   arrow binds to ExternalRealization." That framing was
+///   inaccurate: production bootstrap has zero realization-lag
+///   arrows and hundreds of Pending arrows in roles (1) and
+///   (3). The correct characterization is "no concrete body
+///   needed at this substrate position." The variant stays
+///   until the three roles above dissolve into their own
+///   structural homes.
+///
 /// - **`Unparsed`** — surface-grammar lag. Used at M1(2.7) for
 ///   block-bodied `fn foo(x) -> T { body }` declarations in std/
 ///   files where the body contains match/pipe/lambda/etc. —
-///   syntactic forms the M1(2.6) parser can't lower. The signature
+///   syntactic forms the parser can't yet lower. The signature
 ///   flows forward through the declaration table so callers can
 ///   type-check against it; the body source span is preserved so
 ///   M2+ parser extensions can reach in and complete the lowering.
-///   Dissolution trigger: the M2 surface-grammar extension. When
-///   every std/ block body becomes parseable, `Unparsed` is
-///   removed via a reverse substrate-extension PR.
+///   **User-range boundary:** `reject_user_unparsed_scaffolds` in
+///   `src/v3/compiler/src/lower.rs` fails-closed any user-range
+///   declaration carrying this variant (R14 + M1(2.8) Scaffold
+///   Boundaries invariant). Bootstrap-range declarations stay
+///   tolerated. Dissolution trigger: the M2 surface-grammar
+///   extension. When every std/ block body becomes parseable,
+///   `Unparsed` is removed via a reverse substrate-extension PR.
 ///
-/// Verdict: terminal form is 2 variants. The M1(2.7) 4-variant
-/// shape is a transition state; both scaffolds have named triggers.
+/// Verdict: terminal form is 2 variants. The 4-variant shape is
+/// a transition state; both scaffolds have named triggers and
+/// (for `Unparsed`) an explicit user-range boundary gate.
 #[derive(Debug, Clone)]
 pub enum ArrowBody {
     /// User-defined function. NodeId is the root of a sub-DAG of L1 behavior
