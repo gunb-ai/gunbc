@@ -1525,9 +1525,10 @@ are not in `dsl/std/` and cannot be renamed from user code. String
 or enum-pattern matches on these are NOT layer violations because
 the names are compiler-internal, not below-boundary. Test: if the
 name appears in a `.dag` source file anywhere in `dsl/`, it's
-below-boundary and the grep gate applies; if it appears only in
+below-boundary and the `lens_layer_opacity` lens applies (with
+`boundary = dsl/std/**` or equivalent); if it appears only in
 `src/v3/compiler/src/*.rs` as an enum discriminant, it's
-compiler-internal and exempt. (This exception will itself dissolve
+compiler-internal and exempt from the lens. (This exception will itself dissolve
 when `project_node_to_std` moves Node and L1 behaviors into std/
 as structural declarations — at that point the behavior names
 become below-boundary and the lens applies to them too.)

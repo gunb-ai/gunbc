@@ -260,9 +260,19 @@ diff the generated Rust against the baseline.
    names). Add `FloatingPoint` to `dsl/std/types.dag`'s
    `kernel_type_set`. Add an explicit `import std.float
    { FloatingPoint }` to weather.dag. Recompile to `/tmp/after3`.
-5. **Diff each experiment against the baseline.**
-   `diff -r /tmp/before /tmp/after{1,2,3}`. Each experiment is a
-   pass if and only if the diff is empty.
+5. **Diff each experiment against the baseline.** Run each
+   comparison as its own `diff -r` invocation (brace-expansion
+   expands to four operands, which `diff` rejects with "extra
+   operand"):
+   ```
+   diff -r /tmp/before /tmp/after1
+   diff -r /tmp/before /tmp/after2
+   diff -r /tmp/before /tmp/after3
+   ```
+   Or equivalently with a shell loop: `for i in 1 2 3; do diff
+   -r /tmp/before /tmp/after$i; done`. Each experiment is a pass
+   if and only if the diff for that experiment is empty (`diff`
+   exits with status 0 and produces no output).
 
 **Pass criteria:**
 - 6a (insert layer): byte-identical generated Rust. If layering
