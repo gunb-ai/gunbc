@@ -1374,35 +1374,123 @@ specific shapes this takes:
   and compare the variant's parent Disj against the scrutinee type
   structurally. Variant identity is a DeclarationId, not a string.
 
-**Structural prevention (grep gate, implementable today):**
+**Structural enforcement: the layer-opacity lens.**
+
+Layer opacity is a structural query over a DAG and the natural
+enforcement mechanism is a reader lens, not a grep gate. The
+lens takes a `BoundarySpec` describing which declarations count
+as below-boundary for the analysis, walks the DAG, and returns a
+list of violations — every consumer site where a below-boundary
+identifier is read by name instead of by typed reference. Lenses
+are the thesis's intended extensibility point for invariant
+enforcement (see `THESIS.md` §"Compositional layering" and the
+lens library sketched in `docs/lens-library-design.md`).
+
+```rust
+// src/v3/compiler/src/lens_layer_opacity.rs
+pub struct LayerOpacityLens;
+
+pub struct BoundarySpec {
+    /// Which declarations count as below-boundary for this analysis.
+    /// Compiler-level application: all declarations from dsl/std/.
+    /// User-level application: all declarations inside a named layer.
+    pub below_boundary: Vec<DeclarationId>,
+}
+
+pub struct Violation {
+    pub location: SourceSpan,
+    pub identifier: String,
+    pub origin: DeclarationId,
+    pub consumer_kind: ConsumerKind,
+}
+
+pub enum ConsumerKind {
+    TransformDispatch,
+    VariantStringMatch,
+    StringLiteral,
+}
+
+impl LayerOpacityLens {
+    pub fn query(dag: &Dag, boundary: &BoundarySpec) -> Vec<Violation> {
+        // Pure reader. Walk every Transform, Branch pattern, and
+        // Value literal. For each, flag cases that observe a
+        // below-boundary identifier by name.
+    }
+}
+```
+
+**Opt-in application.** The lens is opt-in via a `lens_config.dag`
+file (or equivalent) that declares which lenses apply to which
+source trees and what boundary each application uses:
 
 ```
-rg '"(Int|Bool|String|True|False|Float|Unit|Bytes|Json|Secret|\
-OrderedRing|FreeMonoid|ApproximateField|BooleanAlgebra|\
-Semigroup|Monoid|Group|Ring|Field|Lattice|Classical|\
-add|sub|mul|div|negate|eq|ne|lt|le|gt|ge|compare|\
-concat|empty|length|map|filter|fold|\
-List|Set|Map)"' \
-  src/v2/ src/v3/compiler/src/ \
-  --glob '!*diagnostic*' --glob '!*display*' --glob '!*test*' \
-  --glob '!stage0/*'
+module lens_config
+
+data compiler_layer_opacity_spec: LensApplication = {
+  lens: "layer_opacity"
+  applies_to: ["src/v3/compiler/src/**/*.rs",
+               "src/v3/compiler/src/**/*.dag"]
+  boundary: "all declarations in dsl/std/**"
+  severity: "error"
+}
+
+// A user opting into the same discipline for their own domain:
+data my_domain_opacity_spec: LensApplication = {
+  lens: "layer_opacity"
+  applies_to: ["dsl/examples/my_app/app_code/**"]
+  boundary: "all declarations in dsl/examples/my_app/rest/**"
+  severity: "error"
+}
 ```
 
-Any hit outside diagnostic/display/test code is a layer violation
-candidate. Not every hit is automatically a bug (some may be
-comments describing historical behavior), but every hit requires
-a review-time justification naming either a scheduled dissolution
-(with invariant receipt) or a false positive (with a one-line
-comment explaining why). Zero unjustified hits is the long-term
-target.
+CI runs every configured lens application on every PR that touches
+its declared scope. A violation with `severity: error` blocks the
+PR. The lens is a CI gate because it's a structural query, not
+because it's a text search.
 
-The grep gate should run in CI on every PR touching `src/v2/` or
-`src/v3/compiler/src/`. For PRs that add new dsl/std/ identifiers
-(new primitive types, new algebra fields, new variant names), the
-grep pattern itself needs updating — the CI gate therefore needs
-a small manifest file that tracks the set of below-boundary
-identifiers to audit against. The manifest lives in `dsl/std/`
-and is maintained alongside the std/ files themselves.
+**Why the lens is strictly better than the grep gate we originally
+proposed:**
+
+- **Structural, not lexical.** The lens reads the substrate
+  (Transform targets, pattern nodes, value literals), not source
+  text. False positives from comments, documentation, or
+  diagnostic strings don't exist.
+- **Opt-in per application.** Multiple applications can coexist
+  (compiler source, individual user projects, library boundaries)
+  with different `BoundarySpec`s. A grep pattern would need
+  project-specific pattern lists maintained by hand.
+- **Structured output.** Each violation carries a location,
+  identifier, origin, and consumer kind. Reviewers can triage by
+  severity, consumer type, or origin layer. Grep output is a
+  flat list.
+- **Thesis-native.** The lens uses existing v3 infrastructure
+  (reader lens over Dag, same shape as `lens_provenance`,
+  `lens_depth`, `lens_cost`). No new machinery.
+- **Generalizes to other invariants.** The lens framework
+  extends to every testable invariant over a DAG — scaffold
+  boundaries, fail-closed discipline, structural duplication,
+  epistemic grounding termination, and more. See
+  `docs/lens-library-design.md` for the full lens library plan.
+
+**The rename test as regression safety net.** Even with the lens
+in place, the rename test remains a valuable regression check:
+pick a below-boundary identifier, rename it, recompile, diff the
+output byte-by-byte. If the lens ever misses a violation, the
+rename test catches it at the behavioral level. The two
+mechanisms compose — the lens catches violations at introduction
+time, the rename test catches any that sneak past the lens.
+
+**The long-term structural target: Rust type-level enforcement.**
+Even the lens is a reader over a substrate that currently allows
+the violation to exist. The endgame is to make the violation
+structurally impossible via Rust types: a `DisplayName` type
+without `Eq`/`Ord`/`Hash` so dispatching on a below-boundary name
+fails to compile at the Rust level. That's a bigger refactor
+(touches every `decl.name` read) and is tracked as compiler-
+architecture work rather than a per-file lens application. The
+enforcement progression is: grep → test → lens → Rust types, each
+step strengthening the invariant from "detected after the fact"
+toward "impossible to write."
 
 **Exception 1: diagnostic display paths.** The compiler's
 diagnostic layer legitimately mentions user-facing names when
@@ -1423,9 +1511,12 @@ allowed only if (a) they have an active `INVARIANTS.md`
 dissolution trigger, (b) the trigger is documented inline in the
 scaffold, and (c) the scaffold count is tracked and monotonically
 decreasing across milestones. Tracked scaffolds do not exempt the
-grep gate — they appear as hits and require an inline comment
-linking to the dissolution receipt. The gate is grep + receipt
-cross-check, not grep alone.
+lens — they appear as violations in the lens output and require
+an inline `// lens:layer_opacity_exception` comment linking to
+the dissolution receipt. The lens cross-references its violations
+against the receipt file; violations without receipts are errors,
+violations with receipts are warnings that surface the scaffold
+count for the monotonic-decrease ratchet.
 
 **Exception 3: substrate-internal enum variants that are not
 user-renameable.** Rust enum variants on compiler-internal types
@@ -1439,7 +1530,7 @@ below-boundary and the grep gate applies; if it appears only in
 compiler-internal and exempt. (This exception will itself dissolve
 when `project_node_to_std` moves Node and L1 behaviors into std/
 as structural declarations — at that point the behavior names
-become below-boundary and the grep gate applies to them too.)
+become below-boundary and the lens applies to them too.)
 
 **Relationship to other invariants:**
 
@@ -1463,14 +1554,20 @@ become below-boundary and the grep gate applies to them too.)
   emitter is the most common offender but not the only one.
 
 **Operational commitment.** Every consumer of the substrate that
-crosses a layer boundary must pass the rename test for every
-identifier below that boundary. New consumers are audited at
-introduction time; existing consumers are audited whenever their
-upstream layer gains new identifiers (i.e., whenever `dsl/std/`
-grows). The audit is cheap — rename, recompile, diff — and it is
-the single most cost-effective invariant check in the project,
-because it catches the failure class that historically accounted
-for the largest share of review-round findings across v2 and v3.
+crosses a layer boundary must pass the layer-opacity lens for
+every identifier below that boundary, AND must pass the rename
+test as a regression check. The lens is applied to `src/v3/
+compiler/src/` by default; user projects opt in via their own
+`lens_config.dag`. New consumers are audited at introduction
+time (the lens runs as a CI gate); existing consumers are
+audited whenever their upstream layer gains new identifiers
+(i.e., whenever `dsl/std/` grows — the lens's `BoundarySpec`
+auto-updates by walking the canonical std/ declaration set). The
+lens is the primary enforcement; the rename test is a regression
+smoke test; the long-term goal (`DisplayName` type refactor) is
+the structural target that makes violations impossible to
+construct. Together they form the enforcement progression from
+detection toward prevention.
 
 ### Boundary sufficiency
 

@@ -809,7 +809,7 @@ Different layer, same leak. The root cause in every case is that
 the primitive's identity was carried as a string, and the compiler
 made a behavioral decision by string comparison. Layer opacity is
 the invariant that would have caught every one of those cases at
-introduction time if it had been enforced as a grep gate from M0.
+introduction time if it had been enforced structurally from M0.
 
 **Relationship to other thesis sections.**
 
@@ -843,15 +843,56 @@ introduction time if it had been enforced as a grep gate from M0.
   a language spec referenced by typed edges, adding a new target
   is a single spec-file edit.
 
-**Operational commitment.** Every consumer of the substrate — lens,
-emitter, interpreter, future analysis tools — must pass the rename
-test for every identifier below its consumed boundary. The test is
-cheap (rename, recompile, diff), general (applies to any consumer),
-and catches the leak class that has historically accounted for the
-largest share of review-round findings. The enforcement invariant
-is named in `INVARIANTS.md` §"Layer opacity" and its CI-gate form
-is a grep audit against hardcoded user-facing identifiers in
-compiler source code outside of diagnostic display.
+**Enforcement: lenses, not grep.** Layer opacity is a structural
+query over a DAG — "walk every consumer site, flag any that reads
+a below-boundary identifier by name" — and that makes it the
+paradigmatic case for a **lens**. A lens is a pure reader over
+the substrate that answers a structural question, and lenses are
+the thesis's intended extensibility point for invariant
+enforcement. The layer-opacity lens takes a `BoundarySpec` (which
+declarations count as below-boundary for this application) and
+returns a list of violations. Applied to compiler source with
+boundary `= dsl/std/**`, it returns every place in the compiler
+where a user-facing std/ identifier is read by name. Applied to
+a user project with boundary `= project's internal layer`, it
+returns violations in the user's own composition. **Same
+mechanism, parameterized application.**
+
+Lenses are the structural answer to invariant enforcement, and
+layer opacity is the first invariant the project should use them
+for. Grep gates were the earlier proposal in this document; they
+are superseded by `INVARIANTS.md` §"Layer opacity" pointing at a
+lens with opt-in application. The rename test remains as a
+regression safety net, but the primary enforcement is the lens
+output.
+
+**Lenses as the general enforcement mechanism.** The layer-opacity
+case generalizes. Most testable invariants over a DAG can be
+stated as "walk the DAG, flag sites that violate property X" —
+which is the shape of a lens. Compositional layering, scaffold
+boundaries, fail-closed discipline, structural duplication,
+epistemic grounding termination, dataflow reachability — all are
+lens-shaped. The thesis's early framing of lenses as "cost,
+ownership, complexity" undersold them. Lenses are **the
+invariant-enforcement primitive**: adding a new invariant becomes
+adding a new lens, applied to whichever files or folders should
+be subject to it, with no substrate changes required. The review
+cycle's historical cost came from re-implementing per-round
+invariant checks by hand; the lens library is the structural
+answer that replaces the hand-work with a standing query.
+
+**Operational commitment.** Every consumer of the substrate —
+lens, emitter, interpreter, future analysis tools — must pass
+the layer-opacity lens for every identifier below its consumed
+boundary. The lens is cheap to run (walk the DAG, return a list
+of violations), general (same lens handles compiler source, user
+projects, or any DAG), and catches the leak class that has
+historically accounted for the largest share of review-round
+findings. The rename test is the regression smoke test; the
+layer-opacity lens is the primary enforcement; substrate-level
+structural constraints (e.g., a `DisplayName` type without `Eq`)
+are the long-term target that makes the lens's findings impossible
+to construct in the first place.
 
 Layer opacity is the property the substrate exists to provide.
 Without it, the substrate is structurally interesting but
