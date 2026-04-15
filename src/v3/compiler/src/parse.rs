@@ -385,8 +385,8 @@ pub enum SurfaceExpr {
     ///   segment.
     /// - `lower_record_to_structural` accepts Path as a typed
     ///   declaration reference when a record-literal field's
-    ///   declared type is the `Declaration` sentinel from
-    ///   `dsl/std/v3_l1.dag`.
+    ///   declared type is the `DeclarationRef` sentinel from
+    ///   `src/v3/spec/v3_l1.dag`.
     ///
     /// Other expression-position uses fail closed.
     Path {

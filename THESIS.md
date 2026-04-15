@@ -212,9 +212,31 @@ is hiding:
 3. **Algebraic form** — variants trace to introduction or
    elimination forms of algebraic structures already declared in
    `std/`. The algebra declarations generate the dispatch.
-   *Example:* `Construct` = Product introduction.
-   `FieldAccess` = Product elimination. `ListBuild` = FreeMonoid
-   introduction. All from `std/algebra.dag`.
+   *Example:* `ListBuild` = FreeMonoid introduction via
+   `concat`/`empty` from `std/algebra.dag`; iteration forms
+   (`map`/`filter`/`fold`) = FreeMonoid catamorphism from
+   `std/algebra.dag`; arithmetic `+`/`−`/`×` = operations gained
+   by types inhabiting `Ring` / `OrderedRing` in
+   `std/algebra.dag`.
+
+   **What does NOT belong here.** Structural projection on
+   `Conj` (field access: `p.first`) and case discrimination on
+   `Disj` (match arms) are *substrate primitives*, not algebra
+   inhabitance operations. They are intrinsic to the shape via
+   the universal mapping property — a `Pair` doesn't "inhabit"
+   a ProductAlgebra to gain projection, because being a `Conj`
+   IS the product structure; there is no room to inhabit
+   anything. Similarly, each `Disj` has its own eliminator
+   shape (variable variant count, variable payload types), so
+   there is no shared "DisjAlgebra" users inhabit. Projection
+   and case are compiler substrate primitives expressed through
+   `Behavior::Transform`'s target and `Behavior::Branch`'s
+   Path/arm machinery respectively — see
+   `docs/substrate-reflection-design.md` §3.6 and §3.7 for the
+   option walks and committed substrate forms. **Intuitive
+   categorical framing can drift from what the codebase actually
+   declares;** verify against current `dsl/std/algebra.dag`
+   before recommending an "algebraic form" decompression.
 
 4. **Dimensional** — a flat N-variant coproduct hides an
    M-dimensional record. Replace the flat enum with a record

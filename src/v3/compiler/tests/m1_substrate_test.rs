@@ -295,7 +295,7 @@ fn child_declarations_are_anonymous() {
     //
     // The unwind also added marker types from `dsl/std/v3_l1.dag`
     // (Bind, Branch, Loop, Transform, Value, Main) plus the
-    // `Declaration` sentinel meta-type that lets target spec files
+    // `DeclarationRef` sentinel meta-type that lets target spec files
     // carry typed declaration references in record-literal field
     // values. Each is a Conj (empty body) by construction.
     for meta in ["TypeRealization", "OperatorRealization", "BehaviorRealization"] {
@@ -318,7 +318,7 @@ fn child_declarations_are_anonymous() {
         "Transform",
         "Value",
         "Main",
-        "Declaration",
+        "DeclarationRef",
     ] {
         let id = dag
             .declaration_by_name(marker)
@@ -663,7 +663,7 @@ data test_local_item: LocalMeta = { target_name: \"Int\", cost: 1 }
     // Fields are emitted in the type's declared order. PR-B
     // unwind: each field value is a `FieldValue::Literal` (since
     // `LocalMeta`'s declared field types are `String` / `Int` —
-    // not the `Declaration` sentinel), so we match against the
+    // not the `DeclarationRef` sentinel), so we match against the
     // wrapped LiteralBits.
     assert_eq!(fields.len(), 2);
     assert_eq!(fields[0].0, "target_name");
@@ -719,7 +719,7 @@ data test_local_bad: LocalMeta2 = { cost: \"not a number\" }
 
 #[test]
 fn m1_3_prb_unwind_r1_behavior_realization_with_primitive_target_is_rejected() {
-    // PR-B-unwind R1 narrowing check: the `Declaration` sentinel
+    // PR-B-unwind R1 narrowing check: the `DeclarationRef` sentinel
     // is too permissive on its own (it accepts ANY declaration).
     // The lower-time narrowing fail-closes when a realization
     // field's resolved target violates the per-(category, field)
