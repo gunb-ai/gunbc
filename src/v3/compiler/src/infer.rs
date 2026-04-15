@@ -741,20 +741,28 @@ fn substitute_receiver(
 }
 
 /// Dispatch-time invariant check on an `ExternalRealization` target:
-/// the linked declaration must be a `Conj` whose `meta_tag` edge
-/// points at the `Realization` meta-type. Compares by
-/// `DeclarationId` via the cached `Dag::realization_meta_id`, not by
-/// name — the cache was populated at bootstrap time and
-/// `Realization` identity is structural, not string-compared.
+/// the linked declaration must be a `Conj` with a non-`None`
+/// `meta_tag` edge. The meta_tag IS the realization marker — no
+/// further name/id comparison is required.
+///
+/// **Round-10 correction.** Earlier revisions compared `meta_tag`
+/// against a cached `Dag::realization_meta_id()` pointing at a
+/// `Realization` declaration. Production bootstrap doesn't load a
+/// `Realization` declaration (realization facts live in
+/// `dsl/extdeps/languages/*` per the thesis, not in the std/ set
+/// the M1(2.7) bootstrap consumes), so the cache was always `None`
+/// and the check always failed. The shape check is now purely
+/// structural: "Conj with a meta_tag" is the realization marker.
+/// The structural shape is what `bootstrap::assert_realization_shape`
+/// and the `#[cfg(test)]` realization smoke test already validate
+/// at construction time. Any drift is caught at both construction
+/// and dispatch.
 fn is_realization_shape(dag: &Dag, realization_id: DeclarationId) -> bool {
     let decl = dag.declaration(realization_id);
     if !matches!(decl.connective, TypeConnective::Conj { .. }) {
         return false;
     }
-    let Some(meta_tag) = decl.meta_tag else {
-        return false;
-    };
-    dag.realization_meta_id() == Some(meta_tag)
+    decl.meta_tag.is_some()
 }
 
 /// Walk `Transform.target` to its terminal `Arrow` declaration without

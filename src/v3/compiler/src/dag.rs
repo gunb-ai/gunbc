@@ -696,31 +696,39 @@ impl Behavior {
     }
 }
 
-/// Substrate-level pointers to declarations that the compiler asks about
-/// by role rather than by name. Populated at the end of `bootstrap()` by
-/// `Dag::populate_primitive_cache` after every std/ file has been
-/// lowered and cross-file stubs have been resolved. Before that point
-/// every field is `None`.
+/// Substrate-level pointers to declarations that the compiler asks
+/// about by role rather than by name. Populated at the end of
+/// `bootstrap()` by `Dag::populate_primitive_cache` after every std/
+/// file has been lowered and cross-file stubs have been resolved.
+/// Before that point every field is `None`.
 ///
 /// **Dissolution receipt.** The cache exists to remove per-call
-/// `declaration_by_name("Int")` / `"Bool"` / `"String"` / `"Realization"`
-/// lookups from the hot path. It is NOT a parallel authority — the
-/// `DeclarationId`s it stores are already in
-/// `Dag.declarations`, and the cache is a typed index over the same
-/// table. Adding a new role to this cache is a C1-class stop signal:
-/// if the compiler wants to ask "which declaration is the canonical X?",
-/// that question belongs as a structural edge on the declaration, not
-/// as a role slot here. The four roles cached today (three primitives
-/// plus Realization meta) are the substrate's built-in roles and
-/// cannot dissolve into declaration-level edges because they answer
-/// "which declaration is Int?" — a question about *identity*, not
-/// *relationship*.
+/// `declaration_by_name("Int")` / `"Bool"` / `"String"` lookups from
+/// the hot path. It is NOT a parallel authority — the
+/// `DeclarationId`s it stores are already in `Dag.declarations`, and
+/// the cache is a typed index over the same table. Adding a new role
+/// to this cache is a C1-class stop signal: if the compiler wants to
+/// ask "which declaration is the canonical X?", that question
+/// belongs as a structural edge on the declaration, not as a role
+/// slot here. The three roles cached today (the user-facing
+/// primitives `Int`/`Bool`/`String`) are the substrate's built-in
+/// roles and cannot dissolve into declaration-level edges because
+/// they answer "which declaration is Int?" — a question about
+/// *identity*, not *relationship*.
+///
+/// **Round-10 correction.** Earlier revisions included a
+/// `realization_meta` field pointing at a cached `Realization`
+/// declaration. Production bootstrap doesn't load a `Realization`
+/// declaration (realization facts live in `dsl/extdeps/languages/*`
+/// per the thesis, not in the M1(2.7) std/ set), so the cache was
+/// always `None` and the downstream `is_realization_shape` check
+/// always failed. The check now validates structural shape (Conj +
+/// `meta_tag.is_some()`) directly — no cache needed.
 #[derive(Debug, Default)]
 pub(crate) struct PrimitiveCache {
     pub int: Option<TypeShape>,
     pub bool: Option<TypeShape>,
     pub string: Option<TypeShape>,
-    pub realization_meta: Option<DeclarationId>,
 }
 
 #[derive(Debug)]
@@ -775,15 +783,6 @@ impl Dag {
     /// bootstrap-failure semantics as `int_shape`.
     pub fn string_shape(&self) -> Option<TypeShape> {
         self.primitives.string
-    }
-
-    /// Cached `DeclarationId` of the `Realization` meta-type in
-    /// `dsl/std/types.dag`. Used by `is_realization_shape` to check
-    /// whether an `ArrowBody::ExternalRealization` target is a
-    /// realization declaration without a name comparison. `None` until
-    /// bootstrap finishes loading `types.dag`.
-    pub fn realization_meta_id(&self) -> Option<DeclarationId> {
-        self.primitives.realization_meta
     }
 
     pub fn nodes(&self) -> &[Behavior] {
@@ -944,11 +943,12 @@ impl Dag {
     }
 
     /// Populate `primitives` by reading the declaration table for the
-    /// four canonical roles. Called once at the end of `bootstrap()`
-    /// after all std/ modules are loaded and cross-file references are
-    /// resolved. Any role not found stays `None` — the bootstrap
-    /// failure is already on the diagnostic table and downstream
-    /// consumers surface the missing role through the ordinary channel.
+    /// three canonical primitive roles. Called once at the end of
+    /// `bootstrap()` after all std/ modules are loaded and cross-file
+    /// references are resolved. Any role not found stays `None` —
+    /// the bootstrap failure is already on the diagnostic table and
+    /// downstream consumers surface the missing role through the
+    /// ordinary channel.
     pub(crate) fn populate_primitive_cache(&mut self) {
         self.primitives.int = self
             .declaration_by_name("Int")
@@ -959,8 +959,6 @@ impl Dag {
         self.primitives.string = self
             .declaration_by_name("String")
             .map(|d| TypeShape::new(d.id));
-        self.primitives.realization_meta =
-            self.declaration_by_name("Realization").map(|d| d.id);
     }
 }
 

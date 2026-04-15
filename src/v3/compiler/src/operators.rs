@@ -66,8 +66,31 @@
 // today. Dissolves when the M2+ parser / desugarer replaces
 // `SurfaceExpr::Operator` with direct algebra-field `Call`s.
 
-/// Arithmetic binary operators. All four have signature `(T, T) -> T`
-/// where T is the operand type.
+/// Arithmetic binary operators — the four variants of `+`, `-`,
+/// `*`, `/`.
+///
+/// **🟡 Scaffold — inherits the outer `OperatorKind` receipt.**
+/// Same dissolution trigger as `OperatorKind`: when the M2+ parser
+/// desugars `a + b` to direct algebra-field `Call`s (or adds
+/// explicit `Int.add(a, b)` syntax), this enum disappears along
+/// with `SurfaceExpr::Operator` and `TransformTarget::Operator`.
+/// No independent dissolution path — the three operator enums
+/// rise and fall together.
+///
+/// 4-pattern check:
+/// - Pattern 1 (fact placement): label-only; each variant is a
+///   discriminator for `OperatorKind::algebra_field_name()` /
+///   `symbol()`. The signature itself lives in
+///   `std/algebra.dag`'s `OrderedRing<T>` `add`/`sub`/`mul`/`div`
+///   fields, not here.
+/// - Pattern 2 (variant-is-data): fails. No payloads; these are
+///   tag-only variants.
+/// - Pattern 3 (algebraic form): partial. The four arithmetic
+///   ops partition the `Ring`-level primitive operations by
+///   role. The set grows only if the algebra does.
+/// - Pattern 4 (dimensional): fails.
+///
+/// Verdict: 🟡 scaffold inheriting `OperatorKind`'s trigger.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ArithmeticOp {
     Add,
@@ -76,7 +99,28 @@ pub enum ArithmeticOp {
     Div,
 }
 
-/// Comparison binary operators. All six have signature `(T, T) -> Bool`.
+/// Comparison binary operators — the six variants of `==`, `!=`,
+/// `<`, `<=`, `>`, `>=`.
+///
+/// **🟡 Scaffold — inherits the outer `OperatorKind` receipt.**
+/// Same dissolution trigger as `ArithmeticOp` and `OperatorKind`:
+/// M2+ parser desugaring replaces `SurfaceExpr::Operator` with
+/// direct algebra-field calls, and this enum disappears.
+///
+/// 4-pattern check:
+/// - Pattern 1 (fact placement): label-only; the arm is a
+///   discriminator for `OperatorKind::algebra_field_name()`
+///   against `OrderedRing.{eq, ne, lt, le, gt, ge}` fields.
+///   Signature and semantics live in `std/algebra.dag`.
+/// - Pattern 2 (variant-is-data): fails. No payloads.
+/// - Pattern 3 (algebraic form): partial. Six variants cover
+///   the total-order relations on an ordered ring. `eq`/`ne`
+///   come from equality; `lt`/`le`/`gt`/`ge` from the order.
+///   Growing this set would require a new algebraic structure
+///   in algebra.dag (Lattice gives `meet`/`join`, not `lt`).
+/// - Pattern 4 (dimensional): fails.
+///
+/// Verdict: 🟡 scaffold inheriting `OperatorKind`'s trigger.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ComparisonOp {
     Eq,
