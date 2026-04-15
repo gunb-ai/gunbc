@@ -1398,6 +1398,66 @@ fn m1_3_substrate_reflection_opaque_atoms_loaded() {
 }
 
 #[test]
+fn m1_3_substrate_reflection_seed_handle_realizations_loaded() {
+    // Asserts the three TypeRealization entries for the
+    // substrate reflection seed handles (NodeId, PortId,
+    // DeclarationId) are present in the post-bootstrap
+    // declaration table and wired via the shared
+    // TypeRealization meta-tag mechanism.
+    //
+    // The reflection surface's §3.0 seed minimality principle
+    // (docs/substrate-reflection-design.md) names these four
+    // concepts — NodeId, PortId, DeclarationId, SourceSpan — as
+    // the only atomic identity handles. SourceSpan already has a
+    // structural record declaration in dsl/std/types.dag and is
+    // reached through ordinary name resolution; the other three
+    // are opaque atoms in src/v3/std/substrate.dag whose Rust
+    // backing types are bound via TypeRealization entries in
+    // src/v3/spec/rust.dag — exactly the mechanism that binds
+    // `.dag Int` to Rust `i64`.
+    //
+    // The test asserts for each handle:
+    //   1. There exists a `data rust_<handle>: TypeRealization`
+    //      declaration in the table (by looking up the expected
+    //      name).
+    //   2. Its `meta_tag` points at the `TypeRealization`
+    //      meta-type (same filter `emit_rust` uses downstream).
+    //   3. Its `value_body` is `Structural` (the body lowered
+    //      via inhabitance checking, not as `Unparsed`).
+    //
+    // When emit_rust starts generating lens code in a later
+    // commit, it walks every Structural TypeRealization and
+    // reads the `target: DeclarationRef` field to find the
+    // Rust type name to substitute. The entries below are
+    // what makes a compiled lens able to emit
+    // `fn check(dag: &Dag) -> Vec<Violation>` with NodeId /
+    // PortId / DeclarationId as first-class Rust types.
+    let dag = Dag::new();
+    let type_realization_meta = dag
+        .type_realization_meta()
+        .expect("TypeRealization meta-type must be resolved after bootstrap");
+
+    for realization_name in ["rust_node_id", "rust_port_id", "rust_declaration_id"] {
+        let decl = dag
+            .declaration_by_name(realization_name)
+            .unwrap_or_else(|| panic!("`{realization_name}` must be declared in rust.dag"));
+        assert_eq!(
+            decl.meta_tag,
+            Some(type_realization_meta),
+            "`{realization_name}` meta_tag should point at TypeRealization"
+        );
+        assert!(
+            matches!(
+                decl.value_body,
+                Some(v3_compiler::dag::ValueBody::Structural { .. })
+            ),
+            "`{realization_name}` value_body should be Structural (inhabitance-checked), got {:?}",
+            decl.value_body
+        );
+    }
+}
+
+#[test]
 fn m1_3_substrate_reflection_structural_types_loaded() {
     // Step 3 of docs/substrate-reflection-design.md implementation.
     //

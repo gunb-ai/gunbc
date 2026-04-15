@@ -1423,11 +1423,21 @@ fn realization_category_for_meta(
 ///
 /// Constraints, by category × field label:
 ///
-///   - `TypeRealization.target` — must be a primitive type
-///     declaration (Int / Bool / String). Anything else is a
-///     spec error.
+///   - `TypeRealization.target` — must be either (a) a primitive
+///     type declaration (Int / Bool / String), or (b) one of the
+///     substrate reflection seed handles (NodeId / PortId /
+///     DeclarationId). The handle case corresponds to the
+///     §3.0 seed-minimality invariant in
+///     docs/substrate-reflection-design.md: opaque atomic
+///     identity handles need Rust realizations for references
+///     to resolve, exactly like `Int` does, and TypeRealization
+///     is the mechanism that attaches the Rust backing type.
+///     SourceSpan is a structural record in dsl/std/types.dag
+///     and does not go through TypeRealization.
 ///   - `OperatorRealization.target` — must be a primitive type
-///     (the operand type, e.g. Int for `1 + 2`).
+///     (the operand type, e.g. Int for `1 + 2`). Seed handles
+///     are not operand types — arithmetic on NodeId is a
+///     substrate error.
 ///   - `OperatorRealization.op` — must walk to an Arrow
 ///     declaration that is a child of an algebra Conj (e.g.
 ///     OrderedRing.add). The constraint is "the resolved
@@ -1445,9 +1455,23 @@ fn validate_realization_field_target(
     let int_id = dag.declaration_by_name("Int").map(|d| d.id);
     let bool_id = dag.declaration_by_name("Bool").map(|d| d.id);
     let string_id = dag.declaration_by_name("String").map(|d| d.id);
+    // Substrate reflection seed handles per
+    // docs/substrate-reflection-design.md §3.0 — opaque atomic
+    // identity handles declared in src/v3/std/substrate.dag whose
+    // Rust backing types are wired via TypeRealization entries
+    // in rust.dag (matching the Int → i64 pattern). `target` must
+    // accept these alongside the user-facing primitives.
+    let node_id_id = dag.declaration_by_name("NodeId").map(|d| d.id);
+    let port_id_id = dag.declaration_by_name("PortId").map(|d| d.id);
+    let declaration_id_id = dag.declaration_by_name("DeclarationId").map(|d| d.id);
 
     let is_primitive = |id: DeclarationId| {
         Some(id) == int_id || Some(id) == bool_id || Some(id) == string_id
+    };
+    let is_seed_handle = |id: DeclarationId| {
+        Some(id) == node_id_id
+            || Some(id) == port_id_id
+            || Some(id) == declaration_id_id
     };
     let is_behavior_marker = |id: DeclarationId| {
         let markers = [
@@ -1471,11 +1495,11 @@ fn validate_realization_field_target(
 
     match (category, field_label) {
         (RealizationCategoryTag::Type, "target") => {
-            if is_primitive(target) {
+            if is_primitive(target) || is_seed_handle(target) {
                 Ok(())
             } else {
                 Err(format!(
-                    "TypeRealization.target must reference a primitive type (Int/Bool/String); got declaration {target:?}"
+                    "TypeRealization.target must reference a primitive type (Int/Bool/String) or a substrate seed handle (NodeId/PortId/DeclarationId); got declaration {target:?}"
                 ))
             }
         }

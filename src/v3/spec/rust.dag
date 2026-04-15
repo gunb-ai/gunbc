@@ -124,6 +124,53 @@ data rust_string: TypeRealization = {
 }
 
 // ─────────────────────────────────────────────────────────────────
+// Substrate reflection seed handles.
+// ─────────────────────────────────────────────────────────────────
+//
+// The four atomic identity handles defined as seed primitives
+// per docs/substrate-reflection-design.md §3.0. Three are
+// declared as opaque atoms in src/v3/std/substrate.dag and
+// realized here (NodeId, PortId, DeclarationId); SourceSpan
+// already has a structural declaration in dsl/std/types.dag
+// that both v2 and v3 consume, so its realization lives
+// elsewhere.
+//
+// The pattern is the same as rust_int / rust_bool / rust_string
+// above: a `target: <declaration>` typed edge (resolved at lower
+// time through the DeclarationRef sentinel mechanism) + a
+// Rust-side `carrier` string the emitter substitutes when
+// rendering a value of that type. The carrier string here is a
+// bare type name rather than a fully-qualified path — the
+// emitter may need to grow import-handling when it generates
+// code outside the v3-compiler crate, but for tests that run
+// inside the crate (where NodeId / PortId / DeclarationId are
+// in scope via `use crate::dag::*`), the bare name is
+// sufficient.
+//
+// Cost is 1 for consistency with the other primitive
+// realizations. The cost lens does not run against lenses
+// themselves today, so this value is a weight for future
+// use rather than a measured cycle count.
+
+data rust_node_id: TypeRealization = {
+  target: NodeId
+  carrier: "NodeId"
+  cost: 1
+}
+
+data rust_port_id: TypeRealization = {
+  target: PortId
+  carrier: "PortId"
+  cost: 1
+}
+
+data rust_declaration_id: TypeRealization = {
+  target: DeclarationId
+  carrier: "DeclarationId"
+  cost: 1
+}
+
+// ─────────────────────────────────────────────────────────────────
 // Operator realizations — arithmetic on Int.
 // ─────────────────────────────────────────────────────────────────
 //
