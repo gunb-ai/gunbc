@@ -3,7 +3,9 @@
 ## Architecture
 
 **Two coordinated substrates** (per `THESIS.md` §"The substrate: two
-coordinated shapes" and `src/v3/M1_DESIGN.md`):
+coordinated shapes"; the shipped substrate is defined by
+`src/v3/compiler/src/dag.rs` — historical design rationale in
+`src/v3/M1_DESIGN.md`):
 
 1. **Type substrate.** A labeled DAG of declarations with six
    structural connectives: `Atom | Conj | Disj | Arrow | Cardinality
@@ -31,9 +33,8 @@ behaviors project onto target constructs. Testing is compilation.
 attempted a flat `DeclKind::{Type, Function}` shape that could not
 host parameterization (`Magma<T>`), structural children
 (`Monoid<T> { op, identity }`), or inhabitance (`Int inhabits
-OrderedRing<Word64>`). That attempt is abandoned; **M1(2.5)** is
-the active substrate step, executing against `src/v3/M1_DESIGN.md`
-to land the six-connective + five-behavior shape.
+OrderedRing<Word64>`). That attempt was abandoned; the six-connective
++ five-behavior shape shipped in PR #445.
 
 **Bounded kernel invariant:** the computation substrate's Loop
 behavior is the only bounded-iteration primitive. All durable
@@ -43,7 +44,8 @@ Loop bodies (computation substrate) — recursion lives in the data
 iteration. Descent is provable by construction.
 
 Full thesis: [THESIS.md](THESIS.md)
-v3 substrate design: [src/v3/M1_DESIGN.md](src/v3/M1_DESIGN.md)
+v3 substrate (authoritative): [src/v3/compiler/src/dag.rs](src/v3/compiler/src/dag.rs)
+v3 substrate design (historical): [src/v3/M1_DESIGN.md](src/v3/M1_DESIGN.md)
 v3 M0 retrospective: [src/v3/M0_RETROSPECTIVE.md](src/v3/M0_RETROSPECTIVE.md)
 Architecture: [docs/architecture.md](docs/architecture.md)
 Compiler laws and coercion model: [src/v2/compiler-laws.md](src/v2/compiler-laws.md)
