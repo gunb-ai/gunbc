@@ -25,8 +25,8 @@
 use std::collections::HashSet;
 
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, Dag, DeclarationId, LiteralBits, PortId,
-    PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective,
+    ArrowBody, AtomPayload, Behavior, Dag, DeclarationId, LiteralBits, PortId, PortState,
+    TemplateArgument, TransformNode, TransformTarget, TypeConnective,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::operators::OperatorKind;
@@ -59,8 +59,7 @@ pub fn infer(dag: &mut Dag) {
                         }
                         PortState::Resolved(existing) if existing == ty => {}
                         PortState::Resolved(existing) => {
-                            let span = node_span_for_port(dag, port)
-                                .unwrap_or_else(synthetic_span);
+                            let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
                             let diag = Diagnostic::TypeMismatch {
                                 expected: existing,
                                 actual: ty,
@@ -212,19 +211,16 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
         // the underlying Disj. `type Hue = Color` and
         // `Color = Red | Green | Blue` both resolve arms against
         // `Color`'s variants via this walk.
-        let Some(disj_decl_id) =
-            walk_to_disj_decl(dag, scrutinee_ty.declaration)
-        else {
+        let Some(disj_decl_id) = walk_to_disj_decl(dag, scrutinee_ty.declaration) else {
             // Scrutinee doesn't resolve to a Disj — the main infer
             // pass caught this as a TypeMismatch already. Skip.
             continue;
         };
         let disj_variants: Vec<(String, DeclarationId)> =
             match &dag.declaration(disj_decl_id).connective {
-                TypeConnective::Disj { variants } => variants
-                    .iter()
-                    .map(|f| (f.label.clone(), f.ty))
-                    .collect(),
+                TypeConnective::Disj { variants } => {
+                    variants.iter().map(|f| (f.label.clone(), f.ty)).collect()
+                }
                 _ => unreachable!("walk_to_disj_decl returned a non-Disj declaration"),
             };
         let mut resolved_arms: Vec<(DeclarationId, String)> = Vec::new();
@@ -243,7 +239,9 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                     ));
                     continue;
                 }
-                crate::dag::BranchPattern::ResolvedVariantWith { decl, binding_name, .. } => {
+                crate::dag::BranchPattern::ResolvedVariantWith {
+                    decl, binding_name, ..
+                } => {
                     // Already resolved on a prior infer pass.
                     resolved_arms.push((
                         *decl,
@@ -320,9 +318,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                 // to ResolvedVariantWith and preserve the binding
                 // name + payload port edge.
                 let resolved = match rewrite.shape {
-                    RewriteShape::Bare => {
-                        crate::dag::BranchPattern::ResolvedVariant(variant_id)
-                    }
+                    RewriteShape::Bare => crate::dag::BranchPattern::ResolvedVariant(variant_id),
                     RewriteShape::With {
                         binding_name,
                         payload_port,
@@ -338,10 +334,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                 }
             }
             Err(diag) => {
-                if !matches!(
-                    dag.port(rewrite.output_port).state(),
-                    PortState::Unresolved
-                ) {
+                if !matches!(dag.port(rewrite.output_port).state(), PortState::Unresolved) {
                     dag.mark_unresolved(rewrite.output_port, diag);
                     changed = true;
                 }
@@ -574,10 +567,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                         return Decision::Fail(
                             t.output,
                             Diagnostic::ResolveError {
-                                name: format!(
-                                    "(upstream failure in {})",
-                                    op_kind.symbol()
-                                ),
+                                name: format!("(upstream failure in {})", op_kind.symbol()),
                                 span: t.span.clone(),
                             },
                         );
@@ -769,6 +759,27 @@ impl SubstStack {
 
 const WALK_DEPTH_LIMIT: usize = 32;
 
+fn declaration_is_callable(dag: &Dag, current: DeclarationId, depth: usize) -> bool {
+    if depth >= WALK_DEPTH_LIMIT {
+        return false;
+    }
+    match &dag.declaration(current).connective {
+        TypeConnective::Arrow { .. } => true,
+        TypeConnective::Instantiation { template, .. } => {
+            declaration_is_callable(dag, *template, depth + 1)
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            declaration_is_callable(dag, *next, depth + 1)
+        }
+        TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+        | TypeConnective::Atom(AtomPayload::TypeParam(_))
+        | TypeConnective::Atom(AtomPayload::Literal(_))
+        | TypeConnective::Conj { .. }
+        | TypeConnective::Disj { .. }
+        | TypeConnective::Cardinality { .. } => false,
+    }
+}
+
 /// §8.9 operator dispatch via structural algebra walk.
 ///
 /// Walks the LHS type's declaration chain (following `Instantiation`
@@ -831,9 +842,7 @@ fn resolve_operator_arrow(
                 // name.
                 let field_name = op_kind.algebra_field_name();
                 if let Some(field) = children.iter().find(|f| f.label == field_name) {
-                    return read_algebra_field(
-                        dag, decl, field.ty, source_id, op_kind, lhs_type,
-                    );
+                    return read_algebra_field(dag, decl, field.ty, source_id, op_kind, lhs_type);
                 }
                 // Algebra doesn't declare this operator's field —
                 // fall back to the Rust-side scaffold bridge below.
@@ -1022,10 +1031,13 @@ fn resolve_arrow_walk(
             output,
             body,
         } => {
-            let input_shapes: Vec<TypeShape> = inputs
-                .iter()
-                .map(|id| walk_to_type_shape(dag, *id, subst, depth + 1))
-                .collect::<Option<_>>()?;
+            let mut input_shapes: Vec<TypeShape> = Vec::new();
+            for id in inputs {
+                if subst.lookup(*id).is_some() && declaration_is_callable(dag, *id, depth + 1) {
+                    continue;
+                }
+                input_shapes.push(walk_to_type_shape(dag, *id, subst, depth + 1)?);
+            }
             let output_shape = walk_to_type_shape(dag, *output, subst, depth + 1)?;
             Some(ResolvedArrow {
                 inputs: input_shapes,
@@ -1084,8 +1096,11 @@ fn walk_to_type_shape(
     // Anonymous declaration: follow the chain through the substrate.
     match &decl.connective {
         TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
-            let bound = subst.lookup(current)?;
-            walk_to_type_shape(dag, bound, subst, depth + 1)
+            if let Some(bound) = subst.lookup(current) {
+                walk_to_type_shape(dag, bound, subst, depth + 1)
+            } else {
+                Some(TypeShape::new(current))
+            }
         }
         TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
             walk_to_type_shape(dag, *next, subst, depth + 1)

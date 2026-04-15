@@ -25,9 +25,9 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, BindNode, Bound, BranchNode, BranchPattern,
-    CardinalityBound, Dag, Declaration, DeclarationId, Field, LiteralBits, LoopNode, NodeId,
-    Path, PortId, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
+    ArrowBody, AtomPayload, Behavior, BindNode, Bound, BranchNode, BranchPattern, CardinalityBound,
+    Dag, Declaration, DeclarationId, Field, LiteralBits, LoopNode, NodeId, Path, PortId,
+    TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::operators::{ArithmeticOp, OperatorKind};
@@ -36,6 +36,14 @@ use crate::parse::{
     SurfacePattern, SurfaceType, SurfaceVariant, VariantPayload,
 };
 use crate::types::TypeShape;
+
+type CallableScope = HashMap<String, DeclarationId>;
+
+#[derive(Default)]
+struct ScopeState {
+    values: HashMap<String, PortId>,
+    callables: CallableScope,
+}
 
 pub fn lower(module: &SurfaceModule) -> Dag {
     let mut dag = Dag::new();
@@ -104,7 +112,7 @@ pub(crate) fn lower_bodies_phase(
     is_first: &[bool],
 ) {
     let mutually_recursive = compute_mutually_recursive(&module.items);
-    let mut scope: HashMap<String, PortId> = HashMap::new();
+    let mut scope = ScopeState::default();
     for (idx, item) in module.items.iter().enumerate() {
         if !is_first[idx] {
             // Duplicate declaration — skipped at lower time so the
@@ -163,28 +171,24 @@ fn collect_symbols(
             SurfaceItem::Let { .. } => continue,
             SurfaceItem::Module { .. } => continue,
             SurfaceItem::Import { .. } => continue,
-            SurfaceItem::Fn { name, .. } => (name.clone(), &[]),
-            SurfaceItem::FnExternalBody { name, .. } => (name.clone(), &[]),
+            SurfaceItem::Fn {
+                name, type_params, ..
+            } => (name.clone(), type_params.as_slice()),
+            SurfaceItem::FnExternalBody {
+                name, type_params, ..
+            } => (name.clone(), type_params.as_slice()),
             SurfaceItem::Data { name, .. } => (name.clone(), &[]),
             SurfaceItem::TypeAtom {
-                name,
-                type_params,
-                ..
+                name, type_params, ..
             }
             | SurfaceItem::TypeRecord {
-                name,
-                type_params,
-                ..
+                name, type_params, ..
             }
             | SurfaceItem::TypeSum {
-                name,
-                type_params,
-                ..
+                name, type_params, ..
             }
             | SurfaceItem::TypeAlias {
-                name,
-                type_params,
-                ..
+                name, type_params, ..
             } => (name.clone(), type_params.as_slice()),
         };
         let span = item_span(item);
@@ -217,9 +221,7 @@ fn collect_symbols(
                 dag.push_declaration(Declaration {
                     id: param_id,
                     name: None,
-                    connective: TypeConnective::Atom(AtomPayload::TypeParam(
-                        param.clone(),
-                    )),
+                    connective: TypeConnective::Atom(AtomPayload::TypeParam(param.clone())),
                     type_params: Vec::new(),
                     meta_tag: None,
                     inhabits: None,
@@ -240,9 +242,7 @@ fn collect_symbols(
                 Diagnostic::ResolveError {
                     name: format!(
                         "duplicate declaration `{name}` (first declared in `{}` at bytes {}..{})",
-                        existing_span.file,
-                        existing_span.byte_start,
-                        existing_span.byte_end,
+                        existing_span.file, existing_span.byte_start, existing_span.byte_end,
                     ),
                     span,
                 },
@@ -276,10 +276,10 @@ fn item_span(item: &SurfaceItem) -> SourceSpan {
 fn lower_item(
     item: &SurfaceItem,
     dag: &mut Dag,
-    scope: HashMap<String, PortId>,
+    scope: ScopeState,
     symbols: &HashMap<String, DeclarationId>,
     mutually_recursive: &HashSet<String>,
-) -> HashMap<String, PortId> {
+) -> ScopeState {
     let mut scope = scope;
     match item {
         SurfaceItem::Let {
@@ -287,7 +287,49 @@ fn lower_item(
             type_ann,
             expr,
         } => {
-            let value_port = lower_expr(expr, dag, &scope, symbols);
+            let mut lambda_callable: Option<DeclarationId> = None;
+            let value_port = if let SurfaceExpr::Lambda { params, body, span } = expr {
+                let Some(ty) = type_ann else {
+                    let port = dag.alloc_port(None);
+                    dag.mark_unresolved(
+                        port,
+                        Diagnostic::ResolveError {
+                            name: "lambda expressions currently require an expected function type (for example a `let` annotation or a function-typed parameter position)".to_string(),
+                            span: span.clone(),
+                        },
+                    );
+                    scope.values.insert(name.clone(), port);
+                    return scope;
+                };
+                let decl_id = type_to_declaration_id(ty, symbols, &HashMap::new(), dag);
+                match lower_lambda_expr(
+                    params,
+                    body,
+                    span,
+                    decl_id,
+                    dag,
+                    &scope.values,
+                    &scope.callables,
+                    symbols,
+                ) {
+                    Ok(lambda_decl_id) => {
+                        lambda_callable = Some(lambda_decl_id);
+                        let port = dag.alloc_port(None);
+                        match declaration_to_port_shape(decl_id, dag, ty.span()) {
+                            Ok(expected) => dag.set_port_type(port, expected),
+                            Err(diag) => dag.mark_unresolved(port, diag),
+                        }
+                        port
+                    }
+                    Err(diag) => {
+                        let port = dag.alloc_port(None);
+                        dag.mark_unresolved(port, diag);
+                        port
+                    }
+                }
+            } else {
+                lower_expr(expr, dag, &scope.values, &scope.callables, symbols)
+            };
             if let Some(ty) = type_ann {
                 // Compute the annotated type's declaration id ONCE.
                 // Port TypeShape wraps the same id — no second
@@ -311,7 +353,10 @@ fn lower_item(
                 params: Vec::new(),
                 span: bind_span,
             }));
-            scope.insert(name.clone(), value_port);
+            scope.values.insert(name.clone(), value_port);
+            if let Some(lambda_decl_id) = lambda_callable {
+                scope.callables.insert(name.clone(), lambda_decl_id);
+            }
             scope
         }
         SurfaceItem::Fn {
@@ -320,22 +365,27 @@ fn lower_item(
             return_type,
             body,
             span: _,
-        } => lower_fn_item_expr_body(
-            name,
-            params,
-            return_type,
-            body,
-            dag,
-            scope,
-            symbols,
-            mutually_recursive,
-        ),
+            ..
+        } => {
+            scope.values = lower_fn_item_expr_body(
+                name,
+                params,
+                return_type,
+                body,
+                dag,
+                scope.values,
+                symbols,
+                mutually_recursive,
+            );
+            scope
+        }
         SurfaceItem::FnExternalBody {
             name,
             params,
             return_type,
             body_span,
             span: _,
+            ..
         } => {
             lower_fn_item_unparsed(name, params, return_type, body_span, dag, symbols);
             scope
@@ -550,9 +600,8 @@ fn type_to_declaration_id(
                 .or_else(|| symbols.get(name))
                 .copied()
                 .unwrap_or_else(|| alloc_identifier_stub(dag, name, span));
-            let arguments = build_template_arguments(
-                dag, symbols, local, template_id, name, args, span,
-            );
+            let arguments =
+                build_template_arguments(dag, symbols, local, template_id, name, args, span);
             let id = dag.alloc_declaration_id();
             dag.push_declaration(Declaration {
                 id,
@@ -647,9 +696,8 @@ fn type_to_connective(
                 .or_else(|| symbols.get(name))
                 .copied()
                 .unwrap_or_else(|| alloc_identifier_stub(dag, name, span));
-            let arguments = build_template_arguments(
-                dag, symbols, local, template, name, args, span,
-            );
+            let arguments =
+                build_template_arguments(dag, symbols, local, template, name, args, span);
             TypeConnective::Instantiation {
                 template,
                 arguments,
@@ -754,11 +802,7 @@ fn build_template_arguments(
 /// `resolved: None` and stays in the declaration graph so that a later
 /// `resolve_pending_identifiers` sweep can either fill it in (forward
 /// references across bootstrap fixtures) or emit a fail-closed diagnostic.
-fn alloc_identifier_stub(
-    dag: &mut Dag,
-    name: &str,
-    span: &SourceSpan,
-) -> DeclarationId {
+fn alloc_identifier_stub(dag: &mut Dag, name: &str, span: &SourceSpan) -> DeclarationId {
     let id = dag.alloc_declaration_id();
     dag.push_declaration(Declaration {
         id,
@@ -836,9 +880,10 @@ fn reject_user_unparsed_scaffolds(dag: &mut Dag, strict_from: usize) {
         if (decl.id.raw() as usize) < strict_from {
             continue;
         }
-        let name = decl.name.clone().unwrap_or_else(|| {
-            format!("declaration#{}", decl.id.raw())
-        });
+        let name = decl
+            .name
+            .clone()
+            .unwrap_or_else(|| format!("declaration#{}", decl.id.raw()));
         if let TypeConnective::Arrow {
             body: ArrowBody::Unparsed(span),
             ..
@@ -935,11 +980,7 @@ fn run_identifier_sweep(dag: &mut Dag, strict_from: usize) {
 /// `Conj.children` — type params are first-class on `Declaration` per
 /// M1(2.5)'s refactor. Returns None when the template has fewer params than
 /// `idx` requires; callers must fail-closed (not substitute a fallback).
-fn template_param_id(
-    dag: &Dag,
-    template: DeclarationId,
-    idx: usize,
-) -> Option<DeclarationId> {
+fn template_param_id(dag: &Dag, template: DeclarationId, idx: usize) -> Option<DeclarationId> {
     dag.declaration(template).type_params.get(idx).copied()
 }
 
@@ -965,7 +1006,7 @@ fn lower_fn_item_unparsed(
     symbols: &HashMap<String, DeclarationId>,
 ) {
     let fn_decl_id = symbols[name];
-    let local: HashMap<String, DeclarationId> = HashMap::new();
+    let local = local_scope_from_parent(dag, fn_decl_id);
     let param_decl_inputs: Vec<DeclarationId> = params
         .iter()
         .map(|p| type_to_declaration_id(&p.ty, symbols, &local, dag))
@@ -1035,17 +1076,10 @@ fn lower_data_item(
             _ => None,
         })
         .and_then(|record_fields| {
-            lower_record_to_structural(
-                name,
-                record_fields,
-                ty_decl_id,
-                body_span,
-                symbols,
-                dag,
-            )
+            lower_record_to_structural(name, record_fields, ty_decl_id, body_span, symbols, dag)
         });
-    let final_body = value_body
-        .unwrap_or_else(|| crate::dag::ValueBody::Unparsed(body_span.clone()));
+    let final_body =
+        value_body.unwrap_or_else(|| crate::dag::ValueBody::Unparsed(body_span.clone()));
     dag.declaration_mut(decl_id).value_body = Some(final_body);
 }
 
@@ -1143,17 +1177,18 @@ fn lower_record_to_structural(
     };
     // Snapshot the Conj's children to avoid borrowing conflicts
     // while we walk the record literal.
-    let type_fields: Vec<(String, DeclarationId)> =
-        match &dag.declaration(conj_id).connective {
-            TypeConnective::Conj { children } => children
-                .iter()
-                .map(|f| (f.label.clone(), f.ty))
-                .collect(),
-            _ => unreachable!("walk_to_conj_decl returned a non-Conj declaration"),
-        };
+    let type_fields: Vec<(String, DeclarationId)> = match &dag.declaration(conj_id).connective {
+        TypeConnective::Conj { children } => {
+            children.iter().map(|f| (f.label.clone(), f.ty)).collect()
+        }
+        _ => unreachable!("walk_to_conj_decl returned a non-Conj declaration"),
+    };
     // Check no extra fields in the data body.
     for record_field in record_fields {
-        if !type_fields.iter().any(|(label, _)| *label == record_field.name) {
+        if !type_fields
+            .iter()
+            .any(|(label, _)| *label == record_field.name)
+        {
             report_declaration_error(
                 dag,
                 Diagnostic::ResolveError {
@@ -1173,9 +1208,7 @@ fn lower_record_to_structural(
             report_declaration_error(
                 dag,
                 Diagnostic::ResolveError {
-                    name: format!(
-                        "data `{data_name}` is missing required field `{type_label}`"
-                    ),
+                    name: format!("data `{data_name}` is missing required field `{type_label}`"),
                     span: body_span.clone(),
                 },
             );
@@ -1271,12 +1304,9 @@ fn lower_record_to_structural(
             // at lower time instead of being silently filtered
             // later by the consumer.
             if let Some(cat) = category {
-                if let Err(reason) = validate_realization_field_target(
-                    dag,
-                    cat,
-                    type_label,
-                    decl_id,
-                ) {
+                if let Err(reason) =
+                    validate_realization_field_target(dag, cat, type_label, decl_id)
+                {
                     report_declaration_error(
                         dag,
                         Diagnostic::ResolveError {
@@ -1413,12 +1443,8 @@ fn realization_category_for_meta(
     meta_decl_id: DeclarationId,
 ) -> Option<RealizationCategoryTag> {
     let type_meta = dag.declaration_by_name("TypeRealization").map(|d| d.id);
-    let op_meta = dag
-        .declaration_by_name("OperatorRealization")
-        .map(|d| d.id);
-    let behavior_meta = dag
-        .declaration_by_name("BehaviorRealization")
-        .map(|d| d.id);
+    let op_meta = dag.declaration_by_name("OperatorRealization").map(|d| d.id);
+    let behavior_meta = dag.declaration_by_name("BehaviorRealization").map(|d| d.id);
     if Some(meta_decl_id) == type_meta {
         Some(RealizationCategoryTag::Type)
     } else if Some(meta_decl_id) == op_meta {
@@ -1491,13 +1517,10 @@ fn validate_realization_field_target(
     let port_id_id = dag.declaration_by_name("PortId").map(|d| d.id);
     let declaration_id_id = dag.declaration_by_name("DeclarationId").map(|d| d.id);
 
-    let is_primitive = |id: DeclarationId| {
-        Some(id) == int_id || Some(id) == bool_id || Some(id) == string_id
-    };
+    let is_primitive =
+        |id: DeclarationId| Some(id) == int_id || Some(id) == bool_id || Some(id) == string_id;
     let is_seed_handle = |id: DeclarationId| {
-        Some(id) == node_id_id
-            || Some(id) == port_id_id
-            || Some(id) == declaration_id_id
+        Some(id) == node_id_id || Some(id) == port_id_id || Some(id) == declaration_id_id
     };
     let is_behavior_marker = |id: DeclarationId| {
         let markers = [
@@ -1508,16 +1531,10 @@ fn validate_realization_field_target(
             dag.declaration_by_name("Bind"),
             dag.declaration_by_name("Main"),
         ];
-        markers
-            .iter()
-            .any(|m| m.map(|d| d.id) == Some(id))
+        markers.iter().any(|m| m.map(|d| d.id) == Some(id))
     };
-    let is_algebra_field = |id: DeclarationId| {
-        matches!(
-            dag.declaration(id).connective,
-            TypeConnective::Arrow { .. }
-        )
-    };
+    let is_algebra_field =
+        |id: DeclarationId| matches!(dag.declaration(id).connective, TypeConnective::Arrow { .. });
 
     match (category, field_label) {
         (RealizationCategoryTag::Type, "target") => {
@@ -1611,8 +1628,9 @@ fn lower_fn_item_expr_body(
     let mut param_ports: Vec<PortId> = Vec::with_capacity(params.len());
     let mut param_types: Vec<TypeShape> = Vec::with_capacity(params.len());
     let mut body_scope: HashMap<String, PortId> = outer_scope.clone();
+    let mut callable_scope: CallableScope = CallableScope::new();
     let mut param_decl_inputs: Vec<DeclarationId> = Vec::with_capacity(params.len());
-    let local: HashMap<String, DeclarationId> = HashMap::new();
+    let local = local_scope_from_parent(dag, fn_decl_id);
     for param in params {
         let port = dag.alloc_port(None);
         // Compute the param's declaration id ONCE. The Arrow input
@@ -1632,6 +1650,9 @@ fn lower_fn_item_expr_body(
             }
         };
         body_scope.insert(param.name.clone(), port);
+        if declaration_is_callable(dag, input_decl, 0) {
+            callable_scope.insert(param.name.clone(), input_decl);
+        }
         param_ports.push(port);
         param_types.push(ty);
     }
@@ -1697,7 +1718,7 @@ fn lower_fn_item_expr_body(
     }
 
     // 4. Lower the body.
-    let body_return_port = lower_expr(body, dag, &body_scope, symbols);
+    let body_return_port = lower_expr(body, dag, &body_scope, &callable_scope, symbols);
     let body_root = dag.port(body_return_port).produced_by;
     let body_span = expr_span(body).clone();
 
@@ -1827,10 +1848,363 @@ fn sentinel_type_shape(dag: &Dag) -> TypeShape {
         .unwrap_or_else(|| TypeShape::new(dag.declarations()[0].id))
 }
 
+fn declaration_callable_inputs(
+    dag: &Dag,
+    current: DeclarationId,
+    depth: usize,
+) -> Option<Vec<DeclarationId>> {
+    if depth >= 32 {
+        return None;
+    }
+    match &dag.declaration(current).connective {
+        TypeConnective::Arrow { inputs, .. } => Some(inputs.clone()),
+        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            declaration_callable_inputs(dag, *next, depth + 1)
+        }
+        TypeConnective::Instantiation { template, .. } => {
+            declaration_callable_inputs(dag, *template, depth + 1)
+        }
+        TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+        | TypeConnective::Atom(AtomPayload::TypeParam(_))
+        | TypeConnective::Atom(AtomPayload::Literal(_))
+        | TypeConnective::Conj { .. }
+        | TypeConnective::Disj { .. }
+        | TypeConnective::Cardinality { .. } => None,
+    }
+}
+
+fn declaration_is_callable(dag: &Dag, current: DeclarationId, depth: usize) -> bool {
+    declaration_callable_inputs(dag, current, depth).is_some()
+}
+
+fn declaration_callable_output(
+    dag: &Dag,
+    current: DeclarationId,
+    depth: usize,
+) -> Option<DeclarationId> {
+    if depth >= 32 {
+        return None;
+    }
+    match &dag.declaration(current).connective {
+        TypeConnective::Arrow { output, .. } => Some(*output),
+        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            declaration_callable_output(dag, *next, depth + 1)
+        }
+        TypeConnective::Instantiation { template, .. } => {
+            declaration_callable_output(dag, *template, depth + 1)
+        }
+        TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+        | TypeConnective::Atom(AtomPayload::TypeParam(_))
+        | TypeConnective::Atom(AtomPayload::Literal(_))
+        | TypeConnective::Conj { .. }
+        | TypeConnective::Disj { .. }
+        | TypeConnective::Cardinality { .. } => None,
+    }
+}
+
+fn declaration_callable_signature(
+    dag: &Dag,
+    current: DeclarationId,
+    depth: usize,
+) -> Option<(Vec<DeclarationId>, DeclarationId)> {
+    Some((
+        declaration_callable_inputs(dag, current, depth)?,
+        declaration_callable_output(dag, current, depth)?,
+    ))
+}
+
+fn lambda_synthetic_name(span: &SourceSpan) -> String {
+    format!("__anon_lambda_{}_{}", span.byte_start, span.byte_end)
+}
+
+fn collect_lambda_free_names(
+    expr: &SurfaceExpr,
+    bound: &HashSet<String>,
+    free: &mut HashSet<String>,
+) {
+    match expr {
+        SurfaceExpr::Literal { .. } => {}
+        SurfaceExpr::Var { name, .. } => {
+            if !bound.contains(name) {
+                free.insert(name.clone());
+            }
+        }
+        SurfaceExpr::Path { segments, .. } => {
+            if let Some(head) = segments.first() {
+                if !bound.contains(head) {
+                    free.insert(head.clone());
+                }
+            }
+        }
+        SurfaceExpr::Call { target, args, .. } => {
+            if !bound.contains(target) {
+                free.insert(target.clone());
+            }
+            for arg in args {
+                collect_lambda_free_names(arg, bound, free);
+            }
+        }
+        SurfaceExpr::Operator { args, .. } => {
+            for arg in args {
+                collect_lambda_free_names(arg, bound, free);
+            }
+        }
+        SurfaceExpr::Lambda { params, body, .. } => {
+            let mut inner_bound = bound.clone();
+            inner_bound.extend(params.iter().cloned());
+            collect_lambda_free_names(body, &inner_bound, free);
+        }
+        SurfaceExpr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            collect_lambda_free_names(cond, bound, free);
+            collect_lambda_free_names(then_branch, bound, free);
+            collect_lambda_free_names(else_branch, bound, free);
+        }
+        SurfaceExpr::Match {
+            scrutinee, arms, ..
+        } => {
+            collect_lambda_free_names(scrutinee, bound, free);
+            for arm in arms {
+                let mut arm_bound = bound.clone();
+                if let SurfacePattern::VariantWith { binding, .. } = &arm.pattern {
+                    arm_bound.insert(binding.clone());
+                }
+                collect_lambda_free_names(&arm.body, &arm_bound, free);
+            }
+        }
+        SurfaceExpr::Record { fields, .. } => {
+            for field in fields {
+                collect_lambda_free_names(&field.value, bound, free);
+            }
+        }
+    }
+}
+
+fn lower_lambda_expr(
+    params: &[String],
+    body: &SurfaceExpr,
+    span: &SourceSpan,
+    expected_decl: DeclarationId,
+    dag: &mut Dag,
+    scope: &HashMap<String, PortId>,
+    callable_scope: &CallableScope,
+    symbols: &HashMap<String, DeclarationId>,
+) -> Result<DeclarationId, Diagnostic> {
+    let Some((expected_inputs, expected_output)) =
+        declaration_callable_signature(dag, expected_decl, 0)
+    else {
+        return Err(Diagnostic::ResolveError {
+            name: "lambda expression requires an expected function type".to_string(),
+            span: span.clone(),
+        });
+    };
+    if expected_inputs.len() != params.len() {
+        return Err(Diagnostic::ResolveError {
+            name: format!(
+                "lambda parameter count mismatch: expected {} parameter(s) from the surrounding function type, found {}",
+                expected_inputs.len(),
+                params.len(),
+            ),
+            span: span.clone(),
+        });
+    }
+
+    let mut free = HashSet::new();
+    let bound: HashSet<String> = params.iter().cloned().collect();
+    collect_lambda_free_names(body, &bound, &mut free);
+    let mut free_names: Vec<String> = free.into_iter().collect();
+    free_names.sort();
+
+    let mut capture_ports: Vec<PortId> = Vec::new();
+    let mut body_scope: HashMap<String, PortId> = HashMap::new();
+    let mut body_callable_scope: CallableScope = CallableScope::new();
+    for name in free_names {
+        if let Some(&port) = scope.get(&name) {
+            capture_ports.push(port);
+            body_scope.insert(name, port);
+        } else if let Some(&decl_id) = callable_scope.get(&name) {
+            body_callable_scope.insert(name, decl_id);
+        } else if symbols.contains_key(&name) {
+            // Top-level named declarations resolve through `symbols`
+            // at call/lower time and do not need capture plumbing.
+        } else {
+            return Err(Diagnostic::ResolveError {
+                name,
+                span: span.clone(),
+            });
+        }
+    }
+
+    let mut param_ports: Vec<PortId> = Vec::with_capacity(params.len());
+    for (name, input_decl) in params.iter().zip(expected_inputs.iter()) {
+        let port = dag.alloc_port(None);
+        let ty = declaration_to_port_shape(*input_decl, dag, span)?;
+        dag.set_port_type(port, ty);
+        body_scope.insert(name.clone(), port);
+        if declaration_is_callable(dag, *input_decl, 0) {
+            body_callable_scope.insert(name.clone(), *input_decl);
+        }
+        param_ports.push(port);
+    }
+
+    let body_return_port = lower_expr(body, dag, &body_scope, &body_callable_scope, symbols);
+    let bind_id = dag.alloc_node_id();
+    let mut bind_params = capture_ports;
+    bind_params.extend(param_ports);
+    dag.push_node(Behavior::Bind(BindNode {
+        id: bind_id,
+        name: lambda_synthetic_name(span),
+        value: body_return_port,
+        params: bind_params,
+        span: span.clone(),
+    }));
+
+    let lambda_decl_id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id: lambda_decl_id,
+        name: None,
+        connective: TypeConnective::Arrow {
+            inputs: expected_inputs,
+            output: expected_output,
+            body: ArrowBody::UserDefined(bind_id),
+        },
+        type_params: Vec::new(),
+        meta_tag: None,
+        inhabits: None,
+        value_body: None,
+        span: span.clone(),
+    });
+    Ok(lambda_decl_id)
+}
+
+fn resolve_callable_reference(
+    expr: &SurfaceExpr,
+    dag: &mut Dag,
+    callable_scope: &CallableScope,
+    symbols: &HashMap<String, DeclarationId>,
+) -> DeclarationId {
+    match expr {
+        SurfaceExpr::Var { name, span } => callable_scope
+            .get(name)
+            .copied()
+            .or_else(|| symbols.get(name).copied())
+            .unwrap_or_else(|| alloc_identifier_stub(dag, name, span)),
+        SurfaceExpr::Path { segments, span } => {
+            alloc_identifier_stub(dag, &segments.join("."), span)
+        }
+        other => alloc_identifier_stub(dag, "__callable_argument__", expr_span(other)),
+    }
+}
+
+fn push_template_argument_binding(
+    arguments: &mut Vec<TemplateArgument>,
+    parameter: DeclarationId,
+    value: DeclarationId,
+) -> bool {
+    for existing in arguments.iter() {
+        if existing.parameter == parameter {
+            return existing.value == value;
+        }
+    }
+    arguments.push(TemplateArgument { parameter, value });
+    true
+}
+
+fn bind_expected_type_to_actual(
+    dag: &Dag,
+    expected_id: DeclarationId,
+    actual_id: DeclarationId,
+    arguments: &mut Vec<TemplateArgument>,
+    depth: usize,
+) -> bool {
+    if depth >= 32 {
+        return false;
+    }
+    let expected_decl = dag.declaration(expected_id);
+    match &expected_decl.connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+            push_template_argument_binding(arguments, expected_id, actual_id)
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            bind_expected_type_to_actual(dag, *next, actual_id, arguments, depth + 1)
+        }
+        TypeConnective::Arrow { inputs, output, .. } => {
+            let actual_decl = dag.declaration(actual_id);
+            match &actual_decl.connective {
+                TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                    bind_expected_type_to_actual(dag, expected_id, *next, arguments, depth + 1)
+                }
+                TypeConnective::Arrow {
+                    inputs: actual_inputs,
+                    output: actual_output,
+                    ..
+                } => {
+                    if inputs.len() != actual_inputs.len() {
+                        return false;
+                    }
+                    inputs
+                        .iter()
+                        .zip(actual_inputs.iter())
+                        .all(|(expected, actual)| {
+                            bind_expected_type_to_actual(
+                                dag,
+                                *expected,
+                                *actual,
+                                arguments,
+                                depth + 1,
+                            )
+                        })
+                        && bind_expected_type_to_actual(
+                            dag,
+                            *output,
+                            *actual_output,
+                            arguments,
+                            depth + 1,
+                        )
+                }
+                _ => false,
+            }
+        }
+        TypeConnective::Cardinality { element, bound } => {
+            let actual_decl = dag.declaration(actual_id);
+            match &actual_decl.connective {
+                TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                    bind_expected_type_to_actual(dag, expected_id, *next, arguments, depth + 1)
+                }
+                TypeConnective::Cardinality {
+                    element: actual_element,
+                    bound: actual_bound,
+                } if bound == actual_bound => bind_expected_type_to_actual(
+                    dag,
+                    *element,
+                    *actual_element,
+                    arguments,
+                    depth + 1,
+                ),
+                _ => false,
+            }
+        }
+        _ => {
+            let actual_decl = dag.declaration(actual_id);
+            match &actual_decl.connective {
+                TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                    bind_expected_type_to_actual(dag, expected_id, *next, arguments, depth + 1)
+                }
+                _ => expected_id == actual_id,
+            }
+        }
+    }
+}
+
 fn lower_expr(
     expr: &SurfaceExpr,
     dag: &mut Dag,
     scope: &HashMap<String, PortId>,
+    callable_scope: &CallableScope,
     symbols: &HashMap<String, DeclarationId>,
 ) -> PortId {
     match expr {
@@ -1865,13 +2239,78 @@ fn lower_expr(
             }
         },
         SurfaceExpr::Call { target, args, span } => {
-            let input_ports: Vec<PortId> = args
-                .iter()
-                .map(|a| lower_expr(a, dag, scope, symbols))
-                .collect();
-            let target_decl = symbols.get(target).copied().unwrap_or_else(|| {
-                alloc_identifier_stub(dag, target, span)
-            });
+            let base_target_decl = callable_scope
+                .get(target)
+                .copied()
+                .or_else(|| symbols.get(target).copied())
+                .unwrap_or_else(|| alloc_identifier_stub(dag, target, span));
+            let target_inputs = declaration_callable_inputs(dag, base_target_decl, 0);
+            let mut input_ports: Vec<PortId> = Vec::new();
+            let mut template_arguments: Vec<TemplateArgument> = Vec::new();
+            for (idx, arg) in args.iter().enumerate() {
+                let expected_input = target_inputs
+                    .as_ref()
+                    .and_then(|inputs| inputs.get(idx))
+                    .copied();
+                if let Some(expected_decl) = expected_input {
+                    if declaration_is_callable(dag, expected_decl, 0) {
+                        let actual_callable = match arg {
+                            SurfaceExpr::Lambda { params, body, span } => {
+                                match lower_lambda_expr(
+                                    params,
+                                    body,
+                                    span,
+                                    expected_decl,
+                                    dag,
+                                    scope,
+                                    callable_scope,
+                                    symbols,
+                                ) {
+                                    Ok(lambda_decl_id) => lambda_decl_id,
+                                    Err(diag) => {
+                                        report_declaration_error(dag, diag);
+                                        alloc_identifier_stub(dag, "__lambda__", span)
+                                    }
+                                }
+                            }
+                            _ => resolve_callable_reference(arg, dag, callable_scope, symbols),
+                        };
+                        let _ = push_template_argument_binding(
+                            &mut template_arguments,
+                            expected_decl,
+                            actual_callable,
+                        );
+                        let _ = bind_expected_type_to_actual(
+                            dag,
+                            expected_decl,
+                            actual_callable,
+                            &mut template_arguments,
+                            0,
+                        );
+                        continue;
+                    }
+                }
+                input_ports.push(lower_expr(arg, dag, scope, callable_scope, symbols));
+            }
+            let target_decl = if template_arguments.is_empty() {
+                base_target_decl
+            } else {
+                let instantiation_id = dag.alloc_declaration_id();
+                dag.push_declaration(Declaration {
+                    id: instantiation_id,
+                    name: None,
+                    connective: TypeConnective::Instantiation {
+                        template: base_target_decl,
+                        arguments: template_arguments,
+                    },
+                    type_params: Vec::new(),
+                    meta_tag: None,
+                    inhabits: None,
+                    value_body: None,
+                    span: span.clone(),
+                });
+                instantiation_id
+            };
             let node_id = dag.alloc_node_id();
             let output = dag.alloc_port(Some(node_id));
             dag.push_node(Behavior::Transform(TransformNode {
@@ -1886,7 +2325,7 @@ fn lower_expr(
         SurfaceExpr::Operator { op, args, span } => {
             let input_ports: Vec<PortId> = args
                 .iter()
-                .map(|a| lower_expr(a, dag, scope, symbols))
+                .map(|a| lower_expr(a, dag, scope, callable_scope, symbols))
                 .collect();
             let node_id = dag.alloc_node_id();
             let output = dag.alloc_port(Some(node_id));
@@ -1899,15 +2338,26 @@ fn lower_expr(
             }));
             output
         }
+        SurfaceExpr::Lambda { span, .. } => {
+            let port = dag.alloc_port(None);
+            dag.mark_unresolved(
+                port,
+                Diagnostic::ResolveError {
+                    name: "lambda expression requires an expected function type at this position".to_string(),
+                    span: span.clone(),
+                },
+            );
+            port
+        }
         SurfaceExpr::If {
             cond,
             then_branch,
             else_branch,
             span,
         } => {
-            let cond_port = lower_expr(cond, dag, scope, symbols);
-            let then_port = lower_expr(then_branch, dag, scope, symbols);
-            let else_port = lower_expr(else_branch, dag, scope, symbols);
+            let cond_port = lower_expr(cond, dag, scope, callable_scope, symbols);
+            let then_port = lower_expr(then_branch, dag, scope, callable_scope, symbols);
+            let else_port = lower_expr(else_branch, dag, scope, callable_scope, symbols);
             let branch_id = dag.alloc_node_id();
             let branch_output = dag.alloc_port(Some(branch_id));
             let then_body = producer_of(dag, then_port).unwrap_or(branch_id);
@@ -1952,7 +2402,7 @@ fn lower_expr(
             // comes after so the Branch's id matches `nodes.len()`
             // at push time (arm lowering pushes its own nodes). Same
             // ordering pattern as the `If` arm above.
-            let scrutinee_port = lower_expr(scrutinee, dag, scope, symbols);
+            let scrutinee_port = lower_expr(scrutinee, dag, scope, callable_scope, symbols);
 
             // Shape carried between the per-arm lowering loop and
             // the Path construction below. `lowered_arm` is
@@ -2029,10 +2479,9 @@ fn lower_expr(
                         let variant_payload_ty: Option<DeclarationId> =
                             scrutinee_disj.and_then(|disj_id| {
                                 let variant_decl_id = match &dag.declaration(disj_id).connective {
-                                    TypeConnective::Disj { variants } => variants
-                                        .iter()
-                                        .find(|f| &f.label == name)
-                                        .map(|f| f.ty),
+                                    TypeConnective::Disj { variants } => {
+                                        variants.iter().find(|f| &f.label == name).map(|f| f.ty)
+                                    }
                                     _ => None,
                                 }?;
                                 // Unwrap the single-positional Conj
@@ -2060,8 +2509,7 @@ fn lower_expr(
                                 // a follow-up.
                                 match &dag.declaration(variant_decl_id).connective {
                                     TypeConnective::Conj { children }
-                                        if children.len() == 1
-                                            && children[0].label == "_0" =>
+                                        if children.len() == 1 && children[0].label == "_0" =>
                                     {
                                         Some(children[0].ty)
                                     }
@@ -2070,10 +2518,7 @@ fn lower_expr(
                             });
                         let payload_port = dag.alloc_port(None);
                         if let Some(ty_decl) = variant_payload_ty {
-                            dag.set_port_type(
-                                payload_port,
-                                TypeShape::new(ty_decl),
-                            );
+                            dag.set_port_type(payload_port, TypeShape::new(ty_decl));
                         } else {
                             // The Path still carries the
                             // UnresolvedVariantWith and infer gets
@@ -2140,8 +2585,7 @@ fn lower_expr(
                         )
                     }
                 };
-                let output_port =
-                    lower_expr(&arm.body, dag, &arm_scope, symbols);
+                let output_port = lower_expr(&arm.body, dag, &arm_scope, callable_scope, symbols);
                 let body_node = producer_of(dag, output_port);
                 lowered_arms.push(LoweredArm {
                     output_port,
@@ -2258,13 +2702,7 @@ fn lower_expr(
 
             match scope.get(head) {
                 Some(&head_port) if !rest.is_empty() => {
-                    lower_field_chain(
-                        dag,
-                        head,
-                        head_port,
-                        rest,
-                        span,
-                    )
+                    lower_field_chain(dag, head, head_port, rest, span)
                 }
                 Some(&head_port) => {
                     // No trailing segments — the path is just a
@@ -2335,10 +2773,7 @@ fn lower_field_chain(
     // closed before allocating anything so the diagnostic
     // points at the substrate prerequisite, not at the user's
     // source location.
-    let Some(field_accessor_marker) = dag
-        .declaration_by_name("FieldAccessor")
-        .map(|d| d.id)
-    else {
+    let Some(field_accessor_marker) = dag.declaration_by_name("FieldAccessor").map(|d| d.id) else {
         let err_port = dag.alloc_port(None);
         dag.mark_unresolved(
             err_port,
@@ -2386,9 +2821,10 @@ fn lower_field_chain(
             .unwrap_or_else(|| "(anonymous)".to_string());
 
         let field_type_decl = match &dag.declaration(current_decl_id).connective {
-            TypeConnective::Conj { children } => {
-                children.iter().find(|f| &f.label == segment_name).map(|f| f.ty)
-            }
+            TypeConnective::Conj { children } => children
+                .iter()
+                .find(|f| &f.label == segment_name)
+                .map(|f| f.ty),
             _ => None,
         };
 
@@ -2487,18 +2923,14 @@ fn producer_of(dag: &Dag, port: PortId) -> Option<NodeId> {
 
 fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
     match expr {
-        SurfaceExpr::Literal { .. }
-        | SurfaceExpr::Var { .. }
-        | SurfaceExpr::Path { .. } => false,
+        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => false,
         SurfaceExpr::Call { target, args, .. } => {
             if target == self_name {
                 return true;
             }
             args.iter().any(|a| is_recursive(a, self_name))
         }
-        SurfaceExpr::Operator { args, .. } => {
-            args.iter().any(|a| is_recursive(a, self_name))
-        }
+        SurfaceExpr::Operator { args, .. } => args.iter().any(|a| is_recursive(a, self_name)),
         SurfaceExpr::If {
             cond,
             then_branch,
@@ -2509,13 +2941,16 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
                 || is_recursive(then_branch, self_name)
                 || is_recursive(else_branch, self_name)
         }
-        SurfaceExpr::Match { scrutinee, arms, .. } => {
+        SurfaceExpr::Match {
+            scrutinee, arms, ..
+        } => {
             is_recursive(scrutinee, self_name)
                 || arms.iter().any(|arm| is_recursive(&arm.body, self_name))
         }
-        SurfaceExpr::Record { fields, .. } => fields
-            .iter()
-            .any(|f| is_recursive(&f.value, self_name)),
+        SurfaceExpr::Lambda { body, .. } => is_recursive(body, self_name),
+        SurfaceExpr::Record { fields, .. } => {
+            fields.iter().any(|f| is_recursive(&f.value, self_name))
+        }
     }
 }
 
@@ -2546,9 +2981,7 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
 /// that's a substrate extension, not a bridge to dissolve here.
 fn descent_provable(expr: &SurfaceExpr, self_name: &str, first_param: &str) -> bool {
     match expr {
-        SurfaceExpr::Literal { .. }
-        | SurfaceExpr::Var { .. }
-        | SurfaceExpr::Path { .. } => true,
+        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => true,
         SurfaceExpr::Call { target, args, .. } => {
             if target == self_name {
                 match args.first() {
@@ -2563,7 +2996,8 @@ fn descent_provable(expr: &SurfaceExpr, self_name: &str, first_param: &str) -> b
                     }
                 }
             } else {
-                args.iter().all(|a| descent_provable(a, self_name, first_param))
+                args.iter()
+                    .all(|a| descent_provable(a, self_name, first_param))
             }
         }
         SurfaceExpr::Operator { args, .. } => args
@@ -2579,12 +3013,15 @@ fn descent_provable(expr: &SurfaceExpr, self_name: &str, first_param: &str) -> b
                 && descent_provable(then_branch, self_name, first_param)
                 && descent_provable(else_branch, self_name, first_param)
         }
-        SurfaceExpr::Match { scrutinee, arms, .. } => {
+        SurfaceExpr::Match {
+            scrutinee, arms, ..
+        } => {
             descent_provable(scrutinee, self_name, first_param)
                 && arms
                     .iter()
                     .all(|arm| descent_provable(&arm.body, self_name, first_param))
         }
+        SurfaceExpr::Lambda { body, .. } => descent_provable(body, self_name, first_param),
         SurfaceExpr::Record { fields, .. } => fields
             .iter()
             .all(|f| descent_provable(&f.value, self_name, first_param)),
@@ -2620,6 +3057,7 @@ fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
         | SurfaceExpr::Path { span, .. }
         | SurfaceExpr::Call { span, .. }
         | SurfaceExpr::Operator { span, .. }
+        | SurfaceExpr::Lambda { span, .. }
         | SurfaceExpr::If { span, .. }
         | SurfaceExpr::Match { span, .. }
         | SurfaceExpr::Record { span, .. } => span,
@@ -2670,10 +3108,7 @@ fn compute_mutually_recursive(items: &[SurfaceItem]) -> HashSet<String> {
     mutually
 }
 
-fn transitive_reach(
-    start: &str,
-    calls: &HashMap<String, HashSet<String>>,
-) -> HashSet<String> {
+fn transitive_reach(start: &str, calls: &HashMap<String, HashSet<String>>) -> HashSet<String> {
     let mut visited = HashSet::new();
     let mut queue = vec![start.to_string()];
     while let Some(f) = queue.pop() {
@@ -2690,15 +3125,9 @@ fn transitive_reach(
     visited
 }
 
-fn collect_calls(
-    expr: &SurfaceExpr,
-    fn_names: &HashSet<String>,
-    out: &mut HashSet<String>,
-) {
+fn collect_calls(expr: &SurfaceExpr, fn_names: &HashSet<String>, out: &mut HashSet<String>) {
     match expr {
-        SurfaceExpr::Literal { .. }
-        | SurfaceExpr::Var { .. }
-        | SurfaceExpr::Path { .. } => {}
+        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => {}
         SurfaceExpr::Call { target, args, .. } => {
             if fn_names.contains(target) {
                 out.insert(target.clone());
@@ -2724,12 +3153,15 @@ fn collect_calls(
             collect_calls(then_branch, fn_names, out);
             collect_calls(else_branch, fn_names, out);
         }
-        SurfaceExpr::Match { scrutinee, arms, .. } => {
+        SurfaceExpr::Match {
+            scrutinee, arms, ..
+        } => {
             collect_calls(scrutinee, fn_names, out);
             for arm in arms {
                 collect_calls(&arm.body, fn_names, out);
             }
         }
+        SurfaceExpr::Lambda { body, .. } => collect_calls(body, fn_names, out),
         SurfaceExpr::Record { fields, .. } => {
             for f in fields {
                 collect_calls(&f.value, fn_names, out);

@@ -13,8 +13,8 @@
 use std::collections::HashMap;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, Field, TransformTarget,
-    TypeConnective,
+    ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, Field, PortState,
+    TransformTarget, TypeConnective,
 };
 use v3_compiler::operators::{ArithmeticOp, ComparisonOp, OperatorKind};
 use v3_compiler::CompileError;
@@ -38,6 +38,21 @@ fn field<'a>(fields: &'a [Field], label: &str) -> &'a Field {
         .iter()
         .find(|f| f.label == label)
         .unwrap_or_else(|| panic!("field `{label}` not found"))
+}
+
+fn bind_value_type_decl(dag: &Dag, name: &str) -> DeclarationId {
+    let value_port = dag
+        .nodes()
+        .iter()
+        .find_map(|node| match node {
+            Behavior::Bind(bind) if bind.name == name => Some(bind.value),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("bind `{name}` not found"));
+    match dag.port(value_port).state() {
+        PortState::Resolved(ty) => ty.declaration,
+        other => panic!("bind `{name}` did not resolve, got {other:?}"),
+    }
 }
 
 #[test]
@@ -74,8 +89,7 @@ fn parse_std_algebra_and_walk_int_add() {
 
     // `add`'s ty is an Arrow [T, T] → T, body: Pending. Substituting
     // T := Word64 yields [Word64, Word64] → Word64.
-    let (arrow_inputs, arrow_output, arrow_body) = match &dag.declaration(add_field.ty).connective
-    {
+    let (arrow_inputs, arrow_output, arrow_body) = match &dag.declaration(add_field.ty).connective {
         TypeConnective::Arrow {
             inputs,
             output,
@@ -89,9 +103,7 @@ fn parse_std_algebra_and_walk_int_add() {
     );
     assert_eq!(arrow_inputs.len(), 2, "add takes two arguments");
 
-    let substitute = |id: DeclarationId| -> DeclarationId {
-        *subst.get(&id).unwrap_or(&id)
-    };
+    let substitute = |id: DeclarationId| -> DeclarationId { *subst.get(&id).unwrap_or(&id) };
     let sub_input0 = substitute(arrow_inputs[0]);
     let sub_input1 = substitute(arrow_inputs[1]);
     let sub_output = substitute(arrow_output);
@@ -298,16 +310,17 @@ fn child_declarations_are_anonymous() {
     // `DeclarationRef` sentinel meta-type that lets target spec files
     // carry typed declaration references in record-literal field
     // values. Each is a Conj (empty body) by construction.
-    for meta in ["TypeRealization", "OperatorRealization", "BehaviorRealization"] {
+    for meta in [
+        "TypeRealization",
+        "OperatorRealization",
+        "BehaviorRealization",
+    ] {
         let id = dag
             .declaration_by_name(meta)
             .unwrap_or_else(|| panic!("`{meta}` must be declared by src/v3/spec/rust.dag"))
             .id;
         assert!(
-            matches!(
-                dag.declaration(id).connective,
-                TypeConnective::Conj { .. }
-            ),
+            matches!(dag.declaration(id).connective, TypeConnective::Conj { .. }),
             "`{meta}` must lower to a Conj"
         );
     }
@@ -325,10 +338,7 @@ fn child_declarations_are_anonymous() {
             .unwrap_or_else(|| panic!("`{marker}` must be declared by dsl/std/v3_l1.dag"))
             .id;
         assert!(
-            matches!(
-                dag.declaration(id).connective,
-                TypeConnective::Conj { .. }
-            ),
+            matches!(dag.declaration(id).connective, TypeConnective::Conj { .. }),
             "v3_l1 marker `{marker}` must lower to a Conj"
         );
     }
@@ -387,9 +397,7 @@ fn m17_operator_lowers_to_structural_transform_target() {
         .expect("Transform node exists");
     match &add_node.target {
         TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)) => {}
-        other => panic!(
-            "expected TransformTarget::Operator(Arithmetic(Add)), got {other:?}"
-        ),
+        other => panic!("expected TransformTarget::Operator(Arithmetic(Add)), got {other:?}"),
     }
 }
 
@@ -399,8 +407,7 @@ fn m17_comparison_operator_lowers_to_structural_transform_target() {
     // `OperatorKind::Comparison` variant at parse time. The
     // arithmetic-vs-comparison split is structural, not a sibling
     // string match.
-    let dag =
-        compile_to_dag("let y = 1 < 2", "test.v3").expect("compiles");
+    let dag = compile_to_dag("let y = 1 < 2", "test.v3").expect("compiles");
     let cmp_node = dag
         .nodes()
         .iter()
@@ -408,9 +415,7 @@ fn m17_comparison_operator_lowers_to_structural_transform_target() {
         .expect("Transform node exists");
     match &cmp_node.target {
         TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Lt)) => {}
-        other => panic!(
-            "expected TransformTarget::Operator(Comparison(Lt)), got {other:?}"
-        ),
+        other => panic!("expected TransformTarget::Operator(Comparison(Lt)), got {other:?}"),
     }
 }
 
@@ -436,7 +441,11 @@ fn m17_user_function_call_lowers_to_callable_target() {
         _ => unreachable!(),
     };
     let name = dag.declaration(target_id).name.as_deref();
-    assert_eq!(name, Some("f"), "Callable target points at user function `f`");
+    assert_eq!(
+        name,
+        Some("f"),
+        "Callable target points at user function `f`"
+    );
 }
 
 #[test]
@@ -569,9 +578,7 @@ fn m17_r9_arithmetic_operator_walks_to_algebra_field() {
     let int_shape = dag.int_shape().expect("Int cached at bootstrap");
     match dag.port(bind_x.value).state() {
         v3_compiler::dag::PortState::Resolved(ty) if *ty == int_shape => {}
-        other => panic!(
-            "expected Bind(x).value to be Resolved(Int), got {other:?}"
-        ),
+        other => panic!("expected Bind(x).value to be Resolved(Int), got {other:?}"),
     }
 }
 
@@ -591,9 +598,7 @@ fn m17_r9_comparison_operator_walks_to_algebra_field() {
     let bool_shape = dag.bool_shape().expect("Bool cached at bootstrap");
     match dag.port(bind_y.value).state() {
         v3_compiler::dag::PortState::Resolved(ty) if *ty == bool_shape => {}
-        other => panic!(
-            "expected Bind(y).value to be Resolved(Bool), got {other:?}"
-        ),
+        other => panic!("expected Bind(y).value to be Resolved(Bool), got {other:?}"),
     }
 }
 
@@ -814,11 +819,13 @@ fn m1_3_prb_rust_dag_bootstrap_loads_structurally() {
     assert_eq!(fields[1].0, "op");
     let ordered_ring_id = find_named(&dag, "OrderedRing");
     let ordered_ring_add_id = match &dag.declaration(ordered_ring_id).connective {
-        TypeConnective::Conj { children } => children
-            .iter()
-            .find(|f| f.label == "add")
-            .expect("OrderedRing has an add field")
-            .ty,
+        TypeConnective::Conj { children } => {
+            children
+                .iter()
+                .find(|f| f.label == "add")
+                .expect("OrderedRing has an add field")
+                .ty
+        }
         other => panic!("OrderedRing should be a Conj, got {other:?}"),
     };
     match &fields[1].1 {
@@ -1197,11 +1204,7 @@ fn m18_if_then_else_populates_branch_pattern() {
     // for the then-branch and {name:"False"} for the else-branch,
     // resolved to Bool's True/False variant declarations after
     // inference.
-    let dag = compile_to_dag(
-        "let r = if 1 > 0 then 10 else 20",
-        "if.v3",
-    )
-    .expect("compiles");
+    let dag = compile_to_dag("let r = if 1 > 0 then 10 else 20", "if.v3").expect("compiles");
     let branch = dag
         .nodes()
         .iter()
@@ -1212,9 +1215,7 @@ fn m18_if_then_else_populates_branch_pattern() {
     for path in &branch.paths {
         match &path.pattern {
             BranchPattern::ResolvedVariant(_) => {}
-            other => panic!(
-                "if/else paths should resolve to Bool variants, got {other:?}"
-            ),
+            other => panic!("if/else paths should resolve to Bool variants, got {other:?}"),
         }
     }
 }
@@ -1232,9 +1233,7 @@ fn m18_bool_is_structurally_a_disj() {
             assert!(variants.iter().any(|f| f.label == "True"));
             assert!(variants.iter().any(|f| f.label == "False"));
         }
-        other => panic!(
-            "Bool must be a Disj for if/else to type-check, got {other:?}"
-        ),
+        other => panic!("Bool must be a Disj for if/else to type-check, got {other:?}"),
     }
 }
 
@@ -1384,10 +1383,7 @@ fn m1_3_substrate_reflection_opaque_atoms_loaded() {
             .unwrap_or_else(|| panic!("`{name}` must be declared by src/v3/std/substrate.dag"));
         let children = match &decl.connective {
             TypeConnective::Conj { children } => children,
-            other => panic!(
-                "`{name}` should lower to an empty Conj, got {:?}",
-                other
-            ),
+            other => panic!("`{name}` should lower to an empty Conj, got {:?}", other),
         };
         assert!(
             children.is_empty(),
@@ -1610,10 +1606,7 @@ fn get_first(p: Pair) -> Int = p.first
     // body.
     let target_decl = match transform.target {
         TransformTarget::Callable(id) => id,
-        other => panic!(
-            "field access should use Callable target, got {:?}",
-            other
-        ),
+        other => panic!("field access should use Callable target, got {:?}", other),
     };
     let target_decl_ref = dag.declaration(target_decl);
 
@@ -1649,10 +1642,7 @@ fn get_first(p: Pair) -> Int = p.first
             output,
             body,
         } => (inputs, *output, body),
-        other => panic!(
-            "field accessor should be an Arrow, got {:?}",
-            other
-        ),
+        other => panic!("field accessor should be an Arrow, got {:?}", other),
     };
     assert_eq!(inputs.len(), 1, "field accessor Arrow takes one input");
     assert!(
@@ -1901,10 +1891,7 @@ fn extract(c: Container) -> Int =
     let mut found_bare = false;
     for path in &branch.paths {
         match &path.pattern {
-            v3_compiler::dag::BranchPattern::ResolvedVariantWith {
-                binding_name,
-                ..
-            } => {
+            v3_compiler::dag::BranchPattern::ResolvedVariantWith { binding_name, .. } => {
                 assert_eq!(
                     binding_name, "payload",
                     "with-payload pattern should carry the binding name"
@@ -1914,10 +1901,7 @@ fn extract(c: Container) -> Int =
             v3_compiler::dag::BranchPattern::ResolvedVariant(_) => {
                 found_bare = true;
             }
-            other => panic!(
-                "unexpected unresolved pattern after infer: {:?}",
-                other
-            ),
+            other => panic!("unexpected unresolved pattern after infer: {:?}", other),
         }
     }
     assert!(
@@ -1969,7 +1953,9 @@ fn broken(n: Int) -> Int =
     );
     let diags = format!("{:?}", dag.diagnostics());
     assert!(
-        diags.contains("not a sum") || diags.contains("not a constructor") || diags.contains("Something"),
+        diags.contains("not a sum")
+            || diags.contains("not a constructor")
+            || diags.contains("Something"),
         "expected a variant-related diagnostic, got {diags}"
     );
 }
@@ -2092,5 +2078,395 @@ fn use_path() -> Int = SomeType.field
         diags_str.contains("does not start with a local variable")
             || diags_str.contains("module-qualified"),
         "expected a non-local path diagnostic, got {diags_str}"
+    );
+}
+
+#[test]
+fn prereq0_single_level_higher_order_call_binds_function_argument() {
+    let src = "\
+fn step(x: Int) -> Int = x
+fn apply<T>(x: T, f: fn(T) -> T) -> T = f(x)
+let y = apply(3, step)
+";
+    let dag = compile_any(src, "prereq0_single_level.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "single-level higher-order call should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+
+    let int_id = find_named(&dag, "Int");
+    let step_id = find_named(&dag, "step");
+    let apply_id = find_named(&dag, "apply");
+    let apply_decl = dag.declaration(apply_id);
+    let apply_t = apply_decl.type_params[0];
+    let apply_f = match &apply_decl.connective {
+        TypeConnective::Arrow { inputs, .. } => inputs[1],
+        other => panic!("apply should be Arrow, got {other:?}"),
+    };
+
+    let mut saw_apply_instantiation = false;
+    let mut saw_param_call = false;
+    for node in dag.nodes() {
+        let Behavior::Transform(transform) = node else {
+            continue;
+        };
+        let TransformTarget::Callable(target) = transform.target else {
+            continue;
+        };
+        if target == apply_f {
+            saw_param_call = true;
+            assert_eq!(
+                transform.inputs.len(),
+                1,
+                "calling the function-typed parameter should still pass exactly one runtime arg"
+            );
+            continue;
+        }
+        let TypeConnective::Instantiation {
+            template,
+            arguments,
+        } = &dag.declaration(target).connective
+        else {
+            continue;
+        };
+        if *template != apply_id {
+            continue;
+        }
+        saw_apply_instantiation = true;
+        assert_eq!(
+            transform.inputs.len(),
+            1,
+            "function-typed call arguments should bind through Instantiation, not runtime ports"
+        );
+        assert!(
+            arguments
+                .iter()
+                .any(|arg| arg.parameter == apply_f && arg.value == step_id),
+            "expected apply's function slot to bind to `step`, got {arguments:?}"
+        );
+        assert!(
+            arguments
+                .iter()
+                .any(|arg| arg.parameter == apply_t && arg.value == int_id),
+            "expected apply's type parameter T to bind to Int via function-signature matching, got {arguments:?}"
+        );
+    }
+
+    assert!(
+        saw_apply_instantiation,
+        "did not observe the top-level `apply(3, step)` instantiation"
+    );
+    assert!(
+        saw_param_call,
+        "did not observe the body call `f(x)` lowered against apply's function-parameter slot"
+    );
+    assert_eq!(
+        bind_value_type_decl(&dag, "y"),
+        int_id,
+        "the top-level binding should infer Int"
+    );
+}
+
+#[test]
+fn prereq0_nested_higher_order_call_threads_subststack_chain() {
+    let src = "\
+fn step(x: Int) -> Int = x
+fn apply<T>(x: T, f: fn(T) -> T) -> T = f(x)
+fn twice<T>(x: T, f: fn(T) -> T) -> T = apply(apply(x, f), f)
+let y = twice(3, step)
+";
+    let dag = compile_any(src, "prereq0_nested.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "nested higher-order call should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+
+    let int_id = find_named(&dag, "Int");
+    let step_id = find_named(&dag, "step");
+    let apply_id = find_named(&dag, "apply");
+    let twice_id = find_named(&dag, "twice");
+
+    let apply_decl = dag.declaration(apply_id);
+    let apply_t = apply_decl.type_params[0];
+    let apply_f = match &apply_decl.connective {
+        TypeConnective::Arrow { inputs, .. } => inputs[1],
+        other => panic!("apply should be Arrow, got {other:?}"),
+    };
+
+    let twice_decl = dag.declaration(twice_id);
+    let twice_t = twice_decl.type_params[0];
+    let twice_f = match &twice_decl.connective {
+        TypeConnective::Arrow { inputs, .. } => inputs[1],
+        other => panic!("twice should be Arrow, got {other:?}"),
+    };
+
+    let mut apply_instantiations = 0usize;
+    let mut saw_twice_instantiation = false;
+    for node in dag.nodes() {
+        let Behavior::Transform(transform) = node else {
+            continue;
+        };
+        let TransformTarget::Callable(target) = transform.target else {
+            continue;
+        };
+        let TypeConnective::Instantiation {
+            template,
+            arguments,
+        } = &dag.declaration(target).connective
+        else {
+            continue;
+        };
+        if *template == apply_id {
+            apply_instantiations += 1;
+            assert_eq!(
+                transform.inputs.len(),
+                1,
+                "each nested `apply(..., f)` call should keep only the value arg as a runtime input"
+            );
+            assert!(
+                arguments
+                    .iter()
+                    .any(|arg| arg.parameter == apply_f && arg.value == twice_f),
+                "expected apply's function slot to bind to twice's function slot, got {arguments:?}"
+            );
+            assert!(
+                arguments
+                    .iter()
+                    .any(|arg| arg.parameter == apply_t && arg.value == twice_t),
+                "expected apply's type parameter to bind to twice's type parameter, got {arguments:?}"
+            );
+        }
+        if *template == twice_id {
+            saw_twice_instantiation = true;
+            assert_eq!(
+                transform.inputs.len(),
+                1,
+                "the top-level `twice(3, step)` call should keep only the value arg as a runtime input"
+            );
+            assert!(
+                arguments
+                    .iter()
+                    .any(|arg| arg.parameter == twice_f && arg.value == step_id),
+                "expected twice's function slot to bind to `step`, got {arguments:?}"
+            );
+            assert!(
+                arguments
+                    .iter()
+                    .any(|arg| arg.parameter == twice_t && arg.value == int_id),
+                "expected twice's type parameter to bind to Int, got {arguments:?}"
+            );
+        }
+    }
+
+    assert!(
+        apply_instantiations >= 2,
+        "expected both nested `apply` calls to instantiate through SubstStack bindings"
+    );
+    assert!(
+        saw_twice_instantiation,
+        "did not observe the top-level `twice(3, step)` instantiation"
+    );
+    assert_eq!(
+        bind_value_type_decl(&dag, "y"),
+        int_id,
+        "the top-level nested higher-order binding should infer Int"
+    );
+}
+
+#[test]
+fn prereq3_annotated_lambda_direct_call_uses_declared_params_only() {
+    let src = "\
+let f: fn(Int) -> Int = |x| x
+let y = f(42)
+";
+    let dag = compile_any(src, "prereq3_direct_lambda.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "annotated direct lambda call should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+
+    let int_id = find_named(&dag, "Int");
+    let mut saw_lambda_call = false;
+    for node in dag.nodes() {
+        let Behavior::Transform(transform) = node else {
+            continue;
+        };
+        let TransformTarget::Callable(target) = transform.target else {
+            continue;
+        };
+        let TypeConnective::Arrow { body, .. } = &dag.declaration(target).connective else {
+            continue;
+        };
+        let ArrowBody::UserDefined(bind_id) = body else {
+            continue;
+        };
+        let bind = dag
+            .node(*bind_id)
+            .as_bind()
+            .expect("lambda body bind should exist");
+        if bind.name.starts_with("__anon_lambda_") {
+            saw_lambda_call = true;
+            assert_eq!(
+                transform.inputs.len(),
+                1,
+                "direct lambda call should pass only the declared runtime argument"
+            );
+            assert_eq!(
+                bind.params.len(),
+                1,
+                "non-capturing lambda bind should carry exactly one declared parameter"
+            );
+        }
+    }
+
+    assert!(saw_lambda_call, "did not observe the direct lambda call target");
+    assert_eq!(bind_value_type_decl(&dag, "y"), int_id);
+}
+
+#[test]
+fn prereq3_multi_param_lambda_parses_and_compiles() {
+    let src = "\
+let f: fn(Int, Int) -> Int = |x, y| x + y
+let y = f(2, 3)
+";
+    let dag = compile_any(src, "prereq3_multi_param_lambda.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "multi-parameter lambda should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(bind_value_type_decl(&dag, "y"), find_named(&dag, "Int"));
+}
+
+#[test]
+fn prereq3_captured_lambda_direct_call_bakes_capture_into_bind() {
+    let src = "\
+let base: Int = 1
+let f: fn(Int) -> Int = |x| base + x
+let y = f(3)
+";
+    let dag = compile_any(src, "prereq3_captured_lambda.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "captured lambda call should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+
+    let int_id = find_named(&dag, "Int");
+    let mut saw_lambda_call = false;
+    for node in dag.nodes() {
+        let Behavior::Transform(transform) = node else {
+            continue;
+        };
+        let TransformTarget::Callable(target) = transform.target else {
+            continue;
+        };
+        let TypeConnective::Arrow { body, .. } = &dag.declaration(target).connective else {
+            continue;
+        };
+        let ArrowBody::UserDefined(bind_id) = body else {
+            continue;
+        };
+        let bind = dag
+            .node(*bind_id)
+            .as_bind()
+            .expect("lambda body bind should exist");
+        if bind.name.starts_with("__anon_lambda_") {
+            saw_lambda_call = true;
+            assert_eq!(
+                transform.inputs.len(),
+                1,
+                "captured lambda call should still pass only the declared runtime argument"
+            );
+            assert_eq!(
+                bind.params.len(),
+                2,
+                "captured lambda bind should expose [capture + declared] inputs structurally"
+            );
+        }
+    }
+
+    assert!(saw_lambda_call, "did not observe the captured lambda call target");
+    assert_eq!(bind_value_type_decl(&dag, "y"), int_id);
+}
+
+#[test]
+fn prereq3_lambda_argument_to_higher_order_call_uses_expected_signature() {
+    let src = "\
+fn apply_to_three(f: fn(Int) -> Int) -> Int = f(3)
+let base: Int = 1
+let y = apply_to_three(|x| base + x)
+";
+    let dag = compile_any(src, "prereq3_lambda_hof.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "lambda argument to higher-order call should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+
+    let int_id = find_named(&dag, "Int");
+    let apply_id = find_named(&dag, "apply_to_three");
+    let apply_f = match &dag.declaration(apply_id).connective {
+        TypeConnective::Arrow { inputs, .. } => inputs[0],
+        other => panic!("apply_to_three should be Arrow, got {other:?}"),
+    };
+    let mut saw_instantiation = false;
+    for node in dag.nodes() {
+        let Behavior::Transform(transform) = node else {
+            continue;
+        };
+        let TransformTarget::Callable(target) = transform.target else {
+            continue;
+        };
+        let TypeConnective::Instantiation { template, arguments } = &dag.declaration(target).connective
+        else {
+            continue;
+        };
+        if *template != apply_id {
+            continue;
+        }
+        saw_instantiation = true;
+        assert_eq!(
+            transform.inputs.len(),
+            0,
+            "function-typed lambda argument should bind through Instantiation, not runtime ports"
+        );
+        let lambda_arg = arguments
+            .iter()
+            .find(|arg| arg.parameter == apply_f)
+            .unwrap_or_else(|| panic!("expected function-slot binding, got {arguments:?}"));
+        assert!(
+            matches!(
+                dag.declaration(lambda_arg.value).connective,
+                TypeConnective::Arrow {
+                    body: ArrowBody::UserDefined(_),
+                    ..
+                }
+            ),
+            "expected higher-order lambda argument to lower to a synthetic callable declaration"
+        );
+    }
+
+    assert!(saw_instantiation, "did not observe the higher-order lambda instantiation");
+    assert_eq!(bind_value_type_decl(&dag, "y"), int_id);
+}
+
+#[test]
+fn prereq3_unannotated_lambda_fails_closed() {
+    let src = "\
+let f = |x| x
+";
+    let dag = compile_any(src, "prereq3_unannotated_lambda.v3");
+    assert!(
+        dag.diagnostics().iter().any(|(_, diag)| matches!(
+            diag,
+            v3_compiler::diagnostics::Diagnostic::ResolveError { name, .. }
+                if name.contains("lambda expressions currently require an expected function type")
+        )),
+        "expected fail-closed diagnostic for unannotated lambda, got {:?}",
+        dag.diagnostics()
     );
 }
