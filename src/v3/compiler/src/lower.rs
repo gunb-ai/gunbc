@@ -49,6 +49,18 @@ pub fn lower(module: &SurfaceModule) -> Dag {
     // types that live in std/ modules outside the M1(2.6) load set
     // (e.g., `Tuple`), and those aren't user errors.
     resolve_pending_identifiers_strict(&mut dag, user_start);
+    // User-mode scaffold rejection: `FnExternalBody` /
+    // `ArrowBody::Unparsed` and `Data` / `ValueBody::Unparsed`
+    // are load-bearing scaffolds for the std/bootstrap files
+    // whose bodies the M1(2.8) parser cannot yet lower
+    // (match / record literals / pipes / lambdas / etc.).
+    // User-range declarations that rely on the scaffold are
+    // fail-closed: ordinary user code has no business shipping
+    // an opaque body the compiler cannot validate. Without this
+    // sweep, `fn foo(x: Int) -> Int { junk }` would compile
+    // cleanly and callers would get Resolved types from an
+    // unvalidated body.
+    reject_user_unparsed_scaffolds(&mut dag, user_start);
     dag
 }
 
@@ -790,6 +802,75 @@ pub(crate) fn resolve_pending_identifiers(dag: &mut Dag) {
 /// opportunistically but tolerated.
 pub(crate) fn resolve_pending_identifiers_strict(dag: &mut Dag, strict_from: usize) {
     run_identifier_sweep(dag, strict_from);
+}
+
+/// User-mode scaffold rejection. `FnExternalBody` lowers to
+/// `ArrowBody::Unparsed(SourceSpan)`; `Data` lowers to a declaration
+/// with `value_body = Some(ValueBody::Unparsed(SourceSpan))`. Both
+/// are load-bearing scaffolds for std/bootstrap files whose bodies
+/// the M1(2.8) parser cannot yet lower. For ordinary user code they
+/// are a fail-closed concern: an opaque body that the compiler has
+/// not validated shipping through `compile_to_dag` violates the
+/// fail-closed static-grounding invariant.
+///
+/// This sweep walks declarations at id `>= strict_from` (i.e. the
+/// user-lowered range) and attaches a fail-closed diagnostic for
+/// each `Unparsed` scaffold found. Bootstrap-range declarations
+/// (id < strict_from) are tolerated — those scaffolds exist by
+/// design until the parser grows to cover the remaining std/
+/// grammar (match / record literals / lambdas / pipes / data body
+/// literals — see `DOWNSTREAM_REQUIREMENTS.md` class-5 gap list).
+///
+/// Diagnostics are attached via `report_declaration_error`
+/// (`Dag::attach_diagnostic`), which routes through the phantom-port
+/// channel so they surface via `compile_to_dag`'s standard
+/// `CompileError::Semantic` path.
+fn reject_user_unparsed_scaffolds(dag: &mut Dag, strict_from: usize) {
+    // Snapshot the offending (id, span) pairs first so we can emit
+    // diagnostics without holding a long immutable borrow of the
+    // declaration slice.
+    let mut unparsed_fn_scaffolds: Vec<(DeclarationId, String, SourceSpan)> = Vec::new();
+    let mut unparsed_data_scaffolds: Vec<(DeclarationId, String, SourceSpan)> = Vec::new();
+    for decl in dag.declarations() {
+        if (decl.id.raw() as usize) < strict_from {
+            continue;
+        }
+        let name = decl.name.clone().unwrap_or_else(|| {
+            format!("declaration#{}", decl.id.raw())
+        });
+        if let TypeConnective::Arrow {
+            body: ArrowBody::Unparsed(span),
+            ..
+        } = &decl.connective
+        {
+            unparsed_fn_scaffolds.push((decl.id, name.clone(), span.clone()));
+        }
+        if let Some(crate::dag::ValueBody::Unparsed(span)) = &decl.value_body {
+            unparsed_data_scaffolds.push((decl.id, name, span.clone()));
+        }
+    }
+    for (_, name, span) in unparsed_fn_scaffolds {
+        report_declaration_error(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "function `{name}` has an opaque block body — M1(2.8) user code cannot yet use match / record literals / pipes / lambdas inside fn bodies (see DOWNSTREAM_REQUIREMENTS.md class-5 gaps)"
+                ),
+                span,
+            },
+        );
+    }
+    for (_, name, span) in unparsed_data_scaffolds {
+        report_declaration_error(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "data `{name}` has an opaque body — M1(2.8) user code cannot yet use record / list / map literals inside data bodies (see DOWNSTREAM_REQUIREMENTS.md class-5 gap #3)"
+                ),
+                span,
+            },
+        );
+    }
 }
 
 fn run_identifier_sweep(dag: &mut Dag, strict_from: usize) {

@@ -699,6 +699,41 @@ fn bad(s: Sign) -> Int = match s { Plus => 0, Plus => 1, Minus => 2 }
 }
 
 #[test]
+fn m18_r14_user_block_bodied_fn_is_rejected() {
+    // M1(2.8) R14: user-range ArrowBody::Unparsed scaffolds must
+    // fail-closed. The FnExternalBody surface form exists so
+    // std/bootstrap files with match/record/pipe/lambda bodies
+    // can parse cleanly (their bodies become scaffolds), but
+    // ordinary user code has no business shipping an opaque
+    // body that the compiler never validates.
+    //
+    // Before R14, `fn foo(x: Int) -> Int { junk }` compiled
+    // cleanly because nothing rejected the user-range
+    // ArrowBody::Unparsed. After R14, the lower-side sweep
+    // rejects every user-range Unparsed scaffold.
+    let result = compile_to_dag("fn foo(x: Int) -> Int { junk }", "user.v3");
+    assert!(
+        result.is_err(),
+        "user-range fn with opaque body must fail compile_to_dag"
+    );
+}
+
+#[test]
+fn m18_r14_user_data_with_opaque_body_is_rejected() {
+    // M1(2.8) R14: analogous to the fn case. User-range
+    // `data foo: Int = { junk }` must fail-closed because the
+    // ValueBody::Unparsed scaffold was designed for
+    // std/bootstrap data tables (kernel_algebra_profile et al.),
+    // not user code. User code should not ship opaque data
+    // bodies the compiler cannot validate.
+    let result = compile_to_dag("data foo: Int = { junk }", "user_data.v3");
+    assert!(
+        result.is_err(),
+        "user-range data with opaque body must fail compile_to_dag"
+    );
+}
+
+#[test]
 fn m18_r13_mutual_recursion_poisons_callers() {
     // M1(2.8) R13: the mutually-recursive fn rejection path used to
     // store ArrowBody::Pending, which decide_transform accepts as
