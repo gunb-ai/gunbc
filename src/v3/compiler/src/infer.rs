@@ -164,23 +164,12 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
     // declarations), then apply them (mutable borrow of nodes). This
     // two-phase pattern avoids borrow conflicts while still reading
     // declaration bodies.
-    /// Per-path rewrite the fixpoint loop applies after the
-    /// read phase. Carries enough to reconstruct the right
-    /// BranchPattern variant (bare vs with-payload) under
-    /// mutable borrow.
-    enum RewriteShape {
-        Bare,
-        With {
-            binding_name: String,
-            payload_port: PortId,
-        },
-    }
     struct Rewrite {
         node_index: usize,
         path_index: usize,
         result: Result<DeclarationId, Diagnostic>,
         output_port: PortId,
-        shape: RewriteShape,
+        payload_binding: Option<(String, PortId)>,
     }
     let mut rewrites: Vec<Rewrite> = Vec::new();
     // Coverage check: for each Branch, after resolving all paths,
@@ -225,7 +214,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
             };
         let mut resolved_arms: Vec<(DeclarationId, String)> = Vec::new();
         for (path_index, path) in b.paths.iter().enumerate() {
-            let (result, shape) = match &path.pattern {
+            let (result, payload_binding) = match &path.pattern {
                 crate::dag::BranchPattern::ResolvedVariant(id) => {
                     // Already resolved (e.g., if/else paths on a
                     // second infer pass). Record for coverage check
@@ -265,7 +254,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                             span: span.clone(),
                         }),
                     };
-                    (res, RewriteShape::Bare)
+                    (res, None)
                 }
                 crate::dag::BranchPattern::UnresolvedVariantWith {
                     name,
@@ -285,13 +274,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                             span: span.clone(),
                         }),
                     };
-                    (
-                        res,
-                        RewriteShape::With {
-                            binding_name: binding_name.clone(),
-                            payload_port: *payload_port,
-                        },
-                    )
+                    (res, Some((binding_name.clone(), *payload_port)))
                 }
             };
             rewrites.push(Rewrite {
@@ -299,7 +282,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                 path_index,
                 result,
                 output_port: b.output,
-                shape,
+                payload_binding,
             });
         }
         coverage_checks.push(CoverageCheck {
@@ -312,21 +295,15 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
     for rewrite in rewrites {
         match rewrite.result {
             Ok(variant_id) => {
-                // Reconstruct the right resolved variant from the
-                // captured shape. Bare patterns rewrite to
-                // ResolvedVariant; with-payload patterns rewrite
-                // to ResolvedVariantWith and preserve the binding
-                // name + payload port edge.
-                let resolved = match rewrite.shape {
-                    RewriteShape::Bare => crate::dag::BranchPattern::ResolvedVariant(variant_id),
-                    RewriteShape::With {
-                        binding_name,
-                        payload_port,
-                    } => crate::dag::BranchPattern::ResolvedVariantWith {
-                        decl: variant_id,
-                        binding_name,
-                        payload_port,
-                    },
+                let resolved = match rewrite.payload_binding {
+                    Some((binding_name, payload_port)) => {
+                        crate::dag::BranchPattern::ResolvedVariantWith {
+                            decl: variant_id,
+                            binding_name,
+                            payload_port,
+                        }
+                    }
+                    None => crate::dag::BranchPattern::ResolvedVariant(variant_id),
                 };
                 if let Behavior::Branch(b) = &mut dag.nodes_mut()[rewrite.node_index] {
                     b.paths[rewrite.path_index].pattern = resolved;

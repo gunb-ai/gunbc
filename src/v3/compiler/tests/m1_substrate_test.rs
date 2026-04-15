@@ -2322,7 +2322,10 @@ let y = f(42)
         }
     }
 
-    assert!(saw_lambda_call, "did not observe the direct lambda call target");
+    assert!(
+        saw_lambda_call,
+        "did not observe the direct lambda call target"
+    );
     assert_eq!(bind_value_type_decl(&dag, "y"), int_id);
 }
 
@@ -2389,7 +2392,10 @@ let y = f(3)
         }
     }
 
-    assert!(saw_lambda_call, "did not observe the captured lambda call target");
+    assert!(
+        saw_lambda_call,
+        "did not observe the captured lambda call target"
+    );
     assert_eq!(bind_value_type_decl(&dag, "y"), int_id);
 }
 
@@ -2421,7 +2427,10 @@ let y = apply_to_three(|x| base + x)
         let TransformTarget::Callable(target) = transform.target else {
             continue;
         };
-        let TypeConnective::Instantiation { template, arguments } = &dag.declaration(target).connective
+        let TypeConnective::Instantiation {
+            template,
+            arguments,
+        } = &dag.declaration(target).connective
         else {
             continue;
         };
@@ -2450,8 +2459,47 @@ let y = apply_to_three(|x| base + x)
         );
     }
 
-    assert!(saw_instantiation, "did not observe the higher-order lambda instantiation");
+    assert!(
+        saw_instantiation,
+        "did not observe the higher-order lambda instantiation"
+    );
     assert_eq!(bind_value_type_decl(&dag, "y"), int_id);
+}
+
+#[test]
+fn prereq3_lambda_can_capture_outer_callable_parameter() {
+    let src = "\
+fn apply_to_three(f: fn(Int) -> Int) -> Int = f(3)
+fn use_callback(f: fn(Int) -> Int) -> Int = apply_to_three(|x| f(x))
+let y = use_callback(|z| z + 1)
+";
+    let dag = compile_any(src, "prereq3_capture_outer_callable.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "lambda should preserve captured outer callable bindings: {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(bind_value_type_decl(&dag, "y"), find_named(&dag, "Int"));
+}
+
+#[test]
+fn prereq0_conflicting_callable_template_bindings_fail_closed() {
+    let src = "\
+fn step_int(x: Int) -> Int = x
+fn step_bool(x: Bool) -> Bool = x
+fn use<T>(x: T, f: fn(T) -> T, g: fn(T) -> T) -> T = g(f(x))
+let bad = use(1, step_int, step_bool)
+";
+    let dag = compile_any(src, "prereq0_conflicting_callable_bindings.v3");
+    assert!(
+        dag.diagnostics().iter().any(|(_, diag)| matches!(
+            diag,
+            v3_compiler::diagnostics::Diagnostic::ResolveError { name, .. }
+                if name.contains("conflicts with earlier template bindings")
+        )),
+        "expected fail-closed callable-binding diagnostic, got {:?}",
+        dag.diagnostics()
+    );
 }
 
 #[test]

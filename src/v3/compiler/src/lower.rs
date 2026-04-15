@@ -2024,15 +2024,22 @@ fn lower_lambda_expr(
     let mut body_scope: HashMap<String, PortId> = HashMap::new();
     let mut body_callable_scope: CallableScope = CallableScope::new();
     for name in free_names {
+        let mut found_binding = false;
         if let Some(&port) = ctx.scope.get(&name) {
             capture_ports.push(port);
-            body_scope.insert(name, port);
-        } else if let Some(&decl_id) = ctx.callable_scope.get(&name) {
-            body_callable_scope.insert(name, decl_id);
-        } else if ctx.symbols.contains_key(&name) {
+            body_scope.insert(name.clone(), port);
+            found_binding = true;
+        }
+        if let Some(&decl_id) = ctx.callable_scope.get(&name) {
+            body_callable_scope.insert(name.clone(), decl_id);
+            found_binding = true;
+        }
+        if !found_binding && ctx.symbols.contains_key(&name) {
             // Top-level named declarations resolve through `symbols`
             // at call/lower time and do not need capture plumbing.
-        } else {
+            found_binding = true;
+        }
+        if !found_binding {
             return Err(Diagnostic::ResolveError {
                 name,
                 span: span.clone(),
@@ -2119,6 +2126,20 @@ fn push_template_argument_binding(
     }
     arguments.push(TemplateArgument { parameter, value });
     true
+}
+
+fn callable_binding_conflict_diagnostic(
+    target: &str,
+    arg_index: usize,
+    span: &SourceSpan,
+) -> Diagnostic {
+    Diagnostic::ResolveError {
+        name: format!(
+            "callable argument {} to `{target}` does not match the expected function type or conflicts with earlier template bindings",
+            arg_index + 1
+        ),
+        span: span.clone(),
+    }
 }
 
 fn bind_expected_type_to_actual(
@@ -2285,18 +2306,25 @@ fn lower_expr(
                             }
                             _ => resolve_callable_reference(arg, dag, callable_scope, symbols),
                         };
-                        let _ = push_template_argument_binding(
+                        let matches_expected = push_template_argument_binding(
                             &mut template_arguments,
                             expected_decl,
                             actual_callable,
-                        );
-                        let _ = bind_expected_type_to_actual(
+                        ) && bind_expected_type_to_actual(
                             dag,
                             expected_decl,
                             actual_callable,
                             &mut template_arguments,
                             0,
                         );
+                        if !matches_expected {
+                            let port = dag.alloc_port(None);
+                            dag.mark_unresolved(
+                                port,
+                                callable_binding_conflict_diagnostic(target, idx, expr_span(arg)),
+                            );
+                            return port;
+                        }
                         continue;
                     }
                 }
@@ -2414,27 +2442,12 @@ fn lower_expr(
             // at push time (arm lowering pushes its own nodes). Same
             // ordering pattern as the `If` arm above.
             let scrutinee_port = lower_expr(scrutinee, dag, scope, callable_scope, symbols);
-
-            // Shape carried between the per-arm lowering loop and
-            // the Path construction below. `lowered_arm` is
-            // intentionally not a named struct — it's local enough
-            // that a tuple keeps the code concrete.
-            enum LoweredPattern {
-                Bare {
-                    name: String,
-                    span: SourceSpan,
-                },
-                With {
-                    name: String,
-                    binding_name: String,
-                    payload_port: PortId,
-                    span: SourceSpan,
-                },
-            }
             struct LoweredArm {
                 output_port: PortId,
                 body_node: Option<NodeId>,
-                pattern: LoweredPattern,
+                pattern_name: String,
+                pattern_span: SourceSpan,
+                payload_binding: Option<(String, PortId)>,
             }
 
             // Walk the scrutinee to its Disj declaration once,
@@ -2452,16 +2465,10 @@ fn lower_expr(
 
             let mut lowered_arms: Vec<LoweredArm> = Vec::with_capacity(arms.len());
             for arm in arms {
-                let (pattern, arm_scope) = match &arm.pattern {
+                let (pattern_name, pattern_span, payload_binding, arm_scope) = match &arm.pattern {
                     SurfacePattern::BareVariant { name, span } => {
                         // Unchanged pre-Prereq-2 behavior.
-                        (
-                            LoweredPattern::Bare {
-                                name: name.clone(),
-                                span: span.clone(),
-                            },
-                            scope.clone(),
-                        )
+                        (name.clone(), span.clone(), None, scope.clone())
                     }
                     SurfacePattern::VariantWith {
                         name,
@@ -2586,12 +2593,9 @@ fn lower_expr(
                         let mut arm_scope = scope.clone();
                         arm_scope.insert(binding.clone(), payload_port);
                         (
-                            LoweredPattern::With {
-                                name: name.clone(),
-                                binding_name: binding.clone(),
-                                payload_port,
-                                span: pat_span.clone(),
-                            },
+                            name.clone(),
+                            pat_span.clone(),
+                            Some((binding.clone(), payload_port)),
                             arm_scope,
                         )
                     }
@@ -2601,7 +2605,9 @@ fn lower_expr(
                 lowered_arms.push(LoweredArm {
                     output_port,
                     body_node,
-                    pattern,
+                    pattern_name,
+                    pattern_span,
+                    payload_binding,
                 });
             }
 
@@ -2610,20 +2616,18 @@ fn lower_expr(
             let paths: Vec<Path> = lowered_arms
                 .into_iter()
                 .map(|arm| {
-                    let pattern = match arm.pattern {
-                        LoweredPattern::Bare { name, span } => {
-                            BranchPattern::UnresolvedVariant { name, span }
+                    let pattern = match arm.payload_binding {
+                        Some((binding_name, payload_port)) => {
+                            BranchPattern::UnresolvedVariantWith {
+                                name: arm.pattern_name,
+                                binding_name,
+                                payload_port,
+                                span: arm.pattern_span,
+                            }
                         }
-                        LoweredPattern::With {
-                            name,
-                            binding_name,
-                            payload_port,
-                            span,
-                        } => BranchPattern::UnresolvedVariantWith {
-                            name,
-                            binding_name,
-                            payload_port,
-                            span,
+                        None => BranchPattern::UnresolvedVariant {
+                            name: arm.pattern_name,
+                            span: arm.pattern_span,
                         },
                     };
                     Path {
