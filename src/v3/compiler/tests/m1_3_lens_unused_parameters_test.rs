@@ -246,6 +246,93 @@ fn unused_params_catches_content_upsert_synthetic_equivalent() {
     );
 }
 
+/// **Followup #2 regression test — Loop body descent.**
+///
+/// v3 lowers recursive functions to a `Loop` whose `body` is a
+/// NodeId pointing at the recursive call sub-DAG. Before the
+/// followup fix, the lens walker only visited `Loop.source` and
+/// `Loop.init` and never descended into `Loop.body`. Parameters
+/// used only inside the recursive body were falsely reported
+/// unused.
+///
+/// This test compiles a recursive function whose body uses
+/// every parameter from inside the recursive call, then asserts
+/// the lens returns zero violations (every parameter is reached
+/// via the loop body descent). Without the fix, this test would
+/// fail with parameters falsely reported.
+///
+/// **Why `n - 1` instead of `n - step`.** v3's termination
+/// check requires the first argument of every recursive call to
+/// be `<param> - <positive int literal>` so the analysis can
+/// prove the recursion bottoms out. A variable decrement (`n -
+/// step`) doesn't satisfy that check and the function fails to
+/// compile. The lens test uses a literal decrement to keep the
+/// function compileable; the lens behavior we're testing
+/// (Loop.body descent) is independent of the termination
+/// check's strictness.
+#[test]
+fn unused_params_descends_into_loop_body_for_recursive_calls() {
+    // `fn count_down(n: Int, base: Int) -> Int = ...`
+    //
+    // Both parameters are used: `n` is the recursive descent
+    // counter (used in cond + first arg of recursive call),
+    // `base` is the base-case value (used in then-branch + the
+    // second arg of the recursive call). The recursive call
+    // `count_down(n - 1, base)` lives inside the loop body, so
+    // the walker must descend into Loop.body to see both
+    // parameter reads from the recursive case.
+    let src = "fn count_down(n: Int, base: Int) -> Int = \
+        if n == 0 then base else count_down(n - 1, base)";
+    let dag = compile_to_dag(src, "recursive.v3").expect("compiles");
+    let lens = UnusedParametersLens::new(&dag);
+    let violations = lens.query(&UnusedParametersConfig::default());
+
+    let user_violations: Vec<_> = violations
+        .iter()
+        .filter(|v| v.function_span.file == "recursive.v3")
+        .collect();
+    assert!(
+        user_violations.is_empty(),
+        "recursive fn using every parameter inside the loop body should \
+         have no violations, got: {user_violations:?}"
+    );
+}
+
+/// **Followup #2 — exact bug being fixed.**
+///
+/// A recursive function where one parameter is ONLY used inside
+/// the recursive call (not in the base case or the conditional)
+/// should still be reported as USED. Before the loop-body
+/// descent fix, the walker missed the body's reads and falsely
+/// flagged the param as unused. After the fix, the walk reaches
+/// the param via the body descent.
+#[test]
+fn unused_params_loop_body_descent_finds_param_only_used_in_recursion() {
+    // `marker` only appears inside the recursive call. The base
+    // case (n == 0 → 0) doesn't read it; the conditional
+    // doesn't read it; only the recursive case
+    // (count_down(n - 1, marker)) does. Before the Loop.body
+    // descent fix, the walker stopped at l.source/l.init and
+    // missed this read — `marker` was falsely flagged unused.
+    let src = "fn count_down(n: Int, marker: Int) -> Int = \
+        if n == 0 then 0 else count_down(n - 1, marker)";
+    let dag = compile_to_dag(src, "loop_body_descent.v3").expect("compiles");
+    let lens = UnusedParametersLens::new(&dag);
+    let violations = lens.query(&UnusedParametersConfig::default());
+
+    let in_test: Vec<_> = violations
+        .iter()
+        .filter(|v| v.function_span.file == "loop_body_descent.v3")
+        .collect();
+    assert!(
+        in_test.is_empty(),
+        "lens should walk Loop.body to find params used only in the \
+         recursive call; pre-fix the walk stopped at l.source/l.init \
+         and missed body reads, falsely flagging `marker` as unused. \
+         Got: {in_test:?}"
+    );
+}
+
 #[test]
 fn unused_params_reports_unused_in_branch_body() {
     // `fn always_a(a: Int, b: Int) -> Int = if a > 0 then a else a`
