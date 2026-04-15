@@ -49,6 +49,85 @@ when the v3 tokenizer learns standard escape sequences (`\"`,
 visible scaffold; remove the placeholder and rewrite the carrier
 when the tokenizer extension lands.
 
+### M1(3) PR-B-unwind R1 class-7 gaps: substrate-level realization narrowing
+
+The PR-B-unwind R1 review on PR #445 raised three substrate-side
+issues that are partially addressed and partially deferred. Each
+is tracked here so the next round picks them up cleanly.
+
+**Class-7 gap #1: substrate-level type narrowing for realization
+fields.** The current shape uses `Declaration` (the universal
+sentinel) as the field type for `target` and `op` in rust.dag's
+realization meta-types. The substrate accepts any declaration in
+those positions, including bad wirings like
+`BehaviorRealization { target: Int }` (a primitive type targeted
+at a behavior template) or `OperatorRealization { op: Bind }`
+(a substrate marker used as an algebra field).
+
+PR-B-unwind R1 added a **lower-time fail-closed narrowing check**
+in `lower_record_to_structural` (see
+`validate_realization_field_target` in `src/v3/compiler/src/lower.rs`).
+The check fires at lower time, not at consumer time, so bad
+wirings surface as fail-closed diagnostics anchored to the
+offending data-body span. Two regression tests pin the behavior:
+`m1_3_prb_unwind_r1_behavior_realization_with_primitive_target_is_rejected`
+and `m1_3_prb_unwind_r1_type_realization_with_behavior_target_is_rejected`.
+
+What the lower-time check does NOT do: encode the constraint at
+the **type system level** (i.e. make bad states unrepresentable).
+The fully structural fix needs one of:
+
+- **`inhabits` syntax on `type` declarations**: e.g.
+  `type Bind inhabits BehaviorMarker {}` so the substrate carries
+  a typed edge from each behavior marker to a parent kind. Then
+  rust.dag's `BehaviorRealization.target: BehaviorMarker` would
+  type-check directly against the inhabits edge. Requires parser
+  + lower work to support `inhabits` on type declarations.
+- **`where` clause refinement** on field types: e.g.
+  `target: Declaration where inhabits(BehaviorMarker)`. Class-5
+  gap #5 already tracks `where` clauses; this gap is a specific
+  consumer of that work.
+
+**Dissolution trigger**: when v3's parser grows either `inhabits`
+syntax or `where` clauses, the lower-time check in
+`validate_realization_field_target` dissolves into the parser-
+level constraint and is removed.
+
+**Class-7 gap #2: field-as-declaration in `ValueBody::Structural`.**
+The current payload shape is
+`Vec<(String, FieldValue)>` where the `String` is the field label
+("target", "carrier", etc.). PR #445's R1 review noted that this
+keeps a per-field-label string in the data body. The proposed
+fix reshapes Field substrate so each Conj field is its own
+declaration with a stable id, and `ValueBody::Structural`
+carries `Vec<(DeclarationId, FieldValue)>` — typed field
+identity instead of a label string.
+
+The blocker is that v3's `Field` struct (in `dag.rs`) is currently
+`{ label: String, ty: DeclarationId }` — fields are NOT their own
+declarations. Changing this touches `dsl/std/*` consumed by both
+v2 and v3, so it requires v2 coordination.
+
+**Dissolution trigger**: when v2 either deprecates or coordinates
+with v3 on the field-as-declaration substrate change, the
+`(String, FieldValue)` payload moves to `(DeclarationId, FieldValue)`
+and consumer-side label lookups (e.g.
+`field_decl_ref(fields, "target")`) become typed-id lookups. The
+PR-B-unwind R1 round delivered the **fail-closed reading** of
+the current shape: `require_field_decl_ref` /
+`require_field_string` in `emit_rust.rs` panic on missing fields
+or duplicate keys, so the label-string lookup fails loudly when
+the spec is malformed.
+
+**Class-7 gap #3: bootstrap fixture enumeration.** The pre-unwind
+shape had `const RUST_DAG: &str = include_str!("../../spec/rust.dag");`
+constants in `bootstrap.rs` plus a hardcoded fixture array.
+PR-B-unwind R1 closed this gap via `build.rs` + the generated
+`V3_SPECS` static array. Adding a new per-target spec file
+(e.g. `python.dag`) is now a pure file-system change — drop the
+file in `src/v3/spec/`, run `cargo build`, and the loader picks
+it up. **Status**: closed at PR-B-unwind R1.
+
 **Scope.** Covers both the read side (`infer.rs`, `lens_depth.rs`,
 `lens_provenance.rs`) and the write side (`parse.rs` →
 `lower.rs` boundary). The write side was added in a second pass

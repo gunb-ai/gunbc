@@ -37,31 +37,34 @@ const INTEGER_DAG: &str = include_str!("../../../../dsl/std/integer.dag");
 const FLOAT_DAG: &str = include_str!("../../../../dsl/std/float.dag");
 const STRING_TYPE_DAG: &str = include_str!("../../../../dsl/std/string_type.dag");
 const TYPES_DAG: &str = include_str!("../../../../dsl/std/types.dag");
-// M1(3) PR-B unwind — substrate marker types for v3's L1 behaviors
-// and the `Declaration` sentinel meta-type. Loads after types.dag
-// (no cross-file dependency, but kept after the "domain" std files
-// for readability). Per-target language spec files import these
-// markers via typed `Declaration` field references, eliminating
-// the need to identify behaviors by string name. See
-// `src/v3/spec/v3_l1.dag` and `Dag.substrate_markers` for the
-// bootstrap cache populated from this file.
+
+// M1(3) PR-B-unwind R1 — the v3-only spec files (`src/v3/spec/
+// v3_l1.dag` for substrate markers, `src/v3/spec/rust.dag` for
+// the Rust target realization, plus any future per-target spec
+// like `python.dag`) are enumerated by `build.rs` at compile time
+// and exposed via the `V3_SPECS` static. Adding a new per-target
+// spec is a pure file-system change: drop the .dag file in
+// `src/v3/spec/`, the build script picks it up at the next
+// compile, and the bootstrap loop loads it without any
+// `bootstrap.rs` edit.
 //
-// **Why this lives in `src/v3/spec/` instead of `dsl/std/`.** v2's
+// The pre-unwind shape had `const RUST_DAG: &str = include_str!(...)`
+// constants here and a hardcoded fixture array, which PR #445
+// review flagged as a duplicate-authority bug: the on-disk spec
+// files and the Rust constants were two parallel representations
+// of the same set. The build-script-generated `V3_SPECS` is the
+// single authority.
+//
+// **Why these live in `src/v3/spec/` instead of `dsl/std/`.** v2's
 // CI pipeline scans `dsl/` recursively and tries to resolve every
 // identifier in every record-literal field value. v2 doesn't know
 // about v3's `Declaration` sentinel meta-type, so a rust.dag
 // declaration like `target: Int` (a typed reference) reads as an
-// undefined-variable error in v2's scope. The cleanest separation
-// is to keep v3-only spec files outside the v2-scanned tree
-// entirely. v3 reads them via `include_str!` from the path below
+// undefined-variable error in v2's scope. Keeping v3-only spec
+// files outside the v2-scanned tree entirely is the cleanest
+// separation. v3 reads them via the build-script-generated array
 // — no source-root scanning involved.
-const V3_L1_DAG: &str = include_str!("../../spec/v3_l1.dag");
-// M1(3) PR-B — the first target language spec v3 consumes
-// structurally. Loads after v3_l1.dag so the substrate markers
-// (Bind/Branch/Main/Declaration) are resolved by the time
-// rust.dag's Realization fields reference them. See
-// `src/v3/spec/rust.dag` for the file's role.
-const RUST_DAG: &str = include_str!("../../spec/rust.dag");
+include!(concat!(env!("OUT_DIR"), "/v3_specs.rs"));
 
 pub(crate) fn bootstrap(dag: &mut Dag) {
     // Two-phase loading across all seven std/ files. Phase 1 parses and
@@ -77,7 +80,11 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
     // → `algebra` (no deps) → `integer`/`float` (need algebra + bit)
     // → `types` (needs integer for Int64) → `string_type` (needs
     // Char from types; the sweep resolves the cross-file forward ref).
-    let fixtures: &[(&str, &str)] = &[
+    // Standard library fixtures — shared with v2. The set is
+    // hardcoded because dsl/std/ is the v3 substrate's sibling
+    // tree and adding new std/ files is a coordinated change
+    // that goes through both compilers.
+    let std_fixtures: &[(&str, &str)] = &[
         ("dsl/std/logic.dag", LOGIC_DAG),
         ("dsl/std/bit.dag", BIT_DAG),
         ("dsl/std/algebra.dag", ALGEBRA_DAG),
@@ -85,9 +92,16 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
         ("dsl/std/float.dag", FLOAT_DAG),
         ("dsl/std/types.dag", TYPES_DAG),
         ("dsl/std/string_type.dag", STRING_TYPE_DAG),
-        ("src/v3/spec/v3_l1.dag", V3_L1_DAG),
-        ("src/v3/spec/rust.dag", RUST_DAG),
     ];
+
+    // v3-only spec fixtures — enumerated by build.rs at compile
+    // time from `src/v3/spec/*.dag`. Adding a new per-target
+    // language spec is a pure file-system change.
+    let fixtures: Vec<(&str, &str)> = std_fixtures
+        .iter()
+        .copied()
+        .chain(V3_SPECS.iter().copied())
+        .collect();
 
     // Phase 0: parse every fixture. Tokenize/parse errors attach to
     // `dag.diagnostics()` and the corresponding module is omitted

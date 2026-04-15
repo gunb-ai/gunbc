@@ -718,6 +718,45 @@ data test_local_bad: LocalMeta2 = { cost: \"not a number\" }
 }
 
 #[test]
+fn m1_3_prb_unwind_r1_behavior_realization_with_primitive_target_is_rejected() {
+    // PR-B-unwind R1 narrowing check: the `Declaration` sentinel
+    // is too permissive on its own (it accepts ANY declaration).
+    // The lower-time narrowing fail-closes when a realization
+    // field's resolved target violates the per-(category, field)
+    // constraint. Here: BehaviorRealization.target must be a
+    // v3_l1 substrate marker, NOT a primitive type. Wiring a
+    // BehaviorRealization to `Int` is the exact bad state the
+    // narrowing was added to catch.
+    //
+    // Uses imports from rust.dag's already-loaded BehaviorRealization
+    // meta-type so we don't need to re-declare it locally.
+    let src = "\
+data test_bad_behavior: BehaviorRealization = { target: Int, carrier: \"oops\", cost: 0 }
+";
+    let dag = compile_any(src, "bad_behavior.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "BehaviorRealization with a primitive target should fail-closed at lower time"
+    );
+}
+
+#[test]
+fn m1_3_prb_unwind_r1_type_realization_with_behavior_target_is_rejected() {
+    // PR-B-unwind R1 narrowing check, dual case:
+    // TypeRealization.target must be a primitive type, NOT a
+    // v3_l1 substrate marker. Wiring a TypeRealization to `Bind`
+    // is the dual bad state the narrowing catches.
+    let src = "\
+data test_bad_type: TypeRealization = { target: Bind, carrier: \"oops\", cost: 0 }
+";
+    let dag = compile_any(src, "bad_type.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "TypeRealization with a behavior marker target should fail-closed at lower time"
+    );
+}
+
+#[test]
 fn m1_3_prb_rust_dag_bootstrap_loads_structurally() {
     // M1(3) PR-B-unwind: verify rust.dag loaded cleanly during
     // Dag::new() bootstrap and that `rust_int_add` lowered to a

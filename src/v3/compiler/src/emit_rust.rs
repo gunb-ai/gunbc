@@ -56,26 +56,36 @@ use crate::operators::OperatorKind;
 /// classify the failure against `dsl/extdeps/languages/rust.dag`'s
 /// coverage.
 ///
-/// **Dissolution receipt — 🟢 TERMINAL.** Eight variants, each
+/// **Dissolution receipt — 🟢 TERMINAL.** Eleven variants, each
 /// classifying a structurally distinct failure mode at a different
 /// boundary in the emitter pipeline. The variants partition into
-/// three categories:
+/// four categories:
 ///
 ///   1. **Realization-table gaps** (`MissingTypeRealization`,
 ///      `MissingOperatorRealization`, `MissingBehaviorRealization`):
 ///      the declaration the DAG references has no matching
-///      realization in `dsl/extdeps/languages/rust.dag`. Each
-///      payload is a typed `DeclarationId` (no string keys) so the
-///      caller can pinpoint which declaration is uncovered.
+///      realization in `src/v3/spec/rust.dag`. Each payload is a
+///      typed `DeclarationId` (no string keys) so the caller can
+///      pinpoint which declaration is uncovered.
 ///
-///   2. **Substrate-side bugs** (`MissingSubstrateMarker`,
+///   2. **Spec consistency failures** (`MissingRealizationMeta`,
+///      `MalformedRealization`, `DuplicateRealization`): the
+///      per-target spec file (rust.dag) is internally inconsistent
+///      — missing meta-types, malformed realization records, or
+///      duplicate keys. These are spec-side bugs that
+///      `RealizationIndexes::build` fail-closes on at index
+///      construction time. The pre-unwind shape silently dropped
+///      malformed entries and silently overwrote duplicate keys;
+///      the explicit variants are the fail-closed counterpart.
+///
+///   3. **Substrate-side bugs** (`MissingSubstrateMarker`,
 ///      `UntypedPort`, `UnresolvedBranchPattern`): the substrate
 ///      handed the emitter a state inference should have driven
 ///      to a terminal form. Reaching any of these is a bug in
 ///      bootstrap, infer, or lowering — not a target-language
 ///      coverage issue.
 ///
-///   3. **Out-of-scope DAG shapes** (`UnsupportedBehavior`,
+///   4. **Out-of-scope DAG shapes** (`UnsupportedBehavior`,
 ///      `NonBooleanBranch`): the DAG carries a structurally valid
 ///      shape that PR-B's emit scope doesn't cover yet (Loop,
 ///      Callable, non-Bool branches). Each is a follow-up boundary,
@@ -148,6 +158,43 @@ pub enum EmitError {
     /// Carries the scrutinee's resolved variant ids so callers can
     /// inspect what the substrate handed them.
     NonBooleanBranch { variant_ids: Vec<DeclarationId> },
+    /// A required realization meta-type is missing from the cached
+    /// substrate. Bootstrap should populate all three categories
+    /// from `src/v3/spec/rust.dag`; reaching this arm means the
+    /// spec file failed to load or the meta-type wasn't declared.
+    MissingRealizationMeta(RealizationCategory),
+    /// A data item tagged with a realization meta-type carried a
+    /// wrong-shaped value body or a missing required field. The
+    /// `lower_record_to_structural` inhabitance check should have
+    /// caught this at lower time; reaching it at index-build time
+    /// is a fail-open leak that the index builder fail-closes on.
+    MalformedRealization {
+        declaration: DeclarationId,
+        detail: &'static str,
+    },
+    /// Two realizations in the loaded spec set share the same key
+    /// (e.g. two `data rust_*: TypeRealization` items both
+    /// targeting `Int`). Single Authority requires the spec to be
+    /// unambiguous; collisions are spec bugs.
+    DuplicateRealization {
+        declaration: DeclarationId,
+        detail: &'static str,
+    },
+}
+
+/// Typed tag identifying which realization category a
+/// `MissingRealizationMeta` error refers to. Three variants, one
+/// per meta-type declared in the per-target spec file. Replaces
+/// what would otherwise be a string label for the missing role.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RealizationCategory {
+    /// `TypeRealization` — primitive type → target type name.
+    Type,
+    /// `OperatorRealization` — (operand type, algebra field) →
+    /// target operator symbol.
+    Operator,
+    /// `BehaviorRealization` — substrate marker → target template.
+    Behavior,
 }
 
 /// Typed tag identifying which substrate marker is missing in a
@@ -185,10 +232,51 @@ struct RealizationIndexes {
 }
 
 impl RealizationIndexes {
-    fn build(dag: &Dag) -> Self {
-        let type_meta = dag.declaration_by_name("TypeRealization").map(|d| d.id);
-        let op_meta = dag.declaration_by_name("OperatorRealization").map(|d| d.id);
-        let behavior_meta = dag.declaration_by_name("BehaviorRealization").map(|d| d.id);
+    /// Build the three typed indexes from rust.dag's data
+    /// declarations. **Fail-closed at every step.** Returns
+    /// `Err(EmitError)` if:
+    ///
+    ///   - The realization meta-type cache is unpopulated (a
+    ///     bootstrap failure earlier in the pipeline; rust.dag
+    ///     didn't load).
+    ///   - A declaration tagged with one of the realization
+    ///     meta-types is missing a required field (target / op /
+    ///     carrier) or carries a wrong-shaped field value. This
+    ///     is a spec-file consistency error that the lower-time
+    ///     inhabitance check would normally surface — reaching
+    ///     this path here means the inhabitance check let
+    ///     something through and we want a loud failure, not a
+    ///     silent skip.
+    ///   - Two realizations share the same key (e.g. two
+    ///     `data rust_*: TypeRealization` items both targeting
+    ///     `Int`). Single Authority requires the spec to be
+    ///     unambiguous; collisions are spec bugs.
+    ///
+    /// The pre-unwind silent-skip + silent-overwrite shape was
+    /// flagged in PR #445 review as fail-open behavior at the
+    /// realization boundary. This function is the explicit
+    /// fail-closed counterpart.
+    fn build(dag: &Dag) -> Result<Self, EmitError> {
+        // Read the cached realization meta-type handles. These
+        // are populated at bootstrap end via
+        // `populate_primitive_cache` from `src/v3/spec/rust.dag`'s
+        // top-level `type TypeRealization { ... }` declarations.
+        // Reading them via the typed accessor keeps emit_rust
+        // free of any name-string lookup: the meta-type identity
+        // is a `DeclarationId` from the moment the index builds.
+        let type_meta = dag
+            .type_realization_meta()
+            .ok_or(EmitError::MissingRealizationMeta(RealizationCategory::Type))?;
+        let op_meta = dag
+            .operator_realization_meta()
+            .ok_or(EmitError::MissingRealizationMeta(
+                RealizationCategory::Operator,
+            ))?;
+        let behavior_meta = dag
+            .behavior_realization_meta()
+            .ok_or(EmitError::MissingRealizationMeta(
+                RealizationCategory::Behavior,
+            ))?;
 
         let mut types: HashMap<DeclarationId, String> = HashMap::new();
         let mut operators: HashMap<(DeclarationId, DeclarationId), String> = HashMap::new();
@@ -198,75 +286,126 @@ impl RealizationIndexes {
             let Some(meta_tag) = decl.meta_tag else {
                 continue;
             };
-            let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+            // Determine which realization category this declaration
+            // belongs to (if any). Comparing typed handles, no name
+            // matching.
+            let category = if meta_tag == type_meta {
+                RealizationCategory::Type
+            } else if meta_tag == op_meta {
+                RealizationCategory::Operator
+            } else if meta_tag == behavior_meta {
+                RealizationCategory::Behavior
+            } else {
                 continue;
             };
+            let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+                // A data item tagged with a realization meta-type
+                // must have a Structural value_body. If it's
+                // Unparsed, the inhabitance check let a malformed
+                // spec entry through — fail-closed so the spec
+                // inconsistency surfaces loudly.
+                return Err(EmitError::MalformedRealization {
+                    declaration: decl.id,
+                    detail:
+                        "realization data item has no Structural value_body — bootstrap inhabitance check missed a malformed spec entry",
+                });
+            };
 
-            // Common field readers — pull the typed values via
-            // the structural-field accessors. A missing or wrong-
-            // shaped field silently skips the declaration; the
-            // bootstrap's inhabitance check would have surfaced a
-            // diagnostic earlier in that case, so we treat it as
-            // already-handled here.
-            let target = field_decl_ref(fields, "target");
-            let carrier = field_string(fields, "carrier");
+            // Required for every category. Missing → fail-closed
+            // (the inhabitance check would normally surface a
+            // diagnostic at lower time; reaching this point means
+            // the spec violates its own meta-type and we should
+            // refuse to silently skip it).
+            let target = require_field_decl_ref(fields, "target", decl.id)?;
+            let carrier = require_field_string(fields, "carrier", decl.id)?;
 
-            if Some(meta_tag) == type_meta {
-                if let (Some(t), Some(c)) = (target, carrier) {
-                    types.insert(t, c);
+            match category {
+                RealizationCategory::Type => {
+                    if types.insert(target, carrier).is_some() {
+                        return Err(EmitError::DuplicateRealization {
+                            declaration: decl.id,
+                            detail:
+                                "two TypeRealization data items target the same primitive — single authority requires unique targets",
+                        });
+                    }
                 }
-            } else if Some(meta_tag) == op_meta {
-                let op = field_decl_ref(fields, "op");
-                if let (Some(t), Some(o), Some(c)) = (target, op, carrier) {
-                    operators.insert((t, o), c);
+                RealizationCategory::Operator => {
+                    let op = require_field_decl_ref(fields, "op", decl.id)?;
+                    if operators.insert((target, op), carrier).is_some() {
+                        return Err(EmitError::DuplicateRealization {
+                            declaration: decl.id,
+                            detail:
+                                "two OperatorRealization data items share the same (target, op) pair — single authority requires unique keys",
+                        });
+                    }
                 }
-            } else if Some(meta_tag) == behavior_meta {
-                if let (Some(t), Some(c)) = (target, carrier) {
-                    behaviors.insert(t, c);
+                RealizationCategory::Behavior => {
+                    if behaviors.insert(target, carrier).is_some() {
+                        return Err(EmitError::DuplicateRealization {
+                            declaration: decl.id,
+                            detail:
+                                "two BehaviorRealization data items target the same substrate marker — single authority requires unique targets",
+                        });
+                    }
                 }
             }
         }
 
-        Self {
+        Ok(Self {
             types,
             operators,
             behaviors,
-        }
+        })
     }
 }
 
-/// Pull a typed declaration reference out of a structural field
-/// list by label. Used for `target` and `op` fields whose declared
-/// type was the `Declaration` sentinel and which therefore lower to
-/// `FieldValue::Reference`.
-fn field_decl_ref(
+/// Required-field lookup: returns `Err` if the field is absent or
+/// not a `FieldValue::Reference`. Used at realization-index build
+/// time to fail-closed on spec entries that should have been
+/// rejected by `lower_record_to_structural`'s inhabitance check.
+fn require_field_decl_ref(
     fields: &[(String, FieldValue)],
     label: &str,
-) -> Option<DeclarationId> {
-    fields.iter().find(|(l, _)| l == label).and_then(|(_, v)| {
-        if let FieldValue::Reference(id) = v {
-            Some(*id)
-        } else {
-            None
-        }
-    })
+    declaration: DeclarationId,
+) -> Result<DeclarationId, EmitError> {
+    fields
+        .iter()
+        .find(|(l, _)| l == label)
+        .and_then(|(_, v)| match v {
+            FieldValue::Reference(id) => Some(*id),
+            _ => None,
+        })
+        .ok_or(EmitError::MalformedRealization {
+            declaration,
+            detail:
+                "realization data item is missing a required Reference field or has wrong shape — see lower_record_to_structural inhabitance check",
+        })
 }
 
-/// Pull a string literal out of a structural field list by label.
-/// Used for `carrier` field whose declared type was `String` and
-/// which therefore lowers to `FieldValue::Literal(LiteralBits::String)`.
-fn field_string(fields: &[(String, FieldValue)], label: &str) -> Option<String> {
-    fields.iter().find(|(l, _)| l == label).and_then(|(_, v)| {
-        if let FieldValue::Literal(LiteralBits::String(s)) = v {
-            Some(s.clone())
-        } else {
-            None
-        }
-    })
+/// Required-field lookup: returns `Err` if the field is absent or
+/// not a `FieldValue::Literal(LiteralBits::String)`. Same
+/// fail-closed semantics as `require_field_decl_ref`.
+fn require_field_string(
+    fields: &[(String, FieldValue)],
+    label: &str,
+    declaration: DeclarationId,
+) -> Result<String, EmitError> {
+    fields
+        .iter()
+        .find(|(l, _)| l == label)
+        .and_then(|(_, v)| match v {
+            FieldValue::Literal(LiteralBits::String(s)) => Some(s.clone()),
+            _ => None,
+        })
+        .ok_or(EmitError::MalformedRealization {
+            declaration,
+            detail:
+                "realization data item is missing a required String field or has wrong shape — see lower_record_to_structural inhabitance check",
+        })
 }
 
 pub fn emit_rust(dag: &Dag) -> Result<String, EmitError> {
-    let indexes = RealizationIndexes::build(dag);
+    let indexes = RealizationIndexes::build(dag)?;
 
     // Resolve the substrate markers we need ONCE up front. Each
     // marker is a typed `DeclarationId` cached at bootstrap end

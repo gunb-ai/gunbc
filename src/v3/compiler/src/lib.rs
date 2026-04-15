@@ -91,6 +91,15 @@ pub enum CompileError {
     Semantic(Dag),
 }
 
+// `result_large_err`: clippy flags `Result<Dag, CompileError>`
+// because `CompileError::Semantic(Dag)` carries a `Dag` payload
+// (~264 bytes after the M1(3) PR-B-unwind R1 added the realization
+// meta cache). Boxing the Dag would touch every pattern-match
+// against `CompileError::Semantic` in the test suite, and the
+// payload is on the cold failure path where the indirection would
+// matter less than the API churn. Targeted `allow` on the function
+// signature only — the rest of the crate keeps the lint enforced.
+#[allow(clippy::result_large_err)]
 pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
     let tokens = tokenize::tokenize(source, file).map_err(CompileError::Tokenize)?;
     let surface = parse::parse(&tokens, file).map_err(CompileError::Parse)?;

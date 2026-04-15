@@ -1188,6 +1188,14 @@ fn lower_record_to_structural(
     // `dag.declaration_ref_marker()`.
     let declaration_marker_id = dag.declaration_by_name("Declaration").map(|d| d.id);
 
+    // Determine which realization category (if any) this data
+    // item belongs to. Used below to narrow the acceptable shape
+    // of `target` / `op` field values per category. The category
+    // is identified by name lookup (Phase 2 doesn't have the
+    // realization meta cache populated yet — that runs at
+    // bootstrap end). Same lookup as for primitives above.
+    let category = realization_category_for_meta(dag, ty_decl_id);
+
     let mut structural_fields: Vec<(String, crate::dag::FieldValue)> =
         Vec::with_capacity(type_fields.len());
     for (type_label, type_field_id) in &type_fields {
@@ -1205,12 +1213,12 @@ fn lower_record_to_structural(
             // Accept identifier or dotted-path. Resolve to a
             // DeclarationId via the symbols map (top-level) and
             // optional Conj-child walk (for member-access chains).
-            match resolve_field_value_as_declaration_ref(
+            let decl_id = match resolve_field_value_as_declaration_ref(
                 &record_field.value,
                 symbols,
                 dag,
             ) {
-                Some(decl_id) => crate::dag::FieldValue::Reference(decl_id),
+                Some(id) => id,
                 None => {
                     report_declaration_error(
                         dag,
@@ -1223,7 +1231,39 @@ fn lower_record_to_structural(
                     );
                     return None;
                 }
+            };
+            // Realization-category narrowing. If this data item
+            // belongs to one of the three realization categories
+            // (TypeRealization / OperatorRealization /
+            // BehaviorRealization), the resolved DeclarationId
+            // must also satisfy a per-(category, field_label)
+            // structural constraint. The substrate's `Declaration`
+            // sentinel admits any declaration; this check is the
+            // lower-time narrowing that PR-B-unwind R1 needed to
+            // make bad realization wirings (e.g.
+            // `BehaviorRealization { target: Int }`) fail-closed
+            // at lower time instead of being silently filtered
+            // later by the consumer.
+            if let Some(cat) = category {
+                if let Err(reason) = validate_realization_field_target(
+                    dag,
+                    cat,
+                    type_label,
+                    decl_id,
+                ) {
+                    report_declaration_error(
+                        dag,
+                        Diagnostic::ResolveError {
+                            name: format!(
+                                "data `{data_name}` field `{type_label}` does not satisfy the {cat:?} realization constraint: {reason}"
+                            ),
+                            span: record_field.span.clone(),
+                        },
+                    );
+                    return None;
+                }
             }
+            crate::dag::FieldValue::Reference(decl_id)
         } else {
             // Require a scalar literal and type-check against the
             // declared field type.
@@ -1320,6 +1360,159 @@ fn resolve_field_value_as_declaration_ref(
         current = next.ty;
     }
     Some(current)
+}
+
+/// Realization category tag for the lower-time narrowing check.
+/// Mirrors `emit_rust::RealizationCategory` but lives in lower's
+/// own namespace because the lowerer can't depend on emit_rust.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RealizationCategoryTag {
+    Type,
+    Operator,
+    Behavior,
+}
+
+/// Identify which realization category (if any) a data item's
+/// meta-type belongs to. Returns `None` for non-realization data
+/// items (which skip the narrowing check entirely).
+///
+/// Looks up the meta-type by name. The realization meta cache on
+/// `Dag` isn't populated until `populate_primitive_cache` runs at
+/// bootstrap end, but `collect_symbols_phase` has registered every
+/// top-level declaration by the time `lower_record_to_structural`
+/// runs in Phase 2, so `declaration_by_name` works here. Same
+/// pattern as the primitive lookups above.
+fn realization_category_for_meta(
+    dag: &Dag,
+    meta_decl_id: DeclarationId,
+) -> Option<RealizationCategoryTag> {
+    let type_meta = dag.declaration_by_name("TypeRealization").map(|d| d.id);
+    let op_meta = dag
+        .declaration_by_name("OperatorRealization")
+        .map(|d| d.id);
+    let behavior_meta = dag
+        .declaration_by_name("BehaviorRealization")
+        .map(|d| d.id);
+    if Some(meta_decl_id) == type_meta {
+        Some(RealizationCategoryTag::Type)
+    } else if Some(meta_decl_id) == op_meta {
+        Some(RealizationCategoryTag::Operator)
+    } else if Some(meta_decl_id) == behavior_meta {
+        Some(RealizationCategoryTag::Behavior)
+    } else {
+        None
+    }
+}
+
+/// Validate that the resolved target of a realization-category
+/// field satisfies the per-(category, field_label) structural
+/// constraint. Returns `Ok(())` on success or `Err(reason)` with
+/// a human-readable explanation of the violation.
+///
+/// **The constraints encode the "Declaration sentinel is too
+/// permissive" narrowing.** PR #445's R1 review on the unwind
+/// flagged that `BehaviorRealization { target: Int }` would
+/// type-check at the substrate level because the field type is
+/// `Declaration` (the universal sentinel). The fully structural
+/// fix (typed marker hierarchy via `inhabits` syntax or `where`
+/// clauses) requires parser/lower extensions that are out of
+/// scope for the PR-B-unwind round; this function is the
+/// fail-closed lower-time alternative. Bad wirings now surface
+/// as fail-closed diagnostics at lower time, not as silent skips
+/// or downstream "missing realization" errors at emit time.
+///
+/// Constraints, by category × field label:
+///
+///   - `TypeRealization.target` — must be a primitive type
+///     declaration (Int / Bool / String). Anything else is a
+///     spec error.
+///   - `OperatorRealization.target` — must be a primitive type
+///     (the operand type, e.g. Int for `1 + 2`).
+///   - `OperatorRealization.op` — must walk to an Arrow
+///     declaration that is a child of an algebra Conj (e.g.
+///     OrderedRing.add). The constraint is "the resolved
+///     declaration's connective is Arrow," which is the structural
+///     shape every algebra field has.
+///   - `BehaviorRealization.target` — must be one of the v3_l1
+///     substrate behavior markers (Bind / Branch / Loop /
+///     Transform / Value / Main).
+fn validate_realization_field_target(
+    dag: &Dag,
+    category: RealizationCategoryTag,
+    field_label: &str,
+    target: DeclarationId,
+) -> Result<(), String> {
+    let int_id = dag.declaration_by_name("Int").map(|d| d.id);
+    let bool_id = dag.declaration_by_name("Bool").map(|d| d.id);
+    let string_id = dag.declaration_by_name("String").map(|d| d.id);
+
+    let is_primitive = |id: DeclarationId| {
+        Some(id) == int_id || Some(id) == bool_id || Some(id) == string_id
+    };
+    let is_behavior_marker = |id: DeclarationId| {
+        let markers = [
+            dag.declaration_by_name("Value"),
+            dag.declaration_by_name("Transform"),
+            dag.declaration_by_name("Branch"),
+            dag.declaration_by_name("Loop"),
+            dag.declaration_by_name("Bind"),
+            dag.declaration_by_name("Main"),
+        ];
+        markers
+            .iter()
+            .any(|m| m.map(|d| d.id) == Some(id))
+    };
+    let is_algebra_field = |id: DeclarationId| {
+        matches!(
+            dag.declaration(id).connective,
+            TypeConnective::Arrow { .. }
+        )
+    };
+
+    match (category, field_label) {
+        (RealizationCategoryTag::Type, "target") => {
+            if is_primitive(target) {
+                Ok(())
+            } else {
+                Err(format!(
+                    "TypeRealization.target must reference a primitive type (Int/Bool/String); got declaration {target:?}"
+                ))
+            }
+        }
+        (RealizationCategoryTag::Operator, "target") => {
+            if is_primitive(target) {
+                Ok(())
+            } else {
+                Err(format!(
+                    "OperatorRealization.target must reference a primitive operand type (Int/Bool/String); got declaration {target:?}"
+                ))
+            }
+        }
+        (RealizationCategoryTag::Operator, "op") => {
+            if is_algebra_field(target) {
+                Ok(())
+            } else {
+                Err(format!(
+                    "OperatorRealization.op must reference an algebra field declaration whose connective is Arrow (e.g. OrderedRing.add); got declaration {target:?}"
+                ))
+            }
+        }
+        (RealizationCategoryTag::Behavior, "target") => {
+            if is_behavior_marker(target) {
+                Ok(())
+            } else {
+                Err(format!(
+                    "BehaviorRealization.target must reference one of the v3_l1 behavior markers (Bind/Branch/Loop/Transform/Value/Main); got declaration {target:?}"
+                ))
+            }
+        }
+        // Fields without a category-specific narrowing constraint
+        // (e.g. carrier and cost are scalar literals, not
+        // Declaration references). The category check is a
+        // partial constraint applied only to the fields where it
+        // makes sense; other fields skip it.
+        _ => Ok(()),
+    }
 }
 
 /// Walk a declaration chain looking for a specific target

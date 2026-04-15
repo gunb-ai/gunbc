@@ -885,6 +885,25 @@ pub(crate) struct PrimitiveCache {
 /// behavior set. Splitting the caches keeps each one's invariants
 /// independent.
 #[derive(Debug, Default)]
+pub(crate) struct RealizationMetaCache {
+    /// `TypeRealization` meta-type. Declared in
+    /// `src/v3/spec/rust.dag` (and any future per-target spec
+    /// file) as the meta-tag for `data rust_*: TypeRealization
+    /// = { ... }` items. Cached typed handle so that consumers
+    /// like `emit_rust::RealizationIndexes::build` filter by
+    /// `meta_tag == Some(this)` without going through
+    /// `declaration_by_name("TypeRealization")` at hot-path
+    /// time.
+    pub type_realization: Option<DeclarationId>,
+    /// `OperatorRealization` meta-type. Same role as `type_realization`
+    /// for operator realizations.
+    pub operator_realization: Option<DeclarationId>,
+    /// `BehaviorRealization` meta-type. Same role for behavior
+    /// template realizations (Bind/Branch/Main).
+    pub behavior_realization: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default)]
 pub(crate) struct SubstrateMarkers {
     /// `dsl/std/v3_l1.dag` `Value` marker. Targets values
     /// (literals) in target language realizations.
@@ -935,6 +954,13 @@ pub struct Dag {
     /// cache at bootstrap end. See `SubstrateMarkers` for the
     /// rationale behind splitting markers from primitives.
     substrate_markers: SubstrateMarkers,
+    /// Cached realization meta-type DeclarationIds resolved
+    /// from `src/v3/spec/rust.dag` (and other per-target spec
+    /// files). Populated at bootstrap end. Lets downstream
+    /// consumers like `emit_rust::RealizationIndexes::build`
+    /// filter by typed meta-tag handle instead of doing a name
+    /// lookup at hot-path time.
+    realization_metas: RealizationMetaCache,
 }
 
 impl Dag {
@@ -949,6 +975,7 @@ impl Dag {
             next_port_id: 0,
             primitives: PrimitiveCache::default(),
             substrate_markers: SubstrateMarkers::default(),
+            realization_metas: RealizationMetaCache::default(),
         };
         crate::bootstrap::bootstrap(&mut dag);
         dag
@@ -1020,6 +1047,27 @@ impl Dag {
     /// as field values instead of requiring scalar literals).
     pub fn declaration_ref_marker(&self) -> Option<DeclarationId> {
         self.substrate_markers.declaration_ref
+    }
+
+    /// Typed accessor for the `TypeRealization` meta-type declared
+    /// in `src/v3/spec/rust.dag`. `None` only when bootstrap
+    /// failed to load the file. Used by
+    /// `emit_rust::RealizationIndexes::build` to filter declarations
+    /// by `meta_tag == Some(this)` without name lookup.
+    pub fn type_realization_meta(&self) -> Option<DeclarationId> {
+        self.realization_metas.type_realization
+    }
+
+    /// Typed accessor for the `OperatorRealization` meta-type.
+    /// Same bootstrap-failure semantics as `type_realization_meta`.
+    pub fn operator_realization_meta(&self) -> Option<DeclarationId> {
+        self.realization_metas.operator_realization
+    }
+
+    /// Typed accessor for the `BehaviorRealization` meta-type.
+    /// Same bootstrap-failure semantics as `type_realization_meta`.
+    pub fn behavior_realization_meta(&self) -> Option<DeclarationId> {
+        self.realization_metas.behavior_realization
     }
 
     pub fn nodes(&self) -> &[Behavior] {
@@ -1213,6 +1261,20 @@ impl Dag {
         self.substrate_markers.main = self.declaration_by_name("Main").map(|d| d.id);
         self.substrate_markers.declaration_ref =
             self.declaration_by_name("Declaration").map(|d| d.id);
+
+        // Realization meta-type resolution. Pulls each realization
+        // category meta-type from `src/v3/spec/rust.dag` (and any
+        // future per-target spec file) by its declared name and
+        // stores the typed handle. Same one-time-at-bootstrap-end
+        // pattern as substrate markers above. The lookup is the
+        // single bridge from name space to id space; every
+        // downstream consumer reads the typed accessor.
+        self.realization_metas.type_realization =
+            self.declaration_by_name("TypeRealization").map(|d| d.id);
+        self.realization_metas.operator_realization =
+            self.declaration_by_name("OperatorRealization").map(|d| d.id);
+        self.realization_metas.behavior_realization =
+            self.declaration_by_name("BehaviorRealization").map(|d| d.id);
     }
 }
 
