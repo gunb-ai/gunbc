@@ -457,18 +457,26 @@ pub struct SurfaceMatchArm {
 
 /// Dissolution ledger — **SurfacePattern**:
 ///
-/// 🟡 **M1(2.8) scaffold.** Single variant today: bare variant
-/// patterns like `True`, `None`, `Plus` — a parse-time name that
-/// the inference pass resolves scoped against the scrutinee's
-/// `Disj` connective. Future extensions (wildcard `_`, record
-/// destructure `Some { value: x }`, nested patterns, literal
-/// patterns) go through §8.10's substrate-extension audit.
+/// 🟡 **M1(3) scaffold.** Two variants today: bare variant
+/// patterns and variant-with-payload-binding patterns. Future
+/// extensions (wildcard `_`, record destructure `Some { value:
+/// x }`, nested patterns, literal patterns) go through §8.10's
+/// substrate-extension audit.
 ///
-/// 4-pattern check against the current single variant:
+/// Prereq 2 (see docs/substrate-reflection-design.md §11) added
+/// `VariantWith` — a pattern that captures the variant's
+/// payload as a local binding in the arm body. Without
+/// `VariantWith`, lens code cannot destructure sum variants
+/// (e.g. `match b { Bind(bind) => bind.params }` would have no
+/// way to get at `bind`).
+///
+/// 4-pattern check:
 /// - Pattern 1 (fact placement): fails. The pattern is per-arm
-///   data that `BranchPattern::UnresolvedVariant` consumes; no
-///   alternative structural placement.
-/// - Pattern 2 (variant-is-data): not applicable (single variant).
+///   data consumed by `BranchPattern`; no alternative structural
+///   placement.
+/// - Pattern 2 (variant-is-data): BareVariant carries just a
+///   name, VariantWith carries a name plus a binding identifier.
+///   Structurally distinct payload.
 /// - Pattern 3 (algebraic form): fails.
 /// - Pattern 4 (dimensional): fails.
 ///
@@ -480,6 +488,19 @@ pub enum SurfacePattern {
     /// `match a { True => x, False => y }`. Resolves at infer
     /// time against the scrutinee's Disj children by label.
     BareVariant { name: String, span: SourceSpan },
+    /// A variant-with-payload pattern, e.g. the `Bind(bind)` in
+    /// `match b { Bind(bind) => bind.params }`. The `binding`
+    /// field names a local that the arm body can reference; it
+    /// resolves to a port carrying the variant's payload value.
+    /// Resolution happens at lower time — the scrutinee's type
+    /// must walk to a Disj declaration so the payload port's
+    /// TypeShape can be set before the arm body is lowered
+    /// (Prereq 1's field-access lowering needs typed ports).
+    VariantWith {
+        name: String,
+        binding: String,
+        span: SourceSpan,
+    },
 }
 
 /// Parse-local literal value. Mirrors `dag::LiteralBits` but lives
@@ -1459,28 +1480,65 @@ impl<'a> Parser<'a> {
 
     fn parse_match_arm(&mut self) -> Result<SurfaceMatchArm, Diagnostic> {
         let pattern_token = self.bump().clone();
-        let pattern = match &pattern_token.kind {
-            TokenKind::Ident(name) => SurfacePattern::BareVariant {
-                name: name.clone(),
-                span: pattern_token.span.clone(),
-            },
+        let name = match &pattern_token.kind {
+            TokenKind::Ident(name) => name.clone(),
             other => {
                 return Err(Diagnostic::ParseError {
                     message: format!(
-                        "expected variant name in match pattern, got {other:?} — M1(2.8) supports bare-variant patterns only (e.g. `True => expr`)"
+                        "expected variant name in match pattern, got {other:?}"
                     ),
                     span: pattern_token.span,
                 });
             }
         };
+        // Look for a payload-binding suffix `(ident)`. Per Prereq 2
+        // (docs/substrate-reflection-design.md §11), a variant
+        // pattern can optionally bind its payload to a local
+        // identifier that the arm body can reference. The parser
+        // accepts `Name(binding)` as a VariantWith pattern and
+        // bare `Name` as BareVariant.
+        let pattern = if matches!(self.peek().kind, TokenKind::LParen) {
+            self.bump();
+            let binding_token = self.bump().clone();
+            let binding = match &binding_token.kind {
+                TokenKind::Ident(name) => name.clone(),
+                other => {
+                    return Err(Diagnostic::ParseError {
+                        message: format!(
+                            "expected identifier as payload binding, got {other:?}"
+                        ),
+                        span: binding_token.span,
+                    });
+                }
+            };
+            let close = self.expect_kind(TokenKind::RParen)?;
+            SurfacePattern::VariantWith {
+                name,
+                binding,
+                span: SourceSpan::new(
+                    self.file,
+                    pattern_token.span.byte_start,
+                    close.span.byte_end,
+                ),
+            }
+        } else {
+            SurfacePattern::BareVariant {
+                name,
+                span: pattern_token.span.clone(),
+            }
+        };
         self.expect_kind(TokenKind::FatArrow)?;
         let body = self.parse_expr()?;
-        let start = pattern_token.span.byte_start;
+        let pattern_start = match &pattern {
+            SurfacePattern::BareVariant { span, .. } | SurfacePattern::VariantWith { span, .. } => {
+                span.byte_start
+            }
+        };
         let end = expr_span(&body).byte_end;
         Ok(SurfaceMatchArm {
             pattern,
             body,
-            span: SourceSpan::new(self.file, start, end),
+            span: SourceSpan::new(self.file, pattern_start, end),
         })
     }
 }

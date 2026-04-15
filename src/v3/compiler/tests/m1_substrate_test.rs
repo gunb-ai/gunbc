@@ -1742,6 +1742,176 @@ fn get_second(p: Pair) -> Int = p.second
     assert_eq!(accessor_name("get_second"), "second");
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Prereq 2 — Match-with-payload-binding.
+// Per docs/substrate-reflection-design.md §11 Prereq 2:
+//
+//   > Add `SurfacePattern::VariantWith { name, binding, span }` variant
+//   > and parser rule. Extend lowering so a match arm
+//   > `Bind(bind) => body` binds `bind` as a local in `body`'s scope,
+//   > pointing at the variant's payload port.
+//
+// Tests below assert:
+//   1. A VariantWith pattern parses and lowers cleanly; the resulting
+//      Branch has an UnresolvedVariantWith pattern initially that
+//      infer rewrites to ResolvedVariantWith.
+//   2. The payload port is typed at lower time (from the Disj variant's
+//      declared payload type), so Prereq 1 field access on the payload
+//      works inside the arm body — the end-to-end pipeline that lenses
+//      need.
+//   3. A VariantWith pattern on a non-Disj scrutinee fails-closed.
+//   4. Mixing BareVariant and VariantWith arms in the same match
+//      works.
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn prereq2_variant_with_binding_parses_and_lowers() {
+    // `match SomePayload(payload) => payload.first` — a minimal
+    // VariantWith pattern that exercises parsing, lower-time
+    // variant resolution, payload-port typing, and the
+    // infer-time rewrite from UnresolvedVariantWith to
+    // ResolvedVariantWith.
+    //
+    // Uses a synthetic sum with a record-typed variant payload
+    // to exercise the full Prereq 1 + Prereq 2 integration.
+    let src = "\
+type Pair { first: Int, second: Int }
+type Container = SomePayload(Pair) | Empty
+fn extract(c: Container) -> Int =
+  match c {
+    SomePayload(payload) => payload.first
+    Empty => 0
+  }
+";
+    let dag = compile_any(src, "variant_with.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "VariantWith pattern should compile cleanly, got diagnostics: {:?}",
+        dag.diagnostics()
+    );
+
+    // Find the extract function's Branch node (the match).
+    let extract_bind = dag
+        .nodes()
+        .iter()
+        .find_map(|b| match b {
+            Behavior::Bind(bind) if bind.name == "extract" => Some(bind),
+            _ => None,
+        })
+        .expect("extract Bind must exist");
+    let branch_id = dag
+        .port(extract_bind.value)
+        .produced_by
+        .expect("match body should have a producer");
+    let branch = match dag.node(branch_id) {
+        Behavior::Branch(br) => br,
+        other => panic!("extract body should be a Branch, got {:?}", other),
+    };
+
+    // The SomePayload arm should have a ResolvedVariantWith
+    // pattern after infer runs. The Empty arm should be a
+    // plain ResolvedVariant.
+    let mut found_with = false;
+    let mut found_bare = false;
+    for path in &branch.paths {
+        match &path.pattern {
+            v3_compiler::dag::BranchPattern::ResolvedVariantWith {
+                binding_name,
+                ..
+            } => {
+                assert_eq!(
+                    binding_name, "payload",
+                    "with-payload pattern should carry the binding name"
+                );
+                found_with = true;
+            }
+            v3_compiler::dag::BranchPattern::ResolvedVariant(_) => {
+                found_bare = true;
+            }
+            other => panic!(
+                "unexpected unresolved pattern after infer: {:?}",
+                other
+            ),
+        }
+    }
+    assert!(
+        found_with,
+        "expected a ResolvedVariantWith pattern for the SomePayload arm"
+    );
+    assert!(found_bare, "expected a ResolvedVariant for the Empty arm");
+}
+
+#[test]
+fn prereq2_payload_port_typed_for_field_access() {
+    // The integration-path test: a VariantWith pattern whose arm
+    // body does field access on the bound payload. This exercises
+    // Prereq 1 + Prereq 2 together — the payload port must be
+    // typed at lower time (via walk-to-disj) so field-access
+    // lowering succeeds.
+    let src = "\
+type Pair { first: Int, second: Int }
+type Container = Payload(Pair) | None
+fn first_or_zero(c: Container) -> Int =
+  match c {
+    Payload(p) => p.first
+    None => 0
+  }
+";
+    let dag = compile_any(src, "payload_field_access.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "payload field access should compile, got diagnostics: {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
+fn prereq2_variant_with_on_non_disj_scrutinee_fails_closed() {
+    // A VariantWith pattern whose scrutinee's type doesn't walk
+    // to a Disj should fail-closed. Using Int (a primitive) as
+    // the scrutinee has no variants to bind.
+    let src = "\
+fn broken(n: Int) -> Int =
+  match n {
+    Something(x) => x
+  }
+";
+    let dag = compile_any(src, "non_disj.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "VariantWith on non-Disj scrutinee should fail-closed"
+    );
+    let diags = format!("{:?}", dag.diagnostics());
+    assert!(
+        diags.contains("not a sum") || diags.contains("not a constructor") || diags.contains("Something"),
+        "expected a variant-related diagnostic, got {diags}"
+    );
+}
+
+#[test]
+fn prereq2_mixed_bare_and_with_patterns_compile() {
+    // A match expression with a mix of BareVariant and
+    // VariantWith arms. Both styles should coexist — bare arms
+    // continue to resolve via the existing path, with-payload
+    // arms resolve via the new path.
+    let src = "\
+type Pair { first: Int, second: Int }
+type Mixed = Left | Right(Pair) | Middle
+fn pick(m: Mixed) -> Int =
+  match m {
+    Left => 1
+    Right(p) => p.second
+    Middle => 3
+  }
+";
+    let dag = compile_any(src, "mixed.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "mixed patterns should compile cleanly, got diagnostics: {:?}",
+        dag.diagnostics()
+    );
+}
+
 #[test]
 fn prereq1_missing_field_fails_closed() {
     // `p.nonexistent` on a Pair should fail-closed with a

@@ -685,6 +685,39 @@ pub enum BranchPattern {
     /// `DeclarationId` points at the anonymous variant child of
     /// the scrutinee's Disj.
     ResolvedVariant(DeclarationId),
+    /// Arm pattern with a payload binding. The variant name is
+    /// still unresolved at lower time; infer rewrites this to
+    /// `ResolvedVariantWith` once it has matched the variant
+    /// against the scrutinee's Disj children. `binding_name` is
+    /// the identifier the arm body uses to reference the
+    /// payload; `payload_port` is the port that carries the
+    /// payload value in the arm body's scope. The payload
+    /// port's type is set at lower time (by walking the
+    /// scrutinee's type to its Disj children) so Prereq 1's
+    /// field-access lowering can type-check `binding.field`
+    /// expressions inside the arm body.
+    ///
+    /// Added by Prereq 2 per
+    /// docs/substrate-reflection-design.md §11 to support the
+    /// `match b { Bind(bind) => ... }` form lenses need.
+    UnresolvedVariantWith {
+        name: String,
+        binding_name: String,
+        payload_port: PortId,
+        span: SourceSpan,
+    },
+    /// Arm pattern with a payload binding, resolved. Infer
+    /// rewrites `UnresolvedVariantWith` → this form once it has
+    /// matched the variant name against the scrutinee's Disj
+    /// children. `decl` is the same variant DeclarationId
+    /// `ResolvedVariant` would point at; `binding_name` and
+    /// `payload_port` survive unchanged from the unresolved
+    /// form.
+    ResolvedVariantWith {
+        decl: DeclarationId,
+        binding_name: String,
+        payload_port: PortId,
+    },
 }
 
 #[derive(Debug, Clone)]

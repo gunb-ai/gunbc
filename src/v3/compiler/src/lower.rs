@@ -1078,6 +1078,32 @@ fn walk_to_conj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
     None
 }
 
+/// Sibling helper to `walk_to_conj_decl` but terminating at a
+/// `Disj` connective. Used by Prereq 2 match-with-payload
+/// lowering to find the scrutinee's variant table so each arm's
+/// VariantWith payload port can be typed at lower time.
+/// Duplicates the structure of `infer::walk_to_disj_decl`
+/// (those two helpers have the same walk shape but live in
+/// different files for borrow-scoping reasons — the lower-time
+/// walker needs to run inside `lower_expr`'s `&mut Dag` borrow).
+fn walk_to_disj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
+    let mut current = start;
+    for _ in 0..32 {
+        let decl = dag.declaration(current);
+        match &decl.connective {
+            TypeConnective::Disj { .. } => return Some(current),
+            TypeConnective::Instantiation { template, .. } => {
+                current = *template;
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                current = *next;
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
 /// Attempt to lower a parsed record literal body into a
 /// `ValueBody::Structural { fields }` by matching each record field
 /// against the declared type's Conj children. Returns `None` (and
@@ -1927,33 +1953,209 @@ fn lower_expr(
             // at push time (arm lowering pushes its own nodes). Same
             // ordering pattern as the `If` arm above.
             let scrutinee_port = lower_expr(scrutinee, dag, scope, symbols);
-            let lowered_arms: Vec<(
-                PortId,
-                Option<NodeId>,
-                String,
-                SourceSpan,
-            )> = arms
-                .iter()
-                .map(|arm| {
-                    let arm_output_port =
-                        lower_expr(&arm.body, dag, scope, symbols);
-                    let body_node = producer_of(dag, arm_output_port);
-                    let (pattern_name, pattern_span) = match &arm.pattern {
-                        SurfacePattern::BareVariant { name, span } => {
-                            (name.clone(), span.clone())
+
+            // Shape carried between the per-arm lowering loop and
+            // the Path construction below. `lowered_arm` is
+            // intentionally not a named struct — it's local enough
+            // that a tuple keeps the code concrete.
+            enum LoweredPattern {
+                Bare {
+                    name: String,
+                    span: SourceSpan,
+                },
+                With {
+                    name: String,
+                    binding_name: String,
+                    payload_port: PortId,
+                    span: SourceSpan,
+                },
+            }
+            struct LoweredArm {
+                output_port: PortId,
+                body_node: Option<NodeId>,
+                pattern: LoweredPattern,
+            }
+
+            // Walk the scrutinee to its Disj declaration once,
+            // upfront. VariantWith patterns need the Disj's variant
+            // list to find their payload type. If the scrutinee's
+            // type isn't set at lower time (let-bound expression
+            // scrutinees are a follow-up) or doesn't walk to a
+            // Disj, VariantWith patterns fail-closed and the user
+            // sees a diagnostic; BareVariant patterns continue to
+            // work via the existing infer-time resolution path.
+            let scrutinee_disj = dag
+                .port(scrutinee_port)
+                .value_type()
+                .and_then(|ty| walk_to_disj_decl(dag, ty.declaration));
+
+            let mut lowered_arms: Vec<LoweredArm> = Vec::with_capacity(arms.len());
+            for arm in arms {
+                let (pattern, arm_scope) = match &arm.pattern {
+                    SurfacePattern::BareVariant { name, span } => {
+                        // Unchanged pre-Prereq-2 behavior.
+                        (
+                            LoweredPattern::Bare {
+                                name: name.clone(),
+                                span: span.clone(),
+                            },
+                            scope.clone(),
+                        )
+                    }
+                    SurfacePattern::VariantWith {
+                        name,
+                        binding,
+                        span: pat_span,
+                    } => {
+                        // Resolve the variant at lower time so the
+                        // payload port's TypeShape can be set
+                        // before the arm body is lowered (field
+                        // access on the payload requires a typed
+                        // port — see Prereq 1).
+                        //
+                        // **Single-positional unwrap.** `lower_type_sum`
+                        // wraps positional-payload variants in an
+                        // anonymous Conj with synthetic `_0`/`_1`/…
+                        // labels (see lower.rs line 463-472). For a
+                        // variant like `Right(Pair)`, the variant
+                        // declaration's connective is
+                        // `Conj { children: [Field { label: "_0", ty: Pair }] }`,
+                        // NOT the `Pair` declaration directly. Prereq 2
+                        // scope: single-positional payloads bind to
+                        // their inner type (`Pair` in the example)
+                        // so lens code can write `p.field` on the
+                        // payload directly. Multi-positional and
+                        // record-shaped payloads are follow-ups.
+                        let variant_payload_ty: Option<DeclarationId> =
+                            scrutinee_disj.and_then(|disj_id| {
+                                let variant_decl_id = match &dag.declaration(disj_id).connective {
+                                    TypeConnective::Disj { variants } => variants
+                                        .iter()
+                                        .find(|f| &f.label == name)
+                                        .map(|f| f.ty),
+                                    _ => None,
+                                }?;
+                                // Unwrap the single-positional Conj
+                                // wrapping. If the variant has
+                                // exactly one payload child, bind
+                                // to that child's type. Otherwise
+                                // return None and let the fallback
+                                // diagnostic fire.
+                                match &dag.declaration(variant_decl_id).connective {
+                                    TypeConnective::Conj { children } if children.len() == 1 => {
+                                        Some(children[0].ty)
+                                    }
+                                    _ => None,
+                                }
+                            });
+                        let payload_port = dag.alloc_port(None);
+                        if let Some(ty_decl) = variant_payload_ty {
+                            dag.set_port_type(
+                                payload_port,
+                                TypeShape::new(ty_decl),
+                            );
+                        } else {
+                            // The Path still carries the
+                            // UnresolvedVariantWith and infer gets
+                            // another chance to resolve the
+                            // variant, but body lowering with a
+                            // type-less payload port will fail-
+                            // close on any subsequent field
+                            // access. Emit a diagnostic now so the
+                            // user sees the root cause on the
+                            // match arm, not on an obscure
+                            // downstream usage.
+                            //
+                            // Three failure modes, disambiguated by
+                            // how far the walk got:
+                            //   1. Scrutinee is not a sum
+                            //      (non-Disj type).
+                            //   2. Variant name is not a
+                            //      constructor of the sum.
+                            //   3. Variant resolved but the payload
+                            //      shape is not single-positional
+                            //      (nullary or multi-positional or
+                            //      record-shaped); Prereq 2 only
+                            //      supports single-positional.
+                            let reason = if scrutinee_disj.is_none() {
+                                format!(
+                                    "match scrutinee's type is not a sum (Disj) declaration, so the payload-binding pattern `{name}({binding})` has no variant to bind"
+                                )
+                            } else {
+                                let variant_exists = scrutinee_disj.is_some_and(|disj_id| {
+                                    matches!(
+                                        &dag.declaration(disj_id).connective,
+                                        TypeConnective::Disj { variants }
+                                            if variants.iter().any(|f| &f.label == name)
+                                    )
+                                });
+                                if !variant_exists {
+                                    format!(
+                                        "variant `{name}` is not a constructor of the scrutinee's sum type, so the payload-binding pattern `{name}({binding})` has no payload type"
+                                    )
+                                } else {
+                                    format!(
+                                        "variant `{name}` has no single-positional payload — payload-binding patterns at Prereq 2 scope only support variants declared as `Name(SingleType)` (nullary, multi-positional, and record-shaped variants are follow-ups)"
+                                    )
+                                }
+                            };
+                            dag.mark_unresolved(
+                                payload_port,
+                                Diagnostic::ResolveError {
+                                    name: reason,
+                                    span: pat_span.clone(),
+                                },
+                            );
                         }
-                    };
-                    (arm_output_port, body_node, pattern_name, pattern_span)
-                })
-                .collect();
+                        let mut arm_scope = scope.clone();
+                        arm_scope.insert(binding.clone(), payload_port);
+                        (
+                            LoweredPattern::With {
+                                name: name.clone(),
+                                binding_name: binding.clone(),
+                                payload_port,
+                                span: pat_span.clone(),
+                            },
+                            arm_scope,
+                        )
+                    }
+                };
+                let output_port =
+                    lower_expr(&arm.body, dag, &arm_scope, symbols);
+                let body_node = producer_of(dag, output_port);
+                lowered_arms.push(LoweredArm {
+                    output_port,
+                    body_node,
+                    pattern,
+                });
+            }
+
             let branch_id = dag.alloc_node_id();
             let branch_output = dag.alloc_port(Some(branch_id));
             let paths: Vec<Path> = lowered_arms
                 .into_iter()
-                .map(|(out_port, body_node, name, span)| Path {
-                    body: body_node.unwrap_or(branch_id),
-                    output: out_port,
-                    pattern: BranchPattern::UnresolvedVariant { name, span },
+                .map(|arm| {
+                    let pattern = match arm.pattern {
+                        LoweredPattern::Bare { name, span } => {
+                            BranchPattern::UnresolvedVariant { name, span }
+                        }
+                        LoweredPattern::With {
+                            name,
+                            binding_name,
+                            payload_port,
+                            span,
+                        } => BranchPattern::UnresolvedVariantWith {
+                            name,
+                            binding_name,
+                            payload_port,
+                            span,
+                        },
+                    };
+                    Path {
+                        body: arm.body_node.unwrap_or(branch_id),
+                        output: arm.output_port,
+                        pattern,
+                    }
                 })
                 .collect();
             dag.push_node(Behavior::Branch(BranchNode {

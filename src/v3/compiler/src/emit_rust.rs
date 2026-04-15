@@ -656,7 +656,9 @@ impl<'a> Ctx<'a> {
         for path in &b.paths {
             let resolved_id = match &path.pattern {
                 BranchPattern::ResolvedVariant(id) => *id,
-                BranchPattern::UnresolvedVariant { name, .. } => {
+                BranchPattern::ResolvedVariantWith { decl, .. } => *decl,
+                BranchPattern::UnresolvedVariant { name, .. }
+                | BranchPattern::UnresolvedVariantWith { name, .. } => {
                     return Err(EmitError::UnresolvedBranchPattern {
                         variant_name: name.clone(),
                     });
