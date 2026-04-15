@@ -107,6 +107,40 @@ pub fn infer(dag: &mut Dag) {
     }
 }
 
+/// Walk a declaration through `Instantiation` / `ResolvedIdentifier`
+/// edges until it reaches a declaration whose connective is
+/// `Disj`. Returns the `DeclarationId` of that Disj declaration —
+/// or `None` if no Disj is reachable within `WALK_DEPTH_LIMIT`
+/// steps, or the chain terminates at some other connective.
+///
+/// Used by both the `decide_transform` Branch gate and the
+/// post-infer `resolve_branch_patterns` pass so that aliased or
+/// instantiated sum types (`type Hue = Color` where
+/// `Color = Red | Green | Blue`) resolve to the same underlying
+/// `Disj` fact whether their immediate connective is the Disj
+/// itself, an `Instantiation` pointing at it, or an
+/// `Atom(ResolvedIdentifier(...))` chain of aliases. The
+/// alternative — reading `decl.connective` directly — would
+/// reject aliases even though the underlying sum fact survives
+/// in the declaration graph, violating Facts Flow Forward.
+fn walk_to_disj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
+    let mut current = start;
+    for _ in 0..WALK_DEPTH_LIMIT {
+        let decl = dag.declaration(current);
+        match &decl.connective {
+            TypeConnective::Disj { .. } => return Some(current),
+            TypeConnective::Instantiation { template, .. } => {
+                current = *template;
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                current = *next;
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
 /// For every Branch node, resolve each Path's `BranchPattern` by
 /// matching the arm's variant name against the scrutinee's Disj
 /// children and verify exhaustiveness + uniqueness. Mutates the
@@ -114,6 +148,11 @@ pub fn infer(dag: &mut Dag) {
 /// output port Unresolved (via `Dag::mark_unresolved`) for
 /// failures. Skips Branches whose input port is not yet Resolved —
 /// those will be revisited on the next fixpoint iteration.
+///
+/// Aliases / instantiations of sum types normalize through
+/// `walk_to_disj_decl` before variant resolution, so `type Hue =
+/// Color` and `Color = Red | Green | Blue` both resolve arms
+/// against `Color`'s variants.
 ///
 /// Returns `true` if any state (Path.pattern rewrite or Branch
 /// output port transition) changed, so the calling fixpoint loop
@@ -157,18 +196,24 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
             PortState::Resolved(ty) => *ty,
             PortState::Unresolved | PortState::Uninferred => continue,
         };
-        let scrutinee_decl = dag.declaration(scrutinee_ty.declaration);
+        // Walk the scrutinee through alias / instantiation edges to
+        // the underlying Disj. `type Hue = Color` and
+        // `Color = Red | Green | Blue` both resolve arms against
+        // `Color`'s variants via this walk.
+        let Some(disj_decl_id) =
+            walk_to_disj_decl(dag, scrutinee_ty.declaration)
+        else {
+            // Scrutinee doesn't resolve to a Disj — the main infer
+            // pass caught this as a TypeMismatch already. Skip.
+            continue;
+        };
         let disj_variants: Vec<(String, DeclarationId)> =
-            match &scrutinee_decl.connective {
+            match &dag.declaration(disj_decl_id).connective {
                 TypeConnective::Disj { variants } => variants
                     .iter()
                     .map(|f| (f.label.clone(), f.ty))
                     .collect(),
-                _ => {
-                    // Scrutinee is not a Disj — the main infer pass
-                    // caught this as a TypeMismatch already. Skip.
-                    continue;
-                }
+                _ => unreachable!("walk_to_disj_decl returned a non-Disj declaration"),
             };
         let mut resolved_arms: Vec<(DeclarationId, String)> = Vec::new();
         for (path_index, path) in b.paths.iter().enumerate() {
@@ -323,14 +368,16 @@ fn decide(dag: &Dag, index: usize) -> Decision {
         Behavior::Transform(t) => decide_transform(dag, t),
         Behavior::Branch(b) => {
             // Branch dispatches on a sum type. Its input must
-            // resolve to a declaration whose connective is
+            // walk through alias/instantiation edges to a
+            // declaration whose connective is
             // `TypeConnective::Disj { .. }`. Bool and Classical are
             // Disj declarations (True | False), so `if` lowers here
             // naturally. User-defined sums like
-            // `type Sign = Plus | Minus` also pass. String, Int,
-            // Float, etc. fail this check — the previous M0 "must
-            // be Bool" rule was the degenerate case of this
-            // broader rule.
+            // `type Sign = Plus | Minus` also pass. Aliased sums
+            // (`type Hue = Color` where Color is a sum) pass
+            // via `walk_to_disj_decl`. String, Int, Float, etc.
+            // fail this check — the previous M0 "must be Bool"
+            // rule was the degenerate case of this broader rule.
             match dag.port(b.input).state() {
                 PortState::Uninferred => return Decision::Retry,
                 PortState::Unresolved => {
@@ -343,11 +390,7 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                     );
                 }
                 PortState::Resolved(ty) => {
-                    let scrutinee_decl = dag.declaration(ty.declaration);
-                    if !matches!(
-                        scrutinee_decl.connective,
-                        TypeConnective::Disj { .. }
-                    ) {
+                    if walk_to_disj_decl(dag, ty.declaration).is_none() {
                         let Some(bool_ty) = dag.bool_shape() else {
                             return Decision::Fail(
                                 b.output,

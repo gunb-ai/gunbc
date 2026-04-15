@@ -699,6 +699,57 @@ fn bad(s: Sign) -> Int = match s { Plus => 0, Plus => 1, Minus => 2 }
 }
 
 #[test]
+fn m18_r15_match_on_aliased_sum_type_compiles() {
+    // M1(2.8) R15: Branch gate and pattern resolution walk
+    // through alias / instantiation edges to find the underlying
+    // Disj. Before R15, both checks read the immediate
+    // connective and rejected `type Hue = Color` because Hue's
+    // connective is Instantiation { template: Color }, not Disj.
+    //
+    // Match arms resolve against Color's variants regardless of
+    // whether the scrutinee port type is Color or Hue.
+    let src = "\
+type Color = Red | Green | Blue
+type Hue = Color
+fn classify(h: Hue) -> Int = match h { Red => 0, Green => 1, Blue => 2 }
+";
+    let dag = compile_to_dag(src, "aliased_sum.v3").expect("compiles");
+    assert!(dag.diagnostics().is_empty());
+
+    // The Branch exists and its pattern resolution ran through
+    // the alias walk — each path should carry a ResolvedVariant.
+    let branch = dag
+        .nodes()
+        .iter()
+        .find_map(Behavior::as_branch)
+        .expect("Branch exists");
+    assert_eq!(branch.paths.len(), 3);
+    for path in &branch.paths {
+        match &path.pattern {
+            BranchPattern::ResolvedVariant(_) => {}
+            other => panic!("expected ResolvedVariant, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn m18_r15_non_exhaustive_match_on_aliased_sum_type_is_rejected() {
+    // R15 negative: aliased sum types still go through the
+    // exhaustiveness check. A match that covers only 2 of 3
+    // Color variants via Hue should still fail fail-closed.
+    let src = "\
+type Color = Red | Green | Blue
+type Hue = Color
+fn classify(h: Hue) -> Int = match h { Red => 0, Green => 1 }
+";
+    let dag = compile_any(src, "aliased_non_exhaustive.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "non-exhaustive match via alias should fail"
+    );
+}
+
+#[test]
 fn m18_r14_user_block_bodied_fn_is_rejected() {
     // M1(2.8) R14: user-range ArrowBody::Unparsed scaffolds must
     // fail-closed. The FnExternalBody surface form exists so
