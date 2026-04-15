@@ -147,9 +147,34 @@ fn main() {
         .unwrap_or_else(|e| panic!("failed to write {}: {}", out_path.display(), e));
 }
 
+/// Files present on disk but intentionally NOT loaded by
+/// bootstrap yet. The file exists as a design target but uses
+/// grammar/std features the current v3 parser can't handle, so
+/// including it in V3_SPECS would break bootstrap.
+///
+/// Each entry must cite the prerequisite PR that unblocks it
+/// (from `docs/substrate-reflection-design.md` §11). When that
+/// prerequisite lands, remove the entry here to promote the
+/// file from staged to active.
+///
+/// This is the bootstrap-side of the §11 prerequisite slate:
+/// the file header in the .dag file documents intent, this
+/// list enforces it at build time. Staging by filename (rather
+/// than by file-content marker scan) because it's explicit and
+/// a one-line edit to promote.
+const STAGED_FILES: &[&str] = &[
+    // src/v3/std/list.dag — target spec for List<T>, uses
+    // match-with-payload (Prereq 2), lambdas (Prereq 3), and
+    // higher-order calls (Prereq 0). See §11 Prereq 4 for the
+    // acceptance criteria that promote this to active.
+    "list.dag",
+];
+
 /// Scan a directory for `*.dag` files. Tolerates a missing
 /// directory (returns empty) so a build in a tree where one of
-/// the staging dirs doesn't exist yet still works.
+/// the staging dirs doesn't exist yet still works. Files named
+/// in `STAGED_FILES` are skipped — they exist as design targets
+/// but bootstrap can't load them until their prerequisites land.
 fn scan_dag_files(dir: &Path, display_dir: &'static str) -> Vec<Entry> {
     let read = match fs::read_dir(dir) {
         Ok(r) => r,
@@ -158,6 +183,12 @@ fn scan_dag_files(dir: &Path, display_dir: &'static str) -> Vec<Entry> {
     read.filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("dag"))
+        .filter(|p| {
+            p.file_name()
+                .and_then(|s| s.to_str())
+                .map(|name| !STAGED_FILES.contains(&name))
+                .unwrap_or(false)
+        })
         .map(|p| {
             let file_name = p
                 .file_name()
