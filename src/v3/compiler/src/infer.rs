@@ -23,11 +23,11 @@
 // both hold.
 
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, Dag, Declaration, DeclarationId, LiteralBits,
-    PortId, PortState, TemplateArgument, TransformNode, TypeConnective,
+    ArrowBody, AtomPayload, Behavior, Dag, DeclarationId, LiteralBits, PortId,
+    PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
-use crate::operators::operator_field_name;
+use crate::operators::OperatorKind;
 use crate::types::TypeShape;
 
 pub fn infer(dag: &mut Dag) {
@@ -98,30 +98,21 @@ enum Decision {
     Retry,
 }
 
-/// Look up a primitive type's declaration id and wrap it in a TypeShape.
-/// Returns None if the primitive isn't in the declaration table — that
-/// only happens if bootstrap failed to load `dsl/std/integer.dag` /
-/// `dsl/std/types.dag` / `dsl/std/string_type.dag`, in which case the
-/// bootstrap diagnostic is already on the Dag and the compile fails
-/// through the ordinary channel.
-fn primitive_shape(dag: &Dag, name: &str) -> Option<TypeShape> {
-    dag.declaration_by_name(name).map(|d| TypeShape::new(d.id))
-}
-
 fn decide(dag: &Dag, index: usize) -> Decision {
     match &dag.nodes()[index] {
         Behavior::Value(v) => {
-            let name = match &v.data {
-                LiteralBits::Int(_) => "Int",
-                LiteralBits::Bool(_) => "Bool",
-                LiteralBits::String(_) => "String",
+            let shape_and_name = match &v.data {
+                LiteralBits::Int(_) => (dag.int_shape(), "Int"),
+                LiteralBits::Bool(_) => (dag.bool_shape(), "Bool"),
+                LiteralBits::String(_) => (dag.string_shape(), "String"),
             };
-            let Some(ty) = primitive_shape(dag, name) else {
+            let Some(ty) = shape_and_name.0 else {
                 return Decision::Fail(
                     v.output,
                     Diagnostic::ResolveError {
                         name: format!(
-                            "primitive `{name}` missing from declaration table — bootstrap failed"
+                            "primitive `{}` missing from declaration table — bootstrap failed",
+                            shape_and_name.1
                         ),
                         span: v.span.clone(),
                     },
@@ -131,7 +122,7 @@ fn decide(dag: &Dag, index: usize) -> Decision {
         }
         Behavior::Transform(t) => decide_transform(dag, t),
         Behavior::Branch(b) => {
-            let Some(bool_ty) = primitive_shape(dag, "Bool") else {
+            let Some(bool_ty) = dag.bool_shape() else {
                 return Decision::Fail(
                     b.output,
                     Diagnostic::ResolveError {
@@ -232,68 +223,72 @@ fn decide(dag: &Dag, index: usize) -> Decision {
 }
 
 fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
-    // Operator identifiers (`+`, `-`, ...) dispatch via §8.9 inhabitance
-    // walks: the LHS input type's declaration is walked down through its
-    // Instantiation chain until an algebra field matching the operator
-    // symbol is found, at which point the field's Arrow signature — with
-    // template arguments substituted — becomes the call's signature.
-    //
-    // Non-operator targets (user functions, named primitives) resolve via
-    // the plain declaration walk in `resolve_arrow`.
-    let target_decl = dag.declaration(t.target);
-    let signature = if let Some(op_name) = unresolved_operator_name(target_decl) {
-        let lhs_type = match t.inputs.first() {
-            None => {
-                return Decision::Fail(
-                    t.output,
-                    Diagnostic::ArityMismatch {
-                        function: op_name.to_string(),
-                        expected: 2,
-                        actual: 0,
-                        span: t.span.clone(),
-                    },
-                );
-            }
-            Some(port) => match dag.port(*port).state() {
-                PortState::Uninferred => return Decision::Retry,
-                PortState::Unresolved => {
+    // Structural dispatch on `TransformTarget`. `Operator` carries the
+    // resolved `OperatorKind` directly and produces its signature from
+    // the LHS operand type (arithmetic returns operand type, comparison
+    // returns Bool). `Callable` points at a DeclarationId and walks
+    // `resolve_arrow` through any Instantiation / ResolvedIdentifier
+    // chain to recover the concrete Arrow signature.
+    let signature = match &t.target {
+        TransformTarget::Operator(op_kind) => {
+            let lhs_type = match t.inputs.first() {
+                None => {
                     return Decision::Fail(
                         t.output,
-                        Diagnostic::ResolveError {
-                            name: format!("(upstream failure in {op_name})"),
+                        Diagnostic::ArityMismatch {
+                            function: op_kind.symbol().to_string(),
+                            expected: 2,
+                            actual: 0,
                             span: t.span.clone(),
                         },
                     );
                 }
-                PortState::Resolved(ty) => *ty,
-            },
-        };
-        match resolve_operator_arrow(dag, op_name, &lhs_type) {
-            Some(sig) => sig,
-            None => {
+                Some(port) => match dag.port(*port).state() {
+                    PortState::Uninferred => return Decision::Retry,
+                    PortState::Unresolved => {
+                        return Decision::Fail(
+                            t.output,
+                            Diagnostic::ResolveError {
+                                name: format!(
+                                    "(upstream failure in {})",
+                                    op_kind.symbol()
+                                ),
+                                span: t.span.clone(),
+                            },
+                        );
+                    }
+                    PortState::Resolved(ty) => *ty,
+                },
+            };
+            match resolve_operator_arrow(dag, *op_kind, &lhs_type) {
+                Some(sig) => sig,
+                None => {
+                    return Decision::Fail(
+                        t.output,
+                        Diagnostic::ResolveError {
+                            name: format!(
+                                "cannot dispatch operator `{}` on {lhs_type:?}",
+                                op_kind.symbol()
+                            ),
+                            span: t.span.clone(),
+                        },
+                    );
+                }
+            }
+        }
+        TransformTarget::Callable(target_id) => {
+            let Some(sig) = resolve_arrow(dag, *target_id) else {
+                let name = target_display_name(dag, *target_id);
                 return Decision::Fail(
                     t.output,
                     Diagnostic::ResolveError {
-                        name: format!(
-                            "cannot dispatch operator `{op_name}` on {lhs_type:?}"
-                        ),
+                        name,
                         span: t.span.clone(),
                     },
                 );
-            }
+            };
+            sig
         }
-    } else {
-        let Some(sig) = resolve_arrow(dag, t.target) else {
-            let name = target_display_name(dag, t.target);
-            return Decision::Fail(
-                t.output,
-                Diagnostic::ResolveError {
-                    name,
-                    span: t.span.clone(),
-                },
-            );
-        };
-        sig
     };
 
     // Arrow-body state check. The three variants demand three different
@@ -316,7 +311,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
             {
                 PortState::Uninferred => return Decision::Retry,
                 PortState::Unresolved => {
-                    let name = target_display_name(dag, t.target);
+                    let name = transform_target_display_name(dag, &t.target);
                     return Decision::Fail(
                         t.output,
                         Diagnostic::ResolveError {
@@ -330,14 +325,14 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
         }
         ArrowBody::ExternalRealization(realization_id) => {
             // Primitive realization: the target declaration must be a
-            // Conj whose `meta_tag` edge points at the `Realization`
-            // meta-type. The typed-edge check was already asserted at
-            // bootstrap construction (`assert_realization_shape`), but
-            // re-validating here catches drift from any future mutation
-            // path that stores a non-realization declaration in the
-            // body and bypasses the construction-time invariant.
+            // Conj whose `meta_tag` edge points at the cached
+            // `Realization` meta-type (populated at bootstrap). The
+            // typed-edge check was asserted at bootstrap construction
+            // (`assert_realization_shape`); re-validating here catches
+            // drift from any future mutation path that bypasses the
+            // construction-time invariant.
             if !is_realization_shape(dag, *realization_id) {
-                let name = target_display_name(dag, t.target);
+                let name = transform_target_display_name(dag, &t.target);
                 return Decision::Fail(
                     t.output,
                     Diagnostic::ResolveError {
@@ -350,9 +345,17 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
             }
         }
         ArrowBody::Pending => {
-            // Scaffold state: signature type-checks via inhabitance,
-            // body-walking is skipped. `Pending` dissolves by M3 per
-            // the §8.11 ratchet; at M1(2.6) it's valid at dispatch time.
+            // Realization-lag scaffold: signature type-checks via
+            // inhabitance, body-walking is skipped. Dissolves by M3
+            // per the §8.11 ratchet; at M1(2.7) it's valid at dispatch
+            // time.
+        }
+        ArrowBody::Unparsed(_) => {
+            // Surface-grammar scaffold: signature type-checks,
+            // body is not yet parseable under the M1(2.7) grammar.
+            // Callers can dispatch against the signature; the body
+            // source span is preserved for M2+ parser extensions.
+            // Dissolves when block bodies become fully parseable.
         }
     }
 
@@ -360,7 +363,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
         return Decision::Fail(
             t.output,
             Diagnostic::ArityMismatch {
-                function: target_display_name(dag, t.target),
+                function: transform_target_display_name(dag, &t.target),
                 expected: signature.inputs.len(),
                 actual: t.inputs.len(),
                 span: t.span.clone(),
@@ -376,7 +379,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                     Diagnostic::ResolveError {
                         name: format!(
                             "(upstream failure in {})",
-                            target_display_name(dag, t.target)
+                            transform_target_display_name(dag, &t.target)
                         ),
                         span: t.span.clone(),
                     },
@@ -441,57 +444,40 @@ impl SubstStack {
 
 const WALK_DEPTH_LIMIT: usize = 32;
 
-/// Detect whether a target declaration is an unresolved operator
-/// identifier (e.g., `Atom(UnresolvedIdentifier("+"))` whose name
-/// matches the `OPERATOR_FIELD_MAP` in `crate::operators`).
-/// Operators stay unresolved through lowering and are dispatched at
-/// inference time via `resolve_operator_arrow`.
-fn unresolved_operator_name(decl: &Declaration) -> Option<&str> {
-    if let TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name)) = &decl.connective {
-        if operator_field_name(name).is_some() {
-            return Some(name.as_str());
-        }
-    }
-    None
-}
-
-/// §8.9 operator dispatch. At M1(2.6), operator signature checking takes
-/// a **fast path** for both arithmetic and comparison operators:
+/// §8.9 operator dispatch. At M1(2.7), operator signature checking is
+/// a structural match on `OperatorKind`:
 ///
-/// - Arithmetic (`+`, `-`, `*`, `/`): signature is `(T, T) -> T`.
-/// - Comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`): signature is
-///   `(T, T) -> Bool`.
+/// - `Arithmetic(_)`: signature is `(T, T) -> T` where T is the
+///   operand type.
+/// - `Comparison(_)`: signature is `(T, T) -> Bool`.
+///
+/// The output-type rule is encoded in the `OperatorKind` variant
+/// itself (Arithmetic vs Comparison), not in a sibling string match.
+/// `OPERATOR_FIELD_MAP` is gone — the whole operator dispatch path is
+/// structural.
 ///
 /// The real `dsl/std/algebra.dag` expresses these through algebra
 /// fields that are either primitive (`add`, `mul`) or derived
-/// (`sub = add(a, negate(b))`, `div = mul(a, reciprocal(b))`, `lt = compare(a, b) == Less`).
-/// Walking a derivation chain at compile time would require evaluating
-/// `.dag` expressions inside arrow bodies — a surface-grammar feature
-/// deferred to M2+. Until then, signature checking is the fast path
-/// above; the derivation lives in runtime/emission layers.
+/// (`sub = add(a, negate(b))`, `div = mul(a, reciprocal(b))`,
+/// `lt = compare(a, b) == Less`). Walking a derivation chain at
+/// compile time would require evaluating `.dag` expressions inside
+/// arrow bodies — a surface-grammar feature deferred to M2+. Until
+/// then, signature checking is the structural split above; the
+/// derivation lives in runtime/emission layers.
 ///
-/// The fast path is the one localized name-based bridge that remains
-/// after SINGLE AUTHORITY cleanup. It dissolves in M2+ once the
-/// surface grammar exposes algebra field access directly (e.g., writing
-/// `Int.add(a, b)` instead of `a + b`). The `OPERATOR_FIELD_MAP`
-/// constant is retained so the dissolution trigger is discoverable.
-///
-/// The `walk_for_algebra_field` / `SubstStack` machinery is still used
-/// by `resolve_arrow` for non-operator targets (user function calls,
-/// resolved type aliases) where the walk is direct — no algebra-field
-/// indirection required.
+/// Dissolution trigger: when the surface grammar exposes algebra
+/// field access directly (`Int.add(a, b)` instead of `a + b`),
+/// `SurfaceExpr::Operator` disappears, `TransformTarget::Operator`
+/// disappears, `OperatorKind` disappears. Operators become regular
+/// `Callable`s dispatching through the ordinary `resolve_arrow` walk.
 fn resolve_operator_arrow(
     dag: &Dag,
-    op_symbol: &str,
+    op_kind: OperatorKind,
     lhs_type: &TypeShape,
 ) -> Option<ResolvedArrow> {
-    // Touch OPERATOR_FIELD_MAP so the docs-enforced bridge is a real
-    // precondition: if the operator isn't in the table, dispatch fails.
-    operator_field_name(op_symbol)?;
-    let output = if is_comparison_operator(op_symbol) {
-        primitive_shape(dag, "Bool")?
-    } else {
-        *lhs_type
+    let output = match op_kind {
+        OperatorKind::Arithmetic(_) => *lhs_type,
+        OperatorKind::Comparison(_) => dag.bool_shape()?,
     };
     Some(ResolvedArrow {
         inputs: vec![*lhs_type, *lhs_type],
@@ -500,14 +486,12 @@ fn resolve_operator_arrow(
     })
 }
 
-fn is_comparison_operator(op: &str) -> bool {
-    matches!(op, "==" | "!=" | "<" | "<=" | ">" | ">=")
-}
-
 /// Dispatch-time invariant check on an `ExternalRealization` target:
 /// the linked declaration must be a `Conj` whose `meta_tag` edge
-/// points at the `Realization` meta-type. Mirrors the assertion in
-/// `bootstrap::assert_realization_shape` as a runtime safety net.
+/// points at the `Realization` meta-type. Compares by
+/// `DeclarationId` via the cached `Dag::realization_meta_id`, not by
+/// name — the cache was populated at bootstrap time and
+/// `Realization` identity is structural, not string-compared.
 fn is_realization_shape(dag: &Dag, realization_id: DeclarationId) -> bool {
     let decl = dag.declaration(realization_id);
     if !matches!(decl.connective, TypeConnective::Conj { .. }) {
@@ -516,7 +500,7 @@ fn is_realization_shape(dag: &Dag, realization_id: DeclarationId) -> bool {
     let Some(meta_tag) = decl.meta_tag else {
         return false;
     };
-    dag.declaration(meta_tag).name.as_deref() == Some("Realization")
+    dag.realization_meta_id() == Some(meta_tag)
 }
 
 /// Walk `Transform.target` to its terminal `Arrow` declaration without
@@ -629,6 +613,16 @@ fn target_display_name(dag: &Dag, target: DeclarationId) -> String {
             target_display_name(dag, *next)
         }
         _ => format!("declaration#{}", target.raw()),
+    }
+}
+
+/// Best-effort human-readable name for a `TransformTarget`. Dispatches
+/// on the variant: `Callable` goes through `target_display_name`,
+/// `Operator` renders the source symbol directly.
+fn transform_target_display_name(dag: &Dag, target: &TransformTarget) -> String {
+    match target {
+        TransformTarget::Callable(id) => target_display_name(dag, *id),
+        TransformTarget::Operator(op_kind) => op_kind.symbol().to_string(),
     }
 }
 

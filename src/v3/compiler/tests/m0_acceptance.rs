@@ -6,17 +6,17 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    AtomPayload, Behavior, Dag, DeclarationId, LiteralBits, PortState, TypeConnective,
+    AtomPayload, Behavior, Dag, LiteralBits, PortState, TransformTarget, TypeConnective,
 };
 use v3_compiler::lens_depth::DepthLens;
 use v3_compiler::lens_provenance::{Origin, ProvenanceLens};
 use v3_compiler::types::TypeShape;
 use v3_compiler::CompileError;
 
-/// Look up a primitive type's `TypeShape` by name. After M1(2.6),
-/// `TypeShape` is a newtype around `DeclarationId`, so primitive
-/// shapes are always resolved via `Dag::declaration_by_name` rather
-/// than a hardcoded `Prim::X` enum.
+/// Look up a primitive type's `TypeShape` by name. After M1(2.7),
+/// primitive shapes are cached on `Dag` — these tests still exercise
+/// the `declaration_by_name` path for parity with user-defined types
+/// until M2 moves both under the structural walk.
 fn primitive_shape(dag: &Dag, name: &str) -> TypeShape {
     TypeShape::new(
         dag.declaration_by_name(name)
@@ -25,30 +25,35 @@ fn primitive_shape(dag: &Dag, name: &str) -> TypeShape {
     )
 }
 
-/// Assert that a Transform.target DeclarationId resolves to a
-/// declaration whose surface-visible name equals `expected`. The
-/// M1(2.6) target shape is one of:
+/// Assert that a `Transform.target` renders to the expected surface
+/// name. After M1(2.7) the target is a `TransformTarget` coproduct:
 ///
-/// - `Atom(UnresolvedIdentifier(name))` — operator stubs created
-///   by lowering; inference resolves them at Transform-decide
-///   time via §8.9 walks.
-/// - `Atom(ResolvedIdentifier(target_id))` — name references
-///   filled in by `resolve_pending_identifiers`; the target's
-///   own `decl.name` carries the surface name.
-/// - A named top-level declaration (user function Arrow).
-fn assert_target_name(dag: &Dag, target: DeclarationId, expected: &str) {
-    let decl = dag.declaration(target);
-    let actual: Option<String> = match &decl.connective {
-        TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name)) => Some(name.clone()),
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
-            dag.declaration(*next).name.clone()
+/// - `Callable(DeclarationId)` — user function calls and resolved
+///   named declarations. The target declaration's name (or its
+///   resolved-identifier chain) carries the surface label.
+/// - `Operator(OperatorKind)` — primitive binary operators. The
+///   `OperatorKind::symbol()` renders the source symbol directly
+///   (`"+"`, `">="`, etc.).
+fn assert_target_name(dag: &Dag, target: &TransformTarget, expected: &str) {
+    let actual: Option<String> = match target {
+        TransformTarget::Callable(id) => {
+            let decl = dag.declaration(*id);
+            match &decl.connective {
+                TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name)) => {
+                    Some(name.clone())
+                }
+                TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                    dag.declaration(*next).name.clone()
+                }
+                _ => decl.name.clone(),
+            }
         }
-        _ => decl.name.clone(),
+        TransformTarget::Operator(op_kind) => Some(op_kind.symbol().to_string()),
     };
     assert_eq!(
         actual.as_deref(),
         Some(expected),
-        "Transform.target declaration name mismatch"
+        "Transform.target name mismatch"
     );
 }
 
@@ -89,7 +94,7 @@ fn test_let_binding_produces_dag_shape() {
         .node(producer_id)
         .as_transform()
         .expect("producer is a Transform");
-    assert_target_name(&dag, add.target, "+");
+    assert_target_name(&dag, &add.target, "+");
     assert_eq!(add.inputs.len(), 2);
 
     let lhs_producer = dag
@@ -148,7 +153,7 @@ fn test_if_then_else_produces_branch_dag() {
         .node(cmp_id)
         .as_transform()
         .expect("branch input is a Transform");
-    assert_target_name(&dag, cmp.target, ">");
+    assert_target_name(&dag, &cmp.target, ">");
 
     assert_eq!(
         dag.port(branch.input).value_type(),
@@ -228,7 +233,7 @@ fn test_recursive_function_produces_loop_dag() {
         .node(call_id)
         .as_transform()
         .expect("call site is a Transform");
-    assert_target_name(&dag, call.target, "count_down");
+    assert_target_name(&dag, &call.target, "count_down");
     assert_eq!(call.inputs.len(), 1);
 
     assert_eq!(
@@ -262,7 +267,7 @@ fn test_provenance_lens_reads_produced_by() {
         .node(add_id)
         .as_transform()
         .expect("add_id points to a Transform");
-    assert_target_name(&dag, add.target, "+");
+    assert_target_name(&dag, &add.target, "+");
 
     for input in &add.inputs {
         match lens.origin_of(*input) {
@@ -849,7 +854,7 @@ fn test_composition_if_inside_function_call() {
         .node(call_id)
         .as_transform()
         .expect("producer is a Transform");
-    assert_target_name(&dag, call.target, "f");
+    assert_target_name(&dag, &call.target, "f");
     assert_eq!(call.inputs.len(), 1);
 
     // The argument is a Branch output.
@@ -890,7 +895,7 @@ fn test_composition_two_functions_later_calls_earlier() {
         .node(g_call_id)
         .as_transform()
         .expect("producer is a Transform");
-    assert_target_name(&dag, g_call.target, "g");
+    assert_target_name(&dag, &g_call.target, "g");
 
     // Both f and g should be registered as Bind nodes with
     // non-empty params (function definitions).

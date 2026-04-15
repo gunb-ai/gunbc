@@ -11,26 +11,26 @@
 //   IntLit/BoolLit/StringLit → Value(LiteralBits::*)
 //   Var (local)              → scope lookup
 //   Var (unresolved)         → placeholder port + ResolveError
-//   Call                     → Transform { target: DeclarationId, inputs }
+//   Call                     → Transform { target: TransformTarget::Callable(DeclarationId), inputs }
+//   Operator                 → Transform { target: TransformTarget::Operator(OperatorKind), inputs }
 //   If                       → Branch with 2 Paths
 //   Fn item                  → Bind with non-empty params + optional Loop wrapper
 //   Let item                 → Bind with empty params
 //
-// Transform.target is a DeclarationId. User function calls resolve at
-// lower time via the symbol table (pass 1 allocated the fn's Declaration).
-// Operator calls (target "+", "-", ...) resolve to an anonymous Identifier
-// Atom declaration with resolved=None; inference later walks inhabitance
-// to fill in the concrete algebra field (M1_DESIGN.md §8.9).
+// `TransformTarget::Callable` points at a DeclarationId for user
+// function calls and resolved named declarations. `TransformTarget::Operator`
+// carries a structural `OperatorKind` directly — no anonymous stub
+// declaration, no name-based inhabitance walk at infer time.
 
 use std::collections::{HashMap, HashSet};
 
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, Bound, BranchNode, CardinalityBound, Dag,
     Declaration, DeclarationId, Field, LiteralBits, LoopNode, NodeId, Path, PortId,
-    TemplateArgument, TransformNode, TypeConnective, ValueNode,
+    TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
-use crate::operators::is_operator_name;
+use crate::operators::{ArithmeticOp, OperatorKind};
 use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceModule, SurfaceParam,
     SurfaceType, SurfaceVariant, VariantPayload,
@@ -138,17 +138,22 @@ fn collect_symbols(
 
     let mut is_first = vec![true; items.len()];
     for (idx, item) in items.iter().enumerate() {
-        // Extract the surface-level name and type parameter list. Let
-        // items don't create declarations; block-bodied fn items are
-        // skipped (their ArrowBody is undefined at M1(2.6) — the thesis
-        // licenses `ArrowBody::Pending` strictly for primitive
-        // realization lag, not "user body not lowered yet"). Module /
-        // import / data declarations are parser-absorbed upstream and
-        // never reach `SurfaceItem`.
+        // Extract the surface-level name and type parameter list.
+        // Items that don't allocate declarations:
+        // - Let bindings (they produce a BindNode at lower time, not
+        //   a Declaration).
+        // - Module / Import items (parsed facts preserved but have no
+        //   lowered declaration at M1(2.7)).
+        // Every other surface form allocates one top-level declaration
+        // with the declared name, including `FnExternalBody` and `Data`
+        // scaffold forms — their facts flow forward.
         let (name, surface_type_params): (String, &[String]) = match item {
             SurfaceItem::Let { .. } => continue,
-            SurfaceItem::Fn { body: None, .. } => continue,
+            SurfaceItem::Module { .. } => continue,
+            SurfaceItem::Import { .. } => continue,
             SurfaceItem::Fn { name, .. } => (name.clone(), &[]),
+            SurfaceItem::FnExternalBody { name, .. } => (name.clone(), &[]),
+            SurfaceItem::Data { name, .. } => (name.clone(), &[]),
             SurfaceItem::TypeAtom {
                 name,
                 type_params,
@@ -241,6 +246,10 @@ fn item_span(item: &SurfaceItem) -> SourceSpan {
     match item {
         SurfaceItem::Let { expr, .. } => expr_span(expr).clone(),
         SurfaceItem::Fn { span, .. }
+        | SurfaceItem::FnExternalBody { span, .. }
+        | SurfaceItem::Data { span, .. }
+        | SurfaceItem::Module { span, .. }
+        | SurfaceItem::Import { span, .. }
         | SurfaceItem::TypeAtom { span, .. }
         | SurfaceItem::TypeRecord { span, .. }
         | SurfaceItem::TypeSum { span, .. }
@@ -264,7 +273,7 @@ fn lower_item(
         } => {
             let value_port = lower_expr(expr, dag, &scope, symbols);
             if let Some(ty) = type_ann {
-                match lower_type_for_port(ty, dag) {
+                match lower_type_for_port(ty, dag, symbols) {
                     Ok(declared) => dag.set_port_type(value_port, declared),
                     Err(diag) => dag.mark_unresolved(value_port, diag),
                 }
@@ -290,27 +299,41 @@ fn lower_item(
             return_type,
             body,
             span: _,
+        } => lower_fn_item_expr_body(
+            name,
+            params,
+            return_type,
+            body,
+            dag,
+            scope,
+            symbols,
+            mutually_recursive,
+        ),
+        SurfaceItem::FnExternalBody {
+            name,
+            params,
+            return_type,
+            body_span,
+            span: _,
         } => {
-            if let Some(body_expr) = body {
-                lower_fn_item_expr_body(
-                    name,
-                    params,
-                    return_type,
-                    body_expr,
-                    dag,
-                    scope,
-                    symbols,
-                    mutually_recursive,
-                )
-            } else {
-                // Block-body form (`fn f(x) -> T { body }`) — skipped
-                // at collect_symbols time. `lower_item` should never
-                // reach this arm because `is_first[idx]` is false for
-                // block-bodied fns (no declaration was allocated). The
-                // arm exists to keep the match exhaustive. If inference
-                // reaches it somehow, return scope unchanged.
-                scope
-            }
+            lower_fn_item_unparsed(name, params, return_type, body_span, dag, symbols);
+            scope
+        }
+        SurfaceItem::Data {
+            name,
+            ty,
+            body_span: _,
+            span: _,
+        } => {
+            lower_data_item(name, ty, dag, symbols);
+            scope
+        }
+        SurfaceItem::Module { .. } | SurfaceItem::Import { .. } => {
+            // No-op at M1(2.7). The parsed facts are preserved in the
+            // SurfaceItem for M2 module scoping to consume; lowering
+            // doesn't currently need them because name resolution
+            // spans the flat declaration table.
+            scope
         }
         SurfaceItem::TypeAtom { name, .. } => {
             let decl_id = symbols[name];
@@ -621,18 +644,21 @@ fn type_to_connective(
 ///
 /// Two-phase bootstrap means every real declaration's `type_params`
 /// slot is populated by the time lowering runs, so real templates
-/// always produce well-formed `TemplateArgument`s. **Stub templates**
-/// — anonymous `Atom(Identifier { resolved: None })` stubs created
-/// when a name can't be resolved at lower time — take a tolerated
-/// path: the arity check is skipped and the parameter id is a
-/// self-reference to the argument's own value. The stub itself is
-/// caught separately by `resolve_pending_identifiers` (bootstrap
-/// mode tolerates bootstrap-range dangling refs like `Tuple` in
-/// algebra.dag; user-code mode fails closed).
+/// always produce well-formed `TemplateArgument`s whose `parameter`
+/// edge points at a genuine TypeParam atom — honoring the field's
+/// contract in `dag::TemplateArgument`.
 ///
-/// There is no fixup pass — TemplateArguments are either fully
-/// resolved (real template) or tolerated along with their stub
-/// (dangling template). No third, half-valid state.
+/// **Stub templates** — anonymous `UnresolvedIdentifier` stubs
+/// created when a name can't be resolved at lower time — produce an
+/// **empty argument list**. The stub itself already has a diagnostic
+/// waiting for it (bootstrap mode tolerates bootstrap-range dangling
+/// refs like `Tuple` in `algebra.dag`; user-code mode fails closed
+/// via the strict sweep), so there is no additional consumer that
+/// needs a per-argument `TemplateArgument` when the template is
+/// unresolved. The old "self-reference tolerated scaffold" path is
+/// deleted per QW4 — `TemplateArgument.parameter` is no longer
+/// representable as a non-TypeParam reference at construction
+/// time.
 fn build_template_arguments(
     dag: &mut Dag,
     symbols: &HashMap<String, DeclarationId>,
@@ -646,8 +672,20 @@ fn build_template_arguments(
         &dag.declaration(template).connective,
         TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
     );
+    if template_is_stub {
+        // Consume the argument surface types for their side effects
+        // (nested stub allocation, diagnostic attachment), but do not
+        // construct any TemplateArgument values — the template's
+        // pending error is the authoritative failure for this
+        // instantiation, and a TemplateArgument whose parameter
+        // wasn't a TypeParam would violate the field contract.
+        for arg in args {
+            let _ = type_to_declaration_id(arg, symbols, local, dag);
+        }
+        return Vec::new();
+    }
     let template_param_count = dag.declaration(template).type_params.len();
-    if !template_is_stub && template_param_count != args.len() {
+    if template_param_count != args.len() {
         report_declaration_error(
             dag,
             Diagnostic::ArityMismatch {
@@ -657,35 +695,24 @@ fn build_template_arguments(
                 span: span.clone(),
             },
         );
+        // Arity mismatch is an authoritative failure. Consume the
+        // argument surface types for their side effects and return
+        // nothing — building partial TemplateArguments would require
+        // inventing parameter references that don't exist, which
+        // would violate the field contract.
+        for arg in args {
+            let _ = type_to_declaration_id(arg, symbols, local, dag);
+        }
+        return Vec::new();
     }
     args.iter()
         .enumerate()
         .map(|(idx, arg)| {
             let value = type_to_declaration_id(arg, symbols, local, dag);
-            let parameter = if template_is_stub {
-                // Stub tolerance: self-reference. The stub itself is
-                // caught by `resolve_pending_identifiers`; this
-                // TemplateArgument is either dead code (bootstrap
-                // dangling ref) or unreachable (user-code strict
-                // mode catches the stub before inference walks it).
-                value
-            } else {
-                match template_param_id(dag, template, idx) {
-                    Some(param_id) => param_id,
-                    None => {
-                        report_declaration_error(
-                            dag,
-                            Diagnostic::ResolveError {
-                                name: format!(
-                                    "template `{template_name}` has no parameter at position {idx}"
-                                ),
-                                span: span.clone(),
-                            },
-                        );
-                        value
-                    }
-                }
-            };
+            let parameter = template_param_id(dag, template, idx).expect(
+                "template_param_count equality was checked immediately above — \
+                 param lookup at idx < count must succeed",
+            );
             TemplateArgument { parameter, value }
         })
         .collect()
@@ -759,13 +786,12 @@ fn run_identifier_sweep(dag: &mut Dag, strict_from: usize) {
         .collect();
 
     for (decl_id, name, span) in snapshot {
-        // Operator identifiers (`+`, `-`, ...) stay unresolved through
-        // lowering. Inference resolves them via §8.9 inhabitance walks
-        // at `resolve_operator_arrow` dispatch time, not by name lookup
-        // against the declaration table. The sweep skips them.
-        if is_operator_name(&name) {
-            continue;
-        }
+        // Operator identifiers (`+`, `-`, ...) no longer flow through
+        // this sweep — they are committed to
+        // `TransformTarget::Operator(OperatorKind)` at parse time and
+        // never allocate a stub declaration. Any `UnresolvedIdentifier`
+        // atom that reaches this point is a real name-reference stub
+        // waiting for lower-time or sweep-time resolution.
         if let Some(target) = dag.declaration_by_name(&name).map(|d| d.id) {
             if target == decl_id {
                 report_declaration_error(
@@ -816,6 +842,66 @@ fn template_param_id(
     dag.declaration(template).type_params.get(idx).copied()
 }
 
+/// Lower a `SurfaceItem::FnExternalBody` — a block-bodied fn whose
+/// body is not expressible in the M1(2.7) surface grammar. The
+/// declaration's connective becomes an `Arrow` carrying
+/// `ArrowBody::Unparsed(body_span)`. Inputs and output flow through
+/// `type_to_declaration_id` so the signature matches what a fully
+/// lowered `Fn` would produce.
+///
+/// **Scaffold honesty** (QW1): the fact "this name declares a fn
+/// with this signature" flows forward through the declaration
+/// table. Callers that reference the name resolve it correctly
+/// against the Arrow signature at M1(2.7). The body is preserved
+/// by `SourceSpan` for M2+ parser extensions to complete the
+/// lowering.
+fn lower_fn_item_unparsed(
+    name: &str,
+    params: &[SurfaceParam],
+    return_type: &SurfaceType,
+    body_span: &SourceSpan,
+    dag: &mut Dag,
+    symbols: &HashMap<String, DeclarationId>,
+) {
+    let fn_decl_id = symbols[name];
+    let local: HashMap<String, DeclarationId> = HashMap::new();
+    let param_decl_inputs: Vec<DeclarationId> = params
+        .iter()
+        .map(|p| type_to_declaration_id(&p.ty, symbols, &local, dag))
+        .collect();
+    let return_decl_id = type_to_declaration_id(return_type, symbols, &local, dag);
+    dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
+        inputs: param_decl_inputs,
+        output: return_decl_id,
+        body: ArrowBody::Unparsed(body_span.clone()),
+    };
+}
+
+/// Lower a `SurfaceItem::Data` — a typed constant whose body is not
+/// yet parseable. The declaration's connective becomes the resolved
+/// type annotation (walked through `type_to_connective` so aliases
+/// land as `Instantiation`s, not one-level-indirect wrappers). The
+/// body span is preserved on the SurfaceItem for M2+ but is not
+/// re-stored on the declaration itself — lowering just commits the
+/// type fact.
+///
+/// **Scaffold honesty** (QW2): `dsl/std/*.dag` data declarations like
+/// `data kernel_algebra_profile: KernelAlgebraProfile = { ... }` now
+/// survive into the declaration table as named declarations typed by
+/// `KernelAlgebraProfile`. The body payload is still dropped, but
+/// the fact that the name exists with that type flows forward.
+fn lower_data_item(
+    name: &str,
+    ty: &SurfaceType,
+    dag: &mut Dag,
+    symbols: &HashMap<String, DeclarationId>,
+) {
+    let decl_id = symbols[name];
+    let local: HashMap<String, DeclarationId> = HashMap::new();
+    let connective = type_to_connective(ty, symbols, &local, dag);
+    dag.declaration_mut(decl_id).connective = connective;
+}
+
 #[allow(clippy::too_many_arguments)]
 fn lower_fn_item_expr_body(
     name: &str,
@@ -840,7 +926,13 @@ fn lower_fn_item_expr_body(
     let local: HashMap<String, DeclarationId> = HashMap::new();
     for param in params {
         let port = dag.alloc_port(None);
-        let ty = match lower_type_for_port(&param.ty, dag) {
+        // Port TypeShape and Arrow-declaration input id come from the
+        // same type_to_declaration_id walk, wrapped through
+        // `lower_type_for_port` so port-side fail-closed
+        // diagnostics anchor to the annotation span.
+        let input_decl = type_to_declaration_id(&param.ty, symbols, &local, dag);
+        param_decl_inputs.push(input_decl);
+        let ty = match lower_type_for_port(&param.ty, dag, symbols) {
             Ok(ty) => {
                 dag.set_port_type(port, ty);
                 ty
@@ -853,12 +945,13 @@ fn lower_fn_item_expr_body(
         body_scope.insert(param.name.clone(), port);
         param_ports.push(port);
         param_types.push(ty);
-        let input_decl = type_to_declaration_id(&param.ty, symbols, &local, dag);
-        param_decl_inputs.push(input_decl);
     }
 
-    // 2. Compute return type (both port-side and declaration-side).
-    let return_ty = match lower_type_for_port(return_type, dag) {
+    // 2. Compute return type (both port-side and declaration-side). Same
+    //    two-query structure as params: declaration-side for the Arrow,
+    //    port-side for the bind's return port.
+    let return_decl_id = type_to_declaration_id(return_type, symbols, &local, dag);
+    let return_ty = match lower_type_for_port(return_type, dag, symbols) {
         Ok(ty) => ty,
         Err(diag) => {
             let err_port = dag.alloc_port(None);
@@ -866,7 +959,6 @@ fn lower_fn_item_expr_body(
             sentinel_type_shape(dag)
         }
     };
-    let return_decl_id = type_to_declaration_id(return_type, symbols, &local, dag);
 
     // 3. Mutual recursion check — same as M0. Reject with an Unresolved
     //    placeholder and keep the fn's Declaration as a placeholder Arrow
@@ -982,47 +1074,52 @@ fn lower_fn_item_expr_body(
 
 /// Convert a surface type annotation into a port-level `TypeShape`.
 /// User code at M1(2.6) only accepts primitive type annotations
-/// (`Int`/`Bool`/`String`) — anything else surfaces as a
-/// `ResolveError`. The returned `TypeShape` wraps the declaration id
-/// found via `Dag::declaration_by_name`.
-fn lower_type_for_port(ty: &SurfaceType, dag: &Dag) -> Result<TypeShape, Diagnostic> {
-    match ty {
-        SurfaceType::Named { name, span } => match name.as_str() {
-            "Int" | "Bool" | "String" => {
-                dag.declaration_by_name(name)
-                    .map(|d| TypeShape::new(d.id))
-                    .ok_or_else(|| Diagnostic::ResolveError {
-                        name: format!(
-                            "primitive `{name}` missing from declaration table — bootstrap failed"
-                        ),
-                        span: span.clone(),
-                    })
-            }
-            _ => Err(Diagnostic::ResolveError {
+/// Lower a user-code type annotation to a port `TypeShape`.
+///
+/// **Dissolution receipt — QW5 SINGLE AUTHORITY.** Before M1(2.7) this
+/// function hardcoded `"Int" | "Bool" | "String"` as a whitelist
+/// parallel to `type_to_declaration_id`'s structural walk. The
+/// whitelist is gone: the port-side authority is the same declaration
+/// table that the type-record / type-sum / type-alias lowering paths
+/// use. A user-code `let x: Foo = ...` annotation where `Foo` is any
+/// known declaration resolves through the same path as the field
+/// types inside `type R { x: Foo }`.
+///
+/// The one remaining structural check is a fail-closed guard: if
+/// `type_to_declaration_id` allocated a fresh anonymous
+/// `UnresolvedIdentifier` stub (because the name was not in the
+/// symbol table), return `Err` so the caller marks the port
+/// `Unresolved`. The resolve sweep ALSO fires against the stub at
+/// the end of lowering, but this path anchors the failure to the
+/// annotation span rather than a phantom port.
+fn lower_type_for_port(
+    ty: &SurfaceType,
+    dag: &mut Dag,
+    symbols: &HashMap<String, DeclarationId>,
+) -> Result<TypeShape, Diagnostic> {
+    let local: HashMap<String, DeclarationId> = HashMap::new();
+    let decl_id = type_to_declaration_id(ty, symbols, &local, dag);
+    let decl = dag.declaration(decl_id);
+    if decl.name.is_none() {
+        if let TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name)) = &decl.connective {
+            return Err(Diagnostic::ResolveError {
                 name: format!("unknown type `{name}`"),
-                span: span.clone(),
-            }),
-        },
-        SurfaceType::Parameterized { span, .. }
-        | SurfaceType::Optional { span, .. }
-        | SurfaceType::Arrow { span, .. } => Err(Diagnostic::ResolveError {
-            name: "compound type annotations are not yet supported in user code"
-                .to_string(),
-            span: span.clone(),
-        }),
+                span: ty.span().clone(),
+            });
+        }
     }
+    Ok(TypeShape::new(decl_id))
 }
 
 /// Sentinel TypeShape returned when a type annotation failed to
 /// resolve. The port it's assigned to has already been `mark_unresolved`ed
 /// with the underlying diagnostic, so the sentinel value itself is
 /// never observed by inference — it exists only to satisfy Rust's
-/// "must initialize" requirement. We use the `Int` declaration's id if
-/// available, falling back to a best-effort guess (`DeclarationId(0)`)
-/// if even Int is missing, which is unreachable post-bootstrap.
+/// "must initialize" requirement. Uses the cached `Int` primitive
+/// shape, falling back to `DeclarationId(0)` if even the cache is
+/// empty (unreachable post-bootstrap).
 fn sentinel_type_shape(dag: &Dag) -> TypeShape {
-    dag.declaration_by_name("Int")
-        .map(|d| TypeShape::new(d.id))
+    dag.int_shape()
         .unwrap_or_else(|| TypeShape::new(dag.declarations()[0].id))
 }
 
@@ -1075,7 +1172,23 @@ fn lower_expr(
             let output = dag.alloc_port(Some(node_id));
             dag.push_node(Behavior::Transform(TransformNode {
                 id: node_id,
-                target: target_decl,
+                target: TransformTarget::Callable(target_decl),
+                inputs: input_ports,
+                output,
+                span: span.clone(),
+            }));
+            output
+        }
+        SurfaceExpr::Operator { op, args, span } => {
+            let input_ports: Vec<PortId> = args
+                .iter()
+                .map(|a| lower_expr(a, dag, scope, symbols))
+                .collect();
+            let node_id = dag.alloc_node_id();
+            let output = dag.alloc_port(Some(node_id));
+            dag.push_node(Behavior::Transform(TransformNode {
+                id: node_id,
+                target: TransformTarget::Operator(*op),
                 inputs: input_ports,
                 output,
                 span: span.clone(),
@@ -1129,6 +1242,9 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
             }
             args.iter().any(|a| is_recursive(a, self_name))
         }
+        SurfaceExpr::Operator { args, .. } => {
+            args.iter().any(|a| is_recursive(a, self_name))
+        }
         SurfaceExpr::If {
             cond,
             then_branch,
@@ -1143,10 +1259,11 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
 }
 
 /// Partial termination analysis: every recursive self-call's first argument
-/// must be `first_param - <positive int>`. The surface shape is
-/// `SurfaceExpr::Call { target: "-", args: [Var(first_param), IntLit(k)] }`
-/// per §8.9 Option A — operators emit raw identifiers, not pre-resolved
-/// path names.
+/// must be `first_param - <positive int>`. The surface shape is now
+/// `SurfaceExpr::Operator { op: ArithmeticOp::Sub, args: [Var(first_param),
+/// Literal(Int(k))] }` — the operator dispatch is committed at parse
+/// time via `OperatorKind::Arithmetic(ArithmeticOp::Sub)`, so this check
+/// is structural rather than a string match against `target == "-"`.
 fn descent_provable(expr: &SurfaceExpr, self_name: &str, first_param: &str) -> bool {
     match expr {
         SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } => true,
@@ -1167,6 +1284,9 @@ fn descent_provable(expr: &SurfaceExpr, self_name: &str, first_param: &str) -> b
                 args.iter().all(|a| descent_provable(a, self_name, first_param))
             }
         }
+        SurfaceExpr::Operator { args, .. } => args
+            .iter()
+            .all(|a| descent_provable(a, self_name, first_param)),
         SurfaceExpr::If {
             cond,
             then_branch,
@@ -1181,10 +1301,12 @@ fn descent_provable(expr: &SurfaceExpr, self_name: &str, first_param: &str) -> b
 }
 
 fn is_strictly_smaller(expr: &SurfaceExpr, first_param: &str) -> bool {
-    let SurfaceExpr::Call { target, args, .. } = expr else {
+    let SurfaceExpr::Operator { op, args, .. } = expr else {
         return false;
     };
-    if target != "-" || args.len() != 2 {
+    // Structural check — no string match. Subtract is one of the four
+    // arithmetic variants.
+    if !matches!(op, OperatorKind::Arithmetic(ArithmeticOp::Sub)) || args.len() != 2 {
         return false;
     }
     let lhs_is_param = matches!(
@@ -1205,11 +1327,16 @@ fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
         SurfaceExpr::Literal { span, .. }
         | SurfaceExpr::Var { span, .. }
         | SurfaceExpr::Call { span, .. }
+        | SurfaceExpr::Operator { span, .. }
         | SurfaceExpr::If { span, .. } => span,
     }
 }
 
 fn compute_mutually_recursive(items: &[SurfaceItem]) -> HashSet<String> {
+    // Only expression-body fns participate in the mutual recursion
+    // analysis — block-bodied `FnExternalBody` items have their bodies
+    // deferred as `ArrowBody::Unparsed`, so there's no reachable call
+    // graph to walk at M1(2.7).
     let fn_names: HashSet<String> = items
         .iter()
         .filter_map(|i| match i {
@@ -1220,12 +1347,9 @@ fn compute_mutually_recursive(items: &[SurfaceItem]) -> HashSet<String> {
 
     let mut calls: HashMap<String, HashSet<String>> = HashMap::new();
     for item in items {
-        if let SurfaceItem::Fn {
-            name, body: Some(body_expr), ..
-        } = item
-        {
+        if let SurfaceItem::Fn { name, body, .. } = item {
             let mut callees = HashSet::new();
-            collect_calls(body_expr, &fn_names, &mut callees);
+            collect_calls(body, &fn_names, &mut callees);
             calls.insert(name.clone(), callees);
         }
     }
@@ -1283,6 +1407,13 @@ fn collect_calls(
             if fn_names.contains(target) {
                 out.insert(target.clone());
             }
+            for a in args {
+                collect_calls(a, fn_names, out);
+            }
+        }
+        SurfaceExpr::Operator { args, .. } => {
+            // Operators never name user functions; just recurse into
+            // the operand expressions.
             for a in args {
                 collect_calls(a, fn_names, out);
             }

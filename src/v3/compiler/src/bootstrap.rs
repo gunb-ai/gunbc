@@ -104,6 +104,13 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
     // M1(2.6) load set (e.g., `Tuple`), and those are not bootstrap
     // errors. User-code compilation uses the strict variant.
     resolve_pending_identifiers(dag);
+
+    // Cache the canonical role declarations (Int, Bool, String,
+    // Realization) now that every std/ module has been lowered and the
+    // resolution sweep has linked cross-file references. Downstream
+    // consumers ask `dag.int_shape()` / `dag.realization_meta_id()`
+    // etc. instead of running a name scan per call.
+    dag.populate_primitive_cache();
 }
 
 fn parse_fixture(dag: &mut Dag, source: &str, file: &str) -> Option<SurfaceModule> {

@@ -4,6 +4,9 @@ Single source of truth for v3 status, active work, and deferred items.
 Supersedes `src/v3/M1_FOLLOWUPS.md` (now a stub redirect). Historical
 M1(2.5) task list lives in `src/v3/M1_TASKS.md`; design oracle in
 `src/v3/M1_DESIGN.md`; M0 retrospective in `src/v3/M0_RETROSPECTIVE.md`.
+Substrate-consumer gap enumeration in
+`src/v3/DOWNSTREAM_REQUIREMENTS.md` — read before proposing new
+substrate fields.
 
 > Design spec: [docs/v3-spec.md](../../docs/v3-spec.md)
 > Validation: [docs/v3-validation-experiments.md](../../docs/v3-validation-experiments.md)
@@ -15,7 +18,8 @@ M1(2.5) task list lives in `src/v3/M1_TASKS.md`; design oracle in
 |-----------|-------|-------|
 | **M0** Skeleton | ✅ Complete | 40 acceptance tests green. PR #441 merged. M0_RETROSPECTIVE.md closes it. |
 | **M1(2.5)** Substrate rework | ✅ Landed on PR #445 | Substrate = six-variant `TypeConnective`, Declaration table, `meta_tag`/`inhabits` split, `ArrowBody` with `Pending` scaffold. Initial handoff was 42 green (40 M0 + 2 substrate); see `M0_RETROSPECTIVE.md` §"M1(2.5) addendum" for the historical snapshot. |
-| **M1(2.6)** FACTS FLOW + SINGLE AUTHORITY | ⏳ In review on PR #445 | Rolled into the same PR per Option C. Parser extensions for real `dsl/std/*.dag` files, `include_str!` bootstrap over seven std modules, SubstStack + §8.9 operator dispatch, deleted `inject_primitive_operators`, anonymized TypeParam/variant/realization child declarations, duplicate-name fail-closed, `ExternalRealization` typed-edge check at both construction and dispatch, bootstrap drift routed through `Dag::attach_diagnostic` instead of panic. **Current: 41 M0 + 4 M1 substrate + 4 real-stdlib parse smoke = 49 green.** |
+| **M1(2.6)** FACTS FLOW + SINGLE AUTHORITY | ✅ Landed on PR #445 | Rolled into the same PR per Option C. Parser extensions for real `dsl/std/*.dag` files, `include_str!` bootstrap over seven std modules, SubstStack + §8.9 operator dispatch, deleted `inject_primitive_operators`, anonymized TypeParam/variant/realization child declarations, duplicate-name fail-closed, `ExternalRealization` typed-edge check at both construction and dispatch, bootstrap drift routed through `Dag::attach_diagnostic` instead of panic. |
+| **M1(2.7)** Enumeration-driven substrate fix | ✅ Landed on PR #445 | Enumeration pass produced `DOWNSTREAM_REQUIREMENTS.md` (14 gaps across 4 classes); fix PR resolved all gaps structurally. Primitive identity cache (`Dag::int_shape` / `bool_shape` / `string_shape` / `realization_meta_id`); `TransformTarget { Callable, Operator }` + `OperatorKind { Arithmetic, Comparison }` coproducts; `ArrowBody::Unparsed(SourceSpan)` for block-body scaffolds; `SurfaceItem::{Fn, FnExternalBody, Data, Module, Import}` split so parser-absorbed items become real facts that flow forward; `TemplateArgument` stub self-reference branch deleted. **Current: 41 M0 + 11 M1 substrate + 7 real-stdlib parse smoke + 1 realization smoke = 60 green.** |
 | **M1(3)** Cost lens | ⏸ Deferred | First writer lens. Forces the lens storage decision. |
 | **M1(4)** Rust emitter | ⏸ Deferred | Single target. |
 | **M2** Feature parity | ⏸ Deferred | Generics in user code, match in user code, transport declarations, interpreter, recursion → Loop. |
@@ -147,20 +151,100 @@ bodies stay opaque), `data` value semantics, `where` refinement
 checking, full surface generics, transport declarations, `List<T>` in
 user code, `TypeShape → DeclarationId` migration.
 
-### The one remaining bridge
+### Bridges at end of M1(2.6)
 
-After Option C, the only name-based bridge in the compiler is:
-1. `OPERATOR_FIELD_MAP` in `infer.rs` — maps `"+"` → `"add"`, `"-"` →
-   `"sub"`, etc. Localized constant, used only by `resolve_arrow`
-   during §8.9 walks. Dissolves in M2+ once the surface grammar
-   exposes algebra field access directly (e.g., `Int.add(a, b)`).
-2. `declaration_to_type_shape` structural walk — maps `Int`/`Bool`/
-   `String`/`Word64`/`Classical`/... named root declarations to
-   `TypeShape::Primitive`. Dissolves in M2 when `TypeShape` itself
-   becomes `DeclarationId`-carrying.
+After M1(2.6) landed, one localized bridge remained:
+`OPERATOR_FIELD_MAP` in `infer.rs`, mapping operator symbols to
+algebra field names for the §8.9 inhabitance fast path. M1(2.7)
+deleted it — operator dispatch became fully structural via
+`TransformTarget::Operator(OperatorKind)`. See the M1(2.7) section
+below.
 
-Both are documented and non-spreading; each has a clear dissolution
-trigger tied to a future milestone.
+## M1(2.7) — Enumeration-driven substrate fix (landed on PR #445)
+
+**Why this pass:** every review round on PR #445 caught the same
+bug shape — one substrate field carrying multiple downstream jobs,
+with a sibling string as the discriminator. The enumeration pass
+(diagnostic-only commit) walked every substrate consumer, cataloged
+14 structural gaps in `DOWNSTREAM_REQUIREMENTS.md`, and the fix PR
+resolved all 14 in one coherent substrate change rather than
+reactive per-reviewer fixes.
+
+Artifact: [`src/v3/DOWNSTREAM_REQUIREMENTS.md`](DOWNSTREAM_REQUIREMENTS.md).
+Scope: both the read side (`infer.rs`, `lens_depth.rs`,
+`lens_provenance.rs`) and the write side (`parse.rs` →
+`lower.rs` boundary). Re-run when cost + ownership lenses land.
+
+### Resolved gaps
+
+**Class 1 — Primitive type identity** (4 gaps: Q1, Q2, Q4, QW5).
+Resolved by adding a `PrimitiveCache` on `Dag` populated at
+bootstrap. `Dag::int_shape()`, `Dag::bool_shape()`,
+`Dag::string_shape()` return cached `TypeShape`s in O(1). The
+QW5 `lower_type_for_port` whitelist is gone — port-type resolution
+now goes through `type_to_declaration_id` (same authority that
+declaration-side lowering uses). Fail-closed port diagnostics are
+preserved via a top-level fresh-stub check.
+
+**Class 2 — Operator dispatch** (2 gaps: Q3, Q4). Resolved by
+structurally splitting operator dispatch from identifier
+resolution. `TransformTarget { Callable(DeclarationId),
+Operator(OperatorKind) }` replaces the single `target:
+DeclarationId` field. `OperatorKind { Arithmetic(ArithmeticOp),
+Comparison(ComparisonOp) }` encodes the output-type rule as
+variants. `SurfaceExpr::Operator` is a first-class parser shape
+— operators never allocate stub declarations. `OPERATOR_FIELD_MAP`,
+`is_operator_name`, `is_comparison_operator`,
+`unresolved_operator_name` all deleted.
+
+**Class 3 — Scaffold honesty** (3 gaps: QW1, QW2, QW4). Resolved
+by making every surface form a real `SurfaceItem` with tracked
+dissolution.
+
+- **QW1** `fn foo(x) -> T { body }` now parses as
+  `SurfaceItem::FnExternalBody` (sibling variant to `Fn`, not an
+  `Option<body>` discriminator). Lowers to a declaration whose
+  connective is an `Arrow` with `ArrowBody::Unparsed(body_span)`.
+  The signature flows forward — callers can type-check against it —
+  and the body stays scaffolded until the M2+ parser adopts
+  match/pipe/lambda.
+- **QW2** `data name: Type = { body }` parses as
+  `SurfaceItem::Data`. Lowers to a declaration whose connective
+  resolves from the type annotation through `type_to_connective`.
+  The `kernel_algebra_profile` / `kernel_type_set` / etc. tables
+  in `dsl/std/*.dag` now survive into the declaration table.
+- **QW3** `module` and `import` items become
+  `SurfaceItem::Module { path }` / `SurfaceItem::Import { path,
+  names }`. No-op at M1(2.7) but the parsed facts are preserved
+  for M2+ module scoping to consume.
+- **QW4** `TemplateArgument` stub self-reference branch deleted.
+  When `build_template_arguments` encounters a stub template, it
+  returns `Vec::new()` — the stub's own diagnostic is the
+  authoritative failure, and no `TemplateArgument` is constructed
+  in a state its field contract declares invalid.
+
+**Class 4 — Parallel authorities** (2 gaps: Q8, QW5). Resolved
+by the same PrimitiveCache introduced in Class 1. Q8's
+`is_realization_shape` compares `meta_tag` against
+`Dag::realization_meta_id()` (cached `DeclarationId`) instead of
+comparing a name to the literal `"Realization"`. QW5 is addressed
+alongside Class 1.
+
+### The one remaining scaffold
+
+After M1(2.7), the only substrate scaffold is `ArrowBody::Pending`
+(realization lag) and `ArrowBody::Unparsed(SourceSpan)` (block-body
+lag). Both have named dissolution triggers:
+
+- **`Pending`** dissolves via the §8.11 monotonic-decrease ratchet
+  when every realization arrow binds to a real `ExternalRealization`
+  declaration (M3).
+- **`Unparsed`** dissolves when the M2+ surface grammar adopts
+  match/pipe/lambda/etc. so block bodies lower to full
+  `UserDefined(NodeId)` arrows.
+
+Both are tracked and non-spreading. The `OPERATOR_FIELD_MAP`
+bridge is gone entirely; operator dispatch is fully structural.
 
 ## M1(3)+ — deferred work (unchanged since PR #441)
 
@@ -199,9 +283,8 @@ trigger tied to a future milestone.
 - v3 compiles itself
 - Bootstrap: v2 compiles v3 stage0, v3 compiles v3 → fixed point
 - All v2 test programs compile under v3 with same output
-- Delete `OPERATOR_FIELD_MAP` and `declaration_to_type_shape`
-  walk-based bridge (both dissolve when surface grammar / port types
-  do)
+- `OPERATOR_FIELD_MAP` and the port-type whitelist already
+  dissolved at M1(2.7); no carried-forward bridges remain at M3.
 
 ## M4 — Thesis completion (deferred)
 

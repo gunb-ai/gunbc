@@ -287,11 +287,10 @@ pub struct TemplateArgument {
 }
 
 /// Dissolution ledger (per M1_DESIGN.md §Q7 "ArrowBody dissolution ledger"):
-/// ArrowBody is a **mixed-lifecycle coproduct** — two terminal variants
-/// (`UserDefined`, `ExternalRealization`) plus one scaffolded variant
-/// (`Pending`) that dissolves out of the variant set by M3 via the §8.11
-/// monotonic-decrease ratchet. Terminal form is 2 variants; the 3-variant
-/// shape is only valid during the M1(2.5) → M3 transition.
+/// ArrowBody is a **mixed-lifecycle coproduct**. Terminal shape is 2
+/// variants (`UserDefined`, `ExternalRealization`); the two
+/// scaffold variants (`Pending`, `Unparsed`) dissolve via separate
+/// ratchets with distinct triggers.
 ///
 /// 4-pattern check on the terminal pair (UserDefined, ExternalRealization):
 /// - Pattern 1 (fact placement): fails. Both are Arrow-level facts with
@@ -303,10 +302,24 @@ pub struct TemplateArgument {
 ///   worse coproduct.
 /// - Pattern 4 (dimensional): fails. No shared coordinate space.
 ///
-/// Verdict: terminal form is 2 variants. Pending is a scaffold subject
-/// to the §8.11 ratchet — by M3 completion, `inject_realization_stub`
-/// and any bootstrap Pending arrows must resolve, and the Pending
-/// variant is removed via a reverse substrate-extension PR.
+/// Scaffold variants with their dissolution triggers:
+/// - **`Pending`** — bootstrap realization lag. Dissolves via the
+///   §8.11 Pending-elimination monotonic-decrease ratchet; by M3
+///   completion, every Pending arrow must bind to a real
+///   ExternalRealization declaration, and the variant is removed.
+/// - **`Unparsed`** — surface-grammar lag. Used at M1(2.7) for
+///   block-bodied `fn foo(x) -> T { body }` declarations in std/
+///   files where the body contains match/pipe/lambda/etc. —
+///   syntactic forms the M1(2.6) parser can't lower. The signature
+///   flows forward through the declaration table so callers can
+///   type-check against it; the body source span is preserved so
+///   M2+ parser extensions can reach in and complete the lowering.
+///   Dissolution trigger: the M2 surface-grammar extension. When
+///   every std/ block body becomes parseable, `Unparsed` is
+///   removed via a reverse substrate-extension PR.
+///
+/// Verdict: terminal form is 2 variants. The M1(2.7) 4-variant
+/// shape is a transition state; both scaffolds have named triggers.
 #[derive(Debug, Clone)]
 pub enum ArrowBody {
     /// User-defined function. NodeId is the root of a sub-DAG of L1 behavior
@@ -320,8 +333,16 @@ pub enum ArrowBody {
     /// Bootstrap scaffold. Signature type-checks via inhabitance; body-
     /// walking is skipped. Dissolves by M3 via the §8.11 Pending-elimination
     /// monotonic-decrease ratchet (distinct from §8.10's substrate-extension
-    /// audit, deferred to M1(3)).
+    /// audit).
     Pending,
+    /// Surface-grammar scaffold. The arrow's signature is resolved and
+    /// callers can type-check against it, but the body source is not
+    /// yet parseable under the M1(2.7) surface grammar. Used by
+    /// block-bodied `fn` declarations in std/ files whose bodies
+    /// contain match/pipe/lambda/etc. The `SourceSpan` points at the
+    /// unparsed body range so M2+ can complete the lowering.
+    /// Dissolves when the surface grammar adopts those forms.
+    Unparsed(SourceSpan),
 }
 
 /// Three-state port type. Illegal combinations of "has a type" and "has a
@@ -388,13 +409,52 @@ pub struct ValueNode {
     pub span: SourceSpan,
 }
 
+/// Dispatch target of a `TransformNode`. Structural coproduct that
+/// replaces the old single `target: DeclarationId` field.
+///
+/// **Dissolution receipt — Q3 operator dispatch.** Before M1(2.7) the
+/// target was always a `DeclarationId`, and primitive operators were
+/// represented by an anonymous declaration whose connective was
+/// `Atom(UnresolvedIdentifier("+"))`. Infer.rs then string-matched
+/// the identifier payload to decide operator vs callable. The string
+/// was the discriminator for a phase/job coproduct hiding inside
+/// `UnresolvedIdentifier`. This variant makes the distinction
+/// visible to the type system: the parser commits to one variant or
+/// the other at call-site lowering time.
+///
+/// 4-pattern check:
+/// - Pattern 1 (fact placement): fails. Callable dispatches through
+///   the declaration's Arrow body; Operator dispatches through the
+///   operand type's algebra. Different substrate paths.
+/// - Pattern 2 (variant-is-data): fails. Callable carries a
+///   DeclarationId; Operator carries an OperatorKind.
+/// - Pattern 3 (algebraic form): fails.
+/// - Pattern 4 (dimensional): fails.
+///
+/// Verdict: terminal at M1(2.7). When M2 extends the surface grammar
+/// to support explicit algebra field access (`Int.add(a, b)` instead
+/// of `a + b`), the `Operator` variant dissolves back into
+/// `Callable(DeclarationId)` — the dissolution trigger is the
+/// surface grammar, not this enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TransformTarget {
+    /// A user function or resolved declaration. Inference walks the
+    /// referenced declaration's `Arrow` connective via `resolve_arrow`.
+    Callable(DeclarationId),
+    /// A primitive binary operator. Inference dispatches on the
+    /// `OperatorKind` variant directly: arithmetic returns the operand
+    /// type, comparison returns Bool. No declaration is allocated.
+    Operator(crate::operators::OperatorKind),
+}
+
 #[derive(Debug, Clone)]
 pub struct TransformNode {
     pub id: NodeId,
-    /// The declaration this transform invokes. Resolved to a DeclarationId at
-    /// lowering time via two-pass identifier resolution (M1_DESIGN.md §8.1).
-    /// Inference walks `dag.declaration(target)` to recover the Arrow signature.
-    pub target: DeclarationId,
+    /// The dispatch target of this transform. Either a user function /
+    /// resolved declaration (`Callable(DeclarationId)`) or a primitive
+    /// operator (`Operator(OperatorKind)`). Discriminated structurally,
+    /// not by a string payload. See `TransformTarget`.
+    pub target: TransformTarget,
     pub inputs: Vec<PortId>,
     pub output: PortId,
     pub span: SourceSpan,
@@ -540,6 +600,33 @@ impl Behavior {
     }
 }
 
+/// Substrate-level pointers to declarations that the compiler asks about
+/// by role rather than by name. Populated at the end of `bootstrap()` by
+/// `Dag::populate_primitive_cache` after every std/ file has been
+/// lowered and cross-file stubs have been resolved. Before that point
+/// every field is `None`.
+///
+/// **Dissolution receipt.** The cache exists to remove per-call
+/// `declaration_by_name("Int")` / `"Bool"` / `"String"` / `"Realization"`
+/// lookups from the hot path. It is NOT a parallel authority — the
+/// `DeclarationId`s it stores are already in
+/// `Dag.declarations`, and the cache is a typed index over the same
+/// table. Adding a new role to this cache is a C1-class stop signal:
+/// if the compiler wants to ask "which declaration is the canonical X?",
+/// that question belongs as a structural edge on the declaration, not
+/// as a role slot here. The four roles cached today (three primitives
+/// plus Realization meta) are the substrate's built-in roles and
+/// cannot dissolve into declaration-level edges because they answer
+/// "which declaration is Int?" — a question about *identity*, not
+/// *relationship*.
+#[derive(Debug, Default)]
+pub(crate) struct PrimitiveCache {
+    pub int: Option<TypeShape>,
+    pub bool: Option<TypeShape>,
+    pub string: Option<TypeShape>,
+    pub realization_meta: Option<DeclarationId>,
+}
+
 #[derive(Debug)]
 pub struct Dag {
     /// Behaviors in construction order. NodeId(k) lives at `nodes[k]`; a forward
@@ -553,6 +640,9 @@ pub struct Dag {
     next_node_id: u32,
     next_declaration_id: u32,
     next_port_id: u32,
+    /// Cached typed pointers to declarations the compiler asks about by
+    /// role. Populated at the end of `bootstrap()`; empty before then.
+    primitives: PrimitiveCache,
 }
 
 impl Dag {
@@ -565,9 +655,39 @@ impl Dag {
             next_node_id: 0,
             next_declaration_id: 0,
             next_port_id: 0,
+            primitives: PrimitiveCache::default(),
         };
         crate::bootstrap::bootstrap(&mut dag);
         dag
+    }
+
+    /// Typed accessor for the cached `Int` primitive `TypeShape`. `None`
+    /// only when bootstrap failed to load `dsl/std/integer.dag` — a
+    /// diagnostic is already on `Dag.diagnostics` in that case and the
+    /// compile fails through the ordinary channel.
+    pub fn int_shape(&self) -> Option<TypeShape> {
+        self.primitives.int
+    }
+
+    /// Typed accessor for the cached `Bool` primitive `TypeShape`. Same
+    /// bootstrap-failure semantics as `int_shape`.
+    pub fn bool_shape(&self) -> Option<TypeShape> {
+        self.primitives.bool
+    }
+
+    /// Typed accessor for the cached `String` primitive `TypeShape`. Same
+    /// bootstrap-failure semantics as `int_shape`.
+    pub fn string_shape(&self) -> Option<TypeShape> {
+        self.primitives.string
+    }
+
+    /// Cached `DeclarationId` of the `Realization` meta-type in
+    /// `dsl/std/types.dag`. Used by `is_realization_shape` to check
+    /// whether an `ArrowBody::ExternalRealization` target is a
+    /// realization declaration without a name comparison. `None` until
+    /// bootstrap finishes loading `types.dag`.
+    pub fn realization_meta_id(&self) -> Option<DeclarationId> {
+        self.primitives.realization_meta
     }
 
     pub fn nodes(&self) -> &[Behavior] {
@@ -716,6 +836,26 @@ impl Dag {
     pub(crate) fn attach_diagnostic(&mut self, diagnostic: Diagnostic) {
         let port = self.alloc_port(None);
         self.mark_unresolved(port, diagnostic);
+    }
+
+    /// Populate `primitives` by reading the declaration table for the
+    /// four canonical roles. Called once at the end of `bootstrap()`
+    /// after all std/ modules are loaded and cross-file references are
+    /// resolved. Any role not found stays `None` — the bootstrap
+    /// failure is already on the diagnostic table and downstream
+    /// consumers surface the missing role through the ordinary channel.
+    pub(crate) fn populate_primitive_cache(&mut self) {
+        self.primitives.int = self
+            .declaration_by_name("Int")
+            .map(|d| TypeShape::new(d.id));
+        self.primitives.bool = self
+            .declaration_by_name("Bool")
+            .map(|d| TypeShape::new(d.id));
+        self.primitives.string = self
+            .declaration_by_name("String")
+            .map(|d| TypeShape::new(d.id));
+        self.primitives.realization_meta =
+            self.declaration_by_name("Realization").map(|d| d.id);
     }
 }
 
