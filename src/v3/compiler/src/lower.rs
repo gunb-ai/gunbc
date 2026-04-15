@@ -45,6 +45,13 @@ struct ScopeState {
     callables: CallableScope,
 }
 
+struct LambdaLoweringContext<'a> {
+    dag: &'a mut Dag,
+    scope: &'a HashMap<String, PortId>,
+    callable_scope: &'a CallableScope,
+    symbols: &'a HashMap<String, DeclarationId>,
+}
+
 pub fn lower(module: &SurfaceModule) -> Dag {
     let mut dag = Dag::new();
     let user_start = dag.declarations().len();
@@ -302,28 +309,25 @@ fn lower_item(
                     return scope;
                 };
                 let decl_id = type_to_declaration_id(ty, symbols, &HashMap::new(), dag);
-                match lower_lambda_expr(
-                    params,
-                    body,
-                    span,
-                    decl_id,
+                let mut lambda_ctx = LambdaLoweringContext {
                     dag,
-                    &scope.values,
-                    &scope.callables,
+                    scope: &scope.values,
+                    callable_scope: &scope.callables,
                     symbols,
-                ) {
+                };
+                match lower_lambda_expr(params, body, span, decl_id, &mut lambda_ctx) {
                     Ok(lambda_decl_id) => {
                         lambda_callable = Some(lambda_decl_id);
-                        let port = dag.alloc_port(None);
-                        match declaration_to_port_shape(decl_id, dag, ty.span()) {
-                            Ok(expected) => dag.set_port_type(port, expected),
-                            Err(diag) => dag.mark_unresolved(port, diag),
+                        let port = lambda_ctx.dag.alloc_port(None);
+                        match declaration_to_port_shape(decl_id, lambda_ctx.dag, ty.span()) {
+                            Ok(expected) => lambda_ctx.dag.set_port_type(port, expected),
+                            Err(diag) => lambda_ctx.dag.mark_unresolved(port, diag),
                         }
                         port
                     }
                     Err(diag) => {
-                        let port = dag.alloc_port(None);
-                        dag.mark_unresolved(port, diag);
+                        let port = lambda_ctx.dag.alloc_port(None);
+                        lambda_ctx.dag.mark_unresolved(port, diag);
                         port
                     }
                 }
@@ -1989,13 +1993,10 @@ fn lower_lambda_expr(
     body: &SurfaceExpr,
     span: &SourceSpan,
     expected_decl: DeclarationId,
-    dag: &mut Dag,
-    scope: &HashMap<String, PortId>,
-    callable_scope: &CallableScope,
-    symbols: &HashMap<String, DeclarationId>,
+    ctx: &mut LambdaLoweringContext<'_>,
 ) -> Result<DeclarationId, Diagnostic> {
     let Some((expected_inputs, expected_output)) =
-        declaration_callable_signature(dag, expected_decl, 0)
+        declaration_callable_signature(ctx.dag, expected_decl, 0)
     else {
         return Err(Diagnostic::ResolveError {
             name: "lambda expression requires an expected function type".to_string(),
@@ -2023,12 +2024,12 @@ fn lower_lambda_expr(
     let mut body_scope: HashMap<String, PortId> = HashMap::new();
     let mut body_callable_scope: CallableScope = CallableScope::new();
     for name in free_names {
-        if let Some(&port) = scope.get(&name) {
+        if let Some(&port) = ctx.scope.get(&name) {
             capture_ports.push(port);
             body_scope.insert(name, port);
-        } else if let Some(&decl_id) = callable_scope.get(&name) {
+        } else if let Some(&decl_id) = ctx.callable_scope.get(&name) {
             body_callable_scope.insert(name, decl_id);
-        } else if symbols.contains_key(&name) {
+        } else if ctx.symbols.contains_key(&name) {
             // Top-level named declarations resolve through `symbols`
             // at call/lower time and do not need capture plumbing.
         } else {
@@ -2041,21 +2042,27 @@ fn lower_lambda_expr(
 
     let mut param_ports: Vec<PortId> = Vec::with_capacity(params.len());
     for (name, input_decl) in params.iter().zip(expected_inputs.iter()) {
-        let port = dag.alloc_port(None);
-        let ty = declaration_to_port_shape(*input_decl, dag, span)?;
-        dag.set_port_type(port, ty);
+        let port = ctx.dag.alloc_port(None);
+        let ty = declaration_to_port_shape(*input_decl, ctx.dag, span)?;
+        ctx.dag.set_port_type(port, ty);
         body_scope.insert(name.clone(), port);
-        if declaration_is_callable(dag, *input_decl, 0) {
+        if declaration_is_callable(ctx.dag, *input_decl, 0) {
             body_callable_scope.insert(name.clone(), *input_decl);
         }
         param_ports.push(port);
     }
 
-    let body_return_port = lower_expr(body, dag, &body_scope, &body_callable_scope, symbols);
-    let bind_id = dag.alloc_node_id();
+    let body_return_port = lower_expr(
+        body,
+        ctx.dag,
+        &body_scope,
+        &body_callable_scope,
+        ctx.symbols,
+    );
+    let bind_id = ctx.dag.alloc_node_id();
     let mut bind_params = capture_ports;
     bind_params.extend(param_ports);
-    dag.push_node(Behavior::Bind(BindNode {
+    ctx.dag.push_node(Behavior::Bind(BindNode {
         id: bind_id,
         name: lambda_synthetic_name(span),
         value: body_return_port,
@@ -2063,8 +2070,8 @@ fn lower_lambda_expr(
         span: span.clone(),
     }));
 
-    let lambda_decl_id = dag.alloc_declaration_id();
-    dag.push_declaration(Declaration {
+    let lambda_decl_id = ctx.dag.alloc_declaration_id();
+    ctx.dag.push_declaration(Declaration {
         id: lambda_decl_id,
         name: None,
         connective: TypeConnective::Arrow {
@@ -2256,20 +2263,23 @@ fn lower_expr(
                     if declaration_is_callable(dag, expected_decl, 0) {
                         let actual_callable = match arg {
                             SurfaceExpr::Lambda { params, body, span } => {
+                                let mut lambda_ctx = LambdaLoweringContext {
+                                    dag,
+                                    scope,
+                                    callable_scope,
+                                    symbols,
+                                };
                                 match lower_lambda_expr(
                                     params,
                                     body,
                                     span,
                                     expected_decl,
-                                    dag,
-                                    scope,
-                                    callable_scope,
-                                    symbols,
+                                    &mut lambda_ctx,
                                 ) {
                                     Ok(lambda_decl_id) => lambda_decl_id,
                                     Err(diag) => {
-                                        report_declaration_error(dag, diag);
-                                        alloc_identifier_stub(dag, "__lambda__", span)
+                                        report_declaration_error(lambda_ctx.dag, diag);
+                                        alloc_identifier_stub(lambda_ctx.dag, "__lambda__", span)
                                     }
                                 }
                             }
@@ -2343,7 +2353,8 @@ fn lower_expr(
             dag.mark_unresolved(
                 port,
                 Diagnostic::ResolveError {
-                    name: "lambda expression requires an expected function type at this position".to_string(),
+                    name: "lambda expression requires an expected function type at this position"
+                        .to_string(),
                     span: span.clone(),
                 },
             );
