@@ -1687,6 +1687,92 @@ fn get_first(p: Pair) -> Int = p.first
 }
 
 #[test]
+fn prereq1_multi_hop_field_access_compiles() {
+    // `lower_field_chain` walks the `rest` segments in a loop,
+    // emitting one accessor Transform per hop and re-typing the
+    // result port to the next Conj child's type each time. The
+    // single-hop test above exercises one iteration of the loop;
+    // this test exercises depth ≥ 2 so the loop's re-walk
+    // (updated_head_type → next Conj walk) is actually
+    // traversed and a regression where the second hop couldn't
+    // find the child record type would surface here rather than
+    // at emit time.
+    //
+    // Concept shape: Outer { inner: Pair } where Pair { first, second }.
+    // `outer.inner.first` walks Outer → Pair → Int, producing a
+    // chain of two accessor Transforms whose outputs are typed
+    // Pair and Int respectively.
+    let src = "\
+type Pair { first: Int, second: Int }
+type Outer { inner: Pair }
+fn deep(p: Outer) -> Int = p.inner.first
+";
+    let dag = compile_any(src, "multi_hop.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "multi-hop field access should compile cleanly, got diagnostics: {:?}",
+        dag.diagnostics()
+    );
+
+    // Walk the chain: find `deep`, follow its body back through
+    // the two accessor Transforms, assert each hop's target
+    // carries the right field label.
+    let deep_bind = dag
+        .nodes()
+        .iter()
+        .find_map(|b| match b {
+            Behavior::Bind(bind) if bind.name == "deep" => Some(bind),
+            _ => None,
+        })
+        .expect("deep Bind must exist");
+
+    // Hop 2 (outermost): `.first` on the result of `.inner`.
+    let second_producer = dag
+        .port(deep_bind.value)
+        .produced_by
+        .expect("deep body should have a producer");
+    let second_transform = match dag.node(second_producer) {
+        Behavior::Transform(t) => t,
+        other => panic!("expected Transform, got {:?}", other),
+    };
+    let second_target = match second_transform.target {
+        TransformTarget::Callable(id) => id,
+        other => panic!("expected Callable target, got {:?}", other),
+    };
+    assert_eq!(
+        dag.declaration(second_target).name.as_deref(),
+        Some("first"),
+        "outermost accessor should be the `.first` hop"
+    );
+
+    // Hop 1 (innermost): `.inner` on the `p` parameter. Its
+    // output is the input of the `.first` Transform.
+    let first_producer = dag
+        .port(second_transform.inputs[0])
+        .produced_by
+        .expect("inner hop should have a producer");
+    let first_transform = match dag.node(first_producer) {
+        Behavior::Transform(t) => t,
+        other => panic!("expected Transform, got {:?}", other),
+    };
+    let first_target = match first_transform.target {
+        TransformTarget::Callable(id) => id,
+        other => panic!("expected Callable target, got {:?}", other),
+    };
+    assert_eq!(
+        dag.declaration(first_target).name.as_deref(),
+        Some("inner"),
+        "innermost accessor should be the `.inner` hop"
+    );
+
+    // And the innermost hop's input is the parameter port.
+    assert_eq!(
+        first_transform.inputs[0], deep_bind.params[0],
+        "innermost accessor input should be the parameter port"
+    );
+}
+
+#[test]
 fn prereq1_same_type_fields_distinguishable_by_label() {
     // **Regression test for the field-identity bug.** A record
     // with two fields of the same type used to produce

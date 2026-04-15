@@ -103,6 +103,20 @@ type FieldAccessor {}
 // them so a reader of this file can read top-to-bottom and see
 // each concept defined before it's used. Two-phase bootstrap
 // would also accept any order, but top-down reading is clearer.
+//
+// **Cross-file dependency.** Several declarations below use
+// `List<T>` to model repeated fields (Conj children, Arrow
+// inputs, Disj variants, etc.). `List<T>` is declared in
+// `dsl/std/types.dag`, which the v3 bootstrap loader already
+// includes ahead of `src/v3/std/*.dag` (see §3.1 of
+// `docs/substrate-reflection-design.md` and the load-order note
+// in `src/v3/compiler/build.rs`). If `dsl/std/types.dag` were
+// to rename or restructure `List<T>` out from under us, every
+// `List<…>` reference in this file would become unresolved at
+// bootstrap time — the two-phase resolver would fail fast with
+// a diagnostic pointing at the offending line. Flagging the
+// dependency here so a future reader of `types.dag` knows
+// substrate.dag is a consumer and does not silently break it.
 
 // Literal scalar payload carried at the type level (e.g. the
 // `3` in `Cardinality::Exact(3)`). Matches Rust's
