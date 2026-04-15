@@ -65,11 +65,15 @@ by the manifest. One file. That's the thesis target.
 
 **In scope:**
 
-1. Moving the substrate's type layer into `dsl/std/substrate/` as
-   `.dag` declarations — `Dag`, `Node`, `Behavior`, `Declaration`,
-   `Port`, the L1 behavior variants, the six `TypeConnective`
-   variants. Proves via inhabitance that the Rust substrate
-   satisfies the `.dag` declaration.
+1. Moving the substrate's structural type layer into
+   `dsl/std/substrate.dag` (a regular `std/` file, not a
+   subdirectory) as ordinary `.dag` declarations — `Dag`,
+   `Declaration`, `Behavior`, `TypeConnective`, `ArrowBody`,
+   `Field`, `AtomPayload`, `CardinalityBound`, `TemplateArgument`.
+   **Not declared:** the atomic identity handles (`NodeId`,
+   `PortId`, `DeclarationId`, `SourceSpan`) stay as Rust-seed
+   primitives (§3.0). Proves via inhabitance that the Rust
+   substrate structs satisfy the `.dag` declarations.
 2. Declaring the **query primitive set** — the minimal `.dag`
    functions that walk substrate data (e.g., `declarations(d: Dag)
    -> List<Declaration>`, `params(b: Bind) -> List<PortId>`).
@@ -134,24 +138,78 @@ by the manifest. One file. That's the thesis target.
 
 ## §3. The reflection surface
 
-The reflection surface is the minimum set of `.dag` types and
-query primitives a lens needs to express its walk over the
-substrate. This section enumerates the surface.
+The reflection surface is the minimum set of `.dag` declarations
+and query primitives a lens needs to express its walk over the
+substrate. Everything is an ordinary declaration in `dsl/std/` —
+there is no separate "substrate subdirectory" or meta layer.
+The substrate is self-describing by virtue of declaring its own
+shape as data **inside** itself.
+
+### §3.0 Seed minimality as an invariant
+
+The bootstrap seed is deliberately narrow:
+
+- **The parser.** Written in Rust. Produces `SurfaceItem` / `SurfaceExpr`
+  trees from `.dag` source text.
+- **Atomic-identity primitives.** `NodeId`, `PortId`, `DeclarationId`,
+  `SourceSpan` — opaque Rust atoms that `.dag` programs compare
+  for equality and pass around but never structurally inspect.
+  Each has a realization entry in `src/v3/spec/rust.dag` the same
+  way `Int` does.
+- **The existing arithmetic primitives.** `Int`, `Bool`, `String`
+  — already shipped, already realized.
+- **The inhabitance / resolve sweep.** `resolve_pending_identifiers`
+  + the forward-reference resolution v3 already has working for
+  `std/algebra.dag → std/types.dag::Bool`.
+
+**Everything else is declared in `.dag`.** `Dag`, `Declaration`,
+`TypeConnective`, `Behavior`, `Field`, `ArrowBody`, `AtomPayload`,
+`CardinalityBound`, `TemplateArgument`, and every other structural
+substrate type lives as an ordinary `Conj` / `Disj` declaration
+in `dsl/std/`. The Rust structs in `src/v3/compiler/src/dag.rs`
+are **realizations** of these declarations — kept consistent by
+an inhabitance check, not by parallel representation.
+
+**The invariant this PR codifies** (new `INVARIANTS.md` entry —
+see §7.2): the seed MUST NOT grow. Every new substrate concept
+that could be declared in `.dag` must be declared there, not
+added as a Rust-only primitive. New Rust primitive additions
+are blocked unless (a) the concept is truly atomic (can't be
+decomposed further) or (b) it's an ID-like handle that programs
+pass around without inspecting. The seed is five atomic handles
+plus the parser plus the sweep — and that's the ceiling.
+
+**Why the ceiling matters.** The thesis's self-hosting claim
+("the project is a meta-compiler — the substrate can describe
+any computational system including itself") only holds if the
+substrate actually hosts itself. Every Rust primitive the seed
+contains is a fact `.dag` cannot analyze. A ten-primitive seed
+leaves ten blind spots; a five-primitive seed leaves five. The
+direction is toward zero, and the seed ratchet ensures we don't
+drift the other way under pressure.
+
+**How this answers the bootstrap question.** The circular
+dependency `Dag → Declaration → TypeConnective → Declaration` is
+the same shape as `OrderedRing<T> → Ring<T> → Monoid<T>`. v3
+resolves the latter today via `resolve_pending_identifiers`.
+Applying the same mechanism to substrate-type declarations is
+zero new bootstrap machinery — it's one more file in the
+`include_str!` list.
 
 ### §3.1 Substrate types as `.dag` declarations
 
-New file: `dsl/std/substrate/types.dag`. Declares the substrate's
-type layer as substrate-language types.
+New file: `dsl/std/substrate.dag` — sibling to `std/algebra.dag`,
+`std/types.dag`, `std/integer.dag`, etc. No subdirectory. Loaded
+by the bootstrap alongside the other `std/` files, in dependency
+order after `std/types.dag` (which it depends on for `Bool`,
+`String`, etc.).
 
 ```
-module std.substrate.types
+module std.substrate
 
-// Identity atoms. Opaque from .dag's perspective — a NodeId is
-// a handle that query primitives consume, not a structure .dag
-// can construct.
-type NodeId
-type PortId
-type DeclarationId
+// Substrate types — declared here, realized by the Rust structs
+// in src/v3/compiler/src/dag.rs, kept consistent by the inhabitance
+// check that runs at bootstrap time.
 
 // Type connective — six-way sum matching Rust's TypeConnective.
 type TypeConnective
@@ -187,41 +245,45 @@ type Declaration {
   span: SourceSpan
 }
 
-// The Dag itself — opaque container of declarations + nodes.
+// The Dag itself — a declaration like any other. Its realization
+// is the Rust struct src/v3/compiler/src/dag.rs::Dag.
 type Dag {
   declarations: List<Declaration>
   nodes: List<Behavior>
 }
 ```
 
-**Opaque vs structured.** `NodeId`, `PortId`, `DeclarationId` are
-opaque atoms — a `.dag` program cannot construct one, only receive
-one from a query primitive. This is the substrate-honest pattern:
-IDs are identity without structure. Structured types (`Dag`,
-`Declaration`, `Behavior`) are `Conj`/`Disj` declarations whose
-fields lenses can read via query primitives.
+**`NodeId`, `PortId`, `DeclarationId`, `SourceSpan` are NOT
+re-declared here.** They are seed primitives (§3.0) — atomic
+handles that the substrate passes around but never inspects.
+Their realization entries in `src/v3/spec/rust.dag` bind them to
+their Rust counterparts (newtype-wrapped integers and a span
+struct), but there is no `type NodeId` in `.dag`. If a lens
+needs to compare two `NodeId` values it uses equality; if it
+needs to turn one into a `Behavior` it uses a query primitive
+(`node_by_id(dag, id)`).
 
-**Inhabitance check.** The Rust `Dag` struct must satisfy
-`std.substrate.types::Dag` by field shape. A post-bootstrap check
-walks the Rust types (via the `realization_meta_id` pattern
-already used for primitives) and asserts the `.dag` declaration's
-structure matches the Rust layout. Drift between the two
-representations becomes a fail-closed diagnostic at startup. This
-is the same inhabitance mechanism `src/v3/spec/rust.dag` uses to
-bind `.dag Int → Rust i64`; the only new thing is applying it
-to the compiler's own types.
+**Inhabitance check.** A post-bootstrap pass walks every
+declaration in `std.substrate` and asserts the corresponding
+Rust type satisfies the declared shape. For `type Dag`, the check
+walks `Dag`'s Rust fields and asserts they match the declared
+fields by name and type. Drift between the two representations
+becomes a fail-closed diagnostic at bootstrap time. This is the
+same inhabitance mechanism `src/v3/spec/rust.dag` uses today to
+bind `.dag Int → Rust i64` — the only new thing is applying it
+to the compiler's own struct types.
 
 ### §3.2 Query primitives
 
-New file: `dsl/std/substrate/query.dag`. Declares the minimal
+New file: `dsl/std/substrate_query.dag`. Declares the minimal
 walking primitives every lens needs. Each is an Arrow with
 `ArrowBody::ExternalRealization` — the body is declared
 structurally but realized by a Rust method call at emit time.
 
 ```
-module std.substrate.query
+module std.substrate_query
 
-import std.substrate.types { Dag, Declaration, Behavior, Node, Port, Bind, NodeId, PortId, DeclarationId }
+import std.substrate { Dag, Declaration, Behavior, Node, Port, Bind, NodeId, PortId, DeclarationId }
 
 // Whole-DAG readers.
 fn declarations(d: Dag) -> List<Declaration>
@@ -289,7 +351,7 @@ a single fact duplicated across consumers because the substrate
 didn't host it in the first place.
 
 **The fix this design doc commits to.** `behavior_output_port`
-lands in `std.substrate.query` as a first-class query primitive
+lands in `std.substrate_query` as a first-class query primitive
 in this PR's reflection work. Every lens (and every future
 consumer that walks sub-DAGs) reads the primary-result port
 through this one query. The rule is: if you find yourself
@@ -346,8 +408,8 @@ form declares this record as a `Conj` in the lens's own module:
 
 module lenses.unused_parameters
 
-import std.substrate.types { NodeId, PortId, SourceSpan }
-import std.substrate.query as q
+import std.substrate { NodeId, PortId, SourceSpan }
+import std.substrate_query as q
 
 type UnusedParameter {
   function: NodeId
@@ -373,15 +435,15 @@ bodies via `ValueBody::Structural`).
 How a `.dag` lens becomes a running check over a `Dag` value at
 CI time:
 
-1. **Substrate types loaded.** `dsl/std/substrate/types.dag`
+1. **Substrate types loaded.** `dsl/std/substrate.dag`
    parses at bootstrap time via `include_str!` (same pattern as
    `dsl/std/algebra.dag`). The types are Declarations in the
    bootstrap Dag.
 2. **Inhabitance check.** A startup pass walks the Rust substrate
    types (via `realization_meta_id`-style markers) and asserts
-   each `.dag` declaration in `std.substrate.types::*` has a
+   each `.dag` declaration in `std.substrate::*` has a
    matching Rust struct. Mismatches are fail-closed diagnostics.
-3. **Query primitives loaded.** `dsl/std/substrate/query.dag`
+3. **Query primitives loaded.** `dsl/std/substrate_query.dag`
    parses. Each Arrow gets its `ArrowBody::ExternalRealization`
    resolved to a Rust function declaration in
    `src/v3/spec/rust.dag`. The bootstrap already has the
@@ -440,8 +502,8 @@ type FunctionRealization {
 }
 
 data declarations_realization: FunctionRealization = {
-  for: std.substrate.query.declarations
-  receiver_type: std.substrate.types.Dag
+  for: std.substrate_query.declarations
+  receiver_type: std.substrate.Dag
   method_name: "declarations"
 }
 
@@ -481,7 +543,7 @@ impl Dag {
 the `.dag` reflection surface and the compiler's internal state.
 Gathering them in one file makes the inhabitance check mechanical
 (every method in `substrate_query.rs` corresponds to exactly one
-query primitive in `std.substrate.query`) and gives future
+query primitive in `std.substrate_query`) and gives future
 reviewers one place to audit for leaks.
 
 ---
@@ -524,8 +586,8 @@ impl<'a> UnusedParametersLens<'a> {
 ```
 module lenses.unused_parameters
 
-import std.substrate.types { Dag, Behavior, Bind, NodeId, PortId, SourceSpan }
-import std.substrate.query as q
+import std.substrate { Dag, Behavior, Bind, NodeId, PortId, SourceSpan }
+import std.substrate_query as q
 
 type UnusedParameter {
   function: NodeId
@@ -603,7 +665,7 @@ Four test categories, all adding to the existing
 ### §6.1 Substrate inhabitance
 
 New test: `tests/m2_substrate_inhabitance_test.rs`. Asserts that
-every declaration in `std.substrate.types::*` has a matching
+every declaration in `std.substrate::*` has a matching
 Rust struct in `src/v3/compiler/src/dag.rs`, field-by-field.
 Mismatches fail the test with a diagnostic pointing at the
 specific field. This is the binding contract — if the Rust
@@ -613,7 +675,7 @@ it immediately.
 ### §6.2 Query primitive parity
 
 New test: `tests/m2_query_primitive_test.rs`. For each query
-primitive in `std.substrate.query::*`, asserts (a) it has an
+primitive in `std.substrate_query::*`, asserts (a) it has an
 `ExternalRealization` body, (b) the realization resolves to a
 Rust method in `substrate_query.rs`, (c) calling the primitive on
 a test Dag returns the same value as calling the Rust method
@@ -647,17 +709,34 @@ Between §"Compositional layering" and §"Two groundings", a new
 subsection:
 
 > **Self-inspection: the substrate is its own subject.** The
-> substrate's type layer — `Dag`, `Node`, `Behavior`, `Declaration`
-> — is declared in `dsl/std/substrate/` as ordinary `.dag`
-> declarations. A `.dag` program can receive a compiled `Dag`
-> as input and walk it via the query primitives in
-> `std.substrate.query`. Lenses — the invariant-enforcement
-> primitive — are `.dag` programs over this reflection surface.
-> This closes the last self-reference gap in the thesis: there
-> is no code the substrate cannot observe. Adding a new lens is
-> a new `.dag` file in `dsl/lenses/`, not a Rust module. The
-> thesis's "cost of change = 1 file" claim applies to lenses by
-> the same mechanism it applies to types and behaviors.
+> substrate's structural type layer — `Dag`, `Declaration`,
+> `Behavior`, `TypeConnective` — is declared in
+> `dsl/std/substrate.dag` as ordinary `.dag` declarations,
+> sibling to `std/algebra.dag` and `std/types.dag`. There is no
+> separate "meta substrate" and no subdirectory: the substrate
+> describes itself as data **inside** itself, and the
+> self-reference is a fixed point, not a stratification. The
+> Rust structs in `src/v3/compiler/src/dag.rs` are realizations
+> of these `.dag` declarations, kept consistent by inhabitance.
+> A `.dag` program can receive a compiled `Dag` as input and
+> walk it via the query primitives in `std.substrate_query`.
+> Lenses — the invariant-enforcement primitive — are `.dag`
+> programs over this reflection surface. This closes the last
+> self-reference gap in the thesis: there is no code the
+> substrate cannot observe. Adding a new lens is a new `.dag`
+> file in `dsl/lenses/`, not a Rust module. The thesis's "cost
+> of change = 1 file" claim applies to lenses by the same
+> mechanism it applies to types and behaviors.
+>
+> **The seed is bounded.** The bootstrap seed is the parser,
+> the resolve sweep, and four atomic identity handles
+> (`NodeId`, `PortId`, `DeclarationId`, `SourceSpan`) — plus
+> the existing arithmetic primitives (`Int`, `Bool`, `String`).
+> Everything else — every structural substrate type — is a
+> declaration, not a primitive. The seed is a ratchet: it can
+> shrink (if a seed primitive becomes expressible as a
+> declaration) but cannot grow. See `INVARIANTS.md`
+> §"Bounded substrate seed" for the enforcement rule.
 >
 > **The failure mode this prevents** is a `kernel_lens_set` — a
 > hardcoded registry of known lens names in compiler source with
@@ -670,14 +749,74 @@ subsection:
 > runs against its own `.dag` source at test time and reports zero
 > findings. If it regressed, the test would catch it before merge.
 
-### §7.2 New `INVARIANTS.md` entry: "Lenses are substrate declarations"
+### §7.2a New `INVARIANTS.md` entry: "Bounded substrate seed"
+
+```
+### Bounded substrate seed
+
+The bootstrap seed — the set of Rust primitives the compiler
+ships before any `.dag` declaration loads — is a ratchet. It
+can shrink, it cannot grow. A new Rust primitive landing in
+the seed is a **fail-closed blocker** unless it meets one of
+two exceptions.
+
+**The seed, as of the substrate reflection PR:**
+
+1. `NodeId` — opaque identity handle for behavior nodes.
+2. `PortId` — opaque identity handle for ports.
+3. `DeclarationId` — opaque identity handle for declarations.
+4. `SourceSpan` — opaque source-location handle.
+5. `Int`, `Bool`, `String` — existing arithmetic primitives.
+
+Plus: the parser, the `resolve_pending_identifiers` sweep, the
+inhabitance check mechanism. None of these are types; they are
+the machinery that lets declarations parse and resolve.
+
+**The two exceptions** under which a new primitive can land:
+
+1. **Atomic identity.** The concept is a handle that programs
+   pass around and compare for equality but never structurally
+   inspect. `NodeId` is the template. If the concept has fields
+   users can read, it is not a handle and does not qualify.
+2. **Truly indivisible.** The concept is at the floor of its
+   decomposition chain (Classical Bit, raw machine word). If
+   the concept decomposes further, it belongs in `.dag` as a
+   declaration, not in the seed.
+
+**Every other substrate concept must be declared in `.dag`.**
+This includes every structural type the substrate uses to
+describe itself: `Dag`, `Declaration`, `TypeConnective`,
+`Behavior`, `ArrowBody`, `Field`, `AtomPayload`,
+`CardinalityBound`, `TemplateArgument`, and any successor
+concepts. The Rust structs in `dag.rs` are realizations, not
+authorities — the authority is the `.dag` declaration.
+
+**Why the ceiling matters.** Every seed primitive is a fact
+`.dag` cannot analyze. A lens cannot ask "does `Behavior` have
+a `Loop` variant?" if `Behavior` is a Rust-only primitive. The
+thesis's self-hosting claim requires the substrate to host
+itself; every seed primitive is a hole in that claim. The
+ratchet ensures the holes shrink over time, never grow.
+
+**Enforcement.** The CI check counts seed primitives by grepping
+the realization entries in `src/v3/spec/rust.dag` for types that
+have no `.dag` declaration counterpart. The count is stored in
+a ratchet file (same mechanism as the `Pending` ratchet) and
+must monotonically decrease or stay flat across PRs. A PR that
+adds a new seed primitive fails CI unless the PR also deletes
+an equal or greater count of existing seed primitives, OR the
+addition meets one of the two exceptions above and is receipted
+inline in the PR.
+```
+
+### §7.2b New `INVARIANTS.md` entry: "Lenses are substrate declarations"
 
 ```
 ### Lenses are substrate declarations
 
 Every lens added to the project after the substrate reflection
 primitive lands MUST be a `.dag` program in `dsl/lenses/`
-operating over the query primitives in `std.substrate.query`.
+operating over the query primitives in `std.substrate_query`.
 
 Rust lens modules (e.g., `src/v3/compiler/src/lens_*.rs`) are
 forbidden for new lenses. Exception: the migration of the three
@@ -791,10 +930,14 @@ query primitive set — not two (Rust fields + user-facing `.dag`).
 
 ## §10. Open questions
 
-1. **How does `.dag` express opaque types?** `NodeId`, `PortId`,
-   `DeclarationId` are atoms without structure. Does v3's current
-   parser accept `type NodeId` with no RHS? If not, a minimal
-   parser extension lands alongside the substrate declarations,
+1. **How are atomic identity handles (`NodeId`, `PortId`,
+   `DeclarationId`, `SourceSpan`) seeded?** Per §3.0 they stay
+   as Rust primitives and get realization entries in
+   `src/v3/spec/rust.dag` — the same mechanism `Int → i64` uses.
+   The question to audit: does the existing `TypeRealization`
+   shape support opaque-handle types (not just arithmetic
+   primitives)? If yes, no new work. If it requires a
+   `HandleRealization` sibling category, the addition is
    scoped as part of this PR.
 2. **Higher-order functions in `.dag`.** The `.dag` lens form
    uses `filter`, `flat_map`, `enumerate` — do these exist in
@@ -832,9 +975,18 @@ starting.
 
 ## §11. What counts as done
 
-- [ ] `dsl/std/substrate/types.dag` exists, parses, inhabitance
-      check passes against the Rust substrate.
-- [ ] `dsl/std/substrate/query.dag` exists, all primitives have
+- [ ] `dsl/std/substrate.dag` exists as a regular `std/` file
+      (no subdirectory), parses cleanly, inhabitance check
+      passes against the Rust substrate structs in `dag.rs`.
+- [ ] Atomic identity handles (`NodeId`, `PortId`,
+      `DeclarationId`, `SourceSpan`) have realization entries
+      in `src/v3/spec/rust.dag` and are **not** declared in
+      `.dag`. The seed is four handles plus the existing
+      arithmetic primitives.
+- [ ] Seed ratchet file exists, CI gate counts seed primitives,
+      a PR that adds a new seed primitive without a receipted
+      exception fails CI.
+- [ ] `dsl/std/substrate_query.dag` exists, all primitives have
       `ExternalRealization` bodies resolved at lower time.
 - [ ] `src/v3/compiler/src/substrate_query.rs` exists; every
       primitive has a Rust impl; the impls are called through a
@@ -855,6 +1007,7 @@ starting.
 - [ ] `m2_lens_self_analysis_test.rs` passes (the lens analyzing
       itself reports zero findings).
 - [ ] `THESIS.md` §"Self-inspection" landed.
+- [ ] `INVARIANTS.md` §"Bounded substrate seed" landed.
 - [ ] `INVARIANTS.md` §"Lenses are substrate declarations"
       landed.
 - [ ] `lens-library-design.md` §1.5 rewritten, §2.3 rewritten,
@@ -888,6 +1041,10 @@ deferred with a note.
 
 | Thread | Status |
 |---|---|
+| "Everything is Dag/Node" / project as meta-compiler | §3.0, §3.1, §7.1 — substrate is self-describing, no meta layer, no substrate subdirectory |
+| Primitives vs declarations ("l0 primitives vs declare them") | §3.0 — declare everything structural, four seed handles only, ratcheted |
+| Bootstrap problem ("how does this not cycle?") | §3.0 — same mechanism v3 already uses for algebra.dag → types.dag forward refs |
+| Seed-minimality invariant | §7.2a — new `INVARIANTS.md` entry with ratchet |
 | ChatGPT review: `behavior_output_port` as canonical query | §3.2, §3.2.1 — landed as a first-class query primitive |
 | Reflection primitive as canonical form | §1, §3, §4 — the core of this doc |
 | Rust lenses as bootstrap scaffolds | §1 motivation, §5 migration |
