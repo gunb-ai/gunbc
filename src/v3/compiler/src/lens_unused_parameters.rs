@@ -34,9 +34,16 @@
 // Branch.input, Loop.source/init, or Bind.value reachable from
 // the function's body root.
 //
-// **Convention support.** Parameters whose name starts with `_`
-// are conventionally unused (Rust style); the lens skips them
-// when `ignore_underscore_prefix` is set.
+// **No convention filter.** v3's substrate doesn't carry
+// per-parameter names past lowering — only positional ports.
+// A `_unused`-style underscore filter would require the lens
+// to read names that aren't there, which would be a layer-
+// opacity violation in disguise: the config would promise
+// name-based filtering and silently no-op. The filter is
+// intentionally absent; if a future substrate change exposes
+// per-parameter names (e.g., a `BindNode.param_names: Vec<String>`
+// field added alongside class-5 gap work), the filter can land
+// then with a real backing implementation.
 //
 // **Pure reader, zero substrate changes.** The lens reads
 // `Dag` + `UnusedParametersConfig` and returns
@@ -51,17 +58,24 @@ use crate::diagnostics::SourceSpan;
 
 /// Configuration for the unused-parameters lens.
 ///
-/// **Dissolution receipt — 🟢 TERMINAL.** Two scalar fields with
-/// distinct concerns: `scope` is the optional restriction set,
-/// `ignore_underscore_prefix` is a convention toggle. Each is a
-/// configuration knob that downstream applications set
-/// independently. Pattern 1 (fact placement) fails because the
-/// fields encode different aspects (which functions vs which
-/// parameters); Pattern 2 (variant-is-data) is N/A for a struct;
-/// Pattern 3 (algebraic form) fails for the same reason; Pattern
-/// 4 (dimensional) fails. Verdict: terminal at the lens-library-
-/// initial-three scope. Future lenses with similar configs grow
-/// independently.
+/// **Dissolution receipt — 🟢 TERMINAL at current substrate
+/// scope.** One field: `scope`, optional restriction to specific
+/// function declarations. Pattern 1 (fact placement) fails — the
+/// scope filter is a per-application configuration that doesn't
+/// belong on the substrate. Pattern 2 (variant-is-data) is N/A
+/// for a struct. Pattern 3 (algebraic form) fails. Pattern 4
+/// (dimensional) fails. Verdict: terminal at the lens-library-
+/// initial-three scope.
+///
+/// **Why no `ignore_underscore_prefix` field.** v3's substrate
+/// doesn't carry per-parameter names past lowering, so the lens
+/// has no way to read a parameter's name. A `_unused`-style
+/// underscore filter would require name access; adding the
+/// field without backing implementation would create a
+/// misleading API surface (consumers set the flag, the lens
+/// silently ignores it). The filter is intentionally absent. If
+/// a future substrate change exposes per-parameter names, the
+/// field can land then alongside its real implementation.
 #[derive(Debug, Clone, Default)]
 pub struct UnusedParametersConfig {
     /// Restrict the scan to specific function declarations. If
@@ -71,9 +85,6 @@ pub struct UnusedParametersConfig {
     /// callers walk the Dag to pick which declarations to scan
     /// rather than naming them by string.
     pub scope: Vec<DeclarationId>,
-    /// When true, parameters whose name starts with `_` are
-    /// skipped. Rust convention: `_unused`, `_ignored`, etc.
-    pub ignore_underscore_prefix: bool,
 }
 
 /// One reported violation: a parameter declared on a function

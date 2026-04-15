@@ -159,16 +159,17 @@ fn emit_rust_has_no_substrate_name_string_dispatches() {
     }
 }
 
-/// **Composition opacity gate documentation.**
+/// **Layer opacity gate documentation.**
 ///
 /// The static regression test above
 /// (`emit_rust_has_no_substrate_name_string_dispatches`) is the
-/// load-bearing **rename test** in static form. It asserts that
-/// emit_rust.rs contains zero string literals naming any user-
-/// facing std/ identifier (`Int`/`Bool`/`String`/`True`/`False`)
-/// or substrate L1 behavior (`Bind`/`Branch`/`Main`) in non-
-/// comment position. If the test passes, it follows by
-/// construction that:
+/// load-bearing **rename test** in static form, enforcing the
+/// `INVARIANTS.md` §"Layer opacity" rule on `emit_rust.rs`. It
+/// asserts that emit_rust.rs contains zero string literals
+/// naming any user-facing std/ identifier
+/// (`Int`/`Bool`/`String`/`True`/`False`) or substrate L1
+/// behavior (`Bind`/`Branch`/`Main`) in non-comment position.
+/// If the test passes, it follows by construction that:
 ///
 ///   1. **Renaming `Int` → `Integer` in `dsl/std/integer.dag`**
 ///      requires editing `dsl/std/integer.dag` (the declaration),
@@ -186,14 +187,18 @@ fn emit_rust_has_no_substrate_name_string_dispatches() {
 ///      point) is one std/ addition + one rust.dag addition,
 ///      again with the emitter unchanged.
 ///
-/// This is the **composition opacity guarantee** in static form.
-/// The thesis claim — "the compiler exists to make compositions
+/// This is the **layer opacity guarantee** in static form. The
+/// thesis claim — "the compiler exists to make compositions
 /// opaque, application code sitting on rest/http/service should
-/// be unable to observe layer changes" — applies one layer up:
-/// the emitter sits on top of the substrate layer, and the
-/// substrate layer should be replaceable without the emitter
-/// noticing. The regression test's empty-grep result is the
-/// proof.
+/// be unable to observe layer changes" (THESIS.md §"Compositional
+/// layering: below-boundary opacity by construction") — applies
+/// one layer up: the emitter sits on top of the substrate layer,
+/// and the substrate layer should be replaceable without the
+/// emitter noticing. The regression test's empty-grep result is
+/// the proof. The eventual structural enforcement is
+/// `lens_layer_opacity` per `docs/lens-library-design.md` §2.2;
+/// this static grep is the precursor that catches the same class
+/// of violations until the lens lands.
 ///
 /// The DYNAMIC version of the rename test (literally rename a
 /// declaration in std/, recompile, verify) would touch every
