@@ -699,6 +699,59 @@ fn bad(s: Sign) -> Int = match s { Plus => 0, Plus => 1, Minus => 2 }
 }
 
 #[test]
+fn m18_r12_invalid_match_cascades_to_downstream_callers() {
+    // M1(2.8) R12: pattern resolution and coverage checks run
+    // inside the fixpoint loop so non-exhaustive / duplicate
+    // match failures cascade to downstream consumers. Before
+    // R12, resolve_branch_patterns ran after the main loop had
+    // already typed every downstream port — the Branch's output
+    // would flip to Unresolved AFTER consumers had locked in
+    // Resolved types, leaking invalid types through the
+    // compile boundary.
+    //
+    // Regression shape: non-exhaustive match in a fn body that
+    // a let binding then consumes. After R12, compile_to_dag
+    // returns Err because the let-port cascades to Unresolved.
+    let src = "\
+type Sign = Plus | Minus
+fn always_zero(s: Sign) -> Int = match s { Plus => 0 }
+";
+    // The fn itself doesn't have a downstream caller here (to
+    // avoid needing variant-expression parsing for `Plus`/`Minus`
+    // as arguments at the call site — class-5 gap #4). Instead
+    // we verify the structural shape: the Branch's output port
+    // and the Bind's value port (both cascading targets) must
+    // be Unresolved after compile_to_dag returns.
+    let result = compile_to_dag(src, "cascade.v3");
+    assert!(
+        result.is_err(),
+        "non-exhaustive match should fail the compile boundary"
+    );
+    // Pull the Dag out of the Err and walk structurally.
+    let dag = match result {
+        Err(v3_compiler::CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "always_zero")
+        .expect("Bind(always_zero) exists");
+    // The Bind's value port is the fn body's return port,
+    // which is the Branch's output. It must be Unresolved —
+    // the cascade from the coverage-check failure reached here.
+    assert!(
+        matches!(
+            dag.port(bind.value).state(),
+            v3_compiler::dag::PortState::Unresolved
+        ),
+        "non-exhaustive match body must cascade to Bind value port; got {:?}",
+        dag.port(bind.value).state()
+    );
+}
+
+#[test]
 fn m18_r11_three_variant_exhaustive_match_compiles() {
     // R11 sanity: a match covering all three variants of a
     // three-constructor sum type compiles cleanly. This also

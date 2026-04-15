@@ -33,6 +33,16 @@ use crate::operators::OperatorKind;
 use crate::types::TypeShape;
 
 pub fn infer(dag: &mut Dag) {
+    // Fixpoint loop. Runs decide for every node, then pattern
+    // resolution + exhaustiveness + uniqueness for every Branch.
+    // Pattern resolution is folded into the loop (not run after it)
+    // so a Branch that gets flipped to Unresolved by
+    // non-exhaustive/duplicate-arm checks propagates to downstream
+    // consumers: the next iteration's decide pass sees the upstream
+    // Unresolved and cascades Decision::Fail through Transform /
+    // Branch / Loop / Bind consumers. Running pattern resolution
+    // after the main loop would leave downstream types stale and
+    // violate FAIL-CLOSED.
     loop {
         let mut changed = false;
         let node_count = dag.nodes().len();
@@ -71,18 +81,13 @@ pub fn infer(dag: &mut Dag) {
                 Decision::Retry => {}
             }
         }
+        if resolve_branch_patterns(dag) {
+            changed = true;
+        }
         if !changed {
             break;
         }
     }
-
-    // Pattern resolution pass: once every Branch's input port has
-    // settled to a Resolved type, walk each Branch's paths and
-    // rewrite each `BranchPattern::UnresolvedVariant { name }` to
-    // `ResolvedVariant(DeclarationId)` by looking up the name scoped
-    // against the scrutinee's Disj children. Fail-closed on
-    // unknown variant names.
-    resolve_branch_patterns(dag);
 
     // Post-sweep: any port still Uninferred means decide() missed a case.
     let uninferred_ports: Vec<PortId> = dag
@@ -104,10 +109,19 @@ pub fn infer(dag: &mut Dag) {
 
 /// For every Branch node, resolve each Path's `BranchPattern` by
 /// matching the arm's variant name against the scrutinee's Disj
-/// children. Mutates the Path in place. Fails-closed on unknown
-/// variant names. Skips Branches whose input port is not Resolved
-/// (those already have a diagnostic from the main infer pass).
-fn resolve_branch_patterns(dag: &mut Dag) {
+/// children and verify exhaustiveness + uniqueness. Mutates the
+/// Path in place for successful rewrites, marks the Branch's
+/// output port Unresolved (via `Dag::mark_unresolved`) for
+/// failures. Skips Branches whose input port is not yet Resolved —
+/// those will be revisited on the next fixpoint iteration.
+///
+/// Returns `true` if any state (Path.pattern rewrite or Branch
+/// output port transition) changed, so the calling fixpoint loop
+/// knows to keep iterating. Pattern-resolution changes and
+/// coverage-check failures both propagate downstream through the
+/// normal `decide_transform` cascade in subsequent iterations.
+fn resolve_branch_patterns(dag: &mut Dag) -> bool {
+    let mut changed = false;
     // Collect the rewrites first (immutable borrow of nodes + ports +
     // declarations), then apply them (mutable borrow of nodes). This
     // two-phase pattern avoids borrow conflicts while still reading
@@ -207,10 +221,17 @@ fn resolve_branch_patterns(dag: &mut Dag) {
                 if let Behavior::Branch(b) = &mut dag.nodes_mut()[rewrite.node_index] {
                     b.paths[rewrite.path_index].pattern =
                         crate::dag::BranchPattern::ResolvedVariant(variant_id);
+                    changed = true;
                 }
             }
             Err(diag) => {
-                dag.mark_unresolved(rewrite.output_port, diag);
+                if !matches!(
+                    dag.port(rewrite.output_port).state(),
+                    PortState::Unresolved
+                ) {
+                    dag.mark_unresolved(rewrite.output_port, diag);
+                    changed = true;
+                }
             }
         }
     }
@@ -242,6 +263,7 @@ fn resolve_branch_patterns(dag: &mut Dag) {
                     span: check.span.clone(),
                 },
             );
+            changed = true;
             continue;
         }
         // Exhaustiveness: every expected variant must be in the
@@ -264,8 +286,10 @@ fn resolve_branch_patterns(dag: &mut Dag) {
                     span: check.span,
                 },
             );
+            changed = true;
         }
     }
+    changed
 }
 
 enum Decision {
