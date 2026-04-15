@@ -853,6 +853,430 @@ unchanged. No substrate variant growth.
 
 ---
 
+### §3.6 The second substrate question: field access as projection
+
+**Problem.** A lens walking the substrate needs to read
+children of structural records: `decl.nodes`, `node.params`,
+`port.value_type`. The surface form is dotted-path field
+access (`p.first`). The semantic is: given a port of Conj type,
+extract the labeled child. Every lens writeable in `.dag` hits
+this on its first line.
+
+This looks like "pure lowering extension" — the parser already
+produces `Path` for `a.b.c`, so lowering just needs to route
+field access somewhere. **That framing is the smuggling
+claim.** It assumes the substrate already expresses "project a
+labeled child of a Conj" somewhere. §11's initial Prereq 1
+write took this at face value without naming the substrate
+element. PR #453 is the implementation hitting what the design
+should have hit — every lowering route attempted there reduces
+to one of four substrate-smuggling patterns, because no clean
+existing form exists.
+
+**The ground-truth check.** The thesis §"Structural
+decompression" suggests "FieldAccess = Product elimination,
+from `std/algebra.dag`." That framing is sloppy. Product
+elimination (fst/snd, labeled projection) is intrinsic to
+products via the universal mapping property — it's a property
+of the shape itself, not an operation a type gains by
+inhabiting an algebra. algebra.dag is where types gain
+*user-facing* operations via inhabitance (Int inhabits
+OrderedRing → gets `+`/`−`/`×`). Structural projection on
+Conj isn't gained by inhabitance; it's intrinsic to being a
+Conj. Verifying `dsl/std/algebra.dag` directly confirms the
+drift: there is no general Conj-projection operation in
+algebra.dag. What exists is `FreeMonoid<T>.fold` (list-specific
+catamorphism, used by Prereq 4's `list.dag`), not a shared
+product eliminator.
+
+**Conclusion:** the substrate target for field access cannot
+be "call an algebra.dag eliminator," because the premise is
+false and conceptually miscategorized. The question is how
+projection is expressed in the substrate itself.
+
+**Five options.** Each tagged with its smuggling route
+(none / #1 synthesized declarations / #2 flat coproduct
+growth / #3 surface state preserved / #4 parallel
+representation).
+
+**Option 1a — New `TransformTarget::FieldProject` variant.**
+Add a TransformTarget variant so `Transform` can dispatch on
+projection. Shape:
+
+```
+TransformTarget
+  = Callable(DeclarationId)
+  | FieldProject { parent_type: DeclarationId, field_label: String }
+  | Operator(OperatorKind)  // existing scaffold
+```
+
+- **Smuggling route: none.** Genuine substrate extension; the
+  compiler sees "this Transform is a projection" as a typed
+  variant, not a meta-tag or a label recovered from name.
+- **Pro:** structurally honest. A lens walking a Transform
+  with `FieldProject { parent_type, field_label }` sees "project
+  the `field_label` child of `parent_type`" directly — no
+  indirection through synthesized declarations.
+- **Pro:** reduces downstream recovery work. emit_rust dispatches
+  `FieldProject` directly to the field-binding lookup in the
+  parent type's `TypeRealization`, no `meta_tag == FieldAccessor`
+  filter needed.
+- **Con:** grows `TransformTarget` by one variant. Requires the
+  §9 "scope boundary" receipt for a substrate extension and a
+  §8.10 4-pattern check at the commit.
+- **4-pattern check (sketch):**
+  - *Pattern 1 (fact placement):* the fact "this call projects
+    a Conj child" doesn't have another natural home. Not on
+    Callable (projection isn't an Arrow), not on port shape
+    (the projection targets a specific child of the parent,
+    not the parent itself).
+  - *Pattern 2 (variant-is-data):* FieldProject and Callable
+    are dispatch-on-origin — a declared callable vs an
+    intrinsic projection. Different data shapes by construction.
+  - *Pattern 3 (algebraic form):* projection is not an algebra
+    field (see ground-truth check above).
+  - *Pattern 4 (dimensional):* Callable/FieldProject don't
+    decompose into a record-with-sub-coproduct; they're
+    categorically distinct dispatch targets.
+  - *Verdict:* TERMINAL.
+
+**Option 1b — New `Behavior::FieldAccess` variant.**
+A 6th behavior alongside Value/Transform/Branch/Loop/Bind.
+
+- **Smuggling route: none.**
+- **Pro:** most honest. Field access IS a distinct kind of
+  computation from function application, and the "behaviors
+  are terminal categories" framing would gain structural
+  clarity.
+- **Con, blocking:** violates the "Behaviors terminal at 5"
+  invariant unless the invariant is re-opened. More
+  importantly, fails the 4-pattern check at *Pattern 4
+  (dimensional)*: FieldAccess and Transform both consume one
+  input, produce one output, and dispatch on a target. They
+  are dimensionally related, not categorically distinct. The
+  behavior layer is for categorically distinct computations;
+  a new behavior for each dispatch flavor is flat coproduct
+  growth at a higher level.
+- **Verdict:** rejected.
+
+**Option 1c — Synthesized accessor declarations, per-use.**
+Each occurrence of `p.field` in user code allocates a fresh
+Arrow declaration with a `FieldAccessor` meta-tag and a
+`Pending` body. Transform's target points at the freshly
+allocated declaration. (PR #453's attempted form.)
+
+- **Smuggling route: #1 (synthesized declarations).**
+- **Con:** declaration-table bloat linear in field-access
+  occurrences. The `feedback_no_metadata_markers` principle is
+  nearly violated — the `FieldAccessor` marker is a typed
+  meta-tag, not a string, which saves it from being a hard
+  violation, but the (meta_tag + name + Arrow shape) recovery
+  pattern is exactly what the principle warns against.
+- **Con:** a lens walking the declaration table sees many
+  `(parent, label)` accessor declarations that are compiler
+  artifacts, not user-authored facts. Layering opacity leak.
+- **Con:** the field identity has to be recovered at emit time
+  from `(meta_tag, name, Arrow.inputs[0])` rather than being
+  visible as a typed dispatch.
+- **Verdict:** rejected — #453's experience proves the smuggling
+  cost is real.
+
+**Option 1d — Canonical accessor declarations, one per
+(parent_type, field_label).**
+A variant of 1c that deduplicates: at bootstrap or first use,
+allocate one canonical accessor per unique (parent, label)
+pair. Every `p.first` in the program targets the same
+`Pair_first_accessor` declaration.
+
+- **Smuggling route: #1 (synthesized declarations) with
+  deduplication.**
+- **Pro vs 1c:** bounded growth — O(total fields declared)
+  rather than O(occurrences).
+- **Con:** still synthesis. The accessors are derived, not
+  authored. A lens walking the declaration table still sees
+  compiler-artifact declarations mixed with user-authored
+  ones. The layering opacity concern applies, just at lower
+  density.
+- **Verdict:** rejected — deduplication doesn't dissolve the
+  structural concern, it only reduces its volume.
+
+**Option 1e — Preserve `Path` at surface level, handle in
+`emit_rust`.**
+Don't lower field access at all. The substrate carries
+`SurfaceExpr::Path` through the pipeline, and emit_rust
+produces the Rust field-access syntax at rendering time.
+
+- **Smuggling route: #3 (surface state preserved in the
+  substrate).**
+- **Con, blocking:** violates the substrate / surface
+  separation. The substrate exists to hold structural facts
+  about the program; preserving raw surface syntax through
+  to emit means the substrate doesn't fully represent the
+  program's structure and every downstream consumer has to
+  re-parse the surface form.
+- **Con:** breaks the "lenses walk a Dag, not a parse tree"
+  principle. A lens asking "what does this Transform do?"
+  would have to distinguish "it's a real Transform" from
+  "it's a leftover SurfaceExpr::Path." Layering collapse.
+- **Verdict:** rejected.
+
+**Decision: 1a.** Locked in. Elimination walk lands on 1a by
+process of removing 1b (Behavior terminal-at-5), 1c/1d
+(smuggling route #1), and 1e (smuggling route #3). The reasons
+for committing:
+
+1. **It's the only clean option left.** The elimination walk
+   above is exhaustive on the categories. Each rejected option
+   is rejected for a substrate-level reason, not a
+   convenience-level one.
+2. **It's the minimal extension.** One new TransformTarget
+   variant is the smallest substrate commitment that honestly
+   expresses projection. 1b grows the most-constrained
+   substrate layer (Behavior); 1a grows a less-constrained
+   one (TransformTarget's target coproduct).
+3. **The §9 receipt and §8.10 audit are cheap.** The 4-pattern
+   check above is a paper exercise; the §9 receipt is a single
+   explicit entry in the scope-boundary section. Both are
+   doable in the Prereq 1 PR itself.
+4. **Downstream work gets simpler.** emit_rust's field-binding
+   dispatch becomes a `match` arm on `TransformTarget::FieldProject`,
+   not a `meta_tag == FieldAccessor` filter. A lens walking
+   field access reads the typed variant directly.
+
+**Prereq 1 codifies this as the implementation target.** The
+re-implementation (replacing #453's synthesized-accessor
+approach) extends `TransformTarget` with `FieldProject
+{ parent_type: DeclarationId, field_label: String }`, updates
+`lower_expr`'s Path arm to emit this variant, extends
+`emit_rust` to dispatch it to the parent type's
+TypeRealization's FieldBinding entry, and deletes the
+`FieldAccessor` substrate.dag marker and the `lower_field_chain`
+synthesis helper. Tests from PR #453 port over largely
+unchanged — the Dag-shape assertions check a typed variant
+instead of a meta-tagged Arrow.
+
+**Non-goal.** Field access through template-parameterized
+records (`p: Pair<Int>`) remains out of scope for Prereq 1.
+That requires composing substitution resolution with projection
+and is naturally handled as a follow-up that builds on
+§3.5's SubstStack threading.
+
+---
+
+### §3.7 The third substrate question: match-with-payload binding
+
+**Problem.** Lens code destructures sum variants with
+patterns like `match b { Bind(bind) => bind.params }`.
+The surface form binds a local name `bind` to the variant's
+payload so the arm body can reference it. The semantic has
+two sub-concerns that must be expressed in the substrate:
+
+1. **Discrimination:** which variant does this arm match?
+   (today's `BranchPattern::Resolved(DeclarationId)`)
+2. **Extraction:** what local name carries the variant's
+   payload in the arm body, and which port holds its value?
+
+#453 grew `BranchPattern` to a 4-way flat coproduct
+(`{Unresolved, Resolved} × {Bare, WithPayload}`) to express
+both. That's smuggling route #2 (flat coproduct growth around
+a dimensional distinction). This section walks the honest
+option space.
+
+**Ground-truth check.** The same thesis-drift observation
+as §3.6 applies: "Disj elimination" would intuitively belong
+to an algebra, but verifying `dsl/std/algebra.dag` confirms
+there is no general Disj-elimination operation — and arguably
+shouldn't be one. Each Disj has its own eliminator shape
+(different variant count, different payload types); there is
+no shared "DisjAlgebra" users inhabit. Disj elimination is a
+substrate primitive (like Conj projection), and the existing
+`Behavior::Branch` already IS the eliminator. What Prereq 2
+needs is not a new eliminator — it's a way to express the
+payload-extraction sub-concern inside the existing
+`Branch` / `Path` machinery.
+
+**Five options.**
+
+**Option 2a — Flat 4-way `BranchPattern`.**
+`BranchPattern = UnresolvedVariant | ResolvedVariant
+| UnresolvedVariantWith | ResolvedVariantWith`. The shape
+PR #453 landed.
+
+- **Smuggling route: #2 (flat coproduct growth).**
+- **Con, blocking:** fails the 4-pattern check at
+  *Pattern 4 (dimensional)*. The variant axis
+  `{Unresolved, Resolved}` and the binding axis `{Bare, With
+  Payload}` are orthogonal; encoding them as a flat 4-way
+  coproduct hides the dimensional structure. The 4 variants
+  aren't categorically distinct — they're the product of two
+  binary dimensions.
+- **Con:** infer's `Unresolved → Resolved` rewrite has to
+  preserve the binding sub-structure under a case-by-case
+  dispatch (#453's `RewriteShape` enum exists exactly to
+  work around this).
+- **Verdict:** rejected.
+
+**Option 2b — Dimensional `BranchPattern` record.**
+Restructure `BranchPattern` into a record with two fields,
+one per dimension:
+
+```
+struct BranchPattern {
+    resolution: PatternResolution,  // Unresolved { name, span } | Resolved { decl }
+    payload: Option<PayloadBinding>,
+}
+```
+
+- **Smuggling route: none.** The dimensional structure is
+  expressed directly.
+- **Pro:** correct decomposition of the 4-way coproduct.
+- **Con:** expands `BranchPattern`'s semantic role. Today
+  BranchPattern answers "which variant does this arm match?"
+  — a pure discrimination concern. Adding binding to the
+  record extends the role to "which variant AND what to
+  capture." Two concerns on one shape.
+- **Con:** big refactor. Every consumer of the existing
+  `BranchPattern` variants (emit_rust dispatch, infer
+  rewrite, lower construction, tests) needs to change, and
+  the change is a restructuring of a hot coproduct rather
+  than an additive extension.
+
+**Option 2c — New `Behavior::VariantBind` variant.**
+A 6th behavior specifically for "discriminate a Disj variant
+and bind its payload to a port."
+
+- **Smuggling route: none.**
+- **Con, blocking:** fails 4-pattern check *Pattern 4*
+  (dimensional): VariantBind is clearly a sub-concern of
+  Branch, not a peer behavior. Variant binding is a property
+  of arm lowering, not a separate category of computation.
+- **Con:** terminal-at-5 violation.
+- **Verdict:** rejected.
+
+**Option 2d — Disj elimination via algebra.dag.**
+Hypothetical: if algebra.dag had a DisjAlgebra with a
+`case(variants, handlers) → result` eliminator, Prereq 2
+could lower match-with-payload to a call into that eliminator.
+
+- **Blocking premise failure:** algebra.dag has no such
+  operation, and the thesis-level argument above shows it
+  shouldn't. Disj elimination is not an algebra inhabitance
+  operation; it's a substrate primitive already expressed
+  by `Behavior::Branch`.
+- **Verdict:** rejected — premise false, miscategorized.
+
+**Option 2e — `Option<PayloadBinding>` field on `Path`.**
+Leave `BranchPattern` entirely unchanged (2 variants,
+`Unresolved`/`Resolved`). Add a new field to `Path`:
+
+```
+struct Path {
+    pattern: BranchPattern,         // unchanged, discrimination only
+    binding: Option<PayloadBinding>, // NEW, extraction
+    output: PortId,
+    body: NodeId,
+}
+
+struct PayloadBinding {
+    binding_name: String,
+    payload_port: PortId,
+}
+```
+
+- **Smuggling route: none.** Adding an Option field to a
+  struct is a structural extension, not coproduct growth
+  or synthesis.
+- **Pro: correct role separation.** `BranchPattern`'s job is
+  "which variant does this arm match?" — discrimination.
+  `Path`'s job is "coordinate one arm of a Branch" — the arm
+  container. Payload binding is a property of the arm, not
+  of the discrimination, so it belongs on Path. Per
+  `INVARIANTS.md` §"Minimal information per interface":
+  design signatures from the job outward. BranchPattern gains
+  nothing; Path extends its existing arm-coordinator role.
+- **Pro: decoupled inference rewrite.** Infer's job is
+  resolving variant names to DeclarationIds — pure
+  pattern-level work. With 2e, infer rewrites `path.pattern`
+  and leaves `path.binding` alone. No `RewriteShape` helper
+  needed. Smaller surface, less to get wrong.
+- **Pro: decoupled emit dispatch.** emit_rust reads
+  `path.pattern` for discrimination and `path.binding` for
+  extraction as two orthogonal reads on the same `Path`
+  struct. Each dispatch is straightforward.
+- **Pro: guards land naturally.** If guard clauses are ever
+  added to v3 (`match x { Right(p) if p.first > 0 => ... }`),
+  they fit 2e as another Option field on Path (`guard:
+  Option<NodeId>`) without disturbing either BranchPattern
+  or PayloadBinding.
+- **Con:** two orthogonal reads on Path at each consumer
+  (where 2b has one read on BranchPattern). Marginal
+  ergonomic cost; structural clarity wins.
+- **4-pattern check:**
+  - *Pattern 1 (fact placement):* the binding is arm-level,
+    `Path` is the arm container. Natural home.
+  - *Pattern 2 (variant-is-data):* `PayloadBinding` is a
+    record (two fields), not a discrimination.
+  - *Pattern 3 (algebraic form):* no algebra involved.
+  - *Pattern 4 (dimensional):* `Option<PayloadBinding>` is
+    the natural dimensional form — the binding is present or
+    absent, not a flat coproduct growth.
+  - *Verdict:* TERMINAL.
+
+**Decision: 2e.** Locked in. Three reasons:
+
+1. **Role separation matches the substrate's existing
+   factoring.** BranchPattern answers "which variant";
+   Path answers "what happens in this arm." Adding binding
+   to Path extends an existing role; adding binding to
+   BranchPattern (2b) conflates two roles on one shape.
+2. **Decoupled rewrite + dispatch.** Inference and emission
+   each touch exactly the field they care about. No
+   `RewriteShape` helper, no case-by-case dispatch, no
+   coupled case table. Smaller surface area reduces the
+   chance of a bug where a new variant in one dimension
+   forgets to preserve the other.
+3. **Minimal substrate delta.** 2e is one new field on an
+   existing record + one new small record type. 2b is a
+   full restructure of `BranchPattern`. The smaller delta
+   ports easier and preserves more of the existing
+   infrastructure.
+
+**On `PayloadBinding.binding_name`.** The `binding_name` field
+is load-bearing during lowering — the lowerer has to insert
+the name into the arm-local scope so subsequent field accesses
+inside the arm body (`p.first` inside `Right(p) => p.first`)
+resolve to the payload port. Post-lowering, the name is
+carry-forward: inference and type-checking consume
+`payload_port` (a PortId), not the name. `emit_rust` may use
+the name for readable generated output (Rust match arms like
+`Right(p) => ...` with `p` as the variable name). This is the
+same class as `SourceSpan` on every Behavior — source-level
+information preserved for non-semantic reasons. Documented
+explicitly so future readers don't treat it as a hidden
+semantic channel.
+
+**Prereq 2 codifies this as the implementation target.** The
+re-implementation (replacing #453's 4-variant BranchPattern
+approach) leaves `BranchPattern` at 2 variants
+(`Unresolved`/`Resolved`), adds `binding: Option<PayloadBinding>`
+to `Path`, adds a small `PayloadBinding` record type, updates
+`lower_expr`'s match arm to populate the binding field when
+the pattern is a `VariantWith`, and leaves `infer`'s
+`resolve_branch_patterns` pass touching only `path.pattern`
+(no `RewriteShape` helper needed). emit_rust grows a
+branch-arm rendering path that reads the binding if present.
+Tests from PR #453 port over largely unchanged — assertions
+check `path.binding` for the payload-binding arms and
+`path.pattern` for the variant discrimination.
+
+**Non-goal.** Multi-positional and record-shaped variant
+payloads (`Right(Int, Int)`, `Wrap { inner: Pair }`) remain
+out of scope for Prereq 2, same as in #453. The
+single-positional-unwrap shape is the minimum that unblocks
+lens migration.
+
+---
+
 ## §4. The mechanism, step-by-step
 
 How a `.dag` lens becomes a running check over a `Dag` value at
@@ -1567,28 +1991,67 @@ called as `apply(3, negate)`). **Blocker for Prereq 4.**
 resolve `SurfaceExpr::Path` against local-variable Declarations
 and walk to the named field. Today the parser already produces
 `Path` for `a.b.c`; only lowering for user-code expression
-position needs the new path. No parser change, no substrate
-change — pure lowering extension. **Independent of other
-prereqs, can land first.**
+position needs the new path. **Decision locked as 1a per
+§3.6:** add a new `TransformTarget::FieldProject { parent_type:
+DeclarationId, field_label: String }` variant. Field access
+lowers to a `Transform` with this target, not a synthesized
+accessor declaration. Requires a §9 receipt for the substrate
+extension and a §8.10 4-pattern check (both completed in §3.6).
+**Independent of other prereqs, can land first. Supersedes
+PR #453's synthesized-accessor attempt.**
 
-- [ ] Lowering extension in `lower_expr`
+- [x] §3.6 decision committed (1a — locked)
+- [ ] `TransformTarget::FieldProject` variant added to `dag.rs`
+- [ ] Lowering extension in `lower_expr` emits the new variant
+- [ ] `substrate.dag`'s `FieldAccessor` marker deleted (no
+      longer needed — field identity is carried by the typed
+      variant)
+- [ ] `emit_rust` dispatches `FieldProject` to the parent type's
+      TypeRealization's FieldBinding entry
 - [ ] Test: `fn first(pair: (Int, Int)) -> Int = pair.0` (or
       similar record access) compiles and runs
 - [ ] Test: field access that resolves to a type-mismatched or
       nonexistent field fails with a fail-closed diagnostic
       pointing at the specific field name
+- [ ] Test: same-type fields (`{ first: Int, second: Int }`)
+      produce distinguishable Transforms — regression test
+      from PR #453 ports over with the assertion shape updated
+      to check the typed variant
 
 **Prereq 2 — Match-with-payload-binding.** Add
 `SurfacePattern::VariantWith { name, binding, span }` variant
 and parser rule. Extend lowering so a match arm
 `Bind(bind) => body` binds `bind` as a local in `body`'s scope,
-pointing at the variant's payload port.
+pointing at the variant's payload port. **Decision locked as
+2e per §3.7:** `BranchPattern` stays at 2 variants
+(`Unresolved`/`Resolved`), unchanged. Add `binding:
+Option<PayloadBinding>` field to `Path`, with a small new
+`PayloadBinding { binding_name: String, payload_port: PortId }`
+record type. Role separation: `BranchPattern` answers
+discrimination, `Path.binding` answers extraction. Decoupled
+rewrite (infer touches only `path.pattern`, leaves
+`path.binding` alone) and decoupled emit dispatch. **Supersedes
+PR #453's 4-variant BranchPattern attempt.**
 
+- [x] §3.7 decision committed (2e — locked)
 - [ ] `SurfacePattern::VariantWith` added to parse.rs
 - [ ] Parser accepts `match b { Bind(bind) => …, … }`
-- [ ] Lowering wires the local binding into the path's body scope
+- [ ] `PayloadBinding` struct added to `dag.rs`
+- [ ] `Path` grows `binding: Option<PayloadBinding>` field
+- [ ] `BranchPattern` left unchanged at 2 variants
+- [ ] Lowering populates `path.binding` when the pattern is
+      `VariantWith`, types the payload port from the variant's
+      Disj child
+- [ ] Infer's `resolve_branch_patterns` touches only
+      `path.pattern` — no `RewriteShape` helper
+- [ ] `emit_rust` reads `path.pattern` for discrimination and
+      `path.binding` for extraction as two orthogonal reads
 - [ ] Test: pattern match that captures a variant payload
       compiles and runs
+- [ ] Test: `payload_binding.binding_name` documented as
+      carry-forward — consumed by lowering for scope
+      insertion, used by emit_rust for readable output, not
+      consumed by inference
 
 **Prereq 3 — Lambda parser + lowering.** Add `SurfaceExpr::Lambda
 { params, body, span }`. Parser rule: `|ident (, ident)*| body`
