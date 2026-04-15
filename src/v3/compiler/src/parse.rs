@@ -380,8 +380,8 @@ pub enum SurfaceExpr {
     /// (top-level lookup followed by Conj-child walk by label).
     /// At M1(3) PR-B-unwind only `lower_record_to_structural`
     /// resolves Path values — it accepts them as field values when
-    /// the declared field type is the `Declaration` sentinel from
-    /// `dsl/std/v3_l1.dag`. User-code expression position lowers
+    /// the declared field type is the `DeclarationRef` sentinel from
+    /// `src/v3/spec/v3_l1.dag`. User-code expression position lowers
     /// Path through `lower_expr` with a fail-closed diagnostic
     /// (no semantics yet beyond the realization spec use case).
     Path {

@@ -1167,8 +1167,8 @@ fn lower_record_to_structural(
     //      declared field type. Lowers to `FieldValue::Literal`.
     //
     //   2. A bare identifier (or dotted path) whose declared field
-    //      type walks to the `Declaration` sentinel marker from
-    //      `dsl/std/v3_l1.dag`. Lowers to `FieldValue::Reference`
+    //      type walks to the `DeclarationRef` sentinel marker from
+    //      `src/v3/spec/v3_l1.dag`. Lowers to `FieldValue::Reference`
     //      with the resolved DeclarationId. This is what unblocks
     //      typed declaration references in target language spec
     //      files (e.g. rust.dag's `target: Int` → reference to the
@@ -1186,7 +1186,7 @@ fn lower_record_to_structural(
     // level declaration across all fixtures, so `declaration_by_name`
     // works). Downstream consumers read the cached typed handle via
     // `dag.declaration_ref_marker()`.
-    let declaration_marker_id = dag.declaration_by_name("Declaration").map(|d| d.id);
+    let declaration_marker_id = dag.declaration_by_name("DeclarationRef").map(|d| d.id);
 
     // Determine which realization category (if any) this data
     // item belongs to. Used below to narrow the acceptable shape
@@ -1204,7 +1204,7 @@ fn lower_record_to_structural(
             .find(|f| f.name == *type_label)
             .expect("checked above");
         // Branch on whether the declared field type is the
-        // Declaration sentinel — that decides which value shapes
+        // DeclarationRef sentinel — that decides which value shapes
         // are acceptable.
         let field_type_is_declaration = declaration_marker_id
             .map(|m| walks_to(dag, *type_field_id, m))
@@ -1224,7 +1224,7 @@ fn lower_record_to_structural(
                         dag,
                         Diagnostic::ResolveError {
                             name: format!(
-                                "data `{data_name}` field `{type_label}` is declared as `Declaration` but its value is not a resolvable identifier or dotted path"
+                                "data `{data_name}` field `{type_label}` is declared as `DeclarationRef` but its value is not a resolvable identifier or dotted path"
                             ),
                             span: record_field.span.clone(),
                         },
@@ -1237,7 +1237,7 @@ fn lower_record_to_structural(
             // (TypeRealization / OperatorRealization /
             // BehaviorRealization), the resolved DeclarationId
             // must also satisfy a per-(category, field_label)
-            // structural constraint. The substrate's `Declaration`
+            // structural constraint. The `DeclarationRef`
             // sentinel admits any declaration; this check is the
             // lower-time narrowing that PR-B-unwind R1 needed to
             // make bad realization wirings (e.g.
@@ -1274,7 +1274,7 @@ fn lower_record_to_structural(
                         dag,
                         Diagnostic::ResolveError {
                             name: format!(
-                                "data `{data_name}` field `{type_label}` must be a scalar literal (its declared type is not the `Declaration` sentinel); nested records, list literals, and computed expressions remain class-5 gap #3 follow-ups"
+                                "data `{data_name}` field `{type_label}` must be a scalar literal (its declared type is not the `DeclarationRef` sentinel); nested records, list literals, and computed expressions remain class-5 gap #3 follow-ups"
                             ),
                             span: record_field.span.clone(),
                         },
@@ -1409,11 +1409,11 @@ fn realization_category_for_meta(
 /// constraint. Returns `Ok(())` on success or `Err(reason)` with
 /// a human-readable explanation of the violation.
 ///
-/// **The constraints encode the "Declaration sentinel is too
+/// **The constraints encode the "DeclarationRef sentinel is too
 /// permissive" narrowing.** PR #445's R1 review on the unwind
 /// flagged that `BehaviorRealization { target: Int }` would
 /// type-check at the substrate level because the field type is
-/// `Declaration` (the universal sentinel). The fully structural
+/// `DeclarationRef` (the universal sentinel). The fully structural
 /// fix (typed marker hierarchy via `inhabits` syntax or `where`
 /// clauses) requires parser/lower extensions that are out of
 /// scope for the PR-B-unwind round; this function is the
@@ -1963,7 +1963,7 @@ fn lower_expr(
         SurfaceExpr::Path { span, .. } => {
             // Dotted-path expressions (`OrderedRing.add`) are
             // recognized only inside record-literal field values
-            // declared as the `Declaration` sentinel meta-type
+            // declared as the `DeclarationRef` sentinel meta-type
             // (see `lower_record_to_structural`). User-code
             // expression position has no semantics for them yet —
             // resolving a dotted name to a port type, value, or
@@ -1973,7 +1973,7 @@ fn lower_expr(
             dag.mark_unresolved(
                 port,
                 Diagnostic::ResolveError {
-                    name: "dotted path expressions are not yet supported in user-code expression position; at M1(3) they are only accepted as record-literal field values whose declared type is the `Declaration` sentinel meta-type"
+                    name: "dotted path expressions are not yet supported in user-code expression position; at M1(3) they are only accepted as record-literal field values whose declared type is the `DeclarationRef` sentinel meta-type"
                         .to_string(),
                     span: span.clone(),
                 },
