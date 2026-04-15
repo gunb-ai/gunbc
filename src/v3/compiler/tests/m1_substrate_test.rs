@@ -1530,3 +1530,186 @@ fn m1_3_substrate_reflection_structural_types_loaded() {
         );
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Prereq 1 — Field-access lowering.
+// Per docs/substrate-reflection-design.md §11 Prereq 1:
+//
+//   > Extend `lower_expr` to resolve `SurfaceExpr::Path` against
+//   > local-variable Declarations and walk to the named field. Today
+//   > the parser already produces `Path` for `a.b.c`; only lowering
+//   > for user-code expression position needs the new path. No parser
+//   > change, no substrate change — pure lowering extension.
+//
+// The tests below assert:
+//   1. A single-field access compiles cleanly and produces a Transform
+//      with a synthetic field-accessor declaration as its target.
+//   2. A missing field name fails-closed with a diagnostic naming the
+//      specific field and the containing type.
+//   3. Field access on a non-record type fails-closed with a diagnostic.
+//   4. A path whose head is not a local variable preserves the
+//      pre-Prereq-1 fail-closed behavior for module-qualified paths.
+//
+// Running the compiled lens is NOT a Prereq 1 concern — emit_rust's
+// field-access dispatch is part of the reflection PR (via the
+// TypeRealization + FieldBinding extension in rust.dag). These tests
+// verify the Dag shape directly.
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn prereq1_single_field_access_on_param_compiles() {
+    // `fn get_first(p: Pair) -> Int = p.first` — the canonical
+    // shape the Prereq 1 acceptance criterion describes. A record
+    // parameter, a bare field access in return position.
+    let src = "\
+type Pair { first: Int, second: Int }
+fn get_first(p: Pair) -> Int = p.first
+";
+    let dag = compile_any(src, "field_access.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "field access should compile cleanly, got diagnostics: {:?}",
+        dag.diagnostics()
+    );
+
+    // Find the get_first Bind and verify its body is a Transform.
+    let get_first_bind = dag
+        .nodes()
+        .iter()
+        .find_map(|b| match b {
+            Behavior::Bind(bind) if bind.name == "get_first" => Some(bind),
+            _ => None,
+        })
+        .expect("get_first Bind must exist after lowering");
+    assert_eq!(
+        get_first_bind.params.len(),
+        1,
+        "get_first should have one parameter"
+    );
+
+    let producer = dag
+        .port(get_first_bind.value)
+        .produced_by
+        .expect("get_first body should have a producer");
+    let transform = match dag.node(producer) {
+        Behavior::Transform(t) => t,
+        other => panic!("get_first body should be a Transform, got {:?}", other),
+    };
+    assert_eq!(
+        transform.inputs.len(),
+        1,
+        "field access Transform takes one input (the parent record)"
+    );
+    assert_eq!(
+        transform.inputs[0], get_first_bind.params[0],
+        "field access input should be the parameter port"
+    );
+
+    // The Transform's target is a synthetic Arrow declaration
+    // whose inputs/output encode (Pair) -> Int with a Pending
+    // body.
+    let target_decl = match transform.target {
+        TransformTarget::Callable(id) => id,
+        other => panic!(
+            "field access should use Callable target, got {:?}",
+            other
+        ),
+    };
+    let target_decl_ref = dag.declaration(target_decl);
+    assert!(
+        target_decl_ref.name.is_none(),
+        "synthetic field accessor should be anonymous"
+    );
+    let (inputs, output, body) = match &target_decl_ref.connective {
+        TypeConnective::Arrow {
+            inputs,
+            output,
+            body,
+        } => (inputs, *output, body),
+        other => panic!(
+            "field accessor should be an Arrow, got {:?}",
+            other
+        ),
+    };
+    assert_eq!(inputs.len(), 1, "field accessor Arrow takes one input");
+    assert!(
+        matches!(body, ArrowBody::Pending),
+        "field accessor body should be Pending at M1(3), got {:?}",
+        body
+    );
+
+    // The output type of the Arrow must be Int (the `first`
+    // field's declared type).
+    let int_decl = dag
+        .declaration_by_name("Int")
+        .expect("Int must be declared in the bootstrap")
+        .id;
+    assert_eq!(
+        output, int_decl,
+        "field `first` has type Int, so the accessor Arrow's output should be Int"
+    );
+}
+
+#[test]
+fn prereq1_missing_field_fails_closed() {
+    // `p.nonexistent` on a Pair should fail-closed with a
+    // diagnostic naming the field and the containing type.
+    let src = "\
+type Pair { first: Int, second: Int }
+fn get_missing(p: Pair) -> Int = p.nonexistent
+";
+    let dag = compile_any(src, "missing_field.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "missing field access should fail-closed"
+    );
+    let diags_str = format!("{:?}", dag.diagnostics());
+    assert!(
+        diags_str.contains("nonexistent") && diags_str.contains("Pair"),
+        "expected a diagnostic naming `nonexistent` and `Pair`, got {diags_str}"
+    );
+}
+
+#[test]
+fn prereq1_non_record_field_access_fails_closed() {
+    // `n.foo` on an Int should fail-closed — Int is not a record,
+    // so field access is structurally invalid.
+    let src = "\
+fn get_field(n: Int) -> Int = n.foo
+";
+    let dag = compile_any(src, "non_record.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "field access on a non-record should fail-closed"
+    );
+    let diags_str = format!("{:?}", dag.diagnostics());
+    assert!(
+        diags_str.contains("not a record")
+            || diags_str.contains("has no field")
+            || diags_str.contains("template-parameterized"),
+        "expected a diagnostic about non-record field access, got {diags_str}"
+    );
+}
+
+#[test]
+fn prereq1_non_local_path_preserves_pre_prereq1_diagnostic() {
+    // A Path whose head is not a local variable should still
+    // fail-closed with the "module-qualified path resolution is
+    // a follow-up" message. Preserves pre-Prereq-1 behavior for
+    // dotted paths that refer to declarations, not local
+    // variables.
+    let src = "\
+fn use_path() -> Int = SomeType.field
+";
+    let dag = compile_any(src, "non_local.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "non-local path should fail-closed"
+    );
+    let diags_str = format!("{:?}", dag.diagnostics());
+    assert!(
+        diags_str.contains("does not start with a local variable")
+            || diags_str.contains("module-qualified"),
+        "expected a non-local path diagnostic, got {diags_str}"
+    );
+}

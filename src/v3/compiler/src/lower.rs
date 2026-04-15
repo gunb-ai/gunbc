@@ -1984,27 +1984,229 @@ fn lower_expr(
             );
             port
         }
-        SurfaceExpr::Path { span, .. } => {
-            // Dotted-path expressions (`OrderedRing.add`) are
-            // recognized only inside record-literal field values
-            // declared as the `DeclarationRef` sentinel meta-type
-            // (see `lower_record_to_structural`). User-code
-            // expression position has no semantics for them yet —
-            // resolving a dotted name to a port type, value, or
-            // function call needs more context than M1(3) carries.
-            // Fail-closed with a clean diagnostic.
-            let port = dag.alloc_port(None);
+        SurfaceExpr::Path { segments, span } => {
+            // Field access on a local variable. Per
+            // docs/substrate-reflection-design.md §11 Prereq 1:
+            // the parser already produces Path for `a.b.c`; this
+            // arm lowers the user-code case where `a` is a local
+            // variable and `.b.c` walks structural fields on the
+            // variable's record type.
+            //
+            // **Resolution order** (matches §11's "resolve against
+            // local-variable Declarations and walk to the named
+            // field" phrasing):
+            //
+            //   1. If the head segment is a local variable (i.e.,
+            //      in `scope`), treat the path as a field-access
+            //      chain against that port's type.
+            //   2. Otherwise, fail-closed with the pre-Prereq-1
+            //      diagnostic — dotted paths to module-qualified
+            //      declarations remain unsupported in user-code
+            //      expression position. That path has its own
+            //      prerequisite (module-qualified name resolution
+            //      at lower time) tracked separately.
+            //
+            // **Scope limitation** (to be lifted in follow-ups):
+            // field access currently requires the head port's
+            // type to be set at lower time. Parameter ports have
+            // types set by the fn signature, so they work.
+            // Let-bound ports whose types depend on expression
+            // inference fail gracefully with a diagnostic
+            // naming the limitation.
+            //
+            // **Template-parameterized records** (e.g.
+            // `p: Pair<Int>`) are also deferred — the walk
+            // below only follows a direct `Conj` connective.
+            // Walking through `Instantiation` to the template's
+            // fields is a follow-up that composes with
+            // substitution resolution.
+            let Some((head, rest)) = segments.split_first() else {
+                // Parser always produces at least one segment,
+                // but stay defensive.
+                let port = dag.alloc_port(None);
+                dag.mark_unresolved(
+                    port,
+                    Diagnostic::ResolveError {
+                        name: "empty path expression".to_string(),
+                        span: span.clone(),
+                    },
+                );
+                return port;
+            };
+
+            match scope.get(head) {
+                Some(&head_port) if !rest.is_empty() => {
+                    lower_field_chain(
+                        dag,
+                        head,
+                        head_port,
+                        rest,
+                        span,
+                    )
+                }
+                Some(&head_port) => {
+                    // No trailing segments — the path is just a
+                    // bare identifier. The parser shouldn't
+                    // normally produce a Path with one segment
+                    // (Var is the normal form), but if it does,
+                    // return the local port unchanged.
+                    head_port
+                }
+                None => {
+                    let port = dag.alloc_port(None);
+                    dag.mark_unresolved(
+                        port,
+                        Diagnostic::ResolveError {
+                            name: format!(
+                                "dotted path `{}` does not start with a local variable in scope; module-qualified path resolution is a follow-up",
+                                segments.join(".")
+                            ),
+                            span: span.clone(),
+                        },
+                    );
+                    port
+                }
+            }
+        }
+    }
+}
+
+/// Lower a chain of `.field` accesses starting from a local-variable
+/// port. Emits one Transform per segment — each carries a synthetic
+/// "field accessor" declaration as its target, with the declaration's
+/// Arrow shape matching `(parent_type) -> field_type` and a
+/// `Pending` body (no concrete realization at M1(3); the
+/// reflection PR wires emit-time rendering via the TypeRealization +
+/// FieldBinding extension in `rust.dag`). Inference accepts the
+/// Pending body without walking it, so type checking flows through
+/// the declared input/output edges.
+///
+/// **Prereq 1 scope** per
+/// docs/substrate-reflection-design.md §11:
+///   - Head port must have a resolved TypeShape (parameter ports
+///     qualify; let-bound ports do not at M1(3)).
+///   - Each hop's type must be a direct `Conj` declaration — no
+///     Instantiation walk, no Atom. Template-parameterized
+///     records are a follow-up that composes substitution
+///     resolution with this walk.
+///   - Every field lookup must name an existing Conj child;
+///     missing fields fail-closed with a diagnostic naming the
+///     specific field and type.
+///
+/// The returned port carries the final field's TypeShape so
+/// downstream consumers (type-checking, emission) see the field
+/// value as an ordinary typed port.
+fn lower_field_chain(
+    dag: &mut Dag,
+    head_name: &str,
+    head_port: PortId,
+    rest: &[String],
+    span: &SourceSpan,
+) -> PortId {
+    // Start from the head port's type. Inference doesn't run at
+    // this phase, so the port's TypeShape must already be set —
+    // which it is for parameter ports (see `lower_fn_item` step 1)
+    // and for literal ports (they carry Primitive shapes set by
+    // `lower_expr`'s Literal arm).
+    let Some(head_type) = dag.port(head_port).value_type().copied() else {
+        let err_port = dag.alloc_port(None);
+        dag.mark_unresolved(
+            err_port,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "cannot resolve field access `{}.{}` — local `{head_name}` has no type at lower time (let-bound expression types are a follow-up)",
+                    head_name,
+                    rest.join(".")
+                ),
+                span: span.clone(),
+            },
+        );
+        return err_port;
+    };
+
+    let mut current_port = head_port;
+    let mut current_decl_id = head_type.declaration;
+
+    for segment_name in rest {
+        // Look up the segment as a Conj field on the current
+        // declaration. Fail-closed on non-Conj connectives and on
+        // missing field names; each diagnostic names the specific
+        // field so the user can correlate to the source.
+        let current_name = dag
+            .declaration(current_decl_id)
+            .name
+            .clone()
+            .unwrap_or_else(|| "(anonymous)".to_string());
+
+        let field_type_decl = match &dag.declaration(current_decl_id).connective {
+            TypeConnective::Conj { children } => {
+                children.iter().find(|f| &f.label == segment_name).map(|f| f.ty)
+            }
+            _ => None,
+        };
+
+        let Some(field_type_decl) = field_type_decl else {
+            let err_port = dag.alloc_port(None);
+            let reason = match &dag.declaration(current_decl_id).connective {
+                TypeConnective::Conj { .. } => format!(
+                    "type `{current_name}` has no field named `{segment_name}`"
+                ),
+                TypeConnective::Instantiation { .. } => format!(
+                    "field access through template-parameterized record `{current_name}` is a follow-up — only direct record types are supported at Prereq 1 scope"
+                ),
+                _ => format!(
+                    "type `{current_name}` is not a record; `.{segment_name}` is not a valid field access"
+                ),
+            };
             dag.mark_unresolved(
-                port,
+                err_port,
                 Diagnostic::ResolveError {
-                    name: "dotted path expressions are not yet supported in user-code expression position; at M1(3) they are only accepted as record-literal field values whose declared type is the `DeclarationRef` sentinel meta-type"
-                        .to_string(),
+                    name: reason,
                     span: span.clone(),
                 },
             );
-            port
-        }
+            return err_port;
+        };
+
+        // Allocate the synthetic field accessor declaration.
+        // Anonymous (name: None), Arrow shape (parent → field),
+        // Pending body (no concrete realization at M1(3); the
+        // reflection PR wires emit_rust's FieldBinding dispatch).
+        let accessor_decl = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: accessor_decl,
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![current_decl_id],
+                output: field_type_decl,
+                body: ArrowBody::Pending,
+            },
+            type_params: Vec::new(),
+            meta_tag: None,
+            inhabits: None,
+            value_body: None,
+            span: span.clone(),
+        });
+
+        // Emit the Transform. The output port carries the field's
+        // type so the next hop in the chain (if any) reads the
+        // correct TypeShape.
+        let transform_id = dag.alloc_node_id();
+        let output = dag.alloc_port(Some(transform_id));
+        dag.set_port_type(output, TypeShape::new(field_type_decl));
+        dag.push_node(Behavior::Transform(TransformNode {
+            id: transform_id,
+            target: TransformTarget::Callable(accessor_decl),
+            inputs: vec![current_port],
+            output,
+            span: span.clone(),
+        }));
+
+        current_port = output;
+        current_decl_id = field_type_decl;
     }
+
+    current_port
 }
 
 fn producer_of(dag: &Dag, port: PortId) -> Option<NodeId> {
