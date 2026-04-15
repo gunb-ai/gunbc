@@ -243,10 +243,28 @@ type Declaration {
 // abstract shape.
 
 // Per-Branch-arm pattern. Matches Rust's `BranchPattern` phase
-// coproduct.
+// coproduct. Four variants: two bare forms (`UnresolvedVariant`
+// → `ResolvedVariant`) for `match x { Right => ... }` arms, and
+// two payload-binding forms (`UnresolvedVariantWith` →
+// `ResolvedVariantWith`) for `match x { Right(p) => ... }` arms
+// introduced by Prereq 2 (docs/substrate-reflection-design.md
+// §11). Both unresolved→resolved rewrites happen in
+// `infer::resolve_branch_patterns`; the unresolved forms are
+// scaffold shapes that must be dissolved by the end of infer.
 type BranchPattern
   = UnresolvedVariant { name: String, span: SourceSpan }
   | ResolvedVariant(DeclarationId)
+  | UnresolvedVariantWith {
+      name: String
+      binding_name: String
+      payload_port: PortId
+      span: SourceSpan
+    }
+  | ResolvedVariantWith {
+      decl: DeclarationId
+      binding_name: String
+      payload_port: PortId
+    }
 
 // Path through a Branch. Named `BranchPath` here to avoid the
 // collision with `dsl/std/types.dag`'s `Path = String where

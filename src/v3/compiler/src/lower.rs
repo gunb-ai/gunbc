@@ -2037,12 +2037,32 @@ fn lower_expr(
                                 }?;
                                 // Unwrap the single-positional Conj
                                 // wrapping. If the variant has
-                                // exactly one payload child, bind
-                                // to that child's type. Otherwise
-                                // return None and let the fallback
-                                // diagnostic fire.
+                                // exactly one payload child AND
+                                // that child's label is the
+                                // synthetic positional tag `_0`
+                                // (see `format!("_{idx}")` in the
+                                // VariantPayload::Positional arm
+                                // of `type_to_declaration_id`),
+                                // bind to that child's type.
+                                // Single-field record variants
+                                // (e.g. `Wrap { inner: Pair }`)
+                                // also produce a single-child Conj
+                                // but with a user-authored label,
+                                // and must NOT unwrap: binding
+                                // `Wrap(w)` to `Pair` would drop
+                                // the record-layer semantics the
+                                // user wrote. The label check is
+                                // what keeps VariantWith honest to
+                                // the "positional-only at Prereq 2
+                                // scope" commitment; record-shaped
+                                // payloads fall through to the
+                                // diagnostic below and surface as
+                                // a follow-up.
                                 match &dag.declaration(variant_decl_id).connective {
-                                    TypeConnective::Conj { children } if children.len() == 1 => {
+                                    TypeConnective::Conj { children }
+                                        if children.len() == 1
+                                            && children[0].label == "_0" =>
+                                    {
                                         Some(children[0].ty)
                                     }
                                     _ => None,

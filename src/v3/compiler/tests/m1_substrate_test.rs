@@ -1913,6 +1913,39 @@ fn pick(m: Mixed) -> Int =
 }
 
 #[test]
+fn prereq2_single_field_record_variant_rejects_unwrap() {
+    // A record variant with exactly one field (e.g.
+    // `Wrap { inner: Pair }`) produces a Conj with
+    // `children.len() == 1` under the hood, just like a
+    // positional `Right(Pair)`. Prereq 2 only supports
+    // positional payloads, so a VariantWith unwrap of a
+    // single-field record variant must fail-closed — binding
+    // `Wrap(w)` to the inner `Pair` would silently drop the
+    // record-layer label the user wrote. The unwrap check
+    // therefore requires the child label to be the synthetic
+    // positional tag `_0`, not any one-child Conj.
+    let src = "\
+type Pair { first: Int, second: Int }
+type Wrapped = Wrap { inner: Pair } | Other
+fn unwrap_record(w: Wrapped) -> Int =
+  match w {
+    Wrap(x) => x.first
+    Other => 0
+  }
+";
+    let dag = compile_any(src, "record_variant.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "record-shaped variant should fail-closed under VariantWith"
+    );
+    let diags = format!("{:?}", dag.diagnostics());
+    assert!(
+        diags.contains("single-positional"),
+        "expected 'single-positional' diagnostic for record variant, got {diags}"
+    );
+}
+
+#[test]
 fn prereq1_missing_field_fails_closed() {
     // `p.nonexistent` on a Pair should fail-closed with a
     // diagnostic naming the field and the containing type.
