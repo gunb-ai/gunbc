@@ -87,6 +87,9 @@ pub fn infer(dag: &mut Dag) {
         if resolve_branch_payload_bindings(dag) {
             changed = true;
         }
+        if resolve_field_project_targets(dag) {
+            changed = true;
+        }
         if !changed {
             break;
         }
@@ -639,8 +642,11 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
     // `resolve_arrow` through any Instantiation / ResolvedIdentifier
     // chain to recover the concrete Arrow signature.
     let signature = match &t.target {
-        TransformTarget::FieldProject { field_label } => {
-            return decide_field_project(dag, t, field_label);
+        TransformTarget::FieldProject {
+            field_label,
+            field_child,
+        } => {
+            return decide_field_project(dag, t, field_label, *field_child);
         }
         TransformTarget::Operator(op_kind) => {
             let lhs_type = match t.inputs.first() {
@@ -975,51 +981,60 @@ fn resolve_payload_binding_type(
     })
 }
 
-fn decide_field_project(
+enum FieldProjectResolution {
+    Retry,
+    Fail(Diagnostic),
+    Resolved {
+        field_child: DeclarationId,
+        output_ty: TypeShape,
+    },
+}
+
+fn resolve_field_project(
     dag: &Dag,
     t: &TransformNode,
     field_label: &str,
-) -> Decision {
+) -> FieldProjectResolution {
     if t.inputs.len() != 1 {
-        return Decision::Fail(
-            t.output,
-            Diagnostic::ArityMismatch {
-                function: format!(".{field_label}"),
-                expected: 1,
-                actual: t.inputs.len(),
-                span: t.span.clone(),
-            },
-        );
+        return FieldProjectResolution::Fail(Diagnostic::ArityMismatch {
+            function: format!(".{field_label}"),
+            expected: 1,
+            actual: t.inputs.len(),
+            span: t.span.clone(),
+        });
     }
 
     let input_ty = match dag.port(t.inputs[0]).state() {
-        PortState::Uninferred => return Decision::Retry,
-        PortState::Unresolved => {
-            return Decision::Fail(
-                t.output,
-                Diagnostic::ResolveError {
-                    name: format!("(upstream failure in field `{field_label}`)"),
-                    span: t.span.clone(),
-                },
-            );
-        }
+        PortState::Uninferred => return FieldProjectResolution::Retry,
+        PortState::Unresolved => return FieldProjectResolution::Fail(Diagnostic::ResolveError {
+            name: format!("(upstream failure in field `{field_label}`)"),
+            span: t.span.clone(),
+        }),
         PortState::Resolved(ty) => *ty,
     };
+
+    if let TransformTarget::FieldProject {
+        field_child: Some(field_child),
+        ..
+    } = &t.target
+    {
+        return FieldProjectResolution::Resolved {
+            field_child: *field_child,
+            output_ty: TypeShape::new(*field_child),
+        };
+    }
 
     let mut subst = SubstStack::new();
     let Some(actual_conj_id) =
         walk_to_conj_decl_with_subst(dag, input_ty.declaration, &mut subst)
     else {
-        return Decision::Fail(
-            t.output,
-            Diagnostic::ResolveError {
-                name: format!(
-                    "field `{field_label}` cannot be projected from `{}` because it does not walk to a Conj type",
-                    target_display_name(dag, input_ty.declaration),
-                ),
-                span: t.span.clone(),
-            },
-        );
+        return FieldProjectResolution::Fail(Diagnostic::ResolveError {
+            name: format!(
+                "field `{field_label}` cannot be projected from `{}` because it does not walk to a Conj type",
+                target_display_name(dag, input_ty.declaration),
+            ),
+            span: t.span.clone(),
+        });
     };
 
     let children = match &dag.declaration(actual_conj_id).connective {
@@ -1031,31 +1046,84 @@ fn decide_field_project(
         .find(|field| field.label == field_label)
         .map(|field| field.ty)
     else {
-        return Decision::Fail(
-            t.output,
-            Diagnostic::ResolveError {
-                name: format!(
-                    "field `{field_label}` does not exist on `{}`",
-                    target_display_name(dag, input_ty.declaration),
-                ),
-                span: t.span.clone(),
-            },
-        );
+        return FieldProjectResolution::Fail(Diagnostic::ResolveError {
+            name: format!(
+                "field `{field_label}` does not exist on `{}`",
+                target_display_name(dag, input_ty.declaration),
+            ),
+            span: t.span.clone(),
+        });
     };
     let Some(output_ty) = walk_to_type_shape(dag, field_decl_id, &subst, 0) else {
-        return Decision::Fail(
-            t.output,
-            Diagnostic::ResolveError {
-                name: format!(
-                    "field `{field_label}` on `{}` does not resolve to a port type",
-                    target_display_name(dag, input_ty.declaration),
-                ),
-                span: t.span.clone(),
-            },
-        );
+        return FieldProjectResolution::Fail(Diagnostic::ResolveError {
+            name: format!(
+                "field `{field_label}` on `{}` does not resolve to a port type",
+                target_display_name(dag, input_ty.declaration),
+            ),
+            span: t.span.clone(),
+        });
     };
 
-    Decision::Set(t.output, output_ty)
+    FieldProjectResolution::Resolved {
+        field_child: output_ty.declaration,
+        output_ty,
+    }
+}
+
+fn decide_field_project(
+    dag: &Dag,
+    t: &TransformNode,
+    field_label: &str,
+    _field_child: Option<DeclarationId>,
+) -> Decision {
+    match resolve_field_project(dag, t, field_label) {
+        FieldProjectResolution::Retry => Decision::Retry,
+        FieldProjectResolution::Fail(diag) => Decision::Fail(t.output, diag),
+        FieldProjectResolution::Resolved { output_ty, .. } => {
+            Decision::Set(t.output, output_ty)
+        }
+    }
+}
+
+fn resolve_field_project_targets(dag: &mut Dag) -> bool {
+    let mut rewrites: Vec<(usize, DeclarationId)> = Vec::new();
+    for (node_index, node) in dag.nodes().iter().enumerate() {
+        let Behavior::Transform(t) = node else {
+            continue;
+        };
+        let TransformTarget::FieldProject {
+            field_label,
+            field_child: None,
+        } = &t.target
+        else {
+            continue;
+        };
+        let FieldProjectResolution::Resolved { field_child, .. } =
+            resolve_field_project(dag, t, field_label)
+        else {
+            continue;
+        };
+        rewrites.push((node_index, field_child));
+    }
+
+    let mut changed = false;
+    for (node_index, field_child) in rewrites {
+        let Behavior::Transform(t) = &mut dag.nodes_mut()[node_index] else {
+            continue;
+        };
+        let TransformTarget::FieldProject {
+            field_child: slot,
+            ..
+        } = &mut t.target
+        else {
+            continue;
+        };
+        if slot.is_none() {
+            *slot = Some(field_child);
+            changed = true;
+        }
+    }
+    changed
 }
 
 const WALK_DEPTH_LIMIT: usize = 32;
@@ -1431,7 +1499,7 @@ fn target_display_name(dag: &Dag, target: DeclarationId) -> String {
 fn transform_target_display_name(dag: &Dag, target: &TransformTarget) -> String {
     match target {
         TransformTarget::Callable(id) => target_display_name(dag, *id),
-        TransformTarget::FieldProject { field_label } => format!(".{field_label}"),
+        TransformTarget::FieldProject { field_label, .. } => format!(".{field_label}"),
         TransformTarget::Operator(op_kind) => op_kind.symbol().to_string(),
     }
 }
