@@ -668,6 +668,50 @@ fn bad(s: String) -> Int = match s { Plus => 0, Minus => 1 }
 }
 
 #[test]
+fn m18_r11_non_exhaustive_match_is_rejected() {
+    // M1(2.8) R11: coproduct elimination must be exhaustive. A
+    // match that omits a variant of the scrutinee's Disj fails
+    // fail-closed.
+    let src = "\
+type Sign = Plus | Minus
+fn bad(s: Sign) -> Int = match s { Plus => 0 }
+";
+    let dag = compile_any(src, "non_exhaustive.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "non-exhaustive match must emit a diagnostic (missing Minus arm)"
+    );
+}
+
+#[test]
+fn m18_r11_duplicate_match_arm_is_rejected() {
+    // M1(2.8) R11: each variant of the scrutinee's Disj must
+    // appear in at most one arm. Duplicated arms are fail-closed.
+    let src = "\
+type Sign = Plus | Minus
+fn bad(s: Sign) -> Int = match s { Plus => 0, Plus => 1, Minus => 2 }
+";
+    let dag = compile_any(src, "duplicate_arm.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "duplicate match arm must emit a diagnostic"
+    );
+}
+
+#[test]
+fn m18_r11_three_variant_exhaustive_match_compiles() {
+    // R11 sanity: a match covering all three variants of a
+    // three-constructor sum type compiles cleanly. This also
+    // exercises the coverage check on a non-boolean sum size.
+    let src = "\
+type Ternary = Low | Mid | High
+fn level(t: Ternary) -> Int = match t { Low => 0, Mid => 1, High => 2 }
+";
+    let dag = compile_to_dag(src, "ternary.v3").expect("compiles");
+    assert!(dag.diagnostics().is_empty());
+}
+
+#[test]
 fn m18_match_with_unknown_variant_is_rejected() {
     // M1(2.8): variant resolution scoped against the scrutinee's
     // Disj. An arm referencing a variant name that isn't declared

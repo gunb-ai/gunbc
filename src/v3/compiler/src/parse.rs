@@ -268,14 +268,24 @@ impl SurfaceType {
 
 /// Dissolution ledger — **SurfaceExpr**:
 ///
-/// 🟢 **Terminal at M1(2.7).** Five variants for the five M1
-/// expression forms: Literal, Var, Call, Operator, If. Each has a
-/// distinct lowering target among the five L1 behaviors:
+/// 🟡 **Scaffold at M1(2.8).** Six variants for the six currently
+/// supported expression forms: Literal, Var, Call, Operator, If,
+/// Match. Each has a distinct lowering target among the five L1
+/// behaviors:
 ///   Literal  → Value(LiteralBits::*)
 ///   Var      → scope lookup (no new node)
 ///   Call     → Transform with TransformTarget::Callable
 ///   Operator → Transform with TransformTarget::Operator
-///   If       → Branch
+///   If       → Branch (lowered as match on Bool with two arms)
+///   Match    → Branch with one Path per arm
+///
+/// **M1(2.8) change:** `SurfaceExpr::Match { scrutinee, arms }`
+/// joined the enum as part of the parser catch-up to v2's
+/// grammar (see `DOWNSTREAM_REQUIREMENTS.md` M1(2.8) section).
+/// It lowers to a `Branch` — no new L1 behavior variant — and
+/// its arms carry `BranchPattern` discriminators on the emitted
+/// `Path`s, so `if`/`else` and `match` share the same dispatch
+/// substrate.
 ///
 /// **M1(2.7) change:** the former `Call { target: String, .. }` was
 /// doing double duty — representing both user function calls AND
@@ -296,17 +306,26 @@ impl SurfaceType {
 ///   downstream lowering path.
 /// - Pattern 2 (variant-is-data): fails. Different payload types
 ///   per variant.
-/// - Pattern 3 (algebraic form): these ARE the five expression
-///   kinds that M1(2.7) supports — collapsing would erase
-///   structure, not dissolve it.
+/// - Pattern 3 (algebraic form): these are the six expression
+///   kinds that M1(2.8) supports — collapsing would erase
+///   structure, not dissolve it. The enum will grow as the
+///   parser catches up to v2's grammar (pipe `|>`, lambda
+///   `=> expr`, record/map/list literals, field access).
 /// - Pattern 4 (dimensional): fails.
 ///
-/// Verdict: terminal. Future expression kinds (match, pipe,
-/// lambda) will extend the enum through §8.10's substrate-
-/// extension audit. When the surface grammar gains explicit
-/// algebra-field access (M2+, `Int.add(a, b)`), the `Operator`
-/// variant dissolves back into `Call` — operators become regular
-/// callables.
+/// Verdict: 🟡 scaffold, not terminal. The enum is in flight —
+/// the M1(2.8) addition was itself a scaffold-honesty fix for
+/// `FnExternalBody` / `ArrowBody::Unparsed` bodies that the
+/// parser couldn't previously consume. Further additions go
+/// through §8.10's substrate-extension audit as each grammar
+/// surface lands. Dissolution trigger: the enum reaches terminal
+/// shape only when the surface grammar subsumes the set of
+/// forms found in the fully-loaded v3 std/ set, with no
+/// remaining `Unparsed` scaffolds in the bootstrap. When the
+/// M2+ parser covers record/map/list literals and the data
+/// body gap (class-5 gap #3) closes, this ledger is re-run.
+/// The `Operator` variant also dissolves at M2+ into
+/// `Call` once explicit algebra-field access syntax lands.
 #[derive(Debug, Clone)]
 pub enum SurfaceExpr {
     Literal {

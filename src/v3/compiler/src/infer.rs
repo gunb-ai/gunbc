@@ -22,6 +22,8 @@
 //   state != Uninferred after infer completes
 // both hold.
 
+use std::collections::HashSet;
+
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, Dag, DeclarationId, LiteralBits, PortId,
     PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective,
@@ -117,6 +119,22 @@ fn resolve_branch_patterns(dag: &mut Dag) {
         output_port: PortId,
     }
     let mut rewrites: Vec<Rewrite> = Vec::new();
+    // Coverage check: for each Branch, after resolving all paths,
+    // verify the resolved set equals the scrutinee's Disj variant set
+    // exactly (every variant covered by exactly one arm). Missing or
+    // duplicated arms are fail-closed diagnostics on the Branch's
+    // output port.
+    struct CoverageCheck {
+        output_port: PortId,
+        span: SourceSpan,
+        expected: Vec<(String, DeclarationId)>,
+        // Parallel vec of (resolved_decl_id, arm_name_for_diagnostic)
+        // collected in path order. Paths whose resolution failed are
+        // not included — their error already fires, so coverage is
+        // reported only on the subset that resolved.
+        resolved_arms: Vec<(DeclarationId, String)>,
+    }
+    let mut coverage_checks: Vec<CoverageCheck> = Vec::new();
     for (node_index, node) in dag.nodes().iter().enumerate() {
         let Behavior::Branch(b) = node else {
             continue;
@@ -138,12 +156,28 @@ fn resolve_branch_patterns(dag: &mut Dag) {
                     continue;
                 }
             };
+        let mut resolved_arms: Vec<(DeclarationId, String)> = Vec::new();
         for (path_index, path) in b.paths.iter().enumerate() {
             let result = match &path.pattern {
-                crate::dag::BranchPattern::ResolvedVariant(_) => continue,
+                crate::dag::BranchPattern::ResolvedVariant(id) => {
+                    // Already resolved (e.g., if/else paths on a
+                    // second infer pass). Record for coverage check
+                    // and skip the rewrite.
+                    resolved_arms.push((
+                        *id,
+                        dag.declaration(*id)
+                            .name
+                            .clone()
+                            .unwrap_or_else(|| format!("declaration#{}", id.raw())),
+                    ));
+                    continue;
+                }
                 crate::dag::BranchPattern::UnresolvedVariant { name, span } => {
                     match disj_variants.iter().find(|(label, _)| label == name) {
-                        Some((_, ty)) => Ok(*ty),
+                        Some((_, ty)) => {
+                            resolved_arms.push((*ty, name.clone()));
+                            Ok(*ty)
+                        }
                         None => Err(Diagnostic::ResolveError {
                             name: format!(
                                 "variant `{name}` is not a constructor of this match's scrutinee type"
@@ -160,6 +194,12 @@ fn resolve_branch_patterns(dag: &mut Dag) {
                 output_port: b.output,
             });
         }
+        coverage_checks.push(CoverageCheck {
+            output_port: b.output,
+            span: b.span.clone(),
+            expected: disj_variants,
+            resolved_arms,
+        });
     }
     for rewrite in rewrites {
         match rewrite.result {
@@ -172,6 +212,58 @@ fn resolve_branch_patterns(dag: &mut Dag) {
             Err(diag) => {
                 dag.mark_unresolved(rewrite.output_port, diag);
             }
+        }
+    }
+    // Coverage pass: for each Branch whose paths resolved (fully or
+    // partially), verify exhaustiveness (every variant covered) and
+    // uniqueness (no variant duplicated). Skip if the Branch's output
+    // already has a diagnostic from a pattern resolution failure —
+    // coverage is meaningless on a partially-resolved arm set.
+    for check in coverage_checks {
+        if matches!(dag.port(check.output_port).state(), PortState::Unresolved) {
+            continue;
+        }
+        // Uniqueness: each resolved DeclarationId appears at most once.
+        let mut seen: HashSet<DeclarationId> = HashSet::new();
+        let mut duplicate: Option<String> = None;
+        for (id, name) in &check.resolved_arms {
+            if !seen.insert(*id) {
+                duplicate = Some(name.clone());
+                break;
+            }
+        }
+        if let Some(name) = duplicate {
+            dag.mark_unresolved(
+                check.output_port,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "duplicate match arm for variant `{name}` — each variant of a sum type must match exactly once"
+                    ),
+                    span: check.span.clone(),
+                },
+            );
+            continue;
+        }
+        // Exhaustiveness: every expected variant must be in the
+        // resolved set. Surface the first missing variant's name as
+        // the diagnostic label.
+        let missing: Vec<&str> = check
+            .expected
+            .iter()
+            .filter(|(_, id)| !seen.contains(id))
+            .map(|(label, _)| label.as_str())
+            .collect();
+        if !missing.is_empty() {
+            let missing_list = missing.join(", ");
+            dag.mark_unresolved(
+                check.output_port,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "non-exhaustive match: missing arm(s) for variant(s) `{missing_list}` — every constructor of the scrutinee's sum type must be covered"
+                    ),
+                    span: check.span,
+                },
+            );
         }
     }
 }
