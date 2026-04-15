@@ -277,7 +277,12 @@ fn lower_item(
         } => {
             let value_port = lower_expr(expr, dag, &scope, symbols);
             if let Some(ty) = type_ann {
-                match lower_type_for_port(ty, dag, symbols) {
+                // Compute the annotated type's declaration id ONCE.
+                // Port TypeShape wraps the same id — no second
+                // allocation, no lower↔infer identity split.
+                let local: HashMap<String, DeclarationId> = HashMap::new();
+                let decl_id = type_to_declaration_id(ty, symbols, &local, dag);
+                match declaration_to_port_shape(decl_id, dag, ty.span()) {
                     Ok(declared) => dag.set_port_type(value_port, declared),
                     Err(diag) => dag.mark_unresolved(value_port, diag),
                 }
@@ -952,13 +957,13 @@ fn lower_fn_item_expr_body(
     let local: HashMap<String, DeclarationId> = HashMap::new();
     for param in params {
         let port = dag.alloc_port(None);
-        // Port TypeShape and Arrow-declaration input id come from the
-        // same type_to_declaration_id walk, wrapped through
-        // `lower_type_for_port` so port-side fail-closed
-        // diagnostics anchor to the annotation span.
+        // Compute the param's declaration id ONCE. The Arrow input
+        // and the port's TypeShape wrap the same id — no double
+        // allocation, no lower↔infer identity split for compound
+        // types like `List<Int>`.
         let input_decl = type_to_declaration_id(&param.ty, symbols, &local, dag);
         param_decl_inputs.push(input_decl);
-        let ty = match lower_type_for_port(&param.ty, dag, symbols) {
+        let ty = match declaration_to_port_shape(input_decl, dag, param.ty.span()) {
             Ok(ty) => {
                 dag.set_port_type(port, ty);
                 ty
@@ -973,11 +978,10 @@ fn lower_fn_item_expr_body(
         param_types.push(ty);
     }
 
-    // 2. Compute return type (both port-side and declaration-side). Same
-    //    two-query structure as params: declaration-side for the Arrow,
-    //    port-side for the bind's return port.
+    // 2. Compute return type. Single walk, shared id — same shape as
+    //    the param loop.
     let return_decl_id = type_to_declaration_id(return_type, symbols, &local, dag);
-    let return_ty = match lower_type_for_port(return_type, dag, symbols) {
+    let return_ty = match declaration_to_port_shape(return_decl_id, dag, return_type.span()) {
         Ok(ty) => ty,
         Err(diag) => {
             let err_port = dag.alloc_port(None);
@@ -1100,37 +1104,38 @@ fn lower_fn_item_expr_body(
 
 /// Convert a surface type annotation into a port-level `TypeShape`.
 /// User code at M1(2.6) only accepts primitive type annotations
-/// Lower a user-code type annotation to a port `TypeShape`.
+/// Wrap a pre-computed `DeclarationId` as a port `TypeShape`, with a
+/// fail-closed check for fresh unresolved stubs.
 ///
-/// **Dissolution receipt — QW5 SINGLE AUTHORITY.** Before M1(2.7) this
-/// function hardcoded `"Int" | "Bool" | "String"` as a whitelist
-/// parallel to `type_to_declaration_id`'s structural walk. The
-/// whitelist is gone: the port-side authority is the same declaration
-/// table that the type-record / type-sum / type-alias lowering paths
-/// use. A user-code `let x: Foo = ...` annotation where `Foo` is any
-/// known declaration resolves through the same path as the field
-/// types inside `type R { x: Foo }`.
+/// **Dissolution receipt — QW5 SINGLE AUTHORITY + R9 double-lower fix.**
+/// Before M1(2.7) port typing hardcoded `"Int"|"Bool"|"String"` as a
+/// whitelist parallel to `type_to_declaration_id`'s structural walk.
+/// The whitelist dissolved into `type_to_declaration_id` (Class 1
+/// resolution). Before R9, the port path *re-called*
+/// `type_to_declaration_id` in a separate helper, so compound types
+/// like `List<Int>` allocated two anonymous declarations — one for
+/// the Arrow input, one for the port TypeShape — with different
+/// `DeclarationId`s. R9 collapses that: callers run
+/// `type_to_declaration_id` **once** and pass the resulting id to
+/// this helper, so the Arrow's declaration slot and the port's
+/// `TypeShape` share identity.
 ///
-/// The one remaining structural check is a fail-closed guard: if
-/// `type_to_declaration_id` allocated a fresh anonymous
-/// `UnresolvedIdentifier` stub (because the name was not in the
-/// symbol table), return `Err` so the caller marks the port
-/// `Unresolved`. The resolve sweep ALSO fires against the stub at
-/// the end of lowering, but this path anchors the failure to the
-/// annotation span rather than a phantom port.
-fn lower_type_for_port(
-    ty: &SurfaceType,
-    dag: &mut Dag,
-    symbols: &HashMap<String, DeclarationId>,
+/// The fail-closed guard detects a fresh anonymous
+/// `UnresolvedIdentifier` stub (name wasn't in the symbol table)
+/// and returns `Err` so the caller marks the port `Unresolved`. The
+/// resolve sweep ALSO fires against the stub at end of lowering,
+/// but this path anchors the failure to the annotation span.
+fn declaration_to_port_shape(
+    decl_id: DeclarationId,
+    dag: &Dag,
+    annotation_span: &SourceSpan,
 ) -> Result<TypeShape, Diagnostic> {
-    let local: HashMap<String, DeclarationId> = HashMap::new();
-    let decl_id = type_to_declaration_id(ty, symbols, &local, dag);
     let decl = dag.declaration(decl_id);
     if decl.name.is_none() {
         if let TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name)) = &decl.connective {
             return Err(Diagnostic::ResolveError {
                 name: format!("unknown type `{name}`"),
-                span: ty.span().clone(),
+                span: annotation_span.clone(),
             });
         }
     }

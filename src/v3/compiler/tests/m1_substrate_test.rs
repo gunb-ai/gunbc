@@ -596,6 +596,57 @@ fn m17_r9_data_item_has_unparsed_value_body_scaffold() {
 }
 
 #[test]
+fn m17_r9_fn_param_uses_single_declaration_id_for_arrow_and_port() {
+    // M1(2.7) R9 double-lower fix: for a fn parameter like
+    // `fn f(x: Foo) -> Foo`, the Arrow's input DeclarationId and
+    // the param port's TypeShape must share the same underlying
+    // id. Before R9, the param was lowered TWICE — once via
+    // type_to_declaration_id for the Arrow, once again inside
+    // lower_type_for_port for the port — producing two anonymous
+    // declarations for compound types that wouldn't structurally
+    // match later in infer.
+    //
+    // Guard: compile a fn with a user-declared record type as
+    // param and return. The fn's Arrow declaration's input must
+    // point at the same DeclarationId as its Bind's param port
+    // TypeShape.
+    let src = "\
+type Point { x: Int y: Int }
+fn identity(p: Point) -> Point = p
+";
+    let dag = compile_to_dag(src, "test.v3").expect("compiles");
+
+    // Find `identity`'s declaration — its connective is Arrow.
+    let identity_id = find_named(&dag, "identity");
+    let (arrow_inputs, _) = match &dag.declaration(identity_id).connective {
+        TypeConnective::Arrow { inputs, output, .. } => (inputs.clone(), *output),
+        other => panic!("expected Arrow, got {other:?}"),
+    };
+    assert_eq!(arrow_inputs.len(), 1, "identity takes one param");
+    let arrow_input_id = arrow_inputs[0];
+
+    // Find the corresponding Bind's first param port and read its
+    // TypeShape. The port's DeclarationId must equal the Arrow's
+    // input DeclarationId.
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "identity")
+        .expect("Bind(identity) exists");
+    let first_param_port = bind.params.first().expect("one param");
+    let param_shape = match dag.port(*first_param_port).state() {
+        v3_compiler::dag::PortState::Resolved(ty) => *ty,
+        other => panic!("param port should be Resolved, got {other:?}"),
+    };
+    assert_eq!(
+        param_shape.declaration, arrow_input_id,
+        "Arrow input and param port TypeShape must share the same DeclarationId \
+         — a split indicates the R9 double-lower regression"
+    );
+}
+
+#[test]
 fn m17_r9_type_alias_has_no_value_body() {
     // Converse of the data test: `type foo = Int` (a pure type
     // alias) must have value_body = None, so consumers can
