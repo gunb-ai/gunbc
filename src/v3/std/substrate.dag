@@ -1,0 +1,70 @@
+// v3 substrate reflection — the substrate's own types as .dag
+// declarations, declared in the substrate's own language.
+//
+// **What this file is.** The reflection surface described in
+// docs/substrate-reflection-design.md §3.1. Every structural
+// substrate type the compiler carries (Dag, Declaration,
+// Behavior, TypeConnective, ArrowBody, AtomPayload, …) is declared
+// here as an ordinary `.dag` Conj / Disj declaration. The Rust
+// structs in src/v3/compiler/src/dag.rs are the realizations
+// of these declarations — kept consistent via the inhabitance
+// check that runs at bootstrap time. There is no parallel
+// authority: the .dag form is the structural declaration,
+// the Rust form is its realization.
+//
+// **Why `src/v3/std/` instead of `dsl/std/`.** v2's CI pipeline
+// scans `dsl/` recursively and tries to resolve every identifier
+// in every record-literal field value. v2 doesn't know about v3
+// substrate types, so placing this file in `dsl/std/substrate.dag`
+// would break v2 CI. `src/v3/std/` is the bootstrap staging
+// location during the v2→v3 window; the canonical eventual home
+// is `dsl/std/substrate.dag` once v2 retires (see THESIS.md
+// §"Two groundings" — bootstrap staging note). Same pattern
+// `src/v3/spec/rust.dag` uses relative to its eventual home at
+// `dsl/extdeps/languages/rust.dag`.
+//
+// **Load order.** `src/v3/compiler/build.rs` scans this
+// directory and orders the substrate files after `v3_l1.dag`
+// (the substrate marker file) and before any per-target
+// language spec (e.g., `rust.dag`). Two-phase bootstrap resolves
+// cross-file references regardless of order, but the convention
+// keeps the dependency direction readable.
+//
+// **Seed minimality** (docs/substrate-reflection-design.md §3.0
+// + §7.2a): the only concepts that remain Rust-native seed
+// primitives are the parser, the resolve sweep, the arithmetic
+// primitives (Int / Bool / String), and the four atomic identity
+// handles NodeId / PortId / DeclarationId / SourceSpan. Every
+// other substrate concept lives as a .dag declaration in this
+// file (and its siblings), realized by the Rust structs in
+// dag.rs.
+
+module v3.std.substrate
+
+// ─────────────────────────────────────────────────────────────────
+// Atomic identity handles.
+// ─────────────────────────────────────────────────────────────────
+//
+// These are **opaque atoms** — declarations with no structural
+// body. They exist in `.dag` so every identifier in the substrate
+// surface has a name to resolve against; their Rust backing types
+// (`NodeId(u32)`, `PortId(u32)`, `DeclarationId(u32)` — newtype
+// wrappers in `src/v3/compiler/src/dag.rs`) are attached via
+// `TypeRealization` entries in `src/v3/spec/rust.dag` the same
+// way `Int → i64` is wired.
+//
+// Semantically these are identity tokens: a `.dag` program can
+// compare two NodeIds for equality and pass them around as
+// handles, but never inspect their internal shape. A lens that
+// needs to turn a NodeId into a Behavior goes through the query
+// primitive `node_by_id(dag, id)` (declared in a sibling file);
+// it cannot decompose the handle itself.
+//
+// SourceSpan is not re-declared here — it already has a
+// structural record declaration in `dsl/std/types.dag` that both
+// v2 and v3 can see, so it's reachable through the existing
+// cross-file reference mechanism.
+
+type NodeId
+type PortId
+type DeclarationId

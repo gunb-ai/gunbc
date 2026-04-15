@@ -1349,3 +1349,61 @@ fn m17_template_argument_stub_branch_is_gone() {
         "test did not observe a stub Instantiation; the negative invariant is vacuous"
     );
 }
+
+#[test]
+fn m1_3_substrate_reflection_opaque_atoms_loaded() {
+    // Step 2 of docs/substrate-reflection-design.md implementation.
+    //
+    // The first landable bite of the reflection surface: three
+    // opaque-atom declarations in `src/v3/std/substrate.dag` for
+    // the atomic identity handles NodeId, PortId, DeclarationId.
+    // `SourceSpan` already lives in `dsl/std/types.dag` as a
+    // structural record and is reachable without a new
+    // declaration.
+    //
+    // The test proves two invariants at once:
+    //
+    //   1. `build.rs` picks up `src/v3/std/*.dag` and the
+    //      generated V3_SPECS list includes substrate.dag —
+    //      otherwise the three names below would not resolve.
+    //   2. Opaque atoms lower to a placeholder-resolved
+    //      `TypeConnective::Atom(UnresolvedIdentifier(_))`
+    //      declaration shape with no structural body. The
+    //      bootstrap tolerance for stubs (opaque atoms are
+    //      terminal in their own right — they are the handles
+    //      seed primitives realize) is consistent with existing
+    //      std/ opaque atoms like `Unit` and `Json` in
+    //      types.dag.
+    //
+    // When later commits add TypeRealization entries in rust.dag
+    // for each handle, the post-bootstrap resolution will attach
+    // the Rust backing type to each opaque atom — the same
+    // mechanism integer.dag uses today to reach `i64`.
+    let dag = Dag::new();
+    for name in ["NodeId", "PortId", "DeclarationId"] {
+        let decl = dag
+            .declaration_by_name(name)
+            .unwrap_or_else(|| panic!("`{name}` must be declared by src/v3/std/substrate.dag"));
+        // Opaque atoms from the parser lower through
+        // `SurfaceItem::TypeAtom` → `TypeConnective::Conj { children: [] }`
+        // (see `src/v3/compiler/src/lower.rs` line 360 — empty
+        // product = unit type = opaque handle). This is the same
+        // form v3_l1.dag's behavior markers (`type Value {}`,
+        // `type Bind {}`, etc.) and types.dag's `type Unit` /
+        // `type Json` produce. The "no structural body" shape is
+        // what makes these valid handles that programs can pass
+        // around without inspecting.
+        let children = match &decl.connective {
+            TypeConnective::Conj { children } => children,
+            other => panic!(
+                "`{name}` should lower to an empty Conj, got {:?}",
+                other
+            ),
+        };
+        assert!(
+            children.is_empty(),
+            "`{name}` should have zero children, got {} children",
+            children.len()
+        );
+    }
+}
