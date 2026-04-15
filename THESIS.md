@@ -520,7 +520,7 @@ Connective meanings:
   Arrow Node with three positional type children. An Arrow
   declaration's **body** is a typed edge to either a sub-DAG of
   L1 behaviors (for user functions) or a realization declaration
-  in `src/v3/spec/` (for primitives). See §"Two
+  in `dsl/extdeps/languages/` (for primitives). See §"Two
   groundings" below for how the user-defined vs external-
   realization distinction works; the concrete `ArrowBody` enum
   is defined in `src/v3/compiler/src/dag.rs` with four variants
@@ -919,7 +919,7 @@ applies when both groundings are in place. **At M1(2.5), only
 the static grounding is validated.** Realization grounding — the
 target-language mapping that makes concepts emittable — lands at
 M1(3)+ as language-spec declarations in
-`src/v3/spec/`. During the M1(2.5) → M3 transition,
+`dsl/extdeps/languages/`. During the M1(2.5) → M3 transition,
 some primitive Arrows carry a scaffolded `Pending` realization
 state: their concept decomposes completely via inhabitance, but
 their target-language realization is declared later. A CI
@@ -965,7 +965,7 @@ native capabilities. Concrete examples:
 - `.dag List<T>` realizes as Rust `Vec<T>`, not as a cons-cell
   chain.
 
-The language spec (`src/v3/spec/rust.dag` and friends)
+The language spec (`dsl/extdeps/languages/rust.dag` and friends)
 is the **mapping from `.dag` concepts to efficient target
 primitives**. The emitter uses this mapping directly; it does
 not walk down the decomposition chain and reconstruct. The
@@ -1005,10 +1005,24 @@ decompose completely. But it's wrong if you apply it to
 realization: `.dag Int.add` at M1(2.5) has its realization
 binding in a **`Pending`** state (one of the four `ArrowBody`
 variants defined in `src/v3/compiler/src/dag.rs`) because its
-target-world mapping lives in `src/v3/spec/rust.dag` — which
-will be declared as
-an ordinary Declaration reachable via a typed edge, not a
-name-based lookup. That is NOT an ungrounded concept; it is
+target-world mapping lives in `dsl/extdeps/languages/rust.dag`
+— which will be declared as an ordinary Declaration reachable
+via a typed edge, not a name-based lookup.
+
+> **Bootstrap staging note.** During the v3 M1(2.5)–M1(3)
+> bootstrap window, v3's Rust compiler reads its realization
+> fixture from `src/v3/spec/rust.dag` as a temporary staging
+> location (the shipped file at that path is what the bootstrap
+> currently loads). The **canonical home** for Shape A language
+> specs is `dsl/extdeps/languages/` per §"Targets are
+> declarations" below; the `src/v3/spec/` location is a
+> bootstrap-local artifact, not a second authority. v3's
+> migration of the realization fixture to its canonical
+> extdeps home is tracked as class-5 follow-up work. Everywhere
+> in this thesis, "the language spec lives in
+> `dsl/extdeps/languages/`" is the conceptual claim, and the
+> current-implementation path is an implementation detail of
+> the bootstrap. That is NOT an ungrounded concept; it is
 a **concept whose static grounding is complete and whose
 realization grounding edge is pending declaration loading.**
 The stop signal applies to static grounding (no concept without
@@ -1422,14 +1436,14 @@ backend's Order is like asking if `7` equals `7`.
 
 **Targets are declarations, not compiler features.** The Rust,
 TypeScript, React, Postgres, and REST specs in the example above
-are declarations in `src/v3/spec/` and
+are declarations in `dsl/extdeps/languages/` and
 `dsl/extdeps/transports/`. Each spec is itself a Node-tree
 composition in the same substrate, declaring: what primitive
 shapes the target has, what its syntax is, how each connective
 in the type substrate projects onto target constructs, and how
 service/transport bindings map to target API calls. Adding a new
 target — say, Swift for iOS clients — means writing a Swift
-language spec in `src/v3/spec/swift.dag`. **Zero
+language spec in `dsl/extdeps/languages/swift.dag`. **Zero
 compiler changes, zero emitter changes, zero workflow changes,
 zero risk of drift into existing targets.** The spec IS the
 implementation.
@@ -1442,7 +1456,7 @@ different scope in the compiler core.
 
 **Shape A — compiler language targets.** Programming languages
 that execute the full computational semantics of `.dag`. The
-compiler reads a language spec from `src/v3/spec/` and
+compiler reads a language spec from `dsl/extdeps/languages/` and
 emits target source code via the single emitter. Examples: Rust,
 Python, Go, TypeScript, Swift, and potentially hardware
 description languages (Verilog, VHDL, Chisel) where the target
@@ -1511,7 +1525,7 @@ projections (direct or indirect) of the same Node tree.
 **Cost scaling differs between the two shapes:**
 
 - **Shape A:** cost of adding a new target = one language spec
-  in `src/v3/spec/`. Applies to every workflow
+  in `dsl/extdeps/languages/`. Applies to every workflow
   automatically. `O(1)` per new target.
 - **Shape B:** cost of adding a new target = one `.dag` program
   that walks the appropriate typed value and emits the target
@@ -1541,7 +1555,7 @@ programs derive from the same typed declarations.
 **The rule that makes Shape A cheap: treat every programming-
 language target as an extdep.** The compiler does not know Rust,
 or TypeScript, or Go natively. It reads a language spec from
-`src/v3/spec/`, and the spec declares — as ordinary
+`dsl/extdeps/languages/`, and the spec declares — as ordinary
 `.dag` compositional modeling — how each connective in the type
 substrate and each L1 behavior in the computation substrate
 projects onto the target's constructs. Adding a new Shape A
@@ -1965,7 +1979,7 @@ that's a gap.
   indirectly via Shape B user programs walking typed values).
 - **Shape A — compiler language targets**: programming languages
   (Rust, Python, Go, TypeScript, Swift, HDLs). Compiler emits
-  directly via a language spec in `src/v3/spec/`.
+  directly via a language spec in `dsl/extdeps/languages/`.
   Adding a new Shape A target costs one language spec. `O(1)`
   per target; zero compiler/emitter changes.
 - **Shape B — user-program artifacts**: YAML configs, Terraform

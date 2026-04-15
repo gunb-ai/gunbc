@@ -92,8 +92,26 @@ lens library is the structural replacement.
 ## §1.5 Canonical form: lenses as `.dag` programs
 
 The load-bearing form of a lens is a `.dag` program that takes
-a `Dag` as input and returns a list of violations. Lenses written
-as Rust modules are a **bootstrap shortcut**, not the endgame.
+a `Dag` (or a sub-DAG) as input and returns **lens-specific
+output** — a list of violations, a per-port cost, a per-node
+depth, a provenance map, whatever shape the analysis produces.
+Lenses written as Rust modules are a **bootstrap shortcut**,
+not the endgame.
+
+**The canonical shape is "pure reader with lens-specific
+output," not "pure reader returning violations."** The four
+lenses shipping today demonstrate the range:
+
+- `lens_provenance` returns per-port origin information.
+- `lens_depth` returns per-port depth.
+- `lens_cost` returns per-node cost.
+- `lens_unused_parameters` returns a list of violations.
+
+Three of the four are analyses; one is a violation list. The
+common shape is **pure function, `Dag` in, structured output
+out**. "Violation list" is one instantiation. The canonical
+form must not bake "violation" into the signature, or else
+analyses like cost and depth don't fit the template.
 
 **Why `.dag` form is canonical:**
 
@@ -122,45 +140,65 @@ as Rust modules are a **bootstrap shortcut**, not the endgame.
 
 **The missing primitive.** Canonical form requires a **reflection
 API**: the substrate's own types (`Behavior`, `NodeId`, `PortId`,
-`Dag`) expressible as `.dag` types, and a mechanism for a `.dag`
+`Dag`) reachable from `.dag`, and a mechanism for a `.dag`
 program to receive a compiled `Dag` as its input. v3 does not
-have this yet at M1(3) scope. Until it does, lenses ship as Rust
+have this at M1(3) scope. Until it does, lenses ship as Rust
 modules.
 
-**Current Rust lenses are M1 bootstrap.** `lens_provenance`,
-`lens_depth`, `lens_cost`, `lens_unused_parameters`, and any
-future lens added before the reflection primitive lands are
-bootstrap scaffolds. They provide immediate value (catching real
+**The reflection primitive is the subject of
+[`docs/substrate-reflection-design.md`](substrate-reflection-design.md)**
+(merged into this branch in commit 700dba6). That design doc
+specifies substrate types as `.dag` declarations, a query
+primitive set, and the migration path for the four existing
+lenses. When the reflection primitive lands, the §1.5 "thin
+wrapper" gate becomes a **structural invariant** enforced by
+two ratchets:
+
+1. **"Bounded substrate seed"** — the count of Rust-side
+   primitive types monotonically decreases. New seed primitives
+   are a fail-closed blocker unless they meet narrow exceptions
+   (atomic identity handle or truly indivisible).
+2. **"Lenses are substrate declarations"** — new lenses MUST be
+   `.dag` programs. Rust lens modules for new lenses are
+   forbidden; the three remaining Rust lenses after
+   `lens_unused_parameters` migrates are tracked in the seed
+   ratchet and each deletion is a ratchet tick.
+
+Both invariants live in `docs/substrate-reflection-design.md`
+§7.2 and will move to `INVARIANTS.md` when the reflection PR
+lands.
+
+**Current Rust lenses are M1 bootstrap — explicitly tracked
+scaffolds.** `lens_provenance`, `lens_depth`, `lens_cost`,
+`lens_unused_parameters`, and any future lens added before the
+reflection primitive lands are bootstrap scaffolds covered by
+the ratchet above. They provide immediate value (catching real
 violations, validating the per-lens algorithm) and are
 structurally identical in shape to what the canonical `.dag`
-form will be — pure reader, config-driven, returns
-`Vec<Violation>`. When the reflection primitive lands, each
-bootstrap lens migrates to `.dag` as a thin rewrite; the
-algorithm stays the same, the host language changes.
+form will be — pure reader, returns lens-specific output. When
+the reflection primitive lands, each bootstrap lens migrates to
+`.dag` as a thin rewrite; the algorithm stays the same, the
+host language changes.
 
-**Gate for new lens additions.** Before adding a new lens as
-Rust, ask: does this thicken the Rust-lens scaffold, or is it a
-thin wrapper that will migrate cleanly once reflection lands?
-Specifically:
+**Reviewer-enforced gate until the ratchet lands.** Before
+adding a new lens as Rust, ask: does this thicken the Rust-lens
+scaffold, or is it a thin wrapper that will migrate cleanly
+once reflection lands?
 
 - **Thin wrapper.** Algorithm is ~50-100 lines, pure reader,
   follows the template of existing lenses, no cross-lens
-  interaction, no state outside `Vec<Violation>`. Adding one is
-  cheap and the migration cost is a mechanical port.
+  interaction, no state outside the lens-specific output type.
+  Adding one is cheap and the migration cost is a mechanical
+  port.
 - **Deepening scaffold.** Algorithm grows Rust-specific infra
   (shared types across lenses, a per-lens trait hierarchy, a
   registration framework, dependency wiring between lenses).
   Stop and build the reflection primitive first — otherwise the
   scaffold ossifies and the canonical form is blocked.
 
-This rule applies to every lens in this document. The initial
-three are thin wrappers by design. Future lenses in §6 should
-be audited against the gate before landing.
-
-**Tracking.** Move this section's pointer to `INVARIANTS.md` when
-the reflection primitive has a concrete design note; the
-canonical-form gate becomes a compiler-architecture ratchet at
-that point, tracked alongside other substrate growth work.
+This gate is reviewer-enforced until the substrate reflection
+PR lands. After that, the ratchet takes over and the gate
+becomes a structural CI check instead of a reviewer discipline.
 
 ## §2. The initial library: three lenses
 
@@ -466,11 +504,12 @@ pub struct UnusedParametersLens<'a> {
     dag: &'a Dag,
 }
 
-pub struct UnusedParametersConfig {
-    /// Restrict the scan to specific function declarations. If
-    /// empty, scan every function-shaped Bind in the Dag.
-    pub scope: Vec<DeclarationId>,
-}
+/// Empty by design. The shipped lens takes no config. Earlier
+/// drafts proposed `ignore_underscore_prefix: bool` and
+/// `scope: Vec<DeclarationId>`; both were removed before ship
+/// because neither has backing substrate data at the current
+/// scope. See the "no ghost fields" rule below.
+pub struct UnusedParametersConfig {}
 
 pub struct UnusedParameter {
     pub function: NodeId,
@@ -482,21 +521,38 @@ pub struct UnusedParameter {
 }
 
 impl<'a> UnusedParametersLens<'a> {
-    pub fn query(&self, config: &UnusedParametersConfig) -> Vec<UnusedParameter>;
+    pub fn query(&self, _config: &UnusedParametersConfig) -> Vec<UnusedParameter>;
 }
 ```
 
-**No `ignore_underscore_prefix` field.** An earlier draft of this
-design proposed one. It was deliberately removed before ship: v3's
-substrate doesn't carry per-parameter names past lowering, so the
-field would have no backing implementation and would silently
-no-op — a misleading API surface that violates layer opacity
-itself (consumers would dispatch on a name-based config that
-promises name-based filtering). If a future substrate change
-exposes per-parameter names (e.g., a `BindNode.param_names`
-field), the filter can land then alongside a real implementation.
-**Rule codified by this episode: a lens config field must not be
-added before its backing data exists on the substrate.**
+**No ghost fields.** An earlier draft of this design proposed
+two config fields that both got deleted before ship:
+
+- **`ignore_underscore_prefix: bool`** — would have required
+  reading parameter names, but v3's substrate doesn't carry
+  per-parameter names past lowering. A consumer setting the
+  flag would expect name-based filtering; the lens would
+  silently no-op. Layer-opacity violation at the API surface.
+- **`scope: Vec<DeclarationId>`** — would have restricted the
+  scan to specific function declarations, but v3's substrate
+  doesn't carry a `Bind → Declaration` back-edge at this scope.
+  A consumer setting a non-empty scope would expect the scan
+  to honor it; the lens would silently scan every Bind anyway.
+  Same failure class as the underscore filter: a config field
+  sounds enforceable but isn't.
+
+Both are deferred until their backing substrate data exists:
+`ignore_underscore_prefix` waits on a `BindNode.param_names`
+field, `scope` waits on a `Bind → Declaration` typed edge.
+Neither is in this PR; neither lands in the config until its
+prerequisite substrate work does.
+
+**Rule codified by this episode: a lens config field must not
+be added before its backing substrate data exists.** A field
+that "sounds enforceable but isn't" is a layer-opacity
+violation at the API surface — the promise is behavioral, the
+check is nothing. Forbid at introduction time, not at review
+time.
 
 **Positional identity, not name.** `UnusedParameter.parameter_index:
 usize` is the substrate-honest way to name a parameter. Names are
@@ -522,8 +578,9 @@ Note that the shipped form walks `Bind.value` directly rather
 than routing through `ArrowBody::UserDefined` — ArrowBody is a
 declaration-level concept; the lens operates at the Bind level
 where the body sub-DAG already lives. When post-PR-B work adds
-`Bind → Declaration` edges, the scope filter (currently a no-op)
-activates and the lens can accept `DeclarationId`s.
+`Bind → Declaration` edges, a `scope: Vec<DeclarationId>` config
+field can land with a real implementation that actually honors
+the scope restriction — not before.
 
 **Test plan** (as shipped in
 `src/v3/compiler/tests/m1_3_lens_unused_parameters_test.rs`):
