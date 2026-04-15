@@ -747,12 +747,16 @@ hit.
    algorithms. That's out of scope for I8 as currently
    framed but could be added as I9 later.
 
-6. **I0 results (to be filled in when I0 runs).** This
-   section gets appended below when an implementer runs I0
-   as a paper exercise. Include: the rule chosen, the
-   transliterated pseudo-`.dag` form, pass/fail for each of
-   the four decidability structural elements, any surprises,
-   and recommendation for I1 to proceed or not.
+6. **I0 results.** The I0 paper exercise has been completed
+   and the full result is in `docs/inference-as-data-i0-result.md`
+   (ships with PR #457). Summary: pass for the literal-filling
+   rule plus a bounded structural walk spot-check. The reframed
+   I0 (targeting the fixpoint loop at `infer.rs:46-90` per the
+   §3.0 update) found the bound is `2 × port_count` — each
+   port transitions at most twice (Uninferred→Resolved,
+   Resolved→Unresolved), so the fixpoint is expressible as
+   `repeat(2 * port_count, dag, apply_all_rules)` under v3's
+   decidability invariant. Recommendation: proceed to I1.
 
 ---
 
@@ -760,7 +764,7 @@ hit.
 
 Living design note. It evolves as:
 
-- **I0 runs** and its result populates §6 Q6.
+- **I0 complete** — result in `docs/inference-as-data-i0-result.md`.
 - **Each experiment lands** and its per-experiment section
   graduates from "plan" to "in flight" to "result," with the
   actual outcome replacing the success/failure speculation.
