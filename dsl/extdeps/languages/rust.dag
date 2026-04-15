@@ -1,0 +1,197 @@
+// M1(3) PR-B — Rust target realization.
+//
+// This file is the first v3 structural language spec. v3's emit_rust
+// reads these declarations at compile time via meta_tag filtering
+// and extracts the `carrier` field to produce Rust source. No
+// Rust-side knowledge of Rust syntax lives in the emitter — every
+// per-op string is a data fact declared here.
+//
+// The `Realization` meta-type has scalar fields only (String / Int)
+// because `ValueBody::Structural` at M1(3) PR-B carries inline
+// literal field values. Nested records, list literals, and
+// declaration-as-value references are class-5 gaps #3/#4/#6 that
+// dissolve in M2+, at which point this file can reshape to the
+// richer form (e.g. `target: Declaration` instead of
+// `target_name: String`). See `DOWNSTREAM_REQUIREMENTS.md`.
+//
+// The existing `dsl/extdeps/languages/rust/` subdirectory contains
+// v2's more-comprehensive language spec (types.dag, syntax.dag,
+// emit.dag, etc.). That subdirectory stays untouched — v2 still
+// consumes it directly. This file (rust.dag, parallel to the
+// directory) is v3's minimal structural entry point. When M2+
+// extends v3's parser to handle list/map literals, the v3 emitter
+// will consume the subdirectory's richer specs directly and this
+// minimal file either dissolves or grows into the full spec.
+
+module dsl.extdeps.languages.rust
+
+// Realization meta-type. A `data rust_*: Realization = { ... }`
+// declaration is what emit_rust walks.
+//
+// Fields:
+//   target_name — the v3 declaration name this realization applies
+//                 to (e.g. "Int" for primitives, "Bind" / "Branch"
+//                 for structural templates).
+//   op_name     — for operator realizations, the algebra field name
+//                 (e.g. "add", "eq"). Empty for type-only or
+//                 structural-template realizations.
+//   carrier     — the Rust syntax to emit. For scalar type mappings
+//                 this is the Rust type name ("i64", "bool"). For
+//                 operators this is the operator symbol ("+", "==").
+//                 For structural templates it's a %N/%T/%V/%C/%H/%E
+//                 placeholder string that the emitter fills in at
+//                 walk time.
+//   cost        — structural cost hint for lens_cost (currently
+//                 advisory; the cost lens uses its own structural
+//                 counting and reads this field only for
+//                 cross-target calibration).
+type Realization {
+  target_name: String
+  op_name: String
+  carrier: String
+  cost: Int
+}
+
+// --- Primitive type mappings ---
+
+data rust_int: Realization = {
+  target_name: "Int"
+  op_name: ""
+  carrier: "i64"
+  cost: 1
+}
+
+data rust_bool: Realization = {
+  target_name: "Bool"
+  op_name: ""
+  carrier: "bool"
+  cost: 1
+}
+
+data rust_string: Realization = {
+  target_name: "String"
+  op_name: ""
+  carrier: "String"
+  cost: 1
+}
+
+// --- Arithmetic operator realizations on Int ---
+// Operator realizations carry the target type name in `target_name`
+// plus the algebra field name in `op_name`. emit_rust looks up by
+// (target_name, op_name) when rendering a Transform whose target
+// is `TransformTarget::Operator(OperatorKind)`.
+
+data rust_int_add: Realization = {
+  target_name: "Int"
+  op_name: "add"
+  carrier: "+"
+  cost: 1
+}
+
+data rust_int_sub: Realization = {
+  target_name: "Int"
+  op_name: "sub"
+  carrier: "-"
+  cost: 1
+}
+
+data rust_int_mul: Realization = {
+  target_name: "Int"
+  op_name: "mul"
+  carrier: "*"
+  cost: 1
+}
+
+data rust_int_div: Realization = {
+  target_name: "Int"
+  op_name: "div"
+  carrier: "/"
+  cost: 1
+}
+
+// --- Comparison operator realizations on Int ---
+
+data rust_int_eq: Realization = {
+  target_name: "Int"
+  op_name: "eq"
+  carrier: "=="
+  cost: 1
+}
+
+data rust_int_ne: Realization = {
+  target_name: "Int"
+  op_name: "ne"
+  carrier: "!="
+  cost: 1
+}
+
+data rust_int_lt: Realization = {
+  target_name: "Int"
+  op_name: "lt"
+  carrier: "<"
+  cost: 1
+}
+
+data rust_int_le: Realization = {
+  target_name: "Int"
+  op_name: "le"
+  carrier: "<="
+  cost: 1
+}
+
+data rust_int_gt: Realization = {
+  target_name: "Int"
+  op_name: "gt"
+  carrier: ">"
+  cost: 1
+}
+
+data rust_int_ge: Realization = {
+  target_name: "Int"
+  op_name: "ge"
+  carrier: ">="
+  cost: 1
+}
+
+// --- Structural templates ---
+// These realizations render the L1 behaviors that aren't calls:
+// Bind (let statement), Branch (if/else), and the outer main
+// wrapper. The emitter fills placeholder tokens in `carrier` with
+// recursed sub-expressions at walk time.
+//
+// Placeholders used:
+//   %N  — Bind's name
+//   %T  — resolved type name (via a type-Realization lookup)
+//   %V  — the bind's value expression
+//   %C  — Branch condition
+//   %H  — Branch "then" arm (the first Path with pattern True)
+//   %E  — Branch "else" arm (the first Path with pattern False)
+//   %B  — the list of user-code Binds (joined with newlines)
+//   %X  — the name of the final Bind (the one printed by main)
+//   %Q  — a literal double-quote character. The v3 tokenizer at
+//         M1(3) has no string-escape sequences, so this placeholder
+//         stands in for `"` inside a carrier template and the
+//         emitter substitutes a raw `"` at render time. Dissolves
+//         when the tokenizer grows escape-sequence support (class-5
+//         gap on the lexer, not tracked as a PR-B blocker).
+
+data rust_let_stmt: Realization = {
+  target_name: "Bind"
+  op_name: ""
+  carrier: "let %N: %T = %V;"
+  cost: 0
+}
+
+data rust_if_expr: Realization = {
+  target_name: "Branch"
+  op_name: ""
+  carrier: "if %C { %H } else { %E }"
+  cost: 0
+}
+
+data rust_main_wrap: Realization = {
+  target_name: "Main"
+  op_name: ""
+  carrier: "fn main() { %B println!(%Q{}%Q, %X); }"
+  cost: 0
+}

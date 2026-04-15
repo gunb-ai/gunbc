@@ -343,10 +343,11 @@ fn lower_item(
         SurfaceItem::Data {
             name,
             ty,
+            body,
             body_span,
             span: _,
         } => {
-            lower_data_item(name, ty, body_span, dag, symbols);
+            lower_data_item(name, ty, body.as_ref(), body_span, dag, symbols);
             scope
         }
         SurfaceItem::Module { .. } | SurfaceItem::Import { .. } => {
@@ -1002,16 +1003,258 @@ fn lower_fn_item_unparsed(
 fn lower_data_item(
     name: &str,
     ty: &SurfaceType,
+    body: Option<&SurfaceExpr>,
     body_span: &SourceSpan,
     dag: &mut Dag,
     symbols: &HashMap<String, DeclarationId>,
 ) {
     let decl_id = symbols[name];
     let local: HashMap<String, DeclarationId> = HashMap::new();
+    // Compute the declaration id of the type annotation (e.g.
+    // Realization's DeclarationId for `data rust_int: Realization`)
+    // — the walk starts here.
+    let ty_decl_id = type_to_declaration_id(ty, symbols, &local, dag);
     let connective = type_to_connective(ty, symbols, &local, dag);
-    let decl = dag.declaration_mut(decl_id);
-    decl.connective = connective;
-    decl.value_body = Some(crate::dag::ValueBody::Unparsed(body_span.clone()));
+    // meta_tag edge from the data item to its type annotation. This
+    // is what makes a data declaration structurally distinct from a
+    // type alias (R9/R10 + PR-B): the type is readable from the
+    // same field shape as Realization instances in rust.dag, and
+    // downstream consumers (emit_rust) can filter by meta_tag to
+    // find all declarations of a given meta-type.
+    dag.declaration_mut(decl_id).meta_tag = Some(ty_decl_id);
+    dag.declaration_mut(decl_id).connective = connective;
+    // Attempt structural inhabitance checking if the body parsed
+    // as a record literal. Falls back to Unparsed on any failure
+    // (walk doesn't terminate at a Conj, missing field, extra
+    // field, value isn't a literal, type mismatch). Fail-closed
+    // paths attach a diagnostic via `report_declaration_error` so
+    // user-facing code sees the error.
+    let value_body = body
+        .and_then(|b| match b {
+            SurfaceExpr::Record { fields, .. } => Some(fields),
+            _ => None,
+        })
+        .and_then(|record_fields| {
+            lower_record_to_structural(
+                name,
+                record_fields,
+                ty_decl_id,
+                body_span,
+                dag,
+            )
+        });
+    let final_body = value_body
+        .unwrap_or_else(|| crate::dag::ValueBody::Unparsed(body_span.clone()));
+    dag.declaration_mut(decl_id).value_body = Some(final_body);
+}
+
+/// Walk a declaration through `Instantiation` / `ResolvedIdentifier`
+/// edges until it reaches a declaration whose connective is
+/// `Conj`. Returns the `DeclarationId` of that Conj declaration — or
+/// `None` if no Conj is reachable within the walk depth limit, or
+/// the chain terminates at some other connective.
+///
+/// Used by `lower_data_item` for data body inhabitance checking.
+/// Mirrors the `walk_to_disj_decl` helper in `infer.rs`: the two
+/// walks look for complementary terminal shapes (Conj for data
+/// item inhabitance vs Disj for Branch scrutinees), but follow the
+/// same alias/instantiation chains otherwise.
+fn walk_to_conj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
+    let mut current = start;
+    for _ in 0..32 {
+        let decl = dag.declaration(current);
+        match &decl.connective {
+            TypeConnective::Conj { .. } => return Some(current),
+            TypeConnective::Instantiation { template, .. } => {
+                current = *template;
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                current = *next;
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
+/// Attempt to lower a parsed record literal body into a
+/// `ValueBody::Structural { fields }` by matching each record field
+/// against the declared type's Conj children. Returns `None` (and
+/// attaches one or more diagnostics) if any check fails; the caller
+/// falls back to `ValueBody::Unparsed`.
+///
+/// Validation rules:
+/// 1. The type annotation's declaration must walk to a `Conj`
+///    declaration via `walk_to_conj_decl`. Failure → diagnostic
+///    "data item's type has no record shape" → return None.
+/// 2. The record literal's field labels must exactly match the
+///    Conj's children — no extras, no missing.
+/// 3. Each field's value must be a `SurfaceExpr::Literal`
+///    (scalar literal). Nested records, variable references, and
+///    computed expressions are class-5 gap #3 follow-ups.
+/// 4. Each literal's type must match the corresponding Conj
+///    field's declared type (validated via the primitive cache).
+fn lower_record_to_structural(
+    data_name: &str,
+    record_fields: &[crate::parse::SurfaceRecordField],
+    ty_decl_id: DeclarationId,
+    body_span: &SourceSpan,
+    dag: &mut Dag,
+) -> Option<crate::dag::ValueBody> {
+    let Some(conj_id) = walk_to_conj_decl(dag, ty_decl_id) else {
+        report_declaration_error(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "data `{data_name}`'s type annotation does not resolve to a record type (Conj); cannot apply inhabitance checking to the body"
+                ),
+                span: body_span.clone(),
+            },
+        );
+        return None;
+    };
+    // Snapshot the Conj's children to avoid borrowing conflicts
+    // while we walk the record literal.
+    let type_fields: Vec<(String, DeclarationId)> =
+        match &dag.declaration(conj_id).connective {
+            TypeConnective::Conj { children } => children
+                .iter()
+                .map(|f| (f.label.clone(), f.ty))
+                .collect(),
+            _ => unreachable!("walk_to_conj_decl returned a non-Conj declaration"),
+        };
+    // Check no extra fields in the data body.
+    for record_field in record_fields {
+        if !type_fields.iter().any(|(label, _)| *label == record_field.name) {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "data `{data_name}` has field `{}` but the type has no such field",
+                        record_field.name
+                    ),
+                    span: record_field.span.clone(),
+                },
+            );
+            return None;
+        }
+    }
+    // Check no missing fields.
+    for (type_label, _) in &type_fields {
+        if !record_fields.iter().any(|f| f.name == *type_label) {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "data `{data_name}` is missing required field `{type_label}`"
+                    ),
+                    span: body_span.clone(),
+                },
+            );
+            return None;
+        }
+    }
+    // Extract each field's literal value and validate its type
+    // matches the Conj child's declared type. Fields are emitted
+    // in the type's declared order (not the record literal's
+    // written order) for stable output.
+    let mut structural_fields: Vec<(String, LiteralBits)> =
+        Vec::with_capacity(type_fields.len());
+    for (type_label, type_field_id) in &type_fields {
+        let record_field = record_fields
+            .iter()
+            .find(|f| f.name == *type_label)
+            .expect("checked above");
+        let literal = match &record_field.value {
+            SurfaceExpr::Literal { value, .. } => value,
+            _ => {
+                report_declaration_error(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "data `{data_name}` field `{type_label}` must be a scalar literal at M1(3) PR-B; nested records, variable references, and computed expressions are class-5 gap #3 follow-ups"
+                        ),
+                        span: record_field.span.clone(),
+                    },
+                );
+                return None;
+            }
+        };
+        let literal_bits = match literal {
+            SurfaceLiteral::Int(v) => LiteralBits::Int(*v),
+            SurfaceLiteral::Bool(v) => LiteralBits::Bool(*v),
+            SurfaceLiteral::String(v) => LiteralBits::String(v.clone()),
+        };
+        // Type check: walk the type field's declaration to a
+        // primitive and compare against the literal's kind.
+        //
+        // `lower_record_to_structural` is called during Phase 2 of
+        // bootstrap — BEFORE `populate_primitive_cache` runs — so
+        // `dag.int_shape()` and friends are still `None` and cannot
+        // be used here. Phase 1 (`collect_symbols_phase`) has already
+        // registered `Int`/`Bool`/`String` as top-level declarations
+        // across every fixture, so `declaration_by_name` is the
+        // available channel at this point in bootstrap.
+        let int_decl_id = dag.declaration_by_name("Int").map(|d| d.id);
+        let bool_decl_id = dag.declaration_by_name("Bool").map(|d| d.id);
+        let string_decl_id = dag.declaration_by_name("String").map(|d| d.id);
+        let expected_is_int = int_decl_id
+            .map(|id| walks_to(dag, *type_field_id, id))
+            .unwrap_or(false);
+        let expected_is_bool = bool_decl_id
+            .map(|id| walks_to(dag, *type_field_id, id))
+            .unwrap_or(false);
+        let expected_is_string = string_decl_id
+            .map(|id| walks_to(dag, *type_field_id, id))
+            .unwrap_or(false);
+        let type_ok = match &literal_bits {
+            LiteralBits::Int(_) => expected_is_int,
+            LiteralBits::Bool(_) => expected_is_bool,
+            LiteralBits::String(_) => expected_is_string,
+        };
+        if !type_ok {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "data `{data_name}` field `{type_label}` has a literal whose type doesn't match the declared field type"
+                    ),
+                    span: record_field.span.clone(),
+                },
+            );
+            return None;
+        }
+        structural_fields.push((type_label.clone(), literal_bits));
+    }
+    Some(crate::dag::ValueBody::Structural {
+        fields: structural_fields,
+    })
+}
+
+/// Walk a declaration chain looking for a specific target
+/// declaration id. Returns true if `current` eventually resolves
+/// to `target` via Instantiation/ResolvedIdentifier edges or if
+/// `current == target` directly. Used by
+/// `lower_record_to_structural` to check "is this field's type
+/// annotation ultimately Int/Bool/String?"
+fn walks_to(dag: &Dag, start: DeclarationId, target: DeclarationId) -> bool {
+    let mut current = start;
+    for _ in 0..32 {
+        if current == target {
+            return true;
+        }
+        let decl = dag.declaration(current);
+        match &decl.connective {
+            TypeConnective::Instantiation { template, .. } => {
+                current = *template;
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                current = *next;
+            }
+            _ => return false,
+        }
+    }
+    false
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1414,6 +1657,25 @@ fn lower_expr(
             }));
             branch_output
         }
+        SurfaceExpr::Record { span, .. } => {
+            // Record literals are accepted at M1(3) PR-B only as
+            // the body of a `data foo: T = {...}` item, which is
+            // lowered in `lower_data_item`, not through
+            // `lower_expr`. User-code expression position
+            // (`let x = { a: 1 }`) is a class-5 gap #3 follow-up.
+            // Emit a fail-closed diagnostic so the user sees a
+            // clean error instead of a silent pass-through.
+            let port = dag.alloc_port(None);
+            dag.mark_unresolved(
+                port,
+                Diagnostic::ResolveError {
+                    name: "record literals are not yet supported in user-code expression position; at M1(3) they are only accepted as `data name: Type = { ... }` body values"
+                        .to_string(),
+                    span: span.clone(),
+                },
+            );
+            port
+        }
     }
 }
 
@@ -1447,6 +1709,9 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
             is_recursive(scrutinee, self_name)
                 || arms.iter().any(|arm| is_recursive(&arm.body, self_name))
         }
+        SurfaceExpr::Record { fields, .. } => fields
+            .iter()
+            .any(|f| is_recursive(&f.value, self_name)),
     }
 }
 
@@ -1514,6 +1779,9 @@ fn descent_provable(expr: &SurfaceExpr, self_name: &str, first_param: &str) -> b
                     .iter()
                     .all(|arm| descent_provable(&arm.body, self_name, first_param))
         }
+        SurfaceExpr::Record { fields, .. } => fields
+            .iter()
+            .all(|f| descent_provable(&f.value, self_name, first_param)),
     }
 }
 
@@ -1546,7 +1814,8 @@ fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
         | SurfaceExpr::Call { span, .. }
         | SurfaceExpr::Operator { span, .. }
         | SurfaceExpr::If { span, .. }
-        | SurfaceExpr::Match { span, .. } => span,
+        | SurfaceExpr::Match { span, .. }
+        | SurfaceExpr::Record { span, .. } => span,
     }
 }
 
@@ -1650,6 +1919,11 @@ fn collect_calls(
             collect_calls(scrutinee, fn_names, out);
             for arm in arms {
                 collect_calls(&arm.body, fn_names, out);
+            }
+        }
+        SurfaceExpr::Record { fields, .. } => {
+            for f in fields {
+                collect_calls(&f.value, fn_names, out);
             }
         }
     }

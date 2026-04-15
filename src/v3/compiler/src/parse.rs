@@ -120,14 +120,23 @@ pub enum SurfaceItem {
         body_span: SourceSpan,
         span: SourceSpan,
     },
-    /// `data name: Type = { body }` — a typed constant whose body
-    /// contains record/list/match literals not yet parseable under
-    /// M1(2.7). Lowers to a declaration whose connective resolves
-    /// from `ty` via `type_to_declaration_id`. The body_span is
-    /// preserved for M2+ parser extensions.
+    /// `data name: Type = { body }` — a typed constant. At M1(3)
+    /// PR-B the parser attempts to lower the body as a record
+    /// literal (via a 3-token lookahead on `{`, `Ident`, `:`); if
+    /// successful, `body` is `Some(SurfaceExpr::Record { .. })` and
+    /// lowering validates the record against the type annotation
+    /// via inhabitance checking. If the body doesn't match the
+    /// record-literal shape, `body` is `None` and the body is
+    /// brace-skipped, preserving only the span (M1(2.7) R14's
+    /// ValueBody::Unparsed path).
+    ///
+    /// `body_span` always reflects the full range of the brace
+    /// group so downstream span-anchored diagnostics and future
+    /// parser extensions have a stable anchor.
     Data {
         name: String,
         ty: SurfaceType,
+        body: Option<SurfaceExpr>,
         body_span: SourceSpan,
         span: SourceSpan,
     },
@@ -278,16 +287,33 @@ impl SurfaceType {
 
 /// Dissolution ledger — **SurfaceExpr**:
 ///
-/// 🟡 **Scaffold at M1(2.8).** Six variants for the six currently
-/// supported expression forms: Literal, Var, Call, Operator, If,
-/// Match. Each has a distinct lowering target among the five L1
-/// behaviors:
+/// 🟡 **Scaffold at M1(3) PR-B.** Seven variants for the seven
+/// currently supported expression forms: Literal, Var, Call,
+/// Operator, If, Match, Record. Each has a distinct lowering
+/// target:
 ///   Literal  → Value(LiteralBits::*)
 ///   Var      → scope lookup (no new node)
 ///   Call     → Transform with TransformTarget::Callable
 ///   Operator → Transform with TransformTarget::Operator
 ///   If       → Branch (lowered as match on Bool with two arms)
 ///   Match    → Branch with one Path per arm
+///   Record   → **data-body only** at M1(3) PR-B; emits a
+///              ValueBody::Structural on the enclosing
+///              Declaration via `lower_data_item`. In user-code
+///              expression position `lower_expr::Record` emits
+///              a fail-closed diagnostic pointing at class-5
+///              gap #3 (user-code record literals land when
+///              list/map/map-body parsing follows in M2+).
+///
+/// **M1(3) PR-B change:** `SurfaceExpr::Record { fields, span }`
+/// joined the enum to let `dsl/extdeps/languages/rust.dag` exist
+/// as a structurally-grounded language spec file that the Rust
+/// emitter reads at compile time. The parser accepts record
+/// literals only in `data foo: T = { ... }` body position via
+/// a 3-token lookahead (`{`, `Ident`, `:`) in `parse_data_item`;
+/// `parse_primary` does NOT dispatch to record literals, so
+/// user-code expressions like `let x = { a: 1 }` still fail at
+/// parse time (with a better follow-up diagnostic forthcoming).
 ///
 /// **M1(2.8) change:** `SurfaceExpr::Match { scrutinee, arms }`
 /// joined the enum as part of the parser catch-up to v2's
@@ -375,6 +401,34 @@ pub enum SurfaceExpr {
         arms: Vec<SurfaceMatchArm>,
         span: SourceSpan,
     },
+    /// `{ field: expr, field: expr, ... }` — record literal. At
+    /// M1(3) PR-B this variant is produced ONLY by
+    /// `parse_data_item` when the body of a `data foo: T = {...}`
+    /// declaration matches the 3-token lookahead record-literal
+    /// shape. `parse_primary` does not dispatch to record literal
+    /// parsing, so user-code expressions containing `{ ... }` still
+    /// fail at parse time. Lowering for user-code position
+    /// (`lower_expr::Record`) emits a fail-closed diagnostic
+    /// pointing at class-5 gap #3; lowering for data-body position
+    /// (`lower_data_item`) walks the type annotation to a Conj and
+    /// runs inhabitance checking, producing a
+    /// `ValueBody::Structural { fields }` on the declaration.
+    Record {
+        fields: Vec<SurfaceRecordField>,
+        span: SourceSpan,
+    },
+}
+
+/// A single field in a record literal: a label and the expression
+/// assigned to it. At M1(3) PR-B lowering requires field values to
+/// be literal scalars (Int/Bool/String) — nested records,
+/// references, and computed expressions are class-5 gap #3
+/// follow-ups.
+#[derive(Debug, Clone)]
+pub struct SurfaceRecordField {
+    pub name: String,
+    pub value: SurfaceExpr,
+    pub span: SourceSpan,
 }
 
 /// A single arm of a `match` expression. Pattern plus body.
@@ -546,26 +600,133 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse `data name: Type = { body }` into `SurfaceItem::Data`.
-    /// The body is brace-skipped and its span is preserved so M2+
-    /// parser extensions can reach in and fully lower the body.
-    /// Lowering at M1(2.7) resolves the declaration's connective
-    /// from the type annotation via `type_to_declaration_id` — the
-    /// declaration's identity survives even though its value is
-    /// opaque until M2.
+    ///
+    /// **M1(3) PR-B change:** the body is now attempted as a record
+    /// literal first. A 3-token lookahead (`{`, `Ident`, `:`) decides
+    /// between:
+    ///
+    /// - **Record literal**: the body is parsed as a
+    ///   `SurfaceExpr::Record { fields, span }` and stored in
+    ///   `SurfaceItem::Data.body = Some(...)`. Lowering runs
+    ///   inhabitance checking against the type annotation (walks
+    ///   the Conj children, matches labels, validates literal-only
+    ///   field values) and produces a
+    ///   `ValueBody::Structural { fields }` on the declaration.
+    /// - **Unparseable body**: any body whose first three tokens
+    ///   don't match `{ Ident :` falls back to the brace-skip path
+    ///   (preserving the span) and `SurfaceItem::Data.body = None`.
+    ///   Lowering produces a `ValueBody::Unparsed(span)` scaffold
+    ///   which `reject_user_unparsed_scaffolds` rejects for user
+    ///   code and tolerates for bootstrap fixtures (R14 behavior).
+    ///
+    /// The lookahead is unambiguous because record field syntax
+    /// starts with `Ident :` and no other valid body shape does.
     fn parse_data_item(&mut self) -> Result<SurfaceItem, Diagnostic> {
         let kw = self.expect_kind(TokenKind::KwData)?;
         let name = self.parse_ident()?;
         self.expect_kind(TokenKind::Colon)?;
         let ty = self.parse_type_expr()?;
         self.expect_kind(TokenKind::Eq)?;
-        let open = self.peek().span.clone();
+        // Peek three tokens for the record-literal lookahead.
+        let open_span = self.peek().span.clone();
+        let is_record_literal = self.looks_like_record_literal();
+        if is_record_literal {
+            let body_expr = self.parse_record_literal()?;
+            let body_end = match &body_expr {
+                SurfaceExpr::Record { span, .. } => span.byte_end,
+                _ => unreachable!("parse_record_literal always returns Record"),
+            };
+            return Ok(SurfaceItem::Data {
+                name,
+                ty,
+                body: Some(body_expr),
+                body_span: SourceSpan::new(
+                    self.file,
+                    open_span.byte_start,
+                    body_end,
+                ),
+                span: SourceSpan::new(
+                    self.file,
+                    kw.span.byte_start,
+                    body_end,
+                ),
+            });
+        }
         let end = self.skip_brace_balanced()?;
-        let body_span = SourceSpan::new(self.file, open.byte_start, end);
+        let body_span = SourceSpan::new(self.file, open_span.byte_start, end);
         Ok(SurfaceItem::Data {
             name,
             ty,
+            body: None,
             body_span,
             span: SourceSpan::new(self.file, kw.span.byte_start, end),
+        })
+    }
+
+    /// 3-token lookahead for the record-literal disambiguation in
+    /// `parse_data_item`. Returns `true` when the next three tokens
+    /// are `{`, then `Ident`, then `:` — the unambiguous start of a
+    /// record literal field. Any other shape (empty `{}`, `{` followed
+    /// by a non-identifier, or `{ ident` without a colon) returns
+    /// false and the caller falls back to the brace-skip path.
+    fn looks_like_record_literal(&self) -> bool {
+        let t0 = self.tokens.get(self.pos);
+        let t1 = self.tokens.get(self.pos + 1);
+        let t2 = self.tokens.get(self.pos + 2);
+        match (t0, t1, t2) {
+            (Some(a), Some(b), Some(c)) => {
+                matches!(a.kind, TokenKind::LBrace)
+                    && matches!(b.kind, TokenKind::Ident(_))
+                    && matches!(c.kind, TokenKind::Colon)
+            }
+            _ => false,
+        }
+    }
+
+    /// Parse a record literal starting at `{`. Called from
+    /// `parse_data_item` after `looks_like_record_literal` confirms
+    /// the lookahead. Reads `label: expr` pairs separated by `,` (or
+    /// whitespace), terminated by `}`. Each field's value is any
+    /// `SurfaceExpr` — lowering (not parsing) enforces the literal-
+    /// only restriction.
+    fn parse_record_literal(&mut self) -> Result<SurfaceExpr, Diagnostic> {
+        let open = self.expect_kind(TokenKind::LBrace)?;
+        let mut fields: Vec<SurfaceRecordField> = Vec::new();
+        while !matches!(self.peek().kind, TokenKind::RBrace) {
+            let name_token = self.bump().clone();
+            let field_name = match name_token.kind {
+                TokenKind::Ident(n) => n,
+                other => {
+                    return Err(Diagnostic::ParseError {
+                        message: format!(
+                            "expected field name in record literal, got {other:?}"
+                        ),
+                        span: name_token.span,
+                    });
+                }
+            };
+            self.expect_kind(TokenKind::Colon)?;
+            let value = self.parse_expr()?;
+            let field_end = expr_span(&value).byte_end;
+            fields.push(SurfaceRecordField {
+                name: field_name,
+                value,
+                span: SourceSpan::new(
+                    self.file,
+                    name_token.span.byte_start,
+                    field_end,
+                ),
+            });
+            // Accept an optional comma between fields (whitespace
+            // alone is also permitted).
+            if matches!(self.peek().kind, TokenKind::Comma) {
+                self.bump();
+            }
+        }
+        let close = self.expect_kind(TokenKind::RBrace)?;
+        Ok(SurfaceExpr::Record {
+            fields,
+            span: SourceSpan::new(self.file, open.span.byte_start, close.span.byte_end),
         })
     }
 
@@ -1284,6 +1445,7 @@ fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
         | SurfaceExpr::Call { span, .. }
         | SurfaceExpr::Operator { span, .. }
         | SurfaceExpr::If { span, .. }
-        | SurfaceExpr::Match { span, .. } => span,
+        | SurfaceExpr::Match { span, .. }
+        | SurfaceExpr::Record { span, .. } => span,
     }
 }

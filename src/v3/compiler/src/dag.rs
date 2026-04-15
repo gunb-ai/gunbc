@@ -116,37 +116,68 @@ pub struct Declaration {
     pub span: SourceSpan,
 }
 
-/// Scaffold-with-trigger for data values. A `data foo: T = { body }`
-/// declaration lowers to a `Declaration` whose `connective` describes
-/// the declared type and whose `value_body` records that the body
-/// exists but is not yet structurally represented.
+/// Value-body shape for `data foo: T = { body }` declarations. Two
+/// variants at M1(3) PR-B:
 ///
-/// **Dissolution ledger** — mixed-lifecycle coproduct, currently
-/// 1-variant scaffold. Terminal form (when the parser adopts
-/// record/map/list literal `SurfaceExpr`s in M2+) replaces
-/// `Unparsed(SourceSpan)` with a `Structural(NodeId)` variant that
-/// points at a lowered value sub-DAG in the computation substrate.
-/// Until then, `Unparsed` carries the body's source span so M2+
-/// parser extensions can reach in and complete the lowering.
+/// - **`Unparsed(SourceSpan)`** — the parser could not lower the
+///   body (it isn't a record literal shape the M1(3) parser
+///   recognizes). The body's source span is preserved so M2+
+///   parser extensions (list literals, nested records, variant
+///   constructors) can reach in later. User-range declarations
+///   carrying `Unparsed` are rejected by
+///   `reject_user_unparsed_scaffolds`; bootstrap-range declarations
+///   tolerate it so std/*.dag files whose data bodies still use
+///   unsupported shapes continue to load.
 ///
-/// 4-pattern check against the current single variant:
-/// - Pattern 1 (fact placement): fails. The body span is a
-///   data-item-specific fact with no natural home on
-///   `TypeConnective` or the existing edges.
-/// - Pattern 2 (variant-is-data): partial. One variant today, but
-///   its payload (a `SourceSpan`) is structurally distinct from
-///   what the M2+ terminal shape will carry.
-/// - Pattern 3 (algebraic form): the scaffold is an explicit
-///   "unparseable value body" state, not reducible.
-/// - Pattern 4 (dimensional): fails.
+/// - **`Structural { fields }`** — the body parsed as a record
+///   literal and lowering ran inhabitance checking against the
+///   declared type. Each field's value is restricted to a scalar
+///   `LiteralBits` (Int/Bool/String) at PR-B scope; nested
+///   records, port-carried field values, and declaration
+///   references are class-5 gap #3 / #4 / #6 follow-ups for
+///   M2+. This is the shape that `dsl/extdeps/languages/rust.dag`
+///   uses — every Realization data item has scalar fields only.
 ///
-/// Verdict: scaffold. Dissolves when M2 parser extension lands.
+/// **Dissolution ledger** — mixed-lifecycle coproduct. `Unparsed`
+/// is the bounded scaffold (named dissolution trigger: M2+ parser
+/// extensions close class-5 gap #3); `Structural` is the
+/// structurally-grounded form for what the parser already handles.
+/// When the M2+ parser catches up, the non-record shapes currently
+/// landing in `Unparsed` move to `Structural`, and `Unparsed` is
+/// removed via a reverse substrate-extension PR. Until then the
+/// two variants coexist — one for each side of the parser gap.
+///
+/// 4-pattern check on `Structural`:
+/// - Pattern 1 (fact placement): fails. The inline literal field
+///   list is a data-item-specific record-construction fact with no
+///   natural home on the other substrate edges.
+/// - Pattern 2 (variant-is-data): fails. `Structural` payload
+///   (`fields: Vec<(String, LiteralBits)>`) is structurally
+///   distinct from `Unparsed`'s source span.
+/// - Pattern 3 (algebraic form): fails. The two variants represent
+///   two different parser-boundary states (structurally lowered vs
+///   scaffolded), not two points in a single algebra.
+/// - Pattern 4 (dimensional): fails. No shared coordinate space.
+///
+/// Verdict: `Structural` is terminal-at-PR-B-scope but will grow
+/// as the parser catches up — at M2 it either gains a richer
+/// payload (`Vec<(String, PortId)>` for port-carried values,
+/// nested records, declaration references) or gets joined by a
+/// new variant. Either way it's bounded by the Scaffold Boundaries
+/// invariant in `INVARIANTS.md`.
 #[derive(Debug, Clone)]
 pub enum ValueBody {
     /// The body exists in source at the given span but is not yet
     /// lowered to a value sub-DAG. The body's shape (record / map /
     /// list / variant literal) awaits M2+ parser extension.
     Unparsed(SourceSpan),
+    /// The body parsed as a record literal and was inhabitance-
+    /// checked against the declared type. Each field holds a
+    /// scalar literal value; the label matches a field on the
+    /// type's Conj children.
+    Structural {
+        fields: Vec<(String, LiteralBits)>,
+    },
 }
 
 /// The six-variant type substrate. Terminal at M1(2.5).

@@ -277,15 +277,26 @@ fn child_declarations_are_anonymous() {
     assert!(dag.declaration_by_name("Int").is_some());
     assert!(dag.declaration_by_name("OrderedRing").is_some());
     assert!(dag.declaration_by_name("Classical").is_some());
-    // `Realization` is no longer a top-level bootstrap declaration
-    // after M1(2.6) review round 4 — realization facts live in
-    // `dsl/extdeps/languages/*` per the thesis, not in compiler code.
-    // The §6.5 smoke test moved to a `#[cfg(test)]` module inside
-    // `bootstrap.rs` where it can construct a local realization chain
-    // without polluting `Dag::new()`.
+    // Starting at M1(3) PR-B, `Realization` is a production bootstrap
+    // declaration — the first `dsl/extdeps/languages/*` fixture
+    // (`rust.dag`) declares it as a Conj type carrying
+    // `target_name`/`op_name`/`carrier`/`cost` fields, and the v3
+    // emitter reads `data rust_*: Realization = {...}` items through
+    // `meta_tag` filtering. This is the thesis-aligned end-state: the
+    // realization meta-type lives in extdeps where every
+    // per-target-language fact lives, not in compiler code.
+    // Pre-PR-B (through M1(2.8) R16) this assertion was inverted:
+    // bootstrap loaded only `dsl/std/*` and Realization was absent.
+    let realization_id = dag
+        .declaration_by_name("Realization")
+        .expect("Realization is declared by dsl/extdeps/languages/rust.dag — the first extdeps fixture in M1(3) PR-B's bootstrap set")
+        .id;
     assert!(
-        dag.declaration_by_name("Realization").is_none(),
-        "Realization must not be a production bootstrap declaration"
+        matches!(
+            dag.declaration(realization_id).connective,
+            TypeConnective::Conj { .. }
+        ),
+        "Realization must lower to a Conj — the rust.dag declaration is a record type, not a sum/alias/atom"
     );
 }
 
@@ -575,6 +586,156 @@ fn m17_r9_ordered_ring_carries_direct_operator_fields() {
 }
 
 #[test]
+fn m1_3_prb_data_item_record_body_lowers_structurally() {
+    // M1(3) PR-B: `data foo: T = { field: literal, ... }` with a
+    // record literal body whose type annotation resolves to a Conj
+    // produces a declaration whose value_body is
+    // Some(Structural { fields: [...] }) — not Unparsed. This is
+    // the shape `dsl/extdeps/languages/rust.dag` uses to ground
+    // every Realization structurally.
+    //
+    // Uses `LocalMeta` / `test_local_item` (not `Realization` /
+    // `rust_int`) to avoid colliding with the rust.dag names that
+    // bootstrap now loads. `find_named` uses first-match semantics
+    // and would return the bootstrap declaration otherwise.
+    let src = "\
+type LocalMeta { target_name: String, cost: Int }
+data test_local_item: LocalMeta = { target_name: \"Int\", cost: 1 }
+";
+    let dag = compile_any(src, "structural_data.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "structural data item should compile cleanly, got: {:?}",
+        dag.diagnostics()
+    );
+    let item_id = find_named(&dag, "test_local_item");
+    let meta_id = find_named(&dag, "LocalMeta");
+    let item = dag.declaration(item_id);
+    assert_eq!(
+        item.meta_tag,
+        Some(meta_id),
+        "data item's meta_tag should point at its type annotation"
+    );
+    let value_body = item
+        .value_body
+        .as_ref()
+        .expect("data item should have value_body");
+    let fields = match value_body {
+        v3_compiler::dag::ValueBody::Structural { fields } => fields,
+        v3_compiler::dag::ValueBody::Unparsed(_) => panic!(
+            "expected Structural value_body, got Unparsed — inhabitance checking didn't run or failed"
+        ),
+    };
+    // Fields are emitted in the type's declared order.
+    assert_eq!(fields.len(), 2);
+    assert_eq!(fields[0].0, "target_name");
+    match &fields[0].1 {
+        v3_compiler::dag::LiteralBits::String(s) => assert_eq!(s, "Int"),
+        other => panic!("expected String literal for target_name, got {other:?}"),
+    }
+    assert_eq!(fields[1].0, "cost");
+    match &fields[1].1 {
+        v3_compiler::dag::LiteralBits::Int(n) => assert_eq!(*n, 1),
+        other => panic!("expected Int literal for cost, got {other:?}"),
+    }
+}
+
+#[test]
+fn m1_3_prb_data_item_with_extra_field_is_rejected() {
+    // PR-B inhabitance check: a record body with a field not in
+    // the type definition fails fail-closed with a diagnostic
+    // anchored to that field's span. Uses `LocalMeta` /
+    // `test_local_extra` to avoid colliding with rust.dag's
+    // bootstrap names (see
+    // `m1_3_prb_data_item_record_body_lowers_structurally`).
+    let src = "\
+type LocalMeta { target_name: String }
+data test_local_extra: LocalMeta = { target_name: \"Int\", bogus: 42 }
+";
+    let dag = compile_any(src, "extra_field.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "extra field should fail fail-closed"
+    );
+}
+
+#[test]
+fn m1_3_prb_data_item_with_wrong_field_type_is_rejected() {
+    // PR-B inhabitance check: a field whose literal value doesn't
+    // match the declared type fails fail-closed. Uses local names
+    // to avoid bootstrap collisions.
+    let src = "\
+type LocalMeta2 { cost: Int }
+data test_local_bad: LocalMeta2 = { cost: \"not a number\" }
+";
+    let dag = compile_any(src, "wrong_type.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "wrong field type should fail fail-closed"
+    );
+}
+
+#[test]
+fn m1_3_prb_rust_dag_bootstrap_loads_structurally() {
+    // M1(3) PR-B: verify rust.dag loaded cleanly during
+    // Dag::new() bootstrap and that `rust_int_add` lowered to a
+    // structural data item (meta_tag → Realization, value_body
+    // carrying the four Realization fields as literal bits). This
+    // is the end-to-end receipt that Phase 4 shipped: a real
+    // extdeps/languages/* file is now a production fixture and
+    // its declarations are queryable by name through the ordinary
+    // declaration table.
+    let dag = Dag::new();
+    assert!(
+        dag.diagnostics().is_empty(),
+        "rust.dag should bootstrap cleanly, got: {:?}",
+        dag.diagnostics()
+    );
+
+    let realization_id = find_named(&dag, "Realization");
+    let rust_int_add_id = find_named(&dag, "rust_int_add");
+    let rust_int_add = dag.declaration(rust_int_add_id);
+    assert_eq!(
+        rust_int_add.meta_tag,
+        Some(realization_id),
+        "rust_int_add's meta_tag must point at the Realization Conj"
+    );
+    let fields = match rust_int_add
+        .value_body
+        .as_ref()
+        .expect("rust_int_add must carry a structural value_body")
+    {
+        v3_compiler::dag::ValueBody::Structural { fields } => fields,
+        v3_compiler::dag::ValueBody::Unparsed(_) => {
+            panic!("rust_int_add's value_body must be Structural, not Unparsed")
+        }
+    };
+    // Fields appear in the order Realization declares them:
+    // target_name, op_name, carrier, cost.
+    assert_eq!(fields.len(), 4);
+    assert_eq!(fields[0].0, "target_name");
+    assert!(matches!(
+        &fields[0].1,
+        v3_compiler::dag::LiteralBits::String(s) if s == "Int"
+    ));
+    assert_eq!(fields[1].0, "op_name");
+    assert!(matches!(
+        &fields[1].1,
+        v3_compiler::dag::LiteralBits::String(s) if s == "add"
+    ));
+    assert_eq!(fields[2].0, "carrier");
+    assert!(matches!(
+        &fields[2].1,
+        v3_compiler::dag::LiteralBits::String(s) if s == "+"
+    ));
+    assert_eq!(fields[3].0, "cost");
+    assert!(matches!(
+        &fields[3].1,
+        v3_compiler::dag::LiteralBits::Int(1)
+    ));
+}
+
+#[test]
 fn m17_r9_data_item_has_unparsed_value_body_scaffold() {
     // M1(2.7) review round 9, QW2 + structural scaffold honesty:
     // data items must be structurally distinguishable from type
@@ -582,6 +743,13 @@ fn m17_r9_data_item_has_unparsed_value_body_scaffold() {
     // whose connective is the resolved type AND whose value_body
     // is Some(ValueBody::Unparsed(body_span)). A plain
     // `type foo = Int` has value_body = None.
+    //
+    // M1(3) PR-B note: `{ 42 }` is not a record literal shape
+    // (the lookahead `{`, `Ident`, `:` fails because the second
+    // token is an IntLit, not an Ident). The parser falls back
+    // to brace-skip and the body lands as `Unparsed`. If this
+    // test ever starts producing `Structural`, the parser's
+    // record-literal lookahead has widened unexpectedly.
     let dag = compile_any("data foo: Int = { 42 }", "data.v3");
     let foo_id = find_named(&dag, "foo");
     let foo_decl = dag.declaration(foo_id);
@@ -589,6 +757,10 @@ fn m17_r9_data_item_has_unparsed_value_body_scaffold() {
     // scaffold with the body's source span preserved.
     match &foo_decl.value_body {
         Some(v3_compiler::dag::ValueBody::Unparsed(_span)) => {}
+        Some(v3_compiler::dag::ValueBody::Structural { .. }) => panic!(
+            "`{{ 42 }}` should not parse as a record literal — the lookahead \
+             requires `{{`, `Ident`, `:` and the second token here is an IntLit"
+        ),
         None => panic!(
             "data item must have value_body = Some(Unparsed), got None — \
              the declaration is structurally identical to a type alias"

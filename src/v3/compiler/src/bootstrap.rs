@@ -37,6 +37,11 @@ const INTEGER_DAG: &str = include_str!("../../../../dsl/std/integer.dag");
 const FLOAT_DAG: &str = include_str!("../../../../dsl/std/float.dag");
 const STRING_TYPE_DAG: &str = include_str!("../../../../dsl/std/string_type.dag");
 const TYPES_DAG: &str = include_str!("../../../../dsl/std/types.dag");
+// M1(3) PR-B — the first target language spec v3 consumes
+// structurally. Loads after string_type.dag so `String` is
+// resolved by the time rust.dag's Realization fields reference
+// it. See dsl/extdeps/languages/rust.dag for the file's role.
+const RUST_DAG: &str = include_str!("../../../../dsl/extdeps/languages/rust.dag");
 
 pub(crate) fn bootstrap(dag: &mut Dag) {
     // Two-phase loading across all seven std/ files. Phase 1 parses and
@@ -60,6 +65,7 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
         ("dsl/std/float.dag", FLOAT_DAG),
         ("dsl/std/types.dag", TYPES_DAG),
         ("dsl/std/string_type.dag", STRING_TYPE_DAG),
+        ("dsl/extdeps/languages/rust.dag", RUST_DAG),
     ];
 
     // Phase 0: parse every fixture. Tokenize/parse errors attach to
