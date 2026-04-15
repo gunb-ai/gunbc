@@ -556,7 +556,16 @@ fn resolve_arrow_walk(
         TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
             resolve_arrow_walk(dag, *next, subst, depth + 1)
         }
-        _ => None,
+        // Terminal non-Arrow cases. Each is unreachable in well-formed
+        // user code; enumerated explicitly (rather than `_ => None`) so
+        // that any future `TypeConnective` or `AtomPayload` variant
+        // forces consideration here instead of silently falling through.
+        TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_)) => None,
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => None,
+        TypeConnective::Atom(AtomPayload::Literal(_)) => None,
+        TypeConnective::Conj { .. } => None,
+        TypeConnective::Disj { .. } => None,
+        TypeConnective::Cardinality { .. } => None,
     }
 }
 
@@ -595,7 +604,21 @@ fn walk_to_type_shape(
         TypeConnective::Instantiation { template, .. } => {
             walk_to_type_shape(dag, *template, subst, depth + 1)
         }
-        _ => None,
+        // Terminal non-follow cases. An anonymous `UnresolvedIdentifier`
+        // means the sweep did not resolve the reference — the phantom
+        // diagnostic is already attached, and this walk fails so the
+        // caller can surface it. The structural Conj/Disj/Arrow/
+        // Cardinality cases represent anonymous inline types that
+        // have no `TypeShape` identity at M1(2.7) — M2 port-type
+        // extension will either admit them or keep returning None.
+        // Enumerated explicitly (rather than `_ => None`) so any
+        // future variant forces consideration here.
+        TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_)) => None,
+        TypeConnective::Atom(AtomPayload::Literal(_)) => None,
+        TypeConnective::Conj { .. } => None,
+        TypeConnective::Disj { .. } => None,
+        TypeConnective::Arrow { .. } => None,
+        TypeConnective::Cardinality { .. } => None,
     }
 }
 

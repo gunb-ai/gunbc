@@ -1264,6 +1264,25 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
 /// Literal(Int(k))] }` — the operator dispatch is committed at parse
 /// time via `OperatorKind::Arithmetic(ArithmeticOp::Sub)`, so this check
 /// is structural rather than a string match against `target == "-"`.
+///
+/// **On the remaining string comparisons** (`target == self_name`,
+/// `name == first_param`): these are *not* name-based dispatch. Both
+/// sides are parser-stage identifier strings from a single parse tree
+/// reaching `lower_fn_item_expr_body` together — no declaration table
+/// lookup, no cross-module symbol resolution. `self_name` is the fn's
+/// declared name and `first_param` is its parameter name, both
+/// captured from `SurfaceItem::Fn` immediately above on the call
+/// stack. The strings on the other side (`SurfaceExpr::Call.target`,
+/// `SurfaceExpr::Var.name`) are raw parser tokens from the body of
+/// that same fn.
+///
+/// The alternative shape — comparing typed `NodeId`/`PortId` edges —
+/// isn't available at M1(2.7) because the `BindNode` that owns this
+/// function and its param ports doesn't exist yet: this analysis runs
+/// *inside* `lower_fn_item_expr_body`, before the Bind is pushed onto
+/// the node graph. A future post-lowering `DescentEvidence` lens
+/// would walk the emitted Loop/Transform graph by typed id, but
+/// that's a substrate extension, not a bridge to dissolve here.
 fn descent_provable(expr: &SurfaceExpr, self_name: &str, first_param: &str) -> bool {
     match expr {
         SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } => true,
