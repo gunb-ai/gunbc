@@ -130,23 +130,30 @@ the rationale.
   swap — only the source of the Declarations. This is the first
   real consumer of the declaration table and validates that the
   shape actually works when fed real data.
-- [ ] **(3) Cost lens (writer lens #1)** — reads the DAG, writes
-  computed costs per node/port. Implementation must live in
-  `lens_cost.rs` as a new file with no substrate file changes
-  BEYOND whatever the Declaration table needed for algebra/cost
-  metadata in step (1). If more substrate changes are required at
-  this stage, pause and design the lens-storage mechanism once,
-  then proceed. Acceptance: line count of substrate mods = 0 for
-  adding a new lens after (1)+(2) are in place.
-- [ ] **(4) Success bar validated for writer lenses.** By the end
+- [ ] **(3) Cost lens (reader lens — first writer of cost facts, but
+  the writing is to return values, not persistent storage).**
+  Implementation lives in `lens_cost.rs` as a new file. **Pure
+  reader** over `(substrate, rust.dag)` — per `M1_IMPLEMENTATION_PLAN.md`
+  §12.6 minimality invariant. No persistent state, no side tables,
+  no `Dag::lens_results` map, no per-Port annotation field. Cost is
+  a pure function of substrate + language spec, recomputed on demand
+  at every query. Memoization, if ever needed for performance, is a
+  transparent local cache added later based on profiling — not a
+  substrate-level decision and not a contract change. Acceptance:
+  line count of substrate mods = 0 for adding a new lens after
+  (1)+(2) are in place.
+- [ ] **(4) Success bar validated for reader lenses.** By the end
   of the cost lens work, the question "if we came up with a new
   lens tomorrow, what's the minimum substrate change?" has a
   confident answer of zero. This is the gating acceptance criterion
-  for moving on to emission.
-- [ ] **(5) Ownership lens (writer lens #2)** — second writer lens.
-  Reuses the storage mechanism chosen for cost. If the mechanism
-  doesn't generalize, that's a signal to fix it before adding more
-  lenses.
+  for moving on to emission. The earlier "writer lens storage
+  mechanism" framing is rescinded — there is no storage mechanism
+  to pick because lenses don't persist anything.
+- [ ] **(5) Ownership lens (reader lens)** — second reader lens,
+  same pattern as cost. Pure function over substrate. If a new lens
+  needs a fact substrate doesn't yet have, the fact is added to the
+  substrate first (with its own consumer) in a separate PR, per
+  §12.6 rule 1(b) — NOT stored in lens-side state.
 - [ ] **(6) Emit Rust from DAG** (single target, minimal). Only
   after cost + ownership lenses prove the substrate is extensible.
 - [ ] Emitted code compiles and runs.

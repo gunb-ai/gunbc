@@ -244,14 +244,38 @@ Boundary-flow vocabulary used in the Producer column:
 - `bootstrap` — `Dag::new` via `dsl/std/*.dag`
 - `lang_spec` — `dsl/extdeps/languages/*.dag` (future, PR-B)
 
-**Fact-drop discipline:** if an upstream stage has a fact in hand and
-no downstream consumer has committed to reading it YET, the fact goes
-on the substrate ANYWAY — with the consumer row pre-enumerated as N.
-Dropping a known fact and re-deriving it later is a bridge; this
-enumeration catches it before it happens. The Producer column is the
-forcing function: if a row has a Producer but no consumer reads it
-downstream, that is a fact on its way to becoming dead weight; if a row
-has a consumer but no Producer, that is the R-row pattern.
+**Fact-drop discipline (reconciled with §12.6 minimality).** The
+earlier draft of this section said "if an upstream stage has a fact
+in hand and no downstream consumer has committed to reading it YET,
+the fact goes on the substrate ANYWAY." **That language is rescinded**
+— it contradicts §12.6's minimality invariant and `INVARIANTS.md`
+§"No short-term solutions," both of which forbid speculative substrate
+growth. The correct discipline is:
+
+1. **Enumerate future consumer questions in §4 as N rows** — this is
+   the design-oracle inventory, not substrate population. N rows are
+   questions the plan tracks; they do not imply substrate fields have
+   been added. This is a pure documentation activity.
+2. **Add substrate fields only when a consumer lands in the same PR
+   that adds the field** — per §3.1 authority model ("no new fact
+   layer without a consumer"), §12.6 rule 1(b), and
+   `INVARIANTS.md:1329-1348`. Substrate additions are consumer-driven.
+3. **Dropping a known fact and re-deriving it later is still a bridge
+   — but the fix is not to pre-populate the substrate.** The fix is
+   to add the consumer in the same PR that adds the fact. If the
+   consumer isn't ready, the fact isn't ready either; it stays as an
+   N row in §4 until the consumer is committed to.
+4. **The Producer column in §4 forces the question at consumer-
+   writing time**, not at substrate-design time. When you go to write
+   a new consumer, §4 tells you which stage should authoritatively
+   produce its facts. If the answer is "a stage that doesn't yet
+   produce that fact," the PR that introduces the consumer also
+   introduces the producer. Neither lands without the other.
+
+The earlier wording blurred enumeration (valuable — a list of
+questions) with substrate population (forbidden without a consumer).
+Enumeration is the design oracle; substrate edits are the
+implementation. Keep them separate.
 
 ---
 
@@ -546,8 +570,11 @@ shapes belonged in the implementation, not the plan.
 
 ### §6.2 PR-B: M1(3) + M1(4) — cost lens + Rust emitter (reader-only, est. 10–14 hours)
 
-**Status:** Not started. Design-closed except for the `rust.dag`
-realization schema (see §11 remaining open question).
+**Status:** Not started. **Design-closed.** Realization schema is
+pinned in §11 question 7 as ordinary `Conj` declarations with typed
+fields (`for: DeclarationId`, `target: DeclarationId`, `body: String`,
+`cost: Int`) and `meta_tag` edge to the `Realization` meta-type. No
+compiler-native struct in `dag.rs`.
 
 **Purpose:** first cost analysis, first real target-language emission,
 `rust.dag` as the first real language spec, `ArrowBody::Pending`
@@ -607,11 +634,13 @@ no storage-mechanism decision.
   variant with recursive composition via input Ports. Cost-per-primitive
   read from the referenced realization declaration's `cost` field.
 - `src/v3/compiler/src/emit.rs` — pure reader. Given a `Dag` and a
-  target name (`"rust"`), walks the Dag and produces Rust source via
-  the language spec. Fails closed on `ArrowBody::Pending` and
-  `ArrowBody::Unparsed` (both invalid at emission). No hardcoded
-  `"i64::"` / `quote!` strings — every target-side fact is read
-  from `rust.dag`.
+  **target language `DeclarationId`** (the `rust` target-marker
+  declaration inside `rust.dag`, not a loose `"rust"` string), walks
+  the Dag and produces Rust source via the language spec. Fails
+  closed on `ArrowBody::Pending` and `ArrowBody::Unparsed` (both
+  invalid at emission). No hardcoded `"i64::"` / `quote!` strings
+  — every target-side fact is read from `rust.dag`. Target identity
+  is a typed edge per §11 question 7.
 - `dsl/extdeps/languages/rust.dag` — first real language spec.
   `realization` declarations for each primitive operator and
   primitive type.
@@ -621,9 +650,12 @@ no storage-mechanism decision.
 - `parse.rs` — adds `realization` item parsing + record-literal body
 - `bootstrap.rs` — deletes `inject_realization_stub`; parses
   `dsl/extdeps/languages/rust.dag` as the 8th bootstrap file
-- `dag.rs` — adds a `Realization` field-schema (typed cost, body
-  string, target name) or reuses `Declaration.connective` with
-  typed field accessors — decision pinned in the PR-B design doc
+- `dag.rs` — **no new struct.** Realization declarations reuse the
+  existing `TypeConnective::Conj` shape with field accessors reading
+  `for`, `target`, `body`, `cost` off the children list. Per §11
+  question 7 pinning and §3.1 language-spec authority row. Any PR
+  that proposes adding a `Realization` field-schema struct to
+  `dag.rs` is reopening a pinned decision and is out of scope.
 - Tests: new `smoke_compile_and_run` takes `let x: Int = 1 + 2`
   through parse → lower → infer → lens_cost → emit → `cargo check`
   → run returning `3`. Test asserts `lens_cost` is a pure function:

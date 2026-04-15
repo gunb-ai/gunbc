@@ -310,10 +310,13 @@ above for the rationale.
    Declarations now come from `.dag` source rather than Rust code.
    The substrate doesn't change during this swap — only the source
    of the Declarations changes.
-3. **Cost lens (writer lens #1).** The forcing function for the
-   "how do lenses store results" decision. Must land with zero
-   substrate modifications beyond whatever the Declaration table
-   needs for algebra/cost metadata. See the success bar section.
+3. **Cost lens (first reader lens that returns computed values).**
+   Originally framed as "writer lens #1" — that framing is historical;
+   see the postscript at the top of the Success bar section. The
+   cost lens is a pure function over substrate + `rust.dag`, not a
+   persistent writer. Must land with zero substrate modifications
+   beyond whatever the Declaration table needs for algebra/cost
+   metadata.
 4. **Emission to a target language (Rust first).** Only after the
    cost lens proves the substrate is extensible. `LanguageSpec` with
    per-target cost characteristics (G4 guardrail exercised).
@@ -348,11 +351,33 @@ Two lenses both landed in tens of lines each with zero substrate
 edits. The bar holds for observational lenses by demonstration, not
 just by design claim.
 
-**Not yet validated: computational lenses (writer analyses that produce
-new facts for downstream consumption).** M0 has no writer lenses. The
-mechanism for "how does a lens store its results" is not yet committed —
-there are three or four plausible options, each with different cost
-profiles:
+**Question resolved post-M1(2.7): there are no writer lenses.**
+
+> **Postscript (2026-04-15).** The question below — "how does a lens
+> store its results?" — is now closed. The answer is that the question
+> itself was the wrong framing. Per `M1_IMPLEMENTATION_PLAN.md` §12.6
+> (minimality invariant), **lenses are pure readers over substrate +
+> language spec; they do not persist state and do not need a storage
+> mechanism.** The four options enumerated below (Port field, per-lens
+> side table, Port annotations, generalized diagnostic table) are all
+> rescinded — none of them land. Cost, ownership, effects, purity, and
+> any future lens are all pure functions of `(substrate, lang_spec)`,
+> recomputed on demand. Memoization, if ever needed for performance,
+> is a transparent local cache added later based on profiling — not
+> part of the lens contract and not a substrate-level decision. The
+> M0 retrospective's framing ("M1 will force the decision") was
+> correct that M1 would force the question; it turned out the forcing
+> resolved the question by dissolving it, not by picking an option.
+>
+> This section is retained as **historical context** showing what M0
+> thought the open question looked like. Future readers should treat
+> the option list below as a snapshot of M0-era thinking that does
+> NOT reflect current doctrine.
+
+**M0-era framing (historical, superseded by §12.6).** M0 has no
+writer lenses. The mechanism for "how does a lens store its results"
+was not yet committed at M0 time — there were three or four plausible
+options, each with different cost profiles:
 
 - **Option A:** add a `cost: Option<Cost>` (or similar) field to Port.
   Works, but privileges the cost lens and doesn't generalize. Port
@@ -370,16 +395,18 @@ profiles:
   most thesis-aligned — everything is an annotation, diagnostics are
   just the annotations that cause compile failure.
 
-M0 makes no commitment. M1 will force the decision when the cost lens
-is built.
+**Resolution (M1(2.7)+):** Option **E** — none of the above. Lenses
+are readers. The storage question is moot because there is nothing
+to store. See `M1_IMPLEMENTATION_PLAN.md` §12.6 for the full
+minimality invariant and the three rules that follow from it.
 
-**M1 forcing function: the cost lens is the first M1 work, before Rust
-emission.** Rationale: the cost lens is a writer (first test of write
-cost), is pure (no external dependencies, no target language), is
-thesis-load-bearing (Tier 2 runtime safety story depends on it), and
-is where "how do lenses store results" gets answered. Emission comes
-second, after the substrate extensibility question is answered under
-real pressure.
+**M1 forcing function (historical context).** The M0 retrospective
+originally expected the cost lens to force the storage decision
+during M1. What actually happened: the minimality invariant arrived
+first (M1(2.7) review cycle), and the storage question dissolved
+rather than resolving in favor of a specific option. The forcing
+function worked — it just forced a re-framing of the question rather
+than an answer within the original frame.
 
 **Explicit acceptance criterion for M1:** by the end of M1, the following
 question must have a confident answer — *"If we came up with a new lens
@@ -408,4 +435,7 @@ than loosening.
 The theory work for M0 is done. The closure work (the retrospective,
 this document) closes the milestone. M1 should feel like
 implementation, not design — except for the one design question M0
-explicitly defers to M1: how lenses store results.
+explicitly defers to M1: how lenses store results. **(Post-M1(2.7)
+update: this deferred question resolved by dissolution — lenses
+don't store anything. See the postscript at the top of the "Success
+bar" section above.)**
