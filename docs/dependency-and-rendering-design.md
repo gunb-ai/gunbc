@@ -3,460 +3,381 @@
 > **Parent docs:** `THESIS.md`, `INVARIANTS.md` §"Facts Flow
 > Forward", `src/v3/SELF_HOSTING.md` §14.7.
 >
-> **Purpose:** the DAG's `produced_by` edges + behavior input
-> lists define a complete dependency graph. Ownership,
-> parallelism, complexity, provenance, and dead-code detection
-> are all projections of this one structure. This doc defines
-> the shared foundation and each projection.
+> **Purpose:** the DAG's dependency graph is the shared
+> foundation for ownership, parallelism, complexity, provenance,
+> and dead-code detection. This doc defines the compositional
+> `.dag` model and each projection.
 >
-> **Status:** design in progress. Core model (read vs construct)
-> validated by implementation (72 → 6 clones). Open edges
-> remain around transitive ownership transfer and fold
-> accumulator linearity (§3.5, §3.6). Needs review.
+> **Status:** design for review. Core insight validated
+> (read-vs-construct dropped clones 72→6). Pressure-tested
+> and reworked: §3.1 reframed as derived fact, §3.5/§3.7
+> merged, compositional shape spelled out.
 
 ---
 
-## §1. The dependency graph is already in the DAG
+## §1. Motivation
 
-The dependency information is never lost. It's created at
-lowering and persists unchanged through inference to emission:
+v3's emitter currently inserts `.clone()` on every port
+reference. The first generated artifact (287 lines) contains
+90 clones. All 90 are reads — function parameters, match
+scrutinees, field accesses. No consumer needs ownership.
 
+The first-pass fix (classify immediate consumers as read vs
+construct) dropped this to 6. But 5 of the 6 remaining expose
+a deeper issue: whether a callee consumes its parameter is not
+decidable from the caller's behavior type. `cons(head, tail)`
+and `is_empty(list)` are both `Transform(callable, [args])` in
+the substrate, but `cons` embeds its arguments in the return
+value while `is_empty` only inspects them.
+
+The fix is not more special cases. The fix is to model
+dependency facts as a compositional `.dag` concept — computed
+once from the DAG, consumed by every projection (ownership,
+parallelism, complexity) through layer opacity.
+
+---
+
+## §2. The dependency graph is already in the DAG
+
+The raw dependency information is created at lowering and
+persists unchanged through inference to emission:
+
+- **Forward edges:** `behavior.inputs` = which ports this
+  node reads
+- **Backward edges:** `port.produced_by` = which node
+  produced this value
+
+No analysis creates this graph. Lowering creates it. It
+persists. The question is not "how do we compute dependencies"
+but "how do we make the derived views composable."
+
+---
+
+## §3. The compositional shape
+
+### §3.1 Types in `std/dependency.dag`
+
+```dag
+module std.dependency
+
+import std.list { List }
+import std.substrate { Dag, PortId, NodeId, DeclarationId }
+
+// Whether a callee consumes (embeds in return value) or
+// borrows (inspects and discards) a parameter.
+type ParameterDisposition = Consumed | Borrowed
+
+// Per-edge fact: who consumes this port, and how?
+type ConsumerEdge {
+  port: PortId               // the value being consumed
+  consumer: NodeId           // the behavior that uses it
+  disposition: ParameterDisposition  // consumed or borrowed
+}
+
+// Per-port derived view: all consumers + their dispositions.
+type PortConsumers {
+  port: PortId
+  edges: List<ConsumerEdge>
+  count: Int                 // length(edges)
+}
+
+// Per-callable derived view: does each parameter get consumed?
+type CallableConsumption {
+  callable: DeclarationId
+  params: List<ParameterDisposition>  // one per parameter
+}
+
+// The complete dependency index — computed once from the DAG.
+type DependencyFacts {
+  consumers: List<PortConsumers>
+  callable_consumption: List<CallableConsumption>
+}
 ```
-Source:   let b = a + 3       // "a" is a name reference
-Parse:    SurfaceExpr::Var("a")   // name string in AST
-Lower:    Transform(+, inputs=[a_port, 3_port])
-          output.produced_by = this Transform
-          // name reference is now a PORT EDGE
-Infer:    walks same edges, adds types. No edges added/removed.
-Emit:     walks same edges, renders code.
+
+### §3.2 Computing dependency facts
+
+```dag
+fn compute_dependencies(dag: Dag) -> DependencyFacts
 ```
 
-The raw dependency graph is the DAG itself:
-- **Forward edges:** behavior.inputs = which ports this node reads
-- **Backward edges:** port.produced_by = which node produced this value
-- Both are structural, explicit, and complete for pure code
+A pure function. Reads the DAG's `produced_by` edges and
+behavior input lists. Returns the derived views. The
+computation has two parts:
 
-No analysis creates this graph. Lowering creates it. It persists.
+**Part 1: Consumer index.** For each behavior node, record
+its input ports as consumer edges. This is a reverse-index
+of `produced_by` — straightforward scan.
+
+**Part 2: Parameter consumption.** For each callable (Arrow
+declaration with a body), determine whether each parameter
+is consumed or borrowed. Two authorities by callable kind:
+
+- **.dag function (UserDefined body):** derive from the body
+  DAG. Walk from the function's return port backward. If the
+  parameter port is reachable through a construct site
+  (record field assignment, list cons, return value), the
+  parameter is `Consumed`. If the parameter is only reachable
+  through reads (function arguments, match scrutinees, field
+  access), it is `Borrowed`.
+
+  **No annotation on Arrow.** The body IS the authority. The
+  function's Arrow declaration carries no consumption field.
+  This is structurally derivable; declaring it would create a
+  parallel representation.
+
+- **ExternalRealization:** declared in the realization spec.
+  Each `CallableRealization` in `rust.dag` declares parameter
+  dispositions:
+
+  ```dag
+  data rust_cons: CallableRealization = {
+    strategy: ListCons
+    param_disposition: [Consumed, Consumed]  // head + tail
+  }
+
+  data rust_is_empty: CallableRealization = {
+    strategy: ListIsEmpty
+    param_disposition: [Borrowed]  // list
+  }
+
+  data rust_fold: CallableRealization = {
+    strategy: ListFold
+    param_disposition: [Borrowed, Consumed, Borrowed]
+    // list: borrowed, init: consumed (becomes acc), fn: borrowed
+  }
+  ```
+
+### §3.3 Why this is one fact, not two open edges
+
+The earlier draft (§3.5 and §3.7) separated "transitive
+ownership transfer" from "fold accumulator linearity." They
+are the same question: *does this callee consume this
+parameter?*
+
+- `cons(head, tail)` — both parameters consumed (embedded in
+  return Cons node)
+- `fold(list, init, fn)` — init consumed (becomes first acc),
+  list and fn borrowed
+- `is_empty(list)` — list borrowed (inspected and discarded)
+- `transform(x)` — depends on what `transform` does with `x`
+
+One fact (`ParameterDisposition`), two authorities by callable
+kind (.dag body derivation vs realization spec declaration).
 
 ---
 
-## §2. What needs to be INDEXED (not computed)
+## §4. Projections
 
-The raw graph is complete but not indexed for efficient access.
-The emitter needs derived views that require walking the raw
-edges. These are INDEXES over existing structure:
+Each projection reads `DependencyFacts` through the typed
+interface. Layer opacity applies — projections don't see how
+the facts were computed.
 
-| Derived view | What it answers | How to build |
-|---|---|---|
-| **Consumer list** | Who reads this port? | Scan all behaviors' input lists |
-| **Consumer count** | How many readers? | Length of consumer list |
-| **Use kind** | Does this consumer read or construct? | Classify from behavior type (§3) |
-| **Last use** | Is this the final consumer? | Evaluation order + consumer count |
-| **Transitive deps** | Does C depend on A? | Walk produced_by backward |
-| **Independence** | Are A and B unrelated? | No transitive path between them |
-| **Copy classification** | Is cloning free for this type? | Read is_copy from realization spec |
+### §4.1 Ownership
 
-Built during the emitter's existing index pass (alongside
-`RealizationIndex`). Read at every render site.
+```dag
+fn compute_ownership(
+  dag: Dag,
+  deps: DependencyFacts,
+  rendering: RenderingModel
+) -> OwnershipFacts
+```
 
----
+For each consumer edge in `deps.consumers`:
+- If `disposition == Borrowed` → render as `read`
+  (Rust: `&T`, Go: pass by value)
+- If `disposition == Consumed` → render as `construct`
+  (Rust: move if last use, clone if non-Copy + non-last,
+  copy if Copy type)
 
-## §3. Projection 1: Ownership (read vs construct)
+**Copy type classification.** A type is Copy if:
+- Leaf type declared `is_copy: true` in realization spec
+  (Int, Bool, PortId, NodeId — primitives)
+- Compound type (Conj) where ALL fields are Copy types
+  (derived, not declared — prevents drift)
 
-### §3.1 The primary classification
+**Last-use determination.** A consumed edge is the "last use"
+if no subsequent consumer of the same port also has
+`disposition == Consumed`. Derived from evaluation order +
+consumer list in the dependency index.
 
-The first-order model: every consumer edge is one of two kinds:
-
-| Consumer behavior | Use kind | Why |
-|---|---|---|
-| Transform input (function argument) | Read | Pure function reads its arguments |
-| Branch scrutinee | Read | Inspects value to choose a path |
-| Match pattern destructure | Read | Reads tag + fields |
-| Field access (FieldProject) | Read | Projects one field |
-| Comparison operand | Read | Inspects value |
-| Record literal field | **Construct** | Value becomes part of a new record |
-| List cons element | **Construct** | Value becomes part of a new list node |
-| Function return value | **Construct** | Value becomes the function's output |
-
-In a pure language, ALL function parameters are reads at the
-IMMEDIATE level — the caller passes the value, the callee
-inspects it.
-
-### §3.2 Target rendering for read vs construct
+**Target rendering model:**
 
 ```dag
 type RenderingModel {
-  read: ReadStrategy
-  construct: ConstructStrategy
+  borrow_syntax: String      // Rust: "&{V}"
+  move_syntax: String        // Rust: "{V}"
+  clone_syntax: String       // Rust: "{V}.clone()"
+  deref_syntax: String       // Rust: "*{V}" (Copy deref)
 }
-
-type ReadStrategy = Borrow | PassByValue
-type ConstructStrategy = CopyOrClone | PassByValue
 ```
+
+The rendering decision table for Rust:
+
+| Disposition | is_copy | Last consumed use? | Rendering |
+|-------------|---------|-------------------|-----------|
+| Borrowed | any | n/a | `&value` |
+| Consumed | true | any | `*value` |
+| Consumed | false | yes | `value` (move) |
+| Consumed | false | no | `value.clone()` |
+
+### §4.2 Parallelism
 
 ```dag
-// rust.dag
-data rust_rendering: RenderingModel = {
-  read: Borrow           // &T
-  construct: CopyOrClone  // copy if Copy, else move/clone
-}
-
-// go.dag
-data go_rendering: RenderingModel = {
-  read: PassByValue
-  construct: PassByValue
-}
+fn detect_parallelism(
+  dag: Dag,
+  deps: DependencyFacts
+) -> List<IndependenceFact>
 ```
 
-### §3.3 Construction rendering for Rust
+Two ports are independent if their transitive dependency sets
+don't overlap. For pure .dag code, independent operations are
+always safe to parallelize (immutable values, no side effects).
 
-At a Construct site, the decision depends on:
+**Fold decomposition:** in a fold's body lambda, which nodes
+transitively depend on the `acc` parameter? Acc-independent
+nodes are the "map" part (parallelizable). Acc-dependent nodes
+are the "reduce" part (sequential). If all per-element work is
+acc-independent, the fold IS a map.
 
-| is_copy(T) | Last use? | Rendering | Cost |
-|------------|-----------|-----------|------|
-| true | any | `*value` (deref) | 0 (bits copied) |
-| false | yes | `value` (move) | 0 (ownership transfer) |
-| false | no | `value.clone()` | O(size) |
+The `ParameterDisposition` on the fold's `acc` parameter
+reinforces this: if acc is `Consumed` (embedded in return),
+the fold is genuinely sequential. If some body sub-expression
+doesn't reach acc, that sub-expression is a parallel map.
 
-`is_copy` is declared per-type in the realization spec.
-`last_use` is derived from the dependency index.
+**Effects boundary.** For `ExternalRealization` operations
+(side effects), the effects lens (L2 M3) classifies
+operations. Independent + pure → parallel. Independent +
+effectful → needs synchronization from target spec.
 
-### §3.4 Validated result (Phase 1)
-
-Implementation (PR #475) applied this model to the emitter.
-Generated lens clone count: **72 → 6**. The 6 remaining:
-
-| Line | Clone | Category | Correct? |
-|------|-------|----------|----------|
-| 31 | `fold_acc.clone()` | Fold accumulator | **Unnecessary** — see §3.5 |
-| 79 | `span.clone()` | SourceSpan (non-Copy) at record construction | **Correct** |
-| 131 | `fold_acc.clone()` | Fold accumulator | **Unnecessary** — see §3.5 |
-| 134 | `fold_acc.clone()` | Fold accumulator | **Unnecessary** — see §3.5 |
-| 203 | `list_head.clone()` | PortId (Copy type) | **Unnecessary** — see §3.6 |
-| 217 | `list_head.clone()` | PortId (Copy type) | **Unnecessary** — see §3.6 |
-
-Expected after fixing §3.5 and §3.6: **1 clone** (the
-SourceSpan construction, which is genuinely necessary).
-
-### §3.5 OPEN EDGE: Transitive ownership transfer
-
-**Problem.** The read-vs-construct model classifies IMMEDIATE
-consumers. But some function calls are effectively constructs
-from the caller's perspective — the callee embeds the argument
-in its return value.
-
-Example:
-```dag
-let result = cons(transform(x), acc)
-```
-
-`acc` is passed to `cons` — a function call, classified as
-Read. But `cons` internally constructs a new list node
-containing `acc` as the tail. The emitter sees "function
-argument = read = borrow" but the function STORES the value.
-
-**Why this matters.** If the emitter borrows `acc` (`&acc`)
-and passes it to `cons`, but `cons` needs to own the tail
-to store it in the new Cons node, the emitted Rust won't
-compile — you can't store a `&T` where a `T` is needed
-without cloning.
-
-**The general pattern: ownership transfer through calls.**
-A function call is a "transitive construct" if:
-1. The callee's return value transitively contains the
-   parameter (the parameter port has a path to the return
-   port through a construct site inside the callee's body)
-2. The caller uses the return value (it's not dead)
-
-In these cases, calling the function effectively TRANSFERS
-OWNERSHIP of the argument into the return value. The caller
-should pass by value (move), not by reference (borrow).
-
-**Known instances:**
-- `cons(head, tail)` — both arguments end up in the return
-  Cons node
-- `fold` accumulator — the closure's return value IS the
-  next accumulator, which may contain the input acc
-- Any function that wraps its argument in a record and
-  returns it
-
-**What makes this tricky.** For .dag functions, the DAG
-shows whether a parameter flows to the return value through
-a construct site. But for ExternalRealization functions
-(Rust builtins), the DAG doesn't show internals. The
-realization spec would need to declare "this parameter is
-consumed" vs "this parameter is borrowed."
-
-**Possible approaches:**
-
-*Option A: Conservative — borrow everything, clone at
-construct sites inside callees.* This is what the emitter
-does now. It produces unnecessary clones inside functions
-like `cons` (clone the borrowed tail to store it). Safe but
-suboptimal.
-
-*Option B: Callee-signature analysis — mark parameters as
-"owned" or "borrowed" in the function's Arrow declaration.*
-If a parameter flows to the return value through a construct,
-the parameter is "owned" and callers must pass by value. This
-is similar to Rust's own fn signature model where parameters
-are either `T` (owned) or `&T` (borrowed).
-
-*Option C: Realization-declared ownership — each
-ExternalRealization declares which parameters are consumed.*
-Like Rust's type system but declared in the spec, not inferred.
-
-**Open question:** which approach? Option B is the most
-principled (derive from the DAG for .dag functions, declare
-for ExternalRealization). Option A is the safest starting
-point (no risk of missing a necessary clone).
-
-### §3.6 OPEN EDGE: Copy types and deref vs clone
-
-**Problem.** The emitter generates `.clone()` on `&PortId`
-and `&NodeId` when these types implement Rust's `Copy` trait.
-For Copy types, `*value` (dereference) is equivalent to
-`.clone()` but more idiomatic and makes the intent clear
-(this is a trivial bit-copy, not a deep clone).
-
-**Fix (straightforward).** The realization spec declares
-`is_copy: true` per type. The emitter checks this and emits
-`*value` instead of `value.clone()` for Copy types. This is
-not an open modeling question — it's a missing fact in the
-realization spec.
-
-### §3.7 OPEN EDGE: Fold accumulator linearity
-
-**Problem.** Rust's `iter().fold(init, |acc, x| body)` takes
-`acc` by value. The closure OWNS the accumulator, mutates it,
-and returns it. This is a Rust-specific rendering fact — the
-fold's semantics say "consume old acc, produce new acc."
-
-The emitter currently generates:
-```rust
-|acc, item| {
-    let mut left = acc.clone();  // UNNECESSARY — acc is owned
-    left.extend(...);
-    left
-}
-```
-
-Correct rendering:
-```rust
-|mut acc, item| {
-    acc.extend(...);
-    acc
-}
-```
-
-**Is this fold-specific or general?** The user asked whether
-this generalizes beyond fold. The answer: the fold accumulator
-is an instance of **Rust's closure ownership model.** When
-Rust's `fold` takes `FnMut(B, Item) -> B`, the closure owns
-`acc`. This is a TARGET-LANGUAGE rendering fact.
-
-The general question is: **are there other call patterns where
-the target language's calling convention gives the callee
-ownership of an argument?** In Rust:
-- `fold` accumulator: owned by closure
-- `map` element in `into_iter().map(f)`: owned by `f`
-- Any `FnOnce(T)` parameter: owned
-- Move closures capturing outer values: owned
-
-For .dag, these are rendering decisions — the source language
-doesn't distinguish owned vs borrowed parameters. The emitter
-needs to know which Rust calling conventions give ownership.
-This is part of the rendering strategy in `rust.dag`.
-
-**Possible approach:** extend `CallableRealization` in
-`rust.dag` with parameter ownership annotations:
+### §4.3 Complexity
 
 ```dag
-data rust_fold: CallableRealization = {
-  strategy: ListFold
-  acc_ownership: Owned    // closure takes acc by value
-  element_ownership: Borrowed  // element is &T
-}
+fn compute_complexity(
+  dag: Dag,
+  deps: DependencyFacts
+) -> CostReport
 ```
 
----
+The dependency graph's longest chain = critical path =
+inherent sequential cost. `lens_cost` already walks
+`produced_by`. With `DependencyFacts`, it can also report:
+- Critical path length
+- Parallelizable fraction (total work - critical path)
+- Clone cost from ownership (clone = O(n), move = O(1))
 
-## §4. Projection 2: Parallelism
-
-### §4.1 Independence from the graph
-
-Two ports with no transitive `produced_by` path between them
-are independent. In a pure language, independent operations
-are ALWAYS safe to run in parallel.
-
-This is NOT an analysis. It's a structural property of the
-DAG. The dependency index makes it efficient to check.
-
-### §4.2 Fold decomposition
-
-A fold's body lambda has `acc` and `x` parameters. The
-dependency index shows which body nodes transitively depend
-on `acc`:
-
-- **acc-independent nodes** → "map" part (parallelizable)
-- **acc-dependent nodes** → "reduce" part (sequential)
-
-If all per-element work is acc-independent, the fold IS a
-map. The compiler reports this as a structural fact.
-
-### §4.3 Target rendering
-
-```dag
-type ParallelismStrategy {
-  parallel_map: String
-  parallel_reduce: String
-  sequential: String
-}
-```
-
-### §4.4 Effects boundary
-
-For ExternalRealization operations (side effects), the effects
-lens classifies operations. Independent + pure → parallel.
-Independent + effectful → needs sync. Future work (L2 M3).
-
----
-
-## §5. Projection 3: Complexity
-
-The dependency graph's longest chain = the program's inherent
-sequential cost (critical path). Total work minus critical
-path = parallelizable work. `lens_cost` already walks
-`produced_by` edges. With the dependency index, it can also
-report critical path length and parallelizable fraction.
-
-Ownership feeds into complexity: clone = O(n) cost, move =
-O(1), borrow = O(1). The dependency index is computed first,
-ownership reads it, complexity reads both.
-
----
-
-## §6. Projection 4: Provenance + dead code
+### §4.4 Provenance + dead code
 
 **Provenance:** one-hop backward — `port.produced_by`.
-Already `lens_provenance`. Trivial with the shared index.
+Already `lens_provenance`. Trivial read of existing substrate.
 
-**Dead code:** `consumer_count == 0` and not a function
+**Dead code:** `PortConsumers.count == 0` and not a function
 return → dead. Emitter skips it.
 
 ---
 
-## §7. Safety: negative testing for missing clones
+## §5. The pipeline composition
 
-**THIS IS CRITICAL.** If the ownership model incorrectly
-classifies a construct as a read, the emitter will borrow
-where it should clone. The emitted Rust may:
-- Not compile (best case — Rust's borrow checker catches it)
-- Compile but produce wrong results (worst case — data shared
-  when it should be independent)
+```dag
+fn compile(source: String, file: String, spec: LanguageSpec) -> String {
+  let dag        = parse(source, file) |> lower |> infer
+  let deps       = compute_dependencies(dag)
+  let ownership  = compute_ownership(dag, deps, spec.rendering)
+  let complexity = compute_complexity(dag, deps)
+  emit(dag, ownership, complexity, spec)
+}
+```
 
-In a pure language, the second case SHOULD be impossible
-(immutable values can't produce wrong results from sharing).
-But Rust's `Vec` is mutable — if the emitter borrows a Vec
-and the borrower modifies it through interior mutability
-(unlikely but possible in generated code), the result is
-wrong.
-
-**Required negative tests:**
-
-1. **Every generated artifact compiles with rustc.** If the
-   ownership model is wrong, Rust's borrow checker catches
-   most errors. This is the primary safety net.
-
-2. **Roundtrip execution matches.** The generated lens must
-   produce identical output to the handwritten oracle. If
-   a missing clone changes behavior, the parity test catches
-   it.
-
-3. **Intentional over-clone test.** Generate the same program
-   with "clone everything" and "use ownership model." Both
-   must produce identical output. If the ownership model
-   changes behavior, this test catches it.
-
-4. **Boundary tests for each ownership decision:**
-   - Borrow a value used by two readers → both see same data
-   - Move a value at last-use construct → callee has ownership
-   - Clone a non-Copy value at non-last construct → both
-     copies are independent
-   - Deref a Copy value → value preserved correctly
-
-5. **Stress test: nested constructs.** A record containing a
-   record containing a list — verify the ownership model
-   handles depth correctly and doesn't miss an inner clone.
+Each projection reads `DependencyFacts`. None rebuilds the
+index. The dependency computation runs once after inference.
+All downstream projections compose on top of it.
 
 ---
 
-## §8. What v2 reconstructed vs what falls out
+## §6. Validated result and remaining gap
 
-| Fact | v2 (719 lines) | v3 (indexed from DAG) |
-|---|---|---|
-| Who produces? | Walk ExprData backward | `port.produced_by` |
-| Who reads? | Walk tree, count names | `DependencyIndex.consumers` |
-| Read or construct? | Not modeled | Classify from behavior type |
-| Last use? | Not modeled | Evaluation order + consumer count |
-| Independent? | Not modeled | No path in graph |
-| Fold = map? | Not modeled | Body doesn't reach acc |
-| Copy type? | Hardcoded heuristics | `is_copy` in realization spec |
-| Critical path? | Not modeled | Longest chain in graph |
-| Ownership transfer through calls? | Not modeled | **OPEN — §3.5** |
+### §6.1 What the first-pass model achieved
+
+The read-vs-construct classification at the immediate
+consumer level dropped generated lens clones from 72 to 6.
+This validates the DIRECTION: borrowing reads and cloning
+only at construct sites is correct.
+
+### §6.2 What the first pass got wrong
+
+5 of the 6 remaining clones are from cases where the
+immediate classification is insufficient:
+
+- **3 fold accumulator clones:** Rust's `fold` closure takes
+  `acc` by value (owned). The emitter classified `acc` as a
+  function parameter (borrowed) but the fold calling convention
+  gives ownership. Fix: `rust_fold`'s realization declares
+  `param_disposition: [Borrowed, Consumed, Borrowed]`.
+
+- **2 Copy-type clones:** `PortId` is Copy. `.clone()` works
+  but `*value` (deref) is correct. Fix: derive `is_copy` from
+  realization spec + field composition.
+
+### §6.3 The 1-clone target
+
+After implementing `ParameterDisposition` and `is_copy`
+derivation, the expected clone count is **1**: the `SourceSpan`
+field in the `UnusedParameter` record literal (SourceSpan
+contains String, which is not Copy, and the span is borrowed
+from the input BindNode while the record needs to own it).
+
+This single clone is genuinely necessary — it's a non-Copy
+value at a construct site where the source is borrowed. The
+model correctly identifies it.
 
 ---
 
-## §9. Phasing
+## §7. Verification approach
+
+The model claims: if `ParameterDisposition` is correctly
+computed for every callable, and `is_copy` is correctly
+derived for every type, then the emitter produces correct
+code with minimal clones. No class of "missing clone" bugs
+exists — a wrong result means the fact computation is wrong.
+
+**Tests verify the facts, not the symptoms:**
+
+1. **ParameterDisposition tests.** For each callable in std/:
+   assert the derived disposition matches the expected one.
+   `cons` → [Consumed, Consumed]. `is_empty` → [Borrowed].
+   `fold` → [Borrowed, Consumed, Borrowed].
+
+2. **is_copy derivation tests.** Int → true. PortId → true.
+   SourceSpan → false (contains String). A record of all-Copy
+   fields → true. A record with one non-Copy field → false.
+
+3. **Rendering parity.** Generated lens matches handwritten
+   oracle (already tested). If the disposition or is_copy fact
+   is wrong, parity fails.
+
+4. **Roundtrip compilation.** Every generated artifact compiles
+   with rustc. Rust's borrow checker rejects code where the
+   model borrows but the callee needs ownership.
+
+5. **Clone-count pinning.** Exact clone count on generated
+   lens output, pinned at 1 after full implementation. Ratchet
+   only goes down.
+
+---
+
+## §8. Phasing
 
 | Phase | When | What |
 |---|---|---|
-| **Phase 1** | L1.5 | Build `DependencyIndex` during emitter index pass. Classify use kind (read/construct). Add `is_copy` per type in rust.dag. Emitter renders `&T` for reads, `*value` for Copy constructs, `.clone()` for non-Copy non-last constructs. Conservative on §3.5 (clone at transitive construct sites). |
-| **Phase 2** | L2 | Resolve §3.5 (transitive ownership transfer). Fold accumulator ownership annotation (§3.7). Last-use tracking (move at final construct). Expected: clone count → 1 on generated lens. |
-| **Phase 3** | L2 M1+ | Parallelism detection tests. Complexity reads dependency index. Effects-aware parallelism (L2 M3). Dead-code skipping. |
-| **Phase 4** | L3 | Self-analysis. Clone count at zero on generated compiler code. Parallel emission for independent stages. |
+| **Phase 1** | L1.5 | `std/dependency.dag` types. `compute_dependencies` with consumer index (Part 1) only — no callee consumption analysis yet. Emitter renders `&T` for all function params (safe conservative default). `is_copy` on leaf types in rust.dag. Expected: ~6 clones (current state). |
+| **Phase 2** | L2 | Callee consumption analysis (Part 2). `param_disposition` on ExternalRealization callables. Derivation from body DAG for .dag callables. `is_copy` composition for compound types. Fold accumulator rendered with owned `mut acc`. Expected: 1 clone. |
+| **Phase 3** | L2+ | Parallelism detection (independence, fold decomposition). Complexity reads DependencyFacts for critical path. Dead-code skipping. |
+| **Phase 4** | L3 | Self-analysis. Clone count at zero on generated compiler code. Parallel emission for independent pipeline stages. |
 
 ---
 
-## §10. Testing approach
+## §9. When this doc updates
 
-**Dependency structure tests (testable NOW):**
-
-1. Direct dependency: `let a = 1; let b = a + 1` → b
-   depends on a
-2. Transitive: `let a = 1; let b = a+1; let c = b+1` → c
-   depends on a
-3. Independence: `let a = 1+2; let b = 3+4` → independent
-4. Diamond: `let b = a+1; let c = a+2; let d = b+c` → b,c
-   independent; d depends on both
-5. Fold acc-independence: body's x*x doesn't reach acc
-6. Fold acc-dependence: body's acc+x reaches acc
-7. Map elements independent
-8. Cross-function independence
-
-**Ownership rendering tests (Phase 1):**
-
-9. Read-only function → zero clones, all params `&T`
-10. Record with Copy fields → zero clones
-11. Record with non-Copy field → clone at construct site
-12. Multiple reads → zero clones regardless of fan-out
-13. Generated lens clone count pinned (~6 at Phase 1, ~1
-    at Phase 2)
-
-**Safety / negative tests (CRITICAL):**
-
-14. Every generated artifact compiles with rustc
-15. Generated lens matches handwritten oracle (roundtrip)
-16. Clone-everything vs ownership-model produces same output
-17. Nested construct depth handled correctly
-18. Intentionally wrong ownership → rustc rejects or parity
-    fails
-
----
-
-## §11. When this doc updates
-
-- Phase 1 lands → clone count pinned, §3.5 approach chosen
-- Phase 2 lands → transitive ownership resolved, fold
-  accumulator fixed
+- Phase 1 lands → §8 graduates, clone count pinned at ~6
+- Phase 2 lands → callee consumption verified, clone count
+  pinned at 1
 - All phases → doc archives
