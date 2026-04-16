@@ -1,12 +1,113 @@
-use crate::dag::{AtomPayload, Dag, Declaration, DeclarationId, Field, TypeConnective};
+use crate::dag::{
+    AtomPayload, Dag, Declaration, DeclarationId, Field, FieldValue, LiteralBits, TypeConnective,
+};
 use std::collections::HashMap;
 
 const MAX_RENDER_DEPTH: usize = 3;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GeneratedClaim {
-    pub declaration_name: String,
-    pub declaration_source: String,
+#[derive(Debug, Clone)]
+pub struct GeneratedClaim<'a> {
+    dag: &'a Dag,
+    declaration_name: String,
+    fields: Vec<(String, FieldValue)>,
+}
+
+impl<'a> GeneratedClaim<'a> {
+    fn new(dag: &'a Dag, declaration_name: String, fields: Vec<(String, FieldValue)>) -> Self {
+        Self {
+            dag,
+            declaration_name,
+            fields,
+        }
+    }
+
+    pub fn declaration_name(&self) -> &str {
+        &self.declaration_name
+    }
+
+    pub fn fields(&self) -> &[(String, FieldValue)] {
+        &self.fields
+    }
+
+    pub fn dag(&self) -> &Dag {
+        self.dag
+    }
+
+    pub fn render_declaration_source(&self) -> String {
+        let rendered_fields = self
+            .fields
+            .iter()
+            .map(|(label, value)| format!("  {label}: {}", self.render_field_value(value)))
+            .collect::<Vec<_>>()
+            .join(",\n");
+        format!(
+            "data {}: TestClaim = {{\n{}\n}}\n",
+            self.declaration_name, rendered_fields
+        )
+    }
+
+    fn render_field_value(&self, value: &FieldValue) -> String {
+        match value {
+            FieldValue::Literal(LiteralBits::Int(n)) => n.to_string(),
+            FieldValue::Literal(LiteralBits::Bool(b)) => b.to_string(),
+            FieldValue::Literal(LiteralBits::String(s)) => quote_string(s),
+            FieldValue::Reference(decl_id) => self
+                .dag
+                .declaration(*decl_id)
+                .name
+                .clone()
+                .unwrap_or_else(|| panic!("reference declaration {:?} should be named", decl_id)),
+            FieldValue::Record(fields) => format!(
+                "{{ {} }}",
+                fields
+                    .iter()
+                    .map(|(label, value)| format!("{label}: {}", self.render_field_value(value)))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            FieldValue::List(values) => format!(
+                "[{}]",
+                values
+                    .iter()
+                    .map(|value| self.render_field_value(value))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            FieldValue::Variant {
+                constructor,
+                payload,
+            } => {
+                let label = self.variant_label(*constructor);
+                if payload.is_empty() {
+                    label
+                } else {
+                    format!(
+                        "{}({})",
+                        label,
+                        payload
+                            .iter()
+                            .map(|value| self.render_field_value(value))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                }
+            }
+        }
+    }
+
+    fn variant_label(&self, variant_id: DeclarationId) -> String {
+        self.dag
+            .declarations()
+            .iter()
+            .find_map(|decl| match &decl.connective {
+                TypeConnective::Disj { variants } => variants
+                    .iter()
+                    .find(|variant| variant.ty == variant_id)
+                    .map(|variant| variant.label.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("variant declaration {:?} not found", variant_id))
+    }
 }
 
 pub struct TestgenLens<'a> {
@@ -18,7 +119,7 @@ impl<'a> TestgenLens<'a> {
         Self { dag }
     }
 
-    pub fn query(&self) -> Vec<GeneratedClaim> {
+    pub fn query(&self) -> Vec<GeneratedClaim<'a>> {
         let mut claims = Vec::new();
         let mut next_claim_id = 0usize;
         for decl_id in self.named_std_type_ids() {
@@ -37,7 +138,7 @@ impl<'a> TestgenLens<'a> {
                             format!("{type_expr} compiles"),
                             format!("let witness: {type_expr} = {value_expr}\n"),
                             format!("{}_compiles.v3", sanitize(&type_expr)),
-                            "Compiles".to_string(),
+                            self.sum_variant("TestPredicate", "Compiles", Vec::new()),
                         );
                     }
                     let missing_field = self.missing_field_name(children);
@@ -47,9 +148,9 @@ impl<'a> TestgenLens<'a> {
                         format!("{type_expr} rejects missing field"),
                         format!("fn probe(value: {type_expr}) -> Int = value.{missing_field}\n"),
                         format!("{}_missing_field.v3", sanitize(&type_expr)),
-                        format!("FailsWithDiagnostic({})", quote_string(&format!(
+                        self.resolve_name_contains_predicate(&format!(
                             "field `{missing_field}` does not exist"
-                        ))),
+                        )),
                     );
                     if compile_value.is_some()
                         && decl.span.file == "src/v3/std/verification.dag"
@@ -64,7 +165,7 @@ impl<'a> TestgenLens<'a> {
                                 self.render_mismatch_record(children, &subst)
                             ),
                             format!("{}_type_mismatch.v3", sanitize(&type_expr)),
-                            format!("FailsWithDiagnostic({})", quote_string("TypeMismatch")),
+                            self.diagnostic_kind_predicate("TypeMismatch"),
                         );
                     }
                 }
@@ -83,7 +184,7 @@ impl<'a> TestgenLens<'a> {
                                     sanitize(&type_expr),
                                     sanitize(&variant.label)
                                 ),
-                                "Compiles".to_string(),
+                                self.sum_variant("TestPredicate", "Compiles", Vec::new()),
                             );
                         }
                     }
@@ -97,7 +198,7 @@ impl<'a> TestgenLens<'a> {
                                 self.match_pattern(&variants[0])
                             ),
                             format!("{}_non_exhaustive.v3", sanitize(&type_expr)),
-                            format!("FailsWithDiagnostic({})", quote_string("non-exhaustive")),
+                            self.resolve_name_contains_predicate("non-exhaustive"),
                         );
                     }
                 }
@@ -109,25 +210,82 @@ impl<'a> TestgenLens<'a> {
 
     fn push_claim(
         &self,
-        claims: &mut Vec<GeneratedClaim>,
+        claims: &mut Vec<GeneratedClaim<'a>>,
         next_claim_id: &mut usize,
         claim_name: String,
         program_source: String,
         file_name: String,
-        predicate_expr: String,
+        predicate: FieldValue,
     ) {
         let declaration_name = format!("generated_test_claim_{:03}", *next_claim_id);
         *next_claim_id += 1;
-        claims.push(GeneratedClaim {
-            declaration_name: declaration_name.clone(),
-            declaration_source: format!(
-                "data {declaration_name}: TestClaim = {{\n  name: {},\n  source: {},\n  file_name: {},\n  predicate: {}\n}}\n",
-                quote_string(&claim_name),
-                quote_string(&program_source),
-                quote_string(&file_name),
-                predicate_expr
-            ),
-        });
+        claims.push(GeneratedClaim::new(
+            self.dag,
+            declaration_name,
+            vec![
+                (
+                    "name".to_string(),
+                    FieldValue::Literal(LiteralBits::String(claim_name)),
+                ),
+                (
+                    "source".to_string(),
+                    FieldValue::Literal(LiteralBits::String(program_source)),
+                ),
+                (
+                    "file_name".to_string(),
+                    FieldValue::Literal(LiteralBits::String(file_name)),
+                ),
+                ("predicate".to_string(), predicate),
+            ],
+        ));
+    }
+
+    fn sum_variant(
+        &self,
+        sum_name: &str,
+        variant_label: &str,
+        payload: Vec<FieldValue>,
+    ) -> FieldValue {
+        let sum_decl = self
+            .dag
+            .declaration_by_name(sum_name)
+            .unwrap_or_else(|| panic!("bootstrap should load `{sum_name}`"));
+        let TypeConnective::Disj { variants } = &sum_decl.connective else {
+            panic!("`{sum_name}` should lower to a Disj");
+        };
+        let constructor = variants
+            .iter()
+            .find(|variant| variant.label == variant_label)
+            .map(|variant| variant.ty)
+            .unwrap_or_else(|| panic!("variant `{variant_label}` not found under `{sum_name}`"));
+        FieldValue::Variant {
+            constructor,
+            payload,
+        }
+    }
+
+    fn diagnostic_kind_predicate(&self, kind: &str) -> FieldValue {
+        self.sum_variant(
+            "TestPredicate",
+            "FailsWithDiagnostic",
+            vec![self.sum_variant(
+                "DiagnosticExpectation",
+                "KindIs",
+                vec![self.sum_variant("DiagnosticKind", kind, Vec::new())],
+            )],
+        )
+    }
+
+    fn resolve_name_contains_predicate(&self, needle: &str) -> FieldValue {
+        self.sum_variant(
+            "TestPredicate",
+            "FailsWithDiagnostic",
+            vec![self.sum_variant(
+                "DiagnosticExpectation",
+                "ResolveNameContains",
+                vec![FieldValue::Literal(LiteralBits::String(needle.to_string()))],
+            )],
+        )
     }
 
     fn named_std_type_ids(&self) -> Vec<DeclarationId> {

@@ -70,42 +70,64 @@ fn variant_label(dag: &Dag, variant_id: DeclarationId) -> String {
         .unwrap_or_else(|| panic!("variant declaration {:?} not found under any reflected sum", variant_id))
 }
 
-fn compiled_generated_claim(claim: &GeneratedClaim) -> Dag {
-    let dag = compile_any(&claim.declaration_source, "generated_test_claim.dag");
+fn variant_value<'a>(dag: &Dag, value: &'a FieldValue) -> (String, &'a [FieldValue]) {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        panic!("expected variant field value, got {value:?}");
+    };
+    (variant_label(dag, *constructor), payload.as_slice())
+}
+
+fn compiled_generated_claim(claim: &GeneratedClaim<'_>) -> Dag {
+    let dag = compile_any(&claim.render_declaration_source(), "generated_test_claim.dag");
     assert!(
         dag.diagnostics().is_empty(),
         "generated claim declaration should compile cleanly, got {:?}",
         dag.diagnostics().iter().collect::<Vec<_>>()
     );
-    let decl = generated_claim_decl(&dag, &claim.declaration_name);
+    let decl = generated_claim_decl(&dag, claim.declaration_name());
     assert_eq!(
         decl.meta_tag,
         dag.declaration_by_name("TestClaim").map(|decl| decl.id),
         "generated data declaration should be typed as TestClaim"
     );
+    let compiled_fields = structural_fields(decl);
+    assert_eq!(string_field(compiled_fields, "name"), claim_name(claim));
+    assert_eq!(
+        string_field(compiled_fields, "source"),
+        string_field(claim.fields(), "source")
+    );
+    assert_eq!(
+        string_field(compiled_fields, "file_name"),
+        string_field(claim.fields(), "file_name")
+    );
+    assert_eq!(
+        variant_field(&dag, compiled_fields, "predicate").0,
+        variant_field(claim.dag(), claim.fields(), "predicate").0
+    );
     dag
 }
 
-fn claim_name(claim: &GeneratedClaim) -> String {
-    let dag = compiled_generated_claim(claim);
-    string_field(structural_fields(generated_claim_decl(&dag, &claim.declaration_name)), "name")
+fn claim_name(claim: &GeneratedClaim<'_>) -> String {
+    string_field(claim.fields(), "name")
 }
 
-fn claim_holds(claim: &GeneratedClaim) -> bool {
-    let dag = compiled_generated_claim(claim);
-    let fields = structural_fields(generated_claim_decl(&dag, &claim.declaration_name));
-    let source = string_field(fields, "source");
-    let file_name = string_field(fields, "file_name");
-    let (predicate, payload) = variant_field(&dag, fields, "predicate");
+fn claim_holds(claim: &GeneratedClaim<'_>) -> bool {
+    let source = string_field(claim.fields(), "source");
+    let file_name = string_field(claim.fields(), "file_name");
+    let (predicate, payload) = variant_field(claim.dag(), claim.fields(), "predicate");
 
     match predicate.as_str() {
         "Compiles" => compile_to_dag(&source, &file_name).is_ok(),
         "FailsWithDiagnostic" => {
-            let [FieldValue::Literal(LiteralBits::String(kind))] = payload else {
-                panic!("FailsWithDiagnostic payload should be a single String literal");
+            let [expectation] = payload else {
+                panic!("FailsWithDiagnostic payload should be a single DiagnosticExpectation");
             };
             match compile_to_dag(&source, &file_name) {
-                Err(CompileError::Semantic(dag)) => diagnostic_matches(&dag, kind),
+                Err(CompileError::Semantic(dag)) => diagnostic_matches(claim.dag(), &dag, expectation),
                 _ => false,
             }
         }
@@ -113,27 +135,62 @@ fn claim_holds(claim: &GeneratedClaim) -> bool {
     }
 }
 
-fn diagnostic_matches(dag: &Dag, kind: &str) -> bool {
-    dag.diagnostics()
-        .iter()
-        .any(|(_, diag)| match (kind, diag) {
-            ("TypeMismatch", Diagnostic::TypeMismatch { .. }) => true,
-            (needle, Diagnostic::ResolveError { name, .. }) => name.contains(needle),
-            _ => false,
-        })
+fn diagnostic_matches(expectation_dag: &Dag, actual_dag: &Dag, expectation: &FieldValue) -> bool {
+    let (label, payload) = variant_value(expectation_dag, expectation);
+    match label.as_str() {
+        "KindIs" => {
+            let [kind] = payload else {
+                panic!("KindIs payload should carry one DiagnosticKind");
+            };
+            let (kind_label, kind_payload) = variant_value(expectation_dag, kind);
+            assert!(
+                kind_payload.is_empty(),
+                "DiagnosticKind variants should be payload-free, got {kind_payload:?}"
+            );
+            actual_dag
+                .diagnostics()
+                .iter()
+                .any(|(_, diag)| diagnostic_kind(diag) == kind_label)
+        }
+        "ResolveNameContains" => {
+            let [FieldValue::Literal(LiteralBits::String(needle))] = payload else {
+                panic!("ResolveNameContains payload should be a single String literal");
+            };
+            actual_dag.diagnostics().iter().any(|(_, diag)| match diag {
+                Diagnostic::ResolveError { name, .. } => name.contains(needle),
+                _ => false,
+            })
+        }
+        other => panic!("unsupported DiagnosticExpectation variant {other}"),
+    }
 }
 
-fn executable_today(claim: &GeneratedClaim) -> bool {
-    let dag = compiled_generated_claim(claim);
-    let fields = structural_fields(generated_claim_decl(&dag, &claim.declaration_name));
-    let (predicate, payload) = variant_field(&dag, fields, "predicate");
+fn diagnostic_kind(diag: &Diagnostic) -> &'static str {
+    match diag {
+        Diagnostic::TokenizerError { .. } => "TokenizerError",
+        Diagnostic::ParseError { .. } => "ParseError",
+        Diagnostic::TypeMismatch { .. } => "TypeMismatch",
+        Diagnostic::ArityMismatch { .. } => "ArityMismatch",
+        Diagnostic::ResolveError { .. } => "ResolveError",
+    }
+}
+
+fn executable_today(claim: &GeneratedClaim<'_>) -> bool {
+    let (predicate, payload) = variant_field(claim.dag(), claim.fields(), "predicate");
     if predicate != "FailsWithDiagnostic" {
         return true;
     }
-    let [FieldValue::Literal(LiteralBits::String(kind))] = payload else {
-        panic!("FailsWithDiagnostic payload should be a single String literal");
+    let [expectation] = payload else {
+        panic!("FailsWithDiagnostic payload should be a single DiagnosticExpectation");
     };
-    kind != "TypeMismatch"
+    let (label, nested) = variant_value(claim.dag(), expectation);
+    if label != "KindIs" {
+        return true;
+    }
+    let [kind] = nested else {
+        panic!("KindIs payload should carry one DiagnosticKind");
+    };
+    variant_value(claim.dag(), kind).0 != "TypeMismatch"
 }
 
 #[test]
@@ -146,6 +203,9 @@ fn testgen_lens_emits_claims_as_structural_testclaim_values() {
     );
 
     let claims = TestgenLens::new(&dag).query();
+    for claim in &claims {
+        compiled_generated_claim(claim);
+    }
     let claim_names: Vec<_> = claims.iter().map(claim_name).collect();
     assert!(
         claim_names

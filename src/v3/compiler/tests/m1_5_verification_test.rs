@@ -78,12 +78,29 @@ fn bootstrap_loads_verification_authority_types() {
     );
     assert_eq!(record_fields(&dag, "TestSuite"), vec!["name", "claims"]);
     assert_eq!(
+        sum_variants(&dag, "DiagnosticKind"),
+        vec![
+            (String::from("TokenizerError"), Vec::new()),
+            (String::from("ParseError"), Vec::new()),
+            (String::from("TypeMismatch"), Vec::new()),
+            (String::from("ArityMismatch"), Vec::new()),
+            (String::from("ResolveError"), Vec::new()),
+        ]
+    );
+    assert_eq!(
+        sum_variants(&dag, "DiagnosticExpectation"),
+        vec![
+            (String::from("KindIs"), vec![String::from("_0")]),
+            (String::from("ResolveNameContains"), vec![String::from("_0")]),
+        ]
+    );
+    assert_eq!(
         sum_variants(&dag, "TestPredicate"),
         vec![
             (String::from("Compiles"), Vec::new()),
             (
                 String::from("FailsWithDiagnostic"),
-                vec![String::from("kind")],
+                vec![String::from("_0")],
             ),
             (String::from("OutputEquals"), vec![String::from("expected")],),
             (
@@ -104,7 +121,8 @@ fn bootstrap_loads_verification_authority_types() {
 fn verification_predicate_witnesses_compile_cleanly() {
     let src = r#"
 let pred_compiles: TestPredicate = Compiles
-let pred_fails: TestPredicate = FailsWithDiagnostic("ResolveError")
+let pred_fails: TestPredicate = FailsWithDiagnostic(ResolveNameContains("missing"))
+let pred_fails_kind: TestPredicate = FailsWithDiagnostic(KindIs(TypeMismatch))
 let pred_output: TestPredicate = OutputEquals("let x: Int = 1")
 let pred_port_resolved: TestPredicate = PortResolved("answer")
 let pred_port_unresolved: TestPredicate = PortUnresolved("missing")
@@ -142,6 +160,7 @@ let suite: TestSuite = {
     for bind in [
         "pred_compiles",
         "pred_fails",
+        "pred_fails_kind",
         "pred_output",
         "pred_port_resolved",
         "pred_port_unresolved",

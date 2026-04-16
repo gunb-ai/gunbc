@@ -26,13 +26,23 @@ import std.list { List }
 //
 // Dissolution trigger: once verification can refer directly to
 // structural diagnostic facts, port-state expectations, and
-// comparator+bound carriers in std/, split the compressed variants
-// (`FailsWithDiagnostic`, `PortResolved`/`PortUnresolved`,
-// `CostBelow`/`CostAbove`) into those axes and remove this flat
+// comparator+bound carriers in std/, split the remaining compressed
+// port-state and cost variants into those axes and remove this flat
 // bootstrap carrier before more runtime consumers attach.
+type DiagnosticKind
+  = TokenizerError
+  | ParseError
+  | TypeMismatch
+  | ArityMismatch
+  | ResolveError
+
+type DiagnosticExpectation
+  = KindIs(DiagnosticKind)
+  | ResolveNameContains(String)
+
 type TestPredicate
   = Compiles
-  | FailsWithDiagnostic { kind: String }
+  | FailsWithDiagnostic(DiagnosticExpectation)
   | OutputEquals { expected: String }
   | PortResolved { bind_name: String }
   | PortUnresolved { bind_name: String }
