@@ -31,6 +31,7 @@ struct TypeInstantiationBinding {
     carrier: String,
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CallableStrategyBinding {
     ListEmpty,

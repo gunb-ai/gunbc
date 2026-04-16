@@ -116,10 +116,9 @@ fn emit_go_and_rust_programs_are_behaviorally_equivalent_when_go_is_available() 
     let source = "\
 fn double(x: Int) -> Int = x + x
 let result: Int = if double(20) == 40 then 7 else 9
-";
+    ";
     let rust = rust_stdout(source);
     let Some(go) = go_stdout(source) else {
-        eprintln!("skipping Go parity roundtrip: `go` toolchain not available");
         return;
     };
     assert_eq!(rust, go, "Rust and Go outputs diverged");
