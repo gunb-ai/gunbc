@@ -479,6 +479,13 @@ fn bootstrap_fixed_point() {
     // Compare stage1 and stage2 source output (excluding hand-maintained files)
     let stage1_src = stage1_dir.join("src");
     let stage2_src = stage2_dir.join("src");
+    prepare_stage1_for_build(&stage2_dir, &ws);
+    if let Err(err) = rustfmt_rs_files(&stage1_src) {
+        panic!("failed to rustfmt stage1 fixed-point output: {err}");
+    }
+    if let Err(err) = rustfmt_rs_files(&stage2_src) {
+        panic!("failed to rustfmt stage2 fixed-point output: {err}");
+    }
     if let Err(diff) = diff_excluding_hand_maintained(&stage1_src, &stage2_src) {
         eprintln!("Fixed point NOT reached — diff:\n{}", diff);
         let _ = std::fs::remove_dir_all(&stage1_dir);
@@ -688,6 +695,11 @@ static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
         stderr
     );
 
+    // rustfmt resolves sibling `mod foo;` declarations while formatting
+    // lib.rs, so seed the hand-maintained companion files before the
+    // pass1 whitespace-normalization step.
+    prepare_stage1_for_build(&output_dir, &ws);
+
     // Freshness: diff pass 1 output against committed stage0.
     // Must be computed HERE, before CI_PASS2 copies pass1 files into stage0.
     //
@@ -760,6 +772,12 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
         "pass 2 (stage1->2) compile failed:\n{}",
         String::from_utf8_lossy(&pass2_output.stderr)
     );
+
+    prepare_stage1_for_build(&output_dir, &ws);
+    let pass2_src = output_dir.join("src");
+    if let Err(err) = rustfmt_rs_files(&pass2_src) {
+        panic!("failed to rustfmt pass2 output: {err}");
+    }
 
     Pass2Output { output_dir }
 });
@@ -860,9 +878,9 @@ fn ci_freshness() {
 #[test]
 #[ignore] // CI: cargo test -p v2-compiler-tests ci_ -- --ignored
 fn ci_fixed_point() {
-    let pass1 = &*CI_PASS1;
     let pass2 = &*CI_PASS2;
-    let pass1_src = pass1.output_dir.join("src");
+    let ws = crate::helpers::workspace_root();
+    let pass1_src = ws.join("src/v2/stage0/src");
     let pass2_src = pass2.output_dir.join("src");
     if let Err(diff) = diff_excluding_hand_maintained(&pass1_src, &pass2_src) {
         eprintln!("Fixed point NOT reached — diff:\n{}", diff);
