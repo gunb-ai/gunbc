@@ -30,7 +30,10 @@ fn build_stage0() -> std::path::PathBuf {
 
 /// Run a self-compile: `<binary> compile --source-root src/v2 --source-root dsl --output-dir <dir>`.
 /// Does NOT assert success — caller decides how to handle failure.
-fn run_self_compile(binary: &std::path::Path, output_dir: &std::path::Path) -> std::process::Output {
+fn run_self_compile(
+    binary: &std::path::Path,
+    output_dir: &std::path::Path,
+) -> std::process::Output {
     let [v2_root, dsl_root] = crate::helpers::source_roots();
     std::process::Command::new(binary)
         .arg("compile")
@@ -219,7 +222,8 @@ fn strict_compile_diagnostic_count() {
     assert!(
         diag_count <= DIAG_RATCHET,
         "diagnostic count {} exceeds ratchet {}",
-        diag_count, DIAG_RATCHET
+        diag_count,
+        DIAG_RATCHET
     );
 
     let _ = std::fs::remove_dir_all(&out_dir);
@@ -340,13 +344,17 @@ fn bootstrap_stage0_to_stage1() {
     let check_stderr = String::from_utf8_lossy(&check.stderr);
     // Count both coded errors (error[Exxxx]) and uncoded errors (error: ...)
     // to avoid silently passing on parse/syntax failures.
-    let error_count = check_stderr.lines()
+    let error_count = check_stderr
+        .lines()
         .filter(|l| l.starts_with("error[") || (l.starts_with("error") && !l.starts_with("error:")))
         .count();
     // Fall back: if cargo check failed but we counted 0 errors, something
     // uncategorized went wrong — don't silently pass.
     let error_count = if !check.status.success() && error_count == 0 {
-        eprintln!("cargo check failed with uncategorized errors:\n{}", check_stderr);
+        eprintln!(
+            "cargo check failed with uncategorized errors:\n{}",
+            check_stderr
+        );
         usize::MAX
     } else {
         error_count
@@ -361,14 +369,18 @@ fn bootstrap_stage0_to_stage1() {
     }
     let mut cats: Vec<_> = categories.iter().collect();
     cats.sort_by(|a, b| b.1.cmp(a.1));
-    eprintln!("stage1 cargo check: {} errors (ratchet: {})", error_count, EMITTED_RUST_ERROR_RATCHET);
+    eprintln!(
+        "stage1 cargo check: {} errors (ratchet: {})",
+        error_count, EMITTED_RUST_ERROR_RATCHET
+    );
     for (code, count) in cats.iter().take(10) {
         eprintln!("  {}: {}", code, count);
     }
     // Show samples for top 3 categories
     for (code, _) in cats.iter().take(3) {
         let needle = code.trim_end_matches(']').trim_start_matches("error[");
-        let samples: Vec<&str> = check_stderr.lines()
+        let samples: Vec<&str> = check_stderr
+            .lines()
             .filter(|l| l.starts_with(&format!("error[{}]", needle)))
             .take(2)
             .collect();
@@ -376,13 +388,17 @@ fn bootstrap_stage0_to_stage1() {
             eprintln!("  {}", &s[..s.len().min(200)]);
         }
     }
-    eprintln!("\n=== FULL CARGO CHECK STDERR ===\n{}\n=== END ===", check_stderr);
+    eprintln!(
+        "\n=== FULL CARGO CHECK STDERR ===\n{}\n=== END ===",
+        check_stderr
+    );
 
     assert!(
         error_count <= EMITTED_RUST_ERROR_RATCHET,
         "emitted Rust errors {} exceeds ratchet {} — \
          fix codegen or update EMITTED_RUST_ERROR_RATCHET if increase is justified",
-        error_count, EMITTED_RUST_ERROR_RATCHET
+        error_count,
+        EMITTED_RUST_ERROR_RATCHET
     );
 
     let _ = std::fs::remove_dir_all(&stage1_dir);
@@ -499,10 +515,7 @@ fn gist_full_pipeline() {
 
     // Verify Cargo.toml exists in output
     let cargo_toml = out_dir.join("Cargo.toml");
-    assert!(
-        cargo_toml.exists(),
-        "no Cargo.toml in emitted gist output"
-    );
+    assert!(cargo_toml.exists(), "no Cargo.toml in emitted gist output");
 
     // Cleanup
     let _ = std::fs::remove_dir_all(&source_dir);
@@ -586,7 +599,11 @@ fn ci_timing(msg: &str) {
         .unwrap();
     let line = format!("[{:.1}s] {}\n", elapsed.as_secs_f64(), msg);
     eprint!("{}", line);
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(CI_TIMING_FILE) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(CI_TIMING_FILE)
+    {
         let _ = f.write_all(line.as_bytes());
     }
 }
@@ -633,7 +650,10 @@ static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
     let start = std::time::Instant::now();
     let output = run_self_compile(&stage0_bin, &output_dir);
     let elapsed = start.elapsed();
-    ci_timing(&format!("PASS1: self-compile done ({:.1}s)", elapsed.as_secs_f64()));
+    ci_timing(&format!(
+        "PASS1: self-compile done ({:.1}s)",
+        elapsed.as_secs_f64()
+    ));
 
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     assert!(
@@ -649,7 +669,12 @@ static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
     let freshness = diff_excluding_hand_maintained(&pass1_src, &committed_src);
     ci_timing("PASS1: freshness diff done");
 
-    Pass1Output { output_dir, stderr, elapsed, freshness }
+    Pass1Output {
+        output_dir,
+        stderr,
+        elapsed,
+        freshness,
+    }
 });
 
 static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
@@ -713,7 +738,8 @@ fn ci_full_dsl() {
     // would be missed. This test closes that gap.
     let ws = crate::helpers::workspace_root();
     let dsl_dir = ws.join("dsl");
-    let mut dsl_sources: Vec<std::rc::Rc<v2_compiler::v2_compiler_compile::SourceFile>> = Vec::new();
+    let mut dsl_sources: Vec<std::rc::Rc<v2_compiler::v2_compiler_compile::SourceFile>> =
+        Vec::new();
     crate::pipeline::collect_dag_sources(&ws, &dsl_dir, &mut dsl_sources);
 
     assert!(
@@ -734,7 +760,8 @@ fn ci_full_dsl() {
         hard_diags.is_empty(),
         "dsl/ compilation produced {} hard diagnostics (expected 0):\n{}",
         hard_diags.len(),
-        hard_diags.iter()
+        hard_diags
+            .iter()
             .enumerate()
             .map(|(i, m)| format!("  [{}] {}", i, m))
             .collect::<Vec<_>>()
@@ -756,7 +783,8 @@ fn ci_diagnostic_ratchet() {
     assert!(
         diag_count <= DIAG_RATCHET,
         "diagnostic count {} exceeds ratchet {}",
-        diag_count, DIAG_RATCHET
+        diag_count,
+        DIAG_RATCHET
     );
 }
 
@@ -821,10 +849,8 @@ fn bootstrap_l4_structural() {
         .spawn(|| {
             // 1. Compile weather.dag
             let ws = crate::helpers::workspace_root();
-            let weather_src = std::fs::read_to_string(
-                ws.join("dsl/examples/weather/weather.dag"),
-            )
-            .expect("weather.dag should exist");
+            let weather_src = std::fs::read_to_string(ws.join("dsl/examples/weather/weather.dag"))
+                .expect("weather.dag should exist");
 
             let result = crate::helpers::compile_dag_named(
                 "dsl/examples/weather/weather.dag",

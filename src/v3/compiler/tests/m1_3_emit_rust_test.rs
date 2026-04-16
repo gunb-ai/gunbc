@@ -63,7 +63,10 @@ fn roundtrip_stdout(source: &str) -> String {
         .stderr(Stdio::inherit())
         .status()
         .expect("invoke rustc — install a rust toolchain to run this test");
-    assert!(compile.success(), "rustc failed on emitted source:\n{source}");
+    assert!(
+        compile.success(),
+        "rustc failed on emitted source:\n{source}"
+    );
 
     let run = Command::new(&bin_path)
         .output()
@@ -202,7 +205,10 @@ fn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }
 let zero: Int = 0",
     );
     assert!(out.contains("pub enum Sign {"), "got: {out}");
-    assert!(out.contains("fn classify(p0: &Sign) -> i64 { match p0 {"), "got: {out}");
+    assert!(
+        out.contains("fn classify(p0: &Sign) -> i64 { match p0 {"),
+        "got: {out}"
+    );
     assert!(out.contains("Sign::Plus => 0,"), "got: {out}");
     assert!(out.contains("Sign::Minus => 1,"), "got: {out}");
 }
@@ -216,8 +222,14 @@ let zero: Int = 0",
     );
     assert!(out.contains("pub enum BoxedInt {"), "got: {out}");
     assert!(out.contains("Boxed { _0: i64, },"), "got: {out}");
-    assert!(out.contains("fn unwrap_or_zero(p0: &BoxedInt) -> i64 { match p0 {"), "got: {out}");
-    assert!(out.contains("BoxedInt::Boxed { _0: value } => (*(value)),"), "got: {out}");
+    assert!(
+        out.contains("fn unwrap_or_zero(p0: &BoxedInt) -> i64 { match p0 {"),
+        "got: {out}"
+    );
+    assert!(
+        out.contains("BoxedInt::Boxed { _0: value } => (*(value)),"),
+        "got: {out}"
+    );
     assert!(out.contains("BoxedInt::Empty => 0,"), "got: {out}");
 }
 
@@ -228,7 +240,10 @@ fn emit_rust_record_literal_uses_value_construction_syntax() {
 let p: Point = { x: 1, y: 2 }",
     );
     assert!(out.contains("pub struct Point {"), "got: {out}");
-    assert!(out.contains("let p: Point = Point { x: 1, y: 2 };"), "got: {out}");
+    assert!(
+        out.contains("let p: Point = Point { x: 1, y: 2 };"),
+        "got: {out}"
+    );
 }
 
 #[test]
@@ -407,9 +422,7 @@ fn rustc_roundtrip_list_fold_prints_six() {
 
 #[test]
 fn rustc_roundtrip_generic_list_fold_prints_one() {
-    let stdout = roundtrip_stdout(
-        "let total: Int = fold(singleton(1), 0, |acc, x| acc + x)",
-    );
+    let stdout = roundtrip_stdout("let total: Int = fold(singleton(1), 0, |acc, x| acc + x)");
     assert_eq!(stdout, "1", "compiled binary printed {stdout:?}, not `1`");
 }
 
@@ -439,9 +452,8 @@ fn rustc_roundtrip_nested_list_builtins_inside_lambda_prints_six() {
 
 #[test]
 fn rustc_roundtrip_user_function_call_prints_three() {
-    let stdout = roundtrip_stdout(
-        "fn add(a: Int, b: Int) -> Int = a + b\nlet total: Int = add(1, 2)",
-    );
+    let stdout =
+        roundtrip_stdout("fn add(a: Int, b: Int) -> Int = a + b\nlet total: Int = add(1, 2)");
     assert_eq!(stdout, "3", "compiled binary printed {stdout:?}, not `3`");
 }
 
@@ -471,9 +483,7 @@ fn rustc_roundtrip_user_sum_match_prints_zero() {
 
 #[test]
 fn rustc_roundtrip_emitted_module_invokes_reflected_dag_function() {
-    let module = emit_module(
-        "fn node_count(d: Dag) -> Int = fold(d.nodes, 0, |n, node| n + 1)",
-    );
+    let module = emit_module("fn node_count(d: Dag) -> Int = fold(d.nodes, 0, |n, node| n + 1)");
     let stdout = roundtrip_module_stdout(
         &module,
         "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); node_count(&dag)",
@@ -501,9 +511,7 @@ fn rustc_roundtrip_emitted_module_matches_reflected_behavior_payloads() {
 
 #[test]
 fn rustc_roundtrip_emitted_module_returns_reflected_source_span_list() {
-    let module = emit_module(
-        "fn singleton_span(bind: BindNode) -> List<SourceSpan> = [bind.span]",
-    );
+    let module = emit_module("fn singleton_span(bind: BindNode) -> List<SourceSpan> = [bind.span]");
     let stdout = roundtrip_module_stdout(
         &module,
         "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) => Some(bind.clone()), _ => None }).expect(\"bind\"); singleton_span(&bind).len() as i64",

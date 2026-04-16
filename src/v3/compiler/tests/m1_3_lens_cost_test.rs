@@ -60,11 +60,7 @@ fn cost_lens_branch_counts_condition_plus_max_path() {
     //   then:      Value(10), cost 0
     //   else:      Value(20), cost 0
     //   Branch cost = 1 + cond + max(paths) = 1 + 1 + 0 = 2
-    let dag = compile_to_dag(
-        "let r = if 1 > 0 then 10 else 20",
-        "test.v3",
-    )
-    .expect("compiles");
+    let dag = compile_to_dag("let r = if 1 > 0 then 10 else 20", "test.v3").expect("compiles");
     let lens = CostLens::new(&dag);
     assert_eq!(lens.cost_of(find_bind_value(&dag, "r")), 2);
 }
@@ -81,11 +77,8 @@ fn cost_lens_branch_uses_max_not_sum_across_paths() {
     // 1 + 1 + (0 + 2) = 4 — so we also need an asymmetric case
     // where max and sum differ. Use `20 + 30` vs `40 + 50 + 60`
     // to force the distinction: then=1, else=2, max=2, sum=3.
-    let dag = compile_to_dag(
-        "let r = if 1 > 0 then 20 + 30 else 40 + 50 + 60",
-        "test.v3",
-    )
-    .expect("compiles");
+    let dag = compile_to_dag("let r = if 1 > 0 then 20 + 30 else 40 + 50 + 60", "test.v3")
+        .expect("compiles");
     let lens = CostLens::new(&dag);
     // 1 (branch) + 1 (cond Gt) + max(1, 2) = 4
     assert_eq!(lens.cost_of(find_bind_value(&dag, "r")), 4);

@@ -114,8 +114,7 @@ fn parse_std_algebra_and_walk_int_add() {
 
     // `add`'s ty is an Arrow [T, T] → T, body: Pending. Substituting
     // T := Word64 yields [Word64, Word64] → Word64.
-    let (arrow_inputs, arrow_output, arrow_body) = match &dag.declaration(add_field.ty).connective
-    {
+    let (arrow_inputs, arrow_output, arrow_body) = match &dag.declaration(add_field.ty).connective {
         TypeConnective::Arrow {
             inputs,
             output,
@@ -129,9 +128,7 @@ fn parse_std_algebra_and_walk_int_add() {
     );
     assert_eq!(arrow_inputs.len(), 2, "add takes two arguments");
 
-    let substitute = |id: DeclarationId| -> DeclarationId {
-        *subst.get(&id).unwrap_or(&id)
-    };
+    let substitute = |id: DeclarationId| -> DeclarationId { *subst.get(&id).unwrap_or(&id) };
     let sub_input0 = substitute(arrow_inputs[0]);
     let sub_input1 = substitute(arrow_inputs[1]);
     let sub_output = substitute(arrow_output);
@@ -359,10 +356,7 @@ fn child_declarations_are_anonymous() {
             .unwrap_or_else(|| panic!("`{meta}` must be declared by src/v3/spec/rust.dag"))
             .id;
         assert!(
-            matches!(
-                dag.declaration(id).connective,
-                TypeConnective::Conj { .. }
-            ),
+            matches!(dag.declaration(id).connective, TypeConnective::Conj { .. }),
             "`{meta}` must lower to a Conj"
         );
     }
@@ -380,10 +374,7 @@ fn child_declarations_are_anonymous() {
             .unwrap_or_else(|| panic!("`{marker}` must be declared by dsl/std/v3_l1.dag"))
             .id;
         assert!(
-            matches!(
-                dag.declaration(id).connective,
-                TypeConnective::Conj { .. }
-            ),
+            matches!(dag.declaration(id).connective, TypeConnective::Conj { .. }),
             "v3_l1 marker `{marker}` must lower to a Conj"
         );
     }
@@ -531,9 +522,7 @@ fn m17_operator_lowers_to_structural_transform_target() {
         .expect("Transform node exists");
     match &add_node.target {
         TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)) => {}
-        other => panic!(
-            "expected TransformTarget::Operator(Arithmetic(Add)), got {other:?}"
-        ),
+        other => panic!("expected TransformTarget::Operator(Arithmetic(Add)), got {other:?}"),
     }
 }
 
@@ -543,8 +532,7 @@ fn m17_comparison_operator_lowers_to_structural_transform_target() {
     // `OperatorKind::Comparison` variant at parse time. The
     // arithmetic-vs-comparison split is structural, not a sibling
     // string match.
-    let dag =
-        compile_to_dag("let y = 1 < 2", "test.v3").expect("compiles");
+    let dag = compile_to_dag("let y = 1 < 2", "test.v3").expect("compiles");
     let cmp_node = dag
         .nodes()
         .iter()
@@ -552,9 +540,7 @@ fn m17_comparison_operator_lowers_to_structural_transform_target() {
         .expect("Transform node exists");
     match &cmp_node.target {
         TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Lt)) => {}
-        other => panic!(
-            "expected TransformTarget::Operator(Comparison(Lt)), got {other:?}"
-        ),
+        other => panic!("expected TransformTarget::Operator(Comparison(Lt)), got {other:?}"),
     }
 }
 
@@ -580,7 +566,11 @@ fn m17_user_function_call_lowers_to_callable_target() {
         _ => unreachable!(),
     };
     let name = dag.declaration(target_id).name.as_deref();
-    assert_eq!(name, Some("f"), "Callable target points at user function `f`");
+    assert_eq!(
+        name,
+        Some("f"),
+        "Callable target points at user function `f`"
+    );
 }
 
 #[test]
@@ -713,9 +703,7 @@ fn m17_r9_arithmetic_operator_walks_to_algebra_field() {
     let int_shape = dag.int_shape().expect("Int cached at bootstrap");
     match dag.port(bind_x.value).state() {
         v3_compiler::dag::PortState::Resolved(ty) if *ty == int_shape => {}
-        other => panic!(
-            "expected Bind(x).value to be Resolved(Int), got {other:?}"
-        ),
+        other => panic!("expected Bind(x).value to be Resolved(Int), got {other:?}"),
     }
 }
 
@@ -735,9 +723,7 @@ fn m17_r9_comparison_operator_walks_to_algebra_field() {
     let bool_shape = dag.bool_shape().expect("Bool cached at bootstrap");
     match dag.port(bind_y.value).state() {
         v3_compiler::dag::PortState::Resolved(ty) if *ty == bool_shape => {}
-        other => panic!(
-            "expected Bind(y).value to be Resolved(Bool), got {other:?}"
-        ),
+        other => panic!("expected Bind(y).value to be Resolved(Bool), got {other:?}"),
     }
 }
 
@@ -1007,11 +993,13 @@ fn m1_3_prb_rust_dag_bootstrap_loads_structurally() {
     assert_eq!(fields[1].0, "op");
     let ordered_ring_id = find_named(&dag, "OrderedRing");
     let ordered_ring_add_id = match &dag.declaration(ordered_ring_id).connective {
-        TypeConnective::Conj { children } => children
-            .iter()
-            .find(|f| f.label == "add")
-            .expect("OrderedRing has an add field")
-            .ty,
+        TypeConnective::Conj { children } => {
+            children
+                .iter()
+                .find(|f| f.label == "add")
+                .expect("OrderedRing has an add field")
+                .ty
+        }
         other => panic!("OrderedRing should be a Conj, got {other:?}"),
     };
     match &fields[1].1 {
@@ -1419,11 +1407,7 @@ fn m18_if_then_else_populates_branch_pattern() {
     // for the then-branch and {name:"False"} for the else-branch,
     // resolved to Bool's True/False variant declarations after
     // inference.
-    let dag = compile_to_dag(
-        "let r = if 1 > 0 then 10 else 20",
-        "if.v3",
-    )
-    .expect("compiles");
+    let dag = compile_to_dag("let r = if 1 > 0 then 10 else 20", "if.v3").expect("compiles");
     let branch = dag
         .nodes()
         .iter()
@@ -1434,9 +1418,7 @@ fn m18_if_then_else_populates_branch_pattern() {
     for path in &branch.paths {
         match &path.pattern {
             BranchPattern::ResolvedVariant(_) => {}
-            other => panic!(
-                "if/else paths should resolve to Bool variants, got {other:?}"
-            ),
+            other => panic!("if/else paths should resolve to Bool variants, got {other:?}"),
         }
     }
 }
@@ -1454,9 +1436,7 @@ fn m18_bool_is_structurally_a_disj() {
             assert!(variants.iter().any(|f| f.label == "True"));
             assert!(variants.iter().any(|f| f.label == "False"));
         }
-        other => panic!(
-            "Bool must be a Disj for if/else to type-check, got {other:?}"
-        ),
+        other => panic!("Bool must be a Disj for if/else to type-check, got {other:?}"),
     }
 }
 
@@ -1821,7 +1801,10 @@ let y = f(42)
         }
     }
 
-    assert!(saw_lambda_call, "did not observe the direct lambda call target");
+    assert!(
+        saw_lambda_call,
+        "did not observe the direct lambda call target"
+    );
     assert_eq!(bind_value_type_decl(&dag, "y"), int_id);
 }
 
@@ -2028,7 +2011,10 @@ let y = f(3)
         }
     }
 
-    assert!(saw_lambda_call, "did not observe the captured lambda call target");
+    assert!(
+        saw_lambda_call,
+        "did not observe the captured lambda call target"
+    );
     assert_eq!(bind_value_type_decl(&dag, "y"), int_id);
 }
 
@@ -2092,7 +2078,10 @@ let y = apply_to_three(|x| base + x)
         );
     }
 
-    assert!(saw_instantiation, "did not observe the higher-order lambda instantiation");
+    assert!(
+        saw_instantiation,
+        "did not observe the higher-order lambda instantiation"
+    );
     assert_eq!(bind_value_type_decl(&dag, "y"), int_id);
 }
 
@@ -2136,7 +2125,15 @@ fn prereq4_list_dag_bootstrap_loads_cleanly() {
         "bootstrap should load staged std.list declarations cleanly, got {:?}",
         dag.diagnostics().iter().collect::<Vec<_>>()
     );
-    for name in ["List", "empty", "singleton", "cons", "fold", "map", "filter"] {
+    for name in [
+        "List",
+        "empty",
+        "singleton",
+        "cons",
+        "fold",
+        "map",
+        "filter",
+    ] {
         assert!(
             dag.declaration_by_name(name).is_some(),
             "bootstrap should register staged std.list declaration `{name}`"
@@ -2146,7 +2143,10 @@ fn prereq4_list_dag_bootstrap_loads_cleanly() {
         .declaration_by_name("List")
         .expect("bootstrap should register List");
     let TypeConnective::Disj { variants } = &list.connective else {
-        panic!("staged std.list should shadow the v2 alias with a structural Disj, got {:?}", list.connective);
+        panic!(
+            "staged std.list should shadow the v2 alias with a structural Disj, got {:?}",
+            list.connective
+        );
     };
     let labels: Vec<_> = variants.iter().map(|field| field.label.as_str()).collect();
     assert_eq!(labels, vec!["Empty", "Cons"]);
@@ -2169,9 +2169,13 @@ let total: Int = x_of({ x: 1, y: 2 })
 
 #[test]
 fn prereq4_list_literal_in_expression_position_lowers_through_std_list_constructors() {
-    let dag = compile_to_dag("let xs: List<Int> = [1, 2, 3]", "expr_list_literal.v3")
-        .expect("compiles");
-    assert!(dag.diagnostics().is_empty(), "got diagnostics: {:?}", dag.diagnostics());
+    let dag =
+        compile_to_dag("let xs: List<Int> = [1, 2, 3]", "expr_list_literal.v3").expect("compiles");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "got diagnostics: {:?}",
+        dag.diagnostics()
+    );
     let callable_names: Vec<String> = dag
         .nodes()
         .iter()
@@ -2549,9 +2553,7 @@ fn unwrap_or_zero(b: BoxedInt) -> Int = match id(b) { Boxed(value) => value, Emp
         v3_compiler::dag::PortState::Resolved(ty) => {
             assert_eq!(*ty, dag.int_shape().expect("Int cached"))
         }
-        other => panic!(
-            "payload port for inferred scrutinee should resolve to Int, got {other:?}"
-        ),
+        other => panic!("payload port for inferred scrutinee should resolve to Int, got {other:?}"),
     }
 }
 
@@ -2590,9 +2592,7 @@ fn unwrap_or_zero(m: Maybe<Int>) -> Int = match m { Some(value) => value, None =
         v3_compiler::dag::PortState::Resolved(ty) => {
             assert_eq!(*ty, dag.int_shape().expect("Int cached"))
         }
-        other => panic!(
-            "payload port for instantiated sum should resolve to Int, got {other:?}"
-        ),
+        other => panic!("payload port for instantiated sum should resolve to Int, got {other:?}"),
     }
 }
 
@@ -2602,8 +2602,7 @@ fn reflected_optional_handle_field_projection_resolves() {
 import std.substrate { DagPort, NodeId }
 fn producer_or_self(port: DagPort) -> NodeId = match port.produced_by { Some(node_id) => node_id, None => port.id }
 ";
-    let dag = compile_to_dag(src, "optional_handle_field_projection.v3")
-        .expect("compiles");
+    let dag = compile_to_dag(src, "optional_handle_field_projection.v3").expect("compiles");
     assert!(
         dag.diagnostics().is_empty(),
         "optional reflected handle field projection should compile cleanly, got {:?}",
@@ -2613,8 +2612,10 @@ fn producer_or_self(port: DagPort) -> NodeId = match port.produced_by { Some(nod
 
 #[test]
 fn prereq2_payload_binding_on_non_disj_scrutinee_fails_closed() {
-    let dag =
-        compile_any("fn bad(i: Int) -> Int = match i { Nope(v) => v }", "payload_non_disj.v3");
+    let dag = compile_any(
+        "fn bad(i: Int) -> Int = match i { Nope(v) => v }",
+        "payload_non_disj.v3",
+    );
     assert!(
         !dag.diagnostics().is_empty(),
         "payload binding on a non-Disj scrutinee must fail closed"
@@ -2634,7 +2635,10 @@ fn unwrap_or_zero(w: Wrapped) -> Int = match w { Wrap(payload) => payload.inner.
         "record payload binding should compile cleanly: {:?}",
         dag.diagnostics()
     );
-    assert_eq!(bind_value_type_decl(&dag, "unwrap_or_zero"), find_named(&dag, "Int"));
+    assert_eq!(
+        bind_value_type_decl(&dag, "unwrap_or_zero"),
+        find_named(&dag, "Int")
+    );
 }
 
 #[test]
@@ -2682,7 +2686,10 @@ type MyList<T> = Empty | Cons { head: T, tail: MyList<T> }
         .declaration_by_name("MyList")
         .expect("MyList declaration exists");
     let TypeConnective::Disj { variants } = &list.connective else {
-        panic!("recursive generic sum should lower to Disj, got {:?}", list.connective);
+        panic!(
+            "recursive generic sum should lower to Disj, got {:?}",
+            list.connective
+        );
     };
     let cons = variants
         .iter()
@@ -2690,14 +2697,24 @@ type MyList<T> = Empty | Cons { head: T, tail: MyList<T> }
         .expect("Cons variant exists");
     let cons_decl = dag.declaration(cons.ty);
     let TypeConnective::Conj { children } = &cons_decl.connective else {
-        panic!("Cons payload should be a Conj, got {:?}", cons_decl.connective);
+        panic!(
+            "Cons payload should be a Conj, got {:?}",
+            cons_decl.connective
+        );
     };
     let tail = children
         .iter()
         .find(|field| field.label == "tail")
         .expect("tail field exists");
-    let TypeConnective::Instantiation { template, arguments } = &dag.declaration(tail.ty).connective else {
-        panic!("tail field should instantiate MyList<T>, got {:?}", dag.declaration(tail.ty).connective);
+    let TypeConnective::Instantiation {
+        template,
+        arguments,
+    } = &dag.declaration(tail.ty).connective
+    else {
+        panic!(
+            "tail field should instantiate MyList<T>, got {:?}",
+            dag.declaration(tail.ty).connective
+        );
     };
     assert_eq!(
         *template, list.id,
@@ -2736,9 +2753,7 @@ let n: Int = count([1, 2, 3])
         .expect("recursive std.list function value should have a producer");
     match dag.node(producer) {
         Behavior::Loop(_) => {}
-        other => panic!(
-            "expected std.list recursive descent to lower to Loop, got {other:?}"
-        ),
+        other => panic!("expected std.list recursive descent to lower to Loop, got {other:?}"),
     }
 }
 
@@ -2789,8 +2804,7 @@ fn walk_steps(remaining: Int, d: Dag, frontier: List<PortId>, referenced: List<P
         expand_referenced_list(frontier, referenced)
       )
 ";
-    let dag =
-        compile_any(src, "monomorphic_recursive_helper_reflected_list_args.v3");
+    let dag = compile_any(src, "monomorphic_recursive_helper_reflected_list_args.v3");
     assert!(
         dag.diagnostics().is_empty(),
         "monomorphic recursive self-call with helper-produced reflected list args should compile cleanly, got diagnostics: {:?}",

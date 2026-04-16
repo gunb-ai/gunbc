@@ -16,9 +16,7 @@
 // minimum config + Dag pair and assert the lens output matches.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::lens_unused_parameters::{
-    UnusedParametersConfig, UnusedParametersLens,
-};
+use v3_compiler::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
 use v3_compiler::Dag;
 
 fn run_lens(source: &str) -> Vec<String> {
@@ -39,9 +37,7 @@ fn unused_params_empty_for_function_using_every_parameter() {
     // `fn add(a: Int, b: Int) -> Int = a + b`
     // Both parameters are wired into the body's Add transform.
     // Expected: zero violations.
-    let violations = run_lens(
-        "fn add(a: Int, b: Int) -> Int = a + b",
-    );
+    let violations = run_lens("fn add(a: Int, b: Int) -> Int = a + b");
     assert_eq!(
         violations,
         Vec::<String>::new(),
@@ -54,10 +50,12 @@ fn unused_params_reports_single_unused_parameter() {
     // `fn first(a: Int, b: Int) -> Int = a`
     // The body is just `a`; `b` is declared but never read.
     // Expected: one violation pointing at parameter index 1.
-    let violations = run_lens(
-        "fn first(a: Int, b: Int) -> Int = a",
+    let violations = run_lens("fn first(a: Int, b: Int) -> Int = a");
+    assert_eq!(
+        violations.len(),
+        1,
+        "expected 1 violation, got: {violations:?}"
     );
-    assert_eq!(violations.len(), 1, "expected 1 violation, got: {violations:?}");
     assert!(
         violations[0].ends_with(":param[1]"),
         "expected violation on param index 1 (the `b` parameter), got: {violations:?}"
@@ -69,9 +67,7 @@ fn unused_params_reports_all_parameters_for_constant_body() {
     // `fn always_one(x: Int, y: Int, z: Int) -> Int = 1`
     // The body is a literal; none of the parameters are read.
     // Expected: three violations, one per parameter.
-    let violations = run_lens(
-        "fn always_one(x: Int, y: Int, z: Int) -> Int = 1",
-    );
+    let violations = run_lens("fn always_one(x: Int, y: Int, z: Int) -> Int = 1");
     assert_eq!(
         violations.len(),
         3,
@@ -111,9 +107,7 @@ fn unused_params_handles_branch_in_body() {
     // `fn pick(a: Int, b: Int) -> Int = if a > 0 then a else b`
     // The cond uses `a`, the then-arm uses `a`, the else-arm uses
     // `b`. All parameters reachable. Expected: zero violations.
-    let violations = run_lens(
-        "fn pick(a: Int, b: Int) -> Int = if a > 0 then a else b",
-    );
+    let violations = run_lens("fn pick(a: Int, b: Int) -> Int = if a > 0 then a else b");
     assert_eq!(
         violations,
         Vec::<String>::new(),
@@ -338,10 +332,12 @@ fn unused_params_reports_unused_in_branch_body() {
     // `fn always_a(a: Int, b: Int) -> Int = if a > 0 then a else a`
     // The cond uses `a`, both arms use `a`. `b` is declared but
     // never read. Expected: one violation on param index 1.
-    let violations = run_lens(
-        "fn always_a(a: Int, b: Int) -> Int = if a > 0 then a else a",
+    let violations = run_lens("fn always_a(a: Int, b: Int) -> Int = if a > 0 then a else a");
+    assert_eq!(
+        violations.len(),
+        1,
+        "expected 1 violation, got: {violations:?}"
     );
-    assert_eq!(violations.len(), 1, "expected 1 violation, got: {violations:?}");
     assert!(
         violations[0].ends_with(":param[1]"),
         "expected violation on param index 1, got: {violations:?}"

@@ -39,9 +39,7 @@ fn assert_target_name(dag: &Dag, target: &TransformTarget, expected: &str) {
         TransformTarget::Callable(id) => {
             let decl = dag.declaration(*id);
             match &decl.connective {
-                TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name)) => {
-                    Some(name.clone())
-                }
+                TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name)) => Some(name.clone()),
                 TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
                     dag.declaration(*next).name.clone()
                 }
@@ -136,9 +134,7 @@ fn test_if_then_else_produces_branch_dag() {
         .expect("Bind(result) must exist");
 
     let value_port = dag.port(result_bind.value);
-    let branch_id = value_port
-        .produced_by
-        .expect("result has a producer node");
+    let branch_id = value_port.produced_by.expect("result has a producer node");
     let branch = dag
         .node(branch_id)
         .as_branch()
@@ -352,10 +348,7 @@ fn test_forward_reference_produces_diagnostic() {
 fn test_arity_mismatch_produces_diagnostic() {
     // Fail-closed (C-8): decide-level failure in infer routes
     // through mark_unresolved, not a silent return.
-    let dag = compile_any(
-        "fn f(a: Int) -> Int = a\nlet x = f(1, 2)",
-        "test.v3",
-    );
+    let dag = compile_any("fn f(a: Int) -> Int = a\nlet x = f(1, 2)", "test.v3");
     let bind_x = dag
         .nodes()
         .iter()
@@ -498,8 +491,7 @@ fn test_bool_literal_in_conditional() {
     // Branch node's `input` port must trace back to a Value(Bool(true))
     // producer, proving tokenize -> parse -> lower -> infer flows
     // bool literals end-to-end into the conditional context.
-    let dag = compile_to_dag("let x = if true then 1 else 2", "test.v3")
-        .expect("compiles");
+    let dag = compile_to_dag("let x = if true then 1 else 2", "test.v3").expect("compiles");
 
     let bind_x = dag
         .nodes()
@@ -702,14 +694,12 @@ type Foo
         Err(other) => panic!("unexpected structural error: {other:?}"),
     };
     let diagnostics = dag.diagnostics();
-    let has_duplicate_diag = diagnostics
-        .iter()
-        .any(|(_, diag)| match diag {
-            v3_compiler::diagnostics::Diagnostic::ResolveError { name, .. } => {
-                name.contains("duplicate declaration `Foo`")
-            }
-            _ => false,
-        });
+    let has_duplicate_diag = diagnostics.iter().any(|(_, diag)| match diag {
+        v3_compiler::diagnostics::Diagnostic::ResolveError { name, .. } => {
+            name.contains("duplicate declaration `Foo`")
+        }
+        _ => false,
+    });
     assert!(
         has_duplicate_diag,
         "expected duplicate-declaration diagnostic, got {diagnostics:?}"
@@ -755,7 +745,8 @@ fn test_provenance_lens_loop_origin() {
     // A recursive function's Bind.value port is produced by a
     // Loop node (the bounded-recursion wrapper). The provenance
     // lens reports Origin::Accumulated pointing at the Loop node.
-    let src = "fn count(n: Int) -> Int = if n == 0 then 0 else n + count(n - 1)\nlet answer = count(3)";
+    let src =
+        "fn count(n: Int) -> Int = if n == 0 then 0 else n + count(n - 1)\nlet answer = count(3)";
     let dag = compile_to_dag(src, "test.v3").expect("compiles");
     let lens = ProvenanceLens::new(&dag);
 
@@ -810,10 +801,7 @@ fn test_composition_nested_if_expressions() {
         .filter_map(Behavior::as_bind)
         .find(|b| b.name == "r")
         .expect("Bind(r) exists");
-    let outer_branch_id = dag
-        .port(bind_r.value)
-        .produced_by
-        .expect("producer exists");
+    let outer_branch_id = dag.port(bind_r.value).produced_by.expect("producer exists");
     let outer_branch = dag
         .node(outer_branch_id)
         .as_branch()
@@ -847,10 +835,7 @@ fn test_composition_if_inside_function_call() {
         .filter_map(Behavior::as_bind)
         .find(|b| b.name == "y")
         .expect("Bind(y) exists");
-    let call_id = dag
-        .port(bind_y.value)
-        .produced_by
-        .expect("producer exists");
+    let call_id = dag.port(bind_y.value).produced_by.expect("producer exists");
     let call = dag
         .node(call_id)
         .as_transform()
@@ -888,10 +873,7 @@ fn test_composition_two_functions_later_calls_earlier() {
         .filter_map(Behavior::as_bind)
         .find(|b| b.name == "r")
         .expect("Bind(r) exists");
-    let g_call_id = dag
-        .port(bind_r.value)
-        .produced_by
-        .expect("producer exists");
+    let g_call_id = dag.port(bind_r.value).produced_by.expect("producer exists");
     let g_call = dag
         .node(g_call_id)
         .as_transform()
@@ -934,10 +916,7 @@ fn test_composition_branch_with_function_calls_in_both_paths() {
         .filter_map(Behavior::as_bind)
         .find(|b| b.name == "r")
         .expect("Bind(r) exists");
-    let branch_id = dag
-        .port(bind_r.value)
-        .produced_by
-        .expect("producer exists");
+    let branch_id = dag.port(bind_r.value).produced_by.expect("producer exists");
     let branch = dag
         .node(branch_id)
         .as_branch()
@@ -1299,11 +1278,7 @@ fn test_depth_lens_branch_takes_max_of_paths_and_condition() {
     //   else:      Value(20), Value(30) -> Add, depth 1
     //   Branch depth = 1 + max(cond_depth, max(paths_depths))
     //               = 1 + max(1, max(0, 1)) = 1 + 1 = 2
-    let dag = compile_to_dag(
-        "let r = if 1 > 0 then 10 else 20 + 30",
-        "test.v3",
-    )
-    .expect("compiles");
+    let dag = compile_to_dag("let r = if 1 > 0 then 10 else 20 + 30", "test.v3").expect("compiles");
     let lens = DepthLens::new(&dag);
     let bind_r = dag
         .nodes()
