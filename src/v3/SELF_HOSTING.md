@@ -63,20 +63,34 @@ model, not inventing it.
 ```
 L0 — Substrate stable                  [SHIPPED at M1(3)]
       │
-L1 — Reflection framework              [in design — docs/substrate-reflection-design.md]
-      │    • substrate.dag declares Dag / Behavior / etc.
-      │    • field access, pattern match with payload, lambda,
-      │      higher-order calls via template instantiation
-      │    • first lens (lens_unused_parameters) migrates
-      │    • list.dag loads
+L1 — Reflection framework              [prereqs shipping — reflection PR next]
+      │    • Prereq 0 (HoF via 1c): #460 merged
+      │    • Prereq 1 (FieldProject): #458 merged
+      │    • Prereq 2 (Path.binding): #458 merged
+      │    • Prereq 3 (contextual lambda): #460 merged
+      │    • Prereq 4 (list.dag bootstrap): #463 in flight
+      │    • Prereq 5 (pipe sugar): #462 merged
+      │    • Reflection PR: next after prereq slate completes
+      │    • first lens (lens_unused_parameters) migrates in reflection PR
       │
-L2 — v2 consumer migrations            [see docs/substrate-reflection-design.md §12.5]
-      │    M1: dsl/lenses/complexity.dag  (5490 lines from v2)
-      │    M2: dsl/lenses/ownership.dag   (719 lines)
-      │    M3: dsl/lenses/effects.dag     (66 lines)
-      │    M4: dsl/lenses/trace.dag       (223 lines)
-      │
-L3 — Pipeline stages in .dag           [THIS DOC]
+      ├── L2 — v2 consumer migrations   [parallel with L2.5]
+      │    │    M1: dsl/lenses/complexity.dag  (5490 lines from v2)
+      │    │    M2: dsl/lenses/ownership.dag   (719 lines)
+      │    │    M3: dsl/lenses/effects.dag     (66 lines)
+      │    │    M4: dsl/lenses/trace.dag       (223 lines)
+      │    │
+      └── L2.5 — Per-stage domain modeling [parallel with L2]
+           │    Emit domain:  extdeps/languages/ completeness,
+           │                  std/formatting.dag
+           │    Lower domain: std/surface.dag (surface AST types)
+           │    Parse domain: std/token.dag, std/encoding.dag,
+           │                  extdeps/platform/filesystem.dag,
+           │                  grammar productions as data
+           │    Infer domain: std/inference.dag, std/scope.dag,
+           │                  std/substitution.dag
+           │                  (blocked on I3 write-surface experiment)
+           │
+L3 — Pipeline stages in .dag           [blocked on L2.5 model for each stage]
       │    Stage 1: emit.dag   — Dag → target source strings
       │    Stage 2: lower.dag  — SurfaceItems → Declarations + Behaviors
       │    Stage 3: infer.dag  — Dag → Dag with port state
@@ -92,19 +106,487 @@ L4 — Full self-hosting (M3)            [long-term]
 1. **L2 cannot start until L1 ships.** Consumer migrations read
    substrate facts through the reflection framework; no
    reflection, no lens migrations.
-2. **L3 cannot start until L1 ships AND at least M1 of L2 is
-   underway.** Consumer migrations prove the reflection
-   framework works on real analysis code before the compiler
-   itself migrates. Without consumer migrations as a test corpus,
-   pipeline migrations are a leap of faith.
-3. **L3 stages proceed bottom-up.** Emit first (easiest, already
+2. **L2.5 cannot start until L1 ships.** Domain modeling declares
+   types in `std/` and `extdeps/` using the same reflection
+   infrastructure. Does NOT need L2 lens migrations to be done
+   first — L2 and L2.5 are independent parallel work streams
+   (L2 writes lenses in `dsl/lenses/`, L2.5 declares types in
+   `std/` and `extdeps/`).
+   **Distinction from the decorative-modeling pattern.** ROADMAP
+   Track 17 warns that types with zero consumers are decorative.
+   L2.5 is NOT that pattern. Each L2.5 type has a **named
+   consumer**: the L3 stage implementation that reads it. The
+   four-step sequencing in §2.2 ties modeling to implementation
+   atomically — Step 1 (model review) exists BECAUSE Step 3
+   (implementation) will consume the types. If an L2.5 type has
+   no Stage N implementation that reads it, it doesn't belong in
+   L2.5; it's decorative. The test is: "which function body in
+   L3 reads this type?" If you can't name one, don't declare it.
+3. **L3 stage N cannot start until L2.5's model for stage N is
+   reviewed.** Implementation fills in function bodies over
+   already-declared types. The model IS the prerequisite (§2.2).
+   L2 should have at least M1 underway to prove the reflection
+   framework works on real analysis code before pipeline stages
+   start.
+4. **L2.5 stages proceed in L3's implementation order.** Emit
+   domain first (partially exists, smallest gap), lower domain
+   second, parse domain third, infer domain last (blocked on I3
+   write-surface experiment). Each domain model runs ahead of
+   its stage's implementation by at least one step.
+5. **L3 stages proceed bottom-up.** Emit first (easiest, already
    half-structured), then lower, then infer, then parse. Each
    later stage's migration benefits from the earlier stages
    being in `.dag` form (e.g., `lower.dag` can call `emit.dag`
    for debug-dump purposes once both are in `.dag`).
-4. **L4 is the state after all L3 stages ship.** There is no
+6. **L4 is the state after all L3 stages ship.** There is no
    separate "make self-hosting work" milestone; it's the
    emergent consequence of completing L3.
+
+**L2.5 within each stage — the four-step sequencing from §2.2:**
+
+| Step | What | When | Output |
+|---|---|---|---|
+| 1. Model review | Declare input/output types in `std/` and `extdeps/`. Apply invariants. Scrutinize structural decomposition. | L2.5 | `.dag` type files, reviewed |
+| 2. Pipeline slot | Add the stage's typed function signature to the pipeline composition. `ExternalRealization` body. | L2.5 → L3 boundary | Pipeline `.dag` updated |
+| 3. Implementation | Fill in the function body. Types are already declared; implementation is bounded by the model. | L3 | Stage `.dag` file |
+| 4. Parity test | The `.dag` version produces byte-identical output to the Rust version. Delete the Rust version. | L3 completion | Rust file deleted |
+
+### §2.1 The pipeline is a `.dag` composition with structural consumers
+
+v2 is already self-hosting via `.dag` composition. `compile.dag`
+calls stage functions through `let` bindings — it IS a dependency
+graph in the same sense any `.dag` program is. The gap is not
+that v2 "lacks a pipeline graph." The gap is:
+
+1. **`bootstrap.dag`'s stage metadata has no consumers.**
+   `CompilerStage`, `TransformContract`, `ChangeClassification`,
+   `BootstrapStrategy` — 195 lines of type vocabulary declared,
+   zero code reads any of it. The stage contracts are decorative.
+2. **No structural self-analysis.** No lens runs on the pipeline
+   itself. The compiler cannot analyze its own compilation steps
+   the way it analyzes user programs.
+3. **Stage boundaries are convention, not enforced.** Each stage's
+   output type is `Dag` — which is also its input type. Nothing
+   structurally distinguishes "Dag with all ports inferred" from
+   "Dag with ports still Uninferred." The convention holds because
+   the stages are called in the right order, not because the type
+   system prevents calling them in the wrong order.
+
+v3's pipeline keeps the `.dag` composition shape v2 already has
+and adds **structural consumers** that make the stage metadata
+load-bearing:
+
+```
+fn compile(source: String, file: String, spec: LanguageSpec) -> EmitResult {
+  let parsed   = parse(source, file)
+  let lowered  = lower(parsed.module)
+  let inferred = infer(lowered.dag)
+  emit(inferred.dag, spec)
+}
+```
+
+Ordinary `.dag` — four `let` bindings with explicit dependencies.
+The compiler sees this as a dependency graph. What's new is what
+READS that graph:
+
+1. **Stage contracts consumed by lenses.** A lens verifies "does
+   `infer` produce a Dag where all ports have Resolved state?"
+   This is a **lens-checked property**, not a type-level guarantee
+   — the output type is still `Dag`, not a hypothetical
+   `InferredDag` wrapper. The enforcement mechanism is the same
+   as for any other `.dag` invariant: a lens reads the output and
+   reports violations. If a future substrate version introduces a
+   wrapper type that makes unresolved ports unrepresentable at the
+   type level, that's a stronger guarantee — but the starting
+   point is lens enforcement, same as `lens_layer_opacity` and
+   `lens_unused_parameters`.
+2. **Per-stage fixed-point consumed by regen.** The pipeline's
+   typed stage boundaries give the fixed-point test structural
+   comparison points. Instead of a file-level diff, regen compares
+   pass1 and pass2 at each stage boundary — structural diffs, not
+   textual diffs.
+3. **Independent stages parallelize automatically.** Two
+   post-inference analyses with no data dependency run
+   concurrently by default. The thesis's "parallelism is not a
+   feature, it is the default" applied to the compiler.
+4. **The compiler is analyzable by its own lenses.**
+   `lens_complexity` on `parse` reports the parser's cost.
+   `lens_unused_parameters` on `infer` reports dead parameters.
+   Self-analysis extends from "a lens analyzes a lens" to "the
+   compiler analyzes itself."
+5. **Schema migration patches read the pipeline.** When a stage's
+   input/output type changes, the pipeline's typed composition
+   shows which downstream stages are affected.
+
+**Interaction with the L3 migration order.** Stages still
+implement bottom-up (emit → lower → infer → parse). During
+migration, each stage starts as `ArrowBody::ExternalRealization`
+(backed by the Rust implementation) and transitions to
+`ArrowBody::UserDefined` when the `.dag` body lands. The pipeline
+composition doesn't change during this transition — it calls each
+stage function regardless of whether the body is Rust-backed or
+`.dag`-backed. Same pattern as `Int.add` being
+`ExternalRealization` pointing at Rust `i64 + i64` today.
+
+**The pipeline declaration ships FIRST (model before implement).**
+Each stage implementation fills a slot in the declaration.
+`ExternalRealization` is the honest scaffold for "this stage
+exists but is still Rust." The pipeline is structurally valid at
+every intermediate state.
+
+### §2.2 Model every stage's domain to spec before implementation
+
+v2 achieved self-hosting incrementally — types grew fields as
+needed, coproducts grew variants as needed, contracts were added
+after the fact. The result: `complexity.dag` is 5490 lines of
+reconstruction heuristics compensating for facts that weren't
+modeled upstream. The pipeline works, but the modeling was
+done in parallel with implementation, and the implementation
+kept outrunning the model.
+
+v3 inverts this: **every pipeline stage models its inputs and
+outputs to spec BEFORE the stage body is implemented.** Stage
+implementation is filling in function bodies over already-declared
+types — the same model-before-implement discipline the thesis
+demands of user programs, applied to the compiler itself.
+
+Concretely, each stage's domain model is reviewed and scrutinized
+before any implementation starts:
+
+- **Parse domain.** What IS a source file? Model files, encodings
+  (ASCII/UTF-8), line endings, BOM handling as structural types in
+  `std/`. Model the platform's filesystem interface as an extdep.
+  Model the token types structurally — not a flat `TokenKind` enum
+  that grows arms, but dimensional types where the thesis's
+  structural decompression invariant applies (e.g., delimiters as
+  `{ shape: BracketShape, side: Side }`, keywords as data in a
+  table). Model the grammar productions as data, not as hand-coded
+  recursive-descent functions. Every input the parser touches is
+  declared, not assumed.
+
+- **Lower domain.** What ARE the surface forms? Model
+  `SurfaceItem`, `SurfaceExpr`, `SurfacePattern` as proper `.dag`
+  Disj declarations with the normal invariants applied — structural
+  decompression, no flat coproducts where dimensional records
+  belong, every variant grounded in the thesis's four dissolution
+  patterns. The surface AST becomes `std/surface.dag` — sibling to
+  `std/substrate.dag`, analyzed by the same lenses.
+
+- **Infer domain.** What ARE the inference rules? Model type
+  resolution, template substitution, operator dispatch as data
+  operations over the substrate. The cross-stage facts — input
+  port state, output port state, diagnostic types, type shapes —
+  are declared types in `std/`. The walker-local state —
+  substitution stacks, scope structures, intermediate unification
+  state — stays as implementation details inside `infer.dag`'s
+  function bodies, NOT in `std/` (see substrate-vs-implementation
+  split below).
+
+- **Emit domain.** What IS a target language? Model the language
+  spec structurally — not just "what types exist" but the full
+  emission surface: indentation conventions, line-length limits,
+  import ordering rules, formatting conventions, comment syntax.
+  Model the target's type system as data in `extdeps/languages/`.
+  The emitter reads ALL rendering decisions from declared data;
+  the emitter code itself is a generic walk that never contains
+  target-specific knowledge.
+
+- **Between stages.** Model the stage boundaries as typed
+  contracts. What's preserved across each boundary, what's
+  recomputed, what diagnostics flow forward. The contracts are the
+  pipeline's function signatures — first-class, not decorative.
+  A lens verifies each contract holds.
+
+**Substrate vs implementation — what goes in `std/` and what
+doesn't.** Not every type the compiler uses belongs in `std/`.
+The rule: **if a type crosses a stage boundary or is consumed by
+a lens, it goes in `std/`. If it's internal to one stage's walk,
+it's implementation.**
+
+| Category | Goes in `std/` | Stays in stage `.dag` body |
+|---|---|---|
+| Input/output types | `SurfaceModule`, `Dag`, `EmitResult` | — |
+| Diagnostic types | `Diagnostic`, `SourceSpan` | — |
+| Substrate types | `Declaration`, `Behavior`, `TypeConnective` | — |
+| Target language types | `LanguageSpec`, `Realization` (in `extdeps/`) | — |
+| Token types | `Token`, `TokenKind` | — |
+| Surface AST types | `SurfaceItem`, `SurfaceExpr` | — |
+| Walker-local state | — | `SubstStack`, `Scope`, `UnificationState` |
+| Intermediate inference state | — | Per-port resolution tracking |
+| Helper accumulators | — | `fold` locals, working sets |
+
+Walker-local state may graduate to `std/` IF a downstream consumer
+needs it — for example, if a lens needs to inspect substitution
+state mid-inference. But the default is implementation-local until
+a cross-boundary consumer surfaces. "Model to spec" means the
+BOUNDARIES are modeled, not the internals.
+
+**The v2 lesson this prevents.** v2's pipeline stages accreted
+types reactively: a stage needed a fact, so a field was added to
+the IR, and downstream stages adapted. The adaptation was often
+reconstruction — re-deriving the fact from incomplete data instead
+of receiving it as a typed edge from the stage that computed it.
+Modeling to spec upfront means the typed edges exist BEFORE any
+stage runs, so reconstruction has no reason to form. The
+`annotate_descent_evidence` pattern (33 heuristics in v2's
+complexity pass) is the canonical failure mode this prevents.
+
+**The principle:** the `.dag` compiler gets the `.dag` treatment
+at its boundaries. Every type that crosses a stage boundary or is
+consumed by a lens — files, tokens, surface trees, substrate
+declarations, target language constructs, platform capabilities —
+is modeled with the same rigor as any user-facing `.dag`
+declaration. Structural decompression applies. Layer opacity
+applies. Facts flow forward applies. No special exemption for
+"this is compiler-internal." The invariants are universal at
+boundaries; walker-local implementation details are free to use
+whatever internal representation the stage author finds most
+natural.
+
+**Practical sequencing.** For each stage (emit → lower → infer →
+parse), the work is:
+
+1. **Model review.** Declare the stage's input/output types in
+   `std/` and `extdeps/`. Apply the normal invariants. Review and
+   scrutinize the model — structural decompression, no smuggled
+   coproducts, no decorative fields. Draw on v2's pipeline files
+   as empirical reference for "what does this stage actually need."
+2. **Pipeline slot.** Add the stage's typed function signature to
+   the pipeline composition. `ExternalRealization` body.
+3. **Implementation.** Fill in the function body. The types are
+   already declared; the implementation is bounded by the model.
+4. **Parity test.** The `.dag` version produces byte-identical
+   output to the Rust version for every test fixture. Delete the
+   Rust version.
+
+Step 1 is where the hard thinking happens. Steps 2-4 are
+engineering bounded by Step 1's model.
+
+### §2.3 Language-agnostic compiler core (Shape A only)
+
+The compiler knows only substrate primitives: the six type
+connectives (Atom, Conj, Disj, Arrow, Cardinality, Instantiation)
+and the five L1 behaviors (Value, Transform, Branch, Loop, Bind).
+It does NOT know what language it is parsing or emitting. `.dag`
+is a grammar spec the parser engine reads. Rust is a language spec
+the emission engine reads. Both are data. The compiler is the
+engine, not the specs.
+
+**Scope: Shape A targets only.** The thesis (§"Omni-emission")
+makes a load-bearing distinction between Shape A (compiler-owned
+programming-language emission: Rust, Python, Go, TypeScript) and
+Shape B (user-program artifact generation: YAML, Terraform, SQL,
+English docs, SPICE netlists). Treating Shape B artifacts as
+compiler render targets is explicitly called a category error in
+the thesis. This section's `compile(...)` parametrization ranges
+over **Shape A targets only**. Shape B artifacts are outputs of
+`.dag` user programs that walk typed values and produce strings —
+the compiler emits the `.dag` PROGRAM (Shape A), and the program's
+OUTPUT is the Shape B artifact. English, YAML, and SPICE are
+never `EmissionTarget` values.
+
+**The pipeline, with elaboration separated from parsing.**
+MODELING.md's four-layer stack separates surface sugar from the
+composition layer from the semantic kernel. `GrammarSpec` owns
+syntax (tokens → surface tree). A separate `ElaborationSpec` maps
+source-language surface forms to substrate declarations — the
+lowering semantics. Collapsing both into `GrammarSpec` would
+leave elaboration as implicit compiler behavior rather than
+declared authority.
+
+```
+fn compile(
+  source: String,
+  grammar: GrammarSpec,            // syntax: tokens → surface tree
+  elaboration: ElaborationSpec,    // semantics: surface → substrate
+  target: EmissionTarget,          // Shape A language + rendering
+) -> EmitResult {
+  let parsed   = parse(source, grammar)
+  let lowered  = lower(parsed, elaboration)
+  let inferred = infer(lowered.dag)
+  emit(inferred.dag, target)
+}
+```
+
+Four parameters. `grammar` owns what surface forms exist.
+`elaboration` owns how those forms become substrate declarations.
+`target` owns how substrate projects onto a programming language.
+The compiler core reads all three as data; it contains zero
+language-specific knowledge.
+
+**Compositional opacity at the I/O boundary.** The thesis says
+"HTTP does not know or care what transport it is running over."
+This constraint says: the compiler does not know or care what
+language it is parsing or emitting. Below-boundary details
+(syntax, keywords, operators, formatting, memory model, import
+system) are unnameable to the compiler core. The compiler reads
+structural edges from the specs; it never asks "am I compiling
+Rust right now?"
+
+The rename test from THESIS.md §"Compositional layering" extends:
+rename every `.dag` keyword in the grammar spec, rebuild, verify
+the compiler still works. If it does, the compiler is language-
+agnostic. If it doesn't, there's a hardcoded language assumption
+in the core.
+
+#### §2.3.1 Emission/ingestion cost model
+
+Any Shape A programming language that can represent the
+substrate's primitives can be a compiler target. The question
+isn't "can we emit to X?" — it's "at what cost?"
+
+For each substrate primitive (Conj, Disj, Arrow, etc.) and each
+L1 behavior, the `LanguageSpec` declares: how the target
+represents it, and what the representation costs in space and
+time.
+
+The cost is structural and measurable. A well-matched target
+(Rust) has expansion factor k ≈ 1 per nesting level — nested
+structs are just nested structs, depth doesn't matter, total cost
+is O(|substrate|). A poorly-matched Shape A target might have
+k > 1, growing with nesting depth. The cost of emission increases
+exponentially with structural depth for targets whose native
+constructs don't match the substrate's compositional primitives.
+
+This IS CX applied to emission itself. The `LanguageSpec` carries
+a cost model alongside its representation declarations. The
+compiler computes emission cost statically from the spec.
+
+**Shape B cost model is analogous but separate.** A Shape B
+`.dag` program (e.g., one that walks substrate declarations and
+produces English documentation) has its own cost model: the
+expansion factor per nesting level in the output format. English
+has k >> 1 (subordinate clauses for each nesting level). YAML has
+k ≈ 1 (indentation scales linearly). But these costs live in the
+Shape B user program's own type spec, not in the compiler's
+`LanguageSpec` — because the compiler doesn't own Shape B
+emission.
+
+**Ingestion has an additional dimension: information deficit.**
+For emission, the compiler has full substrate and projects it —
+the cost is expansion. For ingestion, the compiler has external
+source and lifts it in — the cost is expansion PLUS deficit: how
+much structural information does the source NOT carry that the
+substrate needs?
+
+- `.dag` ingestion: zero deficit. All structure explicit.
+- Python ingestion: high deficit. Types, ownership, effects,
+  complexity bounds are implicit or absent.
+- REST API spec ingestion: medium deficit. Types present (JSON
+  Schema), effects partially present (HTTP methods imply
+  idempotency), but complexity bounds absent.
+
+The deficit is a measurable property of the `GrammarSpec` +
+`ElaborationSpec` pair. Ingestion cost = parsing cost (from
+grammar) + reconstruction cost (from elaboration, proportional
+to the deficit).
+
+#### §2.3.2 Emission layering: spec vs rendering conventions
+
+The emission pipeline has compositional layers with opacity
+between them:
+
+```
+Layer 3: RenderingSpec (format, naming, idioms)  — declared conventions
+          │ composes on
+Layer 2: RepresentationMapping                   — substrate ↔ target
+          │ reads
+Layer 1: LanguageSpec (facts from spec doc)      — hard constraints
+          │ applied to
+Layer 0: Substrate (Bit, Conj, Disj, ...)        — what the compiler knows
+```
+
+**Layer 1: Language specification (facts).** What IS valid Rust?
+Comes from the actual language's specification document. Modeled
+in `extdeps/languages/rust/spec.dag`. Hard constraint — violating
+Layer 1 produces invalid target code.
+
+**Layer 2: Representation mapping.** How do substrate primitives
+map to Layer 1's constructs? Conj → `struct`, Disj → `enum`,
+Arrow → `fn`. The bridge between substrate and target.
+
+**Layer 3: Rendering conventions.** Declared rendering rules
+ON TOP of the spec. `rustfmt`-compatible formatting, `snake_case`
+naming, line-length limits, `Result<T,E>` over `panic!`, import
+ordering. These are **declared structural facts** with the same
+authority as any other `.dag` declaration — not "preferences" or
+"annotations." When present, they are hard constraints on the
+emitter's output formatting. "Optional" means the emitter CAN
+run without them (producing valid-but-unstyled output), NOT that
+they are soft suggestions. Different projects compose different
+rendering specs on the same language spec.
+
+**Opacity between layers is load-bearing.** Layer 1 doesn't know
+about Layer 3. Layer 3 doesn't know about Layer 0. When you
+change a rendering convention, Layers 0-2 are untouched. When you
+change a substrate type, Layer 3 is untouched.
+
+```dag
+// Layer 1 — facts from the target language's specification
+type LanguageSpec {
+  constructs: Map<ConnectiveKind, TargetConstruct>
+  syntax: SyntaxRules
+  type_system: TypeSystemSpec
+  module_system: ModuleSpec
+}
+
+// Layer 3 — declared rendering conventions
+type RenderingSpec {
+  naming: NamingConventions
+  formatting: FormatRules
+  lint: List<LintRule>
+  idioms: List<IdiomSpec>
+}
+
+// The composition — the emitter reads this
+type EmissionTarget {
+  language: LanguageSpec       // what's valid (required)
+  rendering: RenderingSpec?    // how to format (optional)
+}
+```
+
+When `rendering` is None: valid-but-unstyled output. When present:
+fully-styled output per the declared conventions.
+
+The same layering applies to ingestion: Layer 1 is the source
+grammar (facts), Layer 3 is declared parsing conventions (error
+recovery strategy, diagnostic phrasing, ambiguity resolution).
+Opacity holds: the diagnostic phrasing doesn't know about the
+grammar rules.
+
+#### §2.3.3 Design challenges
+
+1. **GrammarSpec expressiveness.** What grammar formalism? Pure
+   CFG can't handle operator precedence or layout sensitivity. PEG
+   has ordering sensitivity. EBNF + precedence declarations covers
+   most practical languages. The formalism choice IS the L2.5
+   parse domain decision.
+2. **ElaborationSpec design.** How are source-language surface
+   forms mapped to substrate declarations? This is the semantic
+   bridge between "what the grammar produces" and "what the
+   substrate carries." For `.dag` the mapping is mostly 1:1
+   (surface items lower to declarations directly). For other
+   languages the mapping is richer (Python class → Conj with
+   method Arrows, C++ template → Instantiation). The elaboration
+   spec must be expressive enough for arbitrary source languages
+   without growing the compiler core.
+3. **LanguageSpec completeness.** The spec must cover the full
+   emission surface: type decoration, import systems, module
+   organization, async models, memory management, concurrency,
+   build system integration. If the emitter ever needs per-target
+   code, the spec is incomplete.
+4. **The bootstrap seed.** The compiler reads grammar specs to
+   parse. Grammar specs are `.dag` files. To parse a grammar spec,
+   the compiler needs a parser that reads a grammar spec.
+   Chicken-and-egg. The seed parser parses at least the
+   grammar-spec format without reading a spec — that's the
+   irreducible kernel. How small can the seed parser be?
+5. **Per-language spec authoring cost.** Writing a `LanguageSpec`
+   + `ElaborationSpec` + `RenderingSpec` for a complex language
+   (Rust, C++, Python) is weeks of work. One-time cost per
+   language, not per project — but worth naming honestly. The
+   thesis promise is "adding a new target costs one spec file."
+   True; writing that spec set is the investment.
 
 ---
 
@@ -276,6 +758,28 @@ updates port state in place. A `.dag` version has to express
 this functionally: `fn infer(d: Dag) -> Dag` that returns a new
 Dag with the inferred state.
 
+**This is a research problem, not an engineering problem.** Every
+other pipeline stage migration (emit, lower, parse) is engineering
+with known patterns. Inference-as-data — "type inference rules
+expressed as `.dag` data read by a generic walker" — has no
+production precedent. Theorem provers (Coq/Lean/Agda) get partway
+there with tactic languages but all have hand-coded cores. v3's
+bounded substrate (six connectives, five behaviors, decidable
+iteration) gives more leverage than a general HM setting, but the
+approach is still unproven. Budget this stage as open-ended R&D,
+not scoped work, and front-load the experiment sequence
+(`docs/inference-as-data-experiments.md`) to surface blockers
+before committing to the full port.
+
+**I0 result (2026-04-15):** the decidability paper exercise
+passed. Two representative inference rules (literal type filling,
+bounded Disj walk) are decidability-compatible under `.dag`'s
+bounded-iteration invariant. No blocker found. This narrows the
+open risk from "is this even possible?" to "which write-surface
+option?" See `docs/inference-as-data-i0-result.md` for the full
+check. The next experiments (I1-I8) run sequentially after
+reflection lands.
+
 **Blocker dependencies:**
 
 - L1 (reflection)
@@ -288,7 +792,9 @@ Dag with the inferred state.
   the input Dag. Option C: infer returns a Dag-diff (a list of
   (PortId, TypeShape) tuples) that the caller applies. **This
   is the deepest substrate question for L3** and blocks
-  `infer.dag` until it's answered.
+  `infer.dag` until it's answered. I0's pass confirms the rules
+  themselves are decidable; what remains is the Dag → Dag write
+  surface.
 
 **Expected port size:** ~1000-1500 lines of `.dag`. The
 algorithm is the same as Rust's, but the functional expression
