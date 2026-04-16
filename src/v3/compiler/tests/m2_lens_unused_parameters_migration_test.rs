@@ -11,6 +11,9 @@ use v3_compiler::lens_unused_parameters::{
 use v3_compiler::Dag;
 
 static ROUNDTRIP_ID: AtomicUsize = AtomicUsize::new(0);
+const GENERATED_LENS_HEADER: &str =
+    "// AUTO-GENERATED from `src/v3/lenses/unused_parameters.dag` via\n\
+     // `emit_rust_module`. Regenerate instead of hand-editing.\n\n";
 
 fn lens_source() -> String {
     std::fs::read_to_string(lens_path()).expect("read unused_parameters.dag")
@@ -34,7 +37,31 @@ fn emit_lens_module() -> String {
         "unused_parameters.dag should compile cleanly, got {:?}",
         dag.diagnostics()
     );
-    emit_rust_module(&dag).expect("emit compiled lens module")
+    let raw = emit_rust_module(&dag).expect("emit compiled lens module");
+    format_rust_source(&format!("{GENERATED_LENS_HEADER}{raw}"))
+}
+
+fn checked_in_generated_module() -> &'static str {
+    include_str!("../src/lens_unused_parameters_generated.rs")
+}
+
+fn format_rust_source(source: &str) -> String {
+    let mut child = Command::new("rustfmt")
+        .arg("--emit")
+        .arg("stdout")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn rustfmt");
+    child
+        .stdin
+        .as_mut()
+        .expect("rustfmt stdin")
+        .write_all(source.as_bytes())
+        .expect("write source to rustfmt");
+    let output = child.wait_with_output().expect("wait for rustfmt");
+    assert!(output.status.success(), "rustfmt failed on emitted lens module");
+    String::from_utf8(output.stdout).expect("rustfmt output should be utf-8")
 }
 
 fn next_roundtrip_dir() -> PathBuf {
@@ -166,6 +193,16 @@ fn unused_parameters_dag_compiles_cleanly() {
         dag.diagnostics().is_empty(),
         "unused_parameters.dag should compile without diagnostics, got {:?}",
         dag.diagnostics()
+    );
+}
+
+#[test]
+fn unused_parameters_generated_module_matches_checked_in_snapshot() {
+    let fresh = emit_lens_module();
+    assert_eq!(
+        fresh.trim(),
+        checked_in_generated_module().trim(),
+        "checked-in generated module is stale; regenerate lens_unused_parameters_generated.rs from unused_parameters.dag"
     );
 }
 
