@@ -9,7 +9,7 @@ use v3_compiler::dag::{
     AtomPayload, Behavior, Dag, LiteralBits, PortState, TransformTarget, TypeConnective,
 };
 use v3_compiler::lens_depth::DepthLens;
-use v3_compiler::lens_provenance::{Origin, ProvenanceLens};
+use v3_compiler::lens_provenance::{origin_of, Origin};
 use v3_compiler::types::TypeShape;
 use v3_compiler::CompileError;
 
@@ -246,7 +246,6 @@ fn test_recursive_function_produces_loop_dag() {
 fn test_provenance_lens_reads_produced_by() {
     let src = "let a = 1\nlet b = 2\nlet c = a + b";
     let dag = compile_to_dag(src, "test.v3").expect("compiles");
-    let lens = ProvenanceLens::new(&dag);
 
     let bind_c = dag
         .nodes()
@@ -255,8 +254,8 @@ fn test_provenance_lens_reads_produced_by() {
         .find(|b| b.name == "c")
         .expect("Bind(c) must exist");
 
-    let add_id = match lens.origin_of(bind_c.value) {
-        Origin::Computed { by } => by,
+    let add_id = match origin_of(&dag, &bind_c.value) {
+        Origin::Computed { _0: by } => by,
         other => panic!("expected Origin::Computed for c, got {other:?}"),
     };
 
@@ -267,8 +266,8 @@ fn test_provenance_lens_reads_produced_by() {
     assert_target_name(&dag, &add.target, "+");
 
     for input in &add.inputs {
-        match lens.origin_of(*input) {
-            Origin::Source { by: Some(node_id) } => {
+        match origin_of(&dag, input) {
+            Origin::Source { _0: node_id } => {
                 let value_node = dag
                     .node(node_id)
                     .as_value()
@@ -720,7 +719,6 @@ fn test_provenance_lens_branch_origin() {
     // producer's behavior kind — no reconstruction.
     let src = "let x = if 1 > 0 then 42 else 0";
     let dag = compile_to_dag(src, "test.v3").expect("compiles");
-    let lens = ProvenanceLens::new(&dag);
 
     let bind_x = dag
         .nodes()
@@ -729,8 +727,8 @@ fn test_provenance_lens_branch_origin() {
         .find(|b| b.name == "x")
         .expect("Bind(x) exists");
 
-    match lens.origin_of(bind_x.value) {
-        Origin::Selected { by } => {
+    match origin_of(&dag, &bind_x.value) {
+        Origin::Selected { _0: by } => {
             assert!(
                 dag.node(by).as_branch().is_some(),
                 "Selected origin points at a Branch node"
@@ -748,7 +746,6 @@ fn test_provenance_lens_loop_origin() {
     let src =
         "fn count(n: Int) -> Int = if n == 0 then 0 else n + count(n - 1)\nlet answer = count(3)";
     let dag = compile_to_dag(src, "test.v3").expect("compiles");
-    let lens = ProvenanceLens::new(&dag);
 
     let count_bind = dag
         .nodes()
@@ -757,8 +754,8 @@ fn test_provenance_lens_loop_origin() {
         .find(|b| b.name == "count")
         .expect("Bind(count) exists");
 
-    match lens.origin_of(count_bind.value) {
-        Origin::Accumulated { by } => {
+    match origin_of(&dag, &count_bind.value) {
+        Origin::Accumulated { _0: by } => {
             assert!(
                 dag.node(by).as_loop().is_some(),
                 "Accumulated origin points at a Loop node"
