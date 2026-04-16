@@ -63,3 +63,8 @@ fn string_type_dag_parses() {
         "string_type.dag",
     );
 }
+
+#[test]
+fn list_dag_parses() {
+    parse_file(include_str!("../../std/list.dag"), "list.dag");
+}

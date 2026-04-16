@@ -1758,6 +1758,22 @@ let y = use_callback(|z| z + 1)
 }
 
 #[test]
+fn prereq4_list_dag_bootstrap_loads_cleanly() {
+    let dag = Dag::new();
+    assert!(
+        dag.diagnostics().is_empty(),
+        "bootstrap should load staged std.list declarations cleanly, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+    for name in ["List", "empty", "singleton", "cons", "fold", "map", "filter"] {
+        assert!(
+            dag.declaration_by_name(name).is_some(),
+            "bootstrap should register staged std.list declaration `{name}`"
+        );
+    }
+}
+
+#[test]
 fn prereq0_conflicting_callable_template_bindings_fail_closed() {
     let src = "\
 fn step_int(x: Int) -> Int = x

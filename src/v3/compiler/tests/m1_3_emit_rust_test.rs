@@ -26,6 +26,37 @@ fn emit(source: &str) -> String {
     emit_rust(&dag).expect("emits")
 }
 
+fn roundtrip_stdout(source: &str) -> String {
+    let source = emit(source);
+
+    let tmp_dir = std::env::temp_dir().join(format!(
+        "v3_emit_rust_roundtrip_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
+    let src_path = tmp_dir.join("main.rs");
+    let bin_path = tmp_dir.join("main_bin");
+    std::fs::File::create(&src_path)
+        .and_then(|mut f| f.write_all(source.as_bytes()))
+        .expect("write rust source");
+
+    let compile = Command::new("rustc")
+        .arg(&src_path)
+        .arg("-o")
+        .arg(&bin_path)
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .expect("invoke rustc — install a rust toolchain to run this test");
+    assert!(compile.success(), "rustc failed on emitted source:\n{source}");
+
+    let run = Command::new(&bin_path)
+        .output()
+        .expect("run compiled binary");
+    assert!(run.status.success(), "compiled binary failed");
+    String::from_utf8_lossy(&run.stdout).trim().to_string()
+}
+
 #[test]
 fn emit_rust_single_int_binding() {
     let out = emit("let x: Int = 42");
@@ -223,6 +254,30 @@ fn composition_opacity_gate_is_documented() {
     // runs every test invocation.
 }
 
+#[test]
+fn rustc_roundtrip_list_fold_prints_six() {
+    let stdout = roundtrip_stdout(
+        "let total: Int = fold_int(cons_int(1, cons_int(2, singleton_int(3))), 0, |acc, x| acc + x)",
+    );
+    assert_eq!(stdout, "6", "compiled binary printed {stdout:?}, not `6`");
+}
+
+#[test]
+fn rustc_roundtrip_list_map_then_fold_prints_twelve() {
+    let stdout = roundtrip_stdout(
+        "let total: Int = fold_int(map_int(cons_int(1, cons_int(2, singleton_int(3))), |x| x * 2), 0, |acc, x| acc + x)",
+    );
+    assert_eq!(stdout, "12", "compiled binary printed {stdout:?}, not `12`");
+}
+
+#[test]
+fn rustc_roundtrip_list_filter_then_fold_prints_seven() {
+    let stdout = roundtrip_stdout(
+        "let total: Int = fold_int(filter_int(cons_int(1, cons_int(2, cons_int(3, singleton_int(4)))), |x| x > 2), 0, |acc, x| acc + x)",
+    );
+    assert_eq!(stdout, "7", "compiled binary printed {stdout:?}, not `7`");
+}
+
 /// End-to-end roundtrip test: emit Rust from a v3 program, feed the
 /// Rust source to `rustc`, run the resulting binary, assert stdout.
 /// Gated behind `#[ignore]` because CI runners often don't have a
@@ -238,33 +293,6 @@ fn composition_opacity_gate_is_documented() {
 #[test]
 #[ignore]
 fn rustc_roundtrip_int_addition_prints_three() {
-    let source = emit("let x: Int = 1 + 2");
-
-    let tmp_dir = std::env::temp_dir().join(format!(
-        "v3_emit_rust_roundtrip_{}",
-        std::process::id()
-    ));
-    std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
-    let src_path = tmp_dir.join("main.rs");
-    let bin_path = tmp_dir.join("main_bin");
-    std::fs::File::create(&src_path)
-        .and_then(|mut f| f.write_all(source.as_bytes()))
-        .expect("write rust source");
-
-    let compile = Command::new("rustc")
-        .arg(&src_path)
-        .arg("-o")
-        .arg(&bin_path)
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .expect("invoke rustc — install a rust toolchain to run this test");
-    assert!(compile.success(), "rustc failed on emitted source:\n{source}");
-
-    let run = Command::new(&bin_path)
-        .output()
-        .expect("run compiled binary");
-    assert!(run.status.success(), "compiled binary failed");
-    let stdout = String::from_utf8_lossy(&run.stdout).trim().to_string();
+    let stdout = roundtrip_stdout("let x: Int = 1 + 2");
     assert_eq!(stdout, "3", "compiled binary printed {stdout:?}, not `3`");
 }
