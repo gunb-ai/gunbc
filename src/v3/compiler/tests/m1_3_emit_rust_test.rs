@@ -17,22 +17,31 @@
 
 use std::io::Write;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit_rust::emit_rust;
+
+static ROUNDTRIP_ID: AtomicUsize = AtomicUsize::new(0);
 
 fn emit(source: &str) -> String {
     let dag = compile_to_dag(source, "test.v3").expect("compiles");
     emit_rust(&dag).expect("emits")
 }
 
+fn next_roundtrip_dir() -> std::path::PathBuf {
+    let id = ROUNDTRIP_ID.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "v3_emit_rust_roundtrip_{}_{}",
+        std::process::id(),
+        id
+    ))
+}
+
 fn roundtrip_stdout(source: &str) -> String {
     let source = emit(source);
 
-    let tmp_dir = std::env::temp_dir().join(format!(
-        "v3_emit_rust_roundtrip_{}",
-        std::process::id()
-    ));
+    let tmp_dir = next_roundtrip_dir();
     std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
     let src_path = tmp_dir.join("main.rs");
     let bin_path = tmp_dir.join("main_bin");
@@ -255,6 +264,11 @@ fn composition_opacity_gate_is_documented() {
 }
 
 #[test]
+fn roundtrip_temp_dirs_are_unique() {
+    assert_ne!(next_roundtrip_dir(), next_roundtrip_dir());
+}
+
+#[test]
 fn rustc_roundtrip_list_fold_prints_six() {
     let stdout = roundtrip_stdout(
         "let total: Int = fold_int(cons_int(1, cons_int(2, singleton_int(3))), 0, |acc, x| acc + x)",
@@ -276,6 +290,14 @@ fn rustc_roundtrip_list_filter_then_fold_prints_seven() {
         "let total: Int = fold_int(filter_int(cons_int(1, cons_int(2, cons_int(3, singleton_int(4)))), |x| x > 2), 0, |acc, x| acc + x)",
     );
     assert_eq!(stdout, "7", "compiled binary printed {stdout:?}, not `7`");
+}
+
+#[test]
+fn rustc_roundtrip_nested_list_builtins_inside_lambda_prints_six() {
+    let stdout = roundtrip_stdout(
+        "let total: Int = fold_int(cons_int(1, singleton_int(2)), 0, |acc, x| acc + fold_int(map_int(singleton_int(x), |y| y * 2), 0, |n, y| n + y))",
+    );
+    assert_eq!(stdout, "6", "compiled binary printed {stdout:?}, not `6`");
 }
 
 /// End-to-end roundtrip test: emit Rust from a v3 program, feed the

@@ -219,6 +219,11 @@ struct ListBuiltins {
     fold: DeclarationId,
     map: DeclarationId,
     filter: DeclarationId,
+    // Temporary monomorphic wrappers used by staged std.list
+    // end-to-end coverage until generic-call instantiation from
+    // runtime arguments is wired through the pipeline. Dissolve
+    // these handles and the dual-dispatch branches below once the
+    // generic helpers can be called directly in emitted programs.
     singleton_int: Option<DeclarationId>,
     cons_int: Option<DeclarationId>,
     fold_int: Option<DeclarationId>,
@@ -532,15 +537,6 @@ struct Ctx<'a> {
 }
 
 impl<'a> Ctx<'a> {
-    /// Render the sub-expression rooted at `port` into a Rust
-    /// expression string. First checks `bound_names` — if the port
-    /// already corresponds to a top-level let binding, it renders
-    /// as the name (e.g. `b` reuses `a` by name, not by re-inlining
-    /// `a`'s value expression).
-    fn render_port(&self, port: PortId) -> Result<String, EmitError> {
-        self.render_port_with_locals(port, None)
-    }
-
     fn render_port_with_locals(
         &self,
         port: PortId,
@@ -596,7 +592,9 @@ impl<'a> Ctx<'a> {
             TransformTarget::FieldProject { field_label } => {
                 self.render_field_project(t, field_label, locals)
             }
-            TransformTarget::Callable(target) => self.render_callable_transform(t, *target),
+            TransformTarget::Callable(target) => {
+                self.render_callable_transform(t, *target, locals)
+            }
         }
     }
 
@@ -680,8 +678,9 @@ impl<'a> Ctx<'a> {
         &self,
         t: &TransformNode,
         target: DeclarationId,
+        locals: Option<&HashMap<PortId, String>>,
     ) -> Result<String, EmitError> {
-        if let Some(rendered) = self.render_list_builtin(target, &t.inputs)? {
+        if let Some(rendered) = self.render_list_builtin(target, &t.inputs, locals)? {
             return Ok(rendered);
         }
         Err(EmitError::UnsupportedBehavior(
@@ -694,6 +693,7 @@ impl<'a> Ctx<'a> {
         &self,
         target: DeclarationId,
         inputs: &[PortId],
+        locals: Option<&HashMap<PortId, String>>,
     ) -> Result<Option<String>, EmitError> {
         let Some(builtins) = self.list_builtins else {
             return Ok(None);
@@ -710,7 +710,7 @@ impl<'a> Ctx<'a> {
                     inputs.len()
                 )));
             }
-            let value = self.render_port(inputs[0])?;
+            let value = self.render_port_with_locals(inputs[0], locals)?;
             return Ok(Some(format!("vec![{value}]")));
         }
         if template == builtins.cons || builtins.cons_int == Some(template) {
@@ -720,8 +720,8 @@ impl<'a> Ctx<'a> {
                     inputs.len()
                 )));
             }
-            let head = self.render_port(inputs[0])?;
-            let tail = self.render_port(inputs[1])?;
+            let head = self.render_port_with_locals(inputs[0], locals)?;
+            let tail = self.render_port_with_locals(inputs[1], locals)?;
             return Ok(Some(format!(
                 "{{ let mut __list = {tail}; __list.insert(0, {head}); __list }}"
             )));
@@ -737,10 +737,10 @@ impl<'a> Ctx<'a> {
             let acc = "__fold_acc".to_string();
             let item = "__fold_item".to_string();
             let body = self.render_callable_body(fn_decl, &[acc.clone(), item.clone()])?;
-            let list = self.render_port(inputs[0])?;
-            let init = self.render_port(inputs[1])?;
+            let list = self.render_port_with_locals(inputs[0], locals)?;
+            let init = self.render_port_with_locals(inputs[1], locals)?;
             return Ok(Some(format!(
-                "({list}).into_iter().fold({init}, |{acc}, {item}| {{ {body} }})"
+                "({list}).clone().into_iter().fold({init}, |{acc}, {item}| {{ {body} }})"
             )));
         }
         if template == builtins.map || builtins.map_int == Some(template) {
@@ -753,9 +753,9 @@ impl<'a> Ctx<'a> {
             let fn_decl = bound_callable_argument(self.dag, template, &arguments, 1)?;
             let item = "__map_item".to_string();
             let body = self.render_callable_body(fn_decl, std::slice::from_ref(&item))?;
-            let list = self.render_port(inputs[0])?;
+            let list = self.render_port_with_locals(inputs[0], locals)?;
             return Ok(Some(format!(
-                "({list}).into_iter().map(|{item}| {{ {body} }}).collect::<Vec<_>>()"
+                "({list}).clone().into_iter().map(|{item}| {{ {body} }}).collect::<Vec<_>>()"
             )));
         }
         if template == builtins.filter || builtins.filter_int == Some(template) {
@@ -768,9 +768,9 @@ impl<'a> Ctx<'a> {
             let fn_decl = bound_callable_argument(self.dag, template, &arguments, 1)?;
             let item = "__filter_item".to_string();
             let body = self.render_callable_body(fn_decl, std::slice::from_ref(&item))?;
-            let list = self.render_port(inputs[0])?;
+            let list = self.render_port_with_locals(inputs[0], locals)?;
             return Ok(Some(format!(
-                "{{ let mut __out = Vec::new(); for {item} in ({list}).into_iter() {{ if {body} {{ __out.push({item}); }} }} __out }}"
+                "{{ let mut __out = Vec::new(); for {item} in ({list}).clone().into_iter() {{ if {body} {{ __out.push({item}); }} }} __out }}"
             )));
         }
 
@@ -1085,6 +1085,7 @@ fn walk_to_algebra_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId
 mod tests {
     use super::*;
     use crate::diagnostics::SourceSpan;
+    use crate::compile_to_dag;
 
     #[test]
     fn render_field_project_emits_parent_dot_field() {
@@ -1120,5 +1121,49 @@ mod tests {
             other => panic!("expected Transform node, got {other:?}"),
         };
         assert_eq!(rendered, "parent.value");
+    }
+
+    #[test]
+    fn render_fold_clones_named_list_input_before_iteration() {
+        let dag = compile_to_dag(
+            "let total: Int = fold_int(singleton_int(1), 0, |acc, x| acc + x)",
+            "test.v3",
+        )
+        .expect("compiles");
+        let builtins = resolve_list_builtins(&dag).expect("list builtins");
+        let fold_template = builtins.fold_int.expect("fold_int builtin");
+        let fold_transform = dag
+            .nodes()
+            .iter()
+            .find_map(|node| match node {
+                Behavior::Transform(t) => match &t.target {
+                    TransformTarget::Callable(target) => {
+                        let (template, _) = callable_template(*target, &dag);
+                        (template == fold_template).then_some(t)
+                    }
+                    _ => None,
+                },
+                _ => None,
+            })
+            .expect("fold transform");
+
+        let indexes = RealizationIndexes::build(&dag).expect("indexes build");
+        let mut bound_names = HashMap::new();
+        bound_names.insert(fold_transform.inputs[0], "xs".to_string());
+        let ctx = Ctx {
+            dag: &dag,
+            indexes: &indexes,
+            branch_marker: dag.branch_marker().expect("branch marker"),
+            list_builtins: Some(builtins),
+            bound_names: &bound_names,
+        };
+
+        let rendered = ctx
+            .render_transform(fold_transform, None)
+            .expect("fold renders");
+        assert!(
+            rendered.contains("(xs).clone().into_iter().fold("),
+            "expected named list inputs to be cloned before iteration, got: {rendered}"
+        );
     }
 }
