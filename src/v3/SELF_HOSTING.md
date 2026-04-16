@@ -110,20 +110,20 @@ L1.5 — Clean bootstrap (IMMEDIATE post-L1) [the process is the first feature]
       │    │    4. Pattern realization in extdeps/languages/ — declares how
       │    │       structural Disj patterns map to target container ops
       │    │
-      └── L2.7 — Ownership + clone elision (§14.7) [DEDICATED, parallel with all L2]
-           │    Phase 1 (L1.5): lens_fanout — count port references
-           │       emit_rust reads fan-out, skips .clone() for fan-out=1
-           │       clone-count CI ratchet on generated lens code
-           │    Phase 2 (L2): ownership strategy as data in rust.dag
-           │       EdgeKind (Consumed/Read/Threaded/Projected) in std/
-           │       BindingUsage, FoldAccUnwrapProof types from v2
-           │       emitter reads strategy from realization spec
-           │    Phase 3 (L2): full v2 ownership.dag migration (719 lines)
-           │       fold accumulator linearity proofs
-           │       semantic_consumer_count, sole-owner proof
-           │    Phase 4 (L3): ownership self-analysis
-           │       ownership lens runs on generated compiler code
-           │       clone-count ratchet hits zero
+      └── L2.7 — Rendering from root facts (§14.7) [parallel with all L2]
+           │    Phase 1 (L1.5): declare ComputationModel in std/
+           │       declare TargetExecutionModel in realization specs
+           │       emitter gates ownership stage on target.memory
+           │       conservative default (all params Stays)
+           │       is_copy on leaf types, clone-count ratchet
+           │    Phase 2 (L2): ParameterCrossing analysis
+           │       body-walk derivation for .dag callables
+           │       declared for ExternalRealization
+           │       is_copy composition for compound types
+           │       last-crossing-use tracking, clone count → 1
+           │    Phase 3 (L2+): parallelism Rc/Arc refinement
+           │       complexity reads crossing facts
+           │    Phase 4 (L3): self-analysis, multi-target validation
            │
 L3 — Pipeline stages in .dag           [blocked on L2.5 model for each stage]
       │    Stage 1: emit.dag   — Dag → target source strings
@@ -186,15 +186,14 @@ L4 — Full self-hosting (M3)            [long-term]
    L1.5 and the lens infrastructure from L2. L2.6 is parallel
    with L2/L2.5 — it doesn't block them, and they don't block
    it (beyond the L1.5 dependency for the authority types).
-7. **L2.7 Phase 1 starts at L1.5.** `lens_fanout` and basic
-   clone elision in `emit_rust` are the first ownership
-   deliverable. Phase 1 requires no v2 migration — it's a
-   new ~40-line lens + emitter change. Every generated artifact
-   after L1.5 benefits. Phase 2-3 proceed in parallel with L2
+7. **L2.7 Phase 1 starts at L1.5.** Declare `ComputationModel`
+   in `std/` and `TargetExecutionModel` in realization specs.
+   Emitter gates ownership stage on target's memory model.
+   Every generated artifact after L1.5 benefits. Phase 2
+   (ParameterCrossing analysis) proceeds in parallel with L2
    lens migrations. **The v2 lesson is non-negotiable:** if
-   clone elision doesn't land before generated lenses start
-   accumulating, every subsequent artifact compounds the debt
-   and self-hosting performance becomes untenable.
+   correct rendering doesn't land before generated lenses
+   accumulate, every subsequent artifact compounds clone debt.
 8. **L3 stages proceed bottom-up.** Emit first (easiest, already
    half-structured), then lower, then infer, then parse. Each
    later stage's migration benefits from the earlier stages
@@ -1929,67 +1928,44 @@ If corrections ship at L1.5:
       produces a correction for each violation it reports" and
       "applying the correction eliminates the violation"
 
-### §14.7 Ownership + clone elision — dedicated parallel track
+### §14.7 Rendering from root facts — dedicated parallel track
 
-**Full design:** [`docs/ownership-rendering-design.md`](
-../../docs/ownership-rendering-design.md).
+**Full design:** [`docs/dependency-and-rendering-design.md`](
+../../docs/dependency-and-rendering-design.md).
 
-**The v2 lesson.** v2's emitter started with "clone everything."
-Self-compile took 20 minutes (FF-1). Container clones were
-O(n) (FF-8). The fix was 719 lines of reconstruction in
-`ownership.dag` — computing facts that should have been declared
-upstream.
+**The core insight.** Ownership, scope, parallelism, and
+complexity are not separate analyses — they emerge from the
+composition of .dag's computation model (`Immutable`, `Pure`,
+`ExplicitDAG`, `Bounded`) and the target's execution model
+(`ValueOnly`, `GarbageCollected`, `RefCounted`,
+`OwnershipBased`). Three of four target classes dissolve the
+ownership question entirely. The rendering for any .dag
+program on any target is:
+`ComputationModel × TargetExecutionModel × DAG structure`.
 
-**v3's current state is exactly where v2 started.** The emitter
-inserts `.clone()` on every port reference. The first generated
-artifact contains 90 clone calls in 287 lines.
+**Why this dissolves v2's 719 lines.** v2's emitter started
+with "clone everything" (20-minute self-compile, FF-1). The
+fix was 719 lines of fact reconstruction in `ownership.dag`.
+v3 declares the root facts in `std/computation_model.dag` and
+the target model in the realization spec. The rendering falls
+out of the composition — no reconstruction.
 
-**The approach is model-first, not fix-first.** The ownership
-rendering is not one problem — it's five independent facts that
-compose into a rendering decision (see design doc §2):
-
-1. **Value semantics** — is this value immutable? (declare
-   in std/)
-2. **Consumer count** — how many consumers? (already
-   structural in the DAG)
-3. **Target sharing model** — how does this target language
-   share values? (declare in realization spec)
-4. **Lifetime / escape** — does the value outlive its scope?
-   (derivable from DAG flow)
-5. **Container cost** — is cloning O(1) or O(n)? (from the
-   type's Cardinality)
-
-Each fact is declared at its natural authority. The emitter
-reads all five and applies the target's strategy — one
-composed decision, not per-behavior-type rules.
-
-**Why this dissolves v2's 719 lines.** v2's ownership.dag
-reconstructed immutability, fan-out, binding kind, fold
-linearity, and lambda captures because the upstream model
-didn't carry them. v3's substrate already carries most of
-these structurally. The remaining open questions (fold
-accumulator linearity, lambda capture semantics) are design
-questions, not code questions — see design doc §5.
-
-**Phasing (design doc §6):**
+**Phasing (design doc §9):**
 
 | Phase | When | What |
 |---|---|---|
-| Design | NOW (parallel) | Resolve open questions Q1-Q5. Agree on type schemas. |
-| Phase 1 | L1.5 | Declare immutability in std/. Fan-out counting in emitter index. Basic move-vs-clone from composed facts. |
-| Phase 2 | L2 | SharingStrategy in rust.dag. Escape analysis. Container cost model. |
-| Phase 3 | L2 | Full ownership equivalent — fold linearity, lambda captures. |
-| Phase 4 | L3 | Self-analysis. Clone ratchet at zero on all generated code. |
+| Phase 1 | L1.5 | `std/computation_model.dag`. `TargetExecutionModel` in specs. Emitter gates ownership on target memory. Conservative callable defaults. `is_copy` on leaf types. Clone count ~6. |
+| Phase 2 | L2 | `ParameterCrossing` analysis (body-walk for .dag, declared for external). `is_copy` composition. Last-crossing-use. Clone count → 1. |
+| Phase 3 | L2+ | Parallelism Rc/Arc. Complexity reads crossing facts. Multi-target validation. |
+| Phase 4 | L3 | Self-analysis. Clone count zero. Same DAG → Rust + Go → both correct. |
 
 **Acceptance criteria:**
 
-- [ ] Design doc open questions resolved
-- [ ] Immutability declared as structural fact in std/
-- [ ] SharingStrategy declared in rust.dag
-- [ ] Clone count on generated lens code drops by ≥50% (Phase 1)
-- [ ] CI ratchet on clone count (only goes down)
-- [ ] Full ownership self-analysis at zero unnecessary clones
-      (Phase 4)
+- [ ] `std/computation_model.dag` declares root facts
+- [ ] Target execution models in realization specs
+- [ ] Emitter gates ownership stage on target memory model
+- [ ] Clone count: ~6 (Phase 1), 1 (Phase 2), 0 (Phase 4)
+- [ ] Multi-target: same .dag → Rust + Go → both correct
 
 ---
 
