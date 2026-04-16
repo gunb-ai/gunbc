@@ -91,4 +91,12 @@ fi
 
 rm -rf "$PASS2_DIR"
 rm -rf "$OUTPUT_DIR"
+
+# Apply workspace fmt so CI fmt-check doesn't see drift. The v2
+# compiler's emitter doesn't produce rustfmt-canonical output;
+# running fmt after the fixed-point check above keeps regen output
+# stable while ensuring committed stage0 is fmt-compliant.
+echo "=== Applying cargo fmt --all ==="
+cargo fmt --all
+
 echo "=== Done. Stage0 regenerated via v2 self-compile. ==="
