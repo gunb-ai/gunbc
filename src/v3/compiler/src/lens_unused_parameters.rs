@@ -8,7 +8,8 @@ mod generated {
         unused_imports,
         unused_parens,
         unused_variables,
-        clippy::clone_on_copy
+        clippy::clone_on_copy,
+        clippy::collapsible_else_if
     )]
 
     use crate::dag::*;

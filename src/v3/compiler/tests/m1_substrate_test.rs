@@ -55,10 +55,10 @@ fn bind_value_type_decl(dag: &Dag, name: &str) -> DeclarationId {
     }
 }
 
-fn callable_instantiation_arguments<'a>(
-    dag: &'a Dag,
+fn callable_instantiation_arguments(
+    dag: &Dag,
     template: DeclarationId,
-) -> Vec<&'a [v3_compiler::dag::TemplateArgument]> {
+) -> Vec<&[v3_compiler::dag::TemplateArgument]> {
     dag.nodes()
         .iter()
         .filter_map(|node| {
