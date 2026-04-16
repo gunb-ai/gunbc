@@ -513,6 +513,7 @@ struct RealizationIndexes {
     execution: TargetExecutionModelBinding,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum InputSlot {
     Positional(usize),
@@ -2261,6 +2262,7 @@ struct RenderLocals {
     field_overrides: HashMap<PortId, HashMap<String, LocalBinding>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 enum InputConsumer<'a> {
     Transform(&'a TransformNode),
