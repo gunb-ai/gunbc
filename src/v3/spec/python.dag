@@ -1,0 +1,353 @@
+module v3.spec.python
+
+import v3.spec.v3_l1 { DeclarationRef }
+import v3.std.substrate {
+  NodeId, PortId, DeclarationId, SourceSpan, DagPort, Dag, ValueNode,
+  TransformNode, BranchNode, LoopNode, BindNode, BranchPath, Behavior
+}
+import std.list {
+  List, empty, singleton, cons, concat, length, is_empty, fold, map, filter, contains
+}
+import std.algebra { OrderedRing }
+
+type PythonTypeRealization {
+  target: DeclarationRef
+  carrier: String
+  is_copy: Bool
+  cost: Int
+}
+
+type PythonOperatorRealization {
+  target: DeclarationRef
+  op: DeclarationRef
+  carrier: String
+  cost: Int
+}
+
+type PythonCallableRealization {
+  target: DeclarationRef
+  strategy: PythonCallableStrategy
+  cost: Int
+}
+
+type PythonCallableStrategy
+  = ListEmpty
+  | ListSingleton
+  | ListCons
+  | ListConcat
+  | ListLength
+  | ListIsEmpty
+  | ListFold
+  | ListMap
+  | ListFilter
+  | ListContains
+
+type PythonTypeInstantiationRealization {
+  target: DeclarationRef
+  carrier: String
+  cost: Int
+}
+
+type PythonPatternRealization {
+  target: DeclarationRef
+  strategy: PythonPatternStrategy
+  cost: Int
+}
+
+type PythonPatternStrategy
+  = ListPattern
+
+type PythonExpressionSyntax {
+  binary_op: String
+  field_access: String
+  function_call: String
+  closure: String
+}
+
+type PythonCollectionOps {
+  empty_list: String
+  list_literal: String
+  cons: String
+  concat: String
+  length: String
+  is_empty: String
+  fold: String
+  map: String
+  filter: String
+  contains: String
+}
+
+type PythonTypeApplicationSyntax {
+  optional: String
+}
+
+type MemoryModel
+  = ValueOnly
+  | GarbageCollected
+  | RefCounted
+  | OwnershipBased
+
+type ScopeModel
+  = LexicalScoping
+  | DynamicScoping
+
+type TargetExecutionModel {
+  memory: MemoryModel
+  scope: ScopeModel
+}
+
+data python_target: TargetExecutionModel = {
+  memory: GarbageCollected
+  scope: LexicalScoping
+}
+
+data python_expressions: PythonExpressionSyntax = {
+  binary_op: "({lhs} {op} {rhs})"
+  field_access: "{object}.{field}"
+  function_call: "{func}({args})"
+  closure: "lambda {params}: {body}"
+}
+
+data python_collections: PythonCollectionOps = {
+  empty_list: "[]"
+  list_literal: "[{elements}]"
+  cons: "[{head}, *{tail}]"
+  concat: "[*{left}, *{right}]"
+  length: "len({recv})"
+  is_empty: "(len({recv}) == 0)"
+  fold: "__v3_fold({recv}, {init}, {body})"
+  map: "[{body} for {item} in {recv}]"
+  filter: "[{item_push} for {item} in {recv} if {predicate}]"
+  contains: "({item} in {recv})"
+}
+
+data python_type_applications: PythonTypeApplicationSyntax = {
+  optional: "typing.Optional[{element}]"
+}
+
+data python_int: PythonTypeRealization = {
+  target: Int
+  carrier: "int"
+  is_copy: true
+  cost: 1
+}
+
+data python_bool: PythonTypeRealization = {
+  target: Bool
+  carrier: "bool"
+  is_copy: true
+  cost: 1
+}
+
+data python_string: PythonTypeRealization = {
+  target: String
+  carrier: "str"
+  is_copy: true
+  cost: 1
+}
+
+data python_node_id: PythonTypeRealization = {
+  target: NodeId
+  carrier: "NodeId"
+  is_copy: true
+  cost: 1
+}
+
+data python_port_id: PythonTypeRealization = {
+  target: PortId
+  carrier: "PortId"
+  is_copy: true
+  cost: 1
+}
+
+data python_declaration_id: PythonTypeRealization = {
+  target: DeclarationId
+  carrier: "DeclarationId"
+  is_copy: true
+  cost: 1
+}
+
+data python_declaration_ref: PythonTypeRealization = {
+  target: DeclarationRef
+  carrier: "DeclarationId"
+  is_copy: true
+  cost: 1
+}
+
+data python_source_span: PythonTypeRealization = {
+  target: SourceSpan
+  carrier: "SourceSpan"
+  is_copy: false
+  cost: 1
+}
+
+data python_dag_port: PythonTypeRealization = {
+  target: DagPort
+  carrier: "DagPort"
+  is_copy: false
+  cost: 1
+}
+
+data python_branch_path: PythonTypeRealization = {
+  target: BranchPath
+  carrier: "BranchPath"
+  is_copy: false
+  cost: 1
+}
+
+data python_value_node: PythonTypeRealization = {
+  target: ValueNode
+  carrier: "ValueNode"
+  is_copy: false
+  cost: 1
+}
+
+data python_transform_node: PythonTypeRealization = {
+  target: TransformNode
+  carrier: "TransformNode"
+  is_copy: false
+  cost: 1
+}
+
+data python_branch_node: PythonTypeRealization = {
+  target: BranchNode
+  carrier: "BranchNode"
+  is_copy: false
+  cost: 1
+}
+
+data python_loop_node: PythonTypeRealization = {
+  target: LoopNode
+  carrier: "LoopNode"
+  is_copy: false
+  cost: 1
+}
+
+data python_bind_node: PythonTypeRealization = {
+  target: BindNode
+  carrier: "BindNode"
+  is_copy: false
+  cost: 1
+}
+
+data python_behavior: PythonTypeRealization = {
+  target: Behavior
+  carrier: "Behavior"
+  is_copy: false
+  cost: 1
+}
+
+data python_dag: PythonTypeRealization = {
+  target: Dag
+  carrier: "Dag"
+  is_copy: false
+  cost: 1
+}
+
+data python_int_add: PythonOperatorRealization = {
+  target: Int
+  op: OrderedRing.add
+  carrier: "+"
+  cost: 1
+}
+
+data python_int_sub: PythonOperatorRealization = {
+  target: Int
+  op: OrderedRing.sub
+  carrier: "-"
+  cost: 1
+}
+
+data python_int_eq: PythonOperatorRealization = {
+  target: Int
+  op: OrderedRing.eq
+  carrier: "=="
+  cost: 1
+}
+
+data python_node_id_eq: PythonOperatorRealization = {
+  target: NodeId
+  op: OrderedRing.eq
+  carrier: "=="
+  cost: 1
+}
+
+data python_port_id_eq: PythonOperatorRealization = {
+  target: PortId
+  op: OrderedRing.eq
+  carrier: "=="
+  cost: 1
+}
+
+data python_declaration_id_eq: PythonOperatorRealization = {
+  target: DeclarationId
+  op: OrderedRing.eq
+  carrier: "=="
+  cost: 1
+}
+
+data python_empty_callable: PythonCallableRealization = {
+  target: empty
+  strategy: ListEmpty
+  cost: 1
+}
+
+data python_singleton_callable: PythonCallableRealization = {
+  target: singleton
+  strategy: ListSingleton
+  cost: 1
+}
+
+data python_cons_callable: PythonCallableRealization = {
+  target: cons
+  strategy: ListCons
+  cost: 1
+}
+
+data python_concat_callable: PythonCallableRealization = {
+  target: concat
+  strategy: ListConcat
+  cost: 1
+}
+
+data python_length_callable: PythonCallableRealization = {
+  target: length
+  strategy: ListLength
+  cost: 1
+}
+
+data python_is_empty_callable: PythonCallableRealization = {
+  target: is_empty
+  strategy: ListIsEmpty
+  cost: 1
+}
+
+data python_fold_callable: PythonCallableRealization = {
+  target: fold
+  strategy: ListFold
+  cost: 1
+}
+
+data python_map_callable: PythonCallableRealization = {
+  target: map
+  strategy: ListMap
+  cost: 1
+}
+
+data python_filter_callable: PythonCallableRealization = {
+  target: filter
+  strategy: ListFilter
+  cost: 1
+}
+
+data python_contains_callable: PythonCallableRealization = {
+  target: contains
+  strategy: ListContains
+  cost: 1
+}
+
+data python_list_instantiation: PythonTypeInstantiationRealization = {
+  target: List
+  carrier: "list[{element}]"
+  cost: 1
+}
