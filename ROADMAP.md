@@ -363,11 +363,13 @@ M5: Meta-process modeling (bootstrap, CI, dev process)
       old didn't), the debug is manual — no visibility into WHICH
       stage diverged or WHY.
 
-      bootstrap.dag already models the building blocks (195 lines,
-      zero consumers): CompilerStage (8 stages), StageInput/Output,
-      TransformContract (preserved/recomputed fields per transform),
-      FieldPropagation (per-stage per-field), ChangeClassification,
-      BootstrapStrategy (SinglePass/TwoPhase/Additive).
+      **Authority note (2026-04-16):** `bootstrap.dag`'s stage
+      vocabulary is superseded by the pipeline composition
+      (`SELF_HOSTING.md` §2.1). The pipeline's typed function
+      signatures ARE the stage contracts. `bootstrap.dag`'s 195
+      lines of `CompilerStage`, `TransformContract`, etc. dissolve
+      into the pipeline declaration — they are not wired as a
+      separate authority. See Track 17b below for the updated plan.
 
       Three levels, each building on the previous:
 
@@ -375,18 +377,18 @@ M5: Meta-process modeling (bootstrap, CI, dev process)
         regen.dag runs old binary + new binary, compares output
         at EACH stage boundary (not just the final pass). When
         divergence occurs, the report says "Resolve stage output
-        differs" instead of "fixed-point failed." bootstrap.dag's
-        CompilerStage and ArtifactKind drive the comparison.
+        differs" instead of "fixed-point failed." The pipeline's
+        typed stage signatures drive the comparison.
         Directly helps current dark-emu session.
 
       Level 2 — Stage contracts verified during bootstrap:
-        Each stage declares a TransformContract: "Resolve takes
-        a ParseTree, produces a ModuleGraph. Preserved fields:
-        [ident, span]. Recomputed fields: [module_deps, exports]."
+        Each stage's function signature declares its input/output
+        types. A lens verifies each contract holds: "does infer
+        produce a Dag where all ports have Resolved state?"
         The bootstrap loop checks: did the contract hold? If a
-        stage recomputes a field it claims to preserve, the check
-        fires at the stage boundary with a typed diff — not at the
-        end as a cryptic fixed-point failure.
+        stage's output fails its lens check, the error fires at
+        the stage boundary with a typed diff — not at the end as
+        a cryptic fixed-point failure.
 
       Level 3 — Automatic strategy selection (M5 "done when"):
         ChangeClassification (AddField with default → Additive,
@@ -1102,13 +1104,30 @@ before/after benefit):**
   - **Size:** medium. Each REST op needs a one-line annotation;
     the structural test is new infrastructure.
 
-- **PR 17b: `gunbc/bootstrap.dag` → `gunbc/tools/regen.dag`**
+- **PR 17b: pipeline composition → `gunbc/tools/regen.dag`**
+  - **Authority note (2026-04-16):** `bootstrap.dag`'s **stage-
+    contract vocabulary** (`CompilerStage`, `TransformContract`,
+    `StageInput`, `StageOutput`, `FieldPropagation`) is
+    **superseded** by the pipeline composition declared in
+    `src/v3/SELF_HOSTING.md` §2.1. The pipeline's typed function
+    signatures ARE the stage contracts; `bootstrap.dag`'s parallel
+    stage vocabulary dissolves into the pipeline declaration.
+    `regen.dag` reads the pipeline's stage signatures, not a
+    separate `bootstrap.dag` type set.
+    **Surviving schema-migration authority:** `ChangeClassification`,
+    `ChangeKind`, `BootstrapStrategy`, and `FixedPointCheck` are
+    NOT superseded by the pipeline — they are the schema-migration
+    vocabulary consumed by `SELF_HOSTING.md` §10's patch pipeline.
+    These remain in `bootstrap.dag` as load-bearing types until
+    the schema-migration PR (§10.4) lands their first real
+    consumer.
   - Currently `regen.dag` hardcodes the 5-step sequence in nested
     matches (build → compile → copy → check → rebuild → recompile).
-  - Replace with `let stages: List<CompilerStage> = [...]` driven
-    from `bootstrap.dag`, folded over.
-  - Each step's input/output derives from `StageInput`/`StageOutput`,
-    not bare strings.
+  - Replace with stage iteration driven from the pipeline
+    composition's typed stage functions, folded over.
+  - Each step's input/output derives from the pipeline's function
+    signatures, not bare strings or a parallel `StageInput`/
+    `StageOutput` vocabulary.
   - **Extension (M5 Phase 4 Level 1):** add per-stage structural
     diffs to the bootstrap loop. When old and new binary diverge,
     the report names the STAGE where divergence starts, not just
@@ -1116,8 +1135,8 @@ before/after benefit):**
     bootstrap regression (new binary detects a dependency cycle
     the old binary didn't — the diff would localize to the Resolve
     stage). See M5 Phase 4 for the 3-level plan.
-  - **Benefit:** adding a new compiler stage is one edit to
-    `bootstrap.dag`, not edits in regen/freshness/ci. Pipeline
+  - **Benefit:** adding a new compiler stage is one edit to the
+    pipeline composition, not edits in regen/freshness/ci. Pipeline
     sequence becomes data. Bootstrap failures become diagnosable.
   - **Size:** medium (was small — the per-stage diff adds scope,
     but it's the most valuable part).

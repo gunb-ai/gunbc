@@ -1458,6 +1458,70 @@ can be written without it (using nested `fold(filter(map(...)),
 **Prereq 5** — small parser extension, no substrate change, no
 lowering change. Can land independently of the other prereqs.
 
+### §4.4 Lens invocation mechanism
+
+A compiled `.dag` lens needs a way to run against a live `Dag`
+value from Rust. The design doc says "a test or CI runner calls
+the compiled function with a Dag value and collects the returned
+violations" (§4 step 6) but does not specify the machinery.
+Two paths, used for different purposes:
+
+**Path A — Compiled Rust integration (for parity tests).** The
+`.dag` lens compiles to a Rust function via `emit_rust`. A test
+`build.rs` or `include!` mechanism compiles the emitted Rust into
+the test binary alongside the v3-compiler crate. The test calls
+the compiled lens function directly with a `Dag` value and
+asserts byte-identical output to the Rust lens.
+
+This is the **parity proof**: the `.dag` lens, compiled to Rust,
+produces the same violations as the hand-written Rust lens it
+replaces. Both run in the same process, against the same `Dag`,
+and the test asserts equality. After parity is proven, the Rust
+lens is deleted.
+
+**Implementation shape.** The emitted Rust function has the
+signature `fn check(dag: &Dag) -> Vec<UnusedParameter>`. The
+test binary links against the v3-compiler crate (which owns
+`Dag`), and the emitted function's types resolve against the
+same `Dag`/`PortId`/`DeclarationId` definitions. This is the
+same linking model v3's existing `m1_3_emit_rust_test.rs` uses
+for end-to-end roundtrips — compile `.dag` source, emit Rust,
+`cargo test` the emitted function.
+
+**Path C — Interpreter (for development and self-analysis).** The
+`.dag` lens is evaluated via `dag run` on a `Dag` value. No Rust
+compilation for the lens. The interpreter walks the lens's Bind
+sub-DAG, reads substrate fields via the reflection surface, and
+returns the result as a `.dag` value.
+
+This is the **self-analysis path**: `lens_unused_parameters`
+running against its own `.dag` source is most naturally expressed
+as "interpret the lens on a Dag that contains the lens's own
+declarations." No separate Rust compilation step.
+
+**When each path is used:**
+
+| Test | Path | Why |
+|---|---|---|
+| Migration parity (`.dag` lens == Rust lens) | A | Validates the Rust emission pipeline end-to-end |
+| Self-analysis (lens analyzes itself) | C | Simplest; no build-graph integration needed |
+| CI regression (lens runs on every PR) | A | Fast, native, no interpreter startup |
+| Development iteration | C | No recompile cycle; edit `.dag`, re-run |
+
+**Path B (subprocess) is rejected.** Running the compiled lens
+as a separate binary and capturing stdout is awkward, slow, and
+loses type safety at the process boundary. Paths A and C cover
+all use cases without it.
+
+**Dependency on Prereq 0.5.** Path A requires the emitted Rust
+to call generic list operations (`fold`, `filter`, `map`)
+without monomorphized wrappers. Until Prereq 0.5 (implicit
+generic-call instantiation) lands, the emitted Rust would still
+need `fold_int`-style scaffolding, which defeats the parity
+claim. **Path A is blocked on Prereq 0.5.** Path C may work
+earlier if the interpreter handles generic calls through runtime
+dispatch rather than compiled instantiation.
+
 ---
 
 ## §5. Lens migration: `lens_unused_parameters` as the proof point
@@ -1986,6 +2050,64 @@ later commit. **Blocker for Prereq 4.**
 - [x] Test: a two-level nested higher-order call resolves via
       SubstStack propagation (the `twice(apply(x, f), f)` pattern)
 - [x] No regressions on existing v3 tests
+
+**Prereq 0.5 — Implicit generic-call instantiation.** Prereq 0
+lands the **explicit** template-binding case: when a caller passes
+a named function as a template argument (`apply(3, negate)`), the
+`TemplateArgument` binds `f := negate` explicitly. Prereq 0.5
+extends this to the **implicit** case: when `fold(singleton(1),
+0, |acc, x| acc + x)` is called, the compiler infers `T := Int,
+U := Int` from the argument types without the caller writing
+template arguments explicitly.
+
+This is the gap that the `*_int` monomorphized wrappers in
+`src/v3/std/list.dag` exist to bridge. `fold_int`, `map_int`,
+`filter_int`, `singleton_int`, `cons_int` are temporary concrete
+instantiations because the compiler can't yet synthesize
+`TemplateArgument` bindings from argument-type unification. Until
+this lands, `.dag` lens code that uses list combinators has to go
+through the wrappers — which defeats the "list operations are
+compositionally generic" claim.
+
+**What needs to happen in inference.** When `resolve_arrow_walk`
+encounters a call to a generic function (an Arrow whose
+Declaration has non-empty `type_params`), and the caller did NOT
+provide explicit template arguments, inference should:
+
+1. Walk the callee's Arrow inputs alongside the caller's actual
+   argument types
+2. For each template parameter `T` that appears in an input
+   position, unify the expected type (containing `T`) against
+   the actual type to produce a binding `T := ConcreteType`
+3. Build `TemplateArgument` entries for each inferred binding
+4. Construct an `Instantiation` node as if the caller had
+   written the template arguments explicitly
+5. Fail-closed with a diagnostic if unification produces
+   conflicting bindings (e.g., `T` inferred as both `Int` and
+   `String` from different arguments)
+
+This is standard Hindley-Milner-style inference scoped to call
+sites. The substrate already has `TemplateArgument` and
+`Instantiation` from Prereq 0 — the extension is purely in the
+inference walker, not in the substrate. No new substrate variants.
+
+**Blocker for:** Unit 3 of the reflection PR (lens migration
+needs generic list operations without wrappers), Prereq 4
+dissolution (removing `*_int` wrappers from `list.dag`), and the
+broader claim that list combinators are usable compositionally.
+
+- [ ] `resolve_arrow_walk` synthesizes `TemplateArgument` bindings
+      from argument-type unification when explicit bindings are
+      absent
+- [ ] Test: `fold(singleton(1), 0, |acc, x| acc + x)` compiles
+      and evaluates to `1` without a `fold_int` wrapper
+- [ ] Test: `map(singleton(1), |x| x + 1)` compiles and evaluates
+      to `[2]` without a `map_int` wrapper
+- [ ] Test: conflicting implicit bindings fail closed with a
+      diagnostic naming the conflicting types
+- [ ] The `*_int` wrappers in `list.dag` are deleted and the
+      `ListBuiltins` struct in `emit_rust.rs` is removed
+- [ ] No regressions on existing v3 tests
 
 **Prereq 1 — Field-access lowering.** Extend `lower_expr` to
 resolve `SurfaceExpr::Path` against local-variable Declarations
