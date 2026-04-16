@@ -79,6 +79,24 @@ fn serialize_dag_is_deterministic() {
 }
 
 #[test]
+fn snapshots_include_declared_lens_boundary() {
+    let snapshots = compile_stage_snapshots(default_fixed_point_source(), "fixed_point_input.v3")
+        .expect("snapshots compile");
+    let stages: Vec<_> = snapshots.iter().map(|snapshot| snapshot.stage).collect();
+    assert_eq!(
+        stages,
+        vec![
+            "parse",
+            "lower",
+            "infer",
+            "compute_ownership",
+            "lens_complexity",
+            "emit",
+        ]
+    );
+}
+
+#[test]
 fn synthetic_divergence_names_stage() {
     let pass1 = compile_stage_snapshots(default_fixed_point_source(), "fixed_point_input.v3")
         .expect("pass1 compiles");

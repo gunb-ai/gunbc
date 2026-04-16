@@ -2639,7 +2639,10 @@ fn behavior_result_port(behavior: &Behavior) -> PortId {
 }
 
 fn is_bootstrap_file(file: &str) -> bool {
-    file.starts_with("dsl/std/") || file.starts_with("src/v3/std/") || file.starts_with("src/v3/spec/")
+    file.starts_with("dsl/std/")
+        || file.starts_with("src/v3/std/")
+        || file.starts_with("src/v3/spec/")
+        || file.starts_with("src/v3/compiler/")
 }
 
 /// Walk a port's resolved TypeShape declaration through anonymous

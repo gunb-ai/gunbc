@@ -25,6 +25,7 @@
 // side channel.
 
 use crate::dag::{ArrowBody, Dag, DeclarationId, TypeConnective};
+use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::lower::{collect_symbols_phase, lower_bodies_phase, resolve_pending_identifiers};
 use crate::parse::{parse, SurfaceModule};
 use crate::tokenize::tokenize;
@@ -69,6 +70,7 @@ include!(concat!(env!("OUT_DIR"), "/v3_specs.rs"));
 include!(concat!(env!("OUT_DIR"), "/v3_compiler_files.rs"));
 
 const PIPELINE_REALIZATION_META: &str = "CompilerHostRealization";
+const PIPELINE_AUTHORITY_FILE: &str = "src/v3/compiler/pipeline.dag";
 const PIPELINE_REALIZATION_BINDINGS: &[(&str, &str)] = &[
     ("parse", "parse_realization"),
     ("lower", "lower_realization"),
@@ -201,21 +203,49 @@ fn materialize_pipeline_realizations(dag: &mut Dag) {
         .declaration_by_name(PIPELINE_REALIZATION_META)
         .map(|decl| decl.id)
     else {
+        report_pipeline_authority_error(
+            dag,
+            format!("missing pipeline realization meta `{PIPELINE_REALIZATION_META}`"),
+        );
         return;
     };
-    let meta_connective = dag.declaration(meta_decl_id).connective.clone();
+    let meta_connective = match dag.declaration(meta_decl_id).connective.clone() {
+        connective @ TypeConnective::Conj { .. } => connective,
+        _ => {
+            report_pipeline_authority_error(
+                dag,
+                format!(
+                    "pipeline realization meta `{PIPELINE_REALIZATION_META}` must lower to a record"
+                ),
+            );
+            return;
+        }
+    };
 
-    for (_, realization_name) in PIPELINE_REALIZATION_BINDINGS {
+    for (stage_name, realization_name) in PIPELINE_REALIZATION_BINDINGS {
         let Some(realization_id) = dag
             .declaration_by_name(realization_name)
             .map(|decl| decl.id)
         else {
+            report_pipeline_authority_error(
+                dag,
+                format!(
+                    "missing pipeline realization `{realization_name}` for stage `{stage_name}`"
+                ),
+            );
             continue;
         };
         let realization = dag.declaration_mut(realization_id);
-        if realization.meta_tag == Some(meta_decl_id) {
-            realization.connective = meta_connective.clone();
+        if realization.meta_tag != Some(meta_decl_id) {
+            report_pipeline_authority_error(
+                dag,
+                format!(
+                    "pipeline realization `{realization_name}` is not tagged with `{PIPELINE_REALIZATION_META}`"
+                ),
+            );
+            continue;
         }
+        realization.connective = meta_connective.clone();
     }
 
     for (stage_name, realization_name) in PIPELINE_REALIZATION_BINDINGS {
@@ -223,16 +253,39 @@ fn materialize_pipeline_realizations(dag: &mut Dag) {
             .declaration_by_name(realization_name)
             .map(|decl| decl.id)
         else {
+            report_pipeline_authority_error(
+                dag,
+                format!(
+                    "missing pipeline realization `{realization_name}` for stage `{stage_name}`"
+                ),
+            );
             continue;
         };
         let Some(stage_id) = dag.declaration_by_name(stage_name).map(|decl| decl.id) else {
+            report_pipeline_authority_error(
+                dag,
+                format!("missing pipeline stage declaration `{stage_name}`"),
+            );
             continue;
         };
         let stage = dag.declaration_mut(stage_id);
-        if let TypeConnective::Arrow { body, .. } = &mut stage.connective {
-            *body = ArrowBody::ExternalRealization(realization_id);
+        match &mut stage.connective {
+            TypeConnective::Arrow { body, .. } => {
+                *body = ArrowBody::ExternalRealization(realization_id);
+            }
+            _ => report_pipeline_authority_error(
+                dag,
+                format!("pipeline stage `{stage_name}` must lower to an arrow"),
+            ),
         }
     }
+}
+
+fn report_pipeline_authority_error(dag: &mut Dag, name: String) {
+    dag.attach_diagnostic(Diagnostic::ResolveError {
+        name,
+        span: SourceSpan::new(PIPELINE_AUTHORITY_FILE, 0, 0),
+    });
 }
 
 fn parse_fixture(dag: &mut Dag, source: &str, file: &str) -> Option<SurfaceModule> {
@@ -264,7 +317,7 @@ mod tests {
 
     use super::*;
     use crate::dag::{ArrowBody, AtomPayload, Declaration, DeclarationId, TypeConnective};
-    use crate::diagnostics::SourceSpan;
+    use crate::diagnostics::{Diagnostic, SourceSpan};
 
     /// Build a Realization → instance → Arrow chain inside a fresh Dag.
     /// Returns the Arrow's DeclarationId so callers can walk it.
@@ -396,5 +449,31 @@ mod tests {
         // Self-check on the AtomPayload enum so the test depends on
         // its shape (otherwise an unused import warning fires).
         let _probe: Option<&AtomPayload> = None;
+    }
+
+    #[test]
+    fn malformed_pipeline_stage_attaches_diagnostic() {
+        let mut dag = Dag::new();
+        assert!(dag.diagnostics().is_empty(), "bootstrap should start clean");
+
+        let parse_stage = dag
+            .declaration_by_name("parse")
+            .expect("parse stage present")
+            .id;
+        dag.declaration_mut(parse_stage).connective = TypeConnective::Conj {
+            children: Vec::new(),
+        };
+
+        materialize_pipeline_realizations(&mut dag);
+
+        assert!(
+            dag.diagnostics().iter().any(|(_, diag)| matches!(
+                diag,
+                Diagnostic::ResolveError { name, span }
+                    if name.contains("pipeline stage `parse`")
+                        && span.file == PIPELINE_AUTHORITY_FILE
+            )),
+            "malformed pipeline authority should fail closed with a diagnostic"
+        );
     }
 }

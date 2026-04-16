@@ -52,8 +52,8 @@ pub struct StageSnapshot {
 
 #[derive(Debug)]
 pub enum StageSnapshotError {
-    Compile(CompileError),
-    Emit(emit_rust::EmitError),
+    Compile(Box<CompileError>),
+    Emit(Box<emit_rust::EmitError>),
 }
 
 #[derive(Debug)]
@@ -149,10 +149,10 @@ pub fn compile_stage_snapshots(
 ) -> Result<Vec<StageSnapshot>, StageSnapshotError> {
     let tokens = tokenize::tokenize(source, file)
         .map_err(CompileError::Tokenize)
-        .map_err(StageSnapshotError::Compile)?;
+        .map_err(|error| StageSnapshotError::Compile(Box::new(error)))?;
     let surface = parse::parse(&tokens, file)
         .map_err(CompileError::Parse)
-        .map_err(StageSnapshotError::Compile)?;
+        .map_err(|error| StageSnapshotError::Compile(Box::new(error)))?;
     let parse_bytes = format!("{surface:#?}").into_bytes();
 
     let mut lower_dag = lower::lower(&surface);
@@ -161,14 +161,16 @@ pub fn compile_stage_snapshots(
 
     infer::infer(&mut lower_dag);
     if !lower_dag.diagnostics().is_empty() {
-        return Err(StageSnapshotError::Compile(CompileError::Semantic(
-            lower_dag.clone(),
+        return Err(StageSnapshotError::Compile(Box::new(
+            CompileError::Semantic(lower_dag.clone()),
         )));
     }
 
     let infer_snapshot = lower_dag.clone();
     let infer_bytes = serialize::serialize_dag(&infer_snapshot);
-    let emitted = emit_rust::emit_rust(&lower_dag).map_err(StageSnapshotError::Emit)?;
+    let emitted = emit_rust::emit_rust(&lower_dag)
+        .map_err(Box::new)
+        .map_err(StageSnapshotError::Emit)?;
 
     Ok(vec![
         StageSnapshot {
@@ -194,6 +196,16 @@ pub fn compile_stage_snapshots(
             // stage materializes its own Dag facts, the fixed-point harness
             // snapshots the post-infer Dag at the declared boundary.
             stage: "compute_ownership",
+            kind: StageSnapshotKind::Dag,
+            bytes: infer_bytes.clone(),
+            dag: Some(infer_snapshot.clone()),
+        },
+        StageSnapshot {
+            // `lens_complexity` is declared in the staged pipeline today,
+            // but still reads the post-infer Dag until the stage grows its
+            // own Dag facts. Snapshot that declared boundary explicitly so
+            // stage-by-stage comparisons do not silently skip it.
+            stage: "lens_complexity",
             kind: StageSnapshotKind::Dag,
             bytes: infer_bytes,
             dag: Some(infer_snapshot),
