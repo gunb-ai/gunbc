@@ -173,6 +173,13 @@ fn testgen_lens_emits_claims_as_structural_testclaim_values() {
     assert!(
         claim_names
             .iter()
+            .any(|name| name == "PortState variant Unresolved compiles"),
+        "expected a compile claim for bootstrapped std substrate type PortState, got {:?}",
+        claim_names
+    );
+    assert!(
+        claim_names
+            .iter()
             .any(|name| name == "TestClaim rejects field type mismatch"),
         "expected a field-type-mismatch claim for TestClaim"
     );

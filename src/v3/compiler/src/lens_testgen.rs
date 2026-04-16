@@ -136,7 +136,7 @@ impl<'a> TestgenLens<'a> {
             let Some(name) = &decl.name else {
                 continue;
             };
-            if decl.value_body.is_some() || !is_std_file(&decl.span.file) {
+            if decl.value_body.is_some() || !is_bootstrapped_std_file(&decl.span.file) {
                 continue;
             }
             match chosen.get(name).copied() {
@@ -232,7 +232,7 @@ impl<'a> TestgenLens<'a> {
             Some("Int") => Some("1".to_string()),
             Some("Bool") => Some("true".to_string()),
             Some("String") => Some("\"x\"".to_string()),
-            Some(_) if !is_std_file(&decl.span.file) => None,
+            Some(_) if !is_bootstrapped_std_file(&decl.span.file) => None,
             _ => match &decl.connective {
                 TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
                     self.render_value_expr(*subst.get(&decl_id)?, subst, depth + 1)
@@ -387,8 +387,8 @@ impl<'a> TestgenLens<'a> {
     }
 }
 
-fn is_std_file(file: &str) -> bool {
-    matches!(file, "src/v3/std/list.dag" | "src/v3/std/verification.dag")
+fn is_bootstrapped_std_file(file: &str) -> bool {
+    file.starts_with("src/v3/std/")
 }
 
 fn std_preference_rank(file: &str) -> usize {
