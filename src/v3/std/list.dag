@@ -30,21 +30,19 @@
 
 module std.list
 
-import std.types { Int, Bool, List }
+import std.types { Int, Bool }
 import std.algebra { Monoid }
 
 // ── Structural shape ────────────────────────────────────────────
 
-// `List<T>` already exists in `dsl/std/types.dag` as the
-// bootstrap-loaded authority for the collection type. This staged
-// file layers the helper functions (`empty`, `cons`, `fold`, `map`,
-// `filter`, ...) on top of that existing declaration.
-//
-// The long-term reflection design models `List<T>` structurally as
-// `Empty | Cons(T, List<T>)`. In this checkout that shape is still
-// hosted indirectly through `std.types` / `FreeMonoid`; staging the
-// helpers here avoids a duplicate top-level `List` declaration during
-// bootstrap while still making the API surface available.
+// v2 still aliases `List<T>` through `FreeMonoid<T>` in
+// `dsl/std/types.dag`, but v3 needs the structural carrier directly so
+// user code can match and recurse over `Empty | Cons`. The bootstrap
+// loader prefers `src/v3/` declarations over `dsl/` declarations, so
+// this staged definition is now the authority v3 walks to.
+type List<element>
+  = Empty
+  | Cons { head: element, tail: List<element> }
 
 // ── Algebraic inhabitance ───────────────────────────────────────
 

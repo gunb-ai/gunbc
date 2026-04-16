@@ -2036,6 +2036,14 @@ fn prereq4_list_dag_bootstrap_loads_cleanly() {
             "bootstrap should register staged std.list declaration `{name}`"
         );
     }
+    let list = dag
+        .declaration_by_name("List")
+        .expect("bootstrap should register List");
+    let TypeConnective::Disj { variants } = &list.connective else {
+        panic!("staged std.list should shadow the v2 alias with a structural Disj, got {:?}", list.connective);
+    };
+    let labels: Vec<_> = variants.iter().map(|field| field.label.as_str()).collect();
+    assert_eq!(labels, vec!["Empty", "Cons"]);
 }
 
 #[test]
@@ -2535,4 +2543,48 @@ fn count(list: IntList) -> Int = match list { Empty => 0, Cons(payload) => 1 + c
         Behavior::Loop(_) => {}
         other => panic!("expected bounded recursion to lower to Loop, got {other:?}"),
     }
+}
+
+#[test]
+fn recursive_generic_sum_can_reference_itself_in_payload_types() {
+    let src = "\
+type MyList<T> = Empty | Cons { head: T, tail: MyList<T> }
+";
+    let dag = compile_to_dag(src, "recursive_generic_sum.v3").expect("compiles");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "recursive generic sums should lower without self-resolution diagnostics: {:?}",
+        dag.diagnostics()
+    );
+
+    let list = dag
+        .declaration_by_name("MyList")
+        .expect("MyList declaration exists");
+    let TypeConnective::Disj { variants } = &list.connective else {
+        panic!("recursive generic sum should lower to Disj, got {:?}", list.connective);
+    };
+    let cons = variants
+        .iter()
+        .find(|field| field.label == "Cons")
+        .expect("Cons variant exists");
+    let cons_decl = dag.declaration(cons.ty);
+    let TypeConnective::Conj { children } = &cons_decl.connective else {
+        panic!("Cons payload should be a Conj, got {:?}", cons_decl.connective);
+    };
+    let tail = children
+        .iter()
+        .find(|field| field.label == "tail")
+        .expect("tail field exists");
+    let TypeConnective::Instantiation { template, arguments } = &dag.declaration(tail.ty).connective else {
+        panic!("tail field should instantiate MyList<T>, got {:?}", dag.declaration(tail.ty).connective);
+    };
+    assert_eq!(
+        *template, list.id,
+        "tail field should point back to the enclosing recursive sum template"
+    );
+    assert_eq!(
+        arguments.len(),
+        1,
+        "tail field should preserve the recursive type parameter binding"
+    );
 }

@@ -511,7 +511,8 @@ fn lower_item(
 /// parameter ids at construction time — no half-valid state, no
 /// post-sweep fixup pass.
 fn local_scope_from_parent(dag: &Dag, parent_id: DeclarationId) -> HashMap<String, DeclarationId> {
-    dag.declaration(parent_id)
+    let parent = dag.declaration(parent_id);
+    let mut scope: HashMap<String, DeclarationId> = parent
         .type_params
         .iter()
         .filter_map(|pid| {
@@ -523,7 +524,17 @@ fn local_scope_from_parent(dag: &Dag, parent_id: DeclarationId) -> HashMap<Strin
                 None
             }
         })
-        .collect()
+        .collect();
+    // Recursive declarations must be able to refer to themselves
+    // while their connective is still being lowered. Without this,
+    // `tail: List<T>` inside `type List<T> = ...` allocates an
+    // UnresolvedIdentifier stub that later resolves back to the
+    // declaration and trips the "resolves to itself" fail-closed
+    // guard intended for bad aliases, not real recursive sums.
+    if let Some(name) = &parent.name {
+        scope.insert(name.clone(), parent_id);
+    }
+    scope
 }
 
 fn lower_type_record(
@@ -805,10 +816,12 @@ fn build_template_arguments(
     args: &[SurfaceType],
     span: &SourceSpan,
 ) -> Vec<TemplateArgument> {
-    let template_is_stub = matches!(
-        &dag.declaration(template).connective,
-        TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
-    );
+    let template_decl = dag.declaration(template);
+    let template_is_stub = template_decl.name.is_none()
+        && matches!(
+            &template_decl.connective,
+            TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+        );
     if template_is_stub {
         // Consume the argument surface types for their side effects
         // (nested stub allocation, diagnostic attachment), but do not

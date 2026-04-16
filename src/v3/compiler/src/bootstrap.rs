@@ -66,6 +66,16 @@ const TYPES_DAG: &str = include_str!("../../../../dsl/std/types.dag");
 include!(concat!(env!("OUT_DIR"), "/v3_staged_files.rs"));
 include!(concat!(env!("OUT_DIR"), "/v3_specs.rs"));
 
+fn declaration_name_preference_rank(file: &str) -> usize {
+    if file.starts_with("src/v3/") {
+        2
+    } else if file.starts_with("dsl/") {
+        0
+    } else {
+        1
+    }
+}
+
 pub(crate) fn bootstrap(dag: &mut Dag) {
     // Two-phase loading across all seven std/ files. Phase 1 parses and
     // `collect_symbols_phase`s every file, allocating top-level
@@ -128,11 +138,27 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
     // now every top-level declaration across all fixtures is present
     // with its type_params slot populated, so Phase 2 can resolve
     // every cross-file template reference at construction time.
-    // First-match semantics match `Dag::declaration_by_name`.
+    // Use the same staged-v3-over-dsl preference policy as
+    // `collect_symbols`, otherwise Phase 1 can register the staged
+    // shadowing declaration but Phase 2 will still lower bodies
+    // against the legacy `dsl/` declaration.
     let mut shared_symbols: HashMap<String, DeclarationId> = HashMap::new();
     for d in dag.declarations() {
         if let Some(name) = &d.name {
-            shared_symbols.entry(name.clone()).or_insert(d.id);
+            match shared_symbols.get(name).copied() {
+                None => {
+                    shared_symbols.insert(name.clone(), d.id);
+                }
+                Some(existing_id) => {
+                    let existing = dag.declaration(existing_id);
+                    let new_rank = declaration_name_preference_rank(&d.span.file);
+                    let existing_rank =
+                        declaration_name_preference_rank(&existing.span.file);
+                    if new_rank > existing_rank {
+                        shared_symbols.insert(name.clone(), d.id);
+                    }
+                }
+            }
         }
     }
 
