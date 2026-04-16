@@ -47,7 +47,7 @@ data dag_model: ComputationModel = {
 | Fact | Guarantee | What it dissolves |
 |---|---|---|
 | `Immutable` | Sharing is always safe. No value can be modified after creation. | Data races, aliasing bugs, defensive cloning |
-| `Pure` | Output depends only on inputs. Evaluation order is flexible. | Effect ordering, scope-as-correctness-concern |
+| `Pure` | Output depends only on inputs. Evaluation order is flexible. `.dag`'s own primitives are pure; `ExternalRealization` calls are bounded by their declared effects (effect annotations, L2 M3). | Effect ordering, scope-as-correctness-concern |
 | `ExplicitDAG` | All dependencies are `produced_by` edges. No hidden state. | Alias analysis, dependency discovery, escape reconstruction |
 | `Bounded` | Every computation terminates. | Halting problem, unbounded cost |
 
@@ -56,9 +56,10 @@ data dag_model: ComputationModel = {
 These concepts do NOT exist in .dag:
 - **Ownership.** Values have no owner. They exist from
   production to last use. Sharing is free (F1).
-- **Scope.** The DAG has nesting (Bind bodies, Loop bodies)
-  but no lexical scope in the target-language sense. Scope is
-  created by the emission mapping.
+- **Scope.** The DAG has structural nesting (Bind bodies, Loop
+  bodies). Lexical scope is a target-language concept; the
+  emitter maps DAG structural nesting onto the target's scope
+  primitives.
 - **References.** No borrows, no pointers, no indirection.
   Values are values.
 - **Clone.** No distinction between "the value" and "a copy of
@@ -262,6 +263,9 @@ The decision per edge:
   `String → false`)
 - Compound types: derived. Record is Copy iff ALL fields are
   Copy. Not declared — prevents drift.
+- Recursive types: default to non-Copy. Rust's `Copy` requires
+  `Sized` with no indirection; recursive types need indirection
+  (`Box`, `Vec`), which is not Copy.
 
 ---
 
@@ -333,8 +337,11 @@ Tests verify the root facts and their composition.
 
 1. **Root facts hold.** .dag programs compile with
    `dag_model = { Immutable, Pure, ExplicitDAG, Bounded }`.
-   Programs violating any fact (mutation, side effects,
-   cycles, unbounded iteration) are rejected at compile time.
+   .dag's own primitives enforce these facts. Programs with
+   cycles or unbounded iteration are rejected at compile time.
+   `ExternalRealization` calls are bounded by their declared
+   effects (the purity guarantee applies to .dag primitives;
+   external calls carry effect annotations, L2 M3).
 
 2. **ParameterCrossing per callable.** `cons` → [Crosses,
    Crosses]. `is_empty` → [Stays]. `fold` → [Stays, Crosses,
