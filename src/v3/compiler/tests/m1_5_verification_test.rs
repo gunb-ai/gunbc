@@ -92,6 +92,13 @@ fn bootstrap_loads_verification_authority_types() {
         vec![String::from("kind"), String::from("detail_contains")]
     );
     assert_eq!(
+        sum_variants(&dag, "DiagnosticDetailExpectation"),
+        vec![
+            (String::from("AnyDetail"), Vec::new()),
+            (String::from("Contains"), vec![String::from("_0")]),
+        ]
+    );
+    assert_eq!(
         sum_variants(&dag, "PortStateExpectation"),
         vec![
             (String::from("Resolved"), Vec::new()),
@@ -113,7 +120,11 @@ fn bootstrap_loads_verification_authority_types() {
             ),
             (
                 String::from("CostBounded"),
-                vec![String::from("comparator"), String::from("bound")],
+                vec![
+                    String::from("bind_name"),
+                    String::from("comparator"),
+                    String::from("bound"),
+                ],
             ),
         ]
     );
@@ -123,13 +134,13 @@ fn bootstrap_loads_verification_authority_types() {
 fn verification_predicate_witnesses_compile_cleanly() {
     let src = r#"
 let pred_compiles: TestPredicate = Compiles
-let pred_fails: TestPredicate = FailsWithDiagnostic({ kind: ResolveError, detail_contains: "missing" })
-let pred_fails_kind: TestPredicate = FailsWithDiagnostic({ kind: TypeMismatch, detail_contains: "" })
+let pred_fails: TestPredicate = FailsWithDiagnostic({ kind: ResolveError, detail_contains: Contains("missing") })
+let pred_fails_kind: TestPredicate = FailsWithDiagnostic({ kind: TypeMismatch, detail_contains: AnyDetail })
 let pred_output: TestPredicate = OutputEquals("let x: Int = 1")
 let pred_port_resolved: TestPredicate = PortHasState("answer", Resolved)
 let pred_port_unresolved: TestPredicate = PortHasState("missing", Unresolved)
-let pred_cost_eq: TestPredicate = CostBounded(Eq, 8)
-let pred_cost_above: TestPredicate = CostBounded(Gt, 3)
+let pred_cost_eq: TestPredicate = CostBounded("answer", Eq, 8)
+let pred_cost_above: TestPredicate = CostBounded("answer", Gt, 3)
 
 let claim_compiles: TestClaim = {
   name: "compiles",

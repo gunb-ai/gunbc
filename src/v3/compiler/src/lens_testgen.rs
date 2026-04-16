@@ -161,7 +161,7 @@ impl<'a> TestgenLens<'a> {
                                 format!("{type_expr} witness has bounded cost"),
                                 compile_source,
                                 format!("{}_cost.v3", sanitize(&type_expr)),
-                                self.cost_bounded_predicate("Eq", cost),
+                                self.cost_bounded_predicate("witness", "Eq", cost),
                             );
                         }
                     }
@@ -252,7 +252,7 @@ impl<'a> TestgenLens<'a> {
                                     ),
                                     compile_source,
                                     format!("{base_name}_cost.v3"),
-                                    self.cost_bounded_predicate("Eq", cost),
+                                    self.cost_bounded_predicate("witness", "Eq", cost),
                                 );
                             }
                         }
@@ -328,14 +328,32 @@ impl<'a> TestgenLens<'a> {
             .dag
             .declaration_by_name(sum_name)
             .unwrap_or_else(|| panic!("bootstrap should load `{sum_name}`"));
+        self.sum_variant_decl(sum_decl.id, variant_label, payload)
+    }
+
+    fn sum_variant_decl(
+        &self,
+        sum_decl_id: DeclarationId,
+        variant_label: &str,
+        payload: Vec<FieldValue>,
+    ) -> FieldValue {
+        let sum_decl = self.dag.declaration(sum_decl_id);
         let TypeConnective::Disj { variants } = &sum_decl.connective else {
-            panic!("`{sum_name}` should lower to a Disj");
+            panic!(
+                "declaration {:?} should lower to a Disj, got {:?}",
+                sum_decl_id, sum_decl.connective
+            );
         };
         let constructor = variants
             .iter()
             .find(|variant| variant.label == variant_label)
             .map(|variant| variant.ty)
-            .unwrap_or_else(|| panic!("variant `{variant_label}` not found under `{sum_name}`"));
+            .unwrap_or_else(|| {
+                panic!(
+                    "variant `{variant_label}` not found under declaration {:?}",
+                    sum_decl_id
+                )
+            });
         FieldValue::Variant {
             constructor,
             payload,
@@ -346,7 +364,7 @@ impl<'a> TestgenLens<'a> {
         self.sum_variant(
             "TestPredicate",
             "FailsWithDiagnostic",
-            vec![self.diagnostic_reference(kind, "")],
+            vec![self.diagnostic_reference(kind, None)],
         )
     }
 
@@ -354,11 +372,11 @@ impl<'a> TestgenLens<'a> {
         self.sum_variant(
             "TestPredicate",
             "FailsWithDiagnostic",
-            vec![self.diagnostic_reference(kind, detail_contains)],
+            vec![self.diagnostic_reference(kind, Some(detail_contains))],
         )
     }
 
-    fn diagnostic_reference(&self, kind: &str, detail_contains: &str) -> FieldValue {
+    fn diagnostic_reference(&self, kind: &str, detail_contains: Option<&str>) -> FieldValue {
         FieldValue::Record(vec![
             (
                 "kind".to_string(),
@@ -366,9 +384,20 @@ impl<'a> TestgenLens<'a> {
             ),
             (
                 "detail_contains".to_string(),
-                FieldValue::Literal(LiteralBits::String(detail_contains.to_string())),
+                self.diagnostic_detail_expectation(detail_contains),
             ),
         ])
+    }
+
+    fn diagnostic_detail_expectation(&self, value: Option<&str>) -> FieldValue {
+        match value {
+            Some(text) => self.sum_variant(
+                "DiagnosticDetailExpectation",
+                "Contains",
+                vec![FieldValue::Literal(LiteralBits::String(text.to_string()))],
+            ),
+            None => self.sum_variant("DiagnosticDetailExpectation", "AnyDetail", Vec::new()),
+        }
     }
 
     fn port_state_predicate(&self, bind_name: &str, state_label: &str) -> FieldValue {
@@ -382,11 +411,17 @@ impl<'a> TestgenLens<'a> {
         )
     }
 
-    fn cost_bounded_predicate(&self, comparator: &str, bound: usize) -> FieldValue {
+    fn cost_bounded_predicate(
+        &self,
+        bind_name: &str,
+        comparator: &str,
+        bound: usize,
+    ) -> FieldValue {
         self.sum_variant(
             "TestPredicate",
             "CostBounded",
             vec![
+                FieldValue::Literal(LiteralBits::String(bind_name.to_string())),
                 self.sum_variant("ComparisonOp", comparator, Vec::new()),
                 FieldValue::Literal(LiteralBits::Int(bound as i64)),
             ],

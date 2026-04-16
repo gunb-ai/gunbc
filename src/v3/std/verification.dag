@@ -19,9 +19,11 @@ module std.verification
 import std.list { List }
 import v3.std.substrate { ComparisonOp }
 
-// Diagnostic reference used by generated negative claims. `kind` is
-// structural and `detail_contains` narrows the match when a kind alone
-// is too coarse.
+// **🟡 Scaffold — DiagnosticKind.** This mirrors the compiler's native
+// diagnostic taxonomy until reflected substrate diagnostic facts can be
+// consumed directly from `std.verification`.
+// Dissolution trigger: replace this mirror with typed references once
+// substrate diagnostics are surfaced as declaration-shaped facts.
 type DiagnosticKind
   = TokenizerError
   | ParseError
@@ -29,13 +31,29 @@ type DiagnosticKind
   | ArityMismatch
   | ResolveError
 
+// **🟡 Scaffold — DiagnosticDetailExpectation.** Bootstrap-local bridge
+// for kind-only vs detail-narrowed diagnostic matching while
+// `std.verification` still lacks direct access to reflected substrate
+// diagnostics.
+// Dissolution trigger: replace this filter surface with typed edges into
+// the reflected diagnostic fact once that authority is available.
+type DiagnosticDetailExpectation
+  = AnyDetail
+  | Contains(String)
+
+// Diagnostic reference used by generated negative claims. `kind` is
+// structural and `detail_contains` narrows the match only when present.
 type DiagnosticReference {
   kind: DiagnosticKind
-  detail_contains: String
+  detail_contains: DiagnosticDetailExpectation
 }
 
-// Port-state axis factored out of the old `PortResolved` /
-// `PortUnresolved` split.
+// **🟡 Scaffold — PortStateExpectation.** This is the coarse projection
+// testgen currently needs from substrate `PortState` while verification
+// predicates remain bootstrap-local.
+// Dissolution trigger: point at substrate `PortState` directly once
+// `std.verification` can consume the reflected port-state fact without
+// treating `Uninferred` as an accidental test surface.
 type PortStateExpectation
   = Resolved
   | Unresolved
@@ -44,6 +62,9 @@ type PortStateExpectation
 // the outer "what property are we asserting?" coproduct. The
 // diagnostic, port-state, and cost-ordering sub-axes now flow through
 // structural carriers instead of parallel flat variants.
+// Dissolution trigger: dissolve this outer sum once verification
+// predicates are modeled as ordinary surfaced substrate facts instead
+// of a bootstrap-local predicate envelope.
 
 type TestPredicate
   = Compiles
@@ -54,6 +75,7 @@ type TestPredicate
       state: PortStateExpectation
     }
   | CostBounded {
+      bind_name: String
       comparator: ComparisonOp
       bound: Int
     }

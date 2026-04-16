@@ -118,6 +118,18 @@ fn sum_variant(
     }
 }
 
+fn diagnostic_detail_expectation(dag: &Dag, value: Option<&str>) -> FieldValue {
+    match value {
+        Some(text) => sum_variant(
+            dag,
+            "DiagnosticDetailExpectation",
+            "Contains",
+            vec![FieldValue::Literal(LiteralBits::String(text.to_string()))],
+        ),
+        None => sum_variant(dag, "DiagnosticDetailExpectation", "AnyDetail", Vec::new()),
+    }
+}
+
 fn compiled_generated_claim(claim: &GeneratedClaim<'_>) -> Dag {
     let dag = compile_any(
         &claim.render_declaration_source(),
@@ -206,11 +218,16 @@ fn predicate_holds(
             )
         }
         "CostBounded" => {
-            let [comparator, FieldValue::Literal(LiteralBits::Int(bound))] = payload else {
-                panic!("CostBounded payload should be (ComparisonOp, Int)");
+            let [FieldValue::Literal(LiteralBits::String(bind_name)), comparator, FieldValue::Literal(LiteralBits::Int(bound))] =
+                payload
+            else {
+                panic!("CostBounded payload should be (String, ComparisonOp, Int)");
             };
             let dag = compile_any(source, file_name);
-            let Some(bind) = final_bind(&dag) else {
+            let Some(bind) = dag.nodes().iter().find_map(|node| match node {
+                Behavior::Bind(bind) if bind.name == *bind_name => Some(bind),
+                _ => None,
+            }) else {
                 return false;
             };
             let actual = CostLens::new(&dag).cost_of(bind.value) as i64;
@@ -230,19 +247,47 @@ fn diagnostic_matches(expectation_dag: &Dag, actual_dag: &Dag, reference: &Field
     let detail_contains = fields
         .iter()
         .find(|(label, _)| label == "detail_contains")
-        .and_then(|(_, value)| match value {
-            FieldValue::Literal(LiteralBits::String(text)) => Some(text.as_str()),
-            _ => None,
-        })
-        .unwrap_or_else(|| panic!("DiagnosticReference.detail_contains must be a String literal"));
+        .map(|(_, value)| diagnostic_detail_filter(expectation_dag, value))
+        .unwrap_or_else(|| panic!("DiagnosticReference is missing `detail_contains`"));
     let (kind_label, kind_payload) = variant_value(expectation_dag, kind);
     assert!(
         kind_payload.is_empty(),
         "DiagnosticKind variants should be payload-free, got {kind_payload:?}"
     );
-    actual_dag.diagnostics().iter().any(|(_, diag)| {
-        diagnostic_kind(diag) == kind_label && diagnostic_detail(diag).contains(detail_contains)
-    })
+    actual_dag
+        .diagnostics()
+        .iter()
+        .any(|(_, diag)| match_detail(kind_label.as_str(), &detail_contains, diag))
+}
+
+fn diagnostic_detail_filter(dag: &Dag, value: &FieldValue) -> Option<String> {
+    let (label, payload) = variant_value(dag, value);
+    match label.as_str() {
+        "AnyDetail" => {
+            assert!(
+                payload.is_empty(),
+                "AnyDetail should be payload-free, got {payload:?}"
+            );
+            None
+        }
+        "Contains" => {
+            let [FieldValue::Literal(LiteralBits::String(text))] = payload else {
+                panic!("Contains should carry a single String literal payload, got {payload:?}");
+            };
+            Some(text.clone())
+        }
+        other => panic!("unsupported DiagnosticDetailExpectation variant {other}"),
+    }
+}
+
+fn match_detail(kind_label: &str, detail_contains: &Option<String>, diag: &Diagnostic) -> bool {
+    if diagnostic_kind(diag) != kind_label {
+        return false;
+    }
+    match detail_contains {
+        Some(text) => diagnostic_detail(diag).contains(text),
+        None => true,
+    }
 }
 
 fn diagnostic_kind(diag: &Diagnostic) -> &'static str {
@@ -306,13 +351,6 @@ fn compare_cost(expectation_dag: &Dag, comparator: &FieldValue, actual: i64, bou
     }
 }
 
-fn final_bind(dag: &Dag) -> Option<&v3_compiler::dag::BindNode> {
-    dag.nodes().iter().rev().find_map(|node| match node {
-        Behavior::Bind(bind) => Some(bind),
-        _ => None,
-    })
-}
-
 fn executable_today(claim: &GeneratedClaim<'_>) -> bool {
     let (predicate, payload) = variant_field(claim.dag(), claim.fields(), "predicate");
     if predicate != "FailsWithDiagnostic" {
@@ -329,7 +367,7 @@ fn executable_today(claim: &GeneratedClaim<'_>) -> bool {
     variant_value(claim.dag(), kind).0 != "TypeMismatch"
 }
 
-fn diagnostic_predicate(dag: &Dag, kind: &str, detail_contains: &str) -> FieldValue {
+fn diagnostic_predicate(dag: &Dag, kind: &str, detail_contains: Option<&str>) -> FieldValue {
     sum_variant(
         dag,
         "TestPredicate",
@@ -341,7 +379,7 @@ fn diagnostic_predicate(dag: &Dag, kind: &str, detail_contains: &str) -> FieldVa
             ),
             (
                 String::from("detail_contains"),
-                FieldValue::Literal(LiteralBits::String(detail_contains.to_string())),
+                diagnostic_detail_expectation(dag, detail_contains),
             ),
         ])],
     )
@@ -359,12 +397,13 @@ fn port_state_predicate(dag: &Dag, bind_name: &str, state: &str) -> FieldValue {
     )
 }
 
-fn cost_bounded_predicate(dag: &Dag, comparator: &str, bound: i64) -> FieldValue {
+fn cost_bounded_predicate(dag: &Dag, bind_name: &str, comparator: &str, bound: i64) -> FieldValue {
     sum_variant(
         dag,
         "TestPredicate",
         "CostBounded",
         vec![
+            FieldValue::Literal(LiteralBits::String(bind_name.to_string())),
             sum_variant(dag, "ComparisonOp", comparator, Vec::new()),
             FieldValue::Literal(LiteralBits::Int(bound)),
         ],
@@ -458,25 +497,25 @@ fn structural_predicates_cover_four_regression_fixtures() {
             "id",
             "fn id(x: Int) -> Int = x\n",
             port_state_predicate(&dag, "id", "Resolved"),
-            cost_bounded_predicate(&dag, "Eq", 0),
+            cost_bounded_predicate(&dag, "id", "Eq", 0),
         ),
         (
             "drop",
             "fn drop(x: Int) -> Int = 0\n",
             port_state_predicate(&dag, "drop", "Resolved"),
-            cost_bounded_predicate(&dag, "Eq", 0),
+            cost_bounded_predicate(&dag, "drop", "Eq", 0),
         ),
         (
             "wrap",
             "type Box<T> { value: T }\nfn wrap(x: Int) -> Box<Int> = { value: x }\n",
             port_state_predicate(&dag, "wrap", "Resolved"),
-            cost_bounded_predicate(&dag, "Eq", 1),
+            cost_bounded_predicate(&dag, "wrap", "Eq", 1),
         ),
         (
             "is_empty",
             "fn inspect_is_empty(list: List<Int>) -> Bool = match list { Empty => true, Cons(payload) => false }\n",
             port_state_predicate(&dag, "inspect_is_empty", "Resolved"),
-            cost_bounded_predicate(&dag, "Eq", 1),
+            cost_bounded_predicate(&dag, "inspect_is_empty", "Eq", 1),
         ),
     ];
 
@@ -502,7 +541,7 @@ fn structural_predicates_cover_four_regression_fixtures() {
             &dag,
             negative_source,
             "broken_fixture.v3",
-            &diagnostic_predicate(&dag, "ResolveError", "non-exhaustive"),
+            &diagnostic_predicate(&dag, "ResolveError", Some("non-exhaustive")),
         ),
         "expected a diagnostic reference to match the non-exhaustive fixture"
     );
