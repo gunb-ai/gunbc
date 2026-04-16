@@ -80,7 +80,16 @@ fn t1_2_nonexistent_field_diagnostic_names_the_missing_field() {
 type Point { a: Int b: Int }
 fn read(point: Point) -> Int = point.c
 ";
-    let dag = compile_any(src, "t1_2_missing_field.v3");
+    let dag = match compile_to_dag(src, "t1_2_missing_field.v3") {
+        Err(CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
+    let bind = bind_named(&dag, "read");
+    assert!(
+        matches!(dag.port(bind.value).state(), PortState::Unresolved),
+        "missing-field access must fail closed at the bind output; got {:?}",
+        dag.port(bind.value).state()
+    );
     assert!(
         dag.diagnostics().iter().any(|(_, diag)| matches!(
             diag,
@@ -98,7 +107,16 @@ fn t1_3_non_exhaustive_match_diagnostic_names_the_missing_variant() {
 type AB = A | B
 fn read(x: AB) -> Int = match x { A => 1 }
 ";
-    let dag = compile_any(src, "t1_3_non_exhaustive.v3");
+    let dag = match compile_to_dag(src, "t1_3_non_exhaustive.v3") {
+        Err(CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
+    let bind = bind_named(&dag, "read");
+    assert!(
+        matches!(dag.port(bind.value).state(), PortState::Unresolved),
+        "non-exhaustive match must fail closed at the bind output; got {:?}",
+        dag.port(bind.value).state()
+    );
     assert!(
         dag.diagnostics().iter().any(|(_, diag)| matches!(
             diag,
