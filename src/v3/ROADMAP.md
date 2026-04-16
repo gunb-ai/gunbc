@@ -326,7 +326,20 @@ multi-target emission, §8.11 ratchet) shifts shape:
 - Service calls (transport declarations)
 - Pattern matching in user-code fn bodies (Branch with destructuring)
 - Interpreter (`dag run`)
-- Recursive functions → `Loop` lowering
+- Recursive functions → `Loop` lowering (includes n-way mutual
+  recursion → bounded `descend` over SCC-ordered nodes). v3's
+  `lower.rs` already detects mutual recursion via
+  `compute_mutually_recursive` but currently REJECTS it. The
+  lowering step that transforms cycles into bounded Loop nodes
+  with descend semantics is the missing piece. The thesis's
+  lowering table (INVARIANTS.md §"Recursive syntax is sugar")
+  commits to handling every call pattern including mutual
+  recursion; this is the implementation of that commitment.
+  **Prereq for:** the complexity port (complexity reads SCC
+  structure from the substrate; if lowering doesn't produce it,
+  complexity has to reconstruct it). Also a general language
+  completeness feature — any `.dag` program with mutual recursion
+  should compile, not fail at lowering.
 - Match expressions / pipe / lambda / named arguments in user code
 - `data` value semantics
 - `where` refinement checking
