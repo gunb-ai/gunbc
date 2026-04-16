@@ -843,7 +843,10 @@ impl InputUseFacts {
                         order += 1;
                     }
                 }
-                Behavior::Value(_) | Behavior::Branch(_) | Behavior::Loop(_) | Behavior::Bind(_) => {}
+                Behavior::Value(_)
+                | Behavior::Branch(_)
+                | Behavior::Loop(_)
+                | Behavior::Bind(_) => {}
             }
         }
 
@@ -1453,8 +1456,7 @@ fn require_parameter_dispositions(
     let FieldValue::List(entries) = value else {
         return Err(EmitError::MalformedRealization {
             declaration,
-            detail:
-                "CallableRealization.parameter_dispositions must be a structural list",
+            detail: "CallableRealization.parameter_dispositions must be a structural list",
         });
     };
     entries
@@ -1475,8 +1477,7 @@ fn parse_parameter_disposition(
     else {
         return Err(EmitError::MalformedRealization {
             declaration,
-            detail:
-                "ParameterDisposition entries must be ParameterDisposition variants",
+            detail: "ParameterDisposition entries must be ParameterDisposition variants",
         });
     };
     if !payload.is_empty() {
@@ -1680,12 +1681,11 @@ fn require_source_mutability(
             detail: "Mutability.Immutable declaration was not found",
         },
     )?;
-    let mutable = named_variant_id(dag, "Mutability", "Mutable").ok_or(
-        EmitError::MalformedTargetSyntax {
+    let mutable =
+        named_variant_id(dag, "Mutability", "Mutable").ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "Mutability.Mutable declaration was not found",
-        },
-    )?;
+        })?;
     if value == immutable {
         Ok(SourceMutabilityBinding::Immutable)
     } else if value == mutable {
@@ -1737,11 +1737,12 @@ fn require_source_structure(
             detail: "Structure.ExplicitDAG declaration was not found",
         },
     )?;
-    let arbitrary =
-        named_variant_id(dag, "Structure", "Arbitrary").ok_or(EmitError::MalformedTargetSyntax {
+    let arbitrary = named_variant_id(dag, "Structure", "Arbitrary").ok_or(
+        EmitError::MalformedTargetSyntax {
             declaration,
             detail: "Structure.Arbitrary declaration was not found",
-        })?;
+        },
+    )?;
     if value == explicit {
         Ok(SourceStructureBinding::ExplicitDag)
     } else if value == arbitrary {
@@ -1765,11 +1766,12 @@ fn require_source_iteration(
             declaration,
             detail: "Iteration.Bounded declaration was not found",
         })?;
-    let unbounded =
-        named_variant_id(dag, "Iteration", "Unbounded").ok_or(EmitError::MalformedTargetSyntax {
+    let unbounded = named_variant_id(dag, "Iteration", "Unbounded").ok_or(
+        EmitError::MalformedTargetSyntax {
             declaration,
             detail: "Iteration.Unbounded declaration was not found",
-        })?;
+        },
+    )?;
     if value == bounded {
         Ok(SourceIterationBinding::Bounded)
     } else if value == unbounded {
@@ -1812,7 +1814,10 @@ fn require_memory_model(
     ];
     for (variant_name, binding, detail) in variants {
         let variant = named_variant_id(dag, "MemoryModel", variant_name).ok_or(
-            EmitError::MalformedTargetSyntax { declaration, detail },
+            EmitError::MalformedTargetSyntax {
+                declaration,
+                detail,
+            },
         )?;
         if value == variant {
             return Ok(binding);
@@ -1857,11 +1862,7 @@ fn require_unit_variant_field(
     Ok(*constructor)
 }
 
-fn named_variant_id(
-    dag: &Dag,
-    parent_name: &str,
-    variant_label: &str,
-) -> Option<DeclarationId> {
+fn named_variant_id(dag: &Dag, parent_name: &str, variant_label: &str) -> Option<DeclarationId> {
     let parent = dag.declaration_by_name(parent_name)?;
     let TypeConnective::Disj { variants } = &parent.connective else {
         return None;
@@ -1902,7 +1903,9 @@ fn derive_callable_dispositions(
         let mut changed = false;
         for declaration in &user_defined {
             let next = analyze_user_defined_callable(dag, *declaration, &dispositions);
-            let entry = dispositions.entry(*declaration).or_insert_with(|| next.clone());
+            let entry = dispositions
+                .entry(*declaration)
+                .or_insert_with(|| next.clone());
             let merged: Vec<_> = entry
                 .iter()
                 .copied()
@@ -1925,7 +1928,8 @@ fn analyze_user_defined_callable(
     declaration: DeclarationId,
     dispositions: &HashMap<DeclarationId, Vec<ParameterDispositionBinding>>,
 ) -> Vec<ParameterDispositionBinding> {
-    let TypeConnective::Arrow { inputs, body, .. } = &dag.declaration(declaration).connective else {
+    let TypeConnective::Arrow { inputs, body, .. } = &dag.declaration(declaration).connective
+    else {
         return Vec::new();
     };
     let ArrowBody::UserDefined(bind_id) = body else {
@@ -1963,8 +1967,7 @@ fn analyze_user_defined_callable(
             Behavior::Value(_) => {}
             Behavior::Transform(t) => {
                 for (slot, input) in t.inputs.iter().copied().enumerate() {
-                    let disposition =
-                        transform_input_disposition(dag, t, slot, dispositions);
+                    let disposition = transform_input_disposition(dag, t, slot, dispositions);
                     if let Some(&index) = runtime_index.get(&input) {
                         observed[index] = observed[index].merge(disposition);
                     }
@@ -1973,8 +1976,7 @@ fn analyze_user_defined_callable(
             }
             Behavior::Branch(b) => {
                 if let Some(&index) = runtime_index.get(&b.input) {
-                    observed[index] =
-                        observed[index].merge(ParameterDispositionBinding::Borrowed);
+                    observed[index] = observed[index].merge(ParameterDispositionBinding::Borrowed);
                 }
                 queue.push(b.input);
                 for path in &b.paths {
@@ -2021,12 +2023,9 @@ fn transform_input_disposition(
         TransformTarget::Operator(_) | TransformTarget::FieldProject { .. } => {
             ParameterDispositionBinding::Borrowed
         }
-        TransformTarget::Callable(target) => callable_input_disposition_for_target(
-            dag,
-            *target,
-            slot,
-            dispositions,
-        ),
+        TransformTarget::Callable(target) => {
+            callable_input_disposition_for_target(dag, *target, slot, dispositions)
+        }
     }
 }
 
@@ -2332,7 +2331,12 @@ impl<'a> Ctx<'a> {
         self.indexes.computation.is_canonical_dag() && self.indexes.execution.is_ownership_based()
     }
 
-    fn render_binding(&self, port: PortId, binding: &LocalBinding, mode: RenderMode) -> Result<String, EmitError> {
+    fn render_binding(
+        &self,
+        port: PortId,
+        binding: &LocalBinding,
+        mode: RenderMode,
+    ) -> Result<String, EmitError> {
         match mode {
             RenderMode::BorrowedRead => match self.read_strategy() {
                 ReadStrategyBinding::Borrow => match binding {
@@ -2355,24 +2359,22 @@ impl<'a> Ctx<'a> {
                 LocalBinding::Borrowed(expr) => Ok(format!("(*({expr}))")),
             },
             RenderMode::OwnedConstruct | RenderMode::OwnedConstructLastUse => match binding {
-                LocalBinding::Owned(name) => {
-                    match self.construct_strategy() {
-                        ConstructStrategyBinding::CopyOrClone => {
-                            if mode == RenderMode::OwnedConstructLastUse || self.port_is_copy(port)? {
-                                Ok(name.clone())
-                            } else {
-                                Ok(format!("({name}).clone()"))
-                            }
+                LocalBinding::Owned(name) => match self.construct_strategy() {
+                    ConstructStrategyBinding::CopyOrClone => {
+                        if mode == RenderMode::OwnedConstructLastUse || self.port_is_copy(port)? {
+                            Ok(name.clone())
+                        } else {
+                            Ok(format!("({name}).clone()"))
                         }
-                        ConstructStrategyBinding::PassByValue => {
-                            if mode == RenderMode::OwnedConstructLastUse || self.port_is_copy(port)? {
-                                Ok(name.clone())
-                            } else {
-                                Err(EmitError::UnsupportedBehavior(
+                    }
+                    ConstructStrategyBinding::PassByValue => {
+                        if mode == RenderMode::OwnedConstructLastUse || self.port_is_copy(port)? {
+                            Ok(name.clone())
+                        } else {
+                            Err(EmitError::UnsupportedBehavior(
                                     "rust_rendering.construct = PassByValue is not yet supported for non-Copy owned bindings"
                                         .to_string(),
                                 ))
-                            }
                         }
                     }
                 },
@@ -2461,19 +2463,19 @@ impl<'a> Ctx<'a> {
         slot: InputSlot,
     ) -> Result<PortId, EmitError> {
         match (consumer, slot) {
-            (InputConsumer::Transform(transform), InputSlot::Positional(slot)) => transform
-                .inputs
-                .get(slot)
-                .copied()
-                .ok_or_else(|| {
+            (InputConsumer::Transform(transform), InputSlot::Positional(slot)) => {
+                transform.inputs.get(slot).copied().ok_or_else(|| {
                     EmitError::UnsupportedBehavior(format!(
                         "transform input slot {slot} is out of bounds"
                     ))
-                }),
+                })
+            }
             (InputConsumer::Branch(branch), InputSlot::BranchInput) => Ok(branch.input),
             (InputConsumer::Loop(loop_node), InputSlot::LoopSource) => Ok(loop_node.source),
             (InputConsumer::Loop(loop_node), InputSlot::LoopInit) => Ok(loop_node.init),
-            (InputConsumer::Loop(loop_node), InputSlot::LoopBoundCount) => Ok(loop_node.bound.count),
+            (InputConsumer::Loop(loop_node), InputSlot::LoopBoundCount) => {
+                Ok(loop_node.bound.count)
+            }
             _ => Err(EmitError::UnsupportedBehavior(
                 "input-slot kind does not match the selected consumer".to_string(),
             )),
@@ -2495,7 +2497,9 @@ impl<'a> Ctx<'a> {
                 ),
                 _ => ParameterDispositionBinding::Borrowed,
             },
-            InputConsumer::Branch(_) | InputConsumer::Loop(_) => ParameterDispositionBinding::Borrowed,
+            InputConsumer::Branch(_) | InputConsumer::Loop(_) => {
+                ParameterDispositionBinding::Borrowed
+            }
         }
     }
 
@@ -2760,15 +2764,15 @@ impl<'a> Ctx<'a> {
         // sides agree because they read the same algebra field
         // from the substrate.
         let op_decl_id = algebra_field_for_operator(self.dag, operand_type_id, op)?;
-        let carrier =
-            self.indexes
-                .operators
-                .get(&(operand_type_id, op_decl_id))
-                .ok_or(EmitError::MissingOperatorRealization {
-                    target: operand_type_id,
-                    op: op_decl_id,
-                })?
-                .clone();
+        let carrier = self
+            .indexes
+            .operators
+            .get(&(operand_type_id, op_decl_id))
+            .ok_or(EmitError::MissingOperatorRealization {
+                target: operand_type_id,
+                op: op_decl_id,
+            })?
+            .clone();
         let lhs = self.render_copy_input_use(
             InputConsumer::Transform(t),
             InputSlot::Positional(0),
@@ -2804,11 +2808,8 @@ impl<'a> Ctx<'a> {
             return Ok(rendered);
         }
 
-        let expr = self.render_input_use(
-            InputConsumer::Branch(b),
-            InputSlot::BranchInput,
-            locals,
-        )?;
+        let expr =
+            self.render_input_use(InputConsumer::Branch(b), InputSlot::BranchInput, locals)?;
         let arms = b
             .paths
             .iter()
@@ -2896,8 +2897,7 @@ impl<'a> Ctx<'a> {
             InputSlot::BranchInput,
             locals,
         )?;
-        let realized_scrutinee =
-            render_named_template(&binding.scrutinee, &[("expr", &scrutinee)]);
+        let realized_scrutinee = render_named_template(&binding.scrutinee, &[("expr", &scrutinee)]);
         let empty_body = self.render_path_body(empty_path, locals)?;
 
         let head_name = "__list_head";
@@ -2927,8 +2927,11 @@ impl<'a> Ctx<'a> {
                 .field_overrides
                 .insert(payload.payload_port, fields);
         }
-        let cons_body =
-            self.render_port(cons_path.output, &cons_locals, RenderMode::OwnedConstructLastUse)?;
+        let cons_body = self.render_port(
+            cons_path.output,
+            &cons_locals,
+            RenderMode::OwnedConstructLastUse,
+        )?;
 
         let arms = vec![
             render_named_template(
@@ -3105,13 +3108,7 @@ impl<'a> Ctx<'a> {
     ) -> Result<String, EmitError> {
         let (template, arguments) = callable_template(target, self.dag);
         if let Some(strategy) = self.indexes.callables.get(&template) {
-            return self.render_realized_callable(
-                t,
-                template,
-                *strategy,
-                &arguments,
-                locals,
-            );
+            return self.render_realized_callable(t, template, *strategy, &arguments, locals);
         }
         self.render_general_callable(t, template, locals)
     }
@@ -3347,15 +3344,15 @@ impl<'a> Ctx<'a> {
         if let Some(rendered) = self.render_record_constructor(consumer, template, locals)? {
             return Ok(rendered);
         }
-        let func = self
-            .dag
-            .declaration(template)
-            .name
-            .clone()
-            .ok_or(EmitError::UnsupportedBehavior(
-                "callable target is anonymous and cannot be rendered as a direct Rust call"
-                    .to_string(),
-            ))?;
+        let func =
+            self.dag
+                .declaration(template)
+                .name
+                .clone()
+                .ok_or(EmitError::UnsupportedBehavior(
+                    "callable target is anonymous and cannot be rendered as a direct Rust call"
+                        .to_string(),
+                ))?;
         let args = consumer
             .inputs
             .iter()
@@ -3953,8 +3950,7 @@ impl<'a> Ctx<'a> {
                 element,
                 bound: crate::dag::CardinalityBound::AtMostOne,
             } => self.decl_is_copy(*element),
-            TypeConnective::Instantiation { .. }
-            | TypeConnective::Cardinality { .. } => Ok(false),
+            TypeConnective::Instantiation { .. } | TypeConnective::Cardinality { .. } => Ok(false),
             _ => Ok(false),
         }
     }
