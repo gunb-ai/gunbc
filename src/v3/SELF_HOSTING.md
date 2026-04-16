@@ -549,7 +549,6 @@ different runtime behavior, one of them contains a semantic choice
 that should be in `LanguageSpec`. RenderingSpec is purely visual;
 two rendering specs on the same language spec produce programs
 that behave identically and differ only in formatting/naming.
-
 **Opacity between layers is load-bearing.** Layer 1 doesn't know
 about Layer 3. Layer 3 doesn't know about Layer 0. When you
 change a rendering convention, Layers 0-2 are untouched. When you
@@ -709,7 +708,6 @@ Negative fixtures (fail-closed):
   preserved or grow) should fail with a diagnostic naming the
   cycle and the missing measure — not compile silently with an
   unbounded loop
-
 ---
 
 ## §3. Stage 1 — `emit.dag`

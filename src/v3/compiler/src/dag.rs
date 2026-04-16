@@ -63,6 +63,12 @@ impl NodeId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PortId(u32);
 
+impl PortId {
+    pub fn raw(self) -> u32 {
+        self.0
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DeclarationId(u32);
 
@@ -171,16 +177,16 @@ pub enum ValueBody {
     /// list / variant literal) awaits M2+ parser extension.
     Unparsed(SourceSpan),
     /// The body parsed as a record literal and was inhabitance-
-    /// checked against the declared type. Each field holds either
-    /// a scalar literal value or a typed declaration reference;
-    /// the label matches a field on the type's Conj children.
+    /// checked against the declared type. Each field holds a
+    /// recursively structural `FieldValue`; the label matches a
+    /// field on the type's Conj children.
     Structural { fields: Vec<(String, FieldValue)> },
 }
 
-/// Per-field value payload inside a `ValueBody::Structural`. The
-/// two variants encode the structural distinction between "this
-/// field carries a primitive scalar" and "this field carries a
-/// typed reference to another declaration."
+/// Per-field value payload inside a `ValueBody::Structural`.
+/// Scalar literals, declaration references, nested records, nested
+/// lists, and structural sum constructors each carry distinct
+/// payload shapes, so the discriminant remains load-bearing.
 ///
 /// **Why both variants exist.** PR-B's initial payload was
 /// `LiteralBits` only, which forced `src/v3/spec/rust.dag`
@@ -202,18 +208,18 @@ pub enum ValueBody {
 /// - Pattern 1 (fact placement): fails. Each variant has a
 ///   distinct payload type; the discriminant is load-bearing for
 ///   downstream readers (the realization index, the cost lens, etc).
-/// - Pattern 2 (variant-is-data): fails. `Literal(LiteralBits)`
-///   carries a 3-variant scalar enum; `Reference(DeclarationId)`
-///   carries a typed substrate id.
-/// - Pattern 3 (algebraic form): fails. The two variants are not
-///   two points in a single algebra; they are two structurally
-///   different value spaces (primitive value vs declaration handle).
+/// - Pattern 2 (variant-is-data): fails. `Literal(LiteralBits)`,
+///   `Reference(DeclarationId)`, `Record(Vec<...>)`,
+///   `List(Vec<...>)`, and `Variant { .. }` inhabit different
+///   structural spaces.
+/// - Pattern 3 (algebraic form): fails. The five variants are not
+///   points in one algebra; they are the minimal carrier set needed
+///   for nested structural data bodies.
 /// - Pattern 4 (dimensional): fails.
 ///
-/// Verdict: terminal at M1(3) PR-B-unwind. Future extensions for
-/// nested records and list literals add new `FieldValue` variants
-/// (e.g. `Record(Vec<(String, FieldValue)>)`, `List(Vec<FieldValue>)`),
-/// each with its own 4-pattern receipt at extension time.
+/// Verdict: terminal at the current structural-data layer. Any new
+/// `FieldValue` variant still requires its own 4-pattern receipt at
+/// extension time.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FieldValue {
     /// A scalar primitive value: Int, Bool, or String. Validated
@@ -226,6 +232,20 @@ pub enum FieldValue {
     /// per-target language spec files (e.g. rust.dag) to point at
     /// realization targets without going through string keys.
     Reference(DeclarationId),
+    /// Nested structural record value. Used by staged spec files
+    /// whose structural data bodies contain record-valued fields.
+    Record(Vec<(String, FieldValue)>),
+    /// Structural list value. Used by staged spec files whose
+    /// structural data bodies contain list-valued fields.
+    List(Vec<FieldValue>),
+    /// Structural sum constructor with positional payload fields.
+    /// The exact variant child declaration is preserved explicitly
+    /// so downstream consumers can recover variant identity without
+    /// string bridges.
+    Variant {
+        constructor: DeclarationId,
+        payload: Vec<FieldValue>,
+    },
 }
 
 /// The six-variant type substrate. Terminal at M1(2.5).
@@ -556,6 +576,10 @@ impl Port {
         &self.state
     }
 
+    pub fn state_value(&self) -> PortState {
+        self.state.clone()
+    }
+
     /// Backward-compat accessor: returns `Some(&TypeShape)` for Resolved ports,
     /// `None` for Uninferred or Unresolved. Prefer `state()` when you need to
     /// distinguish the three cases.
@@ -573,6 +597,12 @@ pub struct ValueNode {
     pub data: LiteralBits,
     pub output: PortId,
     pub span: SourceSpan,
+}
+
+impl ValueNode {
+    pub fn result_port(&self) -> PortId {
+        self.output
+    }
 }
 
 /// Dispatch target of a `TransformNode`. Structural coproduct that
@@ -655,6 +685,12 @@ pub struct TransformNode {
     pub span: SourceSpan,
 }
 
+impl TransformNode {
+    pub fn result_port(&self) -> PortId {
+        self.output
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct BranchNode {
     pub id: NodeId,
@@ -662,6 +698,12 @@ pub struct BranchNode {
     pub paths: Vec<Path>,
     pub output: PortId,
     pub span: SourceSpan,
+}
+
+impl BranchNode {
+    pub fn result_port(&self) -> PortId {
+        self.output
+    }
 }
 
 /// Per-arm pattern on a `Path`. Encodes which variant of the
@@ -733,6 +775,12 @@ pub struct Path {
     pub binding: Option<PayloadBinding>,
 }
 
+impl Path {
+    pub fn result_port(&self) -> PortId {
+        self.output
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct LoopNode {
     pub id: NodeId,
@@ -742,6 +790,12 @@ pub struct LoopNode {
     pub bound: Bound,
     pub output: PortId,
     pub span: SourceSpan,
+}
+
+impl LoopNode {
+    pub fn result_port(&self) -> PortId {
+        self.output
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -760,6 +814,12 @@ pub struct BindNode {
     /// no type tag. See the C2 dissolution receipt at the top of this file.
     pub params: Vec<PortId>,
     pub span: SourceSpan,
+}
+
+impl BindNode {
+    pub fn result_port(&self) -> PortId {
+        self.value
+    }
 }
 
 // Checkpoint C1.
@@ -886,7 +946,7 @@ impl Behavior {
 /// always `None` and the downstream `is_realization_shape` check
 /// always failed. The check now validates structural shape (Conj +
 /// `meta_tag.is_some()`) directly — no cache needed.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct PrimitiveCache {
     pub int: Option<TypeShape>,
     pub bool: Option<TypeShape>,
@@ -920,7 +980,7 @@ pub(crate) struct PrimitiveCache {
 /// facing type system; substrate markers change with v3's L1
 /// behavior set. Splitting the caches keeps each one's invariants
 /// independent.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct RealizationMetaCache {
     /// `TypeRealization` meta-type. Declared in
     /// `src/v3/spec/rust.dag` (and any future per-target spec
@@ -937,9 +997,28 @@ pub(crate) struct RealizationMetaCache {
     /// `BehaviorRealization` meta-type. Same role for behavior
     /// template realizations (Bind/Branch/Main).
     pub behavior_realization: Option<DeclarationId>,
+    /// `CallableRealization` meta-type. Same role for callable
+    /// render strategies (currently staged std.list helpers).
+    pub callable_realization: Option<DeclarationId>,
+    /// `TypeInstantiationRealization` meta-type. Same role for
+    /// generic template carriers such as `List<T> -> Vec<T>`.
+    pub type_instantiation_realization: Option<DeclarationId>,
+    /// `PatternRealization` meta-type. Same role for carrier-specific
+    /// pattern lowering facts (currently staged `List<T> -> Vec<T>`
+    /// destructuring).
+    pub pattern_realization: Option<DeclarationId>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
+pub(crate) struct TargetSyntaxCache {
+    /// `rust_language` syntax bundle declaration loaded from
+    /// `src/v3/spec/rust.dag`. This is the target-language
+    /// authority the Rust emitter reads for expression/control-flow/
+    /// function/type/value syntax templates.
+    pub rust_language: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
 pub(crate) struct SubstrateMarkers {
     /// `dsl/std/v3_l1.dag` `Value` marker. Targets values
     /// (literals) in target language realizations.
@@ -969,7 +1048,7 @@ pub(crate) struct SubstrateMarkers {
     pub declaration_ref: Option<DeclarationId>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Dag {
     /// Behaviors in construction order. NodeId(k) lives at `nodes[k]`; a forward
     /// walk visits dependencies before dependents (load-bearing for inference).
@@ -997,6 +1076,12 @@ pub struct Dag {
     /// filter by typed meta-tag handle instead of doing a name
     /// lookup at hot-path time.
     realization_metas: RealizationMetaCache,
+    /// Cached target-language syntax bundle declarations.
+    target_syntax: TargetSyntaxCache,
+    /// Synthetic match carriers for anonymous `T?` cardinalities. Used when
+    /// inference needs stable `Some` / `None` variant identities without
+    /// promoting optionals into named top-level declarations.
+    optional_match_disjs: HashMap<DeclarationId, DeclarationId>,
 }
 
 impl Dag {
@@ -1012,6 +1097,8 @@ impl Dag {
             primitives: PrimitiveCache::default(),
             substrate_markers: SubstrateMarkers::default(),
             realization_metas: RealizationMetaCache::default(),
+            target_syntax: TargetSyntaxCache::default(),
+            optional_match_disjs: HashMap::new(),
         };
         crate::bootstrap::bootstrap(&mut dag);
         dag
@@ -1106,12 +1193,66 @@ impl Dag {
         self.realization_metas.behavior_realization
     }
 
+    /// Typed accessor for the `CallableRealization` meta-type.
+    /// Same bootstrap-failure semantics as `type_realization_meta`.
+    pub fn callable_realization_meta(&self) -> Option<DeclarationId> {
+        self.realization_metas.callable_realization
+    }
+
+    /// Typed accessor for the `TypeInstantiationRealization`
+    /// meta-type. Same bootstrap-failure semantics as
+    /// `type_realization_meta`.
+    pub fn type_instantiation_realization_meta(&self) -> Option<DeclarationId> {
+        self.realization_metas.type_instantiation_realization
+    }
+
+    /// Same bootstrap-failure semantics as `type_realization_meta`.
+    pub fn pattern_realization_meta(&self) -> Option<DeclarationId> {
+        self.realization_metas.pattern_realization
+    }
+
+    /// Typed accessor for the Rust target-language syntax bundle
+    /// declared in `src/v3/spec/rust.dag`.
+    pub fn rust_language_spec(&self) -> Option<DeclarationId> {
+        self.target_syntax.rust_language
+    }
+
     pub fn nodes(&self) -> &[Behavior] {
         &self.nodes
     }
 
+    pub fn nodes_owned(&self) -> Vec<Behavior> {
+        self.nodes.clone()
+    }
+
     pub fn declarations(&self) -> &[Declaration] {
         &self.declarations
+    }
+
+    pub fn declarations_owned(&self) -> Vec<Declaration> {
+        self.declarations.clone()
+    }
+
+    pub fn ports(&self) -> Vec<Port> {
+        let mut ports: Vec<Port> = self.ports.values().cloned().collect();
+        ports.sort_by_key(|port| port.id().raw());
+        ports
+    }
+
+    pub fn optional_match_disj(
+        &self,
+        cardinality_decl_id: DeclarationId,
+    ) -> Option<DeclarationId> {
+        self.optional_match_disjs.get(&cardinality_decl_id).copied()
+    }
+
+    pub fn set_optional_match_disj(
+        &mut self,
+        cardinality_decl_id: DeclarationId,
+        disj_decl_id: DeclarationId,
+    ) {
+        self.optional_match_disjs
+            .insert(cardinality_decl_id, disj_decl_id);
     }
 
     /// O(1) lookup by NodeId. Relies on the dense-sequential allocation invariant.
@@ -1135,10 +1276,19 @@ impl Dag {
         decl
     }
 
-    /// Find a top-level declaration by name. First-match semantics
-    /// (consistent with `collect_symbols`'s first-wins behavior; any
-    /// duplicate declarations surface a fail-closed diagnostic at
-    /// lowering time).
+    fn declaration_name_preference_rank(file: &str) -> usize {
+        if file.starts_with("src/v3/") {
+            2
+        } else if file.starts_with("dsl/") {
+            0
+        } else {
+            1
+        }
+    }
+
+    /// Find a top-level declaration by name. Prefer v3 declarations
+    /// over legacy `dsl/` duplicates; otherwise keep the earliest
+    /// declaration at the same precedence level.
     ///
     /// **This scan only finds declarations that carry a surface-
     /// visible name** — TypeParams, sum variants, and realization
@@ -1149,7 +1299,13 @@ impl Dag {
     pub fn declaration_by_name(&self, name: &str) -> Option<&Declaration> {
         self.declarations
             .iter()
-            .find(|d| d.name.as_deref() == Some(name))
+            .filter(|d| d.name.as_deref() == Some(name))
+            .max_by_key(|decl| {
+                (
+                    Self::declaration_name_preference_rank(&decl.span.file),
+                    std::cmp::Reverse(decl.id.raw()),
+                )
+            })
     }
 
     pub fn port(&self, id: PortId) -> &Port {
@@ -1312,6 +1468,16 @@ impl Dag {
         self.realization_metas.behavior_realization = self
             .declaration_by_name("BehaviorRealization")
             .map(|d| d.id);
+        self.realization_metas.callable_realization = self
+            .declaration_by_name("CallableRealization")
+            .map(|d| d.id);
+        self.realization_metas.type_instantiation_realization = self
+            .declaration_by_name("TypeInstantiationRealization")
+            .map(|d| d.id);
+        self.realization_metas.pattern_realization = self
+            .declaration_by_name("PatternRealization")
+            .map(|d| d.id);
+        self.target_syntax.rust_language = self.declaration_by_name("rust_language").map(|d| d.id);
     }
 }
 
