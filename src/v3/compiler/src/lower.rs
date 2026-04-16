@@ -1962,13 +1962,20 @@ fn lower_fn_item_expr_body(
                 },
             );
             err_port
-        } else if !descent_provable(body, name, &params[0].name) {
+        } else if !descent_provable(
+            body,
+            dag,
+            param_decl_inputs[0],
+            name,
+            &params[0].name,
+            &HashMap::new(),
+        ) {
             let err_port = dag.alloc_port(None);
             dag.mark_unresolved(
                 err_port,
                 Diagnostic::ResolveError {
                     name: format!(
-                        "cannot prove recursion in `{name}` terminates; expected each recursive call's first argument to be `{param} - <positive int>`",
+                        "cannot prove recursion in `{name}` terminates; expected each recursive call's first argument to be `{param} - <positive int>` or a structurally smaller recursive child",
                         param = &params[0].name,
                     ),
                     span: body_span.clone(),
@@ -3168,7 +3175,20 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
 /// the node graph. A future post-lowering `DescentEvidence` lens
 /// would walk the emitted Loop/Transform graph by typed id, but
 /// that's a substrate extension, not a bridge to dissolve here.
-fn descent_provable(expr: &SurfaceExpr, self_name: &str, first_param: &str) -> bool {
+#[derive(Debug, Clone, Default)]
+struct StructuralBindingInfo {
+    whole_payload_recursive: bool,
+    recursive_fields: HashSet<String>,
+}
+
+fn descent_provable(
+    expr: &SurfaceExpr,
+    dag: &Dag,
+    first_param_decl: DeclarationId,
+    self_name: &str,
+    first_param: &str,
+    bindings: &HashMap<String, StructuralBindingInfo>,
+) -> bool {
     match expr {
         SurfaceExpr::Literal { .. }
         | SurfaceExpr::Var { .. }
@@ -3178,48 +3198,154 @@ fn descent_provable(expr: &SurfaceExpr, self_name: &str, first_param: &str) -> b
                 match args.first() {
                     None => false,
                     Some(first_arg) => {
-                        if !is_strictly_smaller(first_arg, first_param) {
+                        if !is_strictly_smaller(first_arg, first_param, bindings) {
                             return false;
                         }
                         args.iter()
                             .skip(1)
-                            .all(|a| descent_provable(a, self_name, first_param))
+                            .all(|a| {
+                                descent_provable(
+                                    a,
+                                    dag,
+                                    first_param_decl,
+                                    self_name,
+                                    first_param,
+                                    bindings,
+                                )
+                            })
                     }
                 }
             } else {
-                args.iter().all(|a| descent_provable(a, self_name, first_param))
+                args.iter().all(|a| {
+                    descent_provable(
+                        a,
+                        dag,
+                        first_param_decl,
+                        self_name,
+                        first_param,
+                        bindings,
+                    )
+                })
             }
         }
         SurfaceExpr::Operator { args, .. } => args
             .iter()
-            .all(|a| descent_provable(a, self_name, first_param)),
+            .all(|a| {
+                descent_provable(
+                    a,
+                    dag,
+                    first_param_decl,
+                    self_name,
+                    first_param,
+                    bindings,
+                )
+            }),
         SurfaceExpr::If {
             cond,
             then_branch,
             else_branch,
             ..
         } => {
-            descent_provable(cond, self_name, first_param)
-                && descent_provable(then_branch, self_name, first_param)
-                && descent_provable(else_branch, self_name, first_param)
+            descent_provable(cond, dag, first_param_decl, self_name, first_param, bindings)
+                && descent_provable(
+                    then_branch,
+                    dag,
+                    first_param_decl,
+                    self_name,
+                    first_param,
+                    bindings,
+                )
+                && descent_provable(
+                    else_branch,
+                    dag,
+                    first_param_decl,
+                    self_name,
+                    first_param,
+                    bindings,
+                )
         }
         SurfaceExpr::Match { scrutinee, arms, .. } => {
-            descent_provable(scrutinee, self_name, first_param)
-                && arms
-                    .iter()
-                    .all(|arm| descent_provable(&arm.body, self_name, first_param))
+            if !descent_provable(
+                scrutinee,
+                dag,
+                first_param_decl,
+                self_name,
+                first_param,
+                bindings,
+            ) {
+                return false;
+            }
+
+            let scrutinee_is_first_param = matches!(
+                scrutinee.as_ref(),
+                SurfaceExpr::Var { name, .. } if name == first_param
+            );
+            arms.iter().all(|arm| {
+                let mut arm_bindings = bindings.clone();
+                if scrutinee_is_first_param {
+                    if let SurfacePattern::VariantWith { name, binding, .. } = &arm.pattern {
+                        if let Some(info) = structural_binding_info_for_variant(
+                            dag,
+                            first_param_decl,
+                            name,
+                        ) {
+                            arm_bindings.insert(binding.clone(), info);
+                        }
+                    }
+                }
+                descent_provable(
+                    &arm.body,
+                    dag,
+                    first_param_decl,
+                    self_name,
+                    first_param,
+                    &arm_bindings,
+                )
+            })
         }
-        SurfaceExpr::Lambda { body, .. } => descent_provable(body, self_name, first_param),
+        SurfaceExpr::Lambda { body, .. } => descent_provable(
+            body,
+            dag,
+            first_param_decl,
+            self_name,
+            first_param,
+            bindings,
+        ),
         SurfaceExpr::Record { fields, .. } => fields
             .iter()
-            .all(|f| descent_provable(&f.value, self_name, first_param)),
+            .all(|f| {
+                descent_provable(
+                    &f.value,
+                    dag,
+                    first_param_decl,
+                    self_name,
+                    first_param,
+                    bindings,
+                )
+            }),
         SurfaceExpr::List { elements, .. } => elements
             .iter()
-            .all(|element| descent_provable(element, self_name, first_param)),
+            .all(|element| {
+                descent_provable(
+                    element,
+                    dag,
+                    first_param_decl,
+                    self_name,
+                    first_param,
+                    bindings,
+                )
+            }),
     }
 }
 
-fn is_strictly_smaller(expr: &SurfaceExpr, first_param: &str) -> bool {
+fn is_strictly_smaller(
+    expr: &SurfaceExpr,
+    first_param: &str,
+    bindings: &HashMap<String, StructuralBindingInfo>,
+) -> bool {
+    if is_structurally_smaller(expr, bindings) {
+        return true;
+    }
     let SurfaceExpr::Operator { op, args, .. } = expr else {
         return false;
     };
@@ -3239,6 +3365,73 @@ fn is_strictly_smaller(expr: &SurfaceExpr, first_param: &str) -> bool {
         } if *v > 0
     );
     lhs_is_param && rhs_is_positive
+}
+
+fn is_structurally_smaller(
+    expr: &SurfaceExpr,
+    bindings: &HashMap<String, StructuralBindingInfo>,
+) -> bool {
+    match expr {
+        SurfaceExpr::Var { name, .. } => bindings
+            .get(name)
+            .is_some_and(|info| info.whole_payload_recursive),
+        SurfaceExpr::Path { segments, .. } if segments.len() == 2 => bindings
+            .get(&segments[0])
+            .is_some_and(|info| info.recursive_fields.contains(&segments[1])),
+        _ => false,
+    }
+}
+
+fn structural_binding_info_for_variant(
+    dag: &Dag,
+    first_param_decl: DeclarationId,
+    variant_name: &str,
+) -> Option<StructuralBindingInfo> {
+    let disj_id = walk_to_disj_decl(dag, first_param_decl)?;
+    let variant_decl_id = match &dag.declaration(disj_id).connective {
+        TypeConnective::Disj { variants } => variants
+            .iter()
+            .find(|variant| variant.label == variant_name)
+            .map(|variant| variant.ty)?,
+        _ => unreachable!("walk_to_disj_decl returned non-Disj"),
+    };
+    let TypeConnective::Conj { children } = &dag.declaration(variant_decl_id).connective else {
+        return None;
+    };
+
+    let mut info = StructuralBindingInfo::default();
+    if children.len() == 1
+        && children[0].label.as_str() == "_0"
+        && recursive_decl_equivalent(dag, children[0].ty, first_param_decl)
+    {
+        info.whole_payload_recursive = true;
+    }
+    for child in children {
+        if recursive_decl_equivalent(dag, child.ty, first_param_decl) {
+            info.recursive_fields.insert(child.label.clone());
+        }
+    }
+    Some(info)
+}
+
+fn recursive_decl_equivalent(
+    dag: &Dag,
+    lhs: DeclarationId,
+    rhs: DeclarationId,
+) -> bool {
+    canonical_decl_for_descent(dag, lhs) == canonical_decl_for_descent(dag, rhs)
+}
+
+fn canonical_decl_for_descent(dag: &Dag, start: DeclarationId) -> DeclarationId {
+    let mut current = start;
+    for _ in 0..32 {
+        match &dag.declaration(current).connective {
+            TypeConnective::Instantiation { template, .. } => current = *template,
+            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => current = *next,
+            _ => return current,
+        }
+    }
+    current
 }
 
 fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {

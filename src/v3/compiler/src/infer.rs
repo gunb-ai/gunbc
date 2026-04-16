@@ -1974,19 +1974,30 @@ fn resolve_payload_binding_type(
     binding_name: &str,
     span: &SourceSpan,
 ) -> Result<TypeShape, Diagnostic> {
-    let payload_type_decl = match &dag.declaration(variant_decl_id).connective {
-        TypeConnective::Conj { children }
-            if children.len() == 1 && children[0].label.as_str() == "_0" =>
-        {
-            children[0].ty
-        }
-        TypeConnective::Conj { .. } => {
+    match &dag.declaration(variant_decl_id).connective {
+        TypeConnective::Conj { children } if children.is_empty() => {
             return Err(Diagnostic::ResolveError {
                 name: format!(
-                    "variant `{variant_name}` does not carry a single positional payload and cannot bind `{binding_name}`"
+                    "variant `{variant_name}` does not carry a payload and cannot bind `{binding_name}`"
                 ),
                 span: span.clone(),
             });
+        }
+        TypeConnective::Conj { children }
+            if children.len() == 1 && children[0].label.as_str() == "_0" =>
+        {
+            let payload_type_decl = children[0].ty;
+            return walk_to_type_shape(dag, payload_type_decl, subst, 0).ok_or_else(|| {
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "variant `{variant_name}` payload does not resolve to a port type for binding `{binding_name}`"
+                    ),
+                    span: span.clone(),
+                }
+            });
+        }
+        TypeConnective::Conj { .. } => {
+            return Ok(TypeShape::new(variant_decl_id));
         }
         _ => {
             return Err(Diagnostic::ResolveError {
@@ -1996,16 +2007,7 @@ fn resolve_payload_binding_type(
                 span: span.clone(),
             });
         }
-    };
-
-    walk_to_type_shape(dag, payload_type_decl, subst, 0).ok_or_else(|| {
-        Diagnostic::ResolveError {
-            name: format!(
-                "variant `{variant_name}` payload does not resolve to a port type for binding `{binding_name}`"
-            ),
-            span: span.clone(),
-        }
-    })
+    }
 }
 
 enum FieldProjectResolution {

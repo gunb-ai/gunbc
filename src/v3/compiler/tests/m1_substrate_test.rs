@@ -2493,20 +2493,46 @@ fn prereq2_payload_binding_on_non_disj_scrutinee_fails_closed() {
 }
 
 #[test]
-fn prereq2_payload_binding_rejects_single_field_record_variants() {
+fn prereq2_payload_binding_can_bind_record_payloads() {
     let src = "\
 type Point { x: Int }
 type Wrapped = Wrap { inner: Point } | Empty
-fn bad(w: Wrapped) -> Int = match w { Wrap(point) => point.x, Empty => 0 }
+fn unwrap_or_zero(w: Wrapped) -> Int = match w { Wrap(payload) => payload.inner.x, Empty => 0 }
 ";
-    let dag = compile_any(src, "payload_record_variant.v3");
+    let dag = compile_to_dag(src, "payload_record_variant.v3").expect("compiles");
     assert!(
-        dag.diagnostics().iter().any(|(_, diag)| matches!(
-            diag,
-            Diagnostic::ResolveError { name, .. }
-                if name.contains("variant `Wrap` does not carry a single positional payload")
-        )),
-        "expected a record-payload binding diagnostic for `Wrap`, got {:?}",
-        dag.diagnostics().iter().collect::<Vec<_>>()
+        dag.diagnostics().is_empty(),
+        "record payload binding should compile cleanly: {:?}",
+        dag.diagnostics()
     );
+    assert_eq!(bind_value_type_decl(&dag, "unwrap_or_zero"), find_named(&dag, "Int"));
+}
+
+#[test]
+fn recursion_accepts_structural_descent_on_recursive_payload_field() {
+    let src = "\
+type IntList = Empty | Cons { head: Int, tail: IntList }
+fn count(list: IntList) -> Int = match list { Empty => 0, Cons(payload) => 1 + count(payload.tail) }
+";
+    let dag = compile_to_dag(src, "structural_descent.v3").expect("compiles");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "structural descent on a recursive payload field should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "count")
+        .expect("Bind(count) exists");
+    let producer = dag
+        .port(bind.value)
+        .produced_by
+        .expect("recursive function value should have a producer");
+    match dag.node(producer) {
+        Behavior::Loop(_) => {}
+        other => panic!("expected bounded recursion to lower to Loop, got {other:?}"),
+    }
 }
