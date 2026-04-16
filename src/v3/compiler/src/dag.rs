@@ -63,6 +63,12 @@ impl NodeId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PortId(u32);
 
+impl PortId {
+    pub fn raw(self) -> u32 {
+        self.0
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DeclarationId(u32);
 
@@ -171,16 +177,16 @@ pub enum ValueBody {
     /// list / variant literal) awaits M2+ parser extension.
     Unparsed(SourceSpan),
     /// The body parsed as a record literal and was inhabitance-
-    /// checked against the declared type. Each field holds either
-    /// a scalar literal value or a typed declaration reference;
-    /// the label matches a field on the type's Conj children.
+    /// checked against the declared type. Each field holds a
+    /// recursively structural `FieldValue`; the label matches a
+    /// field on the type's Conj children.
     Structural { fields: Vec<(String, FieldValue)> },
 }
 
-/// Per-field value payload inside a `ValueBody::Structural`. The
-/// two variants encode the structural distinction between "this
-/// field carries a primitive scalar" and "this field carries a
-/// typed reference to another declaration."
+/// Per-field value payload inside a `ValueBody::Structural`.
+/// Scalar literals, declaration references, nested records, nested
+/// lists, and structural sum constructors each carry distinct
+/// payload shapes, so the discriminant remains load-bearing.
 ///
 /// **Why both variants exist.** PR-B's initial payload was
 /// `LiteralBits` only, which forced `src/v3/spec/rust.dag`
@@ -202,18 +208,18 @@ pub enum ValueBody {
 /// - Pattern 1 (fact placement): fails. Each variant has a
 ///   distinct payload type; the discriminant is load-bearing for
 ///   downstream readers (the realization index, the cost lens, etc).
-/// - Pattern 2 (variant-is-data): fails. `Literal(LiteralBits)`
-///   carries a 3-variant scalar enum; `Reference(DeclarationId)`
-///   carries a typed substrate id.
-/// - Pattern 3 (algebraic form): fails. The two variants are not
-///   two points in a single algebra; they are two structurally
-///   different value spaces (primitive value vs declaration handle).
+/// - Pattern 2 (variant-is-data): fails. `Literal(LiteralBits)`,
+///   `Reference(DeclarationId)`, `Record(Vec<...>)`,
+///   `List(Vec<...>)`, and `Variant { .. }` inhabit different
+///   structural spaces.
+/// - Pattern 3 (algebraic form): fails. The five variants are not
+///   points in one algebra; they are the minimal carrier set needed
+///   for nested structural data bodies.
 /// - Pattern 4 (dimensional): fails.
 ///
-/// Verdict: terminal at M1(3) PR-B-unwind. Future extensions for
-/// nested records and list literals add new `FieldValue` variants
-/// (e.g. `Record(Vec<(String, FieldValue)>)`, `List(Vec<FieldValue>)`),
-/// each with its own 4-pattern receipt at extension time.
+/// Verdict: terminal at the current structural-data layer. Any new
+/// `FieldValue` variant still requires its own 4-pattern receipt at
+/// extension time.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FieldValue {
     /// A scalar primitive value: Int, Bool, or String. Validated
@@ -233,11 +239,11 @@ pub enum FieldValue {
     /// structural data bodies contain list-valued fields.
     List(Vec<FieldValue>),
     /// Structural sum constructor with positional payload fields.
-    /// The constructor label is preserved explicitly because sum
-    /// variant child declarations are anonymous in the declaration
-    /// table.
+    /// The exact variant child declaration is preserved explicitly
+    /// so downstream consumers can recover variant identity without
+    /// string bridges.
     Variant {
-        constructor_name: String,
+        constructor: DeclarationId,
         payload: Vec<FieldValue>,
     },
 }
@@ -568,6 +574,10 @@ impl Port {
 
     pub fn state(&self) -> &PortState {
         &self.state
+    }
+
+    pub fn state_value(&self) -> PortState {
+        self.state.clone()
     }
 
     /// Backward-compat accessor: returns `Some(&TypeShape)` for Resolved ports,
@@ -1189,6 +1199,12 @@ impl Dag {
 
     pub fn declarations(&self) -> &[Declaration] {
         &self.declarations
+    }
+
+    pub fn ports(&self) -> Vec<Port> {
+        let mut ports: Vec<Port> = self.ports.values().cloned().collect();
+        ports.sort_by_key(|port| port.id().raw());
+        ports
     }
 
     /// O(1) lookup by NodeId. Relies on the dense-sequential allocation invariant.

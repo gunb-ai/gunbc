@@ -129,6 +129,7 @@ type RustCallableStrategy
   | ListFold
   | ListMap
   | ListFilter
+  | ListContains
 
 type StatementSyntax {
   let_binding: String
@@ -170,6 +171,12 @@ type FunctionSyntax {
   param_separator: String
 }
 
+type TypeApplicationSyntax {
+  list: String
+  optional: String
+  map: String
+}
+
 type TypeDefinitionSyntax {
   struct_def: String
   struct_field: String
@@ -193,6 +200,7 @@ type CollectionOps {
   fold: String
   map: String
   filter: String
+  contains: String
   empty_list: String
   list_literal: String
   cons: String
@@ -213,6 +221,7 @@ type LanguageSpec {
   literals: DeclarationRef
   modules: DeclarationRef
   functions: DeclarationRef
+  type_applications: DeclarationRef
   type_definitions: DeclarationRef
   patterns: DeclarationRef
   collection_ops: DeclarationRef
@@ -265,6 +274,44 @@ data rust_declaration_id: TypeRealization = {
   cost: 1
 }
 
+data rust_type_shape: TypeRealization = {
+  target: TypeShape
+  carrier: "TypeShape"
+  fields: [
+    { dag_name: "declaration", rust_access: DirectField("declaration") }
+  ]
+  cost: 1
+}
+
+data rust_port_state: TypeRealization = {
+  target: PortState
+  carrier: "PortState"
+  fields: []
+  cost: 1
+}
+
+data rust_port: TypeRealization = {
+  target: DagPort
+  carrier: "Port"
+  fields: [
+    { dag_name: "id", rust_access: AccessorMethod("id") },
+    { dag_name: "state", rust_access: AccessorMethod("state_value") },
+    { dag_name: "produced_by", rust_access: DirectField("produced_by") }
+  ]
+  cost: 1
+}
+
+data rust_source_span: TypeRealization = {
+  target: SourceSpan
+  carrier: "SourceSpan"
+  fields: [
+    { dag_name: "file", rust_access: DirectField("file") },
+    { dag_name: "start", rust_access: DirectField("byte_start") },
+    { dag_name: "end", rust_access: DirectField("byte_end") }
+  ]
+  cost: 1
+}
+
 data rust_literal_bits: TypeRealization = {
   target: LiteralBits
   carrier: "LiteralBits"
@@ -302,6 +349,16 @@ data rust_template_argument: TypeRealization = {
   fields: [
     { dag_name: "parameter", rust_access: DirectField("parameter") },
     { dag_name: "value", rust_access: DirectField("value") }
+  ]
+  cost: 1
+}
+
+data rust_field_entry: TypeRealization = {
+  target: FieldEntry
+  carrier: "(String, FieldValue)"
+  fields: [
+    { dag_name: "label", rust_access: DirectField("0") },
+    { dag_name: "value", rust_access: DirectField("1") }
   ]
   cost: 1
 }
@@ -347,6 +404,27 @@ data rust_declaration: TypeRealization = {
     { dag_name: "value_body", rust_access: DirectField("value_body") },
     { dag_name: "span", rust_access: DirectField("span") }
   ]
+  cost: 1
+}
+
+data rust_arithmetic_op: TypeRealization = {
+  target: ArithmeticOp
+  carrier: "ArithmeticOp"
+  fields: []
+  cost: 1
+}
+
+data rust_comparison_op: TypeRealization = {
+  target: ComparisonOp
+  carrier: "ComparisonOp"
+  fields: []
+  cost: 1
+}
+
+data rust_operator_kind: TypeRealization = {
+  target: OperatorKind
+  carrier: "OperatorKind"
+  fields: []
   cost: 1
 }
 
@@ -473,7 +551,8 @@ data rust_dag: TypeRealization = {
   carrier: "Dag"
   fields: [
     { dag_name: "declarations", rust_access: AccessorMethod("declarations") },
-    { dag_name: "nodes", rust_access: AccessorMethod("nodes") }
+    { dag_name: "nodes", rust_access: AccessorMethod("nodes") },
+    { dag_name: "ports", rust_access: AccessorMethod("ports") }
   ]
   cost: 1
 }
@@ -529,8 +608,50 @@ data rust_int_eq: OperatorRealization = {
   cost: 1
 }
 
+data rust_node_id_eq: OperatorRealization = {
+  target: NodeId
+  op: OrderedRing.eq
+  carrier: "=="
+  cost: 1
+}
+
+data rust_port_id_eq: OperatorRealization = {
+  target: PortId
+  op: OrderedRing.eq
+  carrier: "=="
+  cost: 1
+}
+
+data rust_declaration_id_eq: OperatorRealization = {
+  target: DeclarationId
+  op: OrderedRing.eq
+  carrier: "=="
+  cost: 1
+}
+
 data rust_int_ne: OperatorRealization = {
   target: Int
+  op: OrderedRing.ne
+  carrier: "!="
+  cost: 1
+}
+
+data rust_node_id_ne: OperatorRealization = {
+  target: NodeId
+  op: OrderedRing.ne
+  carrier: "!="
+  cost: 1
+}
+
+data rust_port_id_ne: OperatorRealization = {
+  target: PortId
+  op: OrderedRing.ne
+  carrier: "!="
+  cost: 1
+}
+
+data rust_declaration_id_ne: OperatorRealization = {
+  target: DeclarationId
   op: OrderedRing.ne
   carrier: "!="
   cost: 1
@@ -626,6 +747,12 @@ data rust_filter_callable: CallableRealization = {
   cost: 1
 }
 
+data rust_contains_callable: CallableRealization = {
+  target: contains
+  strategy: ListContains
+  cost: 1
+}
+
 data rust_statements: StatementSyntax = {
   let_binding: "let {name}: {type} = {value};"
   let_binding_inferred: "let {name} = {value};"
@@ -661,6 +788,12 @@ data rust_functions: FunctionSyntax = {
   param_separator: ", "
 }
 
+data rust_type_applications: TypeApplicationSyntax = {
+  list: "Vec<{element}>"
+  optional: "Option<{element}>"
+  map: "HashMap<{key}, {value}>"
+}
+
 data rust_type_defs: TypeDefinitionSyntax = {
   struct_def: "pub struct {name} { {fields} }"
   struct_field: "pub {name}: {type},"
@@ -684,6 +817,7 @@ data rust_collection_ops: CollectionOps = {
   fold: "({recv}).clone().into_iter().fold({init}, {body})"
   map: "({recv}).clone().into_iter().map({body}).collect::<Vec<_>>()"
   filter: "{ let mut __out = Vec::new(); for {item} in ({recv}).clone().into_iter() { if {predicate} { __out.push({item}); } } __out }"
+  contains: "({recv}).contains(&{item})"
   empty_list: "Vec::new()"
   list_literal: "vec![{elements}]"
   cons: "{ let mut __list = {tail}; __list.insert(0, {head}); __list }"
@@ -704,6 +838,7 @@ data rust_language: LanguageSpec = {
   literals: rust_literals
   modules: rust_modules
   functions: rust_functions
+  type_applications: rust_type_applications
   type_definitions: rust_type_defs
   patterns: rust_patterns
   collection_ops: rust_collection_ops

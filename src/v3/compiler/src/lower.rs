@@ -1536,7 +1536,7 @@ fn lower_structural_field_value(
             )?);
         }
         return Some(crate::dag::FieldValue::Variant {
-            constructor_name: variant_name.to_string(),
+            constructor: *variant_decl_id,
             payload,
         });
     }
@@ -1701,8 +1701,10 @@ fn realization_category_for_meta(
 ///   - `TypeRealization.target` — must be a primitive type
 ///     declaration (Int / Bool / String). Anything else is a
 ///     spec error.
-///   - `OperatorRealization.target` — must be a primitive type
-///     (the operand type, e.g. Int for `1 + 2`).
+///   - `OperatorRealization.target` — must be either a primitive
+///     type or an atomic identity handle (the operand type for a
+///     realized operator, e.g. Int for `1 + 2` or PortId for
+///     reflected handle equality).
 ///   - `OperatorRealization.op` — must walk to an Arrow
 ///     declaration that is a child of an algebra Conj (e.g.
 ///     OrderedRing.add). The constraint is "the resolved
@@ -1720,9 +1722,15 @@ fn validate_realization_field_target(
     let int_id = dag.declaration_by_name("Int").map(|d| d.id);
     let bool_id = dag.declaration_by_name("Bool").map(|d| d.id);
     let string_id = dag.declaration_by_name("String").map(|d| d.id);
+    let node_id = dag.declaration_by_name("NodeId").map(|d| d.id);
+    let port_id = dag.declaration_by_name("PortId").map(|d| d.id);
+    let declaration_id = dag.declaration_by_name("DeclarationId").map(|d| d.id);
 
     let is_primitive = |id: DeclarationId| {
         Some(id) == int_id || Some(id) == bool_id || Some(id) == string_id
+    };
+    let is_atomic_handle = |id: DeclarationId| {
+        Some(id) == node_id || Some(id) == port_id || Some(id) == declaration_id
     };
     let is_behavior_marker = |id: DeclarationId| {
         let markers = [
@@ -1755,11 +1763,11 @@ fn validate_realization_field_target(
             }
         }
         (RealizationCategoryTag::Operator, "target") => {
-            if is_primitive(target) {
+            if is_primitive(target) || is_atomic_handle(target) {
                 Ok(())
             } else {
                 Err(format!(
-                    "OperatorRealization.target must reference a primitive operand type (Int/Bool/String); got declaration {target:?}"
+                    "OperatorRealization.target must reference a primitive operand type or atomic handle (Int/Bool/String/NodeId/PortId/DeclarationId); got declaration {target:?}"
                 ))
             }
         }

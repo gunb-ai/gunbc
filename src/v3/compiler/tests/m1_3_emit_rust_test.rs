@@ -494,6 +494,36 @@ fn rustc_roundtrip_emitted_module_matches_reflected_behavior_payloads() {
     );
 }
 
+#[test]
+fn rustc_roundtrip_emitted_module_returns_reflected_source_span_list() {
+    let module = emit_module(
+        "fn singleton_span(bind: BindNode) -> List<SourceSpan> = [bind.span]",
+    );
+    let stdout = roundtrip_module_stdout(
+        &module,
+        "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) => Some(bind.clone()), _ => None }).expect(\"bind\"); singleton_span(bind).len() as i64",
+    );
+    assert_eq!(
+        stdout, "1",
+        "compiled reflected function returning List<SourceSpan> should yield a singleton list, got {stdout:?}"
+    );
+}
+
+#[test]
+fn rustc_roundtrip_emitted_module_compares_reflected_port_ids_in_list_contains() {
+    let module = emit_module(
+        "fn result_port_is_param(bind: BindNode) -> Bool = contains(bind.params, bind.result_port)",
+    );
+    let stdout = roundtrip_module_stdout(
+        &module,
+        "let dag = v3_compiler::compile_to_dag(\"fn id(x: Int) -> Int = x\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) if !bind.params.is_empty() => Some(bind.clone()), _ => None }).expect(\"function bind\"); if result_port_is_param(bind) { 1 } else { 0 }",
+    );
+    assert_eq!(
+        stdout, "1",
+        "compiled reflected function should compare PortId handles through list contains, got {stdout:?}"
+    );
+}
+
 /// End-to-end roundtrip test: emit Rust from a v3 program, feed the
 /// Rust source to `rustc`, run the resulting binary, assert stdout.
 /// Gated behind `#[ignore]` because CI runners often don't have a

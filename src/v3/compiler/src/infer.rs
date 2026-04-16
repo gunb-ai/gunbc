@@ -1484,7 +1484,9 @@ fn resolve_callable_target(
                     &mut arguments,
                 ) {
                     CallableBindingResolution::Resolved => {}
-                    CallableBindingResolution::Retry => {}
+                    CallableBindingResolution::Retry => {
+                        return CallableTargetResolution::Retry;
+                    }
                     CallableBindingResolution::Conflict => {
                         return CallableTargetResolution::Fail(
                             Diagnostic::ResolveError {
@@ -1549,7 +1551,9 @@ fn resolve_callable_target(
                     &mut arguments,
                 ) {
                     CallableBindingResolution::Resolved => {}
-                    CallableBindingResolution::Retry => {}
+                    CallableBindingResolution::Retry => {
+                        return CallableTargetResolution::Retry;
+                    }
                     CallableBindingResolution::Conflict => {
                         return CallableTargetResolution::Fail(Diagnostic::ResolveError {
                             name: format!(
@@ -1608,7 +1612,9 @@ fn resolve_callable_target(
                 &mut arguments,
             ) {
                 CallableBindingResolution::Resolved => {}
-                CallableBindingResolution::Retry => {}
+                CallableBindingResolution::Retry => {
+                    return CallableTargetResolution::Retry;
+                }
                 CallableBindingResolution::Conflict => {
                     return CallableTargetResolution::Fail(Diagnostic::ResolveError {
                         name: format!(
@@ -1657,7 +1663,7 @@ fn resolve_direct_target_signature(
         .collect::<Option<Vec<_>>>()?;
     Some(ResolvedArrow {
         inputs,
-        output: TypeShape::new(target),
+        output: TypeShape::new(enclosing_disj_for_variant(dag, template).unwrap_or(target)),
         body: ArrowBody::Pending,
     })
 }
@@ -1751,13 +1757,19 @@ fn resolve_lambda_parameter_types(dag: &mut Dag) -> bool {
         let TransformTarget::Callable(target) = t.target else {
             continue;
         };
-        let CallableTargetResolution::Resolved {
-            template,
-            arguments,
-            ..
-        } = resolve_callable_target(dag, target, &t.inputs, &t.span)
-        else {
-            continue;
+        let (template, arguments) = match resolve_callable_target(
+            dag, target, &t.inputs, &t.span,
+        ) {
+            CallableTargetResolution::Resolved {
+                template,
+                arguments,
+                ..
+            } => (template, arguments),
+            CallableTargetResolution::Retry => {
+                bind_non_callable_target_arguments(dag, target, &t.inputs)
+                    .unwrap_or_else(|| callable_template_arguments(dag, target))
+            }
+            CallableTargetResolution::Fail(_) => continue,
         };
         let mut outer_subst = SubstStack::new();
         outer_subst.push(arguments.clone());
@@ -1816,6 +1828,71 @@ fn resolve_lambda_parameter_types(dag: &mut Dag) -> bool {
     changed
 }
 
+fn bind_non_callable_target_arguments(
+    dag: &Dag,
+    target: DeclarationId,
+    runtime_inputs: &[PortId],
+) -> Option<(DeclarationId, Vec<TemplateArgument>)> {
+    let (template, mut arguments) = callable_template_arguments(dag, target);
+    let signature = resolve_direct_target_signature(dag, target, &arguments)?;
+    let mut raw_subst = SubstStack::new();
+    raw_subst.push(arguments.clone());
+    let raw_arrow_inputs =
+        resolve_arrow_decl_walk(dag, template, &mut raw_subst, 0).map(|arrow| arrow.inputs);
+
+    let expected_runtime_arity = raw_arrow_inputs
+        .as_ref()
+        .map(|inputs| {
+            inputs
+                .iter()
+                .filter(|input| !declaration_is_callable(dag, **input, 0))
+                .count()
+        })
+        .unwrap_or_else(|| signature.inputs.len());
+    if expected_runtime_arity != runtime_inputs.len() {
+        return None;
+    }
+
+    let mut runtime_iter = runtime_inputs.iter();
+    if let Some(raw_inputs) = raw_arrow_inputs {
+        for expected_input in raw_inputs {
+            if declaration_is_callable(dag, expected_input, 0) {
+                continue;
+            }
+            let input_port = *runtime_iter.next()?;
+            let actual_ctx = port_type_context(dag, input_port)?;
+            if !bind_expected_decl_to_actual_context(
+                dag,
+                expected_input,
+                &actual_ctx,
+                &mut arguments,
+                0,
+            ) {
+                return None;
+            }
+        }
+    } else {
+        for expected_input in &signature.inputs {
+            if declaration_is_callable(dag, expected_input.declaration, 0) {
+                continue;
+            }
+            let input_port = *runtime_iter.next()?;
+            let actual_ctx = port_type_context(dag, input_port)?;
+            if !bind_expected_decl_to_actual_context(
+                dag,
+                expected_input.declaration,
+                &actual_ctx,
+                &mut arguments,
+                0,
+            ) {
+                return None;
+            }
+        }
+    }
+
+    Some((template, arguments))
+}
+
 fn walk_to_conj_decl_with_subst(
     dag: &Dag,
     start: DeclarationId,
@@ -1872,6 +1949,21 @@ fn walk_to_disj_decl_with_subst(
         }
     }
     None
+}
+
+fn enclosing_disj_for_variant(
+    dag: &Dag,
+    variant_decl_id: DeclarationId,
+) -> Option<DeclarationId> {
+    dag.declarations().iter().find_map(|decl| {
+        let TypeConnective::Disj { variants } = &decl.connective else {
+            return None;
+        };
+        variants
+            .iter()
+            .find(|variant| variant.ty == variant_decl_id)
+            .map(|_| decl.id)
+    })
 }
 
 fn resolve_payload_binding_type(

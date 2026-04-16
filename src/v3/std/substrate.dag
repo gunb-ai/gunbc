@@ -7,6 +7,21 @@ type NodeId
 type PortId
 type DeclarationId
 
+type TypeShape {
+  declaration: DeclarationId
+}
+
+type PortState
+  = Uninferred
+  | Resolved(TypeShape)
+  | Unresolved
+
+type DagPort {
+  id: PortId
+  state: PortState
+  produced_by: NodeId?
+}
+
 // Leaf structural types.
 type LiteralBits
   = LitInt(Int)
@@ -34,18 +49,24 @@ type TemplateArgument {
   value: DeclarationId
 }
 
-type FieldValue
-  = FieldLiteral(LiteralBits)
-  | FieldReference(DeclarationId)
-
-type NamedFieldValue {
+type FieldEntry {
   label: String
   value: FieldValue
 }
 
+type FieldValue
+  = Literal(LiteralBits)
+  | Reference(DeclarationId)
+  | Record(List<FieldEntry>)
+  | List(List<FieldValue>)
+  | Variant {
+      constructor: DeclarationId
+      payload: List<FieldValue>
+    }
+
 type ValueBody
   = ValueBodyUnparsed(SourceSpan)
-  | ValueBodyStructural { fields: List<NamedFieldValue> }
+  | ValueBodyStructural { fields: List<FieldEntry> }
 
 // Type substrate.
 type ArrowBody
@@ -83,6 +104,24 @@ type Declaration {
   span: SourceSpan
 }
 
+type ArithmeticOp
+  = Add
+  | Sub
+  | Mul
+  | Div
+
+type ComparisonOp
+  = Eq
+  | Ne
+  | Lt
+  | Le
+  | Gt
+  | Ge
+
+type OperatorKind
+  = Arithmetic(ArithmeticOp)
+  | Comparison(ComparisonOp)
+
 // Computation substrate.
 type TransformTarget
   = Callable(DeclarationId)
@@ -90,9 +129,7 @@ type TransformTarget
       field_label: String
       field_child: DeclarationId?
     }
-  | Operator {
-      name: String
-    }
+  | Operator(OperatorKind)
 
 type BranchPattern
   = UnresolvedVariant { name: String, span: SourceSpan }
@@ -165,4 +202,5 @@ type Behavior
 type Dag {
   declarations: List<Declaration>
   nodes: List<Behavior>
+  ports: List<DagPort>
 }

@@ -61,7 +61,7 @@ fn type_realization_fields_for(
             .map(|(_, value)| value)
             .expect("FieldBinding.rust_access");
         let FieldValue::Variant {
-            constructor_name,
+            constructor,
             payload,
         } = rust_access
         else {
@@ -70,9 +70,25 @@ fn type_realization_fields_for(
         let [FieldValue::Literal(v3_compiler::dag::LiteralBits::String(name))] = &payload[..] else {
             panic!("RustFieldAccess payload must be a single String literal");
         };
-        out.insert(dag_name, (constructor_name.clone(), name.clone()));
+        out.insert(
+            dag_name,
+            (variant_label(dag, *constructor), name.clone()),
+        );
     }
     out
+}
+
+fn variant_label(dag: &Dag, variant_id: v3_compiler::dag::DeclarationId) -> String {
+    dag.declarations()
+        .iter()
+        .find_map(|decl| match &decl.connective {
+            TypeConnective::Disj { variants } => variants
+                .iter()
+                .find(|variant| variant.ty == variant_id)
+                .map(|variant| variant.label.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("variant declaration {:?} not found under any reflected sum", variant_id))
 }
 
 fn declared_record_fields(dag: &Dag, type_name: &str) -> Vec<String> {
@@ -93,6 +109,10 @@ fn every_realized_reflection_record_field_has_a_binding() {
     );
 
     for type_name in [
+        "FieldEntry",
+        "TypeShape",
+        "DagPort",
+        "SourceSpan",
         "Dag",
         "Declaration",
         "TemplateArgument",
@@ -128,6 +148,20 @@ fn alias_bindings_cover_method_backed_fields() {
         dag_fields.get("declarations"),
         Some(&(String::from("AccessorMethod"), String::from("declarations")))
     );
+    assert_eq!(
+        dag_fields.get("ports"),
+        Some(&(String::from("AccessorMethod"), String::from("ports")))
+    );
+
+    let entry_fields = type_realization_fields_for(&dag, "FieldEntry");
+    assert_eq!(
+        entry_fields.get("label"),
+        Some(&(String::from("DirectField"), String::from("0")))
+    );
+    assert_eq!(
+        entry_fields.get("value"),
+        Some(&(String::from("DirectField"), String::from("1")))
+    );
 
     let bind_fields = type_realization_fields_for(&dag, "BindNode");
     assert_eq!(
@@ -139,5 +173,25 @@ fn alias_bindings_cover_method_backed_fields() {
     assert_eq!(
         value_fields.get("payload"),
         Some(&(String::from("DirectField"), String::from("data")))
+    );
+
+    let span_fields = type_realization_fields_for(&dag, "SourceSpan");
+    assert_eq!(
+        span_fields.get("start"),
+        Some(&(String::from("DirectField"), String::from("byte_start")))
+    );
+    assert_eq!(
+        span_fields.get("end"),
+        Some(&(String::from("DirectField"), String::from("byte_end")))
+    );
+
+    let port_fields = type_realization_fields_for(&dag, "DagPort");
+    assert_eq!(
+        port_fields.get("id"),
+        Some(&(String::from("AccessorMethod"), String::from("id")))
+    );
+    assert_eq!(
+        port_fields.get("state"),
+        Some(&(String::from("AccessorMethod"), String::from("state_value")))
     );
 }

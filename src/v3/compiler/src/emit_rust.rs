@@ -246,6 +246,7 @@ enum RustCallableStrategyBinding {
     ListFold,
     ListMap,
     ListFilter,
+    ListContains,
 }
 
 #[derive(Debug, Clone)]
@@ -296,6 +297,13 @@ struct FunctionSyntaxBinding {
 }
 
 #[derive(Debug, Clone)]
+struct TypeApplicationSyntaxBinding {
+    list: String,
+    optional: String,
+    map: String,
+}
+
+#[derive(Debug, Clone)]
 struct TypeDefinitionSyntaxBinding {
     struct_def: String,
     struct_field: String,
@@ -321,6 +329,7 @@ struct CollectionOpsBinding {
     fold: String,
     map: String,
     filter: String,
+    contains: String,
     empty_list: String,
     list_literal: String,
     cons: String,
@@ -343,6 +352,7 @@ struct RustLanguageSyntax {
     literals: LiteralSyntaxBinding,
     modules: ModuleSyntaxBinding,
     functions: FunctionSyntaxBinding,
+    type_applications: TypeApplicationSyntaxBinding,
     type_definitions: TypeDefinitionSyntaxBinding,
     patterns: PatternMatchSyntaxBinding,
     collection_ops: CollectionOpsBinding,
@@ -511,7 +521,7 @@ impl RealizationIndexes {
                     }
                 }
                 RealizationCategory::Callable => {
-                    let strategy = require_callable_strategy(fields, decl.id)?;
+                    let strategy = require_callable_strategy(dag, fields, decl.id)?;
                     if callables.insert(target, strategy).is_some() {
                         return Err(EmitError::DuplicateRealization {
                             declaration: decl.id,
@@ -565,6 +575,10 @@ impl RustLanguageSyntax {
             functions: parse_function_syntax(
                 dag,
                 require_field_decl_ref(fields, "functions", language_decl)?,
+            )?,
+            type_applications: parse_type_application_syntax(
+                dag,
+                require_field_decl_ref(fields, "type_applications", language_decl)?,
             )?,
             type_definitions: parse_type_definition_syntax(
                 dag,
@@ -700,6 +714,18 @@ fn parse_function_syntax(
     })
 }
 
+fn parse_type_application_syntax(
+    dag: &Dag,
+    declaration: DeclarationId,
+) -> Result<TypeApplicationSyntaxBinding, EmitError> {
+    let fields = structural_fields_for_decl(dag, declaration)?;
+    Ok(TypeApplicationSyntaxBinding {
+        list: syntax_field_string(fields, "list", declaration)?,
+        optional: syntax_field_string(fields, "optional", declaration)?,
+        map: syntax_field_string(fields, "map", declaration)?,
+    })
+}
+
 fn parse_type_definition_syntax(
     dag: &Dag,
     declaration: DeclarationId,
@@ -748,6 +774,7 @@ fn parse_collection_ops(
         fold: syntax_field_string(fields, "fold", declaration)?,
         map: syntax_field_string(fields, "map", declaration)?,
         filter: syntax_field_string(fields, "filter", declaration)?,
+        contains: syntax_field_string(fields, "contains", declaration)?,
         empty_list: syntax_field_string(fields, "empty_list", declaration)?,
         list_literal: syntax_field_string(fields, "list_literal", declaration)?,
         cons: syntax_field_string(fields, "cons", declaration)?,
@@ -949,12 +976,12 @@ fn require_field_bindings(
 }
 
 fn parse_rust_field_access(
-    _dag: &Dag,
+    dag: &Dag,
     value: &FieldValue,
     declaration: DeclarationId,
 ) -> Result<RustFieldAccessBinding, EmitError> {
     let FieldValue::Variant {
-        constructor_name,
+        constructor,
         payload,
     } = value
     else {
@@ -978,17 +1005,32 @@ fn parse_rust_field_access(
             });
         }
     };
-    match constructor_name.as_str() {
-        "DirectField" => Ok(RustFieldAccessBinding::DirectField(name)),
-        "AccessorMethod" => Ok(RustFieldAccessBinding::AccessorMethod(name)),
-        _ => Err(EmitError::MalformedRealization {
+    let direct_field = named_variant_id(dag, "RustFieldAccess", "DirectField")
+        .ok_or(EmitError::MalformedRealization {
+            declaration,
+            detail: "RustFieldAccess.DirectField declaration was not found",
+        })?;
+    let accessor_method =
+        named_variant_id(dag, "RustFieldAccess", "AccessorMethod").ok_or(
+            EmitError::MalformedRealization {
+                declaration,
+                detail: "RustFieldAccess.AccessorMethod declaration was not found",
+            },
+        )?;
+    if *constructor == direct_field {
+        Ok(RustFieldAccessBinding::DirectField(name))
+    } else if *constructor == accessor_method {
+        Ok(RustFieldAccessBinding::AccessorMethod(name))
+    } else {
+        Err(EmitError::MalformedRealization {
             declaration,
             detail: "RustFieldAccess constructor must be DirectField or AccessorMethod",
-        }),
+        })
     }
 }
 
 fn require_callable_strategy(
+    dag: &Dag,
     fields: &[(String, FieldValue)],
     declaration: DeclarationId,
 ) -> Result<RustCallableStrategyBinding, EmitError> {
@@ -1001,7 +1043,7 @@ fn require_callable_strategy(
             detail: "CallableRealization is missing required `strategy` field",
         })?;
     let FieldValue::Variant {
-        constructor_name,
+        constructor,
         payload,
     } = value
     else {
@@ -1016,19 +1058,67 @@ fn require_callable_strategy(
             detail: "RustCallableStrategy variants must not carry payload fields",
         });
     }
-    match constructor_name.as_str() {
-        "ListEmpty" => Ok(RustCallableStrategyBinding::ListEmpty),
-        "ListSingleton" => Ok(RustCallableStrategyBinding::ListSingleton),
-        "ListCons" => Ok(RustCallableStrategyBinding::ListCons),
-        "ListFold" => Ok(RustCallableStrategyBinding::ListFold),
-        "ListMap" => Ok(RustCallableStrategyBinding::ListMap),
-        "ListFilter" => Ok(RustCallableStrategyBinding::ListFilter),
-        _ => Err(EmitError::MalformedRealization {
-            declaration,
-            detail:
-                "RustCallableStrategy constructor must be ListEmpty/ListSingleton/ListCons/ListFold/ListMap/ListFilter",
-        }),
+    let strategies = [
+        (
+            named_variant_id(dag, "RustCallableStrategy", "ListEmpty"),
+            RustCallableStrategyBinding::ListEmpty,
+        ),
+        (
+            named_variant_id(dag, "RustCallableStrategy", "ListSingleton"),
+            RustCallableStrategyBinding::ListSingleton,
+        ),
+        (
+            named_variant_id(dag, "RustCallableStrategy", "ListCons"),
+            RustCallableStrategyBinding::ListCons,
+        ),
+        (
+            named_variant_id(dag, "RustCallableStrategy", "ListFold"),
+            RustCallableStrategyBinding::ListFold,
+        ),
+        (
+            named_variant_id(dag, "RustCallableStrategy", "ListMap"),
+            RustCallableStrategyBinding::ListMap,
+        ),
+        (
+            named_variant_id(dag, "RustCallableStrategy", "ListFilter"),
+            RustCallableStrategyBinding::ListFilter,
+        ),
+        (
+            named_variant_id(dag, "RustCallableStrategy", "ListContains"),
+            RustCallableStrategyBinding::ListContains,
+        ),
+    ];
+    for (variant_id, binding) in strategies {
+        let Some(variant_id) = variant_id else {
+            return Err(EmitError::MalformedRealization {
+                declaration,
+                detail: "RustCallableStrategy variant declaration was not found",
+            });
+        };
+        if *constructor == variant_id {
+            return Ok(binding);
+        }
     }
+    Err(EmitError::MalformedRealization {
+        declaration,
+        detail:
+            "RustCallableStrategy constructor must be ListEmpty/ListSingleton/ListCons/ListFold/ListMap/ListFilter/ListContains",
+    })
+}
+
+fn named_variant_id(
+    dag: &Dag,
+    parent_name: &str,
+    variant_label: &str,
+) -> Option<DeclarationId> {
+    let parent = dag.declaration_by_name(parent_name)?;
+    let TypeConnective::Disj { variants } = &parent.connective else {
+        return None;
+    };
+    variants
+        .iter()
+        .find(|variant| variant.label == variant_label)
+        .map(|variant| variant.ty)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1611,6 +1701,20 @@ impl<'a> Ctx<'a> {
                     &[("recv", &list), ("item", &item), ("predicate", &predicate)],
                 ))
             }
+            RustCallableStrategyBinding::ListContains => {
+                if inputs.len() != 2 {
+                    return Err(EmitError::UnsupportedBehavior(format!(
+                        "contains runtime arity {} is not supported; expected [list, item]",
+                        inputs.len()
+                    )));
+                }
+                let list = self.render_port_with_locals(inputs[0], locals)?;
+                let item = self.render_port_with_locals(inputs[1], locals)?;
+                Ok(render_named_template(
+                    &self.indexes.syntax.collection_ops.contains,
+                    &[("recv", &list), ("item", &item)],
+                ))
+            }
         }
     }
 
@@ -2011,19 +2115,99 @@ impl<'a> Ctx<'a> {
     /// instantiations to a primitive declaration id, then looks
     /// up that id in the index. Zero name strings.
     fn rust_type_name_for_port(&self, port: PortId) -> Result<String, EmitError> {
-        let primitive_id = primitive_type_id_for_port(self.dag, port)?;
-        self.rust_type_name_for_decl(primitive_id)
+        let ty = self
+            .dag
+            .port(port)
+            .value_type()
+            .ok_or(EmitError::UntypedPort(port))?;
+        self.rust_type_name_for_decl(ty.declaration)
     }
 
     fn rust_type_name_for_decl(&self, declaration: DeclarationId) -> Result<String, EmitError> {
-        self.indexes
-            .types
-            .get(&declaration)
-            .map(|binding| binding.carrier.clone())
-            .or_else(|| self.dag.declaration(declaration).name.clone())
-            .ok_or(EmitError::MissingTypeRealization {
+        self.rust_type_name_for_decl_at_depth(declaration, 0)
+    }
+
+    fn rust_type_name_for_decl_at_depth(
+        &self,
+        declaration: DeclarationId,
+        depth: usize,
+    ) -> Result<String, EmitError> {
+        if depth >= 32 {
+            return Err(EmitError::UnsupportedBehavior(
+                "type-name rendering exceeded depth 32 — likely a cycle".to_string(),
+            ));
+        }
+        if let Some(binding) = self.indexes.types.get(&declaration) {
+            return Ok(binding.carrier.clone());
+        }
+        let decl = self.dag.declaration(declaration);
+        if let Some(name) = &decl.name {
+            return Ok(name.clone());
+        }
+        match &decl.connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => self.render_instantiated_type(*template, arguments, depth + 1),
+            TypeConnective::Cardinality {
+                element,
+                bound: crate::dag::CardinalityBound::AtMostOne,
+            } => {
+                let inner = self.rust_type_name_for_decl_at_depth(*element, depth + 1)?;
+                Ok(render_named_template(
+                    &self.indexes.syntax.type_applications.optional,
+                    &[("element", &inner)],
+                ))
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                self.rust_type_name_for_decl_at_depth(*next, depth + 1)
+            }
+            _ => Err(EmitError::MissingTypeRealization {
                 target: declaration,
-            })
+            }),
+        }
+    }
+
+    fn render_instantiated_type(
+        &self,
+        template: DeclarationId,
+        arguments: &[TemplateArgument],
+        depth: usize,
+    ) -> Result<String, EmitError> {
+        let template_decl = self.dag.declaration(template);
+        let Some(template_name) = &template_decl.name else {
+            return Err(EmitError::MissingTypeRealization { target: template });
+        };
+        match template_name.as_str() {
+            "List" => {
+                let [element] = arguments else {
+                    return Err(EmitError::UnsupportedBehavior(
+                        "List instantiation must carry exactly one type argument".to_string(),
+                    ));
+                };
+                let element_name =
+                    self.rust_type_name_for_decl_at_depth(element.value, depth + 1)?;
+                Ok(render_named_template(
+                    &self.indexes.syntax.type_applications.list,
+                    &[("element", &element_name)],
+                ))
+            }
+            "Map" => {
+                let [key, value] = arguments else {
+                    return Err(EmitError::UnsupportedBehavior(
+                        "Map instantiation must carry exactly two type arguments".to_string(),
+                    ));
+                };
+                let key_name = self.rust_type_name_for_decl_at_depth(key.value, depth + 1)?;
+                let value_name =
+                    self.rust_type_name_for_decl_at_depth(value.value, depth + 1)?;
+                Ok(render_named_template(
+                    &self.indexes.syntax.type_applications.map,
+                    &[("key", &key_name), ("value", &value_name)],
+                ))
+            }
+            _ => Err(EmitError::MissingTypeRealization { target: template }),
+        }
     }
 }
 
@@ -2226,25 +2410,21 @@ fn algebra_field_for_operator(
 ) -> Result<DeclarationId, EmitError> {
     // Walk the operand type to its algebra Conj. The same walk is
     // used by infer.rs's resolve_operator_arrow.
-    let algebra_conj_id = walk_to_algebra_conj(dag, operand_type_id).ok_or_else(|| {
-        EmitError::UnsupportedBehavior(format!(
-            "operand type {operand_type_id:?} does not walk to an algebra Conj"
-        ))
-    })?;
+    let Some(algebra_conj_id) = walk_to_algebra_conj(dag, operand_type_id) else {
+        return canonical_operator_field(dag, op);
+    };
     let field_label = op.algebra_field_name();
     let children = match &dag.declaration(algebra_conj_id).connective {
         TypeConnective::Conj { children } => children,
         _ => unreachable!("walk_to_algebra_conj returned a non-Conj"),
     };
-    children
+    if let Some(field) = children
         .iter()
         .find(|f| f.label == field_label)
-        .map(|f| f.ty)
-        .ok_or_else(|| {
-            EmitError::UnsupportedBehavior(format!(
-                "algebra Conj {algebra_conj_id:?} has no field labeled {field_label}"
-            ))
-        })
+    {
+        return Ok(field.ty);
+    }
+    canonical_operator_field(dag, op)
 }
 
 /// Walk a declaration through aliases / instantiations until it
@@ -2260,6 +2440,29 @@ fn walk_to_algebra_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId
         }
     }
     None
+}
+
+fn canonical_operator_field(dag: &Dag, op: OperatorKind) -> Result<DeclarationId, EmitError> {
+    let ordered_ring = dag.declaration_by_name("OrderedRing").ok_or_else(|| {
+        EmitError::UnsupportedBehavior(
+            "bootstrap is missing the canonical `OrderedRing` declaration".to_string(),
+        )
+    })?;
+    let TypeConnective::Conj { children } = &ordered_ring.connective else {
+        return Err(EmitError::UnsupportedBehavior(
+            "`OrderedRing` does not lower to a Conj declaration".to_string(),
+        ));
+    };
+    let field_label = op.algebra_field_name();
+    children
+        .iter()
+        .find(|field| field.label == field_label)
+        .map(|field| field.ty)
+        .ok_or_else(|| {
+            EmitError::UnsupportedBehavior(format!(
+                "`OrderedRing` has no canonical field labeled {field_label}"
+            ))
+        })
 }
 
 #[cfg(test)]

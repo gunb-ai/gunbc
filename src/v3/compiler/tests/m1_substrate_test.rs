@@ -437,6 +437,7 @@ fn m2_rust_language_syntax_bundle_is_cached_and_structural() {
                     "literals",
                     "modules",
                     "functions",
+                    "type_applications",
                     "type_definitions",
                     "patterns",
                     "collection_ops",
@@ -454,6 +455,7 @@ fn m2_rust_language_syntax_bundle_is_cached_and_structural() {
         "ControlFlowSyntax",
         "LiteralSyntax",
         "FunctionSyntax",
+        "TypeApplicationSyntax",
         "TypeDefinitionSyntax",
         "PatternMatchSyntax",
         "CollectionOps",
@@ -1028,6 +1030,22 @@ fn always_zero(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }
         }
     }
     let _ = src;
+}
+
+#[test]
+fn infer_variant_constructor_call_returns_parent_sum_type() {
+    let src = "\
+type Sign = Plus | Minus
+fn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }
+let total: Int = classify(Plus)
+";
+    let dag = compile_any(src, "variant_constructor_parent_sum.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "variant constructor call should type-check as the parent sum, got {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(bind_value_type_decl(&dag, "total"), find_named(&dag, "Int"));
 }
 
 #[test]
@@ -1983,6 +2001,22 @@ let y = use_callback(|z| z + 1)
     assert!(
         dag.diagnostics().is_empty(),
         "lambda should preserve captured outer callable bindings: {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(bind_value_type_decl(&dag, "y"), find_named(&dag, "Int"));
+}
+
+#[test]
+fn infer_retries_higher_order_callable_binding_until_lambda_signature_resolves() {
+    let src = "\
+fn apply_to_three(f: fn(Int) -> Int) -> Int = f(3)
+fn use_callback(f: fn(Int) -> Int) -> Int = apply_to_three(f)
+let y = use_callback(|z| z + 1)
+";
+    let dag = compile_any(src, "callable_retry_lambda_signature.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "higher-order callable binding should retry until the lambda signature resolves: {:?}",
         dag.diagnostics()
     );
     assert_eq!(bind_value_type_decl(&dag, "y"), find_named(&dag, "Int"));
