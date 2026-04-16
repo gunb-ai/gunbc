@@ -107,6 +107,9 @@ pub fn infer(dag: &mut Dag) {
         if resolve_lambda_parameter_types(dag) {
             changed = true;
         }
+        if validate_user_defined_function_signatures(dag) {
+            changed = true;
+        }
         if !changed {
             break;
         }
@@ -1331,10 +1334,17 @@ fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
             TransformTarget::FieldProject {
                 field_child: Some(field_child),
                 ..
-            } => Some(PortTypeContext {
-                decl: *field_child,
-                subst: SubstStack::new(),
-            }),
+            } => {
+                let decl = if is_retryable_generic_decl(dag, *field_child) {
+                    resolved_decl
+                } else {
+                    *field_child
+                };
+                Some(PortTypeContext {
+                    decl,
+                    subst: SubstStack::new(),
+                })
+            }
             TransformTarget::FieldProject {
                 field_child: None, ..
             } => None,
@@ -2094,6 +2104,130 @@ fn resolve_lambda_parameter_types(dag: &mut Dag) -> bool {
             continue;
         }
         dag.set_port_type(rewrite.port, rewrite.ty);
+        changed = true;
+    }
+    changed
+}
+
+fn validate_user_defined_function_signatures(dag: &mut Dag) -> bool {
+    struct Failure {
+        port: PortId,
+        diagnostic: Diagnostic,
+    }
+
+    let user_defined_arrows: Vec<(DeclarationId, Vec<DeclarationId>, DeclarationId, crate::dag::NodeId)> =
+        dag.declarations()
+            .iter()
+            .filter_map(|decl| match &decl.connective {
+                TypeConnective::Arrow {
+                    inputs,
+                    output,
+                    body: ArrowBody::UserDefined(bind_id),
+                } => Some((decl.id, inputs.clone(), *output, *bind_id)),
+                _ => None,
+            })
+            .collect();
+
+    let mut failures = Vec::new();
+
+    'declarations: for (decl_id, inputs, output, bind_id) in user_defined_arrows {
+        let Some(bind) = dag.node(bind_id).as_bind() else {
+            continue;
+        };
+        if matches!(dag.port(bind.value).state(), PortState::Unresolved) {
+            continue;
+        }
+        if bind.params.len() < inputs.len() {
+            failures.push(Failure {
+                port: bind.value,
+                diagnostic: Diagnostic::ResolveError {
+                    name: format!(
+                        "function `{}` body does not satisfy its declared signature",
+                        dag.declaration(decl_id)
+                            .name
+                            .as_deref()
+                            .unwrap_or("<anonymous>")
+                    ),
+                    span: bind.span.clone(),
+                },
+            });
+            continue;
+        }
+
+        let start = bind.params.len() - inputs.len();
+        let mut arguments = Vec::new();
+        for (index, (port, expected_decl)) in bind.params[start..]
+            .iter()
+            .copied()
+            .zip(inputs.iter().copied())
+            .enumerate()
+        {
+            match dag.port(port).state() {
+                PortState::Uninferred | PortState::Unresolved => continue 'declarations,
+                PortState::Resolved(_) => {}
+            }
+            let Some(actual_ctx) = port_type_context(dag, port) else {
+                continue 'declarations;
+            };
+            if bind_expected_decl_to_actual_context(
+                dag,
+                expected_decl,
+                &actual_ctx,
+                &mut arguments,
+                0,
+            ) {
+                continue;
+            }
+
+            failures.push(Failure {
+                port: bind.value,
+                diagnostic: Diagnostic::ResolveError {
+                    name: format!(
+                        "function `{}` parameter {} does not satisfy its declared signature",
+                        dag.declaration(decl_id)
+                            .name
+                            .as_deref()
+                            .unwrap_or("<anonymous>"),
+                        index + 1
+                    ),
+                    span: bind.span.clone(),
+                },
+            });
+            continue 'declarations;
+        }
+
+        match dag.port(bind.value).state() {
+            PortState::Uninferred | PortState::Unresolved => continue,
+            PortState::Resolved(_) => {}
+        }
+        let Some(actual_ctx) = port_type_context(dag, bind.value) else {
+            continue;
+        };
+        if bind_expected_decl_to_actual_context(dag, output, &actual_ctx, &mut arguments, 0) {
+            continue;
+        }
+
+        failures.push(Failure {
+            port: bind.value,
+            diagnostic: Diagnostic::ResolveError {
+                name: format!(
+                    "function `{}` body does not satisfy its declared return type",
+                    dag.declaration(decl_id)
+                        .name
+                        .as_deref()
+                        .unwrap_or("<anonymous>")
+                ),
+                span: bind.span.clone(),
+            },
+        });
+    }
+
+    let mut changed = false;
+    for failure in failures {
+        if matches!(dag.port(failure.port).state(), PortState::Unresolved) {
+            continue;
+        }
+        dag.mark_unresolved(failure.port, failure.diagnostic);
         changed = true;
     }
     changed
