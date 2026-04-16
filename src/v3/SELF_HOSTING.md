@@ -112,6 +112,16 @@ L4 — Full self-hosting (M3)            [long-term]
    first — L2 and L2.5 are independent parallel work streams
    (L2 writes lenses in `dsl/lenses/`, L2.5 declares types in
    `std/` and `extdeps/`).
+   **Distinction from the decorative-modeling pattern.** ROADMAP
+   Track 17 warns that types with zero consumers are decorative.
+   L2.5 is NOT that pattern. Each L2.5 type has a **named
+   consumer**: the L3 stage implementation that reads it. The
+   four-step sequencing in §2.2 ties modeling to implementation
+   atomically — Step 1 (model review) exists BECAUSE Step 3
+   (implementation) will consume the types. If an L2.5 type has
+   no Stage N implementation that reads it, it doesn't belong in
+   L2.5; it's decorative. The test is: "which function body in
+   L3 reads this type?" If you can't name one, don't declare it.
 3. **L3 stage N cannot start until L2.5's model for stage N is
    reviewed.** Implementation fills in function bodies over
    already-declared types. The model IS the prerequisite (§2.2).
