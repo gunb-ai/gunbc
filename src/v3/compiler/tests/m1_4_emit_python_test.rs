@@ -103,7 +103,11 @@ fn compile_with_current_crate(src_path: &Path, bin_path: &Path) {
     assert!(compile.success(), "rustc failed on emitted lens source");
 }
 
-fn roundtrip_rust_lens_render(module_source: &str, program_source: &str, file_name: &str) -> String {
+fn roundtrip_rust_lens_render(
+    module_source: &str,
+    program_source: &str,
+    file_name: &str,
+) -> String {
     let wrapped = format!(
         "mod emitted {{ use v3_compiler::dag::*; use v3_compiler::diagnostics::*; {module_source} }} \
          fn render(dag: &v3_compiler::Dag, function: v3_compiler::dag::NodeId) -> String {{ \
@@ -323,7 +327,10 @@ fn serialize_behavior(node: &Behavior) -> String {
     match node {
         Behavior::Value(value) => format!("Behavior_Value({})", serialize_value_node(value)),
         Behavior::Transform(transform) => {
-            format!("Behavior_Transform({})", serialize_transform_node(transform))
+            format!(
+                "Behavior_Transform({})",
+                serialize_transform_node(transform)
+            )
         }
         Behavior::Branch(branch) => format!("Behavior_Branch({})", serialize_branch_node(branch)),
         Behavior::Loop(loop_node) => format!("Behavior_Loop({})", serialize_loop_node(loop_node)),
@@ -344,7 +351,11 @@ fn serialize_transform_node(node: &TransformNode) -> String {
     format!(
         "TransformNode(id={}, target=None, inputs=[{}], result_port={}, span={})",
         py_debug(&node.id),
-        node.inputs.iter().map(py_debug).collect::<Vec<_>>().join(", "),
+        node.inputs
+            .iter()
+            .map(py_debug)
+            .collect::<Vec<_>>()
+            .join(", "),
         py_debug(&node.result_port()),
         serialize_span(&node.span)
     )
@@ -396,7 +407,11 @@ fn serialize_bind_node(node: &BindNode) -> String {
         py_debug(&node.id),
         node.name,
         py_debug(&node.result_port()),
-        node.params.iter().map(py_debug).collect::<Vec<_>>().join(", "),
+        node.params
+            .iter()
+            .map(py_debug)
+            .collect::<Vec<_>>()
+            .join(", "),
         serialize_span(&node.span)
     )
 }

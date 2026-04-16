@@ -12,15 +12,22 @@ use crate::Dag;
 pub enum EmitPythonError {
     MissingMeta(&'static str),
     MissingSpec(&'static str),
-    MissingTypeRealization { target: DeclarationId },
-    MissingOperatorRealization { target: DeclarationId, op: DeclarationId },
+    MissingTypeRealization {
+        target: DeclarationId,
+    },
+    MissingOperatorRealization {
+        target: DeclarationId,
+        op: DeclarationId,
+    },
     MalformedSpec {
         declaration: DeclarationId,
         detail: &'static str,
     },
     UntypedPort(PortId),
     Unsupported(String),
-    UnresolvedBranchPattern { variant_name: String },
+    UnresolvedBranchPattern {
+        variant_name: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,7 +127,10 @@ impl PythonIndexes {
             } else if meta_tag == operator_meta {
                 let target = require_field_decl_ref(fields, "target", decl.id)?;
                 let op = require_field_decl_ref(fields, "op", decl.id)?;
-                operators.insert((target, op), require_field_string(fields, "carrier", decl.id)?);
+                operators.insert(
+                    (target, op),
+                    require_field_string(fields, "carrier", decl.id)?,
+                );
             } else if meta_tag == callable_meta {
                 let target = require_field_decl_ref(fields, "target", decl.id)?;
                 callables.insert(target, parse_callable_strategy(dag, fields, decl.id)?);
@@ -133,26 +143,92 @@ impl PythonIndexes {
         let target_fields = structural_fields_for_named(dag, "python_target")?;
 
         let syntax = PythonSyntax {
-            binary_op: require_field_string(expressions, "binary_op", named_decl(dag, "python_expressions")?)?,
-            field_access: require_field_string(expressions, "field_access", named_decl(dag, "python_expressions")?)?,
-            function_call: require_field_string(expressions, "function_call", named_decl(dag, "python_expressions")?)?,
-            closure: require_field_string(expressions, "closure", named_decl(dag, "python_expressions")?)?,
-            empty_list: require_field_string(collections, "empty_list", named_decl(dag, "python_collections")?)?,
-            list_literal: require_field_string(collections, "list_literal", named_decl(dag, "python_collections")?)?,
-            cons: require_field_string(collections, "cons", named_decl(dag, "python_collections")?)?,
-            concat: require_field_string(collections, "concat", named_decl(dag, "python_collections")?)?,
-            length: require_field_string(collections, "length", named_decl(dag, "python_collections")?)?,
-            is_empty: require_field_string(collections, "is_empty", named_decl(dag, "python_collections")?)?,
-            fold: require_field_string(collections, "fold", named_decl(dag, "python_collections")?)?,
+            binary_op: require_field_string(
+                expressions,
+                "binary_op",
+                named_decl(dag, "python_expressions")?,
+            )?,
+            field_access: require_field_string(
+                expressions,
+                "field_access",
+                named_decl(dag, "python_expressions")?,
+            )?,
+            function_call: require_field_string(
+                expressions,
+                "function_call",
+                named_decl(dag, "python_expressions")?,
+            )?,
+            closure: require_field_string(
+                expressions,
+                "closure",
+                named_decl(dag, "python_expressions")?,
+            )?,
+            empty_list: require_field_string(
+                collections,
+                "empty_list",
+                named_decl(dag, "python_collections")?,
+            )?,
+            list_literal: require_field_string(
+                collections,
+                "list_literal",
+                named_decl(dag, "python_collections")?,
+            )?,
+            cons: require_field_string(
+                collections,
+                "cons",
+                named_decl(dag, "python_collections")?,
+            )?,
+            concat: require_field_string(
+                collections,
+                "concat",
+                named_decl(dag, "python_collections")?,
+            )?,
+            length: require_field_string(
+                collections,
+                "length",
+                named_decl(dag, "python_collections")?,
+            )?,
+            is_empty: require_field_string(
+                collections,
+                "is_empty",
+                named_decl(dag, "python_collections")?,
+            )?,
+            fold: require_field_string(
+                collections,
+                "fold",
+                named_decl(dag, "python_collections")?,
+            )?,
             map: require_field_string(collections, "map", named_decl(dag, "python_collections")?)?,
-            filter: require_field_string(collections, "filter", named_decl(dag, "python_collections")?)?,
-            contains: require_field_string(collections, "contains", named_decl(dag, "python_collections")?)?,
-            optional: require_field_string(type_apps, "optional", named_decl(dag, "python_type_applications")?)?,
+            filter: require_field_string(
+                collections,
+                "filter",
+                named_decl(dag, "python_collections")?,
+            )?,
+            contains: require_field_string(
+                collections,
+                "contains",
+                named_decl(dag, "python_collections")?,
+            )?,
+            optional: require_field_string(
+                type_apps,
+                "optional",
+                named_decl(dag, "python_type_applications")?,
+            )?,
         };
 
         let target = PythonTarget {
-            memory: variant_name_for_field(target_fields, "memory", named_decl(dag, "python_target")?, dag)?,
-            scope: variant_name_for_field(target_fields, "scope", named_decl(dag, "python_target")?, dag)?,
+            memory: variant_name_for_field(
+                target_fields,
+                "memory",
+                named_decl(dag, "python_target")?,
+                dag,
+            )?,
+            scope: variant_name_for_field(
+                target_fields,
+                "scope",
+                named_decl(dag, "python_target")?,
+                dag,
+            )?,
         };
 
         Ok(Self {
@@ -187,15 +263,33 @@ fn emit_python_with_mode(dag: &Dag, mode: EmitPythonMode) -> Result<String, Emit
         .iter()
         .filter(|decl| !is_bootstrap_file(&decl.span.file))
         .filter(|decl| decl.name.is_some())
-        .filter(|decl| matches!(decl.connective, TypeConnective::Conj { .. } | TypeConnective::Disj { .. }))
+        .filter(|decl| {
+            matches!(
+                decl.connective,
+                TypeConnective::Conj { .. } | TypeConnective::Disj { .. }
+            )
+        })
         .collect();
     let function_decls: Vec<_> = dag
         .declarations()
         .iter()
         .filter(|decl| !is_bootstrap_file(&decl.span.file))
         .filter(|decl| decl.name.is_some())
-        .filter(|decl| !decl.name.as_deref().is_some_and(|name| name.starts_with("__anon_lambda_")))
-        .filter(|decl| matches!(decl.connective, TypeConnective::Arrow { body: ArrowBody::UserDefined(_), .. }))
+        .filter(|decl| {
+            !decl
+                .name
+                .as_deref()
+                .is_some_and(|name| name.starts_with("__anon_lambda_"))
+        })
+        .filter(|decl| {
+            matches!(
+                decl.connective,
+                TypeConnective::Arrow {
+                    body: ArrowBody::UserDefined(_),
+                    ..
+                }
+            )
+        })
         .collect();
     let top_level_binds: Vec<&BindNode> = dag
         .nodes()
@@ -258,7 +352,10 @@ fn emit_python_with_mode(dag: &Dag, mode: EmitPythonMode) -> Result<String, Emit
         let final_name = &top_level_binds.last().expect("guarded above").name;
         let mut body = assignments.join("\n");
         body.push_str(&format!("\nprint({final_name})"));
-        sections.push(format!("if __name__ == \"__main__\":\n{}", indent(&body, 1)));
+        sections.push(format!(
+            "if __name__ == \"__main__\":\n{}",
+            indent(&body, 1)
+        ));
     }
 
     Ok(sections.join("\n\n"))
@@ -330,14 +427,12 @@ impl<'a> Ctx<'a> {
         }
         let operand_type = primitive_type_id_for_port(self.dag, t.inputs[0])?;
         let op_decl = algebra_field_for_operator(self.dag, operand_type, op)?;
-        let carrier = self
-            .indexes
-            .operators
-            .get(&(operand_type, op_decl))
-            .ok_or(EmitPythonError::MissingOperatorRealization {
+        let carrier = self.indexes.operators.get(&(operand_type, op_decl)).ok_or(
+            EmitPythonError::MissingOperatorRealization {
                 target: operand_type,
                 op: op_decl,
-            })?;
+            },
+        )?;
         let lhs = self.render_port(t.inputs[0], locals)?;
         let rhs = self.render_port(t.inputs[1], locals)?;
         Ok(render_named_template(
@@ -479,7 +574,9 @@ impl<'a> Ctx<'a> {
             .iter()
             .find(|variant| variant.ty == variant_id)
             .ok_or_else(|| {
-                EmitPythonError::Unsupported("match variant missing from parent disjunction".to_string())
+                EmitPythonError::Unsupported(
+                    "match variant missing from parent disjunction".to_string(),
+                )
             })?;
         let TypeConnective::Conj { children } = &self.dag.declaration(variant.ty).connective else {
             return Ok("__match".to_string());
@@ -520,7 +617,8 @@ impl<'a> Ctx<'a> {
     ) -> Result<String, EmitPythonError> {
         let (template, arguments) = callable_template(target, self.dag);
         if let Some(strategy) = self.indexes.callables.get(&template) {
-            return self.render_realized_callable(template, *strategy, &arguments, &t.inputs, locals);
+            return self
+                .render_realized_callable(template, *strategy, &arguments, &t.inputs, locals);
         }
         self.render_general_callable(template, &t.inputs, locals)
     }
@@ -545,20 +643,32 @@ impl<'a> Ctx<'a> {
             PythonCallableStrategy::Cons => {
                 let head = self.render_port(inputs[0], locals)?;
                 let tail = self.render_port(inputs[1], locals)?;
-                Ok(render_named_template(&self.indexes.syntax.cons, &[("head", &head), ("tail", &tail)]))
+                Ok(render_named_template(
+                    &self.indexes.syntax.cons,
+                    &[("head", &head), ("tail", &tail)],
+                ))
             }
             PythonCallableStrategy::Concat => {
                 let left = self.render_port(inputs[0], locals)?;
                 let right = self.render_port(inputs[1], locals)?;
-                Ok(render_named_template(&self.indexes.syntax.concat, &[("left", &left), ("right", &right)]))
+                Ok(render_named_template(
+                    &self.indexes.syntax.concat,
+                    &[("left", &left), ("right", &right)],
+                ))
             }
             PythonCallableStrategy::Length => {
                 let recv = self.render_port(inputs[0], locals)?;
-                Ok(render_named_template(&self.indexes.syntax.length, &[("recv", &recv)]))
+                Ok(render_named_template(
+                    &self.indexes.syntax.length,
+                    &[("recv", &recv)],
+                ))
             }
             PythonCallableStrategy::IsEmpty => {
                 let recv = self.render_port(inputs[0], locals)?;
-                Ok(render_named_template(&self.indexes.syntax.is_empty, &[("recv", &recv)]))
+                Ok(render_named_template(
+                    &self.indexes.syntax.is_empty,
+                    &[("recv", &recv)],
+                ))
             }
             PythonCallableStrategy::Fold => {
                 let fn_decl = bound_callable_argument(self.dag, template, arguments, 2)?;
@@ -579,7 +689,8 @@ impl<'a> Ctx<'a> {
             PythonCallableStrategy::Map => {
                 let fn_decl = bound_callable_argument(self.dag, template, arguments, 1)?;
                 let item = "__map_item".to_string();
-                let body = self.render_callable_body(fn_decl, &[(item.clone(), item.clone())], locals)?;
+                let body =
+                    self.render_callable_body(fn_decl, &[(item.clone(), item.clone())], locals)?;
                 let recv = self.render_port(inputs[0], locals)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.map,
@@ -625,17 +736,12 @@ impl<'a> Ctx<'a> {
         if let Some(rendered) = self.render_record_constructor(template, inputs, locals)? {
             return Ok(rendered);
         }
-        let func = self
-            .dag
-            .declaration(template)
-            .name
-            .clone()
-            .ok_or_else(|| {
-                EmitPythonError::Unsupported(
-                    "callable target is anonymous and cannot be rendered as a direct Python call"
-                        .to_string(),
-                )
-            })?;
+        let func = self.dag.declaration(template).name.clone().ok_or_else(|| {
+            EmitPythonError::Unsupported(
+                "callable target is anonymous and cannot be rendered as a direct Python call"
+                    .to_string(),
+            )
+        })?;
         let args = inputs
             .iter()
             .map(|port| self.render_port(*port, locals))
@@ -661,7 +767,11 @@ impl<'a> Ctx<'a> {
         };
         let mut fields = Vec::new();
         for (field, input) in children.iter().zip(inputs.iter()) {
-            fields.push(format!("{}={}", field.label, self.render_port(*input, locals)?));
+            fields.push(format!(
+                "{}={}",
+                field.label,
+                self.render_port(*input, locals)?
+            ));
         }
         Ok(Some(format!("{type_name}({})", fields.join(", "))))
     }
@@ -688,7 +798,11 @@ impl<'a> Ctx<'a> {
         }
         let mut fields = Vec::new();
         for (field, input) in children.iter().zip(inputs.iter()) {
-            fields.push(format!("{}={}", field.label, self.render_port(*input, locals)?));
+            fields.push(format!(
+                "{}={}",
+                field.label,
+                self.render_port(*input, locals)?
+            ));
         }
         Ok(Some(format!("{runtime_name}({})", fields.join(", "))))
     }
@@ -699,7 +813,9 @@ impl<'a> Ctx<'a> {
         param_bindings: &[(String, String)],
         outer_locals: &RenderLocals,
     ) -> Result<String, EmitPythonError> {
-        let TypeConnective::Arrow { inputs, body, .. } = &self.dag.declaration(callable_decl).connective else {
+        let TypeConnective::Arrow { inputs, body, .. } =
+            &self.dag.declaration(callable_decl).connective
+        else {
             return Err(EmitPythonError::Unsupported(
                 "callable template binding did not resolve to an Arrow".to_string(),
             ));
@@ -722,7 +838,9 @@ impl<'a> Ctx<'a> {
         let capture_count = bind.params.len() - inputs.len();
         let mut locals = RenderLocals::default();
         for capture in bind.params.iter().copied().take(capture_count) {
-            locals.names.insert(capture, self.render_port(capture, outer_locals)?);
+            locals
+                .names
+                .insert(capture, self.render_port(capture, outer_locals)?);
         }
         for (port, (_, name)) in bind
             .params
@@ -759,9 +877,16 @@ impl<'a> Ctx<'a> {
         declaration: &crate::dag::Declaration,
     ) -> Result<String, EmitPythonError> {
         let name = declaration.name.clone().ok_or_else(|| {
-            EmitPythonError::Unsupported("anonymous arrows cannot be emitted as Python functions".to_string())
+            EmitPythonError::Unsupported(
+                "anonymous arrows cannot be emitted as Python functions".to_string(),
+            )
         })?;
-        let TypeConnective::Arrow { inputs, output, body } = &declaration.connective else {
+        let TypeConnective::Arrow {
+            inputs,
+            output,
+            body,
+        } = &declaration.connective
+        else {
             return Err(EmitPythonError::Unsupported(
                 "render_function_declaration expected Arrow".to_string(),
             ));
@@ -807,7 +932,9 @@ impl<'a> Ctx<'a> {
         declaration: &crate::dag::Declaration,
     ) -> Result<String, EmitPythonError> {
         let name = declaration.name.clone().ok_or_else(|| {
-            EmitPythonError::Unsupported("anonymous type declarations cannot be emitted".to_string())
+            EmitPythonError::Unsupported(
+                "anonymous type declarations cannot be emitted".to_string(),
+            )
         })?;
         match &declaration.connective {
             TypeConnective::Conj { children } => {
@@ -850,7 +977,10 @@ impl<'a> Ctx<'a> {
             )));
         };
         let runtime_name = python_variant_class_name(enum_name, &variant.label);
-        let mut lines = vec!["@dataclass".to_string(), format!("class {runtime_name}({enum_name}):")];
+        let mut lines = vec![
+            "@dataclass".to_string(),
+            format!("class {runtime_name}({enum_name}):"),
+        ];
         if children.is_empty() {
             lines.push("    pass".to_string());
             return Ok(lines.join("\n"));
@@ -899,7 +1029,10 @@ impl<'a> Ctx<'a> {
             return Ok(name.clone());
         }
         match &decl.connective {
-            TypeConnective::Instantiation { template, arguments } => {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
                 let carrier = self
                     .indexes
                     .type_instantiations
@@ -909,7 +1042,10 @@ impl<'a> Ctx<'a> {
                     [element] => {
                         let element_name =
                             self.python_type_name_for_decl_at_depth(element.value, depth + 1)?;
-                        Ok(render_named_template(carrier, &[("element", &element_name)]))
+                        Ok(render_named_template(
+                            carrier,
+                            &[("element", &element_name)],
+                        ))
                     }
                     [key, value] => {
                         let key_name =
@@ -939,7 +1075,9 @@ impl<'a> Ctx<'a> {
             TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
                 self.python_type_name_for_decl_at_depth(*next, depth + 1)
             }
-            _ => Err(EmitPythonError::MissingTypeRealization { target: declaration }),
+            _ => Err(EmitPythonError::MissingTypeRealization {
+                target: declaration,
+            }),
         }
     }
 
@@ -948,11 +1086,9 @@ impl<'a> Ctx<'a> {
         let Some(bool_shape) = self.dag.bool_shape() else {
             return Ok(false);
         };
-        Ok(
-            walk_to_disj(self.dag, scrutinee_type_id)
-                .zip(walk_to_disj(self.dag, bool_shape.declaration))
-                .is_some_and(|(left, right)| left == right),
-        )
+        Ok(walk_to_disj(self.dag, scrutinee_type_id)
+            .zip(walk_to_disj(self.dag, bool_shape.declaration))
+            .is_some_and(|(left, right)| left == right))
     }
 
     fn split_bool_paths<'p>(
@@ -961,7 +1097,9 @@ impl<'a> Ctx<'a> {
     ) -> Result<(&'p Path, &'p Path), EmitPythonError> {
         let scrutinee_type_id = primitive_type_id_for_port(self.dag, branch.input)?;
         let disj_id = walk_to_disj(self.dag, scrutinee_type_id).ok_or_else(|| {
-            EmitPythonError::Unsupported("bool branch scrutinee does not walk to a Disj".to_string())
+            EmitPythonError::Unsupported(
+                "bool branch scrutinee does not walk to a Disj".to_string(),
+            )
         })?;
         let TypeConnective::Disj { variants } = &self.dag.declaration(disj_id).connective else {
             unreachable!("walk_to_disj returned non-Disj")
@@ -973,12 +1111,10 @@ impl<'a> Ctx<'a> {
         }
         let true_variant = variants[0].ty;
         let false_variant = variants[1].ty;
-        let then_path = find_resolved_branch_path(branch, true_variant).ok_or_else(|| {
-            EmitPythonError::Unsupported("missing True branch arm".to_string())
-        })?;
-        let else_path = find_resolved_branch_path(branch, false_variant).ok_or_else(|| {
-            EmitPythonError::Unsupported("missing False branch arm".to_string())
-        })?;
+        let then_path = find_resolved_branch_path(branch, true_variant)
+            .ok_or_else(|| EmitPythonError::Unsupported("missing True branch arm".to_string()))?;
+        let else_path = find_resolved_branch_path(branch, false_variant)
+            .ok_or_else(|| EmitPythonError::Unsupported("missing False branch arm".to_string()))?;
         Ok((then_path, else_path))
     }
 }
@@ -1289,7 +1425,9 @@ fn variant_name_for_decl(
         .find(|variant| variant.ty == variant_id)
         .map(|variant| variant.label.clone())
         .ok_or_else(|| {
-            EmitPythonError::Unsupported("variant id not found under parent disjunction".to_string())
+            EmitPythonError::Unsupported(
+                "variant id not found under parent disjunction".to_string(),
+            )
         })
 }
 
@@ -1326,7 +1464,10 @@ fn python_variant_class_name(enum_name: &str, variant_name: &str) -> String {
 
 fn callable_template(target: DeclarationId, dag: &Dag) -> (DeclarationId, Vec<TemplateArgument>) {
     match &dag.declaration(target).connective {
-        TypeConnective::Instantiation { template, arguments } => (*template, arguments.clone()),
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => (*template, arguments.clone()),
         _ => (target, Vec::new()),
     }
 }
