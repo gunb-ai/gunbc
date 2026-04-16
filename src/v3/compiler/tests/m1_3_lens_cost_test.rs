@@ -19,6 +19,10 @@ fn find_bind_value(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag:
         .value
 }
 
+fn bind_cost(dag: &v3_compiler::dag::Dag, name: &str) -> usize {
+    CostLens::new(dag).cost_of(find_bind_value(dag, name))
+}
+
 #[test]
 fn cost_lens_literal_value_is_zero() {
     // `let x = 1`
@@ -97,4 +101,161 @@ fn cost_lens_bind_passes_through_to_value() {
     let dag = compile_to_dag("let y = 1 + 2", "test.v3").expect("compiles");
     let lens = CostLens::new(&dag);
     assert_eq!(lens.cost_of(find_bind_value(&dag, "y")), 1);
+}
+
+#[test]
+fn kf_1_recursive_function_has_nonzero_cost() {
+    let literal = compile_to_dag("fn constant(n: Int) -> Int = 0", "kf_1_constant.v3")
+        .expect("literal-bodied function compiles");
+    let recursive = compile_to_dag(
+        "\
+fn countdown(n: Int) -> Int =
+  if n == 0 then 0 else countdown(n - 1)
+",
+        "kf_1_recursive.v3",
+    )
+    .expect("recursive function compiles");
+
+    let literal_cost = bind_cost(&literal, "constant");
+    let recursive_cost = bind_cost(&recursive, "countdown");
+
+    assert!(
+        recursive_cost > literal_cost,
+        "recursive function should cost more structurally than a literal body: literal={literal_cost}, recursive={recursive_cost}"
+    );
+}
+
+#[test]
+fn kf_1_branch_cost_is_max_not_sum() {
+    let baseline = compile_to_dag(
+        "let r: Int = if 1 > 0 then 10 + 20 + 30 + 40 else 50 + 60",
+        "kf_1_branch_max_baseline.v3",
+    )
+    .expect("baseline branch compiles");
+    let larger_non_max = compile_to_dag(
+        "let r: Int = if 1 > 0 then 10 + 20 + 30 + 40 else 50 + 60 + 70",
+        "kf_1_branch_non_max.v3",
+    )
+    .expect("larger non-max branch compiles");
+    let larger_max = compile_to_dag(
+        "let r: Int = if 1 > 0 then 10 + 20 + 30 + 40 + 50 else 60 + 70",
+        "kf_1_branch_max.v3",
+    )
+    .expect("larger max branch compiles");
+
+    let baseline_cost = bind_cost(&baseline, "r");
+    let larger_non_max_cost = bind_cost(&larger_non_max, "r");
+    let larger_max_cost = bind_cost(&larger_max, "r");
+
+    assert_eq!(
+        baseline_cost, larger_non_max_cost,
+        "growing only the non-max path should leave branch cost unchanged: baseline={baseline_cost}, larger_non_max={larger_non_max_cost}"
+    );
+    assert!(
+        larger_max_cost > baseline_cost,
+        "growing the max path should increase branch cost: baseline={baseline_cost}, larger_max={larger_max_cost}"
+    );
+}
+
+#[test]
+fn kf_1_nested_fold_costs_more_than_flat_fold() {
+    let flat = compile_to_dag(
+        "let total: Int = fold(singleton(1), 0, |acc, x| acc + x)",
+        "kf_1_flat_fold.v3",
+    )
+    .expect("flat fold compiles");
+    let nested = compile_to_dag(
+        "let total: Int = fold(map(singleton(1), |x| x + 1), 0, |acc, x| acc + x)",
+        "kf_1_nested_fold.v3",
+    )
+    .expect("nested fold compiles");
+
+    let flat_cost = bind_cost(&flat, "total");
+    let nested_cost = bind_cost(&nested, "total");
+
+    assert!(
+        nested_cost > flat_cost,
+        "nested fold should cost more structurally than flat fold: flat={flat_cost}, nested={nested_cost}"
+    );
+}
+
+#[test]
+fn kf_1_unused_branch_does_not_inflate_cost() {
+    let baseline = compile_to_dag(
+        "let r: Int = if true then 1 + 2 + 3 + 4 else 5 + 6",
+        "kf_1_unused_branch_baseline.v3",
+    )
+    .expect("baseline branch compiles");
+    let more_dead_work = compile_to_dag(
+        "let r: Int = if true then 1 + 2 + 3 + 4 else 5 + 6 + 7 + 8",
+        "kf_1_unused_branch_dead_work.v3",
+    )
+    .expect("larger dead branch compiles");
+    let more_live_work = compile_to_dag(
+        "let r: Int = if true then 1 + 2 + 3 + 4 + 5 else 6 + 7",
+        "kf_1_unused_branch_live_work.v3",
+    )
+    .expect("larger live branch compiles");
+
+    let baseline_cost = bind_cost(&baseline, "r");
+    let more_dead_work_cost = bind_cost(&more_dead_work, "r");
+    let more_live_work_cost = bind_cost(&more_live_work, "r");
+
+    assert_eq!(
+        baseline_cost, more_dead_work_cost,
+        "growing only the unused branch should not change structural cost: baseline={baseline_cost}, more_dead_work={more_dead_work_cost}"
+    );
+    assert!(
+        more_live_work_cost > baseline_cost,
+        "growing the taken/max branch should increase structural cost: baseline={baseline_cost}, more_live_work={more_live_work_cost}"
+    );
+}
+
+#[test]
+#[ignore = "blocked on lambda-aware higher-order cost attribution in CostLens"]
+fn kf_1_lambda_body_cost_contributes_to_fold() {
+    let simple = compile_to_dag(
+        "let total: Int = fold(singleton(1), 0, |acc, x| acc + x)",
+        "kf_1_fold_lambda_simple.v3",
+    )
+    .expect("simple fold compiles");
+    let richer = compile_to_dag(
+        "let total: Int = fold(singleton(1), 0, |acc, x| acc + x + x)",
+        "kf_1_fold_lambda_richer.v3",
+    )
+    .expect("richer fold compiles");
+
+    let simple_cost = bind_cost(&simple, "total");
+    let richer_cost = bind_cost(&richer, "total");
+
+    assert!(
+        richer_cost > simple_cost,
+        "a larger lambda body should increase enclosing fold cost: simple={simple_cost}, richer={richer_cost}"
+    );
+}
+
+#[test]
+fn kf_1_list_operation_cost_ordering() {
+    let singleton =
+        compile_to_dag("let xs = singleton(1)", "kf_1_singleton.v3").expect("singleton compiles");
+    let cons =
+        compile_to_dag("let xs = cons(1, singleton(2))", "kf_1_cons.v3").expect("cons compiles");
+    let fold = compile_to_dag(
+        "let total: Int = fold(cons(1, singleton(2)), 0, |acc, x| acc + x)",
+        "kf_1_fold.v3",
+    )
+    .expect("fold compiles");
+
+    let singleton_cost = bind_cost(&singleton, "xs");
+    let cons_cost = bind_cost(&cons, "xs");
+    let fold_cost = bind_cost(&fold, "total");
+
+    assert!(
+        cons_cost > singleton_cost,
+        "cons should cost more structurally than singleton: singleton={singleton_cost}, cons={cons_cost}"
+    );
+    assert!(
+        fold_cost > cons_cost,
+        "fold should cost more structurally than cons: cons={cons_cost}, fold={fold_cost}"
+    );
 }
