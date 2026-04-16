@@ -1,3 +1,39 @@
+// lenses.complexity — structural cost lens for the v3 DAG.
+//
+// 🟡 Scaffold — fuel counter on graph-plus-list descent. The
+// recursion in `eval_cost` carries `remaining: Int` because
+// `.dag`'s termination checker cannot prove that a walk along
+// `produced_by` edges terminates without an explicit measure, and
+// v3 does not yet support mutual recursion so the list-descent
+// helpers cannot live in separate functions that call back into
+// graph-descent.
+//
+// **Equivalent to the original Rust lens** at
+// `src/v3/compiler/src/lens_cost.rs` on commit 1247f4b1d, which
+// walked the DAG recursively without fuel (Rust has no termination
+// checker). That reference implementation is the oracle this lens
+// agrees with.
+//
+// **Dissolution trigger.** Fuel disappears when any of:
+//   (a) `.dag` gains mutual recursion support; then graph-descent
+//       and list-descent live in separate functions that each
+//       descend structurally on their own first argument.
+//   (b) `.dag`'s termination checker accepts DAG-walk termination
+//       via substrate invariants (the DAG is acyclic and finite).
+//   (c) The substrate exposes a `fold_backward(d, port, f)` or
+//       forward-fold-by-topological-order primitive that makes the
+//       walk structural by construction.
+//
+// **Fuel budget.** Seed = 2 × port count. The walk decrements fuel
+// on every recursive call (both graph descent via `produced_by` and
+// list descent for Transform inputs / Branch paths). Since the
+// substrate graph is acyclic, each port is visited at most once
+// along any single chain, and each port contributes at most one
+// list-descent step per consumer. Two decrements per port is a
+// safe upper bound that accommodates the double-decrement without
+// truncating real computations. The tighter single-decrement
+// version would require mutual recursion.
+
 module lenses.complexity
 
 import std.list { List, empty, fold }
@@ -18,7 +54,9 @@ type CostMode
 
 fn cost_of(d: Dag, port_id: PortId) -> Int =
   eval_cost(
-    fold(d.ports, 0, |acc, _| acc + 1),
+    // Seed: 2 × port count. Covers graph descent plus list descent
+    // steps without premature termination. See file header for why.
+    fold(d.ports, 0, |acc, _| acc + 2),
     d,
     Port,
     port_id,

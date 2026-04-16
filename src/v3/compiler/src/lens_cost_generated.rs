@@ -21,7 +21,7 @@ pub fn cost_of(p0: &Dag, p1: &PortId) -> i64 {
     eval_cost(
         &(((p0).ports())
             .iter()
-            .fold(0, |__fold_acc, __fold_item| (__fold_acc + 1))),
+            .fold(0, |__fold_acc, __fold_item| (__fold_acc + 2))),
         p0,
         &(CostMode::Port),
         p1,
