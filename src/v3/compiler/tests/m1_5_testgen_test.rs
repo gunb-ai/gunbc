@@ -88,7 +88,7 @@ fn variant_value<'a>(dag: &Dag, value: &'a FieldValue) -> (String, &'a [FieldVal
     (variant_label(dag, *constructor), payload.as_slice())
 }
 
-fn record_value<'a>(value: &'a FieldValue) -> &'a [(String, FieldValue)] {
+fn record_value(value: &FieldValue) -> &[(String, FieldValue)] {
     let FieldValue::Record(fields) = value else {
         panic!("expected record field value, got {value:?}");
     };
@@ -283,11 +283,10 @@ fn port_state_matches(
         payload.is_empty(),
         "PortStateExpectation variants should be payload-free, got {payload:?}"
     );
-    match (label.as_str(), actual) {
-        ("Resolved", PortState::Resolved(_)) => true,
-        ("Unresolved", PortState::Unresolved) => true,
-        _ => false,
-    }
+    matches!(
+        (label.as_str(), actual),
+        ("Resolved", PortState::Resolved(_)) | ("Unresolved", PortState::Unresolved)
+    )
 }
 
 fn compare_cost(expectation_dag: &Dag, comparator: &FieldValue, actual: i64, bound: i64) -> bool {
