@@ -20,6 +20,10 @@ fn compile_any(src: &str, file: &str) -> Dag {
     }
 }
 
+// Tests are allowed to name declarations directly so the expected
+// shapes remain legible. This is test-only infrastructure, not a
+// precedent for emitter dispatch, which is separately gated against
+// name-string lookups.
 fn primitive_shape(dag: &Dag, name: &str) -> TypeShape {
     TypeShape::new(
         dag.declaration_by_name(name)
@@ -108,6 +112,20 @@ fn read(x: AB) -> Int = match x { A => 1 }
 }
 
 #[test]
+fn t1_3_exhaustive_match_compiles_cleanly() {
+    let src = "\
+type AB = A | B
+fn read(x: AB) -> Int = match x { A => 1, B => 2 }
+";
+    let dag = compile_to_dag(src, "t1_3_exhaustive.v3").expect("exhaustive match compiles");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "no diagnostics expected for exhaustive match, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn t1_4_type_mismatch_produces_a_typemismatch_diagnostic() {
     let dag = compile_any("let x: Bool = 1", "t1_4_type_mismatch.v3");
     let bind = bind_named(&dag, "x");
@@ -132,6 +150,21 @@ fn t1_4_type_mismatch_produces_a_typemismatch_diagnostic() {
 }
 
 #[test]
+fn t1_4_type_mismatch_does_not_cascade_fabricated_diagnostics() {
+    let dag = compile_any("let x: Bool = 1\nlet y: Int = 2", "t1_4_no_cascade.v3");
+    let bind = bind_named(&dag, "y");
+    assert!(
+        matches!(dag.port(bind.value).state(), PortState::Resolved(_)),
+        "well-typed binding after an unrelated type error should still resolve; got {:?}",
+        dag.port(bind.value).state()
+    );
+    assert!(
+        !dag.diagnostics().contains(bind.value),
+        "well-typed downstream binding should not receive a fabricated diagnostic"
+    );
+}
+
+#[test]
 fn t1_5_numeric_descent_is_accepted() {
     let src = "\
 fn countdown(n: Int) -> Int =
@@ -151,6 +184,19 @@ fn countdown(n: Int) -> Int =
         ),
         "descent-provable recursion should lower to Loop"
     );
+}
+
+#[test]
+#[ignore = "blocked on structural List<T> carrier / canonicalization work in swift-ram-158"]
+fn t1_5_structural_list_descent_is_accepted() {
+    // Enabled once structural list descent lands on main. Keeping
+    // the exact fixture here makes the validation-plan blocker
+    // explicit and gives us a ready-to-flip regression gate.
+    let src = "\
+fn count(list: List<Int>) -> Int =
+  match list { Empty => 0, Cons(p) => 1 + count(p.tail) }
+";
+    compile_to_dag(src, "t1_5_list_descent.v3").expect("list descent compiles");
 }
 
 #[test]

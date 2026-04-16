@@ -1096,8 +1096,7 @@ mod tests {
     use crate::diagnostics::SourceSpan;
     use crate::compile_to_dag;
 
-    #[test]
-    fn render_field_project_emits_parent_dot_field() {
+    fn render_field_project(label: &str) -> String {
         let mut dag = Dag::new();
         let parent_port = dag.alloc_port(None);
         let node_id = dag.alloc_node_id();
@@ -1105,7 +1104,7 @@ mod tests {
         dag.push_node(Behavior::Transform(TransformNode {
             id: node_id,
             target: TransformTarget::FieldProject {
-                field_label: "value".to_string(),
+                field_label: label.to_string(),
                 field_child: dag.int_shape().map(|ty| ty.declaration),
             },
             inputs: vec![parent_port],
@@ -1124,13 +1123,35 @@ mod tests {
             bound_names: &bound_names,
         };
 
-        let rendered = match dag.node(node_id) {
+        match dag.node(node_id) {
             Behavior::Transform(t) => ctx
                 .render_transform(t, None)
                 .expect("field project renders"),
             other => panic!("expected Transform node, got {other:?}"),
-        };
-        assert_eq!(rendered, "parent.value");
+        }
+    }
+
+    #[test]
+    fn render_field_project_emits_parent_dot_field() {
+        assert_eq!(render_field_project("value"), "parent.value");
+    }
+
+    #[test]
+    fn il_1_field_rename_propagates_through_emit_render() {
+        // Current emit_rust surface does not yet support a clean
+        // source-to-emitter record-rename roundtrip, so pin the
+        // emitter fact directly: the rendered field label must come
+        // from the lowered FieldProject carrier, not a hardcoded
+        // Rust-side name.
+        let out_alpha = render_field_project("alpha");
+        let out_beta = render_field_project("beta");
+
+        assert_eq!(out_alpha, "parent.alpha");
+        assert_eq!(out_beta, "parent.beta");
+        assert!(
+            !out_beta.contains("alpha"),
+            "renamed field should fully propagate through emit render: {out_beta}"
+        );
     }
 
     #[test]
