@@ -1547,7 +1547,7 @@ fn lower_record_to_structural(
             .iter()
             .find(|f| f.name == *type_label)
             .expect("checked above");
-        let field_value = match lower_structural_field_value(
+        let field_value = lower_structural_field_value(
             data_name,
             type_label,
             &record_field.value,
@@ -1556,10 +1556,7 @@ fn lower_record_to_structural(
             dag,
             category,
             &record_field.span,
-        ) {
-            Some(value) => value,
-            None => return None,
-        };
+        )?;
         structural_fields.push((type_label.clone(), field_value));
     }
     Some(crate::dag::ValueBody::Structural {
@@ -1567,6 +1564,7 @@ fn lower_record_to_structural(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn lower_structural_field_value(
     data_name: &str,
     field_label: &str,

@@ -3,7 +3,13 @@ use crate::diagnostics::SourceSpan;
 use crate::Dag;
 
 mod generated {
-    #![allow(dead_code, unused_imports, unused_parens, unused_variables)]
+    #![allow(
+        dead_code,
+        unused_imports,
+        unused_parens,
+        unused_variables,
+        clippy::clone_on_copy
+    )]
 
     use crate::dag::*;
     use crate::diagnostics::*;

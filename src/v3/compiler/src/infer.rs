@@ -1244,22 +1244,25 @@ fn callable_signature_context(
     callable: DeclarationId,
 ) -> Option<CallableSignatureContext> {
     let decl = dag.declaration(callable);
-    if let TypeConnective::Arrow { inputs, body, .. } = &decl.connective {
-        if let ArrowBody::UserDefined(bind_id) = body {
-            let bind = dag.node(*bind_id).as_bind()?;
-            if bind.params.len() < inputs.len() {
-                return None;
-            }
-            let start = bind.params.len() - inputs.len();
-            let mut input_contexts = Vec::with_capacity(inputs.len());
-            for port in &bind.params[start..] {
-                input_contexts.push(port_type_context(dag, *port)?);
-            }
-            return Some(CallableSignatureContext {
-                inputs: input_contexts,
-                output: port_type_context(dag, bind.value)?,
-            });
+    if let TypeConnective::Arrow {
+        inputs,
+        body: ArrowBody::UserDefined(bind_id),
+        ..
+    } = &decl.connective
+    {
+        let bind = dag.node(*bind_id).as_bind()?;
+        if bind.params.len() < inputs.len() {
+            return None;
         }
+        let start = bind.params.len() - inputs.len();
+        let mut input_contexts = Vec::with_capacity(inputs.len());
+        for port in &bind.params[start..] {
+            input_contexts.push(port_type_context(dag, *port)?);
+        }
+        return Some(CallableSignatureContext {
+            inputs: input_contexts,
+            output: port_type_context(dag, bind.value)?,
+        });
     }
 
     let (template, arguments) = callable_template_arguments(dag, callable);
@@ -1360,16 +1363,16 @@ fn bind_expected_decl_to_actual_context(
             else {
                 return false;
             };
-            return push_template_argument_binding(arguments, expected, value);
+            push_template_argument_binding(arguments, expected, value)
         }
         TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
-            return bind_expected_decl_to_actual_context(
+            bind_expected_decl_to_actual_context(
                 dag,
                 *next,
                 actual,
                 arguments,
                 depth + 1,
-            );
+            )
         }
         TypeConnective::Instantiation {
             template,
@@ -2112,39 +2115,37 @@ fn resolve_payload_binding_type(
 ) -> Result<PayloadBindingResolution, Diagnostic> {
     match &dag.declaration(variant_decl_id).connective {
         TypeConnective::Conj { children } if children.is_empty() => {
-            return Err(Diagnostic::ResolveError {
+            Err(Diagnostic::ResolveError {
                 name: format!(
                     "variant `{variant_name}` does not carry a payload and cannot bind `{binding_name}`"
                 ),
                 span: span.clone(),
-            });
+            })
         }
         TypeConnective::Conj { children }
             if children.len() == 1 && children[0].label.as_str() == "_0" =>
         {
             let payload_type_decl = children[0].ty;
-            return walk_to_type_shape(dag, payload_type_decl, subst, 0)
+            walk_to_type_shape(dag, payload_type_decl, subst, 0)
                 .map(PayloadBindingResolution::Direct)
                 .ok_or_else(|| Diagnostic::ResolveError {
                     name: format!(
                         "variant `{variant_name}` payload does not resolve to a port type for binding `{binding_name}`"
                     ),
                     span: span.clone(),
-                });
+                })
         }
-        TypeConnective::Conj { .. } => {
-            return Ok(PayloadBindingResolution::SpecializedRecord {
-                variant_decl_id,
-                subst: subst.clone(),
-            });
-        }
+        TypeConnective::Conj { .. } => Ok(PayloadBindingResolution::SpecializedRecord {
+            variant_decl_id,
+            subst: subst.clone(),
+        }),
         _ => {
-            return Err(Diagnostic::ResolveError {
+            Err(Diagnostic::ResolveError {
                 name: format!(
                     "variant `{variant_name}` does not lower to a payload Conj and cannot bind `{binding_name}`"
                 ),
                 span: span.clone(),
-            });
+            })
         }
     }
 }

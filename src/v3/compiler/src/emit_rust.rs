@@ -249,6 +249,7 @@ struct TypeInstantiationBinding {
     carrier: String,
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RustCallableStrategyBinding {
     ListEmpty,
@@ -672,10 +673,10 @@ impl RustLanguageSyntax {
     }
 }
 
-fn structural_fields_for_decl<'a>(
-    dag: &'a Dag,
+fn structural_fields_for_decl(
+    dag: &Dag,
     declaration: DeclarationId,
-) -> Result<&'a [(String, FieldValue)], EmitError> {
+) -> Result<&[(String, FieldValue)], EmitError> {
     let Some(ValueBody::Structural { fields }) = &dag.declaration(declaration).value_body else {
         return Err(EmitError::MalformedTargetSyntax {
             declaration,
