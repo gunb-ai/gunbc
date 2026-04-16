@@ -334,6 +334,28 @@ multi-target emission, §8.11 ratchet) shifts shape:
 
 ## M3 — Self-hosting (deferred)
 
+Full design: [`src/v3/SELF_HOSTING.md`](SELF_HOSTING.md). Key points:
+
+- **The pipeline is a `.dag` composition** (§2.1). Stages are typed
+  functions with declared input/output types, composed as `let`
+  bindings with explicit dependencies. The compiler reads its own
+  pipeline structure the same way it reads any user program's
+  dependency graph. Stage contracts, per-stage fixed-point, and
+  self-analysis via lenses all fall out of this shape.
+- **Dependency order:** L1 (reflection, prereqs shipping) → L2
+  (lens migrations M1-M4) → L3 (pipeline stages in `.dag`:
+  emit → lower → infer → parse) → L4 (full self-hosting).
+- **Infer is the research gate.** Every other stage migration is
+  engineering with known patterns. Inference-as-data has no
+  production precedent. The I0-I8 experiment sequence
+  (`docs/inference-as-data-experiments.md`) is the empirical
+  gate. I0 passed (no decidability blocker); the write-surface
+  decision (§5 of SELF_HOSTING.md) is the next open question.
+- **Schema migration as structural operation** (§10). Schema
+  changes become a typed pipeline: structural diff → patch
+  generation → bridge build → bridge compile → fixed-point
+  verification. Zero manual stage0 edits. Option C (native
+  `.dag` patch language) upfront.
 - v3 compiles itself
 - Bootstrap: v2 compiles v3 stage0, v3 compiles v3 → fixed point
 - All v2 test programs compile under v3 with same output

@@ -63,12 +63,15 @@ model, not inventing it.
 ```
 L0 — Substrate stable                  [SHIPPED at M1(3)]
       │
-L1 — Reflection framework              [in design — docs/substrate-reflection-design.md]
-      │    • substrate.dag declares Dag / Behavior / etc.
-      │    • field access, pattern match with payload, lambda,
-      │      higher-order calls via template instantiation
-      │    • first lens (lens_unused_parameters) migrates
-      │    • list.dag loads
+L1 — Reflection framework              [prereqs shipping — reflection PR next]
+      │    • Prereq 0 (HoF via 1c): #460 merged
+      │    • Prereq 1 (FieldProject): #458 merged
+      │    • Prereq 2 (Path.binding): #458 merged
+      │    • Prereq 3 (contextual lambda): #460 merged
+      │    • Prereq 4 (list.dag bootstrap): #463 in flight
+      │    • Prereq 5 (pipe sugar): #462 in flight
+      │    • Reflection PR: next after prereq slate completes
+      │    • first lens (lens_unused_parameters) migrates in reflection PR
       │
 L2 — v2 consumer migrations            [see docs/substrate-reflection-design.md §12.5]
       │    M1: dsl/lenses/complexity.dag  (5490 lines from v2)
@@ -105,6 +108,80 @@ L4 — Full self-hosting (M3)            [long-term]
 4. **L4 is the state after all L3 stages ship.** There is no
    separate "make self-hosting work" milestone; it's the
    emergent consequence of completing L3.
+
+### §2.1 The pipeline is a `.dag` composition, not a file convention
+
+v2 achieved self-hosting by writing each stage as `.dag` functions
+and connecting them in `compile.dag`. But `compile.dag` is
+imperative — it's a sequence of function calls, not a declared
+dependency graph. The dependency structure between stages is
+implicit in the call order, not in the declarations. Adding a
+stage means editing the call sequence. `bootstrap.dag`'s stage
+enumeration (`CompilerStage`, `TransformContract`) exists as a
+separate parallel model that no one reads — 195 lines of
+decorative modeling.
+
+v3 does this differently: **the pipeline IS a `.dag` composition.**
+Each stage is a typed function with declared input/output types.
+The composition is a series of `let` bindings with explicit
+dependencies. The compiler can read its own pipeline structure
+the same way it reads any other `.dag` program's dependency graph.
+
+```
+fn compile(source: String, file: String, spec: LanguageSpec) -> EmitResult {
+  let parsed   = parse(source, file)
+  let lowered  = lower(parsed.module)
+  let inferred = infer(lowered.dag)
+  emit(inferred.dag, spec)
+}
+```
+
+This is ordinary `.dag` — four `let` bindings with explicit
+dependencies. The compiler sees this as a dependency graph
+because `.dag` programs ARE dependency graphs. Nothing special
+about it being the compiler's own pipeline.
+
+**What this buys over v2's approach:**
+
+1. **Stage contracts are first-class, not decorative.** The stage
+   functions' type signatures ARE the contracts. A lens verifies
+   "does `infer` actually produce a Dag where all ports have
+   Resolved state?" The contract is the type. `bootstrap.dag`'s
+   decorative `TransformContract` dissolves — the pipeline IS the
+   consumer.
+2. **Per-stage fixed-point is structural by construction.** The
+   pipeline declares its stage boundaries as typed function calls.
+   The fixed-point test runs the pipeline on its own source twice
+   and compares outputs at each typed boundary — structural diffs,
+   not textual diffs.
+3. **Independent stages parallelize automatically.** Two
+   post-inference analyses with no data dependency run
+   concurrently by default. This is the thesis's "parallelism is
+   not a feature, it is the default" applied to the compiler.
+4. **The compiler is analyzable by its own lenses.**
+   `lens_complexity` on `parse` reports the parser's cost.
+   `lens_unused_parameters` on `infer` reports dead parameters in
+   the inference pass. Self-analysis extends from "a lens analyzes
+   a lens" to "the compiler analyzes itself."
+5. **Schema migration patches are typed.** When a stage's
+   input/output type changes, the pipeline's typed composition
+   shows which downstream stages are affected.
+
+**Interaction with the L3 migration order.** Stages still
+implement bottom-up (emit → lower → infer → parse). During
+migration, each stage starts as `ArrowBody::ExternalRealization`
+(backed by the Rust implementation) and transitions to
+`ArrowBody::UserDefined` when the `.dag` body lands. The pipeline
+composition doesn't change during this transition — it calls each
+stage function regardless of whether the body is Rust-backed or
+`.dag`-backed. Same pattern as `Int.add` being
+`ExternalRealization` pointing at Rust `i64 + i64` today.
+
+**The pipeline declaration ships FIRST (model before implement).**
+Each stage implementation fills a slot in the declaration.
+`ExternalRealization` is the honest scaffold for "this stage
+exists but is still Rust." The pipeline is structurally valid at
+every intermediate state.
 
 ---
 
@@ -276,6 +353,28 @@ updates port state in place. A `.dag` version has to express
 this functionally: `fn infer(d: Dag) -> Dag` that returns a new
 Dag with the inferred state.
 
+**This is a research problem, not an engineering problem.** Every
+other pipeline stage migration (emit, lower, parse) is engineering
+with known patterns. Inference-as-data — "type inference rules
+expressed as `.dag` data read by a generic walker" — has no
+production precedent. Theorem provers (Coq/Lean/Agda) get partway
+there with tactic languages but all have hand-coded cores. v3's
+bounded substrate (six connectives, five behaviors, decidable
+iteration) gives more leverage than a general HM setting, but the
+approach is still unproven. Budget this stage as open-ended R&D,
+not scoped work, and front-load the experiment sequence
+(`docs/inference-as-data-experiments.md`) to surface blockers
+before committing to the full port.
+
+**I0 result (2026-04-15):** the decidability paper exercise
+passed. Two representative inference rules (literal type filling,
+bounded Disj walk) are decidability-compatible under `.dag`'s
+bounded-iteration invariant. No blocker found. This narrows the
+open risk from "is this even possible?" to "which write-surface
+option?" See `docs/inference-as-data-i0-result.md` for the full
+check. The next experiments (I1-I8) run sequentially after
+reflection lands.
+
 **Blocker dependencies:**
 
 - L1 (reflection)
@@ -288,7 +387,9 @@ Dag with the inferred state.
   the input Dag. Option C: infer returns a Dag-diff (a list of
   (PortId, TypeShape) tuples) that the caller applies. **This
   is the deepest substrate question for L3** and blocks
-  `infer.dag` until it's answered.
+  `infer.dag` until it's answered. I0's pass confirms the rules
+  themselves are decidable; what remains is the Dag → Dag write
+  surface.
 
 **Expected port size:** ~1000-1500 lines of `.dag`. The
 algorithm is the same as Rust's, but the functional expression
