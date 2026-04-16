@@ -1197,8 +1197,16 @@ impl Dag {
         &self.nodes
     }
 
+    pub fn nodes_owned(&self) -> Vec<Behavior> {
+        self.nodes.clone()
+    }
+
     pub fn declarations(&self) -> &[Declaration] {
         &self.declarations
+    }
+
+    pub fn declarations_owned(&self) -> Vec<Declaration> {
+        self.declarations.clone()
     }
 
     pub fn ports(&self) -> Vec<Port> {

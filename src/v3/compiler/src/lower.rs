@@ -1216,6 +1216,178 @@ fn walk_to_disj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
     None
 }
 
+#[derive(Clone, Default)]
+struct LowerSubstStack {
+    frames: Vec<Vec<TemplateArgument>>,
+}
+
+impl LowerSubstStack {
+    fn push(&mut self, frame: Vec<TemplateArgument>) {
+        self.frames.push(frame);
+    }
+
+    fn lookup(&self, parameter: DeclarationId) -> Option<DeclarationId> {
+        self.frames
+            .iter()
+            .rev()
+            .find_map(|frame| frame.iter().find(|arg| arg.parameter == parameter))
+            .map(|arg| arg.value)
+    }
+}
+
+fn find_equivalent_decl_instantiation_lower(
+    dag: &Dag,
+    template: DeclarationId,
+    arguments: &[TemplateArgument],
+) -> Option<DeclarationId> {
+    dag.declarations().iter().find_map(|decl| {
+        let TypeConnective::Instantiation {
+            template: existing_template,
+            arguments: existing_arguments,
+        } = &decl.connective
+        else {
+            return None;
+        };
+        (template == *existing_template
+            && existing_arguments.len() == arguments.len()
+            && existing_arguments.iter().zip(arguments.iter()).all(|(lhs, rhs)| {
+                lhs.parameter == rhs.parameter && lhs.value == rhs.value
+            }))
+        .then_some(decl.id)
+    })
+}
+
+fn resolve_decl_with_subst_lower(
+    dag: &Dag,
+    current: DeclarationId,
+    subst: &LowerSubstStack,
+    depth: usize,
+) -> Option<DeclarationId> {
+    if depth >= 32 {
+        return None;
+    }
+    match &dag.declaration(current).connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => subst
+            .lookup(current)
+            .and_then(|bound| resolve_decl_with_subst_lower(dag, bound, subst, depth + 1))
+            .or(Some(current)),
+        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            resolve_decl_with_subst_lower(dag, *next, subst, depth + 1)
+        }
+        TypeConnective::Instantiation { template, arguments } => {
+            let specialized_arguments: Vec<TemplateArgument> = arguments
+                .iter()
+                .map(|arg| {
+                    Some(TemplateArgument {
+                        parameter: arg.parameter,
+                        value: resolve_decl_with_subst_lower(dag, arg.value, subst, depth + 1)?,
+                    })
+                })
+                .collect::<Option<_>>()?;
+            if specialized_arguments
+                .iter()
+                .zip(arguments.iter())
+                .all(|(lhs, rhs)| lhs.parameter == rhs.parameter && lhs.value == rhs.value)
+            {
+                return Some(current);
+            }
+            find_equivalent_decl_instantiation_lower(dag, *template, &specialized_arguments)
+                .or(Some(current))
+        }
+        TypeConnective::Cardinality { .. }
+        | TypeConnective::Arrow { .. }
+        | TypeConnective::Conj { .. }
+        | TypeConnective::Disj { .. }
+        | TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+        | TypeConnective::Atom(AtomPayload::Literal(_)) => Some(current),
+    }
+}
+
+fn walk_to_conj_decl_with_subst_lower(
+    dag: &Dag,
+    start: DeclarationId,
+    subst: &mut LowerSubstStack,
+) -> Option<DeclarationId> {
+    let mut current = start;
+    for _ in 0..32 {
+        match &dag.declaration(current).connective {
+            TypeConnective::Conj { .. } => return Some(current),
+            TypeConnective::Instantiation { template, arguments } => {
+                subst.push(arguments.clone());
+                current = *template;
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => current = *next,
+            TypeConnective::Atom(AtomPayload::TypeParam(_)) => current = subst.lookup(current)?,
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn walk_to_type_shape_lower(
+    dag: &Dag,
+    current: DeclarationId,
+    subst: &LowerSubstStack,
+    depth: usize,
+) -> Option<TypeShape> {
+    if depth >= 32 {
+        return None;
+    }
+    let decl = dag.declaration(current);
+    if decl.name.is_some() {
+        return Some(TypeShape::new(current));
+    }
+    match &decl.connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+            if let Some(bound) = subst.lookup(current) {
+                walk_to_type_shape_lower(dag, bound, subst, depth + 1)
+            } else {
+                Some(TypeShape::new(current))
+            }
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            walk_to_type_shape_lower(dag, *next, subst, depth + 1)
+        }
+        TypeConnective::Instantiation { .. } => resolve_decl_with_subst_lower(
+            dag,
+            current,
+            subst,
+            depth + 1,
+        )
+        .map(TypeShape::new)
+        .or_else(|| Some(TypeShape::new(current))),
+        TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+        | TypeConnective::Atom(AtomPayload::Literal(_))
+        | TypeConnective::Conj { .. }
+        | TypeConnective::Disj { .. }
+        | TypeConnective::Arrow { .. }
+        | TypeConnective::Cardinality { .. } => None,
+    }
+}
+
+fn resolve_static_field_project(
+    dag: &Dag,
+    input_port: PortId,
+    field_label: &str,
+) -> Option<(DeclarationId, TypeShape)> {
+    let input_ty = match dag.port(input_port).state() {
+        crate::dag::PortState::Resolved(ty) => *ty,
+        crate::dag::PortState::Uninferred | crate::dag::PortState::Unresolved => return None,
+    };
+    let mut subst = LowerSubstStack::default();
+    let conj_id = walk_to_conj_decl_with_subst_lower(dag, input_ty.declaration, &mut subst)?;
+    let children = match &dag.declaration(conj_id).connective {
+        TypeConnective::Conj { children } => children,
+        _ => return None,
+    };
+    let field_decl = children
+        .iter()
+        .find(|field| field.label == field_label)
+        .map(|field| field.ty)?;
+    let output_ty = walk_to_type_shape_lower(dag, field_decl, &subst, 0)?;
+    Some((field_decl, output_ty))
+}
+
 /// Attempt to lower a parsed record literal body into a
 /// `ValueBody::Structural { fields }` by matching each record field
 /// against the declared type's Conj children. Returns `None` (and
@@ -2371,6 +2543,77 @@ fn push_template_argument_binding(
     true
 }
 
+fn template_argument_value(
+    arguments: &[TemplateArgument],
+    parameter: DeclarationId,
+) -> Option<DeclarationId> {
+    arguments
+        .iter()
+        .find(|arg| arg.parameter == parameter)
+        .map(|arg| arg.value)
+}
+
+fn resolve_template_argument_value(
+    arguments: &[TemplateArgument],
+    current: DeclarationId,
+    depth: usize,
+) -> DeclarationId {
+    if depth >= 32 {
+        return current;
+    }
+    let Some(next) = template_argument_value(arguments, current) else {
+        return current;
+    };
+    if next == current {
+        return current;
+    }
+    resolve_template_argument_value(arguments, next, depth + 1)
+}
+
+fn retained_template_arguments_for_target(
+    dag: &Dag,
+    base_target_decl: DeclarationId,
+    arguments: &[TemplateArgument],
+) -> Vec<TemplateArgument> {
+    let template = match &dag.declaration(base_target_decl).connective {
+        TypeConnective::Instantiation { template, .. } => *template,
+        _ => base_target_decl,
+    };
+    let mut allowed: HashSet<DeclarationId> = dag
+        .declaration(template)
+        .type_params
+        .iter()
+        .copied()
+        .collect();
+    if let Some(inputs) = direct_invocation_input_decls(dag, template, 0) {
+        for input in inputs {
+            if declaration_is_callable(dag, input, 0) {
+                allowed.insert(input);
+            }
+        }
+    }
+
+    let mut retained: Vec<TemplateArgument> = Vec::new();
+    for argument in arguments {
+        if !allowed.contains(&argument.parameter) {
+            continue;
+        }
+        let resolved_value = resolve_template_argument_value(arguments, argument.value, 0);
+        if let Some(existing) = retained
+            .iter_mut()
+            .find(|existing| existing.parameter == argument.parameter)
+        {
+            existing.value = resolved_value;
+            continue;
+        }
+        retained.push(TemplateArgument {
+            parameter: argument.parameter,
+            value: resolved_value,
+        });
+    }
+    retained
+}
+
 fn callable_binding_conflict_diagnostic(
     target: &str,
     arg_index: usize,
@@ -2398,10 +2641,71 @@ fn bind_expected_type_to_actual(
     let expected_decl = dag.declaration(expected_id);
     match &expected_decl.connective {
         TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+            if let Some(bound) = template_argument_value(arguments, expected_id) {
+                if bound != expected_id {
+                    return bind_expected_type_to_actual(
+                        dag,
+                        bound,
+                        actual_id,
+                        arguments,
+                        depth + 1,
+                    );
+                }
+            }
             push_template_argument_binding(arguments, expected_id, actual_id)
         }
         TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
             bind_expected_type_to_actual(dag, *next, actual_id, arguments, depth + 1)
+        }
+        TypeConnective::Instantiation {
+            template,
+            arguments: expected_arguments,
+        } => {
+            let actual_decl = dag.declaration(actual_id);
+            match &actual_decl.connective {
+                TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                    bind_expected_type_to_actual(dag, expected_id, *next, arguments, depth + 1)
+                }
+                TypeConnective::Instantiation {
+                    template: actual_template,
+                    arguments: actual_arguments,
+                } => {
+                    if *actual_template == expected_id
+                        && expected_arguments.len() == actual_arguments.len()
+                    {
+                        return expected_arguments
+                            .iter()
+                            .zip(actual_arguments.iter())
+                            .all(|(expected, actual)| {
+                                bind_expected_type_to_actual(
+                                    dag,
+                                    expected.value,
+                                    actual.value,
+                                    arguments,
+                                    depth + 1,
+                                )
+                            });
+                    }
+                    if template != actual_template
+                        || expected_arguments.len() != actual_arguments.len()
+                    {
+                        return false;
+                    }
+                    expected_arguments
+                        .iter()
+                        .zip(actual_arguments.iter())
+                        .all(|(expected, actual)| {
+                            bind_expected_type_to_actual(
+                                dag,
+                                expected.value,
+                                actual.value,
+                                arguments,
+                                depth + 1,
+                            )
+                        })
+                }
+                _ => false,
+            }
         }
         TypeConnective::Arrow { inputs, output, .. } => {
             let actual_decl = dag.declaration(actual_id);
@@ -2471,6 +2775,164 @@ fn bind_expected_type_to_actual(
     }
 }
 
+fn specialize_decl_for_lowering(
+    dag: &mut Dag,
+    current: DeclarationId,
+    arguments: &[TemplateArgument],
+    depth: usize,
+) -> DeclarationId {
+    if depth >= 32 {
+        return current;
+    }
+    let decl = dag.declaration(current).clone();
+    match decl.connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => arguments
+            .iter()
+            .find(|arg| arg.parameter == current)
+            .map(|arg| arg.value)
+            .unwrap_or(current),
+        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            specialize_decl_for_lowering(dag, next, arguments, depth + 1)
+        }
+        TypeConnective::Instantiation {
+            template,
+            arguments: inner_arguments,
+        } => {
+            let specialized_arguments: Vec<TemplateArgument> = inner_arguments
+                .iter()
+                .map(|arg| TemplateArgument {
+                    parameter: arg.parameter,
+                    value: specialize_decl_for_lowering(dag, arg.value, arguments, depth + 1),
+                })
+                .collect();
+            if specialized_arguments.len() == inner_arguments.len()
+                && specialized_arguments
+                    .iter()
+                    .zip(inner_arguments.iter())
+                    .all(|(lhs, rhs)| lhs.parameter == rhs.parameter && lhs.value == rhs.value)
+            {
+                return current;
+            }
+            if let Some(existing) =
+                find_equivalent_decl_instantiation_lower(dag, template, &specialized_arguments)
+            {
+                return existing;
+            }
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Instantiation {
+                    template,
+                    arguments: specialized_arguments,
+                },
+                type_params: Vec::new(),
+                meta_tag: None,
+                inhabits: None,
+                value_body: None,
+                span: decl.span,
+            });
+            id
+        }
+        TypeConnective::Arrow {
+            inputs,
+            output,
+            body,
+        } => {
+            let specialized_inputs: Vec<DeclarationId> = inputs
+                .iter()
+                .map(|input| specialize_decl_for_lowering(dag, *input, arguments, depth + 1))
+                .collect();
+            let specialized_output =
+                specialize_decl_for_lowering(dag, output, arguments, depth + 1);
+            if specialized_inputs == inputs && specialized_output == output {
+                return current;
+            }
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Arrow {
+                    inputs: specialized_inputs,
+                    output: specialized_output,
+                    body,
+                },
+                type_params: Vec::new(),
+                meta_tag: None,
+                inhabits: None,
+                value_body: None,
+                span: decl.span,
+            });
+            id
+        }
+        TypeConnective::Conj { children } => {
+            let specialized_children: Vec<Field> = children
+                .iter()
+                .map(|child| Field {
+                    label: child.label.clone(),
+                    ty: specialize_decl_for_lowering(dag, child.ty, arguments, depth + 1),
+                })
+                .collect();
+            if specialized_children.len() == children.len()
+                && specialized_children
+                    .iter()
+                    .zip(children.iter())
+                    .all(|(lhs, rhs)| lhs.label == rhs.label && lhs.ty == rhs.ty)
+            {
+                return current;
+            }
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Conj {
+                    children: specialized_children,
+                },
+                type_params: Vec::new(),
+                meta_tag: None,
+                inhabits: None,
+                value_body: None,
+                span: decl.span,
+            });
+            id
+        }
+        TypeConnective::Disj { variants } => {
+            let specialized_variants: Vec<Field> = variants
+                .iter()
+                .map(|variant| Field {
+                    label: variant.label.clone(),
+                    ty: specialize_decl_for_lowering(dag, variant.ty, arguments, depth + 1),
+                })
+                .collect();
+            if specialized_variants.len() == variants.len()
+                && specialized_variants
+                    .iter()
+                    .zip(variants.iter())
+                    .all(|(lhs, rhs)| lhs.label == rhs.label && lhs.ty == rhs.ty)
+            {
+                return current;
+            }
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Disj {
+                    variants: specialized_variants,
+                },
+                type_params: Vec::new(),
+                meta_tag: None,
+                inhabits: None,
+                value_body: None,
+                span: decl.span,
+            });
+            id
+        }
+        TypeConnective::Cardinality { .. }
+        | TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+        | TypeConnective::Atom(AtomPayload::Literal(_)) => current,
+    }
+}
+
 fn unresolved_port(dag: &mut Dag, diagnostic: Diagnostic) -> PortId {
     let port = dag.alloc_port(None);
     dag.mark_unresolved(port, diagnostic);
@@ -2508,16 +2970,20 @@ fn lower_field_path_expr(
     for field_label in rest {
         let node_id = dag.alloc_node_id();
         let output = dag.alloc_port(Some(node_id));
+        let static_resolution = resolve_static_field_project(dag, current_port, field_label);
         dag.push_node(Behavior::Transform(TransformNode {
             id: node_id,
             target: TransformTarget::FieldProject {
                 field_label: field_label.clone(),
-                field_child: None,
+                field_child: static_resolution.map(|(field_child, _)| field_child),
             },
             inputs: vec![current_port],
             output,
             span: span.clone(),
         }));
+        if let Some((_, ty)) = static_resolution {
+            dag.set_port_type(output, ty);
+        }
         current_port = output;
     }
 
@@ -2600,13 +3066,30 @@ fn lower_expr(
             let target_inputs = direct_invocation_input_decls(dag, base_target_decl, 0);
             let mut input_ports: Vec<PortId> = Vec::new();
             let mut template_arguments: Vec<TemplateArgument> = Vec::new();
+            if let (Some(expected_result), Some(target_output)) = (
+                expected_decl,
+                declaration_callable_output(dag, base_target_decl, 0),
+            ) {
+                let _ = bind_expected_type_to_actual(
+                    dag,
+                    target_output,
+                    expected_result,
+                    &mut template_arguments,
+                    0,
+                );
+            }
             for (idx, arg) in args.iter().enumerate() {
-                let expected_input = target_inputs
+                let raw_expected_input = target_inputs
                     .as_ref()
                     .and_then(|inputs| inputs.get(idx))
                     .copied();
-                if let Some(expected_decl) = expected_input {
+                let specialized_expected_input = raw_expected_input.map(|expected_decl| {
+                    specialize_decl_for_lowering(dag, expected_decl, &template_arguments, 0)
+                });
+                if let Some(expected_decl) = raw_expected_input {
                     if declaration_is_callable(dag, expected_decl, 0) {
+                        let specialized_expected =
+                            specialized_expected_input.unwrap_or(expected_decl);
                         let actual_callable = match arg {
                             SurfaceExpr::Lambda { params, body, span } => {
                                 let mut lambda_ctx = LambdaLoweringContext {
@@ -2619,7 +3102,7 @@ fn lower_expr(
                                     params,
                                     body,
                                     span,
-                                    expected_decl,
+                                    specialized_expected,
                                     &mut lambda_ctx,
                                 ) {
                                     Ok(lambda_decl_id) => lambda_decl_id,
@@ -2637,7 +3120,7 @@ fn lower_expr(
                             actual_callable,
                         ) && bind_expected_type_to_actual(
                             dag,
-                            expected_decl,
+                            specialized_expected,
                             actual_callable,
                             &mut template_arguments,
                             0,
@@ -2653,16 +3136,30 @@ fn lower_expr(
                         continue;
                     }
                 }
-                input_ports.push(lower_expr(
+                let lowered = lower_expr(
                     arg,
                     dag,
                     scope,
                     callable_scope,
                     symbols,
-                    expected_input,
-                ));
+                    specialized_expected_input,
+                );
+                if let Some(expected_decl) = raw_expected_input {
+                    if let crate::dag::PortState::Resolved(actual_ty) = dag.port(lowered).state() {
+                        let _ = bind_expected_type_to_actual(
+                            dag,
+                            expected_decl,
+                            actual_ty.declaration,
+                            &mut template_arguments,
+                            0,
+                        );
+                    }
+                }
+                input_ports.push(lowered);
             }
-            let target_decl = if template_arguments.is_empty() {
+            let retained_arguments =
+                retained_template_arguments_for_target(dag, base_target_decl, &template_arguments);
+            let target_decl = if retained_arguments.is_empty() {
                 base_target_decl
             } else {
                 let instantiation_id = dag.alloc_declaration_id();
@@ -2671,7 +3168,7 @@ fn lower_expr(
                     name: None,
                     connective: TypeConnective::Instantiation {
                         template: base_target_decl,
-                        arguments: template_arguments,
+                        arguments: retained_arguments,
                     },
                     type_params: Vec::new(),
                     meta_tag: None,

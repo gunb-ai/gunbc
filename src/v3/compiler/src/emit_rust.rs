@@ -2516,7 +2516,7 @@ mod tests {
                 .expect("field project renders"),
             other => panic!("expected Transform node, got {other:?}"),
         };
-        assert_eq!(rendered, "parent.nodes()");
+        assert_eq!(rendered, "parent.nodes_owned()");
     }
 
     #[test]

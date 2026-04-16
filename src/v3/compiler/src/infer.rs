@@ -1023,6 +1023,63 @@ fn template_argument_value(
         .map(|arg| arg.value)
 }
 
+fn resolve_template_argument_value(
+    arguments: &[TemplateArgument],
+    current: DeclarationId,
+    depth: usize,
+) -> DeclarationId {
+    if depth >= WALK_DEPTH_LIMIT {
+        return current;
+    }
+    let Some(next) = template_argument_value(arguments, current) else {
+        return current;
+    };
+    if next == current {
+        return current;
+    }
+    resolve_template_argument_value(arguments, next, depth + 1)
+}
+
+fn retained_template_arguments_for_target(
+    dag: &Dag,
+    template: DeclarationId,
+    arguments: &[TemplateArgument],
+) -> Vec<TemplateArgument> {
+    let mut allowed: HashSet<DeclarationId> = dag
+        .declaration(template)
+        .type_params
+        .iter()
+        .copied()
+        .collect();
+    if let Some(raw_arrow) = resolve_arrow_decl_walk(dag, template, &mut SubstStack::new(), 0) {
+        for input in raw_arrow.inputs {
+            if declaration_is_callable(dag, input, 0) {
+                allowed.insert(input);
+            }
+        }
+    }
+
+    let mut retained: Vec<TemplateArgument> = Vec::new();
+    for argument in arguments {
+        if !allowed.contains(&argument.parameter) {
+            continue;
+        }
+        let resolved_value = resolve_template_argument_value(arguments, argument.value, 0);
+        if let Some(existing) = retained
+            .iter_mut()
+            .find(|existing| existing.parameter == argument.parameter)
+        {
+            existing.value = resolved_value;
+            continue;
+        }
+        retained.push(TemplateArgument {
+            parameter: argument.parameter,
+            value: resolved_value,
+        });
+    }
+    retained
+}
+
 fn template_arguments_match(lhs: &[TemplateArgument], rhs: &[TemplateArgument]) -> bool {
     lhs.len() == rhs.len()
         && lhs
@@ -1128,7 +1185,12 @@ fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
                 };
                 let mut subst = SubstStack::new();
                 subst.push(arguments);
-                let arrow = resolve_arrow_decl_walk(dag, template, &mut subst, 0)?;
+                let Some(arrow) = resolve_arrow_decl_walk(dag, template, &mut subst, 0) else {
+                    return Some(PortTypeContext {
+                        decl: resolved_decl,
+                        subst: SubstStack::new(),
+                    });
+                };
                 Some(PortTypeContext {
                     decl: arrow.output,
                     subst,
@@ -1480,6 +1542,7 @@ fn resolve_callable_target(
     span: &SourceSpan,
 ) -> CallableTargetResolution {
     let (template, mut arguments) = callable_template_arguments(dag, target);
+    arguments = retained_template_arguments_for_target(dag, template, &arguments);
     let Some(signature) = resolve_direct_target_signature(dag, target, &arguments) else {
         let name = target_display_name(dag, target);
         return CallableTargetResolution::Fail(Diagnostic::ResolveError {

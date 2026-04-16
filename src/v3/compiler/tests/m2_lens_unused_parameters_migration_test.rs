@@ -1,0 +1,219 @@
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use v3_compiler::{compile_to_dag, CompileError, Diagnostic};
+use v3_compiler::emit_rust::emit_rust_module;
+use v3_compiler::lens_unused_parameters::{
+    UnusedParametersConfig, UnusedParametersLens,
+};
+use v3_compiler::Dag;
+
+static ROUNDTRIP_ID: AtomicUsize = AtomicUsize::new(0);
+
+fn lens_source() -> String {
+    std::fs::read_to_string(lens_path()).expect("read unused_parameters.dag")
+}
+
+fn lens_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("lenses")
+        .join("unused_parameters.dag")
+}
+
+fn emit_lens_module() -> String {
+    let dag = compile_to_dag(
+        &lens_source(),
+        lens_path().to_string_lossy().as_ref(),
+    )
+        .expect("compiled lens source");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "unused_parameters.dag should compile cleanly, got {:?}",
+        dag.diagnostics()
+    );
+    emit_rust_module(&dag).expect("emit compiled lens module")
+}
+
+fn next_roundtrip_dir() -> PathBuf {
+    let id = ROUNDTRIP_ID.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "v3_lens_migration_roundtrip_{}_{}",
+        std::process::id(),
+        id
+    ))
+}
+
+fn deps_dir() -> PathBuf {
+    std::env::current_exe()
+        .expect("current test binary path")
+        .parent()
+        .expect("deps dir")
+        .to_path_buf()
+}
+
+fn find_current_rlib(crate_name: &str) -> PathBuf {
+    let prefix = format!("lib{crate_name}-");
+    let mut matches: Vec<PathBuf> = std::fs::read_dir(deps_dir())
+        .expect("read deps dir")
+        .filter_map(|entry| {
+            let path = entry.ok()?.path();
+            let file_name = path.file_name()?.to_str()?;
+            if file_name.starts_with(&prefix) && file_name.ends_with(".rlib") {
+                Some(path)
+            } else {
+                None
+            }
+        })
+        .collect();
+    matches.sort();
+    matches
+        .into_iter()
+        .next()
+        .expect("compiled rlib for current crate")
+}
+
+fn compile_with_current_crate(src_path: &Path, bin_path: &Path) {
+    let deps = deps_dir();
+    let current_rlib = find_current_rlib("v3_compiler");
+    let compile = Command::new("rustc")
+        .arg("--edition=2021")
+        .arg(src_path)
+        .arg("-o")
+        .arg(bin_path)
+        .arg("-L")
+        .arg(format!("dependency={}", deps.display()))
+        .arg("--extern")
+        .arg(format!("v3_compiler={}", current_rlib.display()))
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .expect("invoke rustc");
+    assert!(compile.success(), "rustc failed on emitted lens source");
+}
+
+fn roundtrip_lens_render(module_source: &str, program_source: &str, file_name: &str) -> String {
+    let wrapped = format!(
+        "mod emitted {{ use v3_compiler::dag::*; use v3_compiler::diagnostics::*; {module_source} }} \
+         fn render(dag: &v3_compiler::Dag, function: v3_compiler::dag::NodeId) -> String {{ \
+           dag.nodes().iter().find_map(|node| match node {{ \
+             v3_compiler::dag::Behavior::Bind(bind) if bind.id == function => Some(bind.name.clone()), \
+             _ => None \
+           }}).unwrap_or_else(|| format!(\"{{:?}}\", function)) \
+         }} \
+         fn main() {{ \
+           let dag = v3_compiler::compile_to_dag({program_source:?}, {file_name:?}).expect(\"compiles\"); \
+           let mut rendered: Vec<String> = emitted::check(dag).iter().map(|v| {{ \
+             format!(\"{{}}:param[{{}}]\", render(&v3_compiler::compile_to_dag({program_source:?}, {file_name:?}).expect(\"compiles\"), v.function), v.parameter_index) \
+           }}).collect(); \
+           rendered.sort(); \
+           println!(\"{{}}\", rendered.join(\"|\")); \
+         }}"
+    );
+
+    let tmp_dir = next_roundtrip_dir();
+    std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
+    let src_path = tmp_dir.join("main.rs");
+    let bin_path = tmp_dir.join("main_bin");
+    std::fs::File::create(&src_path)
+        .and_then(|mut f| f.write_all(wrapped.as_bytes()))
+        .expect("write wrapped rust source");
+
+    compile_with_current_crate(&src_path, &bin_path);
+
+    let run = Command::new(&bin_path)
+        .output()
+        .expect("run compiled binary");
+    assert!(run.status.success(), "compiled binary failed");
+    String::from_utf8_lossy(&run.stdout).trim().to_string()
+}
+
+fn render_rust_lens(program_source: &str, file_name: &str) -> String {
+    let dag = compile_to_dag(program_source, file_name).expect("program compiles");
+    render_rust_lens_on_dag(&dag)
+}
+
+fn render_rust_lens_on_dag(dag: &Dag) -> String {
+    let lens = UnusedParametersLens::new(dag);
+    let mut rendered: Vec<String> = lens
+        .query(&UnusedParametersConfig::default())
+        .iter()
+        .map(|violation| {
+            let function_name = dag
+                .nodes()
+                .iter()
+                .find_map(|node| match node {
+                    v3_compiler::dag::Behavior::Bind(bind) if bind.id == violation.function => {
+                        Some(bind.name.clone())
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| format!("{:?}", violation.function));
+            format!("{function_name}:param[{}]", violation.parameter_index)
+        })
+        .collect();
+    rendered.sort();
+    rendered.join("|")
+}
+
+#[test]
+fn unused_parameters_dag_currently_blocks_on_recursive_walk_instantiation_conflict() {
+    let result = compile_to_dag(&lens_source(), lens_path().to_string_lossy().as_ref());
+    let CompileError::Semantic(dag) = result.expect_err("lens should still fail until the recursive walk bug is fixed") else {
+        unreachable!()
+    };
+    let diagnostics: Vec<String> = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, diag)| match diag {
+            Diagnostic::ResolveError { name, .. } => name.clone(),
+            Diagnostic::TokenizerError { message, .. } => message.clone(),
+            Diagnostic::ParseError { message, .. } => message.clone(),
+            Diagnostic::ArityMismatch { function, .. } => function.clone(),
+            Diagnostic::TypeMismatch { .. } => String::from("TypeMismatch"),
+        })
+        .collect();
+    assert!(
+        diagnostics.iter().any(|name| {
+            name.contains("implicit template binding for `walk_steps` conflicts")
+        }),
+        "expected the current blocker receipt for recursive walk lowering, got diagnostics: {diagnostics:?}"
+    );
+}
+
+#[test]
+#[ignore]
+fn unused_parameters_dag_matches_rust_lens_on_core_fixtures() {
+    let module = emit_lens_module();
+    let fixtures = [
+        ("fn add(a: Int, b: Int) -> Int = a + b", "used_all.v3"),
+        ("fn first(a: Int, b: Int) -> Int = a", "single_unused.v3"),
+        (
+            "fn always_one(x: Int, y: Int, z: Int) -> Int = 1",
+            "constant_body.v3",
+        ),
+        (
+            "fn pick(a: Int, b: Int) -> Int = if a > 0 then a else b",
+            "branch_body.v3",
+        ),
+        (
+            "fn count(list: List<Int>) -> Int = match list { Empty => 0, Cons(payload) => 1 + count(payload.tail) }",
+            "recursive_list.v3",
+        ),
+        (
+            "fn content_upsert(content: Int, path: Int) -> Int = content + 0",
+            "patterns_synthetic.v3",
+        ),
+    ];
+
+    for (source, file_name) in fixtures {
+        let rust_rendered = render_rust_lens(source, file_name);
+        let dag_rendered = roundtrip_lens_render(&module, source, file_name);
+        assert_eq!(
+            dag_rendered, rust_rendered,
+            "compiled .dag lens should match Rust lens on {file_name}"
+        );
+    }
+}

@@ -550,8 +550,8 @@ data rust_dag: TypeRealization = {
   target: Dag
   carrier: "Dag"
   fields: [
-    { dag_name: "declarations", rust_access: AccessorMethod("declarations") },
-    { dag_name: "nodes", rust_access: AccessorMethod("nodes") },
+    { dag_name: "declarations", rust_access: AccessorMethod("declarations_owned") },
+    { dag_name: "nodes", rust_access: AccessorMethod("nodes_owned") },
     { dag_name: "ports", rust_access: AccessorMethod("ports") }
   ]
   cost: 1

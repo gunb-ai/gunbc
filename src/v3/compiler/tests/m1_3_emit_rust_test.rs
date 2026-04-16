@@ -524,6 +524,30 @@ fn rustc_roundtrip_emitted_module_compares_reflected_port_ids_in_list_contains()
     );
 }
 
+#[test]
+fn rustc_roundtrip_emitted_module_returns_user_record_list_from_reflected_binds() {
+    let module = emit_module(
+        "type FoundBind { name: String }\n\
+         fn bind_names(d: Dag) -> List<FoundBind> = \
+           fold(d.nodes, empty(), |acc, behavior| \
+             match behavior { \
+               Value(v) => acc, \
+               Transform(t) => acc, \
+               Branch(b) => acc, \
+               Loop(l) => acc, \
+               Bind(bind) => cons({ name: bind.name }, acc) \
+             })",
+    );
+    let stdout = roundtrip_module_stdout(
+        &module,
+        "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); bind_names(dag).len() as i64",
+    );
+    assert_eq!(
+        stdout, "2",
+        "compiled reflected function should return a user record per top-level bind, got {stdout:?}"
+    );
+}
+
 /// End-to-end roundtrip test: emit Rust from a v3 program, feed the
 /// Rust source to `rustc`, run the resulting binary, assert stdout.
 /// Gated behind `#[ignore]` because CI runners often don't have a

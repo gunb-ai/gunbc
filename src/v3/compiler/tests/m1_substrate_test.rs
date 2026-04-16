@@ -2620,3 +2620,17 @@ let n: Int = count([1, 2, 3])
         ),
     }
 }
+
+#[test]
+fn std_list_cons_accepts_user_record_element() {
+    let src = "\
+type FoundBind { name: String }
+let xs: List<FoundBind> = cons({ name: \"x\" }, empty())
+";
+    let dag = compile_any(src, "std_list_user_record_cons.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "expected cons({{...}}, empty()) over a user record to compile cleanly, got diagnostics: {:?}",
+        dag.diagnostics()
+    );
+}
