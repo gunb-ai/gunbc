@@ -1021,16 +1021,25 @@ pub(crate) struct TargetSyntaxCache {
     /// authority the Rust emitter reads for borrow-vs-construct
     /// rendering policy at use sites.
     pub rust_rendering: Option<DeclarationId>,
-    /// `rust_execution` execution-model declaration loaded from
-    /// `src/v3/spec/rust.dag`. This is the target-memory fact the
-    /// Rust emitter composes with `dag_model` when deciding whether
-    /// ownership-specific edge rendering applies.
-    pub rust_execution: Option<DeclarationId>,
+    /// `rust_execution_model` declaration loaded from
+    /// `src/v3/spec/rust.dag`. Used by emitters to gate the
+    /// ownership stage on the target memory model.
+    pub rust_execution_model: Option<DeclarationId>,
     /// `dag_model` declaration loaded from
-    /// `src/v3/std/computation_model.dag`. This is the source-side
-    /// computation-model fact the emitter reads alongside the target
-    /// execution model.
+    /// `src/v3/std/computation_model.dag`. The source-side
+    /// computation-model fact the emitter reads alongside the
+    /// target execution model.
     pub dag_model: Option<DeclarationId>,
+    /// `go_language` syntax bundle declaration loaded from
+    /// `src/v3/spec/go.dag`.
+    pub go_language: Option<DeclarationId>,
+    /// `go_rendering` ownership-model declaration loaded from
+    /// `src/v3/spec/go.dag`. Present for parity with Rust, but GC
+    /// targets may skip reading it entirely.
+    pub go_rendering: Option<DeclarationId>,
+    /// `go_execution_model` declaration loaded from
+    /// `src/v3/spec/go.dag`.
+    pub go_execution_model: Option<DeclarationId>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -1250,16 +1259,34 @@ impl Dag {
         self.target_syntax.rust_rendering
     }
 
-    /// Typed accessor for the Rust target execution-model declaration
-    /// declared in `src/v3/spec/rust.dag`.
-    pub fn rust_execution_spec(&self) -> Option<DeclarationId> {
-        self.target_syntax.rust_execution
+    /// Typed accessor for the Rust target execution model
+    /// declaration loaded from `src/v3/spec/rust.dag`.
+    pub fn rust_execution_model_spec(&self) -> Option<DeclarationId> {
+        self.target_syntax.rust_execution_model
     }
 
     /// Typed accessor for the source computation-model declaration
     /// declared in `src/v3/std/computation_model.dag`.
     pub fn computation_model_spec(&self) -> Option<DeclarationId> {
         self.target_syntax.dag_model
+    }
+
+    /// Typed accessor for the Go target-language syntax bundle
+    /// declared in `src/v3/spec/go.dag`.
+    pub fn go_language_spec(&self) -> Option<DeclarationId> {
+        self.target_syntax.go_language
+    }
+
+    /// Typed accessor for the Go target-language ownership model
+    /// declaration loaded from `src/v3/spec/go.dag`.
+    pub fn go_rendering_spec(&self) -> Option<DeclarationId> {
+        self.target_syntax.go_rendering
+    }
+
+    /// Typed accessor for the Go target execution model
+    /// declaration loaded from `src/v3/spec/go.dag`.
+    pub fn go_execution_model_spec(&self) -> Option<DeclarationId> {
+        self.target_syntax.go_execution_model
     }
 
     /// Typed accessor for the cached `std.list.List` template.
@@ -1526,9 +1553,14 @@ impl Dag {
         self.target_syntax.rust_language = self.declaration_by_name("rust_language").map(|d| d.id);
         self.target_syntax.rust_rendering =
             self.declaration_by_name("rust_rendering").map(|d| d.id);
-        self.target_syntax.rust_execution =
-            self.declaration_by_name("rust_execution").map(|d| d.id);
+        self.target_syntax.rust_execution_model = self
+            .declaration_by_name("rust_execution_model")
+            .map(|d| d.id);
         self.target_syntax.dag_model = self.declaration_by_name("dag_model").map(|d| d.id);
+        self.target_syntax.go_language = self.declaration_by_name("go_language").map(|d| d.id);
+        self.target_syntax.go_rendering = self.declaration_by_name("go_rendering").map(|d| d.id);
+        self.target_syntax.go_execution_model =
+            self.declaration_by_name("go_execution_model").map(|d| d.id);
         self.stdlib_types.list = self.declaration_by_name("List").map(|d| d.id);
     }
 }

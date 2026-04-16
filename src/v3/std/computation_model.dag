@@ -1,5 +1,6 @@
 module v3.std.computation_model
 
+// Source-side facts: .dag's own computation model
 type Mutability
   = Immutable
   | Mutable
@@ -28,4 +29,20 @@ data dag_model: ComputationModel = {
   purity: Pure
   structure: ExplicitDAG
   iteration: Bounded
+}
+
+// Target-side facts: each emission target's execution model
+type MemoryModel
+  = ValueOnly
+  | GarbageCollected
+  | RefCounted
+  | OwnershipBased
+
+type ScopeModel
+  = LexicalScoping
+  | DynamicScoping
+
+type TargetExecutionModel {
+  memory: MemoryModel
+  scope: ScopeModel
 }

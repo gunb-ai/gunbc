@@ -1,0 +1,204 @@
+module v3.std.emit_model
+
+import v3.spec.v3_l1 { DeclarationRef }
+import std.list { List }
+
+type TypeRealization {
+  target: DeclarationRef
+  carrier: String
+  is_copy: Bool
+  fields: List<FieldBinding>
+  cost: Int
+}
+
+type FieldBinding {
+  dag_name: String
+  access: FieldAccess
+  borrowed_read: Bool
+}
+
+type FieldAccess
+  = DirectField(String)
+  | AccessorMethod(String)
+
+type OperatorRealization {
+  target: DeclarationRef
+  op: DeclarationRef
+  carrier: String
+  cost: Int
+}
+
+type BehaviorRealization {
+  target: DeclarationRef
+  carrier: String
+  cost: Int
+}
+
+type CallableRealization {
+  target: DeclarationRef
+  strategy: CallableStrategy
+  parameter_dispositions: List<ParameterDisposition>
+  cost: Int
+}
+
+type ParameterDisposition
+  = Borrowed
+  | Consumed
+
+type TypeInstantiationRealization {
+  target: DeclarationRef
+  carrier: String
+  cost: Int
+}
+
+// Dissolution receipt — 🟡 mixed lifecycle. These variants are the staged target
+// callable-emission strategies that still live in host emitters while `.dag`
+// emission remains partly in Rust. They dissolve when `emit.dag` owns callable
+// lowering directly from the target-language facts; until then, the strategy tag
+// is the single authority for how a std callable lowers into target syntax.
+type CallableStrategy
+  = ListEmpty
+  | ListSingleton
+  | ListCons
+  | ListConcat
+  | ListLength
+  | ListIsEmpty
+  | ListFold
+  | ListMap
+  | ListFilter
+  | ListContains
+
+// Dissolution receipt — 🟡 mixed lifecycle. `PatternRealization` is a staged
+// carrier for structural-match lowering onto realized target carriers such as
+// `List<T> -> Vec<T>` or `[]T`. The terminal target is the same authority
+// expressed as target-language facts consumed by `.dag` emission; this record
+// remains the single authority until that stage lands.
+type PatternRealization {
+  target: DeclarationRef
+  strategy: PatternStrategy
+  scrutinee: String
+  empty_pattern: String
+  cons_pattern: String
+  head_expr: String
+  tail_expr: String
+  cost: Int
+}
+
+// Dissolution receipt — 🟡 mixed lifecycle. The current staged emitters need a
+// small structural strategy tag to decide which pattern-lowering path to take.
+// It dissolves with `PatternRealization` when the emitters themselves become
+// data.
+type PatternStrategy
+  = PlaceholderPatternStrategy
+  | VectorList
+
+type StatementSyntax {
+  let_binding: String
+  let_binding_inferred: String
+}
+
+type ExpressionSyntax {
+  binary_op: String
+  field_access: String
+  function_call: String
+  closure: String
+}
+
+type ForEachSyntax {
+  prefix: String
+  separator: String
+}
+
+type ControlFlowSyntax {
+  if_else: String
+  match_arm: String
+  for_each_syntax: ForEachSyntax
+}
+
+type LiteralSyntax {
+  true_keyword: String
+  false_keyword: String
+  string_delimiter: String
+}
+
+type ModuleSyntax {
+  path_separator: String
+}
+
+type FunctionSyntax {
+  definition: String
+  definition_void: String
+  param_with_type: String
+  param_separator: String
+}
+
+type TypeApplicationSyntax {
+  optional: String
+}
+
+type TypeDefinitionSyntax {
+  struct_def: String
+  struct_field: String
+  enum_def: String
+  enum_unit_variant: String
+  enum_data_variant: String
+}
+
+type PatternMatchSyntax {
+  match_expr: String
+  match_arm: String
+  variant_pattern: String
+  variant_pattern_positional: String
+  variant_pattern_empty: String
+  field_binding: String
+  field_binding_separator: String
+  wildcard: String
+}
+
+type CollectionOps {
+  concat: String
+  length: String
+  is_empty: String
+  fold: String
+  map: String
+  filter: String
+  contains: String
+  empty_list: String
+  list_literal: String
+  cons: String
+}
+
+type ValueConstructionSyntax {
+  struct_literal: String
+  struct_field_init: String
+  struct_field_separator: String
+  variant_construction: String
+  variant_named_construction: String
+}
+
+type RenderingModel {
+  read: ReadStrategy
+  construct: ConstructStrategy
+}
+
+type ReadStrategy
+  = Borrow
+  | PassByValue
+
+type ConstructStrategy
+  = CopyOrClone
+  | PassByValue
+
+type LanguageSpec {
+  statements: DeclarationRef
+  expressions: DeclarationRef
+  control_flow: DeclarationRef
+  literals: DeclarationRef
+  modules: DeclarationRef
+  functions: DeclarationRef
+  type_applications: DeclarationRef
+  type_definitions: DeclarationRef
+  patterns: DeclarationRef
+  collection_ops: DeclarationRef
+  values: DeclarationRef
+}
