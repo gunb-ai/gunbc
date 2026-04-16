@@ -146,10 +146,7 @@ pub enum SurfaceItem {
     },
     /// `module foo.bar.baz` — parsed into a dotted path. At M1(2.7)
     /// lowering is a no-op; M2+ consumes it as a scope boundary.
-    Module {
-        path: Vec<String>,
-        span: SourceSpan,
-    },
+    Module { path: Vec<String>, span: SourceSpan },
     /// `import foo.bar { Name1, Name2 }` — parsed into a dotted path
     /// plus an optional name list. At M1(2.7) lowering is a no-op
     /// (the declaration table is flat); M2+ consumes it as a
@@ -690,16 +687,8 @@ impl<'a> Parser<'a> {
                 name,
                 ty,
                 body: Some(body_expr),
-                body_span: SourceSpan::new(
-                    self.file,
-                    open_span.byte_start,
-                    body_end,
-                ),
-                span: SourceSpan::new(
-                    self.file,
-                    kw.span.byte_start,
-                    body_end,
-                ),
+                body_span: SourceSpan::new(self.file, open_span.byte_start, body_end),
+                span: SourceSpan::new(self.file, kw.span.byte_start, body_end),
             });
         }
         let end = self.skip_brace_balanced()?;
@@ -748,9 +737,7 @@ impl<'a> Parser<'a> {
                 TokenKind::Ident(n) => n,
                 other => {
                     return Err(Diagnostic::ParseError {
-                        message: format!(
-                            "expected field name in record literal, got {other:?}"
-                        ),
+                        message: format!("expected field name in record literal, got {other:?}"),
                         span: name_token.span,
                     });
                 }
@@ -761,11 +748,7 @@ impl<'a> Parser<'a> {
             fields.push(SurfaceRecordField {
                 name: field_name,
                 value,
-                span: SourceSpan::new(
-                    self.file,
-                    name_token.span.byte_start,
-                    field_end,
-                ),
+                span: SourceSpan::new(self.file, name_token.span.byte_start, field_end),
             });
             // Accept an optional comma between fields (whitespace
             // alone is also permitted).
@@ -880,9 +863,7 @@ impl<'a> Parser<'a> {
                 })
             }
             other => Err(Diagnostic::ParseError {
-                message: format!(
-                    "expected `=` or `{{` after fn return type, got {other:?}"
-                ),
+                message: format!("expected `=` or `{{` after fn return type, got {other:?}"),
                 span: self.peek().span.clone(),
             }),
         }
@@ -911,11 +892,7 @@ impl<'a> Parser<'a> {
                     name,
                     type_params,
                     fields,
-                    span: SourceSpan::new(
-                        self.file,
-                        type_kw.span.byte_start,
-                        close.span.byte_end,
-                    ),
+                    span: SourceSpan::new(self.file, type_kw.span.byte_start, close.span.byte_end),
                 })
             }
             TokenKind::Eq => {
@@ -925,11 +902,7 @@ impl<'a> Parser<'a> {
             _ => Ok(SurfaceItem::TypeAtom {
                 name,
                 type_params,
-                span: SourceSpan::new(
-                    self.file,
-                    type_kw.span.byte_start,
-                    name_token.span.byte_end,
-                ),
+                span: SourceSpan::new(self.file, type_kw.span.byte_start, name_token.span.byte_end),
             }),
         }
     }
@@ -955,10 +928,7 @@ impl<'a> Parser<'a> {
             self.expect_kind(TokenKind::Colon)?;
             let ty = self.parse_type_expr()?;
             fields.push(SurfaceField { name, ty });
-            if matches!(
-                self.peek().kind,
-                TokenKind::Comma | TokenKind::Semicolon
-            ) {
+            if matches!(self.peek().kind, TokenKind::Comma | TokenKind::Semicolon) {
                 self.bump();
             }
         }
@@ -1205,11 +1175,7 @@ impl<'a> Parser<'a> {
             Ok(SurfaceType::Parameterized {
                 name,
                 args,
-                span: SourceSpan::new(
-                    self.file,
-                    token.span.byte_start,
-                    close.span.byte_end,
-                ),
+                span: SourceSpan::new(self.file, token.span.byte_start, close.span.byte_end),
             })
         } else {
             Ok(SurfaceType::Named {
@@ -1304,12 +1270,12 @@ impl<'a> Parser<'a> {
         let mut lhs = self.parse_term()?;
         loop {
             let op = match &self.peek().kind {
-                TokenKind::Plus => crate::operators::OperatorKind::Arithmetic(
-                    crate::operators::ArithmeticOp::Add,
-                ),
-                TokenKind::Minus => crate::operators::OperatorKind::Arithmetic(
-                    crate::operators::ArithmeticOp::Sub,
-                ),
+                TokenKind::Plus => {
+                    crate::operators::OperatorKind::Arithmetic(crate::operators::ArithmeticOp::Add)
+                }
+                TokenKind::Minus => {
+                    crate::operators::OperatorKind::Arithmetic(crate::operators::ArithmeticOp::Sub)
+                }
                 _ => break,
             };
             self.bump();
@@ -1329,12 +1295,12 @@ impl<'a> Parser<'a> {
         let mut lhs = self.parse_pipe()?;
         loop {
             let op = match &self.peek().kind {
-                TokenKind::Star => crate::operators::OperatorKind::Arithmetic(
-                    crate::operators::ArithmeticOp::Mul,
-                ),
-                TokenKind::Slash => crate::operators::OperatorKind::Arithmetic(
-                    crate::operators::ArithmeticOp::Div,
-                ),
+                TokenKind::Star => {
+                    crate::operators::OperatorKind::Arithmetic(crate::operators::ArithmeticOp::Mul)
+                }
+                TokenKind::Slash => {
+                    crate::operators::OperatorKind::Arithmetic(crate::operators::ArithmeticOp::Div)
+                }
                 _ => break,
             };
             self.bump();
@@ -1359,10 +1325,7 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
-    fn parse_pipe_target(
-        &mut self,
-        lhs: SurfaceExpr,
-    ) -> Result<SurfaceExpr, Diagnostic> {
+    fn parse_pipe_target(&mut self, lhs: SurfaceExpr) -> Result<SurfaceExpr, Diagnostic> {
         let start = expr_span(&lhs).byte_start;
         let target_token = self.bump().clone();
         let target_expr = match target_token.kind {

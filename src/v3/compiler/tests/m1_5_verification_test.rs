@@ -91,7 +91,10 @@ fn bootstrap_loads_verification_authority_types() {
         sum_variants(&dag, "DiagnosticExpectation"),
         vec![
             (String::from("KindIs"), vec![String::from("_0")]),
-            (String::from("ResolveNameContains"), vec![String::from("_0")]),
+            (
+                String::from("ResolveNameContains"),
+                vec![String::from("_0")]
+            ),
         ]
     );
     assert_eq!(

@@ -12,16 +12,16 @@
 pub mod helpers;
 
 #[cfg(test)]
-mod source_audit;
+mod bootstrap;
+#[cfg(test)]
+mod diagnostics;
+#[cfg(test)]
+mod effects;
+#[cfg(test)]
+mod infer_semantics;
 #[cfg(test)]
 mod parse;
 #[cfg(test)]
 mod pipeline;
 #[cfg(test)]
-mod infer_semantics;
-#[cfg(test)]
-mod diagnostics;
-#[cfg(test)]
-mod bootstrap;
-#[cfg(test)]
-mod effects;
+mod source_audit;

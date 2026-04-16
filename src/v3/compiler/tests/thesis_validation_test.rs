@@ -228,8 +228,10 @@ fn count(list: List<Int>) -> Int =
 
 #[test]
 fn t1_5_missing_descent_is_rejected() {
-    let dag = match compile_to_dag("fn diverge(x: Int) -> Int = diverge(x)", "t1_5_no_descent.v3")
-    {
+    let dag = match compile_to_dag(
+        "fn diverge(x: Int) -> Int = diverge(x)",
+        "t1_5_no_descent.v3",
+    ) {
         Err(CompileError::Semantic(dag)) => dag,
         other => panic!("expected CompileError::Semantic, got {other:?}"),
     };

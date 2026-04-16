@@ -26,10 +26,7 @@ fn lens_path() -> PathBuf {
 }
 
 fn emit_lens_module() -> String {
-    let dag = compile_to_dag(
-        &lens_source(),
-        lens_path().to_string_lossy().as_ref(),
-    )
+    let dag = compile_to_dag(&lens_source(), lens_path().to_string_lossy().as_ref())
         .expect("compiled lens source");
     assert!(
         dag.diagnostics().is_empty(),
@@ -63,7 +60,10 @@ fn format_rust_source(source: &str) -> String {
         .write_all(source.as_bytes())
         .expect("write source to rustfmt");
     let output = child.wait_with_output().expect("wait for rustfmt");
-    assert!(output.status.success(), "rustfmt failed on emitted lens module");
+    assert!(
+        output.status.success(),
+        "rustfmt failed on emitted lens module"
+    );
     String::from_utf8(output.stdout).expect("rustfmt output should be utf-8")
 }
 
@@ -210,11 +210,7 @@ fn handwritten_unused_parameters(dag: &Dag) -> Vec<OracleUnusedParameter> {
     violations
 }
 
-fn collect_unused_params(
-    dag: &Dag,
-    bind: &BindNode,
-    out: &mut Vec<OracleUnusedParameter>,
-) {
+fn collect_unused_params(dag: &Dag, bind: &BindNode, out: &mut Vec<OracleUnusedParameter>) {
     let referenced = collect_referenced_ports(dag, bind.value);
 
     for (idx, &param_port) in bind.params.iter().enumerate() {
