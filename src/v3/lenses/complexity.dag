@@ -1,0 +1,193 @@
+module lenses.complexity
+
+import std.list { List, empty, fold }
+import std.substrate { Dag, DagPort, Behavior, BranchPath, NodeId, PortId }
+
+type PortLookup
+  = MissingPort
+  | FoundPort(DagPort)
+
+type BehaviorLookup
+  = MissingBehavior
+  | FoundBehavior(Behavior)
+
+type CostMode
+  = PortMode
+  | SumPortsMode
+  | MaxPathsMode
+
+fn cost_of(d: Dag, port_id: PortId) -> Int =
+  eval_cost(
+    fold(d.ports, 0, |acc, _| acc + 1),
+    d,
+    PortMode,
+    port_id,
+    empty(),
+    empty()
+  )
+
+fn eval_cost(
+  remaining: Int,
+  d: Dag,
+  mode: CostMode,
+  port_id: PortId,
+  ports: List<PortId>,
+  paths: List<BranchPath>
+) -> Int =
+  if remaining == 0 then
+    0
+  else
+    match mode {
+      PortMode =>
+        match find_port(d.ports, port_id) {
+          MissingPort => 0
+          FoundPort(port) =>
+            match port.produced_by {
+              None => 0
+              Some(node_id) =>
+                match find_behavior(d.nodes, node_id) {
+                  MissingBehavior => 0
+                  FoundBehavior(behavior) =>
+                    match behavior {
+                      Value(v) => 0
+                      Transform(t) =>
+                        1
+                        + eval_cost(
+                            remaining - 1,
+                            d,
+                            SumPortsMode,
+                            port_id,
+                            t.inputs,
+                            empty()
+                          )
+                      Branch(branch) =>
+                        1
+                        + eval_cost(
+                            remaining - 1,
+                            d,
+                            PortMode,
+                            branch.input,
+                            empty(),
+                            empty()
+                          )
+                        + eval_cost(
+                            remaining - 1,
+                            d,
+                            MaxPathsMode,
+                            port_id,
+                            empty(),
+                            branch.paths
+                          )
+                      Loop(loop_node) =>
+                        1
+                        + eval_cost(
+                            remaining - 1,
+                            d,
+                            PortMode,
+                            loop_node.source,
+                            empty(),
+                            empty()
+                          )
+                        + eval_cost(
+                            remaining - 1,
+                            d,
+                            PortMode,
+                            loop_node.init,
+                            empty(),
+                            empty()
+                          )
+                      Bind(bind) =>
+                        eval_cost(
+                          remaining - 1,
+                          d,
+                          PortMode,
+                          bind.result_port,
+                          empty(),
+                          empty()
+                        )
+                    }
+                }
+            }
+        }
+      SumPortsMode =>
+        match ports {
+          Empty => 0
+          Cons(payload) =>
+            sum_int(
+              eval_cost(
+                remaining - 1,
+                d,
+                PortMode,
+                payload.head,
+                empty(),
+                empty()
+              ),
+              eval_cost(
+                remaining - 1,
+                d,
+                SumPortsMode,
+                port_id,
+                payload.tail,
+                empty()
+              )
+            )
+        }
+      MaxPathsMode =>
+        match paths {
+          Empty => 0
+          Cons(payload) =>
+            max_int(
+              eval_cost(
+                remaining - 1,
+                d,
+                PortMode,
+                payload.head.result_port,
+                empty(),
+                empty()
+              ),
+              eval_cost(
+                remaining - 1,
+                d,
+                MaxPathsMode,
+                port_id,
+                empty(),
+                payload.tail
+              )
+            )
+        }
+    }
+
+fn max_int(left: Int, right: Int) -> Int =
+  if left > right then left else right
+
+fn sum_int(left: Int, right: Int) -> Int =
+  left + right
+
+fn find_port(ports: List<DagPort>, port_id: PortId) -> PortLookup =
+  match ports {
+    Empty => MissingPort
+    Cons(payload) =>
+      if payload.head.id == port_id then
+        FoundPort(payload.head)
+      else
+        find_port(payload.tail, port_id)
+  }
+
+fn find_behavior(nodes: List<Behavior>, node_id: NodeId) -> BehaviorLookup =
+  match nodes {
+    Empty => MissingBehavior
+    Cons(payload) =>
+      if behavior_id(payload.head) == node_id then
+        FoundBehavior(payload.head)
+      else
+        find_behavior(payload.tail, node_id)
+  }
+
+fn behavior_id(behavior: Behavior) -> NodeId =
+  match behavior {
+    Value(v) => v.id
+    Transform(t) => t.id
+    Branch(b) => b.id
+    Loop(l) => l.id
+    Bind(bind) => bind.id
+  }
