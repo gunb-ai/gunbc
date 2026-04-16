@@ -484,6 +484,40 @@ fn m2_rust_language_syntax_bundle_is_cached_and_structural() {
 }
 
 #[test]
+fn m2_rust_rendering_bundle_is_cached_and_structural() {
+    let dag = Dag::new();
+    let rust_rendering = dag
+        .rust_rendering_spec()
+        .expect("rust_rendering bundle should be cached at bootstrap");
+    let decl = dag.declaration(rust_rendering);
+    match decl.value_body.as_ref() {
+        Some(v3_compiler::dag::ValueBody::Structural { fields }) => {
+            let labels: Vec<_> = fields.iter().map(|(label, _)| label.as_str()).collect();
+            assert_eq!(labels, vec!["read", "construct"]);
+        }
+        other => panic!("rust_rendering must lower structurally, got {other:?}"),
+    }
+
+    for type_name in ["RenderingModel", "ReadStrategy", "ConstructStrategy"] {
+        let id = dag
+            .declaration_by_name(type_name)
+            .unwrap_or_else(|| panic!("`{type_name}` must be declared in rust.dag"))
+            .id;
+        match type_name {
+            "RenderingModel" => assert!(
+                matches!(dag.declaration(id).connective, TypeConnective::Conj { .. }),
+                "`RenderingModel` must lower to a Conj"
+            ),
+            "ReadStrategy" | "ConstructStrategy" => assert!(
+                matches!(dag.declaration(id).connective, TypeConnective::Disj { .. }),
+                "`{type_name}` must lower to a Disj"
+            ),
+            _ => unreachable!("covered above"),
+        }
+    }
+}
+
+#[test]
 fn m17_operator_lowers_to_structural_transform_target() {
     // Class 2: `let x = 1 + 2` lowers to a Transform whose
     // `target: TransformTarget::Operator(Arithmetic(Add))`. No

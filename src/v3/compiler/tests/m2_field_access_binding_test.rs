@@ -142,7 +142,7 @@ fn alias_bindings_cover_method_backed_fields() {
     let dag_fields = type_realization_fields_for(&dag, "Dag");
     assert_eq!(
         dag_fields.get("nodes"),
-        Some(&(String::from("AccessorMethod"), String::from("nodes_owned")))
+        Some(&(String::from("AccessorMethod"), String::from("nodes")))
     );
     assert_eq!(
         dag_fields.get("declarations"),

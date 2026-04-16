@@ -61,6 +61,7 @@ import std.list { List }
 type TypeRealization {
   target: DeclarationRef
   carrier: String
+  is_copy: Bool
   fields: List<FieldBinding>
   cost: Int
 }
@@ -253,6 +254,19 @@ type ValueConstructionSyntax {
   variant_named_construction: String
 }
 
+type RenderingModel {
+  read: ReadStrategy
+  construct: ConstructStrategy
+}
+
+type ReadStrategy
+  = Borrow
+  | PassByValue
+
+type ConstructStrategy
+  = CopyOrClone
+  | PassByValue
+
 type LanguageSpec {
   statements: DeclarationRef
   expressions: DeclarationRef
@@ -274,6 +288,7 @@ type LanguageSpec {
 data rust_int: TypeRealization = {
   target: Int
   carrier: "i64"
+  is_copy: true
   fields: []
   cost: 1
 }
@@ -281,6 +296,7 @@ data rust_int: TypeRealization = {
 data rust_bool: TypeRealization = {
   target: Bool
   carrier: "bool"
+  is_copy: true
   fields: []
   cost: 1
 }
@@ -288,6 +304,7 @@ data rust_bool: TypeRealization = {
 data rust_string: TypeRealization = {
   target: String
   carrier: "String"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -295,6 +312,7 @@ data rust_string: TypeRealization = {
 data rust_node_id: TypeRealization = {
   target: NodeId
   carrier: "NodeId"
+  is_copy: true
   fields: []
   cost: 1
 }
@@ -302,6 +320,7 @@ data rust_node_id: TypeRealization = {
 data rust_port_id: TypeRealization = {
   target: PortId
   carrier: "PortId"
+  is_copy: true
   fields: []
   cost: 1
 }
@@ -309,6 +328,7 @@ data rust_port_id: TypeRealization = {
 data rust_declaration_id: TypeRealization = {
   target: DeclarationId
   carrier: "DeclarationId"
+  is_copy: true
   fields: []
   cost: 1
 }
@@ -316,6 +336,7 @@ data rust_declaration_id: TypeRealization = {
 data rust_type_shape: TypeRealization = {
   target: TypeShape
   carrier: "TypeShape"
+  is_copy: false
   fields: [
     { dag_name: "declaration", rust_access: DirectField("declaration") }
   ]
@@ -325,6 +346,7 @@ data rust_type_shape: TypeRealization = {
 data rust_port_state: TypeRealization = {
   target: PortState
   carrier: "PortState"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -332,6 +354,7 @@ data rust_port_state: TypeRealization = {
 data rust_port: TypeRealization = {
   target: DagPort
   carrier: "Port"
+  is_copy: false
   fields: [
     { dag_name: "id", rust_access: AccessorMethod("id") },
     { dag_name: "state", rust_access: AccessorMethod("state_value") },
@@ -343,6 +366,7 @@ data rust_port: TypeRealization = {
 data rust_source_span: TypeRealization = {
   target: SourceSpan
   carrier: "SourceSpan"
+  is_copy: false
   fields: [
     { dag_name: "file", rust_access: DirectField("file") },
     { dag_name: "start", rust_access: DirectField("byte_start") },
@@ -354,6 +378,7 @@ data rust_source_span: TypeRealization = {
 data rust_literal_bits: TypeRealization = {
   target: LiteralBits
   carrier: "LiteralBits"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -361,6 +386,7 @@ data rust_literal_bits: TypeRealization = {
 data rust_atom_payload: TypeRealization = {
   target: AtomPayload
   carrier: "AtomPayload"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -368,6 +394,7 @@ data rust_atom_payload: TypeRealization = {
 data rust_cardinality_bound: TypeRealization = {
   target: CardinalityBound
   carrier: "CardinalityBound"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -375,6 +402,7 @@ data rust_cardinality_bound: TypeRealization = {
 data rust_conj_field: TypeRealization = {
   target: ConjField
   carrier: "Field"
+  is_copy: false
   fields: [
     { dag_name: "label", rust_access: DirectField("label") },
     { dag_name: "ty", rust_access: DirectField("ty") }
@@ -385,6 +413,7 @@ data rust_conj_field: TypeRealization = {
 data rust_template_argument: TypeRealization = {
   target: TemplateArgument
   carrier: "TemplateArgument"
+  is_copy: false
   fields: [
     { dag_name: "parameter", rust_access: DirectField("parameter") },
     { dag_name: "value", rust_access: DirectField("value") }
@@ -395,6 +424,7 @@ data rust_template_argument: TypeRealization = {
 data rust_field_entry: TypeRealization = {
   target: FieldEntry
   carrier: "(String, FieldValue)"
+  is_copy: false
   fields: [
     { dag_name: "label", rust_access: DirectField("0") },
     { dag_name: "value", rust_access: DirectField("1") }
@@ -405,6 +435,7 @@ data rust_field_entry: TypeRealization = {
 data rust_field_value: TypeRealization = {
   target: FieldValue
   carrier: "FieldValue"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -412,6 +443,7 @@ data rust_field_value: TypeRealization = {
 data rust_value_body: TypeRealization = {
   target: ValueBody
   carrier: "ValueBody"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -419,6 +451,7 @@ data rust_value_body: TypeRealization = {
 data rust_arrow_body: TypeRealization = {
   target: ArrowBody
   carrier: "ArrowBody"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -426,6 +459,7 @@ data rust_arrow_body: TypeRealization = {
 data rust_type_connective: TypeRealization = {
   target: TypeConnective
   carrier: "TypeConnective"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -433,6 +467,7 @@ data rust_type_connective: TypeRealization = {
 data rust_declaration: TypeRealization = {
   target: Declaration
   carrier: "Declaration"
+  is_copy: false
   fields: [
     { dag_name: "id", rust_access: DirectField("id") },
     { dag_name: "name", rust_access: DirectField("name") },
@@ -449,6 +484,7 @@ data rust_declaration: TypeRealization = {
 data rust_arithmetic_op: TypeRealization = {
   target: ArithmeticOp
   carrier: "ArithmeticOp"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -456,6 +492,7 @@ data rust_arithmetic_op: TypeRealization = {
 data rust_comparison_op: TypeRealization = {
   target: ComparisonOp
   carrier: "ComparisonOp"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -463,6 +500,7 @@ data rust_comparison_op: TypeRealization = {
 data rust_operator_kind: TypeRealization = {
   target: OperatorKind
   carrier: "OperatorKind"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -470,6 +508,7 @@ data rust_operator_kind: TypeRealization = {
 data rust_transform_target: TypeRealization = {
   target: TransformTarget
   carrier: "TransformTarget"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -477,6 +516,7 @@ data rust_transform_target: TypeRealization = {
 data rust_branch_pattern: TypeRealization = {
   target: BranchPattern
   carrier: "BranchPattern"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -484,6 +524,7 @@ data rust_branch_pattern: TypeRealization = {
 data rust_payload_binding: TypeRealization = {
   target: PayloadBinding
   carrier: "PayloadBinding"
+  is_copy: false
   fields: [
     { dag_name: "binding_name", rust_access: DirectField("binding_name") },
     { dag_name: "payload_port", rust_access: DirectField("payload_port") }
@@ -494,6 +535,7 @@ data rust_payload_binding: TypeRealization = {
 data rust_branch_path: TypeRealization = {
   target: BranchPath
   carrier: "Path"
+  is_copy: false
   fields: [
     { dag_name: "body", rust_access: DirectField("body") },
     { dag_name: "result_port", rust_access: AccessorMethod("result_port") },
@@ -506,6 +548,7 @@ data rust_branch_path: TypeRealization = {
 data rust_loop_bound: TypeRealization = {
   target: LoopBound
   carrier: "Bound"
+  is_copy: false
   fields: [
     { dag_name: "count", rust_access: DirectField("count") }
   ]
@@ -515,6 +558,7 @@ data rust_loop_bound: TypeRealization = {
 data rust_value_node: TypeRealization = {
   target: ValueNode
   carrier: "ValueNode"
+  is_copy: false
   fields: [
     { dag_name: "id", rust_access: DirectField("id") },
     { dag_name: "payload", rust_access: DirectField("data") },
@@ -527,6 +571,7 @@ data rust_value_node: TypeRealization = {
 data rust_transform_node: TypeRealization = {
   target: TransformNode
   carrier: "TransformNode"
+  is_copy: false
   fields: [
     { dag_name: "id", rust_access: DirectField("id") },
     { dag_name: "target", rust_access: DirectField("target") },
@@ -540,6 +585,7 @@ data rust_transform_node: TypeRealization = {
 data rust_branch_node: TypeRealization = {
   target: BranchNode
   carrier: "BranchNode"
+  is_copy: false
   fields: [
     { dag_name: "id", rust_access: DirectField("id") },
     { dag_name: "input", rust_access: DirectField("input") },
@@ -553,6 +599,7 @@ data rust_branch_node: TypeRealization = {
 data rust_loop_node: TypeRealization = {
   target: LoopNode
   carrier: "LoopNode"
+  is_copy: false
   fields: [
     { dag_name: "id", rust_access: DirectField("id") },
     { dag_name: "source", rust_access: DirectField("source") },
@@ -568,6 +615,7 @@ data rust_loop_node: TypeRealization = {
 data rust_bind_node: TypeRealization = {
   target: BindNode
   carrier: "BindNode"
+  is_copy: false
   fields: [
     { dag_name: "id", rust_access: DirectField("id") },
     { dag_name: "name", rust_access: DirectField("name") },
@@ -581,6 +629,7 @@ data rust_bind_node: TypeRealization = {
 data rust_behavior: TypeRealization = {
   target: Behavior
   carrier: "Behavior"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -588,9 +637,10 @@ data rust_behavior: TypeRealization = {
 data rust_dag: TypeRealization = {
   target: Dag
   carrier: "Dag"
+  is_copy: false
   fields: [
     { dag_name: "declarations", rust_access: AccessorMethod("declarations_owned") },
-    { dag_name: "nodes", rust_access: AccessorMethod("nodes_owned") },
+    { dag_name: "nodes", rust_access: AccessorMethod("nodes") },
     { dag_name: "ports", rust_access: AccessorMethod("ports") }
   ]
   cost: 1
@@ -825,11 +875,11 @@ data rust_contains_callable: CallableRealization = {
 data rust_list_pattern: PatternRealization = {
   target: List
   strategy: VectorList
-  scrutinee: "{expr}.as_slice()"
+  scrutinee: "{expr}"
   empty_pattern: "[]"
   cons_pattern: "[{head}, {tail} @ ..]"
-  head_expr: "{head}.clone()"
-  tail_expr: "{tail}.to_vec()"
+  head_expr: "{head}"
+  tail_expr: "{tail}"
   cost: 1
 }
 
@@ -840,7 +890,7 @@ data rust_statements: StatementSyntax = {
 
 data rust_expressions: ExpressionSyntax = {
   binary_op: "({lhs} {op} {rhs})"
-  field_access: "{object}.{field}"
+  field_access: "({object}).{field}"
   function_call: "{func}({args})"
   closure: "|{params}| {{ {body} }}"
 }
@@ -895,10 +945,10 @@ data rust_collection_ops: CollectionOps = {
   concat: "{ let mut __left = {left}; __left.extend({right}); __left }"
   length: "({recv}).len() as i64"
   is_empty: "({recv}).is_empty()"
-  fold: "({recv}).clone().into_iter().fold({init}, {body})"
-  map: "({recv}).clone().into_iter().map({body}).collect::<Vec<_>>()"
-  filter: "{ let mut __out = Vec::new(); for {item} in ({recv}).clone().into_iter() { if {predicate} { __out.push({item}); } } __out }"
-  contains: "({recv}).contains(&{item})"
+  fold: "({recv}).iter().fold({init}, {body})"
+  map: "({recv}).iter().map({body}).collect::<Vec<_>>()"
+  filter: "{ let mut __out = Vec::new(); for {item} in ({recv}).iter() { if {predicate} { __out.push({item_push}); } } __out }"
+  contains: "({recv}).contains({item})"
   empty_list: "Vec::new()"
   list_literal: "vec![{elements}]"
   cons: "{ let mut __list = {tail}; __list.insert(0, {head}); __list }"
@@ -910,6 +960,11 @@ data rust_value_construction: ValueConstructionSyntax = {
   struct_field_separator: ", "
   variant_construction: "{variant}({args})"
   variant_named_construction: "{variant} {{ {fields} }}"
+}
+
+data rust_rendering: RenderingModel = {
+  read: Borrow
+  construct: CopyOrClone
 }
 
 data rust_language: LanguageSpec = {

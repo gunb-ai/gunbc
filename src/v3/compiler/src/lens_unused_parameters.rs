@@ -39,7 +39,7 @@ impl<'a> UnusedParametersLens<'a> {
     }
 
     pub fn query(&self, _config: &UnusedParametersConfig) -> Vec<UnusedParameter> {
-        generated::check(self.dag.clone())
+        generated::check(self.dag)
             .into_iter()
             .map(|violation| UnusedParameter {
                 function: violation.function,

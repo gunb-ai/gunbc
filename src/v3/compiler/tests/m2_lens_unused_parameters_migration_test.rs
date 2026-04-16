@@ -44,6 +44,10 @@ fn checked_in_generated_module() -> &'static str {
     include_str!("../src/lens_unused_parameters_generated.rs")
 }
 
+fn clone_call_count(source: &str) -> usize {
+    source.match_indices(".clone(").count()
+}
+
 fn format_rust_source(source: &str) -> String {
     let mut child = Command::new("rustfmt")
         .arg("--emit")
@@ -135,7 +139,7 @@ fn roundtrip_lens_render(module_source: &str, program_source: &str, file_name: &
          }} \
          fn main() {{ \
            let dag = v3_compiler::compile_to_dag({program_source:?}, {file_name:?}).expect(\"compiles\"); \
-           let mut rendered: Vec<String> = emitted::check(dag).iter().map(|v| {{ \
+           let mut rendered: Vec<String> = emitted::check(&dag).iter().map(|v| {{ \
              format!(\"{{}}:param[{{}}]\", render(&v3_compiler::compile_to_dag({program_source:?}, {file_name:?}).expect(\"compiles\"), v.function), v.parameter_index) \
            }}).collect(); \
            rendered.sort(); \
@@ -290,6 +294,18 @@ fn unused_parameters_generated_module_matches_checked_in_snapshot() {
         fresh.trim(),
         checked_in_generated_module().trim(),
         "checked-in generated module is stale; regenerate lens_unused_parameters_generated.rs from unused_parameters.dag"
+    );
+}
+
+#[test]
+fn unused_parameters_generated_module_clone_count_is_ratcheted() {
+    const MAX_CLONE_CALLS: usize = 6;
+
+    let fresh = emit_lens_module();
+    let clone_calls = clone_call_count(&fresh);
+    assert!(
+        clone_calls <= MAX_CLONE_CALLS,
+        "generated lens clone count regressed: observed {clone_calls}, ratchet allows at most {MAX_CLONE_CALLS}",
     );
 }
 

@@ -1,3 +1,4 @@
+
 // AUTO-GENERATED from `src/v3/lenses/unused_parameters.dag` via
 // `emit_rust_module`. Regenerate instead of hand-editing.
 
@@ -23,73 +24,59 @@ pub enum ResultPortLookup {
     MissingResultPort,
     FoundResultPort { _0: PortId },
 }
-pub fn check(p0: Dag) -> Vec<UnusedParameter> {
-    ((p0).clone().nodes_owned())
-        .clone()
-        .into_iter()
+pub fn check(p0: &Dag) -> Vec<UnusedParameter> {
+    ((p0).nodes())
+        .iter()
         .fold(Vec::new(), |__fold_acc, __fold_item| {
             let mut __left = (__fold_acc).clone();
-            __left.extend(check_behavior(
-                ((p0).clone()).clone(),
-                (__fold_item).clone(),
-            ));
+            __left.extend(check_behavior(p0, __fold_item));
             __left
         })
 }
-pub fn check_behavior(p0: Dag, p1: Behavior) -> Vec<UnusedParameter> {
-    match (p1).clone() {
+pub fn check_behavior(p0: &Dag, p1: &Behavior) -> Vec<UnusedParameter> {
+    match p1 {
         Behavior::Value(v) => Vec::new(),
         Behavior::Transform(t) => Vec::new(),
         Behavior::Branch(b) => Vec::new(),
         Behavior::Loop(l) => Vec::new(),
         Behavior::Bind(bind) => {
-            if ((bind).clone().params).is_empty() {
+            if (&((bind).params)).is_empty() {
                 Vec::new()
             } else {
-                check_bind((p0).clone(), (bind).clone())
+                check_bind(p0, bind)
             }
         }
     }
 }
-pub fn check_bind(p0: Dag, p1: BindNode) -> Vec<UnusedParameter> {
+pub fn check_bind(p0: &Dag, p1: &BindNode) -> Vec<UnusedParameter> {
     collect_unused_params(
-        (p1).clone().params,
-        (p1).clone(),
-        referenced_ports((p0).clone(), (p1).clone().result_port()),
-        0,
+        &((p1).params),
+        p1,
+        &(referenced_ports(p0, &((p1).result_port()))),
+        &(0),
     )
 }
 pub fn collect_unused_params(
-    p0: Vec<PortId>,
-    p1: BindNode,
-    p2: Vec<PortId>,
-    p3: i64,
+    p0: &[PortId],
+    p1: &BindNode,
+    p2: &[PortId],
+    p3: &i64,
 ) -> Vec<UnusedParameter> {
-    match (p0).clone().as_slice() {
+    match p0 {
         [] => Vec::new(),
         [__list_head, __list_tail @ ..] => {
-            if ((p2).clone()).contains(&__list_head.clone()) {
-                collect_unused_params(
-                    __list_tail.to_vec(),
-                    (p1).clone(),
-                    (p2).clone(),
-                    ((p3).clone() + 1),
-                )
+            if (p2).contains(__list_head) {
+                collect_unused_params(__list_tail, p1, p2, &((*(p3)) + 1))
             } else {
                 {
-                    let mut __list = collect_unused_params(
-                        __list_tail.to_vec(),
-                        (p1).clone(),
-                        (p2).clone(),
-                        ((p3).clone() + 1),
-                    );
+                    let mut __list = collect_unused_params(__list_tail, p1, p2, &((*(p3)) + 1));
                     __list.insert(
                         0,
                         UnusedParameter {
-                            function: (p1).clone().id,
-                            parameter: __list_head.clone(),
-                            parameter_index: (p3).clone(),
-                            function_span: (p1).clone().span,
+                            function: (p1).id,
+                            parameter: (*(__list_head)),
+                            parameter_index: (*(p3)),
+                            function_span: ((p1).span).clone(),
                         },
                     );
                     __list
@@ -98,177 +85,166 @@ pub fn collect_unused_params(
         }
     }
 }
-pub fn referenced_ports(p0: Dag, p1: PortId) -> Vec<PortId> {
+pub fn referenced_ports(p0: &Dag, p1: &PortId) -> Vec<PortId> {
     walk_steps(
-        ((p0).clone().ports()).len() as i64,
-        (p0).clone(),
-        vec![(p1).clone()],
-        Vec::new(),
+        &((&((p0).ports())).len() as i64),
+        p0,
+        &(vec![(*(p1))]),
+        &(Vec::new()),
     )
 }
-pub fn walk_steps(p0: i64, p1: Dag, p2: Vec<PortId>, p3: Vec<PortId>) -> Vec<PortId> {
-    if ((p0).clone() == 0) {
-        (p3).clone()
+pub fn walk_steps(p0: &i64, p1: &Dag, p2: &[PortId], p3: &[PortId]) -> Vec<PortId> {
+    if ((*(p0)) == 0) {
+        (p3).to_vec()
     } else {
-        if ((p2).clone()).is_empty() {
-            (p3).clone()
+        if (p2).is_empty() {
+            (p3).to_vec()
         } else {
             walk_steps(
-                ((p0).clone() - 1),
-                (p1).clone(),
-                expand_frontier_list((p2).clone(), (p1).clone(), (p3).clone()),
-                expand_referenced_list((p2).clone(), (p3).clone()),
+                &((*(p0)) - 1),
+                p1,
+                &(expand_frontier_list(p2, p1, p3)),
+                &(expand_referenced_list(p2, p3)),
             )
         }
     }
 }
-pub fn expand_frontier_list(p0: Vec<PortId>, p1: Dag, p2: Vec<PortId>) -> Vec<PortId> {
-    match (p0).clone().as_slice() {
+pub fn expand_frontier_list(p0: &[PortId], p1: &Dag, p2: &[PortId]) -> Vec<PortId> {
+    match p0 {
         [] => Vec::new(),
         [__list_head, __list_tail @ ..] => {
-            if ((p2).clone()).contains(&__list_head.clone()) {
-                expand_frontier_list(__list_tail.to_vec(), (p1).clone(), (p2).clone())
+            if (p2).contains(__list_head) {
+                expand_frontier_list(__list_tail, p1, p2)
             } else {
                 {
-                    let mut __left = inputs_for_port((p1).clone(), __list_head.clone());
-                    __left.extend(expand_frontier_list(
-                        __list_tail.to_vec(),
-                        (p1).clone(),
-                        (p2).clone(),
-                    ));
+                    let mut __left = inputs_for_port(p1, __list_head);
+                    __left.extend(expand_frontier_list(__list_tail, p1, p2));
                     __left
                 }
             }
         }
     }
 }
-pub fn expand_referenced_list(p0: Vec<PortId>, p1: Vec<PortId>) -> Vec<PortId> {
-    ((p0).clone())
-        .clone()
-        .into_iter()
-        .fold((p1).clone(), |__fold_acc, __fold_item| {
-            if ((__fold_acc).clone()).contains(&(__fold_item).clone()) {
-                (__fold_acc).clone()
-            } else {
-                {
-                    let mut __list = (__fold_acc).clone();
-                    __list.insert(0, (__fold_item).clone());
-                    __list
-                }
+pub fn expand_referenced_list(p0: &[PortId], p1: &[PortId]) -> Vec<PortId> {
+    (p0).iter().fold((p1).to_vec(), |__fold_acc, __fold_item| {
+        if (&__fold_acc).contains(__fold_item) {
+            (__fold_acc).clone()
+        } else {
+            {
+                let mut __list = (__fold_acc).clone();
+                __list.insert(0, (*(__fold_item)));
+                __list
             }
-        })
+        }
+    })
 }
-pub fn inputs_for_port(p0: Dag, p1: PortId) -> Vec<PortId> {
-    match find_port((p0).clone().ports(), (p1).clone()) {
+pub fn inputs_for_port(p0: &Dag, p1: &PortId) -> Vec<PortId> {
+    match &(find_port(&((p0).ports()), p1)) {
         PortLookup::MissingPort => Vec::new(),
-        PortLookup::FoundPort { _0: port } => match (port).clone().produced_by {
+        PortLookup::FoundPort { _0: port } => match &((port).produced_by) {
             None => Vec::new(),
-            Some(node_id) => inputs_for_node((p0).clone(), (node_id).clone()),
+            Some(node_id) => inputs_for_node(p0, node_id),
         },
     }
 }
-pub fn inputs_for_node(p0: Dag, p1: NodeId) -> Vec<PortId> {
-    match find_behavior((p0).clone().nodes_owned(), (p1).clone()) {
+pub fn inputs_for_node(p0: &Dag, p1: &NodeId) -> Vec<PortId> {
+    match &(find_behavior((p0).nodes(), p1)) {
         BehaviorLookup::MissingBehavior => Vec::new(),
-        BehaviorLookup::FoundBehavior { _0: behavior } => {
-            inputs_for_behavior((p0).clone(), (behavior).clone())
-        }
+        BehaviorLookup::FoundBehavior { _0: behavior } => inputs_for_behavior(p0, behavior),
     }
 }
-pub fn inputs_for_behavior(p0: Dag, p1: Behavior) -> Vec<PortId> {
-    match (p1).clone() {
+pub fn inputs_for_behavior(p0: &Dag, p1: &Behavior) -> Vec<PortId> {
+    match p1 {
         Behavior::Value(v) => Vec::new(),
-        Behavior::Transform(t) => (t).clone().inputs,
+        Behavior::Transform(t) => ((t).inputs).to_vec(),
         Behavior::Branch(branch) => {
-            let mut __list = branch_path_outputs((branch).clone().paths);
-            __list.insert(0, (branch).clone().input);
+            let mut __list = branch_path_outputs(&((branch).paths));
+            __list.insert(0, (branch).input);
             __list
         }
-        Behavior::Loop(loop_node) => loop_inputs((p0).clone(), (loop_node).clone()),
-        Behavior::Bind(bind) => vec![(bind).clone().result_port()],
+        Behavior::Loop(loop_node) => loop_inputs(p0, loop_node),
+        Behavior::Bind(bind) => vec![(bind).result_port()],
     }
 }
-pub fn loop_inputs(p0: Dag, p1: LoopNode) -> Vec<PortId> {
+pub fn loop_inputs(p0: &Dag, p1: &LoopNode) -> Vec<PortId> {
     {
         let mut __left = {
             let mut __list = {
-                let mut __list = vec![(p1).clone().bound.count];
-                __list.insert(0, (p1).clone().init);
+                let mut __list = vec![(&((p1).bound)).count];
+                __list.insert(0, (p1).init);
                 __list
             };
-            __list.insert(0, (p1).clone().source);
+            __list.insert(0, (p1).source);
             __list
         };
-        __left.extend(
-            match behavior_result_port((p0).clone().nodes_owned(), (p1).clone().body) {
-                ResultPortLookup::MissingResultPort => Vec::new(),
-                ResultPortLookup::FoundResultPort { _0: port } => vec![(port).clone()],
-            },
-        );
+        __left.extend(match &(behavior_result_port((p0).nodes(), &((p1).body))) {
+            ResultPortLookup::MissingResultPort => Vec::new(),
+            ResultPortLookup::FoundResultPort { _0: port } => vec![(*(port))],
+        });
         __left
     }
 }
-pub fn branch_path_outputs(p0: Vec<Path>) -> Vec<PortId> {
-    match (p0).clone().as_slice() {
+pub fn branch_path_outputs(p0: &[Path]) -> Vec<PortId> {
+    match p0 {
         [] => Vec::new(),
         [__list_head, __list_tail @ ..] => {
-            let mut __list = branch_path_outputs(__list_tail.to_vec());
-            __list.insert(0, __list_head.clone().result_port());
+            let mut __list = branch_path_outputs(__list_tail);
+            __list.insert(0, (__list_head).result_port());
             __list
         }
     }
 }
-pub fn find_port(p0: Vec<Port>, p1: PortId) -> PortLookup {
-    match (p0).clone().as_slice() {
+pub fn find_port(p0: &[Port], p1: &PortId) -> PortLookup {
+    match p0 {
         [] => PortLookup::MissingPort,
         [__list_head, __list_tail @ ..] => {
-            if (__list_head.clone().id() == (p1).clone()) {
+            if ((__list_head).id() == (*(p1))) {
                 PortLookup::FoundPort {
-                    _0: __list_head.clone(),
+                    _0: (__list_head).clone(),
                 }
             } else {
-                find_port(__list_tail.to_vec(), (p1).clone())
+                find_port(__list_tail, p1)
             }
         }
     }
 }
-pub fn find_behavior(p0: Vec<Behavior>, p1: NodeId) -> BehaviorLookup {
-    match (p0).clone().as_slice() {
+pub fn find_behavior(p0: &[Behavior], p1: &NodeId) -> BehaviorLookup {
+    match p0 {
         [] => BehaviorLookup::MissingBehavior,
         [__list_head, __list_tail @ ..] => {
-            if (behavior_id(__list_head.clone()) == (p1).clone()) {
+            if (behavior_id(__list_head) == (*(p1))) {
                 BehaviorLookup::FoundBehavior {
-                    _0: __list_head.clone(),
+                    _0: (__list_head).clone(),
                 }
             } else {
-                find_behavior(__list_tail.to_vec(), (p1).clone())
+                find_behavior(__list_tail, p1)
             }
         }
     }
 }
-pub fn behavior_result_port(p0: Vec<Behavior>, p1: NodeId) -> ResultPortLookup {
-    match find_behavior((p0).clone(), (p1).clone()) {
+pub fn behavior_result_port(p0: &[Behavior], p1: &NodeId) -> ResultPortLookup {
+    match &(find_behavior(p0, p1)) {
         BehaviorLookup::MissingBehavior => ResultPortLookup::MissingResultPort,
         BehaviorLookup::FoundBehavior { _0: behavior } => ResultPortLookup::FoundResultPort {
-            _0: behavior_port((behavior).clone()),
+            _0: behavior_port(behavior),
         },
     }
 }
-pub fn behavior_id(p0: Behavior) -> NodeId {
-    match (p0).clone() {
-        Behavior::Value(v) => (v).clone().id,
-        Behavior::Transform(t) => (t).clone().id,
-        Behavior::Branch(b) => (b).clone().id,
-        Behavior::Loop(l) => (l).clone().id,
-        Behavior::Bind(bind) => (bind).clone().id,
+pub fn behavior_id(p0: &Behavior) -> NodeId {
+    match p0 {
+        Behavior::Value(v) => (v).id,
+        Behavior::Transform(t) => (t).id,
+        Behavior::Branch(b) => (b).id,
+        Behavior::Loop(l) => (l).id,
+        Behavior::Bind(bind) => (bind).id,
     }
 }
-pub fn behavior_port(p0: Behavior) -> PortId {
-    match (p0).clone() {
-        Behavior::Value(v) => (v).clone().result_port(),
-        Behavior::Transform(t) => (t).clone().result_port(),
-        Behavior::Branch(b) => (b).clone().result_port(),
-        Behavior::Loop(l) => (l).clone().result_port(),
-        Behavior::Bind(bind) => (bind).clone().result_port(),
+pub fn behavior_port(p0: &Behavior) -> PortId {
+    match p0 {
+        Behavior::Value(v) => (v).result_port(),
+        Behavior::Transform(t) => (t).result_port(),
+        Behavior::Branch(b) => (b).result_port(),
+        Behavior::Loop(l) => (l).result_port(),
+        Behavior::Bind(bind) => (bind).result_port(),
     }
 }

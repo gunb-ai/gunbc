@@ -1016,6 +1016,11 @@ pub(crate) struct TargetSyntaxCache {
     /// authority the Rust emitter reads for expression/control-flow/
     /// function/type/value syntax templates.
     pub rust_language: Option<DeclarationId>,
+    /// `rust_rendering` ownership-model declaration loaded from
+    /// `src/v3/spec/rust.dag`. This is the target-language
+    /// authority the Rust emitter reads for borrow-vs-construct
+    /// rendering policy at use sites.
+    pub rust_rendering: Option<DeclarationId>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -1215,6 +1220,12 @@ impl Dag {
     /// declared in `src/v3/spec/rust.dag`.
     pub fn rust_language_spec(&self) -> Option<DeclarationId> {
         self.target_syntax.rust_language
+    }
+
+    /// Typed accessor for the Rust target-language ownership model
+    /// declared in `src/v3/spec/rust.dag`.
+    pub fn rust_rendering_spec(&self) -> Option<DeclarationId> {
+        self.target_syntax.rust_rendering
     }
 
     pub fn nodes(&self) -> &[Behavior] {
@@ -1478,6 +1489,8 @@ impl Dag {
             .declaration_by_name("PatternRealization")
             .map(|d| d.id);
         self.target_syntax.rust_language = self.declaration_by_name("rust_language").map(|d| d.id);
+        self.target_syntax.rust_rendering =
+            self.declaration_by_name("rust_rendering").map(|d| d.id);
     }
 }
 

@@ -202,7 +202,7 @@ fn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }
 let zero: Int = 0",
     );
     assert!(out.contains("pub enum Sign {"), "got: {out}");
-    assert!(out.contains("fn classify(p0: Sign) -> i64 { match (p0).clone() {"), "got: {out}");
+    assert!(out.contains("fn classify(p0: &Sign) -> i64 { match p0 {"), "got: {out}");
     assert!(out.contains("Sign::Plus => 0,"), "got: {out}");
     assert!(out.contains("Sign::Minus => 1,"), "got: {out}");
 }
@@ -216,8 +216,8 @@ let zero: Int = 0",
     );
     assert!(out.contains("pub enum BoxedInt {"), "got: {out}");
     assert!(out.contains("Boxed { _0: i64, },"), "got: {out}");
-    assert!(out.contains("fn unwrap_or_zero(p0: BoxedInt) -> i64 { match (p0).clone() {"), "got: {out}");
-    assert!(out.contains("BoxedInt::Boxed { _0: value } => (value).clone(),"), "got: {out}");
+    assert!(out.contains("fn unwrap_or_zero(p0: &BoxedInt) -> i64 { match p0 {"), "got: {out}");
+    assert!(out.contains("BoxedInt::Boxed { _0: value } => (*(value)),"), "got: {out}");
     assert!(out.contains("BoxedInt::Empty => 0,"), "got: {out}");
 }
 
@@ -238,7 +238,7 @@ fn emit_rust_multi_bind_uses_last_as_print_target() {
 let b: Int = a + 2",
     );
     assert!(out.contains("let a: i64 = 1;"), "got: {out}");
-    assert!(out.contains("let b: i64 = ((a).clone() + 2);"), "got: {out}");
+    assert!(out.contains("let b: i64 = (a + 2);"), "got: {out}");
     // Main wrap prints the LAST bind (`b`), not the first (`a`).
     assert!(out.contains("println!(\"{}\", b)"), "got: {out}");
 }
@@ -475,7 +475,7 @@ fn rustc_roundtrip_emitted_module_invokes_reflected_dag_function() {
     );
     let stdout = roundtrip_module_stdout(
         &module,
-        "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); node_count(dag)",
+        "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); node_count(&dag)",
     );
     assert!(
         stdout.parse::<i64>().is_ok_and(|count| count > 0),
@@ -490,7 +490,7 @@ fn rustc_roundtrip_emitted_module_matches_reflected_behavior_payloads() {
     );
     let stdout = roundtrip_module_stdout(
         &module,
-        "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); bind_count(dag)",
+        "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); bind_count(&dag)",
     );
     assert_eq!(
         stdout, "2",
@@ -505,7 +505,7 @@ fn rustc_roundtrip_emitted_module_returns_reflected_source_span_list() {
     );
     let stdout = roundtrip_module_stdout(
         &module,
-        "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) => Some(bind.clone()), _ => None }).expect(\"bind\"); singleton_span(bind).len() as i64",
+        "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) => Some(bind.clone()), _ => None }).expect(\"bind\"); singleton_span(&bind).len() as i64",
     );
     assert_eq!(
         stdout, "1",
@@ -520,7 +520,7 @@ fn rustc_roundtrip_emitted_module_compares_reflected_port_ids_in_list_contains()
     );
     let stdout = roundtrip_module_stdout(
         &module,
-        "let dag = v3_compiler::compile_to_dag(\"fn id(x: Int) -> Int = x\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) if !bind.params.is_empty() => Some(bind.clone()), _ => None }).expect(\"function bind\"); if result_port_is_param(bind) { 1 } else { 0 }",
+        "let dag = v3_compiler::compile_to_dag(\"fn id(x: Int) -> Int = x\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) if !bind.params.is_empty() => Some(bind.clone()), _ => None }).expect(\"function bind\"); if result_port_is_param(&bind) { 1 } else { 0 }",
     );
     assert_eq!(
         stdout, "1",
@@ -544,7 +544,7 @@ fn rustc_roundtrip_emitted_module_returns_user_record_list_from_reflected_binds(
     );
     let stdout = roundtrip_module_stdout(
         &module,
-        "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); bind_names(dag).len() as i64",
+        "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); bind_names(&dag).len() as i64",
     );
     assert_eq!(
         stdout, "2",
