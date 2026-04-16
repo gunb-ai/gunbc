@@ -36,7 +36,9 @@
 //   field_decl := ident `:` type_expr (`,` | `;`)?
 //   sum_variants := variant ( `|` variant )*
 //   variant    := ident ( `(` type_expr_list `)` )?
-//   expr       := comparison
+//   expr       := pipe
+//   pipe       := comparison ( `|>` pipe_target )*
+//   pipe_target := ident | ident ( `(` args `)` )
 //   comparison := additive ( cmp_op additive )?
 //   additive   := term ( (`+` | `-`) term )*
 //   term       := primary ( (`*` | `/`) primary )*
@@ -85,7 +87,7 @@ pub struct SurfaceModule {
 ///
 /// Verdict: terminal at M1(2.7) modulo the two M2 collapses noted
 /// above. `FnExternalBody` has its own dissolution trigger (when
-/// match/pipe/lambda land in the parser, block bodies become real
+/// match/lambda and block-body parsing land in the parser, block bodies become real
 /// `Fn` items with full `SurfaceExpr` bodies).
 #[derive(Debug, Clone)]
 pub enum SurfaceItem {
@@ -112,7 +114,7 @@ pub enum SurfaceItem {
     /// a declaration whose connective is an `Arrow` with
     /// `ArrowBody::Unparsed(body_span)`. The signature flows forward
     /// so callers can type-check against it; the body stays
-    /// scaffolded until the parser adopts match/pipe/lambda.
+    /// scaffolded until the parser adopts match/lambda and block-body parsing.
     FnExternalBody {
         name: String,
         params: Vec<SurfaceParam>,
@@ -342,11 +344,11 @@ impl SurfaceType {
 ///   downstream lowering path.
 /// - Pattern 2 (variant-is-data): fails. Different payload types
 ///   per variant.
-/// - Pattern 3 (algebraic form): these are the six expression
+/// - Pattern 3 (algebraic form): these are the current expression
 ///   kinds that M1(2.8) supports — collapsing would erase
 ///   structure, not dissolve it. The enum will grow as the
-///   parser catches up to v2's grammar (pipe `|>`, lambda
-///   `=> expr`, record/map/list literals, field access).
+///   parser catches up to the remaining surface grammar
+///   (lambda `=> expr`, record/map/list literals, field access).
 /// - Pattern 4 (dimensional): fails.
 ///
 /// Verdict: 🟡 scaffold, not terminal. The enum is in flight —
@@ -1240,7 +1242,51 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expr(&mut self) -> Result<SurfaceExpr, Diagnostic> {
-        self.parse_comparison()
+        self.parse_pipe()
+    }
+
+    fn parse_pipe(&mut self) -> Result<SurfaceExpr, Diagnostic> {
+        let mut lhs = self.parse_comparison()?;
+        while matches!(self.peek().kind, TokenKind::PipeArrow) {
+            self.bump();
+            lhs = self.parse_pipe_target(lhs)?;
+        }
+        Ok(lhs)
+    }
+
+    fn parse_pipe_target(
+        &mut self,
+        lhs: SurfaceExpr,
+    ) -> Result<SurfaceExpr, Diagnostic> {
+        let start = expr_span(&lhs).byte_start;
+        let target_token = self.bump().clone();
+        let target = match target_token.kind {
+            TokenKind::Ident(name) => name,
+            other => {
+                return Err(Diagnostic::ParseError {
+                    message: format!(
+                        "expected function name after `|>`, got {other:?} — pipe desugars only to `f` or `f(...)`"
+                    ),
+                    span: target_token.span,
+                });
+            }
+        };
+        let (mut args, end) = if matches!(self.peek().kind, TokenKind::LParen) {
+            self.bump();
+            let args = self.parse_call_args()?;
+            let close = self.expect_kind(TokenKind::RParen)?;
+            (args, close.span.byte_end)
+        } else {
+            (Vec::new(), target_token.span.byte_end)
+        };
+        let mut injected_args = Vec::with_capacity(args.len() + 1);
+        injected_args.push(lhs);
+        injected_args.append(&mut args);
+        Ok(SurfaceExpr::Call {
+            target,
+            args: injected_args,
+            span: SourceSpan::new(self.file, start, end),
+        })
     }
 
     fn parse_comparison(&mut self) -> Result<SurfaceExpr, Diagnostic> {

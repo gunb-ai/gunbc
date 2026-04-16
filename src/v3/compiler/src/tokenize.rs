@@ -3,8 +3,8 @@
 // Keywords: `let`, `if`, `then`, `else`, `fn`, `type`, `module`, `import`,
 // `match`, `data`, `where`, `true`, `false`. Identifiers, integer literals,
 // double-quoted string literals, and punctuation (`=`, `==`, `!=`, `<`, `<=`,
-// `>`, `>=`, `+`, `-`, `*`, `/`, `:`, `->`, `=>`, `.`, `(`, `)`, `{`, `}`,
-// `[`, `]`, `,`, `;`, `|`, `?`). Whitespace and `//` line comments are
+// `>`, `>=`, `+`, `-`, `*`, `/`, `:`, `->`, `=>`, `|>`, `.`, `(`, `)`, `{`,
+// `}`, `[`, `]`, `,`, `;`, `|`, `?`). Whitespace and `//` line comments are
 // skipped. Tokenizer errors flow through the Diagnostic path — no panics.
 //
 // `<`/`>` tokenize as comparison operators; the parser disambiguates them as
@@ -44,6 +44,7 @@ pub enum TokenKind {
     Colon,
     Arrow,
     FatArrow,
+    PipeArrow,
     Dot,
     LParen,
     RParen,
@@ -197,6 +198,7 @@ fn punctuation_token(bytes: &[u8], pos: usize) -> Option<(TokenKind, usize)> {
         (b'<', Some(b'=')) => Some((TokenKind::Le, 2)),
         (b'>', Some(b'=')) => Some((TokenKind::Ge, 2)),
         (b'-', Some(b'>')) => Some((TokenKind::Arrow, 2)),
+        (b'|', Some(b'>')) => Some((TokenKind::PipeArrow, 2)),
         (b'=', _) => Some((TokenKind::Eq, 1)),
         (b'<', _) => Some((TokenKind::Lt, 1)),
         (b'>', _) => Some((TokenKind::Gt, 1)),
