@@ -2263,6 +2263,7 @@ fn lower_field_path_expr(
             id: node_id,
             target: TransformTarget::FieldProject {
                 field_label: field_label.clone(),
+                field_child: None,
             },
             inputs: vec![current_port],
             output,
