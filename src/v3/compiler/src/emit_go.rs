@@ -123,8 +123,15 @@ enum MemoryModelBinding {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScopeModelBinding {
+    LexicalScoping,
+    DynamicScoping,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TargetExecutionModelBinding {
     memory: MemoryModelBinding,
+    scope: ScopeModelBinding,
 }
 
 struct RealizationIndexes {
@@ -279,12 +286,17 @@ impl RealizationIndexes {
             }
         }
 
-        let syntax = GoLanguageSyntax::build(dag)?;
         let execution_model = TargetExecutionModelBinding::build(
             dag,
             dag.go_execution_model_spec()
                 .ok_or(EmitError::MissingTargetSyntax("go_execution_model"))?,
         )?;
+        if execution_model.scope != ScopeModelBinding::LexicalScoping {
+            return Err(EmitError::UnsupportedBehavior(
+                "emit_go requires lexical scoping targets".to_string(),
+            ));
+        }
+        let syntax = GoLanguageSyntax::build(dag)?;
 
         Ok(Self {
             types,
@@ -343,6 +355,7 @@ impl TargetExecutionModelBinding {
         let fields = structural_fields_for_decl(dag, declaration)?;
         Ok(Self {
             memory: require_memory_model(dag, fields, declaration)?,
+            scope: require_scope_model(dag, fields, declaration)?,
         })
     }
 }
@@ -1850,6 +1863,56 @@ fn require_memory_model(
         declaration,
         detail:
             "TargetExecutionModel.memory must be ValueOnly/GarbageCollected/RefCounted/OwnershipBased",
+    })
+}
+
+fn require_scope_model(
+    dag: &Dag,
+    fields: &[(String, FieldValue)],
+    declaration: DeclarationId,
+) -> Result<ScopeModelBinding, EmitError> {
+    let value = fields
+        .iter()
+        .find(|(label, _)| label == "scope")
+        .map(|(_, value)| value)
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "TargetExecutionModel is missing required `scope` field",
+        })?;
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "TargetExecutionModel.scope must be a ScopeModel variant",
+        });
+    };
+    if !payload.is_empty() {
+        return Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "ScopeModel variants must not carry payload fields",
+        });
+    }
+    let variants = [
+        ("LexicalScoping", ScopeModelBinding::LexicalScoping),
+        ("DynamicScoping", ScopeModelBinding::DynamicScoping),
+    ];
+    for (label, binding) in variants {
+        let Some(variant_id) = named_variant_id(dag, "ScopeModel", label) else {
+            return Err(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "ScopeModel variant declaration was not found",
+            });
+        };
+        if *constructor == variant_id {
+            return Ok(binding);
+        }
+    }
+    Err(EmitError::MalformedTargetSyntax {
+        declaration,
+        detail: "TargetExecutionModel.scope must be LexicalScoping or DynamicScoping",
     })
 }
 

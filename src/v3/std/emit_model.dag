@@ -46,6 +46,11 @@ type TypeInstantiationRealization {
   cost: Int
 }
 
+// Dissolution receipt — 🟡 mixed lifecycle. These variants are the staged target
+// callable-emission strategies that still live in host emitters while `.dag`
+// emission remains partly in Rust. They dissolve when `emit.dag` owns callable
+// lowering directly from the target-language facts; until then, the strategy tag
+// is the single authority for how a std callable lowers into target syntax.
 type CallableStrategy
   = ListEmpty
   | ListSingleton
@@ -58,6 +63,11 @@ type CallableStrategy
   | ListFilter
   | ListContains
 
+// Dissolution receipt — 🟡 mixed lifecycle. `PatternRealization` is a staged
+// carrier for structural-match lowering onto realized target carriers such as
+// `List<T> -> Vec<T>` or `[]T`. The terminal target is the same authority
+// expressed as target-language facts consumed by `.dag` emission; this record
+// remains the single authority until that stage lands.
 type PatternRealization {
   target: DeclarationRef
   strategy: PatternStrategy
@@ -69,6 +79,10 @@ type PatternRealization {
   cost: Int
 }
 
+// Dissolution receipt — 🟡 mixed lifecycle. The current staged emitters need a
+// small structural strategy tag to decide which pattern-lowering path to take.
+// It dissolves with `PatternRealization` when the emitters themselves become
+// data.
 type PatternStrategy
   = PlaceholderPatternStrategy
   | VectorList
