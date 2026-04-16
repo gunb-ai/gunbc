@@ -49,6 +49,7 @@
 module v3.spec.rust
 
 import v3.spec.v3_l1 { Bind, Branch, Main, DeclarationRef }
+import v3.std.computation_model { ComputationModel }
 import std.list { List }
 
 // ─────────────────────────────────────────────────────────────────
@@ -122,8 +123,13 @@ type BehaviorRealization {
 type CallableRealization {
   target: DeclarationRef
   strategy: RustCallableStrategy
+  parameter_dispositions: List<ParameterDisposition>
   cost: Int
 }
+
+type ParameterDisposition
+  = Borrowed
+  | Consumed
 
 type TypeInstantiationRealization {
   target: DeclarationRef
@@ -267,6 +273,16 @@ type ReadStrategy
 type ConstructStrategy
   = CopyOrClone
   | PassByValue
+
+type MemoryModel
+  = ValueOnly
+  | GarbageCollected
+  | RefCounted
+  | OwnershipBased
+
+type TargetExecutionModel {
+  memory: MemoryModel
+}
 
 type LanguageSpec {
   statements: DeclarationRef
@@ -804,30 +820,35 @@ data rust_main_wrap: BehaviorRealization = {
 data rust_empty_callable: CallableRealization = {
   target: empty
   strategy: ListEmpty
+  parameter_dispositions: []
   cost: 1
 }
 
 data rust_singleton_callable: CallableRealization = {
   target: singleton
   strategy: ListSingleton
+  parameter_dispositions: [Consumed]
   cost: 1
 }
 
 data rust_cons_callable: CallableRealization = {
   target: cons
   strategy: ListCons
+  parameter_dispositions: [Consumed, Consumed]
   cost: 1
 }
 
 data rust_concat_callable: CallableRealization = {
   target: concat
   strategy: ListConcat
+  parameter_dispositions: [Consumed, Consumed]
   cost: 1
 }
 
 data rust_length_callable: CallableRealization = {
   target: length
   strategy: ListLength
+  parameter_dispositions: [Borrowed]
   cost: 1
 }
 
@@ -846,30 +867,35 @@ data rust_map_instantiation: TypeInstantiationRealization = {
 data rust_is_empty_callable: CallableRealization = {
   target: is_empty
   strategy: ListIsEmpty
+  parameter_dispositions: [Borrowed]
   cost: 1
 }
 
 data rust_fold_callable: CallableRealization = {
   target: fold
   strategy: ListFold
+  parameter_dispositions: [Borrowed, Consumed]
   cost: 1
 }
 
 data rust_map_callable: CallableRealization = {
   target: map
   strategy: ListMap
+  parameter_dispositions: [Borrowed]
   cost: 1
 }
 
 data rust_filter_callable: CallableRealization = {
   target: filter
   strategy: ListFilter
+  parameter_dispositions: [Borrowed]
   cost: 1
 }
 
 data rust_contains_callable: CallableRealization = {
   target: contains
   strategy: ListContains
+  parameter_dispositions: [Borrowed, Borrowed]
   cost: 1
 }
 
@@ -966,6 +992,10 @@ data rust_value_construction: ValueConstructionSyntax = {
 data rust_rendering: RenderingModel = {
   read: Borrow
   construct: CopyOrClone
+}
+
+data rust_execution: TargetExecutionModel = {
+  memory: OwnershipBased
 }
 
 data rust_language: LanguageSpec = {
