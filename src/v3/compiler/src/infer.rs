@@ -2162,6 +2162,9 @@ fn validate_user_defined_function_signatures(dag: &mut Dag) -> bool {
             .zip(inputs.iter().copied())
             .enumerate()
         {
+            if declaration_is_callable(dag, expected_decl, 0) {
+                continue;
+            }
             match dag.port(port).state() {
                 PortState::Uninferred | PortState::Unresolved => continue 'declarations,
                 PortState::Resolved(_) => {}
@@ -2199,6 +2202,9 @@ fn validate_user_defined_function_signatures(dag: &mut Dag) -> bool {
         match dag.port(bind.value).state() {
             PortState::Uninferred | PortState::Unresolved => continue,
             PortState::Resolved(_) => {}
+        }
+        if declaration_is_callable(dag, output, 0) {
+            continue;
         }
         let Some(actual_ctx) = port_type_context(dag, bind.value) else {
             continue;
