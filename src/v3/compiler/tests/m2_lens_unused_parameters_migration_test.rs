@@ -1,13 +1,12 @@
+use std::collections::HashSet;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use v3_compiler::compile_to_dag;
+use v3_compiler::dag::{Behavior, BindNode, NodeId, PortId};
 use v3_compiler::emit_rust::emit_rust_module;
-use v3_compiler::lens_unused_parameters::{
-    UnusedParametersConfig, UnusedParametersLens,
-};
 use v3_compiler::Dag;
 
 static ROUNDTRIP_ID: AtomicUsize = AtomicUsize::new(0);
@@ -95,10 +94,14 @@ fn find_current_rlib(crate_name: &str) -> PathBuf {
             }
         })
         .collect();
-    matches.sort();
+    matches.sort_by_key(|path| {
+        std::fs::metadata(path)
+            .and_then(|meta| meta.modified())
+            .ok()
+    });
     matches
         .into_iter()
-        .next()
+        .last()
         .expect("compiled rlib for current crate")
 }
 
@@ -157,15 +160,19 @@ fn roundtrip_lens_render(module_source: &str, program_source: &str, file_name: &
     String::from_utf8_lossy(&run.stdout).trim().to_string()
 }
 
-fn render_rust_lens(program_source: &str, file_name: &str) -> String {
-    let dag = compile_to_dag(program_source, file_name).expect("program compiles");
-    render_rust_lens_on_dag(&dag)
+#[derive(Debug, Clone)]
+struct OracleUnusedParameter {
+    function: NodeId,
+    parameter_index: usize,
 }
 
-fn render_rust_lens_on_dag(dag: &Dag) -> String {
-    let lens = UnusedParametersLens::new(dag);
-    let mut rendered: Vec<String> = lens
-        .query(&UnusedParametersConfig::default())
+fn render_handwritten_oracle(program_source: &str, file_name: &str) -> String {
+    let dag = compile_to_dag(program_source, file_name).expect("program compiles");
+    render_handwritten_oracle_on_dag(&dag)
+}
+
+fn render_handwritten_oracle_on_dag(dag: &Dag) -> String {
+    let mut rendered: Vec<String> = handwritten_unused_parameters(dag)
         .iter()
         .map(|violation| {
             let function_name = dag
@@ -183,6 +190,86 @@ fn render_rust_lens_on_dag(dag: &Dag) -> String {
         .collect();
     rendered.sort();
     rendered.join("|")
+}
+
+fn handwritten_unused_parameters(dag: &Dag) -> Vec<OracleUnusedParameter> {
+    let mut violations = Vec::new();
+    for node in dag.nodes() {
+        let Behavior::Bind(bind) = node else {
+            continue;
+        };
+        if bind.params.is_empty() {
+            continue;
+        }
+        collect_unused_params(dag, bind, &mut violations);
+    }
+    violations
+}
+
+fn collect_unused_params(
+    dag: &Dag,
+    bind: &BindNode,
+    out: &mut Vec<OracleUnusedParameter>,
+) {
+    let referenced = collect_referenced_ports(dag, bind.value);
+
+    for (idx, &param_port) in bind.params.iter().enumerate() {
+        if !referenced.contains(&param_port) {
+            out.push(OracleUnusedParameter {
+                function: bind.id,
+                parameter_index: idx,
+            });
+        }
+    }
+}
+
+fn collect_referenced_ports(dag: &Dag, root_port: PortId) -> HashSet<PortId> {
+    let mut referenced: HashSet<PortId> = HashSet::new();
+    let mut queue: Vec<PortId> = vec![root_port];
+
+    while let Some(port) = queue.pop() {
+        if !referenced.insert(port) {
+            continue;
+        }
+        let Some(producer) = dag.port(port).produced_by else {
+            continue;
+        };
+        match dag.node(producer) {
+            Behavior::Value(_) => {}
+            Behavior::Transform(t) => {
+                for &input in &t.inputs {
+                    queue.push(input);
+                }
+            }
+            Behavior::Branch(b) => {
+                queue.push(b.input);
+                for path in &b.paths {
+                    queue.push(path.output);
+                }
+            }
+            Behavior::Loop(l) => {
+                queue.push(l.source);
+                queue.push(l.init);
+                queue.push(l.bound.count);
+                queue.push(behavior_output_port(dag.node(l.body)));
+            }
+            Behavior::Bind(b) => {
+                queue.push(b.value);
+            }
+        }
+    }
+
+    referenced
+}
+
+fn behavior_output_port(behavior: &Behavior) -> PortId {
+    match behavior {
+        Behavior::Value(v) => v.output,
+        Behavior::Transform(t) => t.output,
+        Behavior::Branch(b) => b.output,
+        Behavior::Loop(l) => l.output,
+        Behavior::Bind(b) => b.value,
+    }
 }
 
 #[test]
@@ -231,11 +318,11 @@ fn unused_parameters_dag_matches_rust_lens_on_core_fixtures() {
     ];
 
     for (source, file_name) in fixtures {
-        let rust_rendered = render_rust_lens(source, file_name);
+        let rust_rendered = render_handwritten_oracle(source, file_name);
         let dag_rendered = roundtrip_lens_render(&module, source, file_name);
         assert_eq!(
             dag_rendered, rust_rendered,
-            "compiled .dag lens should match Rust lens on {file_name}"
+            "compiled .dag lens should match handwritten Rust oracle on {file_name}"
         );
     }
 }

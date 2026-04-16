@@ -1078,6 +1078,10 @@ pub struct Dag {
     realization_metas: RealizationMetaCache,
     /// Cached target-language syntax bundle declarations.
     target_syntax: TargetSyntaxCache,
+    /// Synthetic match carriers for anonymous `T?` cardinalities. Used when
+    /// inference needs stable `Some` / `None` variant identities without
+    /// promoting optionals into named top-level declarations.
+    optional_match_disjs: HashMap<DeclarationId, DeclarationId>,
 }
 
 impl Dag {
@@ -1094,6 +1098,7 @@ impl Dag {
             substrate_markers: SubstrateMarkers::default(),
             realization_metas: RealizationMetaCache::default(),
             target_syntax: TargetSyntaxCache::default(),
+            optional_match_disjs: HashMap::new(),
         };
         crate::bootstrap::bootstrap(&mut dag);
         dag
@@ -1232,6 +1237,22 @@ impl Dag {
         let mut ports: Vec<Port> = self.ports.values().cloned().collect();
         ports.sort_by_key(|port| port.id().raw());
         ports
+    }
+
+    pub fn optional_match_disj(
+        &self,
+        cardinality_decl_id: DeclarationId,
+    ) -> Option<DeclarationId> {
+        self.optional_match_disjs.get(&cardinality_decl_id).copied()
+    }
+
+    pub fn set_optional_match_disj(
+        &mut self,
+        cardinality_decl_id: DeclarationId,
+        disj_decl_id: DeclarationId,
+    ) {
+        self.optional_match_disjs
+            .insert(cardinality_decl_id, disj_decl_id);
     }
 
     /// O(1) lookup by NodeId. Relies on the dense-sequential allocation invariant.

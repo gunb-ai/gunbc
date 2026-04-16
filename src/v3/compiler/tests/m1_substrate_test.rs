@@ -2563,6 +2563,21 @@ fn unwrap_or_zero(m: Maybe<Int>) -> Int = match m { Some(value) => value, None =
 }
 
 #[test]
+fn reflected_optional_handle_field_projection_resolves() {
+    let src = "\
+import std.substrate { DagPort, NodeId }
+fn producer_or_self(port: DagPort) -> NodeId = match port.produced_by { Some(node_id) => node_id, None => port.id }
+";
+    let dag = compile_to_dag(src, "optional_handle_field_projection.v3")
+        .expect("compiles");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "optional reflected handle field projection should compile cleanly, got {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
 fn prereq2_payload_binding_on_non_disj_scrutinee_fails_closed() {
     let dag =
         compile_any("fn bad(i: Int) -> Int = match i { Nope(v) => v }", "payload_non_disj.v3");

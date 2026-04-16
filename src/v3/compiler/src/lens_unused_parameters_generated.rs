@@ -159,11 +159,12 @@ pub fn expand_referenced_list(p0: Vec<PortId>, p1: Vec<PortId>) -> Vec<PortId> {
         })
 }
 pub fn inputs_for_port(p0: Dag, p1: PortId) -> Vec<PortId> {
-    match find_producer((p0).clone().nodes_owned(), (p1).clone()) {
-        BehaviorLookup::MissingBehavior => Vec::new(),
-        BehaviorLookup::FoundBehavior { _0: behavior } => {
-            inputs_for_behavior((p0).clone(), (behavior).clone())
-        }
+    match find_port((p0).clone().ports(), (p1).clone()) {
+        PortLookup::MissingPort => Vec::new(),
+        PortLookup::FoundPort { _0: port } => match (port).clone().produced_by {
+            None => Vec::new(),
+            Some(node_id) => inputs_for_node((p0).clone(), (node_id).clone()),
+        },
     }
 }
 pub fn inputs_for_node(p0: Dag, p1: NodeId) -> Vec<PortId> {
@@ -241,20 +242,6 @@ pub fn find_behavior(p0: Vec<Behavior>, p1: NodeId) -> BehaviorLookup {
                 }
             } else {
                 find_behavior(__list_tail.to_vec(), (p1).clone())
-            }
-        }
-    }
-}
-pub fn find_producer(p0: Vec<Behavior>, p1: PortId) -> BehaviorLookup {
-    match (p0).clone().as_slice() {
-        [] => BehaviorLookup::MissingBehavior,
-        [__list_head, __list_tail @ ..] => {
-            if (behavior_port(__list_head.clone()) == (p1).clone()) {
-                BehaviorLookup::FoundBehavior {
-                    _0: __list_head.clone(),
-                }
-            } else {
-                find_producer(__list_tail.to_vec(), (p1).clone())
             }
         }
     }

@@ -109,9 +109,13 @@ fn expand_referenced_list(frontier: List<PortId>, referenced: List<PortId>) -> L
   )
 
 fn inputs_for_port(d: Dag, port_id: PortId) -> List<PortId> =
-  match find_producer(d.nodes, port_id) {
-    MissingBehavior => empty()
-    FoundBehavior(behavior) => inputs_for_behavior(d, behavior)
+  match find_port(d.ports, port_id) {
+    MissingPort => empty()
+    FoundPort(port) =>
+      match port.produced_by {
+        None => empty()
+        Some(node_id) => inputs_for_node(d, node_id)
+      }
   }
 
 fn inputs_for_node(d: Dag, node_id: NodeId) -> List<PortId> =
@@ -165,16 +169,6 @@ fn find_behavior(nodes: List<Behavior>, node_id: NodeId) -> BehaviorLookup =
         FoundBehavior(payload.head)
       else
         find_behavior(payload.tail, node_id)
-  }
-
-fn find_producer(nodes: List<Behavior>, port_id: PortId) -> BehaviorLookup =
-  match nodes {
-    Empty => MissingBehavior
-    Cons(payload) =>
-      if behavior_port(payload.head) == port_id then
-        FoundBehavior(payload.head)
-      else
-        find_producer(payload.tail, port_id)
   }
 
 fn behavior_result_port(nodes: List<Behavior>, node_id: NodeId) -> ResultPortLookup =

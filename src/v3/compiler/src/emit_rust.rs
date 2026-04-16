@@ -1632,6 +1632,12 @@ impl<'a> Ctx<'a> {
         binding: &PatternRealizationBinding,
         locals: &RenderLocals,
     ) -> Result<String, EmitError> {
+        // Debt receipt: this still reconstructs `Empty` / `Cons` by label from the
+        // structural list sum, then lowers that shape onto the realized `Vec<_>`
+        // carrier. The current authority is the spec-owned `PatternRealization`
+        // data in `rust.dag`; the remaining opacity gap is that the list-specific
+        // branch shape is still interpreted here rather than composed by a .dag
+        // emitter over target facts.
         let TypeConnective::Disj { variants } = &self.dag.declaration(disj_id).connective else {
             unreachable!("pattern realization target must walk to a Disj")
         };
@@ -1740,16 +1746,21 @@ impl<'a> Ctx<'a> {
         }
 
         let variant_name = variant_name_for_decl(self.dag, disj_id, resolved_id)?;
-        let enum_name = self
-            .dag
-            .declaration(disj_id)
-            .name
-            .clone()
-            .ok_or(EmitError::UnsupportedBehavior(
-                "match on anonymous sum declarations is not yet supported in Rust emission"
-                    .to_string(),
-            ))?;
-        let qualified_name = self.qualified_name(&enum_name, &variant_name);
+        let is_optional_match = is_optional_match_disj(self.dag, disj_id);
+        let qualified_name = if is_optional_match {
+            variant_name.clone()
+        } else {
+            let enum_name = self
+                .dag
+                .declaration(disj_id)
+                .name
+                .clone()
+                .ok_or(EmitError::UnsupportedBehavior(
+                    "match on anonymous sum declarations is not yet supported in Rust emission"
+                        .to_string(),
+                ))?;
+            self.qualified_name(&enum_name, &variant_name)
+        };
         let Some(binding) = &path.binding else {
             return Ok(render_named_template(
                 &self.indexes.syntax.patterns.variant_pattern_empty,
@@ -1790,7 +1801,9 @@ impl<'a> Ctx<'a> {
                 binding.binding_name, inner_pattern
             ));
         }
-        if children[0].label == "_0" && self.indexes.types.contains_key(&disj_id) {
+        if children[0].label == "_0"
+            && (self.indexes.types.contains_key(&disj_id) || is_optional_match)
+        {
             return Ok(render_named_template(
                 &self.indexes.syntax.patterns.variant_pattern_positional,
                 &[("name", &qualified_name), ("binding", &binding.binding_name)],
@@ -2697,12 +2710,30 @@ fn walk_to_disj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
     for _ in 0..32 {
         match &dag.declaration(current).connective {
             TypeConnective::Disj { .. } => return Some(current),
+            TypeConnective::Cardinality {
+                bound: crate::dag::CardinalityBound::AtMostOne,
+                ..
+            } => return optional_match_disj_for_cardinality(dag, current),
             TypeConnective::Instantiation { template, .. } => current = *template,
             TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => current = *next,
             _ => return None,
         }
     }
     None
+}
+
+fn optional_match_disj_for_cardinality(
+    dag: &Dag,
+    cardinality_decl_id: DeclarationId,
+) -> Option<DeclarationId> {
+    dag.optional_match_disj(cardinality_decl_id)
+}
+
+fn is_optional_match_disj(dag: &Dag, disj_id: DeclarationId) -> bool {
+    dag.declarations()
+        .iter()
+        .filter_map(|decl| dag.optional_match_disj(decl.id))
+        .any(|optional_disj| optional_disj == disj_id)
 }
 
 /// Resolve the algebra-field declaration id for a given operand

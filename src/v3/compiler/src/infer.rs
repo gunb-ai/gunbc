@@ -152,6 +152,10 @@ fn walk_to_disj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
         let decl = dag.declaration(current);
         match &decl.connective {
             TypeConnective::Disj { .. } => return Some(current),
+            TypeConnective::Cardinality {
+                bound: crate::dag::CardinalityBound::AtMostOne,
+                ..
+            } => return existing_optional_match_disj_decl(dag, current),
             TypeConnective::Instantiation { template, .. } => {
                 current = *template;
             }
@@ -162,6 +166,105 @@ fn walk_to_disj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
         }
     }
     None
+}
+
+fn existing_optional_match_disj_decl(
+    dag: &Dag,
+    cardinality_decl_id: DeclarationId,
+) -> Option<DeclarationId> {
+    dag.optional_match_disj(cardinality_decl_id)
+}
+
+fn walk_to_optional_cardinality_decl(
+    dag: &Dag,
+    start: DeclarationId,
+) -> Option<DeclarationId> {
+    let mut current = start;
+    for _ in 0..WALK_DEPTH_LIMIT {
+        match &dag.declaration(current).connective {
+            TypeConnective::Cardinality {
+                bound: crate::dag::CardinalityBound::AtMostOne,
+                ..
+            } => return Some(current),
+            TypeConnective::Instantiation { template, .. } => current = *template,
+            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => current = *next,
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn ensure_optional_match_disj(
+    dag: &mut Dag,
+    cardinality_decl_id: DeclarationId,
+) -> Option<DeclarationId> {
+    if let Some(existing) = existing_optional_match_disj_decl(dag, cardinality_decl_id) {
+        return Some(existing);
+    }
+    let (element, span) = match dag.declaration(cardinality_decl_id).connective.clone() {
+        TypeConnective::Cardinality {
+            element,
+            bound: crate::dag::CardinalityBound::AtMostOne,
+        } => (element, dag.declaration(cardinality_decl_id).span.clone()),
+        _ => return None,
+    };
+
+    let some_payload_id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id: some_payload_id,
+        name: None,
+        connective: TypeConnective::Conj {
+            children: vec![Field {
+                label: "_0".to_string(),
+                ty: element,
+            }],
+        },
+        type_params: Vec::new(),
+        meta_tag: None,
+        inhabits: None,
+        value_body: None,
+        span: span.clone(),
+    });
+
+    let none_payload_id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id: none_payload_id,
+        name: None,
+        connective: TypeConnective::Conj {
+            children: Vec::new(),
+        },
+        type_params: Vec::new(),
+        meta_tag: None,
+        inhabits: None,
+        value_body: None,
+        span: span.clone(),
+    });
+
+    let disj_id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id: disj_id,
+        name: None,
+        connective: TypeConnective::Disj {
+            variants: vec![
+                Field {
+                    label: "Some".to_string(),
+                    ty: some_payload_id,
+                },
+                Field {
+                    label: "None".to_string(),
+                    ty: none_payload_id,
+                },
+            ],
+        },
+        type_params: Vec::new(),
+        meta_tag: None,
+        inhabits: None,
+        value_body: None,
+        span,
+    });
+    dag.set_optional_match_disj(cardinality_decl_id, disj_id);
+
+    Some(disj_id)
 }
 
 /// For every Branch node, resolve each Path's `BranchPattern` by
@@ -184,6 +287,26 @@ fn walk_to_disj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
 /// normal `decide_transform` cascade in subsequent iterations.
 fn resolve_branch_patterns(dag: &mut Dag) -> bool {
     let mut changed = false;
+    let optional_scrutinees: HashSet<DeclarationId> = dag
+        .nodes()
+        .iter()
+        .filter_map(|node| {
+            let Behavior::Branch(branch) = node else {
+                return None;
+            };
+            let PortState::Resolved(ty) = dag.port(branch.input).state() else {
+                return None;
+            };
+            walk_to_optional_cardinality_decl(dag, ty.declaration)
+        })
+        .collect();
+    for decl_id in optional_scrutinees {
+        if existing_optional_match_disj_decl(dag, decl_id).is_none()
+            && ensure_optional_match_disj(dag, decl_id).is_some()
+        {
+            changed = true;
+        }
+    }
     // Collect the rewrites first (immutable borrow of nodes + ports +
     // declarations), then apply them (mutable borrow of nodes). This
     // two-phase pattern avoids borrow conflicts while still reading
@@ -223,8 +346,13 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
         // the underlying Disj. `type Hue = Color` and
         // `Color = Red | Green | Blue` both resolve arms against
         // `Color`'s variants via this walk.
-        let Some(disj_decl_id) =
-            walk_to_disj_decl(dag, scrutinee_ty.declaration)
+        let Some(disj_decl_id) = walk_to_disj_decl(dag, scrutinee_ty.declaration)
+            .or_else(|| {
+                walk_to_optional_cardinality_decl(dag, scrutinee_ty.declaration)
+                    .and_then(|cardinality| {
+                        existing_optional_match_disj_decl(dag, cardinality)
+                    })
+            })
         else {
             // Scrutinee doesn't resolve to a Disj — the main infer
             // pass caught this as a TypeMismatch already. Skip.
@@ -245,12 +373,14 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                     // Already resolved (e.g., if/else paths on a
                     // second infer pass). Record for coverage check
                     // and skip the rewrite.
+                    let arm_name = disj_variants
+                        .iter()
+                        .find(|(_, variant_id)| variant_id == id)
+                        .map(|(label, _)| label.clone())
+                        .unwrap_or_else(|| format!("declaration#{}", id.raw()));
                     resolved_arms.push((
                         *id,
-                        dag.declaration(*id)
-                            .name
-                            .clone()
-                            .unwrap_or_else(|| format!("declaration#{}", id.raw())),
+                        arm_name,
                     ));
                     continue;
                 }
@@ -577,7 +707,9 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                     );
                 }
                 PortState::Resolved(ty) => {
-                    if walk_to_disj_decl(dag, ty.declaration).is_none() {
+                    if walk_to_disj_decl(dag, ty.declaration).is_none()
+                        && walk_to_optional_cardinality_decl(dag, ty.declaration).is_none()
+                    {
                         if is_retryable_generic_decl(dag, ty.declaration) {
                             return Decision::Retry;
                         }
@@ -2071,6 +2203,10 @@ fn walk_to_disj_decl_with_subst(
         let decl = dag.declaration(current);
         match &decl.connective {
             TypeConnective::Disj { .. } => return Some(current),
+            TypeConnective::Cardinality {
+                bound: crate::dag::CardinalityBound::AtMostOne,
+                ..
+            } => return existing_optional_match_disj_decl(dag, current),
             TypeConnective::Instantiation {
                 template,
                 arguments,
@@ -2797,10 +2933,11 @@ fn walk_to_type_shape(
         // Terminal non-follow cases. An anonymous `UnresolvedIdentifier`
         // means the sweep did not resolve the reference — the phantom
         // diagnostic is already attached, and this walk fails so the
-        // caller can surface it. The structural Conj/Disj/Arrow/
-        // Cardinality cases represent anonymous inline types that
-        // have no `TypeShape` identity at M1(2.7) — M2 port-type
-        // extension will either admit them or keep returning None.
+        // caller can surface it. Anonymous optionals still need port
+        // identities today because reflected substrate fields such as
+        // `DagPort.produced_by: NodeId?` are legal field-project outputs.
+        // The broader anonymous structural cases stay fail-closed until
+        // port-type extension work admits them deliberately.
         // Enumerated explicitly (rather than `_ => None`) so any
         // future variant forces consideration here.
         TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_)) => None,
@@ -2808,7 +2945,7 @@ fn walk_to_type_shape(
         TypeConnective::Conj { .. } => None,
         TypeConnective::Disj { .. } => None,
         TypeConnective::Arrow { .. } => None,
-        TypeConnective::Cardinality { .. } => None,
+        TypeConnective::Cardinality { .. } => Some(TypeShape::new(current)),
     }
 }
 

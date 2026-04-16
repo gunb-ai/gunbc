@@ -94,10 +94,14 @@ fn find_current_rlib(crate_name: &str) -> PathBuf {
             }
         })
         .collect();
-    matches.sort();
+    matches.sort_by_key(|path| {
+        std::fs::metadata(path)
+            .and_then(|meta| meta.modified())
+            .ok()
+    });
     matches
         .into_iter()
-        .next()
+        .last()
         .expect("compiled rlib for current crate")
 }
 
