@@ -83,7 +83,7 @@ L1.5 — Clean bootstrap (IMMEDIATE post-L1) [the process is the first feature]
       │       — uses the pipeline declaration from step 1
       │       — the dark-emu fix, available from day one
       │    3. Test authority types in std/verification.dag (§14)
-      │       — TestClaim, TestCase, MockRealization as structural types
+      │       — extend std/verification.dag with compiler-verifiable AssertKind variants
       │       — first consumer: structural testgen from existing std/ types
       │       — every type declared in std/ gets inhabitant + coercion tests
       │
@@ -1605,30 +1605,41 @@ are valid. From that specification, the compiler generates:
 - **Exhaustiveness witnesses.** For every Disj consumed by a
   match, generate a test per variant that exercises each arm.
 
-**Authority types (in `std/verification.dag`):**
+**Authority types: extend existing `dsl/std/verification.dag`.**
+
+v2 already declares the test authority types:
 
 ```dag
-type TestClaim {
-  subject: Expression    // what is being tested
-  predicate: Predicate   // what must hold
-  failure_message: String
-}
-
-type TestCase {
-  name: String
-  claims: List<TestClaim>
-}
-
-type TestSuite {
-  name: String
-  cases: List<TestCase>
-}
+// dsl/std/verification.dag (EXISTING — single authority)
+type AssertKind = AssertEqual | AssertTrue | AssertSome | AssertNone
+type TestClaim { kind: AssertKind, label: String }
+type TestCase { name: String, claims: List<TestClaim>, ignored: Bool }
 ```
 
-These are the structural authority for what a test IS. Every
-backend renders TestCase to its test framework — `#[test]` in
-Rust, `func Test...` in Go, `def test_...` in Python. Same
-pattern as type emission through RealizationIndex.
+L1.5 EXTENDS this schema (same file, same authority) with
+the structural predicates testgen needs. The extension adds
+`AssertKind` variants for compiler-verifiable properties:
+
+```dag
+// Added to dsl/std/verification.dag at L1.5:
+// AssertCompiles        — program compiles with zero diagnostics
+// AssertFailsWith       — program fails with named diagnostic kind
+// AssertPortResolved    — named bind's output is Resolved
+// AssertPortUnresolved  — named bind's output is Unresolved
+// AssertCostBelow       — structural cost at or below bound
+// AssertCostAbove       — structural cost above floor
+```
+
+Each new `AssertKind` variant is a standard verification
+predicate grounded in existing substrate facts (`PortState`,
+`Diagnostic`, `CostLens` output). No new opaque carriers —
+`subject` is a `TestClaim.label` string (the .dag source text),
+and `kind` is an `AssertKind` variant that names the substrate
+property being checked.
+
+Every backend renders TestCase to its test framework —
+`#[test]` in Rust, `func Test...` in Go, `def test_...` in
+Python. Same pattern as type emission through RealizationIndex.
 
 **Why at L1.5.** The types in `std/` already exist. Structural
 testgen reads them and emits test cases. This requires no lens
@@ -1682,6 +1693,12 @@ returns a structurally valid `Result` — the identity value for
 the return type's algebra, or a generated inhabitant witness if
 no algebra exists.
 
+The mock type must make invalid states unrepresentable. A mock
+that returns a value not inhabiting the source arrow's return
+type should be structurally impossible to construct. The mock's
+return value is not a raw `Value` — it's a typed reference to
+an inhabitant witness of the source declaration's return type:
+
 ```dag
 type MockRealization {
   source: DeclarationId         // which ExternalRealization
@@ -1689,10 +1706,23 @@ type MockRealization {
 }
 
 type MockStrategy
-  = DefaultInhabitant           // return the type's default witness
-  | FixedValue { value: Value } // return a specific value
-  | FailWith { error: Value }   // return the error variant
+  = DefaultInhabitant
+      // Compiler generates the return type's default witness.
+      // Always valid — the witness is computed from the type.
+  | InhabitantOf { witness: DeclarationId }
+      // Return a specific declared witness of the return type.
+      // The DeclarationId must inhabit the source's return type
+      // (checked at construction by the same inhabitance walk
+      // used for record literals). Invalid witnesses are a
+      // compile error, not a runtime surprise.
 ```
+
+`FixedValue { value: Value }` and `FailWith { error: Value }`
+from the earlier sketch are removed — raw `Value` payloads
+admit invalid states. `InhabitantOf` replaces both by
+requiring the mock value to be a declared inhabitant of the
+correct type. The compiler verifies inhabitance at mock
+construction time, not at dry-run time.
 
 **Dry-run mode.** Execute the pipeline (or any composed
 function chain) with MockRealizations substituted for all

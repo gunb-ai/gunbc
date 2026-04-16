@@ -370,10 +370,10 @@ fact:
 
 ```dag
 // std/values.dag
-type ValueSemantics = Immutable | Mutable
+type SourceMutability = Immutable | Mutable
 
 // The .dag language substrate declares:
-data dag_value_semantics: ValueSemantics = Immutable
+data dag_value_semantics: SourceMutability = Immutable
 ```
 
 The ownership pipeline reads this. If the substrate says
@@ -384,7 +384,7 @@ strategy.
 
 **For external language ingestion: per-declaration.** When
 ingesting Python/Go/etc., each `ExternalRealization` declaration
-carries its `ValueSemantics`. Python `list` → `Mutable`. Python
+carries its `SourceMutability`. Python `list` → `Mutable`. Python
 `tuple` → `Immutable`. Go `struct` → depends on whether it has
 pointer receivers.
 
@@ -411,7 +411,7 @@ proceed.
 
 | Phase | Depends on | Deliverable |
 |---|---|---|
-| **Phase 1** (L1.5) | Nothing — design is complete | 1. Declare `ValueSemantics = Immutable` in `std/values.dag`. 2. Consumer-count index in emitter (count distinct consumer NODES per port, not references). 3. 2-field `SharingModel` in `rust.dag` (single=Move, multi=Clone). 4. Emitter reads consumer count + sharing model, renders accordingly. 5. Clone-count ratchet test on generated lens code. |
+| **Phase 1** (L1.5) | Nothing — design is complete | 1. Declare `SourceMutability = Immutable` in `std/values.dag`. 2. Consumer-count index in emitter (count distinct consumer NODES per port, not references). 3. 2-field `SharingModel` in `rust.dag` (single=Move, multi=Clone). 4. Emitter reads consumer count + sharing model, renders accordingly. 5. Clone-count ratchet test on generated lens code. |
 | **Phase 2** (L2) | Phase 1 | 1. Add escape analysis (does value flow to function return port?). 2. Extend SharingModel to 3 fields (add `multi_consumer_local: Borrow`). 3. Emitter uses borrow for non-escaping multi-consumer, clone for escaping. |
 | **Phase 3** (L3) | Phase 2 | Self-analysis: ownership pipeline runs on generated compiler code. Clone-count ratchet at zero on all generated artifacts. |
 
