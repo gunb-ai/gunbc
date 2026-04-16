@@ -62,18 +62,23 @@ fn parse_diagnostic_count(stderr: &str) -> usize {
         .unwrap_or(usize::MAX)
 }
 
-/// Copy hand-maintained files into a compile output dir and patch Cargo.toml
-/// with the ureq dependency needed by the interpreter.
-fn prepare_stage1_for_build(stage1_dir: &std::path::Path, ws: &std::path::Path) {
+/// Copy hand-maintained runtime modules into a compile output dir.
+fn hydrate_runtime_modules(output_dir: &std::path::Path, ws: &std::path::Path) {
     let stage0_src = ws.join("src/v2/stage0/src");
     for name in &["v2_interpreter.rs", "cli_run.rs"] {
         let src = stage0_src.join(name);
         if src.exists() {
-            let dst = stage1_dir.join("src").join(name);
+            let dst = output_dir.join("src").join(name);
             std::fs::copy(&src, &dst)
-                .unwrap_or_else(|e| panic!("failed to copy {} to stage1: {}", name, e));
+                .unwrap_or_else(|e| panic!("failed to copy {} into compile output: {}", name, e));
         }
     }
+}
+
+/// Copy hand-maintained files into a compile output dir and patch Cargo.toml
+/// with the ureq dependency needed by the interpreter.
+fn prepare_stage1_for_build(stage1_dir: &std::path::Path, ws: &std::path::Path) {
+    hydrate_runtime_modules(stage1_dir, ws);
     let cargo_toml = stage1_dir.join("Cargo.toml");
     if cargo_toml.exists() {
         let contents = std::fs::read_to_string(&cargo_toml).unwrap();
@@ -111,6 +116,38 @@ fn rustfmt_rs_files(dir: &std::path::Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Copy the generated Rust source tree into a stable snapshot directory.
+fn snapshot_rs_tree(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+    fn copy_dir(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+        std::fs::create_dir_all(dst)
+            .map_err(|e| format!("failed to create {}: {}", dst.display(), e))?;
+        for entry in std::fs::read_dir(src)
+            .map_err(|e| format!("failed to read {}: {}", src.display(), e))?
+        {
+            let entry =
+                entry.map_err(|e| format!("failed to read entry in {}: {}", src.display(), e))?;
+            let path = entry.path();
+            let target = dst.join(entry.file_name());
+            if path.is_dir() {
+                copy_dir(&path, &target)?;
+            } else if path.extension().map(|ext| ext == "rs").unwrap_or(false) {
+                std::fs::copy(&path, &target).map_err(|e| {
+                    format!(
+                        "failed to copy {} to {}: {}",
+                        path.display(),
+                        target.display(),
+                        e
+                    )
+                })?;
+            }
+        }
+        Ok(())
+    }
+
+    let _ = std::fs::remove_dir_all(dst);
+    copy_dir(src, dst)
 }
 
 /// Diff two src/ directories, excluding hand-maintained files.
@@ -637,6 +674,7 @@ fn ci_timing(msg: &str) {
 /// Output from pass 1: build stage0, run one self-compile.
 struct Pass1Output {
     output_dir: std::path::PathBuf,
+    snapshot_src: std::path::PathBuf,
     stderr: String,
     elapsed: std::time::Duration,
     /// Freshness check computed here (before CI_PASS2 can modify workspace).
@@ -698,8 +736,13 @@ static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
     // via rustfmt before the diff so whitespace never masquerades as
     // staleness.
     let pass1_src = output_dir.join("src");
+    hydrate_runtime_modules(&output_dir, &ws);
     if let Err(err) = rustfmt_rs_files(&pass1_src) {
         panic!("failed to rustfmt pass1 output: {err}");
+    }
+    let snapshot_src = std::env::temp_dir().join("v2-ci-pass1-snapshot/src");
+    if let Err(err) = snapshot_rs_tree(&pass1_src, &snapshot_src) {
+        panic!("failed to snapshot pass1 output: {err}");
     }
     let committed_src = ws.join("src/v2/stage0/src");
     let freshness = diff_excluding_hand_maintained(&pass1_src, &committed_src);
@@ -707,6 +750,7 @@ static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
 
     Pass1Output {
         output_dir,
+        snapshot_src,
         stderr,
         elapsed,
         freshness,
@@ -760,6 +804,11 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
         "pass 2 (stage1->2) compile failed:\n{}",
         String::from_utf8_lossy(&pass2_output.stderr)
     );
+    hydrate_runtime_modules(&output_dir, &ws);
+    let pass2_src = output_dir.join("src");
+    if let Err(err) = rustfmt_rs_files(&pass2_src) {
+        panic!("failed to rustfmt pass2 output: {err}");
+    }
 
     Pass2Output { output_dir }
 });
@@ -862,9 +911,9 @@ fn ci_freshness() {
 fn ci_fixed_point() {
     let pass1 = &*CI_PASS1;
     let pass2 = &*CI_PASS2;
-    let pass1_src = pass1.output_dir.join("src");
+    let pass1_src = &pass1.snapshot_src;
     let pass2_src = pass2.output_dir.join("src");
-    if let Err(diff) = diff_excluding_hand_maintained(&pass1_src, &pass2_src) {
+    if let Err(diff) = diff_excluding_hand_maintained(pass1_src, &pass2_src) {
         eprintln!("Fixed point NOT reached — diff:\n{}", diff);
         panic!("stage1 != stage2 — fixed point not reached");
     }
