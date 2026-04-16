@@ -37,9 +37,11 @@
 //   sum_variants := variant ( `|` variant )*
 //   variant    := ident ( `(` type_expr_list `)` )?
 //   expr       := comparison
+//   pipe_target := ident | ident ( `(` args `)` )
 //   comparison := additive ( cmp_op additive )?
 //   additive   := term ( (`+` | `-`) term )*
-//   term       := primary ( (`*` | `/`) primary )*
+//   term       := pipe ( (`*` | `/`) pipe )*
+//   pipe       := primary ( `|>` pipe_target )*
 //   primary    := int_lit | bool_lit | string_lit
 //              |  ident ( `(` args `)` )?
 //              |  `if` expr `then` expr `else` expr
@@ -85,7 +87,7 @@ pub struct SurfaceModule {
 ///
 /// Verdict: terminal at M1(2.7) modulo the two M2 collapses noted
 /// above. `FnExternalBody` has its own dissolution trigger (when
-/// match/pipe/lambda land in the parser, block bodies become real
+/// match/lambda and block-body parsing land in the parser, block bodies become real
 /// `Fn` items with full `SurfaceExpr` bodies).
 #[derive(Debug, Clone)]
 pub enum SurfaceItem {
@@ -113,7 +115,7 @@ pub enum SurfaceItem {
     /// a declaration whose connective is an `Arrow` with
     /// `ArrowBody::Unparsed(body_span)`. The signature flows forward
     /// so callers can type-check against it; the body stays
-    /// scaffolded until the parser adopts match/pipe/lambda.
+    /// scaffolded until the parser adopts match/lambda and block-body parsing.
     FnExternalBody {
         name: String,
         type_params: Vec<String>,
@@ -344,11 +346,11 @@ impl SurfaceType {
 ///   downstream lowering path.
 /// - Pattern 2 (variant-is-data): fails. Different payload types
 ///   per variant.
-/// - Pattern 3 (algebraic form): these are the six expression
+/// - Pattern 3 (algebraic form): these are the current expression
 ///   kinds that M1(2.8) supports — collapsing would erase
 ///   structure, not dissolve it. The enum will grow as the
-///   parser catches up to v2's grammar (pipe `|>`, lambda
-///   `=> expr`, record/map/list literals, field access).
+///   parser catches up to the remaining surface grammar
+///   (lambda `=> expr`, record/map/list literals, field access).
 /// - Pattern 4 (dimensional): fails.
 ///
 /// Verdict: 🟡 scaffold, not terminal. The enum is in flight —
@@ -1317,7 +1319,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_term(&mut self) -> Result<SurfaceExpr, Diagnostic> {
-        let mut lhs = self.parse_primary()?;
+        let mut lhs = self.parse_pipe()?;
         loop {
             let op = match &self.peek().kind {
                 TokenKind::Star => crate::operators::OperatorKind::Arithmetic(
@@ -1329,7 +1331,7 @@ impl<'a> Parser<'a> {
                 _ => break,
             };
             self.bump();
-            let rhs = self.parse_primary()?;
+            let rhs = self.parse_pipe()?;
             let start = expr_span(&lhs).byte_start;
             let end = expr_span(&rhs).byte_end;
             lhs = SurfaceExpr::Operator {
@@ -1339,6 +1341,62 @@ impl<'a> Parser<'a> {
             };
         }
         Ok(lhs)
+    }
+
+    fn parse_pipe(&mut self) -> Result<SurfaceExpr, Diagnostic> {
+        let mut lhs = self.parse_primary()?;
+        while matches!(self.peek().kind, TokenKind::PipeArrow) {
+            self.bump();
+            lhs = self.parse_pipe_target(lhs)?;
+        }
+        Ok(lhs)
+    }
+
+    fn parse_pipe_target(
+        &mut self,
+        lhs: SurfaceExpr,
+    ) -> Result<SurfaceExpr, Diagnostic> {
+        let start = expr_span(&lhs).byte_start;
+        let target_token = self.bump().clone();
+        let target_expr = match target_token.kind {
+            TokenKind::Ident(name) => self.parse_ident_expr(name, target_token.span.clone())?,
+            other => {
+                return Err(Diagnostic::ParseError {
+                    message: format!(
+                        "expected function name after `|>`, got {other:?} — pipe desugars only to `f` or `f(...)`"
+                    ),
+                    span: target_token.span,
+                });
+            }
+        };
+        match target_expr {
+            SurfaceExpr::Var { name, span } => Ok(SurfaceExpr::Call {
+                target: name,
+                args: vec![lhs],
+                span: SourceSpan::new(self.file, start, span.byte_end),
+            }),
+            SurfaceExpr::Call {
+                target,
+                mut args,
+                span,
+            } => {
+                let mut injected_args = Vec::with_capacity(args.len() + 1);
+                injected_args.push(lhs);
+                injected_args.append(&mut args);
+                Ok(SurfaceExpr::Call {
+                    target,
+                    args: injected_args,
+                    span: SourceSpan::new(self.file, start, span.byte_end),
+                })
+            }
+            SurfaceExpr::Path { span, .. } => Err(Diagnostic::ParseError {
+                message:
+                    "expected function name or call after `|>`; dotted paths are not callable in the current surface grammar"
+                        .to_string(),
+                span,
+            }),
+            _ => unreachable!("parse_ident_expr only returns Var, Call, or Path"),
+        }
     }
 
     fn parse_primary(&mut self) -> Result<SurfaceExpr, Diagnostic> {
@@ -1367,60 +1425,63 @@ impl<'a> Parser<'a> {
                 span: token.span,
             }),
             TokenKind::Pipe => self.parse_lambda(token.span),
-            TokenKind::Ident(name) => {
-                if matches!(self.peek().kind, TokenKind::LParen) {
-                    self.bump();
-                    let args = self.parse_call_args()?;
-                    let close = self.expect_kind(TokenKind::RParen)?;
-                    let start = token.span.byte_start;
-                    let end = close.span.byte_end;
-                    Ok(SurfaceExpr::Call {
-                        target: name,
-                        args,
-                        span: SourceSpan::new(self.file, start, end),
-                    })
-                } else if matches!(self.peek().kind, TokenKind::Dot) {
-                    // Member-access chain: Ident (. Ident)+. Always
-                    // reads at least one additional segment because
-                    // the Dot is in the peek. Lowers to
-                    // `SurfaceExpr::Path` for downstream resolution
-                    // via top-level symbol + Conj-child walk by label.
-                    let mut segments = vec![name];
-                    let start = token.span.byte_start;
-                    let mut end = token.span.byte_end;
-                    while matches!(self.peek().kind, TokenKind::Dot) {
-                        self.bump();
-                        let next = self.bump().clone();
-                        match next.kind {
-                            TokenKind::Ident(n) => {
-                                end = next.span.byte_end;
-                                segments.push(n);
-                            }
-                            other => {
-                                return Err(Diagnostic::ParseError {
-                                    message: format!(
-                                        "expected identifier after `.` in dotted path, got {other:?}"
-                                    ),
-                                    span: next.span,
-                                });
-                            }
-                        }
-                    }
-                    Ok(SurfaceExpr::Path {
-                        segments,
-                        span: SourceSpan::new(self.file, start, end),
-                    })
-                } else {
-                    Ok(SurfaceExpr::Var {
-                        name,
-                        span: token.span,
-                    })
-                }
-            }
+            TokenKind::Ident(name) => self.parse_ident_expr(name, token.span),
             other => Err(Diagnostic::ParseError {
                 message: format!("expected primary expression, got {other:?}"),
                 span: token.span,
             }),
+        }
+    }
+
+    fn parse_ident_expr(
+        &mut self,
+        name: String,
+        span: SourceSpan,
+    ) -> Result<SurfaceExpr, Diagnostic> {
+        if matches!(self.peek().kind, TokenKind::LParen) {
+            self.bump();
+            let args = self.parse_call_args()?;
+            let close = self.expect_kind(TokenKind::RParen)?;
+            let start = span.byte_start;
+            let end = close.span.byte_end;
+            Ok(SurfaceExpr::Call {
+                target: name,
+                args,
+                span: SourceSpan::new(self.file, start, end),
+            })
+        } else if matches!(self.peek().kind, TokenKind::Dot) {
+            // Member-access chain: Ident (. Ident)+. Always
+            // reads at least one additional segment because
+            // the Dot is in the peek. Lowers to
+            // `SurfaceExpr::Path` for downstream resolution
+            // via top-level symbol + Conj-child walk by label.
+            let mut segments = vec![name];
+            let start = span.byte_start;
+            let mut end = span.byte_end;
+            while matches!(self.peek().kind, TokenKind::Dot) {
+                self.bump();
+                let next = self.bump().clone();
+                match next.kind {
+                    TokenKind::Ident(n) => {
+                        end = next.span.byte_end;
+                        segments.push(n);
+                    }
+                    other => {
+                        return Err(Diagnostic::ParseError {
+                            message: format!(
+                                "expected identifier after `.` in dotted path, got {other:?}"
+                            ),
+                            span: next.span,
+                        });
+                    }
+                }
+            }
+            Ok(SurfaceExpr::Path {
+                segments,
+                span: SourceSpan::new(self.file, start, end),
+            })
+        } else {
+            Ok(SurfaceExpr::Var { name, span })
         }
     }
 
