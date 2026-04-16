@@ -946,7 +946,7 @@ impl Behavior {
 /// always `None` and the downstream `is_realization_shape` check
 /// always failed. The check now validates structural shape (Conj +
 /// `meta_tag.is_some()`) directly — no cache needed.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct PrimitiveCache {
     pub int: Option<TypeShape>,
     pub bool: Option<TypeShape>,
@@ -980,7 +980,7 @@ pub(crate) struct PrimitiveCache {
 /// facing type system; substrate markers change with v3's L1
 /// behavior set. Splitting the caches keeps each one's invariants
 /// independent.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct RealizationMetaCache {
     /// `TypeRealization` meta-type. Declared in
     /// `src/v3/spec/rust.dag` (and any future per-target spec
@@ -1000,9 +1000,13 @@ pub(crate) struct RealizationMetaCache {
     /// `CallableRealization` meta-type. Same role for callable
     /// render strategies (currently staged std.list helpers).
     pub callable_realization: Option<DeclarationId>,
+    /// `PatternRealization` meta-type. Same role for carrier-specific
+    /// pattern lowering facts (currently staged `List<T> -> Vec<T>`
+    /// destructuring).
+    pub pattern_realization: Option<DeclarationId>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct TargetSyntaxCache {
     /// `rust_language` syntax bundle declaration loaded from
     /// `src/v3/spec/rust.dag`. This is the target-language
@@ -1011,7 +1015,7 @@ pub(crate) struct TargetSyntaxCache {
     pub rust_language: Option<DeclarationId>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct SubstrateMarkers {
     /// `dsl/std/v3_l1.dag` `Value` marker. Targets values
     /// (literals) in target language realizations.
@@ -1041,7 +1045,7 @@ pub(crate) struct SubstrateMarkers {
     pub declaration_ref: Option<DeclarationId>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Dag {
     /// Behaviors in construction order. NodeId(k) lives at `nodes[k]`; a forward
     /// walk visits dependencies before dependents (load-bearing for inference).
@@ -1185,6 +1189,11 @@ impl Dag {
     /// Same bootstrap-failure semantics as `type_realization_meta`.
     pub fn callable_realization_meta(&self) -> Option<DeclarationId> {
         self.realization_metas.callable_realization
+    }
+
+    /// Same bootstrap-failure semantics as `type_realization_meta`.
+    pub fn pattern_realization_meta(&self) -> Option<DeclarationId> {
+        self.realization_metas.pattern_realization
     }
 
     /// Typed accessor for the Rust target-language syntax bundle
@@ -1430,6 +1439,9 @@ impl Dag {
             .map(|d| d.id);
         self.realization_metas.callable_realization = self
             .declaration_by_name("CallableRealization")
+            .map(|d| d.id);
+        self.realization_metas.pattern_realization = self
+            .declaration_by_name("PatternRealization")
             .map(|d| d.id);
         self.target_syntax.rust_language = self.declaration_by_name("rust_language").map(|d| d.id);
     }

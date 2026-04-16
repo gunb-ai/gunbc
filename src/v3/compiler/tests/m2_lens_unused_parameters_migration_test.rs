@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use v3_compiler::{compile_to_dag, CompileError, Diagnostic};
+use v3_compiler::compile_to_dag;
 use v3_compiler::emit_rust::emit_rust_module;
 use v3_compiler::lens_unused_parameters::{
     UnusedParametersConfig, UnusedParametersLens,
@@ -159,32 +159,17 @@ fn render_rust_lens_on_dag(dag: &Dag) -> String {
 }
 
 #[test]
-fn unused_parameters_dag_currently_blocks_on_recursive_walk_instantiation_conflict() {
-    let result = compile_to_dag(&lens_source(), lens_path().to_string_lossy().as_ref());
-    let CompileError::Semantic(dag) = result.expect_err("lens should still fail until the recursive walk bug is fixed") else {
-        unreachable!()
-    };
-    let diagnostics: Vec<String> = dag
-        .diagnostics()
-        .iter()
-        .map(|(_, diag)| match diag {
-            Diagnostic::ResolveError { name, .. } => name.clone(),
-            Diagnostic::TokenizerError { message, .. } => message.clone(),
-            Diagnostic::ParseError { message, .. } => message.clone(),
-            Diagnostic::ArityMismatch { function, .. } => function.clone(),
-            Diagnostic::TypeMismatch { .. } => String::from("TypeMismatch"),
-        })
-        .collect();
+fn unused_parameters_dag_compiles_cleanly() {
+    let dag = compile_to_dag(&lens_source(), lens_path().to_string_lossy().as_ref())
+        .expect("unused_parameters.dag should compile cleanly");
     assert!(
-        diagnostics.iter().any(|name| {
-            name.contains("implicit template binding for `walk_steps` conflicts")
-        }),
-        "expected the current blocker receipt for recursive walk lowering, got diagnostics: {diagnostics:?}"
+        dag.diagnostics().is_empty(),
+        "unused_parameters.dag should compile without diagnostics, got {:?}",
+        dag.diagnostics()
     );
 }
 
 #[test]
-#[ignore]
 fn unused_parameters_dag_matches_rust_lens_on_core_fixtures() {
     let module = emit_lens_module();
     let fixtures = [
@@ -216,4 +201,15 @@ fn unused_parameters_dag_matches_rust_lens_on_core_fixtures() {
             "compiled .dag lens should match Rust lens on {file_name}"
         );
     }
+}
+
+#[test]
+fn unused_parameters_dag_self_analysis_reports_zero_findings() {
+    let module = emit_lens_module();
+    let rendered = roundtrip_lens_render(
+        &module,
+        &lens_source(),
+        lens_path().to_string_lossy().as_ref(),
+    );
+    assert_eq!(rendered, "");
 }

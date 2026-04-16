@@ -2634,3 +2634,174 @@ let xs: List<FoundBind> = cons({ name: \"x\" }, empty())
         dag.diagnostics()
     );
 }
+
+#[test]
+fn monomorphic_recursive_self_call_with_reflected_list_arg_compiles() {
+    let src = "\
+fn step(n: Int, d: Dag, x: PortId, ys: List<PortId>) -> List<PortId> =
+  if n == 0 then ys else step(n - 1, d, x, cons(x, ys))
+";
+    let dag = compile_any(src, "monomorphic_recursive_reflected_list_arg.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "monomorphic recursive self-call with reflected list args should compile cleanly, got diagnostics: {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
+fn monomorphic_recursive_self_call_with_helper_produced_reflected_list_args_compiles() {
+    let src = "\
+fn expand_frontier_list(d: Dag, frontier: List<PortId>, referenced: List<PortId>) -> List<PortId> = frontier
+fn expand_referenced_list(frontier: List<PortId>, referenced: List<PortId>) -> List<PortId> = referenced
+fn walk_steps(remaining: Int, d: Dag, frontier: List<PortId>, referenced: List<PortId>) -> List<PortId> =
+  if remaining == 0 then
+    referenced
+  else
+    if is_empty(frontier) then
+      referenced
+    else
+      walk_steps(
+        remaining - 1,
+        d,
+        expand_frontier_list(d, frontier, referenced),
+        expand_referenced_list(frontier, referenced)
+      )
+";
+    let dag =
+        compile_any(src, "monomorphic_recursive_helper_reflected_list_args.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "monomorphic recursive self-call with helper-produced reflected list args should compile cleanly, got diagnostics: {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
+fn referenced_port_walk_real_helper_stack_compiles() {
+    let src = "\
+fn referenced_ports(d: Dag, root: PortId) -> List<PortId> =
+  walk_steps(length(d.ports), d, singleton(root), empty())
+
+fn walk_steps(remaining: Int, d: Dag, frontier: List<PortId>, referenced: List<PortId>) -> List<PortId> =
+  if remaining == 0 then
+    referenced
+  else
+    if is_empty(frontier) then
+      referenced
+    else
+      walk_steps(
+        remaining - 1,
+        d,
+        expand_frontier_list(d, frontier, referenced),
+        expand_referenced_list(frontier, referenced)
+      )
+
+fn expand_frontier_list(d: Dag, frontier: List<PortId>, referenced: List<PortId>) -> List<PortId> =
+  fold(frontier, empty(), |next, port|
+    if contains(referenced, port) then
+      next
+    else
+      concat(inputs_for_port(d, port), next)
+  )
+
+fn expand_referenced_list(frontier: List<PortId>, referenced: List<PortId>) -> List<PortId> =
+  fold(frontier, referenced, |acc, port|
+    if contains(acc, port) then
+      acc
+    else
+      cons(port, acc)
+  )
+
+fn inputs_for_port(d: Dag, port_id: PortId) -> List<PortId> =
+  match find_producer(d.nodes, port_id) {
+    MissingBehavior => empty()
+    FoundBehavior(behavior) => inputs_for_behavior(d, behavior)
+  }
+
+type BehaviorLookup
+  = MissingBehavior
+  | FoundBehavior(Behavior)
+
+type ResultPortLookup
+  = MissingResultPort
+  | FoundResultPort(PortId)
+
+fn inputs_for_behavior(d: Dag, behavior: Behavior) -> List<PortId> =
+  match behavior {
+    Value(v) => empty()
+    Transform(t) => t.inputs
+    Branch(branch) => cons(branch.input, branch_path_outputs(branch.paths))
+    Loop(loop_node) => loop_inputs(d, loop_node)
+    Bind(bind) => singleton(bind.result_port)
+  }
+
+fn loop_inputs(d: Dag, loop_node: LoopNode) -> List<PortId> =
+  concat(
+    cons(
+      loop_node.source,
+      cons(loop_node.init, singleton(loop_node.bound.count))
+    ),
+    match behavior_result_port(d.nodes, loop_node.body) {
+      MissingResultPort => empty()
+      FoundResultPort(port) => singleton(port)
+    }
+  )
+
+fn branch_path_outputs(paths: List<BranchPath>) -> List<PortId> =
+  match paths {
+    Empty => empty()
+    Cons(payload) => cons(payload.head.result_port, branch_path_outputs(payload.tail))
+  }
+
+fn find_behavior(nodes: List<Behavior>, node_id: NodeId) -> BehaviorLookup =
+  match nodes {
+    Empty => MissingBehavior
+    Cons(payload) =>
+      if behavior_id(payload.head) == node_id then
+        FoundBehavior(payload.head)
+      else
+        find_behavior(payload.tail, node_id)
+  }
+
+fn find_producer(nodes: List<Behavior>, port_id: PortId) -> BehaviorLookup =
+  match nodes {
+    Empty => MissingBehavior
+    Cons(payload) =>
+      if behavior_port(payload.head) == port_id then
+        FoundBehavior(payload.head)
+      else
+        find_producer(payload.tail, port_id)
+  }
+
+fn behavior_result_port(nodes: List<Behavior>, node_id: NodeId) -> ResultPortLookup =
+  match find_behavior(nodes, node_id) {
+    MissingBehavior => MissingResultPort
+    FoundBehavior(behavior) => FoundResultPort(behavior_port(behavior))
+  }
+
+fn behavior_id(behavior: Behavior) -> NodeId =
+  match behavior {
+    Value(v) => v.id
+    Transform(t) => t.id
+    Branch(b) => b.id
+    Loop(l) => l.id
+    Bind(bind) => bind.id
+  }
+
+fn behavior_port(behavior: Behavior) -> PortId =
+  match behavior {
+    Value(v) => v.result_port
+    Transform(t) => t.result_port
+    Branch(b) => b.result_port
+    Loop(l) => l.result_port
+    Bind(bind) => bind.result_port
+  }
+";
+    let dag = compile_any(src, "referenced_port_walk_real_stack.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "referenced-port walk over the real helper stack should compile cleanly, got diagnostics: {:?}",
+        dag.diagnostics()
+    );
+}

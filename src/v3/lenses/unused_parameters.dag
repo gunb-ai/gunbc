@@ -83,17 +83,22 @@ fn walk_steps(remaining: Int, d: Dag, frontier: List<PortId>, referenced: List<P
       walk_steps(
         remaining - 1,
         d,
-        expand_frontier_list(d, frontier, referenced),
+        expand_frontier_list(frontier, d, referenced),
         expand_referenced_list(frontier, referenced)
       )
 
-fn expand_frontier_list(d: Dag, frontier: List<PortId>, referenced: List<PortId>) -> List<PortId> =
-  fold(frontier, empty(), |next, port|
-    if contains(referenced, port) then
-      next
-    else
-      concat(inputs_for_port(d, port), next)
-  )
+fn expand_frontier_list(frontier: List<PortId>, d: Dag, referenced: List<PortId>) -> List<PortId> =
+  match frontier {
+    Empty => empty()
+    Cons(payload) =>
+      if contains(referenced, payload.head) then
+        expand_frontier_list(payload.tail, d, referenced)
+      else
+        concat(
+          inputs_for_port(d, payload.head),
+          expand_frontier_list(payload.tail, d, referenced)
+        )
+  }
 
 fn expand_referenced_list(frontier: List<PortId>, referenced: List<PortId>) -> List<PortId> =
   fold(frontier, referenced, |acc, port|

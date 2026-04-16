@@ -49,6 +49,7 @@
 module v3.spec.rust
 
 import v3.spec.v3_l1 { Bind, Branch, Main, DeclarationRef }
+import std.list { List }
 
 // ─────────────────────────────────────────────────────────────────
 // Realization meta-types — three distinct shapes.
@@ -126,10 +127,28 @@ type RustCallableStrategy
   = ListEmpty
   | ListSingleton
   | ListCons
+  | ListConcat
+  | ListLength
+  | ListIsEmpty
   | ListFold
   | ListMap
   | ListFilter
   | ListContains
+
+type PatternRealization {
+  target: DeclarationRef
+  strategy: RustPatternStrategy
+  scrutinee: String
+  empty_pattern: String
+  cons_pattern: String
+  head_expr: String
+  tail_expr: String
+  cost: Int
+}
+
+type RustPatternStrategy
+  = PlaceholderPatternStrategy
+  | VectorList
 
 type StatementSyntax {
   let_binding: String
@@ -197,6 +216,9 @@ type PatternMatchSyntax {
 }
 
 type CollectionOps {
+  concat: String
+  length: String
+  is_empty: String
   fold: String
   map: String
   filter: String
@@ -729,6 +751,24 @@ data rust_cons_callable: CallableRealization = {
   cost: 1
 }
 
+data rust_concat_callable: CallableRealization = {
+  target: concat
+  strategy: ListConcat
+  cost: 1
+}
+
+data rust_length_callable: CallableRealization = {
+  target: length
+  strategy: ListLength
+  cost: 1
+}
+
+data rust_is_empty_callable: CallableRealization = {
+  target: is_empty
+  strategy: ListIsEmpty
+  cost: 1
+}
+
 data rust_fold_callable: CallableRealization = {
   target: fold
   strategy: ListFold
@@ -750,6 +790,17 @@ data rust_filter_callable: CallableRealization = {
 data rust_contains_callable: CallableRealization = {
   target: contains
   strategy: ListContains
+  cost: 1
+}
+
+data rust_list_pattern: PatternRealization = {
+  target: List
+  strategy: VectorList
+  scrutinee: "{expr}.as_slice()"
+  empty_pattern: "[]"
+  cons_pattern: "[{head}, {tail} @ ..]"
+  head_expr: "{head}.clone()"
+  tail_expr: "{tail}.to_vec()"
   cost: 1
 }
 
@@ -814,6 +865,9 @@ data rust_patterns: PatternMatchSyntax = {
 }
 
 data rust_collection_ops: CollectionOps = {
+  concat: "{ let mut __left = {left}; __left.extend({right}); __left }"
+  length: "({recv}).len() as i64"
+  is_empty: "({recv}).is_empty()"
   fold: "({recv}).clone().into_iter().fold({init}, {body})"
   map: "({recv}).clone().into_iter().map({body}).collect::<Vec<_>>()"
   filter: "{ let mut __out = Vec::new(); for {item} in ({recv}).clone().into_iter() { if {predicate} { __out.push({item}); } } __out }"

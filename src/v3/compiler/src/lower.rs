@@ -129,6 +129,7 @@ pub(crate) fn lower_bodies_phase(
     symbols: &HashMap<String, DeclarationId>,
     is_first: &[bool],
 ) {
+    seed_function_signatures_phase(dag, &module.items, symbols, is_first);
     let mutually_recursive = compute_mutually_recursive(&module.items);
     let mut scope = ScopeState::default();
     for (idx, item) in module.items.iter().enumerate() {
@@ -141,6 +142,71 @@ pub(crate) fn lower_bodies_phase(
         }
         scope = lower_item(item, dag, scope, symbols, &mutually_recursive);
     }
+}
+
+fn seed_function_signatures_phase(
+    dag: &mut Dag,
+    items: &[SurfaceItem],
+    symbols: &HashMap<String, DeclarationId>,
+    is_first: &[bool],
+) {
+    for (idx, item) in items.iter().enumerate() {
+        if !is_first[idx] {
+            continue;
+        }
+        match item {
+            SurfaceItem::Fn {
+                name,
+                params,
+                return_type,
+                ..
+            } => seed_function_signature(
+                name,
+                params,
+                return_type,
+                ArrowBody::Pending,
+                dag,
+                symbols,
+            ),
+            SurfaceItem::FnExternalBody {
+                name,
+                params,
+                return_type,
+                body_span,
+                ..
+            } => seed_function_signature(
+                name,
+                params,
+                return_type,
+                ArrowBody::Unparsed(body_span.clone()),
+                dag,
+                symbols,
+            ),
+            _ => {}
+        }
+    }
+}
+
+fn seed_function_signature(
+    name: &str,
+    params: &[SurfaceParam],
+    return_type: &SurfaceType,
+    body: ArrowBody,
+    dag: &mut Dag,
+    symbols: &HashMap<String, DeclarationId>,
+) {
+    let fn_decl_id = symbols[name];
+    let local = local_scope_from_parent(dag, fn_decl_id);
+    let param_decl_inputs: Vec<DeclarationId> = params
+        .iter()
+        .map(|p| type_to_declaration_id(&p.ty, symbols, &local, dag))
+        .collect();
+    let return_decl_id = type_to_declaration_id(return_type, symbols, &local, dag);
+    dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
+        inputs: param_decl_inputs,
+        output: return_decl_id,
+        body,
+    };
 }
 
 /// Pass 1: allocate a placeholder Declaration for every named top-level

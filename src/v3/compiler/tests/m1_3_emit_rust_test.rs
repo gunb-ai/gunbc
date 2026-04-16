@@ -198,7 +198,7 @@ fn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }
 let zero: Int = 0",
     );
     assert!(out.contains("pub enum Sign {"), "got: {out}");
-    assert!(out.contains("fn classify(p0: Sign) -> i64 { match p0 {"), "got: {out}");
+    assert!(out.contains("fn classify(p0: Sign) -> i64 { match (p0).clone() {"), "got: {out}");
     assert!(out.contains("Sign::Plus => 0,"), "got: {out}");
     assert!(out.contains("Sign::Minus => 1,"), "got: {out}");
 }
@@ -211,9 +211,9 @@ fn unwrap_or_zero(b: BoxedInt) -> Int = match b { Boxed(value) => value, Empty =
 let zero: Int = 0",
     );
     assert!(out.contains("pub enum BoxedInt {"), "got: {out}");
-    assert!(out.contains("Boxed { pub _0: i64, },"), "got: {out}");
-    assert!(out.contains("fn unwrap_or_zero(p0: BoxedInt) -> i64 { match p0 {"), "got: {out}");
-    assert!(out.contains("BoxedInt::Boxed { _0: value } => value,"), "got: {out}");
+    assert!(out.contains("Boxed { _0: i64, },"), "got: {out}");
+    assert!(out.contains("fn unwrap_or_zero(p0: BoxedInt) -> i64 { match (p0).clone() {"), "got: {out}");
+    assert!(out.contains("BoxedInt::Boxed { _0: value } => (value).clone(),"), "got: {out}");
     assert!(out.contains("BoxedInt::Empty => 0,"), "got: {out}");
 }
 
@@ -234,7 +234,7 @@ fn emit_rust_multi_bind_uses_last_as_print_target() {
 let b: Int = a + 2",
     );
     assert!(out.contains("let a: i64 = 1;"), "got: {out}");
-    assert!(out.contains("let b: i64 = (a + 2);"), "got: {out}");
+    assert!(out.contains("let b: i64 = ((a).clone() + 2);"), "got: {out}");
     // Main wrap prints the LAST bind (`b`), not the first (`a`).
     assert!(out.contains("println!(\"{}\", b)"), "got: {out}");
 }
