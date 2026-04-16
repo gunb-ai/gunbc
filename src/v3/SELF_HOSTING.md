@@ -183,6 +183,105 @@ Each stage implementation fills a slot in the declaration.
 exists but is still Rust." The pipeline is structurally valid at
 every intermediate state.
 
+### §2.2 Model every stage's domain to spec before implementation
+
+v2 achieved self-hosting incrementally — types grew fields as
+needed, coproducts grew variants as needed, contracts were added
+after the fact. The result: `complexity.dag` is 5490 lines of
+reconstruction heuristics compensating for facts that weren't
+modeled upstream. The pipeline works, but the modeling was
+done in parallel with implementation, and the implementation
+kept outrunning the model.
+
+v3 inverts this: **every pipeline stage models its inputs and
+outputs to spec BEFORE the stage body is implemented.** Stage
+implementation is filling in function bodies over already-declared
+types — the same model-before-implement discipline the thesis
+demands of user programs, applied to the compiler itself.
+
+Concretely, each stage's domain model is reviewed and scrutinized
+before any implementation starts:
+
+- **Parse domain.** What IS a source file? Model files, encodings
+  (ASCII/UTF-8), line endings, BOM handling as structural types in
+  `std/`. Model the platform's filesystem interface as an extdep.
+  Model the token types structurally — not a flat `TokenKind` enum
+  that grows arms, but dimensional types where the thesis's
+  structural decompression invariant applies (e.g., delimiters as
+  `{ shape: BracketShape, side: Side }`, keywords as data in a
+  table). Model the grammar productions as data, not as hand-coded
+  recursive-descent functions. Every input the parser touches is
+  declared, not assumed.
+
+- **Lower domain.** What ARE the surface forms? Model
+  `SurfaceItem`, `SurfaceExpr`, `SurfacePattern` as proper `.dag`
+  Disj declarations with the normal invariants applied — structural
+  decompression, no flat coproducts where dimensional records
+  belong, every variant grounded in the thesis's four dissolution
+  patterns. The surface AST becomes `std/surface.dag` — sibling to
+  `std/substrate.dag`, analyzed by the same lenses.
+
+- **Infer domain.** What ARE the inference rules? Model type
+  resolution, template substitution, operator dispatch as data
+  operations over the substrate. The rules themselves are declared
+  types — not hand-coded match arms in a walk function, but data
+  the walker reads. Substitution stacks, scope structures, and
+  unification state are structural types in `std/`, not Rust
+  implementation details.
+
+- **Emit domain.** What IS a target language? Model the language
+  spec structurally — not just "what types exist" but the full
+  emission surface: indentation conventions, line-length limits,
+  import ordering rules, formatting conventions, comment syntax.
+  Model the target's type system as data in `extdeps/languages/`.
+  The emitter reads ALL rendering decisions from declared data;
+  the emitter code itself is a generic walk that never contains
+  target-specific knowledge.
+
+- **Between stages.** Model the stage boundaries as typed
+  contracts. What's preserved across each boundary, what's
+  recomputed, what diagnostics flow forward. The contracts are the
+  pipeline's function signatures — first-class, not decorative.
+  A lens verifies each contract holds.
+
+**The v2 lesson this prevents.** v2's pipeline stages accreted
+types reactively: a stage needed a fact, so a field was added to
+the IR, and downstream stages adapted. The adaptation was often
+reconstruction — re-deriving the fact from incomplete data instead
+of receiving it as a typed edge from the stage that computed it.
+Modeling to spec upfront means the typed edges exist BEFORE any
+stage runs, so reconstruction has no reason to form. The
+`annotate_descent_evidence` pattern (33 heuristics in v2's
+complexity pass) is the canonical failure mode this prevents.
+
+**The principle:** the `.dag` compiler gets the `.dag` treatment.
+Every type the compiler operates on — files, tokens, surface
+trees, substrate declarations, target language constructs,
+platform capabilities — is modeled with the same rigor as any
+user-facing `.dag` declaration. Structural decompression applies.
+Layer opacity applies. Facts flow forward applies. No special
+exemption for "this is compiler-internal." The invariants are
+universal; the compiler is not exempt.
+
+**Practical sequencing.** For each stage (emit → lower → infer →
+parse), the work is:
+
+1. **Model review.** Declare the stage's input/output types in
+   `std/` and `extdeps/`. Apply the normal invariants. Review and
+   scrutinize the model — structural decompression, no smuggled
+   coproducts, no decorative fields. Draw on v2's pipeline files
+   as empirical reference for "what does this stage actually need."
+2. **Pipeline slot.** Add the stage's typed function signature to
+   the pipeline composition. `ExternalRealization` body.
+3. **Implementation.** Fill in the function body. The types are
+   already declared; the implementation is bounded by the model.
+4. **Parity test.** The `.dag` version produces byte-identical
+   output to the Rust version for every test fixture. Delete the
+   Rust version.
+
+Step 1 is where the hard thinking happens. Steps 2-4 are
+engineering bounded by Step 1's model.
+
 ---
 
 ## §3. Stage 1 — `emit.dag`
