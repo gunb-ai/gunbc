@@ -313,12 +313,38 @@ always safe to parallelize (F1 + F2).
 
 **Fold decomposition:** does the body's per-element work
 transitively depend on the `acc` parameter? Acc-independent
-work is a parallelizable map.
+work is a parallelizable map. **However:** promoting a
+sequential fold to a parallel tree reduction requires an
+additional algebra witness — the combining operation must be
+associative + commutative (CommutativeMonoid). Dependency
+analysis alone can detect the acc-independence (the "map"
+part), but the "reduce in parallel" claim requires the algebra
+fact. See §6.1.
 
 **Sharing primitive refinement:** if two consumers run on
 different threads, Rust needs `Arc<T>` (atomic) instead of
 `Rc<T>` (non-atomic). Parallelism and ownership are two
 independent facts that compose at rendering.
+
+### §6.1 Witness taxonomy (TRACKED — resolve at Phase 3)
+
+Not every claim in this design is dependency-only. Each
+projection requires specific witness types:
+
+| Claim | Witnesses needed | Status |
+|---|---|---|
+| Two operations are independent | Dependency only (no path) | Structural, Phase 1 |
+| Fold body has acc-independent work | Dependency only (acc not in transitive set) | Structural, Phase 1 |
+| Fold reduction is parallelizable | Dependency + **algebra witness** (CommutativeMonoid on combining op) | Requires L2 M1 algebra lens |
+| Clone cost at a consumed edge | Dependency + **realization witness** (is_copy, last-use) | Phase 2 |
+| Total complexity bound | Dependency + **realization witness** (clone cost from ownership) + **algebra witness** (cost class from algebra) | Requires L2 M1 |
+| Dead code | Dependency only (consumer count = 0) | Structural, Phase 1 |
+
+Every claim must declare its witness class. If a claim says
+"dependency only" but actually needs an algebra or realization
+witness, the claim is overstating what the dependency lens can
+prove. This taxonomy must be completed before Phase 3
+implementation.
 
 ---
 
@@ -330,7 +356,7 @@ fn compile(source: String, file: String, spec: LanguageSpec) -> String {
   let deps        = compute_dependencies(dag)        // universal
   let contracts   = compute_contracts(dag, spec)     // per-callable
   let parallelism = detect_parallelism(dag, deps)    // universal
-  let complexity  = compute_complexity(dag, deps, contracts)
+  let complexity  = compute_complexity(dag, deps, contracts, ownership)
 
   // Target-conditional: only OwnershipBased targets need this
   let ownership   = match spec.execution.memory {
@@ -402,5 +428,6 @@ Tests verify the facts, not symptoms.
 - Phase 1 lands → clone count pinned
 - Four-fixture pressure test green → §3.3 validated
 - Phase 2 lands → contracts verified, clone → 1
+- **§6.1 witness taxonomy completed → before Phase 3 start**
 - Multi-target lands → gating validated
 - All phases → doc archives
