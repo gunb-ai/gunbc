@@ -602,9 +602,73 @@ doesn't know about the grammar rules.
    thesis promise is "adding a new target costs one spec file."
    True; writing that spec set is the investment.
 
+### §2.4 Mutual recursion lowering — prereq for complexity and general execution
+
+The thesis's lowering table (INVARIANTS.md §"Recursive syntax is
+sugar") commits to handling EVERY call pattern, including n-way
+mutual recursion. The lowering for mutual recursion is:
+
+> Mutual recursion (SCC) on children → `descend` over SCC-ordered
+> nodes, bounded by |SCC|.
+
+v3's `lower.rs` already detects mutual recursion at lowering time
+(`compute_mutually_recursive` walks the call graph and returns a
+`HashSet<String>` of cycle members). **But it currently REJECTS
+mutual recursion** — the diagnostic says "mutual recursion is not
+yet supported in v3."
+
+The missing piece is the LOWERING step: transform the cycle into
+bounded Loop nodes with descend semantics. For an SCC {A, B, C}
+where A calls B calls C calls A (each on children of its input):
+
+1. Lowering detects the cycle via `compute_mutually_recursive`
+   (already done)
+2. Lowering orders the SCC members (topological sort of the
+   non-cycle edges, arbitrary but deterministic for cycle-internal
+   edges)
+3. For each function in the SCC, lowering replaces the recursive
+   call with a reference to the next function in the SCC order
+4. The outermost function becomes a `Loop` (bounded descend)
+   whose body is the SCC walk: each iteration calls one function,
+   and the bound is the structural descent evidence (children
+   get strictly smaller at each level)
+
+Once lowering does this, the substrate carries the SCC structure
+as bounded Loop nodes. Complexity reads `Loop.bound` and applies
+the standard cost rule: `bound × cost(body)`. No SCC analysis
+in complexity. No Tarjan's in complexity. The cycle detection is
+in LOWERING (where it belongs), and the general SCC algorithm is
+a library function in `std/graph.dag` (reusable by anything that
+needs cycle detection).
+
+**Prereq for:**
+- The complexity port (complexity reads SCC cost from the
+  substrate; if lowering doesn't produce the bounded descend,
+  complexity has to reconstruct the SCC itself — which is the
+  v2 pattern we're dissolving)
+- General language completeness — any `.dag` program with mutual
+  recursion should compile, not fail at lowering
+- Self-hosting — the compiler's own pipeline stages may be
+  mutually recursive (e.g., lower calls infer for type-directed
+  lowering, infer calls lower for template expansion)
+
+**Scope:** n-way mutual recursion (not just 2-way). The thesis's
+lowering table says "mutual recursion (SCC) on children" without
+a bound on the SCC size. A 3-function cycle, a 10-function cycle,
+and a 2-function cycle all lower to the same bounded-descend
+shape.
+
+**Testing:** every SCC size from 2 to at least 5 should have a
+test fixture. Each fixture:
+- Compiles without diagnostics
+- Produces a bounded Loop with the correct bound
+- The bound is provably structural (|SCC| × |children|)
+- A complexity lens walking the result reads the cost without
+  reconstruction
+
 ---
 
-## §3. Stage 1 — `emit.dag`
+## §3. Stage 1 ��� `emit.dag`
 
 **Current:** `src/v3/compiler/src/emit_rust.rs` (~340 lines
 today; will grow as FieldBinding lookup lands in the reflection
