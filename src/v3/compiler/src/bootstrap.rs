@@ -7,12 +7,14 @@
 // bootstrap is hermetic at runtime and the declaration table stays in
 // sync with the `.dag` source at build time.
 //
-// **Production bootstrap does no realization injection.** Realization
-// facts live in `dsl/extdeps/languages/*` per the thesis; compiler code
-// does not manufacture them. The §6.5 `ExternalRealization` substrate
-// path is exercised by a `#[cfg(test)]` scaffold below — the test owns
-// both sides of the realization chain locally and does not leak into
-// `Dag::new()`.
+// **Production bootstrap does not inject target-language
+// realizations.** Realization facts for emitted languages live in
+// `dsl/extdeps/languages/*` per the thesis; compiler code does not
+// manufacture those. L1.5 adds one narrow exception: the staged
+// `src/v3/compiler/pipeline.dag` declarations are upgraded in-place to
+// `ArrowBody::ExternalRealization` so the compiler's own pipeline
+// authority lives in the bootstrap Dag with the intended stage-body
+// shape.
 //
 // Bootstrap failures (tokenize/parse/lower errors on std/ files,
 // unresolved cross-file references) attach to the Dag's diagnostic
@@ -22,10 +24,8 @@
 // go through. A failed bootstrap is visible to callers without a
 // side channel.
 
-use crate::dag::{Dag, DeclarationId};
-use crate::lower::{
-    collect_symbols_phase, lower_bodies_phase, resolve_pending_identifiers,
-};
+use crate::dag::{ArrowBody, Dag, DeclarationId, TypeConnective};
+use crate::lower::{collect_symbols_phase, lower_bodies_phase, resolve_pending_identifiers};
 use crate::parse::{parse, SurfaceModule};
 use crate::tokenize::tokenize;
 use std::collections::HashMap;
@@ -43,8 +43,9 @@ const TYPES_DAG: &str = include_str!("../../../../dsl/std/types.dag");
 //
 //   - `STAGED_FILES` for `src/v3/std/*.dag`
 //   - `V3_SPECS` for `src/v3/spec/*.dag`
+//   - `COMPILER_FILES` for `src/v3/compiler/*.dag`
 //
-// Adding a new staged std/spec file is a pure file-system change:
+// Adding a new staged std/spec/compiler file is a pure file-system change:
 // drop the `.dag` file in the staged directory, the build script
 // picks it up at the next compile, and the bootstrap loop loads it
 // without any `bootstrap.rs` edit.
@@ -65,6 +66,17 @@ const TYPES_DAG: &str = include_str!("../../../../dsl/std/types.dag");
 // no source-root scanning involved.
 include!(concat!(env!("OUT_DIR"), "/v3_staged_files.rs"));
 include!(concat!(env!("OUT_DIR"), "/v3_specs.rs"));
+include!(concat!(env!("OUT_DIR"), "/v3_compiler_files.rs"));
+
+const PIPELINE_REALIZATION_META: &str = "CompilerHostRealization";
+const PIPELINE_REALIZATION_BINDINGS: &[(&str, &str)] = &[
+    ("parse", "parse_realization"),
+    ("lower", "lower_realization"),
+    ("infer", "infer_realization"),
+    ("compute_ownership", "compute_ownership_realization"),
+    ("emit", "emit_realization"),
+    ("lens_complexity", "lens_complexity_realization"),
+];
 
 fn declaration_name_preference_rank(file: &str) -> usize {
     if file.starts_with("src/v3/") {
@@ -105,14 +117,16 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
     ];
 
     // v3-only staged fixtures — enumerated by build.rs at compile
-    // time from `src/v3/std/*.dag` and `src/v3/spec/*.dag`.
-    // Adding a new staged std/spec file is a pure file-system
+    // time from `src/v3/std/*.dag`, `src/v3/spec/*.dag`, and
+    // `src/v3/compiler/*.dag`. Adding a new staged file is a pure
+    // file-system
     // change.
     let fixtures: Vec<(&str, &str)> = std_fixtures
         .iter()
         .copied()
         .chain(STAGED_FILES.iter().copied())
         .chain(V3_SPECS.iter().copied())
+        .chain(COMPILER_FILES.iter().copied())
         .collect();
 
     // Phase 0: parse every fixture. Tokenize/parse errors attach to
@@ -152,8 +166,7 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
                 Some(existing_id) => {
                     let existing = dag.declaration(existing_id);
                     let new_rank = declaration_name_preference_rank(&d.span.file);
-                    let existing_rank =
-                        declaration_name_preference_rank(&existing.span.file);
+                    let existing_rank = declaration_name_preference_rank(&existing.span.file);
                     if new_rank > existing_rank {
                         shared_symbols.insert(name.clone(), d.id);
                     }
@@ -173,6 +186,7 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
     // M1(2.6) load set (e.g., `Tuple`), and those are not bootstrap
     // errors. User-code compilation uses the strict variant.
     resolve_pending_identifiers(dag);
+    materialize_pipeline_realizations(dag);
 
     // Cache the canonical role declarations (Int, Bool, String,
     // Realization) now that every std/ module has been lowered and the
@@ -180,6 +194,45 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
     // consumers ask `dag.int_shape()` / `dag.realization_meta_id()`
     // etc. instead of running a name scan per call.
     dag.populate_primitive_cache();
+}
+
+fn materialize_pipeline_realizations(dag: &mut Dag) {
+    let Some(meta_decl_id) = dag
+        .declaration_by_name(PIPELINE_REALIZATION_META)
+        .map(|decl| decl.id)
+    else {
+        return;
+    };
+    let meta_connective = dag.declaration(meta_decl_id).connective.clone();
+
+    for (_, realization_name) in PIPELINE_REALIZATION_BINDINGS {
+        let Some(realization_id) = dag
+            .declaration_by_name(realization_name)
+            .map(|decl| decl.id)
+        else {
+            continue;
+        };
+        let realization = dag.declaration_mut(realization_id);
+        if realization.meta_tag == Some(meta_decl_id) {
+            realization.connective = meta_connective.clone();
+        }
+    }
+
+    for (stage_name, realization_name) in PIPELINE_REALIZATION_BINDINGS {
+        let Some(realization_id) = dag
+            .declaration_by_name(realization_name)
+            .map(|decl| decl.id)
+        else {
+            continue;
+        };
+        let Some(stage_id) = dag.declaration_by_name(stage_name).map(|decl| decl.id) else {
+            continue;
+        };
+        let stage = dag.declaration_mut(stage_id);
+        if let TypeConnective::Arrow { body, .. } = &mut stage.connective {
+            *body = ArrowBody::ExternalRealization(realization_id);
+        }
+    }
 }
 
 fn parse_fixture(dag: &mut Dag, source: &str, file: &str) -> Option<SurfaceModule> {
@@ -210,9 +263,7 @@ mod tests {
     //! without manufacturing realization facts at `Dag::new()` time.
 
     use super::*;
-    use crate::dag::{
-        ArrowBody, AtomPayload, Declaration, DeclarationId, TypeConnective,
-    };
+    use crate::dag::{ArrowBody, AtomPayload, Declaration, DeclarationId, TypeConnective};
     use crate::diagnostics::SourceSpan;
 
     /// Build a Realization → instance → Arrow chain inside a fresh Dag.

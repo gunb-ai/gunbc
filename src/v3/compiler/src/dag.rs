@@ -58,6 +58,10 @@ impl NodeId {
     fn index(self) -> usize {
         self.0 as usize
     }
+
+    pub fn raw(self) -> u32 {
+        self.0
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1239,10 +1243,7 @@ impl Dag {
         ports
     }
 
-    pub fn optional_match_disj(
-        &self,
-        cardinality_decl_id: DeclarationId,
-    ) -> Option<DeclarationId> {
+    pub fn optional_match_disj(&self, cardinality_decl_id: DeclarationId) -> Option<DeclarationId> {
         self.optional_match_disjs.get(&cardinality_decl_id).copied()
     }
 
@@ -1474,9 +1475,8 @@ impl Dag {
         self.realization_metas.type_instantiation_realization = self
             .declaration_by_name("TypeInstantiationRealization")
             .map(|d| d.id);
-        self.realization_metas.pattern_realization = self
-            .declaration_by_name("PatternRealization")
-            .map(|d| d.id);
+        self.realization_metas.pattern_realization =
+            self.declaration_by_name("PatternRealization").map(|d| d.id);
         self.target_syntax.rust_language = self.declaration_by_name("rust_language").map(|d| d.id);
     }
 }
