@@ -26,11 +26,13 @@
 //   - if/else branches (as Rust if-expressions)
 //   - Top-level value Binds (as let statements)
 //   - Outer fn main wrapper
+//   - Narrow staged-std list helpers used by Prereq 4 fixtures:
+//     `empty`, `singleton`, `cons`, `fold`, `map`, `filter`
 //
 // Out of scope (follow-up work, tracked in DOWNSTREAM_REQUIREMENTS):
 //   - User-defined functions (Bind with non-empty params)
 //   - Loops
-//   - TransformTarget::Callable dispatch
+//   - General TransformTarget::Callable dispatch
 //   - Record / enum construction
 //
 // Template placeholders the substitution engine recognizes (see
@@ -44,9 +46,9 @@
 use std::collections::HashMap;
 
 use crate::dag::{
-    AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field, FieldValue,
-    LiteralBits, Path, PortId, TransformNode, TransformTarget, TypeConnective, ValueBody,
-    ValueNode,
+    ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field,
+    FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
+    TypeConnective, ValueBody, ValueNode,
 };
 use crate::operators::OperatorKind;
 
@@ -207,6 +209,26 @@ pub enum SubstrateMarkerRole {
     Bind,
     Branch,
     Main,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ListBuiltins {
+    empty: DeclarationId,
+    singleton: DeclarationId,
+    cons: DeclarationId,
+    fold: DeclarationId,
+    map: DeclarationId,
+    filter: DeclarationId,
+    // Temporary monomorphic wrappers used by staged std.list
+    // end-to-end coverage until generic-call instantiation from
+    // runtime arguments is wired through the pipeline. Dissolve
+    // these handles and the dual-dispatch branches below once the
+    // generic helpers can be called directly in emitted programs.
+    singleton_int: Option<DeclarationId>,
+    cons_int: Option<DeclarationId>,
+    fold_int: Option<DeclarationId>,
+    map_int: Option<DeclarationId>,
+    filter_int: Option<DeclarationId>,
 }
 
 /// Three typed realization indexes built once per `emit_rust` call
@@ -421,6 +443,7 @@ pub fn emit_rust(dag: &Dag) -> Result<String, EmitError> {
     let main_marker = dag
         .main_marker()
         .ok_or(EmitError::MissingSubstrateMarker(SubstrateMarkerRole::Main))?;
+    let list_builtins = resolve_list_builtins(dag);
 
     let top_level_binds: Vec<&crate::dag::BindNode> = dag
         .nodes()
@@ -455,6 +478,7 @@ pub fn emit_rust(dag: &Dag) -> Result<String, EmitError> {
         dag,
         indexes: &indexes,
         branch_marker,
+        list_builtins,
         bound_names: &bound_names,
     };
 
@@ -508,20 +532,25 @@ struct Ctx<'a> {
     dag: &'a Dag,
     indexes: &'a RealizationIndexes,
     branch_marker: DeclarationId,
+    list_builtins: Option<ListBuiltins>,
     bound_names: &'a HashMap<PortId, String>,
 }
 
 impl<'a> Ctx<'a> {
-    /// Render the sub-expression rooted at `port` into a Rust
-    /// expression string. First checks `bound_names` — if the port
-    /// already corresponds to a top-level let binding, it renders
-    /// as the name (e.g. `b` reuses `a` by name, not by re-inlining
-    /// `a`'s value expression).
-    fn render_port(&self, port: PortId) -> Result<String, EmitError> {
+    fn render_port_with_locals(
+        &self,
+        port: PortId,
+        locals: Option<&HashMap<PortId, String>>,
+    ) -> Result<String, EmitError> {
+        if let Some(locals) = locals {
+            if let Some(name) = locals.get(&port) {
+                return Ok(name.clone());
+            }
+        }
         if let Some(name) = self.bound_names.get(&port) {
             return Ok(name.clone());
         }
-        self.dispatch_producer(port)
+        self.dispatch_producer_with_locals(port, locals)
     }
 
     /// Render the value for a top-level let binding. Bypasses
@@ -529,10 +558,14 @@ impl<'a> Ctx<'a> {
     /// render as `let x: i64 = x;`); recursive sub-walks still use
     /// `render_port` and DO consult `bound_names`.
     fn render_top_level_value(&self, port: PortId) -> Result<String, EmitError> {
-        self.dispatch_producer(port)
+        self.dispatch_producer_with_locals(port, None)
     }
 
-    fn dispatch_producer(&self, port: PortId) -> Result<String, EmitError> {
+    fn dispatch_producer_with_locals(
+        &self,
+        port: PortId,
+        locals: Option<&HashMap<PortId, String>>,
+    ) -> Result<String, EmitError> {
         let Some(node_id) = self.dag.port(port).produced_by else {
             return Err(EmitError::UnsupportedBehavior(
                 "render reached a port with no producer (parameter?)".to_string(),
@@ -540,8 +573,8 @@ impl<'a> Ctx<'a> {
         };
         match self.dag.node(node_id) {
             Behavior::Value(v) => Ok(render_value(v)),
-            Behavior::Transform(t) => self.render_transform(t),
-            Behavior::Branch(b) => self.render_branch(b),
+            Behavior::Transform(t) => self.render_transform(t, locals),
+            Behavior::Branch(b) => self.render_branch(b, locals),
             Behavior::Loop(_) => Err(EmitError::UnsupportedBehavior(
                 "Loop behavior is not yet supported by emit_rust".to_string(),
             )),
@@ -549,19 +582,22 @@ impl<'a> Ctx<'a> {
         }
     }
 
-    fn render_transform(&self, t: &TransformNode) -> Result<String, EmitError> {
+    fn render_transform(
+        &self,
+        t: &TransformNode,
+        locals: Option<&HashMap<PortId, String>>,
+    ) -> Result<String, EmitError> {
         match &t.target {
-            TransformTarget::Operator(op) => self.render_operator(t, *op),
+            TransformTarget::Operator(op) => self.render_operator(t, *op, locals),
             TransformTarget::FieldProject {
                 field_label,
                 field_child,
             } => {
-                self.render_field_project(t, field_label, *field_child)
+                self.render_field_project(t, field_label, locals, *field_child)
             }
-            TransformTarget::Callable(_) => Err(EmitError::UnsupportedBehavior(
-                "TransformTarget::Callable (user function call) is not yet supported by emit_rust"
-                    .to_string(),
-            )),
+            TransformTarget::Callable(target) => {
+                self.render_callable_transform(t, *target, locals)
+            }
         }
     }
 
@@ -569,6 +605,7 @@ impl<'a> Ctx<'a> {
         &self,
         t: &TransformNode,
         field_label: &str,
+        locals: Option<&HashMap<PortId, String>>,
         field_child: Option<DeclarationId>,
     ) -> Result<String, EmitError> {
         if field_child.is_none() {
@@ -582,7 +619,7 @@ impl<'a> Ctx<'a> {
                 t.inputs.len()
             )));
         }
-        let parent_expr = self.render_port(t.inputs[0])?;
+        let parent_expr = self.render_port_with_locals(t.inputs[0], locals)?;
         Ok(format!("{parent_expr}.{field_label}"))
     }
 
@@ -590,6 +627,7 @@ impl<'a> Ctx<'a> {
         &self,
         t: &TransformNode,
         op: OperatorKind,
+        locals: Option<&HashMap<PortId, String>>,
     ) -> Result<String, EmitError> {
         if t.inputs.len() != 2 {
             return Err(EmitError::UnsupportedBehavior(format!(
@@ -618,16 +656,20 @@ impl<'a> Ctx<'a> {
                     op: op_decl_id,
                 })?
                 .clone();
-        let lhs = self.render_port(t.inputs[0])?;
-        let rhs = self.render_port(t.inputs[1])?;
+        let lhs = self.render_port_with_locals(t.inputs[0], locals)?;
+        let rhs = self.render_port_with_locals(t.inputs[1], locals)?;
         Ok(format!("({} {} {})", lhs, carrier, rhs))
     }
 
-    fn render_branch(&self, b: &BranchNode) -> Result<String, EmitError> {
+    fn render_branch(
+        &self,
+        b: &BranchNode,
+        locals: Option<&HashMap<PortId, String>>,
+    ) -> Result<String, EmitError> {
         let (then_path, else_path) = self.split_bool_paths(b)?;
-        let cond = self.render_port(b.input)?;
-        let then_expr = self.render_port(then_path.output)?;
-        let else_expr = self.render_port(else_path.output)?;
+        let cond = self.render_port_with_locals(b.input, locals)?;
+        let then_expr = self.render_port_with_locals(then_path.output, locals)?;
+        let else_expr = self.render_port_with_locals(else_path.output, locals)?;
         let template = self
             .indexes
             .behaviors
@@ -639,6 +681,145 @@ impl<'a> Ctx<'a> {
             .replace("%C", &cond)
             .replace("%H", &then_expr)
             .replace("%E", &else_expr))
+    }
+
+    fn render_callable_transform(
+        &self,
+        t: &TransformNode,
+        target: DeclarationId,
+        locals: Option<&HashMap<PortId, String>>,
+    ) -> Result<String, EmitError> {
+        if let Some(rendered) = self.render_list_builtin(target, &t.inputs, locals)? {
+            return Ok(rendered);
+        }
+        Err(EmitError::UnsupportedBehavior(
+            "TransformTarget::Callable is not yet supported by emit_rust outside the staged std.list builtins"
+                .to_string(),
+        ))
+    }
+
+    fn render_list_builtin(
+        &self,
+        target: DeclarationId,
+        inputs: &[PortId],
+        locals: Option<&HashMap<PortId, String>>,
+    ) -> Result<Option<String>, EmitError> {
+        let Some(builtins) = self.list_builtins else {
+            return Ok(None);
+        };
+        let (template, arguments) = callable_template(target, self.dag);
+
+        if template == builtins.empty {
+            return Ok(Some("Vec::new()".to_string()));
+        }
+        if template == builtins.singleton || builtins.singleton_int == Some(template) {
+            if inputs.len() != 1 {
+                return Err(EmitError::UnsupportedBehavior(format!(
+                    "singleton arity {} is not supported; expected one runtime input",
+                    inputs.len()
+                )));
+            }
+            let value = self.render_port_with_locals(inputs[0], locals)?;
+            return Ok(Some(format!("vec![{value}]")));
+        }
+        if template == builtins.cons || builtins.cons_int == Some(template) {
+            if inputs.len() != 2 {
+                return Err(EmitError::UnsupportedBehavior(format!(
+                    "cons arity {} is not supported; expected two runtime inputs",
+                    inputs.len()
+                )));
+            }
+            let head = self.render_port_with_locals(inputs[0], locals)?;
+            let tail = self.render_port_with_locals(inputs[1], locals)?;
+            return Ok(Some(format!(
+                "{{ let mut __list = {tail}; __list.insert(0, {head}); __list }}"
+            )));
+        }
+        if template == builtins.fold || builtins.fold_int == Some(template) {
+            if inputs.len() != 2 {
+                return Err(EmitError::UnsupportedBehavior(format!(
+                    "fold runtime arity {} is not supported; expected [list, init]",
+                    inputs.len()
+                )));
+            }
+            let fn_decl = bound_callable_argument(self.dag, template, &arguments, 2)?;
+            let acc = "__fold_acc".to_string();
+            let item = "__fold_item".to_string();
+            let body = self.render_callable_body(fn_decl, &[acc.clone(), item.clone()])?;
+            let list = self.render_port_with_locals(inputs[0], locals)?;
+            let init = self.render_port_with_locals(inputs[1], locals)?;
+            return Ok(Some(format!(
+                "({list}).clone().into_iter().fold({init}, |{acc}, {item}| {{ {body} }})"
+            )));
+        }
+        if template == builtins.map || builtins.map_int == Some(template) {
+            if inputs.len() != 1 {
+                return Err(EmitError::UnsupportedBehavior(format!(
+                    "map runtime arity {} is not supported; expected [list]",
+                    inputs.len()
+                )));
+            }
+            let fn_decl = bound_callable_argument(self.dag, template, &arguments, 1)?;
+            let item = "__map_item".to_string();
+            let body = self.render_callable_body(fn_decl, std::slice::from_ref(&item))?;
+            let list = self.render_port_with_locals(inputs[0], locals)?;
+            return Ok(Some(format!(
+                "({list}).clone().into_iter().map(|{item}| {{ {body} }}).collect::<Vec<_>>()"
+            )));
+        }
+        if template == builtins.filter || builtins.filter_int == Some(template) {
+            if inputs.len() != 1 {
+                return Err(EmitError::UnsupportedBehavior(format!(
+                    "filter runtime arity {} is not supported; expected [list]",
+                    inputs.len()
+                )));
+            }
+            let fn_decl = bound_callable_argument(self.dag, template, &arguments, 1)?;
+            let item = "__filter_item".to_string();
+            let body = self.render_callable_body(fn_decl, std::slice::from_ref(&item))?;
+            let list = self.render_port_with_locals(inputs[0], locals)?;
+            return Ok(Some(format!(
+                "{{ let mut __out = Vec::new(); for {item} in ({list}).clone().into_iter() {{ if {body} {{ __out.push({item}); }} }} __out }}"
+            )));
+        }
+
+        Ok(None)
+    }
+
+    fn render_callable_body(
+        &self,
+        callable_decl: DeclarationId,
+        param_names: &[String],
+    ) -> Result<String, EmitError> {
+        let TypeConnective::Arrow { inputs, body, .. } = &self.dag.declaration(callable_decl).connective else {
+            return Err(EmitError::UnsupportedBehavior(
+                "callable template binding did not resolve to an Arrow declaration".to_string(),
+            ));
+        };
+        let ArrowBody::UserDefined(bind_id) = body else {
+            return Err(EmitError::UnsupportedBehavior(
+                "external or unparsed callable bodies are not yet supported in staged std.list emission"
+                    .to_string(),
+            ));
+        };
+        let bind = self
+            .dag
+            .node(*bind_id)
+            .as_bind()
+            .expect("UserDefined arrow body must point at a Bind");
+        if bind.params.len() != inputs.len() || bind.params.len() != param_names.len() {
+            return Err(EmitError::UnsupportedBehavior(
+                "capturing callables are not yet supported in staged std.list emission"
+                    .to_string(),
+            ));
+        }
+        let locals: HashMap<PortId, String> = bind
+            .params
+            .iter()
+            .copied()
+            .zip(param_names.iter().cloned())
+            .collect();
+        self.render_port_with_locals(bind.value, Some(&locals))
     }
 
     /// Sort a Branch's paths into (then, else) for if/else emission.
@@ -721,6 +902,61 @@ impl<'a> Ctx<'a> {
                 target: primitive_id,
             })
     }
+}
+
+fn resolve_list_builtins(dag: &Dag) -> Option<ListBuiltins> {
+    Some(ListBuiltins {
+        empty: dag.declaration_by_name("empty")?.id,
+        singleton: dag.declaration_by_name("singleton")?.id,
+        cons: dag.declaration_by_name("cons")?.id,
+        fold: dag.declaration_by_name("fold")?.id,
+        map: dag.declaration_by_name("map")?.id,
+        filter: dag.declaration_by_name("filter")?.id,
+        singleton_int: dag.declaration_by_name("singleton_int").map(|d| d.id),
+        cons_int: dag.declaration_by_name("cons_int").map(|d| d.id),
+        fold_int: dag.declaration_by_name("fold_int").map(|d| d.id),
+        map_int: dag.declaration_by_name("map_int").map(|d| d.id),
+        filter_int: dag.declaration_by_name("filter_int").map(|d| d.id),
+    })
+}
+
+fn callable_template(target: DeclarationId, dag: &Dag) -> (DeclarationId, Vec<TemplateArgument>) {
+    match &dag.declaration(target).connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => (*template, arguments.clone()),
+        _ => (target, Vec::new()),
+    }
+}
+
+fn bound_callable_argument(
+    dag: &Dag,
+    template: DeclarationId,
+    arguments: &[TemplateArgument],
+    input_index: usize,
+) -> Result<DeclarationId, EmitError> {
+    let TypeConnective::Arrow { inputs, .. } = &dag.declaration(template).connective else {
+        return Err(EmitError::UnsupportedBehavior(
+            "list builtin template did not resolve to an Arrow declaration".to_string(),
+        ));
+    };
+    let Some(param_decl) = inputs.get(input_index).copied() else {
+        return Err(EmitError::UnsupportedBehavior(format!(
+            "list builtin callable slot {} is missing from the template declaration",
+            input_index
+        )));
+    };
+    arguments
+        .iter()
+        .find(|arg| arg.parameter == param_decl)
+        .map(|arg| arg.value)
+        .ok_or_else(|| {
+            EmitError::UnsupportedBehavior(
+                "list builtin callable argument did not bind through template instantiation"
+                    .to_string(),
+            )
+        })
 }
 
 fn render_value(v: &ValueNode) -> String {
@@ -858,6 +1094,7 @@ fn walk_to_algebra_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId
 mod tests {
     use super::*;
     use crate::diagnostics::SourceSpan;
+    use crate::compile_to_dag;
 
     #[test]
     fn render_field_project_emits_parent_dot_field() {
@@ -883,13 +1120,60 @@ mod tests {
             dag: &dag,
             indexes: &indexes,
             branch_marker: dag.branch_marker().expect("branch marker"),
+            list_builtins: resolve_list_builtins(&dag),
             bound_names: &bound_names,
         };
 
         let rendered = match dag.node(node_id) {
-            Behavior::Transform(t) => ctx.render_transform(t).expect("field project renders"),
+            Behavior::Transform(t) => ctx
+                .render_transform(t, None)
+                .expect("field project renders"),
             other => panic!("expected Transform node, got {other:?}"),
         };
         assert_eq!(rendered, "parent.value");
+    }
+
+    #[test]
+    fn render_fold_clones_named_list_input_before_iteration() {
+        let dag = compile_to_dag(
+            "let total: Int = fold_int(singleton_int(1), 0, |acc, x| acc + x)",
+            "test.v3",
+        )
+        .expect("compiles");
+        let builtins = resolve_list_builtins(&dag).expect("list builtins");
+        let fold_template = builtins.fold_int.expect("fold_int builtin");
+        let fold_transform = dag
+            .nodes()
+            .iter()
+            .find_map(|node| match node {
+                Behavior::Transform(t) => match &t.target {
+                    TransformTarget::Callable(target) => {
+                        let (template, _) = callable_template(*target, &dag);
+                        (template == fold_template).then_some(t)
+                    }
+                    _ => None,
+                },
+                _ => None,
+            })
+            .expect("fold transform");
+
+        let indexes = RealizationIndexes::build(&dag).expect("indexes build");
+        let mut bound_names = HashMap::new();
+        bound_names.insert(fold_transform.inputs[0], "xs".to_string());
+        let ctx = Ctx {
+            dag: &dag,
+            indexes: &indexes,
+            branch_marker: dag.branch_marker().expect("branch marker"),
+            list_builtins: Some(builtins),
+            bound_names: &bound_names,
+        };
+
+        let rendered = ctx
+            .render_transform(fold_transform, None)
+            .expect("fold renders");
+        assert!(
+            rendered.contains("(xs).clone().into_iter().fold("),
+            "expected named list inputs to be cloned before iteration, got: {rendered}"
+        );
     }
 }

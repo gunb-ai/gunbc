@@ -1,8 +1,14 @@
-// Build script: enumerate every `*.dag` file in `src/v3/spec/` and
-// generate a Rust array of `(path, content)` pairs the bootstrap
-// loader consumes. Adding a new per-target language spec file
-// (e.g. `python.dag`) becomes a pure file-system change — no
-// Rust edits to `bootstrap.rs`, no fixture-array maintenance.
+// Build script: enumerate every `*.dag` file in the v3-only staged
+// directories and generate Rust arrays of `(path, content)` pairs
+// the bootstrap loader consumes.
+//
+// Two generated arrays exist:
+//   - `STAGED_FILES` for `src/v3/std/*.dag`
+//   - `V3_SPECS`    for `src/v3/spec/*.dag`
+//
+// Adding a new staged std/spec file becomes a pure file-system
+// change — no Rust edits to `bootstrap.rs`, no fixture-array
+// maintenance, no skip-list drift.
 //
 // **Why a build script.** The pre-unwind shape used hardcoded
 // `const RUST_DAG: &str = include_str!("../../spec/rust.dag");`
@@ -10,8 +16,8 @@
 // duplicate-authority bug: the on-disk spec files and the Rust
 // fixture array are two parallel representations of the same set,
 // and adding a new target requires editing both. This script
-// removes the parallel representation by deriving the array from
-// the spec directory.
+// removes the parallel representation by deriving the arrays from
+// the staged directories.
 //
 // **Load order.** The v3 lowerer doesn't strictly enforce import
 // resolution at M1(3), but later spec files that reference
@@ -24,96 +30,73 @@
 // dependency that needs sorting, this script grows a topological
 // pass; until then, the simple rule is sufficient.
 //
-// **Output**: writes a Rust file `OUT_DIR/v3_specs.rs` containing:
+// **Output**: writes two Rust files:
+//
+//   pub static STAGED_FILES: &[(&str, &str)] = &[
+//       ("src/v3/std/list.dag", include_str!("...")),
+//   ];
 //
 //   pub static V3_SPECS: &[(&str, &str)] = &[
 //       ("src/v3/spec/v3_l1.dag", include_str!("...")),
 //       ("src/v3/spec/rust.dag",  include_str!("...")),
 //   ];
 //
-// `bootstrap.rs` uses `include!(concat!(env!("OUT_DIR"),
-// "/v3_specs.rs"));` to pull the array in. The `include_str!`
-// calls inside the generated file resolve at compile time against
-// absolute paths, so the runtime is still hermetic — no
-// filesystem access at `Dag::new()` time.
+// `bootstrap.rs` uses `include!(concat!(env!("OUT_DIR"), ...))` to
+// pull the arrays in. The `include_str!` calls inside the generated
+// files resolve at compile time against absolute paths, so the
+// runtime is still hermetic — no filesystem access at `Dag::new()`
+// time.
 
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-fn main() {
-    // Resolve the spec directory relative to CARGO_MANIFEST_DIR
-    // (which points at src/v3/compiler/). The spec dir is
-    // src/v3/spec/, two levels up and across.
-    let manifest_dir = env::var("CARGO_MANIFEST_DIR")
-        .expect("CARGO_MANIFEST_DIR must be set by Cargo");
-    let manifest_path = PathBuf::from(&manifest_dir);
-    // src/v3/compiler → src/v3/spec
-    let spec_dir = manifest_path
-        .parent()
-        .expect("compiler dir has parent")
-        .join("spec");
-
-    // Tell Cargo to re-run the script if any file in the spec dir
-    // changes. Without this, adding a new spec file wouldn't
-    // trigger a rebuild and the loader would silently miss it.
-    println!(
-        "cargo:rerun-if-changed={}",
-        spec_dir.display()
-    );
-
-    let mut entries: Vec<PathBuf> = fs::read_dir(&spec_dir)
-        .unwrap_or_else(|e| {
-            panic!("failed to read spec dir {}: {}", spec_dir.display(), e)
-        })
+fn collect_dag_entries(dir: &Path, prioritized: &[&str]) -> Vec<PathBuf> {
+    let mut entries: Vec<PathBuf> = fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("failed to read {}: {}", dir.display(), e))
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("dag"))
         .collect();
 
-    // Special-case load order: v3_l1.dag first (it declares the
-    // substrate markers every per-target spec file imports),
-    // everything else alphabetically. This is a one-line bias,
-    // not a full topological sort — keeps the script simple while
-    // still producing a deterministic, dependency-respecting load
-    // order for the current spec set.
     entries.sort_by(|a, b| {
         let a_name = a.file_name().and_then(|s| s.to_str()).unwrap_or("");
         let b_name = b.file_name().and_then(|s| s.to_str()).unwrap_or("");
-        let key = |name: &str| -> (u8, String) {
-            if name == "v3_l1.dag" {
-                (0, name.to_string())
-            } else {
-                (1, name.to_string())
-            }
+        let priority_key = |name: &str| -> (usize, String) {
+            let rank = prioritized
+                .iter()
+                .position(|candidate| *candidate == name)
+                .unwrap_or(prioritized.len());
+            (rank, name.to_string())
         };
-        key(a_name).cmp(&key(b_name))
+        priority_key(a_name).cmp(&priority_key(b_name))
     });
 
-    // Generate the Rust source. Each entry becomes a
-    // `(path_string, include_str!(absolute_path))` tuple. The
-    // path string is the project-relative path used for
-    // diagnostic spans (e.g. "src/v3/spec/rust.dag"); the
-    // `include_str!` argument is an absolute path so the macro
-    // resolves regardless of where the generated file lands.
-    let mut generated = String::from(
+    entries
+}
+
+fn generate_static(
+    static_name: &str,
+    dir_label: &str,
+    display_prefix: &str,
+    entries: &[PathBuf],
+) -> String {
+    let mut generated = format!(
         "// AUTO-GENERATED by build.rs. Do not edit.\n\
          //\n\
-         // Spec files enumerated from src/v3/spec/*.dag. Adding a\n\
-         // new per-target language spec is a pure file-system\n\
-         // change — drop the .dag file in src/v3/spec/ and the\n\
-         // build script picks it up at the next compile.\n\
-         pub static V3_SPECS: &[(&str, &str)] = &[\n",
+         // Files enumerated from {dir_label}/*.dag. Adding a new\n\
+         // staged file is a pure file-system change.\n\
+         pub static {static_name}: &[(&str, &str)] = &[\n"
     );
-    for path in &entries {
+    for path in entries {
         let file_name = path
             .file_name()
             .and_then(|s| s.to_str())
             .expect("entry has utf-8 file name");
-        let display_path = format!("src/v3/spec/{}", file_name);
-        let abs_path = path.canonicalize().unwrap_or_else(|e| {
-            panic!("failed to canonicalize {}: {}", path.display(), e)
-        });
+        let display_path = format!("{display_prefix}/{file_name}");
+        let abs_path = path
+            .canonicalize()
+            .unwrap_or_else(|e| panic!("failed to canonicalize {}: {}", path.display(), e));
         generated.push_str(&format!(
             "    (\"{}\", include_str!(\"{}\")),\n",
             display_path,
@@ -121,9 +104,47 @@ fn main() {
         ));
     }
     generated.push_str("];\n");
+    generated
+}
+
+fn main() {
+    // Resolve the staged directories relative to CARGO_MANIFEST_DIR
+    // (which points at src/v3/compiler/). Both live one level up:
+    // src/v3/std/ and src/v3/spec/.
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR")
+        .expect("CARGO_MANIFEST_DIR must be set by Cargo");
+    let manifest_path = PathBuf::from(&manifest_dir);
+    let v3_dir = manifest_path.parent().expect("compiler dir has parent");
+    let std_dir = v3_dir.join("std");
+    let spec_dir = v3_dir.join("spec");
+
+    // Tell Cargo to re-run the script if any staged std/spec file
+    // changes. Without this, adding a new file wouldn't trigger a
+    // rebuild and bootstrap would silently miss it.
+    println!("cargo:rerun-if-changed={}", std_dir.display());
+    println!("cargo:rerun-if-changed={}", spec_dir.display());
+
+    let staged_entries = collect_dag_entries(&std_dir, &[]);
+    let spec_entries = collect_dag_entries(&spec_dir, &["v3_l1.dag"]);
+    let staged_generated = generate_static(
+        "STAGED_FILES",
+        "src/v3/std",
+        "src/v3/std",
+        &staged_entries,
+    );
+    let specs_generated = generate_static(
+        "V3_SPECS",
+        "src/v3/spec",
+        "src/v3/spec",
+        &spec_entries,
+    );
 
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR must be set by Cargo");
-    let out_path = Path::new(&out_dir).join("v3_specs.rs");
-    fs::write(&out_path, generated)
-        .unwrap_or_else(|e| panic!("failed to write {}: {}", out_path.display(), e));
+    let out_dir = Path::new(&out_dir);
+    let staged_out = out_dir.join("v3_staged_files.rs");
+    fs::write(&staged_out, staged_generated)
+        .unwrap_or_else(|e| panic!("failed to write {}: {}", staged_out.display(), e));
+    let specs_out = out_dir.join("v3_specs.rs");
+    fs::write(&specs_out, specs_generated)
+        .unwrap_or_else(|e| panic!("failed to write {}: {}", specs_out.display(), e));
 }

@@ -38,32 +38,32 @@ const FLOAT_DAG: &str = include_str!("../../../../dsl/std/float.dag");
 const STRING_TYPE_DAG: &str = include_str!("../../../../dsl/std/string_type.dag");
 const TYPES_DAG: &str = include_str!("../../../../dsl/std/types.dag");
 
-// M1(3) PR-B-unwind R1 — the v3-only spec files (`src/v3/spec/
-// v3_l1.dag` for substrate markers, `src/v3/spec/rust.dag` for
-// the Rust target realization, plus any future per-target spec
-// like `python.dag`) are enumerated by `build.rs` at compile time
-// and exposed via the `V3_SPECS` static. Adding a new per-target
-// spec is a pure file-system change: drop the .dag file in
-// `src/v3/spec/`, the build script picks it up at the next
-// compile, and the bootstrap loop loads it without any
-// `bootstrap.rs` edit.
+// M1(3) PR-B-unwind R1 — the v3-only staged files are enumerated
+// by `build.rs` at compile time and exposed via generated statics:
+//
+//   - `STAGED_FILES` for `src/v3/std/*.dag`
+//   - `V3_SPECS` for `src/v3/spec/*.dag`
+//
+// Adding a new staged std/spec file is a pure file-system change:
+// drop the `.dag` file in the staged directory, the build script
+// picks it up at the next compile, and the bootstrap loop loads it
+// without any `bootstrap.rs` edit.
 //
 // The pre-unwind shape had `const RUST_DAG: &str = include_str!(...)`
 // constants here and a hardcoded fixture array, which PR #445
 // review flagged as a duplicate-authority bug: the on-disk spec
 // files and the Rust constants were two parallel representations
-// of the same set. The build-script-generated `V3_SPECS` is the
+// of the same set. The build-script-generated staged arrays are the
 // single authority.
 //
-// **Why these live in `src/v3/spec/` instead of `dsl/std/`.** v2's
-// CI pipeline scans `dsl/` recursively and tries to resolve every
-// identifier in every record-literal field value. v2 doesn't know
-// about v3's `DeclarationRef` sentinel meta-type, so a rust.dag
-// declaration like `target: Int` (a typed reference) reads as an
-// undefined-variable error in v2's scope. Keeping v3-only spec
-// files outside the v2-scanned tree entirely is the cleanest
-// separation. v3 reads them via the build-script-generated array
-// — no source-root scanning involved.
+// **Why these live in `src/v3/std/` and `src/v3/spec/` instead of
+// `dsl/std/`.** v2's CI pipeline scans `dsl/` recursively and tries
+// to resolve every identifier in every record-literal field value.
+// v2 doesn't know about v3-only surface/substrate features, so
+// keeping staged files outside the v2-scanned tree is the cleanest
+// separation. v3 reads them via the build-script-generated arrays —
+// no source-root scanning involved.
+include!(concat!(env!("OUT_DIR"), "/v3_staged_files.rs"));
 include!(concat!(env!("OUT_DIR"), "/v3_specs.rs"));
 
 pub(crate) fn bootstrap(dag: &mut Dag) {
@@ -94,12 +94,14 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
         ("dsl/std/string_type.dag", STRING_TYPE_DAG),
     ];
 
-    // v3-only spec fixtures — enumerated by build.rs at compile
-    // time from `src/v3/spec/*.dag`. Adding a new per-target
-    // language spec is a pure file-system change.
+    // v3-only staged fixtures — enumerated by build.rs at compile
+    // time from `src/v3/std/*.dag` and `src/v3/spec/*.dag`.
+    // Adding a new staged std/spec file is a pure file-system
+    // change.
     let fixtures: Vec<(&str, &str)> = std_fixtures
         .iter()
         .copied()
+        .chain(STAGED_FILES.iter().copied())
         .chain(V3_SPECS.iter().copied())
         .collect();
 
