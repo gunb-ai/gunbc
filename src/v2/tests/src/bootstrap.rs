@@ -62,9 +62,10 @@ fn parse_diagnostic_count(stderr: &str) -> usize {
         .unwrap_or(usize::MAX)
 }
 
-/// Copy hand-maintained files into a compile output dir and patch Cargo.toml
-/// with the ureq dependency needed by the interpreter.
-fn prepare_stage1_for_build(stage1_dir: &std::path::Path, ws: &std::path::Path) {
+/// Copy hand-maintained Rust modules that emitted stage0 still references.
+/// These are excluded from freshness/fixed-point diffs, but they must exist
+/// in temp output dirs so rustfmt and cargo can resolve lib.rs module paths.
+fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Path) {
     let stage0_src = ws.join("src/v2/stage0/src");
     for name in &["v2_interpreter.rs", "cli_run.rs"] {
         let src = stage0_src.join(name);
@@ -74,6 +75,12 @@ fn prepare_stage1_for_build(stage1_dir: &std::path::Path, ws: &std::path::Path) 
                 .unwrap_or_else(|e| panic!("failed to copy {} to stage1: {}", name, e));
         }
     }
+}
+
+/// Copy hand-maintained files into a compile output dir and patch Cargo.toml
+/// with the ureq dependency needed by the interpreter.
+fn prepare_stage1_for_build(stage1_dir: &std::path::Path, ws: &std::path::Path) {
+    copy_stage0_support_modules(stage1_dir, ws);
     let cargo_toml = stage1_dir.join("Cargo.toml");
     if cargo_toml.exists() {
         let contents = std::fs::read_to_string(&cargo_toml).unwrap();
@@ -698,6 +705,7 @@ static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
     // via rustfmt before the diff so whitespace never masquerades as
     // staleness.
     let pass1_src = output_dir.join("src");
+    copy_stage0_support_modules(&output_dir, &ws);
     if let Err(err) = rustfmt_rs_files(&pass1_src) {
         panic!("failed to rustfmt pass1 output: {err}");
     }
@@ -760,6 +768,11 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
         "pass 2 (stage1->2) compile failed:\n{}",
         String::from_utf8_lossy(&pass2_output.stderr)
     );
+    copy_stage0_support_modules(&output_dir, &ws);
+    let pass2_src = output_dir.join("src");
+    if let Err(err) = rustfmt_rs_files(&pass2_src) {
+        panic!("failed to rustfmt pass2 output: {err}");
+    }
 
     Pass2Output { output_dir }
 });
