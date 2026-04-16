@@ -359,7 +359,7 @@ fn serialize_loop_bound(bound: &Bound) -> String {
 fn serialize_bind_node(node: &BindNode) -> String {
     format!(
         "BindNode(id={}, name={:?}, result_port={}, params=[{}], span={})",
-        format!("{:?}", node.id),
+        py_debug(&node.id),
         node.name,
         py_debug(&node.result_port()),
         node.params.iter().map(py_debug).collect::<Vec<_>>().join(", "),
@@ -387,7 +387,8 @@ fn serialize_span(span: &v3_compiler::diagnostics::SourceSpan) -> String {
 }
 
 fn py_debug<T: std::fmt::Debug>(value: &T) -> String {
-    format!("{:?}", format!("{value:?}"))
+    let inner = format!("{value:?}");
+    format!("{inner:?}")
 }
 
 #[test]

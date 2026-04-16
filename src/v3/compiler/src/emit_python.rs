@@ -31,16 +31,16 @@ enum EmitPythonMode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PythonCallableStrategy {
-    ListEmpty,
-    ListSingleton,
-    ListCons,
-    ListConcat,
-    ListLength,
-    ListIsEmpty,
-    ListFold,
-    ListMap,
-    ListFilter,
-    ListContains,
+    Empty,
+    Singleton,
+    Cons,
+    Concat,
+    Length,
+    IsEmpty,
+    Fold,
+    Map,
+    Filter,
+    Contains,
 }
 
 #[derive(Debug, Clone)]
@@ -533,33 +533,33 @@ impl<'a> Ctx<'a> {
         locals: &RenderLocals,
     ) -> Result<String, EmitPythonError> {
         match strategy {
-            PythonCallableStrategy::ListEmpty => Ok(self.indexes.syntax.empty_list.clone()),
-            PythonCallableStrategy::ListSingleton => {
+            PythonCallableStrategy::Empty => Ok(self.indexes.syntax.empty_list.clone()),
+            PythonCallableStrategy::Singleton => {
                 let value = self.render_port(inputs[0], locals)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.list_literal,
                     &[("elements", &value)],
                 ))
             }
-            PythonCallableStrategy::ListCons => {
+            PythonCallableStrategy::Cons => {
                 let head = self.render_port(inputs[0], locals)?;
                 let tail = self.render_port(inputs[1], locals)?;
                 Ok(render_named_template(&self.indexes.syntax.cons, &[("head", &head), ("tail", &tail)]))
             }
-            PythonCallableStrategy::ListConcat => {
+            PythonCallableStrategy::Concat => {
                 let left = self.render_port(inputs[0], locals)?;
                 let right = self.render_port(inputs[1], locals)?;
                 Ok(render_named_template(&self.indexes.syntax.concat, &[("left", &left), ("right", &right)]))
             }
-            PythonCallableStrategy::ListLength => {
+            PythonCallableStrategy::Length => {
                 let recv = self.render_port(inputs[0], locals)?;
                 Ok(render_named_template(&self.indexes.syntax.length, &[("recv", &recv)]))
             }
-            PythonCallableStrategy::ListIsEmpty => {
+            PythonCallableStrategy::IsEmpty => {
                 let recv = self.render_port(inputs[0], locals)?;
                 Ok(render_named_template(&self.indexes.syntax.is_empty, &[("recv", &recv)]))
             }
-            PythonCallableStrategy::ListFold => {
+            PythonCallableStrategy::Fold => {
                 let fn_decl = bound_callable_argument(self.dag, template, arguments, 2)?;
                 let acc = "__fold_acc".to_string();
                 let item = "__fold_item".to_string();
@@ -575,7 +575,7 @@ impl<'a> Ctx<'a> {
                     &[("recv", &recv), ("init", &init), ("body", &body)],
                 ))
             }
-            PythonCallableStrategy::ListMap => {
+            PythonCallableStrategy::Map => {
                 let fn_decl = bound_callable_argument(self.dag, template, arguments, 1)?;
                 let item = "__map_item".to_string();
                 let body = self.render_callable_body(fn_decl, &[(item.clone(), item.clone())], locals)?;
@@ -585,7 +585,7 @@ impl<'a> Ctx<'a> {
                     &[("recv", &recv), ("item", &item), ("body", &body)],
                 ))
             }
-            PythonCallableStrategy::ListFilter => {
+            PythonCallableStrategy::Filter => {
                 let fn_decl = bound_callable_argument(self.dag, template, arguments, 1)?;
                 let item = "__filter_item".to_string();
                 let predicate =
@@ -601,7 +601,7 @@ impl<'a> Ctx<'a> {
                     ],
                 ))
             }
-            PythonCallableStrategy::ListContains => {
+            PythonCallableStrategy::Contains => {
                 let recv = self.render_port(inputs[0], locals)?;
                 let item = self.render_port(inputs[1], locals)?;
                 Ok(render_named_template(
@@ -1002,16 +1002,16 @@ fn parse_callable_strategy(
         });
     }
     let variants = [
-        ("ListEmpty", PythonCallableStrategy::ListEmpty),
-        ("ListSingleton", PythonCallableStrategy::ListSingleton),
-        ("ListCons", PythonCallableStrategy::ListCons),
-        ("ListConcat", PythonCallableStrategy::ListConcat),
-        ("ListLength", PythonCallableStrategy::ListLength),
-        ("ListIsEmpty", PythonCallableStrategy::ListIsEmpty),
-        ("ListFold", PythonCallableStrategy::ListFold),
-        ("ListMap", PythonCallableStrategy::ListMap),
-        ("ListFilter", PythonCallableStrategy::ListFilter),
-        ("ListContains", PythonCallableStrategy::ListContains),
+        ("ListEmpty", PythonCallableStrategy::Empty),
+        ("ListSingleton", PythonCallableStrategy::Singleton),
+        ("ListCons", PythonCallableStrategy::Cons),
+        ("ListConcat", PythonCallableStrategy::Concat),
+        ("ListLength", PythonCallableStrategy::Length),
+        ("ListIsEmpty", PythonCallableStrategy::IsEmpty),
+        ("ListFold", PythonCallableStrategy::Fold),
+        ("ListMap", PythonCallableStrategy::Map),
+        ("ListFilter", PythonCallableStrategy::Filter),
+        ("ListContains", PythonCallableStrategy::Contains),
     ];
     for (name, strategy) in variants {
         if constructor == named_variant_id(dag, "PythonCallableStrategy", name)? {
