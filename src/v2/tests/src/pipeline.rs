@@ -31,8 +31,10 @@ fn full_dsl_compiles() {
         "no .dag files found in dsl/ — something is wrong"
     );
 
-    let dsl_result =
-        v2_compiler::v2_compiler_compile::compile_sources(Rc::new(dsl_sources.clone()), RenderTarget::Rust);
+    let dsl_result = v2_compiler::v2_compiler_compile::compile_sources(
+        Rc::new(dsl_sources.clone()),
+        RenderTarget::Rust,
+    );
 
     // Complexity violations are non-blocking. Only fail on hard errors.
     let hard_diags: Vec<_> = diagnostic_messages(&dsl_result)
@@ -43,7 +45,8 @@ fn full_dsl_compiles() {
         panic!(
             "dsl/ compilation produced {} hard diagnostics (expected 0):\n{}",
             hard_diags.len(),
-            hard_diags.iter()
+            hard_diags
+                .iter()
                 .enumerate()
                 .map(|(i, m)| format!("  [{}] {}", i, m))
                 .collect::<Vec<_>>()
@@ -66,11 +69,13 @@ fn full_dsl_compiles() {
         if path.extension().map(|e| e == "dag").unwrap_or(false) {
             let content = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
-            let result =
-                v2_compiler::v2_compiler_parse::parse(v2_compiler::v2_compiler_tokenize::tokenize(
+            let result = v2_compiler::v2_compiler_parse::parse(
+                v2_compiler::v2_compiler_tokenize::tokenize(
                     &content,
                     path.to_string_lossy().to_string(),
-                ), Rc::new(HashMap::new()));
+                ),
+                Rc::new(HashMap::new()),
+            );
             if let Some(ref err) = result.error {
                 v2_errors.push(format!(
                     "{}: {}",
@@ -672,7 +677,11 @@ fn list_index_compiles_successfully() {
     let source = "module test\nfn first(xs: List<Int>) -> Int? {\n  xs[0]\n}\n";
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
-    assert!(msgs.is_empty(), "list indexing should compile, got: {:?}", msgs);
+    assert!(
+        msgs.is_empty(),
+        "list indexing should compile, got: {:?}",
+        msgs
+    );
 }
 
 #[test]
@@ -788,10 +797,13 @@ fn complexity_report_structured() {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let class = complexity_class_of(&result, "constant_work");
-    assert_eq!(class.as_deref(), Some("O(1)"),
-        "constant_work should be O(1), got {:?}", class);
+    assert_eq!(
+        class.as_deref(),
+        Some("O(1)"),
+        "constant_work should be O(1), got {:?}",
+        class
+    );
 }
-
 
 // ── Hermetic complexity tests ──────────────────────────────────────────
 //
@@ -949,17 +961,28 @@ fn countdown(n: Int) -> Int {
 // Note: The bootstrap pipeline skips complexity analysis (compile.dag §817).
 // We call build_complexity_report directly to get real complexity results.
 
-fn compile_dag_with_complexity(source: &str) -> Rc<v2_compiler::v2_compiler_complexity::ComplexityReport> {
-    use v2_compiler::v2_compiler_compile::{extract_func_entries, build_recursion_context, front_end_sources};
+fn compile_dag_with_complexity(
+    source: &str,
+) -> Rc<v2_compiler::v2_compiler_complexity::ComplexityReport> {
+    use v2_compiler::v2_compiler_compile::{
+        build_recursion_context, extract_func_entries, front_end_sources,
+    };
     use v2_compiler::v2_compiler_complexity::build_complexity_report;
-    use v2_compiler::v2_compiler_normalize::normalize_graph;
     use v2_compiler::v2_compiler_infer::reconcile;
+    use v2_compiler::v2_compiler_normalize::normalize_graph;
     let sources = resolve_imports_transitively("test.dag", source);
     let frontend = front_end_sources(Rc::new(sources));
-    let graph = frontend.graph.clone().expect("frontend must produce a graph");
+    let graph = frontend
+        .graph
+        .clone()
+        .expect("frontend must produce a graph");
     let norm = normalize_graph(&graph, Rc::new(HashMap::new()));
     let source_indices = Rc::new(HashMap::new());
-    let typed = reconcile(norm.graph.clone(), source_indices, frontend.intern_table.clone());
+    let typed = reconcile(
+        norm.graph.clone(),
+        source_indices,
+        frontend.intern_table.clone(),
+    );
 
     let func_entries = extract_func_entries(typed.clone());
     let recursion_ctx = build_recursion_context(typed);
@@ -1353,7 +1376,9 @@ fn complexity_self_analysis_subset() {
     let ws = crate::helpers::workspace_root();
     let stage0_bin = ws.join("target/release/v2-compiler");
     if !stage0_bin.exists() {
-        eprintln!("skipping: release binary not found (run `cargo build --release -p v2-compiler` first)");
+        eprintln!(
+            "skipping: release binary not found (run `cargo build --release -p v2-compiler` first)"
+        );
         return;
     }
     // The complexity report is computed inside compile_sources but not printed
@@ -1751,7 +1776,9 @@ fn render(name: String) -> String {
     let content = result
         .files
         .iter()
-        .find(|f| f.path.ends_with(".go") && !f.path.contains("go.mod") && !f.path.contains("_test.go"))
+        .find(|f| {
+            f.path.ends_with(".go") && !f.path.contains("go.mod") && !f.path.contains("_test.go")
+        })
         .expect("Go target should emit a .go file")
         .content
         .clone();
@@ -1766,38 +1793,57 @@ fn render(name: String) -> String {
 #[test]
 #[ignore]
 fn diag_parser_scc_edges() {
+    use v2_compiler::std_termination::DescentEvidence;
     use v2_compiler::v2_compiler_compile::{extract_func_entries, front_end_sources};
     use v2_compiler::v2_compiler_complexity::{
-        build_scc_index, collect_parser_edges_for_scc,
-        same_progress_subgraph_has_cycle, FuncEntry,
+        build_scc_index, collect_parser_edges_for_scc, same_progress_subgraph_has_cycle, FuncEntry,
     };
-    use v2_compiler::std_termination::DescentEvidence;
-    use v2_compiler::v2_compiler_normalize::normalize_graph;
     use v2_compiler::v2_compiler_infer::reconcile;
+    use v2_compiler::v2_compiler_normalize::normalize_graph;
 
     let ws = crate::helpers::workspace_root();
     let content = std::fs::read_to_string(ws.join("src/v2/02_parse.dag")).unwrap();
     let sources = crate::helpers::resolve_imports_transitively("src/v2/02_parse.dag", &content);
     let frontend = front_end_sources(Rc::new(sources));
-    let graph = frontend.graph.clone().expect("frontend must produce a graph");
+    let graph = frontend
+        .graph
+        .clone()
+        .expect("frontend must produce a graph");
     let norm = normalize_graph(&graph, Rc::new(HashMap::new()));
-    let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()), frontend.intern_table.clone());
+    let typed = reconcile(
+        norm.graph.clone(),
+        Rc::new(HashMap::new()),
+        frontend.intern_table.clone(),
+    );
     let func_entries = extract_func_entries(typed);
 
-    let func_index: HashMap<String, Rc<FuncEntry>> =
-        func_entries.iter().cloned().map(|e| (e.name.clone(), e)).collect();
+    let func_index: HashMap<String, Rc<FuncEntry>> = func_entries
+        .iter()
+        .cloned()
+        .map(|e| (e.name.clone(), e))
+        .collect();
     let func_index_rc = Rc::new(func_index);
 
-    let scc_result = build_scc_index(&func_entries, func_index_rc.clone(), &Rc::new(HashMap::new()));
+    let scc_result = build_scc_index(
+        &func_entries,
+        func_index_rc.clone(),
+        &Rc::new(HashMap::new()),
+    );
 
     // Find the large parser SCC (the one containing parse_type_expr)
-    let scc_info = scc_result.index.get("parse_type_expr")
+    let scc_info = scc_result
+        .index
+        .get("parse_type_expr")
         .expect("parse_type_expr must be in SCC index");
 
     eprintln!("\n=== Parser SCC: {} members ===", scc_info.members.len());
 
-    let scc_name_set: HashMap<String, bool> = scc_info.members.iter()
-        .cloned().map(|n| (n, true)).collect();
+    let scc_name_set: HashMap<String, bool> = scc_info
+        .members
+        .iter()
+        .cloned()
+        .map(|n| (n, true))
+        .collect();
     let edges = collect_parser_edges_for_scc(
         &scc_info.members,
         &func_index_rc,
@@ -1834,9 +1880,7 @@ fn diag_parser_scc_edges() {
         eprintln!("    {} -> {}", e.caller, e.callee);
     }
 
-    let has_cycle = same_progress_subgraph_has_cycle(
-        &scc_info.members, edges.clone(),
-    );
+    let has_cycle = same_progress_subgraph_has_cycle(&scc_info.members, edges.clone());
     eprintln!("\n  Same-subgraph has cycle: {}", has_cycle);
 }
 
@@ -1845,28 +1889,41 @@ fn diag_parser_scc_edges() {
 fn diag_parse_node_decl_env() {
     use v2_compiler::v2_compiler_compile::{extract_func_entries, front_end_sources};
     use v2_compiler::v2_compiler_complexity::{
-        parser_state_param, collect_parser_progress_edges,
-        infer_parser_always_advancing_members, parser_function_names,
-        empty_parser_progress_env, FuncEntry,
+        collect_parser_progress_edges, empty_parser_progress_env,
+        infer_parser_always_advancing_members, parser_function_names, parser_state_param,
+        FuncEntry,
     };
-    use v2_compiler::v2_compiler_normalize::normalize_graph;
     use v2_compiler::v2_compiler_infer::reconcile;
+    use v2_compiler::v2_compiler_normalize::normalize_graph;
 
     let ws = crate::helpers::workspace_root();
     let content = std::fs::read_to_string(ws.join("src/v2/02_parse.dag")).unwrap();
     let sources = crate::helpers::resolve_imports_transitively("src/v2/02_parse.dag", &content);
     let frontend = front_end_sources(Rc::new(sources));
-    let graph = frontend.graph.clone().expect("frontend must produce a graph");
+    let graph = frontend
+        .graph
+        .clone()
+        .expect("frontend must produce a graph");
     let norm = normalize_graph(&graph, Rc::new(HashMap::new()));
-    let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()), frontend.intern_table.clone());
+    let typed = reconcile(
+        norm.graph.clone(),
+        Rc::new(HashMap::new()),
+        frontend.intern_table.clone(),
+    );
     let func_entries = extract_func_entries(typed.clone());
 
-    let func_index: HashMap<String, Rc<FuncEntry>> =
-        func_entries.iter().cloned().map(|e| (e.name.clone(), e)).collect();
+    let func_index: HashMap<String, Rc<FuncEntry>> = func_entries
+        .iter()
+        .cloned()
+        .map(|e| (e.name.clone(), e))
+        .collect();
     let func_index_rc = Rc::new(func_index);
 
-    let pnd = func_index_rc.get("parse_node_decl").expect("parse_node_decl must exist");
-    let state_param = parser_state_param(pnd.params.clone(), Rc::new(HashMap::new())).expect("must have state param");
+    let pnd = func_index_rc
+        .get("parse_node_decl")
+        .expect("parse_node_decl must exist");
+    let state_param = parser_state_param(pnd.params.clone(), Rc::new(HashMap::new()))
+        .expect("must have state param");
 
     // Build parser_always_advancing exactly as the SCC analysis does
     let si = Rc::new(HashMap::new());
@@ -1879,10 +1936,17 @@ fn diag_parse_node_decl_env() {
     // Build scc_name_set for the parser SCC containing parse_node_decl
     use v2_compiler::v2_compiler_complexity::build_scc_index;
     let scc_result = build_scc_index(&func_entries, func_index_rc.clone(), &si);
-    let scc_info = scc_result.index.get("parse_node_decl")
+    let scc_info = scc_result
+        .index
+        .get("parse_node_decl")
         .expect("parse_node_decl must be in SCC index");
     let scc_name_set: Rc<HashMap<String, bool>> = Rc::new(
-        scc_info.members.iter().cloned().map(|n| (n, true)).collect()
+        scc_info
+            .members
+            .iter()
+            .cloned()
+            .map(|n| (n, true))
+            .collect(),
     );
 
     eprintln!("\n=== collect_parser_progress_edges on parse_node_decl body ===");
@@ -2028,7 +2092,10 @@ fn descending_recursion_is_allowed() {
     let source = "module countdown_test\n\nfn countdown(n: Int) -> Int {\n  if n <= 0 { 0 }\n  else { countdown(n: n - 1) }\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    assert!(!result.files.is_empty(), "descending recursion should compile successfully");
+    assert!(
+        !result.files.is_empty(),
+        "descending recursion should compile successfully"
+    );
 }
 
 #[test]
@@ -2049,7 +2116,8 @@ fn ascending_recursion_is_rejected() {
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
     assert!(
-        msgs.iter().any(|m| m.contains("non-descending") || m.contains("unresolvable")),
+        msgs.iter()
+            .any(|m| m.contains("non-descending") || m.contains("unresolvable")),
         "fn spin(n: n+1) must be rejected, got: {:?}",
         msgs
     );
@@ -2063,7 +2131,8 @@ fn multiplicative_recursion_is_rejected() {
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
     assert!(
-        msgs.iter().any(|m| m.contains("non-descending") || m.contains("unresolvable")),
+        msgs.iter()
+            .any(|m| m.contains("non-descending") || m.contains("unresolvable")),
         "fn spin(n: n*n) must be rejected, got: {:?}",
         msgs
     );
@@ -2077,7 +2146,8 @@ fn variable_rethread_recursion_is_rejected() {
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
     assert!(
-        msgs.iter().any(|m| m.contains("non-descending") || m.contains("unresolvable")),
+        msgs.iter()
+            .any(|m| m.contains("non-descending") || m.contains("unresolvable")),
         "fn bounce(n: m) must be rejected without a decreasing witness, got: {:?}",
         msgs
     );
@@ -2134,7 +2204,9 @@ fn function_calling_into_cycle_is_not_rejected() {
     // Must NOT be flagged as mutual recursion.
     let source = "module downstream_test\n\nfn ping(n: Int) -> Int { pong(n: n) }\nfn pong(n: Int) -> Int { ping(n: n) }\nfn helper(n: Int) -> Int { ping(n: n) }\n";
     let result = compile_dag(source);
-    let diag_names: Vec<String> = result.diagnostics.iter()
+    let diag_names: Vec<String> = result
+        .diagnostics
+        .iter()
         .map(|d| d.module_name.clone())
         .collect();
     // ping and pong should have diagnostics, but helper should NOT
@@ -2153,7 +2225,10 @@ fn division_descent_is_allowed() {
     let source = "module halve_test\n\nfn halve(n: Int) -> Int {\n  if n <= 0 { 0 }\n  else { halve(n: n / 2) }\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    assert!(!result.files.is_empty(), "division descent should compile successfully");
+    assert!(
+        !result.files.is_empty(),
+        "division descent should compile successfully"
+    );
 }
 
 // =========================================================================
@@ -2221,8 +2296,11 @@ fn walk_type(n: Node) -> String {
 }
 "#;
     let result = compile_dag_with_complexity(source);
-    assert!(result.violations.is_empty(),
-        "property contraction + tree descent should produce 0 violations, got {}", result.violations.len());
+    assert!(
+        result.violations.is_empty(),
+        "property contraction + tree descent should produce 0 violations, got {}",
+        result.violations.len()
+    );
 }
 
 #[test]
@@ -2273,11 +2351,23 @@ fn cx_forever_bound_produces_violation() {
     // SameArgumentCall → Forever → CostUnknown → violation (honest "I don't know")
     let source = "module cx_forever\n\nfn count_up(n: Int) -> Int {\n  if n > 100 { n }\n  else { count_up(n: n + 1) }\n}\n";
     let result = compile_dag(source);
-    let class = result.complexity.function_classes.get("count_up")
+    let class = result
+        .complexity
+        .function_classes
+        .get("count_up")
         .expect("count_up should have a complexity class");
-    assert_eq!(class.as_str(), "O(?)", "Forever-bounded recursion should be O(?), got {}", class);
-    assert_eq!(result.complexity.violations.len() as usize, 1,
-        "expected 1 violation for SameArgumentCall, got {}", result.complexity.violations.len());
+    assert_eq!(
+        class.as_str(),
+        "O(?)",
+        "Forever-bounded recursion should be O(?), got {}",
+        class
+    );
+    assert_eq!(
+        result.complexity.violations.len() as usize,
+        1,
+        "expected 1 violation for SameArgumentCall, got {}",
+        result.complexity.violations.len()
+    );
 }
 
 // =========================================================================
@@ -2307,8 +2397,10 @@ fn split(n: Int) -> Int {
 }
 "#;
     let result = compile_dag_with_complexity(source);
-    assert!(!result.violations.is_empty(),
-        "branching recursion should produce a violation, got 0");
+    assert!(
+        !result.violations.is_empty(),
+        "branching recursion should produce a violation, got 0"
+    );
 }
 
 #[test]
@@ -2322,8 +2414,10 @@ fn cond_recurse(n: Int, flag: Bool) -> Int {
 }
 "#;
     let result = compile_dag_with_complexity(source);
-    assert!(!result.violations.is_empty(),
-        "conditional descent should produce a violation, got 0");
+    assert!(
+        !result.violations.is_empty(),
+        "conditional descent should produce a violation, got 0"
+    );
 }
 
 #[test]
@@ -2336,9 +2430,16 @@ fn loop_forever(n: Int) -> Int {
 }
 "#;
     let result = compile_dag_with_complexity(source);
-    let class = result.function_classes.get("loop_forever")
+    let class = result
+        .function_classes
+        .get("loop_forever")
         .expect("loop_forever should have a complexity class");
-    assert_eq!(class.as_str(), "O(?)", "same-argument recursion should be O(?), got {}", class);
+    assert_eq!(
+        class.as_str(),
+        "O(?)",
+        "same-argument recursion should be O(?), got {}",
+        class
+    );
 }
 
 // =========================================================================
@@ -2372,10 +2473,22 @@ fn count_b(y: Int) -> Int {
     assert!(a_class.is_some(), "count_a should have a complexity class");
     assert!(b_class.is_some(), "count_b should have a complexity class");
     // Both should be bounded — the SCC descends on arithmetic params
-    let a_violation = result.violations.iter().any(|v| v.func_name.as_str() == "count_a");
-    let b_violation = result.violations.iter().any(|v| v.func_name.as_str() == "count_b");
-    assert!(!a_violation, "count_a should not be a violation (cross-named SCC descent recognized)");
-    assert!(!b_violation, "count_b should not be a violation (cross-named SCC descent recognized)");
+    let a_violation = result
+        .violations
+        .iter()
+        .any(|v| v.func_name.as_str() == "count_a");
+    let b_violation = result
+        .violations
+        .iter()
+        .any(|v| v.func_name.as_str() == "count_b");
+    assert!(
+        !a_violation,
+        "count_a should not be a violation (cross-named SCC descent recognized)"
+    );
+    assert!(
+        !b_violation,
+        "count_b should not be a violation (cross-named SCC descent recognized)"
+    );
 }
 
 #[test]
@@ -2393,7 +2506,10 @@ fn count_nodes(n: Node) -> Int {
     let result = compile_dag_with_complexity(source);
     // Direct self-recursion with named args should work fine
     let class = result.function_classes.get("count_nodes");
-    assert!(class.is_some(), "count_nodes should have a complexity class");
+    assert!(
+        class.is_some(),
+        "count_nodes should have a complexity class"
+    );
 }
 
 // =========================================================================
@@ -2414,22 +2530,37 @@ fn cx_constant_absorption_in_linear_function() {
     let source = "module cx_absorb\n\nfn sum_items(items: List<Int>) -> Int {\n  let start = 0\n  items |> fold(init: start, f: (acc, x) => acc + x)\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    let class = result.complexity.function_classes.get("sum_items")
+    let class = result
+        .complexity
+        .function_classes
+        .get("sum_items")
         .expect("sum_items should have a complexity class");
-    assert_eq!(class.as_str(), "O(n)",
-        "constant + linear should normalize to O(n), got {}", class);
+    assert_eq!(
+        class.as_str(),
+        "O(n)",
+        "constant + linear should normalize to O(n), got {}",
+        class
+    );
 }
 
 #[test]
 fn cx_pure_constant_function_is_o1() {
     // A function with only constant operations should be O(1).
-    let source = "module cx_const\n\nfn add_three(a: Int, b: Int, c: Int) -> Int {\n  a + b + c\n}\n";
+    let source =
+        "module cx_const\n\nfn add_three(a: Int, b: Int, c: Int) -> Int {\n  a + b + c\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    let class = result.complexity.function_classes.get("add_three")
+    let class = result
+        .complexity
+        .function_classes
+        .get("add_three")
         .expect("add_three should have a complexity class");
-    assert_eq!(class.as_str(), "O(1)",
-        "pure constant operations should be O(1), got {}", class);
+    assert_eq!(
+        class.as_str(),
+        "O(1)",
+        "pure constant operations should be O(1), got {}",
+        class
+    );
 }
 
 #[test]
@@ -2438,10 +2569,17 @@ fn cx_idempotent_addition_two_folds() {
     let source = "module cx_idem\n\nfn sum_and_count(items: List<Int>) -> Int {\n  let s = items |> fold(init: 0, f: (acc, x) => acc + x)\n  let c = items |> fold(init: 0, f: (acc, x) => acc + 1)\n  s + c\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    let class = result.complexity.function_classes.get("sum_and_count")
+    let class = result
+        .complexity
+        .function_classes
+        .get("sum_and_count")
         .expect("sum_and_count should have a complexity class");
-    assert_eq!(class.as_str(), "O(n)",
-        "two folds over same collection should be O(n), got {}", class);
+    assert_eq!(
+        class.as_str(),
+        "O(n)",
+        "two folds over same collection should be O(n), got {}",
+        class
+    );
 }
 
 #[test]
@@ -2450,10 +2588,17 @@ fn cx_idempotent_max_in_match() {
     let source = "module cx_max\n\nfn process(items: List<Int>, flag: Bool) -> Int {\n  if flag {\n    items |> fold(init: 0, f: (acc, x) => acc + x)\n  } else {\n    items |> fold(init: 0, f: (acc, x) => acc + 1)\n  }\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    let class = result.complexity.function_classes.get("process")
+    let class = result
+        .complexity
+        .function_classes
+        .get("process")
         .expect("process should have a complexity class");
-    assert_eq!(class.as_str(), "O(n)",
-        "max of equal folds should be O(n), got {}", class);
+    assert_eq!(
+        class.as_str(),
+        "O(n)",
+        "max of equal folds should be O(n), got {}",
+        class
+    );
 }
 
 #[test]
@@ -2462,12 +2607,21 @@ fn cx_multi_variable_legend() {
     let source = "module cx_legend\n\nfn process_both(items: List<Int>, names: List<String>) -> Int {\n  let s = items |> fold(init: 0, f: (acc, x) => acc + x)\n  let c = names |> fold(init: 0, f: (acc, n) => acc + 1)\n  s + c\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    let class = result.complexity.function_classes.get("process_both")
+    let class = result
+        .complexity
+        .function_classes
+        .get("process_both")
         .expect("process_both should have a complexity class");
-    assert!(class.contains("where"),
-        "multi-variable should have 'where' legend, got {}", class);
-    assert!(class.starts_with("O(n + m)") || class.starts_with("O(m + n)"),
-        "multi-variable should be O(n + m), got {}", class);
+    assert!(
+        class.contains("where"),
+        "multi-variable should have 'where' legend, got {}",
+        class
+    );
+    assert!(
+        class.starts_with("O(n + m)") || class.starts_with("O(m + n)"),
+        "multi-variable should be O(n + m), got {}",
+        class
+    );
 }
 
 // =========================================================================
@@ -4166,7 +4320,14 @@ type Bar<K, V> {
 
 fn test_leaf_node(name: &str) -> Rc<v2_compiler::v2_std_core::Node> {
     use v2_compiler::v2_std_core::{leaf_node_with_span, SourceSpan};
-    leaf_node_with_span(&name.to_string(), &Rc::new(SourceSpan { file: "test".to_string(), start: 0, end: 0 }))
+    leaf_node_with_span(
+        &name.to_string(),
+        &Rc::new(SourceSpan {
+            file: "test".to_string(),
+            start: 0,
+            end: 0,
+        }),
+    )
 }
 
 #[test]
@@ -4176,10 +4337,23 @@ fn type_rendering_bare_list_not_map() {
     let list_node = test_leaf_node("List");
     let shared_types = Rc::new(HashMap::from([("List".to_string(), true)]));
 
-    let rendered = render_node_type(&list_node, &RenderTarget::Rust, &shared_types, &Rc::new(HashMap::new()));
+    let rendered = render_node_type(
+        &list_node,
+        &RenderTarget::Rust,
+        &shared_types,
+        &Rc::new(HashMap::new()),
+    );
 
-    assert!(rendered.contains("Vec"), "bare List rendered as {:?}, expected Vec<_>", rendered);
-    assert!(!rendered.contains("HashMap"), "bare List incorrectly rendered as HashMap: {:?}", rendered);
+    assert!(
+        rendered.contains("Vec"),
+        "bare List rendered as {:?}, expected Vec<_>",
+        rendered
+    );
+    assert!(
+        !rendered.contains("HashMap"),
+        "bare List incorrectly rendered as HashMap: {:?}",
+        rendered
+    );
 }
 
 #[test]
@@ -4189,9 +4363,18 @@ fn type_rendering_bare_map_stays_hashmap() {
     let map_node = test_leaf_node("Map");
     let shared_types = Rc::new(HashMap::from([("Map".to_string(), true)]));
 
-    let rendered = render_node_type(&map_node, &RenderTarget::Rust, &shared_types, &Rc::new(HashMap::new()));
+    let rendered = render_node_type(
+        &map_node,
+        &RenderTarget::Rust,
+        &shared_types,
+        &Rc::new(HashMap::new()),
+    );
 
-    assert!(rendered.contains("HashMap"), "bare Map rendered as {:?}, expected HashMap<_, _>", rendered);
+    assert!(
+        rendered.contains("HashMap"),
+        "bare Map rendered as {:?}, expected HashMap<_, _>",
+        rendered
+    );
 }
 
 #[test]
@@ -4202,15 +4385,32 @@ fn type_rendering_named_conj_with_container_template() {
     let free_monoid_conj = Rc::new(v2_compiler::v2_std_core::Node {
         name: "FreeMonoid".to_string(),
         connective: Connective::Conj,
-        ident_span: Some(Rc::new(v2_compiler::v2_std_core::SourceSpan { file: "".to_string(), start: 0, end: 0 })),
+        ident_span: Some(Rc::new(v2_compiler::v2_std_core::SourceSpan {
+            file: "".to_string(),
+            start: 0,
+            end: 0,
+        })),
         ..(*test_leaf_node("")).clone()
     });
     let shared_types = Rc::new(HashMap::from([("FreeMonoid".to_string(), true)]));
 
-    let rendered = render_node_type(&free_monoid_conj, &RenderTarget::Rust, &shared_types, &Rc::new(HashMap::new()));
+    let rendered = render_node_type(
+        &free_monoid_conj,
+        &RenderTarget::Rust,
+        &shared_types,
+        &Rc::new(HashMap::new()),
+    );
 
-    assert!(rendered.contains("Vec"), "FreeMonoid Conj rendered as {:?}, expected Vec<_> via container template", rendered);
-    assert!(!rendered.contains("FreeMonoid"), "FreeMonoid Conj rendered bare name instead of container template: {:?}", rendered);
+    assert!(
+        rendered.contains("Vec"),
+        "FreeMonoid Conj rendered as {:?}, expected Vec<_> via container template",
+        rendered
+    );
+    assert!(
+        !rendered.contains("FreeMonoid"),
+        "FreeMonoid Conj rendered bare name instead of container template: {:?}",
+        rendered
+    );
 }
 
 // ── Boundary regression tests (review feedback 2026-04-02) ─────────────
@@ -4278,7 +4478,6 @@ fn apply_named_template_arg_value_containing_recv_placeholder() {
     );
 }
 
-
 #[test]
 fn fold_struct_accumulator_linear_ownership() {
     // Fold accumulators are linearly threaded (owned at each step).
@@ -4341,66 +4540,90 @@ fn process(items: List<String>) -> Accum {
 fn bool_is_not_valid_as_cast_target() {
     // Rust does not allow `expr as bool` — only bool→integer is valid.
     // Cast validity is a (source, target) relation from extdeps/languages/rust/types.dag.
-    use v2_compiler::v2_compiler_coercion::can_cast;
     use v2_compiler::v2_compiler_artifact::RenderTarget;
+    use v2_compiler::v2_compiler_coercion::can_cast;
 
     // Int → Bool: invalid (Rust Reference §8.2.4)
-    assert!(!can_cast(RenderTarget::Rust, "i64".to_string(), "bool".to_string()),
-        "i64 as bool is invalid Rust");
+    assert!(
+        !can_cast(RenderTarget::Rust, "i64".to_string(), "bool".to_string()),
+        "i64 as bool is invalid Rust"
+    );
     // Float → Bool: invalid
-    assert!(!can_cast(RenderTarget::Rust, "f64".to_string(), "bool".to_string()),
-        "f64 as bool is invalid Rust");
+    assert!(
+        !can_cast(RenderTarget::Rust, "f64".to_string(), "bool".to_string()),
+        "f64 as bool is invalid Rust"
+    );
 }
 
 #[test]
 fn int_and_float_are_valid_as_cast_targets() {
-    use v2_compiler::v2_compiler_coercion::can_cast;
     use v2_compiler::v2_compiler_artifact::RenderTarget;
+    use v2_compiler::v2_compiler_coercion::can_cast;
 
     // Int → Float: valid
-    assert!(can_cast(RenderTarget::Rust, "i64".to_string(), "f64".to_string()),
-        "i64 as f64 should be valid");
+    assert!(
+        can_cast(RenderTarget::Rust, "i64".to_string(), "f64".to_string()),
+        "i64 as f64 should be valid"
+    );
     // Float → Int: valid
-    assert!(can_cast(RenderTarget::Rust, "f64".to_string(), "i64".to_string()),
-        "f64 as i64 should be valid");
+    assert!(
+        can_cast(RenderTarget::Rust, "f64".to_string(), "i64".to_string()),
+        "f64 as i64 should be valid"
+    );
     // Int → Int: valid (identity)
-    assert!(can_cast(RenderTarget::Rust, "i64".to_string(), "i64".to_string()),
-        "i64 as i64 should be valid");
+    assert!(
+        can_cast(RenderTarget::Rust, "i64".to_string(), "i64".to_string()),
+        "i64 as i64 should be valid"
+    );
 }
 
 #[test]
 fn bool_to_int_is_valid_cast() {
     // Bool → Int is valid in Rust: `true as i64` = 1, `false as i64` = 0
-    use v2_compiler::v2_compiler_coercion::can_cast;
     use v2_compiler::v2_compiler_artifact::RenderTarget;
+    use v2_compiler::v2_compiler_coercion::can_cast;
 
-    assert!(can_cast(RenderTarget::Rust, "bool".to_string(), "i64".to_string()),
-        "bool as i64 should be valid (Rust Reference §8.2.4)");
+    assert!(
+        can_cast(RenderTarget::Rust, "bool".to_string(), "i64".to_string()),
+        "bool as i64 should be valid (Rust Reference §8.2.4)"
+    );
 }
 
 #[test]
 fn bool_to_float_is_invalid_cast() {
     // Bool → Float is NOT valid in Rust (must go through Int first)
-    use v2_compiler::v2_compiler_coercion::can_cast;
     use v2_compiler::v2_compiler_artifact::RenderTarget;
+    use v2_compiler::v2_compiler_coercion::can_cast;
 
-    assert!(!can_cast(RenderTarget::Rust, "bool".to_string(), "f64".to_string()),
-        "bool as f64 is invalid Rust — must cast bool→i64→f64");
+    assert!(
+        !can_cast(RenderTarget::Rust, "bool".to_string(), "f64".to_string()),
+        "bool as f64 is invalid Rust — must cast bool→i64→f64"
+    );
 }
 
 #[test]
 fn python_casts_use_explicit_rules() {
     // Python cast rules: all numeric constructor casts are explicitly declared.
-    use v2_compiler::v2_compiler_coercion::can_cast;
     use v2_compiler::v2_compiler_artifact::RenderTarget;
+    use v2_compiler::v2_compiler_coercion::can_cast;
 
-    assert!(can_cast(RenderTarget::Python, "str".to_string(), "int".to_string()),
-        "Python str→int should be valid");
-    assert!(can_cast(RenderTarget::Python, "bool".to_string(), "float".to_string()),
-        "Python bool→float should be valid");
+    assert!(
+        can_cast(RenderTarget::Python, "str".to_string(), "int".to_string()),
+        "Python str→int should be valid"
+    );
+    assert!(
+        can_cast(
+            RenderTarget::Python,
+            "bool".to_string(),
+            "float".to_string()
+        ),
+        "Python bool→float should be valid"
+    );
     // Undeclared pair: not valid
-    assert!(!can_cast(RenderTarget::Python, "dict".to_string(), "int".to_string()),
-        "Python dict→int should not be valid (no cast rule)");
+    assert!(
+        !can_cast(RenderTarget::Python, "dict".to_string(), "int".to_string()),
+        "Python dict→int should not be valid (no cast rule)"
+    );
 }
 
 // ── Infer-phase cast validation (dag_can_cast) ──────────────────────────
@@ -4414,7 +4637,10 @@ fn int_to_float_cast_is_valid_dag_cast() {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/cast_test.rs");
-    assert!(content.contains(" as f64"), "Int→Float should emit `as f64` in Rust");
+    assert!(
+        content.contains(" as f64"),
+        "Int→Float should emit `as f64` in Rust"
+    );
 }
 
 #[test]
@@ -4423,7 +4649,10 @@ fn float_to_int_cast_is_valid_dag_cast() {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/cast_test2.rs");
-    assert!(content.contains(" as i64"), "Float→Int should emit `as i64` in Rust");
+    assert!(
+        content.contains(" as i64"),
+        "Float→Int should emit `as i64` in Rust"
+    );
 }
 
 #[test]
@@ -4440,7 +4669,11 @@ fn invalid_cast_produces_diagnostic() {
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
     let cast_diags: Vec<_> = msgs.iter().filter(|m| m.contains("invalid cast")).collect();
-    assert!(!cast_diags.is_empty(), "Bool→Float should produce a cast diagnostic, got: {:?}", msgs);
+    assert!(
+        !cast_diags.is_empty(),
+        "Bool→Float should produce a cast diagnostic, got: {:?}",
+        msgs
+    );
 }
 
 #[test]
@@ -4661,17 +4894,23 @@ fn multi_module_fold_cross_type_bridge_check() {
     // in module B. This mirrors the self-compile pattern where TypeBinding
     // is defined in 04_env.dag but fold accumulators are in 04_infer.dag.
     let files = &[
-        ("types.dag", r#"module mylib.types
+        (
+            "types.dag",
+            r#"module mylib.types
 type Entry { label: String, count: Int }
-"#),
-        ("funcs.dag", r#"module mylib.funcs
+"#,
+        ),
+        (
+            "funcs.dag",
+            r#"module mylib.funcs
 import mylib.types { Entry }
 fn build_index(items: List<Entry>) -> Map<String, Entry> {
   items |> fold(init: empty_map(), f: (acc, item) =>
     map_insert(acc, item.label, item)
   )
 }
-"#),
+"#,
+        ),
     ];
     let result = compile_multi(files);
     assert_no_diagnostics(&result);
@@ -4696,17 +4935,23 @@ fn multi_module_fold_map_string_bool_bridge_check() {
     // Simplest cross-module fold: Map<String, Bool> accumulator.
     // Mirrors self-compile: fold(init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
     let files = &[
-        ("types.dag", r#"module mylib.types
+        (
+            "types.dag",
+            r#"module mylib.types
 type Item { name: String }
-"#),
-        ("funcs.dag", r#"module mylib.funcs
+"#,
+        ),
+        (
+            "funcs.dag",
+            r#"module mylib.funcs
 import mylib.types { Item }
 fn name_set(items: List<Item>) -> Map<String, Bool> {
   items |> fold(init: empty_map(), f: (acc, item) =>
     map_insert(acc, item.name, true)
   )
 }
-"#),
+"#,
+        ),
     ];
     let result = compile_multi(files);
     assert_no_diagnostics(&result);
@@ -4761,41 +5006,81 @@ fn python_div_uses_algebra_aware_dispatch() {
     // Python: Div with AlgReciprocal → "/" (true division)
     //         Div with AlgQuotient → "//" (integer division)
     //         Div with no algebra_field → falls back to unconstrained (none exists → error)
-    use v2_compiler::v2_compiler_languages::binop_symbol;
+    use v2_compiler::std_syntax::{AlgebraFieldKind, BinOp};
     use v2_compiler::v2_compiler_artifact::RenderTarget;
-    use v2_compiler::std_syntax::{BinOp, AlgebraFieldKind};
+    use v2_compiler::v2_compiler_languages::binop_symbol;
 
-    let py_recip = binop_symbol(RenderTarget::Python, BinOp::Div, Some(AlgebraFieldKind::AlgReciprocal));
-    assert_eq!(py_recip, Some("/".to_string()), "Python Div+AlgReciprocal → /");
+    let py_recip = binop_symbol(
+        RenderTarget::Python,
+        BinOp::Div,
+        Some(AlgebraFieldKind::AlgReciprocal),
+    );
+    assert_eq!(
+        py_recip,
+        Some("/".to_string()),
+        "Python Div+AlgReciprocal → /"
+    );
 
-    let py_quot = binop_symbol(RenderTarget::Python, BinOp::Div, Some(AlgebraFieldKind::AlgQuotient));
-    assert_eq!(py_quot, Some("//".to_string()), "Python Div+AlgQuotient → //");
+    let py_quot = binop_symbol(
+        RenderTarget::Python,
+        BinOp::Div,
+        Some(AlgebraFieldKind::AlgQuotient),
+    );
+    assert_eq!(
+        py_quot,
+        Some("//".to_string()),
+        "Python Div+AlgQuotient → //"
+    );
 }
 
 #[test]
 fn go_rust_div_ignores_algebra_field() {
     // Go and Rust have single "/" with algebra_field: none → matches anything
-    use v2_compiler::v2_compiler_languages::binop_symbol;
+    use v2_compiler::std_syntax::{AlgebraFieldKind, BinOp};
     use v2_compiler::v2_compiler_artifact::RenderTarget;
-    use v2_compiler::std_syntax::{BinOp, AlgebraFieldKind};
+    use v2_compiler::v2_compiler_languages::binop_symbol;
 
-    let go_recip = binop_symbol(RenderTarget::Go, BinOp::Div, Some(AlgebraFieldKind::AlgReciprocal));
-    assert_eq!(go_recip, Some("/".to_string()), "Go Div+AlgReciprocal → / (fallback to unconstrained)");
+    let go_recip = binop_symbol(
+        RenderTarget::Go,
+        BinOp::Div,
+        Some(AlgebraFieldKind::AlgReciprocal),
+    );
+    assert_eq!(
+        go_recip,
+        Some("/".to_string()),
+        "Go Div+AlgReciprocal → / (fallback to unconstrained)"
+    );
 
-    let go_quot = binop_symbol(RenderTarget::Go, BinOp::Div, Some(AlgebraFieldKind::AlgQuotient));
-    assert_eq!(go_quot, Some("/".to_string()), "Go Div+AlgQuotient → / (fallback to unconstrained)");
+    let go_quot = binop_symbol(
+        RenderTarget::Go,
+        BinOp::Div,
+        Some(AlgebraFieldKind::AlgQuotient),
+    );
+    assert_eq!(
+        go_quot,
+        Some("/".to_string()),
+        "Go Div+AlgQuotient → / (fallback to unconstrained)"
+    );
 
-    let rust_div = binop_symbol(RenderTarget::Rust, BinOp::Div, Some(AlgebraFieldKind::AlgReciprocal));
-    assert_eq!(rust_div, Some("/".to_string()), "Rust Div+AlgReciprocal → / (fallback to unconstrained)");
+    let rust_div = binop_symbol(
+        RenderTarget::Rust,
+        BinOp::Div,
+        Some(AlgebraFieldKind::AlgReciprocal),
+    );
+    assert_eq!(
+        rust_div,
+        Some("/".to_string()),
+        "Rust Div+AlgReciprocal → / (fallback to unconstrained)"
+    );
 }
 
 #[test]
 fn mod_maps_to_remainder_algebra() {
     // Mod now correctly maps to "remainder" (was incorrectly "add").
     // All languages use "%" for Mod regardless of algebra_field.
-    use v2_compiler::v2_compiler_languages::binop_symbol;
-    use v2_compiler::v2_compiler_artifact::RenderTarget;
     use v2_compiler::std_syntax::BinOp;
+    use v2_compiler::v2_compiler_artifact::RenderTarget;
+    use v2_compiler::v2_compiler_languages::binop_symbol;
 
     let py_mod = binop_symbol(RenderTarget::Python, BinOp::Mod, None);
     assert_eq!(py_mod, Some("%".to_string()), "Python Mod → %");
@@ -4807,17 +5092,29 @@ fn mod_maps_to_remainder_algebra() {
 #[test]
 fn binop_algebra_fields_div_tries_reciprocal_then_quotient() {
     // Div candidates: [AlgReciprocal, AlgQuotient] — Field types match first, Ring types second.
+    use v2_compiler::std_syntax::{AlgebraFieldKind, BinOp};
     use v2_compiler::v2_compiler_infer_types::binop_algebra_fields;
-    use v2_compiler::std_syntax::{BinOp, AlgebraFieldKind};
 
     let div_fields = binop_algebra_fields(BinOp::Div);
     assert_eq!(div_fields.len(), 2);
-    assert_eq!(div_fields[0], AlgebraFieldKind::AlgReciprocal, "Div primary: AlgReciprocal (Field)");
-    assert_eq!(div_fields[1], AlgebraFieldKind::AlgQuotient, "Div fallback: AlgQuotient (Ring)");
+    assert_eq!(
+        div_fields[0],
+        AlgebraFieldKind::AlgReciprocal,
+        "Div primary: AlgReciprocal (Field)"
+    );
+    assert_eq!(
+        div_fields[1],
+        AlgebraFieldKind::AlgQuotient,
+        "Div fallback: AlgQuotient (Ring)"
+    );
 
     let mod_fields = binop_algebra_fields(BinOp::Mod);
     assert_eq!(mod_fields.len(), 1);
-    assert_eq!(mod_fields[0], AlgebraFieldKind::AlgRemainder, "Mod: AlgRemainder");
+    assert_eq!(
+        mod_fields[0],
+        AlgebraFieldKind::AlgRemainder,
+        "Mod: AlgRemainder"
+    );
 }
 
 // ── RE-1: Transport Emission Fidelity ───────────────────────────────────
@@ -5155,8 +5452,7 @@ service test.Api {
 fn review_dag_compiles_to_rust() {
     let ws = crate::helpers::workspace_root();
     let review_path = ws.join("dsl/gunbc/tools/review.dag");
-    let review_content = std::fs::read_to_string(&review_path)
-        .expect("failed to read review.dag");
+    let review_content = std::fs::read_to_string(&review_path).expect("failed to read review.dag");
 
     // Compile review.dag + all transitive imports
     let result = compile_dag_named(
@@ -5213,8 +5509,7 @@ fn review_dag_compiles_to_rust() {
         .count();
 
     // Categorize
-    let mut categories: std::collections::HashMap<String, usize> =
-        std::collections::HashMap::new();
+    let mut categories: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for line in check_stderr.lines() {
         if line.starts_with("error[") {
             let code = line.split(']').next().unwrap_or("unknown").to_string() + "]";
@@ -5250,7 +5545,8 @@ fn review_dag_compiles_to_rust() {
     assert!(
         error_count <= RE2_ERROR_RATCHET,
         "RE-2: review.dag cargo check errors {} exceeds ratchet {} (regression)",
-        error_count, RE2_ERROR_RATCHET
+        error_count,
+        RE2_ERROR_RATCHET
     );
     if error_count == 0 {
         eprintln!("RE-2: review.dag emitted Rust passes cargo check!");
@@ -5263,8 +5559,7 @@ fn review_dag_compiles_to_rust() {
 fn review_dag_has_review_subcommand() {
     let ws = crate::helpers::workspace_root();
     let review_path = ws.join("dsl/gunbc/tools/review.dag");
-    let review_content = std::fs::read_to_string(&review_path)
-        .expect("failed to read review.dag");
+    let review_content = std::fs::read_to_string(&review_path).expect("failed to read review.dag");
     let result = compile_dag_named(
         "dsl/gunbc/tools/review.dag",
         &review_content,
@@ -5282,8 +5577,7 @@ fn review_dag_has_review_subcommand() {
 fn review_dag_emits_cargo_with_deps() {
     let ws = crate::helpers::workspace_root();
     let review_path = ws.join("dsl/gunbc/tools/review.dag");
-    let review_content = std::fs::read_to_string(&review_path)
-        .expect("failed to read review.dag");
+    let review_content = std::fs::read_to_string(&review_path).expect("failed to read review.dag");
     let result = compile_dag_named(
         "dsl/gunbc/tools/review.dag",
         &review_content,
@@ -5303,8 +5597,7 @@ fn review_dag_builds_and_runs_dry_run() {
     // ── Stage 1: Compile review.dag to Rust ──────────────────────────
     let ws = crate::helpers::workspace_root();
     let review_path = ws.join("dsl/gunbc/tools/review.dag");
-    let review_content = std::fs::read_to_string(&review_path)
-        .expect("failed to read review.dag");
+    let review_content = std::fs::read_to_string(&review_path).expect("failed to read review.dag");
 
     let result = compile_dag_named(
         "dsl/gunbc/tools/review.dag",
@@ -5427,11 +5720,12 @@ fn review_dag_builds_and_runs_dry_run() {
         run_stderr
     );
 
-    let output_json: serde_json::Value = serde_json::from_str(&run_stdout)
-        .unwrap_or_else(|e| panic!(
+    let output_json: serde_json::Value = serde_json::from_str(&run_stdout).unwrap_or_else(|e| {
+        panic!(
             "RE-2: binary output is not valid JSON: {}\nstdout: {}",
             e, run_stdout
-        ));
+        )
+    });
     assert!(
         output_json.get("reviewed").is_some(),
         "RE-2: expected 'reviewed' field in output JSON, got: {}",
@@ -5509,7 +5803,9 @@ service test.Svc {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/re1_body2.rs");
     assert!(
-        content.contains("serde_json::json!") && content.contains("\"body\"") && content.contains("\"event\""),
+        content.contains("serde_json::json!")
+            && content.contains("\"body\"")
+            && content.contains("\"event\""),
         "RE-1 POST body: expected JSON body with both fields in emitted code, got:\n{content}"
     );
 }
@@ -5685,13 +5981,8 @@ service test.Llm {
 fn anthropic_dag_compiles_to_rust() {
     let ws = crate::helpers::workspace_root();
     let source_path = ws.join("dsl/extdeps/llm/anthropic.dag");
-    let source = std::fs::read_to_string(&source_path)
-        .expect("failed to read anthropic.dag");
-    let result = compile_dag_named(
-        "dsl/extdeps/llm/anthropic.dag",
-        &source,
-        RenderTarget::Rust,
-    );
+    let source = std::fs::read_to_string(&source_path).expect("failed to read anthropic.dag");
+    let result = compile_dag_named("dsl/extdeps/llm/anthropic.dag", &source, RenderTarget::Rust);
     let hard_diags: Vec<_> = diagnostic_messages(&result)
         .into_iter()
         .filter(|d| !d.contains("complexity:"))
@@ -5873,7 +6164,10 @@ func ask_claude(
     // Invoke the workflow function subcommand (ask_claude → ask-claude)
     let run = std::process::Command::new(&binary_path)
         .arg("ask-claude")
-        .env("ANTHROPIC_API_KEY", std::env::var("ANTHROPIC_API_KEY").unwrap())
+        .env(
+            "ANTHROPIC_API_KEY",
+            std::env::var("ANTHROPIC_API_KEY").unwrap(),
+        )
         .output()
         .expect("failed to run binary");
 
@@ -5883,7 +6177,8 @@ func ask_claude(
     assert!(
         run.status.success(),
         "RE-4 live: binary exited with error:\nstdout: {}\nstderr: {}",
-        stdout, stderr
+        stdout,
+        stderr
     );
     assert!(
         !stdout.trim().is_empty(),
@@ -5912,17 +6207,24 @@ fn len(xs: MyList<Int>) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "len")
         .collect();
-    assert!(!bounds.is_empty(), "expected structural bound for len, got none");
+    assert!(
+        !bounds.is_empty(),
+        "expected structural bound for len, got none"
+    );
     assert_eq!(bounds[0].param, "xs");
     assert_eq!(
         *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "xs".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
+                    value: 1
+                }),
             }),
         },
         "linked list length should be O(n)"
@@ -5944,17 +6246,24 @@ fn size(t: BinTree<Int>) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "size")
         .collect();
-    assert!(!bounds.is_empty(), "expected structural bound for size, got none");
+    assert!(
+        !bounds.is_empty(),
+        "expected structural bound for size, got none"
+    );
     assert_eq!(bounds[0].param, "t");
     assert_eq!(
         *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "t".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
+                    value: 1
+                }),
             }),
         },
         "binary tree traversal is catamorphism: O(n), not O(2^n)"
@@ -5977,17 +6286,24 @@ fn count(c: Chain) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "count")
         .collect();
-    assert!(!bounds.is_empty(), "expected structural bound for count, got none");
+    assert!(
+        !bounds.is_empty(),
+        "expected structural bound for count, got none"
+    );
     assert_eq!(bounds[0].param, "c");
     assert_eq!(
         *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "c".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
+                    value: 1
+                }),
             }),
         },
         "optional chain traversal should be O(n)"
@@ -6007,7 +6323,9 @@ fn countdown(n: Int) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "countdown")
         .collect();
     // CX-L2 recognizes n - 1 as ConstantShrink descent → O(n)
@@ -6032,7 +6350,9 @@ fn bad(xs: MyList<Int>, ys: MyList<Int>) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "bad")
         .collect();
     assert!(
@@ -6058,7 +6378,9 @@ fn sum_tree(t: Tree) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "sum_tree")
         .collect();
     // NOTE: This test verifies the fold-over-children pattern.
@@ -6069,14 +6391,19 @@ fn sum_tree(t: Tree) -> Int {
     // Fold over children: lambda element parameter is an IteratedSubValue
     // of the receiver's collection field. CX-L2 threads context through
     // fold/map lambdas so the self-call gets descent evidence.
-    assert!(!bounds.is_empty(), "fold over children should produce catamorphism O(n) bound");
+    assert!(
+        !bounds.is_empty(),
+        "fold over children should produce catamorphism O(n) bound"
+    );
     assert_eq!(bounds[0].param, "t");
     assert_eq!(
         *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "t".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
+                    value: 1
+                }),
             }),
         },
         "fold over children should produce catamorphism O(n) bound"
@@ -6102,17 +6429,24 @@ fn search(tree: BST<Int>, target: Int) -> Bool {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "search")
         .collect();
-    assert!(!bounds.is_empty(), "expected structural bound for search, got none");
+    assert!(
+        !bounds.is_empty(),
+        "expected structural bound for search, got none"
+    );
     assert_eq!(bounds[0].param, "tree");
     assert_eq!(
         *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "tree".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
+                    value: 1
+                }),
             }),
         },
         "BST search is O(n) worst case (catamorphism on tree structure)"
@@ -6136,17 +6470,24 @@ fn insert(tree: BST<Int>, val: Int) -> BST<Int> {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "insert")
         .collect();
-    assert!(!bounds.is_empty(), "expected structural bound for insert, got none");
+    assert!(
+        !bounds.is_empty(),
+        "expected structural bound for insert, got none"
+    );
     assert_eq!(bounds[0].param, "tree");
     assert_eq!(
         *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "tree".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
+                    value: 1
+                }),
             }),
         },
         "BST insert is O(n) worst case"
@@ -6172,17 +6513,24 @@ fn depth(t: BinTree<Int>) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "depth")
         .collect();
-    assert!(!bounds.is_empty(), "expected structural bound for depth, got none");
+    assert!(
+        !bounds.is_empty(),
+        "expected structural bound for depth, got none"
+    );
     assert_eq!(bounds[0].param, "t");
     assert_eq!(
         *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "t".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
+                    value: 1
+                }),
             }),
         },
         "tree depth is O(n) catamorphism"
@@ -6212,12 +6560,17 @@ fn binary_search(xs: List<Int>, target: Int) -> Bool {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "binary_search")
         .collect();
     // CX-L2 detects xs |> take(mid) where mid = count(xs) / 2 as ProportionalShrink(2).
     // CX-L3: derive_bound(branches: 1, ProportionalShrink(2), work: 0) → master_theorem → O(log n).
-    assert!(!bounds.is_empty(), "expected structural bound for binary_search, got none");
+    assert!(
+        !bounds.is_empty(),
+        "expected structural bound for binary_search, got none"
+    );
     {
         assert_eq!(bounds[0].param, "xs");
         assert_eq!(
@@ -6268,22 +6621,37 @@ fn tree_contains(tree: BST<Int>, target: Int) -> Bool {
 "#;
     let complexity = compile_dag_with_complexity(source);
     // flatten should produce O(n) on tree
-    let flatten_bounds: Vec<_> = complexity.structural_bounds.iter()
+    let flatten_bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "flatten")
         .collect();
-    assert!(!flatten_bounds.is_empty(), "expected structural bound for flatten");
+    assert!(
+        !flatten_bounds.is_empty(),
+        "expected structural bound for flatten"
+    );
     assert_eq!(flatten_bounds[0].param, "tree");
     // list_contains should produce O(n) on xs
-    let search_bounds: Vec<_> = complexity.structural_bounds.iter()
+    let search_bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "list_contains")
         .collect();
-    assert!(!search_bounds.is_empty(), "expected structural bound for list_contains");
+    assert!(
+        !search_bounds.is_empty(),
+        "expected structural bound for list_contains"
+    );
     assert_eq!(search_bounds[0].param, "xs");
     // tree_contains is not recursive — no structural bound expected
-    let tc_bounds: Vec<_> = complexity.structural_bounds.iter()
+    let tc_bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "tree_contains")
         .collect();
-    assert!(tc_bounds.is_empty(), "tree_contains is not recursive, should have no structural bound");
+    assert!(
+        tc_bounds.is_empty(),
+        "tree_contains is not recursive, should have no structural bound"
+    );
 }
 
 #[test]
@@ -6311,15 +6679,25 @@ fn sum_forest(f: Forest) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let tree_bounds: Vec<_> = complexity.structural_bounds.iter()
+    let tree_bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "sum_tree")
         .collect();
-    assert!(!tree_bounds.is_empty(), "expected structural bound for sum_tree");
+    assert!(
+        !tree_bounds.is_empty(),
+        "expected structural bound for sum_tree"
+    );
     assert_eq!(tree_bounds[0].param, "t");
-    let forest_bounds: Vec<_> = complexity.structural_bounds.iter()
+    let forest_bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "sum_forest")
         .collect();
-    assert!(!forest_bounds.is_empty(), "expected structural bound for sum_forest");
+    assert!(
+        !forest_bounds.is_empty(),
+        "expected structural bound for sum_forest"
+    );
     assert_eq!(forest_bounds[0].param, "f");
 }
 
@@ -6366,10 +6744,15 @@ fn filter_by_membership(items: MyList<Int>, allowed: List<Int>) -> MyList<Int> {
     let complexity = compile_dag_with_complexity(source);
 
     // binary_search should produce O(log n) on sorted
-    let bs_bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bs_bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "binary_search")
         .collect();
-    assert!(!bs_bounds.is_empty(), "expected structural bound for binary_search");
+    assert!(
+        !bs_bounds.is_empty(),
+        "expected structural bound for binary_search"
+    );
     assert_eq!(bs_bounds[0].param, "sorted");
     assert_eq!(
         *bs_bounds[0].recurrence_bound,
@@ -6382,10 +6765,15 @@ fn filter_by_membership(items: MyList<Int>, allowed: List<Int>) -> MyList<Int> {
     );
 
     // filter_by_membership should produce O(n) on items (catamorphism)
-    let filter_bounds: Vec<_> = complexity.structural_bounds.iter()
+    let filter_bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "filter_by_membership")
         .collect();
-    assert!(!filter_bounds.is_empty(), "expected structural bound for filter_by_membership");
+    assert!(
+        !filter_bounds.is_empty(),
+        "expected structural bound for filter_by_membership"
+    );
     assert_eq!(filter_bounds[0].param, "items");
 }
 
@@ -6403,14 +6791,24 @@ fn spin(x: Int) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "spin")
         .collect();
     eprintln!("[adversarial] spin: {} bounds", bounds.len());
-    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.recurrence_bound); }
+    for b in &bounds {
+        eprintln!(
+            "  {} param={} bound={:?}",
+            b.func_name, b.param, b.recurrence_bound
+        );
+    }
     // spin(x: x) passes x unchanged → PreservedValue → NonIncreasing evidence.
     // merge_param_evidence → NonIncreasing (not Strict) → no structural bound.
-    assert!(bounds.is_empty(), "infinite loop should produce no structural bound (fail-closed)");
+    assert!(
+        bounds.is_empty(),
+        "infinite loop should produce no structural bound (fail-closed)"
+    );
 }
 
 #[test]
@@ -6436,17 +6834,31 @@ fn odd_count(xs: MyList<Int>) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let even_bounds: Vec<_> = complexity.structural_bounds.iter()
+    let even_bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "even_count")
         .collect();
-    let odd_bounds: Vec<_> = complexity.structural_bounds.iter()
+    let odd_bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "odd_count")
         .collect();
-    eprintln!("[adversarial] even_count: {} bounds, odd_count: {} bounds", even_bounds.len(), odd_bounds.len());
+    eprintln!(
+        "[adversarial] even_count: {} bounds, odd_count: {} bounds",
+        even_bounds.len(),
+        odd_bounds.len()
+    );
     // Neither function self-calls — they call each other.
     // CX-L2 only annotates self-calls. No descent evidence → no bounds.
-    assert!(even_bounds.is_empty(), "mutual recursion should produce no structural bound");
-    assert!(odd_bounds.is_empty(), "mutual recursion should produce no structural bound");
+    assert!(
+        even_bounds.is_empty(),
+        "mutual recursion should produce no structural bound"
+    );
+    assert!(
+        odd_bounds.is_empty(),
+        "mutual recursion should produce no structural bound"
+    );
 }
 
 #[test]
@@ -6461,12 +6873,17 @@ fn fib(n: Int) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "fib")
         .collect();
     eprintln!("[adversarial] fib: {} bounds", bounds.len());
     // Int is not an inductive type → no InductiveField → SubValueUnknown → no bound.
-    assert!(bounds.is_empty(), "fibonacci on Int should produce no structural bound");
+    assert!(
+        bounds.is_empty(),
+        "fibonacci on Int should produce no structural bound"
+    );
 }
 
 #[test]
@@ -6485,14 +6902,24 @@ fn walk(t: Tree) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "walk")
         .collect();
     eprintln!("[adversarial] walk (growing arg): {} bounds", bounds.len());
-    for b in &bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.recurrence_bound); }
+    for b in &bounds {
+        eprintln!(
+            "  {} param={} bound={:?}",
+            b.func_name, b.param, b.recurrence_bound
+        );
+    }
     // The self-call passes `Branch { left: l, right: l }` — a CONSTRUCTOR,
     // not a sub-value. classify_argument sees ExprRecordLit, returns SubValueUnknown.
-    assert!(bounds.is_empty(), "growing argument should produce no structural bound (fail-closed)");
+    assert!(
+        bounds.is_empty(),
+        "growing argument should produce no structural bound (fail-closed)"
+    );
 }
 
 #[test]
@@ -6508,12 +6935,17 @@ fn ack(m: Int, n: Int) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "ack")
         .collect();
     eprintln!("[adversarial] ackermann: {} bounds", bounds.len());
     // Int has no InductiveField → all arguments are SubValueUnknown → no bound.
-    assert!(bounds.is_empty(), "ackermann on Int should produce no structural bound");
+    assert!(
+        bounds.is_empty(),
+        "ackermann on Int should produce no structural bound"
+    );
 }
 
 #[test]
@@ -6542,7 +6974,9 @@ fn quadratic_walk(t: Tree) -> Int {
 "#;
     let complexity = compile_dag_with_complexity(source);
     // count_left is a catamorphism → O(n)
-    let cl_bounds: Vec<_> = complexity.structural_bounds.iter()
+    let cl_bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "count_left")
         .collect();
     assert!(!cl_bounds.is_empty(), "count_left should be O(n)");
@@ -6552,28 +6986,40 @@ fn quadratic_walk(t: Tree) -> Int {
     // quadratic_walk itself (which is a catamorphism). The O(n) per-node
     // work from count_left is not yet factored in (work_exponent = 0).
     // This is a known limitation: work_exponent detection is future work.
-    let qw_bounds: Vec<_> = complexity.structural_bounds.iter()
+    let qw_bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "quadratic_walk")
         .collect();
     eprintln!("[adversarial] quadratic_walk: {} bounds", qw_bounds.len());
-    for b in &qw_bounds { eprintln!("  {} param={} bound={:?}", b.func_name, b.param, b.recurrence_bound); }
+    for b in &qw_bounds {
+        eprintln!(
+            "  {} param={} bound={:?}",
+            b.func_name, b.param, b.recurrence_bound
+        );
+    }
     // The structural bound reports O(n) — recursion structure is catamorphism.
     // The existing cost algebra reports O(n * n) — accounts for count_left cost.
     // Both are correct views. The structural bound should compose with per-node
     // work to produce O(n^2). This requires reading work_exponent from the
     // existing analyzer (CX-L3 currently uses work_exponent=0).
     assert_eq!(
-        complexity.function_classes.get("quadratic_walk").map(|s| s.as_str()),
+        complexity
+            .function_classes
+            .get("quadratic_walk")
+            .map(|s| s.as_str()),
         Some("O(n * n)"),
         "existing cost algebra should classify quadratic_walk as O(n^2)"
     );
     assert_eq!(
-        complexity.function_classes.get("count_left").map(|s| s.as_str()),
+        complexity
+            .function_classes
+            .get("count_left")
+            .map(|s| s.as_str()),
         Some("O(n)"),
         "count_left should be O(n)"
     );
 }
-
 
 // ── ExprLet lexical scope regression (review feedback) ──────────────────
 
@@ -6599,14 +7045,21 @@ fn bad(xs: MyList<Int>) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "bad")
         .collect();
     // `bad` calls itself with the same argument (alias = xs, so bad(xs: alias) = bad(xs: xs)).
     // This is NOT a catamorphism — no structural descent. Should produce no bound.
-    assert!(bounds.is_empty(),
+    assert!(
+        bounds.is_empty(),
         "self-call with aliased same-size argument should produce no structural bound, got: {:?}",
-        bounds.iter().map(|b| format!("{} {:?}", b.param, b.recurrence_bound)).collect::<Vec<_>>());
+        bounds
+            .iter()
+            .map(|b| format!("{} {:?}", b.param, b.recurrence_bound))
+            .collect::<Vec<_>>()
+    );
 }
 
 // ── KF-7: Space complexity regression tests ─────────────────────────────
@@ -6630,17 +7083,24 @@ fn last_elem(xs: MyList<Int>) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "last_elem")
         .collect();
-    assert!(!bounds.is_empty(), "expected structural bound for last_elem");
+    assert!(
+        !bounds.is_empty(),
+        "expected structural bound for last_elem"
+    );
     // Time: O(n) catamorphism
     assert_eq!(
         *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "xs".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
+                    value: 1
+                }),
             }),
         },
         "last_elem time should be O(n)"
@@ -6668,7 +7128,9 @@ fn size(t: BinTree<Int>) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "size")
         .collect();
     assert!(!bounds.is_empty(), "expected structural bound for size");
@@ -6678,7 +7140,9 @@ fn size(t: BinTree<Int>) -> Int {
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "t".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
+                    value: 1
+                }),
             }),
         },
         "size time should be O(n)"
@@ -6689,7 +7153,9 @@ fn size(t: BinTree<Int>) -> Int {
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "t".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
+                    value: 1
+                }),
             }),
         },
         "non-tail tree size should have O(n) stack"
@@ -6718,10 +7184,15 @@ fn binary_search(xs: List<Int>, target: Int) -> Bool {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "binary_search")
         .collect();
-    assert!(!bounds.is_empty(), "expected structural bound for binary_search");
+    assert!(
+        !bounds.is_empty(),
+        "expected structural bound for binary_search"
+    );
     // Time: O(log n)
     assert_eq!(
         *bounds[0].recurrence_bound,
@@ -6761,11 +7232,18 @@ fn bad_split(xs: List<Int>) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "bad_split")
         .collect();
     eprintln!("[adversarial] bad_split: {} bounds", bounds.len());
-    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.recurrence_bound); }
+    for b in &bounds {
+        eprintln!(
+            "  {} param={} time_bound={:?}",
+            b.func_name, b.param, b.recurrence_bound
+        );
+    }
     // mid * 2 is NOT a small-constant adjustment → should not get ProportionalShrink.
     // Expect either no bound or O(n) catamorphism at most (fail-closed).
     for b in &bounds {
@@ -6803,11 +7281,18 @@ fn bad_walk(t: Tree) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "bad_walk")
         .collect();
     eprintln!("[adversarial] bad_walk (lambda): {} bounds", bounds.len());
-    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.recurrence_bound); }
+    for b in &bounds {
+        eprintln!(
+            "  {} param={} time_bound={:?}",
+            b.func_name, b.param, b.recurrence_bound
+        );
+    }
     // With transparent lambdas, the self-call bad_walk(t: l) IS visible.
     // But l is used in a fold over [1, 2] (not a collection field), so
     // the self-call gets StrictSubValue evidence for l. The fold invokes
@@ -6820,7 +7305,9 @@ fn bad_walk(t: Tree) -> Int {
             v2_compiler::std_induction::CostBound::AtomicBound {
                 cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                     param: "t".to_string(),
-                    exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+                    exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
+                        value: 1
+                    }),
                 }),
             },
             "fold-hidden recursion on same sub-value must not produce catamorphism O(n)"
@@ -6845,11 +7332,18 @@ fn dup(t: Tree) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "dup")
         .collect();
     eprintln!("[adversarial] dup: {} bounds", bounds.len());
-    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.recurrence_bound); }
+    for b in &bounds {
+        eprintln!(
+            "  {} param={} time_bound={:?}",
+            b.func_name, b.param, b.recurrence_bound
+        );
+    }
     // Two calls on the same child (left) → max_path=2 > distinct_fields=1.
     // Disjointness check fails → should not produce catamorphism O(n).
     for b in &bounds {
@@ -6858,7 +7352,9 @@ fn dup(t: Tree) -> Int {
             v2_compiler::std_induction::CostBound::AtomicBound {
                 cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                     param: "t".to_string(),
-                    exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+                    exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
+                        value: 1
+                    }),
                 }),
             },
             "duplicate same-child descent must not produce catamorphism O(n)"
@@ -6901,11 +7397,18 @@ fn eval(e: Expr) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "eval")
         .collect();
     eprintln!("[gap] eval (match-shape-recurse): {} bounds", bounds.len());
-    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.recurrence_bound); }
+    for b in &bounds {
+        eprintln!(
+            "  {} param={} time_bound={:?}",
+            b.func_name, b.param, b.recurrence_bound
+        );
+    }
     // This IS a catamorphism — every arm recurses on strict sub-values.
     assert!(!bounds.is_empty(), "eval should produce structural bound");
     assert_eq!(bounds[0].param, "e");
@@ -6914,7 +7417,9 @@ fn eval(e: Expr) -> Int {
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "e".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
+                    value: 1
+                }),
             }),
         },
         "match-shape-recurse-children is a catamorphism O(n)"
@@ -6937,19 +7442,34 @@ fn sum_labels(c: Container) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "sum_labels")
         .collect();
-    eprintln!("[gap] sum_labels (accessor-in-fold): {} bounds", bounds.len());
-    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.recurrence_bound); }
-    assert!(!bounds.is_empty(), "sum_labels should produce structural bound");
+    eprintln!(
+        "[gap] sum_labels (accessor-in-fold): {} bounds",
+        bounds.len()
+    );
+    for b in &bounds {
+        eprintln!(
+            "  {} param={} time_bound={:?}",
+            b.func_name, b.param, b.recurrence_bound
+        );
+    }
+    assert!(
+        !bounds.is_empty(),
+        "sum_labels should produce structural bound"
+    );
     assert_eq!(bounds[0].param, "c");
     assert_eq!(
         *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "c".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
+                    value: 1
+                }),
             }),
         },
         "fold-over-collection-field is a catamorphism O(n)"
@@ -6983,20 +7503,35 @@ fn count_items(item: Item) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "count_items")
         .collect();
-    eprintln!("[gap] count_items (mixed-field-recursion): {} bounds", bounds.len());
-    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.recurrence_bound); }
+    eprintln!(
+        "[gap] count_items (mixed-field-recursion): {} bounds",
+        bounds.len()
+    );
+    for b in &bounds {
+        eprintln!(
+            "  {} param={} time_bound={:?}",
+            b.func_name, b.param, b.recurrence_bound
+        );
+    }
     // Catamorphism through children (List), body (Optional), annotation (Optional).
-    assert!(!bounds.is_empty(), "count_items should produce structural bound");
+    assert!(
+        !bounds.is_empty(),
+        "count_items should produce structural bound"
+    );
     assert_eq!(bounds[0].param, "item");
     assert_eq!(
         *bounds[0].recurrence_bound,
         v2_compiler::std_induction::CostBound::AtomicBound {
             cost: Rc::new(v2_compiler::std_induction::AtomicCost::PolyCost {
                 param: "item".to_string(),
-                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp { value: 1 }),
+                exponent: Rc::new(v2_compiler::std_induction::PolynomialExponent::IntegerExp {
+                    value: 1
+                }),
             }),
         },
         "mixed-field-recursion is a catamorphism O(n)"
@@ -7022,11 +7557,18 @@ fn depth(w: Wrapper) -> Int {
 }
 "#;
     let complexity = compile_dag_with_complexity(source);
-    let bounds: Vec<_> = complexity.structural_bounds.iter()
+    let bounds: Vec<_> = complexity
+        .structural_bounds
+        .iter()
         .filter(|b| b.func_name == "depth")
         .collect();
     eprintln!("[gap] depth (accessor-chain): {} bounds", bounds.len());
-    for b in &bounds { eprintln!("  {} param={} time_bound={:?}", b.func_name, b.param, b.recurrence_bound); }
+    for b in &bounds {
+        eprintln!(
+            "  {} param={} time_bound={:?}",
+            b.func_name, b.param, b.recurrence_bound
+        );
+    }
     // This IS a catamorphism — get_inner extracts the Optional sub-Wrapper,
     // match unwraps it, depth recurses. Total: visits each Wrapper once.
     // When it works: assert O(n).
@@ -7046,16 +7588,21 @@ fn dump_complexity_report() {
     collect_dag_sources(&ws, &ws.join("src/v2"), &mut all_sources);
 
     eprintln!("Compiling {} .dag files...", all_sources.len());
-    let result = v2_compiler::v2_compiler_compile::compile_sources(
-        Rc::new(all_sources), RenderTarget::Rust,
-    );
+    let result =
+        v2_compiler::v2_compiler_compile::compile_sources(Rc::new(all_sources), RenderTarget::Rust);
 
     let cx = &result.complexity;
-    eprintln!("\n=== STRUCTURAL BOUNDS ({}) ===", cx.structural_bounds.len());
+    eprintln!(
+        "\n=== STRUCTURAL BOUNDS ({}) ===",
+        cx.structural_bounds.len()
+    );
     let mut bounds: Vec<_> = cx.structural_bounds.iter().collect();
     bounds.sort_by(|a, b| a.func_name.cmp(&b.func_name));
     for b in &bounds {
-        eprintln!("  {:50} param={:15} time={:?} stack={:?}", b.func_name, b.param, b.recurrence_bound, b.stack_bound);
+        eprintln!(
+            "  {:50} param={:15} time={:?} stack={:?}",
+            b.func_name, b.param, b.recurrence_bound, b.stack_bound
+        );
     }
 
     let mut classes: HashMap<String, Vec<String>> = HashMap::new();
@@ -7064,7 +7611,10 @@ fn dump_complexity_report() {
     }
     let mut sorted_classes: Vec<_> = classes.iter().collect();
     sorted_classes.sort_by(|(a, _), (b, _)| a.cmp(b));
-    eprintln!("\n=== FUNCTION CLASSES ({} functions) ===", cx.function_classes.len());
+    eprintln!(
+        "\n=== FUNCTION CLASSES ({} functions) ===",
+        cx.function_classes.len()
+    );
     for (class, funcs) in &sorted_classes {
         eprintln!("  {:20} — {} functions", class, funcs.len());
     }
@@ -7088,41 +7638,73 @@ fn dump_complexity_report() {
 fn diag_render_node_type_evidence() {
     use v2_compiler::v2_compiler_compile::{extract_func_entries, front_end_sources};
     use v2_compiler::v2_compiler_complexity::{collect_self_call_evidence, max_path_self_calls};
-    use v2_compiler::v2_compiler_normalize::normalize_graph;
     use v2_compiler::v2_compiler_infer::reconcile;
+    use v2_compiler::v2_compiler_normalize::normalize_graph;
 
     let ws = crate::helpers::workspace_root();
     let content = std::fs::read_to_string(ws.join("src/v2/05_emit.dag")).unwrap();
     let sources = crate::helpers::resolve_imports_transitively("src/v2/05_emit.dag", &content);
     let frontend = front_end_sources(Rc::new(sources));
-    let graph = frontend.graph.clone().expect("frontend must produce a graph");
+    let graph = frontend
+        .graph
+        .clone()
+        .expect("frontend must produce a graph");
     let norm = normalize_graph(&graph, Rc::new(HashMap::new()));
-    let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()), frontend.intern_table.clone());
+    let typed = reconcile(
+        norm.graph.clone(),
+        Rc::new(HashMap::new()),
+        frontend.intern_table.clone(),
+    );
     let func_entries = extract_func_entries(typed.clone());
 
     let entry = func_entries.iter().find(|e| e.name == "render_node_type");
     if let Some(entry) = entry {
-        let path_calls = max_path_self_calls(entry.body.clone(), "render_node_type".to_string(), Rc::new(HashMap::new()));
+        let path_calls = max_path_self_calls(
+            entry.body.clone(),
+            "render_node_type".to_string(),
+            Rc::new(HashMap::new()),
+        );
         eprintln!("\n=== render_node_type ===");
         eprintln!("  path_calls: {}", path_calls);
 
-        let evidence = collect_self_call_evidence(entry.body.clone(), "render_node_type".to_string(), Rc::new(HashMap::new()));
+        let evidence = collect_self_call_evidence(
+            entry.body.clone(),
+            "render_node_type".to_string(),
+            Rc::new(HashMap::new()),
+        );
         eprintln!("  evidence count (self-calls found): {}", evidence.len());
         for (i, call_ev) in evidence.iter().enumerate() {
             let has_strict = call_ev.iter().any(|r| {
-                matches!(r.as_ref(),
-                    v2_compiler::std_induction::SubValueRelation::StrictSubValue { .. } |
-                    v2_compiler::std_induction::SubValueRelation::IteratedSubValue { .. } |
-                    v2_compiler::std_induction::SubValueRelation::ArithmeticDescent { .. })
+                matches!(
+                    r.as_ref(),
+                    v2_compiler::std_induction::SubValueRelation::StrictSubValue { .. }
+                        | v2_compiler::std_induction::SubValueRelation::IteratedSubValue { .. }
+                        | v2_compiler::std_induction::SubValueRelation::ArithmeticDescent { .. }
+                )
             });
-            eprintln!("  call {}: {} params, has_strict={}", i, call_ev.len(), has_strict);
+            eprintln!(
+                "  call {}: {} params, has_strict={}",
+                i,
+                call_ev.len(),
+                has_strict
+            );
             for (j, rel) in call_ev.iter().enumerate() {
                 let kind = match rel.as_ref() {
-                    v2_compiler::std_induction::SubValueRelation::StrictSubValue { .. } => "StrictSubValue",
-                    v2_compiler::std_induction::SubValueRelation::IteratedSubValue { .. } => "IteratedSubValue",
-                    v2_compiler::std_induction::SubValueRelation::ArithmeticDescent { .. } => "ArithmeticDescent",
-                    v2_compiler::std_induction::SubValueRelation::PreservedValue => "PreservedValue",
-                    v2_compiler::std_induction::SubValueRelation::SubValueUnknown => "SubValueUnknown",
+                    v2_compiler::std_induction::SubValueRelation::StrictSubValue { .. } => {
+                        "StrictSubValue"
+                    }
+                    v2_compiler::std_induction::SubValueRelation::IteratedSubValue { .. } => {
+                        "IteratedSubValue"
+                    }
+                    v2_compiler::std_induction::SubValueRelation::ArithmeticDescent { .. } => {
+                        "ArithmeticDescent"
+                    }
+                    v2_compiler::std_induction::SubValueRelation::PreservedValue => {
+                        "PreservedValue"
+                    }
+                    v2_compiler::std_induction::SubValueRelation::SubValueUnknown => {
+                        "SubValueUnknown"
+                    }
                 };
                 eprintln!("    param {}: {}", j, kind);
             }
@@ -7137,24 +7719,33 @@ fn diag_render_node_type_evidence() {
 fn diag_emitter_scc() {
     use v2_compiler::v2_compiler_compile::{extract_func_entries, front_end_sources};
     use v2_compiler::v2_compiler_complexity::{
-        build_scc_index, collect_scc_cx_l2_tree_edges,
-        collect_self_call_evidence, collect_callee_evidence,
+        build_scc_index, collect_callee_evidence, collect_scc_cx_l2_tree_edges,
+        collect_self_call_evidence,
     };
-    use v2_compiler::v2_compiler_normalize::normalize_graph;
     use v2_compiler::v2_compiler_infer::reconcile;
+    use v2_compiler::v2_compiler_normalize::normalize_graph;
 
     let ws = crate::helpers::workspace_root();
     let content = std::fs::read_to_string(ws.join("src/v2/05_emit_rust.dag")).unwrap();
     let sources = crate::helpers::resolve_imports_transitively("src/v2/05_emit_rust.dag", &content);
     let frontend = front_end_sources(Rc::new(sources));
-    let graph = frontend.graph.clone().expect("frontend must produce a graph");
+    let graph = frontend
+        .graph
+        .clone()
+        .expect("frontend must produce a graph");
     let norm = normalize_graph(&graph, Rc::new(HashMap::new()));
-    let typed = reconcile(norm.graph.clone(), Rc::new(HashMap::new()), frontend.intern_table.clone());
+    let typed = reconcile(
+        norm.graph.clone(),
+        Rc::new(HashMap::new()),
+        frontend.intern_table.clone(),
+    );
     let func_entries = extract_func_entries(typed.clone());
 
     // Build func_index
-    let func_index: HashMap<String, Rc<v2_compiler::v2_compiler_compile::FuncEntry>> =
-        func_entries.iter().map(|e| (e.name.clone(), e.clone())).collect();
+    let func_index: HashMap<String, Rc<v2_compiler::v2_compiler_compile::FuncEntry>> = func_entries
+        .iter()
+        .map(|e| (e.name.clone(), e.clone()))
+        .collect();
     let func_index = Rc::new(func_index);
 
     let scc_result = build_scc_index(
@@ -7186,19 +7777,31 @@ fn diag_emitter_scc() {
         }
 
         // Check for edges involving emit_rust_expr_match
-        let match_edges: Vec<_> = edges.iter().filter(|e| {
-            e.caller == "emit_rust_expr_match" || e.callee == "emit_rust_expr_match"
-        }).collect();
-        eprintln!("\n  Edges involving emit_rust_expr_match ({}):", match_edges.len());
+        let match_edges: Vec<_> = edges
+            .iter()
+            .filter(|e| e.caller == "emit_rust_expr_match" || e.callee == "emit_rust_expr_match")
+            .collect();
+        eprintln!(
+            "\n  Edges involving emit_rust_expr_match ({}):",
+            match_edges.len()
+        );
         for e in &match_edges {
             let ev_str: Vec<String> = e.evidence.iter().map(|ev| format!("{:?}", ev)).collect();
             eprintln!("    {} → {}: [{}]", e.caller, e.callee, ev_str.join(", "));
         }
 
         // Check which edges have DescentUnknown
-        let unknown_edges: Vec<_> = edges.iter().filter(|e| {
-            e.evidence.iter().any(|ev| matches!(ev, v2_compiler::std_termination::DescentEvidence::DescentUnknown))
-        }).collect();
+        let unknown_edges: Vec<_> = edges
+            .iter()
+            .filter(|e| {
+                e.evidence.iter().any(|ev| {
+                    matches!(
+                        ev,
+                        v2_compiler::std_termination::DescentEvidence::DescentUnknown
+                    )
+                })
+            })
+            .collect();
         eprintln!("\n  Edges with DescentUnknown ({}):", unknown_edges.len());
         for e in &unknown_edges {
             let ev_str: Vec<String> = e.evidence.iter().map(|ev| format!("{:?}", ev)).collect();
@@ -7215,32 +7818,50 @@ fn diag_emitter_scc() {
             eprintln!("\n  collect_callee_evidence(emit_typed_expr → emit_rust_expr_match):");
             eprintln!("    calls found: {}", target_evidence.len());
             for (i, call_ev) in target_evidence.iter().enumerate() {
-                let kinds: Vec<&str> = call_ev.iter().map(|rel| {
-                    match rel.as_ref() {
-                        v2_compiler::std_induction::SubValueRelation::StrictSubValue { .. } => "Strict",
-                        v2_compiler::std_induction::SubValueRelation::IteratedSubValue { .. } => "Iterated",
-                        v2_compiler::std_induction::SubValueRelation::ArithmeticDescent { .. } => "Arith",
+                let kinds: Vec<&str> = call_ev
+                    .iter()
+                    .map(|rel| match rel.as_ref() {
+                        v2_compiler::std_induction::SubValueRelation::StrictSubValue { .. } => {
+                            "Strict"
+                        }
+                        v2_compiler::std_induction::SubValueRelation::IteratedSubValue {
+                            ..
+                        } => "Iterated",
+                        v2_compiler::std_induction::SubValueRelation::ArithmeticDescent {
+                            ..
+                        } => "Arith",
                         v2_compiler::std_induction::SubValueRelation::PreservedValue => "Preserved",
                         v2_compiler::std_induction::SubValueRelation::SubValueUnknown => "Unknown",
-                    }
-                }).collect();
+                    })
+                    .collect();
                 eprintln!("    call {}: [{}]", i, kinds.join(", "));
             }
 
             // Also check self evidence
-            let self_ev = collect_self_call_evidence(entry.body.clone(), "emit_typed_expr".to_string(), Rc::new(HashMap::new()));
+            let self_ev = collect_self_call_evidence(
+                entry.body.clone(),
+                "emit_typed_expr".to_string(),
+                Rc::new(HashMap::new()),
+            );
             eprintln!("\n  collect_self_call_evidence(emit_typed_expr):");
             eprintln!("    self-calls found: {}", self_ev.len());
             for (i, call_ev) in self_ev.iter().enumerate() {
-                let kinds: Vec<&str> = call_ev.iter().map(|rel| {
-                    match rel.as_ref() {
-                        v2_compiler::std_induction::SubValueRelation::StrictSubValue { .. } => "Strict",
-                        v2_compiler::std_induction::SubValueRelation::IteratedSubValue { .. } => "Iterated",
-                        v2_compiler::std_induction::SubValueRelation::ArithmeticDescent { .. } => "Arith",
+                let kinds: Vec<&str> = call_ev
+                    .iter()
+                    .map(|rel| match rel.as_ref() {
+                        v2_compiler::std_induction::SubValueRelation::StrictSubValue { .. } => {
+                            "Strict"
+                        }
+                        v2_compiler::std_induction::SubValueRelation::IteratedSubValue {
+                            ..
+                        } => "Iterated",
+                        v2_compiler::std_induction::SubValueRelation::ArithmeticDescent {
+                            ..
+                        } => "Arith",
                         v2_compiler::std_induction::SubValueRelation::PreservedValue => "Preserved",
                         v2_compiler::std_induction::SubValueRelation::SubValueUnknown => "Unknown",
-                    }
-                }).collect();
+                    })
+                    .collect();
                 eprintln!("    call {}: [{}]", i, kinds.join(", "));
             }
         }
@@ -7249,24 +7870,39 @@ fn diag_emitter_scc() {
     }
 
     // Check apply_named_template_nested
-    let entry = func_entries.iter().find(|e| e.name == "apply_named_template_nested");
+    let entry = func_entries
+        .iter()
+        .find(|e| e.name == "apply_named_template_nested");
     if let Some(entry) = entry {
-        let self_ev = collect_self_call_evidence(entry.body.clone(), "apply_named_template_nested".to_string(), Rc::new(HashMap::new()));
+        let self_ev = collect_self_call_evidence(
+            entry.body.clone(),
+            "apply_named_template_nested".to_string(),
+            Rc::new(HashMap::new()),
+        );
         eprintln!("\n=== apply_named_template_nested ===");
         eprintln!("  self-calls: {}", self_ev.len());
         for (i, call_ev) in self_ev.iter().enumerate() {
-            let kinds: Vec<&str> = call_ev.iter().map(|rel| {
-                match rel.as_ref() {
+            let kinds: Vec<&str> = call_ev
+                .iter()
+                .map(|rel| match rel.as_ref() {
                     v2_compiler::std_induction::SubValueRelation::StrictSubValue { .. } => "Strict",
-                    v2_compiler::std_induction::SubValueRelation::IteratedSubValue { .. } => "Iterated",
-                    v2_compiler::std_induction::SubValueRelation::ArithmeticDescent { .. } => "Arith",
+                    v2_compiler::std_induction::SubValueRelation::IteratedSubValue { .. } => {
+                        "Iterated"
+                    }
+                    v2_compiler::std_induction::SubValueRelation::ArithmeticDescent { .. } => {
+                        "Arith"
+                    }
                     v2_compiler::std_induction::SubValueRelation::PreservedValue => "Preserved",
                     v2_compiler::std_induction::SubValueRelation::SubValueUnknown => "Unknown",
-                }
-            }).collect();
+                })
+                .collect();
             eprintln!("    call {}: [{}]", i, kinds.join(", "));
         }
-        let path_calls = v2_compiler::v2_compiler_complexity::max_path_self_calls(entry.body.clone(), "apply_named_template_nested".to_string(), Rc::new(HashMap::new()));
+        let path_calls = v2_compiler::v2_compiler_complexity::max_path_self_calls(
+            entry.body.clone(),
+            "apply_named_template_nested".to_string(),
+            Rc::new(HashMap::new()),
+        );
         eprintln!("  path_calls: {}", path_calls);
     }
 }
@@ -7358,7 +7994,8 @@ fn ownership_v_single_use_moves() {
     let content = find_file(&result, "src/ov1.rs");
     assert!(
         !content.contains("items.clone()"),
-        "single-use param must move, not clone:\n{}", content,
+        "single-use param must move, not clone:\n{}",
+        content,
     );
 }
 
@@ -7404,7 +8041,9 @@ fn sum_all(items: List<Int>) -> Int {
     const FALLBACK_RATCHET: usize = 0;
     assert!(
         fallbacks <= FALLBACK_RATCHET,
-        "fold fallbacks {} > ratchet {}", fallbacks, FALLBACK_RATCHET,
+        "fold fallbacks {} > ratchet {}",
+        fallbacks,
+        FALLBACK_RATCHET,
     );
 }
 
@@ -7454,8 +8093,14 @@ fn process(data: List<Int>) -> List<Int> {
     let (movable_but_cloned, try_unwrap_fallbacks) = count_ownership_violations(&result);
 
     eprintln!("\n=== OWNERSHIP VIOLATION RATCHET ===\n");
-    eprintln!("  movable_but_cloned:    {:>3}  (proof says move, emitter says clone)", movable_but_cloned);
-    eprintln!("  try_unwrap_fallbacks:  {:>3}  (fabrication fallback in emitted code)", try_unwrap_fallbacks);
+    eprintln!(
+        "  movable_but_cloned:    {:>3}  (proof says move, emitter says clone)",
+        movable_but_cloned
+    );
+    eprintln!(
+        "  try_unwrap_fallbacks:  {:>3}  (fabrication fallback in emitted code)",
+        try_unwrap_fallbacks
+    );
     let total = movable_but_cloned + try_unwrap_fallbacks;
     eprintln!("  ────────────────────────");
     eprintln!("  TOTAL violations:      {:>3}", total);
@@ -7477,13 +8122,22 @@ fn process(data: List<Int>) -> List<Int> {
 
     assert!(
         movable_but_cloned <= MOVABLE_CLONED_RATCHET,
-        "movable_but_cloned {} > ratchet {}", movable_but_cloned, MOVABLE_CLONED_RATCHET,
+        "movable_but_cloned {} > ratchet {}",
+        movable_but_cloned,
+        MOVABLE_CLONED_RATCHET,
     );
     assert!(
         try_unwrap_fallbacks <= TRY_UNWRAP_RATCHET,
-        "try_unwrap_fallbacks {} > ratchet {}", try_unwrap_fallbacks, TRY_UNWRAP_RATCHET,
+        "try_unwrap_fallbacks {} > ratchet {}",
+        try_unwrap_fallbacks,
+        TRY_UNWRAP_RATCHET,
     );
-    assert!(total <= TOTAL_RATCHET, "total violations {} > ratchet {}", total, TOTAL_RATCHET);
+    assert!(
+        total <= TOTAL_RATCHET,
+        "total violations {} > ratchet {}",
+        total,
+        TOTAL_RATCHET
+    );
 }
 
 // ── Stage0 clone census (gross metric, context for violations) ──────────
@@ -7547,7 +8201,10 @@ fn ownership_stage0_census() {
     eprintln!("  TOTAL try_unwrap:       {}", total_try_unwrap);
     eprintln!("  TOTAL .iter().cloned(): {}", total_iter_cloned);
     eprintln!("  TOTAL lines:            {}", total_lines);
-    eprintln!("  clones/line:            {:.3}", total_clones as f64 / total_lines as f64);
+    eprintln!(
+        "  clones/line:            {:.3}",
+        total_clones as f64 / total_lines as f64
+    );
 
     // 2026-04-10 baseline: 23969 clones (+144 _at accessor migration, +38 per-file resolve indices)
     // 2026-04-10: +31 from S6 lambda_param_provenance field on InferScope
@@ -7557,10 +8214,20 @@ fn ownership_stage0_census() {
     // Rust versions, optimization flags, or platform-specific clone patterns).
     // The ratchet catches real regressions (hundreds of clones) not noise.
     const CLONE_RATCHET: usize = 24000;
-    const CLONE_TOLERANCE: usize = CLONE_RATCHET / 100;  // 1% = ~240
+    const CLONE_TOLERANCE: usize = CLONE_RATCHET / 100; // 1% = ~240
     const TRY_UNWRAP_RATCHET: usize = 8;
 
-    assert!(total_clones <= CLONE_RATCHET + CLONE_TOLERANCE,
-        ".clone() {} > ratchet {} + tolerance {}", total_clones, CLONE_RATCHET, CLONE_TOLERANCE);
-    assert!(total_try_unwrap <= TRY_UNWRAP_RATCHET, "try_unwrap {} > ratchet {}", total_try_unwrap, TRY_UNWRAP_RATCHET);
+    assert!(
+        total_clones <= CLONE_RATCHET + CLONE_TOLERANCE,
+        ".clone() {} > ratchet {} + tolerance {}",
+        total_clones,
+        CLONE_RATCHET,
+        CLONE_TOLERANCE
+    );
+    assert!(
+        total_try_unwrap <= TRY_UNWRAP_RATCHET,
+        "try_unwrap {} > ratchet {}",
+        total_try_unwrap,
+        TRY_UNWRAP_RATCHET
+    );
 }

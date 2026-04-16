@@ -30,7 +30,8 @@ fn type_realization_fields_for(
                 )
         })
         .unwrap_or_else(|| panic!("TypeRealization for `{target_name}` not found"));
-    let ValueBody::Structural { fields } = realization.value_body.as_ref().expect("value body") else {
+    let ValueBody::Structural { fields } = realization.value_body.as_ref().expect("value body")
+    else {
         unreachable!()
     };
     let list = fields
@@ -75,12 +76,17 @@ fn type_realization_fields_for(
                 _ => None,
             })
             .unwrap_or(false);
-        let [FieldValue::Literal(v3_compiler::dag::LiteralBits::String(name))] = &payload[..] else {
+        let [FieldValue::Literal(v3_compiler::dag::LiteralBits::String(name))] = &payload[..]
+        else {
             panic!("RustFieldAccess payload must be a single String literal");
         };
         out.insert(
             dag_name,
-            (variant_label(dag, *constructor), name.clone(), borrowed_read),
+            (
+                variant_label(dag, *constructor),
+                name.clone(),
+                borrowed_read,
+            ),
         );
     }
     out
@@ -96,13 +102,20 @@ fn variant_label(dag: &Dag, variant_id: v3_compiler::dag::DeclarationId) -> Stri
                 .map(|variant| variant.label.clone()),
             _ => None,
         })
-        .unwrap_or_else(|| panic!("variant declaration {:?} not found under any reflected sum", variant_id))
+        .unwrap_or_else(|| {
+            panic!(
+                "variant declaration {:?} not found under any reflected sum",
+                variant_id
+            )
+        })
 }
 
 fn declared_record_fields(dag: &Dag, type_name: &str) -> Vec<String> {
     let id = find_named(dag, type_name);
     match &dag.declaration(id).connective {
-        TypeConnective::Conj { children } => children.iter().map(|field| field.label.clone()).collect(),
+        TypeConnective::Conj { children } => {
+            children.iter().map(|field| field.label.clone()).collect()
+        }
         other => panic!("expected `{type_name}` to be a Conj, got {other:?}"),
     }
 }
@@ -154,7 +167,11 @@ fn alias_bindings_cover_method_backed_fields() {
     );
     assert_eq!(
         dag_fields.get("declarations"),
-        Some(&(String::from("AccessorMethod"), String::from("declarations"), true))
+        Some(&(
+            String::from("AccessorMethod"),
+            String::from("declarations"),
+            true
+        ))
     );
     assert_eq!(
         dag_fields.get("ports"),
@@ -174,7 +191,11 @@ fn alias_bindings_cover_method_backed_fields() {
     let bind_fields = type_realization_fields_for(&dag, "BindNode");
     assert_eq!(
         bind_fields.get("result_port"),
-        Some(&(String::from("AccessorMethod"), String::from("result_port"), false))
+        Some(&(
+            String::from("AccessorMethod"),
+            String::from("result_port"),
+            false
+        ))
     );
 
     let value_fields = type_realization_fields_for(&dag, "ValueNode");
@@ -186,7 +207,11 @@ fn alias_bindings_cover_method_backed_fields() {
     let span_fields = type_realization_fields_for(&dag, "SourceSpan");
     assert_eq!(
         span_fields.get("start"),
-        Some(&(String::from("DirectField"), String::from("byte_start"), false))
+        Some(&(
+            String::from("DirectField"),
+            String::from("byte_start"),
+            false
+        ))
     );
     assert_eq!(
         span_fields.get("end"),
@@ -200,6 +225,10 @@ fn alias_bindings_cover_method_backed_fields() {
     );
     assert_eq!(
         port_fields.get("state"),
-        Some(&(String::from("AccessorMethod"), String::from("state_value"), false))
+        Some(&(
+            String::from("AccessorMethod"),
+            String::from("state_value"),
+            false
+        ))
     );
 }

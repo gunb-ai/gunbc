@@ -67,7 +67,12 @@ fn variant_label(dag: &Dag, variant_id: DeclarationId) -> String {
                 .map(|variant| variant.label.clone()),
             _ => None,
         })
-        .unwrap_or_else(|| panic!("variant declaration {:?} not found under any reflected sum", variant_id))
+        .unwrap_or_else(|| {
+            panic!(
+                "variant declaration {:?} not found under any reflected sum",
+                variant_id
+            )
+        })
 }
 
 fn variant_value<'a>(dag: &Dag, value: &'a FieldValue) -> (String, &'a [FieldValue]) {
@@ -82,7 +87,10 @@ fn variant_value<'a>(dag: &Dag, value: &'a FieldValue) -> (String, &'a [FieldVal
 }
 
 fn compiled_generated_claim(claim: &GeneratedClaim<'_>) -> Dag {
-    let dag = compile_any(&claim.render_declaration_source(), "generated_test_claim.dag");
+    let dag = compile_any(
+        &claim.render_declaration_source(),
+        "generated_test_claim.dag",
+    );
     assert!(
         dag.diagnostics().is_empty(),
         "generated claim declaration should compile cleanly, got {:?}",
@@ -127,7 +135,9 @@ fn claim_holds(claim: &GeneratedClaim<'_>) -> bool {
                 panic!("FailsWithDiagnostic payload should be a single DiagnosticExpectation");
             };
             match compile_to_dag(&source, &file_name) {
-                Err(CompileError::Semantic(dag)) => diagnostic_matches(claim.dag(), &dag, expectation),
+                Err(CompileError::Semantic(dag)) => {
+                    diagnostic_matches(claim.dag(), &dag, expectation)
+                }
                 _ => false,
             }
         }

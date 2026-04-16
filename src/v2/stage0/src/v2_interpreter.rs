@@ -6,42 +6,79 @@ use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 
-use crate::v2_rt;
-use crate::v2_std_core::{
-    Node, NewlineIndex, SourceSpan, ErrorNode,
-    ExprData, MatchPattern, Connective, Cardinality,
-    FieldAccessStyle, FieldValueShape, FieldSummary,
-    MethodSemantics, VarBindingKind, CallSemantics,
-    UnaryOpKind, StringPart,
-    // Accessor functions
-    authored_name_at, expr_var_name_at, expr_call_func_at,
-    arg_name_at, arg_value,
-    match_scrutinee, match_arm_nodes, arm_pattern, arm_body,
-    if_condition, if_then_branch, if_else_branch,
-    let_value, let_body, let_binding_name_at,
-    field_access_base, field_access_field_at, expr_field_access_summary,
-    binop_left, binop_right, unaryop_operand,
-    block_stmts,
-    method_receiver, method_arg_nodes, expr_method_name_at, expr_method_call_semantics,
-    lambda_body, lambda_param_names_at,
-    record_lit_type_name_at, field_init_node_name_at, field_init_node_value,
-    cast_expr, cast_target,
-    foreach_collection, foreach_body, foreach_variable_at,
-    index_base, index_expr,
-    slice_base, slice_start, slice_end,
-    return_value,
-    field_binding_name_at, field_binding_pattern,
-    is_shell_transport, is_rest_transport, param_node_name_at,
-    param_node_default_value,
-    find_property, find_property_string,
-};
-use crate::v2_compiler_emit::{
-    extract_string_interp_parts, has_mock_prefix,
-};
 use crate::std_syntax::BinOp;
 use crate::std_syntax::LiteralValue;
-use crate::v2_compiler_infer_items::{
-    ResolvedGraph, TypedModule, ItemInfo, ItemKind,
+use crate::v2_compiler_emit::{extract_string_interp_parts, has_mock_prefix};
+use crate::v2_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
+use crate::v2_rt;
+use crate::v2_std_core::{
+    arg_name_at,
+    arg_value,
+    arm_body,
+    arm_pattern,
+    // Accessor functions
+    authored_name_at,
+    binop_left,
+    binop_right,
+    block_stmts,
+    cast_expr,
+    cast_target,
+    expr_call_func_at,
+    expr_field_access_summary,
+    expr_method_call_semantics,
+    expr_method_name_at,
+    expr_var_name_at,
+    field_access_base,
+    field_access_field_at,
+    field_binding_name_at,
+    field_binding_pattern,
+    field_init_node_name_at,
+    field_init_node_value,
+    find_property,
+    find_property_string,
+    foreach_body,
+    foreach_collection,
+    foreach_variable_at,
+    if_condition,
+    if_else_branch,
+    if_then_branch,
+    index_base,
+    index_expr,
+    is_rest_transport,
+    is_shell_transport,
+    lambda_body,
+    lambda_param_names_at,
+    let_binding_name_at,
+    let_body,
+    let_value,
+    match_arm_nodes,
+    match_scrutinee,
+    method_arg_nodes,
+    method_receiver,
+    param_node_default_value,
+    param_node_name_at,
+    record_lit_type_name_at,
+    return_value,
+    slice_base,
+    slice_end,
+    slice_start,
+    unaryop_operand,
+    CallSemantics,
+    Cardinality,
+    Connective,
+    ErrorNode,
+    ExprData,
+    FieldAccessStyle,
+    FieldSummary,
+    FieldValueShape,
+    MatchPattern,
+    MethodSemantics,
+    NewlineIndex,
+    Node,
+    SourceSpan,
+    StringPart,
+    UnaryOpKind,
+    VarBindingKind,
 };
 
 // ---------------------------------------------------------------------------
@@ -111,7 +148,9 @@ impl fmt::Display for Value {
             Value::List(items) => {
                 write!(f, "[")?;
                 for (i, item) in items.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", item)?;
                 }
                 write!(f, "]")
@@ -119,7 +158,9 @@ impl fmt::Display for Value {
             Value::Map(entries) => {
                 write!(f, "{{")?;
                 for (i, (k, v)) in entries.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}: {}", k, v)?;
                 }
                 write!(f, "}}")
@@ -127,18 +168,26 @@ impl fmt::Display for Value {
             Value::Record { type_name, fields } => {
                 write!(f, "{} {{", type_name)?;
                 for (i, (k, v)) in fields.iter().enumerate() {
-                    if i > 0 { write!(f, ",")?; }
+                    if i > 0 {
+                        write!(f, ",")?;
+                    }
                     write!(f, " {}: {}", k, v)?;
                 }
                 write!(f, " }}")
             }
-            Value::Variant { type_name: _, variant_name, fields } => {
+            Value::Variant {
+                type_name: _,
+                variant_name,
+                fields,
+            } => {
                 if fields.is_empty() {
                     write!(f, "{}", variant_name)
                 } else {
                     write!(f, "{} {{", variant_name)?;
                     for (i, (k, v)) in fields.iter().enumerate() {
-                        if i > 0 { write!(f, ",")?; }
+                        if i > 0 {
+                            write!(f, ",")?;
+                        }
                         write!(f, " {}: {}", k, v)?;
                     }
                     write!(f, " }}")
@@ -160,10 +209,19 @@ impl PartialEq for Value {
             (Value::Str(a), Value::Str(b)) => a == b,
             (Value::Unit, Value::Unit) => true,
             (Value::List(a), Value::List(b)) => a == b,
-            (Value::Variant { variant_name: a, fields: af, .. },
-             Value::Variant { variant_name: b, fields: bf, .. }) => a == b && af == bf,
-            (Value::Record { fields: af, .. },
-             Value::Record { fields: bf, .. }) => af == bf,
+            (
+                Value::Variant {
+                    variant_name: a,
+                    fields: af,
+                    ..
+                },
+                Value::Variant {
+                    variant_name: b,
+                    fields: bf,
+                    ..
+                },
+            ) => a == b && af == bf,
+            (Value::Record { fields: af, .. }, Value::Record { fields: bf, .. }) => af == bf,
             _ => false,
         }
     }
@@ -181,17 +239,26 @@ pub struct Env {
 
 impl Env {
     pub fn empty() -> Rc<Self> {
-        Rc::new(Env { bindings: HashMap::new(), parent: None })
+        Rc::new(Env {
+            bindings: HashMap::new(),
+            parent: None,
+        })
     }
 
     pub fn extend(parent: &Rc<Env>, bindings: HashMap<String, Value>) -> Rc<Self> {
-        Rc::new(Env { bindings, parent: Some(parent.clone()) })
+        Rc::new(Env {
+            bindings,
+            parent: Some(parent.clone()),
+        })
     }
 
     pub fn with_binding(parent: &Rc<Env>, name: String, value: Value) -> Rc<Self> {
         let mut bindings = HashMap::new();
         bindings.insert(name, value);
-        Rc::new(Env { bindings, parent: Some(parent.clone()) })
+        Rc::new(Env {
+            bindings,
+            parent: Some(parent.clone()),
+        })
     }
 
     pub fn lookup(&self, name: &str) -> Option<&Value> {
@@ -225,24 +292,19 @@ pub enum InterpError {
 impl fmt::Display for InterpError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            InterpError::NoSuchFunction { name } =>
-                write!(f, "no such function: {}", name),
-            InterpError::NoMainFunction =>
-                write!(f, "no main function found"),
-            InterpError::NoSuchVariable { name } =>
-                write!(f, "undefined variable: {}", name),
-            InterpError::NoSuchField { type_name, field } =>
-                write!(f, "no field '{}' on type '{}'", field, type_name),
-            InterpError::TypeError { msg } =>
-                write!(f, "type error: {}", msg),
-            InterpError::PatternMatchFailure { value } =>
-                write!(f, "non-exhaustive pattern match on: {}", value),
-            InterpError::DivisionByZero =>
-                write!(f, "division by zero"),
-            InterpError::Unimplemented { what } =>
-                write!(f, "not yet implemented: {}", what),
-            InterpError::EarlyReturn { .. } =>
-                write!(f, "internal: uncaught early return"),
+            InterpError::NoSuchFunction { name } => write!(f, "no such function: {}", name),
+            InterpError::NoMainFunction => write!(f, "no main function found"),
+            InterpError::NoSuchVariable { name } => write!(f, "undefined variable: {}", name),
+            InterpError::NoSuchField { type_name, field } => {
+                write!(f, "no field '{}' on type '{}'", field, type_name)
+            }
+            InterpError::TypeError { msg } => write!(f, "type error: {}", msg),
+            InterpError::PatternMatchFailure { value } => {
+                write!(f, "non-exhaustive pattern match on: {}", value)
+            }
+            InterpError::DivisionByZero => write!(f, "division by zero"),
+            InterpError::Unimplemented { what } => write!(f, "not yet implemented: {}", what),
+            InterpError::EarlyReturn { .. } => write!(f, "internal: uncaught early return"),
         }
     }
 }
@@ -351,7 +413,8 @@ pub fn run_with_options(
     let ctx = InterpContext::new(graph, source_indices, dry_run);
 
     // Find the entry function
-    let item_node = ctx.lookup_fn(entry_fn)
+    let item_node = ctx
+        .lookup_fn(entry_fn)
         .ok_or_else(|| InterpError::NoMainFunction)?
         .clone();
 
@@ -388,13 +451,17 @@ fn call_function(
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
-    let body = fn_node.body.as_ref()
+    let body = fn_node
+        .body
+        .as_ref()
         .ok_or_else(|| InterpError::TypeError {
             msg: format!("'{}' has no body", fn_node.name),
         })?;
 
     // Bind parameters
-    let param_names: Vec<String> = fn_node.params.iter()
+    let param_names: Vec<String> = fn_node
+        .params
+        .iter()
         .map(|p| authored_name_at(ctx.si(), p))
         .collect();
 
@@ -435,28 +502,18 @@ fn call_function(
 // Expression evaluator
 // ---------------------------------------------------------------------------
 
-fn eval_expr(
-    node: &Rc<Node>,
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
+fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     stacker::maybe_grow(64 * 1024, 2 * 1024 * 1024, || {
         eval_expr_inner(node, env, ctx)
     })
 }
 
-fn eval_expr_inner(
-    node: &Rc<Node>,
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
+fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let si = ctx.si();
     match (*node.expr_data).clone() {
         ExprData::ExprLiteral { value } => eval_literal(&value),
 
-        ExprData::ExprVar { binding_kind } => {
-            eval_var(node, binding_kind.as_deref(), env, ctx)
-        }
+        ExprData::ExprVar { binding_kind } => eval_var(node, binding_kind.as_deref(), env, ctx),
 
         ExprData::ExprBinOp { op, .. } => {
             let left = eval_expr(&binop_left(node.clone()), env, ctx)?;
@@ -486,7 +543,9 @@ fn eval_expr_inner(
         }
 
         ExprData::ExprListLit => {
-            let items: Vec<Value> = node.children.iter()
+            let items: Vec<Value> = node
+                .children
+                .iter()
                 .map(|child| eval_expr(child, env, ctx))
                 .collect::<InterpResult<_>>()?;
             Ok(Value::List(Rc::new(items)))
@@ -494,7 +553,9 @@ fn eval_expr_inner(
 
         ExprData::ExprLambda => {
             let param_names: Vec<String> = lambda_param_names_at(node.clone(), si)
-                .iter().cloned().collect();
+                .iter()
+                .cloned()
+                .collect();
             let body = lambda_body(node.clone());
             Ok(Value::Closure {
                 params: param_names,
@@ -514,9 +575,7 @@ fn eval_expr_inner(
             Err(InterpError::EarlyReturn { value: val })
         }
 
-        ExprData::ExprError { message, .. } => {
-            Err(InterpError::TypeError { msg: message })
-        }
+        ExprData::ExprError { message, .. } => Err(InterpError::TypeError { msg: message }),
 
         ExprData::NoExprData => Ok(Value::Unit),
     }
@@ -599,7 +658,11 @@ fn eval_var(
 fn eval_binop(op: &BinOp, left: Value, right: Value) -> InterpResult<Value> {
     // NullCoalesce: short-circuit
     if matches!(op, BinOp::NullCoalesce) {
-        return Ok(if matches!(left, Value::Null) { right } else { left });
+        return Ok(if matches!(left, Value::Null) {
+            right
+        } else {
+            left
+        });
     }
 
     // String concatenation
@@ -651,7 +714,12 @@ fn eval_binop(op: &BinOp, left: Value, right: Value) -> InterpResult<Value> {
             }),
         },
         _ => Err(InterpError::TypeError {
-            msg: format!("cannot apply {:?} to {} and {}", op, left.type_label(), right.type_label()),
+            msg: format!(
+                "cannot apply {:?} to {} and {}",
+                op,
+                left.type_label(),
+                right.type_label()
+            ),
         }),
     }
 }
@@ -662,11 +730,15 @@ fn eval_int_binop(op: &BinOp, a: i64, b: i64) -> InterpResult<Value> {
         BinOp::Sub => Ok(Value::Int(a - b)),
         BinOp::Mul => Ok(Value::Int(a * b)),
         BinOp::Div => {
-            if b == 0 { return Err(InterpError::DivisionByZero); }
+            if b == 0 {
+                return Err(InterpError::DivisionByZero);
+            }
             Ok(Value::Int(a / b))
         }
         BinOp::Mod => {
-            if b == 0 { return Err(InterpError::DivisionByZero); }
+            if b == 0 {
+                return Err(InterpError::DivisionByZero);
+            }
             Ok(Value::Int(a % b))
         }
         BinOp::Lt => Ok(Value::Bool(a < b)),
@@ -685,11 +757,15 @@ fn eval_float_binop(op: &BinOp, a: f64, b: f64) -> InterpResult<Value> {
         BinOp::Sub => Ok(Value::Float(a - b)),
         BinOp::Mul => Ok(Value::Float(a * b)),
         BinOp::Div => {
-            if b == 0.0 { return Err(InterpError::DivisionByZero); }
+            if b == 0.0 {
+                return Err(InterpError::DivisionByZero);
+            }
             Ok(Value::Float(a / b))
         }
         BinOp::Mod => {
-            if b == 0.0 { return Err(InterpError::DivisionByZero); }
+            if b == 0.0 {
+                return Err(InterpError::DivisionByZero);
+            }
             Ok(Value::Float(a % b))
         }
         BinOp::Lt => Ok(Value::Bool(a < b)),
@@ -723,11 +799,7 @@ fn eval_unaryop(op: &UnaryOpKind, val: Value) -> InterpResult<Value> {
 // If expression
 // ---------------------------------------------------------------------------
 
-fn eval_if(
-    node: &Rc<Node>,
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
+fn eval_if(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let cond = eval_expr(&if_condition(node.clone()), env, ctx)?;
     if cond.is_truthy() {
         eval_expr(&if_then_branch(node.clone()), env, ctx)
@@ -743,11 +815,7 @@ fn eval_if(
 // Let expression
 // ---------------------------------------------------------------------------
 
-fn eval_let(
-    node: &Rc<Node>,
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
+fn eval_let(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let name = let_binding_name_at(node.clone(), ctx.si());
     let val = eval_expr(&let_value(node.clone()), env, ctx)?;
     let new_env = Env::with_binding(env, name, val);
@@ -761,11 +829,7 @@ fn eval_let(
 // Block expression
 // ---------------------------------------------------------------------------
 
-fn eval_block(
-    node: &Rc<Node>,
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
+fn eval_block(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let stmts = block_stmts(node.clone());
     let mut current_env = env.clone();
     let mut last_val = Value::Unit;
@@ -791,11 +855,7 @@ fn eval_block(
 // Match expression
 // ---------------------------------------------------------------------------
 
-fn eval_match(
-    node: &Rc<Node>,
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
+fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let scrutinee_val = eval_expr(&match_scrutinee(node.clone()), env, ctx)?;
     let arms = match_arm_nodes(node.clone());
 
@@ -828,17 +888,32 @@ fn match_pattern(
 
         MatchPattern::LitPattern { value: lit } => {
             let lit_val = eval_literal(lit).ok()?;
-            if *value == lit_val { Some(HashMap::new()) } else { None }
+            if *value == lit_val {
+                Some(HashMap::new())
+            } else {
+                None
+            }
         }
 
-        MatchPattern::VariantPattern { name, parent_enum: _, field_bindings } => {
+        MatchPattern::VariantPattern {
+            name,
+            parent_enum: _,
+            field_bindings,
+        } => {
             match value {
                 // Match on variant
-                Value::Variant { variant_name, fields, .. } => {
-                    if variant_name != name { return None; }
+                Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                } => {
+                    if variant_name != name {
+                        return None;
+                    }
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
-                        let field_name = field_binding_name_at(fb.clone(), ctx.source_indices.clone());
+                        let field_name =
+                            field_binding_name_at(fb.clone(), ctx.source_indices.clone());
                         let fb_pat = field_binding_pattern(fb.clone());
                         let field_val = fields.get(&field_name).cloned().unwrap_or(Value::Null);
                         // Recursively match the field's binding pattern
@@ -848,11 +923,11 @@ fn match_pattern(
                     Some(bindings)
                 }
                 // Match on Option: Some { value: x } pattern
-                Value::Null if name == "None" || name == "none" => {
-                    Some(HashMap::new())
-                }
+                Value::Null if name == "None" || name == "none" => Some(HashMap::new()),
                 _ if name == "Some" => {
-                    if matches!(value, Value::Null) { return None; }
+                    if matches!(value, Value::Null) {
+                        return None;
+                    }
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
                         let fb_pat = field_binding_pattern(fb.clone());
@@ -871,16 +946,13 @@ fn match_pattern(
 // Function call (ExprCall)
 // ---------------------------------------------------------------------------
 
-fn eval_call(
-    node: &Rc<Node>,
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
+fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let func_name = expr_call_func_at(node.clone(), ctx.si());
     let arg_nodes = &node.children;
 
     // Evaluate arguments
-    let args: Vec<(Option<String>, Value)> = arg_nodes.iter()
+    let args: Vec<(Option<String>, Value)> = arg_nodes
+        .iter()
         .map(|arg_node| {
             let name = arg_name_at(arg_node.clone(), ctx.si());
             let val = eval_expr(&arg_value(arg_node), env, ctx)?;
@@ -894,8 +966,11 @@ fn eval_call(
     }
 
     // Look up user-defined function
-    let fn_node = ctx.lookup_fn(&func_name)
-        .ok_or_else(|| InterpError::NoSuchFunction { name: func_name.clone() })?
+    let fn_node = ctx
+        .lookup_fn(&func_name)
+        .ok_or_else(|| InterpError::NoSuchFunction {
+            name: func_name.clone(),
+        })?
         .clone();
 
     call_function(ctx, &fn_node, &args, env)
@@ -905,19 +980,17 @@ fn eval_call(
 // Method call (ExprMethodCall)
 // ---------------------------------------------------------------------------
 
-fn eval_method_call(
-    node: &Rc<Node>,
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
+fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let method_name = expr_method_name_at(node.clone(), ctx.si());
     let semantics = expr_method_call_semantics(node.clone());
 
     // Service calls: skip receiver evaluation (it's a service namespace, not a value).
     // Preserve named args for correct param binding (positional misaligns with defaults).
-    if let Some(MethodSemantics::ServiceMethodSemantics { service_name, .. }) = semantics.as_deref() {
+    if let Some(MethodSemantics::ServiceMethodSemantics { service_name, .. }) = semantics.as_deref()
+    {
         let extra_args = method_arg_nodes(node.clone());
-        let named_args: Vec<(Option<String>, Value)> = extra_args.iter()
+        let named_args: Vec<(Option<String>, Value)> = extra_args
+            .iter()
             .map(|a| {
                 let name = arg_name_at(a.clone(), ctx.si());
                 let val = eval_expr(&arg_value(a), env, ctx)?;
@@ -930,7 +1003,8 @@ fn eval_method_call(
     // Non-service calls: evaluate receiver and args
     let receiver_val = eval_expr(&method_receiver(node.clone()), env, ctx)?;
     let extra_args = method_arg_nodes(node.clone());
-    let args: Vec<Value> = extra_args.iter()
+    let args: Vec<Value> = extra_args
+        .iter()
         .map(|a| eval_expr(&arg_value(a), env, ctx))
         .collect::<InterpResult<_>>()?;
 
@@ -970,12 +1044,10 @@ fn eval_field_access(
                 _ => extract_field(&base_val, &field_name),
             }
         }
-        Some(FieldAccessStyle::TupleSecond) => {
-            match &base_val {
-                Value::List(items) => Ok(items.get(1).cloned().unwrap_or(Value::Null)),
-                _ => extract_field(&base_val, &field_name),
-            }
-        }
+        Some(FieldAccessStyle::TupleSecond) => match &base_val {
+            Value::List(items) => Ok(items.get(1).cloned().unwrap_or(Value::Null)),
+            _ => extract_field(&base_val, &field_name),
+        },
         Some(FieldAccessStyle::OptionalUnwrap) => {
             // .value on Optional — unwrap or return Null
             match &base_val {
@@ -994,20 +1066,24 @@ fn eval_field_access(
 fn extract_field(value: &Value, field: &str) -> InterpResult<Value> {
     match value {
         Value::Record { type_name, fields } => {
-            fields.get(field).cloned().ok_or_else(|| InterpError::NoSuchField {
+            fields
+                .get(field)
+                .cloned()
+                .ok_or_else(|| InterpError::NoSuchField {
+                    type_name: type_name.clone(),
+                    field: field.to_string(),
+                })
+        }
+        Value::Variant {
+            type_name, fields, ..
+        } => fields
+            .get(field)
+            .cloned()
+            .ok_or_else(|| InterpError::NoSuchField {
                 type_name: type_name.clone(),
                 field: field.to_string(),
-            })
-        }
-        Value::Variant { type_name, fields, .. } => {
-            fields.get(field).cloned().ok_or_else(|| InterpError::NoSuchField {
-                type_name: type_name.clone(),
-                field: field.to_string(),
-            })
-        }
-        Value::Map(m) => {
-            Ok(m.get(field).cloned().unwrap_or(Value::Null))
-        }
+            }),
+        Value::Map(m) => Ok(m.get(field).cloned().unwrap_or(Value::Null)),
         _ => Err(InterpError::TypeError {
             msg: format!("cannot access field '{}' on {}", field, value.type_label()),
         }),
@@ -1024,8 +1100,7 @@ fn eval_record_lit(
     env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
-    let type_name = record_lit_type_name_at(node.clone(), ctx.si())
-        .unwrap_or_default();
+    let type_name = record_lit_type_name_at(node.clone(), ctx.si()).unwrap_or_default();
 
     let mut fields = HashMap::new();
     for child in node.children.iter() {
@@ -1052,11 +1127,7 @@ fn eval_record_lit(
 // String interpolation
 // ---------------------------------------------------------------------------
 
-fn eval_string_interp(
-    node: &Rc<Node>,
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
+fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let parts = extract_string_interp_parts(node.clone());
     let mut result = String::new();
     for part in parts.iter() {
@@ -1076,11 +1147,7 @@ fn eval_string_interp(
 // Cast
 // ---------------------------------------------------------------------------
 
-fn eval_cast(
-    node: &Rc<Node>,
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
+fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let val = eval_expr(&cast_expr(node.clone()), env, ctx)?;
     let target_node = cast_target(node.clone());
     let target_name = authored_name_at(ctx.si(), &target_node);
@@ -1102,11 +1169,7 @@ fn eval_cast(
 // ForEach
 // ---------------------------------------------------------------------------
 
-fn eval_for_each(
-    node: &Rc<Node>,
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
+fn eval_for_each(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let var_name = foreach_variable_at(node.clone(), ctx.si());
     let collection = eval_expr(&foreach_collection(node.clone()), env, ctx)?;
     let body_node = foreach_body(node.clone());
@@ -1130,11 +1193,7 @@ fn eval_for_each(
 // Index
 // ---------------------------------------------------------------------------
 
-fn eval_index(
-    node: &Rc<Node>,
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
+fn eval_index(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let base = eval_expr(&index_base(node.clone()), env, ctx)?;
     let idx = eval_expr(&index_expr(node.clone()), env, ctx)?;
 
@@ -1143,17 +1202,20 @@ fn eval_index(
             let i = *i as usize;
             Ok(items.get(i).cloned().unwrap_or(Value::Null))
         }
-        (Value::Map(m), Value::Str(k)) => {
-            Ok(m.get(k.as_str()).cloned().unwrap_or(Value::Null))
-        }
+        (Value::Map(m), Value::Str(k)) => Ok(m.get(k.as_str()).cloned().unwrap_or(Value::Null)),
         (Value::Str(s), Value::Int(i)) => {
             let i = *i as usize;
-            Ok(s.chars().nth(i)
+            Ok(s.chars()
+                .nth(i)
                 .map(|c| Value::Str(c.to_string()))
                 .unwrap_or(Value::Null))
         }
         _ => Err(InterpError::TypeError {
-            msg: format!("cannot index {} with {}", base.type_label(), idx.type_label()),
+            msg: format!(
+                "cannot index {} with {}",
+                base.type_label(),
+                idx.type_label()
+            ),
         }),
     }
 }
@@ -1162,11 +1224,7 @@ fn eval_index(
 // Slice
 // ---------------------------------------------------------------------------
 
-fn eval_slice(
-    node: &Rc<Node>,
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
+fn eval_slice(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let base = eval_expr(&slice_base(node.clone()), env, ctx)?;
     let start = eval_expr(&slice_start(node.clone()), env, ctx)?;
     let end = eval_expr(&slice_end(node.clone()), env, ctx)?;
@@ -1184,7 +1242,12 @@ fn eval_slice(
             Ok(Value::Str(sliced))
         }
         _ => Err(InterpError::TypeError {
-            msg: format!("cannot slice {} with {}..{}", base.type_label(), start.type_label(), end.type_label()),
+            msg: format!(
+                "cannot slice {} with {}..{}",
+                base.type_label(),
+                start.type_label(),
+                end.type_label()
+            ),
         }),
     }
 }
@@ -1202,30 +1265,35 @@ fn eval_algebra_method(
 ) -> InterpResult<Value> {
     match method {
         "map" => list_method_with_closure("map", receiver, args, env, ctx, |items, f, env, ctx| {
-            items.iter()
+            items
+                .iter()
                 .map(|item| apply_closure(f, &[item.clone()], env, ctx))
                 .collect::<InterpResult<Vec<Value>>>()
                 .map(|v| Value::List(Rc::new(v)))
         }),
 
-        "filter" => list_method_with_closure("filter", receiver, args, env, ctx, |items, f, env, ctx| {
-            let mut result = Vec::new();
-            for item in items.iter() {
-                let keep = apply_closure(f, &[item.clone()], env, ctx)?;
-                if keep.is_truthy() {
-                    result.push(item.clone());
+        "filter" => {
+            list_method_with_closure("filter", receiver, args, env, ctx, |items, f, env, ctx| {
+                let mut result = Vec::new();
+                for item in items.iter() {
+                    let keep = apply_closure(f, &[item.clone()], env, ctx)?;
+                    if keep.is_truthy() {
+                        result.push(item.clone());
+                    }
                 }
-            }
-            Ok(Value::List(Rc::new(result)))
-        }),
+                Ok(Value::List(Rc::new(result)))
+            })
+        }
 
         "fold" => {
             let items = expect_list(&receiver, "fold")?;
             let (init, f) = match args {
                 [init, f] => (init.clone(), f),
-                _ => return Err(InterpError::TypeError {
-                    msg: "fold requires (init, f) arguments".to_string(),
-                }),
+                _ => {
+                    return Err(InterpError::TypeError {
+                        msg: "fold requires (init, f) arguments".to_string(),
+                    })
+                }
             };
             let mut acc = init;
             for item in items.iter() {
@@ -1234,17 +1302,24 @@ fn eval_algebra_method(
             Ok(acc)
         }
 
-        "flat_map" => list_method_with_closure("flat_map", receiver, args, env, ctx, |items, f, env, ctx| {
-            let mut result = Vec::new();
-            for item in items.iter() {
-                let mapped = apply_closure(f, &[item.clone()], env, ctx)?;
-                match mapped {
-                    Value::List(inner) => result.extend(inner.iter().cloned()),
-                    _ => result.push(mapped),
+        "flat_map" => list_method_with_closure(
+            "flat_map",
+            receiver,
+            args,
+            env,
+            ctx,
+            |items, f, env, ctx| {
+                let mut result = Vec::new();
+                for item in items.iter() {
+                    let mapped = apply_closure(f, &[item.clone()], env, ctx)?;
+                    match mapped {
+                        Value::List(inner) => result.extend(inner.iter().cloned()),
+                        _ => result.push(mapped),
+                    }
                 }
-            }
-            Ok(Value::List(Rc::new(result)))
-        }),
+                Ok(Value::List(Rc::new(result)))
+            },
+        ),
 
         "any" => list_method_with_closure("any", receiver, args, env, ctx, |items, f, env, ctx| {
             for item in items.iter() {
@@ -1264,52 +1339,53 @@ fn eval_algebra_method(
             Ok(Value::Bool(true))
         }),
 
-        "sort_by" => list_method_with_closure("sort_by", receiver, args, env, ctx, |items, f, env, ctx| {
-            let mut keyed: Vec<(Value, Value)> = items.iter()
-                .map(|item| {
-                    let key = apply_closure(f, &[item.clone()], env, ctx)?;
-                    Ok((key, item.clone()))
-                })
-                .collect::<InterpResult<_>>()?;
-            keyed.sort_by(|(ka, _), (kb, _)| cmp_values(ka, kb));
-            Ok(Value::List(Rc::new(keyed.into_iter().map(|(_, v)| v).collect())))
-        }),
-
-        "concat" | "append" | "push" => {
-            match &receiver {
-                Value::List(items) => {
-                    let mut result = items.to_vec();
-                    for arg in args {
-                        match arg {
-                            Value::List(other) => result.extend(other.iter().cloned()),
-                            _ => result.push(arg.clone()),
-                        }
-                    }
-                    Ok(Value::List(Rc::new(result)))
-                }
-                Value::Str(s) => {
-                    let mut result = s.clone();
-                    for arg in args {
-                        result.push_str(&format!("{}", arg));
-                    }
-                    Ok(Value::Str(result))
-                }
-                _ => Err(InterpError::TypeError {
-                    msg: format!("cannot concat on {}", receiver.type_label()),
-                }),
-            }
+        "sort_by" => {
+            list_method_with_closure("sort_by", receiver, args, env, ctx, |items, f, env, ctx| {
+                let mut keyed: Vec<(Value, Value)> = items
+                    .iter()
+                    .map(|item| {
+                        let key = apply_closure(f, &[item.clone()], env, ctx)?;
+                        Ok((key, item.clone()))
+                    })
+                    .collect::<InterpResult<_>>()?;
+                keyed.sort_by(|(ka, _), (kb, _)| cmp_values(ka, kb));
+                Ok(Value::List(Rc::new(
+                    keyed.into_iter().map(|(_, v)| v).collect(),
+                )))
+            })
         }
 
-        "length" | "count" | "size" => {
-            match &receiver {
-                Value::List(items) => Ok(Value::Int(items.len() as i64)),
-                Value::Map(m) => Ok(Value::Int(m.len() as i64)),
-                Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
-                _ => Err(InterpError::TypeError {
-                    msg: format!("cannot get length of {}", receiver.type_label()),
-                }),
+        "concat" | "append" | "push" => match &receiver {
+            Value::List(items) => {
+                let mut result = items.to_vec();
+                for arg in args {
+                    match arg {
+                        Value::List(other) => result.extend(other.iter().cloned()),
+                        _ => result.push(arg.clone()),
+                    }
+                }
+                Ok(Value::List(Rc::new(result)))
             }
-        }
+            Value::Str(s) => {
+                let mut result = s.clone();
+                for arg in args {
+                    result.push_str(&format!("{}", arg));
+                }
+                Ok(Value::Str(result))
+            }
+            _ => Err(InterpError::TypeError {
+                msg: format!("cannot concat on {}", receiver.type_label()),
+            }),
+        },
+
+        "length" | "count" | "size" => match &receiver {
+            Value::List(items) => Ok(Value::Int(items.len() as i64)),
+            Value::Map(m) => Ok(Value::Int(m.len() as i64)),
+            Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
+            _ => Err(InterpError::TypeError {
+                msg: format!("cannot get length of {}", receiver.type_label()),
+            }),
+        },
 
         "first" => {
             let items = expect_list(&receiver, "first")?;
@@ -1331,80 +1407,85 @@ fn eval_algebra_method(
         "skip" => {
             let items = expect_list(&receiver, "skip")?;
             let n = expect_int(args.first(), "skip")?;
-            Ok(Value::List(Rc::new(items.iter().skip(n as usize).cloned().collect())))
+            Ok(Value::List(Rc::new(
+                items.iter().skip(n as usize).cloned().collect(),
+            )))
         }
 
         "take" => {
             let items = expect_list(&receiver, "take")?;
             let n = expect_int(args.first(), "take")?;
-            Ok(Value::List(Rc::new(items.iter().take(n as usize).cloned().collect())))
+            Ok(Value::List(Rc::new(
+                items.iter().take(n as usize).cloned().collect(),
+            )))
         }
 
         "enumerate" => {
             let items = expect_list(&receiver, "enumerate")?;
-            let result: Vec<Value> = items.iter().enumerate()
+            let result: Vec<Value> = items
+                .iter()
+                .enumerate()
                 .map(|(i, v)| {
                     let mut fields = HashMap::new();
                     fields.insert("index".to_string(), Value::Int(i as i64));
                     fields.insert("value".to_string(), v.clone());
-                    Value::Record { type_name: "Pair".to_string(), fields: Rc::new(fields) }
+                    Value::Record {
+                        type_name: "Pair".to_string(),
+                        fields: Rc::new(fields),
+                    }
                 })
                 .collect();
             Ok(Value::List(Rc::new(result)))
         }
 
-        "contains" | "has" => {
-            match &receiver {
-                Value::List(items) => {
-                    let target = args.first().cloned().unwrap_or(Value::Null);
-                    Ok(Value::Bool(items.iter().any(|item| *item == target)))
-                }
-                Value::Map(m) => {
-                    let key = expect_str(args.first(), "contains")?;
-                    Ok(Value::Bool(m.contains_key(&key)))
-                }
-                Value::Str(s) => {
-                    let sub = expect_str(args.first(), "contains")?;
-                    Ok(Value::Bool(s.contains(&sub)))
-                }
-                _ => Err(InterpError::TypeError {
-                    msg: format!("contains not supported on {}", receiver.type_label()),
-                }),
+        "contains" | "has" => match &receiver {
+            Value::List(items) => {
+                let target = args.first().cloned().unwrap_or(Value::Null);
+                Ok(Value::Bool(items.iter().any(|item| *item == target)))
             }
-        }
+            Value::Map(m) => {
+                let key = expect_str(args.first(), "contains")?;
+                Ok(Value::Bool(m.contains_key(&key)))
+            }
+            Value::Str(s) => {
+                let sub = expect_str(args.first(), "contains")?;
+                Ok(Value::Bool(s.contains(&sub)))
+            }
+            _ => Err(InterpError::TypeError {
+                msg: format!("contains not supported on {}", receiver.type_label()),
+            }),
+        },
 
         "join" => {
             let items = expect_list(&receiver, "join")?;
-            let sep = args.first()
-                .map(|v| format!("{}", v))
-                .unwrap_or_default();
+            let sep = args.first().map(|v| format!("{}", v)).unwrap_or_default();
             let strs: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
             Ok(Value::Str(strs.join(&sep)))
         }
 
-        "get" => {
-            match &receiver {
-                Value::Map(m) => {
-                    let key = expect_str(args.first(), "get")?;
-                    Ok(m.get(&key).cloned().unwrap_or(Value::Null))
-                }
-                Value::List(items) => {
-                    let idx = expect_int(args.first(), "get")?;
-                    Ok(items.get(idx as usize).cloned().unwrap_or(Value::Null))
-                }
-                _ => Err(InterpError::TypeError {
-                    msg: format!("get not supported on {}", receiver.type_label()),
-                }),
+        "get" => match &receiver {
+            Value::Map(m) => {
+                let key = expect_str(args.first(), "get")?;
+                Ok(m.get(&key).cloned().unwrap_or(Value::Null))
             }
-        }
+            Value::List(items) => {
+                let idx = expect_int(args.first(), "get")?;
+                Ok(items.get(idx as usize).cloned().unwrap_or(Value::Null))
+            }
+            _ => Err(InterpError::TypeError {
+                msg: format!("get not supported on {}", receiver.type_label()),
+            }),
+        },
 
         "insert" | "map_insert" => {
             let m = expect_map(&receiver, "insert")?;
             let (key, val) = match args {
                 [k, v] => (format!("{}", k), v.clone()),
-                _ => return Err(InterpError::TypeError {
-                    msg: "insert requires (key, value) arguments".to_string(),
-                }),
+                _ => {
+                    return Err(InterpError::TypeError {
+                        msg: "insert requires (key, value) arguments".to_string(),
+                    })
+                }
             };
             let mut new_map = HashMap::clone(&m);
             new_map.insert(key, val);
@@ -1478,7 +1559,11 @@ fn eval_algebra_method(
                 [start, end] => {
                     let s_idx = expect_int(Some(start), "substring start")? as usize;
                     let e_idx = expect_int(Some(end), "substring end")? as usize;
-                    let sliced: String = s.chars().skip(s_idx).take(e_idx.saturating_sub(s_idx)).collect();
+                    let sliced: String = s
+                        .chars()
+                        .skip(s_idx)
+                        .take(e_idx.saturating_sub(s_idx))
+                        .collect();
                     Ok(Value::Str(sliced))
                 }
                 _ => Err(InterpError::TypeError {
@@ -1490,20 +1575,28 @@ fn eval_algebra_method(
         "char_at" => {
             let s = expect_string(&receiver, "char_at")?;
             let idx = expect_int(args.first(), "char_at")?;
-            Ok(s.chars().nth(idx as usize)
+            Ok(s.chars()
+                .nth(idx as usize)
                 .map(|c| Value::Str(c.to_string()))
                 .unwrap_or(Value::Null))
         }
 
-        "index_by" => list_method_with_closure("index_by", receiver, args, env, ctx, |items, f, env, ctx| {
-            let mut m = HashMap::new();
-            for item in items.iter() {
-                let key = apply_closure(f, &[item.clone()], env, ctx)?;
-                let key_str = format!("{}", key);
-                m.insert(key_str, item.clone());
-            }
-            Ok(Value::Map(Rc::new(m)))
-        }),
+        "index_by" => list_method_with_closure(
+            "index_by",
+            receiver,
+            args,
+            env,
+            ctx,
+            |items, f, env, ctx| {
+                let mut m = HashMap::new();
+                for item in items.iter() {
+                    let key = apply_closure(f, &[item.clone()], env, ctx)?;
+                    let key_str = format!("{}", key);
+                    m.insert(key_str, item.clone());
+                }
+                Ok(Value::Map(Rc::new(m)))
+            },
+        ),
 
         _ => Err(InterpError::Unimplemented {
             what: format!("method '{}'", method),
@@ -1523,13 +1616,17 @@ fn eval_service_call(
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     let key = format!("{}.{}", service_name, op_name);
-    let (service_node, op_node) = ctx.service_ops.get(&key)
-        .ok_or_else(|| InterpError::Unimplemented {
-            what: format!("unknown service operation: {}", key),
-        })?;
+    let (service_node, op_node) =
+        ctx.service_ops
+            .get(&key)
+            .ok_or_else(|| InterpError::Unimplemented {
+                what: format!("unknown service operation: {}", key),
+            })?;
 
     // Get effective transport (operation-level overrides service-level)
-    let transport = op_node.transport.as_ref()
+    let transport = op_node
+        .transport
+        .as_ref()
         .or(service_node.transport.as_ref())
         .ok_or_else(|| InterpError::TypeError {
             msg: format!("no transport for service {}", key),
@@ -1573,7 +1670,8 @@ fn build_service_param_env(
 
     // Second pass: bind remaining positional args to unbound params
     let mut positional_idx = 0;
-    let positional_args: Vec<&Value> = args.iter()
+    let positional_args: Vec<&Value> = args
+        .iter()
         .filter(|(name, _)| name.is_none())
         .map(|(_, v)| v)
         .collect();
@@ -1638,8 +1736,12 @@ fn dispatch_shell(
 
     Ok(ShellResult {
         exit_code: output.status.code().unwrap_or(-1),
-        stdout: String::from_utf8_lossy(&output.stdout).trim_end().to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr).trim_end().to_string(),
+        stdout: String::from_utf8_lossy(&output.stdout)
+            .trim_end()
+            .to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr)
+            .trim_end()
+            .to_string(),
     })
 }
 
@@ -1675,7 +1777,9 @@ fn map_shell_outputs(
             Some("exit_success") => Value::Bool(result.exit_code == 0),
             Some("exit_code") => Value::Int(result.exit_code as i64),
             Some("stdout_lines") => {
-                let lines: Vec<Value> = result.stdout.lines()
+                let lines: Vec<Value> = result
+                    .stdout
+                    .lines()
                     .map(|l| Value::Str(l.to_string()))
                     .collect();
                 Value::List(Rc::new(lines))
@@ -1733,8 +1837,8 @@ fn dispatch_rest(
     let si = ctx.si();
 
     // 1. Base URL from service config
-    let base_url = find_service_config_string(service_node, "svc_endpoint", &si)
-        .unwrap_or_default();
+    let base_url =
+        find_service_config_string(service_node, "svc_endpoint", &si).unwrap_or_default();
 
     // 2. Path template — evaluate as expression, then substitute {param} placeholders
     let path = match find_property(transport.properties.clone(), "path".to_string(), si.clone()) {
@@ -1753,7 +1857,11 @@ fn dispatch_rest(
     };
 
     // 3. HTTP method — try string literal, fall back to authored name
-    let method = match find_property(transport.properties.clone(), "method".to_string(), si.clone()) {
+    let method = match find_property(
+        transport.properties.clone(),
+        "method".to_string(),
+        si.clone(),
+    ) {
         Some(m_node) => {
             if let ExprData::ExprLiteral { ref value } = *m_node.expr_data {
                 if let LiteralValue::LitStr { value: s } = value.as_ref() {
@@ -1773,8 +1881,17 @@ fn dispatch_rest(
 
     // 5. Custom headers from transport properties.
     // Non-reserved properties on the transport node are custom headers.
-    let reserved_props = ["base_url", "method", "path", "body", "query",
-        "response_format", "auth_token", "auth_header", "stdin"];
+    let reserved_props = [
+        "base_url",
+        "method",
+        "path",
+        "body",
+        "query",
+        "response_format",
+        "auth_token",
+        "auth_header",
+        "stdin",
+    ];
     let mut headers: Vec<(String, String)> = Vec::new();
     for prop in transport.properties.iter() {
         let pname = field_init_node_name_at(prop.clone(), si.clone());
@@ -1786,7 +1903,11 @@ fn dispatch_rest(
 
     // 6. Query params
     let mut query_params: Vec<(String, String)> = Vec::new();
-    if let Some(query_record) = find_property(transport.properties.clone(), "query".to_string(), si.clone()) {
+    if let Some(query_record) = find_property(
+        transport.properties.clone(),
+        "query".to_string(),
+        si.clone(),
+    ) {
         for child in query_record.children.iter() {
             let qname = field_init_node_name_at(child.clone(), si.clone());
             let qval = eval_expr(&field_init_node_value(child), param_env, ctx)?;
@@ -1798,18 +1919,22 @@ fn dispatch_rest(
     }
 
     // 7. Request body
-    let body_json = match find_property(transport.properties.clone(), "body".to_string(), si.clone()) {
-        Some(body_node) => {
-            let body_val = eval_expr(&body_node, param_env, ctx)?;
-            Some(value_to_json(&body_val))
-        }
-        None => None,
-    };
+    let body_json =
+        match find_property(transport.properties.clone(), "body".to_string(), si.clone()) {
+            Some(body_node) => {
+                let body_val = eval_expr(&body_node, param_env, ctx)?;
+                Some(value_to_json(&body_val))
+            }
+            None => None,
+        };
 
     // 8. Response format
     let response_format = find_property_string(
-        transport.properties.clone(), "response_format".to_string(), si.clone(),
-    ).unwrap_or_else(|| "Json".to_string());
+        transport.properties.clone(),
+        "response_format".to_string(),
+        si.clone(),
+    )
+    .unwrap_or_else(|| "Json".to_string());
 
     // Build and send request
     eprintln!("[rest] {} {}", method, url);
@@ -1820,9 +1945,11 @@ fn dispatch_rest(
         "PUT" => ureq::put(&url),
         "DELETE" => ureq::delete(&url),
         "PATCH" => ureq::patch(&url),
-        _ => return Err(InterpError::TypeError {
-            msg: format!("unsupported HTTP method: {}", method),
-        }),
+        _ => {
+            return Err(InterpError::TypeError {
+                msg: format!("unsupported HTTP method: {}", method),
+            })
+        }
     };
 
     // Set auth
@@ -1849,7 +1976,8 @@ fn dispatch_rest(
 
     // Send
     let response = if let Some(json) = body_json {
-        request.set("Content-Type", "application/json")
+        request
+            .set("Content-Type", "application/json")
             .send_string(&json.to_string())
     } else {
         request.call()
@@ -1869,8 +1997,8 @@ fn dispatch_rest(
                 return map_response_to_value(&body, None, op_node, ctx);
             }
             let body = resp.into_string().unwrap_or_default();
-            let json: serde_json::Value = serde_json::from_str(&body)
-                .unwrap_or(serde_json::Value::String(body));
+            let json: serde_json::Value =
+                serde_json::from_str(&body).unwrap_or(serde_json::Value::String(body));
             map_response_to_value_json(&json, op_node, ctx)
         }
         Err(ureq::Error::Status(status, resp)) => {
@@ -1989,7 +2117,9 @@ fn substitute_template(template: &str, env: &Rc<Env>) -> String {
         if c == '{' {
             let mut var_name = String::new();
             for c2 in chars.by_ref() {
-                if c2 == '}' { break; }
+                if c2 == '}' {
+                    break;
+                }
                 var_name.push(c2);
             }
             if let Some(val) = env.lookup(&var_name) {
@@ -2023,17 +2153,17 @@ fn value_to_json(val: &Value) -> serde_json::Value {
             }
             serde_json::Value::String(s.clone())
         }
-        Value::List(items) => {
-            serde_json::Value::Array(items.iter().map(value_to_json).collect())
-        }
+        Value::List(items) => serde_json::Value::Array(items.iter().map(value_to_json).collect()),
         Value::Map(m) => {
-            let obj: serde_json::Map<String, serde_json::Value> = m.iter()
+            let obj: serde_json::Map<String, serde_json::Value> = m
+                .iter()
                 .map(|(k, v)| (k.clone(), value_to_json(v)))
                 .collect();
             serde_json::Value::Object(obj)
         }
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
-            let obj: serde_json::Map<String, serde_json::Value> = fields.iter()
+            let obj: serde_json::Map<String, serde_json::Value> = fields
+                .iter()
                 .filter(|(_, v)| !matches!(v, Value::Null))
                 .map(|(k, v)| (k.clone(), value_to_json(v)))
                 .collect();
@@ -2165,7 +2295,8 @@ fn json_to_value(json: &serde_json::Value) -> Value {
             Value::List(Rc::new(arr.iter().map(json_to_value).collect()))
         }
         serde_json::Value::Object(obj) => {
-            let fields: HashMap<String, Value> = obj.iter()
+            let fields: HashMap<String, Value> = obj
+                .iter()
                 .map(|(k, v)| (k.clone(), json_to_value(v)))
                 .collect();
             Value::Map(Rc::new(fields))
@@ -2174,10 +2305,7 @@ fn json_to_value(json: &serde_json::Value) -> Value {
 }
 
 /// Evaluate mock_response from an operation's properties for dry-run mode.
-fn eval_mock_response(
-    op_node: &Rc<Node>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
+fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<Value> {
     // Find first mock_* property
     for prop in op_node.properties.iter() {
         let prop_name = field_init_node_name_at(prop.clone(), ctx.si());
@@ -2239,24 +2367,19 @@ fn eval_builtin(
             }
         }
 
-        "count" => {
-            match positional.first() {
-                Some(Value::List(items)) =>
-                    Ok(Some(Value::Int(items.len() as i64))),
-                _ => Ok(None),
-            }
-        }
+        "count" => match positional.first() {
+            Some(Value::List(items)) => Ok(Some(Value::Int(items.len() as i64))),
+            _ => Ok(None),
+        },
 
-        "reverse" => {
-            match positional.first() {
-                Some(Value::List(items)) => {
-                    let mut r = items.to_vec();
-                    r.reverse();
-                    Ok(Some(Value::List(Rc::new(r))))
-                }
-                _ => Ok(None),
+        "reverse" => match positional.first() {
+            Some(Value::List(items)) => {
+                let mut r = items.to_vec();
+                r.reverse();
+                Ok(Some(Value::List(Rc::new(r))))
             }
-        }
+            _ => Ok(None),
+        },
 
         "string_length" => {
             let s = expect_str(positional.first().copied(), "string_length")?;
@@ -2301,97 +2424,78 @@ fn eval_builtin(
             Ok(Some(Value::Str(c.to_string())))
         }
 
-        "list_push" | "append" => {
-            match positional.as_slice() {
-                [Value::List(items), item] => {
-                    let mut result = items.to_vec();
-                    result.push((*item).clone());
-                    Ok(Some(Value::List(Rc::new(result))))
-                }
-                _ => Ok(None),
+        "list_push" | "append" => match positional.as_slice() {
+            [Value::List(items), item] => {
+                let mut result = items.to_vec();
+                result.push((*item).clone());
+                Ok(Some(Value::List(Rc::new(result))))
             }
-        }
+            _ => Ok(None),
+        },
 
-        "list_concat" => {
-            match positional.as_slice() {
-                [Value::List(a), Value::List(b)] => {
-                    let mut result = a.to_vec();
-                    result.extend(b.iter().cloned());
-                    Ok(Some(Value::List(Rc::new(result))))
-                }
-                _ => Ok(None),
+        "list_concat" => match positional.as_slice() {
+            [Value::List(a), Value::List(b)] => {
+                let mut result = a.to_vec();
+                result.extend(b.iter().cloned());
+                Ok(Some(Value::List(Rc::new(result))))
             }
-        }
+            _ => Ok(None),
+        },
 
         "empty_map" => Ok(Some(Value::Map(Rc::new(HashMap::new())))),
 
-        "map_insert" => {
-            match positional.as_slice() {
-                [Value::Map(m), Value::Str(k), v] => {
-                    let mut result = HashMap::clone(&m);
-                    result.insert(k.clone(), (*v).clone());
-                    Ok(Some(Value::Map(Rc::new(result))))
+        "map_insert" => match positional.as_slice() {
+            [Value::Map(m), Value::Str(k), v] => {
+                let mut result = HashMap::clone(&m);
+                result.insert(k.clone(), (*v).clone());
+                Ok(Some(Value::Map(Rc::new(result))))
+            }
+            _ => Ok(None),
+        },
+
+        "map_get" | "lookup" => match positional.as_slice() {
+            [Value::Map(m), Value::Str(k)] => {
+                Ok(Some(m.get(k.as_str()).cloned().unwrap_or(Value::Null)))
+            }
+            _ => Ok(None),
+        },
+
+        "map_keys" => match positional.first() {
+            Some(Value::Map(m)) => {
+                let keys: Vec<Value> = m.keys().map(|k| Value::Str(k.clone())).collect();
+                Ok(Some(Value::List(Rc::new(keys))))
+            }
+            _ => Ok(None),
+        },
+
+        "map_values" => match positional.first() {
+            Some(Value::Map(m)) => {
+                let vals: Vec<Value> = m.values().cloned().collect();
+                Ok(Some(Value::List(Rc::new(vals))))
+            }
+            _ => Ok(None),
+        },
+
+        "map_contains_key" | "map_has" => match positional.as_slice() {
+            [Value::Map(m), Value::Str(k)] => Ok(Some(Value::Bool(m.contains_key(k.as_str())))),
+            _ => Ok(None),
+        },
+
+        "map_merge" => match positional.as_slice() {
+            [Value::Map(base), Value::Map(overlay)] => {
+                let mut result = HashMap::clone(&base);
+                for (k, v) in overlay.iter() {
+                    result.insert(k.clone(), v.clone());
                 }
-                _ => Ok(None),
+                Ok(Some(Value::Map(Rc::new(result))))
             }
-        }
+            _ => Ok(None),
+        },
 
-        "map_get" | "lookup" => {
-            match positional.as_slice() {
-                [Value::Map(m), Value::Str(k)] =>
-                    Ok(Some(m.get(k.as_str()).cloned().unwrap_or(Value::Null))),
-                _ => Ok(None),
-            }
-        }
-
-        "map_keys" => {
-            match positional.first() {
-                Some(Value::Map(m)) => {
-                    let keys: Vec<Value> = m.keys().map(|k| Value::Str(k.clone())).collect();
-                    Ok(Some(Value::List(Rc::new(keys))))
-                }
-                _ => Ok(None),
-            }
-        }
-
-        "map_values" => {
-            match positional.first() {
-                Some(Value::Map(m)) => {
-                    let vals: Vec<Value> = m.values().cloned().collect();
-                    Ok(Some(Value::List(Rc::new(vals))))
-                }
-                _ => Ok(None),
-            }
-        }
-
-        "map_contains_key" | "map_has" => {
-            match positional.as_slice() {
-                [Value::Map(m), Value::Str(k)] =>
-                    Ok(Some(Value::Bool(m.contains_key(k.as_str())))),
-                _ => Ok(None),
-            }
-        }
-
-        "map_merge" => {
-            match positional.as_slice() {
-                [Value::Map(base), Value::Map(overlay)] => {
-                    let mut result = HashMap::clone(&base);
-                    for (k, v) in overlay.iter() {
-                        result.insert(k.clone(), v.clone());
-                    }
-                    Ok(Some(Value::Map(Rc::new(result))))
-                }
-                _ => Ok(None),
-            }
-        }
-
-        "str_eq" => {
-            match positional.as_slice() {
-                [Value::Str(a), Value::Str(b)] =>
-                    Ok(Some(Value::Bool(a == b))),
-                _ => Ok(None),
-            }
-        }
+        "str_eq" => match positional.as_slice() {
+            [Value::Str(a), Value::Str(b)] => Ok(Some(Value::Bool(a == b))),
+            _ => Ok(None),
+        },
 
         // Not a built-in — fall through to user-defined function lookup
         _ => Ok(None),
@@ -2409,7 +2513,11 @@ fn apply_closure(
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     match closure {
-        Value::Closure { params, body, env: closure_env } => {
+        Value::Closure {
+            params,
+            body,
+            env: closure_env,
+        } => {
             let mut bindings = HashMap::new();
             for (i, param) in params.iter().enumerate() {
                 let val = args.get(i).cloned().unwrap_or(Value::Null);
@@ -2480,7 +2588,11 @@ fn expect_str(val: Option<&Value>, context: &str) -> InterpResult<String> {
     match val {
         Some(Value::Str(s)) => Ok(s.clone()),
         Some(v) => Err(InterpError::TypeError {
-            msg: format!("{} expects a string argument, got {}", context, v.type_label()),
+            msg: format!(
+                "{} expects a string argument, got {}",
+                context,
+                v.type_label()
+            ),
         }),
         None => Err(InterpError::TypeError {
             msg: format!("{} requires a string argument", context),
@@ -2492,7 +2604,11 @@ fn expect_int(val: Option<&Value>, context: &str) -> InterpResult<i64> {
     match val {
         Some(Value::Int(n)) => Ok(*n),
         Some(v) => Err(InterpError::TypeError {
-            msg: format!("{} expects an int argument, got {}", context, v.type_label()),
+            msg: format!(
+                "{} expects an int argument, got {}",
+                context,
+                v.type_label()
+            ),
         }),
         None => Err(InterpError::TypeError {
             msg: format!("{} requires an int argument", context),

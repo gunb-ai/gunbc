@@ -207,7 +207,10 @@ type Foo { value: String }
 
     let module = result.module.clone().expect("module");
     // Module ident should be Some (interned by parser)
-    assert!(module.ident.is_some(), "module ident should be Some after parsing");
+    assert!(
+        module.ident.is_some(),
+        "module ident should be Some after parsing"
+    );
     // Ident should be non-zero (0 is the empty-string sentinel)
     assert_ne!(module.ident.unwrap(), 0, "module ident should be non-zero");
 
@@ -216,7 +219,11 @@ type Foo { value: String }
     assert_eq!(imports.len(), 1);
     let import_node = imports[0].clone();
     assert!(import_node.ident.is_some(), "import ident should be Some");
-    assert_ne!(import_node.ident.unwrap(), 0, "import ident should be non-zero");
+    assert_ne!(
+        import_node.ident.unwrap(),
+        0,
+        "import ident should be non-zero"
+    );
 }
 
 #[test]
@@ -373,7 +380,10 @@ fn tokenizer_non_ascii_performance_regression() {
     assert!(!source.is_ascii(), "test requires non-ASCII source file");
 
     // Strip non-ASCII for comparison (replace with ASCII equivalent)
-    let ascii_source: String = source.chars().map(|c| if c.is_ascii() { c } else { '-' }).collect();
+    let ascii_source: String = source
+        .chars()
+        .map(|c| if c.is_ascii() { c } else { '-' })
+        .collect();
     assert!(ascii_source.is_ascii());
 
     let start = Instant::now();
@@ -414,7 +424,7 @@ fn tokenizer_scales_linearly_with_file_size() {
 
     // Use smallest non-trivial .dag to establish baseline
     let small_source = read_v2_file("src/v2/ownership.dag"); // ~23KB
-    let large_source = read_v2_file("src/v2/02_parse.dag");  // ~271KB
+    let large_source = read_v2_file("src/v2/02_parse.dag"); // ~271KB
 
     let start = Instant::now();
     let small_tokens = tokenize(&small_source);
@@ -479,8 +489,8 @@ fn tokenizer_scanning_scales_linearly() {
 
 #[test]
 #[ignore] // Stream D: parser uses List<Token> consumption (skip(1) on Rc<Vec<T>> is O(n)).
-// Structural correctness is established; O(n²) runtime is a known cost of the
-// list-based representation. Fix: runtime slice type or cursor (M4/single-emitter).
+          // Structural correctness is established; O(n²) runtime is a known cost of the
+          // list-based representation. Fix: runtime slice type or cursor (M4/single-emitter).
 fn parser_scales_linearly_with_token_count() {
     use std::time::Instant;
 
@@ -491,11 +501,17 @@ fn parser_scales_linearly_with_token_count() {
     let large_tokens = tokenize(&large_source);
 
     let start = Instant::now();
-    let _small_result = v2_compiler::v2_compiler_parse::parse(small_tokens.clone(), Rc::new(std::collections::HashMap::new()));
+    let _small_result = v2_compiler::v2_compiler_parse::parse(
+        small_tokens.clone(),
+        Rc::new(std::collections::HashMap::new()),
+    );
     let small_time = start.elapsed();
 
     let start = Instant::now();
-    let _large_result = v2_compiler::v2_compiler_parse::parse(large_tokens.clone(), Rc::new(std::collections::HashMap::new()));
+    let _large_result = v2_compiler::v2_compiler_parse::parse(
+        large_tokens.clone(),
+        Rc::new(std::collections::HashMap::new()),
+    );
     let large_time = start.elapsed();
 
     let token_ratio = large_tokens.len() as f64 / small_tokens.len() as f64;
@@ -578,7 +594,9 @@ fn tokenizer_scans_null_coalesce() {
 fn tokenize_produces_correct_kinds() {
     let tokens = tokenize("fn add(a: Int) -> Int { a }");
     assert!(
-        tokens.iter().any(|t| matches!(t.shape, TokenShape::ShKeyword) && t.text == "fn"),
+        tokens
+            .iter()
+            .any(|t| matches!(t.shape, TokenShape::ShKeyword) && t.text == "fn"),
         "should contain keyword 'fn' token"
     );
     assert!(
@@ -672,11 +690,34 @@ fn gist_transitive_closure_parse() {
 fn keyword_as_field_name_allowed() {
     // Representative sample: item keywords, control flow, resource terms
     let keywords = [
-        "type", "fn", "func", "module", "import", "service", "resource",
-        "data", "interface", "pipeline", "pattern", "profile",
-        "let", "return", "match", "if", "else", "for", "in",
-        "where", "with", "capability", "operation",
-        "input", "output", "idempotent", "readonly", "hermetic",
+        "type",
+        "fn",
+        "func",
+        "module",
+        "import",
+        "service",
+        "resource",
+        "data",
+        "interface",
+        "pipeline",
+        "pattern",
+        "profile",
+        "let",
+        "return",
+        "match",
+        "if",
+        "else",
+        "for",
+        "in",
+        "where",
+        "with",
+        "capability",
+        "operation",
+        "input",
+        "output",
+        "idempotent",
+        "readonly",
+        "hermetic",
     ];
     for kw in &keywords {
         let source = format!("module test\ntype Rec {{ {}: String }}", kw);
@@ -685,9 +726,10 @@ fn keyword_as_field_name_allowed() {
             result.error.is_none(),
             "keyword '{}' should be allowed as field name, got error: {:?}",
             kw,
-            result.error.as_ref().map(|e| {
-                v2_compiler::v2_std_core::diagnostic_to_message(e.diagnostic.clone())
-            })
+            result
+                .error
+                .as_ref()
+                .map(|e| { v2_compiler::v2_std_core::diagnostic_to_message(e.diagnostic.clone()) })
         );
     }
 }

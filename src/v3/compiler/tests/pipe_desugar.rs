@@ -16,9 +16,7 @@ fn assert_target_name(dag: &Dag, target: &TransformTarget, expected: &str) {
         TransformTarget::Callable(id) => {
             let decl = dag.declaration(*id);
             match &decl.connective {
-                TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name)) => {
-                    Some(name.clone())
-                }
+                TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name)) => Some(name.clone()),
                 TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
                     dag.declaration(*next).name.clone()
                 }
@@ -102,7 +100,11 @@ let y = 5 |> keep_first(6)
         .expect("producer is a Transform");
 
     assert_target_name(&dag, &call.target, "keep_first");
-    assert_eq!(call.inputs.len(), 2, "keep_first takes the injected arg plus one explicit arg");
+    assert_eq!(
+        call.inputs.len(),
+        2,
+        "keep_first takes the injected arg plus one explicit arg"
+    );
     assert_eq!(
         literal_input(&dag, call.inputs[0]),
         &LiteralBits::Int(5),
@@ -147,7 +149,10 @@ let y = 5 |> add1 |> double
         .expect("previous stage is a Transform");
     assert_target_name(&dag, &inner_call.target, "add1");
     assert_eq!(inner_call.inputs.len(), 1);
-    assert_eq!(literal_input(&dag, inner_call.inputs[0]), &LiteralBits::Int(5));
+    assert_eq!(
+        literal_input(&dag, inner_call.inputs[0]),
+        &LiteralBits::Int(5)
+    );
     assert!(dag.diagnostics().is_empty());
 }
 
@@ -214,7 +219,10 @@ let is_five = 5 |> identity == 5
         .as_transform()
         .expect("lhs is the piped call");
     assert_target_name(&dag, &identity.target, "identity");
-    assert_eq!(literal_input(&dag, identity.inputs[0]), &LiteralBits::Int(5));
+    assert_eq!(
+        literal_input(&dag, identity.inputs[0]),
+        &LiteralBits::Int(5)
+    );
     assert_eq!(literal_input(&dag, cmp.inputs[1]), &LiteralBits::Int(5));
     assert_eq!(
         dag.port(bind.value).value_type(),
@@ -236,7 +244,10 @@ fn invalid_pipe_target_fails_closed_at_parse_time() {
                 "unexpected parse error message: {message}"
             );
             assert_eq!(span.file, "pipe_invalid.v3");
-            assert_eq!(span.byte_start, 13, "diagnostic should point at the invalid pipe target");
+            assert_eq!(
+                span.byte_start, 13,
+                "diagnostic should point at the invalid pipe target"
+            );
             assert_eq!(span.byte_end, 15, "diagnostic should cover `42`");
         }
         other => panic!("expected parse error for invalid pipe target, got {other:?}"),

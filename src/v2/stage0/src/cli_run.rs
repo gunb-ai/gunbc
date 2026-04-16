@@ -6,11 +6,11 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::v2_compiler_compile;
-use crate::v2_std_core::{
-    diagnostic_to_message, diagnostic_to_span,
-    byte_to_line_col, is_interpreter_blocking_diagnostic, NewlineIndex,
-};
 use crate::v2_interpreter;
+use crate::v2_std_core::{
+    byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
+    is_interpreter_blocking_diagnostic, NewlineIndex,
+};
 
 /// Recursively find all .dag files under a directory.
 fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
@@ -93,8 +93,9 @@ fn resolve_transitively(
                 continue;
             }
             if let Some(file_path) = index.get(&module_path) {
-                let file_content = std::fs::read_to_string(file_path)
-                    .unwrap_or_else(|e| panic!("failed to read imported module '{}': {}", module_path, e));
+                let file_content = std::fs::read_to_string(file_path).unwrap_or_else(|e| {
+                    panic!("failed to read imported module '{}': {}", module_path, e)
+                });
                 let rel_path = file_path.to_string_lossy().to_string();
                 let source = Rc::new(v2_compiler_compile::SourceFile {
                     path: rel_path.clone(),
@@ -129,10 +130,13 @@ fn load_sources(source_roots: &[String]) -> Vec<Rc<v2_compiler_compile::SourceFi
     let mut entry_for_queue = Vec::new();
     for (path, content) in &entry_files {
         if let Some(mod_path) = extract_module_path(content) {
-            seen.insert(mod_path, Rc::new(v2_compiler_compile::SourceFile {
-                path: path.clone(),
-                content: content.clone(),
-            }));
+            seen.insert(
+                mod_path,
+                Rc::new(v2_compiler_compile::SourceFile {
+                    path: path.clone(),
+                    content: content.clone(),
+                }),
+            );
         }
         entry_for_queue.push((path.clone(), content.clone()));
     }
@@ -165,11 +169,14 @@ pub fn handle_run_with_options(source_roots: Vec<String>, function: String, dry_
     let result = v2_compiler_compile::compile_to_resolved(Rc::new(sources));
 
     // Check for errors
-    let has_errors = result.diagnostics.iter().any(|d| {
-        is_interpreter_blocking_diagnostic(d.diagnostic.clone())
-    });
+    let has_errors = result
+        .diagnostics
+        .iter()
+        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
     if has_errors {
-        let si: HashMap<String, Rc<NewlineIndex>> = result.newline_indices.iter()
+        let si: HashMap<String, Rc<NewlineIndex>> = result
+            .newline_indices
+            .iter()
             .map(|idx| (idx.file.clone(), idx.clone()))
             .collect();
         for d in result.diagnostics.iter() {
@@ -184,7 +191,11 @@ pub fn handle_run_with_options(source_roots: Vec<String>, function: String, dry_
                 }
                 None => span.file.clone(),
             };
-            eprintln!("{}: error: {}", loc, diagnostic_to_message(d.diagnostic.clone()));
+            eprintln!(
+                "{}: error: {}",
+                loc,
+                diagnostic_to_message(d.diagnostic.clone())
+            );
         }
         std::process::exit(1);
     }
@@ -200,7 +211,8 @@ pub fn handle_run_with_options(source_roots: Vec<String>, function: String, dry_
 
     // Run the interpreter
     eprintln!("running {}()...", function);
-    match v2_interpreter::run_with_options(graph, result.source_indices.clone(), &function, dry_run) {
+    match v2_interpreter::run_with_options(graph, result.source_indices.clone(), &function, dry_run)
+    {
         Ok(val) => {
             println!("{}", val);
             // FAIL-CLOSED EXIT CODE CONTRACT
@@ -244,7 +256,9 @@ enum ExitClass {
     Failure(i32),
     /// The value is not a ProcessExit variant. Carries the actual type
     /// for the diagnostic.
-    NotProcessExit { type_name: String },
+    NotProcessExit {
+        type_name: String,
+    },
 }
 
 /// Map a Value to its exit-code class. Structural — checks the specific
@@ -256,7 +270,11 @@ enum ExitClass {
 ///   anything else                         → NotProcessExit (fail-closed at host)
 fn classify_exit(val: &v2_interpreter::Value) -> ExitClass {
     match val {
-        v2_interpreter::Value::Variant { type_name, variant_name, fields } => {
+        v2_interpreter::Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } => {
             if type_name != "ProcessExit" {
                 return ExitClass::NotProcessExit {
                     type_name: type_name.clone(),
@@ -264,12 +282,10 @@ fn classify_exit(val: &v2_interpreter::Value) -> ExitClass {
             }
             match variant_name.as_str() {
                 "ExitSuccess" => ExitClass::Success,
-                "ExitFailure" => {
-                    match fields.get("code") {
-                        Some(v2_interpreter::Value::Int(n)) => ExitClass::Failure(*n as i32),
-                        _ => ExitClass::Failure(1),
-                    }
-                }
+                "ExitFailure" => match fields.get("code") {
+                    Some(v2_interpreter::Value::Int(n)) => ExitClass::Failure(*n as i32),
+                    _ => ExitClass::Failure(1),
+                },
                 _ => ExitClass::NotProcessExit {
                     type_name: format!("ProcessExit::{}", variant_name),
                 },
