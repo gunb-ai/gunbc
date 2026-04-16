@@ -63,16 +63,13 @@ model, not inventing it.
 ```
 L0 — Substrate stable                  [SHIPPED at M1(3)]
       │
-L1 — Reflection framework              [prereqs shipping — reflection PR next]
-      │    • Prereq 0 (HoF via 1c): #460 merged
-      │    • Prereq 1 (FieldProject): #458 merged
-      │    • Prereq 2 (Path.binding): #458 merged
-      │    • Prereq 3 (contextual lambda): #460 merged
-      │    • Prereq 4 (list.dag bootstrap): #463 merged
-      │    • Prereq 5 (pipe sugar): #462 merged
-      │    • Prereq 0.5 (implicit generics): in #466
-      │    • Reflection PR (#466): in flight
-      │    • first lens (lens_unused_parameters) migrates in reflection PR
+L1 — Reflection framework              [COMPLETE — PR #466 merged 2026-04-16]
+      │    • All prereqs merged: #458, #460, #462, #463, #466
+      │    • substrate.dag reflects Dag/Behavior/Declaration types
+      │    • First lens (unused_parameters.dag) migrated with
+      │      independent parity proof + self-analysis to zero
+      │    • Optional-handle support (T? with Some/None) landed
+      │    • Module-mode emission + crate-linked roundtrip proven
       │
 L1.5 — Clean bootstrap (IMMEDIATE post-L1) [the process is the first feature]
       │    1. Pipeline composition declaration (§2.1)
