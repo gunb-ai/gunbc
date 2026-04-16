@@ -1884,17 +1884,13 @@ field access → Prereq 1; lambda → Prereq 3). What remains are
 questions the implementer will hit during the actual work.
 
 1. **Pattern 2 of the template-instantiation decision (§3.5).**
-   Option 1c proposes extending `TemplateArgument` to bind
-   function-typed parameters alongside type parameters. The open
-   detail: when a function parameter is **not** at a template
-   instantiation boundary (e.g., a callback threaded through
-   several layers of functions), how does the template machinery
-   propagate the binding? Option: each function that takes a
-   function-typed parameter becomes implicitly template-
-   parameterized over that function, and the binding propagates
-   through the call chain. Needs implementation thought; not a
-   blocker for starting because the first pass can handle
-   direct callsites only and defer threading.
+   This was open in earlier drafts; it is now **closed by the
+   §3.5 decision**. Function-typed parameters bind through
+   `TemplateArgument` and propagate through the `SubstStack`
+   across nested higher-order calls. A direct-call-only first
+   pass is no longer acceptable for Prereq 0; the acceptance bar
+   includes the two-level `twice(apply(x, f), f)` propagation
+   case.
 2. **`result_port` canonical field name.** §3.2.1 proposes
    every `Behavior` variant's payload record carries a
    `result_port: PortId` field for the primary-result query.
@@ -1975,17 +1971,21 @@ arguments. The inference walker resolves function parameters
 through the existing `SubstStack` machinery — same way type
 parameters propagate. No new substrate variant, no runtime
 function dispatch, no monomorphization sprawl. Land the
-substrate extension, add test coverage for a higher-order
+lowering + inference path, add test coverage for a higher-order
 call (e.g., `fn apply<T>(x: T, f: fn(T) -> T) -> T = f(x)`
-called as `apply(3, negate)`). **Blocker for Prereq 4.**
+called as `apply(3, negate)`), and keep emit-side wiring as a
+later commit. **Blocker for Prereq 4.**
 
 - [x] §3.5 decision committed (1c — locked)
-- [ ] `TemplateArgument` extended to accept function-reference values
-- [ ] Inference walker threads function bindings through SubstStack
-- [ ] Test: a single-level higher-order call compiles and runs
-- [ ] Test: a two-level nested higher-order call resolves via
+- [x] `TemplateArgument` value slot accepts function-reference
+      bindings (`DeclarationId`) alongside type bindings
+- [x] Inference walker threads function bindings through SubstStack
+- [x] Test: a single-level higher-order call compiles cleanly,
+      lowers through `Instantiation`, and keeps function-typed
+      arguments out of the runtime input list
+- [x] Test: a two-level nested higher-order call resolves via
       SubstStack propagation (the `twice(apply(x, f), f)` pattern)
-- [ ] No regressions on existing v3 tests
+- [x] No regressions on existing v3 tests
 
 **Prereq 1 — Field-access lowering.** Extend `lower_expr` to
 resolve `SurfaceExpr::Path` against local-variable Declarations
@@ -2057,25 +2057,41 @@ PR #453's 4-variant BranchPattern attempt.**
 syntax). Lowering: per v3-spec.md §Principle 5, lower to an
 ordinary Bind declaration with captures from the outer scope
 materialized as additional positional parameters. Captures are
-detected by walking the body's free variables. No new
+detected by walking the body's free variables. The construction-
+site Bind supplies those captured inputs; later call sites pass
+only the lambda's declared parameters. **Implementation scope for
+the first landing:** lambdas lower only in positions that
+already provide an expected function type (for example a
+function-typed argument position or an annotated `let`
+binding). Bare unannotated lambda values fail closed until
+function-value inference is designed explicitly. No new
 substrate variants.
 
-- [ ] `SurfaceExpr::Lambda` added to parse.rs
-- [ ] Parser rule accepts `|x| x + 1` and multi-param forms
-- [ ] Lowering produces a Bind with captures as explicit inputs
-- [ ] Call-site rewrite: callers pass only declared runtime
+- [x] `SurfaceExpr::Lambda` added to parse.rs
+- [x] Parser rule accepts `|x| x + 1` and multi-param forms
+- [x] Lowering produces a Bind with captures as explicit inputs
+- [x] Call-site rewrite: callers pass only declared runtime
       params; captures are baked into the lambda Bind
-- [ ] Test: a lambda that captures from outer scope compiles,
+- [x] Test: a lambda that captures from outer scope compiles,
       the captured value flows through as a typed edge, and the
       lens walking the resulting Bind sees params = [declared +
       captured] with no distinction
-- [ ] Test: unannotated standalone lambda fails closed
-- [ ] **Scope note (first landing):** contextual lambdas only —
+- [x] Test: calling a captured lambda lowers to a normal
+      Transform whose runtime inputs are only the declared
+      parameters; the captures are already satisfied by the
+      lambda's construction-site Bind
+- [x] Unannotated lambda values fail closed instead of guessing a
+      function type from insufficient context
+- [x] **Scope note (first landing):** contextual lambdas only —
       lambdas lower when an expected function type is available
       (annotated let, HOF argument position). Unannotated
       standalone lambda values fail closed. Zero-arg/block-body
       lambdas and the callback-rule lens test (v3-validation-
       experiments Experiment 1) are follow-ups.
+- [ ] Test: the callback rule from v3-validation-experiments
+      Experiment 1 — a lambda body that flows into a Loop gets
+      fan-out = Loop's bound in the ownership lens, termination
+      bounded by Loop in the termination lens
 
 **Prereq 4 — `src/v3/std/list.dag` ships.** Add the design file
 (already committed to this PR as `src/v3/std/list.dag`) to
@@ -2455,7 +2471,7 @@ deferred with a note.
 | **v2 CI scanning constraint on file location** | §3.1 — `src/v3/std/` is bootstrap staging; `dsl/std/` is canonical post-v2 |
 | **Name collisions — v3_l1.Declaration sentinel, algebra.Field\<T\>** | §3.1 — rename sentinel → `DeclarationRef`, use `ConjField` for substrate record-field type |
 | **Every dependency is a substrate fact** (module/import/buffer lifting, user_start elimination) | §8, prerequisite to reflection — scoped as separate PR, not yet designed in full detail |
-| **FieldProject phase carrier after #458's defer-to-infer rewrite** | §3.6 follow-up — once field projection resolution moved behind infer, the clean substrate shape is a phase carrier for resolved child identity (`field_child: Option<DeclarationId>` or equivalent) so emit/lenses can read typed child identity without label re-lookup. Natural home: reflection PR or a dedicated micro-PR before it. |
+| **FieldProject phase carrier after #458's defer-to-infer rewrite** | Addressed in the dedicated post-#458 micro-PR: `TransformTarget::FieldProject` carries `field_child: Option<DeclarationId>` as a post-infer phase carrier so emit/lenses can read typed child identity without repeating the field-label lookup. |
 | **Generic call dispatch instantiation collapse** | §3.5 / reflection stress-test follow-up — SubstStack propagation still collapses instantiated inputs across some user-call boundaries. This is pre-existing, not a blocker for the §3.6/§3.7 prereq slate, and should be exercised either in a §3.5 follow-up or the reflection PR's generic stress tests. |
 | `content_upsert` blocked on parser gaps | §5 — migration preserves the existing pinned tests |
 | Positional identity (parameter_index) | §5 — preserved |

@@ -552,8 +552,11 @@ impl<'a> Ctx<'a> {
     fn render_transform(&self, t: &TransformNode) -> Result<String, EmitError> {
         match &t.target {
             TransformTarget::Operator(op) => self.render_operator(t, *op),
-            TransformTarget::FieldProject { field_label } => {
-                self.render_field_project(t, field_label)
+            TransformTarget::FieldProject {
+                field_label,
+                field_child,
+            } => {
+                self.render_field_project(t, field_label, *field_child)
             }
             TransformTarget::Callable(_) => Err(EmitError::UnsupportedBehavior(
                 "TransformTarget::Callable (user function call) is not yet supported by emit_rust"
@@ -566,7 +569,13 @@ impl<'a> Ctx<'a> {
         &self,
         t: &TransformNode,
         field_label: &str,
+        field_child: Option<DeclarationId>,
     ) -> Result<String, EmitError> {
+        if field_child.is_none() {
+            return Err(EmitError::UnsupportedBehavior(format!(
+                "field projection .{field_label} is missing its resolved field child carrier; emit_rust expects post-infer FieldProject targets"
+            )));
+        }
         if t.inputs.len() != 1 {
             return Err(EmitError::UnsupportedBehavior(format!(
                 "field projection .{field_label} arity {} is not supported; expected exactly one parent input",
@@ -860,6 +869,7 @@ mod tests {
             id: node_id,
             target: TransformTarget::FieldProject {
                 field_label: "value".to_string(),
+                field_child: dag.int_shape().map(|ty| ty.declaration),
             },
             inputs: vec![parent_port],
             output,

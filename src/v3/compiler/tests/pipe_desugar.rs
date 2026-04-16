@@ -25,7 +25,7 @@ fn assert_target_name(dag: &Dag, target: &TransformTarget, expected: &str) {
                 _ => decl.name.clone(),
             }
         }
-        TransformTarget::FieldProject { field_label } => Some(format!(".{field_label}")),
+        TransformTarget::FieldProject { field_label, .. } => Some(format!(".{field_label}")),
         TransformTarget::Operator(op_kind) => Some(op_kind.symbol().to_string()),
     };
     assert_eq!(
