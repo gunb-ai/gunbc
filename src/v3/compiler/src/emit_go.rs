@@ -737,8 +737,8 @@ impl<'a> Ctx<'a> {
             let mut arm_locals = locals.clone();
             let mut binding_prefix = String::new();
             if let Some(binding) = &path.binding {
-                let field_name = self.variant_binding_field_name(variant_id)?;
-                binding_prefix = format!("{} := v.{field_name}; ", binding.binding_name);
+                let binding_expr = self.variant_binding_expr(variant_id)?;
+                binding_prefix = format!("{} := {binding_expr}; ", binding.binding_name);
                 arm_locals
                     .names
                     .insert(binding.payload_port, binding.binding_name.clone());
@@ -907,7 +907,6 @@ impl<'a> Ctx<'a> {
                 let list = self.render_port(*list_port, locals)?;
                 let init = self.render_port(*init_port, locals)?;
                 let ret = self.go_type_name_for_port(output_port)?;
-                let item_type = self.list_element_type_name_for_list_port(*list_port)?;
                 let acc_name = "__foldAcc";
                 let item_name = "__foldItem";
                 let body = self.render_callable_body(
@@ -919,7 +918,7 @@ impl<'a> Ctx<'a> {
                     locals,
                 )?;
                 Ok(format!(
-                    "func() {ret} {{ {acc_name} := {init}; for _, {item_name} := range {list} {{ {acc_name} = {body} }}; _ = ({item_type})({item_name}); return {acc_name} }}()"
+                    "func() {ret} {{ {acc_name} := {init}; for _, {item_name} := range {list} {{ _ = {item_name}; {acc_name} = {body} }}; return {acc_name} }}()"
                 ))
             }
             CallableStrategyBinding::ListMap => {
@@ -938,7 +937,7 @@ impl<'a> Ctx<'a> {
                     locals,
                 )?;
                 Ok(format!(
-                    "func() {ret} {{ __out := make({ret}, 0, len({list})); for _, {item_name} := range {list} {{ __out = append(__out, {body}) }}; return __out }}()"
+                    "func() {ret} {{ __out := make({ret}, 0, len({list})); for _, {item_name} := range {list} {{ _ = {item_name}; __out = append(__out, {body}) }}; return __out }}()"
                 ))
             }
             CallableStrategyBinding::ListFilter => {
@@ -957,7 +956,7 @@ impl<'a> Ctx<'a> {
                     locals,
                 )?;
                 Ok(format!(
-                    "func() {ret} {{ __out := make({ret}, 0); for _, {item_name} := range {list} {{ if {predicate} {{ __out = append(__out, {item_name}) }} }}; return __out }}()"
+                    "func() {ret} {{ __out := make({ret}, 0); for _, {item_name} := range {list} {{ _ = {item_name}; if {predicate} {{ __out = append(__out, {item_name}) }} }}; return __out }}()"
                 ))
             }
             CallableStrategyBinding::ListContains => {
@@ -1428,16 +1427,16 @@ impl<'a> Ctx<'a> {
         self.go_type_name_for_decl(element.value)
     }
 
-    fn variant_binding_field_name(&self, variant_id: DeclarationId) -> Result<String, EmitError> {
+    fn variant_binding_expr(&self, variant_id: DeclarationId) -> Result<String, EmitError> {
         let TypeConnective::Conj { children } = &self.dag.declaration(variant_id).connective else {
             return Err(EmitError::UnsupportedBehavior(
                 "variant payload expected a product declaration".to_string(),
             ));
         };
-        if children.len() == 1 {
-            Ok(children[0].label.clone())
-        } else {
-            Ok("value".to_string())
+        match children.as_slice() {
+            [] => Ok("v".to_string()),
+            [field] => Ok(format!("v.{}", field.label)),
+            _ => Ok("v".to_string()),
         }
     }
 }
@@ -2212,5 +2211,55 @@ mod tests {
         let rendered = emit_go(&dag).expect("go emitter should render program");
         assert!(!rendered.contains("parse_realization"), "got: {rendered}");
         assert!(!rendered.contains("DeclarationRef"), "got: {rendered}");
+    }
+
+    #[test]
+    fn go_fold_marks_loop_item_used_inside_the_loop() {
+        let dag = compile_to_dag(
+            "let total: Int = fold(cons(1, singleton(2)), 0, |acc, x| acc + x)",
+            "fold_item_scope.v3",
+        )
+        .expect("compiles");
+        let rendered = emit_go(&dag).expect("go emitter should render fold");
+        assert!(rendered.contains("for _, __foldItem := range"), "got: {rendered}");
+        assert!(
+            rendered.contains("{ _ = __foldItem; __foldAcc = "),
+            "got: {rendered}"
+        );
+        assert!(
+            !rendered.contains("_ = (int64)(__foldItem)"),
+            "got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn go_map_and_filter_mark_unused_loop_items_used_inside_the_loop() {
+        let dag = compile_to_dag(
+            "let total: Int = length(filter(map(cons(1, singleton(2)), |x| x + 1), |y| y == 2))",
+            "map_filter_loop_item.v3",
+        )
+        .expect("compiles");
+        let rendered = emit_go(&dag).expect("go emitter should render map/filter");
+        assert!(
+            rendered.contains("for _, __mapItem := range") && rendered.contains("_ = __mapItem;"),
+            "got: {rendered}"
+        );
+        assert!(
+            rendered.contains("for _, __filterItem := range")
+                && rendered.contains("_ = __filterItem;"),
+            "got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn go_multi_field_variant_payload_binding_uses_the_variant_value() {
+        let dag = compile_to_dag(
+            "type IntList = Empty | Cons { head: Int, tail: IntList }\nfn count(list: IntList) -> Int = match list { Empty => 0, Cons(payload) => 1 + count(payload.tail) }\n",
+            "variant_payload_binding.v3",
+        )
+        .expect("compiles");
+        let rendered = emit_go_module(&dag).expect("go emitter should render match");
+        assert!(rendered.contains("payload := v; return"), "got: {rendered}");
+        assert!(!rendered.contains("payload := v.value;"), "got: {rendered}");
     }
 }
