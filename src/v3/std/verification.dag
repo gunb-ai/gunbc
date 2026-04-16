@@ -1,0 +1,31 @@
+// std.verification — structural authority for generated tests.
+//
+// L1.5's contract is to declare what a test IS, not how a target
+// framework renders it. The compiler can then synthesize `TestClaim`
+// values structurally from std/ declarations and defer per-language
+// rendering to the target spec layer.
+
+module std.verification
+
+import std.list { List }
+
+type TestPredicate
+  = Compiles
+  | FailsWithDiagnostic { kind: String }
+  | OutputEquals { expected: String }
+  | PortResolved { bind_name: String }
+  | PortUnresolved { bind_name: String }
+  | CostBelow { bound: Int }
+  | CostAbove { floor: Int }
+
+type TestClaim {
+  name: String
+  source: String
+  file_name: String
+  predicate: TestPredicate
+}
+
+type TestSuite {
+  name: String
+  claims: List<TestClaim>
+}

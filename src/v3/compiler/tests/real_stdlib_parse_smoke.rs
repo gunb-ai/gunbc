@@ -50,10 +50,7 @@ fn integer_dag_parses() {
 
 #[test]
 fn float_dag_parses() {
-    parse_file(
-        include_str!("../../../../dsl/std/float.dag"),
-        "float.dag",
-    );
+    parse_file(include_str!("../../../../dsl/std/float.dag"), "float.dag");
 }
 
 #[test]
@@ -67,4 +64,12 @@ fn string_type_dag_parses() {
 #[test]
 fn list_dag_parses() {
     parse_file(include_str!("../../std/list.dag"), "list.dag");
+}
+
+#[test]
+fn verification_dag_parses() {
+    parse_file(
+        include_str!("../../std/verification.dag"),
+        "verification.dag",
+    );
 }
