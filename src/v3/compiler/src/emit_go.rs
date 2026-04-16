@@ -2064,7 +2064,10 @@ fn behavior_result_port(behavior: &Behavior) -> PortId {
 }
 
 fn is_bootstrap_file(file: &str) -> bool {
-    file.starts_with("dsl/std/") || file.starts_with("src/v3/std/") || file.starts_with("src/v3/spec/")
+    file.starts_with("dsl/std/")
+        || file.starts_with("src/v3/std/")
+        || file.starts_with("src/v3/spec/")
+        || file.starts_with("src/v3/compiler/")
 }
 
 fn primitive_type_id_for_port(dag: &Dag, port: PortId) -> Result<DeclarationId, EmitError> {
@@ -2196,5 +2199,17 @@ mod tests {
             rendered.contains("type Pair struct { left int64; right int64 }"),
             "got: {rendered}"
         );
+    }
+
+    #[test]
+    fn go_program_emission_excludes_internal_pipeline_authority() {
+        let dag = compile_to_dag(
+            "fn double(x: Int) -> Int = x + x\nlet result: Int = double(20)\n",
+            "program.v3",
+        )
+        .expect("compiles");
+        let rendered = emit_go(&dag).expect("go emitter should render program");
+        assert!(!rendered.contains("parse_realization"), "got: {rendered}");
+        assert!(!rendered.contains("DeclarationRef"), "got: {rendered}");
     }
 }
