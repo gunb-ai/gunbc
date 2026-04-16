@@ -1,62 +1,39 @@
-# Dependency Graph, Ownership, and Parallelism — Unified Design
+# Dependency, Scope, and Target Rendering — Design
 
-> **Parent docs:** `THESIS.md`, `INVARIANTS.md` §"Facts Flow
-> Forward", `src/v3/SELF_HOSTING.md` §14.7.
+> **Parent docs:** `THESIS.md` (omni-emission), `INVARIANTS.md`
+> §"Facts Flow Forward", `src/v3/SELF_HOSTING.md` §14.7.
 >
-> **Purpose:** the DAG's dependency graph is the shared
-> foundation for ownership, parallelism, complexity, provenance,
-> and dead-code detection. This doc defines the compositional
-> `.dag` model — three typed layers with explicit boundaries —
-> and each projection that reads them.
+> **Purpose:** the DAG carries two structural facts — dependency
+> edges and scope hierarchy. These are universal, computed once,
+> target-agnostic. Whether a target language CONSUMES these facts
+> depends on its reference model. Value-only and GC targets
+> ignore scope crossings entirely. Only ownership-based targets
+> (Rust, C++ unique_ptr) need the scope-crossing analysis.
+>
+> **Key thesis connection:** the same DAG emits to many targets.
+> Ownership isn't a mandatory pipeline stage — it's a fact that
+> only some targets consult. The core pipeline stays minimal.
 >
 > **Status:** design for review.
 
 ---
 
-## §1. Motivation
+## §1. The universal structural facts
 
-v3's emitter inserts `.clone()` on every port reference. The
-first generated artifact (287 lines) contains 90 clones. All
-90 are reads. The first-pass fix (classify immediate consumers
-as read vs construct) dropped this to 6 — but 5 of the 6
-expose a deeper issue: whether a callee consumes its parameter
-is not decidable from the caller's behavior type.
+Two facts are always computed from the DAG. They are
+target-agnostic and spec-independent.
 
-`cons(head, tail)` and `is_empty(list)` are both
-`Transform(callable, [args])` in the substrate. But `cons`
-embeds its arguments in the return value while `is_empty`
-only inspects them. The immediate behavior type is the same.
-The distinction lives in the callee.
+### §1.1 Dependency edges
 
-The fix is not more special cases. The fix is three typed
-layers with explicit boundaries: spec-independent structure,
-per-callable consumption, and target-specific rendering.
-Projections compose on top with layer opacity.
-
----
-
-## §2. Three layers
-
-### Layer 1: `DependencyFacts` — spec-independent DAG structure
-
-Computed from the DAG alone. No realization spec. No target
-knowledge. Pure structural facts.
+The DAG's `produced_by` edges + behavior input lists define
+a complete dependency graph. Created at lowering. Never lost.
 
 ```dag
 module std.dependency
 
-import std.list { List }
-import std.substrate { Dag, PortId, NodeId }
-
 type ConsumerEdge {
-  port: PortId           // the value being consumed
-  consumer: NodeId       // the behavior that uses it
-}
-
-type PortConsumers {
   port: PortId
-  edges: List<ConsumerEdge>
-  count: Int
+  consumer: NodeId
 }
 
 type DependencyFacts {
@@ -66,273 +43,304 @@ type DependencyFacts {
 fn compute_dependencies(dag: Dag) -> DependencyFacts
 ```
 
-This is a reverse index of `produced_by` — for each port,
-who reads it? Built by scanning all behaviors' input lists.
-Spec-independent. Target-independent. Pure DAG structure.
+This is a reverse index of `produced_by`. For each port, who
+reads it. Built by scanning all behaviors' input lists. Pure
+structural fact.
 
-**Why Layer 1 has no `consumed` flag.** Whether a callee
-consumes or borrows its parameter depends on the callee's
-body (for .dag) or the realization spec (for external). That
-requires reading something beyond the DAG. Putting `consumed`
-here would leak target knowledge into a target-agnostic fact.
-Parallelism reads Layer 1 only — it must stay spec-free.
+### §1.2 Scope hierarchy and boundary crossings
 
-### Layer 2: `ConsumptionFacts` — per-callable parameter disposition
+Every value belongs to the scope it was produced in. Functions
+nest let-blocks nest lambda bodies nest expression scopes.
+An edge from producer to consumer either:
 
-Computed from the DAG AND the realization spec. This is where
-target knowledge enters.
+- **Stays within scope** — sibling expressions, inline
+  consumption. The value is alive for the entire consumer's
+  evaluation.
+- **Crosses outward** — stored in a return value, embedded in
+  a longer-lived structure, passed to a callee that returns
+  it. The value needs to live BEYOND its producer's scope.
 
 ```dag
-module std.consumption
+module std.scope
 
-import std.list { List }
-import std.substrate { Dag, DeclarationId }
+type ScopeCrossing = WithinScope | CrossesOutward
 
-type ParameterDisposition = Consumed | Borrowed
-
-type CallableConsumption {
-  callable: DeclarationId
-  params: List<ParameterDisposition>
+type EdgeScope {
+  port: PortId
+  consumer: NodeId
+  crossing: ScopeCrossing
 }
 
-type ConsumptionFacts {
-  callables: List<CallableConsumption>
+type ScopeFacts {
+  edges: List<EdgeScope>
 }
 
-fn compute_consumption(dag: Dag, spec: RealizationSpec) -> ConsumptionFacts
+fn compute_scope_facts(dag: Dag) -> ScopeFacts
 ```
 
-Two authorities by callable kind:
+`crossing` is derivable: compare the producer's scope nesting
+with the consumer's. If the consumer is in an outer (or
+different) scope, the value crosses outward.
 
-**.dag function (UserDefined body):** derive from the body
-DAG. Walk from the function's return port backward through
-`produced_by` edges. If a parameter port is reachable AND the
-path passes through a construct site (record field, list cons,
-return value), the parameter is `Consumed`. If the parameter
-is only reachable through reads (function call arguments,
-match scrutinees, field access), it is `Borrowed`. If the
-parameter is not reachable from the return at all, it is
-`Borrowed` (unused — the unused-parameters lens catches this
-separately).
-
-**No annotation on Arrow.** The body IS the authority for .dag
-callables. Adding a consumption field to Arrow would be a
-parallel representation of a derivable fact.
-
-**ExternalRealization:** declared in the realization spec.
-Each `CallableRealization` in `rust.dag` declares parameter
-dispositions:
+**Transitive crossings.** If a value is passed to a callee
+that embeds it in its return value, the value transitively
+crosses the callee's scope boundary. For .dag callables, this
+is derivable from the body DAG — does the parameter port
+reach the return port? For `ExternalRealization` callables,
+it's declared in the realization spec:
 
 ```dag
+// Per-parameter: does the callee cause this value to escape?
+type ParameterScope = Contained | Escaping
+
+// rust.dag
 data rust_cons: CallableRealization = {
   strategy: ListCons
-  param_disposition: [Consumed, Consumed]
+  param_scope: [Escaping, Escaping]   // head + tail stored in return
 }
 
 data rust_is_empty: CallableRealization = {
   strategy: ListIsEmpty
-  param_disposition: [Borrowed]
+  param_scope: [Contained]            // list inspected and discarded
 }
 
 data rust_fold: CallableRealization = {
   strategy: ListFold
-  param_disposition: [Borrowed, Consumed, Borrowed]
-  // list: borrowed, init: consumed (becomes acc), fn: borrowed
+  param_scope: [Contained, Escaping, Contained]
+  // list: contained, init: escaping (becomes acc), fn: contained
 }
 ```
 
-**Why this is one concept, not two open edges.** The earlier
-draft separated "transitive ownership transfer" (§3.5) from
-"fold accumulator linearity" (§3.7). They are the same fact:
-*does this callee consume this parameter?* `cons` consumes
-both. `fold` consumes init. `is_empty` consumes nothing. One
-type (`ParameterDisposition`), two authorities by callable
-kind.
+---
 
-### Layer 3: Projections — target-specific rendering
+## §2. Target reference models
 
-Each projection reads Layer 1, Layer 2, or both through
-typed interfaces. Layer opacity applies.
+Whether a target language CONSUMES scope facts depends on its
+reference model. Four classes:
+
+| Target class | Examples | Scope-crossing decision |
+|---|---|---|
+| **Value-only** | English, SPICE, YAML, SQL | Doesn't exist. No logical references. Just emit values. |
+| **GC** | Go, Python, Java, JavaScript | Trivial. Always "reference." GC extends lifetimes. |
+| **Refcount** | Swift, C++ shared_ptr | Always "shared reference." Refcount at boundaries. |
+| **Ownership** | Rust, C++ unique_ptr | The scope-crossing question matters. Borrow within scope, own at crossings. |
+
+Three of four classes dissolve the question entirely. The
+entire borrow/move/clone discussion only applies to the
+bottom row.
 
 ```dag
-// Spec-free — reads Layer 1 only
-fn detect_parallelism(dag: Dag, deps: DependencyFacts) -> List<IndependenceFact>
+type ReferenceModel
+  = ValueOnly            // no references — emit values directly
+  | GarbageCollected     // runtime manages lifetimes
+  | RefCounted           // shared ownership via refcount
+  | OwnershipBased {     // scope crossings require ownership transfer
+      crossing_policy: CrossingPolicy
+    }
 
-// Reads Layer 1 + Layer 2 + target spec
-fn compute_ownership(dag: Dag, deps: DependencyFacts, cons: ConsumptionFacts, rendering: RenderingModel) -> OwnershipFacts
-
-// Reads Layer 1 + Layer 2 (clone cost from ownership)
-fn compute_complexity(dag: Dag, deps: DependencyFacts, cons: ConsumptionFacts) -> CostReport
-
-// Reads Layer 1 only (one-hop)
-fn compute_provenance(dag: Dag, deps: DependencyFacts) -> List<ProvenanceFact>
+type CrossingPolicy {
+  within_scope: String    // Rust: "&{V}" (borrow)
+  crossing_copy: String   // Rust: "*{V}" (deref Copy type)
+  crossing_move: String   // Rust: "{V}" (move at last use)
+  crossing_clone: String  // Rust: "{V}.clone()" (clone non-Copy)
+}
 ```
 
-Spec-coupling is visible in the signature. Parallelism takes
-no spec — two nodes are independent regardless of target.
-Ownership takes the spec — Rust borrows, Go passes by value.
-The layer boundary is the function signature.
+Target declarations:
+
+```dag
+// rust.dag
+data rust_reference_model: ReferenceModel = OwnershipBased {
+  crossing_policy: {
+    within_scope: "&{V}"
+    crossing_copy: "*{V}"
+    crossing_move: "{V}"
+    crossing_clone: "{V}.clone()"
+  }
+}
+
+// go.dag
+data go_reference_model: ReferenceModel = GarbageCollected
+
+// python.dag
+data python_reference_model: ReferenceModel = GarbageCollected
+
+// spice.dag
+data spice_reference_model: ReferenceModel = ValueOnly
+
+// english.dag
+data english_reference_model: ReferenceModel = ValueOnly
+```
 
 ---
 
-## §3. Projection detail: Ownership
+## §3. The rendering decision
 
-### §3.1 The rendering decision
+For each consumer edge, the emitter reads:
 
-For each consumer edge, the emitter looks up:
-1. `ParameterDisposition` from Layer 2 (consumed or borrowed)
-2. `is_copy` from the type's realization (Copy or not)
-3. Last-use from Layer 1's consumer list (is this the final
-   consumed edge for this port?)
+1. The target's `ReferenceModel`
+2. If `OwnershipBased`: the edge's `ScopeCrossing` from §1.2
+3. If crossing + ownership: `is_copy` and `is_last_use`
 
-**Rendering table for Rust:**
+```dag
+fn render_edge(
+  edge: EdgeScope,
+  model: ReferenceModel,
+  is_copy: Bool,
+  is_last_use: Bool
+) -> String =
+  match model {
+    ValueOnly        -> edge.port     // just the value
+    GarbageCollected -> edge.port     // just the value
+    RefCounted       -> rc(edge.port) // wrap in shared ref
+    OwnershipBased { crossing_policy: policy } ->
+      match edge.crossing {
+        WithinScope    -> policy.within_scope     // &value
+        CrossesOutward ->
+          if is_copy then policy.crossing_copy    // *value
+          else if is_last_use then policy.crossing_move  // value
+          else policy.crossing_clone              // value.clone()
+      }
+  }
+```
 
-| Disposition | is_copy | Last consumed? | Rendering |
-|-------------|---------|----------------|-----------|
-| Borrowed | any | n/a | `&value` |
-| Consumed | true | any | `*value` (deref) |
-| Consumed | false | yes | `value` (move) |
-| Consumed | false | no | `value.clone()` |
+**For value-only and GC targets, scope analysis is never
+consulted.** The emitter checks the reference model first.
+If it's not `OwnershipBased`, skip scope facts entirely.
+The core pipeline doesn't bake ownership reasoning into every
+path.
 
-For Go: always `value`. No distinctions needed.
-
-### §3.2 Copy type derivation
+### §3.1 Copy type derivation
 
 - **Leaf types:** `is_copy` declared in realization spec
   (Int → true, Bool → true, PortId → true, String → false)
-- **Compound types (Conj):** `is_copy` = ALL fields are Copy.
-  Derived from field types, not declared. Prevents drift —
-  you can't accidentally declare a String-containing record
-  as Copy.
+- **Compound types (Conj):** derived. A record is Copy iff
+  ALL fields are Copy. Not declared — prevents drift.
 
-### §3.3 Target rendering model
+### §3.2 Last-use determination
 
-```dag
-type RenderingModel {
-  borrow_syntax: String      // Rust: "&{V}"
-  move_syntax: String        // Rust: "{V}"
-  clone_syntax: String       // Rust: "{V}.clone()"
-  deref_syntax: String       // Rust: "*{V}"
-}
-```
-
-### §3.4 Expected result
-
-After full implementation (Layer 1 + Layer 2 + Copy
-derivation), the generated unused_parameters lens should
-have **1 clone**: `SourceSpan` (contains String, not Copy)
-at a record construction site where the source is borrowed.
-
-The 1-clone residue is genuinely necessary — a non-Copy
-value at a construct site where the source is a borrow from
-the input BindNode.
+A crossing edge is the "last use" if no subsequent consumer
+of the same port also has `CrossesOutward`. Derived from
+evaluation order + the consumer list in `DependencyFacts`.
 
 ---
 
-## §4. Projection detail: Parallelism
+## §4. Parallelism — orthogonal to scope
 
-Reads Layer 1 only. Spec-free.
+Parallelism reads `DependencyFacts` (Layer 1) only. It does
+NOT read scope facts. Two ports with no transitive dependency
+path are independent. In a pure language, independent
+operations are always safe to parallelize.
 
-**Independence:** two ports are independent if their
-transitive dependency sets don't overlap. For pure .dag code,
-independent operations are always safe to parallelize.
+**Fold decomposition:** which body nodes depend on `acc`?
+Acc-independent = parallelizable map. Acc-dependent =
+sequential reduce.
 
-**Fold decomposition:** in a fold body, which nodes
-transitively depend on `acc`? Acc-independent nodes are the
-"map" part (parallelizable). If all per-element work is
-acc-independent, the fold IS a map.
+**Parallelism refines the SHARING PRIMITIVE, not whether
+sharing is needed:**
 
-**Effects boundary (future):** ExternalRealization operations
-may have side effects. Independent + pure → parallel.
-Independent + effectful → needs sync. L2 M3 work.
+| Sharing context | Rust primitive |
+|---|---|
+| Single-threaded sharing | `Rc<T>` (non-atomic) |
+| Cross-thread sharing | `Arc<T>` (atomic) |
+| No sharing (last use) | move |
+
+Parallelism and scope are two independent facts that compose
+at the rendering layer. Scope tells you WHETHER to own.
+Parallelism tells you HOW to share (Rc vs Arc).
 
 ---
 
-## §5. Projection detail: Complexity
-
-Reads Layer 1 + Layer 2. The longest dependency chain is the
-critical path. Clone cost comes from ownership (Layer 2):
-clone = O(size), move = O(1), borrow = O(1).
-
----
-
-## §6. The pipeline composition
+## §5. The pipeline composition
 
 ```dag
 fn compile(source: String, file: String, spec: LanguageSpec) -> String {
   let dag         = parse(source, file) |> lower |> infer
-  let deps        = compute_dependencies(dag)          // Layer 1
-  let consumption = compute_consumption(dag, spec)     // Layer 2
-  let ownership   = compute_ownership(dag, deps, consumption, spec.rendering)
-  let complexity  = compute_complexity(dag, deps, consumption)
-  let parallelism = detect_parallelism(dag, deps)
+  let deps        = compute_dependencies(dag)       // always
+  let scope       = compute_scope_facts(dag)        // always
+  let parallelism = detect_parallelism(dag, deps)   // always (structural)
+
+  // Target-conditional: only if spec.reference_model is OwnershipBased
+  let ownership   = if needs_ownership(spec) then
+                      compute_ownership(dag, scope, spec)
+                    else
+                      trivial_ownership()  // GC/value: no decisions
+
+  let complexity  = compute_complexity(dag, deps, ownership)
   emit(dag, ownership, complexity, parallelism, spec)
 }
 ```
 
-Each projection reads typed facts. None rebuilds from the DAG.
-The dependency computation runs once after inference.
+The core pipeline computes universal facts (deps, scope,
+parallelism). Ownership rendering is gated on the target's
+reference model. For Go, Python, SPICE, English — the
+ownership stage is a no-op.
 
 ---
 
-## §7. Verification approach
+## §6. Validated result and remaining work
 
-The model claims: if `ParameterDisposition` is correctly
-computed for every callable and `is_copy` is correctly derived
-for every type, the emitter produces correct code with minimal
-clones. No class of "missing clone" bugs exists — a wrong
-result means the fact computation is wrong, not that the
-emitter has a bug.
+### §6.1 What's proven
 
-**Tests verify the facts:**
+The read-vs-construct classification (a proxy for scope
+crossing) dropped generated lens clones from 72 → 6. This
+validates the direction: values that stay within scope should
+be borrowed, values that cross outward need ownership.
 
-1. **ParameterDisposition per callable.** `cons` →
-   [Consumed, Consumed]. `is_empty` → [Borrowed]. `fold` →
-   [Borrowed, Consumed, Borrowed]. Assert against the
-   computed `ConsumptionFacts`.
+### §6.2 The 6 remaining clones
+
+| Clone | Root cause | Fix |
+|---|---|---|
+| 3x fold accumulator | Rust's fold takes acc by value (Escaping parameter). Emitter doesn't read `param_scope` yet. | `rust_fold.param_scope: [Contained, Escaping, Contained]` — emitter renders `mut acc` for Escaping fold params. |
+| 2x PortId deref | PortId is Copy. `.clone()` works but `*value` is correct. | `is_copy: true` on PortId in realization spec. |
+| 1x SourceSpan | Non-Copy value at a CrossesOutward edge (record construction). Genuinely necessary. | None — this clone is correct. |
+
+**After fixes: 1 clone.** The single remaining clone is a
+non-Copy value that crosses a scope boundary. The model
+correctly identifies it as necessary.
+
+---
+
+## §7. Verification
+
+The model claims: if `ScopeCrossing` is correctly computed per
+edge and `is_copy` is correctly derived per type, the emitter
+produces correct code. Tests verify the facts.
+
+1. **ScopeCrossing per edge.** Function argument to
+   non-escaping callee → `WithinScope`. Record field →
+   `CrossesOutward`. Return value → `CrossesOutward`. Argument
+   to `cons` → `CrossesOutward` (transitive via `param_scope`).
 
 2. **is_copy derivation.** Int → true. PortId → true.
-   SourceSpan → false. Record { a: Int, b: Int } → true.
-   Record { a: Int, b: String } → false.
+   SourceSpan → false. { a: Int, b: Int } → true.
+   { a: Int, b: String } → false.
 
 3. **Rendering parity.** Generated lens matches handwritten
-   oracle on all fixtures.
+   oracle.
 
-4. **Roundtrip compilation.** Every generated artifact
-   compiles with rustc.
+4. **Roundtrip compilation.** Every generated artifact compiles
+   with rustc (Rust's borrow checker rejects incorrect scope
+   analysis).
 
-5. **Clone-count pinning.** Exact count on generated lens:
-   ~6 at Phase 1, 1 at Phase 2.
-
----
-
-## §8. What v2 reconstructed vs what composes
-
-| Fact | v2 (719 lines) | v3 (compositional) |
-|---|---|---|
-| Who consumes this port? | Walk tree, count names | Layer 1: `DependencyFacts.consumers` |
-| Does callee consume param? | Not modeled | Layer 2: `ConsumptionFacts` |
-| Copy type? | Hardcoded heuristics | Realization spec + field derivation |
-| Last use? | Not modeled | Layer 1 consumer order |
-| Independent operations? | Not modeled | Layer 1 transitive reach |
-| Fold = map? | Not modeled | Layer 1 acc-reachability |
-| Critical path? | Not modeled | Layer 1 longest chain |
+5. **Clone-count pinning.** ~6 at Phase 1, 1 at Phase 2.
 
 ---
 
-## §9. Phasing
+## §8. Phasing
 
 | Phase | When | What |
 |---|---|---|
-| **Phase 1** | L1.5 | Layer 1: `std/dependency.dag` types + `compute_dependencies`. Emitter renders `&T` for all params (conservative Borrowed default). `is_copy` on leaf types. Clone count ~6. |
-| **Phase 2** | L2 | Layer 2: `std/consumption.dag` types + `compute_consumption`. `param_disposition` on ExternalRealization. Body-walk derivation for .dag callables. `is_copy` composition. Clone count → 1. |
-| **Phase 3** | L2+ | Parallelism (Layer 1 only). Complexity reads both layers. Dead-code skipping. |
-| **Phase 4** | L3 | Self-analysis. Clone count zero. Parallel emission. |
+| **Phase 1** | L1.5 | `std/scope.dag` types. `compute_scope_facts` with direct crossings (record fields, return values). Conservative default for callees (treat as Contained unless declared Escaping). `is_copy` on leaf types. Emitter reads `ReferenceModel`, renders `&T` for WithinScope on Rust target. Clone count ~6. |
+| **Phase 2** | L2 | Transitive crossings (param_scope on callables). Body-walk derivation for .dag callables. Declared for ExternalRealization. `is_copy` composition for compound types. Last-use tracking. Clone count → 1. |
+| **Phase 3** | L2+ | Parallelism sharing class (Rc vs Arc). Complexity reads scope + ownership for accurate cost. Dead-code from DependencyFacts. |
+| **Phase 4** | L3 | Self-analysis. Multi-target validation (same DAG emitted to Rust + Go, Rust has ownership decisions, Go has none). |
 
 ---
 
-## §10. When this doc updates
+## §9. When this doc updates
 
 - Phase 1 lands → clone count pinned at ~6
-- Phase 2 lands → consumption verified, clone count → 1
+- Phase 2 lands → transitive crossings verified, clone → 1
+- Multi-target lands → ownership-free emission validated
 - All phases → doc archives
