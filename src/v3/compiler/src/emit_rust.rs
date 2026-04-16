@@ -12,7 +12,7 @@
 //
 //   - rust.dag carries typed `DeclarationRef` field references via
 //     identifier and dotted-path values resolved at lower time.
-//   - emit_rust.rs builds three typed indexes keyed by
+//   - emit_rust.rs builds typed indexes keyed by
 //     `DeclarationId` and tuples thereof. Lookups read declaration
 //     ids straight off ports / nodes / substrate markers; zero
 //     name strings cross the substrate/emitter boundary.
@@ -37,11 +37,11 @@
 //
 // Template placeholders the substitution engine recognizes (see
 // src/v3/spec/rust.dag for the authoritative list):
-//   %N  Bind name               %C  branch condition
-//   %T  Rust type name          %H  then-arm body
-//   %V  bind value expression   %E  else-arm body
-//   %B  list of let statements  %Q  literal double-quote
-//   %X  final bind's name
+//   {name}  Bind name           {cond}  branch condition
+//   {type}  Rust type name      {then}  then-arm body
+//   {value} bind value expr     {else}  else-arm body
+//   {body}  list of lets        {quote} literal double-quote
+//   {final} final bind's name
 
 use std::collections::HashMap;
 
@@ -161,10 +161,18 @@ pub enum EmitError {
     /// inspect what the substrate handed them.
     NonBooleanBranch { variant_ids: Vec<DeclarationId> },
     /// A required realization meta-type is missing from the cached
-    /// substrate. Bootstrap should populate all three categories
+    /// substrate. Bootstrap should populate all realization categories
     /// from `src/v3/spec/rust.dag`; reaching this arm means the
     /// spec file failed to load or the meta-type wasn't declared.
     MissingRealizationMeta(RealizationCategory),
+    /// The target-language syntax bundle is absent from rust.dag.
+    MissingTargetSyntax(&'static str),
+    /// The target-language syntax bundle or one of its referenced
+    /// syntax declarations has the wrong structural shape.
+    MalformedTargetSyntax {
+        declaration: DeclarationId,
+        detail: &'static str,
+    },
     /// A data item tagged with a realization meta-type carried a
     /// wrong-shaped value body or a missing required field. The
     /// `lower_record_to_structural` inhabitance check should have
@@ -197,6 +205,9 @@ pub enum RealizationCategory {
     Operator,
     /// `BehaviorRealization` — substrate marker → target template.
     Behavior,
+    /// `CallableRealization` — callable declaration → Rust render
+    /// strategy.
+    Callable,
 }
 
 /// Typed tag identifying which substrate marker is missing in a
@@ -211,35 +222,137 @@ pub enum SubstrateMarkerRole {
     Main,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct ListBuiltins {
-    empty: DeclarationId,
-    singleton: DeclarationId,
-    cons: DeclarationId,
-    fold: DeclarationId,
-    map: DeclarationId,
-    filter: DeclarationId,
-    // Temporary monomorphic wrappers used by staged std.list
-    // end-to-end coverage until generic-call instantiation from
-    // runtime arguments is wired through the pipeline. Dissolve
-    // these handles and the dual-dispatch branches below once the
-    // generic helpers can be called directly in emitted programs.
-    singleton_int: Option<DeclarationId>,
-    cons_int: Option<DeclarationId>,
-    fold_int: Option<DeclarationId>,
-    map_int: Option<DeclarationId>,
-    filter_int: Option<DeclarationId>,
-}
-
 /// Three typed realization indexes built once per `emit_rust` call
 /// from rust.dag's data declarations. Each index keyed by the
 /// `DeclarationId`s that the substrate already carries — no name
 /// strings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RustFieldAccessBinding {
+    DirectField(String),
+    AccessorMethod(String),
+}
+
+#[derive(Debug, Clone)]
+struct TypeRealizationBinding {
+    carrier: String,
+    fields: HashMap<String, RustFieldAccessBinding>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RustCallableStrategyBinding {
+    ListEmpty,
+    ListSingleton,
+    ListCons,
+    ListFold,
+    ListMap,
+    ListFilter,
+}
+
+#[derive(Debug, Clone)]
+struct StatementSyntaxBinding {
+    let_binding: String,
+    let_binding_inferred: String,
+}
+
+#[derive(Debug, Clone)]
+struct ExpressionSyntaxBinding {
+    binary_op: String,
+    field_access: String,
+    function_call: String,
+    closure: String,
+}
+
+#[derive(Debug, Clone)]
+struct ForEachSyntaxBinding {
+    prefix: String,
+    separator: String,
+}
+
+#[derive(Debug, Clone)]
+struct ControlFlowSyntaxBinding {
+    if_else: String,
+    match_arm: String,
+    for_each_syntax: ForEachSyntaxBinding,
+}
+
+#[derive(Debug, Clone)]
+struct LiteralSyntaxBinding {
+    true_keyword: String,
+    false_keyword: String,
+    string_delimiter: String,
+}
+
+#[derive(Debug, Clone)]
+struct ModuleSyntaxBinding {
+    path_separator: String,
+}
+
+#[derive(Debug, Clone)]
+struct FunctionSyntaxBinding {
+    definition: String,
+    definition_void: String,
+    param_with_type: String,
+    param_separator: String,
+}
+
+#[derive(Debug, Clone)]
+struct TypeDefinitionSyntaxBinding {
+    struct_def: String,
+    struct_field: String,
+    enum_def: String,
+    enum_unit_variant: String,
+    enum_data_variant: String,
+}
+
+#[derive(Debug, Clone)]
+struct PatternMatchSyntaxBinding {
+    match_expr: String,
+    match_arm: String,
+    variant_pattern: String,
+    variant_pattern_positional: String,
+    variant_pattern_empty: String,
+    field_binding: String,
+    field_binding_separator: String,
+    wildcard: String,
+}
+
+#[derive(Debug, Clone)]
+struct CollectionOpsBinding {
+    fold: String,
+    map: String,
+    filter: String,
+    empty_list: String,
+    list_literal: String,
+    cons: String,
+}
+
+#[derive(Debug, Clone)]
+struct ValueConstructionSyntaxBinding {
+    struct_literal: String,
+    struct_field_init: String,
+    struct_field_separator: String,
+    variant_construction: String,
+    variant_named_construction: String,
+}
+
+#[derive(Debug, Clone)]
+struct RustLanguageSyntax {
+    statements: StatementSyntaxBinding,
+    expressions: ExpressionSyntaxBinding,
+    control_flow: ControlFlowSyntaxBinding,
+    literals: LiteralSyntaxBinding,
+    modules: ModuleSyntaxBinding,
+    functions: FunctionSyntaxBinding,
+    type_definitions: TypeDefinitionSyntaxBinding,
+    patterns: PatternMatchSyntaxBinding,
+    collection_ops: CollectionOpsBinding,
+    values: ValueConstructionSyntaxBinding,
+}
+
 struct RealizationIndexes {
-    /// `target_decl_id → carrier`. Built from `data rust_*:
-    /// TypeRealization` items in rust.dag. Used when emitting
-    /// `let x: <carrier> = ...` to resolve a port's type.
-    types: HashMap<DeclarationId, String>,
+    /// `target_decl_id → carrier + field bindings`. Built from
+    /// `data rust_*: TypeRealization` items in rust.dag.
+    types: HashMap<DeclarationId, TypeRealizationBinding>,
     /// `(operand_type_decl, algebra_field_decl) → carrier`. Built
     /// from `data rust_*: OperatorRealization` items in rust.dag.
     /// Used when emitting a `Transform { target: Operator(_), .. }`.
@@ -251,10 +364,17 @@ struct RealizationIndexes {
     /// cached in `Dag::substrate_markers` — every dispatch site
     /// reads those typed handles instead of looking up by name.
     behaviors: HashMap<DeclarationId, String>,
+    /// `callable_decl → render strategy`. Built from `data rust_*:
+    /// CallableRealization` items in rust.dag. Used when emitting
+    /// callable transforms without name-keyed builtin dispatch.
+    callables: HashMap<DeclarationId, RustCallableStrategyBinding>,
+    /// The Rust target-language syntax bundle loaded from
+    /// `data rust_language: LanguageSpec`.
+    syntax: RustLanguageSyntax,
 }
 
 impl RealizationIndexes {
-    /// Build the three typed indexes from rust.dag's data
+    /// Build the typed indexes from rust.dag's data
     /// declarations. **Fail-closed at every step.** Returns
     /// `Err(EmitError)` if:
     ///
@@ -299,10 +419,16 @@ impl RealizationIndexes {
             .ok_or(EmitError::MissingRealizationMeta(
                 RealizationCategory::Behavior,
             ))?;
+        let callable_meta = dag
+            .callable_realization_meta()
+            .ok_or(EmitError::MissingRealizationMeta(
+                RealizationCategory::Callable,
+            ))?;
 
-        let mut types: HashMap<DeclarationId, String> = HashMap::new();
+        let mut types: HashMap<DeclarationId, TypeRealizationBinding> = HashMap::new();
         let mut operators: HashMap<(DeclarationId, DeclarationId), String> = HashMap::new();
         let mut behaviors: HashMap<DeclarationId, String> = HashMap::new();
+        let mut callables: HashMap<DeclarationId, RustCallableStrategyBinding> = HashMap::new();
 
         for decl in dag.declarations() {
             let Some(meta_tag) = decl.meta_tag else {
@@ -317,6 +443,8 @@ impl RealizationIndexes {
                 RealizationCategory::Operator
             } else if meta_tag == behavior_meta {
                 RealizationCategory::Behavior
+            } else if meta_tag == callable_meta {
+                RealizationCategory::Callable
             } else {
                 continue;
             };
@@ -339,11 +467,21 @@ impl RealizationIndexes {
             // the spec violates its own meta-type and we should
             // refuse to silently skip it).
             let target = require_field_decl_ref(fields, "target", decl.id)?;
-            let carrier = require_field_string(fields, "carrier", decl.id)?;
 
             match category {
                 RealizationCategory::Type => {
-                    if types.insert(target, carrier).is_some() {
+                    let carrier = require_field_string(fields, "carrier", decl.id)?;
+                    let field_bindings = require_field_bindings(dag, fields, decl.id)?;
+                    if types
+                        .insert(
+                            target,
+                            TypeRealizationBinding {
+                                carrier,
+                                fields: field_bindings,
+                            },
+                        )
+                        .is_some()
+                    {
                         return Err(EmitError::DuplicateRealization {
                             declaration: decl.id,
                             detail:
@@ -352,6 +490,7 @@ impl RealizationIndexes {
                     }
                 }
                 RealizationCategory::Operator => {
+                    let carrier = require_field_string(fields, "carrier", decl.id)?;
                     let op = require_field_decl_ref(fields, "op", decl.id)?;
                     if operators.insert((target, op), carrier).is_some() {
                         return Err(EmitError::DuplicateRealization {
@@ -362,23 +501,350 @@ impl RealizationIndexes {
                     }
                 }
                 RealizationCategory::Behavior => {
+                    let carrier = require_field_string(fields, "carrier", decl.id)?;
                     if behaviors.insert(target, carrier).is_some() {
                         return Err(EmitError::DuplicateRealization {
                             declaration: decl.id,
                             detail:
-                                "two BehaviorRealization data items target the same substrate marker — single authority requires unique targets",
+                            "two BehaviorRealization data items target the same substrate marker — single authority requires unique targets",
+                        });
+                    }
+                }
+                RealizationCategory::Callable => {
+                    let strategy = require_callable_strategy(fields, decl.id)?;
+                    if callables.insert(target, strategy).is_some() {
+                        return Err(EmitError::DuplicateRealization {
+                            declaration: decl.id,
+                            detail:
+                                "two CallableRealization data items target the same callable declaration — single authority requires unique targets",
                         });
                     }
                 }
             }
         }
 
+        let syntax = RustLanguageSyntax::build(dag)?;
+
         Ok(Self {
             types,
             operators,
             behaviors,
+            callables,
+            syntax,
         })
     }
+}
+
+impl RustLanguageSyntax {
+    fn build(dag: &Dag) -> Result<Self, EmitError> {
+        let language_decl = dag
+            .rust_language_spec()
+            .ok_or(EmitError::MissingTargetSyntax("rust_language"))?;
+        let fields = structural_fields_for_decl(dag, language_decl)?;
+        Ok(Self {
+            statements: parse_statement_syntax(
+                dag,
+                require_field_decl_ref(fields, "statements", language_decl)?,
+            )?,
+            expressions: parse_expression_syntax(
+                dag,
+                require_field_decl_ref(fields, "expressions", language_decl)?,
+            )?,
+            control_flow: parse_control_flow_syntax(
+                dag,
+                require_field_decl_ref(fields, "control_flow", language_decl)?,
+            )?,
+            literals: parse_literal_syntax(
+                dag,
+                require_field_decl_ref(fields, "literals", language_decl)?,
+            )?,
+            modules: parse_module_syntax(
+                dag,
+                require_field_decl_ref(fields, "modules", language_decl)?,
+            )?,
+            functions: parse_function_syntax(
+                dag,
+                require_field_decl_ref(fields, "functions", language_decl)?,
+            )?,
+            type_definitions: parse_type_definition_syntax(
+                dag,
+                require_field_decl_ref(fields, "type_definitions", language_decl)?,
+            )?,
+            patterns: parse_pattern_match_syntax(
+                dag,
+                require_field_decl_ref(fields, "patterns", language_decl)?,
+            )?,
+            collection_ops: parse_collection_ops(
+                dag,
+                require_field_decl_ref(fields, "collection_ops", language_decl)?,
+            )?,
+            values: parse_value_construction_syntax(
+                dag,
+                require_field_decl_ref(fields, "values", language_decl)?,
+            )?,
+        })
+    }
+}
+
+fn structural_fields_for_decl<'a>(
+    dag: &'a Dag,
+    declaration: DeclarationId,
+) -> Result<&'a [(String, FieldValue)], EmitError> {
+    let Some(ValueBody::Structural { fields }) = &dag.declaration(declaration).value_body else {
+        return Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "syntax declaration must carry a structural value body",
+        });
+    };
+    Ok(fields)
+}
+
+fn syntax_field_string(
+    fields: &[(String, FieldValue)],
+    label: &str,
+    declaration: DeclarationId,
+) -> Result<String, EmitError> {
+    require_field_string(fields, label, declaration).map(|s| s.replace("%Q", "\""))
+}
+
+fn syntax_field_record<'a>(
+    fields: &'a [(String, FieldValue)],
+    label: &str,
+    declaration: DeclarationId,
+) -> Result<&'a [(String, FieldValue)], EmitError> {
+    fields
+        .iter()
+        .find(|(name, _)| name == label)
+        .and_then(|(_, value)| match value {
+            FieldValue::Record(fields) => Some(fields.as_slice()),
+            _ => None,
+        })
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "syntax field must be a structural record",
+        })
+}
+
+fn parse_statement_syntax(
+    dag: &Dag,
+    declaration: DeclarationId,
+) -> Result<StatementSyntaxBinding, EmitError> {
+    let fields = structural_fields_for_decl(dag, declaration)?;
+    Ok(StatementSyntaxBinding {
+        let_binding: syntax_field_string(fields, "let_binding", declaration)?,
+        let_binding_inferred: syntax_field_string(fields, "let_binding_inferred", declaration)?,
+    })
+}
+
+fn parse_expression_syntax(
+    dag: &Dag,
+    declaration: DeclarationId,
+) -> Result<ExpressionSyntaxBinding, EmitError> {
+    let fields = structural_fields_for_decl(dag, declaration)?;
+    Ok(ExpressionSyntaxBinding {
+        binary_op: syntax_field_string(fields, "binary_op", declaration)?,
+        field_access: syntax_field_string(fields, "field_access", declaration)?,
+        function_call: syntax_field_string(fields, "function_call", declaration)?,
+        closure: syntax_field_string(fields, "closure", declaration)?,
+    })
+}
+
+fn parse_control_flow_syntax(
+    dag: &Dag,
+    declaration: DeclarationId,
+) -> Result<ControlFlowSyntaxBinding, EmitError> {
+    let fields = structural_fields_for_decl(dag, declaration)?;
+    let for_each = syntax_field_record(fields, "for_each_syntax", declaration)?;
+    Ok(ControlFlowSyntaxBinding {
+        if_else: syntax_field_string(fields, "if_else", declaration)?,
+        match_arm: syntax_field_string(fields, "match_arm", declaration)?,
+        for_each_syntax: ForEachSyntaxBinding {
+            prefix: syntax_field_string(for_each, "prefix", declaration)?,
+            separator: syntax_field_string(for_each, "separator", declaration)?,
+        },
+    })
+}
+
+fn parse_literal_syntax(
+    dag: &Dag,
+    declaration: DeclarationId,
+) -> Result<LiteralSyntaxBinding, EmitError> {
+    let fields = structural_fields_for_decl(dag, declaration)?;
+    Ok(LiteralSyntaxBinding {
+        true_keyword: syntax_field_string(fields, "true_keyword", declaration)?,
+        false_keyword: syntax_field_string(fields, "false_keyword", declaration)?,
+        string_delimiter: syntax_field_string(fields, "string_delimiter", declaration)?,
+    })
+}
+
+fn parse_module_syntax(
+    dag: &Dag,
+    declaration: DeclarationId,
+) -> Result<ModuleSyntaxBinding, EmitError> {
+    let fields = structural_fields_for_decl(dag, declaration)?;
+    Ok(ModuleSyntaxBinding {
+        path_separator: syntax_field_string(fields, "path_separator", declaration)?,
+    })
+}
+
+fn parse_function_syntax(
+    dag: &Dag,
+    declaration: DeclarationId,
+) -> Result<FunctionSyntaxBinding, EmitError> {
+    let fields = structural_fields_for_decl(dag, declaration)?;
+    Ok(FunctionSyntaxBinding {
+        definition: syntax_field_string(fields, "definition", declaration)?,
+        definition_void: syntax_field_string(fields, "definition_void", declaration)?,
+        param_with_type: syntax_field_string(fields, "param_with_type", declaration)?,
+        param_separator: syntax_field_string(fields, "param_separator", declaration)?,
+    })
+}
+
+fn parse_type_definition_syntax(
+    dag: &Dag,
+    declaration: DeclarationId,
+) -> Result<TypeDefinitionSyntaxBinding, EmitError> {
+    let fields = structural_fields_for_decl(dag, declaration)?;
+    Ok(TypeDefinitionSyntaxBinding {
+        struct_def: syntax_field_string(fields, "struct_def", declaration)?,
+        struct_field: syntax_field_string(fields, "struct_field", declaration)?,
+        enum_def: syntax_field_string(fields, "enum_def", declaration)?,
+        enum_unit_variant: syntax_field_string(fields, "enum_unit_variant", declaration)?,
+        enum_data_variant: syntax_field_string(fields, "enum_data_variant", declaration)?,
+    })
+}
+
+fn parse_pattern_match_syntax(
+    dag: &Dag,
+    declaration: DeclarationId,
+) -> Result<PatternMatchSyntaxBinding, EmitError> {
+    let fields = structural_fields_for_decl(dag, declaration)?;
+    Ok(PatternMatchSyntaxBinding {
+        match_expr: syntax_field_string(fields, "match_expr", declaration)?,
+        match_arm: syntax_field_string(fields, "match_arm", declaration)?,
+        variant_pattern: syntax_field_string(fields, "variant_pattern", declaration)?,
+        variant_pattern_positional: syntax_field_string(
+            fields,
+            "variant_pattern_positional",
+            declaration,
+        )?,
+        variant_pattern_empty: syntax_field_string(fields, "variant_pattern_empty", declaration)?,
+        field_binding: syntax_field_string(fields, "field_binding", declaration)?,
+        field_binding_separator: syntax_field_string(
+            fields,
+            "field_binding_separator",
+            declaration,
+        )?,
+        wildcard: syntax_field_string(fields, "wildcard", declaration)?,
+    })
+}
+
+fn parse_collection_ops(
+    dag: &Dag,
+    declaration: DeclarationId,
+) -> Result<CollectionOpsBinding, EmitError> {
+    let fields = structural_fields_for_decl(dag, declaration)?;
+    Ok(CollectionOpsBinding {
+        fold: syntax_field_string(fields, "fold", declaration)?,
+        map: syntax_field_string(fields, "map", declaration)?,
+        filter: syntax_field_string(fields, "filter", declaration)?,
+        empty_list: syntax_field_string(fields, "empty_list", declaration)?,
+        list_literal: syntax_field_string(fields, "list_literal", declaration)?,
+        cons: syntax_field_string(fields, "cons", declaration)?,
+    })
+}
+
+fn parse_value_construction_syntax(
+    dag: &Dag,
+    declaration: DeclarationId,
+) -> Result<ValueConstructionSyntaxBinding, EmitError> {
+    let fields = structural_fields_for_decl(dag, declaration)?;
+    Ok(ValueConstructionSyntaxBinding {
+        struct_literal: syntax_field_string(fields, "struct_literal", declaration)?,
+        struct_field_init: syntax_field_string(fields, "struct_field_init", declaration)?,
+        struct_field_separator: syntax_field_string(
+            fields,
+            "struct_field_separator",
+            declaration,
+        )?,
+        variant_construction: syntax_field_string(fields, "variant_construction", declaration)?,
+        variant_named_construction: syntax_field_string(
+            fields,
+            "variant_named_construction",
+            declaration,
+        )?,
+    })
+}
+
+fn render_named_template(template: &str, bindings: &[(&str, &str)]) -> String {
+    let bindings: HashMap<&str, &str> = bindings.iter().copied().collect();
+    let chars: Vec<char> = template.chars().collect();
+    let mut rendered = String::with_capacity(template.len());
+    let mut i = 0;
+
+    while i < chars.len() {
+        match chars[i] {
+            '{' => {
+                if i + 1 < chars.len() && chars[i + 1] == '{' {
+                    rendered.push('{');
+                    i += 2;
+                    continue;
+                }
+
+                let mut j = i + 1;
+                while j < chars.len() && chars[j] != '}' {
+                    j += 1;
+                }
+                if j < chars.len() {
+                    let key: String = chars[i + 1..j].iter().collect();
+                    if is_template_placeholder_key(&key) {
+                        if let Some(value) = bindings.get(key.as_str()) {
+                            rendered.push_str(value);
+                        } else {
+                            rendered.push('{');
+                            rendered.push_str(&key);
+                            rendered.push('}');
+                        }
+                        i = j + 1;
+                        continue;
+                    }
+                }
+
+                rendered.push('{');
+                i += 1;
+            }
+            '}' => {
+                if i + 1 < chars.len() && chars[i + 1] == '}' {
+                    rendered.push('}');
+                    i += 2;
+                } else {
+                    rendered.push('}');
+                    i += 1;
+                }
+            }
+            ch => {
+                rendered.push(ch);
+                i += 1;
+            }
+        }
+    }
+
+    rendered
+}
+
+fn is_template_placeholder_key(key: &str) -> bool {
+    let mut chars = key.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first == '_' || first.is_ascii_alphabetic()) {
+        return false;
+    }
+    chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+}
+
+fn join_rendered(values: &[String], separator: &str) -> String {
+    values.join(separator)
 }
 
 /// Required-field lookup: returns `Err` if the field is absent or
@@ -426,7 +892,152 @@ fn require_field_string(
         })
 }
 
-pub fn emit_rust(dag: &Dag) -> Result<String, EmitError> {
+fn require_field_bindings(
+    dag: &Dag,
+    fields: &[(String, FieldValue)],
+    declaration: DeclarationId,
+) -> Result<HashMap<String, RustFieldAccessBinding>, EmitError> {
+    let value = fields
+        .iter()
+        .find(|(label, _)| label == "fields")
+        .map(|(_, value)| value)
+        .ok_or(EmitError::MalformedRealization {
+            declaration,
+            detail: "TypeRealization is missing required `fields` list",
+        })?;
+    let FieldValue::List(entries) = value else {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "TypeRealization.fields must be a structural list",
+        });
+    };
+    let mut bindings = HashMap::new();
+    for entry in entries {
+        let FieldValue::Record(fields) = entry else {
+            return Err(EmitError::MalformedRealization {
+                declaration,
+                detail: "FieldBinding entries must be structural records",
+            });
+        };
+        let dag_name = fields
+            .iter()
+            .find(|(label, _)| label == "dag_name")
+            .and_then(|(_, value)| match value {
+                FieldValue::Literal(LiteralBits::String(name)) => Some(name.clone()),
+                _ => None,
+            })
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "FieldBinding.dag_name must be a String literal",
+            })?;
+        let rust_access = fields
+            .iter()
+            .find(|(label, _)| label == "rust_access")
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "FieldBinding.rust_access is required",
+            })
+            .and_then(|(_, value)| parse_rust_field_access(dag, value, declaration))?;
+        if bindings.insert(dag_name, rust_access).is_some() {
+            return Err(EmitError::DuplicateRealization {
+                declaration,
+                detail: "TypeRealization.fields contains duplicate dag_name entries",
+            });
+        }
+    }
+    Ok(bindings)
+}
+
+fn parse_rust_field_access(
+    _dag: &Dag,
+    value: &FieldValue,
+    declaration: DeclarationId,
+) -> Result<RustFieldAccessBinding, EmitError> {
+    let FieldValue::Variant {
+        constructor_name,
+        payload,
+    } = value
+    else {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "FieldBinding.rust_access must be a RustFieldAccess variant",
+        });
+    };
+    if payload.len() != 1 {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "RustFieldAccess variants must carry exactly one String payload",
+        });
+    }
+    let name = match &payload[0] {
+        FieldValue::Literal(LiteralBits::String(name)) => name.clone(),
+        _ => {
+            return Err(EmitError::MalformedRealization {
+                declaration,
+                detail: "RustFieldAccess payload must be a String literal",
+            });
+        }
+    };
+    match constructor_name.as_str() {
+        "DirectField" => Ok(RustFieldAccessBinding::DirectField(name)),
+        "AccessorMethod" => Ok(RustFieldAccessBinding::AccessorMethod(name)),
+        _ => Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "RustFieldAccess constructor must be DirectField or AccessorMethod",
+        }),
+    }
+}
+
+fn require_callable_strategy(
+    fields: &[(String, FieldValue)],
+    declaration: DeclarationId,
+) -> Result<RustCallableStrategyBinding, EmitError> {
+    let value = fields
+        .iter()
+        .find(|(label, _)| label == "strategy")
+        .map(|(_, value)| value)
+        .ok_or(EmitError::MalformedRealization {
+            declaration,
+            detail: "CallableRealization is missing required `strategy` field",
+        })?;
+    let FieldValue::Variant {
+        constructor_name,
+        payload,
+    } = value
+    else {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "CallableRealization.strategy must be a RustCallableStrategy variant",
+        });
+    };
+    if !payload.is_empty() {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "RustCallableStrategy variants must not carry payload fields",
+        });
+    }
+    match constructor_name.as_str() {
+        "ListEmpty" => Ok(RustCallableStrategyBinding::ListEmpty),
+        "ListSingleton" => Ok(RustCallableStrategyBinding::ListSingleton),
+        "ListCons" => Ok(RustCallableStrategyBinding::ListCons),
+        "ListFold" => Ok(RustCallableStrategyBinding::ListFold),
+        "ListMap" => Ok(RustCallableStrategyBinding::ListMap),
+        "ListFilter" => Ok(RustCallableStrategyBinding::ListFilter),
+        _ => Err(EmitError::MalformedRealization {
+            declaration,
+            detail:
+                "RustCallableStrategy constructor must be ListEmpty/ListSingleton/ListCons/ListFold/ListMap/ListFilter",
+        }),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EmitRustMode {
+    Program,
+    Module,
+}
+
+fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<String, EmitError> {
     let indexes = RealizationIndexes::build(dag)?;
 
     // Resolve the substrate markers we need ONCE up front. Each
@@ -434,17 +1045,33 @@ pub fn emit_rust(dag: &Dag) -> Result<String, EmitError> {
     // from `dsl/std/v3_l1.dag`; if any is missing, the file
     // failed to load and emit can't proceed. Rendering downstream
     // uses the bound handles, never a name string.
-    let bind_marker = dag
-        .bind_marker()
-        .ok_or(EmitError::MissingSubstrateMarker(SubstrateMarkerRole::Bind))?;
-    let branch_marker = dag
-        .branch_marker()
-        .ok_or(EmitError::MissingSubstrateMarker(SubstrateMarkerRole::Branch))?;
     let main_marker = dag
         .main_marker()
         .ok_or(EmitError::MissingSubstrateMarker(SubstrateMarkerRole::Main))?;
-    let list_builtins = resolve_list_builtins(dag);
-
+    let type_decls: Vec<_> = dag
+        .declarations()
+        .iter()
+        .filter(|decl| !is_bootstrap_file(&decl.span.file))
+        .filter(|decl| decl.name.is_some())
+        .filter(|decl| matches!(
+            decl.connective,
+            TypeConnective::Conj { .. } | TypeConnective::Disj { .. }
+        ))
+        .collect();
+    let function_decls: Vec<_> = dag
+        .declarations()
+        .iter()
+        .filter(|decl| !is_bootstrap_file(&decl.span.file))
+        .filter(|decl| decl.name.is_some())
+        .filter(|decl| !decl.name.as_deref().is_some_and(|name| name.starts_with("__anon_lambda_")))
+        .filter(|decl| matches!(
+            decl.connective,
+            TypeConnective::Arrow {
+                body: ArrowBody::UserDefined(_),
+                ..
+            }
+        ))
+        .collect();
     let top_level_binds: Vec<&crate::dag::BindNode> = dag
         .nodes()
         .iter()
@@ -452,9 +1079,14 @@ pub fn emit_rust(dag: &Dag) -> Result<String, EmitError> {
         .filter(|b| b.params.is_empty())
         .collect();
 
-    if top_level_binds.is_empty() {
+    if mode == EmitRustMode::Program && top_level_binds.is_empty() {
         return Err(EmitError::UnsupportedBehavior(
             "emit_rust requires at least one top-level value Bind".to_string(),
+        ));
+    }
+    if mode == EmitRustMode::Module && !top_level_binds.is_empty() {
+        return Err(EmitError::UnsupportedBehavior(
+            "emit_rust module mode does not support top-level value Binds".to_string(),
         ));
     }
 
@@ -477,46 +1109,71 @@ pub fn emit_rust(dag: &Dag) -> Result<String, EmitError> {
     let ctx = Ctx {
         dag,
         indexes: &indexes,
-        branch_marker,
-        list_builtins,
         bound_names: &bound_names,
     };
 
-    let mut rendered_binds: Vec<String> = Vec::with_capacity(top_level_binds.len());
-    for bind in &top_level_binds {
-        let ty_name = ctx.rust_type_name_for_port(bind.value)?;
-        let value_expr = ctx.render_top_level_value(bind.value)?;
-        let let_template = indexes
-            .behaviors
-            .get(&bind_marker)
-            .ok_or(EmitError::MissingBehaviorRealization {
-                marker: bind_marker,
-            })?;
-        let rendered = let_template
-            .replace("%N", &bind.name)
-            .replace("%T", &ty_name)
-            .replace("%V", &value_expr);
-        rendered_binds.push(rendered);
+    let rendered_types: Vec<String> = type_decls
+        .iter()
+        .map(|decl| ctx.render_type_declaration(decl))
+        .collect::<Result<Vec<_>, _>>()?;
+    let rendered_functions: Vec<String> = function_decls
+        .iter()
+        .map(|decl| ctx.render_function_declaration(decl))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let type_defs = join_rendered(&rendered_types, " ");
+    let function_defs = join_rendered(&rendered_functions, " ");
+    let mut sections = Vec::new();
+    if !type_defs.is_empty() {
+        sections.push(type_defs);
     }
+    if !function_defs.is_empty() {
+        sections.push(function_defs);
+    }
+    if mode == EmitRustMode::Program {
+        let mut rendered_binds: Vec<String> = Vec::with_capacity(top_level_binds.len());
+        for bind in &top_level_binds {
+            let ty_name = ctx.rust_type_name_for_port(bind.value)?;
+            let value_expr = ctx.render_top_level_value(bind.value)?;
+            let rendered = render_named_template(
+                &indexes.syntax.statements.let_binding,
+                &[("name", &bind.name), ("type", &ty_name), ("value", &value_expr)],
+            );
+            rendered_binds.push(rendered);
+        }
 
-    let body_joined = rendered_binds.join(" ");
-    let final_bind_name = top_level_binds
-        .last()
-        .expect("guarded above")
-        .name
-        .clone();
+        let body_joined = join_rendered(&rendered_binds, " ");
+        let final_bind_name = top_level_binds
+            .last()
+            .expect("guarded above")
+            .name
+            .clone();
 
-    let main_template = indexes
-        .behaviors
-        .get(&main_marker)
-        .ok_or(EmitError::MissingBehaviorRealization {
-            marker: main_marker,
-        })?;
-    let program = main_template
-        .replace("%B", &body_joined)
-        .replace("%X", &final_bind_name)
-        .replace("%Q", "\"");
-    Ok(program)
+        let main_template = indexes
+            .behaviors
+            .get(&main_marker)
+            .ok_or(EmitError::MissingBehaviorRealization {
+                marker: main_marker,
+            })?;
+        let main_program = render_named_template(
+            main_template,
+            &[
+                ("body", &body_joined),
+                ("final", &final_bind_name),
+                ("quote", &indexes.syntax.literals.string_delimiter),
+            ],
+        );
+        sections.push(main_program);
+    }
+    Ok(join_rendered(&sections, " "))
+}
+
+pub fn emit_rust(dag: &Dag) -> Result<String, EmitError> {
+    emit_rust_with_mode(dag, EmitRustMode::Program)
+}
+
+pub fn emit_rust_module(dag: &Dag) -> Result<String, EmitError> {
+    emit_rust_with_mode(dag, EmitRustMode::Module)
 }
 
 /// Bundled emission context. Carries the typed indexes, substrate
@@ -524,15 +1181,9 @@ pub fn emit_rust(dag: &Dag) -> Result<String, EmitError> {
 /// render walk. Replaces the pre-unwind multi-arg threading where
 /// every helper took `dag, index, bound_names, ...` separately.
 ///
-/// `branch_marker` is the only marker the recursive walk reads
-/// (Bind and Main are looked up at the top-level emit loop, not
-/// recursively). Keeping the others off the struct trims the
-/// borrow.
 struct Ctx<'a> {
     dag: &'a Dag,
     indexes: &'a RealizationIndexes,
-    branch_marker: DeclarationId,
-    list_builtins: Option<ListBuiltins>,
     bound_names: &'a HashMap<PortId, String>,
 }
 
@@ -572,12 +1223,10 @@ impl<'a> Ctx<'a> {
             ));
         };
         match self.dag.node(node_id) {
-            Behavior::Value(v) => Ok(render_value(v)),
+            Behavior::Value(v) => Ok(render_value(v, &self.indexes.syntax.literals)),
             Behavior::Transform(t) => self.render_transform(t, locals),
             Behavior::Branch(b) => self.render_branch(b, locals),
-            Behavior::Loop(_) => Err(EmitError::UnsupportedBehavior(
-                "Loop behavior is not yet supported by emit_rust".to_string(),
-            )),
+            Behavior::Loop(l) => self.render_loop(l, locals),
             Behavior::Bind(b) => Ok(b.name.clone()),
         }
     }
@@ -620,7 +1269,44 @@ impl<'a> Ctx<'a> {
             )));
         }
         let parent_expr = self.render_port_with_locals(t.inputs[0], locals)?;
-        Ok(format!("{parent_expr}.{field_label}"))
+        let parent_type_id = primitive_type_id_for_port(self.dag, t.inputs[0])?;
+        if let Some(type_binding) = self.indexes.types.get(&parent_type_id) {
+            let access = type_binding
+                .fields
+                .get(field_label)
+                .ok_or_else(|| {
+                    EmitError::UnsupportedBehavior(format!(
+                        "field projection .{field_label} has no FieldBinding entry on the parent TypeRealization"
+                    ))
+                })?;
+            return match access {
+                RustFieldAccessBinding::DirectField(name) => Ok(render_named_template(
+                    &self.indexes.syntax.expressions.field_access,
+                    &[("object", &parent_expr), ("field", name)],
+                )),
+                RustFieldAccessBinding::AccessorMethod(name) => Ok(format!(
+                    "{}()",
+                    render_named_template(
+                        &self.indexes.syntax.expressions.field_access,
+                        &[("object", &parent_expr), ("field", name)],
+                    )
+                )),
+            };
+        }
+        let Some(conj_id) = walk_to_conj(self.dag, parent_type_id) else {
+            return Err(EmitError::MissingTypeRealization {
+                target: parent_type_id,
+            });
+        };
+        if !matches!(self.dag.declaration(conj_id).connective, TypeConnective::Conj { .. }) {
+            return Err(EmitError::MissingTypeRealization {
+                target: parent_type_id,
+            });
+        }
+        Ok(render_named_template(
+            &self.indexes.syntax.expressions.field_access,
+            &[("object", &parent_expr), ("field", field_label)],
+        ))
     }
 
     fn render_operator(
@@ -658,7 +1344,10 @@ impl<'a> Ctx<'a> {
                 .clone();
         let lhs = self.render_port_with_locals(t.inputs[0], locals)?;
         let rhs = self.render_port_with_locals(t.inputs[1], locals)?;
-        Ok(format!("({} {} {})", lhs, carrier, rhs))
+        Ok(render_named_template(
+            &self.indexes.syntax.expressions.binary_op,
+            &[("lhs", &lhs), ("op", &carrier), ("rhs", &rhs)],
+        ))
     }
 
     fn render_branch(
@@ -666,21 +1355,152 @@ impl<'a> Ctx<'a> {
         b: &BranchNode,
         locals: Option<&HashMap<PortId, String>>,
     ) -> Result<String, EmitError> {
-        let (then_path, else_path) = self.split_bool_paths(b)?;
-        let cond = self.render_port_with_locals(b.input, locals)?;
-        let then_expr = self.render_port_with_locals(then_path.output, locals)?;
-        let else_expr = self.render_port_with_locals(else_path.output, locals)?;
-        let template = self
-            .indexes
-            .behaviors
-            .get(&self.branch_marker)
-            .ok_or(EmitError::MissingBehaviorRealization {
-                marker: self.branch_marker,
-            })?;
-        Ok(template
-            .replace("%C", &cond)
-            .replace("%H", &then_expr)
-            .replace("%E", &else_expr))
+        if self.branch_scrutinee_is_bool(b)? {
+            let (then_path, else_path) = self.split_bool_paths(b)?;
+            let cond = self.render_port_with_locals(b.input, locals)?;
+            let then_expr = self.render_path_body(then_path, locals)?;
+            let else_expr = self.render_path_body(else_path, locals)?;
+            return Ok(render_named_template(
+                &self.indexes.syntax.control_flow.if_else,
+                &[("cond", &cond), ("then", &then_expr), ("else", &else_expr)],
+            ));
+        }
+
+        let expr = self.render_port_with_locals(b.input, locals)?;
+        let arms = b
+            .paths
+            .iter()
+            .map(|path| {
+                let pattern = self.render_branch_pattern(b, path)?;
+                let body = self.render_path_body(path, locals)?;
+                Ok(render_named_template(
+                    &self.indexes.syntax.patterns.match_arm,
+                    &[("pattern", &pattern), ("body", &body)],
+                ))
+            })
+            .collect::<Result<Vec<_>, EmitError>>()?;
+        let arms_joined = join_rendered(&arms, " ");
+        Ok(render_named_template(
+            &self.indexes.syntax.patterns.match_expr,
+            &[("expr", &expr), ("arms", &arms_joined)],
+        ))
+    }
+
+    fn render_path_body(
+        &self,
+        path: &Path,
+        locals: Option<&HashMap<PortId, String>>,
+    ) -> Result<String, EmitError> {
+        let mut arm_locals = locals.cloned().unwrap_or_default();
+        if let Some(binding) = &path.binding {
+            arm_locals.insert(binding.payload_port, binding.binding_name.clone());
+        }
+        if arm_locals.is_empty() {
+            self.render_port_with_locals(path.output, None)
+        } else {
+            self.render_port_with_locals(path.output, Some(&arm_locals))
+        }
+    }
+
+    fn render_branch_pattern(&self, branch: &BranchNode, path: &Path) -> Result<String, EmitError> {
+        let scrutinee_type_id = primitive_type_id_for_port(self.dag, branch.input)?;
+        let disj_id = walk_to_disj(self.dag, scrutinee_type_id).ok_or_else(|| {
+            EmitError::UnsupportedBehavior(format!(
+                "branch scrutinee type at {scrutinee_type_id:?} does not walk to a Disj"
+            ))
+        })?;
+        let resolved_id = match &path.pattern {
+            BranchPattern::ResolvedVariant(id) => *id,
+            BranchPattern::UnresolvedVariant { name, .. } => {
+                return Err(EmitError::UnresolvedBranchPattern {
+                    variant_name: name.clone(),
+                });
+            }
+        };
+
+        if self.branch_scrutinee_is_bool(branch)? {
+            return self.render_bool_pattern(disj_id, resolved_id);
+        }
+
+        let variant_name = variant_name_for_decl(self.dag, disj_id, resolved_id)?;
+        let enum_name = self
+            .dag
+            .declaration(disj_id)
+            .name
+            .clone()
+            .ok_or(EmitError::UnsupportedBehavior(
+                "match on anonymous sum declarations is not yet supported in Rust emission"
+                    .to_string(),
+            ))?;
+        let qualified_name = self.qualified_name(&enum_name, &variant_name);
+        let Some(binding) = &path.binding else {
+            return Ok(render_named_template(
+                &self.indexes.syntax.patterns.variant_pattern_empty,
+                &[("name", &qualified_name)],
+            ));
+        };
+        let TypeConnective::Conj { children } = &self.dag.declaration(resolved_id).connective else {
+            return Err(EmitError::UnsupportedBehavior(format!(
+                "matched variant `{variant_name}` does not lower to a payload product"
+            )));
+        };
+        if children.len() != 1 {
+            return Err(EmitError::UnsupportedBehavior(format!(
+                "matched variant `{variant_name}` must carry exactly one payload field for direct binding"
+            )));
+        }
+        if children[0].label == "_0" && self.indexes.types.contains_key(&disj_id) {
+            return Ok(render_named_template(
+                &self.indexes.syntax.patterns.variant_pattern_positional,
+                &[("name", &qualified_name), ("binding", &binding.binding_name)],
+            ));
+        }
+        let bindings = render_named_template(
+            &self.indexes.syntax.patterns.field_binding,
+            &[("field", &children[0].label), ("binding", &binding.binding_name)],
+        );
+        Ok(render_named_template(
+            &self.indexes.syntax.patterns.variant_pattern,
+            &[("name", &qualified_name), ("bindings", &bindings)],
+        ))
+    }
+
+    fn render_bool_pattern(
+        &self,
+        disj_id: DeclarationId,
+        variant_id: DeclarationId,
+    ) -> Result<String, EmitError> {
+        let TypeConnective::Disj { variants } = &self.dag.declaration(disj_id).connective else {
+            unreachable!("walk_to_disj returned non-Disj")
+        };
+        let Some((idx, _)) = variants.iter().enumerate().find(|(_, variant)| variant.ty == variant_id) else {
+            return Err(EmitError::UnsupportedBehavior(format!(
+                "bool branch variant {variant_id:?} was not found on its parent disjunction"
+            )));
+        };
+        match idx {
+            0 => Ok(self.indexes.syntax.literals.true_keyword.clone()),
+            1 => Ok(self.indexes.syntax.literals.false_keyword.clone()),
+            _ => Err(EmitError::NonBooleanBranch {
+                variant_ids: variants.iter().map(|variant| variant.ty).collect(),
+            }),
+        }
+    }
+
+    fn branch_scrutinee_is_bool(&self, branch: &BranchNode) -> Result<bool, EmitError> {
+        let scrutinee_type_id = primitive_type_id_for_port(self.dag, branch.input)?;
+        let Some(bool_shape) = self.dag.bool_shape() else {
+            return Err(EmitError::MissingTypeRealization {
+                target: scrutinee_type_id,
+            });
+        };
+        let Some(scrutinee_disj) = walk_to_disj(self.dag, scrutinee_type_id) else {
+            return Ok(false);
+        };
+        let Some(bool_disj) = walk_to_disj(self.dag, bool_shape.declaration) else {
+            return Ok(false);
+        };
+        Ok(scrutinee_disj == bool_disj)
     }
 
     fn render_callable_transform(
@@ -689,101 +1509,233 @@ impl<'a> Ctx<'a> {
         target: DeclarationId,
         locals: Option<&HashMap<PortId, String>>,
     ) -> Result<String, EmitError> {
-        if let Some(rendered) = self.render_list_builtin(target, &t.inputs, locals)? {
+        let (template, arguments) = callable_template(target, self.dag);
+        if let Some(strategy) = self.indexes.callables.get(&template) {
+            return self.render_realized_callable(
+                template,
+                *strategy,
+                &arguments,
+                &t.inputs,
+                locals,
+            );
+        }
+        self.render_general_callable(template, &t.inputs, locals)
+    }
+
+    fn render_realized_callable(
+        &self,
+        template: DeclarationId,
+        strategy: RustCallableStrategyBinding,
+        arguments: &[TemplateArgument],
+        inputs: &[PortId],
+        locals: Option<&HashMap<PortId, String>>,
+    ) -> Result<String, EmitError> {
+        match strategy {
+            RustCallableStrategyBinding::ListEmpty => {
+                Ok(self.indexes.syntax.collection_ops.empty_list.clone())
+            }
+            RustCallableStrategyBinding::ListSingleton => {
+                if inputs.len() != 1 {
+                    return Err(EmitError::UnsupportedBehavior(format!(
+                        "singleton arity {} is not supported; expected one runtime input",
+                        inputs.len()
+                    )));
+                }
+                let value = self.render_port_with_locals(inputs[0], locals)?;
+                Ok(render_named_template(
+                    &self.indexes.syntax.collection_ops.list_literal,
+                    &[("elements", &value)],
+                ))
+            }
+            RustCallableStrategyBinding::ListCons => {
+                if inputs.len() != 2 {
+                    return Err(EmitError::UnsupportedBehavior(format!(
+                        "cons arity {} is not supported; expected two runtime inputs",
+                        inputs.len()
+                    )));
+                }
+                let head = self.render_port_with_locals(inputs[0], locals)?;
+                let tail = self.render_port_with_locals(inputs[1], locals)?;
+                Ok(render_named_template(
+                    &self.indexes.syntax.collection_ops.cons,
+                    &[("head", &head), ("tail", &tail)],
+                ))
+            }
+            RustCallableStrategyBinding::ListFold => {
+                if inputs.len() != 2 {
+                    return Err(EmitError::UnsupportedBehavior(format!(
+                        "fold runtime arity {} is not supported; expected [list, init]",
+                        inputs.len()
+                    )));
+                }
+                let fn_decl = bound_callable_argument(self.dag, template, arguments, 2)?;
+                let acc = "__fold_acc".to_string();
+                let item = "__fold_item".to_string();
+                let body = self.render_closure(fn_decl, &[acc.clone(), item.clone()])?;
+                let list = self.render_port_with_locals(inputs[0], locals)?;
+                let init = self.render_port_with_locals(inputs[1], locals)?;
+                Ok(render_named_template(
+                    &self.indexes.syntax.collection_ops.fold,
+                    &[("recv", &list), ("init", &init), ("body", &body)],
+                ))
+            }
+            RustCallableStrategyBinding::ListMap => {
+                if inputs.len() != 1 {
+                    return Err(EmitError::UnsupportedBehavior(format!(
+                        "map runtime arity {} is not supported; expected [list]",
+                        inputs.len()
+                    )));
+                }
+                let fn_decl = bound_callable_argument(self.dag, template, arguments, 1)?;
+                let item = "__map_item".to_string();
+                let body = self.render_closure(fn_decl, std::slice::from_ref(&item))?;
+                let list = self.render_port_with_locals(inputs[0], locals)?;
+                Ok(render_named_template(
+                    &self.indexes.syntax.collection_ops.map,
+                    &[("recv", &list), ("body", &body)],
+                ))
+            }
+            RustCallableStrategyBinding::ListFilter => {
+                if inputs.len() != 1 {
+                    return Err(EmitError::UnsupportedBehavior(format!(
+                        "filter runtime arity {} is not supported; expected [list]",
+                        inputs.len()
+                    )));
+                }
+                let fn_decl = bound_callable_argument(self.dag, template, arguments, 1)?;
+                let item = "__filter_item".to_string();
+                let predicate = self.render_callable_body(fn_decl, std::slice::from_ref(&item))?;
+                let list = self.render_port_with_locals(inputs[0], locals)?;
+                Ok(render_named_template(
+                    &self.indexes.syntax.collection_ops.filter,
+                    &[("recv", &list), ("item", &item), ("predicate", &predicate)],
+                ))
+            }
+        }
+    }
+
+    fn render_general_callable(
+        &self,
+        template: DeclarationId,
+        inputs: &[PortId],
+        locals: Option<&HashMap<PortId, String>>,
+    ) -> Result<String, EmitError> {
+        if let Some(rendered) = self.render_variant_constructor(template, inputs, locals)? {
             return Ok(rendered);
         }
-        Err(EmitError::UnsupportedBehavior(
-            "TransformTarget::Callable is not yet supported by emit_rust outside the staged std.list builtins"
-                .to_string(),
+        if let Some(rendered) = self.render_record_constructor(template, inputs, locals)? {
+            return Ok(rendered);
+        }
+        let func = self
+            .dag
+            .declaration(template)
+            .name
+            .clone()
+            .ok_or(EmitError::UnsupportedBehavior(
+                "callable target is anonymous and cannot be rendered as a direct Rust call"
+                    .to_string(),
+            ))?;
+        let args = inputs
+            .iter()
+            .map(|port| self.render_port_with_locals(*port, locals))
+            .collect::<Result<Vec<_>, _>>()?;
+        let joined = join_rendered(&args, ", ");
+        Ok(render_named_template(
+            &self.indexes.syntax.expressions.function_call,
+            &[("func", &func), ("args", &joined)],
         ))
     }
 
-    fn render_list_builtin(
+    fn render_record_constructor(
         &self,
-        target: DeclarationId,
+        template: DeclarationId,
         inputs: &[PortId],
         locals: Option<&HashMap<PortId, String>>,
     ) -> Result<Option<String>, EmitError> {
-        let Some(builtins) = self.list_builtins else {
+        let decl = self.dag.declaration(template);
+        let Some(type_name) = &decl.name else {
             return Ok(None);
         };
-        let (template, arguments) = callable_template(target, self.dag);
+        let TypeConnective::Conj { children } = &decl.connective else {
+            return Ok(None);
+        };
+        if children.len() != inputs.len() {
+            return Err(EmitError::UnsupportedBehavior(format!(
+                "record constructor `{type_name}` expected {} field input(s), got {}",
+                children.len(),
+                inputs.len()
+            )));
+        }
+        let fields = children
+            .iter()
+            .zip(inputs.iter())
+            .map(|(field, input)| {
+                let value = self.render_port_with_locals(*input, locals)?;
+                Ok(render_named_template(
+                    &self.indexes.syntax.values.struct_field_init,
+                    &[("name", &field.label), ("value", &value)],
+                ))
+            })
+            .collect::<Result<Vec<_>, EmitError>>()?;
+        let joined = join_rendered(
+            &fields,
+            &self.indexes.syntax.values.struct_field_separator,
+        );
+        Ok(Some(render_named_template(
+            &self.indexes.syntax.values.struct_literal,
+            &[("type", type_name), ("fields", &joined)],
+        )))
+    }
 
-        if template == builtins.empty {
-            return Ok(Some("Vec::new()".to_string()));
-        }
-        if template == builtins.singleton || builtins.singleton_int == Some(template) {
-            if inputs.len() != 1 {
-                return Err(EmitError::UnsupportedBehavior(format!(
-                    "singleton arity {} is not supported; expected one runtime input",
-                    inputs.len()
-                )));
-            }
-            let value = self.render_port_with_locals(inputs[0], locals)?;
-            return Ok(Some(format!("vec![{value}]")));
-        }
-        if template == builtins.cons || builtins.cons_int == Some(template) {
-            if inputs.len() != 2 {
-                return Err(EmitError::UnsupportedBehavior(format!(
-                    "cons arity {} is not supported; expected two runtime inputs",
-                    inputs.len()
-                )));
-            }
-            let head = self.render_port_with_locals(inputs[0], locals)?;
-            let tail = self.render_port_with_locals(inputs[1], locals)?;
-            return Ok(Some(format!(
-                "{{ let mut __list = {tail}; __list.insert(0, {head}); __list }}"
+    fn render_variant_constructor(
+        &self,
+        template: DeclarationId,
+        inputs: &[PortId],
+        locals: Option<&HashMap<PortId, String>>,
+    ) -> Result<Option<String>, EmitError> {
+        let Some((enum_name, variant_name)) = variant_parent_info(self.dag, template) else {
+            return Ok(None);
+        };
+        let qualified_name = self.qualified_name(&enum_name, &variant_name);
+        let TypeConnective::Conj { children } = &self.dag.declaration(template).connective else {
+            return Ok(None);
+        };
+        if children.len() != inputs.len() {
+            return Err(EmitError::UnsupportedBehavior(format!(
+                "variant constructor `{qualified_name}` expected {} payload field(s), got {}",
+                children.len(),
+                inputs.len()
             )));
         }
-        if template == builtins.fold || builtins.fold_int == Some(template) {
-            if inputs.len() != 2 {
-                return Err(EmitError::UnsupportedBehavior(format!(
-                    "fold runtime arity {} is not supported; expected [list, init]",
-                    inputs.len()
-                )));
-            }
-            let fn_decl = bound_callable_argument(self.dag, template, &arguments, 2)?;
-            let acc = "__fold_acc".to_string();
-            let item = "__fold_item".to_string();
-            let body = self.render_callable_body(fn_decl, &[acc.clone(), item.clone()])?;
-            let list = self.render_port_with_locals(inputs[0], locals)?;
-            let init = self.render_port_with_locals(inputs[1], locals)?;
-            return Ok(Some(format!(
-                "({list}).clone().into_iter().fold({init}, |{acc}, {item}| {{ {body} }})"
-            )));
+        if children.is_empty() {
+            return Ok(Some(qualified_name));
         }
-        if template == builtins.map || builtins.map_int == Some(template) {
-            if inputs.len() != 1 {
-                return Err(EmitError::UnsupportedBehavior(format!(
-                    "map runtime arity {} is not supported; expected [list]",
-                    inputs.len()
-                )));
-            }
-            let fn_decl = bound_callable_argument(self.dag, template, &arguments, 1)?;
-            let item = "__map_item".to_string();
-            let body = self.render_callable_body(fn_decl, std::slice::from_ref(&item))?;
-            let list = self.render_port_with_locals(inputs[0], locals)?;
-            return Ok(Some(format!(
-                "({list}).clone().into_iter().map(|{item}| {{ {body} }}).collect::<Vec<_>>()"
-            )));
-        }
-        if template == builtins.filter || builtins.filter_int == Some(template) {
-            if inputs.len() != 1 {
-                return Err(EmitError::UnsupportedBehavior(format!(
-                    "filter runtime arity {} is not supported; expected [list]",
-                    inputs.len()
-                )));
-            }
-            let fn_decl = bound_callable_argument(self.dag, template, &arguments, 1)?;
-            let item = "__filter_item".to_string();
-            let body = self.render_callable_body(fn_decl, std::slice::from_ref(&item))?;
-            let list = self.render_port_with_locals(inputs[0], locals)?;
-            return Ok(Some(format!(
-                "{{ let mut __out = Vec::new(); for {item} in ({list}).clone().into_iter() {{ if {body} {{ __out.push({item}); }} }} __out }}"
-            )));
-        }
+        let fields = children
+            .iter()
+            .zip(inputs.iter())
+            .map(|(field, input)| {
+                let value = self.render_port_with_locals(*input, locals)?;
+                Ok(render_named_template(
+                    &self.indexes.syntax.values.struct_field_init,
+                    &[("name", &field.label), ("value", &value)],
+                ))
+            })
+            .collect::<Result<Vec<_>, EmitError>>()?;
+        let joined = join_rendered(
+            &fields,
+            &self.indexes.syntax.values.struct_field_separator,
+        );
+        Ok(Some(render_named_template(
+            &self.indexes.syntax.values.variant_named_construction,
+            &[("variant", &qualified_name), ("fields", &joined)],
+        )))
+    }
 
-        Ok(None)
+    fn qualified_name(&self, left: &str, right: &str) -> String {
+        format!(
+            "{left}{}{right}",
+            self.indexes.syntax.modules.path_separator
+        )
     }
 
     fn render_callable_body(
@@ -820,6 +1772,172 @@ impl<'a> Ctx<'a> {
             .zip(param_names.iter().cloned())
             .collect();
         self.render_port_with_locals(bind.value, Some(&locals))
+    }
+
+    fn render_closure(
+        &self,
+        callable_decl: DeclarationId,
+        param_names: &[String],
+    ) -> Result<String, EmitError> {
+        let body = self.render_callable_body(callable_decl, param_names)?;
+        let joined = join_rendered(param_names, ", ");
+        Ok(render_named_template(
+            &self.indexes.syntax.expressions.closure,
+            &[("params", &joined), ("body", &body)],
+        ))
+    }
+
+    fn render_loop(
+        &self,
+        l: &crate::dag::LoopNode,
+        locals: Option<&HashMap<PortId, String>>,
+    ) -> Result<String, EmitError> {
+        let body_port = behavior_result_port(self.dag.node(l.body));
+        self.render_port_with_locals(body_port, locals)
+    }
+
+    fn render_function_declaration(
+        &self,
+        declaration: &crate::dag::Declaration,
+    ) -> Result<String, EmitError> {
+        let Some(name) = &declaration.name else {
+            return Err(EmitError::UnsupportedBehavior(
+                "anonymous Arrow declarations cannot be emitted as top-level Rust functions"
+                    .to_string(),
+            ));
+        };
+        let TypeConnective::Arrow { inputs, output, body } = &declaration.connective else {
+            return Err(EmitError::UnsupportedBehavior(
+                "render_function_declaration expected an Arrow declaration".to_string(),
+            ));
+        };
+        if !declaration.type_params.is_empty() {
+            return Err(EmitError::UnsupportedBehavior(
+                "generic user-defined functions are not yet supported by emit_rust".to_string(),
+            ));
+        }
+        let ArrowBody::UserDefined(bind_id) = body else {
+            return Err(EmitError::UnsupportedBehavior(
+                "external or unparsed Arrow bodies are not yet supported in function emission"
+                    .to_string(),
+            ));
+        };
+        let bind = self
+            .dag
+            .node(*bind_id)
+            .as_bind()
+            .expect("UserDefined arrow body must point at a Bind");
+        let mut locals = HashMap::new();
+        let params = bind
+            .params
+            .iter()
+            .enumerate()
+            .map(|(idx, port)| {
+                let param_name = format!("p{idx}");
+                locals.insert(*port, param_name.clone());
+                let ty = self.rust_type_name_for_port(*port)?;
+                Ok(render_named_template(
+                    &self.indexes.syntax.functions.param_with_type,
+                    &[("name", &param_name), ("type", &ty)],
+                ))
+            })
+            .collect::<Result<Vec<_>, EmitError>>()?;
+        if bind.params.len() != inputs.len() {
+            return Err(EmitError::UnsupportedBehavior(
+                "function bind parameter count does not match Arrow inputs".to_string(),
+            ));
+        }
+        let params_joined = join_rendered(&params, &self.indexes.syntax.functions.param_separator);
+        let ret = self
+            .indexes
+            .types
+            .get(output)
+            .map(|binding| binding.carrier.clone())
+            .or_else(|| {
+                self.rust_type_name_for_port(bind.value).ok()
+            })
+            .ok_or(EmitError::MissingTypeRealization { target: *output })?;
+        let body = self.render_port_with_locals(bind.value, Some(&locals))?;
+        Ok(render_named_template(
+            &self.indexes.syntax.functions.definition,
+            &[("name", name), ("params", &params_joined), ("ret", &ret), ("body", &body)],
+        ))
+    }
+
+    fn render_type_declaration(
+        &self,
+        declaration: &crate::dag::Declaration,
+    ) -> Result<String, EmitError> {
+        let Some(name) = &declaration.name else {
+            return Err(EmitError::UnsupportedBehavior(
+                "anonymous type declarations cannot be emitted".to_string(),
+            ));
+        };
+        if !declaration.type_params.is_empty() {
+            return Err(EmitError::UnsupportedBehavior(format!(
+                "generic type declaration `{name}` is not yet supported by emit_rust"
+            )));
+        }
+        match &declaration.connective {
+            TypeConnective::Conj { children } => {
+                let fields = children
+                    .iter()
+                    .map(|field| self.render_struct_field(field))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let fields_joined = join_rendered(&fields, " ");
+                Ok(render_named_template(
+                    &self.indexes.syntax.type_definitions.struct_def,
+                    &[("name", name), ("fields", &fields_joined)],
+                ))
+            }
+            TypeConnective::Disj { variants } => {
+                let rendered_variants = variants
+                    .iter()
+                    .map(|variant| self.render_enum_variant(variant))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let variants_joined = join_rendered(&rendered_variants, " ");
+                Ok(render_named_template(
+                    &self.indexes.syntax.type_definitions.enum_def,
+                    &[("name", name), ("variants", &variants_joined)],
+                ))
+            }
+            _ => Err(EmitError::UnsupportedBehavior(format!(
+                "type declaration `{name}` does not lower to a record or sum shape"
+            ))),
+        }
+    }
+
+    fn render_struct_field(&self, field: &Field) -> Result<String, EmitError> {
+        let ty = self.rust_type_name_for_decl(field.ty)?;
+        Ok(render_named_template(
+            &self.indexes.syntax.type_definitions.struct_field,
+            &[("name", &field.label), ("type", &ty)],
+        ))
+    }
+
+    fn render_enum_variant(&self, variant: &Field) -> Result<String, EmitError> {
+        let variant_decl = self.dag.declaration(variant.ty);
+        let TypeConnective::Conj { children } = &variant_decl.connective else {
+            return Err(EmitError::UnsupportedBehavior(format!(
+                "enum variant `{}` does not lower to a product declaration",
+                variant.label
+            )));
+        };
+        if children.is_empty() {
+            return Ok(render_named_template(
+                &self.indexes.syntax.type_definitions.enum_unit_variant,
+                &[("name", &variant.label)],
+            ));
+        }
+        let fields = children
+            .iter()
+            .map(|field| self.render_struct_field(field))
+            .collect::<Result<Vec<_>, _>>()?;
+        let fields_joined = join_rendered(&fields, " ");
+        Ok(render_named_template(
+            &self.indexes.syntax.type_definitions.enum_data_variant,
+            &[("name", &variant.label), ("fields", &fields_joined)],
+        ))
     }
 
     /// Sort a Branch's paths into (then, else) for if/else emission.
@@ -894,29 +2012,50 @@ impl<'a> Ctx<'a> {
     /// up that id in the index. Zero name strings.
     fn rust_type_name_for_port(&self, port: PortId) -> Result<String, EmitError> {
         let primitive_id = primitive_type_id_for_port(self.dag, port)?;
+        self.rust_type_name_for_decl(primitive_id)
+    }
+
+    fn rust_type_name_for_decl(&self, declaration: DeclarationId) -> Result<String, EmitError> {
         self.indexes
             .types
-            .get(&primitive_id)
-            .cloned()
+            .get(&declaration)
+            .map(|binding| binding.carrier.clone())
+            .or_else(|| self.dag.declaration(declaration).name.clone())
             .ok_or(EmitError::MissingTypeRealization {
-                target: primitive_id,
+                target: declaration,
             })
     }
 }
 
-fn resolve_list_builtins(dag: &Dag) -> Option<ListBuiltins> {
-    Some(ListBuiltins {
-        empty: dag.declaration_by_name("empty")?.id,
-        singleton: dag.declaration_by_name("singleton")?.id,
-        cons: dag.declaration_by_name("cons")?.id,
-        fold: dag.declaration_by_name("fold")?.id,
-        map: dag.declaration_by_name("map")?.id,
-        filter: dag.declaration_by_name("filter")?.id,
-        singleton_int: dag.declaration_by_name("singleton_int").map(|d| d.id),
-        cons_int: dag.declaration_by_name("cons_int").map(|d| d.id),
-        fold_int: dag.declaration_by_name("fold_int").map(|d| d.id),
-        map_int: dag.declaration_by_name("map_int").map(|d| d.id),
-        filter_int: dag.declaration_by_name("filter_int").map(|d| d.id),
+fn variant_name_for_decl(
+    dag: &Dag,
+    disj_id: DeclarationId,
+    variant_id: DeclarationId,
+) -> Result<String, EmitError> {
+    let TypeConnective::Disj { variants } = &dag.declaration(disj_id).connective else {
+        unreachable!("variant_name_for_decl requires a Disj parent")
+    };
+    variants
+        .iter()
+        .find(|variant| variant.ty == variant_id)
+        .map(|variant| variant.label.clone())
+        .ok_or_else(|| {
+            EmitError::UnsupportedBehavior(format!(
+                "variant {variant_id:?} was not found under parent disjunction {disj_id:?}"
+            ))
+        })
+}
+
+fn variant_parent_info(dag: &Dag, variant_id: DeclarationId) -> Option<(String, String)> {
+    dag.declarations().iter().find_map(|decl| {
+        let enum_name = decl.name.as_ref()?;
+        let TypeConnective::Disj { variants } = &decl.connective else {
+            return None;
+        };
+        variants
+            .iter()
+            .find(|variant| variant.ty == variant_id)
+            .map(|variant| (enum_name.clone(), variant.label.clone()))
     })
 }
 
@@ -938,12 +2077,12 @@ fn bound_callable_argument(
 ) -> Result<DeclarationId, EmitError> {
     let TypeConnective::Arrow { inputs, .. } = &dag.declaration(template).connective else {
         return Err(EmitError::UnsupportedBehavior(
-            "list builtin template did not resolve to an Arrow declaration".to_string(),
+            "realized callable template did not resolve to an Arrow declaration".to_string(),
         ));
     };
     let Some(param_decl) = inputs.get(input_index).copied() else {
         return Err(EmitError::UnsupportedBehavior(format!(
-            "list builtin callable slot {} is missing from the template declaration",
+            "realized callable slot {} is missing from the template declaration",
             input_index
         )));
     };
@@ -953,19 +2092,38 @@ fn bound_callable_argument(
         .map(|arg| arg.value)
         .ok_or_else(|| {
             EmitError::UnsupportedBehavior(
-                "list builtin callable argument did not bind through template instantiation"
+                "realized callable argument did not bind through template instantiation"
                     .to_string(),
             )
         })
 }
 
-fn render_value(v: &ValueNode) -> String {
+fn render_value(v: &ValueNode, literals: &LiteralSyntaxBinding) -> String {
     match &v.data {
         LiteralBits::Int(n) => n.to_string(),
-        LiteralBits::Bool(true) => "true".to_string(),
-        LiteralBits::Bool(false) => "false".to_string(),
-        LiteralBits::String(s) => format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")),
+        LiteralBits::Bool(true) => literals.true_keyword.clone(),
+        LiteralBits::Bool(false) => literals.false_keyword.clone(),
+        LiteralBits::String(s) => format!(
+            "{}{}{}",
+            literals.string_delimiter,
+            s.replace('\\', "\\\\").replace('"', "\\\""),
+            literals.string_delimiter
+        ),
     }
+}
+
+fn behavior_result_port(behavior: &Behavior) -> PortId {
+    match behavior {
+        Behavior::Value(v) => v.result_port(),
+        Behavior::Transform(t) => t.result_port(),
+        Behavior::Branch(b) => b.result_port(),
+        Behavior::Loop(l) => l.result_port(),
+        Behavior::Bind(b) => b.result_port(),
+    }
+}
+
+fn is_bootstrap_file(file: &str) -> bool {
+    file.starts_with("dsl/std/") || file.starts_with("src/v3/std/") || file.starts_with("src/v3/spec/")
 }
 
 /// Walk a port's resolved TypeShape declaration through anonymous
@@ -1011,6 +2169,20 @@ fn primitive_type_id_for_port(dag: &Dag, port: PortId) -> Result<DeclarationId, 
     Err(EmitError::UnsupportedBehavior(
         "port type walk exceeded depth 32 — likely a cycle".to_string(),
     ))
+}
+
+fn walk_to_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
+    let mut current = start;
+    for _ in 0..32 {
+        let decl = dag.declaration(current);
+        match &decl.connective {
+            TypeConnective::Conj { .. } => return Some(current),
+            TypeConnective::Instantiation { template, .. } => current = *template,
+            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => current = *next,
+            _ => return None,
+        }
+    }
+    None
 }
 
 /// Walk a declaration through aliases / instantiations to a `Disj`.
@@ -1100,13 +2272,26 @@ mod tests {
     fn render_field_project_emits_parent_dot_field() {
         let mut dag = Dag::new();
         let parent_port = dag.alloc_port(None);
+        let dag_type = dag
+            .declaration_by_name("Dag")
+            .expect("Dag type realization target exists")
+            .id;
+        let dag_nodes_type = match &dag.declaration(dag_type).connective {
+            TypeConnective::Conj { children } => children
+                .iter()
+                .find(|field| field.label == "nodes")
+                .expect("Dag.nodes field")
+                .ty,
+            other => panic!("Dag must be a Conj, got {other:?}"),
+        };
+        dag.set_port_type(parent_port, crate::types::TypeShape::new(dag_type));
         let node_id = dag.alloc_node_id();
         let output = dag.alloc_port(Some(node_id));
         dag.push_node(Behavior::Transform(TransformNode {
             id: node_id,
             target: TransformTarget::FieldProject {
-                field_label: "value".to_string(),
-                field_child: dag.int_shape().map(|ty| ty.declaration),
+                field_label: "nodes".to_string(),
+                field_child: Some(dag_nodes_type),
             },
             inputs: vec![parent_port],
             output,
@@ -1119,8 +2304,6 @@ mod tests {
         let ctx = Ctx {
             dag: &dag,
             indexes: &indexes,
-            branch_marker: dag.branch_marker().expect("branch marker"),
-            list_builtins: resolve_list_builtins(&dag),
             bound_names: &bound_names,
         };
 
@@ -1130,18 +2313,17 @@ mod tests {
                 .expect("field project renders"),
             other => panic!("expected Transform node, got {other:?}"),
         };
-        assert_eq!(rendered, "parent.value");
+        assert_eq!(rendered, "parent.nodes()");
     }
 
     #[test]
     fn render_fold_clones_named_list_input_before_iteration() {
         let dag = compile_to_dag(
-            "let total: Int = fold_int(singleton_int(1), 0, |acc, x| acc + x)",
+            "let total: Int = fold(singleton(1), 0, |acc, x| acc + x)",
             "test.v3",
         )
         .expect("compiles");
-        let builtins = resolve_list_builtins(&dag).expect("list builtins");
-        let fold_template = builtins.fold_int.expect("fold_int builtin");
+        let fold_template = dag.declaration_by_name("fold").expect("fold decl").id;
         let fold_transform = dag
             .nodes()
             .iter()
@@ -1163,8 +2345,6 @@ mod tests {
         let ctx = Ctx {
             dag: &dag,
             indexes: &indexes,
-            branch_marker: dag.branch_marker().expect("branch marker"),
-            list_builtins: Some(builtins),
             bound_names: &bound_names,
         };
 

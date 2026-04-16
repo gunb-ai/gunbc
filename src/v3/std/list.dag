@@ -142,30 +142,6 @@ fn filter<T>(list: List<T>, p: fn(T) -> Bool) -> List<T> {
   )
 }
 
-// Temporary concrete wrappers used by the current end-to-end tests.
-// The general helper API above is the real surface; these wrappers
-// exist because ordinary generic-call instantiation from runtime
-// arguments is not wired through the current pipeline yet.
-fn singleton_int(x: Int) -> List<Int> {
-  singleton(x)
-}
-
-fn cons_int(head: Int, tail: List<Int>) -> List<Int> {
-  cons(head, tail)
-}
-
-fn fold_int(list: List<Int>, init: Int, f: fn(Int, Int) -> Int) -> Int {
-  fold(list, init, f)
-}
-
-fn map_int(list: List<Int>, f: fn(Int) -> Int) -> List<Int> {
-  map(list, f)
-}
-
-fn filter_int(list: List<Int>, p: fn(Int) -> Bool) -> List<Int> {
-  filter(list, p)
-}
-
 // `flat_map(list, f)` — map each element to a list, then
 // concatenate the results. Aka `concatMap` in Haskell.
 fn flat_map<A, B>(list: List<A>, f: fn(A) -> List<B>) -> List<B> {

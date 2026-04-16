@@ -40,6 +40,16 @@ use crate::types::TypeShape;
 
 type CallableScope = HashMap<String, DeclarationId>;
 
+fn declaration_name_preference_rank(file: &str) -> usize {
+    if file.starts_with("src/v3/") {
+        2
+    } else if file.starts_with("dsl/") {
+        0
+    } else {
+        1
+    }
+}
+
 #[derive(Default)]
 struct ScopeState {
     values: HashMap<String, PortId>,
@@ -153,14 +163,26 @@ fn collect_symbols(
     dag: &mut Dag,
     items: &[SurfaceItem],
 ) -> (HashMap<String, DeclarationId>, Vec<bool>) {
-    // Seed from already-present declarations with first-match semantics
-    // (matches `Dag::declaration_by_name`). If a name appears multiple
-    // times in the prior bootstrap batch — e.g., a cross-file duplicate
-    // — the seed is idempotent: the first id wins.
+    // Seed from already-present declarations with the same preference
+    // policy as `Dag::declaration_by_name`: v3 declarations shadow
+    // legacy `dsl/` duplicates, otherwise earlier declarations win.
     let mut symbols: HashMap<String, DeclarationId> = HashMap::new();
     for d in dag.declarations() {
         if let Some(name) = &d.name {
-            symbols.entry(name.clone()).or_insert(d.id);
+            match symbols.get(name).copied() {
+                None => {
+                    symbols.insert(name.clone(), d.id);
+                }
+                Some(existing_id) => {
+                    let existing = dag.declaration(existing_id);
+                    let new_rank = declaration_name_preference_rank(&d.span.file);
+                    let existing_rank =
+                        declaration_name_preference_rank(&existing.span.file);
+                    if new_rank > existing_rank {
+                        symbols.insert(name.clone(), d.id);
+                    }
+                }
+            }
         }
     }
 
@@ -253,20 +275,28 @@ fn collect_symbols(
         }
 
         if let Some(&existing_id) = symbols.get(&name) {
-            is_first[idx] = false;
-            let existing_span = dag.declaration(existing_id).span.clone();
-            report_declaration_error(
-                dag,
-                Diagnostic::ResolveError {
-                    name: format!(
-                        "duplicate declaration `{name}` (first declared in `{}` at bytes {}..{})",
-                        existing_span.file,
-                        existing_span.byte_start,
-                        existing_span.byte_end,
-                    ),
-                    span,
-                },
-            );
+            let existing = dag.declaration(existing_id);
+            let new_rank = declaration_name_preference_rank(&span.file);
+            let existing_rank =
+                declaration_name_preference_rank(&existing.span.file);
+            if new_rank > existing_rank {
+                symbols.insert(name, id);
+            } else {
+                is_first[idx] = false;
+                let existing_span = existing.span.clone();
+                report_declaration_error(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "duplicate declaration `{name}` (first declared in `{}` at bytes {}..{})",
+                            existing_span.file,
+                            existing_span.byte_start,
+                            existing_span.byte_end,
+                        ),
+                        span,
+                    },
+                );
+            }
         } else {
             symbols.insert(name, id);
         }
@@ -345,7 +375,17 @@ fn lower_item(
                     }
                 }
             } else {
-                lower_expr(expr, dag, &scope.values, &scope.callables, symbols)
+                let expected_decl = type_ann.as_ref().map(|ty| {
+                    type_to_declaration_id(ty, symbols, &HashMap::new(), dag)
+                });
+                lower_expr(
+                    expr,
+                    dag,
+                    &scope.values,
+                    &scope.callables,
+                    symbols,
+                    expected_decl,
+                )
             };
             if let Some(ty) = type_ann {
                 // Compute the annotated type's declaration id ONCE.
@@ -1145,6 +1185,24 @@ fn walk_to_conj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
     None
 }
 
+fn walk_to_disj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
+    let mut current = start;
+    for _ in 0..32 {
+        let decl = dag.declaration(current);
+        match &decl.connective {
+            TypeConnective::Disj { .. } => return Some(current),
+            TypeConnective::Instantiation { template, .. } => {
+                current = *template;
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                current = *next;
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
 /// Attempt to lower a parsed record literal body into a
 /// `ValueBody::Structural { fields }` by matching each record field
 /// against the declared type's Conj children. Returns `None` (and
@@ -1223,38 +1281,6 @@ fn lower_record_to_structural(
             return None;
         }
     }
-    // Extract each field's literal value and validate its type
-    // matches the Conj child's declared type. Fields are emitted
-    // in the type's declared order (not the record literal's
-    // written order) for stable output.
-    //
-    // Two acceptable shapes for a field value at M1(3) PR-B-unwind:
-    //
-    //   1. A scalar literal whose primitive type matches the
-    //      declared field type. Lowers to `FieldValue::Literal`.
-    //
-    //   2. A bare identifier (or dotted path) whose declared field
-    //      type walks to the `DeclarationRef` sentinel marker from
-    //      `src/v3/spec/v3_l1.dag`. Lowers to `FieldValue::Reference`
-    //      with the resolved DeclarationId. This is what unblocks
-    //      typed declaration references in target language spec
-    //      files (e.g. rust.dag's `target: Int` → reference to the
-    //      Int declaration in std/integer.dag).
-    //
-    // Anything else (operator expression, call, branch, etc.)
-    // fails-closed with a class-5 gap #3 / #6 diagnostic.
-    let int_decl_id = dag.declaration_by_name("Int").map(|d| d.id);
-    let bool_decl_id = dag.declaration_by_name("Bool").map(|d| d.id);
-    let string_decl_id = dag.declaration_by_name("String").map(|d| d.id);
-    // `lower_record_to_structural` runs during Phase 2 of bootstrap
-    // — BEFORE `populate_primitive_cache` populates the substrate
-    // marker cache. Resolve the sentinel by name here (Phase 1's
-    // `collect_symbols_phase` has already registered every top-
-    // level declaration across all fixtures, so `declaration_by_name`
-    // works). Downstream consumers read the cached typed handle via
-    // `dag.declaration_ref_marker()`.
-    let declaration_marker_id = dag.declaration_by_name("DeclarationRef").map(|d| d.id);
-
     // Determine which realization category (if any) this data
     // item belongs to. Used below to narrow the acceptable shape
     // of `target` / `op` field values per category. The category
@@ -1270,123 +1296,305 @@ fn lower_record_to_structural(
             .iter()
             .find(|f| f.name == *type_label)
             .expect("checked above");
-        // Branch on whether the declared field type is the
-        // DeclarationRef sentinel — that decides which value shapes
-        // are acceptable.
-        let field_type_is_declaration = declaration_marker_id
-            .map(|m| walks_to(dag, *type_field_id, m))
-            .unwrap_or(false);
-        let field_value = if field_type_is_declaration {
-            // Accept identifier or dotted-path. Resolve to a
-            // DeclarationId via the symbols map (top-level) and
-            // optional Conj-child walk (for member-access chains).
-            let decl_id = match resolve_field_value_as_declaration_ref(
-                &record_field.value,
-                symbols,
-                dag,
-            ) {
-                Some(id) => id,
-                None => {
-                    report_declaration_error(
-                        dag,
-                        Diagnostic::ResolveError {
-                            name: format!(
-                                "data `{data_name}` field `{type_label}` is declared as `DeclarationRef` but its value is not a resolvable identifier or dotted path"
-                            ),
-                            span: record_field.span.clone(),
-                        },
-                    );
-                    return None;
-                }
-            };
-            // Realization-category narrowing. If this data item
-            // belongs to one of the three realization categories
-            // (TypeRealization / OperatorRealization /
-            // BehaviorRealization), the resolved DeclarationId
-            // must also satisfy a per-(category, field_label)
-            // structural constraint. The `DeclarationRef`
-            // sentinel admits any declaration; this check is the
-            // lower-time narrowing that PR-B-unwind R1 needed to
-            // make bad realization wirings (e.g.
-            // `BehaviorRealization { target: Int }`) fail-closed
-            // at lower time instead of being silently filtered
-            // later by the consumer.
-            if let Some(cat) = category {
-                if let Err(reason) = validate_realization_field_target(
-                    dag,
-                    cat,
-                    type_label,
-                    decl_id,
-                ) {
-                    report_declaration_error(
-                        dag,
-                        Diagnostic::ResolveError {
-                            name: format!(
-                                "data `{data_name}` field `{type_label}` does not satisfy the {cat:?} realization constraint: {reason}"
-                            ),
-                            span: record_field.span.clone(),
-                        },
-                    );
-                    return None;
-                }
-            }
-            crate::dag::FieldValue::Reference(decl_id)
-        } else {
-            // Require a scalar literal and type-check against the
-            // declared field type.
-            let literal = match &record_field.value {
-                SurfaceExpr::Literal { value, .. } => value,
-                _ => {
-                    report_declaration_error(
-                        dag,
-                        Diagnostic::ResolveError {
-                            name: format!(
-                                "data `{data_name}` field `{type_label}` must be a scalar literal (its declared type is not the `DeclarationRef` sentinel); nested records, list literals, and computed expressions remain class-5 gap #3 follow-ups"
-                            ),
-                            span: record_field.span.clone(),
-                        },
-                    );
-                    return None;
-                }
-            };
-            let literal_bits = match literal {
-                SurfaceLiteral::Int(v) => LiteralBits::Int(*v),
-                SurfaceLiteral::Bool(v) => LiteralBits::Bool(*v),
-                SurfaceLiteral::String(v) => LiteralBits::String(v.clone()),
-            };
-            let expected_is_int = int_decl_id
-                .map(|id| walks_to(dag, *type_field_id, id))
-                .unwrap_or(false);
-            let expected_is_bool = bool_decl_id
-                .map(|id| walks_to(dag, *type_field_id, id))
-                .unwrap_or(false);
-            let expected_is_string = string_decl_id
-                .map(|id| walks_to(dag, *type_field_id, id))
-                .unwrap_or(false);
-            let type_ok = match &literal_bits {
-                LiteralBits::Int(_) => expected_is_int,
-                LiteralBits::Bool(_) => expected_is_bool,
-                LiteralBits::String(_) => expected_is_string,
-            };
-            if !type_ok {
-                report_declaration_error(
-                    dag,
-                    Diagnostic::ResolveError {
-                        name: format!(
-                            "data `{data_name}` field `{type_label}` has a literal whose type doesn't match the declared field type"
-                        ),
-                        span: record_field.span.clone(),
-                    },
-                );
-                return None;
-            }
-            crate::dag::FieldValue::Literal(literal_bits)
+        let field_value = match lower_structural_field_value(
+            data_name,
+            type_label,
+            &record_field.value,
+            *type_field_id,
+            symbols,
+            dag,
+            category,
+            &record_field.span,
+        ) {
+            Some(value) => value,
+            None => return None,
         };
         structural_fields.push((type_label.clone(), field_value));
     }
     Some(crate::dag::ValueBody::Structural {
         fields: structural_fields,
     })
+}
+
+fn lower_structural_field_value(
+    data_name: &str,
+    field_label: &str,
+    expr: &SurfaceExpr,
+    expected_type: DeclarationId,
+    symbols: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+    category: Option<RealizationCategoryTag>,
+    span: &SourceSpan,
+) -> Option<crate::dag::FieldValue> {
+    if let Some(marker_id) = dag.declaration_by_name("DeclarationRef").map(|d| d.id) {
+        if walks_to(dag, expected_type, marker_id) {
+            let decl_id = resolve_field_value_as_declaration_ref(expr, symbols, dag)?;
+            if let Some(cat) = category {
+                if let Err(reason) =
+                    validate_realization_field_target(dag, cat, field_label, decl_id)
+                {
+                    report_declaration_error(
+                        dag,
+                        Diagnostic::ResolveError {
+                            name: format!(
+                                "data `{data_name}` field `{field_label}` does not satisfy the {cat:?} realization constraint: {reason}"
+                            ),
+                            span: span.clone(),
+                        },
+                    );
+                    return None;
+                }
+            }
+            return Some(crate::dag::FieldValue::Reference(decl_id));
+        }
+    }
+
+    if let Some(literal_bits) = lower_scalar_literal_for_type(expr, expected_type, dag) {
+        return Some(crate::dag::FieldValue::Literal(literal_bits));
+    }
+
+    if let Some(element_type) = list_element_type(dag, expected_type) {
+        let SurfaceExpr::List { elements, .. } = expr else {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "data `{data_name}` field `{field_label}` must be a list literal matching the declared List<_> type"
+                    ),
+                    span: span.clone(),
+                },
+            );
+            return None;
+        };
+        let mut lowered = Vec::with_capacity(elements.len());
+        for element in elements {
+            lowered.push(lower_structural_field_value(
+                data_name,
+                field_label,
+                element,
+                element_type,
+                symbols,
+                dag,
+                None,
+                expr_span(element),
+            )?);
+        }
+        return Some(crate::dag::FieldValue::List(lowered));
+    }
+
+    if let Some(conj_id) = walk_to_conj_decl(dag, expected_type) {
+        let SurfaceExpr::Record { fields, .. } = expr else {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "data `{data_name}` field `{field_label}` must be a record literal matching the declared record type"
+                    ),
+                    span: span.clone(),
+                },
+            );
+            return None;
+        };
+        let expected_fields: Vec<(String, DeclarationId)> = match &dag.declaration(conj_id).connective
+        {
+            TypeConnective::Conj { children } => children
+                .iter()
+                .map(|child| (child.label.clone(), child.ty))
+                .collect(),
+            _ => unreachable!("walk_to_conj_decl returned non-Conj"),
+        };
+        for field in fields {
+            if !expected_fields.iter().any(|(label, _)| *label == field.name) {
+                report_declaration_error(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "data `{data_name}` field `{field_label}` has nested field `{}` but the declared type has no such field",
+                            field.name
+                        ),
+                        span: field.span.clone(),
+                    },
+                );
+                return None;
+            }
+        }
+        for (label, _) in &expected_fields {
+            if !fields.iter().any(|field| field.name == *label) {
+                report_declaration_error(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "data `{data_name}` field `{field_label}` is missing nested field `{label}`"
+                        ),
+                        span: span.clone(),
+                    },
+                );
+                return None;
+            }
+        }
+        let mut lowered = Vec::with_capacity(expected_fields.len());
+        for (label, ty) in expected_fields {
+            let nested = fields
+                .iter()
+                .find(|field| field.name == label)
+                .expect("checked above");
+            lowered.push((
+                label.clone(),
+                lower_structural_field_value(
+                    data_name,
+                    &label,
+                    &nested.value,
+                    ty,
+                    symbols,
+                    dag,
+                    None,
+                    &nested.span,
+                )?,
+            ));
+        }
+        return Some(crate::dag::FieldValue::Record(lowered));
+    }
+
+    if let Some(disj_id) = walk_to_disj_decl(dag, expected_type) {
+        let (variant_name, args, variant_span) = match expr {
+            SurfaceExpr::Call { target, args, span } => (target.as_str(), args.as_slice(), span),
+            SurfaceExpr::Var { name, span } => (name.as_str(), &[][..], span),
+            _ => {
+                report_declaration_error(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "data `{data_name}` field `{field_label}` must be a constructor call matching the declared sum type"
+                        ),
+                        span: span.clone(),
+                    },
+                );
+                return None;
+            }
+        };
+        let variants: Vec<(String, DeclarationId)> = match &dag.declaration(disj_id).connective {
+            TypeConnective::Disj { variants } => variants
+                .iter()
+                .map(|field| (field.label.clone(), field.ty))
+                .collect(),
+            _ => unreachable!("walk_to_disj_decl returned non-Disj"),
+        };
+        let Some((_, variant_decl_id)) = variants
+            .iter()
+            .find(|(label, _)| label == variant_name)
+        else {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "data `{data_name}` field `{field_label}` uses constructor `{variant_name}` which is not a variant of the declared sum type"
+                    ),
+                    span: variant_span.clone(),
+                },
+            );
+            return None;
+        };
+        let payload_fields: Vec<DeclarationId> = match &dag.declaration(*variant_decl_id).connective
+        {
+            TypeConnective::Conj { children } => children.iter().map(|child| child.ty).collect(),
+            other => {
+                report_declaration_error(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "data `{data_name}` field `{field_label}` constructor `{variant_name}` does not lower to a record payload shape: got {other:?}"
+                        ),
+                        span: variant_span.clone(),
+                    },
+                );
+                return None;
+            }
+        };
+        if payload_fields.len() != args.len() {
+            report_declaration_error(
+                dag,
+                Diagnostic::ArityMismatch {
+                    function: variant_name.to_string(),
+                    expected: payload_fields.len(),
+                    actual: args.len(),
+                    span: variant_span.clone(),
+                },
+            );
+            return None;
+        }
+        let mut payload = Vec::with_capacity(args.len());
+        for (arg, payload_field_ty) in args.iter().zip(payload_fields.iter()) {
+            payload.push(lower_structural_field_value(
+                data_name,
+                field_label,
+                arg,
+                *payload_field_ty,
+                symbols,
+                dag,
+                None,
+                expr_span(arg),
+            )?);
+        }
+        return Some(crate::dag::FieldValue::Variant {
+            constructor_name: variant_name.to_string(),
+            payload,
+        });
+    }
+
+    report_declaration_error(
+        dag,
+        Diagnostic::ResolveError {
+            name: format!(
+                "data `{data_name}` field `{field_label}` does not match the declared structural type"
+            ),
+            span: span.clone(),
+        },
+    );
+    None
+}
+
+fn lower_scalar_literal_for_type(
+    expr: &SurfaceExpr,
+    expected_type: DeclarationId,
+    dag: &Dag,
+) -> Option<LiteralBits> {
+    let SurfaceExpr::Literal { value, .. } = expr else {
+        return None;
+    };
+    let literal_bits = match value {
+        SurfaceLiteral::Int(v) => LiteralBits::Int(*v),
+        SurfaceLiteral::Bool(v) => LiteralBits::Bool(*v),
+        SurfaceLiteral::String(v) => LiteralBits::String(v.clone()),
+    };
+    let int_decl_id = dag.declaration_by_name("Int").map(|d| d.id);
+    let bool_decl_id = dag.declaration_by_name("Bool").map(|d| d.id);
+    let string_decl_id = dag.declaration_by_name("String").map(|d| d.id);
+    let type_ok = match &literal_bits {
+        LiteralBits::Int(_) => int_decl_id
+            .map(|id| walks_to(dag, expected_type, id))
+            .unwrap_or(false),
+        LiteralBits::Bool(_) => bool_decl_id
+            .map(|id| walks_to(dag, expected_type, id))
+            .unwrap_or(false),
+        LiteralBits::String(_) => string_decl_id
+            .map(|id| walks_to(dag, expected_type, id))
+            .unwrap_or(false),
+    };
+    type_ok.then_some(literal_bits)
+}
+
+fn list_element_type(dag: &Dag, expected_type: DeclarationId) -> Option<DeclarationId> {
+    let list_id = dag.declaration_by_name("List")?.id;
+    match &dag.declaration(expected_type).connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if *template == list_id && arguments.len() == 1 => Some(arguments[0].value),
+        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            list_element_type(dag, *next)
+        }
+        _ => None,
+    }
 }
 
 /// Resolve a record-literal field value as a typed declaration
@@ -1538,12 +1746,12 @@ fn validate_realization_field_target(
 
     match (category, field_label) {
         (RealizationCategoryTag::Type, "target") => {
-            if is_primitive(target) {
-                Ok(())
-            } else {
+            if is_behavior_marker(target) {
                 Err(format!(
-                    "TypeRealization.target must reference a primitive type (Int/Bool/String); got declaration {target:?}"
+                    "TypeRealization.target must reference a realizable structural type, not a behavior marker; got declaration {target:?}"
                 ))
+            } else {
+                Ok(())
             }
         }
         (RealizationCategoryTag::Operator, "target") => {
@@ -1718,7 +1926,14 @@ fn lower_fn_item_expr_body(
     }
 
     // 4. Lower the body.
-    let body_return_port = lower_expr(body, dag, &body_scope, &callable_scope, symbols);
+    let body_return_port = lower_expr(
+        body,
+        dag,
+        &body_scope,
+        &callable_scope,
+        symbols,
+        Some(return_decl_id),
+    );
     let body_root = dag.port(body_return_port).produced_by;
     let body_span = expr_span(body).clone();
 
@@ -1981,6 +2196,11 @@ fn collect_lambda_free_names(
                 collect_lambda_free_names(&field.value, bound, free);
             }
         }
+        SurfaceExpr::List { elements, .. } => {
+            for element in elements {
+                collect_lambda_free_names(element, bound, free);
+            }
+        }
     }
 }
 
@@ -2059,6 +2279,7 @@ fn lower_lambda_expr(
         &body_scope,
         &body_callable_scope,
         ctx.symbols,
+        Some(expected_output),
     );
     let bind_id = ctx.dag.alloc_node_id();
     let mut bind_params = capture_ports;
@@ -2300,6 +2521,7 @@ fn lower_expr(
     scope: &HashMap<String, PortId>,
     callable_scope: &CallableScope,
     symbols: &HashMap<String, DeclarationId>,
+    expected_decl: Option<DeclarationId>,
 ) -> PortId {
     match expr {
         SurfaceExpr::Literal { value, span } => {
@@ -2321,6 +2543,16 @@ fn lower_expr(
         SurfaceExpr::Var { name, span } => match scope.get(name) {
             Some(port) => *port,
             None => {
+                if let Some(target) =
+                    resolve_expected_variant_constructor(dag, expected_decl, name)
+                {
+                    return lower_constructor_invocation(
+                        dag,
+                        target,
+                        Vec::new(),
+                        span.clone(),
+                    );
+                }
                 let port = dag.alloc_port(None);
                 dag.mark_unresolved(
                     port,
@@ -2333,12 +2565,11 @@ fn lower_expr(
             }
         },
         SurfaceExpr::Call { target, args, span } => {
-            let base_target_decl = callable_scope
-                .get(target)
-                .copied()
+            let base_target_decl = resolve_expected_variant_constructor(dag, expected_decl, target)
+                .or_else(|| callable_scope.get(target).copied())
                 .or_else(|| symbols.get(target).copied())
                 .unwrap_or_else(|| alloc_identifier_stub(dag, target, span));
-            let target_inputs = declaration_callable_inputs(dag, base_target_decl, 0);
+            let target_inputs = direct_invocation_input_decls(dag, base_target_decl, 0);
             let mut input_ports: Vec<PortId> = Vec::new();
             let mut template_arguments: Vec<TemplateArgument> = Vec::new();
             for (idx, arg) in args.iter().enumerate() {
@@ -2394,7 +2625,14 @@ fn lower_expr(
                         continue;
                     }
                 }
-                input_ports.push(lower_expr(arg, dag, scope, callable_scope, symbols));
+                input_ports.push(lower_expr(
+                    arg,
+                    dag,
+                    scope,
+                    callable_scope,
+                    symbols,
+                    expected_input,
+                ));
             }
             let target_decl = if template_arguments.is_empty() {
                 base_target_decl
@@ -2429,7 +2667,7 @@ fn lower_expr(
         SurfaceExpr::Operator { op, args, span } => {
             let input_ports: Vec<PortId> = args
                 .iter()
-                .map(|a| lower_expr(a, dag, scope, callable_scope, symbols))
+                .map(|a| lower_expr(a, dag, scope, callable_scope, symbols, None))
                 .collect();
             let node_id = dag.alloc_node_id();
             let output = dag.alloc_port(Some(node_id));
@@ -2460,9 +2698,23 @@ fn lower_expr(
             else_branch,
             span,
         } => {
-            let cond_port = lower_expr(cond, dag, scope, callable_scope, symbols);
-            let then_port = lower_expr(then_branch, dag, scope, callable_scope, symbols);
-            let else_port = lower_expr(else_branch, dag, scope, callable_scope, symbols);
+            let cond_port = lower_expr(cond, dag, scope, callable_scope, symbols, None);
+            let then_port = lower_expr(
+                then_branch,
+                dag,
+                scope,
+                callable_scope,
+                symbols,
+                expected_decl,
+            );
+            let else_port = lower_expr(
+                else_branch,
+                dag,
+                scope,
+                callable_scope,
+                symbols,
+                expected_decl,
+            );
             let branch_id = dag.alloc_node_id();
             let branch_output = dag.alloc_port(Some(branch_id));
             let then_body = producer_of(dag, then_port).unwrap_or(branch_id);
@@ -2509,7 +2761,8 @@ fn lower_expr(
             // comes after so the Branch's id matches `nodes.len()`
             // at push time (arm lowering pushes its own nodes). Same
             // ordering pattern as the `If` arm above.
-            let scrutinee_port = lower_expr(scrutinee, dag, scope, callable_scope, symbols);
+            let scrutinee_port =
+                lower_expr(scrutinee, dag, scope, callable_scope, symbols, None);
             let mut lowered_arms: Vec<LoweredMatchArm> =
                 Vec::with_capacity(arms.len());
             for arm in arms {
@@ -2532,7 +2785,14 @@ fn lower_expr(
                     }
                 };
                 let arm_output_port =
-                    lower_expr(&arm.body, dag, &arm_scope, callable_scope, symbols);
+                    lower_expr(
+                        &arm.body,
+                        dag,
+                        &arm_scope,
+                        callable_scope,
+                        symbols,
+                        expected_decl,
+                    );
                 let body_node = producer_of(dag, arm_output_port);
                 lowered_arms.push(LoweredMatchArm {
                     output: arm_output_port,
@@ -2565,26 +2825,273 @@ fn lower_expr(
             }));
             branch_output
         }
-        SurfaceExpr::Record { span, .. } => {
-            // Record literals are accepted at M1(3) PR-B only as
-            // the body of a `data foo: T = {...}` item, which is
-            // lowered in `lower_data_item`, not through
-            // `lower_expr`. User-code expression position
-            // (`let x = { a: 1 }`) is a class-5 gap #3 follow-up.
-            // Emit a fail-closed diagnostic so the user sees a
-            // clean error instead of a silent pass-through.
-            unresolved_port(
-                dag,
-                Diagnostic::ResolveError {
-                    name: "record literals are not yet supported in user-code expression position; at M1(3) they are only accepted as `data name: Type = { ... }` body values"
-                        .to_string(),
-                    span: span.clone(),
-                },
-            )
-        }
+        SurfaceExpr::Record { fields, span } => lower_record_literal_expr(
+            fields,
+            span,
+            dag,
+            scope,
+            callable_scope,
+            symbols,
+            expected_decl,
+        ),
+        SurfaceExpr::List { elements, span } => lower_list_literal_expr(
+            elements,
+            span,
+            dag,
+            scope,
+            callable_scope,
+            symbols,
+            expected_decl,
+        ),
         SurfaceExpr::Path { segments, span } => {
             lower_field_path_expr(segments, span, dag, scope)
         }
+    }
+}
+
+fn lower_constructor_invocation(
+    dag: &mut Dag,
+    target: DeclarationId,
+    inputs: Vec<PortId>,
+    span: SourceSpan,
+) -> PortId {
+    let node_id = dag.alloc_node_id();
+    let output = dag.alloc_port(Some(node_id));
+    dag.push_node(Behavior::Transform(TransformNode {
+        id: node_id,
+        target: TransformTarget::Callable(target),
+        inputs,
+        output,
+        span,
+    }));
+    output
+}
+
+fn direct_invocation_input_decls(
+    dag: &Dag,
+    current: DeclarationId,
+    depth: usize,
+) -> Option<Vec<DeclarationId>> {
+    if depth >= 32 {
+        return None;
+    }
+    match &dag.declaration(current).connective {
+        TypeConnective::Arrow { inputs, .. } => Some(inputs.clone()),
+        TypeConnective::Conj { children } => {
+            Some(children.iter().map(|child| child.ty).collect())
+        }
+        TypeConnective::Instantiation { template, .. } => {
+            direct_invocation_input_decls(dag, *template, depth + 1)
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            direct_invocation_input_decls(dag, *next, depth + 1)
+        }
+        TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+        | TypeConnective::Atom(AtomPayload::TypeParam(_))
+        | TypeConnective::Atom(AtomPayload::Literal(_))
+        | TypeConnective::Disj { .. }
+        | TypeConnective::Cardinality { .. } => None,
+    }
+}
+
+fn lower_record_literal_expr(
+    fields: &[crate::parse::SurfaceRecordField],
+    span: &SourceSpan,
+    dag: &mut Dag,
+    scope: &HashMap<String, PortId>,
+    callable_scope: &CallableScope,
+    symbols: &HashMap<String, DeclarationId>,
+    expected_decl: Option<DeclarationId>,
+) -> PortId {
+    let Some(target_decl) = expected_decl else {
+        return unresolved_port(
+            dag,
+            Diagnostic::ResolveError {
+                name: "record literals require an expected record type at this position".to_string(),
+                span: span.clone(),
+            },
+        );
+    };
+    let Some(conj_id) = walk_to_conj_decl(dag, target_decl) else {
+        return unresolved_port(
+            dag,
+            Diagnostic::ResolveError {
+                name: "record literal does not have an expected record type at this position"
+                    .to_string(),
+                span: span.clone(),
+            },
+        );
+    };
+    let expected_fields: Vec<(String, DeclarationId)> = match &dag.declaration(conj_id).connective
+    {
+        TypeConnective::Conj { children } => children
+            .iter()
+            .map(|child| (child.label.clone(), child.ty))
+            .collect(),
+        _ => unreachable!("walk_to_conj_decl returned non-Conj"),
+    };
+    for field in fields {
+        if !expected_fields.iter().any(|(label, _)| *label == field.name) {
+            return unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "record literal has field `{}` but the expected type has no such field",
+                        field.name
+                    ),
+                    span: field.span.clone(),
+                },
+            );
+        }
+    }
+    let mut inputs = Vec::with_capacity(expected_fields.len());
+    for (label, field_ty) in expected_fields {
+        let Some(field) = fields.iter().find(|field| field.name == label) else {
+            return unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "record literal is missing required field `{label}` for the expected type"
+                    ),
+                    span: span.clone(),
+                },
+            );
+        };
+        inputs.push(lower_expr(
+            &field.value,
+            dag,
+            scope,
+            callable_scope,
+            symbols,
+            Some(field_ty),
+        ));
+    }
+    lower_constructor_invocation(dag, target_decl, inputs, span.clone())
+}
+
+fn lower_list_literal_expr(
+    elements: &[SurfaceExpr],
+    span: &SourceSpan,
+    dag: &mut Dag,
+    scope: &HashMap<String, PortId>,
+    callable_scope: &CallableScope,
+    symbols: &HashMap<String, DeclarationId>,
+    expected_decl: Option<DeclarationId>,
+) -> PortId {
+    let empty_decl = match symbols.get("empty").copied() {
+        Some(id) => id,
+        None => {
+            return unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name: "std `empty` constructor is unavailable while lowering a list literal"
+                        .to_string(),
+                    span: span.clone(),
+                },
+            );
+        }
+    };
+    let singleton_decl = match symbols.get("singleton").copied() {
+        Some(id) => id,
+        None => {
+            return unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name:
+                        "std `singleton` constructor is unavailable while lowering a list literal"
+                            .to_string(),
+                    span: span.clone(),
+                },
+            );
+        }
+    };
+    let cons_decl = match symbols.get("cons").copied() {
+        Some(id) => id,
+        None => {
+            return unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name: "std `cons` constructor is unavailable while lowering a list literal"
+                        .to_string(),
+                    span: span.clone(),
+                },
+            );
+        }
+    };
+
+    if elements.is_empty() {
+        return lower_constructor_invocation(dag, empty_decl, Vec::new(), span.clone());
+    }
+
+    let element_expected = expected_decl.and_then(|decl| list_element_type(dag, decl));
+    let mut element_ports: Vec<PortId> = elements
+        .iter()
+        .map(|element| {
+            lower_expr(
+                element,
+                dag,
+                scope,
+                callable_scope,
+                symbols,
+                element_expected,
+            )
+        })
+        .collect();
+    let last = element_ports
+        .pop()
+        .expect("non-empty list literal has a last element");
+    let mut current = lower_constructor_invocation(
+        dag,
+        singleton_decl,
+        vec![last],
+        expr_span(elements.last().expect("non-empty")).clone(),
+    );
+    while let Some(head) = element_ports.pop() {
+        current = lower_constructor_invocation(dag, cons_decl, vec![head, current], span.clone());
+    }
+    current
+}
+
+fn resolve_expected_variant_constructor(
+    dag: &mut Dag,
+    expected_decl: Option<DeclarationId>,
+    variant_name: &str,
+) -> Option<DeclarationId> {
+    let expected_decl = expected_decl?;
+    let expected_span = dag.declaration(expected_decl).span.clone();
+    let disj_id = walk_to_disj_decl(dag, expected_decl)?;
+    let variant_decl = match &dag.declaration(disj_id).connective {
+        TypeConnective::Disj { variants } => variants
+            .iter()
+            .find(|variant| variant.label == variant_name)
+            .map(|variant| variant.ty)?,
+        _ => unreachable!("walk_to_disj_decl returned non-Disj"),
+    };
+    let instantiation_arguments = match &dag.declaration(expected_decl).connective {
+        TypeConnective::Instantiation { arguments, .. } if !arguments.is_empty() => {
+            Some(arguments.clone())
+        }
+        _ => None,
+    };
+    match instantiation_arguments {
+        Some(arguments) => {
+            let instantiation_id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id: instantiation_id,
+                name: None,
+                connective: TypeConnective::Instantiation {
+                    template: variant_decl,
+                    arguments,
+                },
+                type_params: Vec::new(),
+                meta_tag: None,
+                inhabits: None,
+                value_body: None,
+                span: expected_span,
+            });
+            Some(instantiation_id)
+        }
+        _ => Some(variant_decl),
     }
 }
 
@@ -2596,7 +3103,8 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
     match expr {
         SurfaceExpr::Literal { .. }
         | SurfaceExpr::Var { .. }
-        | SurfaceExpr::Path { .. } => false,
+        | SurfaceExpr::Path { .. }
+        | SurfaceExpr::List { .. } => false,
         SurfaceExpr::Call { target, args, .. } => {
             if target == self_name {
                 return true;
@@ -2697,6 +3205,9 @@ fn descent_provable(expr: &SurfaceExpr, self_name: &str, first_param: &str) -> b
         SurfaceExpr::Record { fields, .. } => fields
             .iter()
             .all(|f| descent_provable(&f.value, self_name, first_param)),
+        SurfaceExpr::List { elements, .. } => elements
+            .iter()
+            .all(|element| descent_provable(element, self_name, first_param)),
     }
 }
 
@@ -2732,7 +3243,8 @@ fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
         | SurfaceExpr::Lambda { span, .. }
         | SurfaceExpr::If { span, .. }
         | SurfaceExpr::Match { span, .. }
-        | SurfaceExpr::Record { span, .. } => span,
+        | SurfaceExpr::Record { span, .. }
+        | SurfaceExpr::List { span, .. } => span,
     }
 }
 
@@ -2844,6 +3356,11 @@ fn collect_calls(
         SurfaceExpr::Record { fields, .. } => {
             for f in fields {
                 collect_calls(&f.value, fn_names, out);
+            }
+        }
+        SurfaceExpr::List { elements, .. } => {
+            for element in elements {
+                collect_calls(element, fn_names, out);
             }
         }
     }

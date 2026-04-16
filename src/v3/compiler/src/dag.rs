@@ -226,6 +226,20 @@ pub enum FieldValue {
     /// per-target language spec files (e.g. rust.dag) to point at
     /// realization targets without going through string keys.
     Reference(DeclarationId),
+    /// Nested structural record value. Used by staged spec files
+    /// whose structural data bodies contain record-valued fields.
+    Record(Vec<(String, FieldValue)>),
+    /// Structural list value. Used by staged spec files whose
+    /// structural data bodies contain list-valued fields.
+    List(Vec<FieldValue>),
+    /// Structural sum constructor with positional payload fields.
+    /// The constructor label is preserved explicitly because sum
+    /// variant child declarations are anonymous in the declaration
+    /// table.
+    Variant {
+        constructor_name: String,
+        payload: Vec<FieldValue>,
+    },
 }
 
 /// The six-variant type substrate. Terminal at M1(2.5).
@@ -575,6 +589,12 @@ pub struct ValueNode {
     pub span: SourceSpan,
 }
 
+impl ValueNode {
+    pub fn result_port(&self) -> PortId {
+        self.output
+    }
+}
+
 /// Dispatch target of a `TransformNode`. Structural coproduct that
 /// replaces the old single `target: DeclarationId` field.
 ///
@@ -655,6 +675,12 @@ pub struct TransformNode {
     pub span: SourceSpan,
 }
 
+impl TransformNode {
+    pub fn result_port(&self) -> PortId {
+        self.output
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct BranchNode {
     pub id: NodeId,
@@ -662,6 +688,12 @@ pub struct BranchNode {
     pub paths: Vec<Path>,
     pub output: PortId,
     pub span: SourceSpan,
+}
+
+impl BranchNode {
+    pub fn result_port(&self) -> PortId {
+        self.output
+    }
 }
 
 /// Per-arm pattern on a `Path`. Encodes which variant of the
@@ -733,6 +765,12 @@ pub struct Path {
     pub binding: Option<PayloadBinding>,
 }
 
+impl Path {
+    pub fn result_port(&self) -> PortId {
+        self.output
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct LoopNode {
     pub id: NodeId,
@@ -742,6 +780,12 @@ pub struct LoopNode {
     pub bound: Bound,
     pub output: PortId,
     pub span: SourceSpan,
+}
+
+impl LoopNode {
+    pub fn result_port(&self) -> PortId {
+        self.output
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -760,6 +804,12 @@ pub struct BindNode {
     /// no type tag. See the C2 dissolution receipt at the top of this file.
     pub params: Vec<PortId>,
     pub span: SourceSpan,
+}
+
+impl BindNode {
+    pub fn result_port(&self) -> PortId {
+        self.value
+    }
 }
 
 // Checkpoint C1.
@@ -937,6 +987,18 @@ pub(crate) struct RealizationMetaCache {
     /// `BehaviorRealization` meta-type. Same role for behavior
     /// template realizations (Bind/Branch/Main).
     pub behavior_realization: Option<DeclarationId>,
+    /// `CallableRealization` meta-type. Same role for callable
+    /// render strategies (currently staged std.list helpers).
+    pub callable_realization: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct TargetSyntaxCache {
+    /// `rust_language` syntax bundle declaration loaded from
+    /// `src/v3/spec/rust.dag`. This is the target-language
+    /// authority the Rust emitter reads for expression/control-flow/
+    /// function/type/value syntax templates.
+    pub rust_language: Option<DeclarationId>,
 }
 
 #[derive(Debug, Default)]
@@ -997,6 +1059,8 @@ pub struct Dag {
     /// filter by typed meta-tag handle instead of doing a name
     /// lookup at hot-path time.
     realization_metas: RealizationMetaCache,
+    /// Cached target-language syntax bundle declarations.
+    target_syntax: TargetSyntaxCache,
 }
 
 impl Dag {
@@ -1012,6 +1076,7 @@ impl Dag {
             primitives: PrimitiveCache::default(),
             substrate_markers: SubstrateMarkers::default(),
             realization_metas: RealizationMetaCache::default(),
+            target_syntax: TargetSyntaxCache::default(),
         };
         crate::bootstrap::bootstrap(&mut dag);
         dag
@@ -1106,6 +1171,18 @@ impl Dag {
         self.realization_metas.behavior_realization
     }
 
+    /// Typed accessor for the `CallableRealization` meta-type.
+    /// Same bootstrap-failure semantics as `type_realization_meta`.
+    pub fn callable_realization_meta(&self) -> Option<DeclarationId> {
+        self.realization_metas.callable_realization
+    }
+
+    /// Typed accessor for the Rust target-language syntax bundle
+    /// declared in `src/v3/spec/rust.dag`.
+    pub fn rust_language_spec(&self) -> Option<DeclarationId> {
+        self.target_syntax.rust_language
+    }
+
     pub fn nodes(&self) -> &[Behavior] {
         &self.nodes
     }
@@ -1135,10 +1212,19 @@ impl Dag {
         decl
     }
 
-    /// Find a top-level declaration by name. First-match semantics
-    /// (consistent with `collect_symbols`'s first-wins behavior; any
-    /// duplicate declarations surface a fail-closed diagnostic at
-    /// lowering time).
+    fn declaration_name_preference_rank(file: &str) -> usize {
+        if file.starts_with("src/v3/") {
+            2
+        } else if file.starts_with("dsl/") {
+            0
+        } else {
+            1
+        }
+    }
+
+    /// Find a top-level declaration by name. Prefer v3 declarations
+    /// over legacy `dsl/` duplicates; otherwise keep the earliest
+    /// declaration at the same precedence level.
     ///
     /// **This scan only finds declarations that carry a surface-
     /// visible name** — TypeParams, sum variants, and realization
@@ -1149,7 +1235,13 @@ impl Dag {
     pub fn declaration_by_name(&self, name: &str) -> Option<&Declaration> {
         self.declarations
             .iter()
-            .find(|d| d.name.as_deref() == Some(name))
+            .filter(|d| d.name.as_deref() == Some(name))
+            .max_by_key(|decl| {
+                (
+                    Self::declaration_name_preference_rank(&decl.span.file),
+                    std::cmp::Reverse(decl.id.raw()),
+                )
+            })
     }
 
     pub fn port(&self, id: PortId) -> &Port {
@@ -1312,6 +1404,10 @@ impl Dag {
         self.realization_metas.behavior_realization = self
             .declaration_by_name("BehaviorRealization")
             .map(|d| d.id);
+        self.realization_metas.callable_realization = self
+            .declaration_by_name("CallableRealization")
+            .map(|d| d.id);
+        self.target_syntax.rust_language = self.declaration_by_name("rust_language").map(|d| d.id);
     }
 }
 

@@ -55,6 +55,31 @@ fn bind_value_type_decl(dag: &Dag, name: &str) -> DeclarationId {
     }
 }
 
+fn callable_instantiation_arguments<'a>(
+    dag: &'a Dag,
+    template: DeclarationId,
+) -> Vec<&'a [v3_compiler::dag::TemplateArgument]> {
+    dag.nodes()
+        .iter()
+        .filter_map(|node| {
+            let Behavior::Transform(transform) = node else {
+                return None;
+            };
+            let TransformTarget::Callable(target) = transform.target else {
+                return None;
+            };
+            let TypeConnective::Instantiation {
+                template: inst_template,
+                arguments,
+            } = &dag.declaration(target).connective
+            else {
+                return None;
+            };
+            (*inst_template == template).then_some(arguments.as_slice())
+        })
+        .collect()
+}
+
 #[test]
 fn parse_std_algebra_and_walk_int_add() {
     // M1_DESIGN.md §5 canonical walk. The real `dsl/std/integer.dag`
@@ -313,7 +338,12 @@ fn child_declarations_are_anonymous() {
     // `DeclarationRef` sentinel meta-type that lets target spec files
     // carry typed declaration references in record-literal field
     // values. Each is a Conj (empty body) by construction.
-    for meta in ["TypeRealization", "OperatorRealization", "BehaviorRealization"] {
+    for meta in [
+        "TypeRealization",
+        "OperatorRealization",
+        "BehaviorRealization",
+        "CallableRealization",
+    ] {
         let id = dag
             .declaration_by_name(meta)
             .unwrap_or_else(|| panic!("`{meta}` must be declared by src/v3/spec/rust.dag"))
@@ -386,6 +416,59 @@ fn m17_primitive_cache_is_populated_at_bootstrap() {
         string_shape,
         v3_compiler::types::TypeShape::new(string_by_name)
     );
+}
+
+#[test]
+fn m2_rust_language_syntax_bundle_is_cached_and_structural() {
+    let dag = Dag::new();
+    let rust_language = dag
+        .rust_language_spec()
+        .expect("rust_language syntax bundle should be cached at bootstrap");
+    let decl = dag.declaration(rust_language);
+    match decl.value_body.as_ref() {
+        Some(v3_compiler::dag::ValueBody::Structural { fields }) => {
+            let labels: Vec<_> = fields.iter().map(|(label, _)| label.as_str()).collect();
+            assert_eq!(
+                labels,
+                vec![
+                    "statements",
+                    "expressions",
+                    "control_flow",
+                    "literals",
+                    "modules",
+                    "functions",
+                    "type_definitions",
+                    "patterns",
+                    "collection_ops",
+                    "values",
+                ]
+            );
+        }
+        other => panic!("rust_language must lower structurally, got {other:?}"),
+    }
+
+    for syntax_type in [
+        "StatementSyntax",
+        "ExpressionSyntax",
+        "ForEachSyntax",
+        "ControlFlowSyntax",
+        "LiteralSyntax",
+        "FunctionSyntax",
+        "TypeDefinitionSyntax",
+        "PatternMatchSyntax",
+        "CollectionOps",
+        "ValueConstructionSyntax",
+        "LanguageSpec",
+    ] {
+        let id = dag
+            .declaration_by_name(syntax_type)
+            .unwrap_or_else(|| panic!("`{syntax_type}` must be declared in rust.dag"))
+            .id;
+        assert!(
+            matches!(dag.declaration(id).connective, TypeConnective::Conj { .. }),
+            "`{syntax_type}` must lower to a Conj"
+        );
+    }
 }
 
 #[test]
@@ -1398,7 +1481,15 @@ let y = apply(3, step)
         let TransformTarget::Callable(target) = transform.target else {
             continue;
         };
-        if target == apply_f {
+        let body_call_targets_param_slot = if target == apply_f {
+            true
+        } else {
+            matches!(
+                &dag.declaration(target).connective,
+                TypeConnective::Instantiation { template, .. } if *template == apply_f
+            )
+        };
+        if body_call_targets_param_slot {
             saw_param_call = true;
             assert_eq!(
                 transform.inputs.len(),
@@ -1611,6 +1702,146 @@ let y = f(42)
 }
 
 #[test]
+fn prereq0_5_fold_generic_call_synthesizes_implicit_template_bindings() {
+    let src = "\
+let total: Int = fold(singleton(1), 0, |acc, x| acc + x)
+";
+    let dag = compile_any(src, "prereq0_5_fold.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "implicit generic fold call should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+
+    let int_id = find_named(&dag, "Int");
+    let singleton_id = find_named(&dag, "singleton");
+    let fold_id = find_named(&dag, "fold");
+    let fold_decl = dag.declaration(fold_id);
+    let fold_t = fold_decl.type_params[0];
+    let fold_u = fold_decl.type_params[1];
+    let singleton_t = dag.declaration(singleton_id).type_params[0];
+
+    let singleton_instantiations = callable_instantiation_arguments(&dag, singleton_id);
+    assert!(
+        singleton_instantiations.iter().any(|arguments| {
+            arguments
+                .iter()
+                .any(|arg| arg.parameter == singleton_t && arg.value == int_id)
+        }),
+        "expected singleton(1) to instantiate element := Int"
+    );
+
+    let fold_instantiations = callable_instantiation_arguments(&dag, fold_id);
+    assert!(
+        fold_instantiations.iter().any(|arguments| {
+            arguments
+                .iter()
+                .any(|arg| arg.parameter == fold_t && arg.value == int_id)
+                && arguments
+                    .iter()
+                    .any(|arg| arg.parameter == fold_u && arg.value == int_id)
+        }),
+        "expected fold(singleton(1), 0, ...) to infer T := Int and U := Int"
+    );
+
+    let lambda_binds: Vec<_> = dag
+        .nodes()
+        .iter()
+        .filter_map(|node| match node {
+            Behavior::Bind(bind) if bind.name.starts_with("__anon_lambda_") => Some(bind),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(lambda_binds.len(), 1, "expected one lambda bind");
+    let bind = lambda_binds[0];
+    let lambda_param_ports = &bind.params[bind.params.len() - 2..];
+    for port in lambda_param_ports {
+        match dag.port(*port).state() {
+            PortState::Resolved(ty) => assert_eq!(
+                ty.declaration, int_id,
+                "fold lambda parameter should resolve to Int"
+            ),
+            other => panic!("fold lambda parameter did not resolve, got {other:?}"),
+        }
+    }
+
+    assert_eq!(bind_value_type_decl(&dag, "total"), int_id);
+}
+
+#[test]
+fn prereq0_5_map_generic_call_synthesizes_implicit_template_bindings() {
+    let src = "\
+let xs = map(singleton(1), |x| x + 1)
+";
+    let dag = compile_any(src, "prereq0_5_map.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "implicit generic map call should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+
+    let int_id = find_named(&dag, "Int");
+    let map_id = find_named(&dag, "map");
+    let map_decl = dag.declaration(map_id);
+    let map_a = map_decl.type_params[0];
+    let map_b = map_decl.type_params[1];
+    let map_instantiations = callable_instantiation_arguments(&dag, map_id);
+    assert!(
+        map_instantiations.iter().any(|arguments| {
+            arguments
+                .iter()
+                .any(|arg| arg.parameter == map_a && arg.value == int_id)
+                && arguments
+                    .iter()
+                    .any(|arg| arg.parameter == map_b && arg.value == int_id)
+        }),
+        "expected map(singleton(1), |x| x + 1) to infer A := Int and B := Int"
+    );
+
+    let lambda_binds: Vec<_> = dag
+        .nodes()
+        .iter()
+        .filter_map(|node| match node {
+            Behavior::Bind(bind) if bind.name.starts_with("__anon_lambda_") => Some(bind),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(lambda_binds.len(), 1, "expected one lambda bind");
+    let bind = lambda_binds[0];
+    let lambda_param_port = *bind
+        .params
+        .last()
+        .expect("map lambda should expose one declared parameter");
+    match dag.port(lambda_param_port).state() {
+        PortState::Resolved(ty) => assert_eq!(
+            ty.declaration, int_id,
+            "map lambda parameter should resolve to Int"
+        ),
+        other => panic!("map lambda parameter did not resolve, got {other:?}"),
+    }
+}
+
+#[test]
+fn prereq0_5_conflicting_implicit_template_bindings_fail_closed() {
+    let src = "\
+fn keep<T>(a: T, b: T) -> T = a
+let bad = keep(1, true)
+";
+    let dag = compile_any(src, "prereq0_5_conflict.v3");
+    assert!(
+        dag.diagnostics().iter().any(|(_, diag)| {
+            matches!(
+                diag,
+                Diagnostic::ResolveError { name, .. }
+                    if name.contains("implicit template binding")
+            )
+        }),
+        "expected implicit generic conflict diagnostic, got {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
 fn prereq3_multi_param_lambda_parses_and_compiles() {
     let src = "\
 let f: fn(Int, Int) -> Int = |x, y| x + y
@@ -1774,6 +2005,50 @@ fn prereq4_list_dag_bootstrap_loads_cleanly() {
 }
 
 #[test]
+fn prereq4_record_literal_in_expression_position_compiles_with_expected_type() {
+    let src = "\
+type Point { x: Int y: Int }
+fn x_of(p: Point) -> Int = p.x
+let total: Int = x_of({ x: 1, y: 2 })
+";
+    let dag = compile_to_dag(src, "expr_record_literal.v3").expect("compiles");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "record literal in expression position should compile when an expected type is available, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn prereq4_list_literal_in_expression_position_lowers_through_std_list_constructors() {
+    let dag = compile_to_dag("let xs: List<Int> = [1, 2, 3]", "expr_list_literal.v3")
+        .expect("compiles");
+    assert!(dag.diagnostics().is_empty(), "got diagnostics: {:?}", dag.diagnostics());
+    let callable_names: Vec<String> = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_transform)
+        .filter_map(|transform| match transform.target {
+            TransformTarget::Callable(target) => Some(target),
+            _ => None,
+        })
+        .map(|target| match &dag.declaration(target).connective {
+            TypeConnective::Instantiation { template, .. } => *template,
+            _ => target,
+        })
+        .filter_map(|target| dag.declaration(target).name.clone())
+        .collect();
+    assert!(
+        callable_names.iter().any(|name| name == "singleton"),
+        "list literal should lower through `singleton`, got {callable_names:?}"
+    );
+    assert!(
+        callable_names.iter().filter(|name| *name == "cons").count() >= 2,
+        "list literal should lower through repeated `cons`, got {callable_names:?}"
+    );
+}
+
+#[test]
 fn prereq0_conflicting_callable_template_bindings_fail_closed() {
     let src = "\
 fn step_int(x: Int) -> Int = x
@@ -1919,6 +2194,8 @@ type Box<T> { value: T }
 fn read(boxed: Box<Int>) -> Int = boxed.value
 ";
     let dag = compile_to_dag(src, "field_access_generic.v3").expect("compiles");
+    let box_id = find_named(&dag, "Box");
+    let box_t = dag.declaration(box_id).type_params[0];
 
     let bind = dag
         .nodes()
@@ -1940,7 +2217,7 @@ fn read(boxed: Box<Int>) -> Int = boxed.value
             field_child,
         } => {
             assert_eq!(field_label, "value");
-            assert_eq!(*field_child, Some(find_named(&dag, "Int")));
+            assert_eq!(*field_child, Some(box_t));
         }
         other => panic!("expected FieldProject target, got {other:?}"),
     }

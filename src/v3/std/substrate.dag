@@ -1,0 +1,168 @@
+module v3.std.substrate
+
+// Atomic identity handles. These stay opaque at the .dag layer and
+// are realized by Rust newtypes in dag.rs plus seed TypeRealization
+// entries in rust.dag.
+type NodeId
+type PortId
+type DeclarationId
+
+// Leaf structural types.
+type LiteralBits
+  = LitInt(Int)
+  | LitBool(Bool)
+  | LitString(String)
+
+type AtomPayload
+  = Literal(LiteralBits)
+  | UnresolvedIdentifier(String)
+  | ResolvedIdentifier(DeclarationId)
+  | TypeParam(String)
+
+type CardinalityBound
+  = Exact(Int)
+  | AtMostOne
+  | Unbounded
+
+type ConjField {
+  label: String
+  ty: DeclarationId
+}
+
+type TemplateArgument {
+  parameter: DeclarationId
+  value: DeclarationId
+}
+
+type FieldValue
+  = FieldLiteral(LiteralBits)
+  | FieldReference(DeclarationId)
+
+type NamedFieldValue {
+  label: String
+  value: FieldValue
+}
+
+type ValueBody
+  = ValueBodyUnparsed(SourceSpan)
+  | ValueBodyStructural { fields: List<NamedFieldValue> }
+
+// Type substrate.
+type ArrowBody
+  = UserDefined(NodeId)
+  | ExternalRealization(DeclarationId)
+  | Pending
+  | Unparsed(SourceSpan)
+
+type TypeConnective
+  = Atom(AtomPayload)
+  | Conj { children: List<ConjField> }
+  | Disj { variants: List<ConjField> }
+  | Arrow {
+      inputs: List<DeclarationId>
+      output: DeclarationId
+      body: ArrowBody
+    }
+  | Cardinality {
+      element: DeclarationId
+      bound: CardinalityBound
+    }
+  | Instantiation {
+      template: DeclarationId
+      arguments: List<TemplateArgument>
+    }
+
+type Declaration {
+  id: DeclarationId
+  name: String?
+  connective: TypeConnective
+  type_params: List<DeclarationId>
+  meta_tag: DeclarationId?
+  inhabits: DeclarationId?
+  value_body: ValueBody?
+  span: SourceSpan
+}
+
+// Computation substrate.
+type TransformTarget
+  = Callable(DeclarationId)
+  | FieldProject {
+      field_label: String
+      field_child: DeclarationId?
+    }
+  | Operator {
+      name: String
+    }
+
+type BranchPattern
+  = UnresolvedVariant { name: String, span: SourceSpan }
+  | ResolvedVariant(DeclarationId)
+
+type PayloadBinding {
+  binding_name: String
+  payload_port: PortId
+}
+
+type BranchPath {
+  body: NodeId
+  result_port: PortId
+  pattern: BranchPattern
+  binding: PayloadBinding?
+}
+
+type LoopBound {
+  count: PortId
+}
+
+type ValueNode {
+  id: NodeId
+  payload: LiteralBits
+  result_port: PortId
+  span: SourceSpan
+}
+
+type TransformNode {
+  id: NodeId
+  target: TransformTarget
+  inputs: List<PortId>
+  result_port: PortId
+  span: SourceSpan
+}
+
+type BranchNode {
+  id: NodeId
+  input: PortId
+  paths: List<BranchPath>
+  result_port: PortId
+  span: SourceSpan
+}
+
+type LoopNode {
+  id: NodeId
+  source: PortId
+  init: PortId
+  body: NodeId
+  bound: LoopBound
+  result_port: PortId
+  span: SourceSpan
+}
+
+type BindNode {
+  id: NodeId
+  name: String
+  result_port: PortId
+  params: List<PortId>
+  span: SourceSpan
+}
+
+type Behavior
+  = Value(ValueNode)
+  | Transform(TransformNode)
+  | Branch(BranchNode)
+  | Loop(LoopNode)
+  | Bind(BindNode)
+
+type Dag {
+  declarations: List<Declaration>
+  nodes: List<Behavior>
+}

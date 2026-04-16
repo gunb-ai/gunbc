@@ -138,12 +138,21 @@ analyses like cost and depth don't fit the template.
    step. This is the thesis's "cost of change = 1 file" applied
    to invariant enforcement.
 
-**The missing primitive.** Canonical form requires a **reflection
-API**: the substrate's own types (`Behavior`, `NodeId`, `PortId`,
-`Dag`) reachable from `.dag`, and a mechanism for a `.dag`
-program to receive a compiled `Dag` as its input. v3 does not
-have this at M1(3) scope. Until it does, lenses ship as Rust
-modules.
+**The remaining missing primitive is execution, not reflection.**
+The reflection surface now exists in staged form:
+
+- `src/v3/std/substrate.dag` declares the substrate's structural
+  types (`Dag`, `Declaration`, `Behavior`, behavior payload
+  records, etc.).
+- `src/v3/spec/rust.dag` carries `TypeRealization` entries for the
+  reflected substrate types plus per-field `FieldBinding`
+  mappings to Rust fields and accessor methods.
+- `emit_rust.rs` can render reflected field access through those
+  bindings.
+
+What is still missing is the final step: a `.dag` lens receiving a
+runtime `Dag` value as input and being invoked as compiled code. Until
+that execution path lands, lenses still ship as Rust bootstrap modules.
 
 **The reflection primitive is the subject of
 [`docs/substrate-reflection-design.md`](substrate-reflection-design.md)**
@@ -164,21 +173,17 @@ two ratchets:
    `lens_unused_parameters` migrates are tracked in the seed
    ratchet and each deletion is a ratchet tick.
 
-Both invariants live in `docs/substrate-reflection-design.md`
-§7.2 and will move to `INVARIANTS.md` when the reflection PR
-lands.
+Both invariants are now first-class entries in `INVARIANTS.md`; the
+reflection design doc remains the design history and migration plan.
 
-**Current Rust lenses are M1 bootstrap — explicitly tracked
-scaffolds.** `lens_provenance`, `lens_depth`, `lens_cost`,
-`lens_unused_parameters`, and any future lens added before the
-reflection primitive lands are bootstrap scaffolds covered by
-the ratchet above. They provide immediate value (catching real
-violations, validating the per-lens algorithm) and are
-structurally identical in shape to what the canonical `.dag`
-form will be — pure reader, returns lens-specific output. When
-the reflection primitive lands, each bootstrap lens migrates to
-`.dag` as a thin rewrite; the algorithm stays the same, the
-host language changes.
+**Current Rust lenses are bootstrap scaffolds with narrower
+remaining scope.** Reflection and field-binding realization are now in
+place, so the remaining blocker is not "the substrate is invisible";
+it is "compiled `.dag` lenses are not yet invocable on a runtime
+Dag value." `lens_provenance`, `lens_depth`, `lens_cost`, and
+`lens_unused_parameters` therefore remain bootstrap scaffolds, but
+their migration target is now mechanically clearer: the substrate
+surface and Rust realization bridge they need already exist.
 
 **Reviewer-enforced gate until the ratchet lands.** Before
 adding a new lens as Rust, ask: does this thicken the Rust-lens
@@ -497,6 +502,21 @@ because:
   collect referenced port IDs, compare against the function's
   parameter ports.
 
+**Migration status after the reflection work.** The reflection
+surface and field-binding realization path this lens needs now
+exist:
+
+- `src/v3/std/substrate.dag` declares `Dag`, `Behavior`, `BindNode`,
+  `BranchPath`, and the rest of the walked substrate.
+- `rust.dag` carries `TypeRealization.fields` bindings for those
+  reflected record fields.
+- `emit_rust` can render reflected field reads compositionally.
+
+The remaining blocker is execution plumbing: the `.dag` form of the
+lens can now be written against real substrate declarations, but the
+project still needs the path that feeds a runtime `Dag` value into a
+compiled lens and invokes the compiled function from Rust.
+
 **Signature** (as shipped in `src/v3/compiler/src/lens_unused_parameters.rs`):
 
 ```rust
@@ -560,7 +580,8 @@ part of surface syntax (`SurfaceItem::Fn`) and not preserved past
 lowering. Indexing makes the violation addressable without
 inventing a naming layer the substrate doesn't support.
 
-**Algorithm** (as shipped):
+**Algorithm** (as shipped in Rust bootstrap form, and unchanged in
+the planned `.dag` migration):
 
 1. For each `Behavior::Bind` in the Dag with non-empty `params`
    (function-shape filter — value bindings have no parameters),
@@ -853,8 +874,9 @@ The new lenses in this document follow the same shape: pure
 function over `Dag` + configuration, returns structured output.
 They're sibling modules to the existing ones and can be added
 without touching existing lens code. All of the above are Rust
-bootstrap form (§1.5); canonical `.dag` form awaits the
-reflection primitive.
+bootstrap form (§1.5); canonical `.dag` form now awaits only the
+runtime invocation path for compiled lenses, not the reflection
+surface itself.
 
 The substrate already carries enough information for all three
 remaining initial lenses. No substrate changes are required —
