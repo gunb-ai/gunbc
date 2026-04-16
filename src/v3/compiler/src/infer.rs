@@ -2993,15 +2993,7 @@ fn type_shapes_equivalent(dag: &Dag, lhs: &TypeShape, rhs: &TypeShape) -> bool {
     if lhs == rhs {
         return true;
     }
-    if declaration_shapes_equivalent(dag, lhs.declaration, rhs.declaration, 0) {
-        return true;
-    }
-    let subst = SubstStack::new();
-    let lhs_canonical =
-        walk_to_type_shape(dag, lhs.declaration, &subst, 0).unwrap_or(*lhs);
-    let rhs_canonical =
-        walk_to_type_shape(dag, rhs.declaration, &subst, 0).unwrap_or(*rhs);
-    lhs_canonical == rhs_canonical
+    declaration_shapes_equivalent(dag, lhs.declaration, rhs.declaration, 0)
 }
 
 fn declaration_shapes_equivalent(

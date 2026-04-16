@@ -200,6 +200,9 @@ pub enum EmitError {
 pub enum RealizationCategory {
     /// `TypeRealization` — primitive type → target type name.
     Type,
+    /// `TypeInstantiationRealization` — generic template
+    /// declaration → target instantiated carrier syntax.
+    TypeInstantiation,
     /// `OperatorRealization` — (operand type, algebra field) →
     /// target operator symbol.
     Operator,
@@ -239,6 +242,11 @@ enum RustFieldAccessBinding {
 struct TypeRealizationBinding {
     carrier: String,
     fields: HashMap<String, RustFieldAccessBinding>,
+}
+
+#[derive(Debug, Clone)]
+struct TypeInstantiationBinding {
+    carrier: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -319,9 +327,7 @@ struct FunctionSyntaxBinding {
 
 #[derive(Debug, Clone)]
 struct TypeApplicationSyntaxBinding {
-    list: String,
     optional: String,
-    map: String,
 }
 
 #[derive(Debug, Clone)]
@@ -387,6 +393,12 @@ struct RealizationIndexes {
     /// `target_decl_id → carrier + field bindings`. Built from
     /// `data rust_*: TypeRealization` items in rust.dag.
     types: HashMap<DeclarationId, TypeRealizationBinding>,
+    /// `generic_template_decl → instantiated carrier syntax`.
+    /// Built from `data rust_*: TypeInstantiationRealization`
+    /// items in rust.dag. Used when rendering generic carriers
+    /// such as `List<T> -> Vec<T>` without template-name string
+    /// dispatch in Rust.
+    instantiations: HashMap<DeclarationId, TypeInstantiationBinding>,
     /// `(operand_type_decl, algebra_field_decl) → carrier`. Built
     /// from `data rust_*: OperatorRealization` items in rust.dag.
     /// Used when emitting a `Transform { target: Operator(_), .. }`.
@@ -448,6 +460,11 @@ impl RealizationIndexes {
         let type_meta = dag
             .type_realization_meta()
             .ok_or(EmitError::MissingRealizationMeta(RealizationCategory::Type))?;
+        let type_instantiation_meta = dag
+            .type_instantiation_realization_meta()
+            .ok_or(EmitError::MissingRealizationMeta(
+                RealizationCategory::TypeInstantiation,
+            ))?;
         let op_meta = dag
             .operator_realization_meta()
             .ok_or(EmitError::MissingRealizationMeta(
@@ -470,6 +487,8 @@ impl RealizationIndexes {
             ))?;
 
         let mut types: HashMap<DeclarationId, TypeRealizationBinding> = HashMap::new();
+        let mut instantiations: HashMap<DeclarationId, TypeInstantiationBinding> =
+            HashMap::new();
         let mut operators: HashMap<(DeclarationId, DeclarationId), String> = HashMap::new();
         let mut behaviors: HashMap<DeclarationId, String> = HashMap::new();
         let mut callables: HashMap<DeclarationId, RustCallableStrategyBinding> = HashMap::new();
@@ -484,6 +503,8 @@ impl RealizationIndexes {
             // matching.
             let category = if meta_tag == type_meta {
                 RealizationCategory::Type
+            } else if meta_tag == type_instantiation_meta {
+                RealizationCategory::TypeInstantiation
             } else if meta_tag == op_meta {
                 RealizationCategory::Operator
             } else if meta_tag == behavior_meta {
@@ -536,6 +557,19 @@ impl RealizationIndexes {
                         });
                     }
                 }
+                RealizationCategory::TypeInstantiation => {
+                    let carrier = require_field_string(fields, "carrier", decl.id)?;
+                    if instantiations
+                        .insert(target, TypeInstantiationBinding { carrier })
+                        .is_some()
+                    {
+                        return Err(EmitError::DuplicateRealization {
+                            declaration: decl.id,
+                            detail:
+                                "two TypeInstantiationRealization data items target the same generic declaration — single authority requires unique targets",
+                        });
+                    }
+                }
                 RealizationCategory::Operator => {
                     let carrier = require_field_string(fields, "carrier", decl.id)?;
                     let op = require_field_decl_ref(fields, "op", decl.id)?;
@@ -584,6 +618,7 @@ impl RealizationIndexes {
 
         Ok(Self {
             types,
+            instantiations,
             operators,
             behaviors,
             callables,
@@ -768,9 +803,7 @@ fn parse_type_application_syntax(
 ) -> Result<TypeApplicationSyntaxBinding, EmitError> {
     let fields = structural_fields_for_decl(dag, declaration)?;
     Ok(TypeApplicationSyntaxBinding {
-        list: syntax_field_string(fields, "list", declaration)?,
         optional: syntax_field_string(fields, "optional", declaration)?,
-        map: syntax_field_string(fields, "map", declaration)?,
     })
 }
 
@@ -2505,39 +2538,31 @@ impl<'a> Ctx<'a> {
         arguments: &[TemplateArgument],
         depth: usize,
     ) -> Result<String, EmitError> {
-        let template_decl = self.dag.declaration(template);
-        let Some(template_name) = &template_decl.name else {
+        let Some(binding) = self.indexes.instantiations.get(&template) else {
             return Err(EmitError::MissingTypeRealization { target: template });
         };
-        match template_name.as_str() {
-            "List" => {
-                let [element] = arguments else {
-                    return Err(EmitError::UnsupportedBehavior(
-                        "List instantiation must carry exactly one type argument".to_string(),
-                    ));
-                };
+        match arguments {
+            [element] => {
                 let element_name =
                     self.rust_type_name_for_decl_at_depth(element.value, depth + 1)?;
                 Ok(render_named_template(
-                    &self.indexes.syntax.type_applications.list,
+                    &binding.carrier,
                     &[("element", &element_name)],
                 ))
             }
-            "Map" => {
-                let [key, value] = arguments else {
-                    return Err(EmitError::UnsupportedBehavior(
-                        "Map instantiation must carry exactly two type arguments".to_string(),
-                    ));
-                };
+            [key, value] => {
                 let key_name = self.rust_type_name_for_decl_at_depth(key.value, depth + 1)?;
                 let value_name =
                     self.rust_type_name_for_decl_at_depth(value.value, depth + 1)?;
                 Ok(render_named_template(
-                    &self.indexes.syntax.type_applications.map,
+                    &binding.carrier,
                     &[("key", &key_name), ("value", &value_name)],
                 ))
             }
-            _ => Err(EmitError::MissingTypeRealization { target: template }),
+            _ => Err(EmitError::UnsupportedBehavior(format!(
+                "instantiated type carrier for declaration {:?} only supports arities 1 and 2 at PR scope",
+                template
+            ))),
         }
     }
 }

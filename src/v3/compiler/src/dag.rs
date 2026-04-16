@@ -1000,6 +1000,9 @@ pub(crate) struct RealizationMetaCache {
     /// `CallableRealization` meta-type. Same role for callable
     /// render strategies (currently staged std.list helpers).
     pub callable_realization: Option<DeclarationId>,
+    /// `TypeInstantiationRealization` meta-type. Same role for
+    /// generic template carriers such as `List<T> -> Vec<T>`.
+    pub type_instantiation_realization: Option<DeclarationId>,
     /// `PatternRealization` meta-type. Same role for carrier-specific
     /// pattern lowering facts (currently staged `List<T> -> Vec<T>`
     /// destructuring).
@@ -1189,6 +1192,13 @@ impl Dag {
     /// Same bootstrap-failure semantics as `type_realization_meta`.
     pub fn callable_realization_meta(&self) -> Option<DeclarationId> {
         self.realization_metas.callable_realization
+    }
+
+    /// Typed accessor for the `TypeInstantiationRealization`
+    /// meta-type. Same bootstrap-failure semantics as
+    /// `type_realization_meta`.
+    pub fn type_instantiation_realization_meta(&self) -> Option<DeclarationId> {
+        self.realization_metas.type_instantiation_realization
     }
 
     /// Same bootstrap-failure semantics as `type_realization_meta`.
@@ -1439,6 +1449,9 @@ impl Dag {
             .map(|d| d.id);
         self.realization_metas.callable_realization = self
             .declaration_by_name("CallableRealization")
+            .map(|d| d.id);
+        self.realization_metas.type_instantiation_realization = self
+            .declaration_by_name("TypeInstantiationRealization")
             .map(|d| d.id);
         self.realization_metas.pattern_realization = self
             .declaration_by_name("PatternRealization")

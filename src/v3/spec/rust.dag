@@ -123,6 +123,12 @@ type CallableRealization {
   cost: Int
 }
 
+type TypeInstantiationRealization {
+  target: DeclarationRef
+  carrier: String
+  cost: Int
+}
+
 type RustCallableStrategy
   = ListEmpty
   | ListSingleton
@@ -191,9 +197,7 @@ type FunctionSyntax {
 }
 
 type TypeApplicationSyntax {
-  list: String
   optional: String
-  map: String
 }
 
 type TypeDefinitionSyntax {
@@ -763,6 +767,18 @@ data rust_length_callable: CallableRealization = {
   cost: 1
 }
 
+data rust_list_instantiation: TypeInstantiationRealization = {
+  target: List
+  carrier: "Vec<{element}>"
+  cost: 1
+}
+
+data rust_map_instantiation: TypeInstantiationRealization = {
+  target: Map
+  carrier: "HashMap<{key}, {value}>"
+  cost: 1
+}
+
 data rust_is_empty_callable: CallableRealization = {
   target: is_empty
   strategy: ListIsEmpty
@@ -840,9 +856,7 @@ data rust_functions: FunctionSyntax = {
 }
 
 data rust_type_applications: TypeApplicationSyntax = {
-  list: "Vec<{element}>"
   optional: "Option<{element}>"
-  map: "HashMap<{key}, {value}>"
 }
 
 data rust_type_defs: TypeDefinitionSyntax = {

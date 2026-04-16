@@ -11,6 +11,8 @@ type TypeShape {
   declaration: DeclarationId
 }
 
+// 🟢 TERMINAL at reflected-substrate scope. Three-way port inference
+// state is a durable compiler fact consumed directly by reflection.
 type PortState
   = Uninferred
   | Resolved(TypeShape)
@@ -23,17 +25,23 @@ type DagPort {
 }
 
 // Leaf structural types.
+// 🟢 TERMINAL. Literal carrier split matches dag.rs's runtime enum
+// one-for-one and is expected to persist as the leaf literal surface.
 type LiteralBits
   = LitInt(Int)
   | LitBool(Bool)
   | LitString(String)
 
+// 🟢 TERMINAL at current substrate scope. This is the durable atom
+// connective surface the lowered declaration graph carries.
 type AtomPayload
   = Literal(LiteralBits)
   | UnresolvedIdentifier(String)
   | ResolvedIdentifier(DeclarationId)
   | TypeParam(String)
 
+// 🟢 TERMINAL. Cardinality bounds are structural substrate facts and
+// not a temporary bridge to another representation.
 type CardinalityBound
   = Exact(Int)
   | AtMostOne
@@ -54,6 +62,9 @@ type FieldEntry {
   value: FieldValue
 }
 
+// 🟡 SCAFFOLD until reflected structural values dissolve into ordinary
+// declaration-shaped values. Mirrors the live runtime carrier exactly,
+// but remains a bootstrap bridge for nested structural data bodies.
 type FieldValue
   = Literal(LiteralBits)
   | Reference(DeclarationId)
@@ -64,17 +75,25 @@ type FieldValue
       payload: List<FieldValue>
     }
 
+// 🟡 SCAFFOLD paired with `FieldValue`. `Unparsed` and structural body
+// carriers are bootstrap-time receipts for data-body lowering.
 type ValueBody
   = ValueBodyUnparsed(SourceSpan)
   | ValueBodyStructural { fields: List<FieldEntry> }
 
 // Type substrate.
+// 🟡 MIXED. `ArrowBody` carries durable user/external edges plus the
+// temporary `Pending` / `Unparsed` bootstrap states still present in
+// today's lowering pipeline.
 type ArrowBody
   = UserDefined(NodeId)
   | ExternalRealization(DeclarationId)
   | Pending
   | Unparsed(SourceSpan)
 
+// 🟢 TERMINAL at reflected-substrate scope. The connective partition is
+// the compiler's durable declaration-shape authority; temporary detail
+// lives inside the child carriers such as `ArrowBody`.
 type TypeConnective
   = Atom(AtomPayload)
   | Conj { children: List<ConjField> }
@@ -104,12 +123,14 @@ type Declaration {
   span: SourceSpan
 }
 
+// 🟢 TERMINAL. Arithmetic operators are durable substrate facts.
 type ArithmeticOp
   = Add
   | Sub
   | Mul
   | Div
 
+// 🟢 TERMINAL. Comparison operators are durable substrate facts.
 type ComparisonOp
   = Eq
   | Ne
@@ -118,11 +139,15 @@ type ComparisonOp
   | Gt
   | Ge
 
+// 🟢 TERMINAL. OperatorKind is the substrate authority for operator
+// identity; realizations map from this structural fact downstream.
 type OperatorKind
   = Arithmetic(ArithmeticOp)
   | Comparison(ComparisonOp)
 
 // Computation substrate.
+// 🟢 TERMINAL at the reflected-substrate level. Every transform target
+// variant corresponds to a live runtime carrier in dag.rs.
 type TransformTarget
   = Callable(DeclarationId)
   | FieldProject {
@@ -131,6 +156,8 @@ type TransformTarget
     }
   | Operator(OperatorKind)
 
+// 🟢 TERMINAL. Match-path pattern identity is part of the durable
+// reflected branch substrate.
 type BranchPattern
   = UnresolvedVariant { name: String, span: SourceSpan }
   | ResolvedVariant(DeclarationId)
@@ -192,6 +219,7 @@ type BindNode {
   span: SourceSpan
 }
 
+// 🟢 TERMINAL. Behavior is the core runtime computation coproduct.
 type Behavior
   = Value(ValueNode)
   | Transform(TransformNode)

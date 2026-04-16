@@ -317,15 +317,23 @@ fn child_declarations_are_anonymous() {
     assert!(dag.declaration_by_name("Int").is_some());
     assert!(dag.declaration_by_name("OrderedRing").is_some());
     assert!(dag.declaration_by_name("Classical").is_some());
-    // Starting at M1(3) PR-B-unwind, three Realization meta-types
-    // are production bootstrap declarations from the first
-    // `dsl/extdeps/languages/*` fixture (`rust.dag`):
+    // Starting at M1(3)+reflection, the per-target realization
+    // meta-types are production bootstrap declarations from
+    // `src/v3/spec/rust.dag`:
     //
-    //   - `TypeRealization`     — primitive type → target type
+    //   - `TypeRealization`              — monomorphic type →
+    //                                      target type
+    //   - `TypeInstantiationRealization` — generic template →
+    //                                      target instantiated carrier
+    // are production bootstrap declarations from the first
     //   - `OperatorRealization` — (operand type, algebra field)
     //                             → target operator symbol
     //   - `BehaviorRealization` — substrate marker → target
     //                             template
+    //   - `CallableRealization` — callable declaration → render
+    //                             strategy
+    //   - `PatternRealization`  — structural sum → carrier-
+    //                             specific match lowering
     //
     // The v3 emitter reads `data rust_*: <RealizationKind> = {...}`
     // items through `meta_tag` filtering against each meta-type
@@ -340,9 +348,11 @@ fn child_declarations_are_anonymous() {
     // values. Each is a Conj (empty body) by construction.
     for meta in [
         "TypeRealization",
+        "TypeInstantiationRealization",
         "OperatorRealization",
         "BehaviorRealization",
         "CallableRealization",
+        "PatternRealization",
     ] {
         let id = dag
             .declaration_by_name(meta)
@@ -857,6 +867,55 @@ data test_bad_type: TypeRealization = { target: Bind, carrier: \"oops\", cost: 0
 }
 
 #[test]
+fn m1_3_prb_unwind_r1_callable_realization_with_primitive_target_is_rejected() {
+    let src = "\
+data test_bad_callable: CallableRealization = { target: Int, strategy: ListEmpty, cost: 0 }
+";
+    let dag = compile_any(src, "bad_callable_realization.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "CallableRealization with a non-callable target should fail-closed at lower time"
+    );
+}
+
+#[test]
+fn m1_3_prb_unwind_r1_pattern_realization_with_primitive_target_is_rejected() {
+    let src = "\
+data test_bad_pattern: PatternRealization = {
+  target: Int,
+  strategy: VectorList,
+  scrutinee: \"{expr}\",
+  empty_pattern: \"[]\",
+  cons_pattern: \"[{head}, {tail} @ ..]\",
+  head_expr: \"{head}\",
+  tail_expr: \"{tail}\",
+  cost: 0
+}
+";
+    let dag = compile_any(src, "bad_pattern_realization.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "PatternRealization with a non-Disj target should fail-closed at lower time"
+    );
+}
+
+#[test]
+fn m1_3_prb_unwind_r1_type_instantiation_realization_with_monomorphic_target_is_rejected() {
+    let src = "\
+data test_bad_type_instantiation: TypeInstantiationRealization = {
+  target: Int,
+  carrier: \"Vec<{element}>\",
+  cost: 0
+}
+";
+    let dag = compile_any(src, "bad_type_instantiation_realization.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "TypeInstantiationRealization with a monomorphic target should fail-closed at lower time"
+    );
+}
+
+#[test]
 fn m1_3_prb_rust_dag_bootstrap_loads_structurally() {
     // M1(3) PR-B-unwind: verify rust.dag loaded cleanly during
     // Dag::new() bootstrap and that `rust_int_add` lowered to a
@@ -942,6 +1001,19 @@ fn m1_3_prb_rust_dag_bootstrap_loads_structurally() {
         &fields[3].1,
         v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(1))
     ));
+}
+
+#[test]
+fn instantiation_arguments_participate_in_type_shape_equivalence() {
+    let src = "\
+fn expect_ints(xs: List<Int>) -> Int = 0
+let bad: Int = expect_ints(singleton(true))
+";
+    let dag = compile_any(src, "instantiation_shape_equivalence.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "List<Int> and List<Bool> should not compare equal during inference"
+    );
 }
 
 #[test]

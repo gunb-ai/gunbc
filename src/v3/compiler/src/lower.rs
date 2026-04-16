@@ -1896,6 +1896,9 @@ enum RealizationCategoryTag {
     Type,
     Operator,
     Behavior,
+    Callable,
+    TypeInstantiation,
+    Pattern,
 }
 
 /// Identify which realization category (if any) a data item's
@@ -1919,12 +1922,27 @@ fn realization_category_for_meta(
     let behavior_meta = dag
         .declaration_by_name("BehaviorRealization")
         .map(|d| d.id);
+    let callable_meta = dag
+        .declaration_by_name("CallableRealization")
+        .map(|d| d.id);
+    let type_instantiation_meta = dag
+        .declaration_by_name("TypeInstantiationRealization")
+        .map(|d| d.id);
+    let pattern_meta = dag
+        .declaration_by_name("PatternRealization")
+        .map(|d| d.id);
     if Some(meta_decl_id) == type_meta {
         Some(RealizationCategoryTag::Type)
     } else if Some(meta_decl_id) == op_meta {
         Some(RealizationCategoryTag::Operator)
     } else if Some(meta_decl_id) == behavior_meta {
         Some(RealizationCategoryTag::Behavior)
+    } else if Some(meta_decl_id) == callable_meta {
+        Some(RealizationCategoryTag::Callable)
+    } else if Some(meta_decl_id) == type_instantiation_meta {
+        Some(RealizationCategoryTag::TypeInstantiation)
+    } else if Some(meta_decl_id) == pattern_meta {
+        Some(RealizationCategoryTag::Pattern)
     } else {
         None
     }
@@ -1964,6 +1982,12 @@ fn realization_category_for_meta(
 ///   - `BehaviorRealization.target` — must be one of the v3_l1
 ///     substrate behavior markers (Bind / Branch / Loop /
 ///     Transform / Value / Main).
+///   - `CallableRealization.target` — must walk to an Arrow
+///     declaration (a callable target).
+///   - `TypeInstantiationRealization.target` — must be a named
+///     generic declaration with at least one type parameter.
+///   - `PatternRealization.target` — must walk to a Disj
+///     declaration (a matchable sum carrier).
 fn validate_realization_field_target(
     dag: &Dag,
     category: RealizationCategoryTag,
@@ -2002,6 +2026,30 @@ fn validate_realization_field_target(
             TypeConnective::Arrow { .. }
         )
     };
+    let walks_to_arrow = |start: DeclarationId| {
+        let mut current = start;
+        for _ in 0..32 {
+            match &dag.declaration(current).connective {
+                TypeConnective::Arrow { .. } => return true,
+                TypeConnective::Instantiation { template, .. } => current = *template,
+                TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => current = *next,
+                _ => return false,
+            }
+        }
+        false
+    };
+    let walks_to_disj = |start: DeclarationId| {
+        let mut current = start;
+        for _ in 0..32 {
+            match &dag.declaration(current).connective {
+                TypeConnective::Disj { .. } => return true,
+                TypeConnective::Instantiation { template, .. } => current = *template,
+                TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => current = *next,
+                _ => return false,
+            }
+        }
+        false
+    };
 
     match (category, field_label) {
         (RealizationCategoryTag::Type, "target") => {
@@ -2037,6 +2085,33 @@ fn validate_realization_field_target(
             } else {
                 Err(format!(
                     "BehaviorRealization.target must reference one of the v3_l1 behavior markers (Bind/Branch/Loop/Transform/Value/Main); got declaration {target:?}"
+                ))
+            }
+        }
+        (RealizationCategoryTag::Callable, "target") => {
+            if walks_to_arrow(target) {
+                Ok(())
+            } else {
+                Err(format!(
+                    "CallableRealization.target must reference a callable declaration whose connective walks to Arrow; got declaration {target:?}"
+                ))
+            }
+        }
+        (RealizationCategoryTag::TypeInstantiation, "target") => {
+            if !dag.declaration(target).type_params.is_empty() {
+                Ok(())
+            } else {
+                Err(format!(
+                    "TypeInstantiationRealization.target must reference a generic declaration with at least one type parameter; got declaration {target:?}"
+                ))
+            }
+        }
+        (RealizationCategoryTag::Pattern, "target") => {
+            if walks_to_disj(target) {
+                Ok(())
+            } else {
+                Err(format!(
+                    "PatternRealization.target must reference a matchable sum declaration whose connective walks to Disj; got declaration {target:?}"
                 ))
             }
         }
