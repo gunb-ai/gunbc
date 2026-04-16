@@ -1,23 +1,22 @@
-# Computation Model, Dependency, and Rendering — Design
+# Computation Model and Rendering — Design
 
-> **Parent docs:** `THESIS.md`, `INVARIANTS.md`, `SELF_HOSTING.md`
-> §14.7.
+> **Parent docs:** `THESIS.md`, `INVARIANTS.md` §"Facts Flow
+> Forward", `src/v3/SELF_HOSTING.md` §14.7.
 >
-> **Purpose:** model the a priori facts about .dag's computation
-> model and each target's execution model. Ownership, scope,
-> parallelism, and complexity EMERGE from the composition of
-> these two models. Nothing is designed — everything derives.
+> **Purpose:** rendering decisions for each target language
+> derive from: .dag's computation model (the source facts),
+> the target's execution model (the target facts), and a
+> per-callable parameter contract (`Borrowed | Consumed`).
+> This doc defines each layer and how they compose.
 >
 > **Status:** design for review.
 
 ---
 
-## §1. The root facts
+## §1. Source facts: .dag's computation model
 
-Four a priori facts about .dag. Not design choices — structural
-consequences of the language having no mutation primitive, no
-side-effect primitive, explicit data-flow edges, and bounded
-iteration primitives.
+Four a priori facts. Not design choices — structural
+consequences of the language's primitives.
 
 ```dag
 module std.computation_model
@@ -42,341 +41,366 @@ data dag_model: ComputationModel = {
 }
 ```
 
-### What each fact guarantees
+| Fact | Guarantee |
+|---|---|
+| `Immutable` | Sharing is always safe. No value changes after creation. |
+| `Pure` | Output depends only on inputs. Evaluation order flexible. .dag's own primitives are pure; `ExternalRealization` calls are bounded by declared effects (L2 M3). |
+| `ExplicitDAG` | All dependencies are `produced_by` edges. No hidden state. |
+| `Bounded` | Every computation terminates. |
 
-| Fact | Guarantee | What it dissolves |
-|---|---|---|
-| `Immutable` | Sharing is always safe. No value can be modified after creation. | Data races, aliasing bugs, defensive cloning |
-| `Pure` | Output depends only on inputs. Evaluation order is flexible. `.dag`'s own primitives are pure; `ExternalRealization` calls are bounded by their declared effects (effect annotations, L2 M3). | Effect ordering, scope-as-correctness-concern |
-| `ExplicitDAG` | All dependencies are `produced_by` edges. No hidden state. | Alias analysis, dependency discovery, escape reconstruction |
-| `Bounded` | Every computation terminates. | Halting problem, unbounded cost |
-
-### What's NOT in the root facts
-
-These concepts do NOT exist in .dag:
-- **Ownership.** Values have no owner. They exist from
-  production to last use. Sharing is free (F1).
-- **Scope.** The DAG has structural nesting (Bind bodies, Loop
-  bodies). Lexical scope is a target-language concept; the
-  emitter maps DAG structural nesting onto the target's scope
-  primitives.
-- **References.** No borrows, no pointers, no indirection.
-  Values are values.
-- **Clone.** No distinction between "the value" and "a copy of
-  the value." Immutable values are identical to their copies.
-
-These concepts appear only when the .dag DAG is mapped to a
-target language that has them.
+**What .dag does NOT have:**
+- **Ownership.** Values have no owner. Sharing is free (F1).
+- **Rust-style borrow scopes.** .dag DOES have binding regions
+  (Bind bodies, Loop bodies) that matter for use-count and
+  last-use reasoning. But these are structural nesting, not
+  target-language lifetime scopes.
+- **References.** No borrows, no pointers. Values are values.
+- **Clone.** No distinction between a value and a copy.
+  Immutable values are identical to their copies.
 
 ---
 
-## §2. Target execution models
+## §2. Target facts: execution models
 
-Each target language has its own execution model — how it
-makes values exist at runtime, how it manages their lifetime,
-and whether it has scope-based resource constraints.
+Each target declares its execution model — how it makes
+values exist at runtime.
 
 ```dag
-module std.target_model
-
 type MemoryModel
-  = ValueOnly          // SPICE, English, YAML: no runtime memory management
-  | GarbageCollected   // Go, Python, Java: runtime extends lifetimes
-  | RefCounted         // Swift, C++ shared_ptr: shared ownership via refcount
-  | OwnershipBased     // Rust, C++ unique_ptr: scope-based resource management
-
-type ScopeModel
-  = NoScope            // SPICE, English: no lexical nesting
-  | LexicalScoping     // Most programming languages: { } blocks, functions
+  = ValueOnly          // SPICE, English, YAML
+  | GarbageCollected   // Go, Python, Java
+  | RefCounted         // Swift, C++ shared_ptr
+  | OwnershipBased     // Rust, C++ unique_ptr
 
 type TargetExecutionModel {
   memory: MemoryModel
-  scope: ScopeModel
 }
 ```
 
-Target declarations:
+The memory model determines which rendering questions the
+emitter must answer:
+
+| Memory model | Ownership decisions? | Sharing/wrapping? | Iterator/container? |
+|---|---|---|---|
+| ValueOnly | No | No | No |
+| GarbageCollected | **No** | Yes (type mapping, boxing) | Yes |
+| RefCounted | **No** (refcount handles it) | Yes (wrapping policy) | Yes |
+| OwnershipBased | **Yes** | Yes | Yes |
+
+The ownership DECISION dissolves for non-ownership targets.
+Type mapping, syntax rendering, container representation, and
+iterator shape remain real work for any programming-language
+target — those are `LanguageSpec` concerns, not ownership
+concerns.
+
+---
+
+## §3. The primary ownership fact: `Borrowed | Consumed`
+
+For ownership-based targets, the emitter needs one fact per
+callable parameter: does the callee borrow or consume it?
 
 ```dag
-data rust_execution: TargetExecutionModel = {
-  memory: OwnershipBased
-  scope: LexicalScoping
-}
+type ParameterContract = Borrowed | Consumed
 
-data go_execution: TargetExecutionModel = {
-  memory: GarbageCollected
-  scope: LexicalScoping
-}
-
-data python_execution: TargetExecutionModel = {
-  memory: GarbageCollected
-  scope: LexicalScoping
-}
-
-data spice_execution: TargetExecutionModel = {
-  memory: ValueOnly
-  scope: NoScope
-}
-
-data english_execution: TargetExecutionModel = {
-  memory: ValueOnly
-  scope: NoScope
+type CallableContract {
+  callable: DeclarationId
+  params: List<ParameterContract>
 }
 ```
 
----
+**`Borrowed`:** the callee inspects the value and discards it.
+The caller can pass a reference. The value is unchanged after
+the call.
 
-## §3. What emerges from the composition
+**`Consumed`:** the callee takes ownership of the value. The
+caller must pass an owned value (move or clone). The callee
+may embed it in the return value, drop it, send it somewhere,
+or transform it — the caller doesn't know or care.
 
-The rendering for any `.dag` program on any target is
-determined by: `dag_model × TargetExecutionModel`. No
-per-target analysis is designed — it falls out.
+### §3.1 Why `Borrowed | Consumed`, not `Crosses | Stays`
 
-### §3.1 Sharing safety (from F1: Immutable)
+The earlier design used "scope boundary crossing" as the
+primary fact. This fails on at least three cases:
 
-`dag_model.mutability == Immutable` → sharing is always safe
-for ALL targets. No target ever needs to worry about data
-races or aliasing when rendering .dag code. This is universal.
+| Callable | What happens | Crosses/Stays says | Correct answer |
+|---|---|---|---|
+| `id(x) -> x` | Param returned directly, no construct site | Stays (no construct) | **Consumed** — callee needs ownership to return |
+| `drop(x) -> Unit` | Param consumed and dropped | Stays (not in return) | **Consumed** — callee needs ownership to drop |
+| `send(x, channel)` | Param sent to external, not returned | Stays (not in return) | **Consumed** — callee takes ownership |
+| `is_empty(x) -> Bool` | Param inspected only | Stays | **Borrowed** — correct |
 
-Consequence: the ONLY question at a sharing point is
-"what mechanism does this target use for sharing?" — not
-"is sharing safe?"
+`Crosses/Stays` conflates "flows to return value" with
+"needs ownership." They overlap for pure .dag functions
+(where consumption always means embedding in return), but
+diverge for external callables that consume without returning.
 
-### §3.2 Evaluation flexibility (from F2: Pure)
+`Borrowed | Consumed` is the actual fact the emitter needs.
+"Flows to return" is a derived sub-fact useful for .dag body
+analysis, not the primary contract.
 
-`dag_model.purity == Pure` → the emitter can choose any
-evaluation order that respects data dependencies. The emitter
-creates the target's scope structure as a rendering decision.
-Scope is not a property of the .dag program — it's a property
-of how the emitter renders it.
+### §3.2 Two authorities by callable kind
 
-Consequence: "scope boundary crossing" is a rendering fact,
-not a source fact. The emitter knows where it creates scopes
-because it creates them.
+**.dag functions (UserDefined body):** derive from the body
+DAG. A parameter is `Consumed` if:
+- It flows to the function's return port, OR
+- It flows to a construct site (record field, list cons)
+  that is itself consumed
 
-### §3.3 Explicit independence (from F3: ExplicitDAG)
+A parameter is `Borrowed` if it's only reachable from the
+return port through read sites (function calls to borrowing
+callees, match scrutinees, field access, comparisons).
 
-`dag_model.structure == ExplicitDAG` → two ports with no
-transitive `produced_by` path are independent. This is
-structural. No analysis needed.
+**No annotation on Arrow.** The body is the sole authority
+for .dag callables. Adding a contract field to Arrow would
+create a parallel representation of a derivable fact.
 
-Consequence: parallelism opportunities are visible by
-inspection. The emitter reads the DAG, sees independent
-subgraphs, renders them in parallel if the target supports it.
-
-### §3.4 Total complexity (from F4: Bounded)
-
-`dag_model.iteration == Bounded` → every function has a
-computable cost bound. The longest dependency chain is the
-critical path.
-
-### §3.5 The composition table
-
-| Source model | Target memory | What the emitter does |
-|---|---|---|
-| Immutable + Pure | **ValueOnly** | Emit values directly. No sharing, no scope, no ownership. The simplest case. |
-| Immutable + Pure | **GarbageCollected** | Emit values. GC extends lifetimes. Scope exists but crossings are free. |
-| Immutable + Pure | **RefCounted** | Emit shared references. Refcount at creation. Scope crossings handled by refcount. |
-| Immutable + Pure | **OwnershipBased** | Emit borrows within scope, ownership transfer at scope crossings. The ONLY case that needs crossing analysis. |
-
-Three of four target classes produce trivial rendering. The
-entire ownership/scope discussion exists for one class.
-
----
-
-## §4. Rendering for ownership-based targets
-
-This section only applies when `target.memory == OwnershipBased`
-(currently: Rust).
-
-### §4.1 Scope boundaries are emitter-created
-
-The emitter maps .dag's DAG to Rust's scope structure. For
-v3's current emission strategy (sequential let bindings within
-a function body), a value's scope is the function body it's
-emitted in. A value crosses a scope boundary when:
-
-- It's stored in a record/list that's returned from the function
-- It's passed to a callee that stores it in ITS return value
-  (transitive crossing)
-
-These are rendering facts — the emitter knows them because it
-creates the scope structure.
-
-### §4.2 The per-callable crossing declaration
-
-For each callable, the emitter needs to know: does this callee
-cause its parameter to cross a scope boundary (by embedding it
-in the return value)?
-
-**For .dag functions:** derivable from the body DAG. Walk from
-the return port backward. If a parameter is reachable through
-a construct site (record field, list cons), the parameter
-crosses. No annotation on Arrow — the body is the authority.
-
-**For ExternalRealization:** declared in the realization spec.
+**ExternalRealization:** declared in the realization spec.
 
 ```dag
-type ParameterCrossing = Stays | Crosses
-
 data rust_cons: CallableRealization = {
   strategy: ListCons
-  param_crossing: [Crosses, Crosses]
+  param_contract: [Consumed, Consumed]
 }
 
 data rust_is_empty: CallableRealization = {
   strategy: ListIsEmpty
-  param_crossing: [Stays]
+  param_contract: [Borrowed]
 }
 
 data rust_fold: CallableRealization = {
   strategy: ListFold
-  param_crossing: [Stays, Crosses, Stays]
+  param_contract: [Borrowed, Consumed, Borrowed]
+  // list: borrowed, init: consumed (becomes acc), fn: borrowed
 }
 ```
 
-### §4.3 Rendering at each edge
+### §3.3 The four-fixture pressure test
 
-The Rust emitter declares its rendering policy:
+Any correct ownership model must handle these four without
+special casing:
+
+```dag
+fn id(x: Int) -> Int = x                    // Consumed: returned directly
+fn drop(x: Int) -> Int = 0                  // Borrowed: param unused (.dag)
+                                             // Consumed: if ExternalRealization drops
+fn wrap(x: Int) -> Box<Int> = { value: x }  // Consumed: embedded in record
+fn is_empty(list: List<Int>) -> Bool =       // Borrowed: inspected only
+  match list { Empty => true, Cons(p) => false }
+```
+
+| Callable | .dag derivation | Contract | Rust rendering for caller |
+|---|---|---|---|
+| `id(x)` | x flows to return | Consumed | pass `T` (move) |
+| `drop(x)` | x doesn't flow anywhere | Borrowed | pass `&T` |
+| `wrap(x)` | x flows to record field in return | Consumed | pass `T` (move or clone) |
+| `is_empty(x)` | x flows through match (read), not to return | Borrowed | pass `&T` |
+
+One fact, four cases, zero special handling.
+
+---
+
+## §4. Rendering at the use site
+
+The source and target models determine **which facts matter**
+for a given emission (§1, §2). Within the selected fact
+surface, the per-callable contract (§3), `is_copy`, and the
+target's `OwnershipPolicy` are real designed facts — they
+don't fall out automatically. The models are a gate, not a
+complete derivation.
+
+The emitter makes the ownership decision at each **use site**
+(the edge between a port and its consumer), not at port lookup
+time. The current emitter clones at `render_port_with_locals`
+— this must change to use-site rendering.
+
+### §4.0 Emitter API gap (tracked)
+
+The current emitter's rendering primitive is
+`render_port(port_id) → String`, which returns
+`(name).clone()` for any bound name. This is port-centric —
+it cannot consume edge-level facts (which consumer? what
+contract?) because it doesn't know the consumer at render
+time.
+
+The correct primitive is:
+`render_input_use(consumer_node, input_slot) → String`
+
+This knows both the port AND the consumer, so it can look up
+the consumer's callable contract, determine Borrowed vs
+Consumed for this specific input slot, and render accordingly.
+
+Port-level rendering cannot consume edge-level facts by
+construction. This is an emitter-API refactor tracked for
+Phase 1.
+
+### §4.1 What the emitter reads per use site
+
+1. **ParameterContract** from §3 (is this parameter Borrowed
+   or Consumed?)
+2. **is_copy** from the type's realization (is cloning free?)
+3. **is_last_consumed_use** from the dependency index (is this
+   the final Consumed edge for this port?)
+
+### §4.2 Rendering table for Rust
+
+| Contract | is_copy | Last consumed use? | Rendering |
+|----------|---------|---------------------|-----------|
+| Borrowed | any | n/a | `&value` |
+| Consumed | true | any | `value` (Copy, free) |
+| Consumed | false | yes | `value` (move, free) |
+| Consumed | false | no | `value.clone()` |
+
+For Go/Python: always `value`. The ownership question doesn't
+arise.
+
+### §4.3 Copy type derivation
+
+- **Leaf types:** declared in realization spec (Int → true,
+  String → false)
+- **Compound types (Conj):** derived. Copy iff ALL fields Copy.
+  Not declared — prevents drift.
+- **Recursive types:** default non-Copy. Rust's Copy requires
+  Sized; recursive types need indirection (Box, Vec), which
+  is not Copy.
+
+### §4.4 Target rendering model
 
 ```dag
 type OwnershipPolicy {
-  stays_in_scope: String       // "&{V}" — borrow
-  crosses_copy: String         // "*{V}" — deref Copy type
-  crosses_move: String         // "{V}" — move at last use
-  crosses_clone: String        // "{V}.clone()" — clone non-Copy
+  borrow_syntax: String      // Rust: "&{V}"
+  move_syntax: String        // Rust: "{V}"
+  clone_syntax: String       // Rust: "{V}.clone()"
+  copy_syntax: String        // Rust: "{V}" (same as move for Copy)
 }
 ```
 
-The decision per edge:
+---
 
-| Crosses? | is_copy | Last crossing use? | Rendering |
-|----------|---------|---------------------|-----------|
-| No | any | n/a | `&value` (borrow) |
-| Yes | true | any | `*value` (deref, free) |
-| Yes | false | yes | `value` (move, free) |
-| Yes | false | no | `value.clone()` (O(size)) |
+## §5. Dependency index (universal)
 
-### §4.4 Copy type derivation
+The dependency reverse-index is always computed, regardless
+of target. It's a universal structural fact from F3
+(ExplicitDAG).
 
-- Leaf types: declared in realization spec (`Int → true`,
-  `String → false`)
-- Compound types: derived. Record is Copy iff ALL fields are
-  Copy. Not declared — prevents drift.
-- Recursive types: default to non-Copy. Rust's `Copy` requires
-  `Sized` with no indirection; recursive types need indirection
-  (`Box`, `Vec`), which is not Copy.
+```dag
+type ConsumerEdge {
+  port: PortId
+  consumer: NodeId
+}
+
+type DependencyFacts {
+  consumers: List<PortConsumers>
+}
+
+fn compute_dependencies(dag: Dag) -> DependencyFacts
+```
+
+Consumers of DependencyFacts:
+- **Ownership** (§4): last-consumed-use determination
+- **Parallelism** (§6): independence detection
+- **Complexity**: critical path / cost accounting
+- **Dead code**: consumer count = 0 → skip
 
 ---
 
-## §5. Parallelism (orthogonal)
+## §6. Parallelism (orthogonal to ownership)
 
-Parallelism reads the DAG structure directly (F3: ExplicitDAG).
-It does NOT read scope facts or ownership facts. Two ports with
-no transitive dependency path are independent. Period.
+Reads DependencyFacts only. No ownership facts. No target
+spec. Two ports with no transitive dependency path are
+independent. For pure .dag code, independent operations are
+always safe to parallelize (F1 + F2).
 
-**Fold decomposition:** does the fold body's per-element
-computation reach the `acc` parameter? If not, the fold
-contains a map (parallelizable).
+**Fold decomposition:** does the body's per-element work
+transitively depend on the `acc` parameter? Acc-independent
+work is a parallelizable map.
 
-**Parallelism refines the sharing PRIMITIVE for ownership
-targets:** if two consumers run on different threads, Rust
-needs `Arc<T>` (atomic) instead of `Rc<T>` (non-atomic).
-Parallelism and scope are two independent facts that compose
-at rendering.
+**Sharing primitive refinement:** if two consumers run on
+different threads, Rust needs `Arc<T>` (atomic) instead of
+`Rc<T>` (non-atomic). Parallelism and ownership are two
+independent facts that compose at rendering.
 
 ---
 
-## §6. The pipeline
+## §7. The pipeline
 
 ```dag
 fn compile(source: String, file: String, spec: LanguageSpec) -> String {
   let dag         = parse(source, file) |> lower |> infer
-  let deps        = compute_dependencies(dag)       // universal (F3)
-  let parallelism = detect_parallelism(dag, deps)   // universal (F1+F3)
-  let complexity  = compute_complexity(dag, deps)    // universal (F4)
+  let deps        = compute_dependencies(dag)        // universal
+  let contracts   = compute_contracts(dag, spec)     // per-callable
+  let parallelism = detect_parallelism(dag, deps)    // universal
+  let complexity  = compute_complexity(dag, deps, contracts)
 
-  // Target-conditional:
-  let rendering   = match spec.execution.memory {
-    OwnershipBased -> compute_ownership_rendering(dag, deps, spec)
-    _              -> trivial_rendering()
+  // Target-conditional: only OwnershipBased targets need this
+  let ownership   = match spec.execution.memory {
+    OwnershipBased -> compute_ownership(dag, deps, contracts, spec)
+    _              -> no_ownership_decisions()
   }
 
-  emit(dag, rendering, complexity, parallelism, spec)
+  emit(dag, ownership, complexity, parallelism, spec)
 }
 ```
 
-Universal facts (deps, parallelism, complexity) are always
-computed. Ownership rendering is gated on the target's memory
-model. For Go, Python, SPICE, English — no ownership stage.
-
 ---
 
-## §7. Validated result
+## §8. Validated result
 
-The read-vs-construct classification (a proxy for scope
-crossing) dropped generated lens clones from 72 → 6. The 6
-remaining:
+The read-vs-construct classification (a proxy for
+Borrowed/Consumed at the immediate level) dropped generated
+lens clones from 72 → 6. The 6 remaining:
 
 | Clone | Root cause | Fix |
 |---|---|---|
-| 3× fold acc | `rust_fold.param_crossing` not declared yet | Declare `[Stays, Crosses, Stays]` |
-| 2× PortId | `is_copy` not derived yet | Declare leaf Copy, derive compound |
-| 1× SourceSpan | Non-Copy value at a genuine scope crossing | Correct — necessary clone |
+| 3× fold acc | `rust_fold.param_contract` not declared yet — init is Consumed | Declare `[Borrowed, Consumed, Borrowed]` |
+| 2× PortId | `is_copy` not derived yet — PortId is Copy | Declare leaf Copy types |
+| 1× SourceSpan | Non-Copy Consumed at a record construction | Correct — necessary clone |
 
-After fixes: **1 clone.** The model correctly identifies it
-as the only genuinely necessary ownership transfer.
+After fixes: **1 clone.**
 
 ---
 
-## §8. Verification
+## §9. Verification
 
-The model claims: rendering is fully determined by
-`ComputationModel × TargetExecutionModel × DAG structure`.
-Tests verify the root facts and their composition.
+Tests verify the facts, not symptoms.
 
-1. **Root facts hold.** .dag programs compile with
-   `dag_model = { Immutable, Pure, ExplicitDAG, Bounded }`.
-   .dag's own primitives enforce these facts. Programs with
-   cycles or unbounded iteration are rejected at compile time.
-   `ExternalRealization` calls are bounded by their declared
-   effects (the purity guarantee applies to .dag primitives;
-   external calls carry effect annotations, L2 M3).
+1. **ParameterContract per callable.** The four-fixture test
+   (§3.3): `id` → [Consumed], `drop` → [Borrowed],
+   `wrap` → [Consumed], `is_empty` → [Borrowed].
 
-2. **ParameterCrossing per callable.** `cons` → [Crosses,
-   Crosses]. `is_empty` → [Stays]. `fold` → [Stays, Crosses,
-   Stays]. Derived for .dag callables, declared for external.
+2. **Additional callables.** `cons` → [Consumed, Consumed].
+   `fold` → [Borrowed, Consumed, Borrowed].
 
 3. **is_copy derivation.** Int → true. PortId → true.
    SourceSpan → false. { a: Int, b: Int } → true.
-   { a: Int, b: String } → false.
+   { a: Int, b: String } → false. List<T> → false (recursive).
 
 4. **Rendering parity.** Generated lens matches handwritten
-   oracle on all fixtures.
+   oracle.
 
-5. **Cross-target validation.** Same .dag program emitted to
-   Rust (ownership decisions) and Go (no ownership decisions)
-   produces behaviorally equivalent code.
+5. **Roundtrip compilation.** Every generated artifact compiles
+   with rustc.
 
 6. **Clone-count pinning.** ~6 at Phase 1, 1 at Phase 2.
 
 ---
 
-## §9. Phasing
+## §10. Phasing
 
 | Phase | When | What |
 |---|---|---|
-| **Phase 1** | L1.5 | Declare `ComputationModel` in `std/`. Build consumer index in emitter. Emitter reads `TargetExecutionModel` and gates ownership stage. Conservative default for callables (all params Stay). `is_copy` on leaf types. Clone count ~6. |
-| **Phase 2** | L2 | `ParameterCrossing` analysis. Body-walk derivation for .dag callables. Declared for ExternalRealization. `is_copy` composition. Last-crossing-use tracking. Clone count → 1. |
-| **Phase 3** | L2+ | Parallelism rendering (Rc vs Arc). Complexity reads crossing facts for clone cost. Multi-target validation. |
-| **Phase 4** | L3 | Self-analysis. Clone count zero. Same DAG → Rust + Go → both correct. |
+| **Phase 1** | L1.5 | `std/computation_model.dag`. `TargetExecutionModel` in specs. Emitter gates ownership on target memory. Conservative default: all params Borrowed (safe). `is_copy` on leaf types. Move emitter from port-lookup cloning to use-site rendering. Clone count ~6. |
+| **Phase 2** | L2 | `ParameterContract` analysis: body-walk for .dag callables, `param_contract` declared for ExternalRealization. `is_copy` composition. Last-consumed-use tracking. Clone count → 1. |
+| **Phase 3** | L2+ | Parallelism Rc/Arc. Complexity reads contracts for clone cost. |
+| **Phase 4** | L3 | Self-analysis. Multi-target: same DAG → Rust + Go. Go emits without ownership stage. |
 
 ---
 
-## §10. When this doc updates
+## §11. When this doc updates
 
-- `std/computation_model.dag` lands → §1 is implemented
+- `std/computation_model.dag` lands → §1 implemented
 - Phase 1 lands → clone count pinned
-- Phase 2 lands → crossing analysis verified
-- Multi-target → §3.5 composition validated empirically
+- Four-fixture pressure test green → §3.3 validated
+- Phase 2 lands → contracts verified, clone → 1
+- Multi-target lands → gating validated
 - All phases → doc archives
