@@ -87,6 +87,32 @@ fn prepare_stage1_for_build(stage1_dir: &std::path::Path, ws: &std::path::Path) 
     }
 }
 
+/// Run rustfmt in-place on every .rs file under `dir`. Used to normalize
+/// self-compile output before diffing against committed (fmt-compliant)
+/// stage0. Pure whitespace normalization — no semantic change.
+fn rustfmt_rs_files(dir: &std::path::Path) -> Result<(), String> {
+    let read = std::fs::read_dir(dir).map_err(|e| format!("read_dir {}: {e}", dir.display()))?;
+    for entry in read {
+        let entry = entry.map_err(|e| format!("dir entry: {e}"))?;
+        let path = entry.path();
+        if path.extension().map(|e| e == "rs").unwrap_or(false) {
+            let out = std::process::Command::new("rustfmt")
+                .arg("--edition=2021")
+                .arg(&path)
+                .output()
+                .map_err(|e| format!("spawn rustfmt: {e}"))?;
+            if !out.status.success() {
+                return Err(format!(
+                    "rustfmt failed on {}:\n{}",
+                    path.display(),
+                    String::from_utf8_lossy(&out.stderr)
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Diff two src/ directories, excluding hand-maintained files.
 /// Returns Ok(()) if identical, Err(diff output) if different.
 fn diff_excluding_hand_maintained(
@@ -664,7 +690,17 @@ static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
 
     // Freshness: diff pass 1 output against committed stage0.
     // Must be computed HERE, before CI_PASS2 copies pass1 files into stage0.
+    //
+    // Committed stage0 is fmt-compliant (applied by regenerate-stage0.sh's
+    // trailing `cargo fmt --all`). The v2 emitter itself does not produce
+    // fmt-canonical output, so raw self-compile output differs from
+    // committed stage0 only in whitespace/layout. Normalize pass1 output
+    // via rustfmt before the diff so whitespace never masquerades as
+    // staleness.
     let pass1_src = output_dir.join("src");
+    if let Err(err) = rustfmt_rs_files(&pass1_src) {
+        panic!("failed to rustfmt pass1 output: {err}");
+    }
     let committed_src = ws.join("src/v2/stage0/src");
     let freshness = diff_excluding_hand_maintained(&pass1_src, &committed_src);
     ci_timing("PASS1: freshness diff done");
