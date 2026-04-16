@@ -1105,16 +1105,22 @@ before/after benefit):**
     the structural test is new infrastructure.
 
 - **PR 17b: pipeline composition → `gunbc/tools/regen.dag`**
-  - **Authority note (2026-04-16):** `bootstrap.dag`'s stage
-    vocabulary (`CompilerStage`, `TransformContract`,
-    `ChangeClassification`, `BootstrapStrategy`) is **superseded**
-    by the pipeline composition declared in
+  - **Authority note (2026-04-16):** `bootstrap.dag`'s **stage-
+    contract vocabulary** (`CompilerStage`, `TransformContract`,
+    `StageInput`, `StageOutput`, `FieldPropagation`) is
+    **superseded** by the pipeline composition declared in
     `src/v3/SELF_HOSTING.md` §2.1. The pipeline's typed function
     signatures ARE the stage contracts; `bootstrap.dag`'s parallel
-    vocabulary dissolves into the pipeline declaration. `regen.dag`
-    reads the pipeline's stage signatures, not a separate
-    `bootstrap.dag` type set. See `SELF_HOSTING.md` §2.1 for the
-    single-authority rationale.
+    stage vocabulary dissolves into the pipeline declaration.
+    `regen.dag` reads the pipeline's stage signatures, not a
+    separate `bootstrap.dag` type set.
+    **Surviving schema-migration authority:** `ChangeClassification`,
+    `ChangeKind`, `BootstrapStrategy`, and `FixedPointCheck` are
+    NOT superseded by the pipeline — they are the schema-migration
+    vocabulary consumed by `SELF_HOSTING.md` §10's patch pipeline.
+    These remain in `bootstrap.dag` as load-bearing types until
+    the schema-migration PR (§10.4) lands their first real
+    consumer.
   - Currently `regen.dag` hardcodes the 5-step sequence in nested
     matches (build → compile → copy → check → rebuild → recompile).
   - Replace with stage iteration driven from the pipeline

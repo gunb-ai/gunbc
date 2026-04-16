@@ -68,10 +68,20 @@ L1 — Reflection framework              [prereqs shipping — reflection PR nex
       │    • Prereq 1 (FieldProject): #458 merged
       │    • Prereq 2 (Path.binding): #458 merged
       │    • Prereq 3 (contextual lambda): #460 merged
-      │    • Prereq 4 (list.dag bootstrap): #463 in flight
+      │    • Prereq 4 (list.dag bootstrap): #463 merged
       │    • Prereq 5 (pipe sugar): #462 merged
-      │    • Reflection PR: next after prereq slate completes
+      │    • Prereq 0.5 (implicit generics): in #466
+      │    • Reflection PR (#466): in flight
       │    • first lens (lens_unused_parameters) migrates in reflection PR
+      │
+L1.5 — Clean bootstrap (IMMEDIATE post-L1) [the process is the first feature]
+      │    1. Pipeline composition declaration (§2.1)
+      │       — typed stage functions, ExternalRealization bodies
+      │       — small PR, no implementation, just the declaration
+      │    2. Per-stage fixed-point in regen (§11)
+      │       — regen captures per-stage output, diffs at boundaries
+      │       — uses the pipeline declaration from step 1
+      │       — the dark-emu fix, available from day one
       │
       ├── L2 — v2 consumer migrations   [parallel with L2.5]
       │    │    M1: dsl/lenses/complexity.dag  (5490 lines from v2)
@@ -96,6 +106,10 @@ L3 — Pipeline stages in .dag           [blocked on L2.5 model for each stage]
       │    Stage 3: infer.dag  — Dag → Dag with port state
       │    Stage 4: parse.dag  — tokens → SurfaceItems
       │
+      Schema migration (§10)            [after L3 Stage 1]
+      │    ChangeClassification → patch → bridge → fixed-point
+      │    Zero manual stage0 edits
+      │
 L4 — Full self-hosting (M3)            [long-term]
            v3's compiler is .dag code
            Rust stage0 is vestigial (bootstrap seed)
@@ -103,10 +117,19 @@ L4 — Full self-hosting (M3)            [long-term]
 
 **Gating rules:**
 
-1. **L2 cannot start until L1 ships.** Consumer migrations read
+1. **L1.5 is the FIRST thing after L1.** Before lens migrations,
+   before domain modeling, before any pipeline stage work — land
+   the pipeline composition declaration and per-stage fixed-point
+   verification. The process is the first feature. Every
+   subsequent piece of work (lens migrations, stage ports, new
+   substrate features) goes through a bootstrap process that's
+   already structurally sound. This prevents the v2 pattern where
+   the bootstrap process was never instrumented and every
+   regression was hours of archaeology.
+2. **L2 cannot start until L1 ships.** Consumer migrations read
    substrate facts through the reflection framework; no
    reflection, no lens migrations.
-2. **L2.5 cannot start until L1 ships.** Domain modeling declares
+3. **L2.5 cannot start until L1 ships.** Domain modeling declares
    types in `std/` and `extdeps/` using the same reflection
    infrastructure. Does NOT need L2 lens migrations to be done
    first — L2 and L2.5 are independent parallel work streams
@@ -122,23 +145,23 @@ L4 — Full self-hosting (M3)            [long-term]
    no Stage N implementation that reads it, it doesn't belong in
    L2.5; it's decorative. The test is: "which function body in
    L3 reads this type?" If you can't name one, don't declare it.
-3. **L3 stage N cannot start until L2.5's model for stage N is
+4. **L3 stage N cannot start until L2.5's model for stage N is
    reviewed.** Implementation fills in function bodies over
    already-declared types. The model IS the prerequisite (§2.2).
    L2 should have at least M1 underway to prove the reflection
    framework works on real analysis code before pipeline stages
    start.
-4. **L2.5 stages proceed in L3's implementation order.** Emit
+5. **L2.5 stages proceed in L3's implementation order.** Emit
    domain first (partially exists, smallest gap), lower domain
    second, parse domain third, infer domain last (blocked on I3
    write-surface experiment). Each domain model runs ahead of
    its stage's implementation by at least one step.
-5. **L3 stages proceed bottom-up.** Emit first (easiest, already
+6. **L3 stages proceed bottom-up.** Emit first (easiest, already
    half-structured), then lower, then infer, then parse. Each
    later stage's migration benefits from the earlier stages
    being in `.dag` form (e.g., `lower.dag` can call `emit.dag`
    for debug-dump purposes once both are in `.dag`).
-6. **L4 is the state after all L3 stages ship.** There is no
+7. **L4 is the state after all L3 stages ship.** There is no
    separate "make self-hosting work" milestone; it's the
    emergent consequence of completing L3.
 
@@ -506,9 +529,10 @@ map to Layer 1's constructs? Conj → `struct`, Disj → `enum`,
 Arrow → `fn`. The bridge between substrate and target.
 
 **Layer 3: Rendering conventions.** Declared rendering rules
-ON TOP of the spec. `rustfmt`-compatible formatting, `snake_case`
-naming, line-length limits, `Result<T,E>` over `panic!`, import
-ordering. These are **declared structural facts** with the same
+ON TOP of the spec, strictly limited to **lexical/visual
+concerns**: `rustfmt`-compatible formatting, `snake_case` naming,
+line-length limits, import ordering, comment style, indentation
+width. These are **declared structural facts** with the same
 authority as any other `.dag` declaration — not "preferences" or
 "annotations." When present, they are hard constraints on the
 emitter's output formatting. "Optional" means the emitter CAN
@@ -516,6 +540,15 @@ run without them (producing valid-but-unstyled output), NOT that
 they are soft suggestions. Different projects compose different
 rendering specs on the same language spec.
 
+**RenderingSpec MUST NOT change observable semantics.** Choices
+like `Result<T,E>` vs `panic!` or error-handling strategy are
+SEMANTIC — they change the emitted program's behavior. Those
+belong in `LanguageSpec` (Layer 1), not `RenderingSpec` (Layer 3).
+The test: if two `RenderingSpec` values produce programs with
+different runtime behavior, one of them contains a semantic choice
+that should be in `LanguageSpec`. RenderingSpec is purely visual;
+two rendering specs on the same language spec produce programs
+that behave identically and differ only in formatting/naming.
 **Opacity between layers is load-bearing.** Layer 1 doesn't know
 about Layer 3. Layer 3 doesn't know about Layer 0. When you
 change a rendering convention, Layers 0-2 are untouched. When you
@@ -530,13 +563,14 @@ type LanguageSpec {
   module_system: ModuleSpec
 }
 
-// Layer 3 — declared rendering conventions
+// Layer 3 — declared rendering conventions (visual only)
 type RenderingSpec {
-  naming: NamingConventions
-  formatting: FormatRules
-  lint: List<LintRule>
-  idioms: List<IdiomSpec>
+  naming: NamingConventions      // snake_case, camelCase, etc.
+  formatting: FormatRules        // line length, indentation, etc.
+  lint: List<LintRule>           // visual lint only (not semantic)
 }
+// Note: "idioms" (Result vs panic, error-handling patterns) are
+// SEMANTIC and belong in LanguageSpec, not here.
 
 // The composition — the emitter reads this
 type EmissionTarget {
@@ -550,9 +584,11 @@ fully-styled output per the declared conventions.
 
 The same layering applies to ingestion: Layer 1 is the source
 grammar (facts), Layer 3 is declared parsing conventions (error
-recovery strategy, diagnostic phrasing, ambiguity resolution).
-Opacity holds: the diagnostic phrasing doesn't know about the
-grammar rules.
+recovery strategy, diagnostic phrasing). Ambiguity resolution is
+SEMANTIC — it changes which parse tree the parser produces — so
+it belongs in `GrammarSpec` (Layer 1) or `ElaborationSpec`, not
+in the conventions layer. Opacity holds: the diagnostic phrasing
+doesn't know about the grammar rules.
 
 #### §2.3.3 Design challenges
 
@@ -588,6 +624,90 @@ grammar rules.
    thesis promise is "adding a new target costs one spec file."
    True; writing that spec set is the investment.
 
+### §2.4 Mutual recursion lowering — prereq for complexity and general execution
+
+The thesis's lowering table (INVARIANTS.md §"Recursive syntax is
+sugar") commits to handling EVERY call pattern, including n-way
+mutual recursion. The lowering for mutual recursion is:
+
+> Mutual recursion (SCC) on children → `descend` over SCC-ordered
+> nodes, bounded by |SCC|.
+
+v3's `lower.rs` already detects mutual recursion at lowering time
+(`compute_mutually_recursive` walks the call graph and returns a
+`HashSet<String>` of cycle members). **But it currently REJECTS
+mutual recursion** — the diagnostic says "mutual recursion is not
+yet supported in v3."
+
+The missing piece is the LOWERING step: transform the cycle into
+bounded Loop nodes with descend semantics.
+
+1. Lowering detects the cycle via `compute_mutually_recursive`
+   (already done)
+2. Lowering preserves the **real call topology** of the SCC —
+   each function's actual call targets remain as structural
+   edges in the lowered form. The SCC is wrapped in a bounded
+   descend whose bound is the structural descent evidence
+   (children get strictly smaller at each level), but the body
+   of the descend preserves which functions call which. No
+   ring-walk encoding that drops real edges.
+3. The bounded Loop node carries: SCC membership (which
+   declarations participate), the shared descent measure, and
+   the original call graph edges within the SCC. Later consumers
+   (complexity, equivalence, lenses that care about branch shape)
+   can read the real topology, not a lossy encoding.
+
+**The exact substrate fact that must survive lowering:** for each
+function in the SCC, the `Transform.target` edges in its body
+point at the REAL callee declarations, not at a synthetic
+"next in ring" target. The SCC boundary is a Loop whose bound is
+the shared descent measure; the Loop body is the SCC members'
+bodies composed with their real call edges intact. This
+preserves execution semantics AND the facts downstream consumers
+need.
+
+Once lowering does this, the substrate carries the SCC structure
+as bounded Loop nodes with real call topology. Complexity reads
+`Loop.bound` and applies the standard cost rule:
+`bound × cost(body)`. No SCC analysis in complexity. No Tarjan's
+in complexity. The cycle detection is in LOWERING (where it
+belongs), and the general SCC algorithm is a library function in
+`std/graph.dag` (reusable by anything that needs cycle detection).
+
+**Prereq for:**
+- The complexity port (complexity reads SCC cost from the
+  substrate; if lowering doesn't produce the bounded descend,
+  complexity has to reconstruct the SCC itself — which is the
+  v2 pattern we're dissolving)
+- General language completeness — any `.dag` program with mutual
+  recursion should compile, not fail at lowering
+- Self-hosting — mutually-recursive HELPER FUNCTIONS within a
+  pipeline stage (e.g., a parser's recursive-descent helpers)
+  should compile and run. Note: pipeline stages calling each
+  other across stage boundaries is a COMPOSITION concern, not
+  mutual recursion — that's handled by the pipeline declaration
+  in §2.1, not by the recursion lowering here.
+
+**Scope:** n-way mutual recursion (not just 2-way). The thesis's
+lowering table says "mutual recursion (SCC) on children" without
+a bound on the SCC size. A 3-function cycle, a 10-function cycle,
+and a 2-function cycle all lower to the same bounded-descend
+shape.
+
+**Testing:** every SCC size from 2 to at least 5 should have a
+test fixture. Positive fixtures:
+- Compiles without diagnostics
+- Produces a bounded Loop with the correct bound
+- The bound is provably structural (|SCC| × |children|)
+- The lowered form preserves real call-graph edges (not a ring)
+- A complexity lens walking the result reads the cost without
+  reconstruction
+
+Negative fixtures (fail-closed):
+- An SCC where no shared descent measure exists (all arguments
+  preserved or grow) should fail with a diagnostic naming the
+  cycle and the missing measure — not compile silently with an
+  unbounded loop
 ---
 
 ## §3. Stage 1 — `emit.dag`

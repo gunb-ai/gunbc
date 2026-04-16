@@ -326,7 +326,20 @@ multi-target emission, §8.11 ratchet) shifts shape:
 - Service calls (transport declarations)
 - Pattern matching in user-code fn bodies (Branch with destructuring)
 - Interpreter (`dag run`)
-- Recursive functions → `Loop` lowering
+- Recursive functions → `Loop` lowering (includes n-way mutual
+  recursion → bounded `descend` over SCC-ordered nodes). v3's
+  `lower.rs` already detects mutual recursion via
+  `compute_mutually_recursive` but currently REJECTS it. The
+  lowering step that transforms cycles into bounded Loop nodes
+  with descend semantics is the missing piece. The thesis's
+  lowering table (INVARIANTS.md §"Recursive syntax is sugar")
+  commits to handling every call pattern including mutual
+  recursion; this is the implementation of that commitment.
+  **Prereq for:** the complexity port (complexity reads SCC
+  structure from the substrate; if lowering doesn't produce it,
+  complexity has to reconstruct it). Also a general language
+  completeness feature — any `.dag` program with mutual recursion
+  should compile, not fail at lowering.
 - Match expressions / pipe / lambda / named arguments in user code
 - `data` value semantics
 - `where` refinement checking
@@ -342,14 +355,16 @@ Full design: [`src/v3/SELF_HOSTING.md`](SELF_HOSTING.md). Key points:
   pipeline structure the same way it reads any user program's
   dependency graph. Stage contracts, per-stage fixed-point, and
   self-analysis via lenses all fall out of this shape.
-- **Dependency order:** L1 (reflection, prereqs shipping) → L2
-  (lens migrations) + L2.5 (per-stage domain modeling, parallel
-  with L2) → L3 (pipeline stages in `.dag`: emit → lower → infer
-  → parse) → L4 (full self-hosting). L2.5 is the design work that
-  models each stage's inputs/outputs to spec BEFORE implementation.
-  L2.5 runs ahead of L3 by one stage — emit domain models while
-  lens migrations start, lower domain models while emit implements,
-  etc. See §2.2 for the principle and §2 for the full diagram.
+- **Dependency order:** L1 (reflection) → **L1.5 (clean bootstrap
+  — immediate, the process is the first feature)** → L2 (lens
+  migrations) + L2.5 (per-stage domain modeling, parallel with L2)
+  → L3 (pipeline stages in `.dag`: emit → lower → infer → parse)
+  → L4 (full self-hosting). L1.5 lands the pipeline composition
+  declaration and per-stage fixed-point verification BEFORE any
+  other post-reflection work. Every subsequent change goes through
+  a bootstrap process that's already structurally sound. L2.5
+  models each stage's inputs/outputs to spec BEFORE implementation;
+  L2.5 runs ahead of L3 by one stage. See §2 for the full diagram.
 - **Infer is the research gate.** Every other stage migration is
   engineering with known patterns. Inference-as-data has no
   production precedent. The I0-I8 experiment sequence
