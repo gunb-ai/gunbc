@@ -281,7 +281,6 @@ struct PatternRealizationBinding {
 #[derive(Debug, Clone)]
 struct StatementSyntaxBinding {
     let_binding: String,
-    let_binding_inferred: String,
 }
 
 #[derive(Debug, Clone)]
@@ -293,16 +292,8 @@ struct ExpressionSyntaxBinding {
 }
 
 #[derive(Debug, Clone)]
-struct ForEachSyntaxBinding {
-    prefix: String,
-    separator: String,
-}
-
-#[derive(Debug, Clone)]
 struct ControlFlowSyntaxBinding {
     if_else: String,
-    match_arm: String,
-    for_each_syntax: ForEachSyntaxBinding,
 }
 
 #[derive(Debug, Clone)]
@@ -320,7 +311,6 @@ struct ModuleSyntaxBinding {
 #[derive(Debug, Clone)]
 struct FunctionSyntaxBinding {
     definition: String,
-    definition_void: String,
     param_with_type: String,
     param_separator: String,
 }
@@ -370,7 +360,6 @@ struct ValueConstructionSyntaxBinding {
     struct_literal: String,
     struct_field_init: String,
     struct_field_separator: String,
-    variant_construction: String,
     variant_named_construction: String,
 }
 
@@ -704,24 +693,6 @@ fn syntax_field_string(
     require_field_string(fields, label, declaration).map(|s| s.replace("%Q", "\""))
 }
 
-fn syntax_field_record<'a>(
-    fields: &'a [(String, FieldValue)],
-    label: &str,
-    declaration: DeclarationId,
-) -> Result<&'a [(String, FieldValue)], EmitError> {
-    fields
-        .iter()
-        .find(|(name, _)| name == label)
-        .and_then(|(_, value)| match value {
-            FieldValue::Record(fields) => Some(fields.as_slice()),
-            _ => None,
-        })
-        .ok_or(EmitError::MalformedTargetSyntax {
-            declaration,
-            detail: "syntax field must be a structural record",
-        })
-}
-
 fn parse_statement_syntax(
     dag: &Dag,
     declaration: DeclarationId,
@@ -729,7 +700,6 @@ fn parse_statement_syntax(
     let fields = structural_fields_for_decl(dag, declaration)?;
     Ok(StatementSyntaxBinding {
         let_binding: syntax_field_string(fields, "let_binding", declaration)?,
-        let_binding_inferred: syntax_field_string(fields, "let_binding_inferred", declaration)?,
     })
 }
 
@@ -751,14 +721,8 @@ fn parse_control_flow_syntax(
     declaration: DeclarationId,
 ) -> Result<ControlFlowSyntaxBinding, EmitError> {
     let fields = structural_fields_for_decl(dag, declaration)?;
-    let for_each = syntax_field_record(fields, "for_each_syntax", declaration)?;
     Ok(ControlFlowSyntaxBinding {
         if_else: syntax_field_string(fields, "if_else", declaration)?,
-        match_arm: syntax_field_string(fields, "match_arm", declaration)?,
-        for_each_syntax: ForEachSyntaxBinding {
-            prefix: syntax_field_string(for_each, "prefix", declaration)?,
-            separator: syntax_field_string(for_each, "separator", declaration)?,
-        },
     })
 }
 
@@ -791,7 +755,6 @@ fn parse_function_syntax(
     let fields = structural_fields_for_decl(dag, declaration)?;
     Ok(FunctionSyntaxBinding {
         definition: syntax_field_string(fields, "definition", declaration)?,
-        definition_void: syntax_field_string(fields, "definition_void", declaration)?,
         param_with_type: syntax_field_string(fields, "param_with_type", declaration)?,
         param_separator: syntax_field_string(fields, "param_separator", declaration)?,
     })
@@ -878,7 +841,6 @@ fn parse_value_construction_syntax(
             "struct_field_separator",
             declaration,
         )?,
-        variant_construction: syntax_field_string(fields, "variant_construction", declaration)?,
         variant_named_construction: syntax_field_string(
             fields,
             "variant_named_construction",
