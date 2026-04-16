@@ -69,7 +69,7 @@ pub fn lower(module: &SurfaceModule) -> Dag {
     // `ArrowBody::Unparsed` and `Data` / `ValueBody::Unparsed`
     // are load-bearing scaffolds for the std/bootstrap files
     // whose bodies the M1(2.8) parser cannot yet lower
-    // (match / record literals / pipes / lambdas / etc.).
+    // (match / record literals / lambdas / etc.).
     // User-range declarations that rely on the scaffold are
     // fail-closed: ordinary user code has no business shipping
     // an opaque body the compiler cannot validate. Without this
@@ -922,7 +922,7 @@ fn reject_user_unparsed_scaffolds(dag: &mut Dag, strict_from: usize) {
             dag,
             Diagnostic::ResolveError {
                 name: format!(
-                    "function `{name}` has an opaque block body — M1(2.8) user code cannot yet use match / record literals / pipes / lambdas inside fn bodies (see DOWNSTREAM_REQUIREMENTS.md class-5 gaps)"
+                    "function `{name}` has an opaque block body — M1(2.8) user code cannot yet use match / record literals / lambdas inside block-bodied fn definitions (see DOWNSTREAM_REQUIREMENTS.md class-5 gaps)"
                 ),
                 span,
             },
@@ -2263,6 +2263,7 @@ fn lower_field_path_expr(
             id: node_id,
             target: TransformTarget::FieldProject {
                 field_label: field_label.clone(),
+                field_child: None,
             },
             inputs: vec![current_port],
             output,

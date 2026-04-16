@@ -589,8 +589,11 @@ impl<'a> Ctx<'a> {
     ) -> Result<String, EmitError> {
         match &t.target {
             TransformTarget::Operator(op) => self.render_operator(t, *op, locals),
-            TransformTarget::FieldProject { field_label } => {
-                self.render_field_project(t, field_label, locals)
+            TransformTarget::FieldProject {
+                field_label,
+                field_child,
+            } => {
+                self.render_field_project(t, field_label, locals, *field_child)
             }
             TransformTarget::Callable(target) => {
                 self.render_callable_transform(t, *target, locals)
@@ -603,7 +606,13 @@ impl<'a> Ctx<'a> {
         t: &TransformNode,
         field_label: &str,
         locals: Option<&HashMap<PortId, String>>,
+        field_child: Option<DeclarationId>,
     ) -> Result<String, EmitError> {
+        if field_child.is_none() {
+            return Err(EmitError::UnsupportedBehavior(format!(
+                "field projection .{field_label} is missing its resolved field child carrier; emit_rust expects post-infer FieldProject targets"
+            )));
+        }
         if t.inputs.len() != 1 {
             return Err(EmitError::UnsupportedBehavior(format!(
                 "field projection .{field_label} arity {} is not supported; expected exactly one parent input",
@@ -1097,6 +1106,7 @@ mod tests {
             id: node_id,
             target: TransformTarget::FieldProject {
                 field_label: "value".to_string(),
+                field_child: dag.int_shape().map(|ty| ty.declaration),
             },
             inputs: vec![parent_port],
             output,

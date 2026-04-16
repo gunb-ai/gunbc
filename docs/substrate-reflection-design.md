@@ -2471,7 +2471,7 @@ deferred with a note.
 | **v2 CI scanning constraint on file location** | §3.1 — `src/v3/std/` is bootstrap staging; `dsl/std/` is canonical post-v2 |
 | **Name collisions — v3_l1.Declaration sentinel, algebra.Field\<T\>** | §3.1 — rename sentinel → `DeclarationRef`, use `ConjField` for substrate record-field type |
 | **Every dependency is a substrate fact** (module/import/buffer lifting, user_start elimination) | §8, prerequisite to reflection — scoped as separate PR, not yet designed in full detail |
-| **FieldProject phase carrier after #458's defer-to-infer rewrite** | §3.6 follow-up — once field projection resolution moved behind infer, the clean substrate shape is a phase carrier for resolved child identity (`field_child: Option<DeclarationId>` or equivalent) so emit/lenses can read typed child identity without label re-lookup. Natural home: reflection PR or a dedicated micro-PR before it. |
+| **FieldProject phase carrier after #458's defer-to-infer rewrite** | Addressed in the dedicated post-#458 micro-PR: `TransformTarget::FieldProject` carries `field_child: Option<DeclarationId>` as a post-infer phase carrier so emit/lenses can read typed child identity without repeating the field-label lookup. |
 | **Generic call dispatch instantiation collapse** | §3.5 / reflection stress-test follow-up — SubstStack propagation still collapses instantiated inputs across some user-call boundaries. This is pre-existing, not a blocker for the §3.6/§3.7 prereq slate, and should be exercised either in a §3.5 follow-up or the reflection PR's generic stress tests. |
 | `content_upsert` blocked on parser gaps | §5 — migration preserves the existing pinned tests |
 | Positional identity (parameter_index) | §5 — preserved |

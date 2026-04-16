@@ -606,7 +606,8 @@ pub struct ValueNode {
 ///   the input port's resolved Conj + field label; Operator
 ///   dispatches via the operand type's algebra walk.
 /// - Pattern 2 (variant-is-data): fails. Callable carries a
-///   DeclarationId; FieldProject carries a field label;
+///   DeclarationId; FieldProject carries a field label plus an
+///   optional post-infer child declaration carrier;
 ///   Operator carries an OperatorKind.
 /// - Pattern 3 (algebraic form): fails.
 /// - Pattern 4 (dimensional): fails.
@@ -626,8 +627,15 @@ pub enum TransformTarget {
     /// inference walks that input through any Instantiation /
     /// ResolvedIdentifier edges, looks up `field_label` on the
     /// reached Conj, and resolves the output through the same
-    /// substitution context. No synthesized accessor declaration.
-    FieldProject { field_label: String },
+    /// substitution context. `field_child` is the post-infer phase
+    /// carrier for the resolved projected child declaration, so
+    /// downstream consumers can read typed child identity without
+    /// repeating the label lookup. No synthesized accessor
+    /// declaration.
+    FieldProject {
+        field_label: String,
+        field_child: Option<DeclarationId>,
+    },
     /// A primitive binary operator. Inference dispatches on the
     /// `OperatorKind` variant directly: arithmetic returns the operand
     /// type, comparison returns Bool. No declaration is allocated.
