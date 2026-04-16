@@ -68,10 +68,20 @@ L1 — Reflection framework              [prereqs shipping — reflection PR nex
       │    • Prereq 1 (FieldProject): #458 merged
       │    • Prereq 2 (Path.binding): #458 merged
       │    • Prereq 3 (contextual lambda): #460 merged
-      │    • Prereq 4 (list.dag bootstrap): #463 in flight
+      │    • Prereq 4 (list.dag bootstrap): #463 merged
       │    • Prereq 5 (pipe sugar): #462 merged
-      │    • Reflection PR: next after prereq slate completes
+      │    • Prereq 0.5 (implicit generics): in #466
+      │    • Reflection PR (#466): in flight
       │    • first lens (lens_unused_parameters) migrates in reflection PR
+      │
+L1.5 — Clean bootstrap (IMMEDIATE post-L1) [the process is the first feature]
+      │    1. Pipeline composition declaration (§2.1)
+      │       — typed stage functions, ExternalRealization bodies
+      │       — small PR, no implementation, just the declaration
+      │    2. Per-stage fixed-point in regen (§11)
+      │       — regen captures per-stage output, diffs at boundaries
+      │       — uses the pipeline declaration from step 1
+      │       — the dark-emu fix, available from day one
       │
       ├── L2 — v2 consumer migrations   [parallel with L2.5]
       │    │    M1: dsl/lenses/complexity.dag  (5490 lines from v2)
@@ -96,6 +106,10 @@ L3 — Pipeline stages in .dag           [blocked on L2.5 model for each stage]
       │    Stage 3: infer.dag  — Dag → Dag with port state
       │    Stage 4: parse.dag  — tokens → SurfaceItems
       │
+      Schema migration (§10)            [after L3 Stage 1]
+      │    ChangeClassification → patch → bridge → fixed-point
+      │    Zero manual stage0 edits
+      │
 L4 — Full self-hosting (M3)            [long-term]
            v3's compiler is .dag code
            Rust stage0 is vestigial (bootstrap seed)
@@ -103,10 +117,19 @@ L4 — Full self-hosting (M3)            [long-term]
 
 **Gating rules:**
 
-1. **L2 cannot start until L1 ships.** Consumer migrations read
+1. **L1.5 is the FIRST thing after L1.** Before lens migrations,
+   before domain modeling, before any pipeline stage work — land
+   the pipeline composition declaration and per-stage fixed-point
+   verification. The process is the first feature. Every
+   subsequent piece of work (lens migrations, stage ports, new
+   substrate features) goes through a bootstrap process that's
+   already structurally sound. This prevents the v2 pattern where
+   the bootstrap process was never instrumented and every
+   regression was hours of archaeology.
+2. **L2 cannot start until L1 ships.** Consumer migrations read
    substrate facts through the reflection framework; no
    reflection, no lens migrations.
-2. **L2.5 cannot start until L1 ships.** Domain modeling declares
+3. **L2.5 cannot start until L1 ships.** Domain modeling declares
    types in `std/` and `extdeps/` using the same reflection
    infrastructure. Does NOT need L2 lens migrations to be done
    first — L2 and L2.5 are independent parallel work streams
@@ -122,23 +145,23 @@ L4 — Full self-hosting (M3)            [long-term]
    no Stage N implementation that reads it, it doesn't belong in
    L2.5; it's decorative. The test is: "which function body in
    L3 reads this type?" If you can't name one, don't declare it.
-3. **L3 stage N cannot start until L2.5's model for stage N is
+4. **L3 stage N cannot start until L2.5's model for stage N is
    reviewed.** Implementation fills in function bodies over
    already-declared types. The model IS the prerequisite (§2.2).
    L2 should have at least M1 underway to prove the reflection
    framework works on real analysis code before pipeline stages
    start.
-4. **L2.5 stages proceed in L3's implementation order.** Emit
+5. **L2.5 stages proceed in L3's implementation order.** Emit
    domain first (partially exists, smallest gap), lower domain
    second, parse domain third, infer domain last (blocked on I3
    write-surface experiment). Each domain model runs ahead of
    its stage's implementation by at least one step.
-5. **L3 stages proceed bottom-up.** Emit first (easiest, already
+6. **L3 stages proceed bottom-up.** Emit first (easiest, already
    half-structured), then lower, then infer, then parse. Each
    later stage's migration benefits from the earlier stages
    being in `.dag` form (e.g., `lower.dag` can call `emit.dag`
    for debug-dump purposes once both are in `.dag`).
-6. **L4 is the state after all L3 stages ship.** There is no
+7. **L4 is the state after all L3 stages ship.** There is no
    separate "make self-hosting work" milestone; it's the
    emergent consequence of completing L3.
 

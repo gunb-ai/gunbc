@@ -355,14 +355,16 @@ Full design: [`src/v3/SELF_HOSTING.md`](SELF_HOSTING.md). Key points:
   pipeline structure the same way it reads any user program's
   dependency graph. Stage contracts, per-stage fixed-point, and
   self-analysis via lenses all fall out of this shape.
-- **Dependency order:** L1 (reflection, prereqs shipping) → L2
-  (lens migrations) + L2.5 (per-stage domain modeling, parallel
-  with L2) → L3 (pipeline stages in `.dag`: emit → lower → infer
-  → parse) → L4 (full self-hosting). L2.5 is the design work that
-  models each stage's inputs/outputs to spec BEFORE implementation.
-  L2.5 runs ahead of L3 by one stage — emit domain models while
-  lens migrations start, lower domain models while emit implements,
-  etc. See §2.2 for the principle and §2 for the full diagram.
+- **Dependency order:** L1 (reflection) → **L1.5 (clean bootstrap
+  — immediate, the process is the first feature)** → L2 (lens
+  migrations) + L2.5 (per-stage domain modeling, parallel with L2)
+  → L3 (pipeline stages in `.dag`: emit → lower → infer → parse)
+  → L4 (full self-hosting). L1.5 lands the pipeline composition
+  declaration and per-stage fixed-point verification BEFORE any
+  other post-reflection work. Every subsequent change goes through
+  a bootstrap process that's already structurally sound. L2.5
+  models each stage's inputs/outputs to spec BEFORE implementation;
+  L2.5 runs ahead of L3 by one stage. See §2 for the full diagram.
 - **Infer is the research gate.** Every other stage migration is
   engineering with known patterns. Inference-as-data has no
   production precedent. The I0-I8 experiment sequence
