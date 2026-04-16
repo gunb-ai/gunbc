@@ -4,22 +4,9 @@ use std::collections::HashMap;
 const MAX_RENDER_DEPTH: usize = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TestPredicate {
-    Compiles,
-    FailsWithDiagnostic { kind: String },
-    OutputEquals { expected: String },
-    PortResolved { bind_name: String },
-    PortUnresolved { bind_name: String },
-    CostBelow { bound: i64 },
-    CostAbove { floor: i64 },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TestClaim {
-    pub name: String,
-    pub source: String,
-    pub file_name: String,
-    pub predicate: TestPredicate,
+pub struct GeneratedClaim {
+    pub declaration_name: String,
+    pub declaration_source: String,
 }
 
 pub struct TestgenLens<'a> {
@@ -31,8 +18,9 @@ impl<'a> TestgenLens<'a> {
         Self { dag }
     }
 
-    pub fn query(&self) -> Vec<TestClaim> {
+    pub fn query(&self) -> Vec<GeneratedClaim> {
         let mut claims = Vec::new();
+        let mut next_claim_id = 0usize;
         for decl_id in self.named_std_type_ids() {
             let decl = self.dag.declaration(decl_id);
             let subst = self.default_subst(decl);
@@ -43,42 +31,41 @@ impl<'a> TestgenLens<'a> {
                 TypeConnective::Conj { children } => {
                     let compile_value = self.render_value_expr(decl_id, &subst, 0);
                     if let Some(value_expr) = &compile_value {
-                        claims.push(TestClaim {
-                            name: format!("{type_expr} compiles"),
-                            source: format!("let witness: {type_expr} = {value_expr}\n"),
-                            file_name: format!("{}_compiles.v3", sanitize(&type_expr)),
-                            predicate: TestPredicate::Compiles,
-                        });
+                        self.push_claim(
+                            &mut claims,
+                            &mut next_claim_id,
+                            format!("{type_expr} compiles"),
+                            format!("let witness: {type_expr} = {value_expr}\n"),
+                            format!("{}_compiles.v3", sanitize(&type_expr)),
+                            "Compiles".to_string(),
+                        );
                     }
-                    claims.push(TestClaim {
-                        name: format!("{type_expr} rejects missing field"),
-                        source: format!(
-                            "fn probe(value: {type_expr}) -> Int = value.{}\n",
-                            self.missing_field_name(children)
-                        ),
-                        file_name: format!("{}_missing_field.v3", sanitize(&type_expr)),
-                        predicate: TestPredicate::FailsWithDiagnostic {
-                            kind: format!(
-                                "field `{}` does not exist",
-                                self.missing_field_name(children)
-                            ),
-                        },
-                    });
+                    let missing_field = self.missing_field_name(children);
+                    self.push_claim(
+                        &mut claims,
+                        &mut next_claim_id,
+                        format!("{type_expr} rejects missing field"),
+                        format!("fn probe(value: {type_expr}) -> Int = value.{missing_field}\n"),
+                        format!("{}_missing_field.v3", sanitize(&type_expr)),
+                        format!("FailsWithDiagnostic({})", quote_string(&format!(
+                            "field `{missing_field}` does not exist"
+                        ))),
+                    );
                     if compile_value.is_some()
                         && decl.span.file == "src/v3/std/verification.dag"
                         && self.supports_type_mismatch_claim(children)
                     {
-                        claims.push(TestClaim {
-                            name: format!("{type_expr} rejects field type mismatch"),
-                            source: format!(
+                        self.push_claim(
+                            &mut claims,
+                            &mut next_claim_id,
+                            format!("{type_expr} rejects field type mismatch"),
+                            format!(
                                 "let witness: {type_expr} = {}\n",
                                 self.render_mismatch_record(children, &subst)
                             ),
-                            file_name: format!("{}_type_mismatch.v3", sanitize(&type_expr)),
-                            predicate: TestPredicate::FailsWithDiagnostic {
-                                kind: "TypeMismatch".to_string(),
-                            },
-                        });
+                            format!("{}_type_mismatch.v3", sanitize(&type_expr)),
+                            format!("FailsWithDiagnostic({})", quote_string("TypeMismatch")),
+                        );
                     }
                 }
                 TypeConnective::Disj { variants } => {
@@ -86,36 +73,61 @@ impl<'a> TestgenLens<'a> {
                         if let Some(value_expr) =
                             self.render_variant_witness(decl_id, variant, &subst, 0)
                         {
-                            claims.push(TestClaim {
-                                name: format!("{type_expr} variant {} compiles", variant.label),
-                                source: format!("let witness: {type_expr} = {value_expr}\n"),
-                                file_name: format!(
+                            self.push_claim(
+                                &mut claims,
+                                &mut next_claim_id,
+                                format!("{type_expr} variant {} compiles", variant.label),
+                                format!("let witness: {type_expr} = {value_expr}\n"),
+                                format!(
                                     "{}_{}_compiles.v3",
                                     sanitize(&type_expr),
                                     sanitize(&variant.label)
                                 ),
-                                predicate: TestPredicate::Compiles,
-                            });
+                                "Compiles".to_string(),
+                            );
                         }
                     }
                     if variants.len() > 1 {
-                        claims.push(TestClaim {
-                            name: format!("{type_expr} requires exhaustive match"),
-                            source: format!(
+                        self.push_claim(
+                            &mut claims,
+                            &mut next_claim_id,
+                            format!("{type_expr} requires exhaustive match"),
+                            format!(
                                 "fn probe(value: {type_expr}) -> Int = match value {{ {} => 0 }}\n",
                                 self.match_pattern(&variants[0])
                             ),
-                            file_name: format!("{}_non_exhaustive.v3", sanitize(&type_expr)),
-                            predicate: TestPredicate::FailsWithDiagnostic {
-                                kind: "non-exhaustive".to_string(),
-                            },
-                        });
+                            format!("{}_non_exhaustive.v3", sanitize(&type_expr)),
+                            format!("FailsWithDiagnostic({})", quote_string("non-exhaustive")),
+                        );
                     }
                 }
                 _ => {}
             }
         }
         claims
+    }
+
+    fn push_claim(
+        &self,
+        claims: &mut Vec<GeneratedClaim>,
+        next_claim_id: &mut usize,
+        claim_name: String,
+        program_source: String,
+        file_name: String,
+        predicate_expr: String,
+    ) {
+        let declaration_name = format!("generated_test_claim_{:03}", *next_claim_id);
+        *next_claim_id += 1;
+        claims.push(GeneratedClaim {
+            declaration_name: declaration_name.clone(),
+            declaration_source: format!(
+                "data {declaration_name}: TestClaim = {{\n  name: {},\n  source: {},\n  file_name: {},\n  predicate: {}\n}}\n",
+                quote_string(&claim_name),
+                quote_string(&program_source),
+                quote_string(&file_name),
+                predicate_expr
+            ),
+        });
     }
 
     fn named_std_type_ids(&self) -> Vec<DeclarationId> {
@@ -391,4 +403,12 @@ fn sanitize(s: &str) -> String {
     s.chars()
         .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
         .collect()
+}
+
+fn quote_string(s: &str) -> String {
+    let escaped = s
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n");
+    format!("\"{escaped}\"")
 }
