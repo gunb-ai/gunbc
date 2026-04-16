@@ -226,6 +226,7 @@ fn emit_python_with_mode(dag: &Dag, mode: EmitPythonMode) -> Result<String, Emit
     };
 
     let mut sections = vec![
+        "from __future__ import annotations".to_string(),
         "from dataclasses import dataclass".to_string(),
         "import types".to_string(),
         "import typing".to_string(),
@@ -442,7 +443,7 @@ impl<'a> Ctx<'a> {
                 "__match is not None".to_string()
             });
         }
-        let variant_name = variant_name_for_decl(self.dag, disj_id, variant_id)?;
+        let variant_name = runtime_variant_name_for_decl(self.dag, disj_id, variant_id)?;
         Ok(format!("isinstance(__match, {variant_name})"))
     }
 
@@ -671,24 +672,25 @@ impl<'a> Ctx<'a> {
         inputs: &[PortId],
         locals: &RenderLocals,
     ) -> Result<Option<String>, EmitPythonError> {
-        let Some((_enum_name, variant_name)) = variant_parent_info(self.dag, template) else {
+        let Some((enum_name, variant_name)) = variant_parent_info(self.dag, template) else {
             return Ok(None);
         };
+        let runtime_name = python_variant_class_name(&enum_name, &variant_name);
         let TypeConnective::Conj { children } = &self.dag.declaration(template).connective else {
             return Ok(None);
         };
         if children.is_empty() {
-            return Ok(Some(format!("{variant_name}()")));
+            return Ok(Some(format!("{runtime_name}()")));
         }
         if children.len() == 1 && children[0].label == "_0" {
             let arg = self.render_port(inputs[0], locals)?;
-            return Ok(Some(format!("{variant_name}({arg})")));
+            return Ok(Some(format!("{runtime_name}({arg})")));
         }
         let mut fields = Vec::new();
         for (field, input) in children.iter().zip(inputs.iter()) {
             fields.push(format!("{}={}", field.label, self.render_port(*input, locals)?));
         }
-        Ok(Some(format!("{variant_name}({})", fields.join(", "))))
+        Ok(Some(format!("{runtime_name}({})", fields.join(", "))))
     }
 
     fn render_callable_body(
@@ -847,7 +849,8 @@ impl<'a> Ctx<'a> {
                 variant.label
             )));
         };
-        let mut lines = vec!["@dataclass".to_string(), format!("class {}({enum_name}):", variant.label)];
+        let runtime_name = python_variant_class_name(enum_name, &variant.label);
+        let mut lines = vec!["@dataclass".to_string(), format!("class {runtime_name}({enum_name}):")];
         if children.is_empty() {
             lines.push("    pass".to_string());
             return Ok(lines.join("\n"));
@@ -1290,6 +1293,20 @@ fn variant_name_for_decl(
         })
 }
 
+fn runtime_variant_name_for_decl(
+    dag: &Dag,
+    disj_id: DeclarationId,
+    variant_id: DeclarationId,
+) -> Result<String, EmitPythonError> {
+    let variant_name = variant_name_for_decl(dag, disj_id, variant_id)?;
+    Ok(dag
+        .declaration(disj_id)
+        .name
+        .as_deref()
+        .map(|enum_name| python_variant_class_name(enum_name, &variant_name))
+        .unwrap_or(variant_name))
+}
+
 fn variant_parent_info(dag: &Dag, variant_id: DeclarationId) -> Option<(String, String)> {
     dag.declarations().iter().find_map(|decl| {
         let enum_name = decl.name.as_ref()?;
@@ -1301,6 +1318,10 @@ fn variant_parent_info(dag: &Dag, variant_id: DeclarationId) -> Option<(String, 
             .find(|variant| variant.ty == variant_id)
             .map(|variant| (enum_name.clone(), variant.label.clone()))
     })
+}
+
+fn python_variant_class_name(enum_name: &str, variant_name: &str) -> String {
+    format!("{enum_name}_{variant_name}")
 }
 
 fn callable_template(target: DeclarationId, dag: &Dag) -> (DeclarationId, Vec<TemplateArgument>) {

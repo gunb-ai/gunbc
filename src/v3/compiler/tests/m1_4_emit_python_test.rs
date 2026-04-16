@@ -37,6 +37,11 @@ fn emit_python_lens_module() -> String {
     emit_python_module(&dag).expect("emit python lens module")
 }
 
+fn emit_python_module_from_source(source: &str, file_name: &str) -> String {
+    let dag = compile_to_dag(source, file_name).expect("compiled python module source");
+    emit_python_module(&dag).expect("emit python module")
+}
+
 fn next_roundtrip_dir() -> PathBuf {
     let id = ROUNDTRIP_ID.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!(
@@ -209,23 +214,23 @@ class Behavior:
     pass
 
 @dataclass
-class Value(Behavior):
+class Behavior_Value(Behavior):
     _0: ValueNode
 
 @dataclass
-class Transform(Behavior):
+class Behavior_Transform(Behavior):
     _0: TransformNode
 
 @dataclass
-class Branch(Behavior):
+class Behavior_Branch(Behavior):
     _0: BranchNode
 
 @dataclass
-class Loop(Behavior):
+class Behavior_Loop(Behavior):
     _0: LoopNode
 
 @dataclass
-class Bind(Behavior):
+class Behavior_Bind(Behavior):
     _0: BindNode
 
 @dataclass
@@ -243,8 +248,10 @@ fn roundtrip_python_lens_render(
 ) -> String {
     let dag = compile_to_dag(program_source, file_name).expect("program compiles");
     let serialized_dag = serialize_dag(&dag);
+    let (future_import, module_source) = split_future_annotations(module_source);
     let wrapped = format!(
-        "{}\n\n{}\n\ndag = {}\n\ndef render(dag: Dag, function: NodeId) -> str:\n    for node in dag.nodes:\n        if isinstance(node, Bind) and node._0.id == function:\n            return node._0.name\n    return function\n\nrendered = [f\"{{render(dag, v.function)}}:param[{{v.parameter_index}}]\" for v in check(dag)]\nrendered.sort()\nprint(\"|\".join(rendered))\n",
+        "{}{}{}\n\ndag = {}\n\ndef render(dag: Dag, function: NodeId) -> str:\n    for node in dag.nodes:\n        if isinstance(node, Behavior_Bind) and node._0.id == function:\n            return node._0.name\n    return function\n\nrendered = [f\"{{render(dag, v.function)}}:param[{{v.parameter_index}}]\" for v in check(dag)]\nrendered.sort()\nprint(\"|\".join(rendered))\n",
+        future_import,
         python_runtime_prelude(),
         module_source,
         serialized_dag
@@ -269,6 +276,33 @@ fn roundtrip_python_lens_render(
     String::from_utf8_lossy(&run.stdout).trim().to_string()
 }
 
+fn run_python_module(module_source: &str) {
+    let tmp_dir = next_roundtrip_dir();
+    std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
+    let src_path = tmp_dir.join("module.py");
+    std::fs::File::create(&src_path)
+        .and_then(|mut f| f.write_all(module_source.as_bytes()))
+        .expect("write python module source");
+
+    let run = Command::new("python3")
+        .arg(&src_path)
+        .output()
+        .expect("run python3");
+    assert!(
+        run.status.success(),
+        "python3 failed on emitted module:\n{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+}
+
+fn split_future_annotations(module_source: &str) -> (&str, &str) {
+    let future = "from __future__ import annotations\n\n";
+    module_source
+        .strip_prefix(future)
+        .map(|rest| (future, rest))
+        .unwrap_or(("", module_source))
+}
+
 fn serialize_dag(dag: &Dag) -> String {
     format!(
         "Dag(declarations=[], nodes=[{}], ports=[{}])",
@@ -287,13 +321,13 @@ fn serialize_dag(dag: &Dag) -> String {
 
 fn serialize_behavior(node: &Behavior) -> String {
     match node {
-        Behavior::Value(value) => format!("Value({})", serialize_value_node(value)),
+        Behavior::Value(value) => format!("Behavior_Value({})", serialize_value_node(value)),
         Behavior::Transform(transform) => {
-            format!("Transform({})", serialize_transform_node(transform))
+            format!("Behavior_Transform({})", serialize_transform_node(transform))
         }
-        Behavior::Branch(branch) => format!("Branch({})", serialize_branch_node(branch)),
-        Behavior::Loop(loop_node) => format!("Loop({})", serialize_loop_node(loop_node)),
-        Behavior::Bind(bind) => format!("Bind({})", serialize_bind_node(bind)),
+        Behavior::Branch(branch) => format!("Behavior_Branch({})", serialize_branch_node(branch)),
+        Behavior::Loop(loop_node) => format!("Behavior_Loop({})", serialize_loop_node(loop_node)),
+        Behavior::Bind(bind) => format!("Behavior_Bind({})", serialize_bind_node(bind)),
     }
 }
 
@@ -397,6 +431,65 @@ fn emit_python_module_marks_ownership_as_skipped_for_gc_target() {
     assert!(
         module.contains("# ownership skipped: GarbageCollected / LexicalScoping"),
         "expected ownership-skip trace in emitted Python module, got:\n{module}"
+    );
+}
+
+#[test]
+fn emit_python_module_defers_annotation_evaluation() {
+    let module = emit_python_module_from_source(
+        "\
+type First = WrapSecond(Second) | FirstNone
+type Second = WrapFirst(First) | SecondNone
+",
+        "recursive_types.v3",
+    );
+    assert!(
+        module.starts_with("from __future__ import annotations\n"),
+        "expected future-annotations import at module top, got:\n{module}"
+    );
+    run_python_module(&module);
+}
+
+#[test]
+fn emit_python_module_qualifies_variant_class_names_by_parent_type() {
+    let module = emit_python_module_from_source(
+        "\
+type First = Shared(Int) | FirstMissing
+type Second = Shared(String) | SecondMissing
+fn make_first(x: Int) -> First = Shared(x)
+fn make_second(x: String) -> Second = Shared(x)
+fn first_value(v: First) -> Int = match v { Shared(n) => n, FirstMissing => 0 }
+fn second_value(v: Second) -> String = match v { Shared(s) => s, SecondMissing => \"\" }
+",
+        "variant_collision.v3",
+    );
+    assert!(
+        module.contains("class First_Shared(First):"),
+        "expected qualified runtime class for First.Shared, got:\n{module}"
+    );
+    assert!(
+        module.contains("class Second_Shared(Second):"),
+        "expected qualified runtime class for Second.Shared, got:\n{module}"
+    );
+    assert!(
+        module.contains("return First_Shared(p0)"),
+        "expected qualified constructor call for First.Shared, got:\n{module}"
+    );
+    assert!(
+        module.contains("return Second_Shared(p0)"),
+        "expected qualified constructor call for Second.Shared, got:\n{module}"
+    );
+    assert!(
+        module.contains("isinstance(__match, First_Shared)"),
+        "expected qualified match guard for First.Shared, got:\n{module}"
+    );
+    assert!(
+        module.contains("isinstance(__match, Second_Shared)"),
+        "expected qualified match guard for Second.Shared, got:\n{module}"
+    );
+    assert!(
+        !module.contains("class Shared("),
+        "unexpected unqualified runtime class survived in emitted module:\n{module}"
     );
 }
 
