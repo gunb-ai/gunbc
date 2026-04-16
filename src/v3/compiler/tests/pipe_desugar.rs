@@ -1,6 +1,7 @@
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{AtomPayload, Behavior, Dag, LiteralBits, TransformTarget, TypeConnective};
 use v3_compiler::types::TypeShape;
+use v3_compiler::{CompileError, Diagnostic};
 
 fn primitive_shape(dag: &Dag, name: &str) -> TypeShape {
     TypeShape::new(
@@ -148,4 +149,96 @@ let y = 5 |> add1 |> double
     assert_eq!(inner_call.inputs.len(), 1);
     assert_eq!(literal_input(&dag, inner_call.inputs[0]), &LiteralBits::Int(5));
     assert!(dag.diagnostics().is_empty());
+}
+
+#[test]
+fn pipe_result_can_feed_later_addition() {
+    let src = "\
+fn negate(x: Int) -> Int = 0 - x
+let y = 5 |> negate + 1
+";
+    let dag = compile_to_dag(src, "pipe_addition.v3").expect("compiles");
+
+    let bind_y = bind_named(&dag, "y");
+    let add_id = dag
+        .port(bind_y.value)
+        .produced_by
+        .expect("Bind(y) value has a producer");
+    let add = dag
+        .node(add_id)
+        .as_transform()
+        .expect("producer is a Transform");
+    assert_target_name(&dag, &add.target, "+");
+    assert_eq!(add.inputs.len(), 2);
+
+    let negate_id = dag
+        .port(add.inputs[0])
+        .produced_by
+        .expect("lhs of addition is produced");
+    let negate = dag
+        .node(negate_id)
+        .as_transform()
+        .expect("lhs is the piped call");
+    assert_target_name(&dag, &negate.target, "negate");
+    assert_eq!(literal_input(&dag, negate.inputs[0]), &LiteralBits::Int(5));
+    assert_eq!(literal_input(&dag, add.inputs[1]), &LiteralBits::Int(1));
+    assert!(dag.diagnostics().is_empty());
+}
+
+#[test]
+fn pipe_result_can_feed_later_comparison() {
+    let src = "\
+fn identity(x: Int) -> Int = x
+let is_five = 5 |> identity == 5
+";
+    let dag = compile_to_dag(src, "pipe_comparison.v3").expect("compiles");
+
+    let bind = bind_named(&dag, "is_five");
+    let cmp_id = dag
+        .port(bind.value)
+        .produced_by
+        .expect("Bind(is_five) value has a producer");
+    let cmp = dag
+        .node(cmp_id)
+        .as_transform()
+        .expect("producer is a Transform");
+    assert_target_name(&dag, &cmp.target, "==");
+    assert_eq!(cmp.inputs.len(), 2);
+
+    let identity_id = dag
+        .port(cmp.inputs[0])
+        .produced_by
+        .expect("lhs of comparison is produced");
+    let identity = dag
+        .node(identity_id)
+        .as_transform()
+        .expect("lhs is the piped call");
+    assert_target_name(&dag, &identity.target, "identity");
+    assert_eq!(literal_input(&dag, identity.inputs[0]), &LiteralBits::Int(5));
+    assert_eq!(literal_input(&dag, cmp.inputs[1]), &LiteralBits::Int(5));
+    assert_eq!(
+        dag.port(bind.value).value_type(),
+        Some(&primitive_shape(&dag, "Bool")),
+        "comparison over a piped call resolves to Bool",
+    );
+    assert!(dag.diagnostics().is_empty());
+}
+
+#[test]
+fn invalid_pipe_target_fails_closed_at_parse_time() {
+    let err = compile_to_dag("let y = 5 |> 42", "pipe_invalid.v3")
+        .expect_err("invalid pipe target must fail to parse");
+
+    match err {
+        CompileError::Parse(Diagnostic::ParseError { message, span }) => {
+            assert!(
+                message.contains("expected function name after `|>`"),
+                "unexpected parse error message: {message}"
+            );
+            assert_eq!(span.file, "pipe_invalid.v3");
+            assert_eq!(span.byte_start, 13, "diagnostic should point at the invalid pipe target");
+            assert_eq!(span.byte_end, 15, "diagnostic should cover `42`");
+        }
+        other => panic!("expected parse error for invalid pipe target, got {other:?}"),
+    }
 }
