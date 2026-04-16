@@ -9,6 +9,10 @@ import std.list {
   List, empty, singleton, cons, concat, length, is_empty, fold, map, filter, contains
 }
 import std.algebra { OrderedRing }
+import v3.std.computation_model {
+  TargetExecutionModel, MemoryModel,
+  GarbageCollected, LexicalScoping
+}
 
 type PythonTypeRealization {
   target: DeclarationRef
@@ -79,21 +83,6 @@ type PythonCollectionOps {
 
 type PythonTypeApplicationSyntax {
   optional: String
-}
-
-type MemoryModel
-  = ValueOnly
-  | GarbageCollected
-  | RefCounted
-  | OwnershipBased
-
-type ScopeModel
-  = LexicalScoping
-  | DynamicScoping
-
-type TargetExecutionModel {
-  memory: MemoryModel
-  scope: ScopeModel
 }
 
 data python_target: TargetExecutionModel = {
