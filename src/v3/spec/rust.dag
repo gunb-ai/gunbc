@@ -13,7 +13,7 @@
 // the emitter looks up by `DeclarationId` and zero name strings
 // cross the substrate/emitter boundary.
 //
-// **Three meta-types, one per realization category.** Earlier
+// **Four meta-types, one per realization category.** Earlier
 // drafts attempted to fit every realization under a single
 // `Realization` meta-type with overloaded `target` / `op` fields.
 // That conflated three distinct fact shapes:
@@ -24,13 +24,13 @@
 //      → "+").
 //   3. Behavior template realizations: a v3_l1 marker → a target-
 //      language template string with placeholder slots (Bind →
-//      "let %N: %T = %V;").
+//      "let {name}: {type} = {value};").
 // Each shape needs its own index keyed differently. Splitting the
-// meta-types makes the emitter's three lookup tables type-safe and
+// meta-types makes the emitter's lookup tables type-safe and
 // each meta-type's 4-pattern dissolution receipt independent.
 //
-// **The placeholder template language (`%N/%T/%V/%C/%H/%E/%B/%X/
-// %Q`)** stays as-is: it is a bounded scaffold inside the
+// **The placeholder template language (`{name}` / `{type}` /
+// `{value}` / etc.)** stays as-is: it is a bounded scaffold inside the
 // per-target template carrier strings. Each placeholder is
 // documented in the BehaviorRealization comment block below; the
 // substitution engine lives in `emit_rust.rs::render_template`.
@@ -39,16 +39,17 @@
 // referencing the substrate's named slots) — that's deferred
 // follow-up work tracked in DOWNSTREAM_REQUIREMENTS.
 //
-// **`%Q` placeholder** stands in for a literal `"` (double-quote)
+// **`{quote}` placeholder** stands in for a literal `"` (double-quote)
 // inside a carrier string. The v3 tokenizer at M1(3) has no
 // string escape sequences, so `\"` inside a string literal is
-// impossible and `%Q` is the workaround the emitter substitutes
+// impossible and `{quote}` is the workaround the emitter substitutes
 // at render time. Dissolves when the tokenizer learns escape
 // sequences.
 
 module v3.spec.rust
 
 import v3.spec.v3_l1 { Bind, Branch, Main, DeclarationRef }
+import std.list { List }
 
 // ─────────────────────────────────────────────────────────────────
 // Realization meta-types — three distinct shapes.
@@ -60,8 +61,18 @@ import v3.spec.v3_l1 { Bind, Branch, Main, DeclarationRef }
 type TypeRealization {
   target: DeclarationRef
   carrier: String
+  fields: List<FieldBinding>
   cost: Int
 }
+
+type FieldBinding {
+  dag_name: String
+  rust_access: RustFieldAccess
+}
+
+type RustFieldAccess
+  = DirectField(String)
+  | AccessorMethod(String)
 
 // Operator realization. Maps a `(operand_type, algebra_field)`
 // pair to its target-language operator symbol. The operand type
@@ -84,21 +95,176 @@ type OperatorRealization {
 // L1 behavior markers (Bind / Branch / Main / etc.).
 //
 // Placeholders the template engine recognizes:
-//   %N  — the Bind's name
-//   %T  — the resolved target-language type name (looked up via
+//   {name}  — the Bind's name
+//   {type}  — the resolved target-language type name (looked up via
 //         the corresponding TypeRealization)
-//   %V  — the value sub-expression rendered into target syntax
-//   %C  — Branch condition expression
-//   %H  — Branch "then" arm body
-//   %E  — Branch "else" arm body
-//   %B  — the joined sequence of let-statements in main body
-//   %X  — the name of the final let-binding (printed by main)
-//   %Q  — a literal `"` character (workaround for the M1(3)
+//   {value} — the value sub-expression rendered into target syntax
+//   {cond}  — Branch condition expression
+//   {then}  — Branch "then" arm body
+//   {else}  — Branch "else" arm body
+//   {body}  — the joined sequence of let-statements in main body
+//   {final} — the name of the final let-binding (printed by main)
+//   {quote} — a literal `"` character (workaround for the M1(3)
 //         tokenizer having no escape sequences)
 type BehaviorRealization {
   target: DeclarationRef
   carrier: String
   cost: Int
+}
+
+// Callable realization. Maps a callable declaration to the
+// target-language render strategy the emitter should use when it
+// sees a `TransformTarget::Callable` instantiation of that
+// declaration. This keeps list builtin dispatch in rust.dag
+// instead of in name-keyed Rust code.
+type CallableRealization {
+  target: DeclarationRef
+  strategy: RustCallableStrategy
+  cost: Int
+}
+
+type TypeInstantiationRealization {
+  target: DeclarationRef
+  carrier: String
+  cost: Int
+}
+
+// Dissolution receipt — 🟡 mixed lifecycle. These variants are the staged Rust
+// callable-emission strategies that still live in host Rust while `emit_rust.rs`
+// exists. They dissolve when `emit.dag` owns callable lowering directly from the
+// target-language facts; until then, the strategy tag is the single authority for
+// how a std callable lowers into Rust syntax.
+type RustCallableStrategy
+  = ListEmpty
+  | ListSingleton
+  | ListCons
+  | ListConcat
+  | ListLength
+  | ListIsEmpty
+  | ListFold
+  | ListMap
+  | ListFilter
+  | ListContains
+
+// Dissolution receipt — 🟡 mixed lifecycle. `PatternRealization` is a staged
+// carrier for structural-match lowering onto realized Rust carriers such as
+// `List<T> -> Vec<T>`. The terminal target is the same authority expressed as
+// target-language facts consumed by `.dag` emission; this record remains the
+// single authority until that stage lands.
+type PatternRealization {
+  target: DeclarationRef
+  strategy: RustPatternStrategy
+  scrutinee: String
+  empty_pattern: String
+  cons_pattern: String
+  head_expr: String
+  tail_expr: String
+  cost: Int
+}
+
+// Dissolution receipt — 🟡 mixed lifecycle. The current staged emitter needs a
+// small structural strategy tag to decide which pattern-lowering path to take.
+// It dissolves with `PatternRealization` when the emitter itself becomes data.
+type RustPatternStrategy
+  = PlaceholderPatternStrategy
+  | VectorList
+
+type StatementSyntax {
+  let_binding: String
+  let_binding_inferred: String
+}
+
+type ExpressionSyntax {
+  binary_op: String
+  field_access: String
+  function_call: String
+  closure: String
+}
+
+type ForEachSyntax {
+  prefix: String
+  separator: String
+}
+
+type ControlFlowSyntax {
+  if_else: String
+  match_arm: String
+  for_each_syntax: ForEachSyntax
+}
+
+type LiteralSyntax {
+  true_keyword: String
+  false_keyword: String
+  string_delimiter: String
+}
+
+type ModuleSyntax {
+  path_separator: String
+}
+
+type FunctionSyntax {
+  definition: String
+  definition_void: String
+  param_with_type: String
+  param_separator: String
+}
+
+type TypeApplicationSyntax {
+  optional: String
+}
+
+type TypeDefinitionSyntax {
+  struct_def: String
+  struct_field: String
+  enum_def: String
+  enum_unit_variant: String
+  enum_data_variant: String
+}
+
+type PatternMatchSyntax {
+  match_expr: String
+  match_arm: String
+  variant_pattern: String
+  variant_pattern_positional: String
+  variant_pattern_empty: String
+  field_binding: String
+  field_binding_separator: String
+  wildcard: String
+}
+
+type CollectionOps {
+  concat: String
+  length: String
+  is_empty: String
+  fold: String
+  map: String
+  filter: String
+  contains: String
+  empty_list: String
+  list_literal: String
+  cons: String
+}
+
+type ValueConstructionSyntax {
+  struct_literal: String
+  struct_field_init: String
+  struct_field_separator: String
+  variant_construction: String
+  variant_named_construction: String
+}
+
+type LanguageSpec {
+  statements: DeclarationRef
+  expressions: DeclarationRef
+  control_flow: DeclarationRef
+  literals: DeclarationRef
+  modules: DeclarationRef
+  functions: DeclarationRef
+  type_applications: DeclarationRef
+  type_definitions: DeclarationRef
+  patterns: DeclarationRef
+  collection_ops: DeclarationRef
+  values: DeclarationRef
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -108,18 +274,325 @@ type BehaviorRealization {
 data rust_int: TypeRealization = {
   target: Int
   carrier: "i64"
+  fields: []
   cost: 1
 }
 
 data rust_bool: TypeRealization = {
   target: Bool
   carrier: "bool"
+  fields: []
   cost: 1
 }
 
 data rust_string: TypeRealization = {
   target: String
   carrier: "String"
+  fields: []
+  cost: 1
+}
+
+data rust_node_id: TypeRealization = {
+  target: NodeId
+  carrier: "NodeId"
+  fields: []
+  cost: 1
+}
+
+data rust_port_id: TypeRealization = {
+  target: PortId
+  carrier: "PortId"
+  fields: []
+  cost: 1
+}
+
+data rust_declaration_id: TypeRealization = {
+  target: DeclarationId
+  carrier: "DeclarationId"
+  fields: []
+  cost: 1
+}
+
+data rust_type_shape: TypeRealization = {
+  target: TypeShape
+  carrier: "TypeShape"
+  fields: [
+    { dag_name: "declaration", rust_access: DirectField("declaration") }
+  ]
+  cost: 1
+}
+
+data rust_port_state: TypeRealization = {
+  target: PortState
+  carrier: "PortState"
+  fields: []
+  cost: 1
+}
+
+data rust_port: TypeRealization = {
+  target: DagPort
+  carrier: "Port"
+  fields: [
+    { dag_name: "id", rust_access: AccessorMethod("id") },
+    { dag_name: "state", rust_access: AccessorMethod("state_value") },
+    { dag_name: "produced_by", rust_access: DirectField("produced_by") }
+  ]
+  cost: 1
+}
+
+data rust_source_span: TypeRealization = {
+  target: SourceSpan
+  carrier: "SourceSpan"
+  fields: [
+    { dag_name: "file", rust_access: DirectField("file") },
+    { dag_name: "start", rust_access: DirectField("byte_start") },
+    { dag_name: "end", rust_access: DirectField("byte_end") }
+  ]
+  cost: 1
+}
+
+data rust_literal_bits: TypeRealization = {
+  target: LiteralBits
+  carrier: "LiteralBits"
+  fields: []
+  cost: 1
+}
+
+data rust_atom_payload: TypeRealization = {
+  target: AtomPayload
+  carrier: "AtomPayload"
+  fields: []
+  cost: 1
+}
+
+data rust_cardinality_bound: TypeRealization = {
+  target: CardinalityBound
+  carrier: "CardinalityBound"
+  fields: []
+  cost: 1
+}
+
+data rust_conj_field: TypeRealization = {
+  target: ConjField
+  carrier: "Field"
+  fields: [
+    { dag_name: "label", rust_access: DirectField("label") },
+    { dag_name: "ty", rust_access: DirectField("ty") }
+  ]
+  cost: 1
+}
+
+data rust_template_argument: TypeRealization = {
+  target: TemplateArgument
+  carrier: "TemplateArgument"
+  fields: [
+    { dag_name: "parameter", rust_access: DirectField("parameter") },
+    { dag_name: "value", rust_access: DirectField("value") }
+  ]
+  cost: 1
+}
+
+data rust_field_entry: TypeRealization = {
+  target: FieldEntry
+  carrier: "(String, FieldValue)"
+  fields: [
+    { dag_name: "label", rust_access: DirectField("0") },
+    { dag_name: "value", rust_access: DirectField("1") }
+  ]
+  cost: 1
+}
+
+data rust_field_value: TypeRealization = {
+  target: FieldValue
+  carrier: "FieldValue"
+  fields: []
+  cost: 1
+}
+
+data rust_value_body: TypeRealization = {
+  target: ValueBody
+  carrier: "ValueBody"
+  fields: []
+  cost: 1
+}
+
+data rust_arrow_body: TypeRealization = {
+  target: ArrowBody
+  carrier: "ArrowBody"
+  fields: []
+  cost: 1
+}
+
+data rust_type_connective: TypeRealization = {
+  target: TypeConnective
+  carrier: "TypeConnective"
+  fields: []
+  cost: 1
+}
+
+data rust_declaration: TypeRealization = {
+  target: Declaration
+  carrier: "Declaration"
+  fields: [
+    { dag_name: "id", rust_access: DirectField("id") },
+    { dag_name: "name", rust_access: DirectField("name") },
+    { dag_name: "connective", rust_access: DirectField("connective") },
+    { dag_name: "type_params", rust_access: DirectField("type_params") },
+    { dag_name: "meta_tag", rust_access: DirectField("meta_tag") },
+    { dag_name: "inhabits", rust_access: DirectField("inhabits") },
+    { dag_name: "value_body", rust_access: DirectField("value_body") },
+    { dag_name: "span", rust_access: DirectField("span") }
+  ]
+  cost: 1
+}
+
+data rust_arithmetic_op: TypeRealization = {
+  target: ArithmeticOp
+  carrier: "ArithmeticOp"
+  fields: []
+  cost: 1
+}
+
+data rust_comparison_op: TypeRealization = {
+  target: ComparisonOp
+  carrier: "ComparisonOp"
+  fields: []
+  cost: 1
+}
+
+data rust_operator_kind: TypeRealization = {
+  target: OperatorKind
+  carrier: "OperatorKind"
+  fields: []
+  cost: 1
+}
+
+data rust_transform_target: TypeRealization = {
+  target: TransformTarget
+  carrier: "TransformTarget"
+  fields: []
+  cost: 1
+}
+
+data rust_branch_pattern: TypeRealization = {
+  target: BranchPattern
+  carrier: "BranchPattern"
+  fields: []
+  cost: 1
+}
+
+data rust_payload_binding: TypeRealization = {
+  target: PayloadBinding
+  carrier: "PayloadBinding"
+  fields: [
+    { dag_name: "binding_name", rust_access: DirectField("binding_name") },
+    { dag_name: "payload_port", rust_access: DirectField("payload_port") }
+  ]
+  cost: 1
+}
+
+data rust_branch_path: TypeRealization = {
+  target: BranchPath
+  carrier: "Path"
+  fields: [
+    { dag_name: "body", rust_access: DirectField("body") },
+    { dag_name: "result_port", rust_access: AccessorMethod("result_port") },
+    { dag_name: "pattern", rust_access: DirectField("pattern") },
+    { dag_name: "binding", rust_access: DirectField("binding") }
+  ]
+  cost: 1
+}
+
+data rust_loop_bound: TypeRealization = {
+  target: LoopBound
+  carrier: "Bound"
+  fields: [
+    { dag_name: "count", rust_access: DirectField("count") }
+  ]
+  cost: 1
+}
+
+data rust_value_node: TypeRealization = {
+  target: ValueNode
+  carrier: "ValueNode"
+  fields: [
+    { dag_name: "id", rust_access: DirectField("id") },
+    { dag_name: "payload", rust_access: DirectField("data") },
+    { dag_name: "result_port", rust_access: AccessorMethod("result_port") },
+    { dag_name: "span", rust_access: DirectField("span") }
+  ]
+  cost: 1
+}
+
+data rust_transform_node: TypeRealization = {
+  target: TransformNode
+  carrier: "TransformNode"
+  fields: [
+    { dag_name: "id", rust_access: DirectField("id") },
+    { dag_name: "target", rust_access: DirectField("target") },
+    { dag_name: "inputs", rust_access: DirectField("inputs") },
+    { dag_name: "result_port", rust_access: AccessorMethod("result_port") },
+    { dag_name: "span", rust_access: DirectField("span") }
+  ]
+  cost: 1
+}
+
+data rust_branch_node: TypeRealization = {
+  target: BranchNode
+  carrier: "BranchNode"
+  fields: [
+    { dag_name: "id", rust_access: DirectField("id") },
+    { dag_name: "input", rust_access: DirectField("input") },
+    { dag_name: "paths", rust_access: DirectField("paths") },
+    { dag_name: "result_port", rust_access: AccessorMethod("result_port") },
+    { dag_name: "span", rust_access: DirectField("span") }
+  ]
+  cost: 1
+}
+
+data rust_loop_node: TypeRealization = {
+  target: LoopNode
+  carrier: "LoopNode"
+  fields: [
+    { dag_name: "id", rust_access: DirectField("id") },
+    { dag_name: "source", rust_access: DirectField("source") },
+    { dag_name: "init", rust_access: DirectField("init") },
+    { dag_name: "body", rust_access: DirectField("body") },
+    { dag_name: "bound", rust_access: DirectField("bound") },
+    { dag_name: "result_port", rust_access: AccessorMethod("result_port") },
+    { dag_name: "span", rust_access: DirectField("span") }
+  ]
+  cost: 1
+}
+
+data rust_bind_node: TypeRealization = {
+  target: BindNode
+  carrier: "BindNode"
+  fields: [
+    { dag_name: "id", rust_access: DirectField("id") },
+    { dag_name: "name", rust_access: DirectField("name") },
+    { dag_name: "result_port", rust_access: AccessorMethod("result_port") },
+    { dag_name: "params", rust_access: DirectField("params") },
+    { dag_name: "span", rust_access: DirectField("span") }
+  ]
+  cost: 1
+}
+
+data rust_behavior: TypeRealization = {
+  target: Behavior
+  carrier: "Behavior"
+  fields: []
+  cost: 1
+}
+
+data rust_dag: TypeRealization = {
+  target: Dag
+  carrier: "Dag"
+  fields: [
+    { dag_name: "declarations", rust_access: AccessorMethod("declarations_owned") },
+    { dag_name: "nodes", rust_access: AccessorMethod("nodes_owned") },
+    { dag_name: "ports", rust_access: AccessorMethod("ports") }
+  ]
   cost: 1
 }
 
@@ -174,8 +647,50 @@ data rust_int_eq: OperatorRealization = {
   cost: 1
 }
 
+data rust_node_id_eq: OperatorRealization = {
+  target: NodeId
+  op: OrderedRing.eq
+  carrier: "=="
+  cost: 1
+}
+
+data rust_port_id_eq: OperatorRealization = {
+  target: PortId
+  op: OrderedRing.eq
+  carrier: "=="
+  cost: 1
+}
+
+data rust_declaration_id_eq: OperatorRealization = {
+  target: DeclarationId
+  op: OrderedRing.eq
+  carrier: "=="
+  cost: 1
+}
+
 data rust_int_ne: OperatorRealization = {
   target: Int
+  op: OrderedRing.ne
+  carrier: "!="
+  cost: 1
+}
+
+data rust_node_id_ne: OperatorRealization = {
+  target: NodeId
+  op: OrderedRing.ne
+  carrier: "!="
+  cost: 1
+}
+
+data rust_port_id_ne: OperatorRealization = {
+  target: PortId
+  op: OrderedRing.ne
+  carrier: "!="
+  cost: 1
+}
+
+data rust_declaration_id_ne: OperatorRealization = {
+  target: DeclarationId
   op: OrderedRing.ne
   carrier: "!="
   cost: 1
@@ -215,18 +730,198 @@ data rust_int_ge: OperatorRealization = {
 
 data rust_let_stmt: BehaviorRealization = {
   target: Bind
-  carrier: "let %N: %T = %V;"
+  carrier: "let {name}: {type} = {value};"
   cost: 0
 }
 
 data rust_if_expr: BehaviorRealization = {
   target: Branch
-  carrier: "if %C { %H } else { %E }"
+  carrier: "if {cond} { {then} } else { {else} }"
   cost: 0
 }
 
 data rust_main_wrap: BehaviorRealization = {
   target: Main
-  carrier: "fn main() { %B println!(%Q{}%Q, %X); }"
+  carrier: "fn main() { {body} println!({quote}{{}}{quote}, {final}); }"
   cost: 0
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Callable realizations — staged std.list helpers.
+// ─────────────────────────────────────────────────────────────────
+
+data rust_empty_callable: CallableRealization = {
+  target: empty
+  strategy: ListEmpty
+  cost: 1
+}
+
+data rust_singleton_callable: CallableRealization = {
+  target: singleton
+  strategy: ListSingleton
+  cost: 1
+}
+
+data rust_cons_callable: CallableRealization = {
+  target: cons
+  strategy: ListCons
+  cost: 1
+}
+
+data rust_concat_callable: CallableRealization = {
+  target: concat
+  strategy: ListConcat
+  cost: 1
+}
+
+data rust_length_callable: CallableRealization = {
+  target: length
+  strategy: ListLength
+  cost: 1
+}
+
+data rust_list_instantiation: TypeInstantiationRealization = {
+  target: List
+  carrier: "Vec<{element}>"
+  cost: 1
+}
+
+data rust_map_instantiation: TypeInstantiationRealization = {
+  target: Map
+  carrier: "HashMap<{key}, {value}>"
+  cost: 1
+}
+
+data rust_is_empty_callable: CallableRealization = {
+  target: is_empty
+  strategy: ListIsEmpty
+  cost: 1
+}
+
+data rust_fold_callable: CallableRealization = {
+  target: fold
+  strategy: ListFold
+  cost: 1
+}
+
+data rust_map_callable: CallableRealization = {
+  target: map
+  strategy: ListMap
+  cost: 1
+}
+
+data rust_filter_callable: CallableRealization = {
+  target: filter
+  strategy: ListFilter
+  cost: 1
+}
+
+data rust_contains_callable: CallableRealization = {
+  target: contains
+  strategy: ListContains
+  cost: 1
+}
+
+data rust_list_pattern: PatternRealization = {
+  target: List
+  strategy: VectorList
+  scrutinee: "{expr}.as_slice()"
+  empty_pattern: "[]"
+  cons_pattern: "[{head}, {tail} @ ..]"
+  head_expr: "{head}.clone()"
+  tail_expr: "{tail}.to_vec()"
+  cost: 1
+}
+
+data rust_statements: StatementSyntax = {
+  let_binding: "let {name}: {type} = {value};"
+  let_binding_inferred: "let {name} = {value};"
+}
+
+data rust_expressions: ExpressionSyntax = {
+  binary_op: "({lhs} {op} {rhs})"
+  field_access: "{object}.{field}"
+  function_call: "{func}({args})"
+  closure: "|{params}| {{ {body} }}"
+}
+
+data rust_control_flow: ControlFlowSyntax = {
+  if_else: "if {cond} { {then} } else { {else} }"
+  match_arm: "{pattern} => {body},"
+  for_each_syntax: { prefix: "for ", separator: " in " }
+}
+
+data rust_literals: LiteralSyntax = {
+  true_keyword: "true"
+  false_keyword: "false"
+  string_delimiter: "%Q"
+}
+
+data rust_modules: ModuleSyntax = {
+  path_separator: "::"
+}
+
+data rust_functions: FunctionSyntax = {
+  definition: "fn {name}({params}) -> {ret} { {body} }"
+  definition_void: "fn {name}({params}) { {body} }"
+  param_with_type: "{name}: {type}"
+  param_separator: ", "
+}
+
+data rust_type_applications: TypeApplicationSyntax = {
+  optional: "Option<{element}>"
+}
+
+data rust_type_defs: TypeDefinitionSyntax = {
+  struct_def: "pub struct {name} { {fields} }"
+  struct_field: "pub {name}: {type},"
+  enum_def: "pub enum {name} { {variants} }"
+  enum_unit_variant: "{name},"
+  enum_data_variant: "{name} { {fields} },"
+}
+
+data rust_patterns: PatternMatchSyntax = {
+  match_expr: "match {expr} { {arms} }"
+  match_arm: "{pattern} => {body},"
+  variant_pattern: "{name} {{ {bindings} }}"
+  variant_pattern_positional: "{name}({binding})"
+  variant_pattern_empty: "{name}"
+  field_binding: "{field}: {binding}"
+  field_binding_separator: ", "
+  wildcard: "_"
+}
+
+data rust_collection_ops: CollectionOps = {
+  concat: "{ let mut __left = {left}; __left.extend({right}); __left }"
+  length: "({recv}).len() as i64"
+  is_empty: "({recv}).is_empty()"
+  fold: "({recv}).clone().into_iter().fold({init}, {body})"
+  map: "({recv}).clone().into_iter().map({body}).collect::<Vec<_>>()"
+  filter: "{ let mut __out = Vec::new(); for {item} in ({recv}).clone().into_iter() { if {predicate} { __out.push({item}); } } __out }"
+  contains: "({recv}).contains(&{item})"
+  empty_list: "Vec::new()"
+  list_literal: "vec![{elements}]"
+  cons: "{ let mut __list = {tail}; __list.insert(0, {head}); __list }"
+}
+
+data rust_value_construction: ValueConstructionSyntax = {
+  struct_literal: "{type} {{ {fields} }}"
+  struct_field_init: "{name}: {value}"
+  struct_field_separator: ", "
+  variant_construction: "{variant}({args})"
+  variant_named_construction: "{variant} {{ {fields} }}"
+}
+
+data rust_language: LanguageSpec = {
+  statements: rust_statements
+  expressions: rust_expressions
+  control_flow: rust_control_flow
+  literals: rust_literals
+  modules: rust_modules
+  functions: rust_functions
+  type_applications: rust_type_applications
+  type_definitions: rust_type_defs
+  patterns: rust_patterns
+  collection_ops: rust_collection_ops
+  values: rust_value_construction
 }

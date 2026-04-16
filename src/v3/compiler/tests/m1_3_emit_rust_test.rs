@@ -16,17 +16,23 @@
 // exact formatting.
 
 use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::emit_rust::emit_rust;
+use v3_compiler::emit_rust::{emit_rust, emit_rust_module};
 
 static ROUNDTRIP_ID: AtomicUsize = AtomicUsize::new(0);
 
 fn emit(source: &str) -> String {
     let dag = compile_to_dag(source, "test.v3").expect("compiles");
     emit_rust(&dag).expect("emits")
+}
+
+fn emit_module(source: &str) -> String {
+    let dag = compile_to_dag(source, "test.v3").expect("compiles");
+    emit_rust_module(&dag).expect("emits module")
 }
 
 fn next_roundtrip_dir() -> std::path::PathBuf {
@@ -58,6 +64,80 @@ fn roundtrip_stdout(source: &str) -> String {
         .status()
         .expect("invoke rustc — install a rust toolchain to run this test");
     assert!(compile.success(), "rustc failed on emitted source:\n{source}");
+
+    let run = Command::new(&bin_path)
+        .output()
+        .expect("run compiled binary");
+    assert!(run.status.success(), "compiled binary failed");
+    String::from_utf8_lossy(&run.stdout).trim().to_string()
+}
+
+fn deps_dir() -> PathBuf {
+    std::env::current_exe()
+        .expect("current test binary path")
+        .parent()
+        .expect("deps dir")
+        .to_path_buf()
+}
+
+fn find_current_rlib(crate_name: &str) -> PathBuf {
+    let prefix = format!("lib{crate_name}-");
+    let mut matches: Vec<PathBuf> = std::fs::read_dir(deps_dir())
+        .expect("read deps dir")
+        .filter_map(|entry| {
+            let path = entry.ok()?.path();
+            let file_name = path.file_name()?.to_str()?;
+            if file_name.starts_with(&prefix) && file_name.ends_with(".rlib") {
+                Some(path)
+            } else {
+                None
+            }
+        })
+        .collect();
+    matches.sort_by_key(|path| {
+        std::fs::metadata(path)
+            .and_then(|meta| meta.modified())
+            .ok()
+    });
+    matches
+        .into_iter()
+        .last()
+        .expect("compiled rlib for current crate")
+}
+
+fn compile_with_current_crate(src_path: &Path, bin_path: &Path) {
+    let deps = deps_dir();
+    let current_rlib = find_current_rlib("v3_compiler");
+    let compile = Command::new("rustc")
+        .arg("--edition=2021")
+        .arg(src_path)
+        .arg("-o")
+        .arg(bin_path)
+        .arg("-L")
+        .arg(format!("dependency={}", deps.display()))
+        .arg("--extern")
+        .arg(format!("v3_compiler={}", current_rlib.display()))
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .expect("invoke rustc — install a rust toolchain to run this test");
+    assert!(compile.success(), "rustc failed on emitted source");
+}
+
+fn roundtrip_module_stdout(module_source: &str, wrapper_body: &str) -> String {
+    let wrapped = format!(
+        "mod emitted {{ use v3_compiler::dag::*; use v3_compiler::diagnostics::*; {module_source} pub fn __run() -> i64 {{ {wrapper_body} }} }} fn main() {{ println!(\"{{}}\", emitted::__run()); }}"
+    );
+
+    let tmp_dir = next_roundtrip_dir();
+    std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
+    let src_path = tmp_dir.join("main.rs");
+    let bin_path = tmp_dir.join("main_bin");
+    std::fs::File::create(&src_path)
+        .and_then(|mut f| f.write_all(wrapped.as_bytes()))
+        .expect("write wrapped rust source");
+
+    compile_with_current_crate(&src_path, &bin_path);
 
     let run = Command::new(&bin_path)
         .output()
@@ -104,13 +184,61 @@ fn emit_rust_if_else_branch() {
 }
 
 #[test]
+fn emit_rust_emits_user_enum_type_definitions() {
+    let out = emit(
+        "type Sign = Plus | Minus
+let zero: Int = 0",
+    );
+    assert!(out.contains("pub enum Sign {"), "got: {out}");
+    assert!(out.contains("Plus,"), "got: {out}");
+    assert!(out.contains("Minus,"), "got: {out}");
+}
+
+#[test]
+fn emit_rust_match_on_user_sum_uses_match_expression() {
+    let out = emit(
+        "type Sign = Plus | Minus
+fn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }
+let zero: Int = 0",
+    );
+    assert!(out.contains("pub enum Sign {"), "got: {out}");
+    assert!(out.contains("fn classify(p0: Sign) -> i64 { match (p0).clone() {"), "got: {out}");
+    assert!(out.contains("Sign::Plus => 0,"), "got: {out}");
+    assert!(out.contains("Sign::Minus => 1,"), "got: {out}");
+}
+
+#[test]
+fn emit_rust_payload_match_uses_struct_variant_pattern() {
+    let out = emit(
+        "type BoxedInt = Boxed(Int) | Empty
+fn unwrap_or_zero(b: BoxedInt) -> Int = match b { Boxed(value) => value, Empty => 0 }
+let zero: Int = 0",
+    );
+    assert!(out.contains("pub enum BoxedInt {"), "got: {out}");
+    assert!(out.contains("Boxed { _0: i64, },"), "got: {out}");
+    assert!(out.contains("fn unwrap_or_zero(p0: BoxedInt) -> i64 { match (p0).clone() {"), "got: {out}");
+    assert!(out.contains("BoxedInt::Boxed { _0: value } => (value).clone(),"), "got: {out}");
+    assert!(out.contains("BoxedInt::Empty => 0,"), "got: {out}");
+}
+
+#[test]
+fn emit_rust_record_literal_uses_value_construction_syntax() {
+    let out = emit(
+        "type Point { x: Int y: Int }
+let p: Point = { x: 1, y: 2 }",
+    );
+    assert!(out.contains("pub struct Point {"), "got: {out}");
+    assert!(out.contains("let p: Point = Point { x: 1, y: 2 };"), "got: {out}");
+}
+
+#[test]
 fn emit_rust_multi_bind_uses_last_as_print_target() {
     let out = emit(
         "let a: Int = 1
 let b: Int = a + 2",
     );
     assert!(out.contains("let a: i64 = 1;"), "got: {out}");
-    assert!(out.contains("let b: i64 = (a + 2);"), "got: {out}");
+    assert!(out.contains("let b: i64 = ((a).clone() + 2);"), "got: {out}");
     // Main wrap prints the LAST bind (`b`), not the first (`a`).
     assert!(out.contains("println!(\"{}\", b)"), "got: {out}");
 }
@@ -271,15 +399,23 @@ fn roundtrip_temp_dirs_are_unique() {
 #[test]
 fn rustc_roundtrip_list_fold_prints_six() {
     let stdout = roundtrip_stdout(
-        "let total: Int = fold_int(cons_int(1, cons_int(2, singleton_int(3))), 0, |acc, x| acc + x)",
+        "let total: Int = fold(cons(1, cons(2, singleton(3))), 0, |acc, x| acc + x)",
     );
     assert_eq!(stdout, "6", "compiled binary printed {stdout:?}, not `6`");
 }
 
 #[test]
+fn rustc_roundtrip_generic_list_fold_prints_one() {
+    let stdout = roundtrip_stdout(
+        "let total: Int = fold(singleton(1), 0, |acc, x| acc + x)",
+    );
+    assert_eq!(stdout, "1", "compiled binary printed {stdout:?}, not `1`");
+}
+
+#[test]
 fn rustc_roundtrip_list_map_then_fold_prints_twelve() {
     let stdout = roundtrip_stdout(
-        "let total: Int = fold_int(map_int(cons_int(1, cons_int(2, singleton_int(3))), |x| x * 2), 0, |acc, x| acc + x)",
+        "let total: Int = fold(map(cons(1, cons(2, singleton(3))), |x| x * 2), 0, |acc, x| acc + x)",
     );
     assert_eq!(stdout, "12", "compiled binary printed {stdout:?}, not `12`");
 }
@@ -287,7 +423,7 @@ fn rustc_roundtrip_list_map_then_fold_prints_twelve() {
 #[test]
 fn rustc_roundtrip_list_filter_then_fold_prints_seven() {
     let stdout = roundtrip_stdout(
-        "let total: Int = fold_int(filter_int(cons_int(1, cons_int(2, cons_int(3, singleton_int(4)))), |x| x > 2), 0, |acc, x| acc + x)",
+        "let total: Int = fold(filter(cons(1, cons(2, cons(3, singleton(4)))), |x| x > 2), 0, |acc, x| acc + x)",
     );
     assert_eq!(stdout, "7", "compiled binary printed {stdout:?}, not `7`");
 }
@@ -295,9 +431,125 @@ fn rustc_roundtrip_list_filter_then_fold_prints_seven() {
 #[test]
 fn rustc_roundtrip_nested_list_builtins_inside_lambda_prints_six() {
     let stdout = roundtrip_stdout(
-        "let total: Int = fold_int(cons_int(1, singleton_int(2)), 0, |acc, x| acc + fold_int(map_int(singleton_int(x), |y| y * 2), 0, |n, y| n + y))",
+        "let total: Int = fold(cons(1, singleton(2)), 0, |acc, x| acc + fold(map(singleton(x), |y| y * 2), 0, |n, y| n + y))",
     );
     assert_eq!(stdout, "6", "compiled binary printed {stdout:?}, not `6`");
+}
+
+#[test]
+fn rustc_roundtrip_user_function_call_prints_three() {
+    let stdout = roundtrip_stdout(
+        "fn add(a: Int, b: Int) -> Int = a + b\nlet total: Int = add(1, 2)",
+    );
+    assert_eq!(stdout, "3", "compiled binary printed {stdout:?}, not `3`");
+}
+
+#[test]
+fn rustc_roundtrip_recursive_function_call_prints_six() {
+    let stdout = roundtrip_stdout(
+        "fn count_down(n: Int) -> Int = if n == 0 then 0 else n + count_down(n - 1)\nlet total: Int = count_down(3)",
+    );
+    assert_eq!(stdout, "6", "compiled binary printed {stdout:?}, not `6`");
+}
+
+#[test]
+fn rustc_roundtrip_record_literal_through_function_prints_one() {
+    let stdout = roundtrip_stdout(
+        "type Point { x: Int y: Int }\nfn x_of(p: Point) -> Int = p.x\nlet total: Int = x_of({ x: 1, y: 2 })",
+    );
+    assert_eq!(stdout, "1", "compiled binary printed {stdout:?}, not `1`");
+}
+
+#[test]
+fn rustc_roundtrip_user_sum_match_prints_zero() {
+    let stdout = roundtrip_stdout(
+        "type Sign = Plus | Minus\nfn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }\nlet total: Int = classify(Plus)",
+    );
+    assert_eq!(stdout, "0", "compiled binary printed {stdout:?}, not `0`");
+}
+
+#[test]
+fn rustc_roundtrip_emitted_module_invokes_reflected_dag_function() {
+    let module = emit_module(
+        "fn node_count(d: Dag) -> Int = fold(d.nodes, 0, |n, node| n + 1)",
+    );
+    let stdout = roundtrip_module_stdout(
+        &module,
+        "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); node_count(dag)",
+    );
+    assert!(
+        stdout.parse::<i64>().is_ok_and(|count| count > 0),
+        "compiled reflected Dag function should return a positive node count, got {stdout:?}"
+    );
+}
+
+#[test]
+fn rustc_roundtrip_emitted_module_matches_reflected_behavior_payloads() {
+    let module = emit_module(
+        "fn bind_count(d: Dag) -> Int = fold(d.nodes, 0, |n, behavior| match behavior { Value(v) => n, Transform(t) => n, Branch(b) => n, Loop(l) => n, Bind(bind) => n + 1 })",
+    );
+    let stdout = roundtrip_module_stdout(
+        &module,
+        "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); bind_count(dag)",
+    );
+    assert_eq!(
+        stdout, "2",
+        "compiled reflected Behavior match should count the two top-level binds, got {stdout:?}"
+    );
+}
+
+#[test]
+fn rustc_roundtrip_emitted_module_returns_reflected_source_span_list() {
+    let module = emit_module(
+        "fn singleton_span(bind: BindNode) -> List<SourceSpan> = [bind.span]",
+    );
+    let stdout = roundtrip_module_stdout(
+        &module,
+        "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) => Some(bind.clone()), _ => None }).expect(\"bind\"); singleton_span(bind).len() as i64",
+    );
+    assert_eq!(
+        stdout, "1",
+        "compiled reflected function returning List<SourceSpan> should yield a singleton list, got {stdout:?}"
+    );
+}
+
+#[test]
+fn rustc_roundtrip_emitted_module_compares_reflected_port_ids_in_list_contains() {
+    let module = emit_module(
+        "fn result_port_is_param(bind: BindNode) -> Bool = contains(bind.params, bind.result_port)",
+    );
+    let stdout = roundtrip_module_stdout(
+        &module,
+        "let dag = v3_compiler::compile_to_dag(\"fn id(x: Int) -> Int = x\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) if !bind.params.is_empty() => Some(bind.clone()), _ => None }).expect(\"function bind\"); if result_port_is_param(bind) { 1 } else { 0 }",
+    );
+    assert_eq!(
+        stdout, "1",
+        "compiled reflected function should compare PortId handles through list contains, got {stdout:?}"
+    );
+}
+
+#[test]
+fn rustc_roundtrip_emitted_module_returns_user_record_list_from_reflected_binds() {
+    let module = emit_module(
+        "type FoundBind { name: String }\n\
+         fn bind_names(d: Dag) -> List<FoundBind> = \
+           fold(d.nodes, empty(), |acc, behavior| \
+             match behavior { \
+               Value(v) => acc, \
+               Transform(t) => acc, \
+               Branch(b) => acc, \
+               Loop(l) => acc, \
+               Bind(bind) => cons({ name: bind.name }, acc) \
+             })",
+    );
+    let stdout = roundtrip_module_stdout(
+        &module,
+        "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); bind_names(dag).len() as i64",
+    );
+    assert_eq!(
+        stdout, "2",
+        "compiled reflected function should return a user record per top-level bind, got {stdout:?}"
+    );
 }
 
 /// End-to-end roundtrip test: emit Rust from a v3 program, feed the

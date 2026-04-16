@@ -447,6 +447,13 @@ pub enum SurfaceExpr {
         fields: Vec<SurfaceRecordField>,
         span: SourceSpan,
     },
+    /// `[expr, expr, ...]` — list literal. Used by structured data
+    /// bodies in staged spec files. User-code lowering still
+    /// rejects list literals at the current surface scope.
+    List {
+        elements: Vec<SurfaceExpr>,
+        span: SourceSpan,
+    },
 }
 
 /// A single field in a record literal: a label and the expression
@@ -1406,6 +1413,12 @@ impl<'a> Parser<'a> {
         if matches!(self.peek().kind, TokenKind::KwMatch) {
             return self.parse_match();
         }
+        if matches!(self.peek().kind, TokenKind::LBrace) {
+            return self.parse_record_literal();
+        }
+        if matches!(self.peek().kind, TokenKind::LBracket) {
+            return self.parse_list_literal();
+        }
         let token = self.bump().clone();
         match token.kind {
             TokenKind::IntLit(value) => Ok(SurfaceExpr::Literal {
@@ -1431,6 +1444,30 @@ impl<'a> Parser<'a> {
                 span: token.span,
             }),
         }
+    }
+
+    fn parse_list_literal(&mut self) -> Result<SurfaceExpr, Diagnostic> {
+        let open = self.expect_kind(TokenKind::LBracket)?;
+        let mut elements = Vec::new();
+        while !matches!(self.peek().kind, TokenKind::RBracket) {
+            elements.push(self.parse_expr()?);
+            if matches!(self.peek().kind, TokenKind::Comma) {
+                self.bump();
+            } else if !matches!(self.peek().kind, TokenKind::RBracket) {
+                return Err(Diagnostic::ParseError {
+                    message: format!(
+                        "expected `,` or `]` in list literal, got {:?}",
+                        self.peek().kind
+                    ),
+                    span: self.peek().span.clone(),
+                });
+            }
+        }
+        let close = self.expect_kind(TokenKind::RBracket)?;
+        Ok(SurfaceExpr::List {
+            elements,
+            span: SourceSpan::new(self.file, open.span.byte_start, close.span.byte_end),
+        })
     }
 
     fn parse_ident_expr(
@@ -1646,6 +1683,7 @@ fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
         | SurfaceExpr::Lambda { span, .. }
         | SurfaceExpr::If { span, .. }
         | SurfaceExpr::Match { span, .. }
-        | SurfaceExpr::Record { span, .. } => span,
+        | SurfaceExpr::Record { span, .. }
+        | SurfaceExpr::List { span, .. } => span,
     }
 }

@@ -99,6 +99,74 @@ well-grounded. Sustainability rules assume facts have single authorities.
 If the modeling is unfaithful, the downstream invariants are protecting
 the wrong thing.
 
+## Bounded Substrate Seed
+
+The Rust-native seed that exists before any `.dag` declaration loads is
+a ratchet, not an escape hatch. The seed may stay flat or shrink; it may
+not grow without explicit deletion elsewhere in the seed or a narrowly
+argued exception that names why the new primitive is truly indivisible.
+
+At the current reflection boundary the intended seed is minimal:
+
+- Parser and tokenizer substrate for reading source text.
+- Resolve / bootstrap machinery needed to load the first declarations.
+- Primitive scalar groundings (`Int`, `Bool`, `String`) and the atomic
+  identity handles (`NodeId`, `PortId`, `DeclarationId`, `SourceSpan`).
+
+Everything else in the compiler substrate must live as a `.dag`
+declaration. `Dag`, `Declaration`, `Behavior`, `TypeConnective`,
+behavior payload records, and realization metadata are no longer valid
+"just keep it in Rust" categories now that the reflection surface
+exists. If a concept is structurally representable and used above the
+seed boundary, the correct move is to declare it in `.dag` and attach a
+realization, not to enlarge the seed.
+
+The enforcement rule is monotonic: count seed primitives in a tracked
+ratchet file or equivalent CI gate, and block PRs that increase the
+count. The project can tolerate temporary seed holes only when the hole
+is explicitly named, bounded, and shrinking.
+
+## Lenses Are Substrate Declarations
+
+The canonical form of a lens is a `.dag` declaration operating over the
+reflected substrate, not a permanently hand-written Rust module. Rust
+lenses are tolerated only as bootstrap scaffolds while the remaining
+execution path for compiled lenses is being finished.
+
+This invariant has two operational consequences:
+
+- New lens features should prefer substrate-level facts and realization
+  bindings over Rust-side helper APIs.
+- The number of Rust bootstrap lenses is itself a ratchet. Deleting a
+  Rust lens in favor of its `.dag` form is forward progress; adding a
+  new permanent Rust-only lens is not.
+
+The point is not aesthetic. A lens declared in the substrate can be
+type-checked, realized, diffed, and eventually analyzed by other lenses.
+A Rust lens is opaque to the substrate and therefore a standing hole in
+the self-inspection claim.
+
+## Every Dependency Is A Substrate Fact
+
+Whenever a downstream consumer needs a fact, that fact must have a
+structural home in the substrate or in a declared realization. Consumers
+must not reconstruct dependencies from names, parallel tables, or hidden
+calling convention knowledge.
+
+Applied to the reflection work, this means:
+
+- "Which field does this projection read?" is a substrate fact carried
+  by the field label and realized via `FieldBinding`.
+- "Which port is the primary result of this node?" is a substrate fact
+  surfaced compositionally as `result_port`, not a five-arm Rust helper.
+- "How do I read this reflected field from Rust?" is a realization fact
+  in `rust.dag`, not a hardcoded emitter branch.
+
+If a consumer cannot answer its question by following typed edges and
+declared bindings, the fix is upstream: add the missing substrate fact
+or realization binding. Reconstructing the fact locally is a violation
+of Single Authority and a precursor to drift.
+
 ## Root-Cause Depth Invariant
 
 This codebase is a DAG — both the language it compiles and its own

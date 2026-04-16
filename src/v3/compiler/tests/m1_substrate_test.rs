@@ -55,6 +55,31 @@ fn bind_value_type_decl(dag: &Dag, name: &str) -> DeclarationId {
     }
 }
 
+fn callable_instantiation_arguments(
+    dag: &Dag,
+    template: DeclarationId,
+) -> Vec<&[v3_compiler::dag::TemplateArgument]> {
+    dag.nodes()
+        .iter()
+        .filter_map(|node| {
+            let Behavior::Transform(transform) = node else {
+                return None;
+            };
+            let TransformTarget::Callable(target) = transform.target else {
+                return None;
+            };
+            let TypeConnective::Instantiation {
+                template: inst_template,
+                arguments,
+            } = &dag.declaration(target).connective
+            else {
+                return None;
+            };
+            (*inst_template == template).then_some(arguments.as_slice())
+        })
+        .collect()
+}
+
 #[test]
 fn parse_std_algebra_and_walk_int_add() {
     // M1_DESIGN.md §5 canonical walk. The real `dsl/std/integer.dag`
@@ -292,15 +317,23 @@ fn child_declarations_are_anonymous() {
     assert!(dag.declaration_by_name("Int").is_some());
     assert!(dag.declaration_by_name("OrderedRing").is_some());
     assert!(dag.declaration_by_name("Classical").is_some());
-    // Starting at M1(3) PR-B-unwind, three Realization meta-types
-    // are production bootstrap declarations from the first
-    // `dsl/extdeps/languages/*` fixture (`rust.dag`):
+    // Starting at M1(3)+reflection, the per-target realization
+    // meta-types are production bootstrap declarations from
+    // `src/v3/spec/rust.dag`:
     //
-    //   - `TypeRealization`     — primitive type → target type
+    //   - `TypeRealization`              — monomorphic type →
+    //                                      target type
+    //   - `TypeInstantiationRealization` — generic template →
+    //                                      target instantiated carrier
+    // are production bootstrap declarations from the first
     //   - `OperatorRealization` — (operand type, algebra field)
     //                             → target operator symbol
     //   - `BehaviorRealization` — substrate marker → target
     //                             template
+    //   - `CallableRealization` — callable declaration → render
+    //                             strategy
+    //   - `PatternRealization`  — structural sum → carrier-
+    //                             specific match lowering
     //
     // The v3 emitter reads `data rust_*: <RealizationKind> = {...}`
     // items through `meta_tag` filtering against each meta-type
@@ -313,7 +346,14 @@ fn child_declarations_are_anonymous() {
     // `DeclarationRef` sentinel meta-type that lets target spec files
     // carry typed declaration references in record-literal field
     // values. Each is a Conj (empty body) by construction.
-    for meta in ["TypeRealization", "OperatorRealization", "BehaviorRealization"] {
+    for meta in [
+        "TypeRealization",
+        "TypeInstantiationRealization",
+        "OperatorRealization",
+        "BehaviorRealization",
+        "CallableRealization",
+        "PatternRealization",
+    ] {
         let id = dag
             .declaration_by_name(meta)
             .unwrap_or_else(|| panic!("`{meta}` must be declared by src/v3/spec/rust.dag"))
@@ -386,6 +426,61 @@ fn m17_primitive_cache_is_populated_at_bootstrap() {
         string_shape,
         v3_compiler::types::TypeShape::new(string_by_name)
     );
+}
+
+#[test]
+fn m2_rust_language_syntax_bundle_is_cached_and_structural() {
+    let dag = Dag::new();
+    let rust_language = dag
+        .rust_language_spec()
+        .expect("rust_language syntax bundle should be cached at bootstrap");
+    let decl = dag.declaration(rust_language);
+    match decl.value_body.as_ref() {
+        Some(v3_compiler::dag::ValueBody::Structural { fields }) => {
+            let labels: Vec<_> = fields.iter().map(|(label, _)| label.as_str()).collect();
+            assert_eq!(
+                labels,
+                vec![
+                    "statements",
+                    "expressions",
+                    "control_flow",
+                    "literals",
+                    "modules",
+                    "functions",
+                    "type_applications",
+                    "type_definitions",
+                    "patterns",
+                    "collection_ops",
+                    "values",
+                ]
+            );
+        }
+        other => panic!("rust_language must lower structurally, got {other:?}"),
+    }
+
+    for syntax_type in [
+        "StatementSyntax",
+        "ExpressionSyntax",
+        "ForEachSyntax",
+        "ControlFlowSyntax",
+        "LiteralSyntax",
+        "FunctionSyntax",
+        "TypeApplicationSyntax",
+        "TypeDefinitionSyntax",
+        "PatternMatchSyntax",
+        "CollectionOps",
+        "ValueConstructionSyntax",
+        "LanguageSpec",
+    ] {
+        let id = dag
+            .declaration_by_name(syntax_type)
+            .unwrap_or_else(|| panic!("`{syntax_type}` must be declared in rust.dag"))
+            .id;
+        assert!(
+            matches!(dag.declaration(id).connective, TypeConnective::Conj { .. }),
+            "`{syntax_type}` must lower to a Conj"
+        );
+    }
 }
 
 #[test]
@@ -772,6 +867,55 @@ data test_bad_type: TypeRealization = { target: Bind, carrier: \"oops\", cost: 0
 }
 
 #[test]
+fn m1_3_prb_unwind_r1_callable_realization_with_primitive_target_is_rejected() {
+    let src = "\
+data test_bad_callable: CallableRealization = { target: Int, strategy: ListEmpty, cost: 0 }
+";
+    let dag = compile_any(src, "bad_callable_realization.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "CallableRealization with a non-callable target should fail-closed at lower time"
+    );
+}
+
+#[test]
+fn m1_3_prb_unwind_r1_pattern_realization_with_primitive_target_is_rejected() {
+    let src = "\
+data test_bad_pattern: PatternRealization = {
+  target: Int,
+  strategy: VectorList,
+  scrutinee: \"{expr}\",
+  empty_pattern: \"[]\",
+  cons_pattern: \"[{head}, {tail} @ ..]\",
+  head_expr: \"{head}\",
+  tail_expr: \"{tail}\",
+  cost: 0
+}
+";
+    let dag = compile_any(src, "bad_pattern_realization.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "PatternRealization with a non-Disj target should fail-closed at lower time"
+    );
+}
+
+#[test]
+fn m1_3_prb_unwind_r1_type_instantiation_realization_with_monomorphic_target_is_rejected() {
+    let src = "\
+data test_bad_type_instantiation: TypeInstantiationRealization = {
+  target: Int,
+  carrier: \"Vec<{element}>\",
+  cost: 0
+}
+";
+    let dag = compile_any(src, "bad_type_instantiation_realization.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "TypeInstantiationRealization with a monomorphic target should fail-closed at lower time"
+    );
+}
+
+#[test]
 fn m1_3_prb_rust_dag_bootstrap_loads_structurally() {
     // M1(3) PR-B-unwind: verify rust.dag loaded cleanly during
     // Dag::new() bootstrap and that `rust_int_add` lowered to a
@@ -860,6 +1004,19 @@ fn m1_3_prb_rust_dag_bootstrap_loads_structurally() {
 }
 
 #[test]
+fn instantiation_arguments_participate_in_type_shape_equivalence() {
+    let src = "\
+fn expect_ints(xs: List<Int>) -> Int = 0
+let bad: Int = expect_ints(singleton(true))
+";
+    let dag = compile_any(src, "instantiation_shape_equivalence.v3");
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "List<Int> and List<Bool> should not compare equal during inference"
+    );
+}
+
+#[test]
 fn m17_r9_data_item_has_unparsed_value_body_scaffold() {
     // M1(2.7) review round 9, QW2 + structural scaffold honesty:
     // data items must be structurally distinguishable from type
@@ -945,6 +1102,22 @@ fn always_zero(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }
         }
     }
     let _ = src;
+}
+
+#[test]
+fn infer_variant_constructor_call_returns_parent_sum_type() {
+    let src = "\
+type Sign = Plus | Minus
+fn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }
+let total: Int = classify(Plus)
+";
+    let dag = compile_any(src, "variant_constructor_parent_sum.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "variant constructor call should type-check as the parent sum, got {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(bind_value_type_decl(&dag, "total"), find_named(&dag, "Int"));
 }
 
 #[test]
@@ -1398,7 +1571,15 @@ let y = apply(3, step)
         let TransformTarget::Callable(target) = transform.target else {
             continue;
         };
-        if target == apply_f {
+        let body_call_targets_param_slot = if target == apply_f {
+            true
+        } else {
+            matches!(
+                &dag.declaration(target).connective,
+                TypeConnective::Instantiation { template, .. } if *template == apply_f
+            )
+        };
+        if body_call_targets_param_slot {
             saw_param_call = true;
             assert_eq!(
                 transform.inputs.len(),
@@ -1611,6 +1792,146 @@ let y = f(42)
 }
 
 #[test]
+fn prereq0_5_fold_generic_call_synthesizes_implicit_template_bindings() {
+    let src = "\
+let total: Int = fold(singleton(1), 0, |acc, x| acc + x)
+";
+    let dag = compile_any(src, "prereq0_5_fold.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "implicit generic fold call should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+
+    let int_id = find_named(&dag, "Int");
+    let singleton_id = find_named(&dag, "singleton");
+    let fold_id = find_named(&dag, "fold");
+    let fold_decl = dag.declaration(fold_id);
+    let fold_t = fold_decl.type_params[0];
+    let fold_u = fold_decl.type_params[1];
+    let singleton_t = dag.declaration(singleton_id).type_params[0];
+
+    let singleton_instantiations = callable_instantiation_arguments(&dag, singleton_id);
+    assert!(
+        singleton_instantiations.iter().any(|arguments| {
+            arguments
+                .iter()
+                .any(|arg| arg.parameter == singleton_t && arg.value == int_id)
+        }),
+        "expected singleton(1) to instantiate element := Int"
+    );
+
+    let fold_instantiations = callable_instantiation_arguments(&dag, fold_id);
+    assert!(
+        fold_instantiations.iter().any(|arguments| {
+            arguments
+                .iter()
+                .any(|arg| arg.parameter == fold_t && arg.value == int_id)
+                && arguments
+                    .iter()
+                    .any(|arg| arg.parameter == fold_u && arg.value == int_id)
+        }),
+        "expected fold(singleton(1), 0, ...) to infer T := Int and U := Int"
+    );
+
+    let lambda_binds: Vec<_> = dag
+        .nodes()
+        .iter()
+        .filter_map(|node| match node {
+            Behavior::Bind(bind) if bind.name.starts_with("__anon_lambda_") => Some(bind),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(lambda_binds.len(), 1, "expected one lambda bind");
+    let bind = lambda_binds[0];
+    let lambda_param_ports = &bind.params[bind.params.len() - 2..];
+    for port in lambda_param_ports {
+        match dag.port(*port).state() {
+            PortState::Resolved(ty) => assert_eq!(
+                ty.declaration, int_id,
+                "fold lambda parameter should resolve to Int"
+            ),
+            other => panic!("fold lambda parameter did not resolve, got {other:?}"),
+        }
+    }
+
+    assert_eq!(bind_value_type_decl(&dag, "total"), int_id);
+}
+
+#[test]
+fn prereq0_5_map_generic_call_synthesizes_implicit_template_bindings() {
+    let src = "\
+let xs = map(singleton(1), |x| x + 1)
+";
+    let dag = compile_any(src, "prereq0_5_map.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "implicit generic map call should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+
+    let int_id = find_named(&dag, "Int");
+    let map_id = find_named(&dag, "map");
+    let map_decl = dag.declaration(map_id);
+    let map_a = map_decl.type_params[0];
+    let map_b = map_decl.type_params[1];
+    let map_instantiations = callable_instantiation_arguments(&dag, map_id);
+    assert!(
+        map_instantiations.iter().any(|arguments| {
+            arguments
+                .iter()
+                .any(|arg| arg.parameter == map_a && arg.value == int_id)
+                && arguments
+                    .iter()
+                    .any(|arg| arg.parameter == map_b && arg.value == int_id)
+        }),
+        "expected map(singleton(1), |x| x + 1) to infer A := Int and B := Int"
+    );
+
+    let lambda_binds: Vec<_> = dag
+        .nodes()
+        .iter()
+        .filter_map(|node| match node {
+            Behavior::Bind(bind) if bind.name.starts_with("__anon_lambda_") => Some(bind),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(lambda_binds.len(), 1, "expected one lambda bind");
+    let bind = lambda_binds[0];
+    let lambda_param_port = *bind
+        .params
+        .last()
+        .expect("map lambda should expose one declared parameter");
+    match dag.port(lambda_param_port).state() {
+        PortState::Resolved(ty) => assert_eq!(
+            ty.declaration, int_id,
+            "map lambda parameter should resolve to Int"
+        ),
+        other => panic!("map lambda parameter did not resolve, got {other:?}"),
+    }
+}
+
+#[test]
+fn prereq0_5_conflicting_implicit_template_bindings_fail_closed() {
+    let src = "\
+fn keep<T>(a: T, b: T) -> T = a
+let bad = keep(1, true)
+";
+    let dag = compile_any(src, "prereq0_5_conflict.v3");
+    assert!(
+        dag.diagnostics().iter().any(|(_, diag)| {
+            matches!(
+                diag,
+                Diagnostic::ResolveError { name, .. }
+                    if name.contains("implicit template binding")
+            )
+        }),
+        "expected implicit generic conflict diagnostic, got {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
 fn prereq3_multi_param_lambda_parses_and_compiles() {
     let src = "\
 let f: fn(Int, Int) -> Int = |x, y| x + y
@@ -1758,6 +2079,22 @@ let y = use_callback(|z| z + 1)
 }
 
 #[test]
+fn infer_retries_higher_order_callable_binding_until_lambda_signature_resolves() {
+    let src = "\
+fn apply_to_three(f: fn(Int) -> Int) -> Int = f(3)
+fn use_callback(f: fn(Int) -> Int) -> Int = apply_to_three(f)
+let y = use_callback(|z| z + 1)
+";
+    let dag = compile_any(src, "callable_retry_lambda_signature.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "higher-order callable binding should retry until the lambda signature resolves: {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(bind_value_type_decl(&dag, "y"), find_named(&dag, "Int"));
+}
+
+#[test]
 fn prereq4_list_dag_bootstrap_loads_cleanly() {
     let dag = Dag::new();
     assert!(
@@ -1771,6 +2108,58 @@ fn prereq4_list_dag_bootstrap_loads_cleanly() {
             "bootstrap should register staged std.list declaration `{name}`"
         );
     }
+    let list = dag
+        .declaration_by_name("List")
+        .expect("bootstrap should register List");
+    let TypeConnective::Disj { variants } = &list.connective else {
+        panic!("staged std.list should shadow the v2 alias with a structural Disj, got {:?}", list.connective);
+    };
+    let labels: Vec<_> = variants.iter().map(|field| field.label.as_str()).collect();
+    assert_eq!(labels, vec!["Empty", "Cons"]);
+}
+
+#[test]
+fn prereq4_record_literal_in_expression_position_compiles_with_expected_type() {
+    let src = "\
+type Point { x: Int y: Int }
+fn x_of(p: Point) -> Int = p.x
+let total: Int = x_of({ x: 1, y: 2 })
+";
+    let dag = compile_to_dag(src, "expr_record_literal.v3").expect("compiles");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "record literal in expression position should compile when an expected type is available, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn prereq4_list_literal_in_expression_position_lowers_through_std_list_constructors() {
+    let dag = compile_to_dag("let xs: List<Int> = [1, 2, 3]", "expr_list_literal.v3")
+        .expect("compiles");
+    assert!(dag.diagnostics().is_empty(), "got diagnostics: {:?}", dag.diagnostics());
+    let callable_names: Vec<String> = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_transform)
+        .filter_map(|transform| match transform.target {
+            TransformTarget::Callable(target) => Some(target),
+            _ => None,
+        })
+        .map(|target| match &dag.declaration(target).connective {
+            TypeConnective::Instantiation { template, .. } => *template,
+            _ => target,
+        })
+        .filter_map(|target| dag.declaration(target).name.clone())
+        .collect();
+    assert!(
+        callable_names.iter().any(|name| name == "singleton"),
+        "list literal should lower through `singleton`, got {callable_names:?}"
+    );
+    assert!(
+        callable_names.iter().filter(|name| *name == "cons").count() >= 2,
+        "list literal should lower through repeated `cons`, got {callable_names:?}"
+    );
 }
 
 #[test]
@@ -1919,6 +2308,8 @@ type Box<T> { value: T }
 fn read(boxed: Box<Int>) -> Int = boxed.value
 ";
     let dag = compile_to_dag(src, "field_access_generic.v3").expect("compiles");
+    let box_id = find_named(&dag, "Box");
+    let box_t = dag.declaration(box_id).type_params[0];
 
     let bind = dag
         .nodes()
@@ -1940,7 +2331,7 @@ fn read(boxed: Box<Int>) -> Int = boxed.value
             field_child,
         } => {
             assert_eq!(field_label, "value");
-            assert_eq!(*field_child, Some(find_named(&dag, "Int")));
+            assert_eq!(*field_child, Some(box_t));
         }
         other => panic!("expected FieldProject target, got {other:?}"),
     }
@@ -2172,6 +2563,21 @@ fn unwrap_or_zero(m: Maybe<Int>) -> Int = match m { Some(value) => value, None =
 }
 
 #[test]
+fn reflected_optional_handle_field_projection_resolves() {
+    let src = "\
+import std.substrate { DagPort, NodeId }
+fn producer_or_self(port: DagPort) -> NodeId = match port.produced_by { Some(node_id) => node_id, None => port.id }
+";
+    let dag = compile_to_dag(src, "optional_handle_field_projection.v3")
+        .expect("compiles");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "optional reflected handle field projection should compile cleanly, got {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
 fn prereq2_payload_binding_on_non_disj_scrutinee_fails_closed() {
     let dag =
         compile_any("fn bad(i: Int) -> Int = match i { Nope(v) => v }", "payload_non_disj.v3");
@@ -2182,20 +2588,307 @@ fn prereq2_payload_binding_on_non_disj_scrutinee_fails_closed() {
 }
 
 #[test]
-fn prereq2_payload_binding_rejects_single_field_record_variants() {
+fn prereq2_payload_binding_can_bind_record_payloads() {
     let src = "\
 type Point { x: Int }
 type Wrapped = Wrap { inner: Point } | Empty
-fn bad(w: Wrapped) -> Int = match w { Wrap(point) => point.x, Empty => 0 }
+fn unwrap_or_zero(w: Wrapped) -> Int = match w { Wrap(payload) => payload.inner.x, Empty => 0 }
 ";
-    let dag = compile_any(src, "payload_record_variant.v3");
+    let dag = compile_to_dag(src, "payload_record_variant.v3").expect("compiles");
     assert!(
-        dag.diagnostics().iter().any(|(_, diag)| matches!(
-            diag,
-            Diagnostic::ResolveError { name, .. }
-                if name.contains("variant `Wrap` does not carry a single positional payload")
-        )),
-        "expected a record-payload binding diagnostic for `Wrap`, got {:?}",
-        dag.diagnostics().iter().collect::<Vec<_>>()
+        dag.diagnostics().is_empty(),
+        "record payload binding should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(bind_value_type_decl(&dag, "unwrap_or_zero"), find_named(&dag, "Int"));
+}
+
+#[test]
+fn recursion_accepts_structural_descent_on_recursive_payload_field() {
+    let src = "\
+type IntList = Empty | Cons { head: Int, tail: IntList }
+fn count(list: IntList) -> Int = match list { Empty => 0, Cons(payload) => 1 + count(payload.tail) }
+";
+    let dag = compile_to_dag(src, "structural_descent.v3").expect("compiles");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "structural descent on a recursive payload field should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "count")
+        .expect("Bind(count) exists");
+    let producer = dag
+        .port(bind.value)
+        .produced_by
+        .expect("recursive function value should have a producer");
+    match dag.node(producer) {
+        Behavior::Loop(_) => {}
+        other => panic!("expected bounded recursion to lower to Loop, got {other:?}"),
+    }
+}
+
+#[test]
+fn recursive_generic_sum_can_reference_itself_in_payload_types() {
+    let src = "\
+type MyList<T> = Empty | Cons { head: T, tail: MyList<T> }
+";
+    let dag = compile_to_dag(src, "recursive_generic_sum.v3").expect("compiles");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "recursive generic sums should lower without self-resolution diagnostics: {:?}",
+        dag.diagnostics()
+    );
+
+    let list = dag
+        .declaration_by_name("MyList")
+        .expect("MyList declaration exists");
+    let TypeConnective::Disj { variants } = &list.connective else {
+        panic!("recursive generic sum should lower to Disj, got {:?}", list.connective);
+    };
+    let cons = variants
+        .iter()
+        .find(|field| field.label == "Cons")
+        .expect("Cons variant exists");
+    let cons_decl = dag.declaration(cons.ty);
+    let TypeConnective::Conj { children } = &cons_decl.connective else {
+        panic!("Cons payload should be a Conj, got {:?}", cons_decl.connective);
+    };
+    let tail = children
+        .iter()
+        .find(|field| field.label == "tail")
+        .expect("tail field exists");
+    let TypeConnective::Instantiation { template, arguments } = &dag.declaration(tail.ty).connective else {
+        panic!("tail field should instantiate MyList<T>, got {:?}", dag.declaration(tail.ty).connective);
+    };
+    assert_eq!(
+        *template, list.id,
+        "tail field should point back to the enclosing recursive sum template"
+    );
+    assert_eq!(
+        arguments.len(),
+        1,
+        "tail field should preserve the recursive type parameter binding"
+    );
+}
+
+#[test]
+fn std_list_supports_structural_match_and_recursive_descent() {
+    let src = "\
+fn count(list: List<Int>) -> Int = match list { Empty => 0, Cons(payload) => 1 + count(payload.tail) }
+let n: Int = count([1, 2, 3])
+";
+    let dag = compile_to_dag(src, "std_list_structural_recursion.v3").expect("compiles");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "std.list structural recursion should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(bind_value_type_decl(&dag, "n"), find_named(&dag, "Int"));
+
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "count")
+        .expect("Bind(count) exists");
+    let producer = dag
+        .port(bind.value)
+        .produced_by
+        .expect("recursive std.list function value should have a producer");
+    match dag.node(producer) {
+        Behavior::Loop(_) => {}
+        other => panic!(
+            "expected std.list recursive descent to lower to Loop, got {other:?}"
+        ),
+    }
+}
+
+#[test]
+fn std_list_cons_accepts_user_record_element() {
+    let src = "\
+type FoundBind { name: String }
+let xs: List<FoundBind> = cons({ name: \"x\" }, empty())
+";
+    let dag = compile_any(src, "std_list_user_record_cons.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "expected cons({{...}}, empty()) over a user record to compile cleanly, got diagnostics: {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
+fn monomorphic_recursive_self_call_with_reflected_list_arg_compiles() {
+    let src = "\
+fn step(n: Int, d: Dag, x: PortId, ys: List<PortId>) -> List<PortId> =
+  if n == 0 then ys else step(n - 1, d, x, cons(x, ys))
+";
+    let dag = compile_any(src, "monomorphic_recursive_reflected_list_arg.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "monomorphic recursive self-call with reflected list args should compile cleanly, got diagnostics: {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
+fn monomorphic_recursive_self_call_with_helper_produced_reflected_list_args_compiles() {
+    let src = "\
+fn expand_frontier_list(d: Dag, frontier: List<PortId>, referenced: List<PortId>) -> List<PortId> = frontier
+fn expand_referenced_list(frontier: List<PortId>, referenced: List<PortId>) -> List<PortId> = referenced
+fn walk_steps(remaining: Int, d: Dag, frontier: List<PortId>, referenced: List<PortId>) -> List<PortId> =
+  if remaining == 0 then
+    referenced
+  else
+    if is_empty(frontier) then
+      referenced
+    else
+      walk_steps(
+        remaining - 1,
+        d,
+        expand_frontier_list(d, frontier, referenced),
+        expand_referenced_list(frontier, referenced)
+      )
+";
+    let dag =
+        compile_any(src, "monomorphic_recursive_helper_reflected_list_args.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "monomorphic recursive self-call with helper-produced reflected list args should compile cleanly, got diagnostics: {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
+fn referenced_port_walk_real_helper_stack_compiles() {
+    let src = "\
+fn referenced_ports(d: Dag, root: PortId) -> List<PortId> =
+  walk_steps(length(d.ports), d, singleton(root), empty())
+
+fn walk_steps(remaining: Int, d: Dag, frontier: List<PortId>, referenced: List<PortId>) -> List<PortId> =
+  if remaining == 0 then
+    referenced
+  else
+    if is_empty(frontier) then
+      referenced
+    else
+      walk_steps(
+        remaining - 1,
+        d,
+        expand_frontier_list(d, frontier, referenced),
+        expand_referenced_list(frontier, referenced)
+      )
+
+fn expand_frontier_list(d: Dag, frontier: List<PortId>, referenced: List<PortId>) -> List<PortId> =
+  fold(frontier, empty(), |next, port|
+    if contains(referenced, port) then
+      next
+    else
+      concat(inputs_for_port(d, port), next)
+  )
+
+fn expand_referenced_list(frontier: List<PortId>, referenced: List<PortId>) -> List<PortId> =
+  fold(frontier, referenced, |acc, port|
+    if contains(acc, port) then
+      acc
+    else
+      cons(port, acc)
+  )
+
+fn inputs_for_port(d: Dag, port_id: PortId) -> List<PortId> =
+  match find_producer(d.nodes, port_id) {
+    MissingBehavior => empty()
+    FoundBehavior(behavior) => inputs_for_behavior(d, behavior)
+  }
+
+type BehaviorLookup
+  = MissingBehavior
+  | FoundBehavior(Behavior)
+
+type ResultPortLookup
+  = MissingResultPort
+  | FoundResultPort(PortId)
+
+fn inputs_for_behavior(d: Dag, behavior: Behavior) -> List<PortId> =
+  match behavior {
+    Value(v) => empty()
+    Transform(t) => t.inputs
+    Branch(branch) => cons(branch.input, branch_path_outputs(branch.paths))
+    Loop(loop_node) => loop_inputs(d, loop_node)
+    Bind(bind) => singleton(bind.result_port)
+  }
+
+fn loop_inputs(d: Dag, loop_node: LoopNode) -> List<PortId> =
+  concat(
+    cons(
+      loop_node.source,
+      cons(loop_node.init, singleton(loop_node.bound.count))
+    ),
+    match behavior_result_port(d.nodes, loop_node.body) {
+      MissingResultPort => empty()
+      FoundResultPort(port) => singleton(port)
+    }
+  )
+
+fn branch_path_outputs(paths: List<BranchPath>) -> List<PortId> =
+  match paths {
+    Empty => empty()
+    Cons(payload) => cons(payload.head.result_port, branch_path_outputs(payload.tail))
+  }
+
+fn find_behavior(nodes: List<Behavior>, node_id: NodeId) -> BehaviorLookup =
+  match nodes {
+    Empty => MissingBehavior
+    Cons(payload) =>
+      if behavior_id(payload.head) == node_id then
+        FoundBehavior(payload.head)
+      else
+        find_behavior(payload.tail, node_id)
+  }
+
+fn find_producer(nodes: List<Behavior>, port_id: PortId) -> BehaviorLookup =
+  match nodes {
+    Empty => MissingBehavior
+    Cons(payload) =>
+      if behavior_port(payload.head) == port_id then
+        FoundBehavior(payload.head)
+      else
+        find_producer(payload.tail, port_id)
+  }
+
+fn behavior_result_port(nodes: List<Behavior>, node_id: NodeId) -> ResultPortLookup =
+  match find_behavior(nodes, node_id) {
+    MissingBehavior => MissingResultPort
+    FoundBehavior(behavior) => FoundResultPort(behavior_port(behavior))
+  }
+
+fn behavior_id(behavior: Behavior) -> NodeId =
+  match behavior {
+    Value(v) => v.id
+    Transform(t) => t.id
+    Branch(b) => b.id
+    Loop(l) => l.id
+    Bind(bind) => bind.id
+  }
+
+fn behavior_port(behavior: Behavior) -> PortId =
+  match behavior {
+    Value(v) => v.result_port
+    Transform(t) => t.result_port
+    Branch(b) => b.result_port
+    Loop(l) => l.result_port
+    Bind(bind) => bind.result_port
+  }
+";
+    let dag = compile_any(src, "referenced_port_walk_real_stack.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "referenced-port walk over the real helper stack should compile cleanly, got diagnostics: {:?}",
+        dag.diagnostics()
     );
 }

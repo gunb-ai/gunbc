@@ -81,6 +81,7 @@ pub fn parse_for_test(
 /// practice: a successful compile returns `Ok(Dag)` with an empty
 /// diagnostic table; a failed compile returns `Err(Semantic(Dag))`
 /// with a non-empty one. There is no third outcome.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum CompileError {
     Tokenize(diagnostics::Diagnostic),

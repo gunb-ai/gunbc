@@ -30,21 +30,19 @@
 
 module std.list
 
-import std.types { Int, Bool, List }
+import std.types { Int, Bool }
 import std.algebra { Monoid }
 
 // ── Structural shape ────────────────────────────────────────────
 
-// `List<T>` already exists in `dsl/std/types.dag` as the
-// bootstrap-loaded authority for the collection type. This staged
-// file layers the helper functions (`empty`, `cons`, `fold`, `map`,
-// `filter`, ...) on top of that existing declaration.
-//
-// The long-term reflection design models `List<T>` structurally as
-// `Empty | Cons(T, List<T>)`. In this checkout that shape is still
-// hosted indirectly through `std.types` / `FreeMonoid`; staging the
-// helpers here avoids a duplicate top-level `List` declaration during
-// bootstrap while still making the API surface available.
+// v2 still aliases `List<T>` through `FreeMonoid<T>` in
+// `dsl/std/types.dag`, but v3 needs the structural carrier directly so
+// user code can match and recurse over `Empty | Cons`. The bootstrap
+// loader prefers `src/v3/` declarations over `dsl/` declarations, so
+// this staged definition is now the authority v3 walks to.
+type List<element>
+  = Empty
+  | Cons { head: element, tail: List<element> }
 
 // ── Algebraic inhabitance ───────────────────────────────────────
 
@@ -140,30 +138,6 @@ fn filter<T>(list: List<T>, p: fn(T) -> Bool) -> List<T> {
   fold_right(list, empty(), |x, acc|
     if p(x) then cons(x, acc) else acc
   )
-}
-
-// Temporary concrete wrappers used by the current end-to-end tests.
-// The general helper API above is the real surface; these wrappers
-// exist because ordinary generic-call instantiation from runtime
-// arguments is not wired through the current pipeline yet.
-fn singleton_int(x: Int) -> List<Int> {
-  singleton(x)
-}
-
-fn cons_int(head: Int, tail: List<Int>) -> List<Int> {
-  cons(head, tail)
-}
-
-fn fold_int(list: List<Int>, init: Int, f: fn(Int, Int) -> Int) -> Int {
-  fold(list, init, f)
-}
-
-fn map_int(list: List<Int>, f: fn(Int) -> Int) -> List<Int> {
-  map(list, f)
-}
-
-fn filter_int(list: List<Int>, p: fn(Int) -> Bool) -> List<Int> {
-  filter(list, p)
 }
 
 // `flat_map(list, f)` — map each element to a list, then
