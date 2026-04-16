@@ -69,7 +69,7 @@ L1 — Reflection framework              [prereqs shipping — reflection PR nex
       │    • Prereq 2 (Path.binding): #458 merged
       │    • Prereq 3 (contextual lambda): #460 merged
       │    • Prereq 4 (list.dag bootstrap): #463 in flight
-      │    • Prereq 5 (pipe sugar): #462 in flight
+      │    • Prereq 5 (pipe sugar): #462 merged
       │    • Reflection PR: next after prereq slate completes
       │    • first lens (lens_unused_parameters) migrates in reflection PR
       │
@@ -141,23 +141,30 @@ L4 — Full self-hosting (M3)            [long-term]
 | 3. Implementation | Fill in the function body. Types are already declared; implementation is bounded by the model. | L3 | Stage `.dag` file |
 | 4. Parity test | The `.dag` version produces byte-identical output to the Rust version. Delete the Rust version. | L3 completion | Rust file deleted |
 
-### §2.1 The pipeline is a `.dag` composition, not a file convention
+### §2.1 The pipeline is a `.dag` composition with structural consumers
 
-v2 achieved self-hosting by writing each stage as `.dag` functions
-and connecting them in `compile.dag`. But `compile.dag` is
-imperative — it's a sequence of function calls, not a declared
-dependency graph. The dependency structure between stages is
-implicit in the call order, not in the declarations. Adding a
-stage means editing the call sequence. `bootstrap.dag`'s stage
-enumeration (`CompilerStage`, `TransformContract`) exists as a
-separate parallel model that no one reads — 195 lines of
-decorative modeling.
+v2 is already self-hosting via `.dag` composition. `compile.dag`
+calls stage functions through `let` bindings — it IS a dependency
+graph in the same sense any `.dag` program is. The gap is not
+that v2 "lacks a pipeline graph." The gap is:
 
-v3 does this differently: **the pipeline IS a `.dag` composition.**
-Each stage is a typed function with declared input/output types.
-The composition is a series of `let` bindings with explicit
-dependencies. The compiler can read its own pipeline structure
-the same way it reads any other `.dag` program's dependency graph.
+1. **`bootstrap.dag`'s stage metadata has no consumers.**
+   `CompilerStage`, `TransformContract`, `ChangeClassification`,
+   `BootstrapStrategy` — 195 lines of type vocabulary declared,
+   zero code reads any of it. The stage contracts are decorative.
+2. **No structural self-analysis.** No lens runs on the pipeline
+   itself. The compiler cannot analyze its own compilation steps
+   the way it analyzes user programs.
+3. **Stage boundaries are convention, not enforced.** Each stage's
+   output type is `Dag` — which is also its input type. Nothing
+   structurally distinguishes "Dag with all ports inferred" from
+   "Dag with ports still Uninferred." The convention holds because
+   the stages are called in the right order, not because the type
+   system prevents calling them in the wrong order.
+
+v3's pipeline keeps the `.dag` composition shape v2 already has
+and adds **structural consumers** that make the stage metadata
+load-bearing:
 
 ```
 fn compile(source: String, file: String, spec: LanguageSpec) -> EmitResult {
@@ -168,34 +175,36 @@ fn compile(source: String, file: String, spec: LanguageSpec) -> EmitResult {
 }
 ```
 
-This is ordinary `.dag` — four `let` bindings with explicit
-dependencies. The compiler sees this as a dependency graph
-because `.dag` programs ARE dependency graphs. Nothing special
-about it being the compiler's own pipeline.
+Ordinary `.dag` — four `let` bindings with explicit dependencies.
+The compiler sees this as a dependency graph. What's new is what
+READS that graph:
 
-**What this buys over v2's approach:**
-
-1. **Stage contracts are first-class, not decorative.** The stage
-   functions' type signatures ARE the contracts. A lens verifies
-   "does `infer` actually produce a Dag where all ports have
-   Resolved state?" The contract is the type. `bootstrap.dag`'s
-   decorative `TransformContract` dissolves — the pipeline IS the
-   consumer.
-2. **Per-stage fixed-point is structural by construction.** The
-   pipeline declares its stage boundaries as typed function calls.
-   The fixed-point test runs the pipeline on its own source twice
-   and compares outputs at each typed boundary — structural diffs,
-   not textual diffs.
+1. **Stage contracts consumed by lenses.** A lens verifies "does
+   `infer` produce a Dag where all ports have Resolved state?"
+   This is a **lens-checked property**, not a type-level guarantee
+   — the output type is still `Dag`, not a hypothetical
+   `InferredDag` wrapper. The enforcement mechanism is the same
+   as for any other `.dag` invariant: a lens reads the output and
+   reports violations. If a future substrate version introduces a
+   wrapper type that makes unresolved ports unrepresentable at the
+   type level, that's a stronger guarantee — but the starting
+   point is lens enforcement, same as `lens_layer_opacity` and
+   `lens_unused_parameters`.
+2. **Per-stage fixed-point consumed by regen.** The pipeline's
+   typed stage boundaries give the fixed-point test structural
+   comparison points. Instead of a file-level diff, regen compares
+   pass1 and pass2 at each stage boundary — structural diffs, not
+   textual diffs.
 3. **Independent stages parallelize automatically.** Two
    post-inference analyses with no data dependency run
-   concurrently by default. This is the thesis's "parallelism is
-   not a feature, it is the default" applied to the compiler.
+   concurrently by default. The thesis's "parallelism is not a
+   feature, it is the default" applied to the compiler.
 4. **The compiler is analyzable by its own lenses.**
    `lens_complexity` on `parse` reports the parser's cost.
-   `lens_unused_parameters` on `infer` reports dead parameters in
-   the inference pass. Self-analysis extends from "a lens analyzes
-   a lens" to "the compiler analyzes itself."
-5. **Schema migration patches are typed.** When a stage's
+   `lens_unused_parameters` on `infer` reports dead parameters.
+   Self-analysis extends from "a lens analyzes a lens" to "the
+   compiler analyzes itself."
+5. **Schema migration patches read the pipeline.** When a stage's
    input/output type changes, the pipeline's typed composition
    shows which downstream stages are affected.
 
@@ -255,11 +264,13 @@ before any implementation starts:
 
 - **Infer domain.** What ARE the inference rules? Model type
   resolution, template substitution, operator dispatch as data
-  operations over the substrate. The rules themselves are declared
-  types — not hand-coded match arms in a walk function, but data
-  the walker reads. Substitution stacks, scope structures, and
-  unification state are structural types in `std/`, not Rust
-  implementation details.
+  operations over the substrate. The cross-stage facts — input
+  port state, output port state, diagnostic types, type shapes —
+  are declared types in `std/`. The walker-local state —
+  substitution stacks, scope structures, intermediate unification
+  state — stays as implementation details inside `infer.dag`'s
+  function bodies, NOT in `std/` (see substrate-vs-implementation
+  split below).
 
 - **Emit domain.** What IS a target language? Model the language
   spec structurally — not just "what types exist" but the full
@@ -276,6 +287,30 @@ before any implementation starts:
   pipeline's function signatures — first-class, not decorative.
   A lens verifies each contract holds.
 
+**Substrate vs implementation — what goes in `std/` and what
+doesn't.** Not every type the compiler uses belongs in `std/`.
+The rule: **if a type crosses a stage boundary or is consumed by
+a lens, it goes in `std/`. If it's internal to one stage's walk,
+it's implementation.**
+
+| Category | Goes in `std/` | Stays in stage `.dag` body |
+|---|---|---|
+| Input/output types | `SurfaceModule`, `Dag`, `EmitResult` | — |
+| Diagnostic types | `Diagnostic`, `SourceSpan` | — |
+| Substrate types | `Declaration`, `Behavior`, `TypeConnective` | — |
+| Target language types | `LanguageSpec`, `Realization` (in `extdeps/`) | — |
+| Token types | `Token`, `TokenKind` | — |
+| Surface AST types | `SurfaceItem`, `SurfaceExpr` | — |
+| Walker-local state | — | `SubstStack`, `Scope`, `UnificationState` |
+| Intermediate inference state | — | Per-port resolution tracking |
+| Helper accumulators | — | `fold` locals, working sets |
+
+Walker-local state may graduate to `std/` IF a downstream consumer
+needs it — for example, if a lens needs to inspect substitution
+state mid-inference. But the default is implementation-local until
+a cross-boundary consumer surfaces. "Model to spec" means the
+BOUNDARIES are modeled, not the internals.
+
 **The v2 lesson this prevents.** v2's pipeline stages accreted
 types reactively: a stage needed a fact, so a field was added to
 the IR, and downstream stages adapted. The adaptation was often
@@ -286,14 +321,17 @@ stage runs, so reconstruction has no reason to form. The
 `annotate_descent_evidence` pattern (33 heuristics in v2's
 complexity pass) is the canonical failure mode this prevents.
 
-**The principle:** the `.dag` compiler gets the `.dag` treatment.
-Every type the compiler operates on — files, tokens, surface
-trees, substrate declarations, target language constructs,
-platform capabilities — is modeled with the same rigor as any
-user-facing `.dag` declaration. Structural decompression applies.
-Layer opacity applies. Facts flow forward applies. No special
-exemption for "this is compiler-internal." The invariants are
-universal; the compiler is not exempt.
+**The principle:** the `.dag` compiler gets the `.dag` treatment
+at its boundaries. Every type that crosses a stage boundary or is
+consumed by a lens — files, tokens, surface trees, substrate
+declarations, target language constructs, platform capabilities —
+is modeled with the same rigor as any user-facing `.dag`
+declaration. Structural decompression applies. Layer opacity
+applies. Facts flow forward applies. No special exemption for
+"this is compiler-internal." The invariants are universal at
+boundaries; walker-local implementation details are free to use
+whatever internal representation the stage author finds most
+natural.
 
 **Practical sequencing.** For each stage (emit → lower → infer →
 parse), the work is:
