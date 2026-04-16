@@ -61,6 +61,7 @@ import std.list { List }
 type TypeRealization {
   target: DeclarationRef
   carrier: String
+  is_copy: Bool
   fields: List<FieldBinding>
   cost: Int
 }
@@ -68,6 +69,7 @@ type TypeRealization {
 type FieldBinding {
   dag_name: String
   rust_access: RustFieldAccess
+  borrowed_read: Bool
 }
 
 type RustFieldAccess
@@ -253,6 +255,19 @@ type ValueConstructionSyntax {
   variant_named_construction: String
 }
 
+type RenderingModel {
+  read: ReadStrategy
+  construct: ConstructStrategy
+}
+
+type ReadStrategy
+  = Borrow
+  | PassByValue
+
+type ConstructStrategy
+  = CopyOrClone
+  | PassByValue
+
 type LanguageSpec {
   statements: DeclarationRef
   expressions: DeclarationRef
@@ -274,6 +289,7 @@ type LanguageSpec {
 data rust_int: TypeRealization = {
   target: Int
   carrier: "i64"
+  is_copy: true
   fields: []
   cost: 1
 }
@@ -281,6 +297,7 @@ data rust_int: TypeRealization = {
 data rust_bool: TypeRealization = {
   target: Bool
   carrier: "bool"
+  is_copy: true
   fields: []
   cost: 1
 }
@@ -288,6 +305,7 @@ data rust_bool: TypeRealization = {
 data rust_string: TypeRealization = {
   target: String
   carrier: "String"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -295,6 +313,7 @@ data rust_string: TypeRealization = {
 data rust_node_id: TypeRealization = {
   target: NodeId
   carrier: "NodeId"
+  is_copy: true
   fields: []
   cost: 1
 }
@@ -302,6 +321,7 @@ data rust_node_id: TypeRealization = {
 data rust_port_id: TypeRealization = {
   target: PortId
   carrier: "PortId"
+  is_copy: true
   fields: []
   cost: 1
 }
@@ -309,6 +329,7 @@ data rust_port_id: TypeRealization = {
 data rust_declaration_id: TypeRealization = {
   target: DeclarationId
   carrier: "DeclarationId"
+  is_copy: true
   fields: []
   cost: 1
 }
@@ -316,8 +337,9 @@ data rust_declaration_id: TypeRealization = {
 data rust_type_shape: TypeRealization = {
   target: TypeShape
   carrier: "TypeShape"
+  is_copy: false
   fields: [
-    { dag_name: "declaration", rust_access: DirectField("declaration") }
+    { dag_name: "declaration", rust_access: DirectField("declaration"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -325,6 +347,7 @@ data rust_type_shape: TypeRealization = {
 data rust_port_state: TypeRealization = {
   target: PortState
   carrier: "PortState"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -332,10 +355,11 @@ data rust_port_state: TypeRealization = {
 data rust_port: TypeRealization = {
   target: DagPort
   carrier: "Port"
+  is_copy: false
   fields: [
-    { dag_name: "id", rust_access: AccessorMethod("id") },
-    { dag_name: "state", rust_access: AccessorMethod("state_value") },
-    { dag_name: "produced_by", rust_access: DirectField("produced_by") }
+    { dag_name: "id", rust_access: AccessorMethod("id"), borrowed_read: false },
+    { dag_name: "state", rust_access: AccessorMethod("state_value"), borrowed_read: false },
+    { dag_name: "produced_by", rust_access: DirectField("produced_by"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -343,10 +367,11 @@ data rust_port: TypeRealization = {
 data rust_source_span: TypeRealization = {
   target: SourceSpan
   carrier: "SourceSpan"
+  is_copy: false
   fields: [
-    { dag_name: "file", rust_access: DirectField("file") },
-    { dag_name: "start", rust_access: DirectField("byte_start") },
-    { dag_name: "end", rust_access: DirectField("byte_end") }
+    { dag_name: "file", rust_access: DirectField("file"), borrowed_read: false },
+    { dag_name: "start", rust_access: DirectField("byte_start"), borrowed_read: false },
+    { dag_name: "end", rust_access: DirectField("byte_end"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -354,6 +379,7 @@ data rust_source_span: TypeRealization = {
 data rust_literal_bits: TypeRealization = {
   target: LiteralBits
   carrier: "LiteralBits"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -361,6 +387,7 @@ data rust_literal_bits: TypeRealization = {
 data rust_atom_payload: TypeRealization = {
   target: AtomPayload
   carrier: "AtomPayload"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -368,6 +395,7 @@ data rust_atom_payload: TypeRealization = {
 data rust_cardinality_bound: TypeRealization = {
   target: CardinalityBound
   carrier: "CardinalityBound"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -375,9 +403,10 @@ data rust_cardinality_bound: TypeRealization = {
 data rust_conj_field: TypeRealization = {
   target: ConjField
   carrier: "Field"
+  is_copy: false
   fields: [
-    { dag_name: "label", rust_access: DirectField("label") },
-    { dag_name: "ty", rust_access: DirectField("ty") }
+    { dag_name: "label", rust_access: DirectField("label"), borrowed_read: false },
+    { dag_name: "ty", rust_access: DirectField("ty"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -385,9 +414,10 @@ data rust_conj_field: TypeRealization = {
 data rust_template_argument: TypeRealization = {
   target: TemplateArgument
   carrier: "TemplateArgument"
+  is_copy: false
   fields: [
-    { dag_name: "parameter", rust_access: DirectField("parameter") },
-    { dag_name: "value", rust_access: DirectField("value") }
+    { dag_name: "parameter", rust_access: DirectField("parameter"), borrowed_read: false },
+    { dag_name: "value", rust_access: DirectField("value"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -395,9 +425,10 @@ data rust_template_argument: TypeRealization = {
 data rust_field_entry: TypeRealization = {
   target: FieldEntry
   carrier: "(String, FieldValue)"
+  is_copy: false
   fields: [
-    { dag_name: "label", rust_access: DirectField("0") },
-    { dag_name: "value", rust_access: DirectField("1") }
+    { dag_name: "label", rust_access: DirectField("0"), borrowed_read: false },
+    { dag_name: "value", rust_access: DirectField("1"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -405,6 +436,7 @@ data rust_field_entry: TypeRealization = {
 data rust_field_value: TypeRealization = {
   target: FieldValue
   carrier: "FieldValue"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -412,6 +444,7 @@ data rust_field_value: TypeRealization = {
 data rust_value_body: TypeRealization = {
   target: ValueBody
   carrier: "ValueBody"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -419,6 +452,7 @@ data rust_value_body: TypeRealization = {
 data rust_arrow_body: TypeRealization = {
   target: ArrowBody
   carrier: "ArrowBody"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -426,6 +460,7 @@ data rust_arrow_body: TypeRealization = {
 data rust_type_connective: TypeRealization = {
   target: TypeConnective
   carrier: "TypeConnective"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -433,15 +468,16 @@ data rust_type_connective: TypeRealization = {
 data rust_declaration: TypeRealization = {
   target: Declaration
   carrier: "Declaration"
+  is_copy: false
   fields: [
-    { dag_name: "id", rust_access: DirectField("id") },
-    { dag_name: "name", rust_access: DirectField("name") },
-    { dag_name: "connective", rust_access: DirectField("connective") },
-    { dag_name: "type_params", rust_access: DirectField("type_params") },
-    { dag_name: "meta_tag", rust_access: DirectField("meta_tag") },
-    { dag_name: "inhabits", rust_access: DirectField("inhabits") },
-    { dag_name: "value_body", rust_access: DirectField("value_body") },
-    { dag_name: "span", rust_access: DirectField("span") }
+    { dag_name: "id", rust_access: DirectField("id"), borrowed_read: false },
+    { dag_name: "name", rust_access: DirectField("name"), borrowed_read: false },
+    { dag_name: "connective", rust_access: DirectField("connective"), borrowed_read: false },
+    { dag_name: "type_params", rust_access: DirectField("type_params"), borrowed_read: false },
+    { dag_name: "meta_tag", rust_access: DirectField("meta_tag"), borrowed_read: false },
+    { dag_name: "inhabits", rust_access: DirectField("inhabits"), borrowed_read: false },
+    { dag_name: "value_body", rust_access: DirectField("value_body"), borrowed_read: false },
+    { dag_name: "span", rust_access: DirectField("span"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -449,6 +485,7 @@ data rust_declaration: TypeRealization = {
 data rust_arithmetic_op: TypeRealization = {
   target: ArithmeticOp
   carrier: "ArithmeticOp"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -456,6 +493,7 @@ data rust_arithmetic_op: TypeRealization = {
 data rust_comparison_op: TypeRealization = {
   target: ComparisonOp
   carrier: "ComparisonOp"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -463,6 +501,7 @@ data rust_comparison_op: TypeRealization = {
 data rust_operator_kind: TypeRealization = {
   target: OperatorKind
   carrier: "OperatorKind"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -470,6 +509,7 @@ data rust_operator_kind: TypeRealization = {
 data rust_transform_target: TypeRealization = {
   target: TransformTarget
   carrier: "TransformTarget"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -477,6 +517,7 @@ data rust_transform_target: TypeRealization = {
 data rust_branch_pattern: TypeRealization = {
   target: BranchPattern
   carrier: "BranchPattern"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -484,9 +525,10 @@ data rust_branch_pattern: TypeRealization = {
 data rust_payload_binding: TypeRealization = {
   target: PayloadBinding
   carrier: "PayloadBinding"
+  is_copy: false
   fields: [
-    { dag_name: "binding_name", rust_access: DirectField("binding_name") },
-    { dag_name: "payload_port", rust_access: DirectField("payload_port") }
+    { dag_name: "binding_name", rust_access: DirectField("binding_name"), borrowed_read: false },
+    { dag_name: "payload_port", rust_access: DirectField("payload_port"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -494,11 +536,12 @@ data rust_payload_binding: TypeRealization = {
 data rust_branch_path: TypeRealization = {
   target: BranchPath
   carrier: "Path"
+  is_copy: false
   fields: [
-    { dag_name: "body", rust_access: DirectField("body") },
-    { dag_name: "result_port", rust_access: AccessorMethod("result_port") },
-    { dag_name: "pattern", rust_access: DirectField("pattern") },
-    { dag_name: "binding", rust_access: DirectField("binding") }
+    { dag_name: "body", rust_access: DirectField("body"), borrowed_read: false },
+    { dag_name: "result_port", rust_access: AccessorMethod("result_port"), borrowed_read: false },
+    { dag_name: "pattern", rust_access: DirectField("pattern"), borrowed_read: false },
+    { dag_name: "binding", rust_access: DirectField("binding"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -506,8 +549,9 @@ data rust_branch_path: TypeRealization = {
 data rust_loop_bound: TypeRealization = {
   target: LoopBound
   carrier: "Bound"
+  is_copy: false
   fields: [
-    { dag_name: "count", rust_access: DirectField("count") }
+    { dag_name: "count", rust_access: DirectField("count"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -515,11 +559,12 @@ data rust_loop_bound: TypeRealization = {
 data rust_value_node: TypeRealization = {
   target: ValueNode
   carrier: "ValueNode"
+  is_copy: false
   fields: [
-    { dag_name: "id", rust_access: DirectField("id") },
-    { dag_name: "payload", rust_access: DirectField("data") },
-    { dag_name: "result_port", rust_access: AccessorMethod("result_port") },
-    { dag_name: "span", rust_access: DirectField("span") }
+    { dag_name: "id", rust_access: DirectField("id"), borrowed_read: false },
+    { dag_name: "payload", rust_access: DirectField("data"), borrowed_read: false },
+    { dag_name: "result_port", rust_access: AccessorMethod("result_port"), borrowed_read: false },
+    { dag_name: "span", rust_access: DirectField("span"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -527,12 +572,13 @@ data rust_value_node: TypeRealization = {
 data rust_transform_node: TypeRealization = {
   target: TransformNode
   carrier: "TransformNode"
+  is_copy: false
   fields: [
-    { dag_name: "id", rust_access: DirectField("id") },
-    { dag_name: "target", rust_access: DirectField("target") },
-    { dag_name: "inputs", rust_access: DirectField("inputs") },
-    { dag_name: "result_port", rust_access: AccessorMethod("result_port") },
-    { dag_name: "span", rust_access: DirectField("span") }
+    { dag_name: "id", rust_access: DirectField("id"), borrowed_read: false },
+    { dag_name: "target", rust_access: DirectField("target"), borrowed_read: false },
+    { dag_name: "inputs", rust_access: DirectField("inputs"), borrowed_read: false },
+    { dag_name: "result_port", rust_access: AccessorMethod("result_port"), borrowed_read: false },
+    { dag_name: "span", rust_access: DirectField("span"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -540,12 +586,13 @@ data rust_transform_node: TypeRealization = {
 data rust_branch_node: TypeRealization = {
   target: BranchNode
   carrier: "BranchNode"
+  is_copy: false
   fields: [
-    { dag_name: "id", rust_access: DirectField("id") },
-    { dag_name: "input", rust_access: DirectField("input") },
-    { dag_name: "paths", rust_access: DirectField("paths") },
-    { dag_name: "result_port", rust_access: AccessorMethod("result_port") },
-    { dag_name: "span", rust_access: DirectField("span") }
+    { dag_name: "id", rust_access: DirectField("id"), borrowed_read: false },
+    { dag_name: "input", rust_access: DirectField("input"), borrowed_read: false },
+    { dag_name: "paths", rust_access: DirectField("paths"), borrowed_read: false },
+    { dag_name: "result_port", rust_access: AccessorMethod("result_port"), borrowed_read: false },
+    { dag_name: "span", rust_access: DirectField("span"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -553,14 +600,15 @@ data rust_branch_node: TypeRealization = {
 data rust_loop_node: TypeRealization = {
   target: LoopNode
   carrier: "LoopNode"
+  is_copy: false
   fields: [
-    { dag_name: "id", rust_access: DirectField("id") },
-    { dag_name: "source", rust_access: DirectField("source") },
-    { dag_name: "init", rust_access: DirectField("init") },
-    { dag_name: "body", rust_access: DirectField("body") },
-    { dag_name: "bound", rust_access: DirectField("bound") },
-    { dag_name: "result_port", rust_access: AccessorMethod("result_port") },
-    { dag_name: "span", rust_access: DirectField("span") }
+    { dag_name: "id", rust_access: DirectField("id"), borrowed_read: false },
+    { dag_name: "source", rust_access: DirectField("source"), borrowed_read: false },
+    { dag_name: "init", rust_access: DirectField("init"), borrowed_read: false },
+    { dag_name: "body", rust_access: DirectField("body"), borrowed_read: false },
+    { dag_name: "bound", rust_access: DirectField("bound"), borrowed_read: false },
+    { dag_name: "result_port", rust_access: AccessorMethod("result_port"), borrowed_read: false },
+    { dag_name: "span", rust_access: DirectField("span"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -568,12 +616,13 @@ data rust_loop_node: TypeRealization = {
 data rust_bind_node: TypeRealization = {
   target: BindNode
   carrier: "BindNode"
+  is_copy: false
   fields: [
-    { dag_name: "id", rust_access: DirectField("id") },
-    { dag_name: "name", rust_access: DirectField("name") },
-    { dag_name: "result_port", rust_access: AccessorMethod("result_port") },
-    { dag_name: "params", rust_access: DirectField("params") },
-    { dag_name: "span", rust_access: DirectField("span") }
+    { dag_name: "id", rust_access: DirectField("id"), borrowed_read: false },
+    { dag_name: "name", rust_access: DirectField("name"), borrowed_read: false },
+    { dag_name: "result_port", rust_access: AccessorMethod("result_port"), borrowed_read: false },
+    { dag_name: "params", rust_access: DirectField("params"), borrowed_read: false },
+    { dag_name: "span", rust_access: DirectField("span"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -581,6 +630,7 @@ data rust_bind_node: TypeRealization = {
 data rust_behavior: TypeRealization = {
   target: Behavior
   carrier: "Behavior"
+  is_copy: false
   fields: []
   cost: 1
 }
@@ -588,10 +638,11 @@ data rust_behavior: TypeRealization = {
 data rust_dag: TypeRealization = {
   target: Dag
   carrier: "Dag"
+  is_copy: false
   fields: [
-    { dag_name: "declarations", rust_access: AccessorMethod("declarations_owned") },
-    { dag_name: "nodes", rust_access: AccessorMethod("nodes_owned") },
-    { dag_name: "ports", rust_access: AccessorMethod("ports") }
+    { dag_name: "declarations", rust_access: AccessorMethod("declarations"), borrowed_read: true },
+    { dag_name: "nodes", rust_access: AccessorMethod("nodes"), borrowed_read: true },
+    { dag_name: "ports", rust_access: AccessorMethod("ports"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -825,11 +876,11 @@ data rust_contains_callable: CallableRealization = {
 data rust_list_pattern: PatternRealization = {
   target: List
   strategy: VectorList
-  scrutinee: "{expr}.as_slice()"
+  scrutinee: "{expr}"
   empty_pattern: "[]"
   cons_pattern: "[{head}, {tail} @ ..]"
-  head_expr: "{head}.clone()"
-  tail_expr: "{tail}.to_vec()"
+  head_expr: "{head}"
+  tail_expr: "{tail}"
   cost: 1
 }
 
@@ -840,7 +891,7 @@ data rust_statements: StatementSyntax = {
 
 data rust_expressions: ExpressionSyntax = {
   binary_op: "({lhs} {op} {rhs})"
-  field_access: "{object}.{field}"
+  field_access: "({object}).{field}"
   function_call: "{func}({args})"
   closure: "|{params}| {{ {body} }}"
 }
@@ -895,10 +946,10 @@ data rust_collection_ops: CollectionOps = {
   concat: "{ let mut __left = {left}; __left.extend({right}); __left }"
   length: "({recv}).len() as i64"
   is_empty: "({recv}).is_empty()"
-  fold: "({recv}).clone().into_iter().fold({init}, {body})"
-  map: "({recv}).clone().into_iter().map({body}).collect::<Vec<_>>()"
-  filter: "{ let mut __out = Vec::new(); for {item} in ({recv}).clone().into_iter() { if {predicate} { __out.push({item}); } } __out }"
-  contains: "({recv}).contains(&{item})"
+  fold: "({recv}).iter().fold({init}, {body})"
+  map: "({recv}).iter().map({body}).collect::<Vec<_>>()"
+  filter: "{ let mut __out = Vec::new(); for {item} in ({recv}).iter() { if {predicate} { __out.push({item_push}); } } __out }"
+  contains: "({recv}).contains({item})"
   empty_list: "Vec::new()"
   list_literal: "vec![{elements}]"
   cons: "{ let mut __list = {tail}; __list.insert(0, {head}); __list }"
@@ -910,6 +961,11 @@ data rust_value_construction: ValueConstructionSyntax = {
   struct_field_separator: ", "
   variant_construction: "{variant}({args})"
   variant_named_construction: "{variant} {{ {fields} }}"
+}
+
+data rust_rendering: RenderingModel = {
+  read: Borrow
+  construct: CopyOrClone
 }
 
 data rust_language: LanguageSpec = {

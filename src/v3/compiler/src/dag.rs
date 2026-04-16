@@ -1016,6 +1016,20 @@ pub(crate) struct TargetSyntaxCache {
     /// authority the Rust emitter reads for expression/control-flow/
     /// function/type/value syntax templates.
     pub rust_language: Option<DeclarationId>,
+    /// `rust_rendering` ownership-model declaration loaded from
+    /// `src/v3/spec/rust.dag`. This is the target-language
+    /// authority the Rust emitter reads for borrow-vs-construct
+    /// rendering policy at use sites.
+    pub rust_rendering: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct StdlibTypeCache {
+    /// `std.list.List` template declaration. Resolved once at
+    /// bootstrap end so downstream consumers compare typed
+    /// declaration ids instead of reconstructing stdlib identity
+    /// through `declaration_by_name("List")`.
+    pub list: Option<DeclarationId>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -1078,6 +1092,8 @@ pub struct Dag {
     realization_metas: RealizationMetaCache,
     /// Cached target-language syntax bundle declarations.
     target_syntax: TargetSyntaxCache,
+    /// Cached stdlib type-template declarations.
+    stdlib_types: StdlibTypeCache,
     /// Synthetic match carriers for anonymous `T?` cardinalities. Used when
     /// inference needs stable `Some` / `None` variant identities without
     /// promoting optionals into named top-level declarations.
@@ -1098,6 +1114,7 @@ impl Dag {
             substrate_markers: SubstrateMarkers::default(),
             realization_metas: RealizationMetaCache::default(),
             target_syntax: TargetSyntaxCache::default(),
+            stdlib_types: StdlibTypeCache::default(),
             optional_match_disjs: HashMap::new(),
         };
         crate::bootstrap::bootstrap(&mut dag);
@@ -1215,6 +1232,17 @@ impl Dag {
     /// declared in `src/v3/spec/rust.dag`.
     pub fn rust_language_spec(&self) -> Option<DeclarationId> {
         self.target_syntax.rust_language
+    }
+
+    /// Typed accessor for the Rust target-language ownership model
+    /// declared in `src/v3/spec/rust.dag`.
+    pub fn rust_rendering_spec(&self) -> Option<DeclarationId> {
+        self.target_syntax.rust_rendering
+    }
+
+    /// Typed accessor for the cached `std.list.List` template.
+    pub fn list_template(&self) -> Option<DeclarationId> {
+        self.stdlib_types.list
     }
 
     pub fn nodes(&self) -> &[Behavior] {
@@ -1478,6 +1506,9 @@ impl Dag {
             .declaration_by_name("PatternRealization")
             .map(|d| d.id);
         self.target_syntax.rust_language = self.declaration_by_name("rust_language").map(|d| d.id);
+        self.target_syntax.rust_rendering =
+            self.declaration_by_name("rust_rendering").map(|d| d.id);
+        self.stdlib_types.list = self.declaration_by_name("List").map(|d| d.id);
     }
 }
 

@@ -12,7 +12,7 @@ fn find_named(dag: &Dag, name: &str) -> v3_compiler::dag::DeclarationId {
 fn type_realization_fields_for(
     dag: &Dag,
     target_name: &str,
-) -> HashMap<String, (String, String)> {
+) -> HashMap<String, (String, String, bool)> {
     let type_realization_meta = find_named(dag, "TypeRealization");
     let target = find_named(dag, target_name);
     let realization = dag
@@ -67,12 +67,20 @@ fn type_realization_fields_for(
         else {
             panic!("FieldBinding.rust_access must be a RustFieldAccess variant");
         };
+        let borrowed_read = fields
+            .iter()
+            .find(|(label, _)| label == "borrowed_read")
+            .and_then(|(_, value)| match value {
+                FieldValue::Literal(v3_compiler::dag::LiteralBits::Bool(value)) => Some(*value),
+                _ => None,
+            })
+            .unwrap_or(false);
         let [FieldValue::Literal(v3_compiler::dag::LiteralBits::String(name))] = &payload[..] else {
             panic!("RustFieldAccess payload must be a single String literal");
         };
         out.insert(
             dag_name,
-            (variant_label(dag, *constructor), name.clone()),
+            (variant_label(dag, *constructor), name.clone(), borrowed_read),
         );
     }
     out
@@ -142,56 +150,56 @@ fn alias_bindings_cover_method_backed_fields() {
     let dag_fields = type_realization_fields_for(&dag, "Dag");
     assert_eq!(
         dag_fields.get("nodes"),
-        Some(&(String::from("AccessorMethod"), String::from("nodes_owned")))
+        Some(&(String::from("AccessorMethod"), String::from("nodes"), true))
     );
     assert_eq!(
         dag_fields.get("declarations"),
-        Some(&(String::from("AccessorMethod"), String::from("declarations_owned")))
+        Some(&(String::from("AccessorMethod"), String::from("declarations"), true))
     );
     assert_eq!(
         dag_fields.get("ports"),
-        Some(&(String::from("AccessorMethod"), String::from("ports")))
+        Some(&(String::from("AccessorMethod"), String::from("ports"), false))
     );
 
     let entry_fields = type_realization_fields_for(&dag, "FieldEntry");
     assert_eq!(
         entry_fields.get("label"),
-        Some(&(String::from("DirectField"), String::from("0")))
+        Some(&(String::from("DirectField"), String::from("0"), false))
     );
     assert_eq!(
         entry_fields.get("value"),
-        Some(&(String::from("DirectField"), String::from("1")))
+        Some(&(String::from("DirectField"), String::from("1"), false))
     );
 
     let bind_fields = type_realization_fields_for(&dag, "BindNode");
     assert_eq!(
         bind_fields.get("result_port"),
-        Some(&(String::from("AccessorMethod"), String::from("result_port")))
+        Some(&(String::from("AccessorMethod"), String::from("result_port"), false))
     );
 
     let value_fields = type_realization_fields_for(&dag, "ValueNode");
     assert_eq!(
         value_fields.get("payload"),
-        Some(&(String::from("DirectField"), String::from("data")))
+        Some(&(String::from("DirectField"), String::from("data"), false))
     );
 
     let span_fields = type_realization_fields_for(&dag, "SourceSpan");
     assert_eq!(
         span_fields.get("start"),
-        Some(&(String::from("DirectField"), String::from("byte_start")))
+        Some(&(String::from("DirectField"), String::from("byte_start"), false))
     );
     assert_eq!(
         span_fields.get("end"),
-        Some(&(String::from("DirectField"), String::from("byte_end")))
+        Some(&(String::from("DirectField"), String::from("byte_end"), false))
     );
 
     let port_fields = type_realization_fields_for(&dag, "DagPort");
     assert_eq!(
         port_fields.get("id"),
-        Some(&(String::from("AccessorMethod"), String::from("id")))
+        Some(&(String::from("AccessorMethod"), String::from("id"), false))
     );
     assert_eq!(
         port_fields.get("state"),
-        Some(&(String::from("AccessorMethod"), String::from("state_value")))
+        Some(&(String::from("AccessorMethod"), String::from("state_value"), false))
     );
 }
