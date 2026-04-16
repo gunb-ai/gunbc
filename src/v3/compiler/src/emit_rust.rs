@@ -43,7 +43,7 @@
 //   {body}  list of lets        {quote} literal double-quote
 //   {final} final bind's name
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field,
@@ -272,6 +272,21 @@ enum RustCallableStrategyBinding {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ParameterDispositionBinding {
+    Borrowed,
+    Consumed,
+}
+
+impl ParameterDispositionBinding {
+    fn merge(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Consumed, _) | (_, Self::Consumed) => Self::Consumed,
+            _ => Self::Borrowed,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RustPatternStrategyBinding {
     VectorList,
 }
@@ -389,6 +404,51 @@ struct RenderingModelBinding {
     construct: ConstructStrategyBinding,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SourceMutabilityBinding {
+    Immutable,
+    Mutable,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SourcePurityBinding {
+    Pure,
+    Effectful,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SourceStructureBinding {
+    ExplicitDag,
+    Arbitrary,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SourceIterationBinding {
+    Bounded,
+    Unbounded,
+}
+
+#[derive(Debug, Clone)]
+struct ComputationModelBinding {
+    mutability: SourceMutabilityBinding,
+    purity: SourcePurityBinding,
+    structure: SourceStructureBinding,
+    iteration: SourceIterationBinding,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MemoryModelBinding {
+    ValueOnly,
+    GarbageCollected,
+    RefCounted,
+    OwnershipBased,
+}
+
+#[derive(Debug, Clone)]
+struct TargetExecutionModelBinding {
+    memory: MemoryModelBinding,
+}
+
 #[derive(Debug, Clone)]
 struct RustLanguageSyntax {
     statements: StatementSyntaxBinding,
@@ -429,6 +489,11 @@ struct RealizationIndexes {
     /// CallableRealization` items in rust.dag. Used when emitting
     /// callable transforms without name-keyed builtin dispatch.
     callables: HashMap<DeclarationId, RustCallableStrategyBinding>,
+    /// `callable_decl → per-runtime-input ownership disposition`.
+    /// External callables read this directly from rust.dag; user-
+    /// defined callables derive it from their body DAG via a
+    /// monotone body walk.
+    callable_dispositions: HashMap<DeclarationId, Vec<ParameterDispositionBinding>>,
     /// `structural_sum_decl → carrier pattern lowering facts`.
     /// Built from `data rust_*: PatternRealization` items in
     /// rust.dag. Used when a structural match lowers against a
@@ -440,6 +505,33 @@ struct RealizationIndexes {
     /// The Rust target-language ownership rendering model loaded
     /// from `data rust_rendering: RenderingModel`.
     rendering: RenderingModelBinding,
+    /// The source-side `.dag` computation model loaded from
+    /// `data dag_model: ComputationModel`.
+    computation: ComputationModelBinding,
+    /// The target-side Rust execution model loaded from
+    /// `data rust_execution: TargetExecutionModel`.
+    execution: TargetExecutionModelBinding,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum InputSlot {
+    Positional(usize),
+    BranchInput,
+    LoopSource,
+    LoopInit,
+    LoopBoundCount,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct InputUseKey {
+    consumer: crate::dag::NodeId,
+    slot: InputSlot,
+}
+
+#[derive(Debug, Clone, Default)]
+struct InputUseFacts {
+    edge_order: HashMap<InputUseKey, usize>,
+    last_consumed_order_by_port: HashMap<PortId, usize>,
 }
 
 impl RealizationIndexes {
@@ -509,6 +601,10 @@ impl RealizationIndexes {
         let mut operators: HashMap<(DeclarationId, DeclarationId), String> = HashMap::new();
         let mut behaviors: HashMap<DeclarationId, String> = HashMap::new();
         let mut callables: HashMap<DeclarationId, RustCallableStrategyBinding> = HashMap::new();
+        let mut external_callable_dispositions: HashMap<
+            DeclarationId,
+            Vec<ParameterDispositionBinding>,
+        > = HashMap::new();
         let mut patterns: HashMap<DeclarationId, PatternRealizationBinding> = HashMap::new();
 
         for decl in dag.declarations() {
@@ -611,11 +707,22 @@ impl RealizationIndexes {
                 }
                 RealizationCategory::Callable => {
                     let strategy = require_callable_strategy(dag, fields, decl.id)?;
+                    let dispositions = require_parameter_dispositions(dag, fields, decl.id)?;
                     if callables.insert(target, strategy).is_some() {
                         return Err(EmitError::DuplicateRealization {
                             declaration: decl.id,
                             detail:
                                 "two CallableRealization data items target the same callable declaration — single authority requires unique targets",
+                        });
+                    }
+                    if external_callable_dispositions
+                        .insert(target, dispositions)
+                        .is_some()
+                    {
+                        return Err(EmitError::DuplicateRealization {
+                            declaration: decl.id,
+                            detail:
+                                "two CallableRealization data items target the same callable declaration's parameter dispositions — single authority requires unique targets",
                         });
                     }
                 }
@@ -634,6 +741,10 @@ impl RealizationIndexes {
 
         let syntax = RustLanguageSyntax::build(dag)?;
         let rendering = RenderingModelBinding::build(dag)?;
+        let computation = ComputationModelBinding::build(dag)?;
+        let execution = TargetExecutionModelBinding::build(dag)?;
+        let callable_dispositions =
+            derive_callable_dispositions(dag, &external_callable_dispositions);
 
         Ok(Self {
             types,
@@ -641,9 +752,12 @@ impl RealizationIndexes {
             operators,
             behaviors,
             callables,
+            callable_dispositions,
             patterns,
             syntax,
             rendering,
+            computation,
+            execution,
         })
     }
 }
@@ -658,6 +772,81 @@ impl RenderingModelBinding {
             read: require_read_strategy(dag, fields, "read", rendering_decl)?,
             construct: require_construct_strategy(dag, fields, "construct", rendering_decl)?,
         })
+    }
+}
+
+impl ComputationModelBinding {
+    fn build(dag: &Dag) -> Result<Self, EmitError> {
+        let declaration = dag
+            .computation_model_spec()
+            .ok_or(EmitError::MissingTargetSyntax("dag_model"))?;
+        let fields = structural_fields_for_decl(dag, declaration)?;
+        Ok(Self {
+            mutability: require_source_mutability(dag, fields, declaration)?,
+            purity: require_source_purity(dag, fields, declaration)?,
+            structure: require_source_structure(dag, fields, declaration)?,
+            iteration: require_source_iteration(dag, fields, declaration)?,
+        })
+    }
+
+    fn is_canonical_dag(&self) -> bool {
+        self.mutability == SourceMutabilityBinding::Immutable
+            && self.purity == SourcePurityBinding::Pure
+            && self.structure == SourceStructureBinding::ExplicitDag
+            && self.iteration == SourceIterationBinding::Bounded
+    }
+}
+
+impl TargetExecutionModelBinding {
+    fn build(dag: &Dag) -> Result<Self, EmitError> {
+        let declaration = dag
+            .rust_execution_spec()
+            .ok_or(EmitError::MissingTargetSyntax("rust_execution"))?;
+        let fields = structural_fields_for_decl(dag, declaration)?;
+        Ok(Self {
+            memory: require_memory_model(dag, fields, declaration)?,
+        })
+    }
+
+    fn is_ownership_based(&self) -> bool {
+        self.memory == MemoryModelBinding::OwnershipBased
+    }
+}
+
+impl InputUseFacts {
+    fn build(dag: &Dag, indexes: &RealizationIndexes) -> Self {
+        let mut facts = Self::default();
+        let mut order = 0usize;
+
+        for node in dag.nodes() {
+            match node {
+                Behavior::Transform(transform) => {
+                    for slot in 0..transform.inputs.len() {
+                        if transform_input_disposition(
+                            dag,
+                            transform,
+                            slot,
+                            &indexes.callable_dispositions,
+                        ) != ParameterDispositionBinding::Consumed
+                        {
+                            continue;
+                        }
+                        let key = InputUseKey {
+                            consumer: transform.id,
+                            slot: InputSlot::Positional(slot),
+                        };
+                        facts.edge_order.insert(key, order);
+                        facts
+                            .last_consumed_order_by_port
+                            .insert(transform.inputs[slot], order);
+                        order += 1;
+                    }
+                }
+                Behavior::Value(_) | Behavior::Branch(_) | Behavior::Loop(_) | Behavior::Bind(_) => {}
+            }
+        }
+
+        facts
     }
 }
 
@@ -1247,6 +1436,78 @@ fn require_callable_strategy(
     })
 }
 
+fn require_parameter_dispositions(
+    dag: &Dag,
+    fields: &[(String, FieldValue)],
+    declaration: DeclarationId,
+) -> Result<Vec<ParameterDispositionBinding>, EmitError> {
+    let value = fields
+        .iter()
+        .find(|(label, _)| label == "parameter_dispositions")
+        .map(|(_, value)| value)
+        .ok_or(EmitError::MalformedRealization {
+            declaration,
+            detail: "CallableRealization is missing required `parameter_dispositions` field",
+        })?;
+    let FieldValue::List(entries) = value else {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail:
+                "CallableRealization.parameter_dispositions must be a structural list",
+        });
+    };
+    entries
+        .iter()
+        .map(|value| parse_parameter_disposition(dag, value, declaration))
+        .collect()
+}
+
+fn parse_parameter_disposition(
+    dag: &Dag,
+    value: &FieldValue,
+    declaration: DeclarationId,
+) -> Result<ParameterDispositionBinding, EmitError> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail:
+                "ParameterDisposition entries must be ParameterDisposition variants",
+        });
+    };
+    if !payload.is_empty() {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "ParameterDisposition variants must not carry payload fields",
+        });
+    }
+    let borrowed = named_variant_id(dag, "ParameterDisposition", "Borrowed").ok_or(
+        EmitError::MalformedRealization {
+            declaration,
+            detail: "ParameterDisposition.Borrowed declaration was not found",
+        },
+    )?;
+    let consumed = named_variant_id(dag, "ParameterDisposition", "Consumed").ok_or(
+        EmitError::MalformedRealization {
+            declaration,
+            detail: "ParameterDisposition.Consumed declaration was not found",
+        },
+    )?;
+    if *constructor == borrowed {
+        Ok(ParameterDispositionBinding::Borrowed)
+    } else if *constructor == consumed {
+        Ok(ParameterDispositionBinding::Consumed)
+    } else {
+        Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "ParameterDisposition constructor must be Borrowed or Consumed",
+        })
+    }
+}
+
 fn require_pattern_realization(
     dag: &Dag,
     fields: &[(String, FieldValue)],
@@ -1406,7 +1667,200 @@ fn require_construct_strategy(
     }
 }
 
-fn named_variant_id(dag: &Dag, parent_name: &str, variant_label: &str) -> Option<DeclarationId> {
+fn require_source_mutability(
+    dag: &Dag,
+    fields: &[(String, FieldValue)],
+    declaration: DeclarationId,
+) -> Result<SourceMutabilityBinding, EmitError> {
+    let value = require_unit_variant_field(fields, "mutability", declaration)?;
+    let immutable = named_variant_id(dag, "Mutability", "Immutable").ok_or(
+        EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "Mutability.Immutable declaration was not found",
+        },
+    )?;
+    let mutable = named_variant_id(dag, "Mutability", "Mutable").ok_or(
+        EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "Mutability.Mutable declaration was not found",
+        },
+    )?;
+    if value == immutable {
+        Ok(SourceMutabilityBinding::Immutable)
+    } else if value == mutable {
+        Ok(SourceMutabilityBinding::Mutable)
+    } else {
+        Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "ComputationModel.mutability must be Immutable or Mutable",
+        })
+    }
+}
+
+fn require_source_purity(
+    dag: &Dag,
+    fields: &[(String, FieldValue)],
+    declaration: DeclarationId,
+) -> Result<SourcePurityBinding, EmitError> {
+    let value = require_unit_variant_field(fields, "purity", declaration)?;
+    let pure = named_variant_id(dag, "Purity", "Pure").ok_or(EmitError::MalformedTargetSyntax {
+        declaration,
+        detail: "Purity.Pure declaration was not found",
+    })?;
+    let effectful =
+        named_variant_id(dag, "Purity", "Effectful").ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "Purity.Effectful declaration was not found",
+        })?;
+    if value == pure {
+        Ok(SourcePurityBinding::Pure)
+    } else if value == effectful {
+        Ok(SourcePurityBinding::Effectful)
+    } else {
+        Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "ComputationModel.purity must be Pure or Effectful",
+        })
+    }
+}
+
+fn require_source_structure(
+    dag: &Dag,
+    fields: &[(String, FieldValue)],
+    declaration: DeclarationId,
+) -> Result<SourceStructureBinding, EmitError> {
+    let value = require_unit_variant_field(fields, "structure", declaration)?;
+    let explicit = named_variant_id(dag, "Structure", "ExplicitDAG").ok_or(
+        EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "Structure.ExplicitDAG declaration was not found",
+        },
+    )?;
+    let arbitrary =
+        named_variant_id(dag, "Structure", "Arbitrary").ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "Structure.Arbitrary declaration was not found",
+        })?;
+    if value == explicit {
+        Ok(SourceStructureBinding::ExplicitDag)
+    } else if value == arbitrary {
+        Ok(SourceStructureBinding::Arbitrary)
+    } else {
+        Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "ComputationModel.structure must be ExplicitDAG or Arbitrary",
+        })
+    }
+}
+
+fn require_source_iteration(
+    dag: &Dag,
+    fields: &[(String, FieldValue)],
+    declaration: DeclarationId,
+) -> Result<SourceIterationBinding, EmitError> {
+    let value = require_unit_variant_field(fields, "iteration", declaration)?;
+    let bounded =
+        named_variant_id(dag, "Iteration", "Bounded").ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "Iteration.Bounded declaration was not found",
+        })?;
+    let unbounded =
+        named_variant_id(dag, "Iteration", "Unbounded").ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "Iteration.Unbounded declaration was not found",
+        })?;
+    if value == bounded {
+        Ok(SourceIterationBinding::Bounded)
+    } else if value == unbounded {
+        Ok(SourceIterationBinding::Unbounded)
+    } else {
+        Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "ComputationModel.iteration must be Bounded or Unbounded",
+        })
+    }
+}
+
+fn require_memory_model(
+    dag: &Dag,
+    fields: &[(String, FieldValue)],
+    declaration: DeclarationId,
+) -> Result<MemoryModelBinding, EmitError> {
+    let value = require_unit_variant_field(fields, "memory", declaration)?;
+    let variants = [
+        (
+            "ValueOnly",
+            MemoryModelBinding::ValueOnly,
+            "MemoryModel.ValueOnly declaration was not found",
+        ),
+        (
+            "GarbageCollected",
+            MemoryModelBinding::GarbageCollected,
+            "MemoryModel.GarbageCollected declaration was not found",
+        ),
+        (
+            "RefCounted",
+            MemoryModelBinding::RefCounted,
+            "MemoryModel.RefCounted declaration was not found",
+        ),
+        (
+            "OwnershipBased",
+            MemoryModelBinding::OwnershipBased,
+            "MemoryModel.OwnershipBased declaration was not found",
+        ),
+    ];
+    for (variant_name, binding, detail) in variants {
+        let variant = named_variant_id(dag, "MemoryModel", variant_name).ok_or(
+            EmitError::MalformedTargetSyntax { declaration, detail },
+        )?;
+        if value == variant {
+            return Ok(binding);
+        }
+    }
+    Err(EmitError::MalformedTargetSyntax {
+        declaration,
+        detail:
+            "TargetExecutionModel.memory must be ValueOnly/GarbageCollected/RefCounted/OwnershipBased",
+    })
+}
+
+fn require_unit_variant_field(
+    fields: &[(String, FieldValue)],
+    label: &str,
+    declaration: DeclarationId,
+) -> Result<DeclarationId, EmitError> {
+    let value = fields
+        .iter()
+        .find(|(field_label, _)| field_label == label)
+        .map(|(_, value)| value)
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "target-model declaration is missing a required field",
+        })?;
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "target-model field must be a unit variant",
+        });
+    };
+    if !payload.is_empty() {
+        return Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "target-model variants must not carry payload fields",
+        });
+    }
+    Ok(*constructor)
+}
+
+fn named_variant_id(
+    dag: &Dag,
+    parent_name: &str,
+    variant_label: &str,
+) -> Option<DeclarationId> {
     let parent = dag.declaration_by_name(parent_name)?;
     let TypeConnective::Disj { variants } = &parent.connective else {
         return None;
@@ -1417,6 +1871,205 @@ fn named_variant_id(dag: &Dag, parent_name: &str, variant_label: &str) -> Option
         .map(|variant| variant.ty)
 }
 
+fn derive_callable_dispositions(
+    dag: &Dag,
+    external: &HashMap<DeclarationId, Vec<ParameterDispositionBinding>>,
+) -> HashMap<DeclarationId, Vec<ParameterDispositionBinding>> {
+    let mut dispositions = external.clone();
+    let user_defined: Vec<DeclarationId> = dag
+        .declarations()
+        .iter()
+        .filter_map(|decl| match &decl.connective {
+            TypeConnective::Arrow {
+                body: ArrowBody::UserDefined(_),
+                ..
+            } => Some(decl.id),
+            _ => None,
+        })
+        .collect();
+
+    for declaration in &user_defined {
+        let TypeConnective::Arrow { inputs, .. } = &dag.declaration(*declaration).connective else {
+            continue;
+        };
+        dispositions
+            .entry(*declaration)
+            .or_insert_with(|| vec![ParameterDispositionBinding::Borrowed; inputs.len()]);
+    }
+
+    loop {
+        let mut changed = false;
+        for declaration in &user_defined {
+            let next = analyze_user_defined_callable(dag, *declaration, &dispositions);
+            let entry = dispositions.entry(*declaration).or_insert_with(|| next.clone());
+            let merged: Vec<_> = entry
+                .iter()
+                .copied()
+                .zip(next.iter().copied())
+                .map(|(current, observed)| current.merge(observed))
+                .collect();
+            if *entry != merged {
+                *entry = merged;
+                changed = true;
+            }
+        }
+        if !changed {
+            return dispositions;
+        }
+    }
+}
+
+fn analyze_user_defined_callable(
+    dag: &Dag,
+    declaration: DeclarationId,
+    dispositions: &HashMap<DeclarationId, Vec<ParameterDispositionBinding>>,
+) -> Vec<ParameterDispositionBinding> {
+    let TypeConnective::Arrow { inputs, body, .. } = &dag.declaration(declaration).connective else {
+        return Vec::new();
+    };
+    let ArrowBody::UserDefined(bind_id) = body else {
+        return vec![ParameterDispositionBinding::Borrowed; inputs.len()];
+    };
+    let Some(bind) = dag.node(*bind_id).as_bind() else {
+        return vec![ParameterDispositionBinding::Borrowed; inputs.len()];
+    };
+    if bind.params.len() < inputs.len() {
+        return vec![ParameterDispositionBinding::Borrowed; inputs.len()];
+    }
+
+    let runtime_params = &bind.params[bind.params.len() - inputs.len()..];
+    let runtime_index: HashMap<PortId, usize> = runtime_params
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(idx, port)| (port, idx))
+        .collect();
+    let mut observed = vec![ParameterDispositionBinding::Borrowed; inputs.len()];
+    let mut queue = vec![bind.value];
+    if let Some(&index) = runtime_index.get(&bind.value) {
+        observed[index] = observed[index].merge(ParameterDispositionBinding::Consumed);
+    }
+    let mut expanded = HashSet::new();
+
+    while let Some(port) = queue.pop() {
+        if !expanded.insert(port) {
+            continue;
+        }
+        let Some(producer) = dag.port(port).produced_by else {
+            continue;
+        };
+        match dag.node(producer) {
+            Behavior::Value(_) => {}
+            Behavior::Transform(t) => {
+                for (slot, input) in t.inputs.iter().copied().enumerate() {
+                    let disposition =
+                        transform_input_disposition(dag, t, slot, dispositions);
+                    if let Some(&index) = runtime_index.get(&input) {
+                        observed[index] = observed[index].merge(disposition);
+                    }
+                    queue.push(input);
+                }
+            }
+            Behavior::Branch(b) => {
+                if let Some(&index) = runtime_index.get(&b.input) {
+                    observed[index] =
+                        observed[index].merge(ParameterDispositionBinding::Borrowed);
+                }
+                queue.push(b.input);
+                for path in &b.paths {
+                    if let Some(&index) = runtime_index.get(&path.output) {
+                        observed[index] =
+                            observed[index].merge(ParameterDispositionBinding::Consumed);
+                    }
+                    queue.push(path.output);
+                }
+            }
+            Behavior::Loop(l) => {
+                for input in [l.source, l.init, l.bound.count] {
+                    if let Some(&index) = runtime_index.get(&input) {
+                        observed[index] =
+                            observed[index].merge(ParameterDispositionBinding::Borrowed);
+                    }
+                    queue.push(input);
+                }
+                let body_port = behavior_result_port(dag.node(l.body));
+                if let Some(&index) = runtime_index.get(&body_port) {
+                    observed[index] = observed[index].merge(ParameterDispositionBinding::Consumed);
+                }
+                queue.push(body_port);
+            }
+            Behavior::Bind(b) => {
+                if let Some(&index) = runtime_index.get(&b.value) {
+                    observed[index] = observed[index].merge(ParameterDispositionBinding::Consumed);
+                }
+                queue.push(b.value);
+            }
+        }
+    }
+
+    observed
+}
+
+fn transform_input_disposition(
+    dag: &Dag,
+    transform: &TransformNode,
+    slot: usize,
+    dispositions: &HashMap<DeclarationId, Vec<ParameterDispositionBinding>>,
+) -> ParameterDispositionBinding {
+    match &transform.target {
+        TransformTarget::Operator(_) | TransformTarget::FieldProject { .. } => {
+            ParameterDispositionBinding::Borrowed
+        }
+        TransformTarget::Callable(target) => callable_input_disposition_for_target(
+            dag,
+            *target,
+            slot,
+            dispositions,
+        ),
+    }
+}
+
+fn callable_input_disposition_for_target(
+    dag: &Dag,
+    target: DeclarationId,
+    slot: usize,
+    dispositions: &HashMap<DeclarationId, Vec<ParameterDispositionBinding>>,
+) -> ParameterDispositionBinding {
+    let (template, _) = callable_template(target, dag);
+    let decl = dag.declaration(template);
+    match &decl.connective {
+        TypeConnective::Arrow { inputs, .. } => dispositions
+            .get(&template)
+            .and_then(|values| values.get(slot).copied())
+            .unwrap_or_else(|| {
+                if slot < inputs.len() {
+                    ParameterDispositionBinding::Borrowed
+                } else {
+                    ParameterDispositionBinding::Consumed
+                }
+            }),
+        TypeConnective::Conj { children } => {
+            if slot < children.len() {
+                ParameterDispositionBinding::Consumed
+            } else {
+                ParameterDispositionBinding::Borrowed
+            }
+        }
+        TypeConnective::Disj { variants } => {
+            let Some(variant_decl) = variants.first().map(|variant| variant.ty) else {
+                return ParameterDispositionBinding::Borrowed;
+            };
+            match &dag.declaration(variant_decl).connective {
+                TypeConnective::Conj { children } if slot < children.len() => {
+                    ParameterDispositionBinding::Consumed
+                }
+                _ => ParameterDispositionBinding::Borrowed,
+            }
+        }
+        _ => ParameterDispositionBinding::Borrowed,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum EmitRustMode {
     Program,
@@ -1425,6 +2078,7 @@ enum EmitRustMode {
 
 fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<String, EmitError> {
     let indexes = RealizationIndexes::build(dag)?;
+    let input_use_facts = InputUseFacts::build(dag, &indexes);
 
     // Resolve the substrate markers we need ONCE up front. Each
     // marker is a typed `DeclarationId` cached at bootstrap end
@@ -1505,6 +2159,7 @@ fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<String, EmitErro
         dag,
         indexes: &indexes,
         bound_names: &bound_names,
+        input_use_facts: &input_use_facts,
         mode,
     };
 
@@ -1582,6 +2237,7 @@ struct Ctx<'a> {
     dag: &'a Dag,
     indexes: &'a RealizationIndexes,
     bound_names: &'a HashMap<PortId, LocalBinding>,
+    input_use_facts: &'a InputUseFacts,
     mode: EmitRustMode,
 }
 
@@ -1596,12 +2252,20 @@ enum RenderMode {
     BorrowedRead,
     CopyRead,
     OwnedConstruct,
+    OwnedConstructLastUse,
 }
 
 #[derive(Debug, Clone, Default)]
 struct RenderLocals {
     names: HashMap<PortId, LocalBinding>,
     field_overrides: HashMap<PortId, HashMap<String, LocalBinding>>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum InputConsumer<'a> {
+    Transform(&'a TransformNode),
+    Branch(&'a BranchNode),
+    Loop(&'a crate::dag::LoopNode),
 }
 
 impl<'a> Ctx<'a> {
@@ -1634,10 +2298,11 @@ impl<'a> Ctx<'a> {
 
     fn render_collection_receiver(
         &self,
-        port: PortId,
+        consumer: InputConsumer<'_>,
+        slot: InputSlot,
         locals: &RenderLocals,
     ) -> Result<String, EmitError> {
-        let recv = self.render_port(port, locals, RenderMode::BorrowedRead)?;
+        let recv = self.render_input_use(consumer, slot, locals)?;
         Ok(self.elide_explicit_borrow(&recv))
     }
 
@@ -1649,12 +2314,23 @@ impl<'a> Ctx<'a> {
         self.indexes.rendering.construct
     }
 
-    fn render_binding(
+    fn callable_param_dispositions(
         &self,
-        port: PortId,
-        binding: &LocalBinding,
-        mode: RenderMode,
-    ) -> Result<String, EmitError> {
+        declaration: DeclarationId,
+        input_count: usize,
+    ) -> Vec<ParameterDispositionBinding> {
+        self.indexes
+            .callable_dispositions
+            .get(&declaration)
+            .cloned()
+            .unwrap_or_else(|| vec![ParameterDispositionBinding::Borrowed; input_count])
+    }
+
+    fn ownership_edge_rendering_enabled(&self) -> bool {
+        self.indexes.computation.is_canonical_dag() && self.indexes.execution.is_ownership_based()
+    }
+
+    fn render_binding(&self, port: PortId, binding: &LocalBinding, mode: RenderMode) -> Result<String, EmitError> {
         match mode {
             RenderMode::BorrowedRead => match self.read_strategy() {
                 ReadStrategyBinding::Borrow => match binding {
@@ -1676,23 +2352,25 @@ impl<'a> Ctx<'a> {
                 LocalBinding::Owned(name) => Ok(name.clone()),
                 LocalBinding::Borrowed(expr) => Ok(format!("(*({expr}))")),
             },
-            RenderMode::OwnedConstruct => match binding {
-                LocalBinding::Owned(name) => match self.construct_strategy() {
-                    ConstructStrategyBinding::CopyOrClone => {
-                        if self.port_is_copy(port)? {
-                            Ok(name.clone())
-                        } else {
-                            Ok(format!("({name}).clone()"))
+            RenderMode::OwnedConstruct | RenderMode::OwnedConstructLastUse => match binding {
+                LocalBinding::Owned(name) => {
+                    match self.construct_strategy() {
+                        ConstructStrategyBinding::CopyOrClone => {
+                            if mode == RenderMode::OwnedConstructLastUse || self.port_is_copy(port)? {
+                                Ok(name.clone())
+                            } else {
+                                Ok(format!("({name}).clone()"))
+                            }
                         }
-                    }
-                    ConstructStrategyBinding::PassByValue => {
-                        if self.port_is_copy(port)? {
-                            Ok(name.clone())
-                        } else {
-                            Err(EmitError::UnsupportedBehavior(
+                        ConstructStrategyBinding::PassByValue => {
+                            if mode == RenderMode::OwnedConstructLastUse || self.port_is_copy(port)? {
+                                Ok(name.clone())
+                            } else {
+                                Err(EmitError::UnsupportedBehavior(
                                     "rust_rendering.construct = PassByValue is not yet supported for non-Copy owned bindings"
                                         .to_string(),
                                 ))
+                            }
                         }
                     }
                 },
@@ -1740,6 +2418,112 @@ impl<'a> Ctx<'a> {
         self.dispatch_producer(port, locals, mode)
     }
 
+    fn render_input_use(
+        &self,
+        consumer: InputConsumer<'_>,
+        slot: InputSlot,
+        locals: &RenderLocals,
+    ) -> Result<String, EmitError> {
+        let port = self.input_port(consumer, slot)?;
+        if !self.ownership_edge_rendering_enabled() {
+            return self.render_port(port, locals, RenderMode::BorrowedRead);
+        }
+        match self.input_disposition(consumer, slot) {
+            ParameterDispositionBinding::Borrowed => {
+                self.render_port(port, locals, RenderMode::BorrowedRead)
+            }
+            ParameterDispositionBinding::Consumed => {
+                let mode = if self.is_last_consumed_use(port, consumer, slot) {
+                    RenderMode::OwnedConstructLastUse
+                } else {
+                    RenderMode::OwnedConstruct
+                };
+                self.render_port(port, locals, mode)
+            }
+        }
+    }
+
+    fn render_copy_input_use(
+        &self,
+        consumer: InputConsumer<'_>,
+        slot: InputSlot,
+        locals: &RenderLocals,
+    ) -> Result<String, EmitError> {
+        let port = self.input_port(consumer, slot)?;
+        self.render_port(port, locals, RenderMode::CopyRead)
+    }
+
+    fn input_port(
+        &self,
+        consumer: InputConsumer<'_>,
+        slot: InputSlot,
+    ) -> Result<PortId, EmitError> {
+        match (consumer, slot) {
+            (InputConsumer::Transform(transform), InputSlot::Positional(slot)) => transform
+                .inputs
+                .get(slot)
+                .copied()
+                .ok_or_else(|| {
+                    EmitError::UnsupportedBehavior(format!(
+                        "transform input slot {slot} is out of bounds"
+                    ))
+                }),
+            (InputConsumer::Branch(branch), InputSlot::BranchInput) => Ok(branch.input),
+            (InputConsumer::Loop(loop_node), InputSlot::LoopSource) => Ok(loop_node.source),
+            (InputConsumer::Loop(loop_node), InputSlot::LoopInit) => Ok(loop_node.init),
+            (InputConsumer::Loop(loop_node), InputSlot::LoopBoundCount) => Ok(loop_node.bound.count),
+            _ => Err(EmitError::UnsupportedBehavior(
+                "input-slot kind does not match the selected consumer".to_string(),
+            )),
+        }
+    }
+
+    fn input_disposition(
+        &self,
+        consumer: InputConsumer<'_>,
+        slot: InputSlot,
+    ) -> ParameterDispositionBinding {
+        match consumer {
+            InputConsumer::Transform(transform) => match slot {
+                InputSlot::Positional(index) => transform_input_disposition(
+                    self.dag,
+                    transform,
+                    index,
+                    &self.indexes.callable_dispositions,
+                ),
+                _ => ParameterDispositionBinding::Borrowed,
+            },
+            InputConsumer::Branch(_) | InputConsumer::Loop(_) => ParameterDispositionBinding::Borrowed,
+        }
+    }
+
+    fn is_last_consumed_use(
+        &self,
+        port: PortId,
+        consumer: InputConsumer<'_>,
+        slot: InputSlot,
+    ) -> bool {
+        let key = match consumer {
+            InputConsumer::Transform(transform) => InputUseKey {
+                consumer: transform.id,
+                slot,
+            },
+            InputConsumer::Branch(branch) => InputUseKey {
+                consumer: branch.id,
+                slot,
+            },
+            InputConsumer::Loop(loop_node) => InputUseKey {
+                consumer: loop_node.id,
+                slot,
+            },
+        };
+        self.input_use_facts
+            .edge_order
+            .get(&key)
+            .zip(self.input_use_facts.last_consumed_order_by_port.get(&port))
+            .is_some_and(|(edge, last)| edge == last)
+    }
+
     /// Render the value for a top-level let binding. Bypasses
     /// `bound_names` for `port` itself (otherwise every let would
     /// render as `let x: i64 = x;`); recursive sub-walks still use
@@ -1764,7 +2548,9 @@ impl<'a> Ctx<'a> {
                 RenderMode::BorrowedRead => {
                     self.render_borrowed_expr(port, render_value(v, &self.indexes.syntax.literals))
                 }
-                RenderMode::CopyRead | RenderMode::OwnedConstruct => {
+                RenderMode::CopyRead
+                | RenderMode::OwnedConstruct
+                | RenderMode::OwnedConstructLastUse => {
                     Ok(render_value(v, &self.indexes.syntax.literals))
                 }
             },
@@ -1773,14 +2559,18 @@ impl<'a> Ctx<'a> {
                 let expr = self.render_branch(b, locals)?;
                 match mode {
                     RenderMode::BorrowedRead => self.render_borrowed_expr(port, expr),
-                    RenderMode::CopyRead | RenderMode::OwnedConstruct => Ok(expr),
+                    RenderMode::CopyRead
+                    | RenderMode::OwnedConstruct
+                    | RenderMode::OwnedConstructLastUse => Ok(expr),
                 }
             }
             Behavior::Loop(l) => {
                 let expr = self.render_loop(l, locals)?;
                 match mode {
                     RenderMode::BorrowedRead => self.render_borrowed_expr(port, expr),
-                    RenderMode::CopyRead | RenderMode::OwnedConstruct => Ok(expr),
+                    RenderMode::CopyRead
+                    | RenderMode::OwnedConstruct
+                    | RenderMode::OwnedConstructLastUse => Ok(expr),
                 }
             }
             Behavior::Bind(b) => {
@@ -1826,7 +2616,7 @@ impl<'a> Ctx<'a> {
                     Ok(format!("({expr}).clone()"))
                 }
             }
-            RenderMode::OwnedConstruct => Ok(expr),
+            RenderMode::OwnedConstruct | RenderMode::OwnedConstructLastUse => Ok(expr),
         }
     }
 
@@ -1854,7 +2644,11 @@ impl<'a> Ctx<'a> {
                 return self.render_binding(t.output, binding, mode);
             }
         }
-        let parent_expr = self.render_port(t.inputs[0], locals, RenderMode::BorrowedRead)?;
+        let parent_expr = self.render_input_use(
+            InputConsumer::Transform(t),
+            InputSlot::Positional(0),
+            locals,
+        )?;
         let parent_access = self.elide_explicit_borrow(&parent_expr);
         let parent_type_id = primitive_type_id_for_port(self.dag, t.inputs[0])?;
         if let Some(type_binding) = self.indexes.types.get(&parent_type_id) {
@@ -1897,7 +2691,7 @@ impl<'a> Ctx<'a> {
                     }
                 },
                 RenderMode::CopyRead => Ok(access_expr),
-                RenderMode::OwnedConstruct => {
+                RenderMode::OwnedConstruct | RenderMode::OwnedConstructLastUse => {
                     if binding.borrowed_read {
                         self.construct_from_borrowed_expr(t.output, &access_expr)
                     } else if self.port_is_copy(t.output)? {
@@ -1930,7 +2724,7 @@ impl<'a> Ctx<'a> {
         match mode {
             RenderMode::BorrowedRead => self.render_borrowed_expr(t.output, access_expr),
             RenderMode::CopyRead => Ok(access_expr),
-            RenderMode::OwnedConstruct => {
+            RenderMode::OwnedConstruct | RenderMode::OwnedConstructLastUse => {
                 if self.port_is_copy(t.output)? {
                     Ok(access_expr)
                 } else {
@@ -1964,17 +2758,25 @@ impl<'a> Ctx<'a> {
         // sides agree because they read the same algebra field
         // from the substrate.
         let op_decl_id = algebra_field_for_operator(self.dag, operand_type_id, op)?;
-        let carrier = self
-            .indexes
-            .operators
-            .get(&(operand_type_id, op_decl_id))
-            .ok_or(EmitError::MissingOperatorRealization {
-                target: operand_type_id,
-                op: op_decl_id,
-            })?
-            .clone();
-        let lhs = self.render_port(t.inputs[0], locals, RenderMode::CopyRead)?;
-        let rhs = self.render_port(t.inputs[1], locals, RenderMode::CopyRead)?;
+        let carrier =
+            self.indexes
+                .operators
+                .get(&(operand_type_id, op_decl_id))
+                .ok_or(EmitError::MissingOperatorRealization {
+                    target: operand_type_id,
+                    op: op_decl_id,
+                })?
+                .clone();
+        let lhs = self.render_copy_input_use(
+            InputConsumer::Transform(t),
+            InputSlot::Positional(0),
+            locals,
+        )?;
+        let rhs = self.render_copy_input_use(
+            InputConsumer::Transform(t),
+            InputSlot::Positional(1),
+            locals,
+        )?;
         Ok(render_named_template(
             &self.indexes.syntax.expressions.binary_op,
             &[("lhs", &lhs), ("op", &carrier), ("rhs", &rhs)],
@@ -1984,7 +2786,11 @@ impl<'a> Ctx<'a> {
     fn render_branch(&self, b: &BranchNode, locals: &RenderLocals) -> Result<String, EmitError> {
         if self.branch_scrutinee_is_bool(b)? {
             let (then_path, else_path) = self.split_bool_paths(b)?;
-            let cond = self.render_port(b.input, locals, RenderMode::CopyRead)?;
+            let cond = self.render_copy_input_use(
+                InputConsumer::Branch(b),
+                InputSlot::BranchInput,
+                locals,
+            )?;
             let then_expr = self.render_path_body(then_path, locals)?;
             let else_expr = self.render_path_body(else_path, locals)?;
             return Ok(render_named_template(
@@ -1996,7 +2802,11 @@ impl<'a> Ctx<'a> {
             return Ok(rendered);
         }
 
-        let expr = self.render_port(b.input, locals, RenderMode::BorrowedRead)?;
+        let expr = self.render_input_use(
+            InputConsumer::Branch(b),
+            InputSlot::BranchInput,
+            locals,
+        )?;
         let arms = b
             .paths
             .iter()
@@ -2079,8 +2889,13 @@ impl<'a> Ctx<'a> {
                 "vector-list pattern realization requires a `Cons` branch arm".to_string(),
             )
         })?;
-        let scrutinee = self.render_port(branch.input, locals, RenderMode::BorrowedRead)?;
-        let realized_scrutinee = render_named_template(&binding.scrutinee, &[("expr", &scrutinee)]);
+        let scrutinee = self.render_input_use(
+            InputConsumer::Branch(branch),
+            InputSlot::BranchInput,
+            locals,
+        )?;
+        let realized_scrutinee =
+            render_named_template(&binding.scrutinee, &[("expr", &scrutinee)]);
         let empty_body = self.render_path_body(empty_path, locals)?;
 
         let head_name = "__list_head";
@@ -2111,7 +2926,7 @@ impl<'a> Ctx<'a> {
                 .insert(payload.payload_port, fields);
         }
         let cons_body =
-            self.render_port(cons_path.output, &cons_locals, RenderMode::OwnedConstruct)?;
+            self.render_port(cons_path.output, &cons_locals, RenderMode::OwnedConstructLastUse)?;
 
         let arms = vec![
             render_named_template(
@@ -2140,7 +2955,7 @@ impl<'a> Ctx<'a> {
                 LocalBinding::Borrowed(binding.binding_name.clone()),
             );
         }
-        self.render_port(path.output, &arm_locals, RenderMode::OwnedConstruct)
+        self.render_port(path.output, &arm_locals, RenderMode::OwnedConstructLastUse)
     }
 
     fn render_branch_pattern(&self, branch: &BranchNode, path: &Path) -> Result<String, EmitError> {
@@ -2288,18 +3103,23 @@ impl<'a> Ctx<'a> {
     ) -> Result<String, EmitError> {
         let (template, arguments) = callable_template(target, self.dag);
         if let Some(strategy) = self.indexes.callables.get(&template) {
-            return self
-                .render_realized_callable(template, *strategy, &arguments, &t.inputs, locals);
+            return self.render_realized_callable(
+                t,
+                template,
+                *strategy,
+                &arguments,
+                locals,
+            );
         }
-        self.render_general_callable(template, &t.inputs, locals)
+        self.render_general_callable(t, template, locals)
     }
 
     fn render_realized_callable(
         &self,
+        consumer: &TransformNode,
         template: DeclarationId,
         strategy: RustCallableStrategyBinding,
         arguments: &[TemplateArgument],
-        inputs: &[PortId],
         locals: &RenderLocals,
     ) -> Result<String, EmitError> {
         match strategy {
@@ -2307,77 +3127,105 @@ impl<'a> Ctx<'a> {
                 Ok(self.indexes.syntax.collection_ops.empty_list.clone())
             }
             RustCallableStrategyBinding::ListSingleton => {
-                if inputs.len() != 1 {
+                if consumer.inputs.len() != 1 {
                     return Err(EmitError::UnsupportedBehavior(format!(
                         "singleton arity {} is not supported; expected one runtime input",
-                        inputs.len()
+                        consumer.inputs.len()
                     )));
                 }
-                let value = self.render_port(inputs[0], locals, RenderMode::OwnedConstruct)?;
+                let value = self.render_input_use(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(0),
+                    locals,
+                )?;
                 Ok(render_named_template(
                     &self.indexes.syntax.collection_ops.list_literal,
                     &[("elements", &value)],
                 ))
             }
             RustCallableStrategyBinding::ListCons => {
-                if inputs.len() != 2 {
+                if consumer.inputs.len() != 2 {
                     return Err(EmitError::UnsupportedBehavior(format!(
                         "cons arity {} is not supported; expected two runtime inputs",
-                        inputs.len()
+                        consumer.inputs.len()
                     )));
                 }
-                let head = self.render_port(inputs[0], locals, RenderMode::OwnedConstruct)?;
-                let tail = self.render_port(inputs[1], locals, RenderMode::OwnedConstruct)?;
+                let head = self.render_input_use(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(0),
+                    locals,
+                )?;
+                let tail = self.render_input_use(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(1),
+                    locals,
+                )?;
                 Ok(render_named_template(
                     &self.indexes.syntax.collection_ops.cons,
                     &[("head", &head), ("tail", &tail)],
                 ))
             }
             RustCallableStrategyBinding::ListConcat => {
-                if inputs.len() != 2 {
+                if consumer.inputs.len() != 2 {
                     return Err(EmitError::UnsupportedBehavior(format!(
                         "concat runtime arity {} is not supported; expected [left, right]",
-                        inputs.len()
+                        consumer.inputs.len()
                     )));
                 }
-                let left = self.render_port(inputs[0], locals, RenderMode::OwnedConstruct)?;
-                let right = self.render_port(inputs[1], locals, RenderMode::OwnedConstruct)?;
+                let left = self.render_input_use(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(0),
+                    locals,
+                )?;
+                let right = self.render_input_use(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(1),
+                    locals,
+                )?;
                 Ok(render_named_template(
                     &self.indexes.syntax.collection_ops.concat,
                     &[("left", &left), ("right", &right)],
                 ))
             }
             RustCallableStrategyBinding::ListLength => {
-                if inputs.len() != 1 {
+                if consumer.inputs.len() != 1 {
                     return Err(EmitError::UnsupportedBehavior(format!(
                         "length runtime arity {} is not supported; expected [list]",
-                        inputs.len()
+                        consumer.inputs.len()
                     )));
                 }
-                let recv = self.render_collection_receiver(inputs[0], locals)?;
+                let recv = self.render_collection_receiver(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(0),
+                    locals,
+                )?;
                 Ok(render_named_template(
                     &self.indexes.syntax.collection_ops.length,
                     &[("recv", &recv)],
                 ))
             }
             RustCallableStrategyBinding::ListIsEmpty => {
-                if inputs.len() != 1 {
+                if consumer.inputs.len() != 1 {
                     return Err(EmitError::UnsupportedBehavior(format!(
                         "is_empty runtime arity {} is not supported; expected [list]",
-                        inputs.len()
+                        consumer.inputs.len()
                     )));
                 }
-                let recv = self.render_collection_receiver(inputs[0], locals)?;
+                let recv = self.render_collection_receiver(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(0),
+                    locals,
+                )?;
                 Ok(render_named_template(
                     &self.indexes.syntax.collection_ops.is_empty,
                     &[("recv", &recv)],
                 ))
             }
             RustCallableStrategyBinding::ListFold => {
-                if inputs.len() != 2 {
+                if consumer.inputs.len() != 2 {
                     return Err(EmitError::UnsupportedBehavior(format!(
                         "fold runtime arity {} is not supported; expected [list, init]",
-                        inputs.len()
+                        consumer.inputs.len()
                     )));
                 }
                 let fn_decl = bound_callable_argument(self.dag, template, arguments, 2)?;
@@ -2391,18 +3239,26 @@ impl<'a> Ctx<'a> {
                     ],
                     locals,
                 )?;
-                let list = self.render_collection_receiver(inputs[0], locals)?;
-                let init = self.render_port(inputs[1], locals, RenderMode::OwnedConstruct)?;
+                let list = self.render_collection_receiver(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(0),
+                    locals,
+                )?;
+                let init = self.render_input_use(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(1),
+                    locals,
+                )?;
                 Ok(render_named_template(
                     &self.indexes.syntax.collection_ops.fold,
                     &[("recv", &list), ("init", &init), ("body", &body)],
                 ))
             }
             RustCallableStrategyBinding::ListMap => {
-                if inputs.len() != 1 {
+                if consumer.inputs.len() != 1 {
                     return Err(EmitError::UnsupportedBehavior(format!(
                         "map runtime arity {} is not supported; expected [list]",
-                        inputs.len()
+                        consumer.inputs.len()
                     )));
                 }
                 let fn_decl = bound_callable_argument(self.dag, template, arguments, 1)?;
@@ -2412,17 +3268,21 @@ impl<'a> Ctx<'a> {
                     &[(item.clone(), LocalBinding::Borrowed(item.clone()))],
                     locals,
                 )?;
-                let list = self.render_collection_receiver(inputs[0], locals)?;
+                let list = self.render_collection_receiver(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(0),
+                    locals,
+                )?;
                 Ok(render_named_template(
                     &self.indexes.syntax.collection_ops.map,
                     &[("recv", &list), ("body", &body)],
                 ))
             }
             RustCallableStrategyBinding::ListFilter => {
-                if inputs.len() != 1 {
+                if consumer.inputs.len() != 1 {
                     return Err(EmitError::UnsupportedBehavior(format!(
                         "filter runtime arity {} is not supported; expected [list]",
-                        inputs.len()
+                        consumer.inputs.len()
                     )));
                 }
                 let fn_decl = bound_callable_argument(self.dag, template, arguments, 1)?;
@@ -2432,8 +3292,12 @@ impl<'a> Ctx<'a> {
                     &[(item.clone(), LocalBinding::Borrowed(item.clone()))],
                     locals,
                 )?;
-                let list = self.render_collection_receiver(inputs[0], locals)?;
-                let item_push = self.render_list_item_construct_expr(inputs[0], &item)?;
+                let list = self.render_collection_receiver(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(0),
+                    locals,
+                )?;
+                let item_push = self.render_list_item_construct_expr(consumer.inputs[0], &item)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.collection_ops.filter,
                     &[
@@ -2445,14 +3309,22 @@ impl<'a> Ctx<'a> {
                 ))
             }
             RustCallableStrategyBinding::ListContains => {
-                if inputs.len() != 2 {
+                if consumer.inputs.len() != 2 {
                     return Err(EmitError::UnsupportedBehavior(format!(
                         "contains runtime arity {} is not supported; expected [list, item]",
-                        inputs.len()
+                        consumer.inputs.len()
                     )));
                 }
-                let list = self.render_collection_receiver(inputs[0], locals)?;
-                let item = self.render_port(inputs[1], locals, RenderMode::BorrowedRead)?;
+                let list = self.render_collection_receiver(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(0),
+                    locals,
+                )?;
+                let item = self.render_input_use(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(1),
+                    locals,
+                )?;
                 Ok(render_named_template(
                     &self.indexes.syntax.collection_ops.contains,
                     &[("recv", &list), ("item", &item)],
@@ -2463,28 +3335,36 @@ impl<'a> Ctx<'a> {
 
     fn render_general_callable(
         &self,
+        consumer: &TransformNode,
         template: DeclarationId,
-        inputs: &[PortId],
         locals: &RenderLocals,
     ) -> Result<String, EmitError> {
-        if let Some(rendered) = self.render_variant_constructor(template, inputs, locals)? {
+        if let Some(rendered) = self.render_variant_constructor(consumer, template, locals)? {
             return Ok(rendered);
         }
-        if let Some(rendered) = self.render_record_constructor(template, inputs, locals)? {
+        if let Some(rendered) = self.render_record_constructor(consumer, template, locals)? {
             return Ok(rendered);
         }
-        let func =
-            self.dag
-                .declaration(template)
-                .name
-                .clone()
-                .ok_or(EmitError::UnsupportedBehavior(
-                    "callable target is anonymous and cannot be rendered as a direct Rust call"
-                        .to_string(),
-                ))?;
-        let args = inputs
+        let func = self
+            .dag
+            .declaration(template)
+            .name
+            .clone()
+            .ok_or(EmitError::UnsupportedBehavior(
+                "callable target is anonymous and cannot be rendered as a direct Rust call"
+                    .to_string(),
+            ))?;
+        let args = consumer
+            .inputs
             .iter()
-            .map(|port| self.render_port(*port, locals, RenderMode::BorrowedRead))
+            .enumerate()
+            .map(|(slot, _)| {
+                self.render_input_use(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(slot),
+                    locals,
+                )
+            })
             .collect::<Result<Vec<_>, _>>()?;
         let joined = join_rendered(&args, ", ");
         Ok(render_named_template(
@@ -2495,8 +3375,8 @@ impl<'a> Ctx<'a> {
 
     fn render_record_constructor(
         &self,
+        consumer: &TransformNode,
         template: DeclarationId,
-        inputs: &[PortId],
         locals: &RenderLocals,
     ) -> Result<Option<String>, EmitError> {
         let decl = self.dag.declaration(template);
@@ -2506,18 +3386,22 @@ impl<'a> Ctx<'a> {
         let TypeConnective::Conj { children } = &decl.connective else {
             return Ok(None);
         };
-        if children.len() != inputs.len() {
+        if children.len() != consumer.inputs.len() {
             return Err(EmitError::UnsupportedBehavior(format!(
                 "record constructor `{type_name}` expected {} field input(s), got {}",
                 children.len(),
-                inputs.len()
+                consumer.inputs.len()
             )));
         }
         let fields = children
             .iter()
-            .zip(inputs.iter())
-            .map(|(field, input)| {
-                let value = self.render_port(*input, locals, RenderMode::OwnedConstruct)?;
+            .enumerate()
+            .map(|(slot, field)| {
+                let value = self.render_input_use(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(slot),
+                    locals,
+                )?;
                 Ok(render_named_template(
                     &self.indexes.syntax.values.struct_field_init,
                     &[("name", &field.label), ("value", &value)],
@@ -2533,8 +3417,8 @@ impl<'a> Ctx<'a> {
 
     fn render_variant_constructor(
         &self,
+        consumer: &TransformNode,
         template: DeclarationId,
-        inputs: &[PortId],
         locals: &RenderLocals,
     ) -> Result<Option<String>, EmitError> {
         let Some((enum_name, variant_name)) = variant_parent_info(self.dag, template) else {
@@ -2544,11 +3428,11 @@ impl<'a> Ctx<'a> {
         let TypeConnective::Conj { children } = &self.dag.declaration(template).connective else {
             return Ok(None);
         };
-        if children.len() != inputs.len() {
+        if children.len() != consumer.inputs.len() {
             return Err(EmitError::UnsupportedBehavior(format!(
                 "variant constructor `{qualified_name}` expected {} payload field(s), got {}",
                 children.len(),
-                inputs.len()
+                consumer.inputs.len()
             )));
         }
         if children.is_empty() {
@@ -2556,9 +3440,13 @@ impl<'a> Ctx<'a> {
         }
         let fields = children
             .iter()
-            .zip(inputs.iter())
-            .map(|(field, input)| {
-                let value = self.render_port(*input, locals, RenderMode::OwnedConstruct)?;
+            .enumerate()
+            .map(|(slot, field)| {
+                let value = self.render_input_use(
+                    InputConsumer::Transform(consumer),
+                    InputSlot::Positional(slot),
+                    locals,
+                )?;
                 Ok(render_named_template(
                     &self.indexes.syntax.values.struct_field_init,
                     &[("name", &field.label), ("value", &value)],
@@ -2629,7 +3517,7 @@ impl<'a> Ctx<'a> {
         {
             locals.names.insert(port, binding.clone());
         }
-        self.render_port(bind.value, &locals, RenderMode::OwnedConstruct)
+        self.render_port(bind.value, &locals, RenderMode::OwnedConstructLastUse)
     }
 
     fn render_closure(
@@ -2658,7 +3546,7 @@ impl<'a> Ctx<'a> {
         locals: &RenderLocals,
     ) -> Result<String, EmitError> {
         let body_port = behavior_result_port(self.dag.node(l.body));
-        self.render_port(body_port, locals, RenderMode::OwnedConstruct)
+        self.render_port(body_port, locals, RenderMode::OwnedConstructLastUse)
     }
 
     fn render_function_declaration(
@@ -2697,21 +3585,25 @@ impl<'a> Ctx<'a> {
             .node(*bind_id)
             .as_bind()
             .expect("UserDefined arrow body must point at a Bind");
+        let param_dispositions = self.callable_param_dispositions(declaration.id, inputs.len());
         let mut locals = RenderLocals::default();
         let params = bind
             .params
             .iter()
+            .zip(param_dispositions.iter())
             .enumerate()
-            .map(|(idx, port)| {
+            .map(|(idx, (port, disposition))| {
                 let param_name = format!("p{idx}");
-                let ty = match self.read_strategy() {
-                    ReadStrategyBinding::Borrow => {
+                let ty = match disposition {
+                    ParameterDispositionBinding::Borrowed
+                        if self.read_strategy() == ReadStrategyBinding::Borrow =>
+                    {
                         locals
                             .names
                             .insert(*port, LocalBinding::Borrowed(param_name.clone()));
                         self.rust_borrowed_type_name_for_port(*port)?
                     }
-                    ReadStrategyBinding::PassByValue => {
+                    _ => {
                         locals
                             .names
                             .insert(*port, LocalBinding::Owned(param_name.clone()));
@@ -2737,7 +3629,7 @@ impl<'a> Ctx<'a> {
             .map(|binding| binding.carrier.clone())
             .or_else(|| self.rust_type_name_for_port(bind.value).ok())
             .ok_or(EmitError::MissingTypeRealization { target: *output })?;
-        let body = self.render_port(bind.value, &locals, RenderMode::OwnedConstruct)?;
+        let body = self.render_port(bind.value, &locals, RenderMode::OwnedConstructLastUse)?;
         let rendered = render_named_template(
             &self.indexes.syntax.functions.definition,
             &[
@@ -3045,10 +3937,22 @@ impl<'a> Ctx<'a> {
         }
         match &decl.connective {
             TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => self.decl_is_copy(*next),
+            TypeConnective::Conj { children } => children
+                .iter()
+                .map(|child| self.decl_is_copy(child.ty))
+                .collect::<Result<Vec<_>, _>>()
+                .map(|values| values.into_iter().all(|value| value)),
+            TypeConnective::Disj { variants } => variants
+                .iter()
+                .map(|variant| self.decl_is_copy(variant.ty))
+                .collect::<Result<Vec<_>, _>>()
+                .map(|values| values.into_iter().all(|value| value)),
+            TypeConnective::Cardinality {
+                element,
+                bound: crate::dag::CardinalityBound::AtMostOne,
+            } => self.decl_is_copy(*element),
             TypeConnective::Instantiation { .. }
-            | TypeConnective::Cardinality { .. }
-            | TypeConnective::Conj { .. }
-            | TypeConnective::Disj { .. } => Ok(false),
+            | TypeConnective::Cardinality { .. } => Ok(false),
             _ => Ok(false),
         }
     }
@@ -3428,12 +4332,14 @@ mod tests {
         dag.set_port_type(output, crate::types::TypeShape::new(dag_nodes_type));
 
         let indexes = RealizationIndexes::build(&dag).expect("indexes build");
+        let input_use_facts = InputUseFacts::build(&dag, &indexes);
         let mut bound_names = HashMap::new();
         bound_names.insert(parent_port, LocalBinding::Owned("parent".to_string()));
         let ctx = Ctx {
             dag: &dag,
             indexes: &indexes,
             bound_names: &bound_names,
+            input_use_facts: &input_use_facts,
             mode: EmitRustMode::Program,
         };
 
@@ -3488,12 +4394,14 @@ mod tests {
             .find_map(Behavior::as_transform)
             .expect("first field project exists");
         let indexes = RealizationIndexes::build(&dag).expect("indexes build");
+        let input_use_facts = InputUseFacts::build(&dag, &indexes);
         let mut bound_names = HashMap::new();
         bound_names.insert(parent_port, LocalBinding::Owned("parent".to_string()));
         let ctx = Ctx {
             dag: &dag,
             indexes: &indexes,
             bound_names: &bound_names,
+            input_use_facts: &input_use_facts,
             mode: EmitRustMode::Program,
         };
 
@@ -3531,6 +4439,7 @@ mod tests {
             .expect("fold transform");
 
         let indexes = RealizationIndexes::build(&dag).expect("indexes build");
+        let input_use_facts = InputUseFacts::build(&dag, &indexes);
         let mut bound_names = HashMap::new();
         bound_names.insert(
             fold_transform.inputs[0],
@@ -3540,6 +4449,7 @@ mod tests {
             dag: &dag,
             indexes: &indexes,
             bound_names: &bound_names,
+            input_use_facts: &input_use_facts,
             mode: EmitRustMode::Program,
         };
 
@@ -3592,6 +4502,54 @@ fn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }",
         assert!(
             rendered.contains("fn classify(p0: Sign) -> i64 {"),
             "expected PassByValue read strategy to render owned function params, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn callable_disposition_derives_direct_return_as_consumed() {
+        let dag = compile_to_dag("fn id(x: Int) -> Int = x", "direct_return.v3").expect("compiles");
+        let indexes = RealizationIndexes::build(&dag).expect("indexes build");
+        let id_decl = dag.declaration_by_name("id").expect("id decl").id;
+        assert_eq!(
+            indexes.callable_dispositions.get(&id_decl),
+            Some(&vec![ParameterDispositionBinding::Consumed]),
+        );
+    }
+
+    #[test]
+    fn callable_disposition_keeps_match_scrutinee_borrowed() {
+        let dag = compile_to_dag(
+            "fn head_or_zero(list: List<Int>) -> Int = match list { Empty => 0, Cons(payload) => payload.head }",
+            "match_payload.v3",
+        )
+        .expect("compiles");
+        let indexes = RealizationIndexes::build(&dag).expect("indexes build");
+        let decl = dag
+            .declaration_by_name("head_or_zero")
+            .expect("head_or_zero decl")
+            .id;
+        assert_eq!(
+            indexes.callable_dispositions.get(&decl),
+            Some(&vec![ParameterDispositionBinding::Borrowed]),
+        );
+    }
+
+    #[test]
+    fn callable_disposition_keeps_nested_lambda_capture_borrowed() {
+        let dag = compile_to_dag(
+            "fn apply_to_three(f: fn(Int) -> Int) -> Int = f(3)
+fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
+            "nested_lambda.v3",
+        )
+        .expect("compiles");
+        let indexes = RealizationIndexes::build(&dag).expect("indexes build");
+        let decl = dag
+            .declaration_by_name("use_callback")
+            .expect("use_callback decl")
+            .id;
+        assert_eq!(
+            indexes.callable_dispositions.get(&decl),
+            Some(&vec![ParameterDispositionBinding::Borrowed]),
         );
     }
 }

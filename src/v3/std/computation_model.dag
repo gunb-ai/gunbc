@@ -1,0 +1,31 @@
+module v3.std.computation_model
+
+type Mutability
+  = Immutable
+  | Mutable
+
+type Purity
+  = Pure
+  | Effectful
+
+type Structure
+  = ExplicitDAG
+  | Arbitrary
+
+type Iteration
+  = Bounded
+  | Unbounded
+
+type ComputationModel {
+  mutability: Mutability
+  purity: Purity
+  structure: Structure
+  iteration: Iteration
+}
+
+data dag_model: ComputationModel = {
+  mutability: Immutable
+  purity: Pure
+  structure: ExplicitDAG
+  iteration: Bounded
+}

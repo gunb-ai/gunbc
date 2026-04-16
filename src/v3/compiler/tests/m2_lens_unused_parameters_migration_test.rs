@@ -295,7 +295,7 @@ fn unused_parameters_generated_module_matches_checked_in_snapshot() {
 
 #[test]
 fn unused_parameters_generated_module_clone_count_is_ratcheted() {
-    const MAX_CLONE_CALLS: usize = 6;
+    const MAX_CLONE_CALLS: usize = 1;
 
     let fresh = emit_lens_module();
     let clone_calls = clone_call_count(&fresh);

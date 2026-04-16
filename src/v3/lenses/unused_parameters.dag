@@ -14,14 +14,6 @@ type UnusedParameter {
   function_span: SourceSpan
 }
 
-type PortLookup
-  = MissingPort
-  | FoundPort(DagPort)
-
-type BehaviorLookup
-  = MissingBehavior
-  | FoundBehavior(Behavior)
-
 type ResultPortLookup
   = MissingResultPort
   | FoundResultPort(PortId)
@@ -109,19 +101,32 @@ fn expand_referenced_list(frontier: List<PortId>, referenced: List<PortId>) -> L
   )
 
 fn inputs_for_port(d: Dag, port_id: PortId) -> List<PortId> =
-  match find_port(d.ports, port_id) {
-    MissingPort => empty()
-    FoundPort(port) =>
-      match port.produced_by {
-        None => empty()
-        Some(node_id) => inputs_for_node(d, node_id)
-      }
+  inputs_for_port_list(d.ports, d, port_id)
+
+fn inputs_for_port_list(ports: List<DagPort>, d: Dag, port_id: PortId) -> List<PortId> =
+  match ports {
+    Empty => empty()
+    Cons(payload) =>
+      if payload.head.id == port_id then
+        match payload.head.produced_by {
+          None => empty()
+          Some(node_id) => inputs_for_node(d, node_id)
+        }
+      else
+        inputs_for_port_list(payload.tail, d, port_id)
   }
 
 fn inputs_for_node(d: Dag, node_id: NodeId) -> List<PortId> =
-  match find_behavior(d.nodes, node_id) {
-    MissingBehavior => empty()
-    FoundBehavior(behavior) => inputs_for_behavior(d, behavior)
+  inputs_for_node_list(d.nodes, d, node_id)
+
+fn inputs_for_node_list(nodes: List<Behavior>, d: Dag, node_id: NodeId) -> List<PortId> =
+  match nodes {
+    Empty => empty()
+    Cons(payload) =>
+      if behavior_id(payload.head) == node_id then
+        inputs_for_behavior(d, payload.head)
+      else
+        inputs_for_node_list(payload.tail, d, node_id)
   }
 
 fn inputs_for_behavior(d: Dag, behavior: Behavior) -> List<PortId> =
@@ -151,30 +156,14 @@ fn branch_path_outputs(paths: List<BranchPath>) -> List<PortId> =
     Cons(payload) => cons(payload.head.result_port, branch_path_outputs(payload.tail))
   }
 
-fn find_port(ports: List<DagPort>, port_id: PortId) -> PortLookup =
-  match ports {
-    Empty => MissingPort
-    Cons(payload) =>
-      if payload.head.id == port_id then
-        FoundPort(payload.head)
-      else
-        find_port(payload.tail, port_id)
-  }
-
-fn find_behavior(nodes: List<Behavior>, node_id: NodeId) -> BehaviorLookup =
+fn behavior_result_port(nodes: List<Behavior>, node_id: NodeId) -> ResultPortLookup =
   match nodes {
-    Empty => MissingBehavior
+    Empty => MissingResultPort
     Cons(payload) =>
       if behavior_id(payload.head) == node_id then
-        FoundBehavior(payload.head)
+        FoundResultPort(behavior_port(payload.head))
       else
-        find_behavior(payload.tail, node_id)
-  }
-
-fn behavior_result_port(nodes: List<Behavior>, node_id: NodeId) -> ResultPortLookup =
-  match find_behavior(nodes, node_id) {
-    MissingBehavior => MissingResultPort
-    FoundBehavior(behavior) => FoundResultPort(behavior_port(behavior))
+        behavior_result_port(payload.tail, node_id)
   }
 
 fn behavior_id(behavior: Behavior) -> NodeId =
