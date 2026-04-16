@@ -150,28 +150,58 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
 
         // String literal: "..."
         //
-        // M0: no escape sequences. A `\` inside the string is a
-        // literal backslash. The string terminates at the next `"`
-        // or fails with TokenizerError if the source ends first.
+        // Minimal escape surface for bootstrap-staged structural data:
+        // `\"`, `\\`, `\n`, `\r`, `\t`. Unknown `\x` pairs preserve the
+        // old M0 behavior and stay literal as `\` + `x`. Raw newlines
+        // are preserved until the closing `"`.
         if byte == b'"' {
-            let content_start = pos + 1;
-            let mut end = content_start;
-            while end < bytes.len() && bytes[end] != b'"' {
-                end += 1;
+            let mut end = pos + 1;
+            let mut content = String::new();
+            let mut terminated = false;
+            while end < bytes.len() {
+                match bytes[end] {
+                    b'"' => {
+                        terminated = true;
+                        end += 1;
+                        break;
+                    }
+                    b'\\' => {
+                        let Some(escaped) = bytes.get(end + 1).copied() else {
+                            return Err(Diagnostic::TokenizerError {
+                                message: "unterminated string escape".to_string(),
+                                span: SourceSpan::new(file, start as u32, (end + 1) as u32),
+                            });
+                        };
+                        match escaped {
+                            b'"' => content.push('"'),
+                            b'\\' => content.push('\\'),
+                            b'n' => content.push('\n'),
+                            b'r' => content.push('\r'),
+                            b't' => content.push('\t'),
+                            other => {
+                                content.push('\\');
+                                content.push(other as char);
+                            }
+                        }
+                        end += 2;
+                    }
+                    other => {
+                        content.push(other as char);
+                        end += 1;
+                    }
+                }
             }
-            if end >= bytes.len() {
+            if !terminated {
                 return Err(Diagnostic::TokenizerError {
                     message: "unterminated string literal".to_string(),
                     span: SourceSpan::new(file, start as u32, end as u32),
                 });
             }
-            let content = source[content_start..end].to_string();
-            let close = end + 1;
             tokens.push(Token {
                 kind: TokenKind::StringLit(content),
-                span: SourceSpan::new(file, start as u32, close as u32),
+                span: SourceSpan::new(file, start as u32, end as u32),
             });
-            pos = close;
+            pos = end;
             continue;
         }
 

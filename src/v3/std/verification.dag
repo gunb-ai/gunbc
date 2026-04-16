@@ -1,0 +1,62 @@
+// std.verification — structural authority for generated tests.
+//
+// L1.5's contract is to declare what a test IS, not how a target
+// framework renders it. The compiler can then synthesize `TestClaim`
+// values structurally from std/ declarations and defer per-language
+// rendering to the target spec layer.
+//
+// **Bootstrap staging.** This file lives in `src/v3/std/` because
+// v2's recursive `dsl/` CI pipeline still cannot ingest the current
+// v3 grammar. It is the bootstrap-local authority for v3's testgen
+// surface today. `dsl/std/verification.dag` remains the older v2-era
+// behavioral-assertion model; it is not silently superseded here.
+// Convergence trigger: once v2 retires and the shared std tree can
+// host the v3 verification surface directly, dissolve the duplicate
+// definitions back to one `std.verification`.
+
+module std.verification
+
+import std.list { List }
+
+// **🟡 Scaffold — TestPredicate.** The first L1.5 consumer needs a
+// structural carrier for generated test claims today, but the richer
+// source facts it really wants to point at (`Diagnostic`,
+// `PortState`, and structural cost-ordering authority) are not yet
+// surfaced as reusable std/ values.
+//
+// Dissolution trigger: once verification can refer directly to
+// structural diagnostic facts, port-state expectations, and
+// comparator+bound carriers in std/, split the remaining compressed
+// port-state and cost variants into those axes and remove this flat
+// bootstrap carrier before more runtime consumers attach.
+type DiagnosticKind
+  = TokenizerError
+  | ParseError
+  | TypeMismatch
+  | ArityMismatch
+  | ResolveError
+
+type DiagnosticExpectation
+  = KindIs(DiagnosticKind)
+  | ResolveNameContains(String)
+
+type TestPredicate
+  = Compiles
+  | FailsWithDiagnostic(DiagnosticExpectation)
+  | OutputEquals { expected: String }
+  | PortResolved { bind_name: String }
+  | PortUnresolved { bind_name: String }
+  | CostBelow { bound: Int }
+  | CostAbove { floor: Int }
+
+type TestClaim {
+  name: String
+  source: String
+  file_name: String
+  predicate: TestPredicate
+}
+
+type TestSuite {
+  name: String
+  claims: List<TestClaim>
+}
