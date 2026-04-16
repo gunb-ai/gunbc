@@ -2042,7 +2042,7 @@ fn callable_input_disposition_for_target(
         TypeConnective::Arrow { inputs, .. } => dispositions
             .get(&template)
             .and_then(|values| values.get(slot).copied())
-            .unwrap_or_else(|| {
+            .unwrap_or({
                 if slot < inputs.len() {
                     ParameterDispositionBinding::Borrowed
                 } else {
