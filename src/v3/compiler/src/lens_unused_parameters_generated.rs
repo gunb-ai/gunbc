@@ -1,4 +1,3 @@
-
 // AUTO-GENERATED from `src/v3/lenses/unused_parameters.dag` via
 // `emit_rust_module`. Regenerate instead of hand-editing.
 
@@ -40,7 +39,7 @@ pub fn check_behavior(p0: &Dag, p1: &Behavior) -> Vec<UnusedParameter> {
         Behavior::Branch(b) => Vec::new(),
         Behavior::Loop(l) => Vec::new(),
         Behavior::Bind(bind) => {
-            if (&((bind).params)).is_empty() {
+            if ((bind).params).is_empty() {
                 Vec::new()
             } else {
                 check_bind(p0, bind)
@@ -86,12 +85,7 @@ pub fn collect_unused_params(
     }
 }
 pub fn referenced_ports(p0: &Dag, p1: &PortId) -> Vec<PortId> {
-    walk_steps(
-        &((&((p0).ports())).len() as i64),
-        p0,
-        &(vec![(*(p1))]),
-        &(Vec::new()),
-    )
+    walk_steps(&(((p0).ports()).len() as i64), p0, &[(*(p1))], &[])
 }
 pub fn walk_steps(p0: &i64, p1: &Dag, p2: &[PortId], p3: &[PortId]) -> Vec<PortId> {
     if ((*(p0)) == 0) {
@@ -127,7 +121,7 @@ pub fn expand_frontier_list(p0: &[PortId], p1: &Dag, p2: &[PortId]) -> Vec<PortI
 }
 pub fn expand_referenced_list(p0: &[PortId], p1: &[PortId]) -> Vec<PortId> {
     (p0).iter().fold((p1).to_vec(), |__fold_acc, __fold_item| {
-        if (&__fold_acc).contains(__fold_item) {
+        if (__fold_acc).contains(__fold_item) {
             (__fold_acc).clone()
         } else {
             {
@@ -170,7 +164,7 @@ pub fn loop_inputs(p0: &Dag, p1: &LoopNode) -> Vec<PortId> {
     {
         let mut __left = {
             let mut __list = {
-                let mut __list = vec![(&((p1).bound)).count];
+                let mut __list = vec![((p1).bound).count];
                 __list.insert(0, (p1).init);
                 __list
             };

@@ -1609,6 +1609,42 @@ struct RenderLocals {
 }
 
 impl<'a> Ctx<'a> {
+    fn elide_explicit_borrow(&self, expr: &str) -> String {
+        expr.strip_prefix('&').unwrap_or(expr).to_string()
+    }
+
+    fn borrowed_list_literal(&self, expr: &str) -> Option<String> {
+        if expr == self.indexes.syntax.collection_ops.empty_list {
+            return Some("&[]".to_string());
+        }
+        expr.strip_prefix("vec![")
+            .and_then(|tail| tail.strip_suffix(']'))
+            .map(|elements| format!("&[{elements}]"))
+    }
+
+    fn render_borrowed_expr(&self, port: PortId, expr: String) -> Result<String, EmitError> {
+        match self.read_strategy() {
+            ReadStrategyBinding::Borrow => {
+                if self.port_is_list(port)? {
+                    if let Some(slice) = self.borrowed_list_literal(&expr) {
+                        return Ok(slice);
+                    }
+                }
+                Ok(format!("&({expr})"))
+            }
+            ReadStrategyBinding::PassByValue => Ok(expr),
+        }
+    }
+
+    fn render_collection_receiver(
+        &self,
+        port: PortId,
+        locals: &RenderLocals,
+    ) -> Result<String, EmitError> {
+        let recv = self.render_port(port, locals, RenderMode::BorrowedRead)?;
+        Ok(self.elide_explicit_borrow(&recv))
+    }
+
     fn read_strategy(&self) -> ReadStrategyBinding {
         self.indexes.rendering.read
     }
@@ -1721,14 +1757,9 @@ impl<'a> Ctx<'a> {
         };
         match self.dag.node(node_id) {
             Behavior::Value(v) => match mode {
-                RenderMode::BorrowedRead => match self.read_strategy() {
-                    ReadStrategyBinding::Borrow => {
-                        Ok(format!("&({})", render_value(v, &self.indexes.syntax.literals)))
-                    }
-                    ReadStrategyBinding::PassByValue => {
-                        Ok(render_value(v, &self.indexes.syntax.literals))
-                    }
-                },
+                RenderMode::BorrowedRead => {
+                    self.render_borrowed_expr(port, render_value(v, &self.indexes.syntax.literals))
+                }
                 RenderMode::CopyRead | RenderMode::OwnedConstruct => {
                     Ok(render_value(v, &self.indexes.syntax.literals))
                 }
@@ -1737,20 +1768,14 @@ impl<'a> Ctx<'a> {
             Behavior::Branch(b) => {
                 let expr = self.render_branch(b, locals)?;
                 match mode {
-                    RenderMode::BorrowedRead => match self.read_strategy() {
-                        ReadStrategyBinding::Borrow => Ok(format!("&({expr})")),
-                        ReadStrategyBinding::PassByValue => Ok(expr),
-                    },
+                    RenderMode::BorrowedRead => self.render_borrowed_expr(port, expr),
                     RenderMode::CopyRead | RenderMode::OwnedConstruct => Ok(expr),
                 }
             }
             Behavior::Loop(l) => {
                 let expr = self.render_loop(l, locals)?;
                 match mode {
-                    RenderMode::BorrowedRead => match self.read_strategy() {
-                        ReadStrategyBinding::Borrow => Ok(format!("&({expr})")),
-                        ReadStrategyBinding::PassByValue => Ok(expr),
-                    },
+                    RenderMode::BorrowedRead => self.render_borrowed_expr(port, expr),
                     RenderMode::CopyRead | RenderMode::OwnedConstruct => Ok(expr),
                 }
             }
@@ -1787,10 +1812,7 @@ impl<'a> Ctx<'a> {
         mode: RenderMode,
     ) -> Result<String, EmitError> {
         match mode {
-            RenderMode::BorrowedRead => match self.read_strategy() {
-                ReadStrategyBinding::Borrow => Ok(format!("&({expr})")),
-                ReadStrategyBinding::PassByValue => Ok(expr),
-            },
+            RenderMode::BorrowedRead => self.render_borrowed_expr(port, expr),
             RenderMode::CopyRead => {
                 if self.port_is_copy(port)? {
                     Ok(expr)
@@ -1827,6 +1849,7 @@ impl<'a> Ctx<'a> {
             }
         }
         let parent_expr = self.render_port(t.inputs[0], locals, RenderMode::BorrowedRead)?;
+        let parent_access = self.elide_explicit_borrow(&parent_expr);
         let parent_type_id = primitive_type_id_for_port(self.dag, t.inputs[0])?;
         if let Some(type_binding) = self.indexes.types.get(&parent_type_id) {
             let binding = type_binding
@@ -1840,13 +1863,13 @@ impl<'a> Ctx<'a> {
             let access_expr = match &binding.access {
                 RustFieldAccessBinding::DirectField(name) => render_named_template(
                     &self.indexes.syntax.expressions.field_access,
-                    &[("object", &parent_expr), ("field", name)],
+                    &[("object", &parent_access), ("field", name)],
                 ),
                 RustFieldAccessBinding::AccessorMethod(name) => format!(
                     "{}()",
                     render_named_template(
                         &self.indexes.syntax.expressions.field_access,
-                        &[("object", &parent_expr), ("field", name)],
+                        &[("object", &parent_access), ("field", name)],
                     )
                 ),
             };
@@ -1856,7 +1879,7 @@ impl<'a> Ctx<'a> {
                         if binding.borrowed_read {
                             Ok(access_expr)
                         } else {
-                            Ok(format!("&({access_expr})"))
+                            self.render_borrowed_expr(t.output, access_expr)
                         }
                     }
                     ReadStrategyBinding::PassByValue => {
@@ -1893,13 +1916,10 @@ impl<'a> Ctx<'a> {
         }
         let access_expr = render_named_template(
             &self.indexes.syntax.expressions.field_access,
-            &[("object", &parent_expr), ("field", field_label)],
+            &[("object", &parent_access), ("field", field_label)],
         );
         match mode {
-            RenderMode::BorrowedRead => match self.read_strategy() {
-                ReadStrategyBinding::Borrow => Ok(format!("&({access_expr})")),
-                ReadStrategyBinding::PassByValue => Ok(access_expr),
-            },
+            RenderMode::BorrowedRead => self.render_borrowed_expr(t.output, access_expr),
             RenderMode::CopyRead => Ok(access_expr),
             RenderMode::OwnedConstruct => {
                 if self.port_is_copy(t.output)? {
@@ -2330,7 +2350,7 @@ impl<'a> Ctx<'a> {
                         inputs.len()
                     )));
                 }
-                let recv = self.render_port(inputs[0], locals, RenderMode::BorrowedRead)?;
+                let recv = self.render_collection_receiver(inputs[0], locals)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.collection_ops.length,
                     &[("recv", &recv)],
@@ -2343,7 +2363,7 @@ impl<'a> Ctx<'a> {
                         inputs.len()
                     )));
                 }
-                let recv = self.render_port(inputs[0], locals, RenderMode::BorrowedRead)?;
+                let recv = self.render_collection_receiver(inputs[0], locals)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.collection_ops.is_empty,
                     &[("recv", &recv)],
@@ -2367,7 +2387,7 @@ impl<'a> Ctx<'a> {
                     ],
                     locals,
                 )?;
-                let list = self.render_port(inputs[0], locals, RenderMode::BorrowedRead)?;
+                let list = self.render_collection_receiver(inputs[0], locals)?;
                 let init = self.render_port(inputs[1], locals, RenderMode::OwnedConstruct)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.collection_ops.fold,
@@ -2388,7 +2408,7 @@ impl<'a> Ctx<'a> {
                     &[(item.clone(), LocalBinding::Borrowed(item.clone()))],
                     locals,
                 )?;
-                let list = self.render_port(inputs[0], locals, RenderMode::BorrowedRead)?;
+                let list = self.render_collection_receiver(inputs[0], locals)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.collection_ops.map,
                     &[("recv", &list), ("body", &body)],
@@ -2408,7 +2428,7 @@ impl<'a> Ctx<'a> {
                     &[(item.clone(), LocalBinding::Borrowed(item.clone()))],
                     locals,
                 )?;
-                let list = self.render_port(inputs[0], locals, RenderMode::BorrowedRead)?;
+                let list = self.render_collection_receiver(inputs[0], locals)?;
                 let item_push = self.render_list_item_construct_expr(inputs[0], &item)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.collection_ops.filter,
@@ -2427,7 +2447,7 @@ impl<'a> Ctx<'a> {
                         inputs.len()
                     )));
                 }
-                let list = self.render_port(inputs[0], locals, RenderMode::BorrowedRead)?;
+                let list = self.render_collection_receiver(inputs[0], locals)?;
                 let item = self.render_port(inputs[1], locals, RenderMode::BorrowedRead)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.collection_ops.contains,
@@ -3408,7 +3428,7 @@ mod tests {
                 .expect("field project renders"),
             other => panic!("expected Transform node, got {other:?}"),
         };
-        assert_eq!(rendered, "(&parent).nodes()");
+        assert_eq!(rendered, "(parent).nodes()");
     }
 
     #[test]
@@ -3467,7 +3487,7 @@ mod tests {
                 RenderMode::OwnedConstruct,
             )
             .expect("field project renders");
-        assert_eq!(rendered, "((&parent).nodes()).to_vec()");
+        assert_eq!(rendered, "((parent).nodes()).to_vec()");
     }
 
     #[test]
@@ -3514,7 +3534,7 @@ mod tests {
             )
             .expect("fold renders");
         assert!(
-            rendered.contains("(&xs).iter().fold("),
+            rendered.contains("(xs).iter().fold("),
             "expected named list inputs to be iterated by borrow, got: {rendered}"
         );
     }
