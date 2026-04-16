@@ -618,28 +618,39 @@ mutual recursion** — the diagnostic says "mutual recursion is not
 yet supported in v3."
 
 The missing piece is the LOWERING step: transform the cycle into
-bounded Loop nodes with descend semantics. For an SCC {A, B, C}
-where A calls B calls C calls A (each on children of its input):
+bounded Loop nodes with descend semantics.
 
 1. Lowering detects the cycle via `compute_mutually_recursive`
    (already done)
-2. Lowering orders the SCC members (topological sort of the
-   non-cycle edges, arbitrary but deterministic for cycle-internal
-   edges)
-3. For each function in the SCC, lowering replaces the recursive
-   call with a reference to the next function in the SCC order
-4. The outermost function becomes a `Loop` (bounded descend)
-   whose body is the SCC walk: each iteration calls one function,
-   and the bound is the structural descent evidence (children
-   get strictly smaller at each level)
+2. Lowering preserves the **real call topology** of the SCC —
+   each function's actual call targets remain as structural
+   edges in the lowered form. The SCC is wrapped in a bounded
+   descend whose bound is the structural descent evidence
+   (children get strictly smaller at each level), but the body
+   of the descend preserves which functions call which. No
+   ring-walk encoding that drops real edges.
+3. The bounded Loop node carries: SCC membership (which
+   declarations participate), the shared descent measure, and
+   the original call graph edges within the SCC. Later consumers
+   (complexity, equivalence, lenses that care about branch shape)
+   can read the real topology, not a lossy encoding.
+
+**The exact substrate fact that must survive lowering:** for each
+function in the SCC, the `Transform.target` edges in its body
+point at the REAL callee declarations, not at a synthetic
+"next in ring" target. The SCC boundary is a Loop whose bound is
+the shared descent measure; the Loop body is the SCC members'
+bodies composed with their real call edges intact. This
+preserves execution semantics AND the facts downstream consumers
+need.
 
 Once lowering does this, the substrate carries the SCC structure
-as bounded Loop nodes. Complexity reads `Loop.bound` and applies
-the standard cost rule: `bound × cost(body)`. No SCC analysis
-in complexity. No Tarjan's in complexity. The cycle detection is
-in LOWERING (where it belongs), and the general SCC algorithm is
-a library function in `std/graph.dag` (reusable by anything that
-needs cycle detection).
+as bounded Loop nodes with real call topology. Complexity reads
+`Loop.bound` and applies the standard cost rule:
+`bound × cost(body)`. No SCC analysis in complexity. No Tarjan's
+in complexity. The cycle detection is in LOWERING (where it
+belongs), and the general SCC algorithm is a library function in
+`std/graph.dag` (reusable by anything that needs cycle detection).
 
 **Prereq for:**
 - The complexity port (complexity reads SCC cost from the
@@ -648,9 +659,12 @@ needs cycle detection).
   v2 pattern we're dissolving)
 - General language completeness — any `.dag` program with mutual
   recursion should compile, not fail at lowering
-- Self-hosting — the compiler's own pipeline stages may be
-  mutually recursive (e.g., lower calls infer for type-directed
-  lowering, infer calls lower for template expansion)
+- Self-hosting — mutually-recursive HELPER FUNCTIONS within a
+  pipeline stage (e.g., a parser's recursive-descent helpers)
+  should compile and run. Note: pipeline stages calling each
+  other across stage boundaries is a COMPOSITION concern, not
+  mutual recursion — that's handled by the pipeline declaration
+  in §2.1, not by the recursion lowering here.
 
 **Scope:** n-way mutual recursion (not just 2-way). The thesis's
 lowering table says "mutual recursion (SCC) on children" without
@@ -659,16 +673,23 @@ and a 2-function cycle all lower to the same bounded-descend
 shape.
 
 **Testing:** every SCC size from 2 to at least 5 should have a
-test fixture. Each fixture:
+test fixture. Positive fixtures:
 - Compiles without diagnostics
 - Produces a bounded Loop with the correct bound
 - The bound is provably structural (|SCC| × |children|)
+- The lowered form preserves real call-graph edges (not a ring)
 - A complexity lens walking the result reads the cost without
   reconstruction
 
+Negative fixtures (fail-closed):
+- An SCC where no shared descent measure exists (all arguments
+  preserved or grow) should fail with a diagnostic naming the
+  cycle and the missing measure — not compile silently with an
+  unbounded loop
+
 ---
 
-## §3. Stage 1 ��� `emit.dag`
+## §3. Stage 1 — `emit.dag`
 
 **Current:** `src/v3/compiler/src/emit_rust.rs` (~340 lines
 today; will grow as FieldBinding lookup lands in the reflection
