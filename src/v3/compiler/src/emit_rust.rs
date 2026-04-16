@@ -2818,11 +2818,63 @@ fn canonical_operator_field(dag: &Dag, op: OperatorKind) -> Result<DeclarationId
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dag::Declaration;
     use crate::diagnostics::SourceSpan;
     use crate::compile_to_dag;
 
-    #[test]
-    fn render_field_project_emits_parent_dot_field() {
+    fn render_custom_field_project(label: &str) -> String {
+        let mut dag = Dag::new();
+        let parent_port = dag.alloc_port(None);
+        let int_decl = dag.int_shape().expect("Int shape").declaration;
+        let parent_decl = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: parent_decl,
+            name: Some("LocalRecord".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: label.to_string(),
+                    ty: int_decl,
+                }],
+            },
+            type_params: Vec::new(),
+            meta_tag: None,
+            inhabits: None,
+            value_body: None,
+            span: SourceSpan::new("<test>", 0, 0),
+        });
+        dag.set_port_type(parent_port, crate::types::TypeShape::new(parent_decl));
+        let node_id = dag.alloc_node_id();
+        let output = dag.alloc_port(Some(node_id));
+        dag.push_node(Behavior::Transform(TransformNode {
+            id: node_id,
+            target: TransformTarget::FieldProject {
+                field_label: label.to_string(),
+                field_child: Some(int_decl),
+            },
+            inputs: vec![parent_port],
+            output,
+            span: SourceSpan::new("<test>", 0, 0),
+        }));
+
+        let indexes = RealizationIndexes::build(&dag).expect("indexes build");
+        let mut bound_names = HashMap::new();
+        bound_names.insert(parent_port, "parent".to_string());
+        let ctx = Ctx {
+            dag: &dag,
+            indexes: &indexes,
+            bound_names: &bound_names,
+            mode: EmitRustMode::Program,
+        };
+
+        match dag.node(node_id) {
+            Behavior::Transform(t) => ctx
+                .render_transform(t, &RenderLocals::default())
+                .expect("field project renders"),
+            other => panic!("expected Transform node, got {other:?}"),
+        }
+    }
+
+    fn render_dag_nodes_field_project() -> String {
         let mut dag = Dag::new();
         let parent_port = dag.alloc_port(None);
         let dag_type = dag
@@ -2861,13 +2913,40 @@ mod tests {
             mode: EmitRustMode::Program,
         };
 
-        let rendered = match dag.node(node_id) {
+        match dag.node(node_id) {
             Behavior::Transform(t) => ctx
                 .render_transform(t, &RenderLocals::default())
                 .expect("field project renders"),
             other => panic!("expected Transform node, got {other:?}"),
-        };
-        assert_eq!(rendered, "(parent).clone().nodes_owned()");
+        }
+    }
+
+    #[test]
+    fn render_field_project_emits_parent_dot_field() {
+        assert_eq!(render_custom_field_project("value"), "(parent).clone().value");
+    }
+
+    #[test]
+    fn il_1_field_rename_propagates_through_emit_render() {
+        // Current emit_rust surface does not yet support a clean
+        // source-to-emitter record-rename roundtrip, so pin the
+        // emitter fact directly: the rendered field label must come
+        // from the lowered FieldProject carrier, not a hardcoded
+        // Rust-side name.
+        let out_alpha = render_custom_field_project("alpha");
+        let out_beta = render_custom_field_project("beta");
+
+        assert_eq!(out_alpha, "(parent).clone().alpha");
+        assert_eq!(out_beta, "(parent).clone().beta");
+        assert!(
+            !out_beta.contains("alpha"),
+            "renamed field should fully propagate through emit render: {out_beta}"
+        );
+    }
+
+    #[test]
+    fn render_dag_nodes_field_project_uses_owned_accessor() {
+        assert_eq!(render_dag_nodes_field_project(), "(parent).clone().nodes_owned()");
     }
 
     #[test]
