@@ -1024,6 +1024,15 @@ pub(crate) struct TargetSyntaxCache {
 }
 
 #[derive(Debug, Default, Clone)]
+pub(crate) struct StdlibTypeCache {
+    /// `std.list.List` template declaration. Resolved once at
+    /// bootstrap end so downstream consumers compare typed
+    /// declaration ids instead of reconstructing stdlib identity
+    /// through `declaration_by_name("List")`.
+    pub list: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
 pub(crate) struct SubstrateMarkers {
     /// `dsl/std/v3_l1.dag` `Value` marker. Targets values
     /// (literals) in target language realizations.
@@ -1083,6 +1092,8 @@ pub struct Dag {
     realization_metas: RealizationMetaCache,
     /// Cached target-language syntax bundle declarations.
     target_syntax: TargetSyntaxCache,
+    /// Cached stdlib type-template declarations.
+    stdlib_types: StdlibTypeCache,
     /// Synthetic match carriers for anonymous `T?` cardinalities. Used when
     /// inference needs stable `Some` / `None` variant identities without
     /// promoting optionals into named top-level declarations.
@@ -1103,6 +1114,7 @@ impl Dag {
             substrate_markers: SubstrateMarkers::default(),
             realization_metas: RealizationMetaCache::default(),
             target_syntax: TargetSyntaxCache::default(),
+            stdlib_types: StdlibTypeCache::default(),
             optional_match_disjs: HashMap::new(),
         };
         crate::bootstrap::bootstrap(&mut dag);
@@ -1226,6 +1238,11 @@ impl Dag {
     /// declared in `src/v3/spec/rust.dag`.
     pub fn rust_rendering_spec(&self) -> Option<DeclarationId> {
         self.target_syntax.rust_rendering
+    }
+
+    /// Typed accessor for the cached `std.list.List` template.
+    pub fn list_template(&self) -> Option<DeclarationId> {
+        self.stdlib_types.list
     }
 
     pub fn nodes(&self) -> &[Behavior] {
@@ -1491,6 +1508,7 @@ impl Dag {
         self.target_syntax.rust_language = self.declaration_by_name("rust_language").map(|d| d.id);
         self.target_syntax.rust_rendering =
             self.declaration_by_name("rust_rendering").map(|d| d.id);
+        self.stdlib_types.list = self.declaration_by_name("List").map(|d| d.id);
     }
 }
 

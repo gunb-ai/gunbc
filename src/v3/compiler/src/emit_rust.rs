@@ -43,7 +43,7 @@
 //   {body}  list of lets        {quote} literal double-quote
 //   {final} final bind's name
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field,
@@ -239,10 +239,16 @@ enum RustFieldAccessBinding {
 }
 
 #[derive(Debug, Clone)]
+struct FieldBindingBinding {
+    access: RustFieldAccessBinding,
+    borrowed_read: bool,
+}
+
+#[derive(Debug, Clone)]
 struct TypeRealizationBinding {
     carrier: String,
     is_copy: bool,
-    fields: HashMap<String, RustFieldAccessBinding>,
+    fields: HashMap<String, FieldBindingBinding>,
 }
 
 #[derive(Debug, Clone)]
@@ -434,11 +440,6 @@ struct RealizationIndexes {
     /// The Rust target-language ownership rendering model loaded
     /// from `data rust_rendering: RenderingModel`.
     rendering: RenderingModelBinding,
-    /// `port → distinct consumer node count`. Built by walking the
-    /// substrate behaviors and counting each consumer node once per
-    /// referenced port, even if that node mentions the port through
-    /// multiple fields.
-    consumer_counts: HashMap<PortId, usize>,
 }
 
 impl RealizationIndexes {
@@ -634,7 +635,6 @@ impl RealizationIndexes {
 
         let syntax = RustLanguageSyntax::build(dag)?;
         let rendering = RenderingModelBinding::build(dag)?;
-        let consumer_counts = build_consumer_counts(dag);
 
         Ok(Self {
             types,
@@ -645,7 +645,6 @@ impl RealizationIndexes {
             patterns,
             syntax,
             rendering,
-            consumer_counts,
         })
     }
 }
@@ -1051,7 +1050,7 @@ fn require_field_bindings(
     dag: &Dag,
     fields: &[(String, FieldValue)],
     declaration: DeclarationId,
-) -> Result<HashMap<String, RustFieldAccessBinding>, EmitError> {
+) -> Result<HashMap<String, FieldBindingBinding>, EmitError> {
     let value = fields
         .iter()
         .find(|(label, _)| label == "fields")
@@ -1093,7 +1092,24 @@ fn require_field_bindings(
                 detail: "FieldBinding.rust_access is required",
             })
             .and_then(|(_, value)| parse_rust_field_access(dag, value, declaration))?;
-        if bindings.insert(dag_name, rust_access).is_some() {
+        let borrowed_read = fields
+            .iter()
+            .find(|(label, _)| label == "borrowed_read")
+            .and_then(|(_, value)| match value {
+                FieldValue::Literal(LiteralBits::Bool(value)) => Some(*value),
+                _ => None,
+            })
+            .unwrap_or(false);
+        if bindings
+            .insert(
+                dag_name,
+                FieldBindingBinding {
+                    access: rust_access,
+                    borrowed_read,
+                },
+            )
+            .is_some()
+        {
             return Err(EmitError::DuplicateRealization {
                 declaration,
                 detail: "TypeRealization.fields contains duplicate dag_name entries",
@@ -1421,40 +1437,6 @@ enum EmitRustMode {
     Module,
 }
 
-fn build_consumer_counts(dag: &Dag) -> HashMap<PortId, usize> {
-    let mut counts: HashMap<PortId, usize> = HashMap::new();
-    for node in dag.nodes() {
-        let mut ports: HashSet<PortId> = HashSet::new();
-        for port in consumer_ports_for_node(dag, node) {
-            ports.insert(port);
-        }
-        for port in ports {
-            *counts.entry(port).or_insert(0) += 1;
-        }
-    }
-    counts
-}
-
-fn consumer_ports_for_node(dag: &Dag, node: &Behavior) -> Vec<PortId> {
-    match node {
-        Behavior::Value(_) => Vec::new(),
-        Behavior::Transform(t) => t.inputs.clone(),
-        Behavior::Branch(b) => {
-            let mut ports = Vec::with_capacity(1 + b.paths.len());
-            ports.push(b.input);
-            ports.extend(b.paths.iter().map(|path| path.output));
-            ports
-        }
-        Behavior::Loop(l) => vec![
-            l.source,
-            l.init,
-            l.bound.count,
-            behavior_result_port(dag.node(l.body)),
-        ],
-        Behavior::Bind(b) => vec![b.value],
-    }
-}
-
 fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<String, EmitError> {
     let indexes = RealizationIndexes::build(dag)?;
 
@@ -1627,11 +1609,31 @@ struct RenderLocals {
 }
 
 impl<'a> Ctx<'a> {
+    fn read_strategy(&self) -> ReadStrategyBinding {
+        self.indexes.rendering.read
+    }
+
+    fn construct_strategy(&self) -> ConstructStrategyBinding {
+        self.indexes.rendering.construct
+    }
+
     fn render_binding(&self, port: PortId, binding: &LocalBinding, mode: RenderMode) -> Result<String, EmitError> {
         match mode {
-            RenderMode::BorrowedRead => match binding {
-                LocalBinding::Owned(name) => Ok(format!("&{name}")),
-                LocalBinding::Borrowed(expr) => Ok(expr.clone()),
+            RenderMode::BorrowedRead => match self.read_strategy() {
+                ReadStrategyBinding::Borrow => match binding {
+                    LocalBinding::Owned(name) => Ok(format!("&{name}")),
+                    LocalBinding::Borrowed(expr) => Ok(expr.clone()),
+                },
+                ReadStrategyBinding::PassByValue => match binding {
+                    LocalBinding::Owned(name) => {
+                        if self.port_is_copy(port)? {
+                            Ok(name.clone())
+                        } else {
+                            Ok(format!("({name}).clone()"))
+                        }
+                    }
+                    LocalBinding::Borrowed(expr) => self.construct_from_borrowed_expr(port, expr),
+                },
             },
             RenderMode::CopyRead => match binding {
                 LocalBinding::Owned(name) => Ok(name.clone()),
@@ -1639,10 +1641,24 @@ impl<'a> Ctx<'a> {
             },
             RenderMode::OwnedConstruct => match binding {
                 LocalBinding::Owned(name) => {
-                    if self.port_is_copy(port)? {
-                        Ok(name.clone())
-                    } else {
-                        Ok(format!("({name}).clone()"))
+                    match self.construct_strategy() {
+                        ConstructStrategyBinding::CopyOrClone => {
+                            if self.port_is_copy(port)? {
+                                Ok(name.clone())
+                            } else {
+                                Ok(format!("({name}).clone()"))
+                            }
+                        }
+                        ConstructStrategyBinding::PassByValue => {
+                            if self.port_is_copy(port)? {
+                                Ok(name.clone())
+                            } else {
+                                Err(EmitError::UnsupportedBehavior(
+                                    "rust_rendering.construct = PassByValue is not yet supported for non-Copy owned bindings"
+                                        .to_string(),
+                                ))
+                            }
+                        }
                     }
                 }
                 LocalBinding::Borrowed(expr) => self.construct_from_borrowed_expr(port, expr),
@@ -1651,12 +1667,26 @@ impl<'a> Ctx<'a> {
     }
 
     fn construct_from_borrowed_expr(&self, port: PortId, expr: &str) -> Result<String, EmitError> {
-        if self.port_is_copy(port)? {
-            Ok(format!("(*({expr}))"))
-        } else if self.port_is_list(port)? {
-            Ok(format!("({expr}).to_vec()"))
-        } else {
-            Ok(format!("({expr}).clone()"))
+        match self.construct_strategy() {
+            ConstructStrategyBinding::CopyOrClone => {
+                if self.port_is_copy(port)? {
+                    Ok(format!("(*({expr}))"))
+                } else if self.port_is_list(port)? {
+                    Ok(format!("({expr}).to_vec()"))
+                } else {
+                    Ok(format!("({expr}).clone()"))
+                }
+            }
+            ConstructStrategyBinding::PassByValue => {
+                if self.port_is_copy(port)? {
+                    Ok(format!("(*({expr}))"))
+                } else {
+                    Err(EmitError::UnsupportedBehavior(
+                        "rust_rendering.construct = PassByValue is not yet supported for borrowed non-Copy values"
+                            .to_string(),
+                    ))
+                }
+            }
         }
     }
 
@@ -1691,9 +1721,14 @@ impl<'a> Ctx<'a> {
         };
         match self.dag.node(node_id) {
             Behavior::Value(v) => match mode {
-                RenderMode::BorrowedRead => {
-                    Ok(format!("&({})", render_value(v, &self.indexes.syntax.literals)))
-                }
+                RenderMode::BorrowedRead => match self.read_strategy() {
+                    ReadStrategyBinding::Borrow => {
+                        Ok(format!("&({})", render_value(v, &self.indexes.syntax.literals)))
+                    }
+                    ReadStrategyBinding::PassByValue => {
+                        Ok(render_value(v, &self.indexes.syntax.literals))
+                    }
+                },
                 RenderMode::CopyRead | RenderMode::OwnedConstruct => {
                     Ok(render_value(v, &self.indexes.syntax.literals))
                 }
@@ -1702,14 +1737,20 @@ impl<'a> Ctx<'a> {
             Behavior::Branch(b) => {
                 let expr = self.render_branch(b, locals)?;
                 match mode {
-                    RenderMode::BorrowedRead => Ok(format!("&({expr})")),
+                    RenderMode::BorrowedRead => match self.read_strategy() {
+                        ReadStrategyBinding::Borrow => Ok(format!("&({expr})")),
+                        ReadStrategyBinding::PassByValue => Ok(expr),
+                    },
                     RenderMode::CopyRead | RenderMode::OwnedConstruct => Ok(expr),
                 }
             }
             Behavior::Loop(l) => {
                 let expr = self.render_loop(l, locals)?;
                 match mode {
-                    RenderMode::BorrowedRead => Ok(format!("&({expr})")),
+                    RenderMode::BorrowedRead => match self.read_strategy() {
+                        ReadStrategyBinding::Borrow => Ok(format!("&({expr})")),
+                        ReadStrategyBinding::PassByValue => Ok(expr),
+                    },
                     RenderMode::CopyRead | RenderMode::OwnedConstruct => Ok(expr),
                 }
             }
@@ -1746,7 +1787,10 @@ impl<'a> Ctx<'a> {
         mode: RenderMode,
     ) -> Result<String, EmitError> {
         match mode {
-            RenderMode::BorrowedRead => Ok(format!("&({expr})")),
+            RenderMode::BorrowedRead => match self.read_strategy() {
+                ReadStrategyBinding::Borrow => Ok(format!("&({expr})")),
+                ReadStrategyBinding::PassByValue => Ok(expr),
+            },
             RenderMode::CopyRead => {
                 if self.port_is_copy(port)? {
                     Ok(expr)
@@ -1785,7 +1829,7 @@ impl<'a> Ctx<'a> {
         let parent_expr = self.render_port(t.inputs[0], locals, RenderMode::BorrowedRead)?;
         let parent_type_id = primitive_type_id_for_port(self.dag, t.inputs[0])?;
         if let Some(type_binding) = self.indexes.types.get(&parent_type_id) {
-            let access = type_binding
+            let binding = type_binding
                 .fields
                 .get(field_label)
                 .ok_or_else(|| {
@@ -1793,7 +1837,7 @@ impl<'a> Ctx<'a> {
                         "field projection .{field_label} has no FieldBinding entry on the parent TypeRealization"
                     ))
                 })?;
-            let access_expr = match access {
+            let access_expr = match &binding.access {
                 RustFieldAccessBinding::DirectField(name) => render_named_template(
                     &self.indexes.syntax.expressions.field_access,
                     &[("object", &parent_expr), ("field", name)],
@@ -1806,25 +1850,35 @@ impl<'a> Ctx<'a> {
                     )
                 ),
             };
-            return match access {
-                RustFieldAccessBinding::AccessorMethod(name)
-                    if mode == RenderMode::BorrowedRead && name == "nodes" =>
-                {
-                    Ok(access_expr)
-                }
-                _ => match mode {
-                    RenderMode::BorrowedRead => Ok(format!("&({access_expr})")),
-                    RenderMode::CopyRead => Ok(access_expr),
-                    RenderMode::OwnedConstruct => {
-                        if self.port_is_copy(t.output)? {
+            return match mode {
+                RenderMode::BorrowedRead => match self.read_strategy() {
+                    ReadStrategyBinding::Borrow => {
+                        if binding.borrowed_read {
                             Ok(access_expr)
-                        } else if self.port_is_list(t.output)? {
-                            Ok(format!("({access_expr}).to_vec()"))
                         } else {
-                            Ok(format!("({access_expr}).clone()"))
+                            Ok(format!("&({access_expr})"))
+                        }
+                    }
+                    ReadStrategyBinding::PassByValue => {
+                        if binding.borrowed_read {
+                            self.construct_from_borrowed_expr(t.output, &access_expr)
+                        } else {
+                            Ok(access_expr)
                         }
                     }
                 },
+                RenderMode::CopyRead => Ok(access_expr),
+                RenderMode::OwnedConstruct => {
+                    if binding.borrowed_read {
+                        self.construct_from_borrowed_expr(t.output, &access_expr)
+                    } else if self.port_is_copy(t.output)? {
+                        Ok(access_expr)
+                    } else if self.port_is_list(t.output)? {
+                        Ok(format!("({access_expr}).to_vec()"))
+                    } else {
+                        Ok(format!("({access_expr}).clone()"))
+                    }
+                }
             };
         }
         let Some(conj_id) = walk_to_conj(self.dag, parent_type_id) else {
@@ -1842,7 +1896,10 @@ impl<'a> Ctx<'a> {
             &[("object", &parent_expr), ("field", field_label)],
         );
         match mode {
-            RenderMode::BorrowedRead => Ok(format!("&({access_expr})")),
+            RenderMode::BorrowedRead => match self.read_strategy() {
+                ReadStrategyBinding::Borrow => Ok(format!("&({access_expr})")),
+                ReadStrategyBinding::PassByValue => Ok(access_expr),
+            },
             RenderMode::CopyRead => Ok(access_expr),
             RenderMode::OwnedConstruct => {
                 if self.port_is_copy(t.output)? {
@@ -2624,10 +2681,20 @@ impl<'a> Ctx<'a> {
             .enumerate()
             .map(|(idx, port)| {
                 let param_name = format!("p{idx}");
-                locals
-                    .names
-                    .insert(*port, LocalBinding::Borrowed(param_name.clone()));
-                let ty = self.rust_borrowed_type_name_for_port(*port)?;
+                let ty = match self.read_strategy() {
+                    ReadStrategyBinding::Borrow => {
+                        locals
+                            .names
+                            .insert(*port, LocalBinding::Borrowed(param_name.clone()));
+                        self.rust_borrowed_type_name_for_port(*port)?
+                    }
+                    ReadStrategyBinding::PassByValue => {
+                        locals
+                            .names
+                            .insert(*port, LocalBinding::Owned(param_name.clone()));
+                        self.rust_type_name_for_port(*port)?
+                    }
+                };
                 Ok(render_named_template(
                     &self.indexes.syntax.functions.param_with_type,
                     &[("name", &param_name), ("type", &ty)],
@@ -2977,8 +3044,8 @@ impl<'a> Ctx<'a> {
 
     fn is_list_template(&self, declaration: DeclarationId) -> bool {
         self.dag
-            .declaration_by_name("List")
-            .is_some_and(|list| list.id == declaration)
+            .list_template()
+            .is_some_and(|list| list == declaration)
     }
 
     fn render_list_item_construct_expr(
@@ -3345,40 +3412,6 @@ mod tests {
     }
 
     #[test]
-    fn consumer_count_treats_loop_multiple_port_fields_as_one_consumer_node() {
-        let mut dag = Dag::new();
-        let shared_port = dag.alloc_port(None);
-
-        let body_node_id = dag.alloc_node_id();
-        let body_output = dag.alloc_port(Some(body_node_id));
-        dag.push_node(Behavior::Value(ValueNode {
-            id: body_node_id,
-            data: LiteralBits::Int(0),
-            output: body_output,
-            span: SourceSpan::new("<test>", 0, 0),
-        }));
-
-        let loop_node_id = dag.alloc_node_id();
-        let loop_output = dag.alloc_port(Some(loop_node_id));
-        dag.push_node(Behavior::Loop(crate::dag::LoopNode {
-            id: loop_node_id,
-            source: shared_port,
-            init: shared_port,
-            body: body_node_id,
-            bound: crate::dag::Bound { count: shared_port },
-            output: loop_output,
-            span: SourceSpan::new("<test>", 0, 0),
-        }));
-
-        let indexes = RealizationIndexes::build(&dag).expect("indexes build");
-        assert_eq!(
-            indexes.consumer_counts.get(&shared_port),
-            Some(&1),
-            "a single Loop node must count as one consumer even if it references the port through source/init/bound.count",
-        );
-    }
-
-    #[test]
     fn render_field_project_constructs_owned_list_from_borrowed_nodes() {
         let mut dag = Dag::new();
         let parent_port = dag.alloc_port(None);
@@ -3483,6 +3516,45 @@ mod tests {
         assert!(
             rendered.contains("(&xs).iter().fold("),
             "expected named list inputs to be iterated by borrow, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn rendering_model_read_strategy_controls_function_parameter_shape() {
+        let mut dag = compile_to_dag(
+            "type Sign = Plus | Minus
+fn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }",
+            "test.v3",
+        )
+        .expect("compiles");
+        let rendering_decl = dag.rust_rendering_spec().expect("rust_rendering cached");
+        let pass_by_value = named_variant_id(&dag, "ReadStrategy", "PassByValue")
+            .expect("ReadStrategy.PassByValue exists");
+        let copy_or_clone = named_variant_id(&dag, "ConstructStrategy", "CopyOrClone")
+            .expect("ConstructStrategy.CopyOrClone exists");
+        dag.declaration_mut(rendering_decl).value_body = Some(ValueBody::Structural {
+            fields: vec![
+                (
+                    "read".to_string(),
+                    FieldValue::Variant {
+                        constructor: pass_by_value,
+                        payload: Vec::new(),
+                    },
+                ),
+                (
+                    "construct".to_string(),
+                    FieldValue::Variant {
+                        constructor: copy_or_clone,
+                        payload: Vec::new(),
+                    },
+                ),
+            ],
+        });
+
+        let rendered = emit_rust_with_mode(&dag, EmitRustMode::Module).expect("emits");
+        assert!(
+            rendered.contains("fn classify(p0: Sign) -> i64 {"),
+            "expected PassByValue read strategy to render owned function params, got: {rendered}"
         );
     }
 }

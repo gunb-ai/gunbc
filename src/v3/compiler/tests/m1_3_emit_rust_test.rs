@@ -310,6 +310,7 @@ fn emit_rust_has_no_substrate_name_string_dispatches() {
     let forbidden = [
         "\"Int\"",
         "\"Bool\"",
+        "\"List\"",
         "\"String\"",
         "\"Bind\"",
         "\"Branch\"",
