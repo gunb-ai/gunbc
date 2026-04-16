@@ -73,13 +73,24 @@ L1 — Reflection framework              [prereqs shipping — reflection PR nex
       │    • Reflection PR: next after prereq slate completes
       │    • first lens (lens_unused_parameters) migrates in reflection PR
       │
-L2 — v2 consumer migrations            [see docs/substrate-reflection-design.md §12.5]
-      │    M1: dsl/lenses/complexity.dag  (5490 lines from v2)
-      │    M2: dsl/lenses/ownership.dag   (719 lines)
-      │    M3: dsl/lenses/effects.dag     (66 lines)
-      │    M4: dsl/lenses/trace.dag       (223 lines)
-      │
-L3 — Pipeline stages in .dag           [THIS DOC]
+      ├── L2 — v2 consumer migrations   [parallel with L2.5]
+      │    │    M1: dsl/lenses/complexity.dag  (5490 lines from v2)
+      │    │    M2: dsl/lenses/ownership.dag   (719 lines)
+      │    │    M3: dsl/lenses/effects.dag     (66 lines)
+      │    │    M4: dsl/lenses/trace.dag       (223 lines)
+      │    │
+      └── L2.5 — Per-stage domain modeling [parallel with L2]
+           │    Emit domain:  extdeps/languages/ completeness,
+           │                  std/formatting.dag
+           │    Lower domain: std/surface.dag (surface AST types)
+           │    Parse domain: std/token.dag, std/encoding.dag,
+           │                  extdeps/platform/filesystem.dag,
+           │                  grammar productions as data
+           │    Infer domain: std/inference.dag, std/scope.dag,
+           │                  std/substitution.dag
+           │                  (blocked on I3 write-surface experiment)
+           │
+L3 — Pipeline stages in .dag           [blocked on L2.5 model for each stage]
       │    Stage 1: emit.dag   — Dag → target source strings
       │    Stage 2: lower.dag  — SurfaceItems → Declarations + Behaviors
       │    Stage 3: infer.dag  — Dag → Dag with port state
@@ -95,19 +106,40 @@ L4 — Full self-hosting (M3)            [long-term]
 1. **L2 cannot start until L1 ships.** Consumer migrations read
    substrate facts through the reflection framework; no
    reflection, no lens migrations.
-2. **L3 cannot start until L1 ships AND at least M1 of L2 is
-   underway.** Consumer migrations prove the reflection
-   framework works on real analysis code before the compiler
-   itself migrates. Without consumer migrations as a test corpus,
-   pipeline migrations are a leap of faith.
-3. **L3 stages proceed bottom-up.** Emit first (easiest, already
+2. **L2.5 cannot start until L1 ships.** Domain modeling declares
+   types in `std/` and `extdeps/` using the same reflection
+   infrastructure. Does NOT need L2 lens migrations to be done
+   first — L2 and L2.5 are independent parallel work streams
+   (L2 writes lenses in `dsl/lenses/`, L2.5 declares types in
+   `std/` and `extdeps/`).
+3. **L3 stage N cannot start until L2.5's model for stage N is
+   reviewed.** Implementation fills in function bodies over
+   already-declared types. The model IS the prerequisite (§2.2).
+   L2 should have at least M1 underway to prove the reflection
+   framework works on real analysis code before pipeline stages
+   start.
+4. **L2.5 stages proceed in L3's implementation order.** Emit
+   domain first (partially exists, smallest gap), lower domain
+   second, parse domain third, infer domain last (blocked on I3
+   write-surface experiment). Each domain model runs ahead of
+   its stage's implementation by at least one step.
+5. **L3 stages proceed bottom-up.** Emit first (easiest, already
    half-structured), then lower, then infer, then parse. Each
    later stage's migration benefits from the earlier stages
    being in `.dag` form (e.g., `lower.dag` can call `emit.dag`
    for debug-dump purposes once both are in `.dag`).
-4. **L4 is the state after all L3 stages ship.** There is no
+6. **L4 is the state after all L3 stages ship.** There is no
    separate "make self-hosting work" milestone; it's the
    emergent consequence of completing L3.
+
+**L2.5 within each stage — the four-step sequencing from §2.2:**
+
+| Step | What | When | Output |
+|---|---|---|---|
+| 1. Model review | Declare input/output types in `std/` and `extdeps/`. Apply invariants. Scrutinize structural decomposition. | L2.5 | `.dag` type files, reviewed |
+| 2. Pipeline slot | Add the stage's typed function signature to the pipeline composition. `ExternalRealization` body. | L2.5 → L3 boundary | Pipeline `.dag` updated |
+| 3. Implementation | Fill in the function body. Types are already declared; implementation is bounded by the model. | L3 | Stage `.dag` file |
+| 4. Parity test | The `.dag` version produces byte-identical output to the Rust version. Delete the Rust version. | L3 completion | Rust file deleted |
 
 ### §2.1 The pipeline is a `.dag` composition, not a file convention
 
