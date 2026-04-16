@@ -352,6 +352,186 @@ parse), the work is:
 Step 1 is where the hard thinking happens. Steps 2-4 are
 engineering bounded by Step 1's model.
 
+### §2.3 Language-agnostic compiler core
+
+The compiler knows only substrate primitives: the six type
+connectives (Atom, Conj, Disj, Arrow, Cardinality, Instantiation)
+and the five L1 behaviors (Value, Transform, Branch, Loop, Bind).
+It does NOT know what language it is parsing or emitting. `.dag`
+is a grammar spec the parser engine reads. Rust is a language spec
+the emission engine reads. Both are data. The compiler is the
+engine, not the specs.
+
+```
+fn compile(
+  source: String,
+  grammar: GrammarSpec,      // which language to parse
+  target: EmissionTarget,    // which language + style to emit
+) -> EmitResult {
+  let parsed   = parse(source, grammar)
+  let lowered  = lower(parsed)
+  let inferred = infer(lowered.dag)
+  emit(inferred.dag, target)
+}
+```
+
+That is the whole compiler, parametric on both input and output
+language. Everything language-specific is in `grammar` and
+`target`.
+
+**Compositional opacity at the I/O boundary.** The thesis says
+"HTTP does not know or care what transport it is running over."
+This constraint says: the compiler does not know or care what
+language it is parsing or emitting. Below-boundary details
+(syntax, keywords, operators, formatting, memory model, import
+system) are unnameable to the compiler core. The compiler reads
+structural edges from the spec; it never asks "am I compiling
+Rust right now?"
+
+The rename test from THESIS.md §"Compositional layering" extends:
+rename every `.dag` keyword in the grammar spec, rebuild, verify
+the compiler still works. If it does, the compiler is language-
+agnostic. If it doesn't, there's a hardcoded language assumption
+in the core.
+
+#### §2.3.1 Emission/ingestion cost model
+
+Any medium that can physically represent the substrate's
+primitives can be a target. The question isn't "can we emit to
+X?" — it's "at what cost?"
+
+For each substrate primitive (Conj, Disj, Arrow, etc.) and each
+L1 behavior, the language spec declares: how the target represents
+it, and what the representation costs in space and time.
+
+The cost is structural and measurable. A well-matched target
+(Rust) has expansion factor k ≈ 1 per nesting level — nested
+structs are just nested structs, depth doesn't matter, total cost
+is O(|substrate|). A poorly-matched target (English) has k > 1 —
+each nesting level requires subordinate clauses or new paragraphs,
+so cost grows as O(|substrate| × k^depth). The cost of emission
+increases exponentially with structural depth for targets whose
+native constructs don't match the substrate's compositional
+primitives.
+
+This IS CX applied to emission itself. The `LanguageSpec` carries
+a cost model alongside its representation declarations. The
+compiler computes emission cost statically from the spec: "emitting
+this workflow to Rust costs O(n), to Python costs O(n × 1.2^d),
+to English costs O(n × 3^d)." The question "which target is
+cheapest?" is a compile-time question with a structural answer.
+
+**Ingestion has an additional dimension: information deficit.**
+For emission, the compiler has full substrate and projects it —
+the cost is expansion. For ingestion, the compiler has external
+source and lifts it in — the cost is expansion PLUS deficit: how
+much structural information does the source NOT carry that the
+substrate needs?
+
+- `.dag` ingestion: zero deficit. All structure explicit.
+- Python ingestion: high deficit. Types, ownership, effects,
+  complexity bounds are implicit or absent.
+- REST API spec ingestion: medium deficit. Types present (JSON
+  Schema), effects partially present (HTTP methods imply
+  idempotency), but complexity bounds absent.
+
+The deficit is a measurable property of the `GrammarSpec`.
+Ingestion cost = parsing cost + reconstruction cost proportional
+to the deficit.
+
+#### §2.3.2 Emission layering: spec vs preferences
+
+The emission pipeline has compositional layers with opacity
+between them:
+
+```
+Layer 3: StyleSpec (lint, format, idioms)   — composable, optional
+          │ composes on
+Layer 2: RepresentationMapping              — substrate ↔ target
+          │ reads
+Layer 1: LanguageSpec (facts from spec doc) — hard constraints
+          │ applied to
+Layer 0: Substrate (Bit, Conj, Disj, ...)   — what the compiler knows
+```
+
+**Layer 1: Language specification (facts).** What IS valid Rust?
+Comes from the actual language's specification document. Modeled
+in `extdeps/languages/rust/spec.dag`. Hard constraint — violating
+Layer 1 produces invalid target code.
+
+**Layer 2: Representation mapping.** How do substrate primitives
+map to Layer 1's constructs? Conj → `struct`, Disj → `enum`,
+Arrow → `fn`. The bridge between substrate and target.
+
+**Layer 3: Preferences (style, lint, idioms).** ON TOP of the
+spec. `rustfmt`-compatible formatting, `snake_case` naming,
+line-length limits, `Result<T,E>` over `panic!`, import ordering.
+Composable and optional — violating Layer 3 produces valid but
+un-idiomatic code. Different teams compose different preferences
+on the same spec.
+
+**Opacity between layers is load-bearing.** Layer 1 doesn't know
+about Layer 3. Layer 3 doesn't know about Layer 0. When you
+change a linting preference, Layers 0-2 are untouched. When you
+change a substrate type, Layer 3 is untouched.
+
+```dag
+// Layer 1 — facts from the target language's specification
+type LanguageSpec {
+  constructs: Map<ConnectiveKind, TargetConstruct>
+  syntax: SyntaxRules
+  type_system: TypeSystemSpec
+  module_system: ModuleSpec
+}
+
+// Layer 3 — preferences, composable on top
+type StyleSpec {
+  naming: NamingConventions
+  formatting: FormatRules
+  lint: List<LintRule>
+  idioms: List<IdiomSpec>
+}
+
+// The composition — the emitter reads this
+type EmissionTarget {
+  language: LanguageSpec       // what's valid (required)
+  style: StyleSpec?            // what's preferred (optional)
+}
+```
+
+When `style` is None: valid-but-unstyled output. When present:
+styled output. **"Quality of emitted code" is a typed, composable
+property** — the `StyleSpec` IS the quality specification.
+
+The same layering applies to ingestion: Layer 1 is the source
+grammar (facts), Layer 3 is parsing preferences (error recovery
+strategy, diagnostic phrasing, ambiguity resolution). Opacity
+holds: the error phrasing doesn't know about the grammar rules.
+
+#### §2.3.3 Design challenges
+
+1. **GrammarSpec expressiveness.** What grammar formalism? Pure
+   CFG can't handle operator precedence or layout sensitivity. PEG
+   has ordering sensitivity. EBNF + precedence declarations covers
+   most practical languages. The formalism choice IS the L2.5
+   parse domain decision.
+2. **LanguageSpec completeness.** The spec must cover the full
+   emission surface: type decoration, import systems, module
+   organization, async models, memory management, concurrency,
+   build system integration. If the emitter ever needs per-target
+   code, the spec is incomplete.
+3. **The bootstrap seed.** The compiler reads grammar specs to
+   parse. Grammar specs are `.dag` files. To parse a grammar spec,
+   the compiler needs a parser that reads a grammar spec.
+   Chicken-and-egg. The seed parser parses at least the
+   grammar-spec format without reading a spec — that's the
+   irreducible kernel. How small can the seed parser be?
+4. **Per-language spec authoring cost.** Writing a `LanguageSpec`
+   for a complex language (Rust, C++, Python) is weeks of work.
+   One-time cost per language, not per project — but worth naming
+   honestly. The thesis promise is "adding a new target costs one
+   spec file." True; writing that spec file is the investment.
+
 ---
 
 ## §3. Stage 1 — `emit.dag`
