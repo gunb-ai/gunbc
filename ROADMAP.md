@@ -1649,8 +1649,11 @@ verification. The compiler emits both from the same source. Add a
 type → verification appears. Add a service → integration test
 appears. No hand-written tests needed for declared behavior.
 
-**Status:** L0 (coercion tests from data) done. L4-L7 not built.
-See Track 12 for the full plan.
+**Status:** L0 (coercion tests from data) done. v3 design:
+`src/v3/SELF_HOSTING.md` §15 — three testgen layers (structural
+at L1.5, behavioral + mock at L2.6, compositional at L3).
+See Track 12 for the v2 history, thesis-validation-plan.md for
+the claim-to-milestone mapping.
 
 ### KF-4: Cross-language equivalence proof
 
