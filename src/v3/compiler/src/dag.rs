@@ -1546,11 +1546,9 @@ impl Dag {
             .declaration_by_name("rust_execution_model")
             .map(|d| d.id);
         self.target_syntax.go_language = self.declaration_by_name("go_language").map(|d| d.id);
-        self.target_syntax.go_rendering =
-            self.declaration_by_name("go_rendering").map(|d| d.id);
-        self.target_syntax.go_execution_model = self
-            .declaration_by_name("go_execution_model")
-            .map(|d| d.id);
+        self.target_syntax.go_rendering = self.declaration_by_name("go_rendering").map(|d| d.id);
+        self.target_syntax.go_execution_model =
+            self.declaration_by_name("go_execution_model").map(|d| d.id);
         self.stdlib_types.list = self.declaration_by_name("List").map(|d| d.id);
     }
 }

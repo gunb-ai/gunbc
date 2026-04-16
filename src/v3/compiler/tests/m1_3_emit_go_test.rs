@@ -48,7 +48,10 @@ fn rust_stdout(source: &str) -> String {
         .stderr(Stdio::inherit())
         .status()
         .expect("invoke rustc");
-    assert!(compile.success(), "rustc failed on emitted source:\n{rendered}");
+    assert!(
+        compile.success(),
+        "rustc failed on emitted source:\n{rendered}"
+    );
 
     let run = Command::new(&bin_path).output().expect("run rust binary");
     assert!(run.status.success(), "compiled rust binary failed");
@@ -94,15 +97,15 @@ fn go_stdout(source: &str) -> Option<String> {
 
 #[test]
 fn emit_go_lens_unused_parameters_module() {
-    let dag = compile_to_dag(
-        &lens_source(),
-        lens_path().to_string_lossy().as_ref(),
-    )
-    .expect("compiled lens source");
+    let dag = compile_to_dag(&lens_source(), lens_path().to_string_lossy().as_ref())
+        .expect("compiled lens source");
     let rendered = emit_go_module(&dag).expect("emits go module");
 
     assert!(rendered.contains("package emitted"), "got: {rendered}");
-    assert!(rendered.contains("type UnusedParameter struct"), "got: {rendered}");
+    assert!(
+        rendered.contains("type UnusedParameter struct"),
+        "got: {rendered}"
+    );
     assert!(rendered.contains("func check("), "got: {rendered}");
     assert!(rendered.contains("switch v := any("), "got: {rendered}");
     assert!(

@@ -1193,18 +1193,18 @@ fn parse_rust_field_access(
             });
         }
     };
-    let direct_field = named_variant_id(dag, "FieldAccess", "DirectField")
-        .ok_or(EmitError::MalformedRealization {
+    let direct_field = named_variant_id(dag, "FieldAccess", "DirectField").ok_or(
+        EmitError::MalformedRealization {
             declaration,
             detail: "FieldAccess.DirectField declaration was not found",
-        })?;
-    let accessor_method =
-        named_variant_id(dag, "FieldAccess", "AccessorMethod").ok_or(
-            EmitError::MalformedRealization {
-                declaration,
-                detail: "FieldAccess.AccessorMethod declaration was not found",
-            },
-        )?;
+        },
+    )?;
+    let accessor_method = named_variant_id(dag, "FieldAccess", "AccessorMethod").ok_or(
+        EmitError::MalformedRealization {
+            declaration,
+            detail: "FieldAccess.AccessorMethod declaration was not found",
+        },
+    )?;
     if *constructor == direct_field {
         Ok(RustFieldAccessBinding::DirectField(name))
     } else if *constructor == accessor_method {
@@ -1335,11 +1335,12 @@ fn require_pattern_realization(
             detail: "PatternStrategy variants must not carry payload fields",
         });
     }
-    let vector_list = named_variant_id(dag, "PatternStrategy", "VectorList")
-        .ok_or(EmitError::MalformedRealization {
+    let vector_list = named_variant_id(dag, "PatternStrategy", "VectorList").ok_or(
+        EmitError::MalformedRealization {
             declaration,
             detail: "PatternStrategy.VectorList declaration was not found",
-        })?;
+        },
+    )?;
     if *constructor != vector_list {
         return Err(EmitError::MalformedRealization {
             declaration,
@@ -1567,11 +1568,7 @@ fn require_scope_model(
     })
 }
 
-fn named_variant_id(
-    dag: &Dag,
-    parent_name: &str,
-    variant_label: &str,
-) -> Option<DeclarationId> {
+fn named_variant_id(dag: &Dag, parent_name: &str, variant_label: &str) -> Option<DeclarationId> {
     let parent = dag.declaration_by_name(parent_name)?;
     let TypeConnective::Disj { variants } = &parent.connective else {
         return None;

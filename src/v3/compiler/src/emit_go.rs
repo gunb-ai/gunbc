@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, CardinalityBound, DeclarationId,
-    Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode,
-    TransformTarget, TypeConnective, ValueBody,
+    Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
+    TypeConnective, ValueBody,
 };
 use crate::emit_rust::{EmitError, RealizationCategory};
 use crate::operators::OperatorKind;
@@ -151,23 +151,31 @@ impl RealizationIndexes {
         let type_meta = dag
             .type_realization_meta()
             .ok_or(EmitError::MissingRealizationMeta(RealizationCategory::Type))?;
-        let type_instantiation_meta = dag
-            .type_instantiation_realization_meta()
-            .ok_or(EmitError::MissingRealizationMeta(
-                RealizationCategory::TypeInstantiation,
-            ))?;
+        let type_instantiation_meta =
+            dag.type_instantiation_realization_meta()
+                .ok_or(EmitError::MissingRealizationMeta(
+                    RealizationCategory::TypeInstantiation,
+                ))?;
         let op_meta = dag
             .operator_realization_meta()
-            .ok_or(EmitError::MissingRealizationMeta(RealizationCategory::Operator))?;
-        let behavior_meta = dag
-            .behavior_realization_meta()
-            .ok_or(EmitError::MissingRealizationMeta(RealizationCategory::Behavior))?;
-        let callable_meta = dag
-            .callable_realization_meta()
-            .ok_or(EmitError::MissingRealizationMeta(RealizationCategory::Callable))?;
-        let pattern_meta = dag
-            .pattern_realization_meta()
-            .ok_or(EmitError::MissingRealizationMeta(RealizationCategory::Pattern))?;
+            .ok_or(EmitError::MissingRealizationMeta(
+                RealizationCategory::Operator,
+            ))?;
+        let behavior_meta =
+            dag.behavior_realization_meta()
+                .ok_or(EmitError::MissingRealizationMeta(
+                    RealizationCategory::Behavior,
+                ))?;
+        let callable_meta =
+            dag.callable_realization_meta()
+                .ok_or(EmitError::MissingRealizationMeta(
+                    RealizationCategory::Callable,
+                ))?;
+        let pattern_meta =
+            dag.pattern_realization_meta()
+                .ok_or(EmitError::MissingRealizationMeta(
+                    RealizationCategory::Pattern,
+                ))?;
 
         let mut types = HashMap::new();
         let mut instantiations = HashMap::new();
@@ -225,8 +233,7 @@ impl RealizationIndexes {
                     {
                         return Err(EmitError::DuplicateRealization {
                             declaration: decl.id,
-                            detail:
-                                "two TypeRealization data items target the same declaration",
+                            detail: "two TypeRealization data items target the same declaration",
                         });
                     }
                 }
@@ -382,29 +389,41 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitGoMode) -> Result<String, EmitError> {
             "emit_go requires a non-ownership execution model".to_string(),
         ));
     }
-    let main_marker = dag.main_marker().ok_or(
-        EmitError::MissingSubstrateMarker(crate::emit_rust::SubstrateMarkerRole::Main),
-    )?;
+    let main_marker = dag.main_marker().ok_or(EmitError::MissingSubstrateMarker(
+        crate::emit_rust::SubstrateMarkerRole::Main,
+    ))?;
     let type_decls: Vec<_> = dag
         .declarations()
         .iter()
         .filter(|decl| !is_bootstrap_file(&decl.span.file))
         .filter(|decl| decl.name.is_some())
-        .filter(|decl| matches!(decl.connective, TypeConnective::Conj { .. } | TypeConnective::Disj { .. }))
+        .filter(|decl| {
+            matches!(
+                decl.connective,
+                TypeConnective::Conj { .. } | TypeConnective::Disj { .. }
+            )
+        })
         .collect();
     let function_decls: Vec<_> = dag
         .declarations()
         .iter()
         .filter(|decl| !is_bootstrap_file(&decl.span.file))
         .filter(|decl| decl.name.is_some())
-        .filter(|decl| !decl.name.as_deref().is_some_and(|name| name.starts_with("__anon_lambda_")))
-        .filter(|decl| matches!(
-            decl.connective,
-            TypeConnective::Arrow {
-                body: ArrowBody::UserDefined(_),
-                ..
-            }
-        ))
+        .filter(|decl| {
+            !decl
+                .name
+                .as_deref()
+                .is_some_and(|name| name.starts_with("__anon_lambda_"))
+        })
+        .filter(|decl| {
+            matches!(
+                decl.connective,
+                TypeConnective::Arrow {
+                    body: ArrowBody::UserDefined(_),
+                    ..
+                }
+            )
+        })
         .collect();
     let top_level_binds: Vec<_> = dag
         .nodes()
@@ -474,10 +493,13 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitGoMode) -> Result<String, EmitError> {
             .collect::<Result<Vec<_>, EmitError>>()?
             .join(";\n");
         let final_bind_name = &top_level_binds.last().expect("guarded").name;
-        let main_template = indexes
-            .behaviors
-            .get(&main_marker)
-            .ok_or(EmitError::MissingBehaviorRealization { marker: main_marker })?;
+        let main_template =
+            indexes
+                .behaviors
+                .get(&main_marker)
+                .ok_or(EmitError::MissingBehaviorRealization {
+                    marker: main_marker,
+                })?;
         sections.push(render_named_template(
             main_template,
             &[("body", &body), ("final", final_bind_name)],
@@ -548,12 +570,7 @@ impl<'a> Ctx<'a> {
                 let (template, arguments) = callable_template(*target, self.dag);
                 if let Some(strategy) = self.indexes.callables.get(&template) {
                     return self.render_realized_callable(
-                        t.output,
-                        template,
-                        *strategy,
-                        &arguments,
-                        &t.inputs,
-                        locals,
+                        t.output, template, *strategy, &arguments, &t.inputs, locals,
                     );
                 }
                 self.render_general_callable(template, &t.inputs, locals)
@@ -617,14 +634,12 @@ impl<'a> Ctx<'a> {
         }
         let operand_type = primitive_type_id_for_port(self.dag, t.inputs[0])?;
         let op_decl = algebra_field_for_operator(self.dag, operand_type, op)?;
-        let carrier = self
-            .indexes
-            .operators
-            .get(&(operand_type, op_decl))
-            .ok_or(EmitError::MissingOperatorRealization {
+        let carrier = self.indexes.operators.get(&(operand_type, op_decl)).ok_or(
+            EmitError::MissingOperatorRealization {
                 target: operand_type,
                 op: op_decl,
-            })?;
+            },
+        )?;
         let lhs = self.render_port(t.inputs[0], locals)?;
         let rhs = self.render_port(t.inputs[1], locals)?;
         Ok(render_named_template(
@@ -675,8 +690,9 @@ impl<'a> Ctx<'a> {
     ) -> Result<String, EmitError> {
         let scrutinee = self.render_port(branch.input, locals)?;
         let scrutinee_type = primitive_type_id_for_port(self.dag, branch.input)?;
-        let disj_id = walk_to_disj(self.dag, scrutinee_type)
-            .ok_or_else(|| EmitError::UnsupportedBehavior("optional branch must walk to a Disj".to_string()))?;
+        let disj_id = walk_to_disj(self.dag, scrutinee_type).ok_or_else(|| {
+            EmitError::UnsupportedBehavior("optional branch must walk to a Disj".to_string())
+        })?;
         let TypeConnective::Disj { variants } = &self.dag.declaration(disj_id).connective else {
             unreachable!("walk_to_disj returned non-Disj")
         };
@@ -684,16 +700,22 @@ impl<'a> Ctx<'a> {
             .iter()
             .find(|variant| variant.label == "None")
             .map(|variant| variant.ty)
-            .ok_or_else(|| EmitError::UnsupportedBehavior("optional branch requires None".to_string()))?;
+            .ok_or_else(|| {
+                EmitError::UnsupportedBehavior("optional branch requires None".to_string())
+            })?;
         let some_variant = variants
             .iter()
             .find(|variant| variant.label == "Some")
             .map(|variant| variant.ty)
-            .ok_or_else(|| EmitError::UnsupportedBehavior("optional branch requires Some".to_string()))?;
-        let none_path = find_resolved_branch_path(branch, none_variant)
-            .ok_or_else(|| EmitError::UnsupportedBehavior("optional branch missing None arm".to_string()))?;
-        let some_path = find_resolved_branch_path(branch, some_variant)
-            .ok_or_else(|| EmitError::UnsupportedBehavior("optional branch missing Some arm".to_string()))?;
+            .ok_or_else(|| {
+                EmitError::UnsupportedBehavior("optional branch requires Some".to_string())
+            })?;
+        let none_path = find_resolved_branch_path(branch, none_variant).ok_or_else(|| {
+            EmitError::UnsupportedBehavior("optional branch missing None arm".to_string())
+        })?;
+        let some_path = find_resolved_branch_path(branch, some_variant).ok_or_else(|| {
+            EmitError::UnsupportedBehavior("optional branch missing Some arm".to_string())
+        })?;
         let ret = self.go_type_name_for_port(branch.output)?;
         let none_expr = self.render_path_body(none_path, locals)?;
         let mut some_locals = locals.clone();
@@ -767,10 +789,9 @@ impl<'a> Ctx<'a> {
             return Ok(None);
         };
         match binding.strategy {
-            PatternStrategyBinding::VectorList => {
-                self.render_vector_list_pattern_branch(branch, disj_id, binding, locals)
-                    .map(Some)
-            }
+            PatternStrategyBinding::VectorList => self
+                .render_vector_list_pattern_branch(branch, disj_id, binding, locals)
+                .map(Some),
         }
     }
 
@@ -788,38 +809,45 @@ impl<'a> Ctx<'a> {
             .iter()
             .find(|variant| variant.label == "Empty")
             .map(|variant| variant.ty)
-            .ok_or_else(|| EmitError::UnsupportedBehavior("vector-list pattern realization requires Empty".to_string()))?;
+            .ok_or_else(|| {
+                EmitError::UnsupportedBehavior(
+                    "vector-list pattern realization requires Empty".to_string(),
+                )
+            })?;
         let cons_variant = variants
             .iter()
             .find(|variant| variant.label == "Cons")
             .map(|variant| variant.ty)
-            .ok_or_else(|| EmitError::UnsupportedBehavior("vector-list pattern realization requires Cons".to_string()))?;
-        let empty_path = find_resolved_branch_path(branch, empty_variant)
-            .ok_or_else(|| EmitError::UnsupportedBehavior("vector-list pattern realization requires an Empty arm".to_string()))?;
-        let cons_path = find_resolved_branch_path(branch, cons_variant)
-            .ok_or_else(|| EmitError::UnsupportedBehavior("vector-list pattern realization requires a Cons arm".to_string()))?;
+            .ok_or_else(|| {
+                EmitError::UnsupportedBehavior(
+                    "vector-list pattern realization requires Cons".to_string(),
+                )
+            })?;
+        let empty_path = find_resolved_branch_path(branch, empty_variant).ok_or_else(|| {
+            EmitError::UnsupportedBehavior(
+                "vector-list pattern realization requires an Empty arm".to_string(),
+            )
+        })?;
+        let cons_path = find_resolved_branch_path(branch, cons_variant).ok_or_else(|| {
+            EmitError::UnsupportedBehavior(
+                "vector-list pattern realization requires a Cons arm".to_string(),
+            )
+        })?;
         let ret = self.go_type_name_for_port(branch.output)?;
         let scrutinee = self.render_port(branch.input, locals)?;
         let empty_body = self.render_path_body(empty_path, locals)?;
         let list_name = "__list";
-        let realized_scrutinee = render_named_template(
-            &binding.scrutinee,
-            &[("expr", &scrutinee)],
-        );
-        let head_expr = render_named_template(
-            &binding.head_expr,
-            &[("list", list_name)],
-        );
-        let tail_expr = render_named_template(
-            &binding.tail_expr,
-            &[("list", list_name)],
-        );
+        let realized_scrutinee = render_named_template(&binding.scrutinee, &[("expr", &scrutinee)]);
+        let head_expr = render_named_template(&binding.head_expr, &[("list", list_name)]);
+        let tail_expr = render_named_template(&binding.tail_expr, &[("list", list_name)]);
         let mut cons_locals = locals.clone();
         if let Some(payload) = &cons_path.binding {
             let mut fields = HashMap::new();
             fields.insert("head".to_string(), head_expr);
             fields.insert("tail".to_string(), tail_expr);
-            cons_locals.field_overrides.insert(payload.payload_port, fields);
+            cons_locals
+                .field_overrides
+                .insert(payload.payload_port, fields);
         }
         let cons_body = self.render_port(cons_path.output, &cons_locals)?;
         Ok(format!(
@@ -986,15 +1014,15 @@ impl<'a> Ctx<'a> {
         if let Some(rendered) = self.render_record_constructor(template, inputs, locals)? {
             return Ok(rendered);
         }
-        let func = self
-            .dag
-            .declaration(template)
-            .name
-            .clone()
-            .ok_or(EmitError::UnsupportedBehavior(
-                "callable target is anonymous and cannot be rendered as a direct Go call"
-                    .to_string(),
-            ))?;
+        let func =
+            self.dag
+                .declaration(template)
+                .name
+                .clone()
+                .ok_or(EmitError::UnsupportedBehavior(
+                    "callable target is anonymous and cannot be rendered as a direct Go call"
+                        .to_string(),
+                ))?;
         let args = inputs
             .iter()
             .map(|port| self.render_port(*port, locals))
@@ -1099,7 +1127,9 @@ impl<'a> Ctx<'a> {
         param_bindings: &[(String, String)],
         outer_locals: &RenderLocals,
     ) -> Result<String, EmitError> {
-        let TypeConnective::Arrow { inputs, body, .. } = &self.dag.declaration(callable_decl).connective else {
+        let TypeConnective::Arrow { inputs, body, .. } =
+            &self.dag.declaration(callable_decl).connective
+        else {
             return Err(EmitError::UnsupportedBehavior(
                 "callable template binding did not resolve to an Arrow declaration".to_string(),
             ));
@@ -1354,7 +1384,10 @@ impl<'a> Ctx<'a> {
             return Ok(name.clone());
         }
         match &decl.connective {
-            TypeConnective::Instantiation { template, arguments } => {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
                 let Some(binding) = self.indexes.instantiations.get(template) else {
                     return Err(EmitError::MissingTypeRealization { target: *template });
                 };
@@ -1368,8 +1401,7 @@ impl<'a> Ctx<'a> {
                         ))
                     }
                     [key, value] => {
-                        let key_name =
-                            self.go_type_name_for_decl_at_depth(key.value, depth + 1)?;
+                        let key_name = self.go_type_name_for_decl_at_depth(key.value, depth + 1)?;
                         let value_name =
                             self.go_type_name_for_decl_at_depth(value.value, depth + 1)?;
                         Ok(render_named_template(
@@ -1395,7 +1427,9 @@ impl<'a> Ctx<'a> {
             TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
                 self.go_type_name_for_decl_at_depth(*next, depth + 1)
             }
-            _ => Err(EmitError::MissingTypeRealization { target: declaration }),
+            _ => Err(EmitError::MissingTypeRealization {
+                target: declaration,
+            }),
         }
     }
 
@@ -1405,7 +1439,11 @@ impl<'a> Ctx<'a> {
             .port(port)
             .value_type()
             .ok_or(EmitError::UntypedPort(port))?;
-        let TypeConnective::Instantiation { template, arguments } = &self.dag.declaration(ty.declaration).connective else {
+        let TypeConnective::Instantiation {
+            template,
+            arguments,
+        } = &self.dag.declaration(ty.declaration).connective
+        else {
             return Err(EmitError::UnsupportedBehavior(
                 "list type rendering expected instantiated List".to_string(),
             ));
@@ -1525,11 +1563,7 @@ fn parse_value_construction_syntax(
     Ok(ValueConstructionSyntaxBinding {
         struct_literal: syntax_field_string(fields, "struct_literal", declaration)?,
         struct_field_init: syntax_field_string(fields, "struct_field_init", declaration)?,
-        struct_field_separator: syntax_field_string(
-            fields,
-            "struct_field_separator",
-            declaration,
-        )?,
+        struct_field_separator: syntax_field_string(fields, "struct_field_separator", declaration)?,
         variant_named_construction: syntax_field_string(
             fields,
             "variant_named_construction",
@@ -1635,12 +1669,7 @@ fn require_field_bindings(
             })
             .and_then(|(_, value)| parse_field_access(dag, value, declaration))?;
         if bindings
-            .insert(
-                dag_name,
-                FieldBindingBinding {
-                    access,
-                },
-            )
+            .insert(dag_name, FieldBindingBinding { access })
             .is_some()
         {
             return Err(EmitError::DuplicateRealization {
@@ -1682,11 +1711,12 @@ fn parse_field_access(
             });
         }
     };
-    let direct_field = named_variant_id(dag, "FieldAccess", "DirectField")
-        .ok_or(EmitError::MalformedRealization {
+    let direct_field = named_variant_id(dag, "FieldAccess", "DirectField").ok_or(
+        EmitError::MalformedRealization {
             declaration,
             detail: "FieldAccess.DirectField declaration was not found",
-        })?;
+        },
+    )?;
     let accessor_method = named_variant_id(dag, "FieldAccess", "AccessorMethod").ok_or(
         EmitError::MalformedRealization {
             declaration,
@@ -1916,11 +1946,7 @@ fn require_scope_model(
     })
 }
 
-fn named_variant_id(
-    dag: &Dag,
-    parent_name: &str,
-    variant_label: &str,
-) -> Option<DeclarationId> {
+fn named_variant_id(dag: &Dag, parent_name: &str, variant_label: &str) -> Option<DeclarationId> {
     let parent = dag.declaration_by_name(parent_name)?;
     let TypeConnective::Disj { variants } = &parent.connective else {
         return None;
@@ -2141,10 +2167,7 @@ fn walk_to_algebra_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId
     None
 }
 
-fn canonical_operator_field(
-    dag: &Dag,
-    op: OperatorKind,
-) -> Result<DeclarationId, EmitError> {
+fn canonical_operator_field(dag: &Dag, op: OperatorKind) -> Result<DeclarationId, EmitError> {
     let ordered_ring = dag.declaration_by_name("OrderedRing").ok_or_else(|| {
         EmitError::UnsupportedBehavior(
             "bootstrap is missing the canonical `OrderedRing` declaration".to_string(),
@@ -2189,11 +2212,8 @@ mod tests {
 
     #[test]
     fn go_struct_fields_render_with_separators() {
-        let dag = compile_to_dag(
-            "type Pair { left: Int right: Int }",
-            "pair.v3",
-        )
-        .expect("compiles");
+        let dag =
+            compile_to_dag("type Pair { left: Int right: Int }", "pair.v3").expect("compiles");
         let rendered = emit_go_module(&dag).expect("go emitter should render struct");
         assert!(
             rendered.contains("type Pair struct { left int64; right int64 }"),
@@ -2221,7 +2241,10 @@ mod tests {
         )
         .expect("compiles");
         let rendered = emit_go(&dag).expect("go emitter should render fold");
-        assert!(rendered.contains("for _, __foldItem := range"), "got: {rendered}");
+        assert!(
+            rendered.contains("for _, __foldItem := range"),
+            "got: {rendered}"
+        );
         assert!(
             rendered.contains("{ _ = __foldItem; __foldAcc = "),
             "got: {rendered}"
