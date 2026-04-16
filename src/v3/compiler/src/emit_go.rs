@@ -458,7 +458,7 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitGoMode) -> Result<String, EmitError> {
                 ))
             })
             .collect::<Result<Vec<_>, EmitError>>()?
-            .join("\n");
+            .join(";\n");
         let final_bind_name = &top_level_binds.last().expect("guarded").name;
         let main_template = indexes
             .behaviors
@@ -1204,7 +1204,7 @@ impl<'a> Ctx<'a> {
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(render_named_template(
                     &self.indexes.syntax.type_definitions.struct_def,
-                    &[("name", name), ("fields", &fields.join(" "))],
+                    &[("name", name), ("fields", &fields.join("; "))],
                 ))
             }
             TypeConnective::Disj { variants } => {
@@ -1227,7 +1227,7 @@ impl<'a> Ctx<'a> {
                         parts.push(format!(
                             "type {} struct {{ {} }}",
                             variant.label,
-                            fields.join(" ")
+                            fields.join("; ")
                         ));
                     }
                     parts.push(format!("func ({}) is{name}() {{}}", variant.label));
@@ -2119,5 +2119,19 @@ mod tests {
 
         let rendered = emit_go_module(&dag).expect("go emitter should skip go_rendering");
         assert!(rendered.contains("func id("), "got: {rendered}");
+    }
+
+    #[test]
+    fn go_struct_fields_render_with_separators() {
+        let dag = compile_to_dag(
+            "type Pair { left: Int right: Int }",
+            "pair.v3",
+        )
+        .expect("compiles");
+        let rendered = emit_go_module(&dag).expect("go emitter should render struct");
+        assert!(
+            rendered.contains("type Pair struct { left int64; right int64 }"),
+            "got: {rendered}"
+        );
     }
 }

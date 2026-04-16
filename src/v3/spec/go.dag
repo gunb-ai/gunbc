@@ -508,7 +508,7 @@ data go_if_expr: BehaviorRealization = {
 
 data go_main_wrap: BehaviorRealization = {
   target: Main
-  carrier: "func main() { {body} fmt.Println({final}) }"
+  carrier: "func main() {\n{body}\nfmt.Println({final})\n}"
   cost: 0
 }
 
