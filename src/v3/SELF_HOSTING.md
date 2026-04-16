@@ -506,15 +506,26 @@ map to Layer 1's constructs? Conj → `struct`, Disj → `enum`,
 Arrow → `fn`. The bridge between substrate and target.
 
 **Layer 3: Rendering conventions.** Declared rendering rules
-ON TOP of the spec. `rustfmt`-compatible formatting, `snake_case`
-naming, line-length limits, `Result<T,E>` over `panic!`, import
-ordering. These are **declared structural facts** with the same
+ON TOP of the spec, strictly limited to **lexical/visual
+concerns**: `rustfmt`-compatible formatting, `snake_case` naming,
+line-length limits, import ordering, comment style, indentation
+width. These are **declared structural facts** with the same
 authority as any other `.dag` declaration — not "preferences" or
 "annotations." When present, they are hard constraints on the
 emitter's output formatting. "Optional" means the emitter CAN
 run without them (producing valid-but-unstyled output), NOT that
 they are soft suggestions. Different projects compose different
 rendering specs on the same language spec.
+
+**RenderingSpec MUST NOT change observable semantics.** Choices
+like `Result<T,E>` vs `panic!` or error-handling strategy are
+SEMANTIC — they change the emitted program's behavior. Those
+belong in `LanguageSpec` (Layer 1), not `RenderingSpec` (Layer 3).
+The test: if two `RenderingSpec` values produce programs with
+different runtime behavior, one of them contains a semantic choice
+that should be in `LanguageSpec`. RenderingSpec is purely visual;
+two rendering specs on the same language spec produce programs
+that behave identically and differ only in formatting/naming.
 
 **Opacity between layers is load-bearing.** Layer 1 doesn't know
 about Layer 3. Layer 3 doesn't know about Layer 0. When you
@@ -530,13 +541,14 @@ type LanguageSpec {
   module_system: ModuleSpec
 }
 
-// Layer 3 — declared rendering conventions
+// Layer 3 — declared rendering conventions (visual only)
 type RenderingSpec {
-  naming: NamingConventions
-  formatting: FormatRules
-  lint: List<LintRule>
-  idioms: List<IdiomSpec>
+  naming: NamingConventions      // snake_case, camelCase, etc.
+  formatting: FormatRules        // line length, indentation, etc.
+  lint: List<LintRule>           // visual lint only (not semantic)
 }
+// Note: "idioms" (Result vs panic, error-handling patterns) are
+// SEMANTIC and belong in LanguageSpec, not here.
 
 // The composition — the emitter reads this
 type EmissionTarget {
@@ -550,9 +562,11 @@ fully-styled output per the declared conventions.
 
 The same layering applies to ingestion: Layer 1 is the source
 grammar (facts), Layer 3 is declared parsing conventions (error
-recovery strategy, diagnostic phrasing, ambiguity resolution).
-Opacity holds: the diagnostic phrasing doesn't know about the
-grammar rules.
+recovery strategy, diagnostic phrasing). Ambiguity resolution is
+SEMANTIC — it changes which parse tree the parser produces — so
+it belongs in `GrammarSpec` (Layer 1) or `ElaborationSpec`, not
+in the conventions layer. Opacity holds: the diagnostic phrasing
+doesn't know about the grammar rules.
 
 #### §2.3.3 Design challenges
 
