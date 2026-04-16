@@ -10,7 +10,9 @@ fn find_named(dag: &Dag, name: &str) -> v3_compiler::dag::DeclarationId {
 fn record_fields(dag: &Dag, name: &str) -> Vec<String> {
     let id = find_named(dag, name);
     match &dag.declaration(id).connective {
-        TypeConnective::Conj { children } => children.iter().map(|field| field.label.clone()).collect(),
+        TypeConnective::Conj { children } => {
+            children.iter().map(|field| field.label.clone()).collect()
+        }
         other => panic!("expected `{name}` to lower to a Conj, got {other:?}"),
     }
 }
@@ -46,10 +48,7 @@ fn substrate_declares_expected_reflection_surface() {
         dag.diagnostics()
     );
 
-    assert_eq!(
-        record_fields(&dag, "TypeShape"),
-        vec!["declaration"]
-    );
+    assert_eq!(record_fields(&dag, "TypeShape"), vec!["declaration"]);
     assert_eq!(
         record_fields(&dag, "DagPort"),
         vec!["id", "state", "produced_by"]
@@ -68,7 +67,10 @@ fn substrate_declares_expected_reflection_surface() {
             "span",
         ]
     );
-    assert_eq!(record_fields(&dag, "PayloadBinding"), vec!["binding_name", "payload_port"]);
+    assert_eq!(
+        record_fields(&dag, "PayloadBinding"),
+        vec!["binding_name", "payload_port"]
+    );
     assert_eq!(
         record_fields(&dag, "BranchPath"),
         vec!["body", "result_port", "pattern", "binding"]
@@ -88,13 +90,24 @@ fn substrate_declares_expected_reflection_surface() {
     );
     assert_eq!(
         record_fields(&dag, "LoopNode"),
-        vec!["id", "source", "init", "body", "bound", "result_port", "span"]
+        vec![
+            "id",
+            "source",
+            "init",
+            "body",
+            "bound",
+            "result_port",
+            "span"
+        ]
     );
     assert_eq!(
         record_fields(&dag, "BindNode"),
         vec!["id", "name", "result_port", "params", "span"]
     );
-    assert_eq!(record_fields(&dag, "Dag"), vec!["declarations", "nodes", "ports"]);
+    assert_eq!(
+        record_fields(&dag, "Dag"),
+        vec!["declarations", "nodes", "ports"]
+    );
 }
 
 #[test]
@@ -125,10 +138,7 @@ fn substrate_coproducts_match_runtime_carriers() {
                 String::from("UnresolvedIdentifier"),
                 vec![String::from("_0")],
             ),
-            (
-                String::from("ResolvedIdentifier"),
-                vec![String::from("_0")],
-            ),
+            (String::from("ResolvedIdentifier"), vec![String::from("_0")],),
             (String::from("TypeParam"), vec![String::from("_0")]),
         ]
     );
@@ -157,7 +167,10 @@ fn substrate_coproducts_match_runtime_carriers() {
         sum_variants(&dag, "ValueBody"),
         vec![
             (String::from("ValueBodyUnparsed"), vec![String::from("_0")]),
-            (String::from("ValueBodyStructural"), vec![String::from("fields")]),
+            (
+                String::from("ValueBodyStructural"),
+                vec![String::from("fields")]
+            ),
         ]
     );
     assert_eq!(

@@ -491,35 +491,34 @@ impl RealizationIndexes {
         let type_meta = dag
             .type_realization_meta()
             .ok_or(EmitError::MissingRealizationMeta(RealizationCategory::Type))?;
-        let type_instantiation_meta = dag
-            .type_instantiation_realization_meta()
-            .ok_or(EmitError::MissingRealizationMeta(
-                RealizationCategory::TypeInstantiation,
-            ))?;
+        let type_instantiation_meta =
+            dag.type_instantiation_realization_meta()
+                .ok_or(EmitError::MissingRealizationMeta(
+                    RealizationCategory::TypeInstantiation,
+                ))?;
         let op_meta = dag
             .operator_realization_meta()
             .ok_or(EmitError::MissingRealizationMeta(
                 RealizationCategory::Operator,
             ))?;
-        let behavior_meta = dag
-            .behavior_realization_meta()
-            .ok_or(EmitError::MissingRealizationMeta(
-                RealizationCategory::Behavior,
-            ))?;
-        let callable_meta = dag
-            .callable_realization_meta()
-            .ok_or(EmitError::MissingRealizationMeta(
-                RealizationCategory::Callable,
-            ))?;
-        let pattern_meta = dag
-            .pattern_realization_meta()
-            .ok_or(EmitError::MissingRealizationMeta(
-                RealizationCategory::Pattern,
-            ))?;
+        let behavior_meta =
+            dag.behavior_realization_meta()
+                .ok_or(EmitError::MissingRealizationMeta(
+                    RealizationCategory::Behavior,
+                ))?;
+        let callable_meta =
+            dag.callable_realization_meta()
+                .ok_or(EmitError::MissingRealizationMeta(
+                    RealizationCategory::Callable,
+                ))?;
+        let pattern_meta =
+            dag.pattern_realization_meta()
+                .ok_or(EmitError::MissingRealizationMeta(
+                    RealizationCategory::Pattern,
+                ))?;
 
         let mut types: HashMap<DeclarationId, TypeRealizationBinding> = HashMap::new();
-        let mut instantiations: HashMap<DeclarationId, TypeInstantiationBinding> =
-            HashMap::new();
+        let mut instantiations: HashMap<DeclarationId, TypeInstantiationBinding> = HashMap::new();
         let mut operators: HashMap<(DeclarationId, DeclarationId), String> = HashMap::new();
         let mut behaviors: HashMap<DeclarationId, String> = HashMap::new();
         let mut callables: HashMap<DeclarationId, RustCallableStrategyBinding> = HashMap::new();
@@ -686,18 +685,8 @@ impl RenderingModelBinding {
     fn build(dag: &Dag, rendering_decl: DeclarationId) -> Result<Self, EmitError> {
         let fields = structural_fields_for_decl(dag, rendering_decl)?;
         Ok(Self {
-            read: require_read_strategy(
-                dag,
-                fields,
-                "read",
-                rendering_decl,
-            )?,
-            construct: require_construct_strategy(
-                dag,
-                fields,
-                "construct",
-                rendering_decl,
-            )?,
+            read: require_read_strategy(dag, fields, "read", rendering_decl)?,
+            construct: require_construct_strategy(dag, fields, "construct", rendering_decl)?,
         })
     }
 
@@ -937,11 +926,7 @@ fn parse_value_construction_syntax(
     Ok(ValueConstructionSyntaxBinding {
         struct_literal: syntax_field_string(fields, "struct_literal", declaration)?,
         struct_field_init: syntax_field_string(fields, "struct_field_init", declaration)?,
-        struct_field_separator: syntax_field_string(
-            fields,
-            "struct_field_separator",
-            declaration,
-        )?,
+        struct_field_separator: syntax_field_string(fields, "struct_field_separator", declaration)?,
         variant_named_construction: syntax_field_string(
             fields,
             "variant_named_construction",
@@ -1388,16 +1373,18 @@ fn require_read_strategy(
             detail: "ReadStrategy variants must not carry payload fields",
         });
     }
-    let borrow_variant = named_variant_id(dag, "ReadStrategy", "Borrow")
-        .ok_or(EmitError::MalformedTargetSyntax {
+    let borrow_variant = named_variant_id(dag, "ReadStrategy", "Borrow").ok_or(
+        EmitError::MalformedTargetSyntax {
             declaration,
             detail: "ReadStrategy.Borrow declaration was not found",
-        })?;
-    let pass_variant = named_variant_id(dag, "ReadStrategy", "PassByValue")
-        .ok_or(EmitError::MalformedTargetSyntax {
+        },
+    )?;
+    let pass_variant = named_variant_id(dag, "ReadStrategy", "PassByValue").ok_or(
+        EmitError::MalformedTargetSyntax {
             declaration,
             detail: "ReadStrategy.PassByValue declaration was not found",
-        })?;
+        },
+    )?;
     if *constructor == borrow_variant {
         Ok(ReadStrategyBinding::Borrow)
     } else if *constructor == pass_variant {
@@ -1440,16 +1427,18 @@ fn require_construct_strategy(
             detail: "ConstructStrategy variants must not carry payload fields",
         });
     }
-    let copy_or_clone = named_variant_id(dag, "ConstructStrategy", "CopyOrClone")
-        .ok_or(EmitError::MalformedTargetSyntax {
+    let copy_or_clone = named_variant_id(dag, "ConstructStrategy", "CopyOrClone").ok_or(
+        EmitError::MalformedTargetSyntax {
             declaration,
             detail: "ConstructStrategy.CopyOrClone declaration was not found",
-        })?;
-    let pass_variant = named_variant_id(dag, "ConstructStrategy", "PassByValue")
-        .ok_or(EmitError::MalformedTargetSyntax {
+        },
+    )?;
+    let pass_variant = named_variant_id(dag, "ConstructStrategy", "PassByValue").ok_or(
+        EmitError::MalformedTargetSyntax {
             declaration,
             detail: "ConstructStrategy.PassByValue declaration was not found",
-        })?;
+        },
+    )?;
     if *constructor == copy_or_clone {
         Ok(ConstructStrategyBinding::CopyOrClone)
     } else if *constructor == pass_variant {
@@ -1552,24 +1541,33 @@ fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<String, EmitErro
         .iter()
         .filter(|decl| !is_bootstrap_file(&decl.span.file))
         .filter(|decl| decl.name.is_some())
-        .filter(|decl| matches!(
-            decl.connective,
-            TypeConnective::Conj { .. } | TypeConnective::Disj { .. }
-        ))
+        .filter(|decl| {
+            matches!(
+                decl.connective,
+                TypeConnective::Conj { .. } | TypeConnective::Disj { .. }
+            )
+        })
         .collect();
     let function_decls: Vec<_> = dag
         .declarations()
         .iter()
         .filter(|decl| !is_bootstrap_file(&decl.span.file))
         .filter(|decl| decl.name.is_some())
-        .filter(|decl| !decl.name.as_deref().is_some_and(|name| name.starts_with("__anon_lambda_")))
-        .filter(|decl| matches!(
-            decl.connective,
-            TypeConnective::Arrow {
-                body: ArrowBody::UserDefined(_),
-                ..
-            }
-        ))
+        .filter(|decl| {
+            !decl
+                .name
+                .as_deref()
+                .is_some_and(|name| name.starts_with("__anon_lambda_"))
+        })
+        .filter(|decl| {
+            matches!(
+                decl.connective,
+                TypeConnective::Arrow {
+                    body: ArrowBody::UserDefined(_),
+                    ..
+                }
+            )
+        })
         .collect();
     let top_level_binds: Vec<&crate::dag::BindNode> = dag
         .nodes()
@@ -1637,24 +1635,25 @@ fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<String, EmitErro
             let value_expr = ctx.render_top_level_value(bind.value)?;
             let rendered = render_named_template(
                 &indexes.syntax.statements.let_binding,
-                &[("name", &bind.name), ("type", &ty_name), ("value", &value_expr)],
+                &[
+                    ("name", &bind.name),
+                    ("type", &ty_name),
+                    ("value", &value_expr),
+                ],
             );
             rendered_binds.push(rendered);
         }
 
         let body_joined = join_rendered(&rendered_binds, " ");
-        let final_bind_name = top_level_binds
-            .last()
-            .expect("guarded above")
-            .name
-            .clone();
+        let final_bind_name = top_level_binds.last().expect("guarded above").name.clone();
 
-        let main_template = indexes
-            .behaviors
-            .get(&main_marker)
-            .ok_or(EmitError::MissingBehaviorRealization {
-                marker: main_marker,
-            })?;
+        let main_template =
+            indexes
+                .behaviors
+                .get(&main_marker)
+                .ok_or(EmitError::MissingBehaviorRealization {
+                    marker: main_marker,
+                })?;
         let main_program = render_named_template(
             main_template,
             &[
@@ -1752,7 +1751,12 @@ impl<'a> Ctx<'a> {
         self.indexes.rendering.construct
     }
 
-    fn render_binding(&self, port: PortId, binding: &LocalBinding, mode: RenderMode) -> Result<String, EmitError> {
+    fn render_binding(
+        &self,
+        port: PortId,
+        binding: &LocalBinding,
+        mode: RenderMode,
+    ) -> Result<String, EmitError> {
         match mode {
             RenderMode::BorrowedRead => match self.read_strategy() {
                 ReadStrategyBinding::Borrow => match binding {
@@ -1775,27 +1779,25 @@ impl<'a> Ctx<'a> {
                 LocalBinding::Borrowed(expr) => Ok(format!("(*({expr}))")),
             },
             RenderMode::OwnedConstruct => match binding {
-                LocalBinding::Owned(name) => {
-                    match self.construct_strategy() {
-                        ConstructStrategyBinding::CopyOrClone => {
-                            if self.port_is_copy(port)? {
-                                Ok(name.clone())
-                            } else {
-                                Ok(format!("({name}).clone()"))
-                            }
+                LocalBinding::Owned(name) => match self.construct_strategy() {
+                    ConstructStrategyBinding::CopyOrClone => {
+                        if self.port_is_copy(port)? {
+                            Ok(name.clone())
+                        } else {
+                            Ok(format!("({name}).clone()"))
                         }
-                        ConstructStrategyBinding::PassByValue => {
-                            if self.port_is_copy(port)? {
-                                Ok(name.clone())
-                            } else {
-                                Err(EmitError::UnsupportedBehavior(
+                    }
+                    ConstructStrategyBinding::PassByValue => {
+                        if self.port_is_copy(port)? {
+                            Ok(name.clone())
+                        } else {
+                            Err(EmitError::UnsupportedBehavior(
                                     "rust_rendering.construct = PassByValue is not yet supported for non-Copy owned bindings"
                                         .to_string(),
                                 ))
-                            }
                         }
                     }
-                }
+                },
                 LocalBinding::Borrowed(expr) => self.construct_from_borrowed_expr(port, expr),
             },
         }
@@ -1825,7 +1827,12 @@ impl<'a> Ctx<'a> {
         }
     }
 
-    fn render_port(&self, port: PortId, locals: &RenderLocals, mode: RenderMode) -> Result<String, EmitError> {
+    fn render_port(
+        &self,
+        port: PortId,
+        locals: &RenderLocals,
+        mode: RenderMode,
+    ) -> Result<String, EmitError> {
         if let Some(binding) = locals.names.get(&port) {
             return self.render_binding(port, binding, mode);
         }
@@ -1878,7 +1885,9 @@ impl<'a> Ctx<'a> {
                     RenderMode::CopyRead | RenderMode::OwnedConstruct => Ok(expr),
                 }
             }
-            Behavior::Bind(b) => self.render_binding(port, &LocalBinding::Owned(b.name.clone()), mode),
+            Behavior::Bind(b) => {
+                self.render_binding(port, &LocalBinding::Owned(b.name.clone()), mode)
+            }
         }
     }
 
@@ -2008,7 +2017,10 @@ impl<'a> Ctx<'a> {
                 target: parent_type_id,
             });
         };
-        if !matches!(self.dag.declaration(conj_id).connective, TypeConnective::Conj { .. }) {
+        if !matches!(
+            self.dag.declaration(conj_id).connective,
+            TypeConnective::Conj { .. }
+        ) {
             return Err(EmitError::MissingTypeRealization {
                 target: parent_type_id,
             });
@@ -2054,15 +2066,15 @@ impl<'a> Ctx<'a> {
         // sides agree because they read the same algebra field
         // from the substrate.
         let op_decl_id = algebra_field_for_operator(self.dag, operand_type_id, op)?;
-        let carrier =
-            self.indexes
-                .operators
-                .get(&(operand_type_id, op_decl_id))
-                .ok_or(EmitError::MissingOperatorRealization {
-                    target: operand_type_id,
-                    op: op_decl_id,
-                })?
-                .clone();
+        let carrier = self
+            .indexes
+            .operators
+            .get(&(operand_type_id, op_decl_id))
+            .ok_or(EmitError::MissingOperatorRealization {
+                target: operand_type_id,
+                op: op_decl_id,
+            })?
+            .clone();
         let lhs = self.render_port(t.inputs[0], locals, RenderMode::CopyRead)?;
         let rhs = self.render_port(t.inputs[1], locals, RenderMode::CopyRead)?;
         Ok(render_named_template(
@@ -2071,11 +2083,7 @@ impl<'a> Ctx<'a> {
         ))
     }
 
-    fn render_branch(
-        &self,
-        b: &BranchNode,
-        locals: &RenderLocals,
-    ) -> Result<String, EmitError> {
+    fn render_branch(&self, b: &BranchNode, locals: &RenderLocals) -> Result<String, EmitError> {
         if self.branch_scrutinee_is_bool(b)? {
             let (then_path, else_path) = self.split_bool_paths(b)?;
             let cond = self.render_port(b.input, locals, RenderMode::CopyRead)?;
@@ -2174,8 +2182,7 @@ impl<'a> Ctx<'a> {
             )
         })?;
         let scrutinee = self.render_port(branch.input, locals, RenderMode::BorrowedRead)?;
-        let realized_scrutinee =
-            render_named_template(&binding.scrutinee, &[("expr", &scrutinee)]);
+        let realized_scrutinee = render_named_template(&binding.scrutinee, &[("expr", &scrutinee)]);
         let empty_body = self.render_path_body(empty_path, locals)?;
 
         let head_name = "__list_head";
@@ -2201,9 +2208,12 @@ impl<'a> Ctx<'a> {
                     &[("tail", tail_name)],
                 )),
             );
-            cons_locals.field_overrides.insert(payload.payload_port, fields);
+            cons_locals
+                .field_overrides
+                .insert(payload.payload_port, fields);
         }
-        let cons_body = self.render_port(cons_path.output, &cons_locals, RenderMode::OwnedConstruct)?;
+        let cons_body =
+            self.render_port(cons_path.output, &cons_locals, RenderMode::OwnedConstruct)?;
 
         let arms = vec![
             render_named_template(
@@ -2217,23 +2227,20 @@ impl<'a> Ctx<'a> {
         ];
         Ok(render_named_template(
             &self.indexes.syntax.patterns.match_expr,
-            &[("expr", &realized_scrutinee), ("arms", &join_rendered(&arms, " "))],
+            &[
+                ("expr", &realized_scrutinee),
+                ("arms", &join_rendered(&arms, " ")),
+            ],
         ))
     }
 
-    fn render_path_body(
-        &self,
-        path: &Path,
-        locals: &RenderLocals,
-    ) -> Result<String, EmitError> {
+    fn render_path_body(&self, path: &Path, locals: &RenderLocals) -> Result<String, EmitError> {
         let mut arm_locals = locals.clone();
         if let Some(binding) = &path.binding {
-            arm_locals
-                .names
-                .insert(
-                    binding.payload_port,
-                    LocalBinding::Borrowed(binding.binding_name.clone()),
-                );
+            arm_locals.names.insert(
+                binding.payload_port,
+                LocalBinding::Borrowed(binding.binding_name.clone()),
+            );
         }
         self.render_port(path.output, &arm_locals, RenderMode::OwnedConstruct)
     }
@@ -2263,15 +2270,12 @@ impl<'a> Ctx<'a> {
         let qualified_name = if is_optional_match {
             variant_name.clone()
         } else {
-            let enum_name = self
-                .dag
-                .declaration(disj_id)
-                .name
-                .clone()
-                .ok_or(EmitError::UnsupportedBehavior(
+            let enum_name = self.dag.declaration(disj_id).name.clone().ok_or(
+                EmitError::UnsupportedBehavior(
                     "match on anonymous sum declarations is not yet supported in Rust emission"
                         .to_string(),
-                ))?;
+                ),
+            )?;
             self.qualified_name(&enum_name, &variant_name)
         };
         let Some(binding) = &path.binding else {
@@ -2280,7 +2284,8 @@ impl<'a> Ctx<'a> {
                 &[("name", &qualified_name)],
             ));
         };
-        let TypeConnective::Conj { children } = &self.dag.declaration(resolved_id).connective else {
+        let TypeConnective::Conj { children } = &self.dag.declaration(resolved_id).connective
+        else {
             return Err(EmitError::UnsupportedBehavior(format!(
                 "matched variant `{variant_name}` does not lower to a payload product"
             )));
@@ -2309,22 +2314,25 @@ impl<'a> Ctx<'a> {
                     ),
                 ],
             );
-            return Ok(format!(
-                "{} @ {}",
-                binding.binding_name, inner_pattern
-            ));
+            return Ok(format!("{} @ {}", binding.binding_name, inner_pattern));
         }
         if children[0].label == "_0"
             && (self.indexes.types.contains_key(&disj_id) || is_optional_match)
         {
             return Ok(render_named_template(
                 &self.indexes.syntax.patterns.variant_pattern_positional,
-                &[("name", &qualified_name), ("binding", &binding.binding_name)],
+                &[
+                    ("name", &qualified_name),
+                    ("binding", &binding.binding_name),
+                ],
             ));
         }
         let bindings = render_named_template(
             &self.indexes.syntax.patterns.field_binding,
-            &[("field", &children[0].label), ("binding", &binding.binding_name)],
+            &[
+                ("field", &children[0].label),
+                ("binding", &binding.binding_name),
+            ],
         );
         Ok(render_named_template(
             &self.indexes.syntax.patterns.variant_pattern,
@@ -2340,7 +2348,11 @@ impl<'a> Ctx<'a> {
         let TypeConnective::Disj { variants } = &self.dag.declaration(disj_id).connective else {
             unreachable!("walk_to_disj returned non-Disj")
         };
-        let Some((idx, _)) = variants.iter().enumerate().find(|(_, variant)| variant.ty == variant_id) else {
+        let Some((idx, _)) = variants
+            .iter()
+            .enumerate()
+            .find(|(_, variant)| variant.ty == variant_id)
+        else {
             return Err(EmitError::UnsupportedBehavior(format!(
                 "bool branch variant {variant_id:?} was not found on its parent disjunction"
             )));
@@ -2378,13 +2390,8 @@ impl<'a> Ctx<'a> {
     ) -> Result<String, EmitError> {
         let (template, arguments) = callable_template(target, self.dag);
         if let Some(strategy) = self.indexes.callables.get(&template) {
-            return self.render_realized_callable(
-                template,
-                *strategy,
-                &arguments,
-                &t.inputs,
-                locals,
-            );
+            return self
+                .render_realized_callable(template, *strategy, &arguments, &t.inputs, locals);
         }
         self.render_general_callable(template, &t.inputs, locals)
     }
@@ -2568,15 +2575,15 @@ impl<'a> Ctx<'a> {
         if let Some(rendered) = self.render_record_constructor(template, inputs, locals)? {
             return Ok(rendered);
         }
-        let func = self
-            .dag
-            .declaration(template)
-            .name
-            .clone()
-            .ok_or(EmitError::UnsupportedBehavior(
-                "callable target is anonymous and cannot be rendered as a direct Rust call"
-                    .to_string(),
-            ))?;
+        let func =
+            self.dag
+                .declaration(template)
+                .name
+                .clone()
+                .ok_or(EmitError::UnsupportedBehavior(
+                    "callable target is anonymous and cannot be rendered as a direct Rust call"
+                        .to_string(),
+                ))?;
         let args = inputs
             .iter()
             .map(|port| self.render_port(*port, locals, RenderMode::BorrowedRead))
@@ -2619,10 +2626,7 @@ impl<'a> Ctx<'a> {
                 ))
             })
             .collect::<Result<Vec<_>, EmitError>>()?;
-        let joined = join_rendered(
-            &fields,
-            &self.indexes.syntax.values.struct_field_separator,
-        );
+        let joined = join_rendered(&fields, &self.indexes.syntax.values.struct_field_separator);
         Ok(Some(render_named_template(
             &self.indexes.syntax.values.struct_literal,
             &[("type", type_name), ("fields", &joined)],
@@ -2663,10 +2667,7 @@ impl<'a> Ctx<'a> {
                 ))
             })
             .collect::<Result<Vec<_>, EmitError>>()?;
-        let joined = join_rendered(
-            &fields,
-            &self.indexes.syntax.values.struct_field_separator,
-        );
+        let joined = join_rendered(&fields, &self.indexes.syntax.values.struct_field_separator);
         Ok(Some(render_named_template(
             &self.indexes.syntax.values.variant_named_construction,
             &[("variant", &qualified_name), ("fields", &joined)],
@@ -2686,7 +2687,9 @@ impl<'a> Ctx<'a> {
         param_bindings: &[(String, LocalBinding)],
         outer_locals: &RenderLocals,
     ) -> Result<String, EmitError> {
-        let TypeConnective::Arrow { inputs, body, .. } = &self.dag.declaration(callable_decl).connective else {
+        let TypeConnective::Arrow { inputs, body, .. } =
+            &self.dag.declaration(callable_decl).connective
+        else {
             return Err(EmitError::UnsupportedBehavior(
                 "callable template binding did not resolve to an Arrow declaration".to_string(),
             ));
@@ -2717,9 +2720,7 @@ impl<'a> Ctx<'a> {
         let mut locals = RenderLocals::default();
         for capture in bind.params.iter().copied().take(capture_count) {
             let value = self.render_port(capture, outer_locals, RenderMode::BorrowedRead)?;
-            locals
-                .names
-                .insert(capture, LocalBinding::Borrowed(value));
+            locals.names.insert(capture, LocalBinding::Borrowed(value));
         }
         for (port, (_, binding)) in bind
             .params
@@ -2772,7 +2773,12 @@ impl<'a> Ctx<'a> {
                     .to_string(),
             ));
         };
-        let TypeConnective::Arrow { inputs, output, body } = &declaration.connective else {
+        let TypeConnective::Arrow {
+            inputs,
+            output,
+            body,
+        } = &declaration.connective
+        else {
             return Err(EmitError::UnsupportedBehavior(
                 "render_function_declaration expected an Arrow declaration".to_string(),
             ));
@@ -2831,14 +2837,17 @@ impl<'a> Ctx<'a> {
             .types
             .get(output)
             .map(|binding| binding.carrier.clone())
-            .or_else(|| {
-                self.rust_type_name_for_port(bind.value).ok()
-            })
+            .or_else(|| self.rust_type_name_for_port(bind.value).ok())
             .ok_or(EmitError::MissingTypeRealization { target: *output })?;
         let body = self.render_port(bind.value, &locals, RenderMode::OwnedConstruct)?;
         let rendered = render_named_template(
             &self.indexes.syntax.functions.definition,
-            &[("name", name), ("params", &params_joined), ("ret", &ret), ("body", &body)],
+            &[
+                ("name", name),
+                ("params", &params_joined),
+                ("ret", &ret),
+                ("body", &body),
+            ],
         );
         if self.mode == EmitRustMode::Module {
             Ok(format!("pub {rendered}"))
@@ -2939,10 +2948,7 @@ impl<'a> Ctx<'a> {
     /// ResolvedVariant declaration id against them. Zero name
     /// strings — the True/False distinction comes from the
     /// scrutinee's Disj order, which is itself a fact of std/logic.dag.
-    fn split_bool_paths<'p>(
-        &self,
-        b: &'p BranchNode,
-    ) -> Result<(&'p Path, &'p Path), EmitError> {
+    fn split_bool_paths<'p>(&self, b: &'p BranchNode) -> Result<(&'p Path, &'p Path), EmitError> {
         // The scrutinee's type tells us which Disj we're branching
         // on. For `if cond then ... else ...`, that's `Classical`
         // (Bool) and its variants are the True/False markers.
@@ -3020,10 +3026,16 @@ impl<'a> Ctx<'a> {
         self.rust_borrowed_type_name_for_decl(ty.declaration)
     }
 
-    fn rust_borrowed_type_name_for_decl(&self, declaration: DeclarationId) -> Result<String, EmitError> {
+    fn rust_borrowed_type_name_for_decl(
+        &self,
+        declaration: DeclarationId,
+    ) -> Result<String, EmitError> {
         let decl = self.dag.declaration(declaration);
         match &decl.connective {
-            TypeConnective::Instantiation { template, arguments } => {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
                 if self.is_list_template(*template) {
                     let [element] = arguments.as_slice() else {
                         return Err(EmitError::UnsupportedBehavior(
@@ -3177,7 +3189,11 @@ impl<'a> Ctx<'a> {
             .port(list_port)
             .value_type()
             .ok_or(EmitError::UntypedPort(list_port))?;
-        let TypeConnective::Instantiation { template, arguments } = &self.dag.declaration(ty.declaration).connective else {
+        let TypeConnective::Instantiation {
+            template,
+            arguments,
+        } = &self.dag.declaration(ty.declaration).connective
+        else {
             return Err(EmitError::UnsupportedBehavior(
                 "list construct rendering expected an instantiated List type".to_string(),
             ));
@@ -3298,7 +3314,10 @@ fn behavior_result_port(behavior: &Behavior) -> PortId {
 }
 
 fn is_bootstrap_file(file: &str) -> bool {
-    file.starts_with("dsl/std/") || file.starts_with("src/v3/std/") || file.starts_with("src/v3/spec/")
+    file.starts_with("dsl/std/")
+        || file.starts_with("src/v3/std/")
+        || file.starts_with("src/v3/spec/")
+        || file.starts_with("src/v3/compiler/")
 }
 
 /// Walk a port's resolved TypeShape declaration through anonymous
@@ -3427,10 +3446,7 @@ fn algebra_field_for_operator(
         TypeConnective::Conj { children } => children,
         _ => unreachable!("walk_to_algebra_conj returned a non-Conj"),
     };
-    if let Some(field) = children
-        .iter()
-        .find(|f| f.label == field_label)
-    {
+    if let Some(field) = children.iter().find(|f| f.label == field_label) {
         return Ok(field.ty);
     }
     canonical_operator_field(dag, op)
@@ -3477,8 +3493,8 @@ fn canonical_operator_field(dag: &Dag, op: OperatorKind) -> Result<DeclarationId
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diagnostics::SourceSpan;
     use crate::compile_to_dag;
+    use crate::diagnostics::SourceSpan;
 
     #[test]
     fn render_field_project_reads_borrowed_nodes_without_cloning() {
@@ -3489,11 +3505,13 @@ mod tests {
             .expect("Dag type realization target exists")
             .id;
         let dag_nodes_type = match &dag.declaration(dag_type).connective {
-            TypeConnective::Conj { children } => children
-                .iter()
-                .find(|field| field.label == "nodes")
-                .expect("Dag.nodes field")
-                .ty,
+            TypeConnective::Conj { children } => {
+                children
+                    .iter()
+                    .find(|field| field.label == "nodes")
+                    .expect("Dag.nodes field")
+                    .ty
+            }
             other => panic!("Dag must be a Conj, got {other:?}"),
         };
         dag.set_port_type(parent_port, crate::types::TypeShape::new(dag_type));
@@ -3539,11 +3557,13 @@ mod tests {
             .expect("Dag type realization target exists")
             .id;
         let dag_nodes_type = match &dag.declaration(dag_type).connective {
-            TypeConnective::Conj { children } => children
-                .iter()
-                .find(|field| field.label == "nodes")
-                .expect("Dag.nodes field")
-                .ty,
+            TypeConnective::Conj { children } => {
+                children
+                    .iter()
+                    .find(|field| field.label == "nodes")
+                    .expect("Dag.nodes field")
+                    .ty
+            }
             other => panic!("Dag must be a Conj, got {other:?}"),
         };
         dag.set_port_type(parent_port, crate::types::TypeShape::new(dag_type));

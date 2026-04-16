@@ -67,8 +67,7 @@ pub fn infer(dag: &mut Dag) {
                                 changed = true;
                                 continue;
                             }
-                            let span = node_span_for_port(dag, port)
-                                .unwrap_or_else(synthetic_span);
+                            let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
                             let diag = Diagnostic::TypeMismatch {
                                 expected: existing,
                                 actual: ty,
@@ -178,10 +177,7 @@ fn existing_optional_match_disj_decl(
     dag.optional_match_disj(cardinality_decl_id)
 }
 
-fn walk_to_optional_cardinality_decl(
-    dag: &Dag,
-    start: DeclarationId,
-) -> Option<DeclarationId> {
+fn walk_to_optional_cardinality_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
     let mut current = start;
     for _ in 0..WALK_DEPTH_LIMIT {
         match &dag.declaration(current).connective {
@@ -349,24 +345,19 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
         // the underlying Disj. `type Hue = Color` and
         // `Color = Red | Green | Blue` both resolve arms against
         // `Color`'s variants via this walk.
-        let Some(disj_decl_id) = walk_to_disj_decl(dag, scrutinee_ty.declaration)
-            .or_else(|| {
-                walk_to_optional_cardinality_decl(dag, scrutinee_ty.declaration)
-                    .and_then(|cardinality| {
-                        existing_optional_match_disj_decl(dag, cardinality)
-                    })
-            })
-        else {
+        let Some(disj_decl_id) = walk_to_disj_decl(dag, scrutinee_ty.declaration).or_else(|| {
+            walk_to_optional_cardinality_decl(dag, scrutinee_ty.declaration)
+                .and_then(|cardinality| existing_optional_match_disj_decl(dag, cardinality))
+        }) else {
             // Scrutinee doesn't resolve to a Disj — the main infer
             // pass caught this as a TypeMismatch already. Skip.
             continue;
         };
         let disj_variants: Vec<(String, DeclarationId)> =
             match &dag.declaration(disj_decl_id).connective {
-                TypeConnective::Disj { variants } => variants
-                    .iter()
-                    .map(|f| (f.label.clone(), f.ty))
-                    .collect(),
+                TypeConnective::Disj { variants } => {
+                    variants.iter().map(|f| (f.label.clone(), f.ty)).collect()
+                }
                 _ => unreachable!("walk_to_disj_decl returned a non-Disj declaration"),
             };
         let mut resolved_arms: Vec<(DeclarationId, String)> = Vec::new();
@@ -381,10 +372,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                         .find(|(_, variant_id)| variant_id == id)
                         .map(|(label, _)| label.clone())
                         .unwrap_or_else(|| format!("declaration#{}", id.raw()));
-                    resolved_arms.push((
-                        *id,
-                        arm_name,
-                    ));
+                    resolved_arms.push((*id, arm_name));
                     continue;
                 }
                 crate::dag::BranchPattern::UnresolvedVariant { name, span } => {
@@ -426,10 +414,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                 }
             }
             Err(diag) => {
-                if !matches!(
-                    dag.port(rewrite.output_port).state(),
-                    PortState::Unresolved
-                ) {
+                if !matches!(dag.port(rewrite.output_port).state(), PortState::Unresolved) {
                     dag.mark_unresolved(rewrite.output_port, diag);
                     changed = true;
                 }
@@ -526,11 +511,8 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
             }
             PortState::Resolved(scrutinee_ty) => {
                 let mut subst = SubstStack::new();
-                let disj_decl_id = walk_to_disj_decl_with_subst(
-                    dag,
-                    scrutinee_ty.declaration,
-                    &mut subst,
-                );
+                let disj_decl_id =
+                    walk_to_disj_decl_with_subst(dag, scrutinee_ty.declaration, &mut subst);
                 if disj_decl_id.is_none()
                     && is_retryable_generic_decl(dag, scrutinee_ty.declaration)
                 {
@@ -541,7 +523,9 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
                         .iter()
                         .map(|field| (field.label.clone(), field.ty))
                         .collect::<Vec<_>>(),
-                    _ => unreachable!("walk_to_disj_decl_with_subst returned a non-Disj declaration"),
+                    _ => {
+                        unreachable!("walk_to_disj_decl_with_subst returned a non-Disj declaration")
+                    }
                 });
 
                 for path in &b.paths {
@@ -618,24 +602,24 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
                     } => materialize_specialized_payload_record(dag, variant_decl_id, &subst),
                 };
                 match dag.port(rewrite.port).state().clone() {
-                PortState::Unresolved => {}
-                PortState::Uninferred => {
-                    dag.set_port_type(rewrite.port, ty);
-                    changed = true;
-                }
-                PortState::Resolved(existing)
-                    if type_shapes_equivalent(dag, &existing, &ty) => {}
-                PortState::Resolved(existing) => {
-                    dag.mark_unresolved(
-                        rewrite.port,
-                        Diagnostic::TypeMismatch {
-                            expected: existing,
-                            actual: ty,
-                            span: rewrite.span,
-                        },
-                    );
-                    changed = true;
-                }
+                    PortState::Unresolved => {}
+                    PortState::Uninferred => {
+                        dag.set_port_type(rewrite.port, ty);
+                        changed = true;
+                    }
+                    PortState::Resolved(existing)
+                        if type_shapes_equivalent(dag, &existing, &ty) => {}
+                    PortState::Resolved(existing) => {
+                        dag.mark_unresolved(
+                            rewrite.port,
+                            Diagnostic::TypeMismatch {
+                                expected: existing,
+                                actual: ty,
+                                span: rewrite.span,
+                            },
+                        );
+                        changed = true;
+                    }
                 }
             }
             Err(diag) => {
@@ -838,10 +822,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                         return Decision::Fail(
                             t.output,
                             Diagnostic::ResolveError {
-                                name: format!(
-                                    "(upstream failure in {})",
-                                    op_kind.symbol()
-                                ),
+                                name: format!("(upstream failure in {})", op_kind.symbol()),
                                 span: t.span.clone(),
                             },
                         );
@@ -874,9 +855,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
         TransformTarget::Callable(target_id) => {
             match resolve_callable_target(dag, *target_id, &t.inputs, &t.span) {
                 CallableTargetResolution::Retry => return Decision::Retry,
-                CallableTargetResolution::Fail(diag) => {
-                    return Decision::Fail(t.output, diag)
-                }
+                CallableTargetResolution::Fail(diag) => return Decision::Fail(t.output, diag),
                 CallableTargetResolution::Resolved { signature, .. } => signature,
             }
         }
@@ -976,8 +955,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                     },
                 );
             }
-            PortState::Resolved(actual)
-                if type_shapes_equivalent(dag, actual, expected_ty) => {}
+            PortState::Resolved(actual) if type_shapes_equivalent(dag, actual, expected_ty) => {}
             PortState::Resolved(actual) => {
                 if is_retryable_generic_decl(dag, actual.declaration)
                     || is_retryable_generic_decl(dag, expected_ty.declaration)
@@ -1373,7 +1351,9 @@ fn resolve_binding_decl(
         TypeConnective::Atom(AtomPayload::TypeParam(_)) => subst
             .lookup(current)
             .and_then(|bound| resolve_binding_decl(dag, bound, subst, depth + 1))
-            .or_else(|| walk_to_type_shape(dag, current, subst, depth + 1).map(|ty| ty.declaration)),
+            .or_else(|| {
+                walk_to_type_shape(dag, current, subst, depth + 1).map(|ty| ty.declaration)
+            }),
         TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
             resolve_binding_decl(dag, *next, subst, depth + 1)
         }
@@ -1451,13 +1431,7 @@ fn bind_expected_callable_to_actual(
         .into_iter()
         .zip(actual_signature.inputs.iter())
     {
-        if !bind_expected_decl_to_actual_context(
-            dag,
-            expected_input,
-            actual_input,
-            arguments,
-            0,
-        ) {
+        if !bind_expected_decl_to_actual_context(dag, expected_input, actual_input, arguments, 0) {
             return CallableBindingResolution::Conflict;
         }
     }
@@ -1508,13 +1482,7 @@ fn bind_expected_decl_to_actual_context(
             push_template_argument_binding(arguments, expected, value)
         }
         TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
-            bind_expected_decl_to_actual_context(
-                dag,
-                *next,
-                actual,
-                arguments,
-                depth + 1,
-            )
+            bind_expected_decl_to_actual_context(dag, *next, actual, arguments, depth + 1)
         }
         TypeConnective::Instantiation {
             template,
@@ -1722,8 +1690,7 @@ fn resolve_callable_target(
     if let Some(raw_inputs) = raw_arrow_inputs {
         for expected_input in raw_inputs {
             if declaration_is_callable(dag, expected_input, 0) {
-                let Some(actual_callable) =
-                    template_argument_value(&arguments, expected_input)
+                let Some(actual_callable) = template_argument_value(&arguments, expected_input)
                 else {
                     return CallableTargetResolution::Retry;
                 };
@@ -1758,10 +1725,7 @@ fn resolve_callable_target(
                 PortState::Uninferred => return CallableTargetResolution::Retry,
                 PortState::Unresolved => {
                     return CallableTargetResolution::Fail(Diagnostic::ResolveError {
-                        name: format!(
-                            "(upstream failure in {})",
-                            target_display_name(dag, target)
-                        ),
+                        name: format!("(upstream failure in {})", target_display_name(dag, target)),
                         span: span.clone(),
                     });
                 }
@@ -1942,8 +1906,7 @@ fn resolve_callable_targets(dag: &mut Dag) -> bool {
             continue;
         };
         let (current_template, current_arguments) = callable_template_arguments(dag, target);
-        if current_template == template
-            && template_arguments_match(&current_arguments, &arguments)
+        if current_template == template && template_arguments_match(&current_arguments, &arguments)
         {
             continue;
         }
@@ -2038,9 +2001,7 @@ fn resolve_lambda_parameter_types(dag: &mut Dag) -> bool {
         let TransformTarget::Callable(target) = t.target else {
             continue;
         };
-        let (template, arguments) = match resolve_callable_target(
-            dag, target, &t.inputs, &t.span,
-        ) {
+        let (template, arguments) = match resolve_callable_target(dag, target, &t.inputs, &t.span) {
             CallableTargetResolution::Resolved {
                 template,
                 arguments,
@@ -2115,18 +2076,23 @@ fn validate_user_defined_function_signatures(dag: &mut Dag) -> bool {
         diagnostic: Diagnostic,
     }
 
-    let user_defined_arrows: Vec<(DeclarationId, Vec<DeclarationId>, DeclarationId, crate::dag::NodeId)> =
-        dag.declarations()
-            .iter()
-            .filter_map(|decl| match &decl.connective {
-                TypeConnective::Arrow {
-                    inputs,
-                    output,
-                    body: ArrowBody::UserDefined(bind_id),
-                } => Some((decl.id, inputs.clone(), *output, *bind_id)),
-                _ => None,
-            })
-            .collect();
+    let user_defined_arrows: Vec<(
+        DeclarationId,
+        Vec<DeclarationId>,
+        DeclarationId,
+        crate::dag::NodeId,
+    )> = dag
+        .declarations()
+        .iter()
+        .filter_map(|decl| match &decl.connective {
+            TypeConnective::Arrow {
+                inputs,
+                output,
+                body: ArrowBody::UserDefined(bind_id),
+            } => Some((decl.id, inputs.clone(), *output, *bind_id)),
+            _ => None,
+        })
+        .collect();
 
     let mut failures = Vec::new();
 
@@ -2366,10 +2332,7 @@ fn walk_to_disj_decl_with_subst(
     None
 }
 
-fn enclosing_disj_for_variant(
-    dag: &Dag,
-    variant_decl_id: DeclarationId,
-) -> Option<DeclarationId> {
+fn enclosing_disj_for_variant(dag: &Dag, variant_decl_id: DeclarationId) -> Option<DeclarationId> {
     dag.declarations().iter().find_map(|decl| {
         let TypeConnective::Disj { variants } = &decl.connective else {
             return None;
@@ -2476,7 +2439,10 @@ fn concretize_decl_with_subst(
         TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
             concretize_decl_with_subst(dag, next, subst, depth + 1)
         }
-        TypeConnective::Instantiation { template, arguments } => {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
             let specialized_arguments: Vec<TemplateArgument> = arguments
                 .into_iter()
                 .map(|arg| TemplateArgument {
@@ -2567,9 +2533,10 @@ fn find_equivalent_anonymous_instantiation(
         };
         (template == *existing_template
             && existing_arguments.len() == arguments.len()
-            && existing_arguments.iter().zip(arguments.iter()).all(|(lhs, rhs)| {
-                lhs.parameter == rhs.parameter && lhs.value == rhs.value
-            }))
+            && existing_arguments
+                .iter()
+                .zip(arguments.iter())
+                .all(|(lhs, rhs)| lhs.parameter == rhs.parameter && lhs.value == rhs.value))
         .then_some(decl.id)
     })
 }
@@ -2619,16 +2586,17 @@ fn resolve_field_project(
 
     let input_ty = match dag.port(t.inputs[0]).state() {
         PortState::Uninferred => return FieldProjectResolution::Retry,
-        PortState::Unresolved => return FieldProjectResolution::Fail(Diagnostic::ResolveError {
-            name: format!("(upstream failure in field `{field_label}`)"),
-            span: t.span.clone(),
-        }),
+        PortState::Unresolved => {
+            return FieldProjectResolution::Fail(Diagnostic::ResolveError {
+                name: format!("(upstream failure in field `{field_label}`)"),
+                span: t.span.clone(),
+            })
+        }
         PortState::Resolved(ty) => *ty,
     };
 
     let mut subst = SubstStack::new();
-    let Some(actual_conj_id) =
-        walk_to_conj_decl_with_subst(dag, input_ty.declaration, &mut subst)
+    let Some(actual_conj_id) = walk_to_conj_decl_with_subst(dag, input_ty.declaration, &mut subst)
     else {
         return FieldProjectResolution::Fail(Diagnostic::ResolveError {
             name: format!(
@@ -2690,9 +2658,7 @@ fn decide_field_project(
     match resolve_field_project(dag, t, field_label) {
         FieldProjectResolution::Retry => Decision::Retry,
         FieldProjectResolution::Fail(diag) => Decision::Fail(t.output, diag),
-        FieldProjectResolution::Resolved { output_ty, .. } => {
-            Decision::Set(t.output, output_ty)
-        }
+        FieldProjectResolution::Resolved { output_ty, .. } => Decision::Set(t.output, output_ty),
     }
 }
 
@@ -2723,8 +2689,7 @@ fn resolve_field_project_targets(dag: &mut Dag) -> bool {
             continue;
         };
         let TransformTarget::FieldProject {
-            field_child: slot,
-            ..
+            field_child: slot, ..
         } = &mut t.target
         else {
             continue;
@@ -2801,9 +2766,7 @@ fn resolve_operator_arrow(
                 // name.
                 let field_name = op_kind.algebra_field_name();
                 if let Some(field) = children.iter().find(|f| f.label == field_name) {
-                    return read_algebra_field(
-                        dag, decl, field.ty, source_id, op_kind, lhs_type,
-                    );
+                    return read_algebra_field(dag, decl, field.ty, source_id, op_kind, lhs_type);
                 }
                 // Algebra doesn't declare this operator's field —
                 // fall back to the Rust-side scaffold bridge below.
@@ -3062,14 +3025,11 @@ fn walk_to_type_shape(
         TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
             walk_to_type_shape(dag, *next, subst, depth + 1)
         }
-        TypeConnective::Instantiation { .. } => resolve_decl_with_subst(
-            dag,
-            current,
-            subst,
-            depth + 1,
-        )
-        .map(TypeShape::new)
-        .or_else(|| Some(TypeShape::new(current))),
+        TypeConnective::Instantiation { .. } => {
+            resolve_decl_with_subst(dag, current, subst, depth + 1)
+                .map(TypeShape::new)
+                .or_else(|| Some(TypeShape::new(current)))
+        }
         // Terminal non-follow cases. An anonymous `UnresolvedIdentifier`
         // means the sweep did not resolve the reference — the phantom
         // diagnostic is already attached, and this walk fails so the
@@ -3103,14 +3063,11 @@ fn signature_type_shape(
         return Some(TypeShape::new(current));
     }
     match &decl.connective {
-        TypeConnective::Instantiation { .. } => resolve_decl_with_subst(
-            dag,
-            current,
-            subst,
-            depth + 1,
-        )
-        .map(TypeShape::new)
-        .or_else(|| Some(TypeShape::new(current))),
+        TypeConnective::Instantiation { .. } => {
+            resolve_decl_with_subst(dag, current, subst, depth + 1)
+                .map(TypeShape::new)
+                .or_else(|| Some(TypeShape::new(current)))
+        }
         TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
             if let Some(bound) = subst.lookup(current) {
                 signature_type_shape(dag, bound, subst, depth + 1)
@@ -3148,7 +3105,10 @@ fn resolve_decl_with_subst(
         TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
             resolve_decl_with_subst(dag, *next, subst, depth + 1)
         }
-        TypeConnective::Instantiation { template, arguments } => {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
             let specialized_arguments: Vec<TemplateArgument> = arguments
                 .iter()
                 .map(|arg| {
@@ -3169,8 +3129,7 @@ fn resolve_decl_with_subst(
                 .or(Some(current))
         }
         TypeConnective::Cardinality { element, bound } => {
-            let specialized_element =
-                resolve_decl_with_subst(dag, *element, subst, depth + 1)?;
+            let specialized_element = resolve_decl_with_subst(dag, *element, subst, depth + 1)?;
             if specialized_element == *element {
                 return Some(current);
             }
@@ -3195,9 +3154,10 @@ fn find_equivalent_decl_instantiation(
         };
         (template == *existing_template
             && existing_arguments.len() == arguments.len()
-            && existing_arguments.iter().zip(arguments.iter()).all(|(lhs, rhs)| {
-                lhs.parameter == rhs.parameter && lhs.value == rhs.value
-            }))
+            && existing_arguments
+                .iter()
+                .zip(arguments.iter())
+                .all(|(lhs, rhs)| lhs.parameter == rhs.parameter && lhs.value == rhs.value))
         .then_some(decl.id)
     })
 }
@@ -3311,12 +3271,7 @@ fn declaration_shapes_equivalent(
                     .iter()
                     .zip(rhs_arguments.iter())
                     .all(|(lhs_arg, rhs_arg)| {
-                        declaration_shapes_equivalent(
-                            dag,
-                            lhs_arg.value,
-                            rhs_arg.value,
-                            depth + 1,
-                        )
+                        declaration_shapes_equivalent(dag, lhs_arg.value, rhs_arg.value, depth + 1)
                     })
         }
         (
@@ -3333,8 +3288,12 @@ fn declaration_shapes_equivalent(
                 && declaration_shapes_equivalent(dag, *lhs_element, *rhs_element, depth + 1)
         }
         (
-            TypeConnective::Conj { children: lhs_children },
-            TypeConnective::Conj { children: rhs_children },
+            TypeConnective::Conj {
+                children: lhs_children,
+            },
+            TypeConnective::Conj {
+                children: rhs_children,
+            },
         ) => {
             lhs_children.len() == rhs_children.len()
                 && lhs_children
@@ -3351,8 +3310,12 @@ fn declaration_shapes_equivalent(
                     })
         }
         (
-            TypeConnective::Disj { variants: lhs_variants },
-            TypeConnective::Disj { variants: rhs_variants },
+            TypeConnective::Disj {
+                variants: lhs_variants,
+            },
+            TypeConnective::Disj {
+                variants: rhs_variants,
+            },
         ) => {
             lhs_variants.len() == rhs_variants.len()
                 && lhs_variants

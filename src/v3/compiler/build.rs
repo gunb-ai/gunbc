@@ -2,11 +2,12 @@
 // directories and generate Rust arrays of `(path, content)` pairs
 // the bootstrap loader consumes.
 //
-// Two generated arrays exist:
-//   - `STAGED_FILES` for `src/v3/std/*.dag`
-//   - `V3_SPECS`    for `src/v3/spec/*.dag`
+// Three generated arrays exist:
+//   - `STAGED_FILES`   for `src/v3/std/*.dag`
+//   - `V3_SPECS`       for `src/v3/spec/*.dag`
+//   - `COMPILER_FILES` for `src/v3/compiler/*.dag`
 //
-// Adding a new staged std/spec file becomes a pure file-system
+// Adding a new staged std/spec/compiler file becomes a pure file-system
 // change — no Rust edits to `bootstrap.rs`, no fixture-array
 // maintenance, no skip-list drift.
 //
@@ -30,7 +31,7 @@
 // dependency that needs sorting, this script grows a topological
 // pass; until then, the simple rule is sufficient.
 //
-// **Output**: writes two Rust files:
+// **Output**: writes three Rust files:
 //
 //   pub static STAGED_FILES: &[(&str, &str)] = &[
 //       ("src/v3/std/list.dag", include_str!("...")),
@@ -39,6 +40,10 @@
 //   pub static V3_SPECS: &[(&str, &str)] = &[
 //       ("src/v3/spec/v3_l1.dag", include_str!("...")),
 //       ("src/v3/spec/rust.dag",  include_str!("...")),
+//   ];
+//
+//   pub static COMPILER_FILES: &[(&str, &str)] = &[
+//       ("src/v3/compiler/pipeline.dag", include_str!("...")),
 //   ];
 //
 // `bootstrap.rs` uses `include!(concat!(env!("OUT_DIR"), ...))` to
@@ -109,34 +114,34 @@ fn generate_static(
 
 fn main() {
     // Resolve the staged directories relative to CARGO_MANIFEST_DIR
-    // (which points at src/v3/compiler/). Both live one level up:
-    // src/v3/std/ and src/v3/spec/.
-    let manifest_dir = env::var("CARGO_MANIFEST_DIR")
-        .expect("CARGO_MANIFEST_DIR must be set by Cargo");
+    // (which points at src/v3/compiler/). std/ and spec/ live one
+    // level up; compiler-staged files live in the manifest dir itself.
+    let manifest_dir =
+        env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set by Cargo");
     let manifest_path = PathBuf::from(&manifest_dir);
     let v3_dir = manifest_path.parent().expect("compiler dir has parent");
     let std_dir = v3_dir.join("std");
     let spec_dir = v3_dir.join("spec");
+    let compiler_dir = manifest_path.clone();
 
-    // Tell Cargo to re-run the script if any staged std/spec file
+    // Tell Cargo to re-run the script if any staged std/spec/compiler file
     // changes. Without this, adding a new file wouldn't trigger a
     // rebuild and bootstrap would silently miss it.
     println!("cargo:rerun-if-changed={}", std_dir.display());
     println!("cargo:rerun-if-changed={}", spec_dir.display());
+    println!("cargo:rerun-if-changed={}", compiler_dir.display());
 
     let staged_entries = collect_dag_entries(&std_dir, &[]);
     let spec_entries = collect_dag_entries(&spec_dir, &["v3_l1.dag"]);
-    let staged_generated = generate_static(
-        "STAGED_FILES",
-        "src/v3/std",
-        "src/v3/std",
-        &staged_entries,
-    );
-    let specs_generated = generate_static(
-        "V3_SPECS",
-        "src/v3/spec",
-        "src/v3/spec",
-        &spec_entries,
+    let compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"]);
+    let staged_generated =
+        generate_static("STAGED_FILES", "src/v3/std", "src/v3/std", &staged_entries);
+    let specs_generated = generate_static("V3_SPECS", "src/v3/spec", "src/v3/spec", &spec_entries);
+    let compiler_generated = generate_static(
+        "COMPILER_FILES",
+        "src/v3/compiler",
+        "src/v3/compiler",
+        &compiler_entries,
     );
 
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR must be set by Cargo");
@@ -147,4 +152,7 @@ fn main() {
     let specs_out = out_dir.join("v3_specs.rs");
     fs::write(&specs_out, specs_generated)
         .unwrap_or_else(|e| panic!("failed to write {}: {}", specs_out.display(), e));
+    let compiler_out = out_dir.join("v3_compiler_files.rs");
+    fs::write(&compiler_out, compiler_generated)
+        .unwrap_or_else(|e| panic!("failed to write {}: {}", compiler_out.display(), e));
 }

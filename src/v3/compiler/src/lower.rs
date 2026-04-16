@@ -25,10 +25,9 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, BindNode, Bound, BranchNode, BranchPattern,
-    CardinalityBound, Dag, Declaration, DeclarationId, Field, LiteralBits, LoopNode, NodeId,
-    Path, PayloadBinding, PortId, TemplateArgument, TransformNode, TransformTarget,
-    TypeConnective, ValueNode,
+    ArrowBody, AtomPayload, Behavior, BindNode, Bound, BranchNode, BranchPattern, CardinalityBound,
+    Dag, Declaration, DeclarationId, Field, LiteralBits, LoopNode, NodeId, Path, PayloadBinding,
+    PortId, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::operators::{ArithmeticOp, OperatorKind};
@@ -160,14 +159,9 @@ fn seed_function_signatures_phase(
                 params,
                 return_type,
                 ..
-            } => seed_function_signature(
-                name,
-                params,
-                return_type,
-                ArrowBody::Pending,
-                dag,
-                symbols,
-            ),
+            } => {
+                seed_function_signature(name, params, return_type, ArrowBody::Pending, dag, symbols)
+            }
             SurfaceItem::FnExternalBody {
                 name,
                 params,
@@ -242,8 +236,7 @@ fn collect_symbols(
                 Some(existing_id) => {
                     let existing = dag.declaration(existing_id);
                     let new_rank = declaration_name_preference_rank(&d.span.file);
-                    let existing_rank =
-                        declaration_name_preference_rank(&existing.span.file);
+                    let existing_rank = declaration_name_preference_rank(&existing.span.file);
                     if new_rank > existing_rank {
                         symbols.insert(name.clone(), d.id);
                     }
@@ -275,24 +268,16 @@ fn collect_symbols(
             } => (name.clone(), type_params.as_slice()),
             SurfaceItem::Data { name, .. } => (name.clone(), &[]),
             SurfaceItem::TypeAtom {
-                name,
-                type_params,
-                ..
+                name, type_params, ..
             }
             | SurfaceItem::TypeRecord {
-                name,
-                type_params,
-                ..
+                name, type_params, ..
             }
             | SurfaceItem::TypeSum {
-                name,
-                type_params,
-                ..
+                name, type_params, ..
             }
             | SurfaceItem::TypeAlias {
-                name,
-                type_params,
-                ..
+                name, type_params, ..
             } => (name.clone(), type_params.as_slice()),
         };
         let span = item_span(item);
@@ -325,9 +310,7 @@ fn collect_symbols(
                 dag.push_declaration(Declaration {
                     id: param_id,
                     name: None,
-                    connective: TypeConnective::Atom(AtomPayload::TypeParam(
-                        param.clone(),
-                    )),
+                    connective: TypeConnective::Atom(AtomPayload::TypeParam(param.clone())),
                     type_params: Vec::new(),
                     meta_tag: None,
                     inhabits: None,
@@ -343,8 +326,7 @@ fn collect_symbols(
         if let Some(&existing_id) = symbols.get(&name) {
             let existing = dag.declaration(existing_id);
             let new_rank = declaration_name_preference_rank(&span.file);
-            let existing_rank =
-                declaration_name_preference_rank(&existing.span.file);
+            let existing_rank = declaration_name_preference_rank(&existing.span.file);
             if new_rank > existing_rank {
                 symbols.insert(name, id);
             } else {
@@ -441,9 +423,9 @@ fn lower_item(
                     }
                 }
             } else {
-                let expected_decl = type_ann.as_ref().map(|ty| {
-                    type_to_declaration_id(ty, symbols, &HashMap::new(), dag)
-                });
+                let expected_decl = type_ann
+                    .as_ref()
+                    .map(|ty| type_to_declaration_id(ty, symbols, &HashMap::new(), dag));
                 lower_expr(
                     expr,
                     dag,
@@ -734,9 +716,8 @@ fn type_to_declaration_id(
                 .or_else(|| symbols.get(name))
                 .copied()
                 .unwrap_or_else(|| alloc_identifier_stub(dag, name, span));
-            let arguments = build_template_arguments(
-                dag, symbols, local, template_id, name, args, span,
-            );
+            let arguments =
+                build_template_arguments(dag, symbols, local, template_id, name, args, span);
             let id = dag.alloc_declaration_id();
             dag.push_declaration(Declaration {
                 id,
@@ -831,9 +812,8 @@ fn type_to_connective(
                 .or_else(|| symbols.get(name))
                 .copied()
                 .unwrap_or_else(|| alloc_identifier_stub(dag, name, span));
-            let arguments = build_template_arguments(
-                dag, symbols, local, template, name, args, span,
-            );
+            let arguments =
+                build_template_arguments(dag, symbols, local, template, name, args, span);
             TypeConnective::Instantiation {
                 template,
                 arguments,
@@ -940,11 +920,7 @@ fn build_template_arguments(
 /// `resolved: None` and stays in the declaration graph so that a later
 /// `resolve_pending_identifiers` sweep can either fill it in (forward
 /// references across bootstrap fixtures) or emit a fail-closed diagnostic.
-fn alloc_identifier_stub(
-    dag: &mut Dag,
-    name: &str,
-    span: &SourceSpan,
-) -> DeclarationId {
+fn alloc_identifier_stub(dag: &mut Dag, name: &str, span: &SourceSpan) -> DeclarationId {
     let id = dag.alloc_declaration_id();
     dag.push_declaration(Declaration {
         id,
@@ -1022,9 +998,10 @@ fn reject_user_unparsed_scaffolds(dag: &mut Dag, strict_from: usize) {
         if (decl.id.raw() as usize) < strict_from {
             continue;
         }
-        let name = decl.name.clone().unwrap_or_else(|| {
-            format!("declaration#{}", decl.id.raw())
-        });
+        let name = decl
+            .name
+            .clone()
+            .unwrap_or_else(|| format!("declaration#{}", decl.id.raw()));
         if let TypeConnective::Arrow {
             body: ArrowBody::Unparsed(span),
             ..
@@ -1121,11 +1098,7 @@ fn run_identifier_sweep(dag: &mut Dag, strict_from: usize) {
 /// `Conj.children` — type params are first-class on `Declaration` per
 /// M1(2.5)'s refactor. Returns None when the template has fewer params than
 /// `idx` requires; callers must fail-closed (not substitute a fallback).
-fn template_param_id(
-    dag: &Dag,
-    template: DeclarationId,
-    idx: usize,
-) -> Option<DeclarationId> {
+fn template_param_id(dag: &Dag, template: DeclarationId, idx: usize) -> Option<DeclarationId> {
     dag.declaration(template).type_params.get(idx).copied()
 }
 
@@ -1221,17 +1194,10 @@ fn lower_data_item(
             _ => None,
         })
         .and_then(|record_fields| {
-            lower_record_to_structural(
-                name,
-                record_fields,
-                ty_decl_id,
-                body_span,
-                symbols,
-                dag,
-            )
+            lower_record_to_structural(name, record_fields, ty_decl_id, body_span, symbols, dag)
         });
-    let final_body = value_body
-        .unwrap_or_else(|| crate::dag::ValueBody::Unparsed(body_span.clone()));
+    let final_body =
+        value_body.unwrap_or_else(|| crate::dag::ValueBody::Unparsed(body_span.clone()));
     dag.declaration_mut(decl_id).value_body = Some(final_body);
 }
 
@@ -1316,9 +1282,10 @@ fn find_equivalent_decl_instantiation_lower(
         };
         (template == *existing_template
             && existing_arguments.len() == arguments.len()
-            && existing_arguments.iter().zip(arguments.iter()).all(|(lhs, rhs)| {
-                lhs.parameter == rhs.parameter && lhs.value == rhs.value
-            }))
+            && existing_arguments
+                .iter()
+                .zip(arguments.iter())
+                .all(|(lhs, rhs)| lhs.parameter == rhs.parameter && lhs.value == rhs.value))
         .then_some(decl.id)
     })
 }
@@ -1340,7 +1307,10 @@ fn resolve_decl_with_subst_lower(
         TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
             resolve_decl_with_subst_lower(dag, *next, subst, depth + 1)
         }
-        TypeConnective::Instantiation { template, arguments } => {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
             let specialized_arguments: Vec<TemplateArgument> = arguments
                 .iter()
                 .map(|arg| {
@@ -1378,7 +1348,10 @@ fn walk_to_conj_decl_with_subst_lower(
     for _ in 0..32 {
         match &dag.declaration(current).connective {
             TypeConnective::Conj { .. } => return Some(current),
-            TypeConnective::Instantiation { template, arguments } => {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
                 subst.push(arguments.clone());
                 current = *template;
             }
@@ -1414,14 +1387,11 @@ fn walk_to_type_shape_lower(
         TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
             walk_to_type_shape_lower(dag, *next, subst, depth + 1)
         }
-        TypeConnective::Instantiation { .. } => resolve_decl_with_subst_lower(
-            dag,
-            current,
-            subst,
-            depth + 1,
-        )
-        .map(TypeShape::new)
-        .or_else(|| Some(TypeShape::new(current))),
+        TypeConnective::Instantiation { .. } => {
+            resolve_decl_with_subst_lower(dag, current, subst, depth + 1)
+                .map(TypeShape::new)
+                .or_else(|| Some(TypeShape::new(current)))
+        }
         TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
         | TypeConnective::Atom(AtomPayload::Literal(_))
         | TypeConnective::Conj { .. }
@@ -1493,17 +1463,18 @@ fn lower_record_to_structural(
     };
     // Snapshot the Conj's children to avoid borrowing conflicts
     // while we walk the record literal.
-    let type_fields: Vec<(String, DeclarationId)> =
-        match &dag.declaration(conj_id).connective {
-            TypeConnective::Conj { children } => children
-                .iter()
-                .map(|f| (f.label.clone(), f.ty))
-                .collect(),
-            _ => unreachable!("walk_to_conj_decl returned a non-Conj declaration"),
-        };
+    let type_fields: Vec<(String, DeclarationId)> = match &dag.declaration(conj_id).connective {
+        TypeConnective::Conj { children } => {
+            children.iter().map(|f| (f.label.clone(), f.ty)).collect()
+        }
+        _ => unreachable!("walk_to_conj_decl returned a non-Conj declaration"),
+    };
     // Check no extra fields in the data body.
     for record_field in record_fields {
-        if !type_fields.iter().any(|(label, _)| *label == record_field.name) {
+        if !type_fields
+            .iter()
+            .any(|(label, _)| *label == record_field.name)
+        {
             report_declaration_error(
                 dag,
                 Diagnostic::ResolveError {
@@ -1523,9 +1494,7 @@ fn lower_record_to_structural(
             report_declaration_error(
                 dag,
                 Diagnostic::ResolveError {
-                    name: format!(
-                        "data `{data_name}` is missing required field `{type_label}`"
-                    ),
+                    name: format!("data `{data_name}` is missing required field `{type_label}`"),
                     span: body_span.clone(),
                 },
             );
@@ -1644,16 +1613,19 @@ fn lower_structural_field_value(
             );
             return None;
         };
-        let expected_fields: Vec<(String, DeclarationId)> = match &dag.declaration(conj_id).connective
-        {
-            TypeConnective::Conj { children } => children
-                .iter()
-                .map(|child| (child.label.clone(), child.ty))
-                .collect(),
-            _ => unreachable!("walk_to_conj_decl returned non-Conj"),
-        };
+        let expected_fields: Vec<(String, DeclarationId)> =
+            match &dag.declaration(conj_id).connective {
+                TypeConnective::Conj { children } => children
+                    .iter()
+                    .map(|child| (child.label.clone(), child.ty))
+                    .collect(),
+                _ => unreachable!("walk_to_conj_decl returned non-Conj"),
+            };
         for field in fields {
-            if !expected_fields.iter().any(|(label, _)| *label == field.name) {
+            if !expected_fields
+                .iter()
+                .any(|(label, _)| *label == field.name)
+            {
                 report_declaration_error(
                     dag,
                     Diagnostic::ResolveError {
@@ -1728,9 +1700,7 @@ fn lower_structural_field_value(
                 .collect(),
             _ => unreachable!("walk_to_disj_decl returned non-Disj"),
         };
-        let Some((_, variant_decl_id)) = variants
-            .iter()
-            .find(|(label, _)| label == variant_name)
+        let Some((_, variant_decl_id)) = variants.iter().find(|(label, _)| label == variant_name)
         else {
             report_declaration_error(
                 dag,
@@ -1914,21 +1884,13 @@ fn realization_category_for_meta(
     meta_decl_id: DeclarationId,
 ) -> Option<RealizationCategoryTag> {
     let type_meta = dag.declaration_by_name("TypeRealization").map(|d| d.id);
-    let op_meta = dag
-        .declaration_by_name("OperatorRealization")
-        .map(|d| d.id);
-    let behavior_meta = dag
-        .declaration_by_name("BehaviorRealization")
-        .map(|d| d.id);
-    let callable_meta = dag
-        .declaration_by_name("CallableRealization")
-        .map(|d| d.id);
+    let op_meta = dag.declaration_by_name("OperatorRealization").map(|d| d.id);
+    let behavior_meta = dag.declaration_by_name("BehaviorRealization").map(|d| d.id);
+    let callable_meta = dag.declaration_by_name("CallableRealization").map(|d| d.id);
     let type_instantiation_meta = dag
         .declaration_by_name("TypeInstantiationRealization")
         .map(|d| d.id);
-    let pattern_meta = dag
-        .declaration_by_name("PatternRealization")
-        .map(|d| d.id);
+    let pattern_meta = dag.declaration_by_name("PatternRealization").map(|d| d.id);
     if Some(meta_decl_id) == type_meta {
         Some(RealizationCategoryTag::Type)
     } else if Some(meta_decl_id) == op_meta {
@@ -1999,9 +1961,8 @@ fn validate_realization_field_target(
     let port_id = dag.declaration_by_name("PortId").map(|d| d.id);
     let declaration_id = dag.declaration_by_name("DeclarationId").map(|d| d.id);
 
-    let is_primitive = |id: DeclarationId| {
-        Some(id) == int_id || Some(id) == bool_id || Some(id) == string_id
-    };
+    let is_primitive =
+        |id: DeclarationId| Some(id) == int_id || Some(id) == bool_id || Some(id) == string_id;
     let is_atomic_handle = |id: DeclarationId| {
         Some(id) == node_id || Some(id) == port_id || Some(id) == declaration_id
     };
@@ -2014,16 +1975,10 @@ fn validate_realization_field_target(
             dag.declaration_by_name("Bind"),
             dag.declaration_by_name("Main"),
         ];
-        markers
-            .iter()
-            .any(|m| m.map(|d| d.id) == Some(id))
+        markers.iter().any(|m| m.map(|d| d.id) == Some(id))
     };
-    let is_algebra_field = |id: DeclarationId| {
-        matches!(
-            dag.declaration(id).connective,
-            TypeConnective::Arrow { .. }
-        )
-    };
+    let is_algebra_field =
+        |id: DeclarationId| matches!(dag.declaration(id).connective, TypeConnective::Arrow { .. });
     let walks_to_arrow = |start: DeclarationId| {
         let mut current = start;
         for _ in 0..32 {
@@ -2812,10 +2767,8 @@ fn bind_expected_type_to_actual(
                     if *actual_template == expected_id
                         && expected_arguments.len() == actual_arguments.len()
                     {
-                        return expected_arguments
-                            .iter()
-                            .zip(actual_arguments.iter())
-                            .all(|(expected, actual)| {
+                        return expected_arguments.iter().zip(actual_arguments.iter()).all(
+                            |(expected, actual)| {
                                 bind_expected_type_to_actual(
                                     dag,
                                     expected.value,
@@ -2823,17 +2776,16 @@ fn bind_expected_type_to_actual(
                                     arguments,
                                     depth + 1,
                                 )
-                            });
+                            },
+                        );
                     }
                     if template != actual_template
                         || expected_arguments.len() != actual_arguments.len()
                     {
                         return false;
                     }
-                    expected_arguments
-                        .iter()
-                        .zip(actual_arguments.iter())
-                        .all(|(expected, actual)| {
+                    expected_arguments.iter().zip(actual_arguments.iter()).all(
+                        |(expected, actual)| {
                             bind_expected_type_to_actual(
                                 dag,
                                 expected.value,
@@ -2841,7 +2793,8 @@ fn bind_expected_type_to_actual(
                                 arguments,
                                 depth + 1,
                             )
-                        })
+                        },
+                    )
                 }
                 _ => false,
             }
@@ -3129,10 +3082,7 @@ fn lower_field_path_expr(
     current_port
 }
 
-fn lower_payload_binding(
-    dag: &mut Dag,
-    binding_name: &str,
-) -> PayloadBinding {
+fn lower_payload_binding(dag: &mut Dag, binding_name: &str) -> PayloadBinding {
     let payload_port = dag.alloc_port(None);
     PayloadBinding {
         binding_name: binding_name.to_string(),
@@ -3176,15 +3126,9 @@ fn lower_expr(
         SurfaceExpr::Var { name, span } => match scope.get(name) {
             Some(port) => *port,
             None => {
-                if let Some(target) =
-                    resolve_expected_variant_constructor(dag, expected_decl, name)
+                if let Some(target) = resolve_expected_variant_constructor(dag, expected_decl, name)
                 {
-                    return lower_constructor_invocation(
-                        dag,
-                        target,
-                        Vec::new(),
-                        span.clone(),
-                    );
+                    return lower_constructor_invocation(dag, target, Vec::new(), span.clone());
                 }
                 let port = dag.alloc_port(None);
                 dag.mark_unresolved(
@@ -3425,10 +3369,8 @@ fn lower_expr(
             // comes after so the Branch's id matches `nodes.len()`
             // at push time (arm lowering pushes its own nodes). Same
             // ordering pattern as the `If` arm above.
-            let scrutinee_port =
-                lower_expr(scrutinee, dag, scope, callable_scope, symbols, None);
-            let mut lowered_arms: Vec<LoweredMatchArm> =
-                Vec::with_capacity(arms.len());
+            let scrutinee_port = lower_expr(scrutinee, dag, scope, callable_scope, symbols, None);
+            let mut lowered_arms: Vec<LoweredMatchArm> = Vec::with_capacity(arms.len());
             for arm in arms {
                 let mut arm_scope = scope.clone();
                 let (pattern_name, pattern_span, binding) = match &arm.pattern {
@@ -3448,15 +3390,14 @@ fn lower_expr(
                         (name.clone(), span.clone(), Some(payload_binding))
                     }
                 };
-                let arm_output_port =
-                    lower_expr(
-                        &arm.body,
-                        dag,
-                        &arm_scope,
-                        callable_scope,
-                        symbols,
-                        expected_decl,
-                    );
+                let arm_output_port = lower_expr(
+                    &arm.body,
+                    dag,
+                    &arm_scope,
+                    callable_scope,
+                    symbols,
+                    expected_decl,
+                );
                 let body_node = producer_of(dag, arm_output_port);
                 lowered_arms.push(LoweredMatchArm {
                     output: arm_output_port,
@@ -3507,9 +3448,7 @@ fn lower_expr(
             symbols,
             expected_decl,
         ),
-        SurfaceExpr::Path { segments, span } => {
-            lower_field_path_expr(segments, span, dag, scope)
-        }
+        SurfaceExpr::Path { segments, span } => lower_field_path_expr(segments, span, dag, scope),
     }
 }
 
@@ -3541,9 +3480,7 @@ fn direct_invocation_input_decls(
     }
     match &dag.declaration(current).connective {
         TypeConnective::Arrow { inputs, .. } => Some(inputs.clone()),
-        TypeConnective::Conj { children } => {
-            Some(children.iter().map(|child| child.ty).collect())
-        }
+        TypeConnective::Conj { children } => Some(children.iter().map(|child| child.ty).collect()),
         TypeConnective::Instantiation { template, .. } => {
             direct_invocation_input_decls(dag, *template, depth + 1)
         }
@@ -3571,7 +3508,8 @@ fn lower_record_literal_expr(
         return unresolved_port(
             dag,
             Diagnostic::ResolveError {
-                name: "record literals require an expected record type at this position".to_string(),
+                name: "record literals require an expected record type at this position"
+                    .to_string(),
                 span: span.clone(),
             },
         );
@@ -3586,8 +3524,7 @@ fn lower_record_literal_expr(
             },
         );
     };
-    let expected_fields: Vec<(String, DeclarationId)> = match &dag.declaration(conj_id).connective
-    {
+    let expected_fields: Vec<(String, DeclarationId)> = match &dag.declaration(conj_id).connective {
         TypeConnective::Conj { children } => children
             .iter()
             .map(|child| (child.label.clone(), child.ty))
@@ -3595,7 +3532,10 @@ fn lower_record_literal_expr(
         _ => unreachable!("walk_to_conj_decl returned non-Conj"),
     };
     for field in fields {
-        if !expected_fields.iter().any(|(label, _)| *label == field.name) {
+        if !expected_fields
+            .iter()
+            .any(|(label, _)| *label == field.name)
+        {
             return unresolved_port(
                 dag,
                 Diagnostic::ResolveError {
@@ -3775,9 +3715,7 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
             }
             args.iter().any(|a| is_recursive(a, self_name))
         }
-        SurfaceExpr::Operator { args, .. } => {
-            args.iter().any(|a| is_recursive(a, self_name))
-        }
+        SurfaceExpr::Operator { args, .. } => args.iter().any(|a| is_recursive(a, self_name)),
         SurfaceExpr::If {
             cond,
             then_branch,
@@ -3788,14 +3726,16 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
                 || is_recursive(then_branch, self_name)
                 || is_recursive(else_branch, self_name)
         }
-        SurfaceExpr::Match { scrutinee, arms, .. } => {
+        SurfaceExpr::Match {
+            scrutinee, arms, ..
+        } => {
             is_recursive(scrutinee, self_name)
                 || arms.iter().any(|arm| is_recursive(&arm.body, self_name))
         }
         SurfaceExpr::Lambda { body, .. } => is_recursive(body, self_name),
-        SurfaceExpr::Record { fields, .. } => fields
-            .iter()
-            .any(|f| is_recursive(&f.value, self_name)),
+        SurfaceExpr::Record { fields, .. } => {
+            fields.iter().any(|f| is_recursive(&f.value, self_name))
+        }
     }
 }
 
@@ -3839,9 +3779,7 @@ fn descent_provable(
     bindings: &HashMap<String, StructuralBindingInfo>,
 ) -> bool {
     match expr {
-        SurfaceExpr::Literal { .. }
-        | SurfaceExpr::Var { .. }
-        | SurfaceExpr::Path { .. } => true,
+        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => true,
         SurfaceExpr::Call { target, args, .. } => {
             if target == self_name {
                 match args.first() {
@@ -3850,70 +3788,59 @@ fn descent_provable(
                         if !is_strictly_smaller(first_arg, first_param, bindings) {
                             return false;
                         }
-                        args.iter()
-                            .skip(1)
-                            .all(|a| {
-                                descent_provable(
-                                    a,
-                                    dag,
-                                    first_param_decl,
-                                    self_name,
-                                    first_param,
-                                    bindings,
-                                )
-                            })
+                        args.iter().skip(1).all(|a| {
+                            descent_provable(
+                                a,
+                                dag,
+                                first_param_decl,
+                                self_name,
+                                first_param,
+                                bindings,
+                            )
+                        })
                     }
                 }
             } else {
                 args.iter().all(|a| {
-                    descent_provable(
-                        a,
-                        dag,
-                        first_param_decl,
-                        self_name,
-                        first_param,
-                        bindings,
-                    )
+                    descent_provable(a, dag, first_param_decl, self_name, first_param, bindings)
                 })
             }
         }
         SurfaceExpr::Operator { args, .. } => args
             .iter()
-            .all(|a| {
-                descent_provable(
-                    a,
-                    dag,
-                    first_param_decl,
-                    self_name,
-                    first_param,
-                    bindings,
-                )
-            }),
+            .all(|a| descent_provable(a, dag, first_param_decl, self_name, first_param, bindings)),
         SurfaceExpr::If {
             cond,
             then_branch,
             else_branch,
             ..
         } => {
-            descent_provable(cond, dag, first_param_decl, self_name, first_param, bindings)
-                && descent_provable(
-                    then_branch,
-                    dag,
-                    first_param_decl,
-                    self_name,
-                    first_param,
-                    bindings,
-                )
-                && descent_provable(
-                    else_branch,
-                    dag,
-                    first_param_decl,
-                    self_name,
-                    first_param,
-                    bindings,
-                )
+            descent_provable(
+                cond,
+                dag,
+                first_param_decl,
+                self_name,
+                first_param,
+                bindings,
+            ) && descent_provable(
+                then_branch,
+                dag,
+                first_param_decl,
+                self_name,
+                first_param,
+                bindings,
+            ) && descent_provable(
+                else_branch,
+                dag,
+                first_param_decl,
+                self_name,
+                first_param,
+                bindings,
+            )
         }
-        SurfaceExpr::Match { scrutinee, arms, .. } => {
+        SurfaceExpr::Match {
+            scrutinee, arms, ..
+        } => {
             if !descent_provable(
                 scrutinee,
                 dag,
@@ -3933,11 +3860,9 @@ fn descent_provable(
                 let mut arm_bindings = bindings.clone();
                 if scrutinee_is_first_param {
                     if let SurfacePattern::VariantWith { name, binding, .. } = &arm.pattern {
-                        if let Some(info) = structural_binding_info_for_variant(
-                            dag,
-                            first_param_decl,
-                            name,
-                        ) {
+                        if let Some(info) =
+                            structural_binding_info_for_variant(dag, first_param_decl, name)
+                        {
                             arm_bindings.insert(binding.clone(), info);
                         }
                     }
@@ -3960,30 +3885,26 @@ fn descent_provable(
             first_param,
             bindings,
         ),
-        SurfaceExpr::Record { fields, .. } => fields
-            .iter()
-            .all(|f| {
-                descent_provable(
-                    &f.value,
-                    dag,
-                    first_param_decl,
-                    self_name,
-                    first_param,
-                    bindings,
-                )
-            }),
-        SurfaceExpr::List { elements, .. } => elements
-            .iter()
-            .all(|element| {
-                descent_provable(
-                    element,
-                    dag,
-                    first_param_decl,
-                    self_name,
-                    first_param,
-                    bindings,
-                )
-            }),
+        SurfaceExpr::Record { fields, .. } => fields.iter().all(|f| {
+            descent_provable(
+                &f.value,
+                dag,
+                first_param_decl,
+                self_name,
+                first_param,
+                bindings,
+            )
+        }),
+        SurfaceExpr::List { elements, .. } => elements.iter().all(|element| {
+            descent_provable(
+                element,
+                dag,
+                first_param_decl,
+                self_name,
+                first_param,
+                bindings,
+            )
+        }),
     }
 }
 
@@ -4063,11 +3984,7 @@ fn structural_binding_info_for_variant(
     Some(info)
 }
 
-fn recursive_decl_equivalent(
-    dag: &Dag,
-    lhs: DeclarationId,
-    rhs: DeclarationId,
-) -> bool {
+fn recursive_decl_equivalent(dag: &Dag, lhs: DeclarationId, rhs: DeclarationId) -> bool {
     canonical_decl_for_descent(dag, lhs) == canonical_decl_for_descent(dag, rhs)
 }
 
@@ -4142,10 +4059,7 @@ fn compute_mutually_recursive(items: &[SurfaceItem]) -> HashSet<String> {
     mutually
 }
 
-fn transitive_reach(
-    start: &str,
-    calls: &HashMap<String, HashSet<String>>,
-) -> HashSet<String> {
+fn transitive_reach(start: &str, calls: &HashMap<String, HashSet<String>>) -> HashSet<String> {
     let mut visited = HashSet::new();
     let mut queue = vec![start.to_string()];
     while let Some(f) = queue.pop() {
@@ -4162,15 +4076,9 @@ fn transitive_reach(
     visited
 }
 
-fn collect_calls(
-    expr: &SurfaceExpr,
-    fn_names: &HashSet<String>,
-    out: &mut HashSet<String>,
-) {
+fn collect_calls(expr: &SurfaceExpr, fn_names: &HashSet<String>, out: &mut HashSet<String>) {
     match expr {
-        SurfaceExpr::Literal { .. }
-        | SurfaceExpr::Var { .. }
-        | SurfaceExpr::Path { .. } => {}
+        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => {}
         SurfaceExpr::Call { target, args, .. } => {
             if fn_names.contains(target) {
                 out.insert(target.clone());
@@ -4196,7 +4104,9 @@ fn collect_calls(
             collect_calls(then_branch, fn_names, out);
             collect_calls(else_branch, fn_names, out);
         }
-        SurfaceExpr::Match { scrutinee, arms, .. } => {
+        SurfaceExpr::Match {
+            scrutinee, arms, ..
+        } => {
             collect_calls(scrutinee, fn_names, out);
             for arm in arms {
                 collect_calls(&arm.body, fn_names, out);

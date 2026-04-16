@@ -1,22 +1,21 @@
 use std::rc::Rc;
 
+use v2_compiler::std_induction::SubValueRelation;
+use v2_compiler::std_types::container_param_name;
 use v2_compiler::v2_compiler_infer_access;
 use v2_compiler::v2_compiler_infer_env::{TypeBinding, TypeEnv};
-use v2_compiler::std_induction::SubValueRelation;
 use v2_compiler::v2_compiler_infer_lookup;
 use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
 use v2_compiler::v2_compiler_infer_resolve::resolve_node;
 use v2_compiler::v2_compiler_infer_types::{
-    bare_map_node, resolved_type, is_fully_resolved, node_is_keyed_collection,
+    bare_map_node, is_fully_resolved, node_is_keyed_collection, resolved_type,
 };
 use v2_compiler::v2_compiler_parse;
-use v2_compiler::v2_std_core::{
-    leaf_node_with_span, make_arm_node, make_span, with_optional_cardinality,
-    Cardinality, Connective, ExprData, InferredNode, MatchPattern, Node, SourceSpan,
-    default_ident_span,
-};
-use v2_compiler::std_types::container_param_name;
 use v2_compiler::v2_std_core::NewlineIndex;
+use v2_compiler::v2_std_core::{
+    default_ident_span, leaf_node_with_span, make_arm_node, make_span, with_optional_cardinality,
+    Cardinality, Connective, ExprData, InferredNode, MatchPattern, Node, SourceSpan,
+};
 
 fn empty_source_indices() -> Rc<std::collections::HashMap<String, Rc<NewlineIndex>>> {
     Rc::new(std::collections::HashMap::new())
@@ -29,7 +28,8 @@ fn leaf_node(name: String) -> Rc<Node> {
 
 fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
     let param_name = match container_param_name(kind_name.clone(), 0) {
-        Some(n) => n, None => kind_name.clone(),
+        Some(n) => n,
+        None => kind_name.clone(),
     };
     let sp = make_span(0, 0);
     Rc::new(Node {
@@ -48,28 +48,36 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
             inferred: Some(Rc::new(InferredNode::Resolved { node: element })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None, transport: None,
+            body: None,
+            transport: None,
             properties: Rc::new(vec![]),
             type_annotation: None,
-            is_self_recursive: false, has_non_tail_self_call: false,
-            match_pattern: None, expr_data: Rc::new(ExprData::NoExprData),
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
         })]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None, transport: None,
+        body: None,
+        transport: None,
         properties: Rc::new(vec![]),
         type_annotation: None,
-        is_self_recursive: false, has_non_tail_self_call: false,
-        match_pattern: None, expr_data: Rc::new(ExprData::NoExprData),
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
     })
 }
 
 fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
-    let key_name = container_param_name("Map".to_string(), 0).unwrap_or("__BUG_NO_PROFILE_Map".to_string());
-    let val_name = container_param_name("Map".to_string(), 1).unwrap_or("__BUG_NO_PROFILE_Map".to_string());
+    let key_name =
+        container_param_name("Map".to_string(), 0).unwrap_or("__BUG_NO_PROFILE_Map".to_string());
+    let val_name =
+        container_param_name("Map".to_string(), 1).unwrap_or("__BUG_NO_PROFILE_Map".to_string());
     let sp = make_span(0, 0);
     Rc::new(Node {
         name: "Map".to_string(),
@@ -78,26 +86,44 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
         ident_span: Some(sp.clone()),
         children: Rc::new(vec![
             Rc::new(Node {
-                name: key_name, ident: None, span: sp.clone(),
+                name: key_name,
+                ident: None,
+                span: sp.clone(),
                 ident_span: Some(sp.clone()),
-                children: Rc::new(vec![]), connective: Connective::NoConnective,
+                children: Rc::new(vec![]),
+                connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
                 inferred: Some(Rc::new(InferredNode::Resolved { node: key })),
-                return_cardinality: Cardinality::Required, uses: Rc::new(vec![]),
-                body: None, transport: None, properties: Rc::new(vec![]),
-                type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false,
-                match_pattern: None, expr_data: Rc::new(ExprData::NoExprData),
+                return_cardinality: Cardinality::Required,
+                uses: Rc::new(vec![]),
+                body: None,
+                transport: None,
+                properties: Rc::new(vec![]),
+                type_annotation: None,
+                is_self_recursive: false,
+                has_non_tail_self_call: false,
+                match_pattern: None,
+                expr_data: Rc::new(ExprData::NoExprData),
             }),
             Rc::new(Node {
-                name: val_name, ident: None, span: sp.clone(),
+                name: val_name,
+                ident: None,
+                span: sp.clone(),
                 ident_span: Some(sp.clone()),
-                children: Rc::new(vec![]), connective: Connective::NoConnective,
+                children: Rc::new(vec![]),
+                connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
                 inferred: Some(Rc::new(InferredNode::Resolved { node: value })),
-                return_cardinality: Cardinality::Required, uses: Rc::new(vec![]),
-                body: None, transport: None, properties: Rc::new(vec![]),
-                type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false,
-                match_pattern: None, expr_data: Rc::new(ExprData::NoExprData),
+                return_cardinality: Cardinality::Required,
+                uses: Rc::new(vec![]),
+                body: None,
+                transport: None,
+                properties: Rc::new(vec![]),
+                type_annotation: None,
+                is_self_recursive: false,
+                has_non_tail_self_call: false,
+                match_pattern: None,
+                expr_data: Rc::new(ExprData::NoExprData),
             }),
         ]),
         connective: Connective::NoConnective,
@@ -105,16 +131,23 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
         inferred: None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None, transport: None,
+        body: None,
+        transport: None,
         properties: Rc::new(vec![]),
         type_annotation: None,
-        is_self_recursive: false, has_non_tail_self_call: false,
-        match_pattern: None, expr_data: Rc::new(ExprData::NoExprData),
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
     })
 }
 
 fn zero_span() -> Rc<SourceSpan> {
-    Rc::new(SourceSpan { file: String::new(), start: 0, end: 0 })
+    Rc::new(SourceSpan {
+        file: String::new(),
+        start: 0,
+        end: 0,
+    })
 }
 
 fn unit_expr() -> Rc<Node> {
@@ -156,8 +189,15 @@ fn list_int_index_returns_optional_element_type() {
         &empty_source_indices(),
     );
 
-    assert_eq!(result.diagnostics.len(), 0, "List<Int> indexed by Int should succeed");
-    assert!(result.inferred.is_some(), "List<Int> index should produce a type");
+    assert_eq!(
+        result.diagnostics.len(),
+        0,
+        "List<Int> indexed by Int should succeed"
+    );
+    assert!(
+        result.inferred.is_some(),
+        "List<Int> index should produce a type"
+    );
 }
 
 #[test]
@@ -221,11 +261,12 @@ fn valid_map_index_preserves_optional_value_type() {
 
 #[test]
 fn pattern_lookup_blocks_on_infer_error_without_cascade_diagnostic() {
-    let subject =
-        v2_compiler_infer_patterns::pattern_subject_from_inferred(Some(Rc::new(InferredNode::CompilerError {
+    let subject = v2_compiler_infer_patterns::pattern_subject_from_inferred(Some(Rc::new(
+        InferredNode::CompilerError {
             message: "upstream failure".to_string(),
             span: zero_span(),
-        })));
+        },
+    )));
     let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         &"Some".to_string(),
@@ -248,8 +289,7 @@ fn pattern_lookup_reports_error_scrutinee_structurally() {
     // Error types carry CompilerError in inferred — pattern_subject_from_node
     // detects this structurally and returns PatternLookupBlocked.
     use v2_compiler::v2_std_core::error_type;
-    let subject =
-        v2_compiler_infer_patterns::pattern_subject_from_node(&error_type());
+    let subject = v2_compiler_infer_patterns::pattern_subject_from_node(&error_type());
     let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         &"Some".to_string(),
@@ -266,9 +306,9 @@ fn pattern_lookup_reports_error_scrutinee_structurally() {
 
 #[test]
 fn optional_pattern_lookup_still_resolves_some_variant() {
-    let subject = v2_compiler_infer_patterns::pattern_subject_from_node(&with_optional_cardinality(
-        &leaf_node("String".to_string()),
-    ));
+    let subject = v2_compiler_infer_patterns::pattern_subject_from_node(
+        &with_optional_cardinality(&leaf_node("String".to_string())),
+    );
     let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
         subject,
         &"Some".to_string(),
@@ -339,7 +379,11 @@ fn resolve_node_uses_node_name_for_lookup() {
         name: "User".to_string(),
         ident: None,
         span: zero_span(),
-        ident_span: Some(Rc::new(v2_compiler::v2_std_core::SourceSpan { file: "".to_string(), start: 0, end: 0 })),
+        ident_span: Some(Rc::new(v2_compiler::v2_std_core::SourceSpan {
+            file: "".to_string(),
+            start: 0,
+            end: 0,
+        })),
         children: Rc::new(vec![]),
         connective: v2_compiler::v2_std_core::Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -355,7 +399,10 @@ fn resolve_node_uses_node_name_for_lookup() {
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
     });
-    let user_intern = v2_compiler::v2_std_core::intern(&v2_compiler::v2_std_core::empty_intern_table(), &"User".to_string());
+    let user_intern = v2_compiler::v2_std_core::intern(
+        &v2_compiler::v2_std_core::empty_intern_table(),
+        &"User".to_string(),
+    );
     let env = Rc::new(TypeEnv {
         bindings: Rc::new(std::collections::HashMap::from([(
             user_intern.id,
@@ -391,8 +438,24 @@ fn resolve_node_uses_node_name_for_lookup() {
 fn structural_method_lookup_resolves_all_list_collection_methods() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let expected_methods = [
-        "map", "filter", "flat_map", "fold", "any", "all", "count", "first", "last", "skip",
-        "take", "sort_by", "append", "contains", "enumerate", "reverse", "join", "concat",
+        "map",
+        "filter",
+        "flat_map",
+        "fold",
+        "any",
+        "all",
+        "count",
+        "first",
+        "last",
+        "skip",
+        "take",
+        "sort_by",
+        "append",
+        "contains",
+        "enumerate",
+        "reverse",
+        "join",
+        "concat",
     ];
     for method_name in &expected_methods {
         assert!(
@@ -417,7 +480,10 @@ fn structural_method_any_on_list_returns_bool() {
         &empty_source_indices(),
     )
     .expect("any must resolve on List<Int>");
-    assert_eq!(result.result_type.name, "Bool", "any on List<Int> should return Bool");
+    assert_eq!(
+        result.result_type.name, "Bool",
+        "any on List<Int> should return Bool"
+    );
 }
 
 #[test]
@@ -429,7 +495,10 @@ fn structural_method_all_on_list_returns_bool() {
         &empty_source_indices(),
     )
     .expect("all must resolve on List<Int>");
-    assert_eq!(result.result_type.name, "Bool", "all on List<Int> should return Bool");
+    assert_eq!(
+        result.result_type.name, "Bool",
+        "all on List<Int> should return Bool"
+    );
 }
 
 #[test]
@@ -456,9 +525,15 @@ fn structural_method_first_on_list_returns_optional_element() {
         &empty_source_indices(),
     )
     .expect("first must resolve on List<Int>");
-    assert_eq!(result.result_type.name, "Int", "first on List<Int> should return Int");
+    assert_eq!(
+        result.result_type.name, "Int",
+        "first on List<Int> should return Int"
+    );
     assert!(
-        matches!(result.result_type.return_cardinality, Cardinality::CardOptional),
+        matches!(
+            result.result_type.return_cardinality,
+            Cardinality::CardOptional
+        ),
         "first should return Optional"
     );
 }
@@ -515,8 +590,16 @@ fn structural_method_lookup_resolves_all_map_partial_function_methods() {
         leaf_node("Int".to_string()),
     );
     let expected_methods = [
-        "get", "map_get", "lookup", "map_insert", "map_merge", "has", "keys", "values",
-        "contains", "length",
+        "get",
+        "map_get",
+        "lookup",
+        "map_insert",
+        "map_merge",
+        "has",
+        "keys",
+        "values",
+        "contains",
+        "length",
     ];
     for method_name in &expected_methods {
         assert!(
@@ -544,9 +627,15 @@ fn structural_method_get_on_map_returns_optional_value() {
         &empty_source_indices(),
     )
     .expect("get must resolve on Map<String,Int>");
-    assert_eq!(result.result_type.name, "Int", "get on Map<String,Int> should return Int");
+    assert_eq!(
+        result.result_type.name, "Int",
+        "get on Map<String,Int> should return Int"
+    );
     assert!(
-        matches!(result.result_type.return_cardinality, Cardinality::CardOptional),
+        matches!(
+            result.result_type.return_cardinality,
+            Cardinality::CardOptional
+        ),
         "get should return Optional"
     );
 }
@@ -564,7 +653,11 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
     )
     .expect("keys must resolve on Map<String,Int>");
     assert_eq!(result.result_type.name, "List", "keys should return List");
-    assert_eq!(result.result_type.children.len(), 1, "keys result should have one child");
+    assert_eq!(
+        result.result_type.children.len(),
+        1,
+        "keys result should have one child"
+    );
     // Children are now field-style wrappers — extract type from inferred
     let elem_child = &result.result_type.children[0];
     let elem_type = resolved_type(elem_child.clone());
@@ -578,7 +671,12 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
 fn structural_method_lookup_returns_none_for_unknown_type() {
     let custom = leaf_node("MyType".to_string());
     assert!(
-        v2_compiler_infer_lookup::lookup_structural_method(&custom, &"add".to_string(), &empty_source_indices()).is_none(),
+        v2_compiler_infer_lookup::lookup_structural_method(
+            &custom,
+            &"add".to_string(),
+            &empty_source_indices()
+        )
+        .is_none(),
         "custom types without algebra should not have structural methods"
     );
 }
@@ -723,7 +821,11 @@ fn map_index_with_wrong_key_type_reports_error() {
 fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
     // Conj node with two children: one Typed, one CompilerError.
     // Fail-closed gate must return [] — no partial output synthesis.
-    let syn_span = Some(Rc::new(v2_compiler::v2_std_core::SourceSpan { file: "".to_string(), start: 0, end: 0 }));
+    let syn_span = Some(Rc::new(v2_compiler::v2_std_core::SourceSpan {
+        file: "".to_string(),
+        start: 0,
+        end: 0,
+    }));
     let typed_child = Rc::new(Node {
         name: "x".to_string(),
         ident_span: syn_span.clone(),
@@ -758,4 +860,3 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
         outputs.len()
     );
 }
-

@@ -24,7 +24,10 @@ fn assert_live_not_contains(source: &str, needle: &str, message: &str) {
 #[test]
 fn pipe_arrow_token_exists() {
     let source = read_v2_file("src/v2/00_core.dag");
-    assert!(source.contains("PipeArrow"), "00_core.dag should contain PipeArrow");
+    assert!(
+        source.contains("PipeArrow"),
+        "00_core.dag should contain PipeArrow"
+    );
 }
 
 #[test]
@@ -39,7 +42,10 @@ fn null_coalesce_in_binop_kind() {
 #[test]
 fn parse_supports_pipe_arrow() {
     let source = read_v2_file("src/v2/02_parse.dag");
-    assert!(source.contains("PipeArrow"), "02_parse.dag should contain PipeArrow");
+    assert!(
+        source.contains("PipeArrow"),
+        "02_parse.dag should contain PipeArrow"
+    );
     assert!(
         source.contains("parse_pipe_rhs"),
         "02_parse.dag should contain parse_pipe_rhs"
@@ -365,13 +371,22 @@ fn unannotated_function_reports_signature_resolution_error() {
 #[test]
 fn service_calls_under_return_inject_service_params() {
     let source = read_v2_file("src/v2/00_core.dag");
-    assert!(source.contains("ExprReturn"), "00_core.dag should contain ExprReturn");
+    assert!(
+        source.contains("ExprReturn"),
+        "00_core.dag should contain ExprReturn"
+    );
     assert!(
         source.contains("ExprForEach"),
         "00_core.dag should contain ExprForEach"
     );
-    assert!(source.contains("ExprIndex"), "00_core.dag should contain ExprIndex");
-    assert!(source.contains("ExprSlice"), "00_core.dag should contain ExprSlice");
+    assert!(
+        source.contains("ExprIndex"),
+        "00_core.dag should contain ExprIndex"
+    );
+    assert!(
+        source.contains("ExprSlice"),
+        "00_core.dag should contain ExprSlice"
+    );
     assert!(
         source.contains("fn map_children"),
         "00_core.dag should contain fn map_children"
@@ -396,7 +411,7 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         assert_live_contains(
             &graph_stage0,
             needle,
-            &format!("stage0 std_graph should contain {needle}")
+            &format!("stage0 std_graph should contain {needle}"),
         );
     }
 
@@ -416,7 +431,7 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         assert_live_contains(
             &source,
             needle,
-            &format!("src/v2/complexity.dag should contain {needle}")
+            &format!("src/v2/complexity.dag should contain {needle}"),
         );
     }
 
@@ -436,7 +451,7 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         assert_live_contains(
             &stage0,
             needle,
-            &format!("stage0 complexity mirror should contain {needle}")
+            &format!("stage0 complexity mirror should contain {needle}"),
         );
     }
 
@@ -444,43 +459,43 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
     assert_live_contains(
         &source,
         "fn classify_complexity(expr: CostExpr) -> String",
-        "classify_complexity should return String"
+        "classify_complexity should return String",
     );
     assert_live_contains(
         &stage0,
         "pub fn classify_complexity(expr: Rc<CostExpr>) -> String",
-        "stage0 classify_complexity should return String"
+        "stage0 classify_complexity should return String",
     );
 
     assert_live_not_contains(
         &source,
         "type ComplexityClass",
-        "ComplexityClass should not exist — CostExpr is the single authority"
+        "ComplexityClass should not exist — CostExpr is the single authority",
     );
     assert_live_not_contains(
         &source,
         "formatted: String",
-        "ComplexityReport should not carry a formatted string field"
+        "ComplexityReport should not carry a formatted string field",
     );
     assert_live_not_contains(
         &source,
         "fn recursive_variant_field_key(",
-        "complexity should consume infer_env recursive field keys rather than redefining them"
+        "complexity should consume infer_env recursive field keys rather than redefining them",
     );
     assert_live_not_contains(
         &source,
         "fn scc_members_for(",
-        "complexity should not rebuild SCCs with repeated reachability passes"
+        "complexity should not rebuild SCCs with repeated reachability passes",
     );
     assert_live_not_contains(
         &source,
         "split(delimiter: \"::\")",
-        "complexity should not recover recursive fields from concatenated string keys"
+        "complexity should not recover recursive fields from concatenated string keys",
     );
     assert_live_not_contains(
         &stage0,
         "pub formatted: String",
-        "stage0 ComplexityReport should not carry a formatted string field"
+        "stage0 ComplexityReport should not carry a formatted string field",
     );
     assert_live_not_contains(
         &stage0,
@@ -490,7 +505,7 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
     assert_live_not_contains(
         &stage0,
         "pub fn scc_members_for(",
-        "stage0 complexity mirror should not rebuild SCCs with repeated reachability passes"
+        "stage0 complexity mirror should not rebuild SCCs with repeated reachability passes",
     );
     assert_live_not_contains(
         &stage0,
@@ -516,7 +531,7 @@ fn parser_progress_witness_hooks_live_in_parse_layer() {
         assert_live_contains(
             &source,
             needle,
-            &format!("src/v2/02_parse.dag should contain {needle}")
+            &format!("src/v2/02_parse.dag should contain {needle}"),
         );
     }
 
@@ -531,7 +546,7 @@ fn parser_progress_witness_hooks_live_in_parse_layer() {
         assert_live_contains(
             &stage0,
             needle,
-            &format!("stage0 parser mirror should contain {needle}")
+            &format!("stage0 parser mirror should contain {needle}"),
         );
     }
 
@@ -559,14 +574,11 @@ fn recursive_variant_witnesses_are_structural() {
     let infer_source = read_v2_file("src/v2/04_infer.dag");
 
     // InductiveField replaces RecursiveVariantFieldWitness (CX-L1)
-    for needle in [
-        "fn put_inductive_field(",
-        "fn merge_inductive_fields(",
-    ] {
+    for needle in ["fn put_inductive_field(", "fn merge_inductive_fields("] {
         assert_live_contains(
             &env_source,
             needle,
-            &format!("src/v2/04_env.dag should contain {needle}")
+            &format!("src/v2/04_env.dag should contain {needle}"),
         );
     }
 
@@ -577,7 +589,7 @@ fn recursive_variant_witnesses_are_structural() {
         assert_live_contains(
             &env_stage0,
             needle,
-            &format!("stage0 infer env mirror should contain {needle}")
+            &format!("stage0 infer env mirror should contain {needle}"),
         );
     }
 
@@ -623,9 +635,18 @@ fn emit_backends_do_not_consume_inductive_fields() {
         ("src/v2/05_emit_rust.dag", rust_source.as_str()),
         ("src/v2/05_emit_go.dag", go_source.as_str()),
         ("src/v2/05_emit_python.dag", py_source.as_str()),
-        ("src/v2/stage0/src/v2_compiler_emit_rust.rs", rust_stage0.as_str()),
-        ("src/v2/stage0/src/v2_compiler_emit_go.rs", go_stage0.as_str()),
-        ("src/v2/stage0/src/v2_compiler_emit_python.rs", py_stage0.as_str()),
+        (
+            "src/v2/stage0/src/v2_compiler_emit_rust.rs",
+            rust_stage0.as_str(),
+        ),
+        (
+            "src/v2/stage0/src/v2_compiler_emit_go.rs",
+            go_stage0.as_str(),
+        ),
+        (
+            "src/v2/stage0/src/v2_compiler_emit_python.rs",
+            py_stage0.as_str(),
+        ),
     ] {
         assert_live_not_contains(
             source,
@@ -715,17 +736,17 @@ fn testgen_emits_valid_rust() {
     assert_live_contains(
         &lang_source,
         "Rc<dyn Fn(",
-        "languages.dag should declare Rust callable_type_template with Rc<dyn Fn(...)>"
+        "languages.dag should declare Rust callable_type_template with Rc<dyn Fn(...)>",
     );
     assert_live_contains(
         &lang_source,
         "callable_type_template",
-        "languages.dag should contain callable_type_template field"
+        "languages.dag should contain callable_type_template field",
     );
     assert_live_contains(
         &emit_source,
         "callable_type_template",
-        "05_emit.dag should read callable_type_template from LanguageSpec"
+        "05_emit.dag should read callable_type_template from LanguageSpec",
     );
 }
 
@@ -779,18 +800,29 @@ fn canonical_accessors_exist_in_core() {
     let source = read_v2_file("src/v2/00_core.dag");
     let accessors = [
         "fn expr_child_at",
-        "fn if_condition", "fn if_then_branch", "fn if_else_branch",
-        "fn match_scrutinee", "fn match_arm_nodes",
-        "fn binop_left", "fn binop_right",
+        "fn if_condition",
+        "fn if_then_branch",
+        "fn if_else_branch",
+        "fn match_scrutinee",
+        "fn match_arm_nodes",
+        "fn binop_left",
+        "fn binop_right",
         "fn unaryop_operand",
         "fn field_access_base",
-        "fn method_receiver", "fn method_arg_nodes",
+        "fn method_receiver",
+        "fn method_arg_nodes",
         "fn lambda_body",
-        "fn let_value", "fn let_body",
-        "fn cast_expr", "fn cast_target",
-        "fn foreach_collection", "fn foreach_body",
-        "fn index_base", "fn index_expr",
-        "fn slice_base", "fn slice_start", "fn slice_end",
+        "fn let_value",
+        "fn let_body",
+        "fn cast_expr",
+        "fn cast_target",
+        "fn foreach_collection",
+        "fn foreach_body",
+        "fn index_base",
+        "fn index_expr",
+        "fn slice_base",
+        "fn slice_start",
+        "fn slice_end",
         "fn return_value",
     ];
     for acc in &accessors {
@@ -816,11 +848,13 @@ fn no_self_fallback_in_consumer_files() {
         let source = read_v2_file(path);
         assert!(
             !source.contains("None => texpr"),
-            "{} must not contain 'None => texpr' self-fallback (use canonical accessors)", path
+            "{} must not contain 'None => texpr' self-fallback (use canonical accessors)",
+            path
         );
         assert!(
             !source.contains("None => expr }"),
-            "{} must not contain 'None => expr' self-fallback (use canonical accessors)", path
+            "{} must not contain 'None => expr' self-fallback (use canonical accessors)",
+            path
         );
     }
 }
@@ -848,10 +882,7 @@ fn parse_item_keyword_arm_count() {
         .find("fn parse_item(")
         .expect("parse_item must exist in 02_parse.dag");
     let rest = &source[func_start..];
-    let func_end = rest[1..]
-        .find("\nfn ")
-        .map(|i| i + 1)
-        .unwrap_or(rest.len());
+    let func_end = rest[1..].find("\nfn ").map(|i| i + 1).unwrap_or(rest.len());
     let func_body = &rest[..func_end];
     // Count on live source (comments stripped) to avoid false positives
     // from historical notes or TODOs mentioning ShKw patterns.
@@ -883,7 +914,8 @@ fn l1_type_knowledge_ratchet() {
     assert!(
         output.status.success(),
         "l1-ratchet.sh --check failed:\n{}\n{}",
-        stdout, stderr
+        stdout,
+        stderr
     );
 }
 
@@ -905,11 +937,23 @@ fn second_syntax_spec_exists() {
         "Rust spec should declare rust_syntax_spec: SyntaxSpec"
     );
     // Verify it has item forms, operators, keyword literals
-    assert!(content.contains("rust_item_forms"), "should define item forms");
-    assert!(content.contains("rust_operators"), "should define operators");
-    assert!(content.contains("rust_keyword_literals"), "should define keyword literals");
+    assert!(
+        content.contains("rust_item_forms"),
+        "should define item forms"
+    );
+    assert!(
+        content.contains("rust_operators"),
+        "should define operators"
+    );
+    assert!(
+        content.contains("rust_keyword_literals"),
+        "should define keyword literals"
+    );
     // Verify it has Rust-specific keywords
-    assert!(content.contains("\"struct\""), "should include struct keyword");
+    assert!(
+        content.contains("\"struct\""),
+        "should include struct keyword"
+    );
     assert!(content.contains("\"enum\""), "should include enum keyword");
     assert!(content.contains("\"impl\""), "should include impl keyword");
 }
@@ -920,9 +964,13 @@ fn no_expr_data_before_catch_all_in_core() {
     // expr_has_non_tail_self_call. Verify by checking that NoExprData
     // appears in the function and is not shadowed.
     let source = read_v2_file("src/v2/00_core.dag");
-    let func_start = source.find("fn expr_has_non_tail_self_call").expect("function must exist");
+    let func_start = source
+        .find("fn expr_has_non_tail_self_call")
+        .expect("function must exist");
     let func_body = &source[func_start..];
-    let no_expr_pos = func_body.find("NoExprData =>").expect("NoExprData arm must exist");
+    let no_expr_pos = func_body
+        .find("NoExprData =>")
+        .expect("NoExprData arm must exist");
     let wildcard_pos = func_body.find("_ =>\n").expect("catch-all arm must exist");
     assert!(
         no_expr_pos < wildcard_pos,
@@ -939,12 +987,20 @@ fn rt_functions_derived_from_registry() {
     let registry = rt_function_registry();
     let funcs = rt_functions();
 
-    assert_eq!(registry.len(), funcs.len(),
-        "registry count ({}) != rt_functions count ({})", registry.len(), funcs.len());
+    assert_eq!(
+        registry.len(),
+        funcs.len(),
+        "registry count ({}) != rt_functions count ({})",
+        registry.len(),
+        funcs.len()
+    );
 
     for f in registry.iter() {
-        assert!(funcs.contains_key(&f.name),
-            "registry entry '{}' missing from rt_functions()", f.name);
+        assert!(
+            funcs.contains_key(&f.name),
+            "registry entry '{}' missing from rt_functions()",
+            f.name
+        );
     }
 }
 
@@ -952,24 +1008,41 @@ fn rt_functions_derived_from_registry() {
 fn rt_bridge_function_names_derived_from_registry() {
     // rt_bridge_function_names() is derived from rt_function_registry,
     // filtering entries where name != bridge_name.
-    use v2_compiler::extdeps_languages_rust_emit::{rt_function_registry, rt_bridge_function_names};
+    use v2_compiler::extdeps_languages_rust_emit::{
+        rt_bridge_function_names, rt_function_registry,
+    };
 
     let registry = rt_function_registry();
     let bridge = rt_bridge_function_names();
 
-    let expected: Vec<_> = registry.iter()
+    let expected: Vec<_> = registry
+        .iter()
         .filter(|f| f.name != f.bridge_name)
         .collect();
 
-    assert!(!expected.is_empty(), "registry should have bridge_name overrides");
-    assert_eq!(expected.len(), bridge.len(),
-        "expected {} bridge entries, got {}", expected.len(), bridge.len());
+    assert!(
+        !expected.is_empty(),
+        "registry should have bridge_name overrides"
+    );
+    assert_eq!(
+        expected.len(),
+        bridge.len(),
+        "expected {} bridge entries, got {}",
+        expected.len(),
+        bridge.len()
+    );
 
     for f in &expected {
         match bridge.get(&f.name) {
-            Some(bn) => assert_eq!(*bn, f.bridge_name,
-                "bridge mismatch for '{}': expected '{}', got '{}'", f.name, f.bridge_name, bn),
-            None => panic!("registry entry '{}' (bridge '{}') missing from rt_bridge_function_names()", f.name, f.bridge_name),
+            Some(bn) => assert_eq!(
+                *bn, f.bridge_name,
+                "bridge mismatch for '{}': expected '{}', got '{}'",
+                f.name, f.bridge_name, bn
+            ),
+            None => panic!(
+                "registry entry '{}' (bridge '{}') missing from rt_bridge_function_names()",
+                f.name, f.bridge_name
+            ),
         }
     }
 }
@@ -984,17 +1057,24 @@ fn rt_wraps_result_derived_from_registry() {
     let registry = rt_function_registry();
     let wraps_map = rt_wraps_result();
 
-    let registry_wraps: Vec<String> = registry.iter()
+    let registry_wraps: Vec<String> = registry
+        .iter()
         .filter(|f| f.wraps_result)
         .map(|f| f.name.clone())
         .collect();
 
-    assert!(!registry_wraps.is_empty(), "registry should have wraps_result entries");
+    assert!(
+        !registry_wraps.is_empty(),
+        "registry should have wraps_result entries"
+    );
 
     // Every registry wraps_result: true must appear in derived map
     for name in &registry_wraps {
-        assert!(wraps_map.contains_key(name),
-            "RuntimeFunction '{}' has wraps_result: true but missing from rt_wraps_result()", name);
+        assert!(
+            wraps_map.contains_key(name),
+            "RuntimeFunction '{}' has wraps_result: true but missing from rt_wraps_result()",
+            name
+        );
     }
 
     // No extra entries in derived map
@@ -1009,17 +1089,23 @@ fn method_wraps_result_derived_from_specs() {
     // rust_method_wraps_result() is derived from SimpleMethodSpec.wraps_result via fold.
     // Verify exact parity: every spec entry with wraps_result: true appears,
     // and no extra entries exist.
-    use v2_compiler::extdeps_languages_rust_emit::{rust_simple_method_specs, rust_method_wraps_result};
+    use v2_compiler::extdeps_languages_rust_emit::{
+        rust_method_wraps_result, rust_simple_method_specs,
+    };
 
     let specs = rust_simple_method_specs();
     let wraps_map = rust_method_wraps_result();
 
-    let spec_wraps: Vec<String> = specs.iter()
+    let spec_wraps: Vec<String> = specs
+        .iter()
         .filter(|s| s.wraps_result)
         .map(|s| s.method_name.clone())
         .collect();
 
-    assert!(!spec_wraps.is_empty(), "specs should have wraps_result entries");
+    assert!(
+        !spec_wraps.is_empty(),
+        "specs should have wraps_result entries"
+    );
 
     // Every spec wraps_result: true must appear in derived map
     for name in &spec_wraps {
@@ -1038,19 +1124,32 @@ fn method_wraps_result_derived_from_specs() {
 fn method_templates_derived_from_specs() {
     // rust_method_templates() is derived from SimpleMethodSpec list.
     // Verify exact parity: every spec entry appears in template map.
-    use v2_compiler::extdeps_languages_rust_emit::{rust_simple_method_specs, rust_method_templates};
+    use v2_compiler::extdeps_languages_rust_emit::{
+        rust_method_templates, rust_simple_method_specs,
+    };
 
     let specs = rust_simple_method_specs();
     let templates = rust_method_templates();
 
-    assert_eq!(specs.len(), templates.len(),
-        "spec count ({}) != template map count ({})", specs.len(), templates.len());
+    assert_eq!(
+        specs.len(),
+        templates.len(),
+        "spec count ({}) != template map count ({})",
+        specs.len(),
+        templates.len()
+    );
 
     for spec in specs.iter() {
         match templates.get(&spec.method_name) {
-            Some(tmpl) => assert_eq!(*tmpl, spec.template,
-                "template mismatch for '{}': spec='{}', map='{}'", spec.method_name, spec.template, tmpl),
-            None => panic!("SimpleMethodSpec '{}' missing from rust_method_templates()", spec.method_name),
+            Some(tmpl) => assert_eq!(
+                *tmpl, spec.template,
+                "template mismatch for '{}': spec='{}', map='{}'",
+                spec.method_name, spec.template, tmpl
+            ),
+            None => panic!(
+                "SimpleMethodSpec '{}' missing from rust_method_templates()",
+                spec.method_name
+            ),
         }
     }
 }
@@ -1060,9 +1159,9 @@ fn is_copy_checkpoint_parity() {
     // Derive all assertions from rust_type_checkpoints — single authority.
     // Every checkpoint must return Some(is_copy), never None.
     // User-defined types (no checkpoint) correctly return None.
+    use v2_compiler::extdeps_languages_rust_types::rust_type_checkpoints;
     use v2_compiler::v2_compiler_coercion::is_copy;
     use v2_compiler::v2_compiler_emit::RenderTarget;
-    use v2_compiler::extdeps_languages_rust_types::rust_type_checkpoints;
 
     let checkpoints = rust_type_checkpoints();
     assert!(
@@ -1088,5 +1187,8 @@ fn is_copy_checkpoint_parity() {
 
     // User-defined types must return None (no checkpoint exists)
     let result = is_copy(RenderTarget::Rust, "MyStruct".to_string());
-    assert_eq!(result, None, "user-defined type should return None from is_copy");
+    assert_eq!(
+        result, None,
+        "user-defined type should return None from is_copy"
+    );
 }

@@ -42,8 +42,10 @@ pub fn parse_source(source: &str) -> Rc<ParseResult> {
 }
 
 pub fn parse_source_named(filename: &str, source: &str) -> Rc<ParseResult> {
-    let tokens = v2_compiler::v2_compiler_tokenize::tokenize(&source.to_string(), filename.to_string());
-    let source_index = v2_compiler::v2_std_core::build_newline_index(filename.to_string(), &source.to_string());
+    let tokens =
+        v2_compiler::v2_compiler_tokenize::tokenize(&source.to_string(), filename.to_string());
+    let source_index =
+        v2_compiler::v2_std_core::build_newline_index(filename.to_string(), &source.to_string());
     let mut source_indices = std::collections::HashMap::new();
     source_indices.insert(filename.to_string(), source_index);
     v2_compiler::v2_compiler_parse::parse(tokens, Rc::new(source_indices))
@@ -52,7 +54,11 @@ pub fn parse_source_named(filename: &str, source: &str) -> Rc<ParseResult> {
 pub fn assert_parses(source: &str, label: &str) {
     let result = parse_source(source);
     if let Some(ref err) = result.error {
-        panic!("{} had parse error: {}", label, v2_compiler::v2_std_core::diagnostic_to_message(err.diagnostic.clone()));
+        panic!(
+            "{} had parse error: {}",
+            label,
+            v2_compiler::v2_std_core::diagnostic_to_message(err.diagnostic.clone())
+        );
     }
     assert!(result.module.is_some(), "{} produced no module", label);
 }
@@ -111,7 +117,9 @@ fn build_module_index() -> HashMap<String, std::path::PathBuf> {
 }
 
 fn scan_dag_files(dir: &std::path::Path, index: &mut HashMap<String, std::path::PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
@@ -151,12 +159,10 @@ fn module_index() -> &'static HashMap<String, std::path::PathBuf> {
 fn extract_imports(source: &str) -> Vec<String> {
     let result = parse_source(source);
     match &result.module {
-        Some(module) => {
-            v2_compiler::v2_std_core::module_imports(module.clone())
-                .iter()
-                .map(|imp| imp.name.clone())
-                .collect()
-        }
+        Some(module) => v2_compiler::v2_std_core::module_imports(module.clone())
+            .iter()
+            .map(|imp| imp.name.clone())
+            .collect(),
         None => vec![],
     }
 }
@@ -164,10 +170,7 @@ fn extract_imports(source: &str) -> Vec<String> {
 /// Resolve imports transitively from an entry source. Returns the minimal
 /// set of SourceFiles needed — each module loaded exactly once.
 /// Lookups use the cached module index (parser-backed, built once).
-pub fn resolve_imports_transitively(
-    entry_path: &str,
-    entry_content: &str,
-) -> Vec<Rc<SourceFile>> {
+pub fn resolve_imports_transitively(entry_path: &str, entry_content: &str) -> Vec<Rc<SourceFile>> {
     let ws = workspace_root();
     let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
     let mut queue: Vec<(String, String)> = Vec::new(); // (path, content)
@@ -221,11 +224,7 @@ pub fn compile_dag_target(source: &str, target: RenderTarget) -> Rc<PipelineResu
     compile_dag_named("test.dag", source, target)
 }
 
-pub fn compile_dag_named(
-    filename: &str,
-    source: &str,
-    target: RenderTarget,
-) -> Rc<PipelineResult> {
+pub fn compile_dag_named(filename: &str, source: &str, target: RenderTarget) -> Rc<PipelineResult> {
     let sources = resolve_imports_transitively(filename, source);
     v2_compiler::v2_compiler_compile::compile_sources(Rc::new(sources), target)
 }
@@ -249,7 +248,11 @@ pub fn compile_multi_target(files: &[(&str, &str)], target: RenderTarget) -> Rc<
 // ── Result inspection ────────────────────────────────────────────────────
 
 pub fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
-    result.diagnostics.iter().map(|d| v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone())).collect()
+    result
+        .diagnostics
+        .iter()
+        .map(|d| v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .collect()
 }
 
 pub fn assert_no_diagnostics(result: &PipelineResult) {
