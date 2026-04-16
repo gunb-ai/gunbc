@@ -167,6 +167,13 @@ data python_declaration_id: PythonTypeRealization = {
   cost: 1
 }
 
+data python_declaration_ref: PythonTypeRealization = {
+  target: DeclarationRef
+  carrier: "DeclarationId"
+  is_copy: true
+  cost: 1
+}
+
 data python_source_span: PythonTypeRealization = {
   target: SourceSpan
   carrier: "SourceSpan"
