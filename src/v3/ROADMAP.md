@@ -388,10 +388,27 @@ Full design: [`src/v3/SELF_HOSTING.md`](SELF_HOSTING.md). Key points:
 
 - All lenses operational (cost, ownership, effects, termination,
   algebra, space)
-- Diagnostics as corrections (Level 1–2)
+- Diagnostics as corrections — correction field on Diagnostic
+  at L1.5 (§14.6 of SELF_HOSTING.md), roundtrip-tested per
+  diagnostic variant and per lens. Every lens ships with
+  correction computation and fix-roundtrip tests as acceptance
+  criteria.
 - L4 verification: emitted code matches DAG evaluation
 - User-defined observational lenses
 - Omni-emission projection rules
+- **Test generation at all three layers (§14 of SELF_HOSTING.md):**
+  structural testgen (from types, L1.5), behavioral testgen (from
+  transforms, L2.6), composition testgen (from pipelines, L3).
+  KF-3 becomes empirical progressively across these layers.
+  Mock generation + dry-run mode (L2.6) closes the environmental
+  boundary bug class.
+- **Ownership + clone elision (§14.7 of SELF_HOSTING.md):**
+  dedicated parallel track. Phase 1 (lens_fanout + basic clone
+  elision) at L1.5 — every generated artifact benefits from day
+  one. Full v2 ownership.dag migration (719 lines) at L2.
+  Self-analysis clone-count ratchet at zero by L3. This is the
+  v2 20-minute self-compile prevention — non-negotiable before
+  generated artifacts accumulate.
 
 ## What NOT to build yet
 

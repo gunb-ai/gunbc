@@ -384,13 +384,18 @@ catalog in `std/optimization.dag`.
 
 ### KF-3: Verification from structure (free tests)
 
-**Thesis ref:** ROADMAP §"Killer features" KF-3.
+**Thesis ref:** ROADMAP §"Killer features" KF-3. Design:
+SELF_HOSTING.md §14.
 **Testable form:** add a type → verification appears. Add a
 service → integration test appears. No hand-written tests.
 **Status:** PARTIALLY TESTED.
 - L0 coercion tests from data: TESTED (v2).
-- L4-L7: DEFERRED.
-**Milestone:** L2+ progressively.
+- Structural testgen (from types): TESTABLE AT L1.5 (§14.1)
+- Behavioral testgen (from transforms): TESTABLE AT L2.6 (§14.2)
+- Mock generation + dry-run: TESTABLE AT L2.6 (§14.3)
+- Composition testgen (from pipelines): TESTABLE AT L3 (§14.4)
+**Milestone:** L1.5 (first layer), L2.6 (behavioral + mock),
+L3 (compositional). Progressively stronger through each layer.
 
 ### KF-5: Decidable high-level language
 
@@ -408,9 +413,16 @@ programs are structurally unrepresentable.
 
 **Thesis ref:** ROADMAP §"Killer features" KF-7.
 **Testable form:** every function gets a proven space bound.
-**Status:** DEFERRED.
-**Blocker:** Needs provenance + ownership lens.
-**Milestone:** After L2 M2 (ownership lens).
+**Status:** PARTIALLY TESTABLE.
+- Fan-out counting (clone elision): TESTABLE AT L1.5 (§14.7
+  Phase 1 — lens_fanout)
+- Clone-count ratchet on generated code: TESTABLE AT L1.5
+- Full ownership proof (sole-owner, fold linearity): TESTABLE
+  AT L2 (§14.7 Phase 3 — ownership.dag migration)
+- Proven space bound per function: DEFERRED (needs ownership +
+  provenance composition)
+**Milestone:** L1.5 (fan-out), L2 (full ownership), L2+
+(space bounds).
 
 ### KF-8: Optimality gate
 
@@ -423,19 +435,154 @@ exceeds a declared bound.
 
 ---
 
+## Invariant lenses — self-enforcement validation
+
+Each invariant from `INVARIANTS.md` with a structural test should
+become a lens (see SELF_HOSTING.md §14.5). The lens running
+against the compiler's own `.dag` code validates both the
+invariant and the lens mechanism.
+
+### IL-1: Layer opacity lens
+
+**Invariant ref:** INVARIANTS.md §"Layer opacity".
+**Testable form:** no below-boundary string literal in consumer
+code. Rename a std/ identifier → no compile behavior change.
+**Status:** PARTIALLY TESTABLE.
+- Rename test on weather example: TESTED (v2, 2026-04-15)
+- Lens scanning .dag consumer files: TESTABLE AT L1.5
+- Lens running on compiler's own .dag: TESTABLE AT L3
+**Milestone:** L1.5 (lens on std/ consumers), L3 (self-analysis).
+
+### IL-2: Single authority lens
+
+**Invariant ref:** INVARIANTS.md §"No duplicate representations".
+**Testable form:** for each fact, exactly one declaration is
+authority. No `fn(A) -> B` where A and B are structurally
+equivalent (parallel representation).
+**Status:** DEFERRED.
+**Blocker:** Needs structural equivalence check on declarations.
+**Milestone:** L2.
+
+### IL-3: Structural dispatch lens
+
+**Invariant ref:** INVARIANTS.md §"No case enumeration for open
+sets".
+**Testable form:** no string-keyed match arm where a structural
+walk through declarations would suffice.
+**Status:** DEFERRED.
+**Blocker:** Needs pattern analysis on match expressions.
+**Milestone:** L2.
+
+### IL-4: Cost coverage lens
+
+**Invariant ref:** INVARIANTS.md §"Cost algebra upstream of
+primitives".
+**Testable form:** every primitive declaration has a corresponding
+`CostExpr` in the algebra. `∀ primitive p, ∃ cost_class(p)`.
+**Status:** DEFERRED.
+**Blocker:** Needs complexity lens (L2 M1).
+**Milestone:** L2 M1.
+
+### IL-5: Facts flow forward lens
+
+**Invariant ref:** INVARIANTS.md §"Facts Flow Forward".
+**Testable form:** no per-field re-derivation across stages. Every
+field consumed at stage K traces to a producer at stage N ≤ K.
+**Status:** DEFERRED.
+**Blocker:** SubValueRelation + per-field provenance.
+**Milestone:** L2+.
+
+### IL-6: No fabrication lens
+
+**Invariant ref:** INVARIANTS.md §"No fallbacks that fabricate".
+**Testable form:** no catch-and-default pattern without an
+explicit error variant in the return type.
+**Status:** DEFERRED.
+**Blocker:** Effect typing (L2 M3).
+**Milestone:** L2 M3.
+
+---
+
+## Diagnostics as corrections — roundtrip testing
+
+**Thesis ref:** THESIS.md §"Error handling: show the correct
+code." Design: SELF_HOSTING.md §14.6.
+
+Every diagnostic should carry a correction — the literal fixed
+code. The test pattern is a three-assertion roundtrip:
+1. Broken source → compile → diagnostic fires (detection)
+2. Apply correction → compile corrected source → succeeds (fix correctness)
+3. Corrected program has zero diagnostics (fix completeness)
+
+### DC-1: TypeMismatch correction
+
+**Testable form:** `let x: Bool = 1` → TypeMismatch → correction
+offers "change annotation to `Int`" or "change value to `true`"
+→ apply either → compiles.
+**Status:** TESTABLE AT L1.5 (requires Correction field on
+Diagnostic).
+**Milestone:** L1.5.
+
+### DC-2: NonExhaustiveMatch correction
+
+**Testable form:** `match x { A => 1 }` on `A | B` → diagnostic
+→ correction shows `match x { A => 1, B => todo() }` → apply →
+compiles.
+**Status:** TESTABLE AT L1.5.
+**Milestone:** L1.5.
+
+### DC-3: FieldNotFound correction
+
+**Testable form:** `point.c` on `{ a: Int, b: Int }` → diagnostic
+→ correction shows available fields `a`, `b` → apply `point.a` →
+compiles.
+**Status:** TESTABLE AT L1.5.
+**Milestone:** L1.5.
+
+### DC-4: ArityMismatch correction
+
+**Testable form:** `f(1, 2)` on `fn f(x: Int) -> Int` → diagnostic
+→ correction shows `f(1)` → apply → compiles.
+**Status:** TESTABLE AT L1.5.
+**Milestone:** L1.5.
+
+### DC-5: UnboundedRecursion correction
+
+**Testable form:** `fn f(x: Int) -> Int = f(x)` → diagnostic →
+correction shows `f(x - 1)` or the descent argument needed →
+apply → compiles.
+**Status:** TESTABLE AT L1.5.
+**Milestone:** L1.5.
+
+### DC-6: Lens violation correction (per lens)
+
+**Testable form:** for each lens that reports a violation, the
+correction field shows the fixed code. Applying the correction
+eliminates the violation when the lens re-runs.
+**Status:** TESTABLE AT each lens's ship date.
+**Acceptance criterion for every new lens:** roundtrip test
+where the fix actually eliminates the lens's reported violation.
+**Milestone:** L1.5 (for lens_unused_parameters), then each
+subsequent lens.
+
+---
+
 ## Summary: what's testable when
 
 | Milestone | Claims testable | Count |
 |---|---|---|
 | **NOW (current v3)** | T1.1-T1.4, T1.5 (numeric descent), T2.4 (partial), KF-5 (partial), lens_cost structural | ~8 |
 | **L1 (reflection PR)** | T1.5 (structural descent on lists), T3.1 (partial — Rust roundtrip) | +2 |
-| **L1.5 (clean bootstrap)** | Per-stage fixed-point verification | +1 |
+| **L1.5 (clean bootstrap)** | Per-stage fixed-point, KF-3 structural testgen (§14.1), IL-1 layer opacity, DC-1 through DC-5 correction roundtrips, KF-7 fan-out lens + clone ratchet (§14.7 P1) | +9 |
 | **§2.4 (mutual recursion)** | T1.5 (SCC descent + SCC rejection) | +2 |
-| **L2 M1 (complexity lens)** | KF-1, T1.5.2 (dead work), T1.5.4 (symbolic O(n²)) | +3 |
-| **L2 M2 (ownership lens)** | KF-7 (space bounds) | +1 |
-| **L2 M3 (effects lens)** | T1.6 (idempotency), T1.5.1 (effect contradiction) | +2 |
-| **L2 + SubValueRelation** | T1.5.3 (provenance loss) | +1 |
+| **L2 (lens migrations)** | IL-2 single authority, IL-3 structural dispatch | +2 |
+| **L2 M1 (complexity lens)** | KF-1, T1.5.2 (dead work), T1.5.4 (symbolic O(n²)), IL-4 cost coverage | +4 |
+| **L2.7 (ownership lens)** | KF-7 full ownership proof, clone-count ratchet near zero | +2 |
+| **L2 M3 (effects lens)** | T1.6 (idempotency), T1.5.1 (effect contradiction), IL-6 no fabrication | +3 |
+| **L2.6 (testgen + dry-run)** | KF-3 behavioral testgen (§14.2), mock generation + dry-run (§14.3) | +2 |
+| **L2 + SubValueRelation** | T1.5.3 (provenance loss), IL-5 facts flow forward | +2 |
 | **M1(4) (multi-target)** | T1.7 (cross-target drift), T3.2 (cross-language equiv) | +2 |
+| **L3 (pipeline stages)** | KF-3 composition testgen (§14.4), IL-1/IL-2/IL-3 on compiler .dag (self-analysis) | +4 |
 | **L3+ (refinement types)** | T2.1-T2.3 (runtime safety) | +3 |
 | **After KF-1** | KF-2 (reject suboptimal), KF-8 (optimality gate) | +2 |
 

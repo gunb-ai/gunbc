@@ -25,8 +25,15 @@
 //     category: DiagnosticCategory,  // Type | Cardinality | ...
 //     subject: DiagnosticSubject,    // typed ref to thing flagged
 //     detail: DiagnosticDetail,      // category-specific payload
+//     correction: Option<Correction>,// the literal fixed code
 //     producing_node: Option<NodeId>,
 //   }
+//
+// The `correction` field is the thesis claim "show the correct code"
+// (THESIS.md §"Error handling"). Every diagnostic that can structurally
+// compute a fix must carry one. Design: SELF_HOSTING.md §14.6.
+// Roundtrip test pattern: break → diagnose → apply correction →
+// recompile → zero diagnostics. Lands at L1.5.
 //
 // TRIGGER for dissolution: when typed DeclarationId / FieldRef references
 // replace the name + span carriers below. M1(2.5) delivered the

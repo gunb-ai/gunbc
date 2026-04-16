@@ -79,23 +79,51 @@ L1.5 — Clean bootstrap (IMMEDIATE post-L1) [the process is the first feature]
       │       — regen captures per-stage output, diffs at boundaries
       │       — uses the pipeline declaration from step 1
       │       — the dark-emu fix, available from day one
+      │    3. Test authority types in std/verification.dag (§14)
+      │       — extend std/verification.dag with compiler-verifiable AssertKind variants
+      │       — first consumer: structural testgen from existing std/ types
+      │       — every type declared in std/ gets inhabitant + coercion tests
       │
-      ├── L2 — v2 consumer migrations   [parallel with L2.5]
+      ├── L2 — v2 consumer migrations   [parallel with L2.5/L2.6/L2.7]
       │    │    M1: dsl/lenses/complexity.dag  (5490 lines from v2)
-      │    │    M2: dsl/lenses/ownership.dag   (719 lines)
-      │    │    M3: dsl/lenses/effects.dag     (66 lines)
-      │    │    M4: dsl/lenses/trace.dag       (223 lines)
+      │    │    M2: dsl/lenses/effects.dag     (66 lines)
+      │    │    M3: dsl/lenses/trace.dag       (223 lines)
       │    │
-      └── L2.5 — Per-stage domain modeling [parallel with L2]
-           │    Emit domain:  extdeps/languages/ completeness,
-           │                  std/formatting.dag
-           │    Lower domain: std/surface.dag (surface AST types)
-           │    Parse domain: std/token.dag, std/encoding.dag,
-           │                  extdeps/platform/filesystem.dag,
-           │                  grammar productions as data
-           │    Infer domain: std/inference.dag, std/scope.dag,
-           │                  std/substitution.dag
-           │                  (blocked on I3 write-surface experiment)
+      ├── L2.5 — Per-stage domain modeling [parallel with L2]
+      │    │    Emit domain:  extdeps/languages/ completeness,
+      │    │                  std/formatting.dag
+      │    │    Lower domain: std/surface.dag (surface AST types)
+      │    │    Parse domain: std/token.dag, std/encoding.dag,
+      │    │                  extdeps/platform/filesystem.dag,
+      │    │                  grammar productions as data
+      │    │    Infer domain: std/inference.dag, std/scope.dag,
+      │    │                  std/substitution.dag
+      │    │                  (blocked on I3 write-surface experiment)
+      │    │
+      ├── L2.6 — Testgen + dry-run infrastructure (§14) [parallel with L2/L2.5]
+      │    │    1. Behavioral testgen: lens walks transforms, enumerates
+      │    │       structurally valid inputs, verifies output types (§14.2)
+      │    │    2. MockRealization: type-correct stubs for ExternalRealization
+      │    │       bodies, generated from the arrow signature (§14.3)
+      │    │    3. Dry-run mode: execute pipeline stages against mocks,
+      │    │       verify typed boundaries hold at runtime (§14.3)
+      │    │    4. Pattern realization in extdeps/languages/ — declares how
+      │    │       structural Disj patterns map to target container ops
+      │    │
+      └── L2.7 — Ownership + clone elision (§14.7) [DEDICATED, parallel with all L2]
+           │    Phase 1 (L1.5): lens_fanout — count port references
+           │       emit_rust reads fan-out, skips .clone() for fan-out=1
+           │       clone-count CI ratchet on generated lens code
+           │    Phase 2 (L2): ownership strategy as data in rust.dag
+           │       EdgeKind (Consumed/Read/Threaded/Projected) in std/
+           │       BindingUsage, FoldAccUnwrapProof types from v2
+           │       emitter reads strategy from realization spec
+           │    Phase 3 (L2): full v2 ownership.dag migration (719 lines)
+           │       fold accumulator linearity proofs
+           │       semantic_consumer_count, sole-owner proof
+           │    Phase 4 (L3): ownership self-analysis
+           │       ownership lens runs on generated compiler code
+           │       clone-count ratchet hits zero
            │
 L3 — Pipeline stages in .dag           [blocked on L2.5 model for each stage]
       │    Stage 1: emit.dag   — Dag → target source strings
@@ -153,12 +181,26 @@ L4 — Full self-hosting (M3)            [long-term]
    second, parse domain third, infer domain last (blocked on I3
    write-surface experiment). Each domain model runs ahead of
    its stage's implementation by at least one step.
-6. **L3 stages proceed bottom-up.** Emit first (easiest, already
+6. **L2.6 starts as soon as L1.5 lands.** Behavioral testgen
+   and mock generation consume the test authority types from
+   L1.5 and the lens infrastructure from L2. L2.6 is parallel
+   with L2/L2.5 — it doesn't block them, and they don't block
+   it (beyond the L1.5 dependency for the authority types).
+7. **L2.7 Phase 1 starts at L1.5.** `lens_fanout` and basic
+   clone elision in `emit_rust` are the first ownership
+   deliverable. Phase 1 requires no v2 migration — it's a
+   new ~40-line lens + emitter change. Every generated artifact
+   after L1.5 benefits. Phase 2-3 proceed in parallel with L2
+   lens migrations. **The v2 lesson is non-negotiable:** if
+   clone elision doesn't land before generated lenses start
+   accumulating, every subsequent artifact compounds the debt
+   and self-hosting performance becomes untenable.
+8. **L3 stages proceed bottom-up.** Emit first (easiest, already
    half-structured), then lower, then infer, then parse. Each
    later stage's migration benefits from the earlier stages
    being in `.dag` form (e.g., `lower.dag` can call `emit.dag`
    for debug-dump purposes once both are in `.dag`).
-7. **L4 is the state after all L3 stages ship.** There is no
+9. **L4 is the state after all L3 stages ship.** There is no
    separate "make self-hosting work" milestone; it's the
    emergent consequence of completing L3.
 
@@ -1520,7 +1562,438 @@ being reconstructed and start being read.
 
 ---
 
-## §14. When this doc updates
+## §14. Test generation as a structural lens
+
+**Problem.** v2 forgot testgen. Tests were hand-written,
+coverage was ad-hoc, and the thesis's KF-3 claim ("add a type
+→ verification appears") was never delivered empirically. When
+structural bugs were possible, they were caught by reviewer
+diligence, not by generated coverage. This is exactly the kind
+of commitment that needs to land early — before the surface area
+grows to where manual coverage can't keep up.
+
+**Principle.** The compiler knows the complete shape of every
+type and every function signature. It can enumerate all
+structurally valid inputs, all variant combinations, all
+boundary cases. The only thing it CANNOT determine is whether
+the behavior the developer intended is the behavior the program
+produces. That question — "is this what I want?" — is the
+developer's job. Everything else is mechanically derivable.
+
+**The three testgen layers:**
+
+### §14.1 Structural testgen (from types) — lands at L1.5
+
+A type declaration is a complete specification of what values
+are valid. From that specification, the compiler generates:
+
+- **Inhabitant witnesses.** For every Conj, generate at least
+  one structurally valid instance (all-zero, all-boundary,
+  mixed). For every Disj, generate one instance per variant.
+  For nested types, generate compositionally — `List<Option<Int>>`
+  generates `Empty`, `Cons(Some(0), Empty)`,
+  `Cons(None, Empty)`, etc.
+- **Coercion tests.** For every pair of types that should NOT
+  be coercible, assert the compiler rejects the coercion. These
+  are the negative space — proving the type system doesn't
+  accept what it shouldn't.
+- **Exhaustiveness witnesses.** For every Disj consumed by a
+  match, generate a test per variant that exercises each arm.
+
+**Authority types: extend existing `dsl/std/verification.dag`.**
+
+v2 already declares the test authority types:
+
+```dag
+// dsl/std/verification.dag (EXISTING — single authority)
+type AssertKind = AssertEqual | AssertTrue | AssertSome | AssertNone
+type TestClaim { kind: AssertKind, label: String }
+type TestCase { name: String, claims: List<TestClaim>, ignored: Bool }
+```
+
+L1.5 EXTENDS this schema (same file, same authority) with
+the structural predicates testgen needs. The extension adds
+`AssertKind` variants for compiler-verifiable properties:
+
+```dag
+// Added to dsl/std/verification.dag at L1.5:
+// AssertCompiles        — program compiles with zero diagnostics
+// AssertFailsWith       — program fails with named diagnostic kind
+// AssertPortResolved    — named bind's output is Resolved
+// AssertPortUnresolved  — named bind's output is Unresolved
+// AssertCostBelow       — structural cost at or below bound
+// AssertCostAbove       — structural cost above floor
+```
+
+Each new `AssertKind` variant is a standard verification
+predicate grounded in existing substrate facts (`PortState`,
+`Diagnostic`, `CostLens` output). No new opaque carriers —
+`subject` is a `TestClaim.label` string (the .dag source text),
+and `kind` is an `AssertKind` variant that names the substrate
+property being checked.
+
+Every backend renders TestCase to its test framework —
+`#[test]` in Rust, `func Test...` in Go, `def test_...` in
+Python. Same pattern as type emission through RealizationIndex.
+
+**Why at L1.5.** The types in `std/` already exist. Structural
+testgen reads them and emits test cases. This requires no lens
+infrastructure beyond what L1 provides — it's a walk over
+declarations, same as `emit_rust` but targeting test programs
+instead of production code. Landing this at L1.5 means every
+subsequent type added to `std/` gets test coverage
+automatically. The clean bootstrap process is itself tested by
+generated tests from day one.
+
+### §14.2 Behavioral testgen (from transforms) — lands at L2.6
+
+A function signature declares its input and output types. From
+those types, the compiler generates test cases that exercise
+every structurally valid input and verify the output satisfies
+the declared return type.
+
+- **Input enumeration.** The function's parameter types define
+  the space of valid inputs. For bounded types (Disj with finite
+  variants, Conj with known field types), enumerate all
+  combinations up to a configurable depth. For unbounded types
+  (List, recursive structures), generate small witnesses
+  (empty, singleton, two-element).
+- **Output verification.** Each generated input is passed to
+  the function. The output must inhabit the declared return
+  type. This catches: wrong return type (already caught by type
+  checking, but verified at runtime too), partial functions
+  that crash on valid inputs, and unexpected divergence between
+  the type-checked program and the emitted code.
+- **Boundary cases from effects.** When a function carries
+  effect annotations (L2 M3), generate tests at effect
+  boundaries — the inputs that trigger each effect branch.
+
+**Why at L2.6 (not earlier).** Behavioral testgen needs to
+execute the generated test programs, which requires the emit
+pipeline + a working target compiler. L1.5's structural testgen
+validates types statically. L2.6's behavioral testgen validates
+behavior dynamically.
+
+### §14.3 Mock generation + dry-run mode — lands at L2.6
+
+**The environmental boundary problem.** `ExternalRealization`
+bodies have type signatures but no executable bodies. The
+compiler can't test composition chains that pass through
+external dependencies without a mock.
+
+**MockRealization.** A type-correct stub generated from the
+arrow signature of an `ExternalRealization`. For a function
+`fn read_file(path: String) -> Result<String, Error>`, the mock
+returns a structurally valid `Result` — the identity value for
+the return type's algebra, or a generated inhabitant witness if
+no algebra exists.
+
+The mock type must make invalid states unrepresentable. A mock
+that returns a value not inhabiting the source arrow's return
+type should be structurally impossible to construct. The mock's
+return value is not a raw `Value` — it's a typed reference to
+an inhabitant witness of the source declaration's return type:
+
+```dag
+type MockRealization {
+  source: DeclarationId         // which ExternalRealization
+  strategy: MockStrategy        // how to generate return values
+}
+
+type MockStrategy
+  = DefaultInhabitant
+      // Compiler generates the return type's default witness.
+      // Always valid — the witness is computed from the type.
+  | InhabitantOf { witness: DeclarationId }
+      // Return a specific declared witness of the return type.
+      // The DeclarationId must inhabit the source's return type
+      // (checked at construction by the same inhabitance walk
+      // used for record literals). Invalid witnesses are a
+      // compile error, not a runtime surprise.
+```
+
+`FixedValue { value: Value }` and `FailWith { error: Value }`
+from the earlier sketch are removed — raw `Value` payloads
+admit invalid states. `InhabitantOf` replaces both by
+requiring the mock value to be a declared inhabitant of the
+correct type. The compiler verifies inhabitance at mock
+construction time, not at dry-run time.
+
+**Dry-run mode.** Execute the pipeline (or any composed
+function chain) with MockRealizations substituted for all
+`ExternalRealization` bodies. This verifies:
+
+1. Typed boundaries hold at runtime (not just at compile time).
+2. The composition chain doesn't crash on structurally valid
+   inputs.
+3. Effects compose as declared — no unexpected ordering
+   dependencies or state mutations.
+
+Dry-run is the direct answer to the "environmental boundary"
+bug class. The compiler eliminates structural bugs by
+construction; testgen eliminates behavioral bugs by exhaustive
+enumeration; dry-run eliminates environmental bugs by
+simulation.
+
+### §14.4 Composition testgen (from pipelines) — lands at L3
+
+Once pipeline stages are in `.dag`, the pipeline itself is a
+composition chain that testgen can analyze:
+
+- **Inter-stage contract tests.** For each stage boundary,
+  generate tests that verify the output of stage N is a valid
+  input to stage N+1. These are the typed pipeline contracts
+  from §2.1, verified at runtime.
+- **Provenance tests.** For each field produced at stage N and
+  consumed at stage K, generate a test that traces the field
+  through the intermediate stages. If a stage drops the field,
+  the test catches it.
+- **Regression tests from diffs.** When a `.dag` source file
+  changes, testgen compares the before/after type signatures
+  and generates tests for every affected boundary. These are
+  targeted regression tests, not full re-enumeration.
+
+**The thesis's KF-3 claim becomes empirical at L1.5 (structural)
+and progressively stronger through L2.6 (behavioral + mock) and
+L3 (compositional). By L4, every thesis claim that CAN be
+tested IS tested — automatically, by generated tests that the
+developer never writes.**
+
+### §14.5 Invariant lenses — self-enforcement from code
+
+Every invariant in `INVARIANTS.md` that has a structural test
+should become a lens that runs against the compiler's own code.
+This serves three purposes: (a) catches invariant violations
+during development, (b) validates the lens mechanism itself on
+real programs, and (c) creates a regression gate that prevents
+reintroduction.
+
+**Category A — invariants that are directly lensable:**
+
+| Invariant | Lens name | What it reads | Ships at |
+|---|---|---|---|
+| Layer opacity | `lens_layer_opacity` | Hardcoded below-boundary strings in consumer code | L1.5 |
+| Decidability | `lens_termination` | Every call pattern lowers to bounded primitive | Current |
+| Unused parameters | `lens_unused_parameters` | Parameters not read by function body | L1 |
+| Tight bounds | `lens_complexity` | Every function has `Proven`, not `Conservative` | L2 M1 |
+| No duplicate representations | `lens_single_authority` | For each fact, one declaration is authority | L2 |
+| No case enumeration | `lens_structural_dispatch` | String-keyed match where structural walk exists | L2 |
+| Cost algebra upstream | `lens_cost_coverage` | Every primitive has a `CostExpr` in algebra | L2 M1 |
+
+**Category B — invariants lensable after modeling work:**
+
+| Invariant | What's missing | Ships at |
+|---|---|---|
+| Facts flow forward | Per-field provenance across stages (SubValueRelation) | L2+ |
+| No fabrication fallbacks | Effect typing — catch-and-default has different effect | L2 M3 |
+| Heuristics = lost structure | Proxy: string comparison on a value that has DeclarationId | L2.6 |
+| Root-cause depth | Compiler's own dependency graph as data | L3+ |
+
+**Category C — process rules with structural proxies:**
+
+| Invariant | Can't detect | Structural proxy |
+|---|---|---|
+| No short-term solutions | Intent (is this adapter temp?) | Two-representation detection: `fn(A) -> B` where A ≅ B |
+| No bridges | Bridge vs legitimate transform | Same as above, plus: function exists in only one call site |
+| Modeling faithfulness | External grounding | No proxy — requires domain knowledge |
+
+**The self-analysis loop.** Once L3 pipeline stages are in `.dag`,
+every Category A lens runs against the compiler's own pipeline
+code. `lens_layer_opacity` on `emit.dag` catches hardcoded type
+names. `lens_complexity` on `parse.dag` reports the parser's
+cost. `lens_unused_parameters` on `infer.dag` finds dead
+parameters. This is the thesis's "compiler analyzes itself" claim
+(§7), applied incrementally — each lens validates both the
+invariant and itself when run against real compiler code.
+
+**Before L3 (while compiler is still Rust).** Category A lenses
+can run against the `.dag` portions of the codebase (std/,
+extdeps/, user programs, lenses themselves) from L1.5 onward.
+The Rust compiler code is NOT lensable until it migrates to
+`.dag` at L3. But every `.dag` lens file IS lensable by other
+lenses — so `lens_unused_parameters` running on
+`complexity.dag` validates both the invariant enforcement and the
+lens mechanism. Lens-on-lens is the earliest self-analysis
+available.
+
+**Acceptance criteria for each Category A lens:**
+
+1. The lens runs against at least one `.dag` fixture and
+   correctly identifies a planted violation.
+2. The lens runs against the compiler's own `.dag` files (std/,
+   extdeps/, lenses/) and reports the current violation count.
+3. A CI ratchet gates the violation count at zero (or at the
+   current count, monotonically decreasing).
+4. When the underlying invariant's structural prevention is
+   complete, the lens reports zero violations — the invariant
+   is self-enforcing and the lens becomes a regression gate.
+
+### §14.6 Diagnostics as corrections — show the fixed code
+
+**Thesis ref:** THESIS.md §"Error handling: show the correct
+code."
+
+**The claim:** when the compiler finds a broken causal link, it
+doesn't just report the error — it shows the fix. Because the
+system is closed and the compiler has full structural knowledge,
+it knows the finite set of ways to make the code correct. A
+diagnostic is not "error on line 42." It is: what's wrong (the
+broken causal link), why it's wrong (the structural
+contradiction), and how to fix it (the literal corrected code).
+
+**Current state.** The v3 `Diagnostic` type carries a span and
+variant-specific payload (type shapes, names). It has no
+correction field. The deferred dissolution target (diagnostics.rs
+lines 22-29) names `category`, `subject`, `detail` but not
+`correction`. This is the gap.
+
+**Target shape.** Every diagnostic carries a `Correction`:
+
+```dag
+type Correction
+  = Exact { source: String }       // one valid fix
+  | Choice { options: List<Fix> }  // finite set of valid fixes
+
+type Fix {
+  label: String           // e.g. "add missing arm"
+  corrected_source: String // the literal fixed code
+}
+```
+
+`Correction` is computable because the compiler has full
+structural knowledge of what's valid:
+
+| Diagnostic | Correction shape | Why computable |
+|---|---|---|
+| NonExhaustiveMatch | Exact: add missing arms with `todo()` | Compiler knows the Disj's full variant set |
+| TypeMismatch | Choice: change the branch / change the return / widen the type | Compiler knows both types and the valid coercions |
+| FieldNotFound | Exact: suggest closest field by edit distance, or show available fields | Compiler knows the Conj's field set |
+| ArityMismatch | Exact: add/remove arguments to match signature | Compiler knows the Arrow's parameter count |
+| UnboundedRecursion | Exact: show the descent argument needed | Compiler knows the input type's sub-structure |
+| ComplexityUnknown | Exact: show which argument should be the sub-value | Compiler knows the cost algebra |
+| LayerOpacityViolation | Exact: replace string literal with DeclarationId lookup | Lens knows the typed alternative |
+
+**The test pattern (three assertions per diagnostic):**
+
+```
+broken_source → compile → diagnostic with correction
+                              ↓
+         apply correction to broken_source → corrected_source
+                              ↓
+         compile corrected_source → succeeds (zero diagnostics)
+```
+
+This is a roundtrip test: break it, get the fix, apply the fix,
+verify the fix works. Three properties tested:
+1. **Detection** — the diagnostic fires on the broken program
+2. **Fix correctness** — the suggested correction compiles
+3. **Fix completeness** — the corrected program has zero
+   diagnostics (the fix didn't introduce new problems)
+
+For lens diagnostics specifically, the roundtrip is even
+stronger: the lens should report zero violations after the
+correction is applied. This validates that the lens and the
+correction agree on what "correct" means.
+
+**When to build.** This is NOT M4. The correction field should
+land on the Diagnostic type at **L1.5** (alongside the test
+authority types) and the first roundtrip tests should cover the
+five current diagnostic variants immediately. Every lens that
+ships after L1.5 must include correction computation from day
+one — not as a polish step after the lens works, but as part of
+the lens's acceptance criteria. The test pattern above is a
+gating requirement for every new diagnostic and every new lens.
+
+**Why ASAP matters.** If corrections are deferred until M4:
+1. Every lens ships without fix suggestions, and adding them
+   later means re-understanding each lens's error semantics
+2. Users of the system (including the self-hosting pipeline)
+   get error-only diagnostics for the entire L2-L3 period
+3. The thesis claim is untested until the very end
+
+If corrections ship at L1.5:
+1. Every subsequent lens inherits the correction pattern
+2. The self-hosting pipeline gets fix suggestions from day one
+3. The roundtrip test validates both detection and correction
+   for every diagnostic that exists
+
+**Acceptance criteria:**
+
+- [ ] Diagnostic type carries `correction: Option<Correction>`
+- [ ] All five current variants (TokenizerError, ParseError,
+      TypeMismatch, ArityMismatch, ResolveError) compute a
+      correction where structurally possible
+- [ ] At least one roundtrip test per current variant: break →
+      diagnose → apply correction → recompile → zero diagnostics
+- [ ] Every new lens's acceptance criteria includes: "the lens
+      produces a correction for each violation it reports" and
+      "applying the correction eliminates the violation"
+
+### §14.7 Ownership + clone elision — dedicated parallel track
+
+**Full design:** [`docs/ownership-rendering-design.md`](
+../../docs/ownership-rendering-design.md).
+
+**The v2 lesson.** v2's emitter started with "clone everything."
+Self-compile took 20 minutes (FF-1). Container clones were
+O(n) (FF-8). The fix was 719 lines of reconstruction in
+`ownership.dag` — computing facts that should have been declared
+upstream.
+
+**v3's current state is exactly where v2 started.** The emitter
+inserts `.clone()` on every port reference. The first generated
+artifact contains 90 clone calls in 287 lines.
+
+**The approach is model-first, not fix-first.** The ownership
+rendering is not one problem — it's five independent facts that
+compose into a rendering decision (see design doc §2):
+
+1. **Value semantics** — is this value immutable? (declare
+   in std/)
+2. **Consumer count** — how many consumers? (already
+   structural in the DAG)
+3. **Target sharing model** — how does this target language
+   share values? (declare in realization spec)
+4. **Lifetime / escape** — does the value outlive its scope?
+   (derivable from DAG flow)
+5. **Container cost** — is cloning O(1) or O(n)? (from the
+   type's Cardinality)
+
+Each fact is declared at its natural authority. The emitter
+reads all five and applies the target's strategy — one
+composed decision, not per-behavior-type rules.
+
+**Why this dissolves v2's 719 lines.** v2's ownership.dag
+reconstructed immutability, fan-out, binding kind, fold
+linearity, and lambda captures because the upstream model
+didn't carry them. v3's substrate already carries most of
+these structurally. The remaining open questions (fold
+accumulator linearity, lambda capture semantics) are design
+questions, not code questions — see design doc §5.
+
+**Phasing (design doc §6):**
+
+| Phase | When | What |
+|---|---|---|
+| Design | NOW (parallel) | Resolve open questions Q1-Q5. Agree on type schemas. |
+| Phase 1 | L1.5 | Declare immutability in std/. Fan-out counting in emitter index. Basic move-vs-clone from composed facts. |
+| Phase 2 | L2 | SharingStrategy in rust.dag. Escape analysis. Container cost model. |
+| Phase 3 | L2 | Full ownership equivalent — fold linearity, lambda captures. |
+| Phase 4 | L3 | Self-analysis. Clone ratchet at zero on all generated code. |
+
+**Acceptance criteria:**
+
+- [ ] Design doc open questions resolved
+- [ ] Immutability declared as structural fact in std/
+- [ ] SharingStrategy declared in rust.dag
+- [ ] Clone count on generated lens code drops by ≥50% (Phase 1)
+- [ ] CI ratchet on clone count (only goes down)
+- [ ] Full ownership self-analysis at zero unnecessary clones
+      (Phase 4)
+
+---
+
+## §15. When this doc updates
 
 `SELF_HOSTING.md` is a living design note. It evolves as:
 
@@ -1534,6 +2007,8 @@ being reconstructed and start being read.
   land.
 - The meta-circular bootstrap test lands — §7 moves from
   design to documentation of the real test.
+- Testgen layers ship — §14 sections graduate from "plan" to
+  "tested" as each layer's fixture suite lands.
 
 **When this doc is complete.** The v3 compiler is fully
 self-hosting and Rust stage0 is vestigial. At that point this
