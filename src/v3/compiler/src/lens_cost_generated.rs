@@ -13,9 +13,9 @@ pub enum BehaviorLookup {
 }
 #[derive(Clone, Debug)]
 pub enum CostMode {
-    PortMode,
-    SumPortsMode,
-    MaxPathsMode,
+    Port,
+    SumPorts,
+    MaxPaths,
 }
 pub fn cost_of(p0: &Dag, p1: &PortId) -> i64 {
     eval_cost(
@@ -23,7 +23,7 @@ pub fn cost_of(p0: &Dag, p1: &PortId) -> i64 {
             .iter()
             .fold(0, |__fold_acc, __fold_item| (__fold_acc + 1))),
         p0,
-        &(CostMode::PortMode),
+        &(CostMode::Port),
         p1,
         &[],
         &[],
@@ -41,7 +41,7 @@ pub fn eval_cost(
         0
     } else {
         match p2 {
-            CostMode::PortMode => match &(find_port(&((p1).ports()), p3)) {
+            CostMode::Port => match &(find_port(&((p1).ports()), p3)) {
                 PortLookup::MissingPort => 0,
                 PortLookup::FoundPort { _0: port } => match &((port).produced_by) {
                     None => 0,
@@ -53,7 +53,7 @@ pub fn eval_cost(
                                 (1 + eval_cost(
                                     &((*(p0)) - 1),
                                     p1,
-                                    &(CostMode::SumPortsMode),
+                                    &(CostMode::SumPorts),
                                     p3,
                                     &((t).inputs),
                                     &[],
@@ -63,14 +63,14 @@ pub fn eval_cost(
                                 ((1 + eval_cost(
                                     &((*(p0)) - 1),
                                     p1,
-                                    &(CostMode::PortMode),
+                                    &(CostMode::Port),
                                     &((branch).input),
                                     &[],
                                     &[],
                                 )) + eval_cost(
                                     &((*(p0)) - 1),
                                     p1,
-                                    &(CostMode::MaxPathsMode),
+                                    &(CostMode::MaxPaths),
                                     p3,
                                     &[],
                                     &((branch).paths),
@@ -80,14 +80,14 @@ pub fn eval_cost(
                                 ((1 + eval_cost(
                                     &((*(p0)) - 1),
                                     p1,
-                                    &(CostMode::PortMode),
+                                    &(CostMode::Port),
                                     &((loop_node).source),
                                     &[],
                                     &[],
                                 )) + eval_cost(
                                     &((*(p0)) - 1),
                                     p1,
-                                    &(CostMode::PortMode),
+                                    &(CostMode::Port),
                                     &((loop_node).init),
                                     &[],
                                     &[],
@@ -96,7 +96,7 @@ pub fn eval_cost(
                             Behavior::Bind(bind) => eval_cost(
                                 &((*(p0)) - 1),
                                 p1,
-                                &(CostMode::PortMode),
+                                &(CostMode::Port),
                                 &((bind).result_port()),
                                 &[],
                                 &[],
@@ -105,34 +105,27 @@ pub fn eval_cost(
                     },
                 },
             },
-            CostMode::SumPortsMode => match p4 {
+            CostMode::SumPorts => match p4 {
                 [] => 0,
                 [__list_head, __list_tail @ ..] => sum_int(
+                    &(eval_cost(&((*(p0)) - 1), p1, &(CostMode::Port), __list_head, &[], &[])),
                     &(eval_cost(
                         &((*(p0)) - 1),
                         p1,
-                        &(CostMode::PortMode),
-                        __list_head,
-                        &[],
-                        &[],
-                    )),
-                    &(eval_cost(
-                        &((*(p0)) - 1),
-                        p1,
-                        &(CostMode::SumPortsMode),
+                        &(CostMode::SumPorts),
                         p3,
                         __list_tail,
                         &[],
                     )),
                 ),
             },
-            CostMode::MaxPathsMode => match p5 {
+            CostMode::MaxPaths => match p5 {
                 [] => 0,
                 [__list_head, __list_tail @ ..] => max_int(
                     &(eval_cost(
                         &((*(p0)) - 1),
                         p1,
-                        &(CostMode::PortMode),
+                        &(CostMode::Port),
                         &((__list_head).result_port()),
                         &[],
                         &[],
@@ -140,7 +133,7 @@ pub fn eval_cost(
                     &(eval_cost(
                         &((*(p0)) - 1),
                         p1,
-                        &(CostMode::MaxPathsMode),
+                        &(CostMode::MaxPaths),
                         p3,
                         &[],
                         __list_tail,

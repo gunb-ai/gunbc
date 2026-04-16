@@ -12,15 +12,15 @@ type BehaviorLookup
   | FoundBehavior(Behavior)
 
 type CostMode
-  = PortMode
-  | SumPortsMode
-  | MaxPathsMode
+  = Port
+  | SumPorts
+  | MaxPaths
 
 fn cost_of(d: Dag, port_id: PortId) -> Int =
   eval_cost(
     fold(d.ports, 0, |acc, _| acc + 1),
     d,
-    PortMode,
+    Port,
     port_id,
     empty(),
     empty()
@@ -38,7 +38,7 @@ fn eval_cost(
     0
   else
     match mode {
-      PortMode =>
+      Port =>
         match find_port(d.ports, port_id) {
           MissingPort => 0
           FoundPort(port) =>
@@ -55,7 +55,7 @@ fn eval_cost(
                         + eval_cost(
                             remaining - 1,
                             d,
-                            SumPortsMode,
+                            SumPorts,
                             port_id,
                             t.inputs,
                             empty()
@@ -65,7 +65,7 @@ fn eval_cost(
                         + eval_cost(
                             remaining - 1,
                             d,
-                            PortMode,
+                            Port,
                             branch.input,
                             empty(),
                             empty()
@@ -73,7 +73,7 @@ fn eval_cost(
                         + eval_cost(
                             remaining - 1,
                             d,
-                            MaxPathsMode,
+                            MaxPaths,
                             port_id,
                             empty(),
                             branch.paths
@@ -83,7 +83,7 @@ fn eval_cost(
                         + eval_cost(
                             remaining - 1,
                             d,
-                            PortMode,
+                            Port,
                             loop_node.source,
                             empty(),
                             empty()
@@ -91,7 +91,7 @@ fn eval_cost(
                         + eval_cost(
                             remaining - 1,
                             d,
-                            PortMode,
+                            Port,
                             loop_node.init,
                             empty(),
                             empty()
@@ -100,7 +100,7 @@ fn eval_cost(
                         eval_cost(
                           remaining - 1,
                           d,
-                          PortMode,
+                          Port,
                           bind.result_port,
                           empty(),
                           empty()
@@ -109,7 +109,7 @@ fn eval_cost(
                 }
             }
         }
-      SumPortsMode =>
+      SumPorts =>
         match ports {
           Empty => 0
           Cons(payload) =>
@@ -117,7 +117,7 @@ fn eval_cost(
               eval_cost(
                 remaining - 1,
                 d,
-                PortMode,
+                Port,
                 payload.head,
                 empty(),
                 empty()
@@ -125,14 +125,14 @@ fn eval_cost(
               eval_cost(
                 remaining - 1,
                 d,
-                SumPortsMode,
+                SumPorts,
                 port_id,
                 payload.tail,
                 empty()
               )
             )
         }
-      MaxPathsMode =>
+      MaxPaths =>
         match paths {
           Empty => 0
           Cons(payload) =>
@@ -140,7 +140,7 @@ fn eval_cost(
               eval_cost(
                 remaining - 1,
                 d,
-                PortMode,
+                Port,
                 payload.head.result_port,
                 empty(),
                 empty()
@@ -148,7 +148,7 @@ fn eval_cost(
               eval_cost(
                 remaining - 1,
                 d,
-                MaxPathsMode,
+                MaxPaths,
                 port_id,
                 empty(),
                 payload.tail
