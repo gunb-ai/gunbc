@@ -87,9 +87,42 @@ fn prepare_stage1_for_build(stage1_dir: &std::path::Path, ws: &std::path::Path) 
     }
 }
 
+/// Copy the hand-maintained support files (v2_interpreter.rs, cli_run.rs)
+/// from stage0's source dir into a self-compile output's `src/` dir.
+///
+/// The self-compile emitter does not generate these files (they live
+/// outside the regenerable set), but `lib.rs` references them via `mod`
+/// declarations. Without seeding them, `rustfmt lib.rs` fails with
+/// `failed to resolve mod v2_interpreter`. After seeding, rustfmt can
+/// walk the module tree and normalize every regenerated file.
+///
+/// Seed before rustfmt; the `diff_excluding_hand_maintained` helper
+/// skips these files when comparing, so seeding does not pollute the
+/// pass1-vs-committed or pass1-vs-pass2 comparisons.
+fn seed_support_files(
+    output_src: &std::path::Path,
+    stage0_src: &std::path::Path,
+) -> Result<(), String> {
+    for name in &["v2_interpreter.rs", "cli_run.rs"] {
+        let src = stage0_src.join(name);
+        if !src.exists() {
+            continue;
+        }
+        let dst = output_src.join(name);
+        std::fs::copy(&src, &dst)
+            .map_err(|e| format!("copy {} to {}: {e}", src.display(), dst.display()))?;
+    }
+    Ok(())
+}
+
 /// Run rustfmt in-place on every .rs file under `dir`. Used to normalize
 /// self-compile output before diffing against committed (fmt-compliant)
 /// stage0. Pure whitespace normalization — no semantic change.
+///
+/// **Preconditions.** `dir` must be a complete `src/` tree — `rustfmt`
+/// walks `mod` declarations, so if `lib.rs` names a module whose file is
+/// absent, rustfmt fails. Callers seed the hand-maintained support
+/// files via `seed_support_files` before calling this.
 fn rustfmt_rs_files(dir: &std::path::Path) -> Result<(), String> {
     let read = std::fs::read_dir(dir).map_err(|e| format!("read_dir {}: {e}", dir.display()))?;
     for entry in read {
@@ -108,6 +141,29 @@ fn rustfmt_rs_files(dir: &std::path::Path) -> Result<(), String> {
                     String::from_utf8_lossy(&out.stderr)
                 ));
             }
+        }
+    }
+    Ok(())
+}
+
+/// Copy every `.rs` file from `src_dir` to `dst_dir`, creating `dst_dir`
+/// if needed. Used to persist a stable snapshot of PASS1 output so
+/// `ci_fixed_point` doesn't depend on the ephemeral pass1 tmp dir
+/// surviving across the later pass2 phases.
+fn snapshot_rs_dir(src_dir: &std::path::Path, dst_dir: &std::path::Path) -> Result<(), String> {
+    let _ = std::fs::remove_dir_all(dst_dir);
+    std::fs::create_dir_all(dst_dir)
+        .map_err(|e| format!("create_dir_all {}: {e}", dst_dir.display()))?;
+    let read =
+        std::fs::read_dir(src_dir).map_err(|e| format!("read_dir {}: {e}", src_dir.display()))?;
+    for entry in read {
+        let entry = entry.map_err(|e| format!("snapshot dir entry: {e}"))?;
+        let path = entry.path();
+        if path.extension().map(|e| e == "rs").unwrap_or(false) {
+            let dst = dst_dir.join(entry.file_name());
+            std::fs::copy(&path, &dst).map_err(|e| {
+                format!("snapshot copy {} -> {}: {e}", path.display(), dst.display())
+            })?;
         }
     }
     Ok(())
@@ -641,6 +697,11 @@ struct Pass1Output {
     elapsed: std::time::Duration,
     /// Freshness check computed here (before CI_PASS2 can modify workspace).
     freshness: Result<(), String>,
+    /// Stable snapshot of pass1's `src/` contents after support-file seeding
+    /// and rustfmt normalization. `ci_fixed_point` compares this against a
+    /// similarly-normalized pass2 output, so the fixed-point assertion does
+    /// not depend on the ephemeral `output_dir` surviving later phases.
+    snapshot_src: std::path::PathBuf,
 }
 
 /// Output from pass 2: build stage1 from pass 1 output, self-compile again.
@@ -694,15 +755,36 @@ static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
     // Committed stage0 is fmt-compliant (applied by regenerate-stage0.sh's
     // trailing `cargo fmt --all`). The v2 emitter itself does not produce
     // fmt-canonical output, so raw self-compile output differs from
-    // committed stage0 only in whitespace/layout. Normalize pass1 output
-    // via rustfmt before the diff so whitespace never masquerades as
-    // staleness.
+    // committed stage0 only in whitespace/layout. Three steps normalize:
+    //   1. Seed hand-maintained support files (`v2_interpreter.rs`,
+    //      `cli_run.rs`) so rustfmt's `mod` walk can resolve them.
+    //   2. Run rustfmt in-place on every `.rs` in pass1's `src/`.
+    //   3. Snapshot the normalized pass1 `src/` to a stable location
+    //      inside `target/` so `ci_fixed_point` doesn't rely on the
+    //      ephemeral tmp dir surviving the later PASS2 phase.
+    //
+    // `diff_excluding_hand_maintained` filters the seeded files out
+    // of every comparison, so seeding does not pollute the diffs.
+    let committed_src = ws.join("src/v2/stage0/src");
     let pass1_src = output_dir.join("src");
+    if let Err(err) = seed_support_files(&pass1_src, &committed_src) {
+        panic!("failed to seed pass1 support files: {err}");
+    }
     if let Err(err) = rustfmt_rs_files(&pass1_src) {
         panic!("failed to rustfmt pass1 output: {err}");
     }
-    let committed_src = ws.join("src/v2/stage0/src");
-    let freshness = diff_excluding_hand_maintained(&pass1_src, &committed_src);
+    let snapshot_src = ws.join("target/.ci-pass1-snapshot");
+    if let Err(err) = snapshot_rs_dir(&pass1_src, &snapshot_src) {
+        panic!("failed to snapshot pass1 output: {err}");
+    }
+    // Re-seed support files into the snapshot so `diff_excluding_hand_maintained`
+    // sees identical module trees on both sides of the diff; the helper
+    // excludes these files but rustfmt-on-pass2 will need them when the
+    // fixed-point test later normalizes pass2.
+    if let Err(err) = seed_support_files(&snapshot_src, &committed_src) {
+        panic!("failed to seed pass1 snapshot support files: {err}");
+    }
+    let freshness = diff_excluding_hand_maintained(&snapshot_src, &committed_src);
     ci_timing("PASS1: freshness diff done");
 
     Pass1Output {
@@ -710,6 +792,7 @@ static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
         stderr,
         elapsed,
         freshness,
+        snapshot_src,
     }
 });
 
@@ -862,9 +945,22 @@ fn ci_freshness() {
 fn ci_fixed_point() {
     let pass1 = &*CI_PASS1;
     let pass2 = &*CI_PASS2;
-    let pass1_src = pass1.output_dir.join("src");
+    let ws = crate::helpers::workspace_root();
+    let committed_src = ws.join("src/v2/stage0/src");
     let pass2_src = pass2.output_dir.join("src");
-    if let Err(diff) = diff_excluding_hand_maintained(&pass1_src, &pass2_src) {
+
+    // Pass1 was rustfmt-normalized and snapshotted by CI_PASS1 init.
+    // Pass2 is a fresh self-compile that does not emit rustfmt-canonical
+    // output; normalize it the same way (seed support files + rustfmt)
+    // so the fixed-point diff checks semantic content, not whitespace
+    // residue. Emitter determinism is what we're asserting.
+    if let Err(err) = seed_support_files(&pass2_src, &committed_src) {
+        panic!("failed to seed pass2 support files: {err}");
+    }
+    if let Err(err) = rustfmt_rs_files(&pass2_src) {
+        panic!("failed to rustfmt pass2 output: {err}");
+    }
+    if let Err(diff) = diff_excluding_hand_maintained(&pass1.snapshot_src, &pass2_src) {
         eprintln!("Fixed point NOT reached — diff:\n{}", diff);
         panic!("stage1 != stage2 — fixed point not reached");
     }
