@@ -1,6 +1,8 @@
 use crate::dag::{
     AtomPayload, Dag, Declaration, DeclarationId, Field, FieldValue, LiteralBits, TypeConnective,
 };
+use crate::lens_cost::CostLens;
+use crate::{compile_to_dag, CompileError};
 use std::collections::HashMap;
 
 const MAX_RENDER_DEPTH: usize = 3;
@@ -132,40 +134,82 @@ impl<'a> TestgenLens<'a> {
                 TypeConnective::Conj { children } => {
                     let compile_value = self.render_value_expr(decl_id, &subst, 0);
                     if let Some(value_expr) = &compile_value {
+                        let compile_source = format!("let witness: {type_expr} = {value_expr}\n");
+                        let compile_file_name = format!("{}_compiles.v3", sanitize(&type_expr));
                         self.push_claim(
                             &mut claims,
                             &mut next_claim_id,
                             format!("{type_expr} compiles"),
-                            format!("let witness: {type_expr} = {value_expr}\n"),
-                            format!("{}_compiles.v3", sanitize(&type_expr)),
+                            compile_source.clone(),
+                            compile_file_name.clone(),
                             self.sum_variant("TestPredicate", "Compiles", Vec::new()),
                         );
+                        self.push_claim(
+                            &mut claims,
+                            &mut next_claim_id,
+                            format!("{type_expr} witness resolves"),
+                            compile_source.clone(),
+                            format!("{}_port_state.v3", sanitize(&type_expr)),
+                            self.port_state_predicate("witness", "Resolved"),
+                        );
+                        if let Some(cost) =
+                            self.bind_cost_of(&compile_source, &compile_file_name, "witness")
+                        {
+                            self.push_claim(
+                                &mut claims,
+                                &mut next_claim_id,
+                                format!("{type_expr} witness has bounded cost"),
+                                compile_source,
+                                format!("{}_cost.v3", sanitize(&type_expr)),
+                                self.cost_bounded_predicate("Eq", cost),
+                            );
+                        }
                     }
                     let missing_field = self.missing_field_name(children);
+                    let missing_field_source =
+                        format!("fn probe(value: {type_expr}) -> Int = value.{missing_field}\n");
                     self.push_claim(
                         &mut claims,
                         &mut next_claim_id,
                         format!("{type_expr} rejects missing field"),
-                        format!("fn probe(value: {type_expr}) -> Int = value.{missing_field}\n"),
+                        missing_field_source.clone(),
                         format!("{}_missing_field.v3", sanitize(&type_expr)),
-                        self.resolve_name_contains_predicate(&format!(
-                            "field `{missing_field}` does not exist"
-                        )),
+                        self.diagnostic_predicate(
+                            "ResolveError",
+                            &format!("field `{missing_field}` does not exist"),
+                        ),
+                    );
+                    self.push_claim(
+                        &mut claims,
+                        &mut next_claim_id,
+                        format!("{type_expr} missing-field port stays unresolved"),
+                        missing_field_source,
+                        format!("{}_missing_field_port_state.v3", sanitize(&type_expr)),
+                        self.port_state_predicate("probe", "Unresolved"),
                     );
                     if compile_value.is_some()
                         && decl.span.file == "src/v3/std/verification.dag"
                         && self.supports_type_mismatch_claim(children)
                     {
+                        let mismatch_source = format!(
+                            "let witness: {type_expr} = {}\n",
+                            self.render_mismatch_record(children, &subst)
+                        );
                         self.push_claim(
                             &mut claims,
                             &mut next_claim_id,
                             format!("{type_expr} rejects field type mismatch"),
-                            format!(
-                                "let witness: {type_expr} = {}\n",
-                                self.render_mismatch_record(children, &subst)
-                            ),
+                            mismatch_source.clone(),
                             format!("{}_type_mismatch.v3", sanitize(&type_expr)),
                             self.diagnostic_kind_predicate("TypeMismatch"),
+                        );
+                        self.push_claim(
+                            &mut claims,
+                            &mut next_claim_id,
+                            format!("{type_expr} mismatched witness stays unresolved"),
+                            mismatch_source,
+                            format!("{}_type_mismatch_port_state.v3", sanitize(&type_expr)),
+                            self.port_state_predicate("witness", "Unresolved"),
                         );
                     }
                 }
@@ -174,31 +218,65 @@ impl<'a> TestgenLens<'a> {
                         if let Some(value_expr) =
                             self.render_variant_witness(decl_id, variant, &subst, 0)
                         {
+                            let compile_source =
+                                format!("let witness: {type_expr} = {value_expr}\n");
+                            let base_name =
+                                format!("{}_{}", sanitize(&type_expr), sanitize(&variant.label));
                             self.push_claim(
                                 &mut claims,
                                 &mut next_claim_id,
                                 format!("{type_expr} variant {} compiles", variant.label),
-                                format!("let witness: {type_expr} = {value_expr}\n"),
-                                format!(
-                                    "{}_{}_compiles.v3",
-                                    sanitize(&type_expr),
-                                    sanitize(&variant.label)
-                                ),
+                                compile_source.clone(),
+                                format!("{base_name}_compiles.v3"),
                                 self.sum_variant("TestPredicate", "Compiles", Vec::new()),
                             );
+                            self.push_claim(
+                                &mut claims,
+                                &mut next_claim_id,
+                                format!("{type_expr} variant {} resolves", variant.label),
+                                compile_source.clone(),
+                                format!("{base_name}_port_state.v3"),
+                                self.port_state_predicate("witness", "Resolved"),
+                            );
+                            if let Some(cost) = self.bind_cost_of(
+                                &compile_source,
+                                &format!("{base_name}_compiles.v3"),
+                                "witness",
+                            ) {
+                                self.push_claim(
+                                    &mut claims,
+                                    &mut next_claim_id,
+                                    format!(
+                                        "{type_expr} variant {} has bounded cost",
+                                        variant.label
+                                    ),
+                                    compile_source,
+                                    format!("{base_name}_cost.v3"),
+                                    self.cost_bounded_predicate("Eq", cost),
+                                );
+                            }
                         }
                     }
                     if variants.len() > 1 {
+                        let non_exhaustive_source = format!(
+                            "fn probe(value: {type_expr}) -> Int = match value {{ {} => 0 }}\n",
+                            self.match_pattern(&variants[0])
+                        );
                         self.push_claim(
                             &mut claims,
                             &mut next_claim_id,
                             format!("{type_expr} requires exhaustive match"),
-                            format!(
-                                "fn probe(value: {type_expr}) -> Int = match value {{ {} => 0 }}\n",
-                                self.match_pattern(&variants[0])
-                            ),
+                            non_exhaustive_source.clone(),
                             format!("{}_non_exhaustive.v3", sanitize(&type_expr)),
-                            self.resolve_name_contains_predicate("non-exhaustive"),
+                            self.diagnostic_predicate("ResolveError", "non-exhaustive"),
+                        );
+                        self.push_claim(
+                            &mut claims,
+                            &mut next_claim_id,
+                            format!("{type_expr} non-exhaustive match stays unresolved"),
+                            non_exhaustive_source,
+                            format!("{}_non_exhaustive_port_state.v3", sanitize(&type_expr)),
+                            self.port_state_predicate("probe", "Unresolved"),
                         );
                     }
                 }
@@ -268,24 +346,60 @@ impl<'a> TestgenLens<'a> {
         self.sum_variant(
             "TestPredicate",
             "FailsWithDiagnostic",
-            vec![self.sum_variant(
-                "DiagnosticExpectation",
-                "KindIs",
-                vec![self.sum_variant("DiagnosticKind", kind, Vec::new())],
-            )],
+            vec![self.diagnostic_reference(kind, "")],
         )
     }
 
-    fn resolve_name_contains_predicate(&self, needle: &str) -> FieldValue {
+    fn diagnostic_predicate(&self, kind: &str, detail_contains: &str) -> FieldValue {
         self.sum_variant(
             "TestPredicate",
             "FailsWithDiagnostic",
-            vec![self.sum_variant(
-                "DiagnosticExpectation",
-                "ResolveNameContains",
-                vec![FieldValue::Literal(LiteralBits::String(needle.to_string()))],
-            )],
+            vec![self.diagnostic_reference(kind, detail_contains)],
         )
+    }
+
+    fn diagnostic_reference(&self, kind: &str, detail_contains: &str) -> FieldValue {
+        FieldValue::Record(vec![
+            (
+                "kind".to_string(),
+                self.sum_variant("DiagnosticKind", kind, Vec::new()),
+            ),
+            (
+                "detail_contains".to_string(),
+                FieldValue::Literal(LiteralBits::String(detail_contains.to_string())),
+            ),
+        ])
+    }
+
+    fn port_state_predicate(&self, bind_name: &str, state_label: &str) -> FieldValue {
+        self.sum_variant(
+            "TestPredicate",
+            "PortHasState",
+            vec![
+                FieldValue::Literal(LiteralBits::String(bind_name.to_string())),
+                self.sum_variant("PortStateExpectation", state_label, Vec::new()),
+            ],
+        )
+    }
+
+    fn cost_bounded_predicate(&self, comparator: &str, bound: usize) -> FieldValue {
+        self.sum_variant(
+            "TestPredicate",
+            "CostBounded",
+            vec![
+                self.sum_variant("ComparisonOp", comparator, Vec::new()),
+                FieldValue::Literal(LiteralBits::Int(bound as i64)),
+            ],
+        )
+    }
+
+    fn bind_cost_of(&self, source: &str, file_name: &str, bind_name: &str) -> Option<usize> {
+        let dag = compile_any(source, file_name);
+        let bind = dag.nodes().iter().find_map(|node| match node {
+            crate::dag::Behavior::Bind(bind) if bind.name == bind_name => Some(bind),
+            _ => None,
+        })?;
+        Some(CostLens::new(&dag).cost_of(bind.value))
     }
 
     fn named_std_type_ids(&self) -> Vec<DeclarationId> {
@@ -569,4 +683,12 @@ fn quote_string(s: &str) -> String {
         .replace('"', "\\\"")
         .replace('\n', "\\n");
     format!("\"{escaped}\"")
+}
+
+fn compile_any(source: &str, file: &str) -> Dag {
+    match compile_to_dag(source, file) {
+        Ok(dag) => dag,
+        Err(CompileError::Semantic(dag)) => dag,
+        Err(other) => panic!("unexpected structural error while compiling `{file}`: {other:?}"),
+    }
 }

@@ -88,10 +88,14 @@ fn bootstrap_loads_verification_authority_types() {
         ]
     );
     assert_eq!(
-        sum_variants(&dag, "DiagnosticExpectation"),
+        record_fields(&dag, "DiagnosticReference"),
+        vec![String::from("kind"), String::from("detail_contains")]
+    );
+    assert_eq!(
+        sum_variants(&dag, "PortStateExpectation"),
         vec![
-            (String::from("KindIs"), vec![String::from("_0")]),
-            (String::from("ResolveNameContains"), vec![String::from("_0")]),
+            (String::from("Resolved"), Vec::new()),
+            (String::from("Unresolved"), Vec::new()),
         ]
     );
     assert_eq!(
@@ -104,15 +108,13 @@ fn bootstrap_loads_verification_authority_types() {
             ),
             (String::from("OutputEquals"), vec![String::from("expected")],),
             (
-                String::from("PortResolved"),
-                vec![String::from("bind_name")],
+                String::from("PortHasState"),
+                vec![String::from("bind_name"), String::from("state")],
             ),
             (
-                String::from("PortUnresolved"),
-                vec![String::from("bind_name")],
+                String::from("CostBounded"),
+                vec![String::from("comparator"), String::from("bound")],
             ),
-            (String::from("CostBelow"), vec![String::from("bound")]),
-            (String::from("CostAbove"), vec![String::from("floor")]),
         ]
     );
 }
@@ -121,13 +123,13 @@ fn bootstrap_loads_verification_authority_types() {
 fn verification_predicate_witnesses_compile_cleanly() {
     let src = r#"
 let pred_compiles: TestPredicate = Compiles
-let pred_fails: TestPredicate = FailsWithDiagnostic(ResolveNameContains("missing"))
-let pred_fails_kind: TestPredicate = FailsWithDiagnostic(KindIs(TypeMismatch))
+let pred_fails: TestPredicate = FailsWithDiagnostic({ kind: ResolveError, detail_contains: "missing" })
+let pred_fails_kind: TestPredicate = FailsWithDiagnostic({ kind: TypeMismatch, detail_contains: "" })
 let pred_output: TestPredicate = OutputEquals("let x: Int = 1")
-let pred_port_resolved: TestPredicate = PortResolved("answer")
-let pred_port_unresolved: TestPredicate = PortUnresolved("missing")
-let pred_cost_below: TestPredicate = CostBelow(8)
-let pred_cost_above: TestPredicate = CostAbove(3)
+let pred_port_resolved: TestPredicate = PortHasState("answer", Resolved)
+let pred_port_unresolved: TestPredicate = PortHasState("missing", Unresolved)
+let pred_cost_eq: TestPredicate = CostBounded(Eq, 8)
+let pred_cost_above: TestPredicate = CostBounded(Gt, 3)
 
 let claim_compiles: TestClaim = {
   name: "compiles",
@@ -164,7 +166,7 @@ let suite: TestSuite = {
         "pred_output",
         "pred_port_resolved",
         "pred_port_unresolved",
-        "pred_cost_below",
+        "pred_cost_eq",
         "pred_cost_above",
     ] {
         assert_eq!(bind_value_type_decl(&dag, bind), test_predicate);

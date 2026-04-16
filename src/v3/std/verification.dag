@@ -17,18 +17,11 @@
 module std.verification
 
 import std.list { List }
+import v3.std.substrate { ComparisonOp }
 
-// **🟡 Scaffold — TestPredicate.** The first L1.5 consumer needs a
-// structural carrier for generated test claims today, but the richer
-// source facts it really wants to point at (`Diagnostic`,
-// `PortState`, and structural cost-ordering authority) are not yet
-// surfaced as reusable std/ values.
-//
-// Dissolution trigger: once verification can refer directly to
-// structural diagnostic facts, port-state expectations, and
-// comparator+bound carriers in std/, split the remaining compressed
-// port-state and cost variants into those axes and remove this flat
-// bootstrap carrier before more runtime consumers attach.
+// Diagnostic reference used by generated negative claims. `kind` is
+// structural and `detail_contains` narrows the match when a kind alone
+// is too coarse.
 type DiagnosticKind
   = TokenizerError
   | ParseError
@@ -36,18 +29,34 @@ type DiagnosticKind
   | ArityMismatch
   | ResolveError
 
-type DiagnosticExpectation
-  = KindIs(DiagnosticKind)
-  | ResolveNameContains(String)
+type DiagnosticReference {
+  kind: DiagnosticKind
+  detail_contains: String
+}
+
+// Port-state axis factored out of the old `PortResolved` /
+// `PortUnresolved` split.
+type PortStateExpectation
+  = Resolved
+  | Unresolved
+
+// **🟡 Scaffold — TestPredicate.** The remaining bootstrap carrier is
+// the outer "what property are we asserting?" coproduct. The
+// diagnostic, port-state, and cost-ordering sub-axes now flow through
+// structural carriers instead of parallel flat variants.
 
 type TestPredicate
   = Compiles
-  | FailsWithDiagnostic(DiagnosticExpectation)
+  | FailsWithDiagnostic(DiagnosticReference)
   | OutputEquals { expected: String }
-  | PortResolved { bind_name: String }
-  | PortUnresolved { bind_name: String }
-  | CostBelow { bound: Int }
-  | CostAbove { floor: Int }
+  | PortHasState {
+      bind_name: String
+      state: PortStateExpectation
+    }
+  | CostBounded {
+      comparator: ComparisonOp
+      bound: Int
+    }
 
 type TestClaim {
   name: String
