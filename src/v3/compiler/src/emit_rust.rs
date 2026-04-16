@@ -383,10 +383,23 @@ enum ConstructStrategyBinding {
     PassByValue,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MemoryModelBinding {
+    ValueOnly,
+    GarbageCollected,
+    RefCounted,
+    OwnershipBased,
+}
+
 #[derive(Debug, Clone)]
 struct RenderingModelBinding {
     read: ReadStrategyBinding,
     construct: ConstructStrategyBinding,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TargetExecutionModelBinding {
+    memory: MemoryModelBinding,
 }
 
 #[derive(Debug, Clone)]
@@ -534,6 +547,13 @@ impl RealizationIndexes {
             } else {
                 continue;
             };
+            if !decl
+                .name
+                .as_deref()
+                .is_some_and(|name| name.starts_with("rust_"))
+            {
+                continue;
+            }
             let Some(ValueBody::Structural { fields }) = &decl.value_body else {
                 // A data item tagged with a realization meta-type
                 // must have a Structural value_body. If it's
@@ -634,7 +654,20 @@ impl RealizationIndexes {
         }
 
         let syntax = RustLanguageSyntax::build(dag)?;
-        let rendering = RenderingModelBinding::build(dag)?;
+        let execution_model = TargetExecutionModelBinding::build(
+            dag,
+            dag.rust_execution_model_spec()
+                .ok_or(EmitError::MissingTargetSyntax("rust_execution_model"))?,
+        )?;
+        let rendering = if execution_model.memory == MemoryModelBinding::OwnershipBased {
+            RenderingModelBinding::build(
+                dag,
+                dag.rust_rendering_spec()
+                    .ok_or(EmitError::MissingTargetSyntax("rust_rendering"))?,
+            )?
+        } else {
+            RenderingModelBinding::pass_by_value()
+        };
 
         Ok(Self {
             types,
@@ -650,10 +683,7 @@ impl RealizationIndexes {
 }
 
 impl RenderingModelBinding {
-    fn build(dag: &Dag) -> Result<Self, EmitError> {
-        let rendering_decl = dag
-            .rust_rendering_spec()
-            .ok_or(EmitError::MissingTargetSyntax("rust_rendering"))?;
+    fn build(dag: &Dag, rendering_decl: DeclarationId) -> Result<Self, EmitError> {
         let fields = structural_fields_for_decl(dag, rendering_decl)?;
         Ok(Self {
             read: require_read_strategy(
@@ -668,6 +698,22 @@ impl RenderingModelBinding {
                 "construct",
                 rendering_decl,
             )?,
+        })
+    }
+
+    fn pass_by_value() -> Self {
+        Self {
+            read: ReadStrategyBinding::PassByValue,
+            construct: ConstructStrategyBinding::PassByValue,
+        }
+    }
+}
+
+impl TargetExecutionModelBinding {
+    fn build(dag: &Dag, declaration: DeclarationId) -> Result<Self, EmitError> {
+        let fields = structural_fields_for_decl(dag, declaration)?;
+        Ok(Self {
+            memory: require_memory_model(dag, fields, declaration)?,
         })
     }
 }
@@ -1086,10 +1132,10 @@ fn require_field_bindings(
             })?;
         let rust_access = fields
             .iter()
-            .find(|(label, _)| label == "rust_access")
+            .find(|(label, _)| label == "access")
             .ok_or(EmitError::MalformedRealization {
                 declaration,
-                detail: "FieldBinding.rust_access is required",
+                detail: "FieldBinding.access is required",
             })
             .and_then(|(_, value)| parse_rust_field_access(dag, value, declaration))?;
         let borrowed_read = fields
@@ -1131,13 +1177,13 @@ fn parse_rust_field_access(
     else {
         return Err(EmitError::MalformedRealization {
             declaration,
-            detail: "FieldBinding.rust_access must be a RustFieldAccess variant",
+            detail: "FieldBinding.access must be a FieldAccess variant",
         });
     };
     if payload.len() != 1 {
         return Err(EmitError::MalformedRealization {
             declaration,
-            detail: "RustFieldAccess variants must carry exactly one String payload",
+            detail: "FieldAccess variants must carry exactly one String payload",
         });
     }
     let name = match &payload[0] {
@@ -1145,20 +1191,20 @@ fn parse_rust_field_access(
         _ => {
             return Err(EmitError::MalformedRealization {
                 declaration,
-                detail: "RustFieldAccess payload must be a String literal",
+                detail: "FieldAccess payload must be a String literal",
             });
         }
     };
-    let direct_field = named_variant_id(dag, "RustFieldAccess", "DirectField")
+    let direct_field = named_variant_id(dag, "FieldAccess", "DirectField")
         .ok_or(EmitError::MalformedRealization {
             declaration,
-            detail: "RustFieldAccess.DirectField declaration was not found",
+            detail: "FieldAccess.DirectField declaration was not found",
         })?;
     let accessor_method =
-        named_variant_id(dag, "RustFieldAccess", "AccessorMethod").ok_or(
+        named_variant_id(dag, "FieldAccess", "AccessorMethod").ok_or(
             EmitError::MalformedRealization {
                 declaration,
-                detail: "RustFieldAccess.AccessorMethod declaration was not found",
+                detail: "FieldAccess.AccessorMethod declaration was not found",
             },
         )?;
     if *constructor == direct_field {
@@ -1168,7 +1214,7 @@ fn parse_rust_field_access(
     } else {
         Err(EmitError::MalformedRealization {
             declaration,
-            detail: "RustFieldAccess constructor must be DirectField or AccessorMethod",
+            detail: "FieldAccess constructor must be DirectField or AccessorMethod",
         })
     }
 }
@@ -1193,54 +1239,54 @@ fn require_callable_strategy(
     else {
         return Err(EmitError::MalformedRealization {
             declaration,
-            detail: "CallableRealization.strategy must be a RustCallableStrategy variant",
+            detail: "CallableRealization.strategy must be a CallableStrategy variant",
         });
     };
     if !payload.is_empty() {
         return Err(EmitError::MalformedRealization {
             declaration,
-            detail: "RustCallableStrategy variants must not carry payload fields",
+            detail: "CallableStrategy variants must not carry payload fields",
         });
     }
     let strategies = [
         (
-            named_variant_id(dag, "RustCallableStrategy", "ListEmpty"),
+            named_variant_id(dag, "CallableStrategy", "ListEmpty"),
             RustCallableStrategyBinding::ListEmpty,
         ),
         (
-            named_variant_id(dag, "RustCallableStrategy", "ListSingleton"),
+            named_variant_id(dag, "CallableStrategy", "ListSingleton"),
             RustCallableStrategyBinding::ListSingleton,
         ),
         (
-            named_variant_id(dag, "RustCallableStrategy", "ListCons"),
+            named_variant_id(dag, "CallableStrategy", "ListCons"),
             RustCallableStrategyBinding::ListCons,
         ),
         (
-            named_variant_id(dag, "RustCallableStrategy", "ListConcat"),
+            named_variant_id(dag, "CallableStrategy", "ListConcat"),
             RustCallableStrategyBinding::ListConcat,
         ),
         (
-            named_variant_id(dag, "RustCallableStrategy", "ListLength"),
+            named_variant_id(dag, "CallableStrategy", "ListLength"),
             RustCallableStrategyBinding::ListLength,
         ),
         (
-            named_variant_id(dag, "RustCallableStrategy", "ListIsEmpty"),
+            named_variant_id(dag, "CallableStrategy", "ListIsEmpty"),
             RustCallableStrategyBinding::ListIsEmpty,
         ),
         (
-            named_variant_id(dag, "RustCallableStrategy", "ListFold"),
+            named_variant_id(dag, "CallableStrategy", "ListFold"),
             RustCallableStrategyBinding::ListFold,
         ),
         (
-            named_variant_id(dag, "RustCallableStrategy", "ListMap"),
+            named_variant_id(dag, "CallableStrategy", "ListMap"),
             RustCallableStrategyBinding::ListMap,
         ),
         (
-            named_variant_id(dag, "RustCallableStrategy", "ListFilter"),
+            named_variant_id(dag, "CallableStrategy", "ListFilter"),
             RustCallableStrategyBinding::ListFilter,
         ),
         (
-            named_variant_id(dag, "RustCallableStrategy", "ListContains"),
+            named_variant_id(dag, "CallableStrategy", "ListContains"),
             RustCallableStrategyBinding::ListContains,
         ),
     ];
@@ -1248,7 +1294,7 @@ fn require_callable_strategy(
         let Some(variant_id) = variant_id else {
             return Err(EmitError::MalformedRealization {
                 declaration,
-                detail: "RustCallableStrategy variant declaration was not found",
+                detail: "CallableStrategy variant declaration was not found",
             });
         };
         if *constructor == variant_id {
@@ -1258,7 +1304,7 @@ fn require_callable_strategy(
     Err(EmitError::MalformedRealization {
         declaration,
         detail:
-            "RustCallableStrategy constructor must be ListEmpty/ListSingleton/ListCons/ListConcat/ListLength/ListIsEmpty/ListFold/ListMap/ListFilter/ListContains",
+            "CallableStrategy constructor must be ListEmpty/ListSingleton/ListCons/ListConcat/ListLength/ListIsEmpty/ListFold/ListMap/ListFilter/ListContains",
     })
 }
 
@@ -1282,24 +1328,24 @@ fn require_pattern_realization(
     else {
         return Err(EmitError::MalformedRealization {
             declaration,
-            detail: "PatternRealization.strategy must be a RustPatternStrategy variant",
+            detail: "PatternRealization.strategy must be a PatternStrategy variant",
         });
     };
     if !payload.is_empty() {
         return Err(EmitError::MalformedRealization {
             declaration,
-            detail: "RustPatternStrategy variants must not carry payload fields",
+            detail: "PatternStrategy variants must not carry payload fields",
         });
     }
-    let vector_list = named_variant_id(dag, "RustPatternStrategy", "VectorList")
+    let vector_list = named_variant_id(dag, "PatternStrategy", "VectorList")
         .ok_or(EmitError::MalformedRealization {
             declaration,
-            detail: "RustPatternStrategy.VectorList declaration was not found",
+            detail: "PatternStrategy.VectorList declaration was not found",
         })?;
     if *constructor != vector_list {
         return Err(EmitError::MalformedRealization {
             declaration,
-            detail: "RustPatternStrategy constructor must be VectorList",
+            detail: "PatternStrategy constructor must be VectorList",
         });
     }
     Ok(PatternRealizationBinding {
@@ -1414,6 +1460,59 @@ fn require_construct_strategy(
             detail: "RenderingModel.construct must be CopyOrClone or PassByValue",
         })
     }
+}
+
+fn require_memory_model(
+    dag: &Dag,
+    fields: &[(String, FieldValue)],
+    declaration: DeclarationId,
+) -> Result<MemoryModelBinding, EmitError> {
+    let value = fields
+        .iter()
+        .find(|(field_label, _)| field_label == "memory")
+        .map(|(_, value)| value)
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "TargetExecutionModel is missing required `memory` field",
+        })?;
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "TargetExecutionModel.memory must be a MemoryModel variant",
+        });
+    };
+    if !payload.is_empty() {
+        return Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "MemoryModel variants must not carry payload fields",
+        });
+    }
+    let variants = [
+        ("ValueOnly", MemoryModelBinding::ValueOnly),
+        ("GarbageCollected", MemoryModelBinding::GarbageCollected),
+        ("RefCounted", MemoryModelBinding::RefCounted),
+        ("OwnershipBased", MemoryModelBinding::OwnershipBased),
+    ];
+    for (label, binding) in variants {
+        let Some(variant_id) = named_variant_id(dag, "MemoryModel", label) else {
+            return Err(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "MemoryModel variant declaration was not found",
+            });
+        };
+        if *constructor == variant_id {
+            return Ok(binding);
+        }
+    }
+    Err(EmitError::MalformedTargetSyntax {
+        declaration,
+        detail:
+            "TargetExecutionModel.memory must be ValueOnly/GarbageCollected/RefCounted/OwnershipBased",
+    })
 }
 
 fn named_variant_id(

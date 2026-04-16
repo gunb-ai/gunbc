@@ -1,0 +1,16 @@
+module v3.std.computation_model
+
+type MemoryModel
+  = ValueOnly
+  | GarbageCollected
+  | RefCounted
+  | OwnershipBased
+
+type ScopeModel
+  = LexicalScoping
+  | DynamicScoping
+
+type TargetExecutionModel {
+  memory: MemoryModel
+  scope: ScopeModel
+}
