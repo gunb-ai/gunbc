@@ -2588,3 +2588,35 @@ type MyList<T> = Empty | Cons { head: T, tail: MyList<T> }
         "tail field should preserve the recursive type parameter binding"
     );
 }
+
+#[test]
+fn std_list_supports_structural_match_and_recursive_descent() {
+    let src = "\
+fn count(list: List<Int>) -> Int = match list { Empty => 0, Cons(payload) => 1 + count(payload.tail) }
+let n: Int = count([1, 2, 3])
+";
+    let dag = compile_to_dag(src, "std_list_structural_recursion.v3").expect("compiles");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "std.list structural recursion should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(bind_value_type_decl(&dag, "n"), find_named(&dag, "Int"));
+
+    let bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "count")
+        .expect("Bind(count) exists");
+    let producer = dag
+        .port(bind.value)
+        .produced_by
+        .expect("recursive std.list function value should have a producer");
+    match dag.node(producer) {
+        Behavior::Loop(_) => {}
+        other => panic!(
+            "expected std.list recursive descent to lower to Loop, got {other:?}"
+        ),
+    }
+}

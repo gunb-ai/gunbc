@@ -25,7 +25,7 @@
 use std::collections::HashSet;
 
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, Dag, DeclarationId, LiteralBits, PortId,
+    ArrowBody, AtomPayload, Behavior, Dag, Declaration, DeclarationId, Field, LiteralBits, PortId,
     PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
@@ -99,6 +99,9 @@ pub fn infer(dag: &mut Dag) {
             changed = true;
         }
         if resolve_callable_targets(dag) {
+            changed = true;
+        }
+        if materialize_callable_signature_instantiations(dag) {
             changed = true;
         }
         if resolve_lambda_parameter_types(dag) {
@@ -361,7 +364,7 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
     struct BindingRewrite {
         port: PortId,
         span: SourceSpan,
-        result: Result<TypeShape, Diagnostic>,
+        result: Result<PayloadBindingResolution, Diagnostic>,
     }
 
     let mut rewrites: Vec<BindingRewrite> = Vec::new();
@@ -473,13 +476,22 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
     let mut changed = false;
     for rewrite in rewrites {
         match rewrite.result {
-            Ok(ty) => match dag.port(rewrite.port).state().clone() {
+            Ok(resolution) => {
+                let ty = match resolution {
+                    PayloadBindingResolution::Direct(ty) => ty,
+                    PayloadBindingResolution::SpecializedRecord {
+                        variant_decl_id,
+                        subst,
+                    } => materialize_specialized_payload_record(dag, variant_decl_id, &subst),
+                };
+                match dag.port(rewrite.port).state().clone() {
                 PortState::Unresolved => {}
                 PortState::Uninferred => {
                     dag.set_port_type(rewrite.port, ty);
                     changed = true;
                 }
-                PortState::Resolved(existing) if existing == ty => {}
+                PortState::Resolved(existing)
+                    if type_shapes_equivalent(dag, &existing, &ty) => {}
                 PortState::Resolved(existing) => {
                     dag.mark_unresolved(
                         rewrite.port,
@@ -491,7 +503,8 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
                     );
                     changed = true;
                 }
-            },
+                }
+            }
             Err(diag) => {
                 if !matches!(dag.port(rewrite.port).state(), PortState::Unresolved) {
                     dag.mark_unresolved(rewrite.port, diag);
@@ -927,6 +940,14 @@ impl SubstStack {
     }
 }
 
+enum PayloadBindingResolution {
+    Direct(TypeShape),
+    SpecializedRecord {
+        variant_decl_id: DeclarationId,
+        subst: SubstStack,
+    },
+}
+
 fn declaration_is_callable(dag: &Dag, current: DeclarationId, depth: usize) -> bool {
     if depth >= WALK_DEPTH_LIMIT {
         return false;
@@ -949,12 +970,33 @@ fn declaration_is_callable(dag: &Dag, current: DeclarationId, depth: usize) -> b
 }
 
 fn is_retryable_generic_decl(dag: &Dag, current: DeclarationId) -> bool {
+    is_retryable_generic_decl_walk(dag, current, 0)
+}
+
+fn is_retryable_generic_decl_walk(dag: &Dag, current: DeclarationId, depth: usize) -> bool {
+    if depth >= WALK_DEPTH_LIMIT {
+        return false;
+    }
     match &dag.declaration(current).connective {
         TypeConnective::Atom(AtomPayload::TypeParam(_)) => true,
         TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
-            is_retryable_generic_decl(dag, *next)
+            is_retryable_generic_decl_walk(dag, *next, depth + 1)
         }
-        _ => false,
+        TypeConnective::Instantiation { arguments, .. } => arguments
+            .iter()
+            .any(|arg| is_retryable_generic_decl_walk(dag, arg.value, depth + 1)),
+        TypeConnective::Cardinality { element, .. } => {
+            is_retryable_generic_decl_walk(dag, *element, depth + 1)
+        }
+        TypeConnective::Conj { children } => children
+            .iter()
+            .any(|field| is_retryable_generic_decl_walk(dag, field.ty, depth + 1)),
+        TypeConnective::Disj { variants } => variants
+            .iter()
+            .any(|field| is_retryable_generic_decl_walk(dag, field.ty, depth + 1)),
+        TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+        | TypeConnective::Atom(AtomPayload::Literal(_))
+        | TypeConnective::Arrow { .. } => false,
     }
 }
 
@@ -1742,6 +1784,37 @@ fn resolve_callable_targets(dag: &mut Dag) -> bool {
     changed
 }
 
+fn materialize_callable_signature_instantiations(dag: &mut Dag) -> bool {
+    let requests: Vec<(DeclarationId, Vec<TemplateArgument>)> = dag
+        .nodes()
+        .iter()
+        .filter_map(|node| {
+            let Behavior::Transform(t) = node else {
+                return None;
+            };
+            let TransformTarget::Callable(target) = t.target else {
+                return None;
+            };
+            let (template, arguments) = callable_template_arguments(dag, target);
+            (!arguments.is_empty()).then_some((template, arguments))
+        })
+        .collect();
+
+    let initial_count = dag.declarations().len();
+    for (template, arguments) in requests {
+        let mut subst = SubstStack::new();
+        subst.push(arguments);
+        let Some(raw_arrow) = resolve_arrow_decl_walk(dag, template, &mut subst, 0) else {
+            continue;
+        };
+        for input in raw_arrow.inputs {
+            let _ = concretize_decl_with_subst(dag, input, &subst, 0);
+        }
+        let _ = concretize_decl_with_subst(dag, raw_arrow.output, &subst, 0);
+    }
+    dag.declarations().len() != initial_count
+}
+
 fn resolve_lambda_parameter_types(dag: &mut Dag) -> bool {
     struct Rewrite {
         port: PortId,
@@ -1973,7 +2046,7 @@ fn resolve_payload_binding_type(
     variant_name: &str,
     binding_name: &str,
     span: &SourceSpan,
-) -> Result<TypeShape, Diagnostic> {
+) -> Result<PayloadBindingResolution, Diagnostic> {
     match &dag.declaration(variant_decl_id).connective {
         TypeConnective::Conj { children } if children.is_empty() => {
             return Err(Diagnostic::ResolveError {
@@ -1987,17 +2060,20 @@ fn resolve_payload_binding_type(
             if children.len() == 1 && children[0].label.as_str() == "_0" =>
         {
             let payload_type_decl = children[0].ty;
-            return walk_to_type_shape(dag, payload_type_decl, subst, 0).ok_or_else(|| {
-                Diagnostic::ResolveError {
+            return walk_to_type_shape(dag, payload_type_decl, subst, 0)
+                .map(PayloadBindingResolution::Direct)
+                .ok_or_else(|| Diagnostic::ResolveError {
                     name: format!(
                         "variant `{variant_name}` payload does not resolve to a port type for binding `{binding_name}`"
                     ),
                     span: span.clone(),
-                }
-            });
+                });
         }
         TypeConnective::Conj { .. } => {
-            return Ok(TypeShape::new(variant_decl_id));
+            return Ok(PayloadBindingResolution::SpecializedRecord {
+                variant_decl_id,
+                subst: subst.clone(),
+            });
         }
         _ => {
             return Err(Diagnostic::ResolveError {
@@ -2008,6 +2084,174 @@ fn resolve_payload_binding_type(
             });
         }
     }
+}
+
+fn materialize_specialized_payload_record(
+    dag: &mut Dag,
+    variant_decl_id: DeclarationId,
+    subst: &SubstStack,
+) -> TypeShape {
+    let variant_decl = dag.declaration(variant_decl_id).clone();
+    let TypeConnective::Conj { children } = variant_decl.connective else {
+        return TypeShape::new(variant_decl_id);
+    };
+    let specialized_children: Vec<Field> = children
+        .into_iter()
+        .map(|field| Field {
+            label: field.label,
+            ty: concretize_decl_with_subst(dag, field.ty, subst, 0),
+        })
+        .collect();
+    if let Some(existing) = find_equivalent_anonymous_conj(dag, &specialized_children) {
+        return TypeShape::new(existing);
+    }
+    let id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id,
+        name: None,
+        connective: TypeConnective::Conj {
+            children: specialized_children,
+        },
+        type_params: Vec::new(),
+        meta_tag: None,
+        inhabits: None,
+        value_body: None,
+        span: variant_decl.span,
+    });
+    TypeShape::new(id)
+}
+
+fn concretize_decl_with_subst(
+    dag: &mut Dag,
+    current: DeclarationId,
+    subst: &SubstStack,
+    depth: usize,
+) -> DeclarationId {
+    if depth >= WALK_DEPTH_LIMIT {
+        return current;
+    }
+    let decl = dag.declaration(current).clone();
+    match decl.connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => subst.lookup(current).unwrap_or(current),
+        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            concretize_decl_with_subst(dag, next, subst, depth + 1)
+        }
+        TypeConnective::Instantiation { template, arguments } => {
+            let specialized_arguments: Vec<TemplateArgument> = arguments
+                .into_iter()
+                .map(|arg| TemplateArgument {
+                    parameter: arg.parameter,
+                    value: concretize_decl_with_subst(dag, arg.value, subst, depth + 1),
+                })
+                .collect();
+            if let Some(existing) =
+                find_equivalent_anonymous_instantiation(dag, template, &specialized_arguments)
+            {
+                return existing;
+            }
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Instantiation {
+                    template,
+                    arguments: specialized_arguments,
+                },
+                type_params: Vec::new(),
+                meta_tag: None,
+                inhabits: None,
+                value_body: None,
+                span: decl.span,
+            });
+            id
+        }
+        TypeConnective::Cardinality { element, bound } => {
+            let specialized_element = concretize_decl_with_subst(dag, element, subst, depth + 1);
+            if let Some(existing) =
+                find_equivalent_anonymous_cardinality(dag, specialized_element, &bound)
+            {
+                return existing;
+            }
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Cardinality {
+                    element: specialized_element,
+                    bound,
+                },
+                type_params: Vec::new(),
+                meta_tag: None,
+                inhabits: None,
+                value_body: None,
+                span: decl.span,
+            });
+            id
+        }
+        _ => current,
+    }
+}
+
+fn find_equivalent_anonymous_conj(dag: &Dag, children: &[Field]) -> Option<DeclarationId> {
+    dag.declarations().iter().find_map(|decl| {
+        if decl.name.is_some() {
+            return None;
+        }
+        let TypeConnective::Conj { children: existing } = &decl.connective else {
+            return None;
+        };
+        (existing.len() == children.len()
+            && existing
+                .iter()
+                .zip(children.iter())
+                .all(|(lhs, rhs)| lhs.label == rhs.label && lhs.ty == rhs.ty))
+        .then_some(decl.id)
+    })
+}
+
+fn find_equivalent_anonymous_instantiation(
+    dag: &Dag,
+    template: DeclarationId,
+    arguments: &[TemplateArgument],
+) -> Option<DeclarationId> {
+    dag.declarations().iter().find_map(|decl| {
+        if decl.name.is_some() {
+            return None;
+        }
+        let TypeConnective::Instantiation {
+            template: existing_template,
+            arguments: existing_arguments,
+        } = &decl.connective
+        else {
+            return None;
+        };
+        (template == *existing_template
+            && existing_arguments.len() == arguments.len()
+            && existing_arguments.iter().zip(arguments.iter()).all(|(lhs, rhs)| {
+                lhs.parameter == rhs.parameter && lhs.value == rhs.value
+            }))
+        .then_some(decl.id)
+    })
+}
+
+fn find_equivalent_anonymous_cardinality(
+    dag: &Dag,
+    element: DeclarationId,
+    bound: &crate::dag::CardinalityBound,
+) -> Option<DeclarationId> {
+    dag.declarations().iter().find_map(|decl| {
+        if decl.name.is_some() {
+            return None;
+        }
+        let TypeConnective::Cardinality {
+            element: existing_element,
+            bound: existing_bound,
+        } = &decl.connective
+        else {
+            return None;
+        };
+        (element == *existing_element && existing_bound == bound).then_some(decl.id)
+    })
 }
 
 enum FieldProjectResolution {
@@ -2443,11 +2687,15 @@ fn resolve_arrow_walk(
 ///
 /// `TypeShape` is a newtype around `DeclarationId` — port types ARE
 /// declaration identities. The walk descends through anonymous
-/// declarations (TypeParam via subst stack, resolved Identifier link,
-/// anonymous Instantiation template) until it hits the first named
-/// top-level declaration, and wraps that declaration's id as the
-/// port's type. There is no name-keyed bridge back to a coarse
-/// primitive tag — the declaration graph IS the type identity.
+/// declarations until it finds a stable type identity:
+///
+/// - named top-level declarations keep their own `DeclarationId`
+/// - anonymous instantiations keep THEIR instantiation id so
+///   `List<Int>` and bare `List` do not collapse to the same shape
+/// - type params resolve through the substitution stack when bound
+///
+/// There is no name-keyed bridge back to a coarse primitive tag — the
+/// declaration graph IS the type identity.
 fn walk_to_type_shape(
     dag: &Dag,
     current: DeclarationId,
@@ -2474,9 +2722,14 @@ fn walk_to_type_shape(
         TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
             walk_to_type_shape(dag, *next, subst, depth + 1)
         }
-        TypeConnective::Instantiation { template, .. } => {
-            walk_to_type_shape(dag, *template, subst, depth + 1)
-        }
+        TypeConnective::Instantiation { .. } => resolve_decl_with_subst(
+            dag,
+            current,
+            subst,
+            depth + 1,
+        )
+        .map(TypeShape::new)
+        .or_else(|| Some(TypeShape::new(current))),
         // Terminal non-follow cases. An anonymous `UnresolvedIdentifier`
         // means the sweep did not resolve the reference — the phantom
         // diagnostic is already attached, and this walk fails so the
@@ -2509,7 +2762,14 @@ fn signature_type_shape(
         return Some(TypeShape::new(current));
     }
     match &decl.connective {
-        TypeConnective::Instantiation { .. } => Some(TypeShape::new(current)),
+        TypeConnective::Instantiation { .. } => resolve_decl_with_subst(
+            dag,
+            current,
+            subst,
+            depth + 1,
+        )
+        .map(TypeShape::new)
+        .or_else(|| Some(TypeShape::new(current))),
         TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
             if let Some(bound) = subst.lookup(current) {
                 signature_type_shape(dag, bound, subst, depth + 1)
@@ -2527,6 +2787,95 @@ fn signature_type_shape(
         TypeConnective::Arrow { .. } => None,
         TypeConnective::Cardinality { .. } => None,
     }
+}
+
+fn resolve_decl_with_subst(
+    dag: &Dag,
+    current: DeclarationId,
+    subst: &SubstStack,
+    depth: usize,
+) -> Option<DeclarationId> {
+    if depth >= WALK_DEPTH_LIMIT {
+        return None;
+    }
+    let decl = dag.declaration(current);
+    match &decl.connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => subst
+            .lookup(current)
+            .and_then(|bound| resolve_decl_with_subst(dag, bound, subst, depth + 1))
+            .or(Some(current)),
+        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            resolve_decl_with_subst(dag, *next, subst, depth + 1)
+        }
+        TypeConnective::Instantiation { template, arguments } => {
+            let specialized_arguments: Vec<TemplateArgument> = arguments
+                .iter()
+                .map(|arg| {
+                    Some(TemplateArgument {
+                        parameter: arg.parameter,
+                        value: resolve_decl_with_subst(dag, arg.value, subst, depth + 1)?,
+                    })
+                })
+                .collect::<Option<_>>()?;
+            if specialized_arguments
+                .iter()
+                .zip(arguments.iter())
+                .all(|(lhs, rhs)| lhs.parameter == rhs.parameter && lhs.value == rhs.value)
+            {
+                return Some(current);
+            }
+            find_equivalent_decl_instantiation(dag, *template, &specialized_arguments)
+                .or(Some(current))
+        }
+        TypeConnective::Cardinality { element, bound } => {
+            let specialized_element =
+                resolve_decl_with_subst(dag, *element, subst, depth + 1)?;
+            if specialized_element == *element {
+                return Some(current);
+            }
+            find_equivalent_decl_cardinality(dag, specialized_element, bound).or(Some(current))
+        }
+        _ => Some(current),
+    }
+}
+
+fn find_equivalent_decl_instantiation(
+    dag: &Dag,
+    template: DeclarationId,
+    arguments: &[TemplateArgument],
+) -> Option<DeclarationId> {
+    dag.declarations().iter().find_map(|decl| {
+        let TypeConnective::Instantiation {
+            template: existing_template,
+            arguments: existing_arguments,
+        } = &decl.connective
+        else {
+            return None;
+        };
+        (template == *existing_template
+            && existing_arguments.len() == arguments.len()
+            && existing_arguments.iter().zip(arguments.iter()).all(|(lhs, rhs)| {
+                lhs.parameter == rhs.parameter && lhs.value == rhs.value
+            }))
+        .then_some(decl.id)
+    })
+}
+
+fn find_equivalent_decl_cardinality(
+    dag: &Dag,
+    element: DeclarationId,
+    bound: &crate::dag::CardinalityBound,
+) -> Option<DeclarationId> {
+    dag.declarations().iter().find_map(|decl| {
+        let TypeConnective::Cardinality {
+            element: existing_element,
+            bound: existing_bound,
+        } = &decl.connective
+        else {
+            return None;
+        };
+        (element == *existing_element && existing_bound == bound).then_some(decl.id)
+    })
 }
 
 /// Best-effort human-readable name for a Transform.target DeclarationId,
@@ -2581,10 +2930,111 @@ fn type_shapes_equivalent(dag: &Dag, lhs: &TypeShape, rhs: &TypeShape) -> bool {
     if lhs == rhs {
         return true;
     }
+    if declaration_shapes_equivalent(dag, lhs.declaration, rhs.declaration, 0) {
+        return true;
+    }
     let subst = SubstStack::new();
     let lhs_canonical =
         walk_to_type_shape(dag, lhs.declaration, &subst, 0).unwrap_or(*lhs);
     let rhs_canonical =
         walk_to_type_shape(dag, rhs.declaration, &subst, 0).unwrap_or(*rhs);
     lhs_canonical == rhs_canonical
+}
+
+fn declaration_shapes_equivalent(
+    dag: &Dag,
+    lhs: DeclarationId,
+    rhs: DeclarationId,
+    depth: usize,
+) -> bool {
+    if lhs == rhs {
+        return true;
+    }
+    if depth >= WALK_DEPTH_LIMIT {
+        return false;
+    }
+    let lhs_decl = dag.declaration(lhs);
+    let rhs_decl = dag.declaration(rhs);
+    match (&lhs_decl.connective, &rhs_decl.connective) {
+        (TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)), _) => {
+            declaration_shapes_equivalent(dag, *next, rhs, depth + 1)
+        }
+        (_, TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next))) => {
+            declaration_shapes_equivalent(dag, lhs, *next, depth + 1)
+        }
+        (
+            TypeConnective::Instantiation {
+                template: lhs_template,
+                arguments: lhs_arguments,
+            },
+            TypeConnective::Instantiation {
+                template: rhs_template,
+                arguments: rhs_arguments,
+            },
+        ) => {
+            declaration_shapes_equivalent(dag, *lhs_template, *rhs_template, depth + 1)
+                && lhs_arguments.len() == rhs_arguments.len()
+                && lhs_arguments
+                    .iter()
+                    .zip(rhs_arguments.iter())
+                    .all(|(lhs_arg, rhs_arg)| {
+                        declaration_shapes_equivalent(
+                            dag,
+                            lhs_arg.value,
+                            rhs_arg.value,
+                            depth + 1,
+                        )
+                    })
+        }
+        (
+            TypeConnective::Cardinality {
+                element: lhs_element,
+                bound: lhs_bound,
+            },
+            TypeConnective::Cardinality {
+                element: rhs_element,
+                bound: rhs_bound,
+            },
+        ) => {
+            lhs_bound == rhs_bound
+                && declaration_shapes_equivalent(dag, *lhs_element, *rhs_element, depth + 1)
+        }
+        (
+            TypeConnective::Conj { children: lhs_children },
+            TypeConnective::Conj { children: rhs_children },
+        ) => {
+            lhs_children.len() == rhs_children.len()
+                && lhs_children
+                    .iter()
+                    .zip(rhs_children.iter())
+                    .all(|(lhs_child, rhs_child)| {
+                        lhs_child.label == rhs_child.label
+                            && declaration_shapes_equivalent(
+                                dag,
+                                lhs_child.ty,
+                                rhs_child.ty,
+                                depth + 1,
+                            )
+                    })
+        }
+        (
+            TypeConnective::Disj { variants: lhs_variants },
+            TypeConnective::Disj { variants: rhs_variants },
+        ) => {
+            lhs_variants.len() == rhs_variants.len()
+                && lhs_variants
+                    .iter()
+                    .zip(rhs_variants.iter())
+                    .all(|(lhs_variant, rhs_variant)| {
+                        lhs_variant.label == rhs_variant.label
+                            && declaration_shapes_equivalent(
+                                dag,
+                                lhs_variant.ty,
+                                rhs_variant.ty,
+                                depth + 1,
+                            )
+                    })
+        }
+        _ => false,
+    }
 }
