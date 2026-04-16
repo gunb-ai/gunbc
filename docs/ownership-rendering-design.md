@@ -173,43 +173,111 @@ so the emitter can choose between Rc (O(1) share) and Clone
 SharingModel handles it. Phase 2 can add cost-aware mechanism
 selection if the clone ratchet shows container clones dominating.
 
+### Dimension 6: Use kind (read vs construct) — THE KEY DIMENSION
+
+**The fact:** does this consumer READ the value or CONSTRUCT
+a new value containing it?
+
+**Where it comes from:** the behavior type of the consumer:
+
+| Consumer behavior | Use kind | Why |
+|---|---|---|
+| Transform (function call) input | Read | Pure function reads its arguments |
+| Branch scrutinee | Read | Inspects value to choose a path |
+| Match pattern | Read | Destructures without consuming |
+| Field access | Read | Projects one field |
+| Comparison | Read | Inspects value |
+| Record literal field | **Construct** | Value becomes part of a new record |
+| List cons element | **Construct** | Value becomes part of a new list node |
+| Return value | **Construct** | Value becomes the function's output |
+
+**Why this is the key dimension.** In a pure language, ALL
+function parameters are reads. The emitter currently generates
+everything as owned (`T`) when it should generate reads as
+borrowed (`&T`). That's why the generated lens code has 90
+clones — every parameter is passed by value, forcing clones
+at every call site.
+
+**The correct rendering for Rust:**
+- Read → `&T` (borrow). Zero cost. No clone.
+- Construct → clone from `&T` to `T` ONLY for non-Copy fields.
+  For Copy types (Int, Bool, PortId, NodeId), construction is
+  free — just copy the bits.
+
+**Where to declare:** the emitter already knows whether it's
+rendering a function parameter (read), a field access (read),
+or a record literal (construct). This is implicit in the
+emission walk. The target's rendering for read vs construct
+goes in the realization spec.
+
+**Why D2 (fan-out) was the wrong primitive.** Fan-out asks
+"how many consumers?" but the answer doesn't determine the
+rendering. A value with fan-out=5 where all 5 consumers are
+reads needs ZERO clones — just pass `&T` to each. A value
+with fan-out=1 where the single consumer constructs a record
+needs... still zero clones if the value is moved into the
+record. Fan-out matters only as a modifier on D6: a value
+with fan-out=1 being constructed → move. Fan-out>1 being
+constructed → clone. Fan-out=anything being read → borrow.
+
 ---
 
-## §3. The composition
+## §3. The composition — REVISED
 
-The rendering decision for a port reference is a function of
-all five dimensions:
+The rendering decision is primarily determined by D6 (use
+kind), modified by D2 (fan-out) only at construction sites:
 
 ```
 render(port, consumer) =
-  let semantics = value_semantics(port)          -- D1
-  let fanout = consumer_count(port)              -- D2
-  let strategy = target.sharing_strategy         -- D3
-  let escapes = escapes_scope(port)              -- D4
-  let cost = clone_cost(type_of(port))           -- D5
+  let mutability = source_mutability(port)       -- D1
+  let use_kind = consumer_use_kind(consumer)     -- D6 (NEW, primary)
+  let strategy = target.rendering_strategy       -- D3
   in
-    strategy.choose(semantics, fanout, escapes, cost)
+    if mutability == Mutable then
+      strategy.mutable_render(port, consumer)    -- future, for ingestion
+    else  -- Immutable (all .dag native code)
+      match use_kind {
+        Read      -> strategy.read_render        -- &T in Rust, bare in Go
+        Construct -> strategy.construct_render    -- clone if needed in Rust
+      }
 ```
 
-Each dimension is an independent fact read from its authority.
-The `strategy.choose` function is declared in the target's
-realization spec — it's the target language's answer to "given
-these facts, what's the cheapest correct rendering?"
-
-For Rust, `choose` might be:
-
+For Rust:
 ```
-if fanout == 1 then Move
-else if semantics == Immutable && !escapes then Borrow
-else if cost == O(1) then Clone
-else Rc
+read_render      = &T            // borrow, zero cost
+construct_render = if is_copy(T) then T           // copy, zero cost
+                   else if is_last_use then T     // move, zero cost
+                   else T.clone()                 // clone, O(size)
 ```
 
-For Go: `choose _ = Pass` (always).
+For Go: `read_render = T; construct_render = T` (always pass by value, GC handles sharing).
 
-The key: no behavior-type-specific rules. No per-variant
-ownership logic. The five facts compose into one decision via
-the target's strategy, and the strategy is declared data.
+**Expected impact.** In the generated lens code:
+- ALL function parameters become `&T` → zero clones at call sites
+- ALL match scrutinees become `match &value` → zero clones
+- ALL field accesses become `&value.field` → zero clones
+- ONLY record/list construction may need clones, and only for non-Copy fields
+- For the unused_parameters lens specifically: the output record
+  contains `NodeId`, `PortId`, `i64`, `SourceSpan`. The first
+  three are Copy. Only `SourceSpan` (contains `String`) needs a
+  clone at the construction site.
+
+**Estimated clone count after this model: ~5** (one per
+`UnusedParameter` record construction that contains a
+`SourceSpan`). Down from 90. The remaining clones are
+genuinely needed — constructing a new record that owns a
+String-containing value.
+
+**Pipeline position.** Ownership facts are computed as a
+pipeline stage between inference and emission:
+
+```
+parse → lower → infer → ownership → emit
+                         ↑
+                    reads: types, ports, DAG edges
+                    produces: per-port OwnershipFact
+                    consumed by: every emitter
+```
 
 **Pipeline position.** Ownership facts are computed as a
 pipeline stage between inference and emission:
