@@ -12,7 +12,7 @@ fn bind_named<'a>(dag: &'a Dag, name: &str) -> &'a v3_compiler::dag::BindNode {
         .unwrap_or_else(|| panic!("bind `{name}` not found"))
 }
 
-fn anonymous_lambda_binds<'a>(dag: &'a Dag) -> Vec<&'a v3_compiler::dag::BindNode> {
+fn anonymous_lambda_binds(dag: &Dag) -> Vec<&v3_compiler::dag::BindNode> {
     dag.nodes()
         .iter()
         .filter_map(Behavior::as_bind)
