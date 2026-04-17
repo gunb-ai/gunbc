@@ -481,6 +481,10 @@ Sub-stage status (as of 2026-04-17):
 
 **Deferral: 3a.3-full (L).** Lower `SurfaceParam.refinement` to a predicate `Declaration`; call-site structural-DAG comparison (no interning, no SMT entailment — structural equality on resolved predicate expression DAGs); extend M1(2.8) pattern resolution to narrow arm-scoped ports for predicate-checked values (e.g., `if d != 0 then ...` narrows `d`). **Scaffold cost in main:** `Declaration.refinement: Option<DeclarationId>` is now authored-but-unread at ~15 construction sites. Dissolution trigger: this deferral lands. **Yellow-flag threshold:** if scaffold sits >1 week, actively schedule. Design: [design-m2-feature-parity.md §DB-11](../../docs/design-m2-feature-parity.md). Acceptance in DB-11 §Acceptance.
 
+### Lane 2 Stage 2c — test infrastructure gap
+
+**Deferral: compositional test modeling (DB-15, XL, blocks Lane 2 Stage 2c).** Current tests don't ride on the compiler's dependency graph. Fixtures are hand-authored source strings, duplicated across files. Bootstrap, compilation, lens work all re-run per test. Generation (Stage 2c) would multiply this and become intractable. Design doc draft: [design-test-infra.md](../../docs/design-test-infra.md) (DB-15, **discussion draft — not locked**). Implementation sequence (roughly, once design locks): framework shape + runner (S) → source-level compile cache (S) → lens result cache (M) → one-file migration proof (M). Yellow-flag threshold: must lock design before Lane 2 Stage 2c kickoff, which is gated on Lane 1 1b landing.
+
 ### Lane 1 Stage 1b
 
 **Deferral: 1b full implementation (M).** 1b's first attempt escalated (PR #495 shipped 1a; 1b code was reverted). Root cause: `.dag` linear-walk bodies for substrate accessors polluted every user DAG. DB-14 codifies the correct pattern (ExternalRealization mirroring pipeline.dag). Unblocked once DB-14 (PR #497) lands. Design: [design-substrate-external-primitives.md](../../docs/design-substrate-external-primitives.md) (DB-14). Acceptance in DB-14 §Acceptance.
