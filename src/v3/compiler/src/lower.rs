@@ -179,6 +179,12 @@ pub(crate) fn lower_bodies_phase(
             lower_data_item(name, ty, body.as_ref(), body_span, dag, symbols);
         }
     }
+    // DB-11 (3a.3) phase-ordered refinement lowering. Runs AFTER the
+    // data pre-pass so predicates referencing top-level `data`
+    // constants resolve against lowered declarations, not placeholders.
+    // Sole caller of `lower_parameter_refinement` for parameter
+    // `where` clauses (single construction authority).
+    lower_parameter_refinements_phase(dag, module, symbols, is_first);
     for (idx, item) in module.items.iter().enumerate() {
         if !is_first[idx] {
             // Duplicate declaration — skipped at lower time so the
@@ -342,22 +348,17 @@ fn seed_function_signature(
 ) {
     let fn_decl_id = symbols[name];
     let local = local_scope_from_parent(dag, fn_decl_id);
+    // DB-11 (3a.3) phase-ordering fix: seed the Arrow with BASE
+    // declaration ids only. Parameter `where` clauses are lowered by
+    // `lower_parameter_refinements_phase`, which runs AFTER the data
+    // pre-pass populates top-level `data` declarations' connectives
+    // and `value_body`s. Lowering a predicate here would evaluate any
+    // references to top-level data constants against placeholder
+    // declarations — the references would mark `Unresolved` even
+    // though the constants are valid.
     let param_decl_inputs: Vec<DeclarationId> = params
         .iter()
-        .map(|p| {
-            let base = type_to_declaration_id(&p.ty, symbols, &local, dag);
-            match &p.refinement {
-                Some(predicate) => lower_parameter_refinement(
-                    base,
-                    predicate,
-                    &p.name,
-                    symbols,
-                    dag,
-                    p.ty.span().clone(),
-                ),
-                None => base,
-            }
-        })
+        .map(|p| type_to_declaration_id(&p.ty, symbols, &local, dag))
         .collect();
     let return_decl_id = type_to_declaration_id(return_type, symbols, &local, dag);
     dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
@@ -365,6 +366,69 @@ fn seed_function_signature(
         output: return_decl_id,
         body,
     };
+}
+
+/// DB-11 (3a.3): lower parameter `where` clauses for every Fn /
+/// FnExternalBody item and update the fn's Arrow inputs with the
+/// refined declaration ids. Runs between the data pre-pass and the
+/// main fn-body pass so references inside predicates to top-level
+/// `data` constants see fully-lowered declarations (not placeholders)
+/// and resolve cleanly.
+///
+/// Sole caller of `lower_parameter_refinement` for parameter `where`
+/// clauses — preserves single construction authority even though
+/// the work is split off from seeding. The alternative (lowering
+/// refinements at seed time) ordered-broke predicates that referenced
+/// top-level data; the alternative (lowering at fn-body time) split
+/// the authority across `Fn` (body path) and `FnExternalBody` (which
+/// has no body to hook into). One dedicated phase handles both.
+fn lower_parameter_refinements_phase(
+    dag: &mut Dag,
+    module: &SurfaceModule,
+    symbols: &HashMap<String, DeclarationId>,
+    is_first: &[bool],
+) {
+    for (idx, item) in module.items.iter().enumerate() {
+        if !is_first[idx] {
+            continue;
+        }
+        let (name, params) = match item {
+            SurfaceItem::Fn { name, params, .. } => (name, params),
+            SurfaceItem::FnExternalBody { name, params, .. } => (name, params),
+            _ => continue,
+        };
+        let fn_decl_id = symbols[name];
+        // Read the seeded Arrow's inputs and output (set by
+        // `seed_function_signature` to the base declarations).
+        let (existing_inputs, output, body) = match &dag.declaration(fn_decl_id).connective {
+            TypeConnective::Arrow {
+                inputs,
+                output,
+                body,
+            } => (inputs.clone(), *output, body.clone()),
+            _ => continue,
+        };
+        let mut refined_inputs = Vec::with_capacity(params.len());
+        for (param, &base_decl) in params.iter().zip(existing_inputs.iter()) {
+            let input_decl = match &param.refinement {
+                Some(predicate) => lower_parameter_refinement(
+                    base_decl,
+                    predicate,
+                    &param.name,
+                    symbols,
+                    dag,
+                    param.ty.span().clone(),
+                ),
+                None => base_decl,
+            };
+            refined_inputs.push(input_decl);
+        }
+        dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
+            inputs: refined_inputs,
+            output,
+            body,
+        };
+    }
 }
 
 /// DB-11 (3a.3) arm-local refinement narrowing. Given an `if` / match

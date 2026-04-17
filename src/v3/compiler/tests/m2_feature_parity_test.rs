@@ -584,6 +584,31 @@ fn test_3a3_logical_operator_rejects_non_bool_operand() {
 }
 
 #[test]
+fn test_3a3_refinement_references_top_level_data_constant() {
+    // Acceptance (DB-11): a `where` predicate that references a
+    // top-level `data` declaration must resolve cleanly. Regression
+    // lock against seed-phase ordering: `seed_function_signatures_phase`
+    // runs before the data pre-pass populates `data` declarations'
+    // connectives and `value_body`s. If parameter refinement lowering
+    // happens at seed time, references to `THRESHOLD` inside the
+    // predicate would resolve against a placeholder declaration and
+    // mark unresolved even though `THRESHOLD` is a valid Int constant.
+    //
+    // The fix splits refinement lowering into its own dedicated
+    // phase (`lower_parameter_refinements_phase`) that runs AFTER
+    // the data pre-pass. Sole caller of `lower_parameter_refinement`
+    // for parameter `where` clauses — single-construction-authority
+    // invariant preserved.
+    let src = "data THRESHOLD: Int = 10\n\
+               fn big(d: Int where d > THRESHOLD) -> Int = d";
+    let _ = compile_to_dag(src, "test.v3").expect(
+        "a `where` predicate that references a top-level `data` \
+         constant must compile — refinement lowering runs after the \
+         data pre-pass",
+    );
+}
+
+#[test]
 fn test_3a3_substrate_integrity_behavior_still_five_variants() {
     // Acceptance (DB-11 §Acceptance): "Substrate integrity:
     // Declaration.refinement is the only new edge. type Behavior
