@@ -203,12 +203,24 @@ pub enum ValueBody {
     /// field on the type's Conj children.
     Structural { fields: Vec<(String, FieldValue)> },
     /// Scalar-valued data declaration: `data answer: Int = 42`.
-    /// The body parsed as a single scalar expression (Literal) and
-    /// lowered to a `FieldValue::Literal(LiteralBits)`. DB-10
-    /// (Lane 3 Stage 3a.2) — `compiler.dag` needs compile-time
+    /// Carries `LiteralBits` directly (Int / Bool / String) —
+    /// NOT a full `FieldValue`. This is deliberate:
+    ///
+    /// - `FieldValue::Record { .. }` at the top level is already
+    ///   representable as `ValueBody::Structural { fields }`;
+    ///   allowing `ValueBody::Scalar(FieldValue::Record(..))` would
+    ///   make illegal/overlapping states representable (two distinct
+    ///   encodings of the same top-level record body). Rejected.
+    /// - `FieldValue::Reference`, `List`, `Variant` as top-level
+    ///   data bodies are out of scope for DB-10's acceptance
+    ///   (scalar + structural record only). When those shapes
+    ///   become parseable at the top level, grow `ValueBody` with
+    ///   a new variant — do not widen `Scalar` to swallow them.
+    ///
+    /// DB-10 (Lane 3 Stage 3a.2) — `compiler.dag` needs compile-time
     /// scalar constants; previously the parser rejected non-
     /// `{`-shaped RHS, so scalar `data` declarations could not exist.
-    Scalar(FieldValue),
+    Scalar(LiteralBits),
 }
 
 /// Per-field value payload inside a `ValueBody::Structural`.
@@ -1416,10 +1428,18 @@ impl Dag {
     }
 
     /// DB-10 (3a.2): read the compile-time value body attached to a
-    /// `data` declaration. Returns `None` for type aliases and for
-    /// `data` declarations whose body could not be lowered (e.g.
-    /// `ValueBody::Unparsed` scaffolds). Used by emission and by
-    /// dotted-path lowering to inline `data` values at use sites.
+    /// declaration. Returns `None` for declarations without a
+    /// value body (type aliases, bare type declarations, function
+    /// declarations); returns `Some(&ValueBody)` for every `data`
+    /// declaration — including `ValueBody::Unparsed` scaffolds
+    /// whose body shape wasn't recognizable. Consumers that need
+    /// an inhabitance-checked body must match on the variant
+    /// directly and handle `Unparsed` explicitly; this accessor
+    /// does not filter scaffolds.
+    ///
+    /// Used by dotted-path lowering (to inline record-field values
+    /// at use sites) and by any future emission-time consumer that
+    /// wants to render a declared constant directly.
     pub fn data_value_at(&self, id: DeclarationId) -> Option<&ValueBody> {
         self.declaration(id).value_body.as_ref()
     }

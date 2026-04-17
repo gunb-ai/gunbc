@@ -220,6 +220,7 @@ fn seed_function_signatures_phase(
                 return_type,
                 ..
             } => {
+                report_unsupported_parameter_refinements(params, dag);
                 seed_function_signature(name, params, return_type, ArrowBody::Pending, dag, symbols)
             }
             SurfaceItem::FnExternalBody {
@@ -228,15 +229,48 @@ fn seed_function_signatures_phase(
                 return_type,
                 body_span,
                 ..
-            } => seed_function_signature(
-                name,
-                params,
-                return_type,
-                ArrowBody::Unparsed(body_span.clone()),
-                dag,
-                symbols,
-            ),
+            } => {
+                report_unsupported_parameter_refinements(params, dag);
+                seed_function_signature(
+                    name,
+                    params,
+                    return_type,
+                    ArrowBody::Unparsed(body_span.clone()),
+                    dag,
+                    symbols,
+                )
+            }
             _ => {}
+        }
+    }
+}
+
+/// DB-11 (3a.3, foundation-only scope per PR #496): the parser now
+/// accepts `where <expr>` on a parameter, but the semantics
+/// (predicate lowering, call-site structural-DAG check, Branch-arm
+/// narrowing) are tracked in issue #498 as a size-overrun follow-up.
+/// Until that lands, every parsed refinement is reported as an
+/// unsupported-feature Diagnostic so the fact flows forward as a
+/// compile error instead of being silently dropped. Fail-closed per
+/// C-8: the compiler either enforces the refinement or refuses to
+/// compile code that requests it — never accepts silently.
+fn report_unsupported_parameter_refinements(params: &[SurfaceParam], dag: &mut Dag) {
+    for param in params {
+        if let Some(predicate) = &param.refinement {
+            let span = crate::parse::expr_span(predicate).clone();
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "`where` refinement on parameter `{}` is not yet enforced \
+                         (DB-11 foundation-only scope; see issue #498 for the \
+                         predicate-lowering follow-up). Remove the `where` clause \
+                         until the consumer lands, or guard call sites explicitly.",
+                        param.name,
+                    ),
+                    span,
+                },
+            );
         }
     }
 }
@@ -1264,7 +1298,7 @@ fn lower_data_item(
         }
         Some(lit_expr @ SurfaceExpr::Literal { .. }) => {
             lower_scalar_literal_for_type(lit_expr, ty_decl_id, dag)
-                .map(|bits| crate::dag::ValueBody::Scalar(crate::dag::FieldValue::Literal(bits)))
+                .map(crate::dag::ValueBody::Scalar)
                 .or_else(|| {
                     report_declaration_error(
                         dag,
@@ -3202,11 +3236,11 @@ fn resolve_data_path(
 ) -> Option<PortId> {
     match value_body {
         crate::dag::ValueBody::Unparsed(_) => None,
-        crate::dag::ValueBody::Scalar(fv) => {
+        crate::dag::ValueBody::Scalar(bits) => {
             if !segments.is_empty() {
                 return None;
             }
-            emit_field_value_as_port(dag, fv, span)
+            Some(emit_literal_as_value_port(dag, bits.clone(), span))
         }
         crate::dag::ValueBody::Structural { fields } => {
             resolve_structural_field_path(dag, fields, segments, span)
@@ -3243,15 +3277,7 @@ fn emit_field_value_as_port(
 ) -> Option<PortId> {
     match fv {
         crate::dag::FieldValue::Literal(bits) => {
-            let node_id = dag.alloc_node_id();
-            let output = dag.alloc_port(Some(node_id));
-            dag.push_node(Behavior::Value(ValueNode {
-                id: node_id,
-                data: bits.clone(),
-                output,
-                span: span.clone(),
-            }));
-            Some(output)
+            Some(emit_literal_as_value_port(dag, bits.clone(), span))
         }
         // Reference / Record / List / Variant terminal reads require
         // more emission machinery than DB-10 covers (acceptance is
@@ -3259,6 +3285,22 @@ fn emit_field_value_as_port(
         // an unresolved diagnostic.
         _ => None,
     }
+}
+
+/// DB-10 (3a.2): emit a scalar literal from its `LiteralBits`
+/// directly as a `Behavior::Value` node. Shared by
+/// `ValueBody::Scalar` inlining and `FieldValue::Literal` terminal
+/// reads.
+fn emit_literal_as_value_port(dag: &mut Dag, bits: LiteralBits, span: &SourceSpan) -> PortId {
+    let node_id = dag.alloc_node_id();
+    let output = dag.alloc_port(Some(node_id));
+    dag.push_node(Behavior::Value(ValueNode {
+        id: node_id,
+        data: bits,
+        output,
+        span: span.clone(),
+    }));
+    output
 }
 
 fn lower_payload_binding(dag: &mut Dag, binding_name: &str) -> PayloadBinding {
@@ -3319,20 +3361,11 @@ fn lower_expr(
                 // `test_3a2_data_referenced_in_fn_body_compiles`
                 // uses scalar only).
                 if let Some(decl_id) = symbols.get(name) {
-                    if let Some(crate::dag::ValueBody::Scalar(crate::dag::FieldValue::Literal(
-                        bits,
-                    ))) = &dag.declaration(*decl_id).value_body
+                    if let Some(crate::dag::ValueBody::Scalar(bits)) =
+                        &dag.declaration(*decl_id).value_body
                     {
                         let bits = bits.clone();
-                        let node_id = dag.alloc_node_id();
-                        let output = dag.alloc_port(Some(node_id));
-                        dag.push_node(Behavior::Value(ValueNode {
-                            id: node_id,
-                            data: bits,
-                            output,
-                            span: span.clone(),
-                        }));
-                        return output;
+                        return emit_literal_as_value_port(dag, bits, span);
                     }
                 }
                 let port = dag.alloc_port(None);

@@ -288,19 +288,34 @@ fn test_3a2_data_field_access_resolves_statically() {
 // =================================================================
 
 #[test]
-fn test_3a3_where_clause_on_parameter_parses() {
-    // Foundation: the parser must NOT drop the `where` clause on a
-    // fn parameter. Previously `parse_params` treated `where` as a
-    // syntax error after the parameter type. This test locks in
-    // that the grammar now accepts the form.
+fn test_3a3_where_clause_parses_and_reports_unsupported() {
+    // Foundation (PR #496, DB-11): the parser accepts `where` on
+    // a fn parameter and carries it into `SurfaceParam.refinement`;
+    // the substrate exposes `Declaration.refinement`. But the
+    // consumer (predicate lowering + call-site check + Branch-arm
+    // narrowing) is deferred to issue #498 as a size overrun.
+    //
+    // Per C-8 fail-closed: the parsed fact must not silently flow
+    // through without enforcement. Lowering emits an explicit
+    // "refinement not yet enforced" Diagnostic pointing at the
+    // predicate span. This preserves "facts flow forward" — the
+    // `where` is visible at compile time — without claiming an
+    // enforcement the code doesn't yet deliver.
     let src = "fn div(n: Int, d: Int where d != 0) -> Int = n";
-    let _ = compile_to_dag(src, "test.v3").expect("where-clause on parameter must parse");
+    let err = compile_to_dag(src, "test.v3")
+        .expect_err("where clause on parameter must emit an unsupported-feature diagnostic");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("refinement") && msg.contains("not yet enforced"),
+        "diagnostic should name the deferral; got: {msg}"
+    );
 }
 
 #[test]
 fn test_3a3_where_clause_does_not_break_signatureless_fn() {
-    // Regression: adding `where`-clause parsing must not change how
-    // bare parameter types lower.
+    // Regression: the `where`-clause diagnostic must fire only when
+    // a `where` is present. Bare `fn id(x: Int) -> Int = x` still
+    // compiles cleanly.
     let src = "fn id(x: Int) -> Int = x";
     let _ = compile_to_dag(src, "test.v3").expect("bare-parameter fn must still compile");
 }

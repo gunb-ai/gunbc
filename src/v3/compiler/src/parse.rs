@@ -1677,7 +1677,7 @@ impl<'a> Parser<'a> {
     }
 }
 
-fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
+pub(crate) fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
     match expr {
         SurfaceExpr::Literal { span, .. }
         | SurfaceExpr::Var { span, .. }
