@@ -88,10 +88,14 @@ fn effects_dag_exposes_core_effect_algebra_types() {
     // parse-only carry-over where the types fail to lower.
     for name in [
         "EffectShape",
+        "CreateCause",
         "KeySource",
         "IdempotencyEvidence",
         "ComposedEffect",
         "OperationEffect",
+        "ModifierAgreement",
+        "ModifierAxisCheck",
+        "ModifierCheck",
     ] {
         assert_record_type(&dag, name);
     }
