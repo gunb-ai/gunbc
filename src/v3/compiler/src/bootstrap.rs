@@ -189,6 +189,21 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
     dag.populate_primitive_cache();
 }
 
+// DB-14 substrate accessors (`port` / `node` / `resolve_producer`) are
+// deliberately NOT materialized at bootstrap. Their Arrow bodies stay
+// `Unparsed` (the `{ host <name> }` stub) because the accessor → realization
+// mapping is TARGET-specific — upgrading the Arrow body once at bootstrap
+// to a single realization would silently overwrite when a second emitter
+// registers its own binding. Each emitter reads `SubstrateAccessorBinding`
+// records at emission time, filters by its own `language: LanguageSpec`
+// id, and dispatches to the target-matching realization's carrier
+// template. See `emit_rust::RealizationIndexes::substrate_accessors`.
+//
+// This diverges from `materialize_pipeline_realizations` (above), which
+// DOES upgrade Arrow bodies — pipeline stages are target-invariant
+// (same runtime for every target), so "one realization per stage" is
+// the correct authority there.
+
 fn materialize_pipeline_realizations(dag: &mut Dag) {
     let stages = match ordered_pipeline_stages(dag) {
         Ok(stages) => stages,

@@ -104,6 +104,19 @@ jobs:
       - name: v3 Compiler Clippy
         run: cargo clippy -p v3-compiler --all-targets -- -D warnings
 
+      - name: L-7 Substrate accessor reconstruction gate
+        run: |
+          # L-7 (INVARIANTS.md): lenses consume substrate query
+          # functions (`port`, `node`, `resolve_producer`) instead of
+          # reconstructing local `find_port` / `find_behavior` / ...
+          # Scan `.dag` lens files for forbidden helper declarations.
+          matches=$(grep -nE "fn (find_port|find_behavior|resolve_producer|lookup_node|lookup_port)" src/v3/lenses/*.dag 2>/dev/null || true)
+          if [ -n "$matches" ]; then
+            echo "::error::L-7 violation: lens reconstructs a substrate lookup locally"
+            echo "$matches"
+            exit 1
+          fi
+
       - name: L-8 Lens surface gate
         run: |
           # L-8 (INVARIANTS.md): migrated .dag lenses must not collapse

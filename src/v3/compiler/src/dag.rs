@@ -1385,6 +1385,47 @@ impl Dag {
         node
     }
 
+    /// Option-returning variant for the .dag substrate accessor
+    /// `node(d, id) -> Behavior?`. Same pattern as `port_opt`.
+    pub fn node_opt(&self, id: &NodeId) -> Option<&Behavior> {
+        self.nodes.get(id.index())
+    }
+
+    /// Producer walk for the .dag substrate accessor
+    /// `resolve_producer(d, port_id) -> Behavior?`. DB-5 locks this
+    /// as recursive Bind-chain resolution: follow `produced_by` to
+    /// the producing Behavior, and if that Behavior is a `Bind`,
+    /// recurse on `bind.value` until a non-Bind producer (Value /
+    /// Transform / Branch / Loop) is reached. Every current lens
+    /// wrote this chain inline; centralizing it here is the DB-14
+    /// substrate-primitive refactor.
+    ///
+    /// `None` covers the miss modes (missing port, port has no
+    /// producer, produced_by references a missing node) — all
+    /// structurally equivalent to "no non-Bind producer found" at
+    /// this substrate boundary. Richer lens-local enums layer on top.
+    pub fn resolve_producer_opt(&self, port_id: &PortId) -> Option<&Behavior> {
+        // Bounded by the total number of nodes: every Bind hop
+        // consumes one node in the walk, and the Dag is finite.
+        let bound = self.nodes.len();
+        let mut current_port = *port_id;
+        for _ in 0..=bound {
+            let port = self.port_opt(&current_port)?;
+            let producer_id = port.produced_by?;
+            let behavior = self.node_opt(&producer_id)?;
+            match behavior {
+                Behavior::Bind(bind) => {
+                    current_port = bind.value;
+                    continue;
+                }
+                _ => return Some(behavior),
+            }
+        }
+        // Cycle in the Bind chain — malformed substrate. Surface as
+        // miss rather than infinite loop.
+        None
+    }
+
     /// O(1) lookup by DeclarationId. Same dense-sequential invariant as nodes.
     pub fn declaration(&self, id: DeclarationId) -> &Declaration {
         let decl = &self.declarations[id.index()];
@@ -1446,6 +1487,14 @@ impl Dag {
 
     pub fn port(&self, id: PortId) -> &Port {
         self.ports.get(&id).expect("PortId not in dag")
+    }
+
+    /// Option-returning variant for the .dag substrate accessor
+    /// `port(d, id) -> DagPort?`. DB-14 wires this to the generated
+    /// Rust via a carrier template; callers that need fail-closed
+    /// carriers use this instead of `port`.
+    pub fn port_opt(&self, id: &PortId) -> Option<&Port> {
+        self.ports.get(id)
     }
 
     pub fn all_ports(&self) -> impl Iterator<Item = &Port> {

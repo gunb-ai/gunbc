@@ -8,7 +8,9 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, PortId};
-use v3_compiler::lens_cost::{cost_of, CostLookup};
+use v3_compiler::lens_cost::cost_of;
+
+mod common;
 
 fn find_bind_value(dag: &v3_compiler::dag::Dag, name: &str) -> PortId {
     dag.nodes()
@@ -20,14 +22,7 @@ fn find_bind_value(dag: &v3_compiler::dag::Dag, name: &str) -> PortId {
 }
 
 fn expect_cost(dag: &v3_compiler::dag::Dag, port: PortId) -> usize {
-    match cost_of(dag, &port) {
-        CostLookup::FoundCost { _0: cost } => {
-            usize::try_from(cost).expect("complexity lens emits non-negative cost")
-        }
-        CostLookup::MissingCost => {
-            panic!("expected FoundCost for port {port:?}; got MissingCost (malformed fixture)")
-        }
-    }
+    common::require_fixture_cost_usize(cost_of(dag, &port), &format!("port {port:?}"))
 }
 
 fn bind_cost(dag: &v3_compiler::dag::Dag, name: &str) -> usize {

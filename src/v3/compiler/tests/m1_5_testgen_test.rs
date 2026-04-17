@@ -3,7 +3,9 @@ use v3_compiler::dag::{
     Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, PortState, TypeConnective,
     ValueBody,
 };
-use v3_compiler::lens_cost::{cost_of, CostLookup};
+use v3_compiler::lens_cost::cost_of;
+
+mod common;
 use v3_compiler::lens_testgen::{GeneratedClaim, TestgenLens};
 use v3_compiler::{CompileError, Diagnostic};
 
@@ -233,12 +235,15 @@ fn predicate_holds(
             }) else {
                 return false;
             };
-            let actual = match cost_of(&dag, &bind.value) {
-                CostLookup::FoundCost { _0: cost } => cost,
-                CostLookup::MissingCost => {
-                    panic!("cost lens returned MissingCost for bind `{bind_name}`")
-                }
-            };
+            // Post review round 1b.5: route through the shared
+            // fixture helper so MissingCost AND negative-FoundCost
+            // both fail closed. The earlier inline match only
+            // handled MissingCost, which was drift flagged by the
+            // chatgpt review.
+            let actual = common::require_fixture_cost_i64(
+                cost_of(&dag, &bind.value),
+                &format!("bind `{bind_name}`"),
+            );
             compare_cost(expectation_dag, comparator, actual, *bound)
         }
         other => panic!("unsupported TestPredicate variant {other}"),

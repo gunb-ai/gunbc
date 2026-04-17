@@ -163,3 +163,72 @@ impl RustcHarness {
         String::from_utf8_lossy(&output.stdout).trim().to_string()
     }
 }
+
+// ────────────────────────────────────────────────────────────────────
+// Shared cost-lookup helpers (DB-14 test-fixture invariant)
+// ────────────────────────────────────────────────────────────────────
+//
+// Post-review-round 1b.5: the interpretation "for test fixtures, a
+// named bind's cost must be `FoundCost` with a non-negative value"
+// was duplicated across m1_3_lens_cost_test, thesis_validation_test,
+// and m1_5_testgen_test — and m1_5 had already drifted to the weaker
+// "only check MissingCost, don't validate sign" shape. These helpers
+// are the single expression of the fixture-side invariant: all three
+// test consumers route through them, and lens_testgen's own Option-
+// returning variant in `src/v3/compiler/src/lens_testgen.rs:bind_cost_of`
+// uses the same two panic paths (it diverges only in treating
+// "bind not found" as `None` instead of panic, which is a legitimate
+// API-shape difference, not an interpretation difference).
+//
+// Both failure modes are compiler invariant violations at the
+// fixture boundary:
+//   - `MissingCost` — the lens emits no cost for a named bind the
+//     test explicitly constructed. Malformed fixture or lens regression.
+//   - negative `FoundCost(c)` — the complexity algebra is non-negative
+//     by construction; a negative value is an invariant violation
+//     upstream of the test.
+//
+// `context` is a caller-provided string used in panic messages so
+// the test failure names which bind/port/fixture tripped the assert.
+
+use v3_compiler::lens_cost::CostLookup;
+
+/// Extract a non-negative `i64` cost from a `CostLookup`, panicking
+/// with `context` on either invariant violation. Use when the caller
+/// wants an `i64` (e.g. passing to a comparison operator that takes
+/// `i64 × i64 → bool`).
+pub fn require_fixture_cost_i64(lookup: CostLookup, context: &str) -> i64 {
+    match lookup {
+        CostLookup::FoundCost { _0: cost } => {
+            assert!(
+                cost >= 0,
+                "complexity lens emitted negative cost `{cost}` for {context} — \
+                 the complexity algebra is non-negative by construction; a negative \
+                 value is a compiler invariant violation upstream of this test."
+            );
+            cost
+        }
+        CostLookup::MissingCost => {
+            panic!(
+                "complexity lens returned MissingCost for {context} — malformed \
+                 fixture or lens regression (the named bind exists in the Dag but \
+                 has no cost entry)."
+            );
+        }
+    }
+}
+
+/// `usize` variant of `require_fixture_cost_i64`. Use when the
+/// caller indexes or compares as `usize` (the majority of cost-lens
+/// consumers). The sign check is redundant with `usize::try_from`
+/// but surfaces the "negative cost" diagnostic before the conversion
+/// rather than via a generic `TryFromIntError`.
+pub fn require_fixture_cost_usize(lookup: CostLookup, context: &str) -> usize {
+    let cost = require_fixture_cost_i64(lookup, context);
+    usize::try_from(cost).unwrap_or_else(|_| {
+        // Unreachable after the i64 helper's sign assert, but keeps
+        // the conversion-failure path explicit rather than silently
+        // wrapping — single-authority claim holds if nobody reads it.
+        panic!("complexity lens emitted cost that does not fit in usize for {context}: {cost}")
+    })
+}

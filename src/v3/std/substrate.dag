@@ -1,5 +1,7 @@
 module v3.std.substrate
 
+import v3.spec.v3_l1 { DeclarationRef }
+
 // Atomic identity handles. These stay opaque at the .dag layer and
 // are realized by Rust newtypes in dag.rs plus seed TypeRealization
 // entries in rust.dag.
@@ -231,4 +233,61 @@ type Dag {
   declarations: List<Declaration>
   nodes: List<Behavior>
   ports: List<DagPort>
+}
+
+// ── Substrate keyed accessors (DB-14, INVARIANTS.md L-7) ────────────
+//
+// These three functions are the single authority for id-keyed lookup
+// over `Dag.ports` / `Dag.nodes`. Every lens consumes them; no lens
+// reconstructs its own `find_port` / `find_behavior`.
+//
+// Implementation: the fn bodies below are trivial `{ host <name> }`
+// stubs. Arrow bodies stay `Unparsed` through bootstrap — target
+// selection happens at emission time. Each emitter reads
+// `SubstrateAccessorBinding` records from the spec files, filters by
+// its own `language: LanguageSpec` id, and dispatches through a
+// per-target index. Diverges from `pipeline.dag`'s bootstrap-upgrade
+// pattern because substrate accessors have per-target realizations;
+// upgrading once at bootstrap silently drops target selection. See
+// docs/design-substrate-external-primitives.md § 5.
+
+// 🟡 SCAFFOLD per DB-14. Carries a per-target rendering template for
+// a substrate accessor. `carrier` is a template string with positional
+// `{p0}`, `{p1}`, … placeholders matching the accessor's input order;
+// the emitter substitutes per call-site. Dissolves when Lane 1e
+// collapses the three emitters into a single spec-driven walker —
+// the carrier field moves into the per-target spec, but the
+// emission-time index-lookup dispatch stays.
+type SubstrateAccessorRealization {
+  carrier: String
+}
+
+// 🟡 SCAFFOLD per DB-14. One record per (accessor × target language)
+// pair. `language` is the LanguageSpec declaration the realization is
+// defined against (`rust_language`, `go_language`, `python_language`);
+// each emitter filters for bindings where `language == <its own
+// language spec>`. Shape mirrors the `language: DeclarationRef` edge
+// used by every other shared realization (TypeRealization,
+// OperatorRealization, …) so adding a new target = one more data
+// record, zero compiler changes. Review round 1b.3 root cause: prior
+// shape `{ accessor, realization }` had no target selector, so
+// multiple target bindings would silently overwrite by iteration
+// order. Dissolves with the same Lane 1e trigger as
+// SubstrateAccessorRealization.
+type SubstrateAccessorBinding {
+  accessor: DeclarationRef
+  realization: DeclarationRef
+  language: DeclarationRef
+}
+
+fn port(d: Dag, id: PortId) -> DagPort? {
+  host port
+}
+
+fn node(d: Dag, id: NodeId) -> Behavior? {
+  host node
+}
+
+fn resolve_producer(d: Dag, port_id: PortId) -> Behavior? {
+  host resolve_producer
 }

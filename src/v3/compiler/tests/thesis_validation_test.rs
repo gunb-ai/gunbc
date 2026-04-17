@@ -8,7 +8,9 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Dag, PortState, TransformTarget};
-use v3_compiler::lens_cost::{cost_of, CostLookup};
+use v3_compiler::lens_cost::cost_of;
+
+mod common;
 use v3_compiler::types::TypeShape;
 use v3_compiler::{CompileError, Diagnostic};
 
@@ -42,14 +44,7 @@ fn bind_named<'a>(dag: &'a Dag, name: &str) -> &'a v3_compiler::dag::BindNode {
 
 fn bind_cost(dag: &Dag, name: &str) -> usize {
     let port = bind_named(dag, name).value;
-    match cost_of(dag, &port) {
-        CostLookup::FoundCost { _0: cost } => {
-            usize::try_from(cost).expect("complexity lens emits non-negative cost")
-        }
-        CostLookup::MissingCost => {
-            panic!("cost lens returned MissingCost for bind `{name}` (malformed fixture)")
-        }
-    }
+    common::require_fixture_cost_usize(cost_of(dag, &port), &format!("bind `{name}`"))
 }
 
 #[test]
