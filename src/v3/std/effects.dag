@@ -1,0 +1,412 @@
+// std.effects — effect algebra for operation composition.
+//
+// **Status: bootstrap-staged std file.** The declarations in this
+// file are loaded by `Dag::new()` from `src/v3/std/`. The function
+// signatures are authoritative and available to downstream code
+// today; function bodies are v3-compatible minimal encodings of the
+// v2 authority at `dsl/std/effects.dag` — the semantics match, the
+// surface form is reshaped to use only v3 grammar forms
+// (`if ... then ... else ...`, single-binding match arms, explicit
+// variant enumeration). When v3 grows `&&` / `||` / `_` wildcard /
+// `if` block form, bodies can reflatten toward the v2 shape without
+// signature churn.
+//
+// **Bootstrap staging.** Lives in `src/v3/std/` not `dsl/std/` for
+// the same reason `src/v3/std/list.dag` does: v2's CI pipeline
+// scans `dsl/` recursively and cannot parse v3's grammar. Canonical
+// logical home is `dsl/std/effects.dag` once v2 retires. This port
+// is the v3 structural carry-over of the v2 authority at
+// `dsl/std/effects.dag`; keep the two in sync during the bootstrap
+// window. See `THESIS.md` §"Two groundings" bootstrap note.
+//
+// **Scope (Lane 2 Stage 2a).** Structural carry-over only:
+//   - `EffectShape`, `KeySource`, `IdempotencyEvidence`
+//   - `ComposedEffect`, `OperationEffect`, `DerivedOpEffect`
+//   - `is_idempotent_effect`, `compose_effects`
+//   - `derive_effect_shape(method, path)` — HTTP method + path → EffectShape
+//   - `generate_idempotency_obligations`, `check_modifier_vs_derivation`
+// v2-specific imports, parser quirks, and Rust bridge code do NOT
+// come over. Pure `.dag` declarations.
+//
+// DESIGN PRINCIPLE:
+//   Idempotency is not a flag. It is a DERIVED PROPERTY of the
+//   effect's algebraic structure. An operation whose effect forms
+//   a lattice meet on the target state is idempotent by construction.
+//   The compiler doesn't ask "did you mark this idempotent?" — it
+//   checks "does this effect inhabit a lattice?"
+//
+// EXTERNAL AUTHORITY:
+//   - Lattice theory: Birkhoff (1940). Lattice = set with meet ∧
+//     and join ∨, both idempotent, commutative, associative, with
+//     absorption. `meet(a, a) = a` is the idempotency law.
+//   - Effect algebras: Foulis, Bennett (1994). Compositional
+//     effects with partial combination.
+//   - Idempotent semirings: dataflow analysis, routing algebras,
+//     tropical geometry.
+//
+// RELATIONSHIP TO std/algebra.dag:
+//   `Lattice<T>` is declared in `algebra.dag`. This file applies
+//   the lattice structure to operation effects — the "T" is the
+//   state space that the operation modifies.
+//
+// CONSUMERS:
+//   - Lane 2 Stage 2b idempotency lens — walks workflow, composes
+//     effects, emits diagnostic on chain break.
+//   - Lane 2 Stage 2c test generation — emits `f(f(x)) == f(x)`
+//     tests for idempotent ops.
+//   - Lane 2 Stage 2d symbolic cost — composition chain lengths
+//     inform asymptotic bounds on workflows.
+
+module std.effects
+
+import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
+
+// ── Path-template carriers ──────────────────────────────────────
+//
+// These are inlined from the v2 `std/http_path.dag` authority
+// because the v3 staged-file set does not yet include
+// `http_path.dag`. Structural-identical to the v2 declarations so
+// that a future port of `http_path.dag` can replace these inline
+// definitions without reshaping `effects.dag`.
+//
+// Carriers only: the parsing functions (`parse_path_template`,
+// `has_path_params`, `last_path_param`) live in `std.http_path`
+// and are referenced only through their symbolic names below.
+
+type UrlPathToken
+  = LiteralToken { text: String }
+  | ParamToken   { name: String }
+
+type PathTemplate {
+  tokens: List<UrlPathToken>
+}
+
+// ── Effect shapes ───────────────────────────────────────────────
+//
+// The fundamental classification of an operation's effect. Each
+// shape corresponds to an algebraic structure on the state space:
+//
+//   ReadEffect:      identity function on state (trivially idempotent)
+//   UpsertEffect:    lattice meet on Map<K, V> — sets key to value
+//                    meet(state, {k: v}) applied twice = applied once
+//   DeleteEffect:    lattice meet with bottom on key — removes key
+//                    meet(state, {k: ⊥}) applied twice = applied once
+//   CreateEffect:    monoid append — adds new entry without key guard
+//                    NOT idempotent (creates duplicates)
+//   AppendEffect:    monoid append on ordered collection
+//                    NOT idempotent (appends duplicates)
+//
+// The state model determines the algebra:
+//   Map<K, V> with upsert/delete → BoundedLattice (idempotent)
+//   Set<T> with insert/remove    → BoundedLattice (idempotent)
+//   List<T> with append          → FreeMonoid (NOT idempotent)
+
+type EffectShape
+  = ReadEffect
+  | UpsertEffect { key_source: KeySource }
+  | DeleteEffect { key_source: KeySource }
+  | CreateEffect
+  | AppendEffect
+
+// Where the idempotency key comes from. The key is what makes
+// upsert/delete convergent: operating on the same key with the
+// same value produces the same state regardless of how many times
+// you apply it.
+//
+//   PathParam:     key extracted from URL/path template ({id}, {name})
+//   InputField:    key is a declared input field of the operation
+//   CompositeKey:  key is a tuple of multiple fields
+
+type KeySource
+  = PathParam { param: String }
+  | InputField { field: String }
+  | CompositeKey { fields: List<String> }
+
+// ── Effect evidence ─────────────────────────────────────────────
+//
+// Per-operation evidence of idempotency. Analogous to
+// `DescentEvidence` in termination proofs:
+//   termination: "this argument is structurally smaller"
+//   idempotency: "this effect forms a lattice on the target state"
+
+type IdempotencyEvidence
+  = LatticeEffect { shape: EffectShape }
+  | IdentityEffect
+  | NonIdempotent { shape: EffectShape, reason: String }
+
+// Whether an effect is idempotent — derived from its shape.
+fn is_idempotent_effect(shape: EffectShape) -> Bool {
+  match shape {
+    ReadEffect => true
+    UpsertEffect => true
+    DeleteEffect => true
+    CreateEffect => false
+    AppendEffect => false
+  }
+}
+
+// ── Effect composition ──────────────────────────────────────────
+//
+// A workflow is idempotent iff all its constituent effects are
+// idempotent. This is because lattice meets compose:
+//   meet_a ∘ meet_b applied twice = meet_a ∘ meet_b applied once
+//   (each individual meet is idempotent, and the composition of
+//   idempotent functions on orthogonal keys is idempotent)
+//
+// Non-idempotent effects poison the composition:
+//   meet_a ∘ append_b applied twice ≠ applied once
+//   (the append duplicates on the second application)
+
+type ComposedEffect {
+  operations: List<OperationEffect>
+  idempotent: Bool
+  breaking_operation: String?
+}
+
+// Per-operation effect entry in a workflow.
+type OperationEffect {
+  operation_name: String
+  shape: EffectShape
+  evidence: IdempotencyEvidence
+}
+
+// True if this operation's evidence records non-idempotency.
+// Extracted as a helper so `compose_effects` stays a clean pipe.
+fn operation_is_breaking(op: OperationEffect) -> Bool {
+  match op.evidence {
+    LatticeEffect => false
+    IdentityEffect => false
+    NonIdempotent => true
+  }
+}
+
+// Compose a list of operation effects into a workflow-level verdict.
+fn compose_effects(effects: List<OperationEffect>) -> ComposedEffect {
+  let breakers = effects |> filter(op => operation_is_breaking(op: op))
+  let breaker_first = breakers |> first
+  let breaker_name = match breaker_first {
+    Some(op) => Some(op.operation_name)
+    None => None
+  }
+  let count_breakers = breakers |> count
+  ComposedEffect {
+    operations: effects,
+    idempotent: count_breakers == 0,
+    breaking_operation: breaker_name
+  }
+}
+
+// ── Effect derivation from transport facts ──────────────────────
+//
+// The compiler derives `EffectShape` from facts it already has on
+// the service operation:
+//
+// | HTTP method | Key in path? | Derived shape           | Idempotent? |
+// |-------------|--------------|-------------------------|-------------|
+// | GET         | —            | ReadEffect              | Yes         |
+// | PUT         | Yes ({id})   | UpsertEffect(PathParam) | Yes         |
+// | PUT         | No           | CreateEffect (fail-closed; no key)      | No          |
+// | DELETE      | Yes ({id})   | DeleteEffect(PathParam) | Yes         |
+// | POST        | —            | CreateEffect (always)   | No          |
+// | PATCH       | Yes ({id})   | UpsertEffect(PathParam) | Yes         |
+//
+// POST always derives `CreateEffect` — the table cannot distinguish
+// parent-scoped paths (POST /projects/{id}/secrets creates a CHILD)
+// from resource-identity paths without a structural subject-key
+// witness. This is conservative: declared `idempotent` modifiers on
+// POST ops surface as `DerivationUnknown`, not as false proofs.
+//
+// PUT/PATCH/DELETE require a proven path key. Without one, the
+// derivation returns `CreateEffect` (non-idempotent) rather than
+// fabricating an empty InputField key.
+
+fn parse_http_method(raw: String) -> HttpMethod? {
+  if raw == "GET" then Some(GET)
+  else if raw == "PUT" then Some(PUT)
+  else if raw == "POST" then Some(POST)
+  else if raw == "DELETE" then Some(DELETE)
+  else if raw == "PATCH" then Some(PATCH)
+  else if raw == "HEAD" then Some(HEAD)
+  else if raw == "OPTIONS" then Some(OPTIONS)
+  else None
+}
+
+type DerivedOpEffect {
+  operation_name: String
+  method: HttpMethod
+  path_template: PathTemplate
+  shape: EffectShape
+}
+
+// Given a last-param lookup result, build the Upsert variant when
+// the key is present; fall back to CreateEffect when the path has
+// no parameter. Factored out so `derive_effect_shape` can share one
+// key-resolution strategy across PUT and PATCH.
+fn upsert_or_create(last_param: String?) -> EffectShape {
+  match last_param {
+    Some(p) => UpsertEffect { key_source: PathParam { param: p } }
+    None => CreateEffect
+  }
+}
+
+fn delete_or_create(last_param: String?) -> EffectShape {
+  match last_param {
+    Some(p) => DeleteEffect { key_source: PathParam { param: p } }
+    None => CreateEffect
+  }
+}
+
+fn derive_effect_shape(
+  method: HttpMethod,
+  path: PathTemplate
+) -> EffectShape {
+  match method {
+    GET     => ReadEffect
+    HEAD    => ReadEffect
+    OPTIONS => ReadEffect
+    POST    => CreateEffect
+    DELETE  => delete_or_create(last_param: last_path_param(template: path))
+    PUT     => upsert_or_create(last_param: last_path_param(template: path))
+    PATCH   => upsert_or_create(last_param: last_path_param(template: path))
+  }
+}
+
+fn derive_op_effect(
+  operation_name: String,
+  method_str: String,
+  path_str: String
+) -> DerivedOpEffect? {
+  match parse_http_method(raw: method_str) {
+    None => None
+    Some(method) =>
+      Some(DerivedOpEffect {
+        operation_name: operation_name,
+        method: method,
+        path_template: parse_path_template(raw: path_str),
+        shape: derive_effect_shape(
+          method: method,
+          path: parse_path_template(raw: path_str)
+        )
+      })
+  }
+}
+
+// ── Modifier falsification ──────────────────────────────────────
+//
+// The derivation replaces the manual `idempotent: Bool` on
+// `OperationBehavior`. `check_modifier_vs_derivation` is the
+// cross-check that surfaces divergence: if a user wrote
+// `idempotent` but the derived shape disagrees, the compiler
+// reports `Disagrees` or `DerivationUnknown` rather than silently
+// trusting one source over the other.
+
+type ModifierAgreement
+  = Agrees
+  | Disagrees          { reason: String }
+  | DerivationUnknown  { reason: String }
+
+type ModifierCheck {
+  operation_name: String
+  declared_idempotent: Bool
+  declared_readonly: Bool
+  derived_shape: EffectShape
+  agreement: ModifierAgreement
+}
+
+// Disagreement classifier when the user declared idempotent but
+// the derivation says otherwise. POST-with-no-path-key is the
+// fail-closed-but-maybe-idempotent case (DerivationUnknown); every
+// other shape is a hard Disagrees.
+fn classify_idempotent_disagreement(shape: EffectShape) -> ModifierAgreement {
+  match shape {
+    CreateEffect =>
+      DerivationUnknown {
+        reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared"
+      }
+    ReadEffect =>
+      Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
+    UpsertEffect =>
+      Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
+    DeleteEffect =>
+      Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
+    AppendEffect =>
+      Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
+  }
+}
+
+// Readonly-declaration classifier: read-shaped methods agree;
+// anything else is a hard disagreement.
+fn classify_readonly_agreement(method: HttpMethod) -> ModifierAgreement {
+  match method {
+    GET     => Agrees
+    HEAD    => Agrees
+    OPTIONS => Agrees
+    POST    => Disagrees { reason: "readonly declared but method is not GET/HEAD/OPTIONS" }
+    PUT     => Disagrees { reason: "readonly declared but method is not GET/HEAD/OPTIONS" }
+    PATCH   => Disagrees { reason: "readonly declared but method is not GET/HEAD/OPTIONS" }
+    DELETE  => Disagrees { reason: "readonly declared but method is not GET/HEAD/OPTIONS" }
+  }
+}
+
+fn check_modifier_vs_derivation(
+  op: DerivedOpEffect,
+  declared_idempotent: Bool,
+  declared_readonly: Bool
+) -> ModifierCheck {
+  let derived_idempotent = is_idempotent_effect(shape: op.shape)
+  let agreement = if declared_idempotent then
+    if derived_idempotent then
+      Agrees
+    else
+      classify_idempotent_disagreement(shape: op.shape)
+  else
+    if declared_readonly then
+      classify_readonly_agreement(method: op.method)
+    else
+      Agrees
+  ModifierCheck {
+    operation_name: op.operation_name,
+    declared_idempotent: declared_idempotent,
+    declared_readonly: declared_readonly,
+    derived_shape: op.shape,
+    agreement: agreement
+  }
+}
+
+// ── Test obligation generation ──────────────────────────────────
+//
+// For each idempotent op, the compiler emits a test asserting
+// `f(f(x)) == f(x)`. The obligations are data; Lane 2 Stage 2c
+// consumes this list and lowers each obligation into an emitted
+// test body.
+
+type IdempotencyTestObligation {
+  operation_name: String
+  effect_shape: EffectShape
+  claim: String
+  witness_required: Bool
+}
+
+fn generate_idempotency_obligations(
+  ops: List<DerivedOpEffect>
+) -> List<IdempotencyTestObligation> {
+  ops |> filter(o => is_idempotent_effect(shape: o.shape))
+      |> map(o => IdempotencyTestObligation {
+           operation_name: o.operation_name,
+           effect_shape: o.shape,
+           claim: "f(f(x)) == f(x)",
+           witness_required: true
+         })
+}
+
+// ── Workflow-level effect concerns ──────────────────────────────
+//
+// Surfaces when a workflow contains a `CreateEffect` operation at
+// a position that breaks workflow-level idempotency. Consumed by
+// Lane 2 Stage 2b's diagnostic construction.
+
+type WorkflowEffectConcern {
+  workflow_name: String
+  create_op: String
+  reason: String
+}
