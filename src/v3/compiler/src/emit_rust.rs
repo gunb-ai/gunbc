@@ -859,7 +859,13 @@ impl RealizationIndexes {
 fn build_substrate_accessor_index(
     dag: &Dag,
     target_language_id: DeclarationId,
-) -> Result<(HashMap<DeclarationId, DeclarationId>, HashSet<DeclarationId>), EmitError> {
+) -> Result<
+    (
+        HashMap<DeclarationId, DeclarationId>,
+        HashSet<DeclarationId>,
+    ),
+    EmitError,
+> {
     let mut index: HashMap<DeclarationId, DeclarationId> = HashMap::new();
     let mut universe: HashSet<DeclarationId> = HashSet::new();
     let Some(binding_meta_id) = dag
@@ -3494,7 +3500,9 @@ impl<'a> Ctx<'a> {
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let placeholders: Vec<String> = (0..rendered_inputs.len()).map(|i| format!("p{i}")).collect();
+        let placeholders: Vec<String> = (0..rendered_inputs.len())
+            .map(|i| format!("p{i}"))
+            .collect();
         let bindings: Vec<(&str, &str)> = placeholders
             .iter()
             .zip(rendered_inputs.iter())

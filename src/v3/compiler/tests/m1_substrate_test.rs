@@ -2796,11 +2796,27 @@ fn substrate_accessors_exist_in_bootstrap_dag() {
     // `language: <active LanguageSpec>`). See DB-14 and
     // `emit_rust::build_substrate_accessor_index`.
     use v3_compiler::dag::{ArrowBody, TypeConnective};
-    match (&port_decl.connective, &node_decl.connective, &resolve_decl.connective) {
+    match (
+        &port_decl.connective,
+        &node_decl.connective,
+        &resolve_decl.connective,
+    ) {
         (
-            TypeConnective::Arrow { inputs: pi, body: pb, .. },
-            TypeConnective::Arrow { inputs: ni, body: nb, .. },
-            TypeConnective::Arrow { inputs: ri, body: rb, .. },
+            TypeConnective::Arrow {
+                inputs: pi,
+                body: pb,
+                ..
+            },
+            TypeConnective::Arrow {
+                inputs: ni,
+                body: nb,
+                ..
+            },
+            TypeConnective::Arrow {
+                inputs: ri,
+                body: rb,
+                ..
+            },
         ) => {
             assert_eq!(pi.len(), 2, "port arity");
             assert_eq!(ni.len(), 2, "node arity");
@@ -2981,7 +2997,10 @@ fn substrate_accessor_binding_carries_language_selector() {
                     decl.name
                 );
             }
-            other => panic!("binding `{:?}` language field is not a Reference: {other:?}", decl.name),
+            other => panic!(
+                "binding `{:?}` language field is not a Reference: {other:?}",
+                decl.name
+            ),
         }
         checked += 1;
     }

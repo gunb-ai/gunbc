@@ -229,8 +229,6 @@ pub fn require_fixture_cost_usize(lookup: CostLookup, context: &str) -> usize {
         // Unreachable after the i64 helper's sign assert, but keeps
         // the conversion-failure path explicit rather than silently
         // wrapping — single-authority claim holds if nobody reads it.
-        panic!(
-            "complexity lens emitted cost that does not fit in usize for {context}: {cost}"
-        )
+        panic!("complexity lens emitted cost that does not fit in usize for {context}: {cost}")
     })
 }
