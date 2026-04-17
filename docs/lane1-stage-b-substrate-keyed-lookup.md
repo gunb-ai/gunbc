@@ -145,7 +145,7 @@ Add the grep check above to `.github/workflows/ci.yml` as part of the v3 job. Ze
 
 Stop work and surface if:
 
-1. **Substrate type emission missing a primitive** — e.g., `Map<K, V>` isn't emitted to Rust HashMap cleanly. If the .dag Map → Rust HashMap mapping has gaps, surface before hand-writing a workaround.
+1. **Substrate type emission missing a primitive** — e.g., the reflected map type isn't emitted to Rust HashMap cleanly. If that map-to-HashMap mapping has gaps, surface before hand-writing a workaround. The specific forbidden form (new map declaration in v3 std parallel to `dsl/std/types.dag`) is banked in `docs/post-l15-phase-plan.md § Banked dissolutions`; check DB-5 for the intended binding.
 
 2. **A lens genuinely needs a lookup primitive not in substrate.dag** — beyond `port(d, id)`, `node(d, id)`, `resolve_producer(d, id)` (the three query functions locked in [DB-5](./design-substrate-keyed-lookup-api.md)). Don't invent locally; add to substrate with justification.
 

@@ -27,16 +27,23 @@ if [ ! -f "$MASTER_PLAN" ]; then
 fi
 
 # Parse the authoritative FORBIDDEN array from the master plan. awk
-# isolates the lines between `FORBIDDEN=(` and `)`; the shell regex
-# pulls each quoted string out. The master plan's block is the single
-# source of truth — see the plan's § Banked dissolutions for rationale.
+# isolates the lines between `FORBIDDEN=(` and `)`; grep extracts each
+# quoted string, sed strips the surrounding quotes. The master plan's
+# block is the single source of truth — see the plan's § Banked
+# dissolutions for rationale.
+#
+# Implementation note: using grep -oE + sed instead of a pure-bash
+# regex loop because entries like `"#[deprecated]"` contain characters
+# (`#`, `[`, `]`) that bash's `${var/pattern/}` treats as glob
+# metacharacters, leading to infinite loops in the naive version.
 FORBIDDEN=()
-while IFS= read -r line; do
-  while [[ $line =~ \"([^\"]+)\" ]]; do
-    FORBIDDEN+=("${BASH_REMATCH[1]}")
-    line="${line/${BASH_REMATCH[0]}/}"
-  done
-done < <(awk '/^FORBIDDEN=\($/,/^\)$/' "$MASTER_PLAN")
+while IFS= read -r entry; do
+  [ -n "$entry" ] && FORBIDDEN+=("$entry")
+done < <(
+  awk '/^FORBIDDEN=\($/,/^\)$/' "$MASTER_PLAN" \
+    | grep -oE '"[^"]+"' \
+    | sed 's/^"//; s/"$//'
+)
 
 if [ "${#FORBIDDEN[@]}" -eq 0 ]; then
   echo "banked-dissolutions: could not extract FORBIDDEN array from $MASTER_PLAN" >&2
