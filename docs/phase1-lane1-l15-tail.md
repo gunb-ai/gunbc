@@ -126,24 +126,27 @@ transition. This item is listed so implementers don't propagate more
 `#[allow]` attributes during the Consumed work above.
 
 ### 7. Wire the banked-dissolutions ratchet
-Implement the forbidden-string CI gate from
+Implement the forbidden-string CI gate defined in
 [post-l15-phase-plan.md § Banked dissolutions](./post-l15-phase-plan.md#banked-dissolutions--rejected-shapes-ratchet).
+The master plan is the single authority for the forbidden-string list;
+this stage does NOT restate it (doing so would make this doc fail its
+own gate).
 
-Scan scope: `docs/lane*.md` and `docs/phase*.md`. Exempt: `docs/design-*.md`
-and `docs/post-l15-phase-plan.md` (the ratchet authority itself).
-
-Forbidden strings (initial set, from DB-1/4/5/6/9 rejected alternatives):
-`port_by_id`, `node_by_id`, `RestTransport`, `ShellTransport`,
-`GrpcTransport`, `TransportKind`, `target_language: TargetLanguageId`,
-`StructFieldRule`, `AllowAttributeOnStructDecl`, `MutualLoop`.
+**Scan scope:** `docs/lane*.md` and `docs/phase*.md`.
+**Exempt:** `docs/design-*.md` (where rejections are documented) and
+`docs/post-l15-phase-plan.md` (where the ratchet table lives).
 
 **Acceptance:** CI job runs the grep on every PR. Any match fails the
 build with a message pointing at the ratchet table and DB-{n} reference.
-New DB docs that reject a shape append the rejected name to the
-`FORBIDDEN` list as part of their acceptance.
+When a future DB doc rejects a shape, the rejected name is appended to
+the master plan's table as part of that DB's acceptance — the gate
+picks up the new entry automatically on next run.
 
 **Affects:** `.github/workflows/ci.yml` (new job), plus a small script
-under `scripts/` (or inline in the workflow) that enumerates the list.
+under `scripts/` that reads the forbidden list (either from the master
+plan's table, or from a companion file like `scripts/ratchet-forbidden.txt`
+that the master plan points at). Implementer chooses the encoding; the
+requirement is that the master plan stays the canonical source.
 
 ---
 

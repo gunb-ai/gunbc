@@ -80,15 +80,18 @@ fn resolve_bind_chain(d: Dag, node_id: NodeId) -> Behavior? {
 
 **Note on Option vs panic**: Rust-side accessors panic on unknown ids (treats as invariant violation — malformed substrate). `.dag`-side returns `Option<T>`. Consumers match on None; panic occurs only when an upstream caller bypassed the `.dag` function and called Rust directly with an id that isn't in the substrate.
 
-### Optional lens-local Map usage
+### Lens-local Map usage (deferred; not in Stage 1b scope)
 
 `Map<K, V>` remains a useful **lens-local** abstraction — not for the `Dag` schema, but for accumulators that benefit from keyed state.
 
-**Single authority:** `Map<K, V>` is already declared in `dsl/std/types.dag` as `Map<K, V> = PartialFunction<K, V>`, grounded in the `PartialFunction` algebra from `dsl/std/algebra.dag` (lookup/insert/delete/merge primitives). v3 inherits that definition — it does **not** create a new `Map` ontology.
+**Current state of v3 std (verified on `origin/main` at PR #491 review time):**
+- `src/v3/std/` carries only `list.dag`, `substrate.dag`, `verification.dag`. **No `Map`, no `PartialFunction`, no `types.dag`, no `algebra.dag`.**
+- The three lenses Stage 1b migrates (`complexity.dag`, `provenance.dag`, `unused_parameters.dag`) import only `std.list` and `std.substrate`. **None of them use `Map`.**
+- `src/v3/DOWNSTREAM_REQUIREMENTS.md` already tracks `Map<K, V>` / `PartialFunction<K, V>` as a known-needed bootstrap extension (cross-listed under the algebra-receivers gap).
 
-The v3 bootstrap surface is a straight port: `src/v3/std/types.dag` (or wherever v3's authority for std/types lands) carries the existing `Map<K, V> = PartialFunction<K, V>` binding plus the `PartialFunction` algebra it inhabits. No new type declaration, no `src/v3/std/map.dag` as a parallel authority, no new `lookup`/`insert`/... primitives — the algebra already names them.
+**Consequence for Stage 1b scope:** Stage 1b ships the three query functions (`port`, `node`, `resolve_producer`) and migrates the three lenses. It does **not** need to port Map. The "optional lens-local Map" pattern in this doc is a forward reference — it shows what downstream lenses *could* do once Map lands, not what Stage 1b owes.
 
-If v3's current std bootstrap doesn't yet include the `Map` / `PartialFunction` pairing from `dsl/std/`, Lane 1 Stage 1b's work item is **"port the existing Map binding,"** not "declare Map."
+**Single authority when Map does land.** `dsl/std/types.dag` already declares `Map<K, V> = PartialFunction<K, V>`, grounded in the `PartialFunction` algebra from `dsl/std/algebra.dag` (lookup/insert/delete/merge primitives). Whoever lands Map in v3 **ports that binding** from `dsl/std/`; they do not create a new `Map` ontology, no `src/v3/std/map.dag` as a parallel authority. Most likely triggering consumer is Lane 2 (Stages 2b–2e, the new compile-time-proof lenses) — those lenses may want keyed accumulators. Lane 2 owns the port if it needs it; Stage 1b doesn't pre-bank the work.
 
 ### Migration pattern for existing lenses
 
@@ -234,7 +237,7 @@ Zero matches required. New accessors go in substrate.dag.
 - **Lane 2 all stages** ([lane2-compile-time-proofs.md](./lane2-compile-time-proofs.md)) — new lenses consume these functions exclusively
 - **Lane 4 Stages 4b/4c** ([lane4-completion.md](./lane4-completion.md)) — side effects / space bounds lenses same pattern
 - **Update `src/v3/std/substrate.dag`** — add the three query functions; NO new fields
-- **Port existing `Map = PartialFunction<K, V>` binding** from `dsl/std/types.dag` into v3's std bootstrap (if not already carried). No new `Map` declaration, no new primitives — `PartialFunction`'s `lookup`/`insert`/`delete`/`merge` is the authority.
+- **Deferred (not in Stage 1b):** porting `Map = PartialFunction<K, V>` from `dsl/std/types.dag` into v3's std bootstrap. Verified unused by Stage 1b's three-lens migration; triggers in whichever Lane 2 stage first needs keyed accumulators. When ported, it's a port of the existing binding — no new `Map` declaration, no new primitives.
 - **Update `src/v3/lenses/complexity.dag`, `provenance.dag`, `unused_parameters.dag`** — migrate
 - **Update `INVARIANTS.md`** — add L-7
 - **Meta-review correction** — this doc's earlier revision added parallel Map fields; corrected per meta-review on PR #491 (2026-04-17). Follow-up correction (codex review, same PR): earlier revision proposed a new `src/v3/std/map.dag` declaration, which would have forked the existing `Map = PartialFunction<K, V>` authority. Reverted to: port the existing binding.
@@ -243,7 +246,7 @@ Zero matches required. New accessors go in substrate.dag.
 
 ## Acceptance (Lane 1 Stage 1b owns)
 
-- [ ] v3's std surface carries the existing `Map<K, V> = PartialFunction<K, V>` binding (from `dsl/std/types.dag`) — **ported, not re-declared**. No new `map.dag` file; lookup/insert primitives come from the `PartialFunction` algebra.
+- [ ] No `Map` port required by Stage 1b — verified by the three-lens migration's import set (`std.list`, `std.substrate` only). The port is deferred to whichever Lane 2 stage first needs keyed accumulators; when it happens, it's a port of the existing `Map<K, V> = PartialFunction<K, V>` binding from `dsl/std/types.dag`, not a new declaration.
 - [ ] `Dag` type in `substrate.dag` is UNCHANGED (still `declarations: List<...>`, `nodes: List<Behavior>`, `ports: List<DagPort>`)
 - [ ] `port(d, id)`, `node(d, id)`, `resolve_producer(d, id)` functions declared in `substrate.dag` as pure query functions over the authoritative lists
 - [ ] Rust side: `dag.port_opt(id) -> Option<&DagPort>` (or equivalent) is what the `.dag` function lowers to; no new substrate fields added to Rust's `Dag` struct
