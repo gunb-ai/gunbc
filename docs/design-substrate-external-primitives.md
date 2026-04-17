@@ -139,52 +139,79 @@ data rust_resolve_producer_accessor: SubstrateAccessorRealization = {
 
 Similar `go_*_accessor` in `go.dag` and `python_*_accessor` in `python.dag` with target-native syntax.
 
-### 4. Binding declarations (parallel to pipeline.dag's `PipelineStageBinding`)
+### 4. Substrate accessor marker
+
+Accessor declarations carry a `meta_tag` marker so emission can distinguish them from ordinary user-defined fns without name-matching or module-location hacks.
 
 ```dag
 // src/v3/std/substrate.dag
-type SubstrateAccessorBinding {
-  accessor: DeclarationRef
-  realization: DeclarationRef
-}
+data substrate_accessor: MetaTag
 
-data port_binding_rust: SubstrateAccessorBinding = {
-  accessor: port
-  realization: rust_port_accessor
-}
-// ... etc. for each (accessor × target) pair
+// And each accessor's declaration carries meta_tag: Some(substrate_accessor_id).
+// (Achieved via the existing meta_tag edge on Declaration.)
 ```
 
-One binding per (accessor × target). 3 accessors × 3 current targets = 9 binding declarations, mechanical.
+### 5. Per-target realizations (decentralized, no central roster)
 
-### 5. Bootstrap upgrade
+**Correction from an earlier revision.** An earlier draft of this doc proposed per-`(accessor × target)` `SubstrateAccessorBinding` declarations in `substrate.dag` plus a bootstrap pass that rewrote each accessor's Arrow body to `ExternalRealization(binding)`. Reviewers on PR #497 correctly flagged that as wrong on two axes:
 
-Extend `bootstrap.rs` with a new `upgrade_substrate_accessor_bodies` pass that mirrors `upgrade_pipeline_stage_bodies`:
+- **Bootstrap is target-agnostic.** `compile_to_dag(source, file)` has no target input; `bootstrap.rs` loads ALL v3 specs into one Dag. Walking `SubstrateAccessorBinding`s and rewriting Arrow bodies would visit every (accessor × target) pair and "last binding wins" — at least two emitters would read the wrong carrier.
+- **Thesis violation.** The "active target" assumption bakes one target's realization into substrate-visible state. Violates "adding a new target = one spec file": substrate gains an entry per target, not just the target's own spec.
 
-- Walk `SubstrateAccessorBinding` instances in the loaded Dag.
-- For each binding, find the accessor declaration and upgrade its Arrow body to `ExternalRealization(binding.realization)`.
+**The correct shape:** realizations are declared by each target's spec file (decentralized), emission dispatches on the current target at render time (not at bootstrap), and the accessor declaration itself stays target-agnostic.
 
-Fail-closed: an accessor declaration without a binding for the active target is a `Diagnostic::ResolveError`. An accessor whose Arrow body isn't upgradable (already has a non-stub body, etc.) is a diagnostic too.
+```dag
+// src/v3/spec/rust.dag
+data rust_port_realization: CallableRealization = {
+  target: port                        // DeclarationRef to substrate.dag's `port`
+  carrier: "({d}).port_opt({id}).cloned()"
+}
 
-### 6. Emission dispatch — the new code
+data rust_node_realization: CallableRealization = {
+  target: node
+  carrier: "({d}).node_opt({id}).cloned()"
+}
+
+data rust_resolve_producer_realization: CallableRealization = {
+  target: resolve_producer
+  carrier: "({d}).resolve_producer({port_id})"
+}
+```
+
+Analogous `go_*` in `go.dag` and `python_*` in `python.dag`. Each spec is self-contained: adding a new target means adding one spec file with N realizations (one per accessor it supports). No entry anywhere else grows.
+
+**No bootstrap Arrow-body rewrite.** The accessor declarations stay as ordinary Arrows in `substrate.dag` (trivial stub bodies mirroring `pipeline.dag`'s pattern so parsing + type-checking succeed). The body is never walked at emission because dispatch goes through the realization lookup below.
+
+### 6. Emission dispatch — the new code (target dispatch at render time)
 
 When an emitter renders a `Transform` node:
 
 ```
 if Transform.target is TransformTarget::Callable(decl_id):
     decl = dag.declaration(decl_id)
-    if decl.connective is TypeConnective::Arrow { body: ExternalRealization(realization_id), .. }:
-        realization = dag.declaration(*realization_id)
-        carrier = read_field(realization, "carrier")  # String
+    if decl.meta_tag == Some(substrate_accessor_meta_id):
+        // Look up the realization in the active target's spec.
+        realization = find_realization_in_spec(active_target_spec, decl_id)
+        if realization is None:
+            emit Diagnostic::ResolveError {
+                name: "target `{active_target}` does not realize substrate accessor `{decl.name}`",
+                span: Transform.span,
+            }
+            return unresolved
+        carrier = read_field(realization, "carrier")  # String template
         return render_template(carrier, Transform.inputs, param_names)
     else:
         # existing user-defined-fn rendering path
         ...
 ```
 
-`render_template` is string substitution with `{arg_name}` → rendered input expression. This is similar to existing `rust_collection_ops` template substitution; the implementer should confirm the existing template mechanism applies here OR implement a minimal version aligned with it.
+Where `find_realization_in_spec(spec, accessor_decl_id)` walks the spec's declared `CallableRealization` data items and finds the one whose `target` field matches `accessor_decl_id`. This is the same mechanism operator realizations already use (e.g., `rust_int_add` in `rust.dag` points at the `add` arrow on the `IntSemiring` algebra field).
 
-Wired in all three emit files today. When Lane 1e collapses the three emitters into a single walker + per-target specs, this dispatch becomes one site instead of three — the carrier field moves from per-emit-file dispatch to a spec-declared template, but the substrate dispatch (`ExternalRealization` → realization lookup) is unchanged.
+**Fail-closed at emission.** If a user lens calls a substrate accessor that the active target doesn't realize, emission produces a diagnostic naming the (target, accessor) pair — not a silent skip.
+
+**`render_template`** is string substitution with `{arg_name}` → rendered input expression, aligned with existing `rust_collection_ops` template handling. Implementer should confirm the existing template mechanism applies here OR implement a minimal version aligned with it.
+
+Wired in all three emit files today. When Lane 1e collapses the emitters into a single walker + per-target specs, this dispatch becomes one site instead of three — the per-target lookup moves from per-emit-file dispatch to a spec-declared template lookup, but the structural dispatch (meta_tag match → realization lookup) is unchanged.
 
 ---
 
@@ -204,29 +231,35 @@ Wired in all three emit files today. When Lane 1e collapses the three emitters i
 
 - **Lazy body lowering** — fn bodies lower on first call-site resolution rather than at bootstrap. Architecturally clean but very broad; touches the lowering pipeline's fundamental invariants. Out of scope for DB-14; orthogonal to this case.
 
+- **Bootstrap-time Arrow-body rewrite to `ExternalRealization(binding)`** (earlier revision of this doc) — reviewers on PR #497 flagged this as wrong: bootstrap has no active target, all-specs-loaded-into-one-Dag means walking bindings would rewrite the same accessor body multiple times (last-binding-wins bug), and baking per-target realization into substrate state violates the thesis's "one new target = one spec file" rule. Replaced by: target dispatch at emission time via per-target spec files declaring `CallableRealization` records, keyed by the accessor declaration. Rejected.
+
+- **Central roster of `SubstrateAccessorBinding` declarations in `substrate.dag`** (earlier revision) — violates decentralization. Every new target's spec file should contribute realizations on its own; substrate should not enumerate targets. Replaced by: each target's own spec declares its realizations. Rejected.
+
 ---
 
 ## Open questions
 
 1. **Template syntax alignment.** `rust_collection_ops` et al. use `{arg_name}` placeholder substitution today. Does an existing template-render function handle this, or is the implementation per-consumer? If per-consumer, DB-14's emission code can use the same shape rather than invent a new one. Verify by reading the emitter's existing collection-ops template handling.
 
-2. **Single `SubstrateAccessorRealization` type, or per-accessor types?** Pipeline.dag uses one `CompilerHostRealization` type shared across all five stages. Lean; recommended. Per-accessor types would let each accessor declare its own field shape (e.g., multiple carriers for different dispatch conditions), which is unneeded today. Stick with one shared type.
+2. **Reuse `CallableRealization` or a new type?** `CallableRealization` already exists for operator realizations (e.g., `rust_int_add`). Reusing it for substrate accessors is natural; they're structurally the same ("declared fn, target-provided body"). Adding a new `SubstrateAccessorRealization` would fork authority. Prefer reuse; name the specific instances `rust_port_realization` etc. and rely on the `target` field to distinguish.
 
 3. **Does Lane 1e collapse affect the wiring?** The emission dispatch has to be wired in all three emit files today. When Lane 1e lands a single generic walker + per-target specs, the dispatch becomes one code path in the walker + three spec entries. No design change — just three → one consolidation.
 
-4. **Is the "trivial stub body" constraint checkable?** Pipeline.dag relies on discipline ("trivially type-correct stub bodies") rather than a mechanical check. An accessor declaration that sneaks in a non-trivial body would silently contribute Transforms to every user DAG. Consider adding an acceptance-gate test that asserts `dag.nodes()` growth from loading substrate.dag is bounded (e.g., zero Callable Transforms contributed by the three accessor declarations after bootstrap upgrade). Not a blocker for the initial landing but a useful ratchet.
+4. **Is the "trivial stub body" constraint checkable?** Pipeline.dag relies on discipline ("trivially type-correct stub bodies") rather than a mechanical check. An accessor declaration that sneaks in a non-trivial body would silently contribute Transforms to every user DAG. Consider adding an acceptance-gate test that asserts `dag.nodes()` growth from loading substrate.dag is bounded (e.g., zero Callable Transforms contributed by the three accessor declarations). Not a blocker for the initial landing but a useful ratchet.
+
+5. **Meta-tag vs. implicit marker.** The corrected design uses `meta_tag` on each accessor to let emission distinguish substrate accessors from user fns. Alternative: the emission dispatch tries to find a realization in the active target's spec for EVERY Callable target; if found, dispatch via realization; else fall through to user-fn rendering. That would remove the meta_tag requirement. Tradeoff: implicit "try spec first" is cheap but less self-describing; explicit meta_tag is clearer but costs one substrate-level edge per accessor. Leaning meta_tag because emission staying fail-closed ("declared marker but no realization for this target" → diagnostic) is cleaner with the marker.
 
 ---
 
 ## Acceptance (Lane 1 Stage 1b owns)
 
-- [ ] `SubstrateAccessorRealization` type declared in `src/v3/std/substrate.dag` (or companion file)
+- [ ] `substrate_accessor` meta-tag declared in `substrate.dag`; each accessor declaration carries it via `meta_tag`
 - [ ] `port`, `node`, `resolve_producer` declared as fn arrows with trivial stub bodies in `substrate.dag`
-- [ ] `SubstrateAccessorBinding` declarations for all (accessor × current target) pairs — 9 bindings for Rust/Go/Python
-- [ ] Per-target carrier declarations in `src/v3/spec/rust.dag`, `go.dag`, `python.dag`
-- [ ] Bootstrap upgrade pass extends `bootstrap.rs` to upgrade the three accessors' Arrow bodies to `ExternalRealization` — mirrors `upgrade_pipeline_stage_bodies`
-- [ ] `dag.nodes()` delta from substrate.dag load + bootstrap upgrade is bounded — no Callable Transforms from the three accessors in user DAGs
-- [ ] Emission dispatch on `ArrowBody::ExternalRealization` wired in `emit_rust.rs`, `emit_go.rs`, `emit_python.rs`
+- [ ] Per-target `CallableRealization` data items declared in `src/v3/spec/rust.dag`, `go.dag`, `python.dag` — one per (spec × accessor) pair, decentralized, no central roster
+- [ ] No bootstrap-time Arrow-body rewrite; target dispatch happens at emission
+- [ ] `dag.nodes()` delta from substrate.dag load is bounded — no Callable Transforms from the three accessors in user DAGs
+- [ ] Emission dispatch in `emit_rust.rs`, `emit_go.rs`, `emit_python.rs` checks `meta_tag == substrate_accessor`, looks up the current-target's `CallableRealization` by accessor, renders per carrier template
+- [ ] Fail-closed at emission: a target whose spec doesn't declare a realization for an accessor used by the program emits a diagnostic naming the (target, accessor) pair
 - [ ] Existing `m1_substrate_test` tests (the ones the session's first attempt broke) continue to pass
 - [ ] Three existing lenses (`complexity.dag`, `provenance.dag`, `unused_parameters.dag`) migrate to call `port(d, id)` / `node(d, id)` / `resolve_producer(d, id)`; oracle tests pass
 - [ ] Line count reduction in `src/v3/lenses/*.dag` ≥ 15% (per the relaxed threshold from DB-5's revised acceptance)
