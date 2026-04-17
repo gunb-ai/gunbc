@@ -2883,6 +2883,64 @@ let total: Int = double_alias + double_alias
 }
 
 #[test]
+fn substrate_accessor_universe_fully_covered_for_rust() {
+    // Review round 1b.4: if a substrate accessor is declared
+    // (referenced by any SubstrateAccessorBinding, across all
+    // target languages) but no binding for the active Rust target
+    // exists, emit_rust fails closed with an explicit error.
+    // Today in-tree: port / node / resolve_producer are all bound
+    // for rust_language — if that breaks, this test tells you
+    // emit_rust will refuse the affected accessor at emission time.
+    use std::collections::HashSet;
+    let dag = v3_compiler::Dag::new();
+    let binding_meta = dag
+        .declaration_by_name("SubstrateAccessorBinding")
+        .expect("SubstrateAccessorBinding type exists");
+    let rust_language = dag
+        .declaration_by_name("rust_language")
+        .expect("rust_language exists");
+    let mut universe: HashSet<v3_compiler::dag::DeclarationId> = HashSet::new();
+    let mut rust_covered: HashSet<v3_compiler::dag::DeclarationId> = HashSet::new();
+    for decl in dag.declarations() {
+        if decl.meta_tag != Some(binding_meta.id) {
+            continue;
+        }
+        let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
+            continue;
+        };
+        let mut accessor = None;
+        let mut language = None;
+        for (label, value) in fields {
+            match (label.as_str(), value) {
+                ("accessor", v3_compiler::dag::FieldValue::Reference(id)) => accessor = Some(*id),
+                ("language", v3_compiler::dag::FieldValue::Reference(id)) => language = Some(*id),
+                _ => {}
+            }
+        }
+        let (Some(accessor), Some(language)) = (accessor, language) else {
+            continue;
+        };
+        universe.insert(accessor);
+        if language == rust_language.id {
+            rust_covered.insert(accessor);
+        }
+    }
+    let missing: Vec<_> = universe.difference(&rust_covered).copied().collect();
+    assert!(
+        missing.is_empty(),
+        "substrate accessor universe not fully covered for rust_language — \
+         {} accessor(s) without a Rust binding: {:?}. emit_rust would fail \
+         closed on any program that calls them.",
+        missing.len(),
+        missing
+    );
+    assert!(
+        !universe.is_empty(),
+        "universe is empty — SubstrateAccessorBinding records missing entirely"
+    );
+}
+
+#[test]
 fn substrate_accessor_binding_carries_language_selector() {
     // Review round 1b.3 root cause: `SubstrateAccessorBinding` used
     // to be `{ accessor, realization }` with no target selector.

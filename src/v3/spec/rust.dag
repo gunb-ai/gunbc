@@ -880,15 +880,15 @@ data rust_language: LanguageSpec = {
 //
 // Each accessor's Rust implementation is a method on `Dag` declared
 // in `src/v3/compiler/src/dag.rs`. The carrier templates below are
-// substituted per call-site by the emitter's ExternalRealization
-// dispatch (`render_callable_transform` → Arrow body check).
-// Placeholders match the accessor's parameter names.
-
+// substituted per call-site by `emit_rust::render_substrate_accessor`,
+// which looks the accessor up in a per-target index built from the
+// `SubstrateAccessorBinding` records below (filtered by
+// `language == rust_language`). Go/Python land when those emitters
+// register their own bindings.
+//
 // Placeholder convention: `{pN}` is the N-th input expression at the
-// call-site. The emitter substitutes them positionally per DB-14's
-// emission dispatch. Using positional keys (rather than source-level
-// param names) keeps the carrier declaration independent of the
-// accessor fn's parameter identifiers.
+// call-site. The emitter substitutes them positionally so carriers
+// stay independent of the accessor fn's source-level param names.
 
 data rust_port_accessor: SubstrateAccessorRealization = {
   carrier: "({p0}).port_opt({p1}).cloned()"

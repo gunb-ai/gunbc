@@ -4,16 +4,22 @@
 
 **Design blocker:** DB-14 (substrate primitives backed by target-native implementations)
 **Consumer:** Lane 1 Stage 1b (substrate keyed-lookup accessors: `port`, `node`, `resolve_producer`)
-**Status:** Design ready for implementer review.
-**Origin:** Lane 1 Stage 1b escalation (2026-04-17) — the session's initial attempt declared `.dag` linear-walk bodies for the accessors and hit bootstrap pollution (recursive bodies lowered into every user program's `dag.nodes()`). The compiler already has the right mechanism for this case; this doc points at it.
+**Status:** Landed on PR #501 (commits 0c07e9a5 and follow-up). This doc reflects the shipped design after review rounds 1b.3 (target selector) and 1b.4 (fail-closed coverage check).
+**Origin:** Lane 1 Stage 1b escalation (2026-04-17) — the session's initial attempt declared `.dag` linear-walk bodies for the accessors and hit bootstrap pollution (recursive bodies lowered into every user program's `dag.nodes()`). An interim design used bootstrap's `ArrowBody::ExternalRealization` upgrade pattern from `pipeline.dag`; review 1b.3 flagged that pattern as unsafe under target variation, and the landed design moved dispatch to emission time.
 
 ---
 
 ## TL;DR
 
-The substrate already has `ArrowBody::ExternalRealization(DeclarationId)`. The compiler already type-checks, dispatches, and bootstrap-upgrades Arrows through this variant end-to-end for its own pipeline stages. The gap for user-code-callable primitives (substrate accessors, future substrate ops) is **emission dispatch only**. DB-14 codifies the pattern and specifies the emission wiring.
+**Two separate dispatch patterns for Rust-backed primitives:**
 
-**No new substrate concept. No new TransformTarget variant. No coproduct extension.**
+1. **`pipeline.dag` pattern (target-invariant primitives):** bootstrap upgrades each stage's Arrow body to `ArrowBody::ExternalRealization(realization_id)`. Correct because pipeline stages run IN the compiler and have exactly one realization per stage.
+
+2. **`substrate.dag` pattern (target-variant primitives):** Arrow bodies stay `Unparsed`. Each emitter builds a per-target `SubstrateAccessorBinding` index at emission time, filtered by `language == <its own LanguageSpec>`, and dispatches through the index. Correct because substrate accessors are CALLED FROM emitted code and need different realizations per target (Rust's `Dag::port_opt` ≠ Python's / Go's).
+
+The substrate-accessor pattern uses `ArrowBody::ExternalRealization` as a SHAPE FOR INFERENCE but never physically upgrades to it — inference treats `Unparsed` as "signature-only, body not walked" anyway, so the net behavior at the type layer is equivalent. The structural difference is where target selection lives: bootstrap (one truth) vs. emission (per-target).
+
+**No new substrate concept. No new TransformTarget variant. No coproduct extension.** `SubstrateAccessorBinding { accessor, realization, language }` is just a data record tagged with a meta-type — the same shape every `TypeRealization` / `OperatorRealization` / etc. already uses.
 
 ---
 
@@ -27,70 +33,56 @@ A compiler-internal function whose authoritative implementation is Rust (because
 - Tests that use "first Callable Transform" heuristics (and, more broadly, any consumer that assumes the program's DAG is just the user's) break.
 - Worse: the `.dag` body IS a wrong implementation. Writing a linear walk for `port(d, id)` in `.dag` is O(n) while the Rust side has an O(1) HashMap. The `.dag` body is a lie about what the compiler actually runs.
 
-Lane 1 Stage 1b's original design called for declaring `port(d, id) -> DagPort?`, `node(d, id) -> Behavior?`, `resolve_producer(d, id) -> Behavior?` in `substrate.dag` with full `.dag` bodies. The session's implementation correctly compiled but polluted bootstrap and was reverted. The escalation flagged this as "a missing substrate primitive" — that framing turned out to be wrong. The primitive is present; the pattern for using it just wasn't in the design doc.
+Lane 1 Stage 1b's original design called for declaring `port(d, id) -> DagPort?`, `node(d, id) -> Behavior?`, `resolve_producer(d, id) -> Behavior?` in `substrate.dag` with full `.dag` bodies. The session's implementation correctly compiled but polluted bootstrap and was reverted.
 
 ---
 
-## Key finding: the mechanism exists
+## Key finding: the mechanism exists (for pipeline, with a divergence for substrate accessors)
 
-### `ArrowBody::ExternalRealization` (substrate, `dag.rs:519`)
+### `ArrowBody::ExternalRealization` (substrate, `dag.rs`)
 
 > "Primitive whose realization is declared in an extdeps language spec. DeclarationId points at the realization declaration via a typed edge; inference verifies signature compatibility."
 
-This is the variant we want. An Arrow with `body: ExternalRealization(realization_id)` says: the Arrow's signature type-checks against callers, but the body is not a `.dag` sub-DAG — it's provided by the target, referenced through `realization_id`.
+This variant is used by `pipeline.dag` — each stage's Arrow body gets upgraded at bootstrap to `ExternalRealization(realization_id)`. Correct for pipeline because there's exactly one realization per stage (pipeline stages are target-invariant compiler runtime).
 
-### Inference wiring (`infer.rs:896-916`)
+### Inference wiring (`infer.rs`)
 
-Dispatch-time check on an `ExternalRealization` target: the linked declaration must be a `Conj` with a non-`None` `meta_tag` edge. The meta_tag IS the realization marker (round-10 correction: no separate `Realization` declaration cached in the `Dag`). Structural; no string comparison; asserted at both construction (`assert_realization_shape`) and dispatch (`is_realization_shape`).
+Inference treats both `Unparsed` and `ExternalRealization` as "signature-only, body not walked." Both variants type-check call sites against the Arrow's declared inputs and output. That's why the substrate accessors can leave bodies as `Unparsed` without losing inference coverage.
 
-Call sites type-check normally against the Arrow's signature. The `ExternalRealization` body is not walked.
+### Where the substrate-accessor pattern diverges
 
-### Production template: `src/v3/compiler/pipeline.dag`
+Review round 1b.3 caught that applying pipeline.dag's bootstrap-upgrade pattern to **target-variant** primitives silently drops target selection: bootstrap walks every `SubstrateAccessorBinding`, upgrades the accessor's Arrow body once, and iteration order decides which target's realization wins. As soon as a second backend lands its binding, the first is overwritten.
 
-The compiler's own pipeline stages are the living example:
+The fix is structural, not conventional: make target selection part of the binding record (`language: DeclarationRef`) and move dispatch to emission time, where each emitter already knows which language spec is active.
+
+### Production template: `src/v3/compiler/pipeline.dag` (unchanged)
+
+Pipeline.dag still uses the upgrade pattern exactly as before — its stages are target-invariant, so one-realization-per-stage is the right authority.
 
 ```dag
 type CompilerHostRealization { symbol: String }
-
-data parse_realization: CompilerHostRealization = {
-  symbol: "v3_compiler::parse"
-}
-
-data lower_realization: CompilerHostRealization = {
-  symbol: "v3_compiler::lower"
-}
-
-// ... and fn declarations with trivial type-correct stub bodies:
-fn parse(source: String, file: String) -> Dag = ...  // stub body
+data parse_realization: CompilerHostRealization = { symbol: "v3_compiler::parse" }
+fn parse(source: String, file: String) -> Dag { host parse }  // stub
 ```
 
-Bootstrap upgrade (`bootstrap.rs:238-252`):
+Bootstrap (`materialize_pipeline_realizations`) upgrades each stage:
 
 ```rust
-for stage in stages {
-    let stage_decl = dag.declaration_mut(stage.stage);
-    match &mut stage_decl.connective {
-        TypeConnective::Arrow { body, .. } => {
-            *body = ArrowBody::ExternalRealization(stage.realization);
-        }
-        _ => report_pipeline_authority_error(...),
-    }
-}
+TypeConnective::Arrow { body, .. } => *body = ArrowBody::ExternalRealization(stage.realization),
 ```
-
-The file comment (pipeline.dag:10-12) is explicit:
-
-> "The source bodies stay trivially type-correct so the file parses and lowers cleanly today."
-
-Trivially-stub bodies lower to minimal or zero `dag.nodes()` content. After bootstrap upgrade, the body is `ExternalRealization` — not walked at inference, not contributing further Transforms. The runtime dispatch target is the realization declaration's `symbol` field, resolved by the compiler host.
 
 ---
 
-## The one real gap: emission
+## The real gap (now closed): per-target emission dispatch
 
-Grep confirms no emitter — `emit_rust.rs`, `emit_go.rs`, `emit_python.rs` — references `ExternalRealization`. Pipeline stages don't hit emission because they ARE the compiler (runtime-only, never emitted into target code). Substrate accessors called from **user-code lenses** (`complexity.dag` calling `port(d, id)`) WILL hit emission, and today the emitter has no branch for `ArrowBody::ExternalRealization` on a Callable Transform's target.
+For substrate accessors called from **user-code lenses** (`complexity.dag` calling `port(d, id)`), the emitter needs to:
 
-This is the sole new-code item in DB-14.
+1. Recognize this callable target is a substrate accessor.
+2. Select the realization matching the active target (Rust emits Rust's realization, not Go's).
+3. Render its `carrier` template.
+4. Fail closed if the accessor is declared but no binding exists for the active target.
+
+The landed design wires (1)-(4) in emit_rust's `RealizationIndexes` + `render_substrate_accessor`.
 
 ---
 
@@ -139,52 +131,71 @@ data rust_resolve_producer_accessor: SubstrateAccessorRealization = {
 
 Similar `go_*_accessor` in `go.dag` and `python_*_accessor` in `python.dag` with target-native syntax.
 
-### 4. Binding declarations (parallel to pipeline.dag's `PipelineStageBinding`)
+### 4. Binding declarations — with target selector (`language: DeclarationRef`)
 
 ```dag
 // src/v3/std/substrate.dag
 type SubstrateAccessorBinding {
   accessor: DeclarationRef
   realization: DeclarationRef
+  language: DeclarationRef   // review round 1b.3 — required target selector
 }
 
+// src/v3/spec/rust.dag
 data port_binding_rust: SubstrateAccessorBinding = {
   accessor: port
   realization: rust_port_accessor
+  language: rust_language
 }
 // ... etc. for each (accessor × target) pair
 ```
 
-One binding per (accessor × target). 3 accessors × 3 current targets = 9 binding declarations, mechanical.
+One binding per (accessor × target language). 3 accessors × 3 current targets = 9 binding declarations when go/python land, mechanical. `language` mirrors the existing `language: DeclarationRef` edge on every shared realization record (`TypeRealization`, `OperatorRealization`, …), so "add a new target" stays one spec file change.
 
-### 5. Bootstrap upgrade
+### 5. Bootstrap: NO upgrade for substrate accessors
 
-Extend `bootstrap.rs` with a new `upgrade_substrate_accessor_bodies` pass that mirrors `upgrade_pipeline_stage_bodies`:
+**This is where substrate accessors diverge from pipeline.dag.** The earlier design (round 1b.1) proposed an `upgrade_substrate_accessor_bodies` pass mirroring `materialize_pipeline_realizations`. Review round 1b.3 flagged that: it walks all bindings and overwrites the accessor's Arrow body in iteration order, silently dropping all but the last target. The landed design keeps the bodies as `Unparsed(body_span)` (the `{ host <name> }` stub) and does target selection at emission time.
 
-- Walk `SubstrateAccessorBinding` instances in the loaded Dag.
-- For each binding, find the accessor declaration and upgrade its Arrow body to `ExternalRealization(binding.realization)`.
+Rationale: pipeline stages run IN the compiler and have exactly one realization per stage; bootstrap-upgrade fits. Substrate accessors are called FROM emitted code and have a realization per target; the dispatch authority lives with the emitter, not with the single bootstrap pass.
 
-Fail-closed: an accessor declaration without a binding for the active target is a `Diagnostic::ResolveError`. An accessor whose Arrow body isn't upgradable (already has a non-stub body, etc.) is a diagnostic too.
+### 6. Emission dispatch — per-target binding index + fail-closed coverage check
 
-### 6. Emission dispatch — the new code
+Each emitter builds two structures at start:
 
-When an emitter renders a `Transform` node:
+- `substrate_accessors: HashMap<accessor_decl, realization_decl>` — per-target map, filtered by `language == <this emitter's LanguageSpec>`.
+- `substrate_accessor_universe: HashSet<accessor_decl>` — every accessor referenced by any `SubstrateAccessorBinding` across all target languages.
+
+On each `Transform { target: Callable(template), .. }`:
 
 ```
-if Transform.target is TransformTarget::Callable(decl_id):
-    decl = dag.declaration(decl_id)
-    if decl.connective is TypeConnective::Arrow { body: ExternalRealization(realization_id), .. }:
-        realization = dag.declaration(*realization_id)
-        carrier = read_field(realization, "carrier")  # String
-        return render_template(carrier, Transform.inputs, param_names)
-    else:
-        # existing user-defined-fn rendering path
-        ...
+if template in substrate_accessors:
+    realization = lookup(template)
+    carrier = read_field(realization, "carrier")  # String
+    rendered_inputs = [render(input) for input in Transform.inputs]
+    return positional_template(carrier, rendered_inputs)
+
+elif template in substrate_accessor_universe:
+    # Declared substrate accessor but no binding for the active target.
+    # Fail closed — silent fallthrough would emit `func(args)` for a
+    # function this target doesn't provide. Post round 1b.4.
+    return Err(EmitError with fix instructions)
+
+else:
+    # Not a substrate accessor at all — fall through to existing
+    # callable dispatch (user functions, list builtins, etc.).
 ```
 
-`render_template` is string substitution with `{arg_name}` → rendered input expression. This is similar to existing `rust_collection_ops` template substitution; the implementer should confirm the existing template mechanism applies here OR implement a minimal version aligned with it.
+Placeholder convention: positional `{p0}`, `{p1}`, … matching the Arrow's parameter order. Chosen over named `{arg_name}` placeholders because declarations don't carry param-name metadata past lowering; positional stays structural without round-tripping the source file.
 
-Wired in all three emit files today. When Lane 1e collapses the three emitters into a single walker + per-target specs, this dispatch becomes one site instead of three — the carrier field moves from per-emit-file dispatch to a spec-declared template, but the substrate dispatch (`ExternalRealization` → realization lookup) is unchanged.
+Carrier templates live in per-target spec files (`src/v3/spec/rust.dag`, future `go.dag` / `python.dag`). Example:
+
+```dag
+data rust_port_accessor: SubstrateAccessorRealization = {
+  carrier: "({p0}).port_opt({p1}).cloned()"
+}
+```
+
+Wired in `emit_rust.rs` today (see `build_substrate_accessor_index` + `render_substrate_accessor`). When Lane 1e collapses the three emitters into a single walker + per-target specs, the index becomes one code path in the walker + three spec entries — the dispatch mechanism (filter bindings by active language, lookup-or-fail) is unchanged.
 
 ---
 
@@ -218,33 +229,35 @@ Wired in all three emit files today. When Lane 1e collapses the three emitters i
 
 ---
 
-## Acceptance (Lane 1 Stage 1b owns)
+## Acceptance (Lane 1 Stage 1b owns) — all met on #501
 
-- [ ] `SubstrateAccessorRealization` type declared in `src/v3/std/substrate.dag` (or companion file)
-- [ ] `port`, `node`, `resolve_producer` declared as fn arrows with trivial stub bodies in `substrate.dag`
-- [ ] `SubstrateAccessorBinding` declarations for all (accessor × current target) pairs — 9 bindings for Rust/Go/Python
-- [ ] Per-target carrier declarations in `src/v3/spec/rust.dag`, `go.dag`, `python.dag`
-- [ ] Bootstrap upgrade pass extends `bootstrap.rs` to upgrade the three accessors' Arrow bodies to `ExternalRealization` — mirrors `upgrade_pipeline_stage_bodies`
-- [ ] `dag.nodes()` delta from substrate.dag load + bootstrap upgrade is bounded — no Callable Transforms from the three accessors in user DAGs
-- [ ] Emission dispatch on `ArrowBody::ExternalRealization` wired in `emit_rust.rs`, `emit_go.rs`, `emit_python.rs`
-- [ ] Existing `m1_substrate_test` tests (the ones the session's first attempt broke) continue to pass
-- [ ] Three existing lenses (`complexity.dag`, `provenance.dag`, `unused_parameters.dag`) migrate to call `port(d, id)` / `node(d, id)` / `resolve_producer(d, id)`; oracle tests pass
-- [ ] Line count reduction in `src/v3/lenses/*.dag` ≥ 15% (per the relaxed threshold from DB-5's revised acceptance)
-- [ ] INVARIANTS.md L-7 landed (lenses don't reconstruct lookup locally)
+- [x] `SubstrateAccessorRealization` type declared in `src/v3/std/substrate.dag`
+- [x] `SubstrateAccessorBinding { accessor, realization, language }` type declared in `src/v3/std/substrate.dag` — `language` is the structural target selector (review 1b.3)
+- [x] `port`, `node`, `resolve_producer` declared as fn arrows with trivial `{ host <name> }` stub bodies in `substrate.dag` — bodies stay `Unparsed` through bootstrap
+- [x] `SubstrateAccessorBinding` declarations for all (accessor × Rust) pairs in `src/v3/spec/rust.dag` — 3 bindings. Go/Python add 3 each when those backends land; 9 total projected.
+- [x] Per-target carrier declarations in `src/v3/spec/rust.dag`. Carrier uses positional `{p0}`, `{p1}` placeholders matching the Arrow's input order.
+- [x] Bootstrap does **NOT** upgrade substrate-accessor Arrow bodies. The earlier upgrade design was reverted; see § 5 for rationale. (Pipeline stages still use the upgrade pattern — they're target-invariant.)
+- [x] `dag.nodes()` delta from substrate.dag load is bounded — the stub bodies are `Unparsed(body_span)` so nothing lowers into `dag.nodes()`. `substrate_accessors_exist_in_bootstrap_dag` asserts this.
+- [x] Emission dispatch wired in `emit_rust.rs` (`RealizationIndexes::substrate_accessors` + `render_substrate_accessor`). Go / Python land when those backends get their bindings.
+- [x] Fail-closed coverage check (review 1b.4): `RealizationIndexes::substrate_accessor_universe` holds every accessor across all languages; emission errors if a user-visible accessor is declared but has no binding for the active target. `substrate_accessor_universe_fully_covered_for_rust` pins the invariant.
+- [x] `m1_substrate_test` tests from the first attempt continue to pass (the ones broken by `.dag`-body bootstrap pollution).
+- [x] Three existing lenses (`complexity.dag`, `provenance.dag`, `unused_parameters.dag`) migrate to call `port(d, id)` / `node(d, id)` / `resolve_producer(d, id)` (provenance + unused_parameters; complexity walks its own accumulator so didn't need the substrate accessors); oracle + snapshot + clone-count tests pass.
+- [x] Line count reduction in `src/v3/lenses/*.dag` ≥ 15%: 483 → 400 (−17.2%).
+- [x] INVARIANTS.md L-7 landed (lenses don't reconstruct lookup locally). CI grep gate blocks regressions.
+- [x] Single-authority enforcement at emission-index build: duplicate `(accessor × language)` bindings fail closed with `EmitError::DuplicateRealization`.
 
 ---
 
 ## Associations
 
-- **Lane 1 Stage 1b** ([lane1-stage-b-substrate-keyed-lookup.md](./lane1-stage-b-substrate-keyed-lookup.md)) — this doc unblocks that stage. 1b's scope folds DB-14's acceptance in.
+- **Lane 1 Stage 1b** ([lane1-stage-b-substrate-keyed-lookup.md](./lane1-stage-b-substrate-keyed-lookup.md)) — this doc's consumer. Shipped on PR #501.
 - **DB-5 Substrate keyed-lookup API** ([design-substrate-keyed-lookup-api.md](./design-substrate-keyed-lookup-api.md)) — DB-5 specified the three query functions; DB-14 specifies HOW they're declared and emitted.
-- **`src/v3/compiler/pipeline.dag`** — the production template. Implementer reads this first.
-- **`src/v3/compiler/src/bootstrap.rs`** — contains `upgrade_pipeline_stage_bodies`; DB-14 adds `upgrade_substrate_accessor_bodies` in the same style.
-- **`src/v3/compiler/src/dag.rs:511-533`** — `ArrowBody::ExternalRealization` substrate variant.
-- **`src/v3/compiler/src/infer.rs:896-916`** — inference-time dispatch check; no changes needed.
-- **`src/v3/compiler/src/infer.rs:2920`** — `is_realization_shape`; no changes needed.
-- **`src/v3/compiler/src/emit_rust.rs` / `emit_go.rs` / `emit_python.rs`** — emission dispatch gets the new `ExternalRealization` branch.
-- **Lane 1 Stage 1e** ([phase1-lane3-consolidation-build-plan.md](./phase1-lane3-consolidation-build-plan.md)) — when 1e collapses emitters, the three dispatch sites become one.
+- **`src/v3/compiler/pipeline.dag`** — the target-invariant template. Uses bootstrap-upgrade pattern (unchanged).
+- **`src/v3/compiler/src/bootstrap.rs`** — contains `materialize_pipeline_realizations` (unchanged). Does NOT upgrade substrate accessors; see § 5.
+- **`src/v3/compiler/src/dag.rs`** — `ArrowBody::ExternalRealization` variant; `Dag::port_opt` / `node_opt` / `resolve_producer_opt` methods (the Rust-side primitives the carriers call).
+- **`src/v3/compiler/src/infer.rs`** — no changes needed; both `Unparsed` and `ExternalRealization` are signature-only variants for inference.
+- **`src/v3/compiler/src/emit_rust.rs`** — `RealizationIndexes::substrate_accessors` + `substrate_accessor_universe`, `build_substrate_accessor_index`, `render_substrate_accessor`. Emission-time dispatch authority.
+- **Lane 1 Stage 1e** ([phase1-lane3-consolidation-build-plan.md](./phase1-lane3-consolidation-build-plan.md)) — when 1e consolidates emitters, the index-build + render path becomes one code site; the spec files drive per-target carriers.
 
 ---
 

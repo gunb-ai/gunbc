@@ -527,6 +527,17 @@ struct RealizationIndexes {
     /// bootstrap, which silently dropped target selection (review
     /// round 1b.3 root cause).
     substrate_accessors: HashMap<DeclarationId, DeclarationId>,
+    /// DB-14 coverage set: every accessor declaration referenced by
+    /// **any** `SubstrateAccessorBinding` record, across all target
+    /// languages. `render_substrate_accessor` uses this to
+    /// distinguish "callable target is not a substrate accessor at
+    /// all" (fall through to normal dispatch) from "declared
+    /// substrate accessor, but no binding for the active target"
+    /// (fail-closed `EmitError::MissingSubstrateAccessorRealization`).
+    /// Post review round 1b.3: a missing active-target realization
+    /// must be a hard emit error, not a silent fall-through that
+    /// would emit `func(args)` for a function Rust doesn't have.
+    substrate_accessor_universe: HashSet<DeclarationId>,
     /// The Rust target-language syntax bundle loaded from
     /// `data rust_language: LanguageSpec`.
     syntax: RustLanguageSyntax,
@@ -811,7 +822,8 @@ impl RealizationIndexes {
         let execution = TargetExecutionModelBinding::build(dag)?;
         let callable_dispositions =
             derive_callable_dispositions(dag, &external_callable_dispositions)?;
-        let substrate_accessors = build_substrate_accessor_index(dag, rust_language_id)?;
+        let (substrate_accessors, substrate_accessor_universe) =
+            build_substrate_accessor_index(dag, rust_language_id)?;
 
         Ok(Self {
             types,
@@ -826,27 +838,39 @@ impl RealizationIndexes {
             computation,
             execution,
             substrate_accessors,
+            substrate_accessor_universe,
         })
     }
 }
 
-/// DB-14: build `accessor_decl → realization_decl` for the active
-/// target language. Walks `SubstrateAccessorBinding` records,
-/// filters by `language == target_language_id`, and enforces
-/// single-authority (one binding per accessor × target).
+/// DB-14: build `(accessor_decl → realization_decl, universe)` for
+/// the active target language.
+///
+/// The map is the per-language lookup used by
+/// `render_substrate_accessor` when a callable target IS bound for
+/// the active target. The universe is every accessor referenced by
+/// any `SubstrateAccessorBinding` across all target languages — it
+/// lets the emitter distinguish "callable isn't a substrate
+/// accessor at all" (fall through) from "declared substrate
+/// accessor, but no binding for this target" (fail closed).
+///
+/// Single-authority enforcement: duplicate `(accessor × language)`
+/// pairs fail closed with `EmitError::DuplicateRealization`.
 fn build_substrate_accessor_index(
     dag: &Dag,
     target_language_id: DeclarationId,
-) -> Result<HashMap<DeclarationId, DeclarationId>, EmitError> {
+) -> Result<(HashMap<DeclarationId, DeclarationId>, HashSet<DeclarationId>), EmitError> {
     let mut index: HashMap<DeclarationId, DeclarationId> = HashMap::new();
+    let mut universe: HashSet<DeclarationId> = HashSet::new();
     let Some(binding_meta_id) = dag
         .declaration_by_name("SubstrateAccessorBinding")
         .map(|decl| decl.id)
     else {
-        // No substrate accessor substrate — pipeline pre-DB-14 or a
-        // bootstrap that didn't load the binding type. Empty index
-        // means render_substrate_accessor always falls through.
-        return Ok(index);
+        // No substrate accessor binding type — pre-DB-14 bootstrap
+        // or a minimal fixture that didn't load substrate.dag. Empty
+        // universe means render_substrate_accessor falls through on
+        // every callable, matching pre-DB-14 behavior.
+        return Ok((index, universe));
     };
     for decl in dag.declarations() {
         if decl.meta_tag != Some(binding_meta_id) {
@@ -859,11 +883,12 @@ fn build_substrate_accessor_index(
                     "SubstrateAccessorBinding data item has no Structural value_body — bootstrap inhabitance check missed a malformed spec entry",
             });
         };
+        let accessor = require_field_decl_ref(fields, "accessor", decl.id)?;
+        universe.insert(accessor);
         let language = require_field_decl_ref(fields, "language", decl.id)?;
         if language != target_language_id {
             continue;
         }
-        let accessor = require_field_decl_ref(fields, "accessor", decl.id)?;
         let realization = require_field_decl_ref(fields, "realization", decl.id)?;
         if index.insert(accessor, realization).is_some() {
             return Err(EmitError::DuplicateRealization {
@@ -873,7 +898,7 @@ fn build_substrate_accessor_index(
             });
         }
     }
-    Ok(index)
+    Ok((index, universe))
 }
 
 impl RenderingModelBinding {
@@ -3413,6 +3438,25 @@ impl<'a> Ctx<'a> {
         locals: &RenderLocals,
     ) -> Result<Option<String>, EmitError> {
         let Some(realization_id) = self.indexes.substrate_accessors.get(&template).copied() else {
+            // If the template IS a declared substrate accessor (in
+            // the universe of all `SubstrateAccessorBinding`
+            // records across languages) but has no binding for the
+            // active target, fail closed rather than fall through
+            // to generic callable rendering — that would emit
+            // `func(args)` for a function the target doesn't
+            // provide. Post review round 1b.4: "no binding for this
+            // target" on a declared accessor is not a benign miss.
+            if self.indexes.substrate_accessor_universe.contains(&template) {
+                let accessor_name = self
+                    .dag
+                    .declaration(template)
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| format!("declaration#{}", template.raw()));
+                return Err(EmitError::UnsupportedBehavior(format!(
+                    "substrate accessor `{accessor_name}` has no SubstrateAccessorBinding for the active Rust target (`rust_language`); add `data <name>_binding_rust: SubstrateAccessorBinding = {{ accessor: {accessor_name}, realization: <target-realization>, language: rust_language }}` in `src/v3/spec/rust.dag`"
+                )));
+            }
             return Ok(None);
         };
         let realization = self.dag.declaration(realization_id);

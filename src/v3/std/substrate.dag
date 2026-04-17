@@ -241,20 +241,23 @@ type Dag {
 // over `Dag.ports` / `Dag.nodes`. Every lens consumes them; no lens
 // reconstructs its own `find_port` / `find_behavior`.
 //
-// Implementation: the fn bodies below are trivial `host` stubs. Bootstrap
-// upgrades them to `ArrowBody::ExternalRealization` using the per-target
-// `SubstrateAccessorBinding` records. Emission dispatches on the upgraded
-// body and renders the target's `carrier` template from
-// `SubstrateAccessorRealization`. Pattern mirrors `pipeline.dag`'s
-// `CompilerHostRealization`. See docs/design-substrate-external-primitives.md.
+// Implementation: the fn bodies below are trivial `{ host <name> }`
+// stubs. Arrow bodies stay `Unparsed` through bootstrap — target
+// selection happens at emission time. Each emitter reads
+// `SubstrateAccessorBinding` records from the spec files, filters by
+// its own `language: LanguageSpec` id, and dispatches through a
+// per-target index. Diverges from `pipeline.dag`'s bootstrap-upgrade
+// pattern because substrate accessors have per-target realizations;
+// upgrading once at bootstrap silently drops target selection. See
+// docs/design-substrate-external-primitives.md § 5.
 
 // 🟡 SCAFFOLD per DB-14. Carries a per-target rendering template for
-// a substrate accessor. `carrier` is a template string with `{name}`
-// placeholders matching the accessor's parameter names; the emitter
-// substitutes per call-site. Dissolves when Lane 1e collapses the
-// three emitters into a single spec-driven walker — the carrier
-// field moves into the per-target spec, but the dispatch mechanism
-// (this record, its binding, bootstrap upgrade) stays.
+// a substrate accessor. `carrier` is a template string with positional
+// `{p0}`, `{p1}`, … placeholders matching the accessor's input order;
+// the emitter substitutes per call-site. Dissolves when Lane 1e
+// collapses the three emitters into a single spec-driven walker —
+// the carrier field moves into the per-target spec, but the
+// emission-time index-lookup dispatch stays.
 type SubstrateAccessorRealization {
   carrier: String
 }
