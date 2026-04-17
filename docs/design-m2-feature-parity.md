@@ -36,22 +36,23 @@ fn data_value_at(&self, decl_id: DeclarationId) -> Option<&ValueBody> {
 
 Reads the existing field. No new state.
 
-**Implementation amendment (PR #496, 2026-04-17): inlining happens at lowering, not emission.** The original design above placed the inlining check at each emit site (three files; collapses to one after Lane 1e). The landed implementation moved the inlining earlier — to `SurfaceExpr::Var` lowering and `lower_field_path_expr` — so that `fn f() -> Int = answer` lowers directly to a `Value(LiteralBits)` node, and `cfg.host` lowers to a `Value` whose `LiteralBits` is the resolved field's scalar. Emission sees the value as an ordinary literal node and has no data-declaration-specific path to maintain.
+**Architectural commitment (PR #496, 2026-04-17): inlining happens at lowering, not emission.** An earlier draft of this section framed lowering-time vs emission-time as interchangeable implementation details. That was wrong — the test ratchet in `test_3a2_data_field_access_resolves_statically` now asserts that `cfg.host` lowers to a `Value(Int(1))` node **and** that no `FieldProject<host>` `Transform` exists in the DAG. That assertion makes lowering-time inlining load-bearing architecture, not a swappable implementation detail. This section commits to that choice explicitly; emission-time inlining is rejected as an architectural path and is not revisited without reopening the locked test.
 
-Trade-off recorded:
+Why lowering-time is the right commitment:
 
-- **Simpler.** Avoids `3×` emit-file changes; Lane 1e's single-emitter consolidation inherits a smaller diff.
-- **Lossier provenance.** The DAG no longer carries the fact that `fn f() -> Int = answer` was written with a name; it carries `Value(42)`. For `compiler.dag`'s use case (compile-time scalar lookup tables), this is desired. For source-map-style provenance lenses, it's debt that resolves when a future lens walks `Value.span` back to the original identifier.
+- **Single authority.** `Value(LiteralBits)` nodes are the only representation the downstream pipeline needs to handle for scalar data. Emitters, lenses, cost analysis, and provenance tooling all see one shape, not two.
+- **Simpler emission.** Avoids `3×` emit-file changes today; Lane 1e's single-emitter consolidation inherits a smaller diff tomorrow.
+- **Bounded provenance debt.** `Value(42)` does not carry the fact that the author wrote `answer` — source-map-style provenance lenses get nothing from this node. The mitigation is `Value.span`: any future provenance lens that wants to reconstruct the original identifier walks the span back through source, not through a `ValueBody` pointer. For `compiler.dag`'s use case (compile-time scalar lookup tables) the name is irrelevant; for future source-map consumers the pattern is clear.
 
-Both paths — emission-time and lowering-time — satisfy DB-10's acceptance (literal `42` in the emitted target code; `cfg.host` statically resolved). The choice is an implementation detail; the substrate-visible contract (`ValueBody` on `Declaration`, accessible via `data_value_at`) is unchanged.
+Rejected alternative: **emission-time inlining at each emit site** — keeps the `data` declaration's identifier in the DAG up to emission and lets the emitter decide whether to render as a target-native `const` or inline at the use site. Gives richer provenance but forces every downstream consumer (emitter × 3, future property lenses, cost analysis) to handle data-declaration references with a second code path. Trade-off is not worth the parallel authority; rejected.
 
 Consumed in two places:
 
-**1. Identifier resolution.** `SurfaceExpr::Var { name }` lowering, when the name is not in local scope and not a variant constructor, falls back to `symbols.get(name)` and — if the resolved `Declaration` carries `ValueBody::Scalar(FieldValue::Literal(bits))` — emits a `Value(bits)` node inline. Record-valued data references are out of scope (acceptance covers scalar).
+**1. Identifier resolution.** `SurfaceExpr::Var { name }` lowering, when the name is not in local scope and not a variant constructor, falls back to `symbols.get(name)` and — if the resolved `Declaration` carries `ValueBody::Scalar(bits)` — emits a `Value(bits)` node inline via `emit_literal_as_value_port`. Record-valued data references are out of scope (acceptance covers scalar).
 
 **2. Static field access.** `lower_field_path_expr`, when the head ident is not in local scope, falls back to `symbols.get(head)` and walks the resolved `Declaration`'s `ValueBody::Structural { fields }` via `resolve_structural_field_path`. Terminal scalar literals emit a `Value(LiteralBits)` node; nested `FieldValue::Record` payloads recurse. `List`, `Map`, `Variant`, and `Reference` terminals fall through to an unresolved diagnostic (out of scope for 3a.2's acceptance).
 
-**Future emission-time consumers.** `Dag::data_value_at(decl_id)` remains available for any emitter / lens that wants to see the raw `ValueBody` — e.g., `compiler.dag` authoring a `const` declaration in the emitted Rust. The lowering-time inlining does not preclude emission-time readers; the accessor is the shared contract.
+**`Dag::data_value_at(decl_id)` as substrate contract.** The accessor exposes the raw `ValueBody` for any future lens that wants to inspect the declared value — e.g., a provenance lens, a symbolic cost analysis, or a reflection pass. Its existence is compatible with lowering-time inlining: the inlined `Value` node is an independent emission artifact, while the `ValueBody` on `Declaration` remains the authoritative source the lens consults.
 
 ### Rejected alternatives
 

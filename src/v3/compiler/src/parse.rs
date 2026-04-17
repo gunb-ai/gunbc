@@ -188,9 +188,20 @@ pub struct SurfaceParam {
     pub ty: SurfaceType,
     /// DB-11 (3a.3): optional `where <expr>` refinement predicate on
     /// the parameter. `None` for bare `x: Int`; `Some(expr)` for
-    /// `x: Int where x > 0`. Lowered to a predicate `Declaration`
-    /// whose resolved expression DAG becomes
-    /// `Declaration.refinement` on a cloned type declaration.
+    /// `x: Int where x > 0`.
+    ///
+    /// **Current behavior (PR #496 foundation-only scope):**
+    /// lowering does NOT propagate this into
+    /// `Declaration.refinement`. Instead,
+    /// `report_unsupported_parameter_refinements` (in `lower.rs`)
+    /// emits an explicit "refinement not yet enforced"
+    /// `ResolveError` pointing at the predicate span, so the parsed
+    /// fact flows forward as a compile error rather than being
+    /// silently dropped. Fail-closed per C-8.
+    ///
+    /// Predicate lowering + call-site structural-DAG check +
+    /// Branch-arm narrowing are tracked in issue #498 as a
+    /// size-overrun follow-up to 3a.3.
     pub refinement: Option<SurfaceExpr>,
 }
 
