@@ -592,9 +592,17 @@ impl<'a> Ctx<'a> {
             Behavior::Value(v) => Ok(render_value(v, &self.indexes.syntax.literals)),
             Behavior::Transform(t) => self.render_transform(t, locals),
             Behavior::Branch(b) => self.render_branch(b, locals),
-            Behavior::Loop(l) => {
-                let body_port = behavior_result_port(self.dag.node(l.body));
-                self.render_port(body_port, locals)
+            Behavior::Loop(_) => {
+                // emit_go does not yet model `Behavior::Loop`. Earlier
+                // code rendered just the loop body's result port, which
+                // silently dropped the iteration semantics — a Loop
+                // over a list became its first iteration's expression.
+                // Fail-closed instead so callers see the unsupported
+                // case directly.
+                Err(EmitError::UnsupportedBehavior(
+                    "emit_go does not yet support Behavior::Loop; iteration construct must be expressed via fold/map/filter callables for now"
+                        .to_string(),
+                ))
             }
             Behavior::Bind(bind) => Ok(bind.name.clone()),
         }
@@ -2280,15 +2288,6 @@ fn render_value(v: &crate::dag::ValueNode, literals: &LiteralSyntaxBinding) -> S
     }
 }
 
-fn behavior_result_port(behavior: &Behavior) -> PortId {
-    match behavior {
-        Behavior::Value(v) => v.result_port(),
-        Behavior::Transform(t) => t.result_port(),
-        Behavior::Branch(b) => b.result_port(),
-        Behavior::Loop(l) => l.result_port(),
-        Behavior::Bind(b) => b.result_port(),
-    }
-}
 
 fn is_bootstrap_file(file: &str) -> bool {
     file.starts_with("dsl/std/")
@@ -2477,8 +2476,13 @@ mod tests {
 
     #[test]
     fn go_multi_field_variant_payload_binding_uses_the_variant_value() {
+        // Originally exercised via a recursive `count`, which lowered
+        // to `Behavior::Loop` and was silently emitted (the loop-as-
+        // body-result collapse). emit_go now fail-closes on Loop, so
+        // we use a non-recursive body that still exercises Cons(payload)
+        // payload-binding rendering.
         let dag = compile_to_dag(
-            "type IntList = Empty | Cons { head: Int, tail: IntList }\nfn count(list: IntList) -> Int = match list { Empty => 0, Cons(payload) => 1 + count(payload.tail) }\n",
+            "type IntList = Empty | Cons { head: Int, tail: IntList }\nfn head_or_zero(list: IntList) -> Int = match list { Empty => 0, Cons(payload) => payload.head }\n",
             "variant_payload_binding.v3",
         )
         .expect("compiles");

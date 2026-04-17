@@ -28,6 +28,14 @@ pub enum EmitPythonError {
     UnresolvedBranchPattern {
         variant_name: String,
     },
+    /// Two realization data items in the loaded spec set targeted the
+    /// same key (type, (operand_type, op), or callable). The Python
+    /// loader used to silently overwrite the first entry when this
+    /// happened. Now fail-closed so spec collisions surface.
+    DuplicateRealization {
+        declaration: DeclarationId,
+        detail: &'static str,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -125,29 +133,68 @@ impl PythonIndexes {
             let Some(meta_tag) = decl.meta_tag else {
                 continue;
             };
-            let Some(fields) = structural_fields(decl) else {
+            // Only act on declarations tagged with one of the four
+            // realization meta types. Skip silently when the meta-tag
+            // is for a different category — that's structural, not a
+            // spec inconsistency.
+            let is_realization_meta = meta_tag == type_meta
+                || meta_tag == type_instantiation_meta
+                || meta_tag == operator_meta
+                || meta_tag == callable_meta;
+            if !is_realization_meta {
                 continue;
+            }
+            // A data item tagged with a realization meta-type MUST
+            // have a Structural value_body. If it's Unparsed, the
+            // inhabitance check let a malformed spec entry through —
+            // fail-closed so the spec inconsistency surfaces loudly
+            // (matches emit_rust + emit_go behavior).
+            let Some(fields) = structural_fields(decl) else {
+                return Err(EmitPythonError::MalformedSpec {
+                    declaration: decl.id,
+                    detail:
+                        "realization data item has no Structural value_body — bootstrap inhabitance check missed a malformed spec entry",
+                });
             };
             if meta_tag == type_meta {
-                types.insert(
-                    require_field_decl_ref(fields, "target", decl.id)?,
-                    require_field_string(fields, "carrier", decl.id)?,
-                );
+                let target = require_field_decl_ref(fields, "target", decl.id)?;
+                let carrier = require_field_string(fields, "carrier", decl.id)?;
+                if types.insert(target, carrier).is_some() {
+                    return Err(EmitPythonError::DuplicateRealization {
+                        declaration: decl.id,
+                        detail: "two PythonTypeRealization data items target the same declaration",
+                    });
+                }
             } else if meta_tag == type_instantiation_meta {
-                type_instantiations.insert(
-                    require_field_decl_ref(fields, "target", decl.id)?,
-                    require_field_string(fields, "carrier", decl.id)?,
-                );
+                let target = require_field_decl_ref(fields, "target", decl.id)?;
+                let carrier = require_field_string(fields, "carrier", decl.id)?;
+                if type_instantiations.insert(target, carrier).is_some() {
+                    return Err(EmitPythonError::DuplicateRealization {
+                        declaration: decl.id,
+                        detail: "two PythonTypeInstantiationRealization data items target the same declaration",
+                    });
+                }
             } else if meta_tag == operator_meta {
                 let target = require_field_decl_ref(fields, "target", decl.id)?;
                 let op = require_field_decl_ref(fields, "op", decl.id)?;
-                operators.insert(
-                    (target, op),
-                    require_field_string(fields, "carrier", decl.id)?,
-                );
+                let carrier = require_field_string(fields, "carrier", decl.id)?;
+                if operators.insert((target, op), carrier).is_some() {
+                    return Err(EmitPythonError::DuplicateRealization {
+                        declaration: decl.id,
+                        detail:
+                            "two PythonOperatorRealization data items share the same (target, op) pair",
+                    });
+                }
             } else if meta_tag == callable_meta {
                 let target = require_field_decl_ref(fields, "target", decl.id)?;
-                callables.insert(target, parse_callable_strategy(dag, fields, decl.id)?);
+                let strategy = parse_callable_strategy(dag, fields, decl.id)?;
+                if callables.insert(target, strategy).is_some() {
+                    return Err(EmitPythonError::DuplicateRealization {
+                        declaration: decl.id,
+                        detail:
+                            "two PythonCallableRealization data items target the same callable declaration",
+                    });
+                }
             }
         }
 
@@ -614,10 +661,18 @@ impl<'a> Ctx<'a> {
 
     fn render_loop(
         &self,
-        loop_node: &crate::dag::LoopNode,
-        locals: &RenderLocals,
+        _loop_node: &crate::dag::LoopNode,
+        _locals: &RenderLocals,
     ) -> Result<String, EmitPythonError> {
-        self.render_port(behavior_result_port(self.dag.node(loop_node.body)), locals)
+        // emit_python does not yet model `Behavior::Loop`. Earlier
+        // code rendered just the loop body's result port, silently
+        // dropping iteration semantics — a Loop became its first
+        // iteration's expression. Fail-closed instead so callers see
+        // the unsupported case directly.
+        Err(EmitPythonError::Unsupported(
+            "emit_python does not yet support Behavior::Loop; iteration construct must be expressed via fold/map/filter callables for now"
+                .to_string(),
+        ))
     }
 
     fn render_callable_transform(
@@ -1373,16 +1428,6 @@ fn is_bootstrap_file(file: &str) -> bool {
     file.starts_with("dsl/std/")
         || file.starts_with("src/v3/std/")
         || file.starts_with("src/v3/spec/")
-}
-
-fn behavior_result_port(behavior: &Behavior) -> PortId {
-    match behavior {
-        Behavior::Value(v) => v.result_port(),
-        Behavior::Transform(t) => t.result_port(),
-        Behavior::Branch(b) => b.result_port(),
-        Behavior::Loop(l) => l.result_port(),
-        Behavior::Bind(b) => b.result_port(),
-    }
 }
 
 fn primitive_type_id_for_port(dag: &Dag, port: PortId) -> Result<DeclarationId, EmitPythonError> {
