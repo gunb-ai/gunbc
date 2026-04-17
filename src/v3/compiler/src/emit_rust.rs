@@ -281,6 +281,16 @@ enum RustCallableStrategyBinding {
     ListContains,
 }
 
+/// Mirrors v3.std.emit_model.TargetLanguage. Only the variants this
+/// emitter cares about. emit_rust filters realization data items by
+/// `TargetLanguageBinding::Rust`; emit_go has the same shape and
+/// filters by `Go`. New shared targets append a variant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TargetLanguageBinding {
+    Rust,
+    Go,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ParameterDispositionBinding {
     Borrowed,
@@ -628,16 +638,6 @@ impl RealizationIndexes {
             let Some(meta_tag) = decl.meta_tag else {
                 continue;
             };
-            // Skip non-Rust realization data items (e.g., go_*, python_*)
-            // when populating the Rust emitter's index. Each target's
-            // emitter filters by its own prefix.
-            if !decl
-                .name
-                .as_deref()
-                .is_some_and(|name| name.starts_with("rust_"))
-            {
-                continue;
-            }
             // Determine which realization category this declaration
             // belongs to (if any). Comparing typed handles, no name
             // matching.
@@ -668,6 +668,15 @@ impl RealizationIndexes {
                         "realization data item has no Structural value_body — bootstrap inhabitance check missed a malformed spec entry",
                 });
             };
+
+            // Skip realizations declared for other shared targets
+            // (e.g. Go) by reading the typed `language: TargetLanguage`
+            // discriminator. Replaces the previous `name.starts_with`
+            // prefix filter — a name like `rust_int` no longer
+            // determines ownership; the language tag does.
+            if require_target_language(dag, fields, decl.id)? != TargetLanguageBinding::Rust {
+                continue;
+            }
 
             // Required for every category. Missing → fail-closed
             // (the inhabitance check would normally surface a
@@ -1488,6 +1497,62 @@ fn require_callable_strategy(
         detail:
             "RustCallableStrategy constructor must be ListEmpty/ListSingleton/ListCons/ListConcat/ListLength/ListIsEmpty/ListFold/ListMap/ListFilter/ListContains",
     })
+}
+
+/// Parse the `language: TargetLanguage` field on every shared
+/// realization. Lets each emitter pick up only the realizations
+/// declared for its own target without name-based dispatch
+/// (`name.starts_with("rust_")`).
+pub(crate) fn require_target_language(
+    dag: &Dag,
+    fields: &[(String, FieldValue)],
+    declaration: DeclarationId,
+) -> Result<TargetLanguageBinding, EmitError> {
+    let value = fields
+        .iter()
+        .find(|(label, _)| label == "language")
+        .map(|(_, value)| value)
+        .ok_or(EmitError::MalformedRealization {
+            declaration,
+            detail:
+                "shared realization data item is missing required `language: TargetLanguage` field",
+        })?;
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "shared realization `language` must be a TargetLanguage variant",
+        });
+    };
+    if !payload.is_empty() {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "TargetLanguage variants must not carry payload fields",
+        });
+    }
+    let rust =
+        named_variant_id(dag, "TargetLanguage", "Rust").ok_or(EmitError::MalformedRealization {
+            declaration,
+            detail: "TargetLanguage.Rust declaration was not found",
+        })?;
+    let go =
+        named_variant_id(dag, "TargetLanguage", "Go").ok_or(EmitError::MalformedRealization {
+            declaration,
+            detail: "TargetLanguage.Go declaration was not found",
+        })?;
+    if *constructor == rust {
+        Ok(TargetLanguageBinding::Rust)
+    } else if *constructor == go {
+        Ok(TargetLanguageBinding::Go)
+    } else {
+        Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "TargetLanguage constructor must be Rust or Go",
+        })
+    }
 }
 
 /// Parse and validate the `parameters` list on a CallableRealization.
@@ -4789,5 +4854,48 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
                 ParameterDispositionBinding::Borrowed,
             ],
         );
+    }
+
+    /// B11 — `require_target_language` reads the typed `language`
+    /// field, not the realization's surface name. A realization
+    /// authored with a `rust_*` name but `language: Go` resolves to
+    /// `Go`, so the typed discriminator wins over surface naming.
+    #[test]
+    fn target_language_reads_typed_field_not_realization_name() {
+        let dag = compile_to_dag("fn id(x: Int) -> Int = x", "lang_field.v3").expect("compiles");
+        let bogus_decl = dag.declaration_by_name("id").expect("id decl").id;
+        let rust = named_variant_id(&dag, "TargetLanguage", "Rust").expect("Rust");
+        let go = named_variant_id(&dag, "TargetLanguage", "Go").expect("Go");
+
+        let language_field = |ctor: DeclarationId| -> Vec<(String, FieldValue)> {
+            vec![(
+                "language".to_string(),
+                FieldValue::Variant {
+                    constructor: ctor,
+                    payload: vec![],
+                },
+            )]
+        };
+
+        let rust_fields = language_field(rust);
+        assert_eq!(
+            require_target_language(&dag, &rust_fields, bogus_decl).expect("Rust parses"),
+            TargetLanguageBinding::Rust,
+        );
+
+        // The realization NAME is irrelevant — only the typed field
+        // matters. A `rust_*`-named realization tagged `language: Go`
+        // is owned by Go, not Rust.
+        let go_fields = language_field(go);
+        assert_eq!(
+            require_target_language(&dag, &go_fields, bogus_decl).expect("Go parses"),
+            TargetLanguageBinding::Go,
+        );
+
+        // Missing field → fail-closed.
+        assert!(matches!(
+            require_target_language(&dag, &[], bogus_decl),
+            Err(EmitError::MalformedRealization { .. }),
+        ));
     }
 }

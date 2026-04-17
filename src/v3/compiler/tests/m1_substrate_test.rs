@@ -973,13 +973,40 @@ fn m1_3_prb_rust_dag_bootstrap_loads_structurally() {
         }
     };
     // Fields appear in OperatorRealization's declared order:
-    // target, op, carrier, cost.
-    assert_eq!(fields.len(), 4);
+    // language, target, op, carrier, cost.
+    assert_eq!(fields.len(), 5);
+
+    // language → Rust (typed Variant on TargetLanguage)
+    assert_eq!(fields[0].0, "language");
+    let target_language_id = find_named(&dag, "TargetLanguage");
+    let rust_variant_id = match &dag.declaration(target_language_id).connective {
+        TypeConnective::Disj { variants } => {
+            variants
+                .iter()
+                .find(|v| v.label == "Rust")
+                .expect("TargetLanguage has a Rust variant")
+                .ty
+        }
+        other => panic!("TargetLanguage should be a Disj, got {other:?}"),
+    };
+    match &fields[0].1 {
+        v3_compiler::dag::FieldValue::Variant {
+            constructor,
+            payload,
+        } => {
+            assert_eq!(
+                *constructor, rust_variant_id,
+                "rust_int_add's language should reference TargetLanguage.Rust"
+            );
+            assert!(payload.is_empty(), "Rust variant has no payload");
+        }
+        other => panic!("expected Variant for language, got {other:?}"),
+    }
 
     // target → Int (typed Reference)
-    assert_eq!(fields[0].0, "target");
+    assert_eq!(fields[1].0, "target");
     let int_id = find_named(&dag, "Int");
-    match &fields[0].1 {
+    match &fields[1].1 {
         v3_compiler::dag::FieldValue::Reference(id) => assert_eq!(
             *id, int_id,
             "rust_int_add's target should reference the Int declaration"
@@ -990,7 +1017,7 @@ fn m1_3_prb_rust_dag_bootstrap_loads_structurally() {
     // op → OrderedRing.add (typed Reference resolved via
     // dotted-path lowering). Walk OrderedRing to find its `add`
     // child declaration id and compare structurally.
-    assert_eq!(fields[1].0, "op");
+    assert_eq!(fields[2].0, "op");
     let ordered_ring_id = find_named(&dag, "OrderedRing");
     let ordered_ring_add_id = match &dag.declaration(ordered_ring_id).connective {
         TypeConnective::Conj { children } => {
@@ -1002,7 +1029,7 @@ fn m1_3_prb_rust_dag_bootstrap_loads_structurally() {
         }
         other => panic!("OrderedRing should be a Conj, got {other:?}"),
     };
-    match &fields[1].1 {
+    match &fields[2].1 {
         v3_compiler::dag::FieldValue::Reference(id) => assert_eq!(
             *id, ordered_ring_add_id,
             "rust_int_add's op should reference OrderedRing.add"
@@ -1011,16 +1038,16 @@ fn m1_3_prb_rust_dag_bootstrap_loads_structurally() {
     }
 
     // carrier → "+" (Literal String)
-    assert_eq!(fields[2].0, "carrier");
+    assert_eq!(fields[3].0, "carrier");
     assert!(matches!(
-        &fields[2].1,
+        &fields[3].1,
         v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::String(s)) if s == "+"
     ));
 
     // cost → 1 (Literal Int)
-    assert_eq!(fields[3].0, "cost");
+    assert_eq!(fields[4].0, "cost");
     assert!(matches!(
-        &fields[3].1,
+        &fields[4].1,
         v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(1))
     ));
 }

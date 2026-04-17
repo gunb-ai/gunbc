@@ -224,13 +224,6 @@ impl RealizationIndexes {
             } else {
                 continue;
             };
-            if !decl
-                .name
-                .as_deref()
-                .is_some_and(|name| name.starts_with("go_"))
-            {
-                continue;
-            }
             let Some(ValueBody::Structural { fields }) = &decl.value_body else {
                 return Err(EmitError::MalformedRealization {
                     declaration: decl.id,
@@ -238,6 +231,16 @@ impl RealizationIndexes {
                         "realization data item has no Structural value_body — bootstrap inhabitance check missed a malformed spec entry",
                 });
             };
+            // Skip realizations declared for other shared targets
+            // (e.g. Rust) by reading the typed `language: TargetLanguage`
+            // discriminator. Replaces the previous `name.starts_with("go_")`
+            // prefix filter — a name like `go_int` no longer
+            // determines ownership; the language tag does.
+            if crate::emit_rust::require_target_language(dag, fields, decl.id)?
+                != crate::emit_rust::TargetLanguageBinding::Go
+            {
+                continue;
+            }
             let target = require_field_decl_ref(fields, "target", decl.id)?;
             match category {
                 RealizationCategory::Type => {
