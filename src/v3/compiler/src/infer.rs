@@ -995,10 +995,22 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
 
 /// DB-11 (3a.3) call-site refinement discharge. Returns `None` when
 /// the expected parameter has no refinement (unconditionally OK), or
-/// when the actual argument carries a refinement whose resolved
-/// predicate expression DAG walks structurally equal to the expected
-/// one. Returns a `Diagnostic` otherwise. Pure structural walk — no
+/// when any refinement in the actual argument's `ResolvedIdentifier`
+/// alias chain walks structurally equal to the expected predicate.
+/// Returns a `Diagnostic` otherwise. Pure structural walk — no
 /// interning, no SMT, no entailment.
+///
+/// The alias walk is load-bearing for narrowed refined parameters.
+/// Narrowing (`narrow_scope_for_predicate`) creates a declaration that
+/// carries the narrow predicate as its `refinement` and aliases the
+/// outer refined decl via `Atom(ResolvedIdentifier(outer))`. The outer
+/// decl still carries its own refinement. The effective refinement of
+/// the narrowed port is the conjunction of the chain — so discharge
+/// succeeds if ANY level in the chain satisfies the callee's predicate.
+/// Without the chain walk, a caller like `caller(x: Int where x > 0)`
+/// narrowed with `x > 10` would be rejected when forwarded to a callee
+/// expecting `x > 0`, because the innermost refinement is `x > 10` not
+/// `x > 0` — even though `x > 0` is structurally carried on the alias.
 fn check_refinement_discharge(
     dag: &Dag,
     actual: &TypeShape,
@@ -1007,31 +1019,40 @@ fn check_refinement_discharge(
     span: &SourceSpan,
 ) -> Option<Diagnostic> {
     let expected_pred = dag.declaration(expected.declaration).refinement?;
-    let actual_pred = dag.declaration(actual.declaration).refinement;
-    match actual_pred {
-        Some(actual_pred) if predicates_structurally_equal(dag, actual_pred, expected_pred, 0) => {
-            None
+    let mut current = actual.declaration;
+    let mut any_refined = false;
+    for _ in 0..WALK_DEPTH_LIMIT {
+        let decl = dag.declaration(current);
+        if let Some(actual_pred) = decl.refinement {
+            any_refined = true;
+            if predicates_structurally_equal(dag, actual_pred, expected_pred, 0) {
+                return None;
+            }
         }
-        _ => {
-            let callee = transform_target_display_name(dag, target);
-            let name = if actual_pred.is_some() {
-                format!(
-                    "argument to `{callee}` does not satisfy the expected \
-                     `where` refinement (caller's refinement predicate \
-                     does not walk structurally equal to the callee's)"
-                )
-            } else {
-                format!(
-                    "argument to `{callee}` does not satisfy the expected \
-                     `where` refinement — no narrowing branch in scope"
-                )
-            };
-            Some(Diagnostic::ResolveError {
-                name,
-                span: span.clone(),
-            })
+        match &decl.connective {
+            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                current = *next;
+            }
+            _ => break,
         }
     }
+    let callee = transform_target_display_name(dag, target);
+    let name = if any_refined {
+        format!(
+            "argument to `{callee}` does not satisfy the expected \
+             `where` refinement (no refinement in the caller's alias \
+             chain walks structurally equal to the callee's)"
+        )
+    } else {
+        format!(
+            "argument to `{callee}` does not satisfy the expected \
+             `where` refinement — no narrowing branch in scope"
+        )
+    };
+    Some(Diagnostic::ResolveError {
+        name,
+        span: span.clone(),
+    })
 }
 
 /// Structural walk over two predicate `Declaration`s. Both should be

@@ -449,6 +449,38 @@ fn test_3a3_if_predicate_narrows_then_arm_discharge() {
 }
 
 #[test]
+fn test_3a3_narrowed_already_refined_param_preserves_outer_refinement() {
+    // Acceptance (DB-11): narrowing an already-refined parameter must
+    // not drop the outer refinement. Narrowing creates a declaration
+    // that aliases the outer refined decl via
+    // `Atom(ResolvedIdentifier(outer))`; the outer decl still carries
+    // its own refinement. Discharge walks the alias chain so ANY level's
+    // refinement can satisfy the callee — including the outer one.
+    //
+    // `caller(d: Int where d != 0)` is narrowed inside the `if` arm
+    // with `is_big(d, 10)` (a call-shaped predicate that narrowing
+    // recognizes per `narrowable_var_name`). Forwarded to
+    // `div(d: Int where d != 0)`: the narrowed decl's own refinement is
+    // `is_big(d, 10)` (does NOT walk-equal to `d != 0`), but the alias
+    // chain reaches the outer `d != 0`, which does.
+    //
+    // Call-shaped (not operator-shaped) narrow predicate is load-bearing
+    // here: `resolve_operator_arrow`'s primitive fallback uses
+    // `inputs: vec![lhs_type, lhs_type]`, which would propagate the
+    // outer refinement onto the literal operand and fail discharge
+    // before narrowing runs — unrelated to this test's concern.
+    let src = "fn is_big(x: Int, threshold: Int) -> Bool = x > threshold\n\
+               fn div(n: Int, d: Int where d != 0) -> Int = n\n\
+               fn caller(n: Int, d: Int where d != 0) -> Int = \
+                 if is_big(d, 10) then div(n, d) else 0";
+    let _ = compile_to_dag(src, "test.v3").expect(
+        "narrowing an already-refined param must not drop the outer \
+         refinement: the outer `d != 0` on the alias chain should \
+         discharge the callee's `d != 0`",
+    );
+}
+
+#[test]
 fn test_3a3_if_without_narrowing_rejects_forwarded_unrefined() {
     // Counterpart to the narrowing test: if the caller does NOT guard
     // the call with a matching predicate, the forwarded `d` carries no
