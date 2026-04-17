@@ -4,7 +4,7 @@
 
 **Lane:** 1 (Emission unification)
 **Stage:** 1a (first stage; prerequisite for all of Lane 1)
-**Time budget:** ~1 week (one full implementer-week; split into ~5 commits)
+**Size:** M (split into ~5 commits)
 **Status:** Plan. No code changes yet.
 
 > Role in the plan: housekeeping sweep that closes the visible

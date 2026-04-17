@@ -3,7 +3,8 @@
 # Post-A/B Lane Plan — Working backward from the thesis
 
 **Status:** Active plan. Half A merged; Half B pending. Lane 1 can start today.
-**Total time:** ~14 weeks, four major lanes (substantial parallelism; see Gantt below).
+**Scope:** Four major lanes, sixteen stages total. Substantial parallelism (see sequencing section).
+**Sizing:** Per-stage t-shirt sizes (S/M/L/XL). Lane totals are aggregate sizes, not calendar weeks.
 **Discipline:** Every open thesis obligation is placed in a lane. **Nothing is backlog.**
 
 ---
@@ -27,55 +28,55 @@ The four lanes exhaust the thesis. When all complete, gunbc cashes out its claim
 
 ## Lane summaries
 
-### Lane 1 — Emission unification (~5 weeks)
+### Lane 1 — Emission unification (XL, six stages)
 
 **Closes:** "adding a new target = one spec file, zero new Rust"
 
 Six internal stages. Each builds on the previous:
 
-| Stage | Time | Scope | Design doc |
+| Stage | Size | Scope | Design doc |
 |---|---|---|---|
-| 1a | 1 week | L1.5 tail: Consumed rendering, Go unignores, receipts audit, m1_3 perf | [phase1-lane1-l15-tail.md](./phase1-lane1-l15-tail.md) |
-| 1b | 1 week | **Substrate keyed-lookup** (meta-review root cause): `port_by_id`, `node_by_id`, `resolve_producer` Bind-pass-through; migrate existing 3 lenses; INVARIANTS.md L-7 ("lenses don't reconstruct lookup locally") | [lane1-stage-b-substrate-keyed-lookup.md](./lane1-stage-b-substrate-keyed-lookup.md) |
-| 1c | 1 week | Clean-emission invariant E-5: `CleanEmissionContract` per-target spec, pilot with unused pattern bindings | [phase1-lane2-clean-emission-invariant.md](./phase1-lane2-clean-emission-invariant.md) |
-| 1d | 1 week | Consolidation build plan: function inventory, spec gaps, bridge inventory, pilot target choice | [phase1-lane3-consolidation-build-plan.md](./phase1-lane3-consolidation-build-plan.md) |
-| 1e | 2 weeks | Consolidation execution: dissolve emit_rust.rs/go.rs/python.rs into one generic walker + per-target specs | (written at start of 1d, after build-plan locks design) |
-| 1f | 1 week | Consolidation proof: re-emission of Rust/Go/Python through the walker produces bit-identical output to current per-language emitters. Optional: add one additional Shape A language (another programming language, e.g. Swift/Kotlin) to prove "one new target = one spec file" | (written at end of 1e, sized by what consolidation actually shipped) |
+| 1a | M | L1.5 tail: Consumed rendering, Go unignores, receipts audit, m1_3 perf | [phase1-lane1-l15-tail.md](./phase1-lane1-l15-tail.md) |
+| 1b | M | **Substrate keyed-lookup** (meta-review root cause): `port_by_id`, `node_by_id`, `resolve_producer` Bind-pass-through; migrate existing 3 lenses; INVARIANTS.md L-7 ("lenses don't reconstruct lookup locally") | [lane1-stage-b-substrate-keyed-lookup.md](./lane1-stage-b-substrate-keyed-lookup.md) |
+| 1c | M | Clean-emission invariant E-5: `CleanEmissionContract` per-target spec, pilot with unused pattern bindings | [phase1-lane2-clean-emission-invariant.md](./phase1-lane2-clean-emission-invariant.md) |
+| 1d | M | Consolidation build plan: function inventory, spec gaps, bridge inventory, pilot target choice | [phase1-lane3-consolidation-build-plan.md](./phase1-lane3-consolidation-build-plan.md) |
+| 1e | L | Consolidation execution: dissolve emit_rust.rs/go.rs/python.rs into one generic walker + per-target specs | (written at start of 1d, after build-plan locks design) |
+| 1f | M | Consolidation proof: re-emission of Rust/Go/Python through the walker produces bit-identical output to current per-language emitters. Optional: add one additional Shape A language (another programming language, e.g. Swift/Kotlin) to prove "one new target = one spec file" | (written at end of 1e, sized by what consolidation actually shipped) |
 
 **Acceptance:** `grep -r "fn render_" src/v3/compiler/src/` returns zero target-specific matches; Rust, Go, Python all roundtrip through a single generic walker with bit-identical output to pre-consolidation; zero `#[allow(warnings)]` attributes anywhere.
 
 **Not in scope for Lane 1** (per THESIS.md §"Two shapes of omni-emission"): SPICE netlists, Verilog hardware descriptions, English documentation, YAML, Terraform, etc. These are **Shape B artifacts** — outputs of `.dag` PROGRAMS, not compiler emission targets. Writing a SPICE-netlist emitter is writing a `.dag` library, which any user program can invoke. Compiler core stays focused on Shape A (programming languages).
 
-### Lane 2 — Compile-time proofs (~4 weeks, overlaps Lane 1 from week 3)
+### Lane 2 — Compile-time proofs (XL, six stages, overlaps Lane 1 after 1b)
 
 **Closes:** "every structural property gunbc claims is compile-time-enforced, not a runtime flag"
 
 Six stages covering the three undeclared-compiler-consumption properties:
 
-| Stage | Time | Scope |
+| Stage | Size | Scope |
 |---|---|---|
-| 2a | 0.5 week | Port `dsl/std/effects.dag` → `src/v3/std/effects.dag`. Minimum carry-over; no new design. |
-| 2b | 1.5 weeks | Workflow idempotency lens: walks a pipeline, composes `EffectShape` per op via `compose_effects`, emits diagnostic pointing at the non-lattice op when chain breaks |
-| 2c | 1 week | Test obligation materialization: `generate_idempotency_obligations` spec → actually-emitted `f(f(x)) == f(x)` tests. End-to-end fixture: GCP bringup workflow compiler-proved idempotent, runnable test asserts it against mock API |
-| 2d | 1 week | L2 M1 symbolic cost bounds. Unignores `kf_1_lambda_body_cost_contributes_to_fold`. Structural cost composes through fold/map/loop with symbolic arity. O(n) vs O(n²) diagnostic |
-| 2e | 0.5 week | Parallelism-as-lens. Unignores `parallel_fold_on_commutative_monoid_is_reducible`. "Promotable to map" diagnostic becomes a lens output, not just a structural test |
-| 2f | 0.5 week | User-declared dimensions: infrastructure from 2b–2e generalizes so users can add custom compile-time proofs via `.dag` declaration (M4 thesis completion) |
+| 2a | S | Port `dsl/std/effects.dag` → `src/v3/std/effects.dag`. Minimum carry-over; no new design. |
+| 2b | L | Workflow idempotency lens: walks a pipeline, composes `EffectShape` per op via `compose_effects`, emits diagnostic pointing at the non-lattice op when chain breaks |
+| 2c | M | Test obligation materialization: `generate_idempotency_obligations` spec → actually-emitted `f(f(x)) == f(x)` tests. End-to-end fixture: GCP bringup workflow compiler-proved idempotent, runnable test asserts it against mock API |
+| 2d | M | L2 M1 symbolic cost bounds. Unignores `kf_1_lambda_body_cost_contributes_to_fold`. Structural cost composes through fold/map/loop with symbolic arity. O(n) vs O(n²) diagnostic |
+| 2e | S | Parallelism-as-lens. Unignores `parallel_fold_on_commutative_monoid_is_reducible`. "Promotable to map" diagnostic becomes a lens output, not just a structural test |
+| 2f | S | User-declared dimensions: infrastructure from 2b–2e generalizes so users can add custom compile-time proofs via `.dag` declaration (M4 thesis completion) |
 
 **Acceptance:** the four previously `#[ignore]`d property tests are all green. A fixture that declares a non-idempotent cloud workflow (e.g., `POST /logs` in a retry loop) fails to compile with a diagnostic naming the breaking op. Symbolic cost reports O(n²) on nested fold. All v2 idempotency tests (`src/v2/tests/src/effects.rs`) have v3 equivalents passing.
 
 Full design doc: [lane2-compile-time-proofs.md](./lane2-compile-time-proofs.md)
 
-### Lane 3 — Self-hosting cycle (~4 weeks, starts after Lane 1e)
+### Lane 3 — Self-hosting cycle (XL, three stages; 3c gates on Lane 1e)
 
 **Closes:** "the compiler is describable in .dag and is its own first consumer"
 
 Three stages. This is M2 feature parity + diagnostics-as-corrections + the self-hosting cycle proper:
 
-| Stage | Time | Scope |
+| Stage | Size | Scope |
 |---|---|---|
-| 3a | 3 weeks (split into 5 sub-stages) | M2 feature parity for `compiler.dag`. Budget covers **design + implementation** for five substrate/surface extensions; 1.5 weeks was original estimate but reviewer correctly flagged as unrealistic. Split: 3a.1 mutual recursion (0.5w design + 1w impl, via DB-9), 3a.2 `data` value semantics (0.5w), 3a.3 `where` refinement (1w), 3a.4 surface generics (0.5w), 3a.5 Disj dotted-path parser extension (0.5w, unblocks Half B B13). See [lane3 design](./lane3-self-hosting-cycle.md) |
-| 3b | 1 week | Diagnostics-as-corrections: every diagnostic carries `fix: List<Correction>` with literal code. Per-target fix syntax declared in spec (same `CleanEmissionContract` surface as Lane 1c — Rust fix syntax, Python fix syntax, etc.) |
-| 3c | 1.5 weeks | Self-hosting cycle: `compiler.dag` → Lane 1e emitter → Rust → `rustc` → v3_compiler binary. Fixed-point ratchet: re-emit is bit-identical. `cargo run --bin self-host-fixed-point` is a CI gate |
+| 3a | XL (5 sub-stages) | M2 feature parity for `compiler.dag`. Budget covers **design + implementation** for five substrate/surface extensions. Split: 3a.1 mutual recursion (L, design + impl via DB-9), 3a.2 `data` value semantics (S), 3a.3 `where` refinement (M), 3a.4 surface generics (S), 3a.5 Disj dotted-path parser extension (S, unblocks Half B B13). See [lane3 design](./lane3-self-hosting-cycle.md) |
+| 3b | M | Diagnostics-as-corrections: every diagnostic carries `fix: List<Correction>` with literal code. Per-target fix syntax declared in spec (same `CleanEmissionContract` surface as Lane 1c — Rust fix syntax, Python fix syntax, etc.) |
+| 3c | L | Self-hosting cycle: `compiler.dag` → Lane 1e emitter → Rust → `rustc` → v3_compiler binary. Fixed-point ratchet: re-emit is bit-identical. `cargo run --bin self-host-fixed-point` is a CI gate |
 
 **Acceptance:** running the compiler binary on `compiler.dag` produces Rust identical to the previous run. Every diagnostic in `thesis_validation_test.rs`'s T-series emits a literal fix snippet. The compiler has dogfooded itself end-to-end.
 
@@ -83,18 +84,18 @@ Full design doc: [lane3-self-hosting-cycle.md](./lane3-self-hosting-cycle.md)
 
 ---
 
-## Lane 4 — Completion layer (~4 weeks)
+## Lane 4 — Completion layer (L, four stages)
 
 **Closes:** everything else — transport declarations, `dag run` interpreter, side effects as a compile-time dimension, space bounds, async emission modeling.
 
 Four stages:
 
-| Stage | Time | Scope |
+| Stage | Size | Scope |
 |---|---|---|
-| 4a | 1.5 weeks | Transport declarations (typed `RestTransport`/`ShellTransport`/etc., not string-tagged) + `dag run` interpreter (execute .dag without emission) |
-| 4b | 1 week | Side effects as Dimension instance (extends Lane 2 2f framework). Workflow lens rejects hermetic/non-hermetic mixing |
-| 4c | 1 week | Space bounds as Dimension instance. Structural space cost composes through list operations. `where memory_bounded(…)` declarations enforce |
-| 4d | 0.5 week | Async emission modeling. Target spec declares async strategy; walker emits `async fn` / `.await` based on spec — zero new walker code |
+| 4a | L | Transport declarations (typed `RestTransport`/`ShellTransport`/etc., not string-tagged) + `dag run` interpreter (execute .dag without emission) |
+| 4b | M | Side effects as Dimension instance (extends Lane 2 2f framework). Workflow lens rejects hermetic/non-hermetic mixing |
+| 4c | M | Space bounds as Dimension instance. Structural space cost composes through list operations. `where memory_bounded(…)` declarations enforce |
+| 4d | S | Async emission modeling. Target spec declares async strategy; walker emits `async fn` / `.await` based on spec — zero new walker code |
 
 **Acceptance:** `dag run` executes a cloud workflow through declared transports; side-effects and space-bounds dimensions have live workflow lenses; an async Rust variant of any program emits through the same walker as sync Rust.
 
@@ -102,36 +103,18 @@ Full design doc: [lane4-completion.md](./lane4-completion.md)
 
 ---
 
-## Sequencing (Gantt)
+## Sequencing
+
+Stage sizes and per-lane order (dependencies block below captures cross-lane gates):
 
 ```
-Week:      1    2    3    4    5    6    7    8    9   10   11   12   13   14   15
-Lane 1:  [1a] [1b] [1c] [1d] [       1e (2w)      ] [1f]
-Lane 2:             [2a] [     2b    ] [2c] [2d] [2e] [2f]
-Lane 3:  [          3a (3 sub-stages)           ] [3b] [     wait    ] [  3c  ]
-Lane 4:                                                          [   4a   ] [4b] [4c] [4d]
+Lane 1:  1a[M] → 1b[M] → 1c[M] → 1d[M] → 1e[L] → 1f[M]
+Lane 2:                  2a[S] → 2b[L] → 2c[M] → 2d[M] → 2e[S] → 2f[S]
+Lane 3:  3a[XL, 5 sub-stages] ─────────────────→ 3b[M] ─── (3c waits on 1e) ─── 3c[L]
+Lane 4:                                                                        4a[L] → 4b[M] → 4c[M] → 4d[S]
 ```
 
-Plan total extends to ~15 weeks with Stage 3a honestly sized. Critical path is now `1a → 1b → 1c → 1d → 1e → 3c`, ~10 weeks. Stage 3a runs in parallel with Lane 1 throughout.
-
-Week-by-week view:
-
-| Wk | Lane 1 | Lane 2 | Lane 3 | Lane 4 |
-|----|--------|--------|--------|--------|
-| 1  | 1a (L1.5 tail) | — | 3a (M2 parity) | — |
-| 2  | 1b (keyed-lookup) | — | 3a | — |
-| 3  | 1c (E-5 invariant) | 2a (effects port) | 3b (corrections) | — |
-| 4  | 1d (build plan) | 2b (idempotency lens) | (3c blocked on 1e) | — |
-| 5  | 1e (consolidation) | 2b | — | — |
-| 6  | 1e | 2c (test materialize) | — | — |
-| 7  | 1e | 2d (symbolic bounds) | — | — |
-| 8  | 1f (consolidation proof) | 2e (parallelism lens) | — | — |
-| 9  | — | 2f (user dims) | 3c start | — |
-| 10 | — | — | 3c | 4a (transports + dag run) |
-| 11 | — | — | 3c | 4a |
-| 12 | — | — | — | 4b (side effects) |
-| 13 | — | — | — | 4c (space bounds) |
-| 14 | — | — | — | 4d (async emit) |
+Critical path: `1a → 1b → 1c → 1d → 1e → 3c` (six stages, one L, rest M). Stage 3a runs in parallel with Lane 1 throughout. Lane 2 starts once 1b lands. Lane 4 starts once 3a + 2f + 1e converge.
 
 ### Hard dependencies
 
@@ -146,7 +129,7 @@ Week-by-week view:
 2b–2e → 2f (user-dim abstraction generalizes over the concrete lenses)
 ```
 
-**Note on 1a ↔ 3a**: Stage 3a (M2 feature parity) is *soft-coupled* to 1a (L1.5 tail), not hard-dependent. 3a CAN start Week 1 in parallel with 1a if implementer slots allow; the Gantt reflects this. Hard dep would be if 3a needed the post-1a repo state; it doesn't — 3a touches parser/lowering/substrate, 1a touches test cleanup and a renderer path.
+**Note on 1a ↔ 3a**: Stage 3a (M2 feature parity) is *soft-coupled* to 1a (L1.5 tail), not hard-dependent. 3a CAN start in parallel with 1a if implementer slots allow; the sequencing diagram reflects this. Hard dep would be if 3a needed the post-1a repo state; it doesn't — 3a touches parser/lowering/substrate, 1a touches test cleanup and a renderer path.
 
 ### Design blockers (all resolved — design docs ready for implementer review)
 
@@ -193,10 +176,10 @@ Half B (PR #490) landed 8 of 9 original blockers + 3 new issues. Classifying eac
 ### Critical path
 
 ```
-1a → 1b → 1c → 1d → 1e → 3c (self-hosting) = ~10 weeks
+1a → 1b → 1c → 1d → 1e → 3c (self-hosting)
 ```
 
-Everything else runs in parallel against this spine.
+Six stages: five M, one L. Everything else runs in parallel against this spine.
 
 ### What can start TODAY (before Half B merges)
 
@@ -222,7 +205,7 @@ Everything else runs in parallel against this spine.
 
 **Soft coordination (same surface, concurrent work):**
 - Lane 2 diagnostics ↔ Lane 3b corrections: Lane 2's idempotency lens emits diagnostics; those diagnostics must carry the `Correction` shape Lane 3b defines. Mitigation: Lane 2 designs diagnostics against Lane 3b's target shape from day one.
-- Lane 2 symbolic cost ↔ Lane 3 mutual recursion: symbolic cost (2d) reasons about recursion shape; mutual recursion (3a) adds SCC structure. Sequenced: 3a starts week 1, done by ~week 2.5, well before 2d starts ~week 7.
+- Lane 2 symbolic cost ↔ Lane 3 mutual recursion: symbolic cost (2d) reasons about recursion shape; mutual recursion (3a.1) adds SCC structure. Sequenced: 3a.1 lands before 2d starts (3a runs in parallel with Lane 1 from the start; 2d gates on Lane 1 1b + prior Lane 2 stages).
 
 ---
 

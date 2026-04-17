@@ -4,7 +4,7 @@
 
 **Lane:** 1 (Emission unification)
 **Stage:** 1b (after L1.5 tail; before clean-emission invariant)
-**Time budget:** ~1 week
+**Size:** M
 **Status:** Plan. No code changes yet.
 
 ---

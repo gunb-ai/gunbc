@@ -288,12 +288,14 @@ What callers can rely on:
 
 ### Lane 1 Stage 1e execution order
 
-1. **Week 5.0**: Create `src/v3/compiler/src/emit.rs` with `emit`, `emit_dag`, top-level structure. All helpers stubbed or deferring to `emit_rust.rs` functions.
-2. **Week 5.2**: Lift `emit_value`, `emit_transform`, `emit_loop` from `emit_rust.rs` into `emit.rs`. Add `TargetContext`. Templates read from the chosen target spec.
-3. **Week 5.5**: Lift `emit_branch`, `emit_pattern`. Implement `PatternBindingRule` dispatch (DB-4). Tests for pattern binding underscore behavior.
-4. **Week 6.0**: Lift `emit_bind`, `emit_function_declaration`. Implement `ExpressionWrappingRule` dispatch. All Rust tests pass via the generic walker.
-5. **Week 6.5**: Same lift for Go and Python. `emit_rust.rs`, `emit_go.rs`, `emit_python.rs` become shims (or deleted if tests migrate cleanly).
-6. **Week 7.0**: Post-emit verifier wired. `-D warnings` is live for Rust; gofmt lint is live for Go; etc. `#[allow(warnings)]` attributes removed everywhere.
+Six sub-steps, ordered by dependency. Sub-step sizes sum to the lane's L total; individual sub-steps are S (roughly a commit each, with 1e.2 larger because it covers the first end-to-end lift):
+
+1. **1e.1** (S): Create `src/v3/compiler/src/emit.rs` with `emit`, `emit_dag`, top-level structure. All helpers stubbed or deferring to `emit_rust.rs` functions.
+2. **1e.2** (M): Lift `emit_value`, `emit_transform`, `emit_loop` from `emit_rust.rs` into `emit.rs`. Add `TargetContext`. Templates read from the chosen target spec.
+3. **1e.3** (S): Lift `emit_branch`, `emit_pattern`. Implement `PatternBindingRule` dispatch (DB-4). Tests for pattern binding underscore behavior.
+4. **1e.4** (S): Lift `emit_bind`, `emit_function_declaration`. Implement `ExpressionWrappingRule` dispatch. All Rust tests pass via the generic walker.
+5. **1e.5** (S): Same lift for Go and Python. `emit_rust.rs`, `emit_go.rs`, `emit_python.rs` become shims (or deleted if tests migrate cleanly).
+6. **1e.6** (S): Post-emit verifier wired. `-D warnings` is live for Rust; gofmt lint is live for Go; etc. `#[allow(warnings)]` attributes removed everywhere.
 
 ### Test strategy
 

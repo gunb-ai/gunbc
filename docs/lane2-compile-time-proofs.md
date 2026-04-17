@@ -3,7 +3,7 @@
 # Lane 2 — Compile-time proofs
 
 **Lane:** 2 (of 3)
-**Time budget:** ~4 weeks, overlaps Lane 1 from week 3
+**Size:** XL (six stages), overlaps Lane 1 after 1b lands
 **Status:** Plan. No code changes yet.
 
 ---
@@ -34,7 +34,7 @@ This lane closes the "❌ not wired" gaps across six stages. After Lane 2 comple
 
 ## Stages
 
-### Stage 2a — v3 effects algebra port (0.5 week)
+### Stage 2a — v3 effects algebra port (S)
 
 **Scope:** port `dsl/std/effects.dag` → `src/v3/std/effects.dag`. Structural carry-over only.
 
@@ -53,7 +53,7 @@ Copy:
 
 **Escalation:** if any v2 effects type uses a construct v3 doesn't yet parse (unlikely given L1 completeness, but check first). If blocked, surface — don't half-port.
 
-### Stage 2b — Workflow idempotency lens (1.5 weeks)
+### Stage 2b — Workflow idempotency lens (L)
 
 **Scope:** create `src/v3/lenses/idempotency.dag`. Walks a pipeline (sequence of service operations), composes effects, emits diagnostic on chain break.
 
@@ -81,7 +81,7 @@ Lens reads each operation's declared `idempotent` modifier AND derives from path
 
 **Escalation:** if workflow structure isn't representable cleanly — e.g., control flow in a pipeline doesn't map to a linear `List<OperationEffect>` — surface. Don't stretch `compose_effects` to handle branches silently; the algebra needs to reflect branch-wise composition, which is a legitimate design extension.
 
-### Stage 2c — Test obligation materialization (1 week)
+### Stage 2c — Test obligation materialization (M)
 
 > **Load-bearing for Lane 2's acceptance.** Stage 2c is the bridge between "compile-time proof" and "we can demonstrate the proof." If 2c slips or gets descoped, Lane 2's acceptance gate degrades from *"compile-time-enforced + runtime-validated"* to *"compile-time-enforced only"* — the thesis claim that idempotency is "inescapable" weakens because we can't point at runnable tests proving it. Implementer must not silently descope this stage; if it needs more time, escalate per the plan's escalation protocol.
 
@@ -106,7 +106,7 @@ Works through mock harness for cloud ops — ops have `mock_response` already de
 
 **Escalation:** if mock harness is insufficient (e.g., real network needed to express some class of idempotency), surface — shouldn't invent a local mock framework. The extdeps mock_response surface should cover all declared ops; if not, extdeps needs extension.
 
-### Stage 2d — Symbolic cost bounds (1 week)
+### Stage 2d — Symbolic cost bounds (M)
 
 **Scope:** L2 M1 from the thesis validation doc. Structural cost (Lane 1a's forward-fold) reports op counts; symbolic cost reports asymptotic complexity as O(f(n)) where n is input size.
 
@@ -137,7 +137,7 @@ Emits diagnostic for unexpected complexity (e.g., hidden O(n²) via captured lis
 
 **Escalation:** if recognition rules for O(n²) require solving arbitrary symbolic arithmetic, scope tighter — recognize the thesis doc's two patterns (nested fold, sort-before-commutative) and document what's not recognized. Don't build a full symbolic math library.
 
-### Stage 2e — Parallelism-as-lens (0.5 week)
+### Stage 2e — Parallelism-as-lens (S)
 
 **Scope:** `thesis_parallelism_test.rs` already asserts structural parallelism via `has_transitive_dependency`. Stage 2e promotes that structural fact to a lens output users can see.
 
@@ -162,7 +162,7 @@ Unignores `parallel_fold_on_commutative_monoid_is_reducible`.
 
 **Escalation:** if commutative-monoid detection requires algebra-awareness the `.dag` compiler doesn't have yet (operator-on-declared-Monoid-instance lookup), surface. That primitive might live in algebra.dag; if it doesn't, it's a prerequisite.
 
-### Stage 2f — User-declared dimensions (0.5 week)
+### Stage 2f — User-declared dimensions (S)
 
 **Scope:** the infrastructure from 2b–2e (lens walks workflow, composes algebra, emits diagnostic) has a common shape. Generalize so users can add new compile-time dimensions via `.dag` declaration alone.
 
@@ -198,14 +198,14 @@ Ship with idempotency, symbolic-cost, parallelism as Dimension instances. Docume
 
 ---
 
-## Estimate
+## Size
 
-4 weeks, overlapping Lane 1 from week 3. Per-stage breakdown:
-- 2a: 0.5 week
-- 2b: 1.5 weeks
-- 2c: 1 week
-- 2d: 1 week
-- 2e: 0.5 week
-- 2f: 0.5 week
+XL aggregate (six stages), overlaps Lane 1 starting after 1b. Per-stage sizes:
+- 2a: S
+- 2b: L
+- 2c: M
+- 2d: M
+- 2e: S
+- 2f: S
 
-Total: 4 implementer-weeks (some internal parallelism possible if 2+ implementers).
+Some internal parallelism possible if 2+ implementers.

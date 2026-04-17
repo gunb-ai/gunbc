@@ -3,7 +3,7 @@
 # Lane 4 — Completion layer
 
 **Lane:** 4 (of 4)
-**Time budget:** ~4 weeks
+**Size:** L (four stages)
 **Status:** Plan. No code changes yet.
 
 ---
@@ -26,7 +26,7 @@ Four stages, each closing one of these:
 
 ## Stages
 
-### Stage 4a — Transport declarations + `dag run` interpreter (1.5 weeks)
+### Stage 4a — Transport declarations + `dag run` interpreter (L)
 
 **Scope.** Two coupled items:
 
@@ -57,7 +57,7 @@ Use case: `dag run my_cloud_bringup.dag` actually launches the infrastructure (t
 - If transport types multiply (REST + shell + gRPC + GraphQL + SSH + …), don't try to enumerate everything at once. Ship REST + shell, document the pattern for adding new transports.
 - If `dag run` needs effect execution ordering that the current substrate can't express (e.g., parallel operations with dependencies), surface — parallelism sequencing might need Lane 2 Stage 2e's output.
 
-### Stage 4b — Side effects dimension (1 week)
+### Stage 4b — Side effects dimension (M)
 
 **Scope.** Add side effects as a compile-time-enforced dimension, following the Lane 2 Stage 2f `Dimension` pattern.
 
@@ -76,7 +76,7 @@ After 4b: `side_effects: Dimension` instance, declared in std/, consumed by a wo
 **Escalation:**
 - If side-effect algebra doesn't compose cleanly (e.g., a mix of reads and writes in a branch), surface — might need `EffectShape` extension beyond what idempotency required.
 
-### Stage 4c — Space bounds dimension (1 week)
+### Stage 4c — Space bounds dimension (M)
 
 **Scope.** Add space (memory/allocation) bounds as a compile-time dimension.
 
@@ -94,7 +94,7 @@ Emits diagnostic when a program's space bound exceeds a declared limit (e.g., `f
 **Escalation:**
 - If space cost requires knowing allocator behavior (which differs per target), scope tighter — report structural space (node count × size), not allocator-specific bytes.
 
-### Stage 4d — Async emission modeling (0.5 week)
+### Stage 4d — Async emission modeling (S)
 
 **Scope.** Model async/concurrent emission as a target-spec option. Not "make everything async," just: declare that a target supports async patterns, emit the async version when the target spec requests it.
 
@@ -124,7 +124,7 @@ The generic walker (Lane 1 Stage 1e) reads the async strategy from spec and emit
 - **Requires Lane 2 Stage 2f complete** — side effects and space bounds extend the `Dimension` abstraction from 2f
 - **Requires Lane 1 Stage 1e complete** — async emission modeling uses the consolidated walker
 
-Lane 4 therefore starts **after both Lane 2 and Lane 3 have landed their framework stages**. Can't start before week 9 of the plan.
+Lane 4 therefore starts **after both Lane 2 and Lane 3 have landed their framework stages** — specifically, after 1e, 2f, and 3a converge.
 
 ---
 
@@ -138,13 +138,13 @@ Lane 4 therefore starts **after both Lane 2 and Lane 3 have landed their framewo
 
 ---
 
-## Estimate
+## Size
 
-4 weeks total, weeks 10–13 of the plan:
-- 4a: 1.5 weeks (weeks 10–11.5)
-- 4b: 1 week (week 11.5–12.5)
-- 4c: 1 week (week 12.5–13.5)
-- 4d: 0.5 week (week 13.5–14)
+L aggregate, four stages:
+- 4a: L
+- 4b: M
+- 4c: M
+- 4d: S
 
 ---
 

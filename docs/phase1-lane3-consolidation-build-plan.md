@@ -4,7 +4,7 @@
 
 **Lane:** 1 (Emission unification)
 **Stage:** 1d (last design stage; gates Stage 1e implementation start)
-**Time budget:** ~1 week
+**Size:** M
 **Status:** Plan. Pure design, no code changes.
 
 > Role in the plan: produces the file-by-file build plan for Stage 1e's
@@ -261,7 +261,7 @@ intersection of "what's common across all classifications."
 
 **Be ruthless about substrate gaps.** If a function classification
 would require "the spec doesn't have a way to say X", write it down.
-P2's first week will be spec additions; the gap list is the scope.
+P2's first sub-stage will be spec additions; the gap list is the scope.
 
 **Don't over-plan the walker's implementation.** This lane's output is
 enough material for an implementer to write the walker next phase — not

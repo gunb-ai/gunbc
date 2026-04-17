@@ -3,7 +3,7 @@
 # Lane 3 — Self-hosting cycle
 
 **Lane:** 3 (of 3)
-**Time budget:** ~4 weeks
+**Size:** XL (three stages, one with five sub-stages)
 **Status:** Plan. No code changes yet.
 
 ---
@@ -27,19 +27,19 @@ Lane 3 closes all three.
 
 ## Stages
 
-### Stage 3a — M2 feature parity for compiler.dag (3 weeks, 5 sub-stages)
+### Stage 3a — M2 feature parity for compiler.dag (XL, 5 sub-stages)
 
 **Scope:** five surface-language / substrate extensions `compiler.dag` needs.
 
-**Why 3 weeks, not 1.5:** director review (PR #491) correctly flagged 1.5 weeks as unrealistic. Several of these are multi-week historically. Split into sub-stages with honest per-feature budgets:
+**Why XL, not L:** director review (PR #491) correctly flagged earlier L estimate as unrealistic. Several of these are substantial extensions historically. Split into sub-stages with honest per-feature sizes:
 
-| Sub-stage | Time | Scope | Design doc |
+| Sub-stage | Size | Scope | Design doc |
 |---|---|---|---|
-| 3a.1 | 1.5 weeks | Mutual recursion: SCC detection in termination lens + cluster descent verification. **No substrate change** — uses existing 5 behaviors (see [DB-9](./design-mutual-recursion-lowering.md) for why). | [DB-9](./design-mutual-recursion-lowering.md) |
-| 3a.2 | 0.5 week | `data` value semantics: `data foo: Type = value` as structural value declarations accessible at emission | (written at start of 3a.2) |
-| 3a.3 | 1 week | `where` refinement predicates: `fn f(x: Int where x > 0)`. Needs refinement carrier on Port types + Branch-boundary verification. Not trivial. | (written at start of 3a.3) |
-| 3a.4 | 0.5 week | Full surface generics: explicit `fn f<T>(x: T) -> T` syntax for compiler code (Prereq 0.5 covers inference; 3a.4 is surface/lowering) | (written at start of 3a.4) |
-| 3a.5 | 0.5 week | Disj dotted-path parser extension: `match opt { Some(s) => s.field }` — unblocks Half B B13 | (written at start of 3a.5) |
+| 3a.1 | L | Mutual recursion: SCC detection in termination lens + cluster descent verification. **No substrate change** — uses existing 5 behaviors (see [DB-9](./design-mutual-recursion-lowering.md) for why). | [DB-9](./design-mutual-recursion-lowering.md) |
+| 3a.2 | S | `data` value semantics: `data foo: Type = value` as structural value declarations accessible at emission | (written at start of 3a.2) |
+| 3a.3 | M | `where` refinement predicates: `fn f(x: Int where x > 0)`. Needs refinement carrier on Port types + Branch-boundary verification. Not trivial. | (written at start of 3a.3) |
+| 3a.4 | S | Full surface generics: explicit `fn f<T>(x: T) -> T` syntax for compiler code (Prereq 0.5 covers inference; 3a.4 is surface/lowering) | (written at start of 3a.4) |
+| 3a.5 | S | Disj dotted-path parser extension: `match opt { Some(s) => s.field }` — unblocks Half B B13 | (written at start of 3a.5) |
 
 **Acceptance per sub-stage:**
 
@@ -51,9 +51,9 @@ Lane 3 closes all three.
 | 3a.4 Surface generics | `fn id<T>(x: T) -> T` — compiles with explicit type param |
 | 3a.5 Disj dotted-path | `match opt { Some(s) => s.field, None => ... }` parses and lowers — unblocks Half B's B13 |
 
-**Escalation:** if any single sub-stage exceeds +25% of its budget, stop and escalate. Don't silently absorb; each sub-stage is individually sized to give real overrun signal.
+**Escalation:** if any single sub-stage materially exceeds its size classification (e.g., an S stretches to M, an M stretches to L), stop and escalate. Don't silently absorb; each sub-stage is individually sized to give real overrun signal.
 
-### Stage 3b — Diagnostics as corrections (1 week)
+### Stage 3b — Diagnostics as corrections (M)
 
 **Scope:** every diagnostic carries `fix: List<Correction>` where each `Correction` is literal code the user can paste.
 
@@ -81,7 +81,7 @@ Per-target correction style is declared in each target spec alongside its `Clean
 
 **Escalation:** if corrections need semantic information the diagnostic site doesn't have (e.g., "suggest the right field" requires schema lookup from wherever the type is defined), surface — that's a legitimate API extension. Don't fabricate corrections without the needed context.
 
-### Stage 3c — Self-hosting cycle (1.5 weeks)
+### Stage 3c — Self-hosting cycle (L)
 
 **Scope:** wire the emit → compile → emit fixed-point.
 
@@ -136,14 +136,14 @@ New CI gate: `cargo run --bin self-host-fixed-point`:
 
 ---
 
-## Estimate
+## Size
 
-4 weeks, starts roughly week 7 (after Lane 1 Stage 1e lands around week 6):
-- 3a: 1.5 weeks (weeks 7–8.5)
-- 3b: 1 week (weeks 8.5–9.5)
-- 3c: 1.5 weeks (weeks 9.5–11)
+XL aggregate, starts once Lane 1 Stage 1e lands:
+- 3a: XL (5 sub-stages: L, S, M, S, S)
+- 3b: M
+- 3c: L
 
-Buffer at week 12 for integration issues.
+Build integration buffer into 3c's acceptance, not into calendar.
 
 ---
 

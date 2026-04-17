@@ -4,7 +4,7 @@
 
 **Lane:** 1 (Emission unification)
 **Stage:** 1c (after substrate keyed-lookup; before consolidation build plan)
-**Time budget:** ~1 week
+**Size:** M
 **Status:** Plan. No code changes yet.
 
 > Role in the plan: establishes E-5 invariant (warnings-by-construction)
