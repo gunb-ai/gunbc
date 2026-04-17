@@ -1,168 +1,179 @@
-> Part of: [post-l15-phase-plan.md](./post-l15-phase-plan.md) | Unblocks: Lane 2 Stage 2c (test obligation materialization) | Status: **discussion draft — not locked**
+> Part of: [post-l15-phase-plan.md](./post-l15-phase-plan.md) | Unblocks: Lane 2 Stage 2c (test obligation materialization) | Consumes: compiler-as-dependency-analyzer thesis, `src/v3/std/verification.dag` (existing authority), `dsl/std/resources.dag` (dependency specialization)
 
-# Design DB-15 (draft) — Minimal compositional test modeling
+# Design DB-15 R2 — Tests as declarations in the dependency DAG
 
-**Design blocker:** DB-15 (test infrastructure that rides on the compiler's dependency graph)
-**Consumer:** Lane 2 Stage 2c (test obligation materialization) — forcing function. Also benefits every other lane.
-**Status:** Draft for discussion. Sharp corners deliberate.
-
----
-
-## Why a design doc now
-
-Test cost is ballooning and the compiler's dependency-analysis machinery is not reaching the test framework. Concretely today:
-
-- Each `#[test]` fn independently invokes `compile_to_dag(src, file)`. Bootstrap cached (#492); user-program lowering not cached across tests with identical source.
-- m2 migration tests compile a roundtrip harness binary via rustc per test file (3× for three files). Harness bodies are near-identical.
-- Fixture strings like `"fn add(a: Int, b: Int) -> Int = a + b"` appear hand-authored in multiple test files. Each tokenized, parsed, lowered independently.
-- Every migration test writes its own hand-written Rust oracle that walks the DAG.
-
-Lane 2 Stage 2c ("test obligation materialization") generates tests from compile-time proof dimensions. Without infrastructure that shares work, generation multiplies the per-test cost and the suite becomes intractable.
-
-**Thesis claim that's load-bearing here:** gunbc's extensive dependency analysis should make tests *more efficient than typical*, not less. Today the opposite is true — because tests don't ride on the machinery.
+**Design blocker:** DB-15 (test infrastructure that consumes the compiler's dependency-analysis machinery)
+**Consumer:** Lane 2 Stage 2c (test obligation materialization) — forcing function
+**Status:** Revision 2 (discussion draft). R1 was rejected — see Correction history below.
+**Existing v3 authority being extended:** [`src/v3/std/verification.dag`](../src/v3/std/verification.dag) (`TestClaim`, `TestPredicate`, `TestSuite`)
 
 ---
 
-## Design thesis
+## Correction history
 
-**Test fixtures are declared intent, not authored source.** Two tests expressing the same intent share the fixture by construction. Generation falls out of lens outputs.
+**Revision 1** proposed a fresh `TestCase`/`Claim`/`Expectation` schema. Reviewers (codex + chatgpt) converged on two structural concerns:
 
-The test framework is a consumer of the same substrate the compiler already has. What's missing is the contract that routes tests through the substrate instead of around it.
+1. **Single-authority violation.** `src/v3/std/verification.dag` already declares `TestClaim { name, source, file_name, predicate }` and `TestSuite { name, claims }`, explicitly named as "the structural authority for generated tests." R1's fresh schema forked this authority.
+2. **Tautology.** R1 defined test execution as "rerun the lens that produced the fact" (e.g., a claim asserts commutativity by rerunning `parallelism_lens`). That violates INVARIANTS § no-tautological-tests: if the test just re-reads what the lens says, it doesn't verify anything.
+3. **Missing substrate reference.** Both reviewers pointed at `dsl/std/resources.dag` as the existing model for "shared acquired thing" (compiler-inserted acquire/release, keyed for conflict detection). R1 reinvented the sharing mechanism by gesturing at structural equality.
+
+**Revision 2 (this doc)** consumes the compiler-as-dependency-analyzer thesis. Tests are declarations like any other; fixture sharing, caching, incremental execution, and oracle selection all fall out of the compiler's existing dependency walk. `TestClaim` stays the authority (DB-15 extends it, doesn't replace it). Tautology avoidance is a structural rule, not a testing convention. Resources are a named specialization of "depends on," not a parallel mechanism.
 
 ---
 
-## Minimal model
+## The framing this consumes
 
-### TestCase as a declaration
+**The compiler IS a dependency analyzer.** Every declaration names its dependencies via typed edges to other declarations. The compiler walks that DAG — compile-time verification, runtime composition, emission into targets — all consume the same walk.
+
+**Resources are one specialization.** `dsl/std/resources.dag` models acquirable capabilities with compiler-inserted acquire/release, keyed for conflict detection. That's *one flavor* of dependency relation: the one with lifecycle. The general relation is just "declaration → declaration via typed edge"; resources have the additional acquire/release discipline layered on.
+
+**Tests are declarations.** `TestClaim` already exists in `src/v3/std/verification.dag`. A test declaration names its dependencies structurally:
+
+- *What is being tested* — a `DeclarationRef` to the subject (a fn, a type, a module, whatever).
+- *What property must hold* — the `TestPredicate`, which is itself a structural description (e.g., `PortStateExpectation`, `CostBounded`, plus new variants for behavioral claims).
+- *What must be acquired to run the test* — resources in the `dsl/std/resources.dag` sense: bootstrap DAG, compilation output, mock backends, test runner state.
+
+Sharing, caching, incremental execution, and oracle selection all fall out of the compiler's dependency walk:
+
+- Two tests with the same subject share the compile output because they reference the same `DeclarationRef`.
+- Two tests with the same lens-computed fact share the lens evaluation because the dependency walk sees the same `(DAG, lens)` pair.
+- Two tests that need the same resource share its acquire, at the outermost scope across them, because `resources.dag`'s acquire placement IS the compiler's dependency walk.
+
+There is no new mechanism to invent. DB-15 names what test-scope declarations ARE, in terms of existing authorities.
+
+---
+
+## Minimal model (what DB-15 adds)
+
+### Extend `TestClaim` rather than forking
+
+Keep the existing `TestClaim { name, source, file_name, predicate }` shape. R2 adds two things:
+
+1. **New `TestPredicate` variants for behavioral / mock-backed claims** — the case where a property holds by observation, not by lens re-reading. Matches Lane 2 Stage 2c's mandate.
+2. **A `requires: List<ResourceReference>` field (or equivalent)** — lets the claim declare what must be acquired to run it. This is NOT a new sharing mechanism; it's a declaration that the compiler's existing dependency walk reads to place acquires.
+
+Shape (preliminary — open question #1 below on exact syntax):
 
 ```dag
-type TestCase {
-  subject: DeclarationRef      // what's being tested — a reference, never a source string
-  claim: DeclarationRef        // what's asserted about the subject
-  expected: Expectation        // Holds | FailsWith(diagnostic_ref) | ProducesValue(...)
+// src/v3/std/verification.dag — extensions, not replacement
+type TestClaim {
+  name: String
+  source: String
+  file_name: String
+  predicate: TestPredicate
+  requires: List<ResourceReference>   // NEW — declared dependencies
 }
 
-data test_ring_int_add_commutative: TestCase = {
-  subject: ring_int_add
-  claim: commutativity
-  expected: Holds
-}
+type TestPredicate
+  = DiagnosticExpected { ... }        // existing
+  | PortState { ... }                 // existing
+  | CostBounded { ... }               // existing
+  | BehavioralObservation {           // NEW — tautology-avoiding
+      subject: DeclarationRef
+      input_sample: SampleRef
+      expected_output: ValueRef
+    }
+  | MockBackedInvariant {             // NEW — for Lane 2 Stage 2c
+      subject: DeclarationRef
+      mock_transport: ResourceReference
+      invariant: DeclarationRef
+    }
 ```
 
-Fixtures do not exist as inline string literals. `subject` is a reference to an existing declaration — either in the program under test, in `std/`, or in a test-module fixture file that itself composes existing declarations.
+`BehavioralObservation` encodes "the test runs the subject on a sample and compares to an independently-declared expected output." That's not rerunning a lens; it's running the subject and checking a separately-declared fact.
 
-### Claims are declarations
+`MockBackedInvariant` encodes "the test runs the subject against a mocked resource (e.g., a mock HTTP backend) and checks that a separately-declared invariant holds." That's the runtime-mock Lane 2 Stage 2c requires.
 
-```dag
-type Claim {
-  lens: DeclarationRef         // which lens proves this claim
-  predicate: ClaimPredicate    // what the lens output must match
-}
+### Resources are consumed, not reinvented
 
-data commutativity: Claim = {
-  lens: parallelism_lens
-  predicate: IsCommutativeMonoid
-}
-```
+`ResourceReference` points at `dsl/std/resources.dag` (once that file is reconciled into v3 — see Prerequisite below). Tests declare the resources they need; the compiler's existing acquire/release machinery places acquires at the outermost shared scope across tests with matching resource keys.
 
-A claim says "the named lens, run over the subject, produces an output matching this predicate." Running the test is: look up the lens, run it over the subject, compare the output.
+No new "fixture cache," no new "lens result cache," no new "runner coordinator." The compiler's dependency walk is the cache, the coordinator, and the scope manager.
 
-### Compositional sharing (falls out of the model)
+### Tautology avoidance is a structural rule, not a convention
 
-| Source of duplication today | Shared because | Cache key |
-|---|---|---|
-| Identical source strings across test files | Source comes from the referenced declaration — one declaration, many tests | `declaration_id` |
-| Same program compiled twice | DAG compilation cached on source hash | `hash(source)` |
-| Same lens run twice over equivalent subjects | Lens results cached on `(DAG hash, lens id)` | `(DAG_hash, lens_decl_id)` |
-| Hand-written oracle walks | The lens IS the oracle; tests consume its output directly | n/a — duplication dissolves |
-| Per-file harness compilation | One test-runner binary reads all `TestCase` declarations | n/a |
+**Rule:** a `TestPredicate` cannot verify a lens's fact by rerunning the same lens. Verification must go through an independent path.
 
-**Runtime cost invariant the framework establishes:**
-> A test suite's cost is `O(distinct subjects × distinct lenses)`, not `O(test_count)`.
+Enforceable structurally: the predicate variants above (`BehavioralObservation`, `MockBackedInvariant`) verify by OBSERVATION of the subject, not by RE-EVALUATION of the producing lens. Predicate variants that would be tautological (e.g., "what does lens X say about subject Y?") are not in the coproduct.
 
-For a well-composed suite, those factors grow much more slowly than raw test count. This is where "more efficient than typical" cashes out.
+**Lens outputs are one source of oracles, but not the verification mechanism.** A lens can supply the EXPECTED fact (e.g., the expected cost bound the lens computed statically). The test then verifies the fact behaviorally (runs the subject and compares) or via mock (runs with a mocked dependency and checks the invariant). The lens isn't rerun at test time; its output is PRE-COMPUTED and embedded in the predicate's declaration.
 
-### Generation from lenses (Lane 2 Stage 2c's case)
-
-Lenses produce facts — `lens_provenance` labels every port's origin, `lens_cost` computes a cost map, `lens_unused_parameters` flags unused params. A test obligation materializes the inverse: for each fact the lens produces, emit a `TestCase` declaration that asserts it.
-
-Stage 2c walks declared lenses and emits `data test_X: TestCase` declarations. The framework runs them without per-test compilation overhead because subjects are shared and lens caches are warm.
-
-### Pipeline catches duplicate work — structurally
-
-The user's core question: "can our pipeline catch duplicate work — uncached entries, unshared infra?"
-
-Three properties the substrate already has that make caching sound:
-
-1. **§8.9 inhabitance walk is deterministic on DAG structure.** Two programs with identical structural DAGs produce identical lens outputs. Hash-keyed caching is sound by construction, not by convention.
-2. **Bind pass-through + `resolve_producer` dedupe at dispatch.** Two tests that compile `let x = 1 + 2` produce structurally-equal Transforms; the compiler already treats them as one thing internally — the cache just needs to observe it.
-3. **Lens results are pure functions of (DAG, lens).** Cache lifetime is the test run; invalidation is trivial.
-
-The CACHES do not exist yet. The SHAPES do. DB-15 wires the caches.
+This is the difference between `CostBounded { bind_name, comparator, bound }` (existing, structural: "the compile-time cost lens's output must satisfy this comparator") and a hypothetical tautological `LensSays { lens, subject, expected }` (which would be "rerun the lens and check it says what we think" — redundant with the first).
 
 ---
 
-## Open questions (please tear into)
+## Prerequisite: `dsl/std/resources.dag` → v3 reconciliation
 
-1. **Subject composition.** Can `subject` reference a *synthesized* declaration (e.g., `compose(ring_int_add, pipe_reverse)`) or only pre-existing ones? Synthesized would let tests declare "the subject is the composition of these two primitives," which is compositionally cleaner but adds a small lowering step. Preference: yes, allow synthesized — it's cheap and is exactly how fixtures should compose.
+**Blocker for R2's resource references:** v3 does not yet consume `dsl/std/resources.dag`. Grep confirms zero references to `Resource`/`acquire`/`release` under `src/v3/`.
 
-2. **Claim vocabulary.** `predicate: ClaimPredicate` needs a concrete type. Open-ended `String` is weak; a Disj over predicate shapes (`IsCommutativeMonoid | HasCost(n) | ProducesValue(v) | ...`) is typed but grows a coproduct. Middle option: claim declarations declare their own predicate shape as data, and the framework walks declared predicate shapes. Probably that.
+This is a standalone dissolution-of-dual-representation item and belongs in ROADMAP §"Scheduled deletions" as its own row. Options:
 
-3. **Expectation modeling.** `Holds | FailsWith(diag_ref) | ProducesValue(v)` — is that enough? Needs a case for "compilation fails with this diagnostic" vs "compilation succeeds but lens disagrees" vs "program runs and produces value." Currently three; might grow.
+1. **Port the declaration into `src/v3/std/resources.dag`** (direct v3 port; dsl/std/resources.dag remains v2 reference).
+2. **Make `dsl/std/resources.dag` consumable by v3 bootstrap** (single authority across v2 and v3).
 
-4. **Coexistence with existing Rust tests.** During transition, both worlds exist. What's the boundary? Probably: Rust tests that don't route through the framework are OK but must migrate when they touch generated tests. Explicit deprecation path once the framework proves out.
+Preferring option (2) for the single-authority reason. Either way, the work is **separable from DB-15**. DB-15's `requires: List<ResourceReference>` field is authored but unconsumed until resources.dag lands in v3 — and the `TestClaim` scaffold for `requires` should carry a 🟡 dissolution marker with a named trigger (the resources-in-v3 port PR).
 
-5. **Test runner shape.** Is the runner a minimal Rust binary that walks `TestCase` declarations (bootstrap) or itself a compiled `.dag` program (self-consistent but bigger bite)? Bootstrap path wins for landability.
+## Runtime cost invariant — derived, not asserted
 
-6. **Failure diagnostics.** When a claim fails, does each `TestCase` declare its own failure template or does the framework synthesize a generic one from (subject, claim, actual output)? Generic first; per-case override if needed.
+R1 claimed `O(distinct subjects × distinct lenses)` as a load-bearing invariant. **R2 derives it from resource placement.** Because each test's dependencies are structurally declared and the compiler's walk places acquires at the outermost shared scope, the cost of a test suite is the cost of running each distinct resource acquire once across all consumers — exactly `O(distinct resources)`. The "subjects × lenses" phrasing was my own re-derivation; resources.dag's keying gives it for free.
 
----
-
-## Out of scope for DB-15
-
-- Porting existing Rust tests. Transition is gradual; DB-15 defines the shape, not the migration.
-- IDE integration, test selection UI, coverage metrics.
-- Property-based / fuzzing generation. Different concept; layer later if useful.
-- Performance ratchets. Those land with the cache implementation, not this design.
+No independent claim to enforce. If resource placement is wrong, the cost is wrong; if resource placement is right, the cost is right. Same fact, one source.
 
 ---
 
 ## Rejected alternatives
 
-- **Sidecar caching layer on current Rust tests.** Memoize `compile_to_dag` calls in a `OnceLock<HashMap>` at the test harness level. Kills the crudest waste (identical-source cases) but doesn't address fixture authoring, oracle duplication, or Stage 2c's generation path. Rejected as insufficient even if useful short-term.
-- **Tests as annotated Rust functions with shared fixtures.** Hand-authored fixtures shared across Rust test files via `mod common`. Current practice, partially. Doesn't participate in the dependency graph; fixture dedup is text-level, not structural.
-- **Tests as external fixture files (JSON/YAML).** Fixtures as data, but not as *declarations*. Loses the structural-sharing property — two fixtures with identical compiled shape are distinct files.
+- **Fresh `TestCase`/`Claim`/`Expectation` schema (R1).** Forked `src/v3/std/verification.dag`. Single-authority violation. Rejected per codex round-1 review.
+
+- **"Rerun the lens" test execution model (R1).** Tautological. A test that checks "what the lens says about X" by running the lens again doesn't verify anything. Rejected per codex round-1 review and INVARIANTS §no-tautological-tests.
+
+- **Invent a new sharing mechanism (caches, fixture registries, runner coordinators).** The compiler's dependency walk + resources.dag's acquire placement IS the sharing mechanism. Reinventing it creates parallel schemas (chatgpt round-1 review). Rejected.
+
+- **Declare DB-15's cost invariant as a standalone property.** Derived from resource placement; asserting it separately creates a fact that can drift from the underlying physics. Rejected per dependency-analyzer framing ("if it's a derived fact, don't name it as a primitive").
+
+- **Host tests in Rust test functions with side-channel fixture sharing (status quo).** Rust tests don't participate in the compiler's dependency graph; fixture sharing is text-level (copy-pasted source strings) rather than structural. Doesn't scale to Lane 2 Stage 2c's generation-multiplied surface. Rejected.
+
+---
+
+## Open questions (for this draft)
+
+1. **Exact syntax for `requires: List<ResourceReference>` on `TestClaim`.** Structural: should ResourceReference be a typed declaration reference (`DeclarationRef`) or a typed resource type (`ResourceHandle` in resources.dag terminology)? Probably the former — handles are runtime artifacts, not compile-time declarations. Verify at implementation time.
+
+2. **Which existing `TestPredicate` variants need the `requires` declaration, and which are self-contained?** `PortStateExpectation` and `CostBounded` are compile-time assertions with no runtime resource needs. `BehavioralObservation` needs a test-runner resource. `MockBackedInvariant` needs both a test-runner AND a mock-transport resource. Open: is `requires` per-claim or per-predicate-variant?
+
+3. **Tautology-avoidance enforcement.** The rule "predicate cannot rerun the producing lens" is currently prose. Can it be enforced structurally — e.g., the predicate variants are explicitly behavioral/observational by type, and "rerun lens X" is not even expressible? Needs a pass to confirm no variant sneaks in that permits the pattern.
+
+4. **Lane 2 Stage 2c generation surface.** Stage 2c generates `TestClaim` declarations from lens outputs. What's the structural shape of "this lens's output, materialized into a `TestPredicate`"? Likely one generation rule per `(lens, predicate-variant)` pair, declared once per lens. Out of scope for DB-15's design; in scope for Stage 2c's implementation.
 
 ---
 
 ## Acceptance (for when this graduates from draft)
 
-- [ ] The six open questions above are locked with explicit answers.
-- [ ] One existing test file (e.g., `m2_feature_parity_test.rs`'s 3a.2 tests) is re-expressed as `TestCase` declarations to prove the model works.
-- [ ] A baseline audit of current test-suite waste (how much bootstrap, compile, lens work is duplicated) establishes the ratchet.
-- [ ] Lane 2 Stage 2c's plan updates to generate `TestCase` declarations, not Rust test functions.
-- [ ] Rust test-runner harness exists and can walk declarations. No cache implementation required at this milestone — just the shape.
-
----
-
-## Where this lives
-
-Cross-cutting; blocks Lane 2 Stage 2c. The design doc is DB-15. Implementation sequence (at full size) is probably:
-
-1. Framework shape + runner harness (S)
-2. Source-level compile cache (S)
-3. Lens result cache (M)
-4. First test migration — one file as proof (M)
-5. Stage 2c generates TestCase declarations, not Rust fns (L — but this is Stage 2c's scope, not DB-15's)
-
-Total for DB-15-owned items: M+ combined. Stage 2c then consumes.
+- [ ] Open questions 1–3 locked with explicit answers.
+- [ ] Extensions to `src/v3/std/verification.dag` sketched with exact field shapes (`requires`, new `TestPredicate` variants).
+- [ ] Resources-in-v3 reconciliation scheduled — named PR or ROADMAP row identifying the upstream path.
+- [ ] One existing test file (e.g., `m2_feature_parity_test.rs`'s 3a.2 tests) re-expressed as `TestClaim` declarations, showing the structural form consuming the compiler's dependency walk.
+- [ ] Lane 2 Stage 2c plan updates: generation emits `TestClaim` declarations via the R2 shape, not Rust functions.
+- [ ] Cost invariant phrased as derived from resource placement, not as a standalone claim.
 
 ---
 
 ## Associations
 
-- **Lane 2 Stage 2c** ([lane2-compile-time-proofs.md](./lane2-compile-time-proofs.md)) — forcing function and primary consumer
-- **ROADMAP §Active deferrals** — DB-15 entry added tonight
-- **PR #492** (cached bootstrapped DAG construction) — first cache level, lower than this design addresses
-- **`src/v3/compiler/tests/m2_*_migration_test.rs`** — current pattern showing the duplication this design dissolves
-- **THESIS §testgen / invariant lenses** — philosophical grounding
+- **Compiler-as-dependency-analyzer thesis** (tonight's framing) — DB-15 is the testing-scope consequence. Tests are declarations; the dependency walk handles them like anything else.
+- **`src/v3/std/verification.dag`** — the existing authority DB-15 extends. `TestClaim`, `TestPredicate`, `TestSuite` stay as-authored.
+- **`dsl/std/resources.dag`** — the existing acquire/release model DB-15 references via `requires: List<ResourceReference>`. Prerequisite for consumption: reconcile into v3.
+- **Lane 2 Stage 2c** ([lane2-compile-time-proofs.md](./lane2-compile-time-proofs.md)) — forcing function; generates `TestClaim` declarations from lens outputs.
+- **`src/v3/compiler/pipeline.dag`** — analogous pattern for non-test declarations (compiler stages consume the dependency walk); DB-15 applies the same shape to test-scope declarations.
+- **E-9 (INVARIANTS.md)** — sibling invariant. DB-15 doesn't need a new invariant; the rule "tests are declarations that consume the dependency walk" is implied by the thesis. If a future PR wants to bank it load-bearingly, it would be something like E-10 "tests as first-class declarations."
+- **ROADMAP §Active deferrals** — DB-15's implementation (extending verification.dag + resources-in-v3) is a deferral under Lane 2 Stage 2c. ROADMAP row stays until the extension PR lands.
+
+---
+
+## Why R2 is smaller than R1
+
+R1 added mechanism: TestCase type, Claim type, Expectation type, caches, runner coordination, six open questions.
+
+R2 subtracts. `TestClaim` exists; `Resource` exists; the dependency walk exists. R2 names how they compose, adds two new `TestPredicate` variants for behavioral/mock claims, declares a `requires` edge, and points at one standalone prerequisite (resources-in-v3). The "six open questions" collapse to "does the predicate coproduct cover Lane 2 Stage 2c's needs" — one structural question.
+
+This is the compiler-as-dependency-analyzer thesis cashing out at the testing surface: **don't reinvent mechanisms; name how things depend on each other; let the compiler's walk do the rest.**
