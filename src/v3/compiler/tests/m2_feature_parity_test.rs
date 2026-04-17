@@ -192,6 +192,40 @@ fn test_3a2_scalar_data_compiles_and_populates_value_body() {
 }
 
 #[test]
+fn test_3a2_data_reference_is_order_independent() {
+    // Reviewer finding (PR #496, chatgpt-codex P2): bodies are
+    // lowered in source order, so referencing a `data` item
+    // declared *after* the referring fn must still resolve —
+    // otherwise name resolution for top-level data values is
+    // order-dependent. The `seed_data_value_bodies_phase`
+    // pre-pass fixes this. Both orderings must compile.
+    let forward = "fn f() -> Int = answer\n\
+                   data answer: Int = 42";
+    let backward = "data answer: Int = 42\n\
+                    fn f() -> Int = answer";
+    let forward_dag = compile_to_dag(forward, "forward.v3")
+        .expect("forward reference to later `data answer` must compile");
+    let backward_dag = compile_to_dag(backward, "backward.v3")
+        .expect("backward reference to earlier `data answer` must compile");
+    for (label, dag) in [("forward", forward_dag), ("backward", backward_dag)] {
+        let has_value_42 = dag.nodes().iter().any(|n| {
+            matches!(
+                n,
+                v3_compiler::dag::Behavior::Value(v)
+                if matches!(
+                    &v.data,
+                    v3_compiler::dag::LiteralBits::Int(42)
+                )
+            )
+        });
+        assert!(
+            has_value_42,
+            "{label} must inline `answer` as Value(Int(42))"
+        );
+    }
+}
+
+#[test]
 fn test_3a2_data_referenced_in_fn_body_compiles() {
     let src = "data answer: Int = 42\n\
                fn f() -> Int = answer";

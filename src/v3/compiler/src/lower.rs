@@ -131,12 +131,72 @@ pub(crate) fn lower_bodies_phase(
     seed_function_signatures_phase(dag, &module.items, symbols, is_first);
     let mutually_recursive = compute_mutually_recursive(&module.items);
     let mut scope = ScopeState::default();
+    // DB-10 (3a.2) ordering: dependency-ordered pre-passes so
+    // references to top-level declarations resolve independent of
+    // source order.
+    //
+    //   Pass 1: types (TypeRecord / TypeSum / TypeAlias / TypeAtom)
+    //           — pure type connectives; don't reference values.
+    //   Pass 2: data (SurfaceItem::Data) — depend on types for
+    //           inhabitance checking; populate `value_body` so later
+    //           fn-body `SurfaceExpr::Var` lookups find it.
+    //   Pass 3: everything else in source order (fns, let, modules).
+    //           Types and data are skipped here because they were
+    //           lowered in the pre-passes.
+    //
+    // Without pass 2, a fn body referencing a later-declared `data`
+    // item (e.g. `fn f() -> Int = answer` followed by
+    // `data answer: Int = 42`) would resolve `answer` to a
+    // declaration whose `value_body` is still `None` and fall
+    // through to the unresolved diagnostic — order-dependent name
+    // resolution.
+    for (idx, item) in module.items.iter().enumerate() {
+        if !is_first[idx] {
+            continue;
+        }
+        if matches!(
+            item,
+            SurfaceItem::TypeRecord { .. }
+                | SurfaceItem::TypeSum { .. }
+                | SurfaceItem::TypeAlias { .. }
+                | SurfaceItem::TypeAtom { .. }
+        ) {
+            scope = lower_item(item, dag, scope, symbols, &mutually_recursive);
+        }
+    }
+    for (idx, item) in module.items.iter().enumerate() {
+        if !is_first[idx] {
+            continue;
+        }
+        if let SurfaceItem::Data {
+            name,
+            ty,
+            body,
+            body_span,
+            ..
+        } = item
+        {
+            lower_data_item(name, ty, body.as_ref(), body_span, dag, symbols);
+        }
+    }
     for (idx, item) in module.items.iter().enumerate() {
         if !is_first[idx] {
             // Duplicate declaration — skipped at lower time so the
             // first-of-name's filled connective is not overwritten.
             // `collect_symbols` already emitted a fail-closed
             // diagnostic for the duplicate.
+            continue;
+        }
+        // Types + Data lowered in the pre-passes above; skip here
+        // so their lowering doesn't run twice.
+        if matches!(
+            item,
+            SurfaceItem::Data { .. }
+                | SurfaceItem::TypeRecord { .. }
+                | SurfaceItem::TypeSum { .. }
+                | SurfaceItem::TypeAlias { .. }
+                | SurfaceItem::TypeAtom { .. }
+        ) {
             continue;
         }
         scope = lower_item(item, dag, scope, symbols, &mutually_recursive);
