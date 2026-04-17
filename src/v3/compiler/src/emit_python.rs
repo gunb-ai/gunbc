@@ -69,10 +69,24 @@ struct PythonSyntax {
     optional: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MemoryModelBinding {
+    ValueOnly,
+    GarbageCollected,
+    RefCounted,
+    OwnershipBased,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScopeModelBinding {
+    LexicalScoping,
+    DynamicScoping,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct PythonTarget {
-    memory: String,
-    scope: String,
+    memory: MemoryModelBinding,
+    scope: ScopeModelBinding,
 }
 
 #[derive(Debug, Clone)]
@@ -216,19 +230,10 @@ impl PythonIndexes {
             )?,
         };
 
+        let target_decl = named_decl(dag, "python_target")?;
         let target = PythonTarget {
-            memory: variant_name_for_field(
-                target_fields,
-                "memory",
-                named_decl(dag, "python_target")?,
-                dag,
-            )?,
-            scope: variant_name_for_field(
-                target_fields,
-                "scope",
-                named_decl(dag, "python_target")?,
-                dag,
-            )?,
+            memory: require_memory_model(dag, target_fields, target_decl)?,
+            scope: require_scope_model(dag, target_fields, target_decl)?,
         };
 
         Ok(Self {
@@ -252,10 +257,16 @@ pub fn emit_python_module(dag: &Dag) -> Result<String, EmitPythonError> {
 
 fn emit_python_with_mode(dag: &Dag, mode: EmitPythonMode) -> Result<String, EmitPythonError> {
     let indexes = PythonIndexes::build(dag)?;
-    if indexes.target.memory != "GarbageCollected" {
+    if indexes.target.memory != MemoryModelBinding::GarbageCollected {
         return Err(EmitPythonError::Unsupported(format!(
-            "emit_python requires python_target.memory = GarbageCollected, found {}",
+            "emit_python requires python_target.memory = GarbageCollected, found {:?}",
             indexes.target.memory
+        )));
+    }
+    if indexes.target.scope != ScopeModelBinding::LexicalScoping {
+        return Err(EmitPythonError::Unsupported(format!(
+            "emit_python requires python_target.scope = LexicalScoping, found {:?}",
+            indexes.target.scope
         )));
     }
     let type_decls: Vec<_> = dag
@@ -325,7 +336,7 @@ fn emit_python_with_mode(dag: &Dag, mode: EmitPythonMode) -> Result<String, Emit
         "import types".to_string(),
         "import typing".to_string(),
         format!(
-            "# ownership skipped: {} / {}",
+            "# ownership skipped: {:?} / {:?}",
             indexes.target.memory, indexes.target.scope
         ),
         "__T = typing.TypeVar(\"__T\")".to_string(),
@@ -1251,32 +1262,68 @@ fn variant_field<'a>(
     Ok((*constructor, payload))
 }
 
-fn variant_name_for_field(
-    fields: &[(String, FieldValue)],
-    name: &str,
-    declaration: DeclarationId,
+/// Parse the `memory` field of a TargetExecutionModel into a typed
+/// MemoryModelBinding. Mirrors emit_go::require_memory_model — keeps
+/// the closed sum closed instead of demoting it to a string.
+fn require_memory_model(
     dag: &Dag,
-) -> Result<String, EmitPythonError> {
-    let (constructor, payload) = variant_field(fields, name, declaration)?;
+    fields: &[(String, FieldValue)],
+    declaration: DeclarationId,
+) -> Result<MemoryModelBinding, EmitPythonError> {
+    let (constructor, payload) = variant_field(fields, "memory", declaration)?;
     if !payload.is_empty() {
         return Err(EmitPythonError::MalformedSpec {
             declaration,
-            detail: "target model variants must be payload-free",
+            detail: "MemoryModel variants must not carry payload fields",
         });
     }
-    dag.declarations()
-        .iter()
-        .find_map(|decl| match &decl.connective {
-            TypeConnective::Disj { variants } => variants
-                .iter()
-                .find(|variant| variant.ty == constructor)
-                .map(|variant| variant.label.clone()),
-            _ => None,
-        })
-        .ok_or(EmitPythonError::MalformedSpec {
+    let variants = [
+        ("ValueOnly", MemoryModelBinding::ValueOnly),
+        ("GarbageCollected", MemoryModelBinding::GarbageCollected),
+        ("RefCounted", MemoryModelBinding::RefCounted),
+        ("OwnershipBased", MemoryModelBinding::OwnershipBased),
+    ];
+    for (label, binding) in variants {
+        let variant_id = named_variant_id(dag, "MemoryModel", label)?;
+        if constructor == variant_id {
+            return Ok(binding);
+        }
+    }
+    Err(EmitPythonError::MalformedSpec {
+        declaration,
+        detail:
+            "TargetExecutionModel.memory must be ValueOnly/GarbageCollected/RefCounted/OwnershipBased",
+    })
+}
+
+/// Parse the `scope` field of a TargetExecutionModel. Mirrors
+/// emit_go::require_scope_model.
+fn require_scope_model(
+    dag: &Dag,
+    fields: &[(String, FieldValue)],
+    declaration: DeclarationId,
+) -> Result<ScopeModelBinding, EmitPythonError> {
+    let (constructor, payload) = variant_field(fields, "scope", declaration)?;
+    if !payload.is_empty() {
+        return Err(EmitPythonError::MalformedSpec {
             declaration,
-            detail: "target model constructor was not found",
-        })
+            detail: "ScopeModel variants must not carry payload fields",
+        });
+    }
+    let variants = [
+        ("LexicalScoping", ScopeModelBinding::LexicalScoping),
+        ("DynamicScoping", ScopeModelBinding::DynamicScoping),
+    ];
+    for (label, binding) in variants {
+        let variant_id = named_variant_id(dag, "ScopeModel", label)?;
+        if constructor == variant_id {
+            return Ok(binding);
+        }
+    }
+    Err(EmitPythonError::MalformedSpec {
+        declaration,
+        detail: "TargetExecutionModel.scope must be LexicalScoping/DynamicScoping",
+    })
 }
 
 fn named_variant_id(
@@ -1384,9 +1431,49 @@ fn is_optional_match_disj(dag: &Dag, disj_id: DeclarationId) -> bool {
         .any(|optional_disj| optional_disj == disj_id)
 }
 
+/// Resolve the algebra-field declaration id for a given operand
+/// type and `OperatorKind`. Walks the operand type's instantiation
+/// chain to its algebra Conj (e.g. Int → ... → OrderedRing instance),
+/// then finds the field whose label matches the operator's algebra
+/// field name. Returns the field's child declaration id, which the
+/// python.dag `op: OrderedRing.add` reference also resolves to via
+/// the dotted-path lowering. Mirrors emit_rust::algebra_field_for_operator.
 fn algebra_field_for_operator(
     dag: &Dag,
     operand_type_id: DeclarationId,
+    op: OperatorKind,
+) -> Result<DeclarationId, EmitPythonError> {
+    if let Some(algebra_conj_id) = walk_to_algebra_conj(dag, operand_type_id) {
+        let field_label = op.algebra_field_name();
+        let children = match &dag.declaration(algebra_conj_id).connective {
+            TypeConnective::Conj { children } => children,
+            _ => unreachable!("walk_to_algebra_conj returned a non-Conj"),
+        };
+        if let Some(field) = children.iter().find(|f| f.label == field_label) {
+            return Ok(field.ty);
+        }
+    }
+    canonical_operator_field(dag, op)
+}
+
+/// Walk a declaration through aliases / instantiations until it
+/// reaches a Conj (the algebra declaration). Returns the Conj's id.
+/// Mirrors emit_rust::walk_to_algebra_conj.
+fn walk_to_algebra_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
+    let mut current = start;
+    for _ in 0..32 {
+        match &dag.declaration(current).connective {
+            TypeConnective::Conj { .. } => return Some(current),
+            TypeConnective::Instantiation { template, .. } => current = *template,
+            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => current = *next,
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn canonical_operator_field(
+    dag: &Dag,
     op: OperatorKind,
 ) -> Result<DeclarationId, EmitPythonError> {
     let field_label = op.algebra_field_name();
@@ -1400,7 +1487,6 @@ fn algebra_field_for_operator(
             "OrderedRing did not lower to a Conj".to_string(),
         ));
     };
-    let _ = operand_type_id;
     children
         .iter()
         .find(|field| field.label == field_label)

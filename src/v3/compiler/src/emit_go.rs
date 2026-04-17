@@ -31,6 +31,18 @@ struct TypeInstantiationBinding {
     carrier: String,
 }
 
+/// Mirrors emit_rust::ParameterDispositionBinding. Go's GC rendering
+/// doesn't make borrow/move decisions, so the emitter doesn't act on
+/// the value. The field is still required on every CallableRealization
+/// (single shared schema with rust.dag), so we parse and validate it
+/// fail-closed — a malformed disposition vector is a spec bug, even
+/// when this target ignores the result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ParameterDispositionBinding {
+    Borrowed,
+    Consumed,
+}
+
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CallableStrategyBinding {
@@ -141,6 +153,13 @@ struct RealizationIndexes {
     operators: HashMap<(DeclarationId, DeclarationId), String>,
     behaviors: HashMap<DeclarationId, String>,
     callables: HashMap<DeclarationId, CallableStrategyBinding>,
+    /// Parsed and validated, but not consulted for Go emission (GC
+    /// targets don't render borrow/move). Holding the field keeps the
+    /// shared CallableRealization schema honest: every entry in a
+    /// CallableRealization must have a well-formed dispositions vector,
+    /// even when this target ignores the result.
+    #[allow(dead_code)]
+    callable_dispositions: HashMap<DeclarationId, Vec<ParameterDispositionBinding>>,
     patterns: HashMap<DeclarationId, PatternRealizationBinding>,
     syntax: GoLanguageSyntax,
     execution_model: TargetExecutionModelBinding,
@@ -182,6 +201,8 @@ impl RealizationIndexes {
         let mut operators = HashMap::new();
         let mut behaviors = HashMap::new();
         let mut callables = HashMap::new();
+        let mut callable_dispositions: HashMap<DeclarationId, Vec<ParameterDispositionBinding>> =
+            HashMap::new();
         let mut patterns = HashMap::new();
 
         for decl in dag.declarations() {
@@ -273,11 +294,19 @@ impl RealizationIndexes {
                 }
                 RealizationCategory::Callable => {
                     let strategy = require_callable_strategy(dag, fields, decl.id)?;
+                    let dispositions = require_parameter_dispositions(dag, fields, decl.id)?;
                     if callables.insert(target, strategy).is_some() {
                         return Err(EmitError::DuplicateRealization {
                             declaration: decl.id,
                             detail:
                                 "two CallableRealization data items target the same callable declaration",
+                        });
+                    }
+                    if callable_dispositions.insert(target, dispositions).is_some() {
+                        return Err(EmitError::DuplicateRealization {
+                            declaration: decl.id,
+                            detail:
+                                "two CallableRealization data items target the same callable declaration's parameter dispositions",
                         });
                     }
                 }
@@ -312,6 +341,7 @@ impl RealizationIndexes {
             operators,
             behaviors,
             callables,
+            callable_dispositions,
             patterns,
             syntax,
             execution_model,
@@ -1792,6 +1822,81 @@ fn require_callable_strategy(
         detail:
             "CallableStrategy constructor must be ListEmpty/ListSingleton/ListCons/ListConcat/ListLength/ListIsEmpty/ListFold/ListMap/ListFilter/ListContains",
     })
+}
+
+/// Parse and validate the `parameter_dispositions` list on a
+/// CallableRealization. Mirrors emit_rust::require_parameter_dispositions.
+/// Go's GC rendering doesn't act on the result, but the field is part
+/// of the shared CallableRealization schema and a malformed entry is
+/// a spec bug — fail-closed instead of silently accepting it.
+fn require_parameter_dispositions(
+    dag: &Dag,
+    fields: &[(String, FieldValue)],
+    declaration: DeclarationId,
+) -> Result<Vec<ParameterDispositionBinding>, EmitError> {
+    let value = fields
+        .iter()
+        .find(|(label, _)| label == "parameter_dispositions")
+        .map(|(_, value)| value)
+        .ok_or(EmitError::MalformedRealization {
+            declaration,
+            detail: "CallableRealization is missing required `parameter_dispositions` field",
+        })?;
+    let FieldValue::List(entries) = value else {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "CallableRealization.parameter_dispositions must be a structural list",
+        });
+    };
+    entries
+        .iter()
+        .map(|value| parse_parameter_disposition(dag, value, declaration))
+        .collect()
+}
+
+fn parse_parameter_disposition(
+    dag: &Dag,
+    value: &FieldValue,
+    declaration: DeclarationId,
+) -> Result<ParameterDispositionBinding, EmitError> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "ParameterDisposition entries must be ParameterDisposition variants",
+        });
+    };
+    if !payload.is_empty() {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "ParameterDisposition variants must not carry payload fields",
+        });
+    }
+    let borrowed = named_variant_id(dag, "ParameterDisposition", "Borrowed").ok_or(
+        EmitError::MalformedRealization {
+            declaration,
+            detail: "ParameterDisposition.Borrowed declaration was not found",
+        },
+    )?;
+    let consumed = named_variant_id(dag, "ParameterDisposition", "Consumed").ok_or(
+        EmitError::MalformedRealization {
+            declaration,
+            detail: "ParameterDisposition.Consumed declaration was not found",
+        },
+    )?;
+    if *constructor == borrowed {
+        Ok(ParameterDispositionBinding::Borrowed)
+    } else if *constructor == consumed {
+        Ok(ParameterDispositionBinding::Consumed)
+    } else {
+        Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "ParameterDisposition constructor must be Borrowed or Consumed",
+        })
+    }
 }
 
 fn require_pattern_realization(
