@@ -1,7 +1,7 @@
 use crate::dag::{
     AtomPayload, Dag, Declaration, DeclarationId, Field, FieldValue, LiteralBits, TypeConnective,
 };
-use crate::lens_cost::CostLens;
+use crate::lens_cost::{cost_of, CostLookup};
 use crate::{compile_to_dag, CompileError};
 use std::collections::HashMap;
 
@@ -434,7 +434,10 @@ impl<'a> TestgenLens<'a> {
             crate::dag::Behavior::Bind(bind) if bind.name == bind_name => Some(bind),
             _ => None,
         })?;
-        Some(CostLens::new(&dag).cost_of(bind.value))
+        match cost_of(&dag, &bind.value) {
+            CostLookup::FoundCost { _0: cost } => usize::try_from(cost).ok(),
+            CostLookup::MissingCost => None,
+        }
     }
 
     fn named_std_type_ids(&self) -> Vec<DeclarationId> {

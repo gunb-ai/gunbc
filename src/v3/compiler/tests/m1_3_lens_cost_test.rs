@@ -7,10 +7,10 @@
 // exactly one path.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::Behavior;
-use v3_compiler::lens_cost::CostLens;
+use v3_compiler::dag::{Behavior, PortId};
+use v3_compiler::lens_cost::{cost_of, CostLookup};
 
-fn find_bind_value(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::PortId {
+fn find_bind_value(dag: &v3_compiler::dag::Dag, name: &str) -> PortId {
     dag.nodes()
         .iter()
         .filter_map(Behavior::as_bind)
@@ -19,8 +19,19 @@ fn find_bind_value(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag:
         .value
 }
 
+fn expect_cost(dag: &v3_compiler::dag::Dag, port: PortId) -> usize {
+    match cost_of(dag, &port) {
+        CostLookup::FoundCost { _0: cost } => {
+            usize::try_from(cost).expect("complexity lens emits non-negative cost")
+        }
+        CostLookup::MissingCost => {
+            panic!("expected FoundCost for port {port:?}; got MissingCost (malformed fixture)")
+        }
+    }
+}
+
 fn bind_cost(dag: &v3_compiler::dag::Dag, name: &str) -> usize {
-    CostLens::new(dag).cost_of(find_bind_value(dag, name))
+    expect_cost(dag, find_bind_value(dag, name))
 }
 
 #[test]
@@ -28,8 +39,7 @@ fn cost_lens_literal_value_is_zero() {
     // `let x = 1`
     //   Value(1) is a leaf — zero work.
     let dag = compile_to_dag("let x = 1", "test.v3").expect("compiles");
-    let lens = CostLens::new(&dag);
-    assert_eq!(lens.cost_of(find_bind_value(&dag, "x")), 0);
+    assert_eq!(expect_cost(&dag, find_bind_value(&dag, "x")), 0);
 }
 
 #[test]
@@ -38,8 +48,7 @@ fn cost_lens_single_transform_is_one() {
     //   Value(1) cost 0, Value(2) cost 0
     //   Add cost = 1 + (0 + 0) = 1
     let dag = compile_to_dag("let x = 1 + 2", "test.v3").expect("compiles");
-    let lens = CostLens::new(&dag);
-    assert_eq!(lens.cost_of(find_bind_value(&dag, "x")), 1);
+    assert_eq!(expect_cost(&dag, find_bind_value(&dag, "x")), 1);
 }
 
 #[test]
@@ -49,8 +58,7 @@ fn cost_lens_chained_transform_is_two() {
     //   inner Add cost 1, Value(3) cost 0
     //   outer Add cost = 1 + (1 + 0) = 2
     let dag = compile_to_dag("let x = 1 + 2 + 3", "test.v3").expect("compiles");
-    let lens = CostLens::new(&dag);
-    assert_eq!(lens.cost_of(find_bind_value(&dag, "x")), 2);
+    assert_eq!(expect_cost(&dag, find_bind_value(&dag, "x")), 2);
 }
 
 #[test]
@@ -61,8 +69,7 @@ fn cost_lens_branch_counts_condition_plus_max_path() {
     //   else:      Value(20), cost 0
     //   Branch cost = 1 + cond + max(paths) = 1 + 1 + 0 = 2
     let dag = compile_to_dag("let r = if 1 > 0 then 10 else 20", "test.v3").expect("compiles");
-    let lens = CostLens::new(&dag);
-    assert_eq!(lens.cost_of(find_bind_value(&dag, "r")), 2);
+    assert_eq!(expect_cost(&dag, find_bind_value(&dag, "r")), 2);
 }
 
 #[test]
@@ -79,9 +86,8 @@ fn cost_lens_branch_uses_max_not_sum_across_paths() {
     // to force the distinction: then=1, else=2, max=2, sum=3.
     let dag = compile_to_dag("let r = if 1 > 0 then 20 + 30 else 40 + 50 + 60", "test.v3")
         .expect("compiles");
-    let lens = CostLens::new(&dag);
     // 1 (branch) + 1 (cond Gt) + max(1, 2) = 4
-    assert_eq!(lens.cost_of(find_bind_value(&dag, "r")), 4);
+    assert_eq!(expect_cost(&dag, find_bind_value(&dag, "r")), 4);
 }
 
 #[test]
@@ -92,8 +98,7 @@ fn cost_lens_bind_passes_through_to_value() {
     //   (Bind's value field IS the underlying port). A passthrough
     //   test verifies this: bind_y cost equals direct Add cost.
     let dag = compile_to_dag("let y = 1 + 2", "test.v3").expect("compiles");
-    let lens = CostLens::new(&dag);
-    assert_eq!(lens.cost_of(find_bind_value(&dag, "y")), 1);
+    assert_eq!(expect_cost(&dag, find_bind_value(&dag, "y")), 1);
 }
 
 #[test]

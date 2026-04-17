@@ -103,3 +103,19 @@ jobs:
 
       - name: v3 Compiler Clippy
         run: cargo clippy -p v3-compiler --all-targets -- -D warnings
+
+      - name: L-8 Lens surface gate
+        run: |
+          # L-8 (INVARIANTS.md): lens Rust wrappers must not collapse
+          # typed failure carriers (CostLookup, Origin, ...) into opaque
+          # primitives. Scan every lens_*.rs wrapper for return signatures
+          # that violate the carrier-preservation rule.
+          matches=$(grep -nE "fn .*Lens.*-> (usize|bool|i64)" src/v3/compiler/src/lens_*.rs 2>/dev/null || true)
+          if [ -n "$matches" ]; then
+            echo "::error::L-8 violation: lens wrapper collapses typed carrier to a primitive"
+            echo "$matches"
+            exit 1
+          fi
+
+      - name: Banked-dissolutions ratchet
+        run: scripts/check-banked-dissolutions.sh
