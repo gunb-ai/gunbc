@@ -1538,6 +1538,23 @@ impl Dag {
         id
     }
 
+    /// Test-only hook paired with `push_declaration_for_test`. Does
+    /// not widen the normal mutation surface — used only by
+    /// `inject_named_pending_arrow_for_test` in `lib.rs` to synthesize
+    /// the exact Declaration shape that
+    /// `lens_structural_resolution` is designed to flag.
+    #[doc(hidden)]
+    pub fn alloc_declaration_id_for_test(&mut self) -> DeclarationId {
+        self.alloc_declaration_id()
+    }
+
+    /// Test-only hook paired with `alloc_declaration_id_for_test`.
+    /// See the sibling `for_test` method for scope.
+    #[doc(hidden)]
+    pub fn push_declaration_for_test(&mut self, declaration: Declaration) {
+        self.push_declaration(declaration);
+    }
+
     pub(crate) fn alloc_port(&mut self, produced_by: Option<NodeId>) -> PortId {
         let id = PortId(self.next_port_id);
         self.next_port_id += 1;
