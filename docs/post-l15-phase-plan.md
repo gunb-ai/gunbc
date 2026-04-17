@@ -140,6 +140,24 @@ Week-by-week view:
 2b–2e → 2f (user-dim abstraction generalizes over the concrete lenses)
 ```
 
+### Design blockers (all resolved — design docs ready for implementer review)
+
+Nine cross-cutting design decisions needed to be locked before implementation. Each has a dedicated design doc with scope, rationale, rejected alternatives, implementation notes, acceptance gates, and open questions.
+
+| DB | Resolves | Owning lane/stage | Design doc |
+|---|---|---|---|
+| DB-1 | `Diagnostic.fix: List<Correction>` shape | Lane 3 Stage 3b (implements); Lane 2 all (consumes) | [design-correction-shape.md](./design-correction-shape.md) |
+| DB-2 | Generic walker API | Lane 1 Stage 1e | [design-generic-walker-api.md](./design-generic-walker-api.md) |
+| DB-3 | `Dimension` abstraction for compile-time proofs | Lane 2 Stage 2f | [design-dimension-abstraction.md](./design-dimension-abstraction.md) |
+| DB-4 | `CleanEmissionContract` concrete fields | Lane 1 Stage 1c | [design-clean-emission-contract.md](./design-clean-emission-contract.md) |
+| DB-5 | Substrate keyed-lookup API | Lane 1 Stage 1b | [design-substrate-keyed-lookup-api.md](./design-substrate-keyed-lookup-api.md) |
+| DB-6 | Transport type taxonomy | Lane 4 Stage 4a | [design-transport-taxonomy.md](./design-transport-taxonomy.md) |
+| DB-7 | Symbolic cost algebra | Lane 2 Stage 2d | [design-symbolic-cost-algebra.md](./design-symbolic-cost-algebra.md) |
+| DB-8 | Fixed-point ratchet mechanics | Lane 3 Stage 3c | [design-fixed-point-ratchet.md](./design-fixed-point-ratchet.md) |
+| DB-9 | Mutual recursion → Loop lowering | Lane 3 Stage 3a | [design-mutual-recursion-lowering.md](./design-mutual-recursion-lowering.md) |
+
+Dependencies between design docs (DB-4 references DB-1, DB-2 references DB-4 and DB-5): each design doc calls out its dependencies in the header. The doc set is internally consistent.
+
 ### Critical path
 
 ```

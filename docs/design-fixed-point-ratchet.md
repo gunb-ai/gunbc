@@ -1,0 +1,303 @@
+> Part of: [post-l15-phase-plan.md](./post-l15-phase-plan.md) | Unblocks: Lane 3 Stage 3c
+
+# Design DB-8 — Fixed-point ratchet mechanics
+
+**Design blocker:** DB-8
+**Consumers:** Lane 3 Stage 3c (self-hosting cycle)
+**Status:** Design ready for implementer review.
+
+---
+
+## Problem
+
+The self-hosting claim: running the v3 compiler on `compiler.dag` produces Rust source. Compiling that Rust gives a new compiler binary. Running THAT on `compiler.dag` produces the SAME Rust. Bit-identical fixed-point.
+
+If output varies run-to-run, something is non-deterministic — usually `HashMap` iteration order, timestamp embedding, or unstable sort. Lane 3 Stage 3c's acceptance requires catching every source of non-determinism.
+
+This design specifies:
+- How the ratchet checks fixed-point
+- What non-determinism sources to eliminate
+- What the CI gate looks like
+- How to debug when it breaks
+
+---
+
+## Design
+
+### The cycle
+
+```
+Step 1: ./target/debug/v3_compiler compiler.dag → stage1.rs
+Step 2: rustc stage1.rs -o stage1_bin
+Step 3: ./stage1_bin compiler.dag → stage2.rs
+Step 4: diff stage1.rs stage2.rs   (must be empty)
+Step 5 (optional): rustc stage2.rs -o stage2_bin; diff stage1_bin stage2_bin (optional)
+```
+
+Steps 1–4 are mandatory. Step 5 verifies binary reproducibility but may fail for reasons orthogonal to source stability (rustc non-determinism, timestamps). The source diff (Step 4) is the hard gate.
+
+### CI gate binary
+
+```rust
+// src/v3/compiler/src/bin/self_host_fixed_point.rs
+use std::process::Command;
+use std::path::PathBuf;
+
+fn main() -> Result<(), SelfHostError> {
+    let workspace = workspace_dir();
+    let compiler_dag = workspace.join("src/v3/compiler/compiler.dag");
+    let stage1_rs = workspace.join("target/self_host/stage1.rs");
+    let stage1_bin = workspace.join("target/self_host/stage1_bin");
+    let stage2_rs = workspace.join("target/self_host/stage2.rs");
+
+    std::fs::create_dir_all(stage1_rs.parent().unwrap())?;
+
+    // Step 1: emit via current compiler
+    emit_rust_to_file(&compiler_dag, &stage1_rs)?;
+
+    // Step 2: compile stage1.rs into stage1_bin
+    compile_rust(&stage1_rs, &stage1_bin)?;
+
+    // Step 3: invoke stage1_bin to emit stage2.rs
+    run_stage1(&stage1_bin, &compiler_dag, &stage2_rs)?;
+
+    // Step 4: require bit-identical source
+    diff_files_or_fail(&stage1_rs, &stage2_rs)?;
+
+    println!("fixed-point verified: {} bytes", stage1_rs.metadata()?.len());
+    Ok(())
+}
+
+fn diff_files_or_fail(a: &Path, b: &Path) -> Result<(), SelfHostError> {
+    let a_bytes = std::fs::read(a)?;
+    let b_bytes = std::fs::read(b)?;
+    if a_bytes != b_bytes {
+        // Produce a human-readable diff for debugging
+        let diff = format_diff(&a_bytes, &b_bytes);
+        return Err(SelfHostError::FixedPointMismatch {
+            diff,
+            stage1_path: a.to_path_buf(),
+            stage2_path: b.to_path_buf(),
+        });
+    }
+    Ok(())
+}
+```
+
+Comparison uses raw byte equality — whitespace matters, line endings matter. Matches the strictest definition of determinism.
+
+### CI integration
+
+`.github/workflows/ci.yml` — add a new job:
+
+```yaml
+self_host:
+  runs-on: ubuntu-latest
+  timeout-minutes: 15
+  needs: [ci, v3]   # runs after basic build + v3 tests pass
+  steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: "1.93.0"
+    - name: Cache Cargo (self_host)
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          target/
+        key: cargo-self-host-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/**') }}
+    - name: Self-host fixed-point check
+      run: cargo run --bin self_host_fixed_point --release
+```
+
+Runs after the core `v3` job. If emission changes, this fails; CI blocks merge.
+
+### Sources of non-determinism (to eliminate)
+
+1. **HashMap iteration order** — Rust's `HashMap` iterates randomly. Fix: every iteration over a map that feeds emission uses `BTreeMap` OR sorts the keys before iterating.
+
+2. **HashSet iteration order** — same issue. Fix: `BTreeSet` or sorted collection before iteration in emission paths.
+
+3. **Timestamp embedding** — none allowed in generated Rust. No `std::time::SystemTime::now()` in the emitter path, no `file!()` / `line!()` macros, no embedded build metadata.
+
+4. **Path strings** — generated code may contain file paths from diagnostics / span info. These must be relative to workspace root OR stripped from emitted source entirely.
+
+5. **Unstable sorts** — `Vec::sort` is stable in Rust, but custom sort keys that tie on multiple values can expose iteration order of a HashMap where ties are broken. Fix: sort by fully-specified keys (e.g., PortId then NodeId then declaration name).
+
+6. **Generated identifier allocation** — `__anon_lambda_123_456` uses byte offsets; stable because spans are fixed. But `__fold_acc` vs `__fold_item` etc. might be generated by a counter. If the counter order depends on HashMap iteration, fail. Fix: count by traversal order, never by HashMap iteration.
+
+7. **Float formatting** — `f64::to_string()` can vary by platform (rare in Rust but possible). Not currently in emission paths; flag if it ever is.
+
+8. **Entropy from filesystem** — `std::fs::read_dir` order is platform-specific. Any emitter code reading directory entries must sort them.
+
+### Enforcement via grep gate
+
+Add to CI:
+
+```bash
+# No HashMap or HashSet in emission code paths
+grep -rnE "(HashMap|HashSet)::" src/v3/compiler/src/emit.rs
+# If matches: replace with BTreeMap / BTreeSet, OR sort keys before iteration
+# Acceptable exceptions: internal caches that don't affect emission output
+```
+
+Grep is a blunt instrument but catches obvious regressions. More nuanced check: per-emission unit test that emits the same program N times, asserts all N outputs identical.
+
+### Debug output when fixed-point fails
+
+When `diff stage1.rs stage2.rs` is non-empty:
+
+```
+SelfHostError::FixedPointMismatch
+
+Stage 1 (current compiler) output: target/self_host/stage1.rs (453 KB)
+Stage 2 (self-compiled compiler) output: target/self_host/stage2.rs (453 KB)
+
+Differences at line 1247:
+  stage1.rs: ...fn walk_binds(d: &Dag) -> Vec<&Bind> { d.nodes.iter().filter_map(...).collect() }
+  stage2.rs: ...fn walk_binds(d: &Dag) -> Vec<&Bind> { d.nodes.iter().filter(...).filter_map(...).collect() }
+                                                                        ^^^^^^^^ extra step
+  
+Hypothesis: HashMap iteration order changed a code path's structure.
+
+Debug steps:
+  1. Diff the two files: diff stage1.rs stage2.rs
+  2. Run stage1 N times, verify output stability (isolate non-determinism to stage1→stage2 transition)
+  3. Check recent changes to emit.rs for HashMap/HashSet iteration additions
+  4. If HashMap-related, replace with BTreeMap
+```
+
+The error message walks the implementer through diagnosis.
+
+### Stability guarantees the walker must uphold
+
+Add to `src/v3/compiler/src/emit.rs` (DB-2 walker):
+
+```rust
+/// INVARIANT D-1 (determinism):
+/// For any inputs (dag, target), two successive calls to `emit(dag, target)`
+/// MUST produce byte-identical output. Violations:
+///   - HashMap iteration in emission-reachable code
+///   - Timestamps, paths, build-metadata
+///   - Platform-dependent formatting
+/// Mechanical gate: tests/determinism_test.rs calls emit() 5x per fixture,
+/// fails if any two outputs differ.
+```
+
+`tests/determinism_test.rs` is a new test:
+
+```rust
+#[test]
+fn emit_is_deterministic_on_every_fixture() {
+    for fixture in all_fixtures() {
+        let outputs: Vec<_> = (0..5).map(|_| {
+            let dag = compile_to_dag(&fixture.source, &fixture.name).unwrap();
+            emit(&dag, TargetLanguageId::Rust).unwrap().text
+        }).collect();
+        
+        for i in 1..5 {
+            assert_eq!(
+                outputs[0], outputs[i],
+                "emit is non-deterministic on fixture {}: run 0 vs run {} differ",
+                fixture.name, i
+            );
+        }
+    }
+}
+```
+
+Runs per-test, local to each emit call. Catches non-determinism without needing the full self-host cycle.
+
+---
+
+## Rationale
+
+**Why byte-level diff not semantic diff?** Because byte equality is the strictest constraint. If two versions differ only in whitespace, the compilers produced them from the same logic but with different formatting rules — that's non-determinism we want to catch. Semantic equivalence doesn't guarantee fixed-point.
+
+**Why mandatory Step 4, optional Step 5?** Source stability is what gunbc can control. Binary stability depends on rustc determinism, which is mostly true but has known exceptions (timestamps in debuginfo). Gating on source gives us actionable signal; gating on binary would fail for reasons outside our compiler.
+
+**Why BTreeMap / sorted iteration, not "accept HashMap but sort at the end"?** Because intermediate HashMap iteration can affect structural choices (e.g., which port's name gets allocated first for conflict resolution) that then propagate to output in non-obvious ways. Easier to enforce "no HashMap in emit" than to audit every iteration point.
+
+**Why per-fixture 5x re-run test?** Because most non-determinism manifests within a single process (HashMap seed randomness). 5 runs gives high confidence without absurd test runtime.
+
+**Why separate `self_host_fixed_point` binary, not a test?** Because it's a pipeline (emit → rustc → run → diff) too heavyweight for `cargo test`. CI runs it as its own job; developers can invoke it locally via `cargo run --bin self_host_fixed_point --release`.
+
+---
+
+## Rejected alternatives
+
+**Content-hash compare (hash(stage1.rs) == hash(stage2.rs))** — equivalent to byte diff but without diagnostic output on failure. Rejected.
+
+**Structural diff (parse both, compare ASTs)** — allows whitespace differences. Too lenient. We want bit-identical as the contract. Rejected.
+
+**Only check on push to main** — misses PRs that introduce non-determinism. Run on every PR + main push. Rejected "only on main."
+
+**Accept "close enough" — diff lines < 5** — opens a hole. Any intentional emission change must be accompanied by snapshot update; any unintentional change is a bug. Rejected.
+
+**Skip the cycle on CI, run only locally** — doesn't gate contributions. Rejected.
+
+---
+
+## Implementation notes
+
+### Workspace layout
+
+```
+target/self_host/
+├── stage1.rs        (generated each run — gitignored)
+├── stage1_bin       (generated each run — gitignored)
+└── stage2.rs        (generated each run — gitignored)
+```
+
+`.gitignore` entry for `target/self_host/`.
+
+### Performance
+
+Self-host cycle takes: emit (2s) + rustc (30s) + run (1s) + diff (instant) = ~33s per cycle. Running once per PR is acceptable. If it grows to the v2 "20-minute self-compile" regime (THESIS.md §merge_envs case study), sound alarm — see open question 2 below.
+
+### Bisecting non-determinism
+
+When the ratchet fires:
+1. Run `git log --oneline` on recent changes to `src/v3/compiler/src/emit.rs` and related files
+2. Bisect: run `self_host_fixed_point` on each commit
+3. Identify the commit that introduced non-determinism
+4. Inspect for HashMap iteration / timestamp / etc.
+
+Maintain a `docs/self-host-incidents.md` log of found non-determinism sources — future implementers learn the patterns.
+
+---
+
+## Associations
+
+- **Lane 3 Stage 3c** ([lane3-self-hosting-cycle.md](./lane3-self-hosting-cycle.md)) — this is the acceptance mechanic
+- **Lane 1 Stage 1e** (DB-2 walker) — the walker must hold invariant D-1 (determinism)
+- **`src/v3/compiler/compiler.dag`** — the compiler source being cycled (PR #418 and later additions)
+- **Create `src/v3/compiler/src/bin/self_host_fixed_point.rs`** — the CI binary
+- **Create `src/v3/compiler/tests/determinism_test.rs`** — per-fixture 5x determinism check
+- **Update `.github/workflows/ci.yml`** — `self_host` job
+- **Update `.gitignore`** — `target/self_host/`
+- **Thesis anchor** — SELF_HOSTING.md §14 (fixed-point discipline)
+
+---
+
+## Acceptance (Lane 3 Stage 3c owns)
+
+- [ ] `self_host_fixed_point` binary exists and passes on `compiler.dag`
+- [ ] CI job `self_host` runs on every PR + main push; failing = merge blocked
+- [ ] `tests/determinism_test.rs` passes per-fixture 5x equivalence
+- [ ] Grep gate in CI rejects new `HashMap`/`HashSet` iteration in `src/v3/compiler/src/emit.rs`
+- [ ] Invariant D-1 (determinism) added to INVARIANTS.md
+
+---
+
+## Open questions
+
+1. **Does the ratchet need to run in `release` mode?** Probably yes — rustc release inlines more, which can stabilize output. Design has `cargo run --bin self_host_fixed_point --release`.
+
+2. **What if self-host cycle time approaches v2's 20-min issue?** Alarm. Root-cause the slowdown (usually HashMap-dependent re-derivation, per THESIS.md case study). Don't accept >2min for the cycle.
+
+3. **Should the binary produce a receipt** (timestamped log of "stage1.rs byte length, stage2.rs byte length, diff size")? Yes — useful for trend monitoring. Add to `target/self_host/receipt.json` per run.
+
+4. **What if `compiler.dag` doesn't exist yet / isn't complete?** Pre-Lane 3c, the self-host binary can target a smaller .dag (subset of compiler or a known well-formed program). Gate the full cycle on compiler.dag readiness. Staging: initial ratchet on a small fixture, graduate to compiler.dag when it's complete.
