@@ -1003,7 +1003,7 @@ data rust_collection_ops: CollectionOps = {
 
 data rust_string_ops: StringOps = {
   split: "\{recv\}.split(&\{arg\}).map(|s| s.to_string()).collect::<Vec<_>>()",
-  chars: "\{recv\}.chars().map(|c| c.to_string()).collect::<Vec<_>>()",
+  chars: "\{recv\}.chars().map(|c| c as i64).collect::<Vec<_>>()",
   concat: "format!(\"\{fmt\}\", \{args\})",
   string_literal: "\"\{value\}\".to_string()",
   string_interp: "format!(\"\{fmt\}\", \{args\})",
@@ -1175,7 +1175,7 @@ data python_collection_ops: CollectionOps = {
 
 data python_string_ops: StringOps = {
   split: "\{recv\}.split(\{arg\})",
-  chars: "list(\{recv\})",
+  chars: "[ord(c) for c in \{recv\}]",
   concat: "f\"\{fmt\}\"",
   string_literal: "\"\{value\}\"",
   string_interp: "f\"\{fmt\}\"",

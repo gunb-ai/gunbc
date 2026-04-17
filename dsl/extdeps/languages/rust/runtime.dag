@@ -47,7 +47,9 @@ data string_split_template: String = "\{recv\}.split(&\{delim\}).map(|s| s.to_st
 data string_join_template: String = "\{recv\}.join(&\{sep\})"
 
 // "How does Rust get characters from a string?"
-data string_chars_template: String = "\{recv\}.chars().map(|c| c.to_string()).collect::<Vec<_>>()"
+// Authority: Char = Int (std/types.dag). chars() returns Vec<i64> of
+// Unicode codepoints. Mirrors emit.dag and algebra.dag's chars return type.
+data string_chars_template: String = "\{recv\}.chars().map(|c| c as i64).collect::<Vec<_>>()"
 
 // "How does Rust escape strings?"
 data string_escape_chars: List<String> = ["\\", "\""]
@@ -69,7 +71,7 @@ data collection_method_translations: List<MethodTranslation> = [
   { dag_method: "last",      rust_template: "\{recv\}.last().cloned()" },
   { dag_method: "first",     rust_template: "\{recv\}.first().cloned()" },
   { dag_method: "enumerate", rust_template: "\{recv\}.iter().enumerate().map(|(i, v)| (i, v.clone())).collect::<Vec<_>>()" },
-  { dag_method: "chars",     rust_template: "\{recv\}.chars().map(|c| c.to_string()).collect::<Vec<_>>()" }
+  { dag_method: "chars",     rust_template: "\{recv\}.chars().map(|c| c as i64).collect::<Vec<_>>()" }
 ]
 
 // "How does Rust iterate?"

@@ -218,8 +218,6 @@ pub type SemVer = String;
 
 pub type NonEmptyStr = String;
 
-pub type NonEmptyString = String;
-
 pub type LanguageId = String;
 
 pub type SecretName = String;
@@ -243,8 +241,6 @@ pub struct GlobPattern {
 }
 
 pub type FilePath = String;
-
-pub type Path = String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceSpan {

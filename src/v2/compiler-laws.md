@@ -134,7 +134,7 @@ WIDEN (implicit, Free):
   Url -> String -- predicate erasure. Same carrier, fewer guarantees.
 
 REFINE (implicit if proven, Proven):
-  xs |> filter(non_empty) |> first -> NonEmptyString
+  xs |> filter(non_empty) |> first -> NonEmptyStr
   Compiler sees: filter guarantees non-empty. Evidence: Proven.
 
 VALIDATE (explicit, Checked):

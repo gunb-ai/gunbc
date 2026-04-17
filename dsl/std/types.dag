@@ -165,6 +165,11 @@ fn canonical_container_names() -> List<String> {
 
 // Bool: two-valued coproduct. Structurally: Disj + 2 unit variants.
 // Target: Bool = BooleanAlgebra over {True, False}.
+// Note: std.logic.Classical and std.bit.Bit carry the same structural
+// shape as distinct nominal types. Aliasing Bool = Classical would
+// require v3 to resolve aliases in Branch input type-checking
+// (currently pins Bool as a direct Disj for if/else). Deferred until
+// that compiler work lands; keeps intent-signaling via distinct names.
 type Bool = True | False
 
 // Unit: terminal object (zero-field product, single inhabitant).
@@ -234,7 +239,6 @@ type SecretValue  = Secret where non_empty
 type Url          = String where pattern("^https?://")
 type SemVer       = String where pattern("^\\d+\\.\\d+\\.\\d+")
 type NonEmptyStr     = String where non_empty
-type NonEmptyString  = String where non_empty
 type LanguageId      = String where non_empty
 type SecretName      = String where non_empty
 type PositiveInt     = Int where range(min: 1)
@@ -252,7 +256,6 @@ type GlobPattern {
   segments: List<GlobSegment>
 }
 type FilePath      = String where non_empty
-type Path          = String where non_empty
 
 // --- Temporal types (Level 1: Refinements for time) -----------------------
 // Addresses deficit D14 from domain-modeling-comprehensive.md S9.
