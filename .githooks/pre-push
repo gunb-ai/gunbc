@@ -1,15 +1,23 @@
 #!/usr/bin/env bash
-# Pre-push hook: auto-fix fmt drift and commit it as a chore, but ONLY
-# when the push actually includes the current HEAD (so the auto-commit
-# lands on the ref being pushed). Skips entirely on delete-only pushes.
+# Pre-push hook: fmt check on push. On drift, auto-fix + commit
+# locally (convenience), then ABORT THE PUSH so the developer
+# re-runs git push to pick up the new commit.
+#
+# Why not auto-continue the push?  Git resolves the local SHA and
+# builds the push pack BEFORE calling this hook. A commit created
+# inside the hook advances the local ref, but git already captured
+# the pre-hook SHA in the pack — the new commit stays local and
+# never reaches the remote. See PR #509 review (codex 35d67a7d).
 #
 # Decision table:
-#   Push is delete-only              → skip entirely (nothing to fmt-check)
-#   Push includes current HEAD       → auto-commit fmt fix on top of HEAD
-#   Push excludes current HEAD       → fmt-check + fail with actionable msg
-#                                        (don't auto-commit to a ref that
-#                                         isn't being pushed; the fix
-#                                         wouldn't reach the remote)
+#   Delete-only push         → skip entirely (nothing to fmt-check)
+#   Push includes HEAD, clean → exit 0, push proceeds
+#   Push includes HEAD, drift → auto-fix + auto-commit + ABORT
+#                                (developer re-runs `git push`)
+#   Push excludes HEAD, clean → exit 0, push proceeds
+#   Push excludes HEAD, drift → fail with actionable message
+#                                (don't auto-commit to a ref that
+#                                 isn't even being pushed)
 #
 # Enable via: scripts/install-hooks.sh (sets core.hooksPath .githooks)
 
@@ -50,14 +58,13 @@ fi
 
 echo "[pre-push] cargo fmt --all --check"
 if cargo fmt --all --check 2>/dev/null; then
-  exit 0  # clean
+  exit 0  # clean, push proceeds
 fi
 
 # Fmt drift detected. Two paths:
 if [[ "$current_head_in_push" == "0" ]]; then
   # Push doesn't include current HEAD — auto-committing would land on a
-  # ref that isn't being pushed, so the fmt fix wouldn't reach the remote
-  # anyway. Fail with an actionable message; let the developer decide.
+  # ref that isn't being pushed. Fail with an actionable message.
   echo ""
   echo "[pre-push] fmt drift detected, but the push doesn't include the current HEAD."
   echo "[pre-push] auto-commit would land on a ref that isn't being pushed."
@@ -68,8 +75,9 @@ if [[ "$current_head_in_push" == "0" ]]; then
   exit 1
 fi
 
-# HEAD is being pushed → safe to auto-commit on top of it.
-echo "[pre-push] fmt drift detected; running cargo fmt --all and committing as chore"
+# HEAD is being pushed. Auto-fix + commit as a convenience, then
+# abort the push so the developer re-runs and the new commit ships.
+echo "[pre-push] fmt drift detected; running cargo fmt --all"
 cargo fmt --all
 
 # Only stage tracked files; never sweep up untracked files.
@@ -77,10 +85,19 @@ git add -u
 
 if git diff --cached --quiet; then
   # cargo fmt --check reported drift but --all produced no diff?
-  # Shouldn't happen; exit clean rather than commit nothing.
-  exit 0
+  # Shouldn't happen; fail loud rather than exit silently.
+  echo "[pre-push] cargo fmt --check reported drift but cargo fmt --all produced no diff."
+  echo "[pre-push] this shouldn't happen; please investigate. Aborting push."
+  exit 1
 fi
 
 git commit -m "chore: apply cargo fmt"
-echo "[pre-push] committed fmt fixes — push continuing with the new commit"
-exit 0
+
+echo ""
+echo "[pre-push] fmt fixes committed locally as 'chore: apply cargo fmt'."
+echo "[pre-push] Git has already built the push pack with the pre-hook SHA, so"
+echo "[pre-push] the new commit would NOT reach the remote on this push."
+echo ""
+echo "Run 'git push' again to push the fmt commit alongside your original work."
+echo ""
+exit 1
