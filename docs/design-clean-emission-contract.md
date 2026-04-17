@@ -164,13 +164,22 @@ type PostEmitVerifier {
   command: String                 // e.g., "rustc", "gofmt", "black", "verilator"
   args: List<String>              // e.g., ["--edition=2021", "-D", "warnings"]
   syntax_only: Bool               // if true, only syntax-check (don't compile)
-  expected_exit_code: Int         // 0 for pass; some verifiers use 1 for "diffs found"
+  expected_exit_code: Int         // expected process status for the clean case
+  output_policy: VerifierOutputPolicy
 }
 ```
 
-Rust: `{ command: "rustc", args: ["--edition=2021", "-D", "warnings"], syntax_only: false, expected_exit_code: 0 }`.
-Go: `{ command: "gofmt", args: ["-l"], syntax_only: true, expected_exit_code: 0 }` (exit 0 + empty stdout = clean).
-Python: `{ command: "python3", args: ["-m", "py_compile"], syntax_only: true, expected_exit_code: 0 }`.
+```dag
+type VerifierOutputPolicy
+  = IgnoreVerifierOutput
+  | RequireEmptyStdout
+  | RequireEmptyStderr
+  | RequireEmptyStdoutAndStderr
+```
+
+Rust: `{ command: "rustc", args: ["--edition=2021", "-D", "warnings"], syntax_only: false, expected_exit_code: 0, output_policy: IgnoreVerifierOutput }`.
+Go: `{ command: "gofmt", args: ["-l"], syntax_only: true, expected_exit_code: 0, output_policy: RequireEmptyStdout }`.
+Python: `{ command: "python3", args: ["-m", "py_compile"], syntax_only: true, expected_exit_code: 0, output_policy: IgnoreVerifierOutput }`.
 Additional Shape A targets (Swift, Kotlin, etc.) declare their own `post_emit_verifier`. **Shape B formats** (SPICE, Verilog, English, YAML) are NOT compiler targets per THESIS.md §"Two shapes of omni-emission" — they're produced by `.dag` programs, not emitted by the compiler.
 
 ### Per-target declarations
@@ -192,6 +201,7 @@ data rust_clean_emission: CleanEmissionContract = {
     args: ["--edition=2021", "-D", "warnings"]
     syntax_only: false
     expected_exit_code: 0
+    output_policy: IgnoreVerifierOutput
   }
 }
 ```
@@ -283,6 +293,17 @@ fn run_post_emit_verifier(emitted_source: &str, contract: &CleanEmissionContract
             stdout: String::from_utf8_lossy(&output.stdout).into(),
             stderr: String::from_utf8_lossy(&output.stderr).into(),
         });
+    }
+    match contract.post_emit_verifier.output_policy {
+        IgnoreVerifierOutput => {}
+        RequireEmptyStdout if !output.stdout.is_empty() => return Err(...),
+        RequireEmptyStderr if !output.stderr.is_empty() => return Err(...),
+        RequireEmptyStdoutAndStderr
+            if !output.stdout.is_empty() || !output.stderr.is_empty() =>
+        {
+            return Err(...);
+        }
+        _ => {}
     }
     Ok(())
 }

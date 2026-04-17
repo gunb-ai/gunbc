@@ -19,10 +19,10 @@ pub fn check(p0: &Dag) -> Vec<UnusedParameter> {
 }
 pub fn check_behavior(p0: &Dag, p1: &Behavior) -> Vec<UnusedParameter> {
     match p1 {
-        Behavior::Value(v) => Vec::new(),
-        Behavior::Transform(t) => Vec::new(),
-        Behavior::Branch(b) => Vec::new(),
-        Behavior::Loop(l) => Vec::new(),
+        Behavior::Value(_) => Vec::new(),
+        Behavior::Transform(_) => Vec::new(),
+        Behavior::Branch(_) => Vec::new(),
+        Behavior::Loop(_) => Vec::new(),
         Behavior::Bind(bind) => {
             if ((bind).params).is_empty() {
                 Vec::new()
@@ -134,7 +134,7 @@ pub fn inputs_for_node(p0: &Dag, p1: &NodeId) -> Vec<PortId> {
 }
 pub fn inputs_for_behavior(p0: &Dag, p1: &Behavior) -> Vec<PortId> {
     match p1 {
-        Behavior::Value(v) => Vec::new(),
+        Behavior::Value(_) => Vec::new(),
         Behavior::Transform(t) => ((t).inputs).to_vec(),
         Behavior::Branch(branch) => {
             let mut __list = branch_path_outputs(&((branch).paths));

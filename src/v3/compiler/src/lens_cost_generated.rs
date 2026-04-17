@@ -35,10 +35,10 @@ pub fn seed_bind_params(p0: &[Behavior]) -> Vec<CostEntry> {
 }
 pub fn params_of(p0: &Behavior) -> Vec<CostEntry> {
     match p0 {
-        Behavior::Value(v) => Vec::new(),
-        Behavior::Transform(t) => Vec::new(),
-        Behavior::Branch(b) => Vec::new(),
-        Behavior::Loop(l) => Vec::new(),
+        Behavior::Value(_) => Vec::new(),
+        Behavior::Transform(_) => Vec::new(),
+        Behavior::Branch(_) => Vec::new(),
+        Behavior::Loop(_) => Vec::new(),
         Behavior::Bind(bind) => param_entries(&((bind).params)),
     }
 }

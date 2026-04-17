@@ -65,6 +65,17 @@ import v3.std.substrate {
   SubstrateAccessorRealization, SubstrateAccessorBinding,
   port, node, resolve_producer
 }
+import v3.std.clean_emission {
+  CleanEmissionContract,
+  ExpressionWrappingRule, WrapOnlyInOperandPosition,
+  PatternBindingRule, EmitUnderscoreWhenUnused,
+  ImportRule, IncludeOnlyReferenced,
+  BlockReturnRule, NoWrappingOnTerminalExpression,
+  VariableBindingRule, EmitLetUnderscoreWhenUnused,
+  MatchArmBodyRule, NoWrappingOnNonComplexBody,
+  CorrectionStyle, PostEmitVerifier,
+  VerifierOutputPolicy, IgnoreVerifierOutput
+}
 
 data rust_execution_model: TargetExecutionModel = {
   memory: OwnershipBased
@@ -872,6 +883,46 @@ data rust_language: LanguageSpec = {
   patterns: rust_patterns
   collection_ops: rust_collection_ops
   values: rust_value_construction
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Clean-emission contract (E-5 / Lane 1 Stage 1c).
+// ─────────────────────────────────────────────────────────────────
+//
+// Per-target rule choices for the E-5 invariant. Emitters read this
+// contract to shape emitted code so it passes `rustc -D warnings`
+// by construction. See `docs/design-clean-emission-contract.md`
+// (DB-4) for the full contract shape and `INVARIANTS.md §E-5` for
+// the "no escape hatches" commitment.
+//
+// **Dispatch state at this PR (Lane 1 Stage 1c PR 1):**
+// - `pattern_bindings` is LIVE — `emit_rust::render_branch_pattern`
+//   dispatches on it for the unused-payload-binding pilot.
+// - Every other field is authored-but-unread. Each field has a
+//   named rollout: the emitter change that consumes it removes
+//   the corresponding lint from the test-wrapper allow list in
+//   the same PR (Lane 1d/1e consolidation).
+
+data rust_clean_emission: CleanEmissionContract = {
+  expression_wrapping: WrapOnlyInOperandPosition
+  pattern_bindings: EmitUnderscoreWhenUnused
+  imports: IncludeOnlyReferenced
+  block_return: NoWrappingOnTerminalExpression
+  variable_bindings: EmitLetUnderscoreWhenUnused
+  match_arm_body: NoWrappingOnNonComplexBody
+  correction_style: {
+    indent_unit: "    "
+    line_ending: "\n"
+    string_quote: "%Q"
+    trailing_semicolon: true
+  }
+  post_emit_verifier: {
+    command: "rustc"
+    args: ["--edition=2021", "-D", "warnings"]
+    syntax_only: false
+    expected_exit_code: 0
+    output_policy: IgnoreVerifierOutput
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────

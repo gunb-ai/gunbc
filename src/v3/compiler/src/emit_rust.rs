@@ -481,6 +481,25 @@ struct RustLanguageSyntax {
     values: ValueConstructionSyntaxBinding,
 }
 
+/// Typed read of `data rust_clean_emission: CleanEmissionContract`
+/// from `src/v3/spec/rust.dag` — the portion this pilot consumes
+/// (E-5 / Lane 1 Stage 1c PR 1). Other contract rules land here as
+/// their consumers wire in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CleanEmissionContractBinding {
+    pattern_bindings: PatternBindingRuleBinding,
+}
+
+/// Rust-valid slice of `std.clean_emission.PatternBindingRule`.
+/// Parsed in `CleanEmissionContractBinding::build`, which rejects
+/// target-invalid constructors instead of letting the renderer
+/// normalize them later.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PatternBindingRuleBinding {
+    EmitBindingAlways,
+    EmitUnderscoreWhenUnused,
+}
+
 struct RealizationIndexes {
     /// `target_decl_id → carrier + field bindings`. Built from
     /// `data rust_*: TypeRealization` items in rust.dag.
@@ -550,6 +569,12 @@ struct RealizationIndexes {
     /// The target-side Rust execution model loaded from
     /// `data rust_execution_model: TargetExecutionModel`.
     execution: TargetExecutionModelBinding,
+    /// The Rust clean-emission contract loaded from
+    /// `data rust_clean_emission: CleanEmissionContract` (E-5 /
+    /// Lane 1 Stage 1c). Rule variants dispatch inside the emitter
+    /// to shape emitted code so it passes `rustc -D warnings` by
+    /// construction.
+    clean_emission: CleanEmissionContractBinding,
 }
 
 #[allow(dead_code)]
@@ -820,6 +845,7 @@ impl RealizationIndexes {
         let rendering = RenderingModelBinding::build(dag)?;
         let computation = ComputationModelBinding::build(dag)?;
         let execution = TargetExecutionModelBinding::build(dag)?;
+        let clean_emission = CleanEmissionContractBinding::build(dag)?;
         let callable_dispositions =
             derive_callable_dispositions(dag, &external_callable_dispositions)?;
         let (substrate_accessors, substrate_accessor_universe) =
@@ -837,8 +863,101 @@ impl RealizationIndexes {
             rendering,
             computation,
             execution,
+            clean_emission,
             substrate_accessors,
             substrate_accessor_universe,
+        })
+    }
+}
+
+impl CleanEmissionContractBinding {
+    /// Parse the portion of `data rust_clean_emission:
+    /// CleanEmissionContract` this emitter consumes. Currently only
+    /// `pattern_bindings` dispatches (Lane 1 Stage 1c PR 1 pilot);
+    /// other rules parse when their consumers land.
+    fn build(dag: &Dag) -> Result<Self, EmitError> {
+        let declaration = dag
+            .rust_clean_emission_spec()
+            .ok_or(EmitError::MissingTargetSyntax("rust_clean_emission"))?;
+        let fields = structural_fields_for_decl(dag, declaration)?;
+        let pattern_bindings_value = fields
+            .iter()
+            .find(|(label, _)| label == "pattern_bindings")
+            .map(|(_, value)| value)
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "rust_clean_emission is missing required `pattern_bindings` field",
+            })?;
+        let pattern_bindings =
+            parse_pattern_binding_rule(dag, pattern_bindings_value, declaration)?;
+        Ok(Self { pattern_bindings })
+    }
+}
+
+fn parse_pattern_binding_rule(
+    dag: &Dag,
+    value: &FieldValue,
+    declaration: DeclarationId,
+) -> Result<PatternBindingRuleBinding, EmitError> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "rust_clean_emission.pattern_bindings must be a PatternBindingRule variant",
+        });
+    };
+    if !payload.is_empty() {
+        return Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "PatternBindingRule variants must not carry payload fields",
+        });
+    }
+    let emit_always = named_variant_id(dag, "PatternBindingRule", "EmitBindingAlways").ok_or(
+        EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "PatternBindingRule.EmitBindingAlways declaration was not found",
+        },
+    )?;
+    let emit_underscore = named_variant_id(dag, "PatternBindingRule", "EmitUnderscoreWhenUnused")
+        .ok_or(EmitError::MalformedTargetSyntax {
+        declaration,
+        detail: "PatternBindingRule.EmitUnderscoreWhenUnused declaration was not found",
+    })?;
+    let emit_prefixed = named_variant_id(
+        dag,
+        "PatternBindingRule",
+        "EmitPrefixedUnderscoreWhenUnused",
+    )
+    .ok_or(EmitError::MalformedTargetSyntax {
+        declaration,
+        detail: "PatternBindingRule.EmitPrefixedUnderscoreWhenUnused declaration was not found",
+    })?;
+    let not_applicable = named_variant_id(dag, "PatternBindingRule", "NotApplicablePatternBinding")
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "PatternBindingRule.NotApplicablePatternBinding declaration was not found",
+        })?;
+    if *constructor == emit_always {
+        Ok(PatternBindingRuleBinding::EmitBindingAlways)
+    } else if *constructor == emit_underscore {
+        Ok(PatternBindingRuleBinding::EmitUnderscoreWhenUnused)
+    } else if *constructor == emit_prefixed {
+        Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "rust_clean_emission.pattern_bindings cannot use PatternBindingRule.EmitPrefixedUnderscoreWhenUnused; Rust only supports EmitBindingAlways or EmitUnderscoreWhenUnused",
+        })
+    } else if *constructor == not_applicable {
+        Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "rust_clean_emission.pattern_bindings cannot use PatternBindingRule.NotApplicablePatternBinding; Rust only supports EmitBindingAlways or EmitUnderscoreWhenUnused",
+        })
+    } else {
+        Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "rust_clean_emission.pattern_bindings constructor is not a known PatternBindingRule variant",
         })
     }
 }
@@ -3313,6 +3432,7 @@ impl<'a> Ctx<'a> {
                 "matched variant `{variant_name}` does not lower to a payload product"
             )));
         };
+        let rendered_binding = self.render_payload_binding_name(path, binding);
         if children.len() != 1 {
             let wildcard = self.indexes.syntax.patterns.wildcard.clone();
             let field_bindings = children
@@ -3337,30 +3457,108 @@ impl<'a> Ctx<'a> {
                     ),
                 ],
             );
-            return Ok(format!("{} @ {}", binding.binding_name, inner_pattern));
+            if rendered_binding == wildcard {
+                return Ok(inner_pattern);
+            }
+            return Ok(format!("{rendered_binding} @ {inner_pattern}"));
         }
         if children[0].label == "_0"
             && (self.indexes.types.contains_key(&disj_id) || is_optional_match)
         {
             return Ok(render_named_template(
                 &self.indexes.syntax.patterns.variant_pattern_positional,
-                &[
-                    ("name", &qualified_name),
-                    ("binding", &binding.binding_name),
-                ],
+                &[("name", &qualified_name), ("binding", &rendered_binding)],
             ));
         }
         let bindings = render_named_template(
             &self.indexes.syntax.patterns.field_binding,
             &[
                 ("field", &children[0].label),
-                ("binding", &binding.binding_name),
+                ("binding", &rendered_binding),
             ],
         );
         Ok(render_named_template(
             &self.indexes.syntax.patterns.variant_pattern,
             &[("name", &qualified_name), ("bindings", &bindings)],
         ))
+    }
+
+    /// E-5 / Lane 1 Stage 1c: render the arm's payload binding name
+    /// per `rust_clean_emission.pattern_bindings`. When the rule is
+    /// `EmitUnderscoreWhenUnused` and the arm body does not consume
+    /// `binding.payload_port`, emit `_` so `rustc -D warnings` does
+    /// not fire `unused_variables`. Rust-invalid contract variants
+    /// are rejected while building `CleanEmissionContractBinding`,
+    /// so the renderer only sees Rust-valid states.
+    fn render_payload_binding_name(
+        &self,
+        path: &Path,
+        binding: &crate::dag::PayloadBinding,
+    ) -> String {
+        match self.indexes.clean_emission.pattern_bindings {
+            PatternBindingRuleBinding::EmitUnderscoreWhenUnused
+                if !self.port_is_consumed_from(path.output, binding.payload_port) =>
+            {
+                self.indexes.syntax.patterns.wildcard.clone()
+            }
+            PatternBindingRuleBinding::EmitBindingAlways
+            | PatternBindingRuleBinding::EmitUnderscoreWhenUnused => binding.binding_name.clone(),
+        }
+    }
+
+    /// Structural port-liveness walk. Returns true if `target`
+    /// appears as any port reachable from `root` via
+    /// producer→input edges. Cost is bounded by the size of the
+    /// arm's body subgraph; each behavior visits its inputs once.
+    ///
+    /// Used to answer "does the arm body actually consume this
+    /// payload binding?" without textually scanning the rendered
+    /// body string — the fact is structural, so the check is
+    /// structural too. Ports with no producer (`produced_by = None`,
+    /// the shape payload bindings themselves take) are leaves: the
+    /// walk hits them and either returns true (hit the target) or
+    /// skips them (unrelated parameter port).
+    fn port_is_consumed_from(&self, root: PortId, target: PortId) -> bool {
+        if root == target {
+            return true;
+        }
+        let mut visited: HashSet<PortId> = HashSet::new();
+        let mut queue: Vec<PortId> = vec![root];
+        while let Some(port) = queue.pop() {
+            if !visited.insert(port) {
+                continue;
+            }
+            if port == target {
+                return true;
+            }
+            let Some(producer) = self.dag.port(port).produced_by else {
+                continue;
+            };
+            match self.dag.node(producer) {
+                Behavior::Value(_) => {}
+                Behavior::Transform(t) => {
+                    for input in t.inputs.iter().copied() {
+                        queue.push(input);
+                    }
+                }
+                Behavior::Branch(b) => {
+                    queue.push(b.input);
+                    for path in &b.paths {
+                        queue.push(path.output);
+                    }
+                }
+                Behavior::Loop(l) => {
+                    queue.push(l.source);
+                    queue.push(l.init);
+                    queue.push(l.bound.count);
+                    queue.push(behavior_result_port(self.dag.node(l.body)));
+                }
+                Behavior::Bind(b) => {
+                    queue.push(b.value);
+                }
+            }
+        }
+        false
     }
 
     fn render_bool_pattern(
@@ -4913,6 +5111,51 @@ fn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }",
         assert!(
             rendered.contains("fn classify(p0: Sign) -> i64 {"),
             "expected PassByValue read strategy to render owned function params, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn clean_emission_rejects_rust_invalid_pattern_binding_variants() {
+        let assert_rejected = |variant_name: &'static str, expected_detail: &'static str| {
+            let mut dag = compile_to_dag(
+                "type Sign = Plus | Minus
+fn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }",
+                "test.v3",
+            )
+            .expect("compiles");
+            let clean_decl = dag
+                .rust_clean_emission_spec()
+                .expect("rust_clean_emission cached");
+            let invalid_ctor = named_variant_id(&dag, "PatternBindingRule", variant_name)
+                .expect("PatternBindingRule variant exists");
+            dag.declaration_mut(clean_decl).value_body = Some(ValueBody::Structural {
+                fields: vec![(
+                    "pattern_bindings".to_string(),
+                    FieldValue::Variant {
+                        constructor: invalid_ctor,
+                        payload: Vec::new(),
+                    },
+                )],
+            });
+
+            let err = emit_rust_with_mode(&dag, EmitRustMode::Module)
+                .expect_err("Rust-invalid pattern binding rule must fail closed");
+            assert!(matches!(
+                err,
+                EmitError::MalformedTargetSyntax {
+                    declaration,
+                    detail,
+                } if declaration == clean_decl && detail == expected_detail
+            ));
+        };
+
+        assert_rejected(
+            "EmitPrefixedUnderscoreWhenUnused",
+            "rust_clean_emission.pattern_bindings cannot use PatternBindingRule.EmitPrefixedUnderscoreWhenUnused; Rust only supports EmitBindingAlways or EmitUnderscoreWhenUnused",
+        );
+        assert_rejected(
+            "NotApplicablePatternBinding",
+            "rust_clean_emission.pattern_bindings cannot use PatternBindingRule.NotApplicablePatternBinding; Rust only supports EmitBindingAlways or EmitUnderscoreWhenUnused",
         );
     }
 

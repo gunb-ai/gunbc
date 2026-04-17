@@ -352,6 +352,93 @@ let zero: Int = 0",
     assert!(out.contains("BoxedInt::Empty => 0,"), "got: {out}");
 }
 
+/// E-5 / Lane 1 Stage 1c pilot — unused match-arm payload bindings
+/// render as `_` under `rust_clean_emission.pattern_bindings =
+/// EmitUnderscoreWhenUnused`. Before the pilot the emitter rendered
+/// `Boxed { _0: value } => 0`, which fired `unused_variables` under
+/// `rustc -D warnings`; after the pilot it renders `Boxed { _0: _ }
+/// => 0`, which passes the invariant by construction.
+#[test]
+fn emit_rust_unused_payload_binding_renders_as_underscore() {
+    let out = emit(
+        "type BoxedInt = Boxed(Int) | Empty
+fn ignore_payload(b: BoxedInt) -> Int = match b { Boxed(value) => 0, Empty => 1 }
+let zero: Int = 0",
+    );
+    assert!(
+        out.contains("BoxedInt::Boxed { _0: _ } => 0,"),
+        "expected unused payload to render as `_`, got: {out}"
+    );
+    assert!(
+        !out.contains("BoxedInt::Boxed { _0: value }"),
+        "unused binding leaked the identifier name, got: {out}"
+    );
+    assert!(out.contains("BoxedInt::Empty => 1,"), "got: {out}");
+}
+
+/// Multi-field payloads still need a full variant pattern for type
+/// shape, but an unused whole-payload binding must not be rendered
+/// as `_ @ Variant { ... }` because Rust only permits identifiers on
+/// the left side of `@`.
+#[test]
+fn emit_rust_unused_multi_field_payload_binding_avoids_wildcard_alias() {
+    let out = emit(
+        "type IntList = Empty | Cons { head: Int, tail: IntList }
+fn ignore_payload(list: IntList) -> Int = match list { Empty => 0, Cons(payload) => 1 }
+let zero: Int = 0",
+    );
+    assert!(
+        out.contains("IntList::Cons { head: _, tail: _ } => 1,"),
+        "expected unused multi-field payload to render as a plain variant pattern, got: {out}"
+    );
+    assert!(
+        !out.contains("_ @ IntList::Cons"),
+        "unused multi-field payload rendered an invalid wildcard alias, got: {out}"
+    );
+}
+
+/// E-5 / Lane 1 Stage 1c pilot (rustc roundtrip) — emitted code with
+/// an unused match-arm payload binding passes `rustc -D
+/// unused_variables`. Proves the rule fires end-to-end, not just
+/// that the emission string looks right.
+///
+/// Gated behind `#[ignore]` for the same reason as the other
+/// `rustc_roundtrip_*` tests — CI sandboxes don't always carry a
+/// toolchain. Run locally:
+///
+///     cargo test -p v3-compiler --test m1_3_emit_rust_test \
+///         emit_rust_unused_payload_binding_passes_deny_unused \
+///         -- --ignored --nocapture
+#[test]
+#[ignore]
+fn emit_rust_unused_payload_binding_passes_deny_unused() {
+    let source = emit(
+        "type BoxedInt = Boxed(Int) | Empty
+fn ignore_payload(b: BoxedInt) -> Int = match b { Boxed(value) => 0, Empty => 1 }
+let zero: Int = 0",
+    );
+    let wrapped = format!("#![deny(unused_variables)]\n{source}");
+    let tmp_dir = harness().next_child_dir();
+    let src_path = tmp_dir.join("main.rs");
+    let bin_path = tmp_dir.join("deny_unused_bin");
+    std::fs::File::create(&src_path)
+        .and_then(|mut f| f.write_all(wrapped.as_bytes()))
+        .expect("write rust source");
+    let status = Command::new("rustc")
+        .arg("--edition=2021")
+        .arg(&src_path)
+        .arg("-o")
+        .arg(&bin_path)
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .expect("invoke rustc");
+    assert!(
+        status.success(),
+        "emitted code tripped #[deny(unused_variables)] — E-5 pilot regression"
+    );
+}
+
 #[test]
 fn emit_rust_record_literal_uses_value_construction_syntax() {
     let out = emit(
