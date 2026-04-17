@@ -1,22 +1,42 @@
 module v3.std.computation_model
 
 // Source-side facts: .dag's own computation model
+
+// 🟢 TERMINAL. The two-way mutability split is a durable substrate
+// classification. .dag is Immutable by construction; targets that
+// allow Mutable values (Java, Python, Rust) carry that fact so the
+// emitter can decide cloning/borrowing strategy.
 type Mutability
   = Immutable
   | Mutable
 
+// 🟢 TERMINAL. Purity classifies whether a function/expression has
+// observable side effects. .dag-native code is Pure; effect-bearing
+// targets carry Effectful so future effect-aware emission can
+// dispatch.
 type Purity
   = Pure
   | Effectful
 
+// 🟢 TERMINAL. Whether the language guarantees its program form is a
+// DAG (no implicit dependencies, no shared mutable state across
+// statements) or admits arbitrary control/data structure. Durable
+// distinction; .dag is ExplicitDAG by construction.
 type Structure
   = ExplicitDAG
   | Arbitrary
 
+// 🟢 TERMINAL. Whether the language statically bounds iteration
+// (decidable termination) or admits unbounded loops. .dag is
+// Bounded by INVARIANTS.md decidability rule; targets carry their
+// own value.
 type Iteration
   = Bounded
   | Unbounded
 
+// 🟢 TERMINAL. Bundles the four source/target axes into a single
+// record. The four axes are durable because each names a structural
+// dimension along which source and target languages differ.
 type ComputationModel {
   mutability: Mutability
   purity: Purity
@@ -32,16 +52,28 @@ data dag_model: ComputationModel = {
 }
 
 // Target-side facts: each emission target's execution model
+
+// 🟢 TERMINAL. Closed enumeration of memory-management substrates a
+// target language can sit in. The four categories are irreducible:
+// ValueOnly (no heap, eg pure-data formats), GarbageCollected
+// (Python/Go/Java), RefCounted (Swift/Python-via-cycle-collector),
+// OwnershipBased (Rust). Targets land in exactly one.
 type MemoryModel
   = ValueOnly
   | GarbageCollected
   | RefCounted
   | OwnershipBased
 
+// 🟢 TERMINAL. The lexical-vs-dynamic scoping split is a durable
+// distinction in target language design. Most modern targets are
+// LexicalScoping; older Lisps and shell are DynamicScoping. Held
+// here so future targets can declare their value structurally.
 type ScopeModel
   = LexicalScoping
   | DynamicScoping
 
+// 🟢 TERMINAL. Pairs the two target-side axes. Each emission target
+// instantiates this record once via `data <target>_execution_model`.
 type TargetExecutionModel {
   memory: MemoryModel
   scope: ScopeModel

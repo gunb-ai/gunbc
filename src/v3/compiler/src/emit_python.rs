@@ -1472,10 +1472,7 @@ fn walk_to_algebra_conj(dag: &Dag, start: DeclarationId) -> Option<DeclarationId
     None
 }
 
-fn canonical_operator_field(
-    dag: &Dag,
-    op: OperatorKind,
-) -> Result<DeclarationId, EmitPythonError> {
+fn canonical_operator_field(dag: &Dag, op: OperatorKind) -> Result<DeclarationId, EmitPythonError> {
     let field_label = op.algebra_field_name();
     let ordered_ring = dag.declaration_by_name("OrderedRing").ok_or_else(|| {
         EmitPythonError::Unsupported(

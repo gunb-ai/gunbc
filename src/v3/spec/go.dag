@@ -516,35 +516,45 @@ data go_main_wrap: BehaviorRealization = {
 data go_empty_callable: CallableRealization = {
   target: empty
   strategy: ListEmpty
-  parameter_dispositions: []
+  parameters: []
   cost: 1
 }
 
 data go_singleton_callable: CallableRealization = {
   target: singleton
   strategy: ListSingleton
-  parameter_dispositions: [Consumed]
+  parameters: [
+    { slot: 0, disposition: Consumed }
+  ]
   cost: 1
 }
 
 data go_cons_callable: CallableRealization = {
   target: cons
   strategy: ListCons
-  parameter_dispositions: [Consumed, Consumed]
+  parameters: [
+    { slot: 0, disposition: Consumed },
+    { slot: 1, disposition: Consumed }
+  ]
   cost: 1
 }
 
 data go_concat_callable: CallableRealization = {
   target: concat
   strategy: ListConcat
-  parameter_dispositions: [Consumed, Consumed]
+  parameters: [
+    { slot: 0, disposition: Consumed },
+    { slot: 1, disposition: Consumed }
+  ]
   cost: 1
 }
 
 data go_length_callable: CallableRealization = {
   target: length
   strategy: ListLength
-  parameter_dispositions: [Borrowed]
+  parameters: [
+    { slot: 0, disposition: Borrowed }
+  ]
   cost: 1
 }
 
@@ -563,35 +573,50 @@ data go_map_instantiation: TypeInstantiationRealization = {
 data go_is_empty_callable: CallableRealization = {
   target: is_empty
   strategy: ListIsEmpty
-  parameter_dispositions: [Borrowed]
+  parameters: [
+    { slot: 0, disposition: Borrowed }
+  ]
   cost: 1
 }
 
 data go_fold_callable: CallableRealization = {
   target: fold
   strategy: ListFold
-  parameter_dispositions: [Borrowed, Consumed]
+  parameters: [
+    { slot: 0, disposition: Borrowed },
+    { slot: 1, disposition: Consumed },
+    { slot: 2, disposition: Borrowed }
+  ]
   cost: 1
 }
 
 data go_map_callable: CallableRealization = {
   target: map
   strategy: ListMap
-  parameter_dispositions: [Borrowed]
+  parameters: [
+    { slot: 0, disposition: Borrowed },
+    { slot: 1, disposition: Borrowed }
+  ]
   cost: 1
 }
 
 data go_filter_callable: CallableRealization = {
   target: filter
   strategy: ListFilter
-  parameter_dispositions: [Borrowed]
+  parameters: [
+    { slot: 0, disposition: Borrowed },
+    { slot: 1, disposition: Borrowed }
+  ]
   cost: 1
 }
 
 data go_contains_callable: CallableRealization = {
   target: contains
   strategy: ListContains
-  parameter_dispositions: [Borrowed, Borrowed]
+  parameters: [
+    { slot: 0, disposition: Borrowed },
+    { slot: 1, disposition: Borrowed }
+  ]
   cost: 1
 }
 

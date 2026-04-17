@@ -34,6 +34,12 @@ type PythonCallableRealization {
   cost: Int
 }
 
+// 🟡 SCAFFOLD. Parallel to v3.std.emit_model.CallableStrategy. Lives
+// here because emit_python is on a Python-private realization
+// vocabulary (PythonCallableRealization etc.) that hasn't migrated
+// to the shared schema yet. Dissolution path: when emit_python reads
+// CallableRealization (shared) instead of PythonCallableRealization
+// (private), this enum dissolves into the shared CallableStrategy.
 type PythonCallableStrategy
   = ListEmpty
   | ListSingleton
@@ -58,6 +64,11 @@ type PythonPatternRealization {
   cost: Int
 }
 
+// 🟡 SCAFFOLD. Parallel to v3.std.emit_model.PatternStrategy. Same
+// dissolution path as PythonCallableStrategy — when emit_python
+// reads PatternRealization (shared) and the planned typed-variant
+// authority (B13) replaces hardcoded "Empty"/"Cons" name lookups,
+// this enum dissolves into the shared PatternStrategy.
 type PythonPatternStrategy
   = ListPattern
 

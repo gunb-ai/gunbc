@@ -294,7 +294,17 @@ impl RealizationIndexes {
                 }
                 RealizationCategory::Callable => {
                     let strategy = require_callable_strategy(dag, fields, decl.id)?;
-                    let dispositions = require_parameter_dispositions(dag, fields, decl.id)?;
+                    let expected_arity = match &dag.declaration(target).connective {
+                        TypeConnective::Arrow { inputs, .. } => inputs.len(),
+                        _ => {
+                            return Err(EmitError::MalformedRealization {
+                                declaration: decl.id,
+                                detail: "CallableRealization target must be an Arrow declaration",
+                            })
+                        }
+                    };
+                    let dispositions =
+                        require_parameter_dispositions(dag, fields, decl.id, expected_arity)?;
                     if callables.insert(target, strategy).is_some() {
                         return Err(EmitError::DuplicateRealization {
                             declaration: decl.id,
@@ -1824,34 +1834,105 @@ fn require_callable_strategy(
     })
 }
 
-/// Parse and validate the `parameter_dispositions` list on a
-/// CallableRealization. Mirrors emit_rust::require_parameter_dispositions.
-/// Go's GC rendering doesn't act on the result, but the field is part
-/// of the shared CallableRealization schema and a malformed entry is
-/// a spec bug — fail-closed instead of silently accepting it.
+/// Parse and validate the `parameters` list on a CallableRealization.
+/// Mirrors emit_rust::require_parameter_dispositions exactly. Go's GC
+/// rendering doesn't act on the result, but the shared schema requires
+/// the field and validation makes arity/order drift unrepresentable.
 fn require_parameter_dispositions(
     dag: &Dag,
     fields: &[(String, FieldValue)],
     declaration: DeclarationId,
+    expected_arity: usize,
 ) -> Result<Vec<ParameterDispositionBinding>, EmitError> {
     let value = fields
         .iter()
-        .find(|(label, _)| label == "parameter_dispositions")
+        .find(|(label, _)| label == "parameters")
         .map(|(_, value)| value)
         .ok_or(EmitError::MalformedRealization {
             declaration,
-            detail: "CallableRealization is missing required `parameter_dispositions` field",
+            detail: "CallableRealization is missing required `parameters` field",
         })?;
     let FieldValue::List(entries) = value else {
         return Err(EmitError::MalformedRealization {
             declaration,
-            detail: "CallableRealization.parameter_dispositions must be a structural list",
+            detail: "CallableRealization.parameters must be a structural list",
         });
     };
-    entries
-        .iter()
-        .map(|value| parse_parameter_disposition(dag, value, declaration))
+    if entries.len() != expected_arity {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "CallableRealization.parameters length does not match the callable's Arrow input arity",
+        });
+    }
+    let mut filled: Vec<Option<ParameterDispositionBinding>> = vec![None; expected_arity];
+    for entry in entries {
+        let (slot, disposition) = parse_callable_parameter(dag, entry, declaration)?;
+        if slot >= expected_arity {
+            return Err(EmitError::MalformedRealization {
+                declaration,
+                detail: "CallableParameter.slot is out of range for the callable's declared arity",
+            });
+        }
+        if filled[slot].is_some() {
+            return Err(EmitError::MalformedRealization {
+                declaration,
+                detail: "CallableParameter.slot is duplicated within parameters list",
+            });
+        }
+        filled[slot] = Some(disposition);
+    }
+    filled
+        .into_iter()
+        .map(|opt| {
+            opt.ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "CallableRealization.parameters does not cover every slot in [0, arity)",
+            })
+        })
         .collect()
+}
+
+fn parse_callable_parameter(
+    dag: &Dag,
+    value: &FieldValue,
+    declaration: DeclarationId,
+) -> Result<(usize, ParameterDispositionBinding), EmitError> {
+    let FieldValue::Record(fields) = value else {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "CallableRealization.parameters entries must be CallableParameter records",
+        });
+    };
+    let slot = fields
+        .iter()
+        .find(|(label, _)| label == "slot")
+        .map(|(_, value)| value)
+        .ok_or(EmitError::MalformedRealization {
+            declaration,
+            detail: "CallableParameter is missing required `slot` field",
+        })?;
+    let FieldValue::Literal(LiteralBits::Int(slot_int)) = slot else {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "CallableParameter.slot must be an Int literal",
+        });
+    };
+    if *slot_int < 0 {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "CallableParameter.slot must be non-negative",
+        });
+    }
+    let disposition_value = fields
+        .iter()
+        .find(|(label, _)| label == "disposition")
+        .map(|(_, value)| value)
+        .ok_or(EmitError::MalformedRealization {
+            declaration,
+            detail: "CallableParameter is missing required `disposition` field",
+        })?;
+    let disposition = parse_parameter_disposition(dag, disposition_value, declaration)?;
+    Ok((*slot_int as usize, disposition))
 }
 
 fn parse_parameter_disposition(
@@ -1866,7 +1947,7 @@ fn parse_parameter_disposition(
     else {
         return Err(EmitError::MalformedRealization {
             declaration,
-            detail: "ParameterDisposition entries must be ParameterDisposition variants",
+            detail: "CallableParameter.disposition must be a ParameterDisposition variant",
         });
     };
     if !payload.is_empty() {

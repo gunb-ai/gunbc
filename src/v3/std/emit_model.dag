@@ -17,6 +17,12 @@ type FieldBinding {
   borrowed_read: Bool
 }
 
+// 🟢 TERMINAL. Two-way split of field access shapes a target language
+// can offer: direct field access (`x.field`) vs an accessor method
+// call (`x.field()` in Java-style getters, or method-style projection
+// in Rust where the carrier type exposes the field via a fn). Each
+// variant carries the rendered carrier string. Durable because
+// targets really do split this way.
 type FieldAccess
   = DirectField(String)
   | AccessorMethod(String)
@@ -37,10 +43,29 @@ type BehaviorRealization {
 type CallableRealization {
   target: DeclarationRef
   strategy: CallableStrategy
-  parameter_dispositions: List<ParameterDisposition>
+  parameters: List<CallableParameter>
   cost: Int
 }
 
+// 🟢 TERMINAL. One entry per Arrow input slot, keyed by `slot` so
+// arity and order drift become representable as a build-time error
+// rather than a silent positional default. Validation: every slot
+// in [0, arity) must appear exactly once. Replaces the bare
+// `List<ParameterDisposition>` shape, which silently defaulted to
+// Borrowed when the spec list was shorter than the callable's
+// declared input arity.
+type CallableParameter {
+  slot: Int
+  disposition: ParameterDisposition
+}
+
+// 🟢 TERMINAL. Per-parameter ownership classification. Borrowed
+// means the callee reads the value and returns ownership to the
+// caller; Consumed means the callee takes ownership. This is the
+// primary fact ownership-rendering-design.md proposes for replacing
+// downstream rendering enums (ReadStrategy/ConstructStrategy) with
+// derivations. Durable because every memory-managed target has
+// to make this distinction at every callable boundary.
 type ParameterDisposition
   = Borrowed
   | Consumed
@@ -181,10 +206,23 @@ type RenderingModel {
   construct: ConstructStrategy
 }
 
+// 🟡 SCAFFOLD. Per-target read strategy: Borrow renders `&T`-style
+// references; PassByValue renders owned values. Lives here because
+// the current emitter dispatches on a target-level rendering tag.
+// Dissolution path: ownership-rendering-design.md proposes deriving
+// per-edge read mode from MemoryModel × ParameterDisposition × the
+// edge's use-site classification (Read vs Construct). Once that
+// derivation lands, RenderingModel.read goes away — this enum
+// dissolves with it.
 type ReadStrategy
   = Borrow
   | PassByValue
 
+// 🟡 SCAFFOLD. Per-target construction strategy: CopyOrClone renders
+// `.clone()`-style duplication on Conj construction; PassByValue
+// renders direct value moves. Same dissolution path as ReadStrategy
+// — replaced by per-edge derivation from MemoryModel ×
+// ParameterDisposition.
 type ConstructStrategy
   = CopyOrClone
   | PassByValue

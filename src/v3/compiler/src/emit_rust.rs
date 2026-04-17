@@ -734,7 +734,17 @@ impl RealizationIndexes {
                 }
                 RealizationCategory::Callable => {
                     let strategy = require_callable_strategy(dag, fields, decl.id)?;
-                    let dispositions = require_parameter_dispositions(dag, fields, decl.id)?;
+                    let expected_arity = match &dag.declaration(target).connective {
+                        TypeConnective::Arrow { inputs, .. } => inputs.len(),
+                        _ => {
+                            return Err(EmitError::MalformedRealization {
+                                declaration: decl.id,
+                                detail: "CallableRealization target must be an Arrow declaration",
+                            })
+                        }
+                    };
+                    let dispositions =
+                        require_parameter_dispositions(dag, fields, decl.id, expected_arity)?;
                     if callables.insert(target, strategy).is_some() {
                         return Err(EmitError::DuplicateRealization {
                             declaration: decl.id,
@@ -1480,29 +1490,108 @@ fn require_callable_strategy(
     })
 }
 
+/// Parse and validate the `parameters` list on a CallableRealization.
+/// Each entry is a `CallableParameter` record with `slot: Int` and
+/// `disposition: ParameterDisposition`. Returns a Vec indexed by slot
+/// (length == `expected_arity`). Validation makes arity and order
+/// drift unrepresentable: any missing slot, duplicate slot, or
+/// out-of-range slot fails closed at build time instead of silently
+/// defaulting to Borrowed at use time.
 fn require_parameter_dispositions(
     dag: &Dag,
     fields: &[(String, FieldValue)],
     declaration: DeclarationId,
+    expected_arity: usize,
 ) -> Result<Vec<ParameterDispositionBinding>, EmitError> {
     let value = fields
         .iter()
-        .find(|(label, _)| label == "parameter_dispositions")
+        .find(|(label, _)| label == "parameters")
         .map(|(_, value)| value)
         .ok_or(EmitError::MalformedRealization {
             declaration,
-            detail: "CallableRealization is missing required `parameter_dispositions` field",
+            detail: "CallableRealization is missing required `parameters` field",
         })?;
     let FieldValue::List(entries) = value else {
         return Err(EmitError::MalformedRealization {
             declaration,
-            detail: "CallableRealization.parameter_dispositions must be a structural list",
+            detail: "CallableRealization.parameters must be a structural list",
         });
     };
-    entries
-        .iter()
-        .map(|value| parse_parameter_disposition(dag, value, declaration))
+    if entries.len() != expected_arity {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "CallableRealization.parameters length does not match the callable's Arrow input arity",
+        });
+    }
+    let mut filled: Vec<Option<ParameterDispositionBinding>> = vec![None; expected_arity];
+    for entry in entries {
+        let (slot, disposition) = parse_callable_parameter(dag, entry, declaration)?;
+        if slot >= expected_arity {
+            return Err(EmitError::MalformedRealization {
+                declaration,
+                detail: "CallableParameter.slot is out of range for the callable's declared arity",
+            });
+        }
+        if filled[slot].is_some() {
+            return Err(EmitError::MalformedRealization {
+                declaration,
+                detail: "CallableParameter.slot is duplicated within parameters list",
+            });
+        }
+        filled[slot] = Some(disposition);
+    }
+    filled
+        .into_iter()
+        .map(|opt| {
+            opt.ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "CallableRealization.parameters does not cover every slot in [0, arity)",
+            })
+        })
         .collect()
+}
+
+fn parse_callable_parameter(
+    dag: &Dag,
+    value: &FieldValue,
+    declaration: DeclarationId,
+) -> Result<(usize, ParameterDispositionBinding), EmitError> {
+    let FieldValue::Record(fields) = value else {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "CallableRealization.parameters entries must be CallableParameter records",
+        });
+    };
+    let slot = fields
+        .iter()
+        .find(|(label, _)| label == "slot")
+        .map(|(_, value)| value)
+        .ok_or(EmitError::MalformedRealization {
+            declaration,
+            detail: "CallableParameter is missing required `slot` field",
+        })?;
+    let FieldValue::Literal(LiteralBits::Int(slot_int)) = slot else {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "CallableParameter.slot must be an Int literal",
+        });
+    };
+    if *slot_int < 0 {
+        return Err(EmitError::MalformedRealization {
+            declaration,
+            detail: "CallableParameter.slot must be non-negative",
+        });
+    }
+    let disposition_value = fields
+        .iter()
+        .find(|(label, _)| label == "disposition")
+        .map(|(_, value)| value)
+        .ok_or(EmitError::MalformedRealization {
+            declaration,
+            detail: "CallableParameter is missing required `disposition` field",
+        })?;
+    let disposition = parse_parameter_disposition(dag, disposition_value, declaration)?;
+    Ok((*slot_int as usize, disposition))
 }
 
 fn parse_parameter_disposition(
@@ -1517,7 +1606,7 @@ fn parse_parameter_disposition(
     else {
         return Err(EmitError::MalformedRealization {
             declaration,
-            detail: "ParameterDisposition entries must be ParameterDisposition variants",
+            detail: "CallableParameter.disposition must be a ParameterDisposition variant",
         });
     };
     if !payload.is_empty() {
@@ -2562,12 +2651,7 @@ impl<'a> Ctx<'a> {
     /// no later borrow or consume references this port. Only when
     /// this holds is it safe to render a Consumed edge as a move
     /// (`OwnedConstructLastUse`); otherwise we must clone.
-    fn is_last_use(
-        &self,
-        port: PortId,
-        consumer: InputConsumer<'_>,
-        slot: InputSlot,
-    ) -> bool {
+    fn is_last_use(&self, port: PortId, consumer: InputConsumer<'_>, slot: InputSlot) -> bool {
         let key = match consumer {
             InputConsumer::Transform(transform) => InputUseKey {
                 consumer: transform.id,
@@ -4625,6 +4709,85 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
         assert_eq!(
             indexes.callable_dispositions.get(&decl),
             Some(&vec![ParameterDispositionBinding::Borrowed]),
+        );
+    }
+
+    /// B1 — `require_parameter_dispositions` is fail-closed against
+    /// arity, slot duplication, and out-of-range slots, so a spec
+    /// CallableRealization can't silently drift from the callable's
+    /// declared Arrow input arity.
+    #[test]
+    fn parameter_dispositions_reject_arity_drift_and_slot_collisions() {
+        let dag = compile_to_dag("fn id(x: Int) -> Int = x", "arity_drift.v3").expect("compiles");
+        let bogus_decl = dag.declaration_by_name("id").expect("id decl").id;
+        let borrowed =
+            named_variant_id(&dag, "ParameterDisposition", "Borrowed").expect("Borrowed");
+        let consumed =
+            named_variant_id(&dag, "ParameterDisposition", "Consumed").expect("Consumed");
+        let entry = |slot: i64, ctor: DeclarationId| {
+            FieldValue::Record(vec![
+                (
+                    "slot".to_string(),
+                    FieldValue::Literal(LiteralBits::Int(slot)),
+                ),
+                (
+                    "disposition".to_string(),
+                    FieldValue::Variant {
+                        constructor: ctor,
+                        payload: vec![],
+                    },
+                ),
+            ])
+        };
+        let bind =
+            |entries: Vec<FieldValue>| vec![("parameters".to_string(), FieldValue::List(entries))];
+
+        // Arity too low: 1 entry expected, 0 supplied.
+        let fields = bind(vec![]);
+        assert!(matches!(
+            require_parameter_dispositions(&dag, &fields, bogus_decl, 1),
+            Err(EmitError::MalformedRealization { .. }),
+        ));
+
+        // Arity too high: 1 entry expected, 2 supplied.
+        let fields = bind(vec![entry(0, borrowed), entry(1, borrowed)]);
+        assert!(matches!(
+            require_parameter_dispositions(&dag, &fields, bogus_decl, 1),
+            Err(EmitError::MalformedRealization { .. }),
+        ));
+
+        // Slot duplication: both entries claim slot 0.
+        let fields = bind(vec![entry(0, borrowed), entry(0, consumed)]);
+        assert!(matches!(
+            require_parameter_dispositions(&dag, &fields, bogus_decl, 2),
+            Err(EmitError::MalformedRealization { .. }),
+        ));
+
+        // Out-of-range slot: arity is 1 but entry claims slot 5.
+        let fields = bind(vec![entry(5, borrowed)]);
+        assert!(matches!(
+            require_parameter_dispositions(&dag, &fields, bogus_decl, 1),
+            Err(EmitError::MalformedRealization { .. }),
+        ));
+
+        // Negative slot: rejected before the bound check.
+        let fields = bind(vec![entry(-1, borrowed)]);
+        assert!(matches!(
+            require_parameter_dispositions(&dag, &fields, bogus_decl, 1),
+            Err(EmitError::MalformedRealization { .. }),
+        ));
+
+        // Well-formed: each slot in [0, arity) exactly once. Returns a
+        // Vec of length `expected_arity`, indexed by slot.
+        let fields = bind(vec![entry(1, borrowed), entry(0, consumed)]);
+        let result = require_parameter_dispositions(&dag, &fields, bogus_decl, 2)
+            .expect("well-formed parameters parse");
+        assert_eq!(
+            result,
+            vec![
+                ParameterDispositionBinding::Consumed,
+                ParameterDispositionBinding::Borrowed,
+            ],
         );
     }
 }
