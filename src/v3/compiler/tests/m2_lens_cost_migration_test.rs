@@ -1,13 +1,20 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Dag, PortId};
 use v3_compiler::emit_rust::emit_rust_module;
 
-static ROUNDTRIP_ID: AtomicUsize = AtomicUsize::new(0);
+mod common;
+use common::{HarnessLinkMode, RustcHarness};
+
+static HARNESS: OnceLock<RustcHarness> = OnceLock::new();
+fn harness() -> &'static RustcHarness {
+    HARNESS.get_or_init(|| RustcHarness::new("cost_lens_migration"))
+}
+
 const GENERATED_LENS_HEADER: &str = "// AUTO-GENERATED from `src/v3/lenses/complexity.dag` via\n\
      // `emit_rust_module`. Regenerate instead of hand-editing.\n\n";
 
@@ -60,74 +67,14 @@ fn format_rust_source(source: &str) -> String {
     String::from_utf8(output.stdout).expect("rustfmt output should be utf-8")
 }
 
-fn deps_dir() -> PathBuf {
-    std::env::current_exe()
-        .expect("current test binary path")
-        .parent()
-        .expect("deps dir")
-        .to_path_buf()
-}
-
-fn find_current_rlib(crate_name: &str) -> PathBuf {
-    let prefix = format!("lib{crate_name}-");
-    let mut matches: Vec<PathBuf> = std::fs::read_dir(deps_dir())
-        .expect("read deps dir")
-        .filter_map(|entry| {
-            let path = entry.ok()?.path();
-            let file_name = path.file_name()?.to_str()?;
-            if file_name.starts_with(&prefix) && file_name.ends_with(".rlib") {
-                Some(path)
-            } else {
-                None
-            }
-        })
-        .collect();
-    matches.sort_by_key(|path| {
-        std::fs::metadata(path)
-            .and_then(|meta| meta.modified())
-            .ok()
-    });
-    matches
-        .into_iter()
-        .last()
-        .expect("compiled rlib for current crate")
-}
-
-fn next_roundtrip_dir() -> PathBuf {
-    let id = ROUNDTRIP_ID.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "v3_cost_lens_migration_roundtrip_{}_{}",
-        std::process::id(),
-        id
-    ))
-}
-
-fn compile_with_current_crate(src_path: &Path, bin_path: &Path) {
-    let deps = deps_dir();
-    let current_rlib = find_current_rlib("v3_compiler");
-    let compile = Command::new("rustc")
-        .arg("--edition=2021")
-        .arg(src_path)
-        .arg("-o")
-        .arg(bin_path)
-        .arg("-L")
-        .arg(format!("dependency={}", deps.display()))
-        .arg("--extern")
-        .arg(format!("v3_compiler={}", current_rlib.display()))
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .expect("invoke rustc");
-    assert!(compile.success(), "rustc failed on emitted lens source");
-}
-
 /// Compile the cost-lens roundtrip harness exactly once per test run.
 /// The emitted module is embedded and `main` reads `program_source`,
 /// `file_name`, and `bind_name` from argv, so each fixture re-run is a
 /// single process spawn instead of a fresh `rustc` invocation.
 fn build_roundtrip_harness(module_source: &str) -> PathBuf {
     let wrapped = format!(
-        "mod emitted {{ use v3_compiler::dag::*; use v3_compiler::diagnostics::*; {module_source} }} \
+        "#[allow(warnings, clippy::all)] \
+         mod emitted {{ use v3_compiler::dag::*; use v3_compiler::diagnostics::*; {module_source} }} \
          fn main() {{ \
            let mut __args = std::env::args(); __args.next(); \
            let program_source = __args.next().expect(\"program_source arg\"); \
@@ -144,17 +91,7 @@ fn build_roundtrip_harness(module_source: &str) -> PathBuf {
            }} \
          }}"
     );
-
-    let tmp_dir = next_roundtrip_dir();
-    std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
-    let src_path = tmp_dir.join("main.rs");
-    let bin_path = tmp_dir.join("main_bin");
-    std::fs::File::create(&src_path)
-        .and_then(|mut f| f.write_all(wrapped.as_bytes()))
-        .expect("write wrapped rust source");
-
-    compile_with_current_crate(&src_path, &bin_path);
-    bin_path
+    harness().compile(&wrapped, "main_bin", HarnessLinkMode::WithV3Compiler)
 }
 
 fn roundtrip_cost(

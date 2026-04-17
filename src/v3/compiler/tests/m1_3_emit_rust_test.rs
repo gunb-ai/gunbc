@@ -18,13 +18,18 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit_rust::{emit_rust, emit_rust_module};
 
-static ROUNDTRIP_ID: AtomicUsize = AtomicUsize::new(0);
+mod common;
+use common::{HarnessLinkMode, RustcHarness};
+
+static HARNESS: OnceLock<RustcHarness> = OnceLock::new();
+fn harness() -> &'static RustcHarness {
+    HARNESS.get_or_init(|| RustcHarness::new("emit_rust"))
+}
 
 fn emit(source: &str) -> String {
     let dag = compile_to_dag(source, "test.v3").expect("compiles");
@@ -36,20 +41,10 @@ fn emit_module(source: &str) -> String {
     emit_rust_module(&dag).expect("emits module")
 }
 
-fn next_roundtrip_dir() -> std::path::PathBuf {
-    let id = ROUNDTRIP_ID.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "v3_emit_rust_roundtrip_{}_{}",
-        std::process::id(),
-        id
-    ))
-}
-
 fn roundtrip_stdout(source: &str) -> String {
     let source = emit(source);
 
-    let tmp_dir = next_roundtrip_dir();
-    std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
+    let tmp_dir = harness().next_child_dir();
     let src_path = tmp_dir.join("main.rs");
     let bin_path = tmp_dir.join("main_bin");
     std::fs::File::create(&src_path)
@@ -74,58 +69,6 @@ fn roundtrip_stdout(source: &str) -> String {
         .expect("run compiled binary");
     assert!(run.status.success(), "compiled binary failed");
     String::from_utf8_lossy(&run.stdout).trim().to_string()
-}
-
-fn deps_dir() -> PathBuf {
-    std::env::current_exe()
-        .expect("current test binary path")
-        .parent()
-        .expect("deps dir")
-        .to_path_buf()
-}
-
-fn find_current_rlib(crate_name: &str) -> PathBuf {
-    let prefix = format!("lib{crate_name}-");
-    let mut matches: Vec<PathBuf> = std::fs::read_dir(deps_dir())
-        .expect("read deps dir")
-        .filter_map(|entry| {
-            let path = entry.ok()?.path();
-            let file_name = path.file_name()?.to_str()?;
-            if file_name.starts_with(&prefix) && file_name.ends_with(".rlib") {
-                Some(path)
-            } else {
-                None
-            }
-        })
-        .collect();
-    matches.sort_by_key(|path| {
-        std::fs::metadata(path)
-            .and_then(|meta| meta.modified())
-            .ok()
-    });
-    matches
-        .into_iter()
-        .last()
-        .expect("compiled rlib for current crate")
-}
-
-fn compile_with_current_crate(src_path: &Path, bin_path: &Path) {
-    let deps = deps_dir();
-    let current_rlib = find_current_rlib("v3_compiler");
-    let compile = Command::new("rustc")
-        .arg("--edition=2021")
-        .arg(src_path)
-        .arg("-o")
-        .arg(bin_path)
-        .arg("-L")
-        .arg(format!("dependency={}", deps.display()))
-        .arg("--extern")
-        .arg(format!("v3_compiler={}", current_rlib.display()))
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .expect("invoke rustc — install a rust toolchain to run this test");
-    assert!(compile.success(), "rustc failed on emitted source");
 }
 
 /// Descriptor for a self-contained program fixture. Each fixture's
@@ -207,29 +150,11 @@ fn build_program_harness() -> PathBuf {
          }\n",
     );
 
-    let tmp_dir = next_roundtrip_dir();
-    std::fs::create_dir_all(&tmp_dir).expect("create harness tmp dir");
-    let src_path = tmp_dir.join("main.rs");
-    let bin_path = tmp_dir.join("main_bin");
-    std::fs::File::create(&src_path)
-        .and_then(|mut f| f.write_all(body.as_bytes()))
-        .expect("write program harness source");
-
     // Group 1 emissions are self-contained Rust (no v3_compiler deps),
     // so the batched harness compiles with plain rustc. If one fixture's
     // emission fails to compile, rustc surfaces the file + line — the
     // submodule name narrows attribution.
-    let compile = Command::new("rustc")
-        .arg("--edition=2021")
-        .arg(&src_path)
-        .arg("-o")
-        .arg(&bin_path)
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .expect("invoke rustc — install a rust toolchain to run this test");
-    assert!(compile.success(), "rustc failed on batched program harness");
-    bin_path
+    harness().compile(&body, "main_bin", HarnessLinkMode::Standalone)
 }
 
 fn program_harness_bin() -> &'static Path {
@@ -239,17 +164,7 @@ fn program_harness_bin() -> &'static Path {
 }
 
 fn run_program(name: &str) -> String {
-    let bin = program_harness_bin();
-    let run = Command::new(bin)
-        .arg(name)
-        .output()
-        .expect("run program harness");
-    assert!(
-        run.status.success(),
-        "program harness failed: {}",
-        String::from_utf8_lossy(&run.stderr)
-    );
-    String::from_utf8_lossy(&run.stdout).trim().to_string()
+    RustcHarness::run(program_harness_bin(), &[name])
 }
 
 /// Descriptor for one reflected-module rustc roundtrip fixture. Each
@@ -340,15 +255,7 @@ fn build_reflected_harness() -> PathBuf {
          }\n",
     );
 
-    let tmp_dir = next_roundtrip_dir();
-    std::fs::create_dir_all(&tmp_dir).expect("create harness tmp dir");
-    let src_path = tmp_dir.join("main.rs");
-    let bin_path = tmp_dir.join("main_bin");
-    std::fs::File::create(&src_path)
-        .and_then(|mut f| f.write_all(body.as_bytes()))
-        .expect("write reflected harness source");
-    compile_with_current_crate(&src_path, &bin_path);
-    bin_path
+    harness().compile(&body, "reflected_bin", HarnessLinkMode::WithV3Compiler)
 }
 
 fn reflected_harness_bin() -> &'static Path {
@@ -358,17 +265,7 @@ fn reflected_harness_bin() -> &'static Path {
 }
 
 fn run_reflected(name: &str) -> String {
-    let bin = reflected_harness_bin();
-    let run = Command::new(bin)
-        .arg(name)
-        .output()
-        .expect("run reflected harness");
-    assert!(
-        run.status.success(),
-        "reflected harness failed: {}",
-        String::from_utf8_lossy(&run.stderr)
-    );
-    String::from_utf8_lossy(&run.stdout).trim().to_string()
+    RustcHarness::run(reflected_harness_bin(), &[name])
 }
 
 #[test]
@@ -631,7 +528,7 @@ fn composition_opacity_gate_is_documented() {
 
 #[test]
 fn roundtrip_temp_dirs_are_unique() {
-    assert_ne!(next_roundtrip_dir(), next_roundtrip_dir());
+    assert_ne!(harness().next_child_dir(), harness().next_child_dir());
 }
 
 // The nine tests below dispatch into one batched rustc-roundtrip
