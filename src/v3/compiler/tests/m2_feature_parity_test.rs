@@ -87,9 +87,7 @@ fn test_3a4_bounded_form_rejected_at_parse() {
         .expect_err("bounded form must fail at parse");
     let msg = format!("{err:?}");
     assert!(
-        msg.contains("Colon")
-            || msg.to_lowercase().contains("bound")
-            || msg.contains(":"),
+        msg.contains("Colon") || msg.to_lowercase().contains("bound") || msg.contains(":"),
         "bounded-form diagnostic should mention the bound syntax; got: {msg}"
     );
 }
@@ -105,8 +103,7 @@ fn test_3a5_match_arm_dotted_path_compiles() {
     let src = "type Point { x: Int, y: Int }\n\
                type Opt = Some(Point) | None\n\
                fn first(o: Opt) -> Int = match o { Some(p) => p.x, None => 0 }";
-    let dag = compile_to_dag(src, "test.v3")
-        .expect("match-arm dotted path `p.x` must compile");
+    let dag = compile_to_dag(src, "test.v3").expect("match-arm dotted path `p.x` must compile");
     let first = dag
         .declaration_by_name("first")
         .expect("`first` declaration must exist");
@@ -219,11 +216,8 @@ fn test_3a2_data_referenced_in_fn_body_compiles() {
 fn test_3a2_record_data_compiles_structural() {
     let src = "type Config { host: Int, port: Int }\n\
                data cfg: Config = { host: 1, port: 8080 }";
-    let dag = compile_to_dag(src, "test.v3")
-        .expect("record data declaration must compile");
-    let cfg = dag
-        .declaration_by_name("cfg")
-        .expect("`cfg` must exist");
+    let dag = compile_to_dag(src, "test.v3").expect("record data declaration must compile");
+    let cfg = dag.declaration_by_name("cfg").expect("`cfg` must exist");
     match &cfg.value_body {
         Some(v3_compiler::dag::ValueBody::Structural { fields }) => {
             assert_eq!(fields.len(), 2, "cfg must have two fields");
@@ -241,7 +235,9 @@ fn test_3a2_data_field_access_resolves_statically() {
                fn get_host() -> Int = cfg.host";
     match compile_to_dag(src, "test.v3") {
         Ok(dag) => {
-            let _ = dag.declaration_by_name("get_host").expect("get_host must exist");
+            let _ = dag
+                .declaration_by_name("get_host")
+                .expect("get_host must exist");
         }
         Err(CompileError::Semantic(dag)) => {
             panic!(

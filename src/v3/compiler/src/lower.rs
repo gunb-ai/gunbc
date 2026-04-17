@@ -1199,14 +1199,9 @@ fn lower_data_item(
     //   - Scalar literal  → ValueBody::Scalar (new path, DB-10).
     //   - Anything else   → ValueBody::Unparsed fallback.
     let value_body = match body {
-        Some(SurfaceExpr::Record { fields, .. }) => lower_record_to_structural(
-            name,
-            fields,
-            ty_decl_id,
-            body_span,
-            symbols,
-            dag,
-        ),
+        Some(SurfaceExpr::Record { fields, .. }) => {
+            lower_record_to_structural(name, fields, ty_decl_id, body_span, symbols, dag)
+        }
         Some(lit_expr @ SurfaceExpr::Literal { .. }) => {
             lower_scalar_literal_for_type(lit_expr, ty_decl_id, dag)
                 .map(|bits| crate::dag::ValueBody::Scalar(crate::dag::FieldValue::Literal(bits)))
@@ -3264,9 +3259,9 @@ fn lower_expr(
                 // `test_3a2_data_referenced_in_fn_body_compiles`
                 // uses scalar only).
                 if let Some(decl_id) = symbols.get(name) {
-                    if let Some(crate::dag::ValueBody::Scalar(
-                        crate::dag::FieldValue::Literal(bits),
-                    )) = &dag.declaration(*decl_id).value_body
+                    if let Some(crate::dag::ValueBody::Scalar(crate::dag::FieldValue::Literal(
+                        bits,
+                    ))) = &dag.declaration(*decl_id).value_body
                     {
                         let bits = bits.clone();
                         let node_id = dag.alloc_node_id();
