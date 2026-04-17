@@ -2117,6 +2117,155 @@ Rust uses `Rc<T>`, Go uses `*T`, Python has reference semantics by
 default. This is ONE cross-language fact with per-language syntax —
 not three independent implementations in three emitters.
 
+### E-6: No target-spec field without a same-PR consumer (2026-04-16)
+
+A field declared on a target spec (`CallableRealization`,
+`TargetExecutionModel`, `PatternRealization`, etc.) MUST be read by
+at least one emitter in the same PR that introduces it. Speculative
+target-spec fields — declared, parsed, stored, and then never
+consulted during emission — become advisory metadata. Once the
+"declare now, consume later" pattern is normalized, every subsequent
+target spec inherits the same optionality, and the thesis claim
+"targets are declarations, emission is mechanical translation" drifts
+back toward aspiration.
+
+**Why this is a specialization of "Emission is translation."**
+"Emission is translation" already says the emitter reads LanguageSpec
+data instead of making decisions. E-6 closes the other direction:
+spec data must be authoritative, not advisory. A field the emitter
+ignores is indistinguishable from a field the emitter doesn't know
+about. Both teach the wrong architecture.
+
+**The canonical counter-example (PR #490 diff):** a regression test
+`go_gc_targets_skip_rendering_model_loading` deliberately corrupted
+`go_rendering` and asserted emission succeeded. The test codifies
+"declared target fact is non-authoritative" as a unit-tested
+property — the clearest possible smoking gun.
+
+**Bounded exception:** a target spec field MAY land without an
+emitter consumer if paired with an explicit **dissolution ratchet**
+naming the PR or lane that will wire consumption. Without the
+ratchet, the field is speculative metadata.
+
+**Structural prevention:** at PR review, grep every new field added
+to a target-spec record type against the emitter source tree. Every
+new field must either (a) have at least one consumer call site added
+in the same diff, or (b) sit behind a named scaffold marker with a
+dissolution trigger.
+
+**Test:** the PR adding a new target-spec field must include at
+least one test that fails if the field is mis-populated. A test that
+asserts "spec is ignored" is a reverse signal.
+
+### E-7: No target-private realization schema without a dissolution ratchet (2026-04-16)
+
+When a new emission target lands, it MUST consume the shared
+realization schema (`v3.std.emit_model.TypeRealization`,
+`CallableRealization`, `OperatorRealization`, `PatternRealization`,
+etc.) unless the shared schema is missing a fact the target
+genuinely needs. In the latter case, the shared schema extends to
+carry that fact. Creating a parallel target-private realization
+family (`PythonTypeRealization`, `PythonCallableRealization`, etc.)
+is permitted only as a time-bounded scaffold with an explicit
+dissolution trigger that names the PR or lane converting the target
+onto the shared schema.
+
+**Why.** Parallel representation drift is the class of debt that
+"No duplicate representations" invariant already forbids in general.
+E-7 specializes it to the realization surface, where the temptation
+is strongest — each new target emitter starts easy with a private
+schema, then calcifies as the consumer count grows. Without a named
+dissolution trigger, "this is staged for now" is indistinguishable
+from "this is the intended end state."
+
+**The canonical incident (2026-04-16):** `src/v3/spec/python.dag`
+declared `PythonTypeRealization`, `PythonOperatorRealization`,
+`PythonCallableRealization`, `PythonTypeInstantiationRealization`,
+and `PythonPatternRealization` as a second realization family
+parallel to the shared `v3.std.emit_model`. Prose dissolution notes
+existed on two of the private strategy enums
+(`PythonCallableStrategy`, `PythonPatternStrategy`) but not on the
+five realization records themselves. The mismatch between "scaffold
+documented for two enums" and "scaffold undocumented for five
+records" is the smoking gun — without mechanical gating, prose
+discipline drifts.
+
+**Structural prevention:** CI grep gate — every target-private
+realization data type (match on suffix: `*TypeRealization`,
+`*OperatorRealization`, `*CallableRealization`,
+`*PatternRealization`, `*TypeInstantiationRealization`) outside of
+`v3/std/emit_model.dag` MUST have an adjacent
+`🟡 SCAFFOLD ... dissolves when ...` comment with a trigger that
+names a specific follow-up. A grep that returns hits without
+corresponding dissolution comments fails CI.
+
+**Dissolution trigger shape.** The trigger must name a PR, lane, or
+concrete engineering task — not a vague "future consolidation."
+Acceptable: "dissolves in Lane 1e (consolidation)," "dissolves when
+emit_python migrates to shared CallableRealization (PR TBD)."
+Unacceptable: "dissolves when emit_python matures," "eventually
+folds into shared schema."
+
+**Test:** renaming a variant or field in the shared schema must
+either update the parallel target-private schema in the same PR or
+fail closed with a diagnostic. Silent divergence is the hazard this
+invariant prevents.
+
+### E-8: Unsupported core behaviors fail closed, never collapse semantically (2026-04-16)
+
+When an emitter reaches a `Behavior` variant (Value, Transform,
+Branch, Loop, Bind) for which it has no rendering strategy, it MUST
+return a structured `UnsupportedBehavior` error. Silently rendering
+a substitute — for example, "render the loop body's result port" in
+place of a Loop construct — collapses iteration semantics into a
+single-iteration expression and produces emitted code that compiles
+but is structurally wrong. The class of silent semantic collapse is
+strictly worse than a hard error, because the output passes
+downstream checks that assume correctness.
+
+**Why this is distinct from other fail-closed rules.** The
+"Fail-closed compilation" invariant (on missing rendering
+annotations) and the "Emission is translation" fail-closed paragraph
+both cover the case where the emitter lacks a spec entry. E-8
+specializes the rule to `Behavior` variants: the emitter has a
+`match` on the substrate's closed-set behavior enum, every arm must
+either emit correct code or return an error. A fallthrough arm that
+emits *something* is a fact-drop at the substrate boundary.
+
+**The canonical incident (2026-04-16):** `emit_go` and `emit_python`
+both implemented `Behavior::Loop` as "render the loop body's result
+port," which silently collapsed `fold(list, init, f)` into the
+first iteration's expression (`f(init, head(list))`) — a Loop over
+a list became its first iteration's expression. The collapse was
+detected only by CI on a deeply-recursive .dag fixture; most
+fixtures happened to have loop bodies that looked plausible when
+rendered in isolation. The principle audit caught the class three
+review rounds running before the fix landed.
+
+**Structural prevention:** every emitter's behavior-dispatch match
+must enumerate all five variants explicitly, and every arm must
+either return a correctly-emitted expression OR return an
+`UnsupportedBehavior`-class error. Fallthrough arms, default arms,
+and arms that emit structural substitutes are forbidden.
+
+**Test at PR review:** grep each emitter for `match * { ... }`
+dispatches on `Behavior`. Every arm that does not emit a faithful
+construct must return an error. A comment `// TODO: support Loop
+properly` over a silent substitute is an E-8 violation — the
+comment is prose documentation, not a structural gate.
+
+**Tests that were passing by accident (2026-04-16 remediation):**
+when `emit_go` and `emit_python` started fail-closing on Loop,
+three tests previously passing through the silent collapse
+(`go_lens_unused_parameters_module`,
+`emit_python_module_marks_ownership_as_skipped_for_gc_target`,
+`emitted_python_lens_matches_emitted_rust_lens_on_reflected_programs`)
+were marked `#[ignore]` with the explicit reason *"blocked on
+emit_<lang> Behavior::Loop support; previously passed via silent
+loop-body collapse."* This is the right shape for E-8 debt: the
+ignore ledger names the blocking substrate capability, so the
+test's re-enable condition is unambiguous.
+
 ### Single-authority metadata
 
 The compiler should provide all metadata (tool definitions, output
