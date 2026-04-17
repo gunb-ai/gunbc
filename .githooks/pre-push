@@ -9,25 +9,33 @@
 # the pre-hook SHA in the pack — the new commit stays local and
 # never reaches the remote. See PR #509 review (codex 35d67a7d).
 #
+# Ref matching: we match on the pushed ref NAME (e.g., "refs/heads/main"),
+# not just SHA equality with HEAD. This avoids the alias-ref bug where
+# a push of a tag or a different branch that happens to point at the
+# same commit as HEAD would otherwise be treated as a HEAD push. Per
+# pre-push review (chatgpt on PR #509).
+#
 # Decision table:
-#   Delete-only push         → skip entirely (nothing to fmt-check)
-#   Push includes HEAD, clean → exit 0, push proceeds
-#   Push includes HEAD, drift → auto-fix + auto-commit + ABORT
-#                                (developer re-runs `git push`)
-#   Push excludes HEAD, clean → exit 0, push proceeds
-#   Push excludes HEAD, drift → fail with actionable message
-#                                (don't auto-commit to a ref that
-#                                 isn't even being pushed)
+#   Delete-only push                   → skip entirely
+#   Detached HEAD (no current branch)  → fmt-check only; no auto-commit
+#   Push of HEAD's branch, clean       → exit 0, push proceeds
+#   Push of HEAD's branch, drift       → auto-fix + auto-commit + ABORT
+#                                          (developer re-runs `git push`)
+#   Push of other refs, clean          → exit 0, push proceeds
+#   Push of other refs, drift          → fail with actionable message
 #
 # Enable via: scripts/install-hooks.sh (sets core.hooksPath .githooks)
 
 set -e
 
 ZERO_SHA="0000000000000000000000000000000000000000"
-current_head=$(git rev-parse HEAD 2>/dev/null || echo "")
+
+# Full ref path of the currently-checked-out branch, e.g. "refs/heads/main".
+# Empty on detached HEAD — in that case no ref-name match is possible.
+head_ref=$(git symbolic-ref HEAD 2>/dev/null || echo "")
 
 pushes_content=0
-current_head_in_push=0
+head_branch_in_push=0
 
 # Pre-push stdin format (one line per ref being pushed):
 #   <local_ref> <local_sha> <remote_ref> <remote_sha>
@@ -37,8 +45,10 @@ while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
     continue  # delete, no content to check
   fi
   pushes_content=1
-  if [[ "$local_sha" == "$current_head" ]]; then
-    current_head_in_push=1
+  # Match on ref NAME, not SHA, so tag pushes or other-branch pushes
+  # that alias HEAD's SHA don't spuriously trigger auto-commit.
+  if [[ -n "$head_ref" ]] && [[ "$local_ref" == "$head_ref" ]]; then
+    head_branch_in_push=1
   fi
 done
 
@@ -47,9 +57,9 @@ if [[ "$pushes_content" == "0" ]]; then
   exit 0
 fi
 
-# If auto-commit is in scope (HEAD is being pushed), require a clean tree.
-# Don't silently sweep uncommitted work into a fmt commit.
-if [[ "$current_head_in_push" == "1" ]]; then
+# If auto-commit is in scope (HEAD's branch is being pushed), require a
+# clean tree. Don't silently sweep uncommitted work into a fmt commit.
+if [[ "$head_branch_in_push" == "1" ]]; then
   if ! git diff --quiet || ! git diff --cached --quiet; then
     echo "[pre-push] uncommitted changes in working tree — commit or stash before pushing."
     exit 1
@@ -62,21 +72,29 @@ if cargo fmt --all --check 2>/dev/null; then
 fi
 
 # Fmt drift detected. Two paths:
-if [[ "$current_head_in_push" == "0" ]]; then
-  # Push doesn't include current HEAD — auto-committing would land on a
-  # ref that isn't being pushed. Fail with an actionable message.
+if [[ "$head_branch_in_push" == "0" ]]; then
+  # Push doesn't include HEAD's branch (or HEAD is detached).
+  # Auto-committing would either land on a ref that isn't being pushed,
+  # or fail in detached state. Fail with an actionable message.
   echo ""
-  echo "[pre-push] fmt drift detected, but the push doesn't include the current HEAD."
-  echo "[pre-push] auto-commit would land on a ref that isn't being pushed."
-  echo ""
-  echo "Either:"
-  echo "  - switch to the branch you intend to push and push again (hook will auto-fix), or"
-  echo "  - run 'cargo fmt --all' now, commit, and include the fmt fix in your push."
+  if [[ -z "$head_ref" ]]; then
+    echo "[pre-push] fmt drift detected, but HEAD is detached — no current branch to auto-commit onto."
+    echo ""
+    echo "Attach HEAD to a branch (git checkout <branch>) and push again, or"
+    echo "run 'cargo fmt --all' and commit the fix explicitly."
+  else
+    echo "[pre-push] fmt drift detected, but the push doesn't include the current branch ($head_ref)."
+    echo "[pre-push] auto-commit would land on a ref that isn't being pushed."
+    echo ""
+    echo "Either:"
+    echo "  - switch to the branch you intend to push and push again (hook will auto-fix), or"
+    echo "  - run 'cargo fmt --all' now, commit, and include the fmt fix in your push."
+  fi
   exit 1
 fi
 
-# HEAD is being pushed. Auto-fix + commit as a convenience, then
-# abort the push so the developer re-runs and the new commit ships.
+# HEAD's branch is being pushed. Auto-fix + commit as a convenience,
+# then abort the push so the developer re-runs and the new commit ships.
 echo "[pre-push] fmt drift detected; running cargo fmt --all"
 cargo fmt --all
 
