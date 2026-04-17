@@ -39,11 +39,12 @@ Add to `src/v3/std/diagnostics.dag` (new, or extend existing):
 ```dag
 type Correction {
   description: String       // human-facing label for the fix option
-  span: SourceSpan          // what the fix replaces
-  new_source: String        // literal replacement code
-  target_language: TargetLanguageId?  // None = language-agnostic fix
+  span: SourceSpan          // what the fix replaces (always in .dag source)
+  new_source: String        // literal replacement code (always .dag syntax)
 }
 ```
+
+**Source-only by construction.** A `Correction` edits `.dag` source. There is no `target_language` field and no target-conditioned variant — if a fix were target-specific (e.g., "add `async` keyword to emitted Rust"), it would edit a derived target file, not `.dag` source, and therefore belongs in a different carrier (see "Future extension: TargetCorrection" below). Mixing the two domains inside one `Correction` admits a state the type cannot locate or own cleanly; the illegal-states-unrepresentable discipline forbids that shape.
 
 Extend `Diagnostic`:
 
@@ -61,7 +62,7 @@ type Diagnostic {
 - Empty list is legal — not every diagnostic has a mechanical fix. Type mismatch on a user's domain value may need human judgment.
 - `description` is short (≤60 chars), user-facing. e.g., "did you mean `point.a`?" or "wrap in Some"
 - `new_source` is the literal text that replaces `span`'s range. No markup, no placeholders.
-- `target_language` is `None` for source-level fixes (most common). `Some(TargetLanguageId)` for target-specific fixes (e.g., "add `async` keyword" in async Rust mode).
+- `span` always locates within the user's `.dag` source. Target-file spans do not appear in this carrier.
 
 ### Future extension: TargetCorrection (out of scope for DB-1)
 
@@ -195,9 +196,9 @@ FIX (option 2): did you mean `p.b`?
 
 **Why `new_source: String` not `Edit { insertions, deletions }`?** The replacement text IS the fix. Span + new text = minimal information. Edits are reconstructable from span+new: the editor sees "replace span with new_source" and does a simple substitution. Modeling granular edits is premature (the IDE will chunk them anyway).
 
-**Why include `target_language`?** Most fixes are source-level — user edits their `.dag`. But some diagnostics only make sense against a target (e.g., a rustfmt-layer issue that surfaces only in Rust emission). Those need to identify the target. Default `None` keeps the common case simple.
+**Why source-only, no `target_language` field?** Because `Correction` names a single edit domain — the user's `.dag` source. A fix that edits emitted Rust or Python code lives in a different carrier (see "Future extension: TargetCorrection") that owns a target-file span and target-native syntax. Folding both domains into one type with an optional `target_language` admits a state the type cannot locate cleanly: `span` means one thing when `target_language` is None and a different thing when it's Some. Illegal-states-unrepresentable rejects that shape.
 
-**Why separate `CorrectionStyle` per target?** Rust's 4-space indent, Python's PEP 8, Go's tabs — corrections emitted INTO target-language source must respect the target's style. But the style is target-declared, not fix-per-fix. Reuses the `CleanEmissionContract` dispatch pattern from Lane 1 Stage 1c.
+**Why `CorrectionStyle` is a `TargetCorrection` concern, not here?** Style differences (Rust's 4-space indent, Python's PEP 8, Go's tabs) only matter when writing into target source. `Correction` writes `.dag` source; `.dag`'s single style rules it. When `TargetCorrection` arrives, it will reuse the `CleanEmissionContract` dispatch pattern from Lane 1 Stage 1c — but that layering is a future concern, not a field on `Correction`.
 
 **Why `span` on Correction (redundant with Diagnostic.span)?** The diagnostic's span points at the error site; the correction's span may be broader or narrower. For non-exhaustive match, diag span is the `match` keyword; correction span is the closing brace position where the new arm inserts. They're genuinely different.
 
@@ -251,4 +252,4 @@ FIX (option 2): did you mean `p.b`?
 
 1. **Should Corrections carry confidence scores?** For ambiguous cases (multiple fields within edit distance 1), ranking matters. For now: skip scores, rely on list ordering. If IDE integration needs scores, add in a follow-up.
 2. **Can fixes reference other parts of the program?** E.g., "create a missing type `Point` at top of file to match this usage." Cross-span fixes are a stretch goal. For now: single-span fixes only.
-3. **Should fixes be target-conditional?** E.g., different fix in Rust vs Python emission context. Target language is captured in `target_language` field but dispatch logic TBD. For now: None-default is fine; target-specific fixes added only when a concrete case requires them.
+3. **What about target-conditional fixes?** Not in this carrier. A diagnostic that specifically lives at the emitted-target level (e.g., "the emitted Rust triggers a rustfmt warning; here's how to fix the Rust") edits target source, not `.dag` source, and therefore belongs in the future `TargetCorrection` type (sketched in §"Future extension"). The split is by authoring domain, not by flag on a shared carrier.

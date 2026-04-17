@@ -125,6 +125,26 @@ were band-aids. P1-L2 will solve the underlying warnings structurally.
 transition. This item is listed so implementers don't propagate more
 `#[allow]` attributes during the Consumed work above.
 
+### 7. Wire the banked-dissolutions ratchet
+Implement the forbidden-string CI gate from
+[post-l15-phase-plan.md § Banked dissolutions](./post-l15-phase-plan.md#banked-dissolutions--rejected-shapes-ratchet).
+
+Scan scope: `docs/lane*.md` and `docs/phase*.md`. Exempt: `docs/design-*.md`
+and `docs/post-l15-phase-plan.md` (the ratchet authority itself).
+
+Forbidden strings (initial set, from DB-1/4/5/6/9 rejected alternatives):
+`port_by_id`, `node_by_id`, `RestTransport`, `ShellTransport`,
+`GrpcTransport`, `TransportKind`, `target_language: TargetLanguageId`,
+`StructFieldRule`, `AllowAttributeOnStructDecl`, `MutualLoop`.
+
+**Acceptance:** CI job runs the grep on every PR. Any match fails the
+build with a message pointing at the ratchet table and DB-{n} reference.
+New DB docs that reject a shape append the rejected name to the
+`FORBIDDEN` list as part of their acceptance.
+
+**Affects:** `.github/workflows/ci.yml` (new job), plus a small script
+under `scripts/` (or inline in the workflow) that enumerates the list.
+
 ---
 
 ## Out-of-scope

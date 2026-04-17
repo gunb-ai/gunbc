@@ -70,7 +70,7 @@ FIX (option 1): did you mean `point.a`?
 FIX (option 2): did you mean `point.b`?
 ```
 
-Type shapes are **locked in [DB-1](./design-correction-shape.md)** — `Diagnostic.fixes: List<Correction>` (note: `fixes` plural, not `fix`), `Correction { description, span, new_source }` (source-only; no `target_language` field), and `CorrectionStyle { indent_unit, line_ending, string_quote, trailing_semicolon }`. See DB-1 for field semantics, rejected alternatives, and per-target `CorrectionStyle` declarations.
+Type shapes are **locked in [DB-1](./design-correction-shape.md)**. Lane 3 does not restate them here — see DB-1 for the `Correction` record, the `Diagnostic.fixes` field (plural `fixes`, a `List`), `CorrectionStyle` per-target style, rejected alternatives, and the source-only-by-construction rationale. Lane 3 Stage 3b consumes that locked shape without re-deriving it.
 
 Per-target correction style is declared in each target spec alongside its `CleanEmissionContract` — DB-1 specifies the exact field set. Don't restate here; reference the locked shape.
 

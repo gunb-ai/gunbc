@@ -28,33 +28,33 @@ Four stages, each closing one of these:
 
 ### Stage 4a — Transport declarations + `dag run` interpreter (L)
 
-**Scope.** Two coupled items:
+**Scope.** Two coupled items; transport shape is **locked in [DB-6](./design-transport-taxonomy.md)** — this stage implements it, does not restate it.
 
-**Transport declarations** — formalize how a service operation maps to a concrete runtime transport:
+**Transport declarations** — transports are spec files in `extdeps/transports/`, not a closed compiler-side taxonomy. Per DB-6, substrate adds exactly one minimal carrier:
 
 ```
-service gcp.SecretManager {
-  transport rest { method: PUT, path: "/v1/secrets/{id}" }    // HTTP transport
-}
-
-service local.filesystem {
-  transport shell { command: "cp", args: ["{src}", "{dst}"] }  // shell transport
+type TransportDeclaration {
+  spec_ref: DeclarationId   // points at e.g. `rest` in extdeps/transports/rest.dag
+  fields: List<FieldEntry>  // the literal fields the user declared
 }
 ```
 
-Already partially declared in `dsl/extdeps/*/`; this stage makes transport a first-class substrate type with typed variants (`RestTransport`, `ShellTransport`, `GrpcTransport`, etc.) rather than string-typed `transport rest { ... }` annotations.
+Parser lowers a user declaration like `transport rest { method: PUT, path: "/v1/secrets/{id}" }` into `TransportDeclaration { spec_ref: <rest.dag>, fields: [...] }`. Per-spec field-shape validation happens at lowering: each transport spec declares its own field-shape type (e.g., `rest.dag` declares the expected method/path/body fields for `transport rest { ... }`); parser checks the user's fields match. **No closed compiler-side transport coproduct, no enum of transport kinds** — adding a new transport means adding one spec file, not editing the compiler. See DB-6 "Rejected alternatives" for the specific shapes ruled out.
 
-**`dag run` interpreter** — execute a `.dag` program directly without emission. The interpreter walks the DAG, calls transports through their declared bindings, and returns results. This is distinct from emission: emission produces target source code; interpretation produces runtime results.
+**`dag run` interpreter** — execute a `.dag` program directly without emission. The interpreter walks the DAG and, for every `TransportDeclaration` site, looks up the spec via `spec_ref` and runs the spec-declared invocation steps. The interpreter contains zero per-transport handlers; the spec IS the implementation (per THESIS.md:117-139).
 
-Use case: `dag run my_cloud_bringup.dag` actually launches the infrastructure (through declared transports) rather than emitting code to do so.
+Use case: `dag run my_cloud_bringup.dag` actually launches the infrastructure by walking declared transports through their spec-declared invocation steps.
 
 **Acceptance:**
-- `transport rest {...}` / `transport shell {...}` / etc. parse into typed substrate carriers (not strings)
-- `dag run fixture.dag` executes a multi-step cloud workflow through mock transports, returns final state
+- `transport <name> { ... }` parses into `TransportDeclaration { spec_ref, fields }` with spec-ref resolution (per DB-6 acceptance gate)
+- Parser rejects a user declaration whose fields don't match the spec's declared field shape
+- `dag run fixture.dag` executes a multi-step cloud workflow by dispatching on `spec_ref`, not on a compiler-side enum
+- `dag run` code path has zero `match transport_kind { Rest => ..., Shell => ... }` — all dispatch is through spec lookup
+- Adding a new transport (e.g., `extdeps/transports/graphql.dag`) requires zero interpreter or emitter code changes
 - Real-transport mode (non-mock) gated behind explicit flag, not default
 
 **Escalation:**
-- If transport types multiply (REST + shell + gRPC + GraphQL + SSH + …), don't try to enumerate everything at once. Ship REST + shell, document the pattern for adding new transports.
+- If the interpreter ever needs a per-transport branch, that's a spec-shape inadequacy — extend the spec vocabulary (invocation steps, effect declarations), not the interpreter.
 - If `dag run` needs effect execution ordering that the current substrate can't express (e.g., parallel operations with dependencies), surface — parallelism sequencing might need Lane 2 Stage 2e's output.
 
 ### Stage 4b — Side effects dimension (M)
@@ -131,7 +131,7 @@ Lane 4 therefore starts **after both Lane 2 and Lane 3 have landed their framewo
 ## Cross-cutting acceptance (Lane 4 done when)
 
 - [ ] `dag run fixture.dag` executes a cloud workflow through declared transports
-- [ ] Transport types are typed carriers (`RestTransport`, `ShellTransport`, etc.), not string-annotation soup
+- [ ] Transports lower to `TransportDeclaration { spec_ref, fields }` carriers (per DB-6); no closed compiler-side coproduct; adding a new transport is one spec file
 - [ ] Side effects compose as a `Dimension` instance; a mixed hermetic/non-hermetic workflow fails compile with diagnostic
 - [ ] Space bounds compose as a `Dimension` instance; unbounded recursion with declared bound fails compile
 - [ ] A workflow emits to both sync and async Rust via spec choice, no walker code change

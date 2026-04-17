@@ -168,7 +168,7 @@ Unignores `parallel_fold_on_commutative_monoid_is_reducible`.
 
 Type shape is **locked in [DB-3](./design-dimension-abstraction.md)** — `Dimension<Carrier>` with `name`, `witness_of`, `compose`, `identity`, `break_diagnostic` fields. See DB-3 for full signature, algebraic requirements (monoid laws on compose), and instance declarations.
 
-Ship with idempotency, symbolic-cost, parallelism as Dimension instances. Document how users declare their own (e.g., "resource exhaustion" dimension on cloud ops).
+Ship idempotency (2b) and symbolic-cost (2d) as Dimension instances. **Parallelism (2e) is NOT a Dimension instance** — per DB-3's resolved Open Question §1, parallelism composes over dependency structure rather than per-operation monoidal evidence and therefore stays as an ordinary lens. Document how users declare new *monoidal* dimensions (e.g., "resource exhaustion" on cloud ops). Structural lenses that aren't monoidal stay as lenses without claiming the Dimension interface.
 
 **Acceptance:**
 - Idempotency lens (2b) rewritten to consume the `Dimension` abstraction — same behavior, less bespoke code

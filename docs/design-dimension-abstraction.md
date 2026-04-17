@@ -218,7 +218,7 @@ Additional constraints for specific dimensions:
 - **Symbolic cost (additive)**: compose is associative; not commutative in general (sequencing matters for O(n + m) vs O(n·m)).
 - **Space bounds**: compose can be max (peak usage) or sum (total allocation) — the specific dimension declares which.
 - **Side effects**: compose is set union — commutative and idempotent.
-- **Parallelism**: compose has complex semantics (identifying independent subgraphs) — may not fit the Dimension abstraction cleanly; see "Open questions" below.
+- **Parallelism**: does **not** fit the Dimension abstraction and is **not** shipped as a Dimension instance. Parallelism composition is about identifying independent subgraphs, not per-operation evidence composing along a monoidal carrier. It remains a lens (Lane 2 Stage 2e), just outside the Dimension framework. Resolved in "Open questions" §1 below.
 
 ---
 
@@ -226,7 +226,7 @@ Additional constraints for specific dimensions:
 
 **Why a generic abstraction over ad-hoc lenses?** Because the user-declared-dimensions thesis goal (Lane 2 Stage 2f) requires a uniform interface. Without it, declaring a new dimension means writing a full lens; with it, declaring = filling in four fields.
 
-**Why expose `compose` + `identity` as fields, not hardcode monoid operations?** Because Carrier types differ across dimensions. Idempotency's Carrier is `ComposedEffect` with lattice meet; space's is `MemoryUsage` with addition; parallelism's might be `DependencyGraph` with more complex composition. One-size-fits-all doesn't.
+**Why expose `compose` + `identity` as fields, not hardcode monoid operations?** Because Carrier types differ across dimensions. Idempotency's Carrier is `ComposedEffect` with lattice meet; space's is `MemoryUsage` with addition. One-size-fits-all doesn't. (Parallelism is explicitly outside this abstraction — it composes over dependency structure, not monoidal evidence — and ships as an ordinary lens in Lane 2 Stage 2e.)
 
 **Why `Witness<Carrier>` instead of `Option<Carrier>`?** Because "no evidence" and "evidence says violation" are different. `None` could mean "this behavior is invisible to the dimension" (ok — compose skips it) OR "this behavior violates the dimension's algebra" (not ok — diagnostic fires). Splitting into `Inhabits` / `Violates` makes the distinction structural.
 
@@ -318,7 +318,7 @@ Alternate ordering: implement Dimension first in 2a prep, then 2b/2d/2e use it f
 
 ## Open questions
 
-1. **Does parallelism fit the Dimension abstraction?** Parallelism composition is about identifying independent subgraphs, not per-operation evidence. May need a different shape OR a Dimension whose Carrier is a whole dependency graph structure. Evaluate at Lane 2 Stage 2e kickoff; if it doesn't fit cleanly, accept that parallelism lives outside the abstraction (it's still a valid lens, just not a Dimension).
+1. **Does parallelism fit the Dimension abstraction? — RESOLVED: no.** Parallelism composition reasons about independent subgraphs and dependency structure, not per-operation evidence along a monoidal carrier. Forcing it into `Dimension<DependencyGraph>` would stretch the abstraction to the point where `compose` and `identity` stop carrying useful meaning — the abstraction's payload moves into the lens body, leaving the surface shape as a vestige. Decision: parallelism ships as an ordinary lens (Lane 2 Stage 2e), not a Dimension instance. The Dimension abstraction is the authority for *per-operation monoidal* properties; other structural properties are valid lenses without claiming the Dimension interface.
 
 2. **Algebra-law enforcement on Dimension authors?** Monoid laws are a requirement but not mechanically checked. Follow-up work: add `monoid_witness: MonoidInstance<Carrier>` field to `Dimension` that ties to the algebra.dag inhabitance system. Deferred.
 

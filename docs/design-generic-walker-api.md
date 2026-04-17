@@ -218,21 +218,13 @@ fn emit(dag: &Dag, target: TargetLanguageId) -> Result<EmittedSource, EmitError>
 
 Every `emit` call runs the verifier. CI gate on this.
 
-### Per-target Rust shims (deletable layer)
+### Caller migration: atomic, no shims
 
-Existing consumers call `emit_rust(dag)`, `emit_go(dag)`, etc. These become trivial wrappers that go away in Lane 1 Stage 1e completion:
+Existing consumers call `emit_rust(dag)`, `emit_go(dag)`, `emit_python(dag)`. The consolidation PR flips **every** caller to `emit(dag, TargetLanguageId::Rust)` / `...::Go` / `...::Python` in the same PR that introduces `emit.rs`. The old per-target entrypoints (`emit_rust.rs` et al.) are **deleted**, not wrapped, not `#[deprecated]`'d.
 
-```rust
-#[deprecated]
-pub fn emit_rust(dag: &Dag) -> Result<String, EmitError> {
-    emit(dag, TargetLanguageId::Rust).map(|e| e.text)
-}
+Per INVARIANTS.md (no-deprecations / no-bridges rule), an API rename must be atomic. A `#[deprecated]` staging layer is a bridge — it splits authority between `emit_rust` and `emit`, lets consumers diverge on which entrypoint they trust, and delays the clean-cut that makes dissolution real.
 
-// Same for emit_go, emit_python. All marked #[deprecated] during consolidation,
-// deleted at end of Lane 1 Stage 1e.
-```
-
-After Lane 1e: callers pass `TargetLanguageId` explicitly; no per-target function exists.
+Scope estimate for the atomic flip: the Rust callers are tests (`m1_3_emit_rust_test`, `m2_lens_*_migration_test`, etc.) and CLI/binary entrypoints. Count the call sites when starting 1e and size accordingly — the count should be in the dozens, not the hundreds. If it's larger than expected, that's a signal to split call-site categories (tests vs production vs CLI) into three PRs, each atomic within its category.
 
 ---
 
@@ -266,7 +258,7 @@ What callers can rely on:
 
 **Why `LocalScope.position: EmissionPosition` instead of recomputing context from call stack?** Explicit > implicit. The walker knows which position it's in (it CHOSE to descend into an operand); that choice is data passed to the child. Cheaper than reconstructing from recursion depth.
 
-**Why keep per-target Rust shims during transition?** Because existing consumers (tests, CLI) use `emit_rust(dag)`. Breaking them all simultaneously = 30+ file changes in one PR. Shims let consumers migrate incrementally while the walker is the authority.
+**Why atomic caller migration, no shims?** INVARIANTS.md bans bridges and deprecations. A `#[deprecated] fn emit_rust` wrapper that delegates to `emit(dag, Rust)` forks authority — callers that haven't migrated still depend on the old name, and the codebase carries two public entrypoints with different ergonomics. Clean dissolution means the old entrypoint doesn't exist, not that it's marked stale. The consolidation PR flips every caller in the same change.
 
 ---
 
@@ -279,6 +271,8 @@ What callers can rely on:
 **Emit to s-expression intermediate, transform, print** — useful for some tools but not for structural emission. Overkill. Rejected.
 
 **`emit_rust(dag)` as the top level, call through to `emit_target(dag, TargetLanguageId::Rust)` internally** — preserves the existing function name but hides the target-is-data reality. Keeps a name-keyed public API that consumers learn. Prefer explicit `emit(dag, target)`.
+
+**`#[deprecated]` shims for `emit_rust` / `emit_go` / `emit_python` during migration** — violates INVARIANTS.md's no-deprecations / no-bridges rule. The staging layer splits authority across two public entrypoints and delays the clean-cut. Rejected.
 
 **Bundle post-emit verification into CI script, not walker** — lets emitter and verifier drift. E-5 invariant requires coupling. Rejected.
 

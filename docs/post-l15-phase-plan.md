@@ -37,7 +37,7 @@ Six internal stages. Each builds on the previous:
 | Stage | Size | Scope | Design doc |
 |---|---|---|---|
 | 1a | M | L1.5 tail: Consumed rendering, Go unignores, receipts audit, m1_3 perf | [phase1-lane1-l15-tail.md](./phase1-lane1-l15-tail.md) |
-| 1b | M | **Substrate keyed-lookup** (meta-review root cause): `port_by_id`, `node_by_id`, `resolve_producer` Bind-pass-through; migrate existing 3 lenses; INVARIANTS.md L-7 ("lenses don't reconstruct lookup locally") | [lane1-stage-b-substrate-keyed-lookup.md](./lane1-stage-b-substrate-keyed-lookup.md) |
+| 1b | M | **Substrate keyed-lookup** — API shape is locked in [DB-5](./design-substrate-keyed-lookup-api.md): query FUNCTIONS (`port(d, id)`, `node(d, id)`, `resolve_producer(d, id)`) over the existing `List<DagPort>` / `List<Behavior>` authorities, not new parallel fields. Migrate existing 3 lenses; add INVARIANTS.md L-7 ("lenses don't reconstruct lookup locally"). | [lane1-stage-b-substrate-keyed-lookup.md](./lane1-stage-b-substrate-keyed-lookup.md) |
 | 1c | M | Clean-emission invariant E-5: `CleanEmissionContract` per-target spec, pilot with unused pattern bindings | [phase1-lane2-clean-emission-invariant.md](./phase1-lane2-clean-emission-invariant.md) |
 | 1d | M | Consolidation build plan: function inventory, spec gaps, bridge inventory, pilot target choice | [phase1-lane3-consolidation-build-plan.md](./phase1-lane3-consolidation-build-plan.md) |
 | 1e | L | Consolidation execution: dissolve emit_rust.rs/go.rs/python.rs into one generic walker + per-target specs | (written at start of 1d, after build-plan locks design) |
@@ -92,7 +92,7 @@ Four stages:
 
 | Stage | Size | Scope |
 |---|---|---|
-| 4a | L | Transport declarations (typed `RestTransport`/`ShellTransport`/etc., not string-tagged) + `dag run` interpreter (execute .dag without emission) |
+| 4a | L | Transport declarations — shape locked in [DB-6](./design-transport-taxonomy.md): substrate carries `TransportDeclaration { spec_ref, fields }`; transports are spec files under `extdeps/transports/`, not a closed compiler-side coproduct. Plus `dag run` interpreter (executes `.dag` by dispatching on `spec_ref`, not on a compiler enum). |
 | 4b | M | Side effects as Dimension instance (extends Lane 2 2f framework). Workflow lens rejects hermetic/non-hermetic mixing |
 | 4c | M | Space bounds as Dimension instance. Structural space cost composes through list operations. `where memory_bounded(…)` declarations enforce |
 | 4d | S | Async emission modeling. Target spec declares async strategy; walker emits `async fn` / `.await` based on spec — zero new walker code |
@@ -148,7 +148,41 @@ Nine cross-cutting design decisions needed to be locked before implementation. E
 | DB-9 | Mutual recursion → Loop lowering | Lane 3 Stage 3a | [design-mutual-recursion-lowering.md](./design-mutual-recursion-lowering.md) |
 | DB-10 | Lens Rust-boundary contract (L-8) | Lane 1 Stage 1a (cost lens migration) | [design-lens-rust-boundary.md](./design-lens-rust-boundary.md) |
 
-Dependencies between design docs (DB-4 references DB-1, DB-2 references DB-4 and DB-5, DB-10 added post-Half-A review): each design doc calls out its dependencies in the header. The doc set is internally consistent.
+Dependencies between design docs (DB-4 references DB-1, DB-2 references DB-4 and DB-5, DB-10 added post-Half-A review): each design doc calls out its dependencies in the header.
+
+**Single authority (Invariant D-2).** When a DB doc locks a shape, the DB doc is the authority; lane and master docs reference it by link and prose summary, **not** by restating the fields. Reviewers have caught this drift multiple times — DB fixes a rejected shape, but a lane doc still paraphrases the old version. The ratchet below exists because "internally consistent" was a claim made twice before it was actually true; the forbidden-string list turns it into a mechanical check.
+
+### Banked dissolutions — rejected shapes (ratchet)
+
+Each design blocker records, in its rejected-alternatives section, a shape the doc set formally rejected. Those rejected names become a **forbidden-string ratchet**: lane docs and the master plan MUST NOT restate rejected shapes, even in prose. Invariant D-2 (DB is the single authority for its locked shape) covers the positive direction; this list covers the negative — the shapes that keep resurfacing and need a mechanical gate.
+
+When a reviewer points at a rejected shape in a lane/master doc, the fix is to delete the restatement and reference the DB doc instead — not to argue the shape is compatible.
+
+| Rejected shape (forbidden string) | Rejected in | Use instead |
+|---|---|---|
+| `port_by_id`, `node_by_id` (as substrate fields) | [DB-5](./design-substrate-keyed-lookup-api.md) | `port(d, id)`, `node(d, id)` query functions |
+| `RestTransport`, `ShellTransport`, `GrpcTransport`, `TransportKind` (as closed compiler coproduct) | [DB-6](./design-transport-taxonomy.md) | `TransportDeclaration { spec_ref, fields }` |
+| `target_language: TargetLanguageId?` on `Correction` | [DB-1](./design-correction-shape.md) | Future `TargetCorrection` carrier (out of scope for DB-1) |
+| `struct_fields: StructFieldRule` / `AllowAttributeOnStructDecl` on `CleanEmissionContract` | [DB-4](./design-clean-emission-contract.md) | Visibility/publicity concern, outside E-5 |
+| `MutualLoop` 6th `Behavior` variant | [DB-9](./design-mutual-recursion-lowering.md) | SCC fact at lens level; substrate stays at 5 behaviors |
+| `#[deprecated]` shims for `emit_rust`/`emit_go`/`emit_python` | [DB-2](./design-generic-walker-api.md) | Atomic caller flip; delete old entrypoints in the same PR |
+| New `Map<K, V>` declaration in v3 std (parallel to `dsl/std/types.dag`) | [DB-5](./design-substrate-keyed-lookup-api.md) | Port existing `Map<K, V> = PartialFunction<K, V>` binding |
+
+**Mechanical gate (runs in Lane 1 Stage 1a):** a CI grep check that fails the build if any lane doc (`docs/lane*.md`, `docs/phase*.md`) contains a forbidden string. Two files are exempt from the scan because they legitimately enumerate rejected names: the DB docs themselves (`docs/design-*.md`) — where rejection is recorded — and this master plan (`docs/post-l15-phase-plan.md`) — where the ratchet itself lives.
+
+```bash
+# Sketch: scan only lane/stage docs; DB docs and master plan are exempt
+FORBIDDEN=(
+  "port_by_id" "node_by_id"
+  "RestTransport" "ShellTransport" "GrpcTransport" "TransportKind"
+  "target_language: TargetLanguageId"
+  "StructFieldRule" "AllowAttributeOnStructDecl"
+  "MutualLoop"
+)
+# Scan: docs/lane*.md and docs/phase*.md, fail on any match.
+```
+
+When a future DB doc rejects a shape, add the rejected name to this list as part of the DB's acceptance. The list only grows; a banked dissolution is permanent.
 
 ## Half B → lane dissolution map
 

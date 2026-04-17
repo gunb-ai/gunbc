@@ -42,8 +42,7 @@ type Dag {
   declarations: List<Declaration>
   nodes: List<Behavior>     // SINGLE authority for node identity
   ports: List<DagPort>      // SINGLE authority for port identity
-  // NO new fields. No port_by_id, no node_by_id — those would be
-  // parallel authority per the meta-review on PR #491.
+  // Schema unchanged. See DB-5 for why no new fields.
 }
 
 // NEW: substrate-level query functions (not fields)
@@ -53,7 +52,7 @@ fn node(d: Dag, id: NodeId) -> Behavior?
 
 The Rust side (`src/v3/compiler/src/dag.rs`) already has HashMap-backed O(1) lookup as implementation detail. That HashMap stays PRIVATE implementation — not exposed as a substrate field. The new `.dag`-side functions `port(d, id)` and `node(d, id)` lower to the existing Rust methods. Single authority preserved: the Lists ARE the substrate; the HashMap is a cache.
 
-See [design-substrate-keyed-lookup-api.md](./design-substrate-keyed-lookup-api.md) for the full design rationale, including the earlier `port_by_id`/`node_by_id` field proposal that was rejected per meta-review.
+See [design-substrate-keyed-lookup-api.md](./design-substrate-keyed-lookup-api.md) for the full design rationale, including which earlier field-based proposals were rejected per meta-review.
 
 ### 2. Add Bind-pass-through primitive
 
@@ -148,7 +147,7 @@ Stop work and surface if:
 
 1. **Substrate type emission missing a primitive** — e.g., `Map<K, V>` isn't emitted to Rust HashMap cleanly. If the .dag Map → Rust HashMap mapping has gaps, surface before hand-writing a workaround.
 
-2. **A lens genuinely needs a lookup primitive not in substrate.dag** — beyond `port_by_id`, `node_by_id`, `resolve_producer`. Don't invent locally; add to substrate with justification.
+2. **A lens genuinely needs a lookup primitive not in substrate.dag** — beyond `port(d, id)`, `node(d, id)`, `resolve_producer(d, id)` (the three query functions locked in [DB-5](./design-substrate-keyed-lookup-api.md)). Don't invent locally; add to substrate with justification.
 
 3. **Migration breaks oracle parity on any fixture** — the handwritten oracles in `m2_lens_*_migration_test.rs` must continue to match. If a migration changes behavior, that's a bug in the refactor, not the oracle.
 
@@ -160,7 +159,7 @@ Stop work and surface if:
 
 Stage complete when all five hold:
 
-- [ ] `substrate.dag` declares `port_by_id`, `node_by_id`, `resolve_producer` with receipts (🟢 or 🟡)
+- [ ] `substrate.dag` declares the three query functions from [DB-5](./design-substrate-keyed-lookup-api.md) — `port(d, id)`, `node(d, id)`, `resolve_producer(d, id)` — as pure functions over the existing `List<DagPort>` / `List<Behavior>` authorities (no new parallel fields on `Dag`), with receipts (🟢 or 🟡)
 - [ ] `complexity.dag`, `provenance.dag`, `unused_parameters.dag` all migrated; snapshot tests pass
 - [ ] Line count in `src/v3/lenses/*.dag` reduced by ≥20% total (measure: commit with +X/-Y lines across all three files)
 - [ ] INVARIANTS.md has L-7 entry referencing this design doc

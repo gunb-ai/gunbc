@@ -185,7 +185,6 @@ data rust_clean_emission: CleanEmissionContract = {
   imports: IncludeOnlyReferenced
   block_return: NoWrappingOnTerminalExpression
   variable_bindings: EmitUnderscoreWhenUnused
-  struct_fields: AllowAttributeOnStructDecl
   match_arm_body: NoWrappingOnNonComplexBody
   correction_style: rust_correction_style
   post_emit_verifier: {
@@ -197,13 +196,15 @@ data rust_clean_emission: CleanEmissionContract = {
 }
 ```
 
+Note: no `struct_fields` field — per the "(Removed) StructFieldRule" section above, dead-code on emitted structs is a visibility/publicity concern handled outside E-5, not part of the clean-emission contract.
+
 Similar for `go_clean_emission`, `python_clean_emission`, and future Shape A targets (Swift, Kotlin, etc.).
 
 ---
 
 ## Rationale
 
-**Why 9 fields, not more?** Each field corresponds to a distinct warning category observed (parens, unused binds, unused imports, block return, unused vars, dead code, match arm body) or needed for extension (correction style, post-emit verifier). A 10th field per new category is cheap to add; starting wider invites fields with no concrete use.
+**Why 8 fields, not more?** Each field corresponds to a distinct warning category observed (parens, unused binds, unused imports, block return, unused vars, match arm body) or needed for extension (correction style, post-emit verifier). A 9th field per new category is cheap to add; starting wider invites fields with no concrete use. Struct-field dead-code was explicitly removed (see "Removed StructFieldRule" above) — that's a publicity concern, not an emission-cleanliness concern.
 
 **Why closed enum per rule, not `fn (Input) -> Output` callbacks?** Walker implementation is simpler: dispatch on variant via match, no first-class functions needed. Targets' rule choice is visible in the spec file. Future "user-defined rules" could add a variant like `Custom(RuleFn)` but not needed today.
 
@@ -229,8 +230,6 @@ type CleanEmissionContract {
 ```
 
 **Choice: use `NotApplicable` variant per rule.** Field is always `Some`, keeps contract shape uniform. Walker dispatches on the variant; `NotApplicable` is a no-op.
-
-**Why `AllowAttributeOnStructDecl` specifically?** Because it's Rust-idiomatic and structurally cleaner than "detect which fields are read at test-site and conditionally prefix unused." The alternative would require cross-module reference analysis (expensive) OR unconditional field emission (fails `dead_code` on some generated snapshots). The attribute IS the Rust solution; the contract declares "when to use it."
 
 **Why post_emit_verifier in the contract, not a CI config?** Because it IS part of the invariant. The contract's claim is "emitted code passes this verifier." Separating the verifier declaration from the contract would let CI and contract drift; coupling them keeps a single authority.
 

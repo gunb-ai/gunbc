@@ -84,30 +84,11 @@ fn resolve_bind_chain(d: Dag, node_id: NodeId) -> Behavior? {
 
 `Map<K, V>` remains a useful **lens-local** abstraction — not for the `Dag` schema, but for accumulators that benefit from keyed state.
 
-`std.map.dag` (new):
+**Single authority:** `Map<K, V>` is already declared in `dsl/std/types.dag` as `Map<K, V> = PartialFunction<K, V>`, grounded in the `PartialFunction` algebra from `dsl/std/algebra.dag` (lookup/insert/delete/merge primitives). v3 inherits that definition — it does **not** create a new `Map` ontology.
 
-```dag
-// src/v3/std/map.dag
-module std.map
+The v3 bootstrap surface is a straight port: `src/v3/std/types.dag` (or wherever v3's authority for std/types lands) carries the existing `Map<K, V> = PartialFunction<K, V>` binding plus the `PartialFunction` algebra it inhabits. No new type declaration, no `src/v3/std/map.dag` as a parallel authority, no new `lookup`/`insert`/... primitives — the algebra already names them.
 
-import std.list { List }
-
-// 🟢 TERMINAL. Generic keyed collection. Realized as Rust HashMap /
-// Go map / Python dict / etc. via per-target spec. NOT used in the
-// core substrate schema (Dag keeps List<DagPort>, List<Behavior>
-// as authorities) — but available as a lens accumulator type.
-type Map<K, V>
-
-fn lookup<K, V>(m: Map<K, V>, key: K) -> V?
-
-fn insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V>
-
-fn contains<K, V>(m: Map<K, V>, key: K) -> Bool
-
-fn keys<K, V>(m: Map<K, V>) -> List<K>
-
-fn values<K, V>(m: Map<K, V>) -> List<V>
-```
+If v3's current std bootstrap doesn't yet include the `Map` / `PartialFunction` pairing from `dsl/std/`, Lane 1 Stage 1b's work item is **"port the existing Map binding,"** not "declare Map."
 
 ### Migration pattern for existing lenses
 
@@ -204,7 +185,7 @@ Zero matches required. New accessors go in substrate.dag.
 
 **Why not just add `dag.producer_of(port) -> Behavior?` directly?** Because `resolve_producer` does TWO things: lookup the port, then chain through Bind. Splitting them lets lenses stop at the port level if they don't want Bind pass-through (rare, but real).
 
-**Why `Map<K, V>` as a std type (even though not in substrate schema)?** Because it's useful for lens-local keyed state. Declaring `Map` once in std is the single-authority move for that type; each lens doesn't invent its own.
+**Why NOT declare a new `Map<K, V>` type for v3?** Because `dsl/std/types.dag` already grounds `Map<K, V> = PartialFunction<K, V>` against the `PartialFunction` algebra in `dsl/std/algebra.dag`. Creating a second `Map` declaration in v3 would fork the ontology and violate M9/algebraic-grounding / single-authority. v3's work is a port of the existing binding, not a new declaration.
 
 **Why `lookup` returns `Option<V>` on `.dag` side?** No panic primitive in `.dag`. Fail-closed consumers match on None.
 
@@ -253,16 +234,16 @@ Zero matches required. New accessors go in substrate.dag.
 - **Lane 2 all stages** ([lane2-compile-time-proofs.md](./lane2-compile-time-proofs.md)) — new lenses consume these functions exclusively
 - **Lane 4 Stages 4b/4c** ([lane4-completion.md](./lane4-completion.md)) — side effects / space bounds lenses same pattern
 - **Update `src/v3/std/substrate.dag`** — add the three query functions; NO new fields
-- **Create `src/v3/std/map.dag`** — Map<K, V> for lens-local use
+- **Port existing `Map = PartialFunction<K, V>` binding** from `dsl/std/types.dag` into v3's std bootstrap (if not already carried). No new `Map` declaration, no new primitives — `PartialFunction`'s `lookup`/`insert`/`delete`/`merge` is the authority.
 - **Update `src/v3/lenses/complexity.dag`, `provenance.dag`, `unused_parameters.dag`** — migrate
 - **Update `INVARIANTS.md`** — add L-7
-- **Meta-review correction** — this doc's earlier revision added parallel Map fields; corrected per meta-review on PR #491 (2026-04-17)
+- **Meta-review correction** — this doc's earlier revision added parallel Map fields; corrected per meta-review on PR #491 (2026-04-17). Follow-up correction (codex review, same PR): earlier revision proposed a new `src/v3/std/map.dag` declaration, which would have forked the existing `Map = PartialFunction<K, V>` authority. Reverted to: port the existing binding.
 
 ---
 
 ## Acceptance (Lane 1 Stage 1b owns)
 
-- [ ] `Map<K, V>` declared in `src/v3/std/map.dag` with lookup/insert/contains/keys/values primitives
+- [ ] v3's std surface carries the existing `Map<K, V> = PartialFunction<K, V>` binding (from `dsl/std/types.dag`) — **ported, not re-declared**. No new `map.dag` file; lookup/insert primitives come from the `PartialFunction` algebra.
 - [ ] `Dag` type in `substrate.dag` is UNCHANGED (still `declarations: List<...>`, `nodes: List<Behavior>`, `ports: List<DagPort>`)
 - [ ] `port(d, id)`, `node(d, id)`, `resolve_producer(d, id)` functions declared in `substrate.dag` as pure query functions over the authoritative lists
 - [ ] Rust side: `dag.port_opt(id) -> Option<&DagPort>` (or equivalent) is what the `.dag` function lowers to; no new substrate fields added to Rust's `Dag` struct
