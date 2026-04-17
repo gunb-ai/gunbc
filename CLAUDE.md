@@ -21,8 +21,10 @@ cargo test -p v2-compiler-tests v2_strict_compile_diagnostic_count -- --ignored 
 ## One-time setup
 
 ```bash
-scripts/install-hooks.sh  # enables .githooks/pre-push (runs cargo fmt --all --check before every push)
+scripts/install-hooks.sh  # enables .githooks/pre-push
 ```
+
+The pre-push hook auto-fixes fmt drift: on push, if `cargo fmt --all --check` fails, the hook runs `cargo fmt --all`, stages the changes to tracked files, and lands a `chore: apply cargo fmt` commit on top of the push. Requires a clean working tree (no uncommitted changes) at push time — bails otherwise.
 
 ## Cost of Change
 
