@@ -36,10 +36,10 @@ Lane 3 closes all three.
 | Sub-stage | Size | Scope | Design doc |
 |---|---|---|---|
 | 3a.1 | L | Mutual recursion: SCC detection in termination lens + cluster descent verification. **No substrate change** — uses existing 5 behaviors (see [DB-9](./design-mutual-recursion-lowering.md) for why). | [DB-9](./design-mutual-recursion-lowering.md) |
-| 3a.2 | S | `data` value semantics: `data foo: Type = value` as structural value declarations accessible at emission | (written at start of 3a.2) |
-| 3a.3 | M | `where` refinement predicates: `fn f(x: Int where x > 0)`. Needs refinement carrier on Port types + Branch-boundary verification. Not trivial. | (written at start of 3a.3) |
-| 3a.4 | S | Full surface generics: explicit `fn f<T>(x: T) -> T` syntax for compiler code (Prereq 0.5 covers inference; 3a.4 is surface/lowering) | (written at start of 3a.4) |
-| 3a.5 | S | Disj dotted-path parser extension: `match opt { Some(s) => s.field }` — unblocks Half B B13 | (written at start of 3a.5) |
+| 3a.2 | S | `data` value semantics: `data foo: Type = value` as structural value declarations accessible at emission | [DB-10 (consolidated)](./design-m2-feature-parity.md) |
+| 3a.3 | M | `where` refinement predicates: `fn f(x: Int where x > 0)`. Needs refinement carrier on type declarations + Branch-arm narrowing integration. | [DB-11 (consolidated)](./design-m2-feature-parity.md) |
+| 3a.4 | S | Full surface generics: explicit `fn f<T>(x: T) -> T` syntax for compiler code (Prereq 0.5 covers inference; 3a.4 is surface/lowering) | [DB-12 (consolidated)](./design-m2-feature-parity.md) |
+| 3a.5 | S | Disj dotted-path parser extension: `match opt { Some(s) => s.field }` — unblocks Half B B13 | [DB-13 (consolidated)](./design-m2-feature-parity.md) |
 
 **Acceptance per sub-stage:**
 
