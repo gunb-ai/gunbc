@@ -4,8 +4,8 @@
 
 **Design blocker:** DB-9
 **Consumers:** Lane 3 Stage 3a.1 (M2 feature parity — mutual recursion)
-**Status:** R2 approved. Supersedes R1 (preserved inline below as §"R1 superseded").
-**Revision:** R2 — 2026-04-17
+**Status:** R2.1 approved. Supersedes R1 (preserved inline below as §"R1 superseded"). R2.1 is R2 + Track 9 substrate integrity primitives graduation.
+**Revision:** R2.1 — 2026-04-17
 
 ---
 
@@ -19,7 +19,8 @@ Mutual recursion lowers at `lower.rs` time into a `Behavior::Loop` whose `bound`
 
 - **R0** (rejected): added `MutualLoop` as a 6th `Behavior` variant. Violated THESIS:604-629 five-behavior commitment.
 - **R1** (rejected): computed cluster membership at lens level post-lowering, substrate unchanged. Violated INVARIANTS:555 / :665 (which prescribe lowering-to-`descend`, not a lens pass) and created parallel representation with `compute_mutually_recursive` in `lower.rs`. Preserved inline below for the rejected-alternatives record.
-- **R2** (current, approved): substrate extension localized to `LoopBound` + `Dag.clusters` sidecar (both reflected and Rust). Preserves the five-behavior commitment, honors INVARIANTS:555, keeps single authority. **R2 post-review (PR #511 ChatGPT + codex feedback):** reflected `type Dag` explicitly carries `clusters` to preserve facts-flow-forward at the lens boundary; `CallEdge { caller, callee }` replaced by `IntraClusterCall { transform }` (typed handle, not lossy compression); `LoopBound` four-pattern dissolution receipt stamped in-doc rather than deferred.
+- **R2** (superseded by R2.1): substrate extension localized to `LoopBound` + `Dag.clusters` sidecar (both reflected and Rust). Preserves the five-behavior commitment, honors INVARIANTS:555, keeps single authority. **R2 post-review (PR #511 ChatGPT + codex feedback):** reflected `type Dag` explicitly carries `clusters` to preserve facts-flow-forward at the lens boundary; `CallEdge { caller, callee }` replaced by `IntraClusterCall { transform }` (typed handle, not lossy compression); `LoopBound` four-pattern dissolution receipt stamped in-doc rather than deferred.
+- **R2.1** (current, approved): R2 substrate records rewritten on top of the Track 9 substrate integrity primitives (`NonEmptyList<T>`, `NonSingletonList<T>`, `ParamRef`, `TransformRef`). Closes the four blockers carried into R2 post-review — illegal states (empty/singleton `Cluster.members`, out-of-arity or non-Bind `MemberDescent.param`, non-Transform `IntraClusterCall.transform`) are now unrepresentable by the type shape rather than "enforced by construction." The primitives themselves land with the DB-9 Lane 3 Stage 3a.1 implementation PR (same commit as the `Cluster` / `MemberDescent` / `IntraClusterCall` declarations that consume them). **R2.1 ChatGPT-review follow-up:** the first R2.1 draft paired `MemberDescent.position: ArityIndex` with `member: NodeId` — `ArityIndex` alone only moved non-negativity into the type; the member-relative bound (`position < member-arity`) still sat outside the shape. ChatGPT's review correctly flagged that as overclaim. Replaced by `MemberDescent { param: ParamRef }`, a single typed handle whose sole constructor `param_of(member, slot)` fails closed for any invalid pair. `ArityIndex` drops out as a standalone primitive (it is at most an input to `param_of`, not a stored field). `IndexedElement<T>.index` in `src/v3/std/list.dag` is the planned second consumer; the analogous move there is an `ElementRef` handle (same pattern, different authoritative carrier).
 
 ---
 
@@ -60,15 +61,26 @@ type ClusterId = Int
 // list for the N intra-cluster call-site Transforms so they can
 // point diagnostics at the exact failing Transform without
 // re-scanning bodies.
+//
+// Field types use the substrate integrity primitives introduced in
+// the Track 9 graduation (see `src/v3/std/substrate.dag`) — illegal
+// states (empty/singleton members, negative position, non-Transform
+// call target) are unrepresentable by the type, not merely avoided
+// by the producer.
 type Cluster {
-  members: List<MemberDescent>
-  intra_cluster_calls: List<IntraClusterCall>
+  members: NonSingletonList<MemberDescent>        // ≥2 by type shape
+  intra_cluster_calls: NonEmptyList<IntraClusterCall>  // ≥1 by type shape (an SCC has ≥1 intra-cluster edge)
 }
 
-// 🟢 TERMINAL.
+// 🟢 TERMINAL. A single typed handle that names a specific formal
+// parameter of a specific cluster member. The per-member decreasing
+// parameter is not a bare integer — it is a structural reference
+// into the member's authoritative parameter list. `member` and
+// `slot` are recoverable through ParamRef's accessors; they are not
+// duplicated as MemberDescent fields because the relation between
+// member and slot is what the carrier guarantees.
 type MemberDescent {
-  member: NodeId
-  position: Int            // parameter index that decreases at intra-cluster calls
+  param: ParamRef
 }
 
 // 🟢 TERMINAL. Typed handle to the authoritative `Transform` node
@@ -79,8 +91,12 @@ type MemberDescent {
 // on the Transform itself. No callsite identity is lost — two
 // `a → b` call sites are two distinct Transforms, hence two
 // distinct `IntraClusterCall` entries.
+//
+// `transform: TransformRef` (not raw NodeId) statically witnesses
+// that the target resolves to a `Behavior::Transform` — non-Transform
+// targets are unrepresentable at the type level.
 type IntraClusterCall {
-  transform: NodeId
+  transform: TransformRef
 }
 ```
 
@@ -124,7 +140,14 @@ There is no shared algebraic form these dissolve into — they are two distinct 
 
 **Conclusion:** `LoopBound` is structurally irreducible. The coproduct is the correct shape. Stamp stands: `🟢 TERMINAL`.
 
-Dissolution receipts for the other new types (records, not coproducts) — `Cluster`, `MemberDescent`, `IntraClusterCall` — the four-pattern check applies only to coproducts. These are records; the relevant check is "state-space vs behavioral invariants" (`feedback_state_space_vs_behavioral_invariants`): can the record admit illegal states? `Cluster.members` (non-empty is enforced by construction — lowering only allocates clusters with ≥2 members), `MemberDescent.position` (Int; any non-negative index is meaningful), `IntraClusterCall.transform` (any NodeId pointing at a Transform is meaningful — type discipline enforces the Transform-vs-other-Behavior distinction). No illegal state-space combinations are representable. All three stamp as `🟢 TERMINAL`.
+Dissolution receipts for the other new types (records, not coproducts) — `Cluster`, `MemberDescent`, `IntraClusterCall` — the four-pattern check applies only to coproducts. These are records; the relevant check is "state-space vs behavioral invariants" (`feedback_state_space_vs_behavioral_invariants`): can the record admit illegal states? The R2 draft originally answered *"no, enforced by construction"* for each field. The PR #511 review cycle correctly rejected that answer — "enforced by construction" is convention-level, not API-level, and a contributor can still construct invalid records. R2.1 graduates the answer to type-level enforcement via the Track 9 substrate integrity primitives:
+
+- `Cluster.members: NonSingletonList<MemberDescent>` — empty and singleton states are unrepresentable because the type has separate `first`, `second`, and `rest` fields. A zero- or one-element "cluster" cannot be constructed.
+- `Cluster.intra_cluster_calls: NonEmptyList<IntraClusterCall>` — an SCC by definition has ≥1 intra-cluster edge; the type shape rejects zero-edge clusters at construction.
+- `MemberDescent.param: ParamRef` — typed opaque handle whose sole producer is `param_of(member: NodeId, slot: Int) -> ParamRef?`, which returns `None` for any slot outside the member's formal-parameter arity and for a `member` that is not a Bind. Because `param_of` is the only way to construct a `ParamRef`, a `MemberDescent` value statically witnesses *both* "this is a valid member node" *and* "this is a valid parameter of that member" — the member-relative bound is part of the carrier, not constructor-time prose on `MemberDescent` itself. A raw integer index paired with a raw `NodeId` (the prior shape, or an `ArityIndex + NodeId` compromise) would have left the relation "index is valid for this member" outside the type; `ParamRef` folds the relation into the handle. `member` and `slot` are recoverable via `ParamRef` accessors rather than being duplicated as `MemberDescent` fields; single authority for "which parameter of which member" lives on the handle.
+- `IntraClusterCall.transform: TransformRef` — typed handle whose sole producer is `as_transform(dag, id)`, which returns `None` on non-Transform targets. A `TransformRef` value statically witnesses its Transform-ness; consumers rely on the type, not on accompanying prose.
+
+No illegal state-space combinations are representable by the type shape. All three stamp as `🟢 TERMINAL`.
 
 ### Per-member descent positions
 
@@ -139,7 +162,7 @@ fn help(tasks: List<Task>, state: Config) =
     process(state, tail(tasks))          // position 0 decreases
 ```
 
-Both members have a structurally-decreasing argument but at different positions. `MemberDescent.position` is per-member to capture this. The R1/R2-drafting alternative of a single `position: Int` on `Descent` was rejected because it forced signature-alignment as an implicit compiler constraint.
+Both members have a structurally-decreasing argument but at different positions. `MemberDescent.param` is per-member to capture this — each `ParamRef` names one formal parameter of one member, and the `Cluster.members: NonSingletonList<MemberDescent>` carries one such handle per cluster member. The R1/R2-drafting alternative of a single `position: Int` on `Descent` was rejected because it forced signature-alignment as an implicit compiler constraint; R2.1's further move from `position: ArityIndex + member: NodeId` to `param: ParamRef` carries the "valid parameter of that member" relation on the handle itself.
 
 ### Lowering shape illustrated
 
@@ -171,12 +194,12 @@ Dag.nodes:
 
 Dag.clusters[ClusterId(0)] = Cluster {
   members: [
-    MemberDescent { member: bind_a, position: 0 },
-    MemberDescent { member: bind_b, position: 0 }
+    MemberDescent { param: param_of(bind_a, 0).unwrap() },   // param_of returns ParamRef?; lowering knows the slot is in-arity
+    MemberDescent { param: param_of(bind_b, 0).unwrap() }
   ],
   intra_cluster_calls: [
-    IntraClusterCall { transform: xform_a_to_b },    // handle into the authoritative Transform above
-    IntraClusterCall { transform: xform_b_to_a }     // handle, not a copy — callee = transform.target, caller = enclosing Bind
+    IntraClusterCall { transform: as_transform(xform_a_to_b).unwrap() },    // handle into the authoritative Transform above
+    IntraClusterCall { transform: as_transform(xform_b_to_a).unwrap() }     // handle, not a copy — callee = transform.target, caller = enclosing Bind
   ]
 }
 ```
@@ -204,9 +227,10 @@ struct ClusterShape {
 
 Lowering consumes this in order:
 1. Lower each member's body as today — `Transform` edges remain literal, pointing at real callee declarations.
-2. For each member body, identify Transforms whose `target = Callable(decl)` where `decl ∈ cluster_members`; collect those as `IntraClusterCall { transform: NodeId }` entries.
-3. Allocate a `ClusterId`; populate `Dag.clusters[cluster_id]` with the `Cluster` record (members + per-member positions + intra_cluster_calls).
-4. For each external call site into the cluster, emit one `Behavior::Loop` with `body = NodeId` of the entry member's Bind, `bound = LoopBound::Descent { cluster: cluster_id }`.
+2. For each member body, identify Transforms whose `target = Callable(decl)` where `decl ∈ cluster_members`; wrap each in a `TransformRef` (via `as_transform(node_id)`) and collect as `IntraClusterCall { transform: TransformRef }` entries.
+3. For each cluster member, construct a `MemberDescent { param: ParamRef }` via `param_of(member_node_id, slot)` using the per-member descent slot from `ClusterShape.per_member_positions`.
+4. Allocate a `ClusterId`; populate `Dag.clusters[cluster_id]` with the `Cluster` record (`NonSingletonList<MemberDescent>` + `NonEmptyList<IntraClusterCall>`).
+5. For each external call site into the cluster, emit one `Behavior::Loop` with `body = NodeId` of the entry member's Bind, `bound = LoopBound::Descent { cluster: cluster_id }`.
 
 The "mutual recursion is not yet supported in v3" rejection diagnostic at lower.rs:2293 **deletes** in the implementation PR.
 
@@ -216,7 +240,20 @@ A cluster called from N external sites produces N `Behavior::Loop` nodes, each r
 
 ### Consumers
 
-**Termination lens** (Lane 2 — `src/v3/lenses/termination.dag`, to be created): walks `Behavior::Loop`. When `bound = Descent { cluster }`, reads `Dag.clusters[cluster]` for members + per-member positions. For each `IntraClusterCall { transform }` in `intra_cluster_calls`, the lens reaches into the authoritative `Transform` node to read the argument list and verifies the argument at the recorded `position` is structurally smaller than the enclosing member's parameter at the same position. No SCC re-detection. Diagnostic on failure names the exact Transform (so `transform.span` points at the failing call site — two `a → b` sites diagnose distinctly).
+**Termination lens** (Lane 2 — `src/v3/lenses/termination.dag`, to be created): walks `Behavior::Loop`. When `bound = Descent { cluster }`, reads `Dag.clusters[cluster]` for members and builds a map `member_node → ParamRef` by querying each `MemberDescent.param`'s `member_of()` / `slot_of()` accessors.
+
+For each `IntraClusterCall.transform: TransformRef` in `intra_cluster_calls`, the lens resolves the edge's **caller** (the enclosing Bind of the Transform — looked up via `TransformRef` and an enclosing-Bind walk) and its **callee** (the Bind identified by `transform.target = Callable(decl)` that resolves back to one of the cluster members). It looks up **both** members' `ParamRef` entries:
+
+- `caller_slot` = the caller member's descent slot (from the caller's `MemberDescent.param.slot_of()`)
+- `callee_slot` = the callee member's descent slot (from the callee's `MemberDescent.param.slot_of()`)
+
+These need not be the same slot — the `process` / `help` case (§"Per-member descent positions") has them at different positions. The check is:
+
+> The argument at position `callee_slot` in the Transform's argument list (i.e. the value the callsite binds to the callee's descent param) is structurally smaller than the caller's formal parameter at position `caller_slot` (i.e. the caller's descent param).
+
+This crosses the boundary the `ParamRef` carrier was introduced to preserve: the callee-side slot selects *which argument* is being fed into the callee's decreasing parameter, the caller-side slot selects *which formal* is the caller's decreasing measure, and the structural-smaller check relates the two. A single-slot formulation (comparing "argument at caller's slot" against "caller's param at caller's slot") would silently collapse mixed-position SCCs back into the single-position regime.
+
+No SCC re-detection. Diagnostic on failure names the exact `TransformRef` (so `transform.span` points at the failing call site — two `a → b` sites diagnose distinctly) plus both `ParamRef` handles so the user can see which caller-param and which callee-param the check was keyed on.
 
 **Complexity lens** (Lane 2 — `src/v3/lenses/complexity.dag`): reads `Loop.bound × cost(body)` per the standard cost rule. When `bound = Descent`, the bound reads from the cluster's shared measure. No SCC re-detection. Matches SELF_HOSTING:708-713 verbatim.
 
@@ -265,12 +302,15 @@ ERROR at <cluster span>: mutually-recursive cluster does not terminate
   fn b(n: Int) -> Int = if n == 0 then 1 else a(n - 1)
 
 Cluster: {a, b}
-Descent failure: call edge `a → b` passes position 0 without decreasing it.
+Descent failure at call `a → b`:
+  - `a`'s descent param: `n` (slot 0)
+  - `b`'s descent param: `n` (slot 0)
+  - Argument at `b`'s slot 0 (`n`) is not structurally smaller than `a`'s slot 0 (`n`).
 
-FIX: decrease position 0 on every intra-cluster call, e.g., `b(n - 1)`.
+FIX: on this call, pass a structurally-smaller value at `b`'s descent slot, e.g., `b(n - 1)`.
 ```
 
-Uses the DB-1 Correction shape (source-level). The diagnostic names the failing `IntraClusterCall` (handle into the authoritative `Transform`, which carries its own `span`) and the `MemberDescent.position` that did not decrease.
+Uses the DB-1 Correction shape (source-level). The diagnostic names the failing `IntraClusterCall.transform: TransformRef` (typed handle into the authoritative `Transform`, which carries its own `span`) plus both `ParamRef` handles — the caller's descent param (for the expected-smaller side) and the callee's descent param (for the slot the argument is being fed into). In the mixed-position case, slot labels in the diagnostic come from the respective `ParamRef.slot_of()` calls and may differ; both are shown so the user can see exactly which caller-formal and which callee-formal the check was keyed on.
 
 ---
 
@@ -288,6 +328,8 @@ Uses the DB-1 Correction shape (source-level). The diagnostic names the failing 
 | `CallEdge { caller: NodeId, callee: NodeId }` as edge payload | R2 R1-review | Compresses away call-site identity: two `a → b` sites with different argument shapes collapse structurally, so the termination diagnostic can't point at the failing site without re-walking bodies. Also creates a second authority for call topology alongside the authoritative `Transform` nodes. Replaced by `IntraClusterCall { transform: NodeId }` — a typed handle into the authoritative Transform; callee/caller/span all readable through the handle. |
 | Rust-only `Dag.clusters` sidecar (no reflected `type Dag` field) | R2 R1-review | The `.dag` lens consumers (`termination.dag`, `complexity.dag`) walk the reflected `type Dag`; an unreflected Rust-only sidecar dies at the lower → lens boundary. Violates facts-flow-forward. Fixed by adding `clusters: List<Cluster>` to `type Dag` in `src/v3/std/substrate.dag` alongside the Rust struct. |
 | Deferring LoopBound dissolution receipt to implementation PR | R2 R1-review | Stamp-before-receipt — a new substrate coproduct earning `🟢 TERMINAL` without the four-pattern check creates a hole that propagates. Fixed by running the check in §Dissolution receipt above; receipt stamped in-doc. |
+| Raw `List<T>` / `Int` / `NodeId` on `Cluster` / `MemberDescent` / `IntraClusterCall` with construction-only invariants | R2 post-review | Admits illegal states (`Cluster.members` empty/singleton, negative / out-of-arity `position`, non-Transform `transform`). Relies on "enforced by construction" — convention-level, not API-level. A contributor can construct an invalid record and the type system does not stop them. Replaced in R2.1 by `NonSingletonList<MemberDescent>` / `NonEmptyList<IntraClusterCall>` / `ParamRef` / `TransformRef` so the invariants live on the type shape. Graduation tracked under ROADMAP Track 9 (substrate integrity primitives). |
+| `MemberDescent { member: NodeId, position: ArityIndex }` — separate member + non-negative index fields | R2.1 ChatGPT-review | `ArityIndex` alone only makes non-negativity structural; the *member-relative* bound (`position < member-arity`) still has to be checked at `MemberDescent`'s constructor because the relation between `position` and `member` sits outside both field types. The PR #516 ChatGPT review (sha `1ef38dbd`) correctly flagged the dissolution-receipt's "out-of-arity is unrepresentable by the type shape" claim as overclaimed under this shape. Replaced by `MemberDescent { param: ParamRef }` — a single typed handle whose sole constructor, `param_of(member, slot) -> ParamRef?`, fails closed for any invalid (member, slot) pair. The "valid parameter of this member" relation now lives on the handle, not on MemberDescent's constructor prose. `ArityIndex` drops out as a standalone Track 9 primitive — it is at most an input argument to `param_of`, not a stored field anywhere. |
 | Annotate each `Bind` with `cluster_id` | R0/R1 | Parallel authority: call graph IS the authority for cluster membership; annotation duplicates and can drift. |
 | Require users to declare `mutual` explicitly | R0/R1 | Compiler detects SCCs automatically; user annotation is ceremony. |
 | Defer mutual recursion | R0/R1 | `compiler.dag` requires it (M2 feature parity). Cannot defer. |
@@ -298,7 +340,7 @@ Uses the DB-1 Correction shape (source-level). The diagnostic names the failing 
 
 None blocking. Two deliberately-deferred refinements for the implementation PR to note but not resolve:
 
-1. **Signature-alignment normalization.** A future refinement could normalize cluster signatures at lowering so all members share a canonical parameter position, simplifying `MemberDescent` to `Int` + `List<NodeId>`. Not in scope for R2 — would be a user-facing constraint requiring its own thesis check.
+1. **Signature-alignment normalization.** A future refinement could normalize cluster signatures at lowering so all members share a canonical parameter position, simplifying `MemberDescent` to a single `slot: ArityIndex` + `members: List<NodeId>` shape. Not in scope for R2.1 — would be a user-facing constraint requiring its own thesis check, and the `ParamRef` carrier captures the general case cleanly enough that the simplification has no urgency.
 2. **`compute_mutually_recursive` migration to `std/graph.dag`.** SELF_HOSTING:710-713 anticipates SCC as a library function in `std/graph.dag`. R2 keeps the Rust implementation as the transitional authority. Swap to `.dag` is a producer-side change when the `.dag` compiler migrates; consumers read `LoopBound::Descent` / `Dag.clusters` either way — no consumer churn.
 
 ---
@@ -315,14 +357,15 @@ None blocking. Two deliberately-deferred refinements for the implementation PR t
 **Positive fixtures (SCC sizes 2, 3, 5):**
 - [ ] Compile without diagnostics
 - [ ] One `Behavior::Loop` emitted per external call site with `bound = LoopBound::Descent`
-- [ ] `Dag.clusters[cluster_id]` populated with members + per-member positions + internal edges
+- [ ] `Dag.clusters[cluster_id]` populated with `NonSingletonList<MemberDescent>` (each carrying a `ParamRef` constructed via `param_of`) + `NonEmptyList<IntraClusterCall>` (each carrying a `TransformRef` constructed via `as_transform`)
 - [ ] Real call-graph edges preserved in member bodies (Transforms point at real callees; no ring)
 - [ ] Complexity lens reads cost via standard rule — no SCC re-detection
 - [ ] Termination lens verifies descent — no SCC re-detection
 - [ ] Rust / Go / Python emission produces N separate `fn` declarations calling each other
 
 **Negative fixtures:**
-- [ ] SCC with no shared descent measure (argument preserved or grows on some edge) → fail-closed diagnostic naming the failing `IntraClusterCall.transform`'s span + `MemberDescent.position`
+- [ ] SCC with no shared descent measure (argument preserved or grows on some edge) → fail-closed diagnostic naming the failing `IntraClusterCall.transform: TransformRef`'s span + **both** the caller's and callee's `MemberDescent.param: ParamRef` handles (slots recoverable via `ParamRef.slot_of`; the two slots may differ in mixed-position SCCs)
+- [ ] Mixed-position SCC fixture (e.g. `process(state, remaining)` / `help(tasks, state)`) with a valid descent: lens verifies the argument at the *callee*'s descent slot is smaller than the *caller*'s descent param — not the caller's slot — and compiles without diagnostics
 - [ ] Two distinct `a → b` call sites with different argument shapes produce two distinct `IntraClusterCall` entries; diagnostic differentiates which site failed
 - [ ] Non-SCC call pattern → single-recursion path unchanged (regression guard)
 
@@ -348,7 +391,8 @@ None blocking. Two deliberately-deferred refinements for the implementation PR t
 - **Lane 3 Stage 3a.1** ([lane3-self-hosting-cycle.md](./lane3-self-hosting-cycle.md)) — R2 is that sub-stage's design
 - **DB-1 Correction shape** ([design-correction-shape.md](./design-correction-shape.md)) — cluster termination diagnostics emit Corrections
 - **DB-7 Symbolic cost** ([design-symbolic-cost-algebra.md](./design-symbolic-cost-algebra.md)) — reads `LoopBound::Descent.cluster` for recursion depth bound
-- **`src/v3/std/substrate.dag`** — `LoopBound` grows `Descent` variant; `Cluster`, `MemberDescent`, `IntraClusterCall` terminal types added; `type Dag` gains `clusters: List<Cluster>` field
+- **`src/v3/std/substrate.dag`** — `LoopBound` grows `Descent` variant; `Cluster`, `MemberDescent`, `IntraClusterCall` terminal types added; `type Dag` gains `clusters: List<Cluster>` field; substrate integrity primitives (`NonEmptyList<T>`, `NonSingletonList<T>`, `ParamRef`, `TransformRef`) declared here and consumed by the records above — all added together in the DB-9 Lane 3 Stage 3a.1 implementation PR
+- **ROADMAP Track 9** — substrate integrity primitives graduation ledger; `IndexedElement<T>.index` in `src/v3/std/list.dag` is the planned second consumer
 - **`src/v3/compiler/src/dag.rs`** — `Dag.clusters: Vec<Cluster>` sidecar
 - **`src/v3/compiler/src/lower.rs`** — `compute_mutually_recursive` return upgraded; cluster-Loop construction replaces rejection
 - **`src/v3/compiler/src/infer.rs`** — reads `LoopBound::Descent` for bottom-up cluster inference
@@ -372,6 +416,9 @@ R2 landed after a four-round design review. Each round narrowed the shape:
 
 ## Changelog
 
+- **2026-04-17 R2.1 (ChatGPT-review follow-up #2)** — on PR #516 sha `3910d440e` ChatGPT flagged that the termination-lens prose still validated only caller-aligned positions ("argument at the caller-member's descent slot [vs] the caller's parameter at the same slot"), dropping the callee-side slot that the newly-introduced per-member `ParamRef` carrier was meant to preserve. Under that wording, mixed-position SCCs (e.g. `process` at slot 1, `help` at slot 0) would silently collapse back to single-position validation and mis-check the wrong argument. Termination-lens paragraph rewritten to explicitly resolve **both** members' `ParamRef` handles at each intra-cluster edge: `caller_slot` for the caller's decreasing-formal side, `callee_slot` for the argument-feeding-the-callee side, and the structural-smaller check relates the two across the boundary. Error-reporting example updated to show both slot labels in the diagnostic body. Acceptance criteria tightened: added a mixed-position positive-fixture acceptance, and the negative-fixture diagnostic now must name both `ParamRef` handles rather than just the caller's.
+- **2026-04-17 R2.1 (ChatGPT-review follow-up)** — on PR #516 sha `1ef38dbd` ChatGPT flagged that pairing `MemberDescent.position: ArityIndex` with `member: NodeId` made only non-negativity structural; the member-relative bound still sat outside the shape, so "out-of-arity is unrepresentable by the type shape" overclaimed the guarantee. Collapsed `MemberDescent { member: NodeId, position: ArityIndex }` → `MemberDescent { param: ParamRef }`, a single typed handle whose sole constructor `param_of(member, slot) -> ParamRef?` fails closed on any invalid (member, slot). "Valid parameter of this member" now lives on the handle, not on constructor prose. `ArityIndex` drops out as a standalone Track 9 primitive. `IndexedElement<T>.index` planned consumer updated to the analogous `ElementRef` pattern.
+- **2026-04-17 R2.1** — graduated substrate records onto Track 9 substrate integrity primitives. `Cluster.members: List<MemberDescent>` → `NonSingletonList<MemberDescent>`; `Cluster.intra_cluster_calls: List<IntraClusterCall>` → `NonEmptyList<IntraClusterCall>`; `IntraClusterCall.transform: NodeId` → `TransformRef`. Closes the four blockers on PR #511 post-review (chatgpt-auto-review REQUEST_CHANGES, codex-review BLOCKING, three inline BLOCKING comments) by replacing "enforced by construction" with type-shape enforcement. Dissolution-receipt paragraph rewritten to reflect the type-level answer. Primitives are proposed here as substrate additions; their declarations (`type NonEmptyList<element>`, `type NonSingletonList<element>`, `type ParamRef`, `type TransformRef`) land in `src/v3/std/substrate.dag` with the DB-9 Lane 3 Stage 3a.1 implementation PR alongside the `Cluster` / `MemberDescent` / `IntraClusterCall` consumers. Track 9 ROADMAP entry captures the ledger and the planned second consumer (`IndexedElement<T>.index`).
 - **2026-04-17 R2 post-review** — addressed PR #511 ChatGPT + codex review. Three blocking fixes: (1) reflected `type Dag` gains `clusters: List<Cluster>` so `.dag` lens consumers see the sidecar (facts-flow-forward at lower → lens boundary); (2) `CallEdge { caller, callee }` replaced with `IntraClusterCall { transform: NodeId }` — typed handle into the authoritative `Transform` node, preserves per-call-site identity, removes the second edge authority; (3) `LoopBound` four-pattern dissolution receipt stamped in-doc, not deferred. Non-blocking forbidden-string ratchet extension deferred to Lane 1 Stage 1a per codex suggestion.
 - **2026-04-17** — R2 landed. Supersedes R1. Director-approved Revised Encoding C (LoopBound coproduct + Dag.clusters sidecar + per-member descent positions).
 - **2026-04-17** — R1 rejected during review. Lens-level SCC conflicted with INVARIANTS:555 / :665 and introduced parallel representation with `compute_mutually_recursive`.

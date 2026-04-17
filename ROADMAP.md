@@ -747,6 +747,41 @@ described but not structurally modeled in .dag:
 | `ShellResponse` / `CliResult` | `std/types.dag` | **DONE** — `CliResult` deleted; `ShellResponse` is sole authority. |
 | Dual `Credential` | `std/types.dag:451` | **DONE** — cloud-side `Credential` no longer exists; only `Credential` in std/types.dag remains. |
 
+**Surfaced by PR #511 review loop (2026-04-17) — substrate integrity
+primitives graduation:**
+
+Substrate records across v3 std/ carry fields whose validity is
+"enforced by construction" — the type shape admits illegal states
+(empty lists, negative indices, mis-kinded node handles) and the
+producer is trusted to never emit them. The PR #511 review cycle
+(chatgpt-auto-review + codex + three director review comments) forced
+the graduation of four primitives that move the invariants onto the
+type shape. Declarations land in `src/v3/std/substrate.dag` with the
+DB-9 Lane 3 Stage 3a.1 implementation PR (same commit as the first
+consumers — the primitives without consumers would be decorative).
+
+| Primitive | Role | First consumer | Planned consumers |
+|---|---|---|---|
+| `NonEmptyList<T>` | List with cardinality ≥ 1 by type shape | `Cluster.intra_cluster_calls` (DB-9 R2.1) | Any substrate set whose definition forbids emptiness |
+| `NonSingletonList<T>` | List with cardinality ≥ 2 by type shape | `Cluster.members` (DB-9 R2.1) | Any substrate set requiring a distinct pair (mutual-recursion clusters, binary-relation carriers) |
+| `ParamRef` | Typed opaque handle to a specific formal parameter of a specific Bind; sole producer `param_of(member, slot) -> ParamRef?` fails closed for non-Bind members and out-of-arity slots | `MemberDescent.param` (DB-9 R2.1) | Any substrate record that today pairs `member: NodeId` with `position: Int` + "position must be valid for member" prose |
+| `TransformRef` | Typed newtype over NodeId, statically witnesses `Behavior::Transform` | `IntraClusterCall.transform` (DB-9 R2.1) | Any substrate handle that today carries raw `NodeId` + "must be a Transform" prose |
+
+**Pattern.** `ParamRef` and `TransformRef` are the same shape applied to two different authoritative carriers ("parameter list of a Bind" / "Behavior variant of a NodeId"). `IndexedElement<T>.index: Int` in `src/v3/std/list.dag` is the planned follow-up — it fits the same pattern ("position in *this* list") and would graduate into an `ElementRef<T>` handle whose constructor is `element_of(list, slot) -> ElementRef<T>?`. Deliberately **not** pre-declared in Track 9 today: the handle lands when a concrete consumer needs it, not speculatively.
+
+**Rejected as a standalone primitive.** `ArityIndex` (typed newtype over non-negative integer). It graduates only *non-negativity* into the type; the member-relative bound remains outside the shape, so any consumer pairing `ArityIndex` with a carrier NodeId still has to check "index is valid for this carrier" at its own constructor — the exact "enforced by construction" anti-pattern Track 9 exists to dissolve. `ParamRef` folds the relation into the handle. `ArityIndex` may exist as an *input* to `param_of`, but not as a stored substrate field.
+
+**Status:** 🟡 Design — proposed in `docs/design-mutual-recursion-lowering.md`
+(DB-9 R2.1). Declarations land with the DB-9 implementation PR.
+
+**Deferred (separate substrate refactor track):** segregating
+`Dag.nodes: List<Behavior>` into per-kind lists (`Dag.transforms`,
+`Dag.branches`, ...) so typed handles index into the right carrier by
+construction rather than via a fallible constructor. Considered during
+R2.1; rejected as in-scope because the Rust-side consumer migration is
+independent of this doc-level graduation. File a separate track when a
+consumer actually benefits from the stronger guarantee.
+
 ### Track 10: Extdeps modeling fidelity (Lane D)
 
 Stringly-typed fields that should be structural, surfaced by external
