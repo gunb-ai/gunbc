@@ -34,18 +34,24 @@ fn data_value_at(&self, decl_id: DeclarationId) -> Option<&ValueBody> {
 }
 ```
 
-Reads the existing field. No new state. Consumed in two places:
+Reads the existing field. No new state.
 
-**1. Emission.** At every identifier-resolution emit site (where the emitter today produces a reference to a declared name), the emitter asks: does the resolved `Declaration` carry a `value_body`? If yes, render the value directly via the existing `FieldValue`/`ValueBody` renderers:
+**Implementation amendment (PR #496, 2026-04-17): inlining happens at lowering, not emission.** The original design above placed the inlining check at each emit site (three files; collapses to one after Lane 1e). The landed implementation moved the inlining earlier — to `SurfaceExpr::Var` lowering and `lower_field_path_expr` — so that `fn f() -> Int = answer` lowers directly to a `Value(LiteralBits)` node, and `cfg.host` lowers to a `Value` whose `LiteralBits` is the resolved field's scalar. Emission sees the value as an ordinary literal node and has no data-declaration-specific path to maintain.
 
-- `ValueBody::Structural { fields }` — dispatch to `render_record_constructor`.
-- `FieldValue::Literal(LiteralBits)` — target-native literal (Rust: `42`, Go: `42`, Python: `42`; strings quoted per language).
-- `FieldValue::Reference(decl_id)` — recurse through `data_value_at`.
-- `FieldValue::List(vs)` / `Map` / `Record` / `Variant` — existing nested renderers.
+Trade-off recorded:
 
-Three emit files today (`emit_rust.rs`, `emit_go.rs`, `emit_python.rs`); Lane 1e has not yet collapsed them. 3a.2 wires the check into all three at the identifier-resolution site. When Lane 1e lands, the three wirings collapse to one; no design change is needed at that point.
+- **Simpler.** Avoids `3×` emit-file changes; Lane 1e's single-emitter consolidation inherits a smaller diff.
+- **Lossier provenance.** The DAG no longer carries the fact that `fn f() -> Int = answer` was written with a name; it carries `Value(42)`. For `compiler.dag`'s use case (compile-time scalar lookup tables), this is desired. For source-map-style provenance lenses, it's debt that resolves when a future lens walks `Value.span` back to the original identifier.
 
-**2. Static field access.** `resolve_static_field_project` (`lower.rs:1404`) is extended so that when its input port resolves to a `Declaration` with `value_body: Some(ValueBody::Structural { fields })`, the requested field label is looked up in `fields` before walking the declared type's `Conj`. A record-valued data declaration resolves `config.host` to `"h"` at compile time; the `FieldProject` Transform is annotated with the literal. Scalar-valued data (`data answer: Int = 42`) has no fields; the existing "not a Conj" path handles the `config.host` analog on `answer.foo` and emits a diagnostic as before.
+Both paths — emission-time and lowering-time — satisfy DB-10's acceptance (literal `42` in the emitted target code; `cfg.host` statically resolved). The choice is an implementation detail; the substrate-visible contract (`ValueBody` on `Declaration`, accessible via `data_value_at`) is unchanged.
+
+Consumed in two places:
+
+**1. Identifier resolution.** `SurfaceExpr::Var { name }` lowering, when the name is not in local scope and not a variant constructor, falls back to `symbols.get(name)` and — if the resolved `Declaration` carries `ValueBody::Scalar(FieldValue::Literal(bits))` — emits a `Value(bits)` node inline. Record-valued data references are out of scope (acceptance covers scalar).
+
+**2. Static field access.** `lower_field_path_expr`, when the head ident is not in local scope, falls back to `symbols.get(head)` and walks the resolved `Declaration`'s `ValueBody::Structural { fields }` via `resolve_structural_field_path`. Terminal scalar literals emit a `Value(LiteralBits)` node; nested `FieldValue::Record` payloads recurse. `List`, `Map`, `Variant`, and `Reference` terminals fall through to an unresolved diagnostic (out of scope for 3a.2's acceptance).
+
+**Future emission-time consumers.** `Dag::data_value_at(decl_id)` remains available for any emitter / lens that wants to see the raw `ValueBody` — e.g., `compiler.dag` authoring a `const` declaration in the emitted Rust. The lowering-time inlining does not preclude emission-time readers; the accessor is the shared contract.
 
 ### Rejected alternatives
 
@@ -161,11 +167,13 @@ Uses DB-1 Correction shape (source-level).
 
 ## DB-12 — surface generics (3a.4, size S)
 
+> **Status amendment (PR #496, 2026-04-17):** investigation during implementation found that the parser (`parse_optional_type_params` at `parse.rs:910`) *already* consumes `<T, U, ...>` on fn items (called from `parse_fn_item` at `parse.rs:824`), and lowering at `lower.rs:306–323` already creates `TypeParam` atom declarations and pushes them to `Declaration.type_params`. No code change was required for this sub-stage. The landed PR adds acceptance tests that lock in the behavior; future regressions would surface immediately. Treat this section as historical scope that collapsed to a test-only landing.
+
 ### Problem
 
 The substrate already supports generic type parameters: `Declaration.type_params: Vec<DeclarationId>` (`dag.rs:119`), `AtomPayload::TypeParam(String)` (`dag.rs:352–376`), `LowerSubstStack` for substitution (`lower.rs:1251–1268`), and inference already walks TypeParams correctly. The parser already recognizes `<T>` after the *type-declaration* identifier (`type Foo<T> { ... }`). `SurfaceItem::Fn` already has a `type_params: Vec<String>` field declared.
 
-The gap is one parser arm: the `fn` item parsing path doesn't consume `<T, U, ...>` between the identifier and `(`. So `fn id<T>(x: T) -> T = x` fails to parse, even though every downstream stage already handles generics.
+The gap was presumed to be one parser arm: the `fn` item parsing path. Implementation found the gap already closed.
 
 ### Design
 
@@ -194,9 +202,11 @@ Parser extension only. No substrate-shape change, no inference change, no emissi
 
 ## DB-13 — Disj dotted-path (3a.5, size S)
 
+> **Status amendment (PR #496, 2026-04-17):** match-arm lowering at `lower.rs:3375` already extends `arm_scope` with the variant payload's `payload_binding`, and `lower_field_path_expr` already consults that extended scope. `match opt { Some(p) => p.x, None => 0 }` compiles today. No code change was required. The landed PR adds acceptance tests (single-level and nested dotted paths) locking in the behavior. Treat this section as historical scope that collapsed to a test-only landing.
+
 ### Problem
 
-Inside `match opt { Some(s) => s.field, None => ... }`, the match-arm lowering binds `s` to a port whose type is the narrowed variant-payload type (the `Some` variant's payload; already computed by M1(2.8)'s infer-time pattern resolution). Accessing `s.field` fails because `lower_field_path_expr` (`lower.rs:3034–3083`) gates expression-position dotted paths on a local-variable head lookup that doesn't include pattern bindings. The error at `lower.rs:3050–3059` explicitly says so: "expression-position dotted paths currently require a local-variable head." This unblocks Half B's B13.
+Inside `match opt { Some(s) => s.field, None => ... }`, the match-arm lowering binds `s` to a port whose type is the narrowed variant-payload type (the `Some` variant's payload; already computed by M1(2.8)'s infer-time pattern resolution). Accessing `s.field` was presumed to fail because `lower_field_path_expr` gated expression-position dotted paths on a local-variable head lookup. Implementation found the arm-scope extension already wired.
 
 ### Design
 

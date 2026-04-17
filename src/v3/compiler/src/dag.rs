@@ -127,6 +127,18 @@ pub struct Declaration {
     /// DAG over the parameter name. Two refinements are structurally
     /// equal iff their predicate expression DAGs walk equal; no
     /// interning, no SMT entailment.
+    ///
+    /// **🟡 Scaffold (dissolves when 3a.3-followup lands the
+    /// consumer).** PR #496 landed the field and the parser's
+    /// `SurfaceParam.refinement` capture, but the lowering path that
+    /// attaches a predicate `Declaration` to this edge, the
+    /// call-site structural-DAG comparison, and the Branch-arm
+    /// predicate narrowing extension to M1(2.8) pattern resolution
+    /// are all deferred to the follow-up PR. Until then, every
+    /// declaration carries `refinement: None` unconditionally and
+    /// no lens or emitter reads the field. If you find yourself
+    /// setting this to `Some(..)` in this branch, the 3a.3-followup
+    /// is already landing — update the tracking marker.
     pub refinement: Option<DeclarationId>,
     pub span: SourceSpan,
 }
