@@ -16,12 +16,6 @@ pub struct CallGraph {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CallGraphAcc {
-    pub forward: Rc<HashMap<String, Rc<Vec<String>>>>,
-    pub reverse: Rc<HashMap<String, Rc<Vec<String>>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DfsFinishAcc {
     pub visited: Rc<HashMap<String, bool>>,
     pub order: Rc<Vec<String>>,
@@ -59,7 +53,7 @@ pub fn build_call_graph_from_proof_edges(
     {
         let initial_forward = seed_adjacency_map(names.clone());
         let initial_reverse = seed_adjacency_map(names.clone());
-        let graph_acc = Rc::new({
+        Rc::new({
             let mut __result = Vec::new();
             for e in edges.iter().cloned() {
                 if (e.caller.clone().as_str() != e.callee.clone().as_str()) {
@@ -71,11 +65,11 @@ pub fn build_call_graph_from_proof_edges(
         .iter()
         .cloned()
         .fold(
-            Rc::new(CallGraphAcc {
+            Rc::new(CallGraph {
                 forward: initial_forward,
                 reverse: initial_reverse,
             }),
-            |acc: Rc<CallGraphAcc>, edge: Rc<ProofEdge>| {
+            |acc: Rc<CallGraph>, edge: Rc<ProofEdge>| {
                 let forward_neighbors =
                     match v2_rt::map_get(&acc.forward.clone(), edge.caller.clone()) {
                         Some(ns) => v2_rt::concat(ns.clone(), Rc::new(vec![edge.callee.clone()])),
@@ -86,7 +80,7 @@ pub fn build_call_graph_from_proof_edges(
                         Some(ns) => v2_rt::concat(ns.clone(), Rc::new(vec![edge.caller.clone()])),
                         None => Rc::new(vec![edge.caller.clone()]),
                     };
-                Rc::new(CallGraphAcc {
+                Rc::new(CallGraph {
                     forward: v2_rt::rc_map_insert(
                         acc.forward.clone(),
                         edge.caller.clone(),
@@ -99,11 +93,7 @@ pub fn build_call_graph_from_proof_edges(
                     ),
                 })
             },
-        );
-        Rc::new(CallGraph {
-            forward: graph_acc.forward.clone(),
-            reverse: graph_acc.reverse.clone(),
-        })
+        )
     }
 }
 

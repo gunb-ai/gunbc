@@ -18,7 +18,7 @@ pub use crate::std_computation::{
 pub use crate::std_graph::{
     build_call_graph_from_proof_edges, dfs_collect_component, dfs_finish_order,
     graph_has_multi_node_scc, is_lexicographic_descent, is_valid_proof, seed_adjacency_map,
-    CallGraph, CallGraphAcc, DfsFinishAcc, SccComponentAcc, SccCycleAcc,
+    CallGraph, DfsFinishAcc, SccComponentAcc, SccCycleAcc,
 };
 use crate::std_induction::AtomicCost::PolyCost;
 use crate::std_induction::CostBound::{AtomicBound, ConstantBound, ErrorBound, ForeverBound};
@@ -1539,12 +1539,12 @@ pub fn build_call_graph_from_parser_edges(
     {
         let initial_forward = seed_adjacency_map(names.clone());
         let initial_reverse = seed_adjacency_map(names.clone());
-        let graph_acc = edges.iter().cloned().fold(
-            Rc::new(CallGraphAcc {
+        edges.iter().cloned().fold(
+            Rc::new(CallGraph {
                 forward: initial_forward,
                 reverse: initial_reverse,
             }),
-            |acc: Rc<CallGraphAcc>, edge: Rc<ParserProgressEdge>| {
+            |acc: Rc<CallGraph>, edge: Rc<ParserProgressEdge>| {
                 let forward_neighbors =
                     match v2_rt::map_get(&acc.forward.clone(), edge.caller.clone()) {
                         Some(ns) => ns.clone(),
@@ -1555,7 +1555,7 @@ pub fn build_call_graph_from_parser_edges(
                         Some(ns) => ns.clone(),
                         None => Rc::new(vec![]),
                     };
-                Rc::new(CallGraphAcc {
+                Rc::new(CallGraph {
                     forward: v2_rt::rc_map_insert(
                         acc.forward.clone(),
                         edge.caller.clone(),
@@ -1568,11 +1568,7 @@ pub fn build_call_graph_from_parser_edges(
                     ),
                 })
             },
-        );
-        Rc::new(CallGraph {
-            forward: graph_acc.forward.clone(),
-            reverse: graph_acc.reverse.clone(),
-        })
+        )
     }
 }
 
@@ -5512,12 +5508,12 @@ pub fn build_call_graph(
         });
         let initial_forward = seed_adjacency_map(names.clone());
         let initial_reverse = seed_adjacency_map(names.clone());
-        let graph_acc = edges.iter().cloned().fold(
-            Rc::new(CallGraphAcc {
+        edges.iter().cloned().fold(
+            Rc::new(CallGraph {
                 forward: initial_forward,
                 reverse: initial_reverse,
             }),
-            |acc: Rc<CallGraphAcc>, edge: Rc<CallEdge>| {
+            |acc: Rc<CallGraph>, edge: Rc<CallEdge>| {
                 let forward_neighbors =
                     match v2_rt::map_get(&acc.forward.clone(), edge.caller.clone()) {
                         Some(ns) => ns.clone(),
@@ -5528,7 +5524,7 @@ pub fn build_call_graph(
                         Some(ns) => ns.clone(),
                         None => Rc::new(vec![]),
                     };
-                Rc::new(CallGraphAcc {
+                Rc::new(CallGraph {
                     forward: v2_rt::rc_map_insert(
                         acc.forward.clone(),
                         edge.caller.clone(),
@@ -5541,11 +5537,7 @@ pub fn build_call_graph(
                     ),
                 })
             },
-        );
-        Rc::new(CallGraph {
-            forward: graph_acc.forward.clone(),
-            reverse: graph_acc.reverse.clone(),
-        })
+        )
     }
 }
 
