@@ -516,6 +516,17 @@ struct RealizationIndexes {
     /// rust.dag. Used when a structural match lowers against a
     /// realized container carrier rather than a native Rust enum.
     patterns: HashMap<DeclarationId, PatternRealizationBinding>,
+    /// DB-14: `accessor_decl → realization_decl` for the active
+    /// Rust target. Built from `data *: SubstrateAccessorBinding`
+    /// records filtered by `language == rust_language`. Used by
+    /// `render_substrate_accessor` on every Callable Transform: if
+    /// the callable's target is in this map, render the
+    /// realization's `carrier` template; otherwise fall through to
+    /// normal callable dispatch. Replaces the earlier design that
+    /// upgraded accessor Arrow bodies to `ExternalRealization` at
+    /// bootstrap, which silently dropped target selection (review
+    /// round 1b.3 root cause).
+    substrate_accessors: HashMap<DeclarationId, DeclarationId>,
     /// The Rust target-language syntax bundle loaded from
     /// `data rust_language: LanguageSpec`.
     syntax: RustLanguageSyntax,
@@ -800,6 +811,7 @@ impl RealizationIndexes {
         let execution = TargetExecutionModelBinding::build(dag)?;
         let callable_dispositions =
             derive_callable_dispositions(dag, &external_callable_dispositions)?;
+        let substrate_accessors = build_substrate_accessor_index(dag, rust_language_id)?;
 
         Ok(Self {
             types,
@@ -813,8 +825,55 @@ impl RealizationIndexes {
             rendering,
             computation,
             execution,
+            substrate_accessors,
         })
     }
+}
+
+/// DB-14: build `accessor_decl → realization_decl` for the active
+/// target language. Walks `SubstrateAccessorBinding` records,
+/// filters by `language == target_language_id`, and enforces
+/// single-authority (one binding per accessor × target).
+fn build_substrate_accessor_index(
+    dag: &Dag,
+    target_language_id: DeclarationId,
+) -> Result<HashMap<DeclarationId, DeclarationId>, EmitError> {
+    let mut index: HashMap<DeclarationId, DeclarationId> = HashMap::new();
+    let Some(binding_meta_id) = dag
+        .declaration_by_name("SubstrateAccessorBinding")
+        .map(|decl| decl.id)
+    else {
+        // No substrate accessor substrate — pipeline pre-DB-14 or a
+        // bootstrap that didn't load the binding type. Empty index
+        // means render_substrate_accessor always falls through.
+        return Ok(index);
+    };
+    for decl in dag.declarations() {
+        if decl.meta_tag != Some(binding_meta_id) {
+            continue;
+        }
+        let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+            return Err(EmitError::MalformedRealization {
+                declaration: decl.id,
+                detail:
+                    "SubstrateAccessorBinding data item has no Structural value_body — bootstrap inhabitance check missed a malformed spec entry",
+            });
+        };
+        let language = require_field_decl_ref(fields, "language", decl.id)?;
+        if language != target_language_id {
+            continue;
+        }
+        let accessor = require_field_decl_ref(fields, "accessor", decl.id)?;
+        let realization = require_field_decl_ref(fields, "realization", decl.id)?;
+        if index.insert(accessor, realization).is_some() {
+            return Err(EmitError::DuplicateRealization {
+                declaration: decl.id,
+                detail:
+                    "two SubstrateAccessorBinding data items target the same accessor × language pair — single authority requires a unique realization per target language",
+            });
+        }
+    }
+    Ok(index)
 }
 
 impl RenderingModelBinding {
@@ -3322,7 +3381,7 @@ impl<'a> Ctx<'a> {
         locals: &RenderLocals,
     ) -> Result<String, EmitError> {
         let (template, arguments) = callable_template(target, self.dag);
-        if let Some(rendered) = self.render_external_realization(t, template, locals)? {
+        if let Some(rendered) = self.render_substrate_accessor(t, template, locals)? {
             return Ok(rendered);
         }
         if let Some(strategy) = self.indexes.callables.get(&template) {
@@ -3331,28 +3390,35 @@ impl<'a> Ctx<'a> {
         self.render_general_callable(t, template, locals)
     }
 
-    /// DB-14: dispatch on `ArrowBody::ExternalRealization`. If the
-    /// callable's Arrow body points at a realization declaration
-    /// (`SubstrateAccessorRealization` or a future analog), extract
-    /// the `carrier: String` template and render via positional
-    /// `{p0}`, `{p1}` substitution with the Transform's input
-    /// expressions.
-    fn render_external_realization(
+    /// DB-14 substrate-accessor dispatch. If the callable's target
+    /// decl is in `substrate_accessors` (a binding for the active
+    /// Rust target exists), render the realization's `carrier`
+    /// template via positional `{p0}`, `{p1}` substitution with the
+    /// Transform's input expressions. Otherwise return `None` and
+    /// let `render_callable_transform` fall through to the standard
+    /// dispatch.
+    ///
+    /// Design: the accessor's Arrow body is intentionally left as
+    /// `Unparsed` at bootstrap (the `{ host <name> }` stub) because
+    /// the accessor → realization mapping is TARGET-specific. The
+    /// per-target resolution happens here, at emission time,
+    /// against this emitter's `substrate_accessors` index — which
+    /// was built from `SubstrateAccessorBinding` records filtered
+    /// by `language == rust_language`. See
+    /// `build_substrate_accessor_index`.
+    fn render_substrate_accessor(
         &self,
         t: &TransformNode,
         template: DeclarationId,
         locals: &RenderLocals,
     ) -> Result<Option<String>, EmitError> {
-        let TypeConnective::Arrow { body, .. } = &self.dag.declaration(template).connective else {
+        let Some(realization_id) = self.indexes.substrate_accessors.get(&template).copied() else {
             return Ok(None);
         };
-        let ArrowBody::ExternalRealization(realization_id) = body else {
-            return Ok(None);
-        };
-        let realization = self.dag.declaration(*realization_id);
+        let realization = self.dag.declaration(realization_id);
         let Some(ValueBody::Structural { fields }) = &realization.value_body else {
             return Err(EmitError::UnsupportedBehavior(format!(
-                "ExternalRealization target for `{}` lacks a structural value body",
+                "substrate accessor realization for `{}` lacks a structural value body",
                 self.dag
                     .declaration(template)
                     .name
@@ -3368,7 +3434,7 @@ impl<'a> Ctx<'a> {
             })
             .ok_or_else(|| {
                 EmitError::UnsupportedBehavior(format!(
-                    "ExternalRealization target `{}` is missing required String field `carrier`",
+                    "substrate accessor realization `{}` is missing required String field `carrier`",
                     realization.name.as_deref().unwrap_or("<anonymous>")
                 ))
             })?;

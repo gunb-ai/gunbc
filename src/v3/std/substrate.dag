@@ -259,13 +259,22 @@ type SubstrateAccessorRealization {
   carrier: String
 }
 
-// 🟡 SCAFFOLD per DB-14. One record per (accessor × target) pair.
-// Bootstrap reads these to upgrade each accessor's ArrowBody from
-// Unparsed to ExternalRealization(realization_id). Dissolves with
-// the same Lane 1e trigger as SubstrateAccessorRealization.
+// 🟡 SCAFFOLD per DB-14. One record per (accessor × target language)
+// pair. `language` is the LanguageSpec declaration the realization is
+// defined against (`rust_language`, `go_language`, `python_language`);
+// each emitter filters for bindings where `language == <its own
+// language spec>`. Shape mirrors the `language: DeclarationRef` edge
+// used by every other shared realization (TypeRealization,
+// OperatorRealization, …) so adding a new target = one more data
+// record, zero compiler changes. Review round 1b.3 root cause: prior
+// shape `{ accessor, realization }` had no target selector, so
+// multiple target bindings would silently overwrite by iteration
+// order. Dissolves with the same Lane 1e trigger as
+// SubstrateAccessorRealization.
 type SubstrateAccessorBinding {
   accessor: DeclarationRef
   realization: DeclarationRef
+  language: DeclarationRef
 }
 
 fn port(d: Dag, id: PortId) -> DagPort? {

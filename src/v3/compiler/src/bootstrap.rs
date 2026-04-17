@@ -24,7 +24,7 @@
 // go through. A failed bootstrap is visible to callers without a
 // side channel.
 
-use crate::dag::{ArrowBody, Dag, DeclarationId, FieldValue, TypeConnective, ValueBody};
+use crate::dag::{ArrowBody, Dag, DeclarationId, TypeConnective};
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::lower::{collect_symbols_phase, lower_bodies_phase, resolve_pending_identifiers};
 use crate::parse::{parse, SurfaceModule};
@@ -180,7 +180,6 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
     // errors. User-code compilation uses the strict variant.
     resolve_pending_identifiers(dag);
     materialize_pipeline_realizations(dag);
-    materialize_substrate_accessors(dag);
 
     // Cache the canonical role declarations (Int, Bool, String,
     // Realization) now that every std/ module has been lowered and the
@@ -190,145 +189,20 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
     dag.populate_primitive_cache();
 }
 
-const SUBSTRATE_ACCESSOR_BINDING_TYPE: &str = "SubstrateAccessorBinding";
-const SUBSTRATE_ACCESSOR_REALIZATION_META: &str = "SubstrateAccessorRealization";
-
-/// DB-14 bootstrap upgrade: walk every `SubstrateAccessorBinding`
-/// data record and upgrade the bound accessor fn's Arrow body from
-/// `Unparsed` (the trivial `{ host X }` stub) to
-/// `ExternalRealization(realization_id)`. After this pass, emission
-/// dispatches on the upgraded body and renders the realization's
-/// `carrier` template. Pattern mirrors `materialize_pipeline_realizations`;
-/// see `docs/design-substrate-external-primitives.md`.
-fn materialize_substrate_accessors(dag: &mut Dag) {
-    let Some(binding_type_id) = dag
-        .declaration_by_name(SUBSTRATE_ACCESSOR_BINDING_TYPE)
-        .map(|decl| decl.id)
-    else {
-        return;
-    };
-
-    let mut pairs: Vec<(DeclarationId, DeclarationId, String)> = Vec::new();
-    for declaration in dag.declarations() {
-        if declaration.meta_tag != Some(binding_type_id) {
-            continue;
-        }
-        let binding_name = declaration
-            .name
-            .as_deref()
-            .unwrap_or("<anonymous SubstrateAccessorBinding>")
-            .to_string();
-        let Some(ValueBody::Structural { fields }) = &declaration.value_body else {
-            report_substrate_accessor_error(
-                dag,
-                format!("substrate accessor binding `{binding_name}` must carry a structural value body"),
-            );
-            return;
-        };
-        let accessor = match require_substrate_accessor_ref(fields, "accessor", &binding_name) {
-            Ok(id) => id,
-            Err(err) => {
-                report_substrate_accessor_error(dag, err);
-                return;
-            }
-        };
-        let realization = match require_substrate_accessor_ref(fields, "realization", &binding_name)
-        {
-            Ok(id) => id,
-            Err(err) => {
-                report_substrate_accessor_error(dag, err);
-                return;
-            }
-        };
-        pairs.push((accessor, realization, binding_name));
-    }
-
-    let Some(meta_decl_id) = dag
-        .declaration_by_name(SUBSTRATE_ACCESSOR_REALIZATION_META)
-        .map(|decl| decl.id)
-    else {
-        if !pairs.is_empty() {
-            report_substrate_accessor_error(
-                dag,
-                format!(
-                    "missing substrate accessor realization meta `{SUBSTRATE_ACCESSOR_REALIZATION_META}`"
-                ),
-            );
-        }
-        return;
-    };
-
-    // The realization meta must lower to a Conj; the data items that
-    // instantiate it carry `TypeConnective::Instantiation { template }`.
-    // `is_realization_shape` in infer.rs checks for Conj directly, so we
-    // replace each realization's connective with the meta's Conj before
-    // upgrading the accessor Arrow body. Same shape as
-    // `materialize_pipeline_realizations`.
-    let meta_connective = match dag.declaration(meta_decl_id).connective.clone() {
-        connective @ TypeConnective::Conj { .. } => connective,
-        _ => {
-            report_substrate_accessor_error(
-                dag,
-                format!(
-                    "substrate accessor realization meta `{SUBSTRATE_ACCESSOR_REALIZATION_META}` must lower to a record"
-                ),
-            );
-            return;
-        }
-    };
-
-    for (accessor, realization, binding_name) in pairs {
-        let realization_decl = dag.declaration_mut(realization);
-        if realization_decl.meta_tag != Some(meta_decl_id) {
-            report_substrate_accessor_error(
-                dag,
-                format!(
-                    "substrate accessor binding `{binding_name}` realization is not tagged with `{SUBSTRATE_ACCESSOR_REALIZATION_META}`"
-                ),
-            );
-            continue;
-        }
-        realization_decl.connective = meta_connective.clone();
-        let accessor_decl = dag.declaration_mut(accessor);
-        match &mut accessor_decl.connective {
-            TypeConnective::Arrow { body, .. } => {
-                *body = ArrowBody::ExternalRealization(realization);
-            }
-            _ => report_substrate_accessor_error(
-                dag,
-                format!(
-                    "substrate accessor binding `{binding_name}` target is not an Arrow declaration"
-                ),
-            ),
-        }
-    }
-}
-
-fn require_substrate_accessor_ref(
-    fields: &[(String, FieldValue)],
-    label: &str,
-    binding_name: &str,
-) -> Result<DeclarationId, String> {
-    fields
-        .iter()
-        .find(|(field, _)| field == label)
-        .and_then(|(_, value)| match value {
-            FieldValue::Reference(id) => Some(*id),
-            _ => None,
-        })
-        .ok_or_else(|| {
-            format!(
-                "substrate accessor binding `{binding_name}` is missing required DeclarationRef field `{label}`"
-            )
-        })
-}
-
-fn report_substrate_accessor_error(dag: &mut Dag, name: String) {
-    dag.attach_diagnostic(Diagnostic::ResolveError {
-        name,
-        span: SourceSpan::new("src/v3/std/substrate.dag", 0, 0),
-    });
-}
+// DB-14 substrate accessors (`port` / `node` / `resolve_producer`) are
+// deliberately NOT materialized at bootstrap. Their Arrow bodies stay
+// `Unparsed` (the `{ host <name> }` stub) because the accessor → realization
+// mapping is TARGET-specific — upgrading the Arrow body once at bootstrap
+// to a single realization would silently overwrite when a second emitter
+// registers its own binding. Each emitter reads `SubstrateAccessorBinding`
+// records at emission time, filters by its own `language: LanguageSpec`
+// id, and dispatches to the target-matching realization's carrier
+// template. See `emit_rust::RealizationIndexes::substrate_accessors`.
+//
+// This diverges from `materialize_pipeline_realizations` (above), which
+// DOES upgrade Arrow bodies — pipeline stages are target-invariant
+// (same runtime for every target), so "one realization per stage" is
+// the correct authority there.
 
 fn materialize_pipeline_realizations(dag: &mut Dag) {
     let stages = match ordered_pipeline_stages(dag) {

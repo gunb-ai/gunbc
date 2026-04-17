@@ -2789,7 +2789,12 @@ fn substrate_accessors_exist_in_bootstrap_dag() {
     let resolve_decl = dag
         .declaration_by_name("resolve_producer")
         .expect("resolve_producer exists");
-    // Each accessor must be an Arrow with inputs + output + body.
+    // Each accessor must be an Arrow with the right arity. Post
+    // review-round 1b.3, bodies stay `Unparsed` at bootstrap — the
+    // per-target realization lookup happens at emission time against
+    // the `SubstrateAccessorBinding` records (filtered by
+    // `language: <active LanguageSpec>`). See DB-14 and
+    // `emit_rust::build_substrate_accessor_index`.
     use v3_compiler::dag::{ArrowBody, TypeConnective};
     match (&port_decl.connective, &node_decl.connective, &resolve_decl.connective) {
         (
@@ -2800,18 +2805,21 @@ fn substrate_accessors_exist_in_bootstrap_dag() {
             assert_eq!(pi.len(), 2, "port arity");
             assert_eq!(ni.len(), 2, "node arity");
             assert_eq!(ri.len(), 2, "resolve_producer arity");
-            // Bodies should be upgraded to ExternalRealization by bootstrap.
+            // Bodies stay Unparsed at bootstrap. Upgrading them to a
+            // specific ExternalRealization would silently drop target
+            // selection the moment a second backend registers its own
+            // binding — that was the review-round 1b.3 root cause.
             assert!(
-                matches!(pb, ArrowBody::ExternalRealization(_)),
-                "port body should be ExternalRealization after bootstrap upgrade; got {pb:?}"
+                matches!(pb, ArrowBody::Unparsed(_)),
+                "port body should stay Unparsed — target selection happens at emission time; got {pb:?}"
             );
             assert!(
-                matches!(nb, ArrowBody::ExternalRealization(_)),
-                "node body should be ExternalRealization; got {nb:?}"
+                matches!(nb, ArrowBody::Unparsed(_)),
+                "node body should stay Unparsed; got {nb:?}"
             );
             assert!(
-                matches!(rb, ArrowBody::ExternalRealization(_)),
-                "resolve_producer body should be ExternalRealization; got {rb:?}"
+                matches!(rb, ArrowBody::Unparsed(_)),
+                "resolve_producer body should stay Unparsed; got {rb:?}"
             );
         }
         other => panic!("accessor shapes: {other:?}"),
@@ -2838,24 +2846,90 @@ fn test(d: Dag, pid: PortId) -> DagPort? = port(d, pid)
 }
 
 #[test]
-fn substrate_accessor_realization_shape_passes_checks() {
-    let dag = v3_compiler::Dag::new();
-    use v3_compiler::dag::TypeConnective;
-    let rust_port = dag
-        .declaration_by_name("rust_port_accessor")
-        .expect("rust_port_accessor exists");
-    let meta = dag
-        .declaration_by_name("SubstrateAccessorRealization")
-        .expect("SubstrateAccessorRealization type exists");
-    assert_eq!(
-        rust_port.meta_tag,
-        Some(meta.id),
-        "rust_port_accessor must be tagged with SubstrateAccessorRealization"
-    );
+fn resolve_producer_opt_walks_through_bind_hops() {
+    // DB-5 locks `resolve_producer` as recursive Bind-chain resolution.
+    // Verify the Rust-side helper never returns a Bind — a single-hop
+    // implementation would, which is the regression this test pins.
+    let src = "\
+let base: Int = 1 + 2
+let alias: Int = base
+let double_alias: Int = alias
+let total: Int = double_alias + double_alias
+";
+    let dag = v3_compiler::compile_to_dag(src, "bind_hop.v3").expect("compiles");
+    // Walk every Bind in the Dag. For each, resolve_producer_opt on its
+    // value port MUST land on a non-Bind (Value / Transform / etc.) —
+    // never a Bind.
+    let mut checked = 0;
+    for node in dag.nodes() {
+        let v3_compiler::dag::Behavior::Bind(bind) = node else {
+            continue;
+        };
+        let resolved = dag.resolve_producer_opt(&bind.value);
+        if let Some(behavior) = resolved {
+            assert!(
+                !matches!(behavior, v3_compiler::dag::Behavior::Bind(_)),
+                "resolve_producer_opt returned a Bind for bind `{}` — Bind-hop \
+                 traversal missing (DB-5 locks this as recursive)",
+                bind.name
+            );
+            checked += 1;
+        }
+    }
     assert!(
-        matches!(rust_port.connective, TypeConnective::Conj { .. }),
-        "rust_port_accessor must lower to Conj; got {:?}",
-        rust_port.connective
+        checked > 0,
+        "no Binds in fixture — test cannot exercise Bind-hop traversal"
+    );
+}
+
+#[test]
+fn substrate_accessor_binding_carries_language_selector() {
+    // Review round 1b.3 root cause: `SubstrateAccessorBinding` used
+    // to be `{ accessor, realization }` with no target selector.
+    // Multiple bindings for the same accessor would silently
+    // overwrite by iteration order — a substrate-level illegal
+    // state. Now each binding carries `language: DeclarationRef`
+    // so each emitter can filter for its own target. This test
+    // verifies every in-tree binding carries the new field.
+    let dag = v3_compiler::Dag::new();
+    let binding_meta = dag
+        .declaration_by_name("SubstrateAccessorBinding")
+        .expect("SubstrateAccessorBinding type exists");
+    let rust_language = dag
+        .declaration_by_name("rust_language")
+        .expect("rust_language exists");
+    let mut checked = 0;
+    for decl in dag.declarations() {
+        if decl.meta_tag != Some(binding_meta.id) {
+            continue;
+        }
+        let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
+            panic!("binding `{:?}` must have Structural value body", decl.name);
+        };
+        let language_field = fields.iter().find(|(label, _)| label == "language");
+        assert!(
+            language_field.is_some(),
+            "binding `{:?}` missing required `language` field (review 1b.3)",
+            decl.name
+        );
+        // Every in-tree binding today targets `rust_language`; when
+        // go/python bindings land, this test extends.
+        let (_, value) = language_field.unwrap();
+        match value {
+            v3_compiler::dag::FieldValue::Reference(id) => {
+                assert_eq!(
+                    *id, rust_language.id,
+                    "binding `{:?}` should target rust_language",
+                    decl.name
+                );
+            }
+            other => panic!("binding `{:?}` language field is not a Reference: {other:?}", decl.name),
+        }
+        checked += 1;
+    }
+    assert_eq!(
+        checked, 3,
+        "expected 3 substrate accessor bindings (port, node, resolve_producer)"
     );
 }
 

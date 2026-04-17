@@ -905,14 +905,17 @@ data rust_resolve_producer_accessor: SubstrateAccessorRealization = {
 data port_binding_rust: SubstrateAccessorBinding = {
   accessor: port
   realization: rust_port_accessor
+  language: rust_language
 }
 
 data node_binding_rust: SubstrateAccessorBinding = {
   accessor: node
   realization: rust_node_accessor
+  language: rust_language
 }
 
 data resolve_producer_binding_rust: SubstrateAccessorBinding = {
   accessor: resolve_producer
   realization: rust_resolve_producer_accessor
+  language: rust_language
 }
