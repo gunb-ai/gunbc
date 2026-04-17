@@ -1123,7 +1123,7 @@ fn refinement_ports_equal(
     match (dag.node(lhs_nid), dag.node(rhs_nid)) {
         (Behavior::Value(lv), Behavior::Value(rv)) => lv.data == rv.data,
         (Behavior::Transform(lt), Behavior::Transform(rt)) => {
-            refinement_targets_equal(&lt.target, &rt.target)
+            refinement_targets_equal(dag, &lt.target, &rt.target)
                 && lt.inputs.len() == rt.inputs.len()
                 && lt.inputs.iter().zip(rt.inputs.iter()).all(|(l, r)| {
                     refinement_ports_equal(dag, *l, *r, lhs_param, rhs_param, depth + 1)
@@ -1133,9 +1133,23 @@ fn refinement_ports_equal(
     }
 }
 
-fn refinement_targets_equal(lhs: &TransformTarget, rhs: &TransformTarget) -> bool {
+fn refinement_targets_equal(dag: &Dag, lhs: &TransformTarget, rhs: &TransformTarget) -> bool {
     match (lhs, rhs) {
-        (TransformTarget::Callable(a), TransformTarget::Callable(b)) => a == b,
+        // DB-11 (3a.3) structural callable identity. Call lowering
+        // materializes a fresh `Instantiation` declaration per
+        // call-site when the callee has retained template arguments
+        // (see `retained_template_arguments_for_target` in lower.rs).
+        // Two syntactically identical calls to a generic predicate
+        // (e.g., `is_eq(d, 0)`) from two different refinement
+        // contexts therefore carry different `Callable(DeclarationId)`
+        // targets even though their template + argument values match.
+        // Nominal id equality would reject those as distinct; the
+        // authoritative identity is template + substituted arguments,
+        // which `declaration_shapes_equivalent` already walks through
+        // `Instantiation`/`ResolvedIdentifier` edges.
+        (TransformTarget::Callable(a), TransformTarget::Callable(b)) => {
+            declaration_shapes_equivalent(dag, *a, *b, 0)
+        }
         (TransformTarget::Operator(a), TransformTarget::Operator(b)) => a == b,
         (
             TransformTarget::FieldProject {
@@ -2930,7 +2944,18 @@ fn resolve_operator_arrow(
     op_kind: OperatorKind,
     lhs_type: &TypeShape,
 ) -> Option<ResolvedArrow> {
-    let source_id = lhs_type.declaration;
+    // DB-11 (3a.3) operand normalization. Primitive operators (`+`,
+    // `>`, `!=`, etc.) are structurally over BASE types — refinements
+    // are surface-level facts about values, not part of the operator's
+    // arrow contract. Mirroring a refined lhs like `Int where d != 0`
+    // onto both operand positions (as the old fallback did) made the
+    // call-site refinement-discharge pass treat the refinement as a
+    // real requirement on every operand — so a literal `10` in
+    // `d > 10` failed discharge because literals carry no refinement.
+    // Strip refinements once up front; algebra-Conj walks and the
+    // primitive fallback both operate on the base.
+    let source_id = strip_refinement_to_base(dag, lhs_type.declaration);
+    let base_lhs = TypeShape::new(source_id);
     // Walk the source type's declaration chain to find the algebra
     // Conj. We follow Instantiation/ResolvedIdentifier edges; at
     // each step the template argument bindings are intentionally
@@ -2945,7 +2970,7 @@ fn resolve_operator_arrow(
                 // name.
                 let field_name = op_kind.algebra_field_name();
                 if let Some(field) = children.iter().find(|f| f.label == field_name) {
-                    return read_algebra_field(dag, decl, field.ty, source_id, op_kind, lhs_type);
+                    return read_algebra_field(dag, decl, field.ty, source_id, op_kind, &base_lhs);
                 }
                 // Algebra doesn't declare this operator's field —
                 // fall back to the Rust-side scaffold bridge below.
@@ -2970,14 +2995,42 @@ fn resolve_operator_arrow(
     // structural walk doesn't terminate at an algebra Conj (Bool,
     // Classical; collection-level algebras). Documented class-5 gap.
     let output = match op_kind {
-        OperatorKind::Arithmetic(_) => *lhs_type,
+        OperatorKind::Arithmetic(_) => base_lhs,
         OperatorKind::Comparison(_) => dag.bool_shape()?,
     };
     Some(ResolvedArrow {
-        inputs: vec![*lhs_type, *lhs_type],
+        inputs: vec![base_lhs, base_lhs],
         output,
         body: ArrowBody::Pending,
     })
+}
+
+/// DB-11 (3a.3) refinement-strip helper. Walks the
+/// `Atom(ResolvedIdentifier(...))` chain, skipping past any
+/// declaration that carries a `refinement` edge, until it reaches a
+/// declaration with no refinement. Used by `resolve_operator_arrow`
+/// to normalize primitive-operator inputs to their base types —
+/// refinements are surface-level facts about values, not part of an
+/// operator's arrow contract.
+///
+/// Terminates at the first un-refined declaration OR when the chain
+/// can no longer be followed (any non-ResolvedIdentifier connective).
+/// Depth-bounded by `WALK_DEPTH_LIMIT`.
+fn strip_refinement_to_base(dag: &Dag, decl_id: DeclarationId) -> DeclarationId {
+    let mut current = decl_id;
+    for _ in 0..WALK_DEPTH_LIMIT {
+        let decl = dag.declaration(current);
+        if decl.refinement.is_none() {
+            return current;
+        }
+        match &decl.connective {
+            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                current = *next;
+            }
+            _ => return current,
+        }
+    }
+    current
 }
 
 /// Read an algebra field's Arrow signature and substitute the

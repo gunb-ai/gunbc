@@ -458,24 +458,25 @@ fn test_3a3_narrowed_already_refined_param_preserves_outer_refinement() {
     // refinement can satisfy the callee — including the outer one.
     //
     // `caller(d: Int where d != 0)` is narrowed inside the `if` arm
-    // with `is_big(d, 10)` (a call-shaped predicate that narrowing
-    // recognizes per `narrowable_var_name`). Forwarded to
-    // `div(d: Int where d != 0)`: the narrowed decl's own refinement is
-    // `is_big(d, 10)` (does NOT walk-equal to `d != 0`), but the alias
-    // chain reaches the outer `d != 0`, which does.
+    // with the operator-shaped predicate `d > 10`, then forwarded to
+    // `div(d: Int where d != 0)`. The narrowed decl's own refinement
+    // is `d > 10` (does NOT walk-equal to `d != 0`); the alias chain
+    // reaches the outer `d != 0`, which does.
     //
-    // Call-shaped (not operator-shaped) narrow predicate is load-bearing
-    // here: `resolve_operator_arrow`'s primitive fallback uses
-    // `inputs: vec![lhs_type, lhs_type]`, which would propagate the
-    // outer refinement onto the literal operand and fail discharge
-    // before narrowing runs — unrelated to this test's concern.
-    let src = "fn is_big(x: Int, threshold: Int) -> Bool = x > threshold\n\
-               fn div(n: Int, d: Int where d != 0) -> Int = n\n\
+    // Operator-shaped narrow predicates are the common surface shape
+    // that `narrowable_var_name` recognizes. Making this path honest
+    // requires `resolve_operator_arrow` to strip refinements from
+    // operand positions — otherwise the literal `10` would be typed
+    // as `Int where d != 0` (the mirrored lhs carrier) and fail
+    // discharge before narrowing ever runs. See
+    // `strip_refinement_to_base` in `infer.rs`.
+    let src = "fn div(n: Int, d: Int where d != 0) -> Int = n\n\
                fn caller(n: Int, d: Int where d != 0) -> Int = \
-                 if is_big(d, 10) then div(n, d) else 0";
+                 if d > 10 then div(n, d) else 0";
     let _ = compile_to_dag(src, "test.v3").expect(
-        "narrowing an already-refined param must not drop the outer \
-         refinement: the outer `d != 0` on the alias chain should \
+        "operator-shaped narrow predicate on an already-refined param \
+         must compile: stripped operator operands let lowering succeed, \
+         and the alias-chain walk rediscovers the outer `d != 0` to \
          discharge the callee's `d != 0`",
     );
 }
@@ -501,6 +502,32 @@ fn test_3a3_if_without_narrowing_rejects_forwarded_unrefined() {
     assert!(
         joined.contains("refinement"),
         "diagnostic must name refinement failure; got:\n{joined}"
+    );
+}
+
+#[test]
+fn test_3a3_callable_predicate_structural_identity_across_sites() {
+    // Acceptance (DB-11): two syntactically identical calls to the
+    // same generic predicate from different refinement contexts must
+    // discharge each other. Call lowering materializes a fresh
+    // `Instantiation` declaration per call-site when the callee has
+    // retained template arguments (see
+    // `retained_template_arguments_for_target` in `lower.rs`) — so
+    // `Callable(DeclarationId)` nominal identity is per-site, not
+    // per-callee. Structural comparison via template + substituted
+    // arguments (`declaration_shapes_equivalent`) is the true
+    // identity; without it, the two `where always_false(d, 0)` sites
+    // below have differently-identified Callable targets even though
+    // they call the same generic with the same inferred type
+    // argument (T = Int), and forwarding `a(d)` from `b`'s body fails
+    // discharge on nominal id mismatch.
+    let src = "fn always_false<T>(x: T, y: T) -> Bool = 0 == 1\n\
+               fn a(d: Int where always_false(d, 0)) -> Int = d\n\
+               fn b(d: Int where always_false(d, 0)) -> Int = a(d)";
+    let _ = compile_to_dag(src, "test.v3").expect(
+        "two identical calls to the same generic predicate from \
+         different refinement sites must discharge structurally, \
+         regardless of per-site Instantiation id",
     );
 }
 
