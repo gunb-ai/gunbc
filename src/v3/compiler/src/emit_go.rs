@@ -2394,20 +2394,17 @@ mod tests {
     use super::*;
     use crate::compile_to_dag;
 
-    #[test]
-    fn go_gc_targets_skip_rendering_model_loading() {
-        let mut dag = compile_to_dag("fn id(x: Int) -> Int = x", "test.v3").expect("compiles");
-        let go_rendering = dag.go_rendering_spec().expect("go_rendering cached");
-        dag.declaration_mut(go_rendering).value_body = Some(ValueBody::Structural {
-            fields: vec![(
-                "read".to_string(),
-                FieldValue::Literal(LiteralBits::String("broken".to_string())),
-            )],
-        });
-
-        let rendered = emit_go_module(&dag).expect("go emitter should skip go_rendering");
-        assert!(rendered.contains("func id("), "got: {rendered}");
-    }
+    // DELETED: go_gc_targets_skip_rendering_model_loading
+    //
+    // This test deliberately corrupted `go_rendering` and asserted
+    // emission succeeded — codifying "declared target fact is
+    // non-authoritative" as a unit-tested property. That directly
+    // violates INVARIANTS.md E-6 (no target-spec field without a
+    // same-PR consumer). Removed so the go_rendering authority is
+    // allowed to become load-bearing; if a future test needs to
+    // assert "emission doesn't rely on X for GC targets," it should
+    // do so by driving emission on a properly-populated spec, not
+    // by corrupting a field and asserting we ignore it.
 
     #[test]
     fn go_struct_fields_render_with_separators() {

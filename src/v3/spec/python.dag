@@ -14,6 +14,15 @@ import v3.std.computation_model {
   GarbageCollected, LexicalScoping
 }
 
+// 🟡 SCAFFOLD per INVARIANTS.md E-7. Parallel to
+// `v3.std.emit_model.TypeRealization`. emit_python consumes
+// PythonTypeRealization instead of the shared schema; the shared
+// schema lacks an `is_copy` field that Python's per-value rendering
+// reads, so a direct migration requires extending TypeRealization
+// OR lifting is_copy into a separate per-target lens.
+// Dissolution trigger: Lane 1e (consolidation) migrates emit_python
+// onto shared TypeRealization after the schema grows an is_copy
+// equivalent (or after emit_rust's copy-handling moves to a lens).
 type PythonTypeRealization {
   target: DeclarationRef
   carrier: String
@@ -21,6 +30,11 @@ type PythonTypeRealization {
   cost: Int
 }
 
+// 🟡 SCAFFOLD per INVARIANTS.md E-7. Parallel to
+// `v3.std.emit_model.OperatorRealization` — identical shape, just
+// private meta-type. No schema gap; this is a pure-migration target.
+// Dissolution trigger: Lane 1e migrates emit_python to read
+// OperatorRealization (shared).
 type PythonOperatorRealization {
   target: DeclarationRef
   op: DeclarationRef
@@ -28,6 +42,16 @@ type PythonOperatorRealization {
   cost: Int
 }
 
+// 🟡 SCAFFOLD per INVARIANTS.md E-7. Parallel to
+// `v3.std.emit_model.CallableRealization`. Shared schema has
+// `parameters: List<CallableParameter>` (slot-keyed dispositions
+// that Go parses but doesn't consume for GC rendering); Python
+// doesn't need that field, so migrating requires either making
+// parameters optional in the shared schema (regression against
+// E-6) or accepting that emit_python validates-and-ignores the
+// field (the Go pattern).
+// Dissolution trigger: Lane 1e decides the policy. Until then,
+// the private family is the bounded scaffold.
 type PythonCallableRealization {
   target: DeclarationRef
   strategy: PythonCallableStrategy
@@ -52,12 +76,28 @@ type PythonCallableStrategy
   | ListFilter
   | ListContains
 
+// 🟡 SCAFFOLD per INVARIANTS.md E-7. Parallel to
+// `v3.std.emit_model.TypeInstantiationRealization` — identical
+// shape. No schema gap; pure-migration target.
+// Dissolution trigger: Lane 1e migrates emit_python to read
+// TypeInstantiationRealization (shared).
 type PythonTypeInstantiationRealization {
   target: DeclarationRef
   carrier: String
   cost: Int
 }
 
+// 🟡 SCAFFOLD per INVARIANTS.md E-7. Parallel to
+// `v3.std.emit_model.PatternRealization`. Shared schema carries
+// typed pattern strings (scrutinee, empty_pattern, cons_pattern,
+// head_expr, tail_expr); Python's pattern lowering currently
+// uses hardcoded list-variant name lookups in render_list_branch
+// (blocked on parser dotted-path variant access, tracked as B13
+// in Lane 3 Stage 3a). The type exists for schema-shape symmetry
+// but is NOT currently loaded by PythonIndexes::build — the
+// record's only consumer is still prose.
+// Dissolution trigger: B13 (Lane 3 Stage 3a parser feature) lands
+// AND emit_python migrates to shared PatternRealization in Lane 1e.
 type PythonPatternRealization {
   target: DeclarationRef
   strategy: PythonPatternStrategy
