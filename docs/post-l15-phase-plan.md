@@ -147,8 +147,12 @@ Nine cross-cutting design decisions needed to be locked before implementation. E
 | DB-8 | Fixed-point ratchet mechanics | Lane 3 Stage 3c | [design-fixed-point-ratchet.md](./design-fixed-point-ratchet.md) |
 | DB-9 | Mutual recursion → Loop lowering | Lane 3 Stage 3a | [design-mutual-recursion-lowering.md](./design-mutual-recursion-lowering.md) |
 | DB-10 | Lens Rust-boundary contract (L-8) | Lane 1 Stage 1a (cost lens migration) | [design-lens-rust-boundary.md](./design-lens-rust-boundary.md) |
+| DB-10..DB-13 (m2) | M2 feature parity (data value semantics, `where` refinement, surface generics, Disj dotted-path) | Lane 3 Stage 3a.2 / 3a.3 / 3a.4 / 3a.5 | [design-m2-feature-parity.md](./design-m2-feature-parity.md) |
+| DB-14 | Substrate external primitives (unblocks 1b accessors) | Lane 1 Stage 1b | [design-substrate-external-primitives.md](./design-substrate-external-primitives.md) |
 
-Dependencies between design docs (DB-4 references DB-1, DB-2 references DB-4 and DB-5, DB-10 added post-Half-A review): each design doc calls out its dependencies in the header.
+**Numbering note.** PR #494 introduced `design-m2-feature-parity.md` with its four sub-blockers numbered `DB-10`..`DB-13`, colliding with the existing `DB-10` (Lens Rust-boundary) already listed above. The collision is visible here rather than papered over. Suggested cleanup in a separate PR: renumber `design-m2-feature-parity.md`'s sub-blockers to `DB-11`..`DB-14` and renumber DB-14 (substrate external primitives, this PR) to `DB-15`. Not blocking any implementation; readers can distinguish by design-doc link.
+
+Dependencies between design docs (DB-4 references DB-1, DB-2 references DB-4 and DB-5, DB-10 added post-Half-A review, DB-14 added post-Stage-1b-escalation): each design doc calls out its dependencies in the header.
 
 **Single authority (Invariant D-2).** When a DB doc locks a shape, the DB doc is the authority; lane and master docs reference it by link and prose summary, **not** by restating the fields. Reviewers have caught this drift multiple times — DB fixes a rejected shape, but a lane doc still paraphrases the old version. The ratchet below exists because "internally consistent" was a claim made twice before it was actually true; the forbidden-string list turns it into a mechanical check.
 
