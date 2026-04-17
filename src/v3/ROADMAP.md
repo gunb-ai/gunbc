@@ -533,13 +533,12 @@ Each scheduled deletion names one enforcement path. **Grep over source code is n
 | NameKeyedReference bridges (any `ResolvedIdentifier` produced via name fallback) | M2 module scoping + DB-17 | Same as `declaration_by_name` — same class | **Needs DB-17** — dissolves jointly |
 | `Node.name` field (v3 substrate) | `authored_name_at` cross-module span fix + 15 direct reads migrated | Cross-module span resolution via DeclarationId | **Compiler-source ratchet** (temporary, dissolves at self-hosting) |
 | `encoding_meet` / `encoding_join` (Rust fns) | Track 8 Phase 2 (user-defined generic emission) | User-defined generic emission for `Lattice<Encoding>` instance | **Compiler-source ratchet** (temporary; becomes lens-able when compiler.dag self-hosts and emission-generated code replaces these hand-written fns) |
-| `keyword_to_name` | TBD (recon pending) | Unknown — possibly none | **TBD** — 20-minute recon before classification |
 
 ### Notes on specific rows
 
 - **`declaration_by_name` and NameKeyedReference bridges** are the same underlying class: "reference resolved by name fallback rather than by structural edge." [DB-17 (reference-resolution provenance)](../../docs/design-reference-resolution-provenance.md) makes this a single structural fact in the substrate; landing DB-17 unlocks joint dissolution via one lens.
 - **`Node.name` cluster**: 15 direct reads audited in the Node-to-std migration project; each has a replacement via structural edge (declaration lookup with structural path). Compiler-source ratchet suffices until self-hosting because the enforcement surface is one directory (`src/v3/compiler/`) and audit cadence catches drift.
-- **`keyword_to_name`** — 20-minute recon still pending. If the scaffold is small and immediate, it might not need a scheduled-deletion row — just delete it. Row stays here until recon classifies it.
+- **`keyword_to_name` (recon outcome 2026-04-17, no row added):** the bare `keyword_to_name` was renamed to `tok_keyword_to_name` during v2 Phase 0 parser restructure — see `src/v2/parser-design.md:403-408`. The new name still carries the scaffold (parser-side keyword-name logic that duplicates facts from the tokenizer's `SyntaxSpec`), but it lives in `src/v2/02_parse.dag:455` and `src/v2/stage0/src/v2_compiler_parse.rs:1321` — **v2 code**, not v3. Grep confirms zero equivalents in `src/v3/`. V2 is the reference-implementation / test oracle per `src/v3/ROADMAP.md` §"Sketch vs Oracle framing"; v2 scaffolds dissolve when v3 supersedes v2 entirely, not individually. The v3 Scheduled Deletions list tracks v3-scope scaffolds only.
 
 ### Grep is not an enforcement path
 
