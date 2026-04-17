@@ -3502,9 +3502,7 @@ impl<'a> Ctx<'a> {
                 self.indexes.syntax.patterns.wildcard.clone()
             }
             PatternBindingRuleBinding::EmitBindingAlways
-            | PatternBindingRuleBinding::EmitUnderscoreWhenUnused => {
-                binding.binding_name.clone()
-            }
+            | PatternBindingRuleBinding::EmitUnderscoreWhenUnused => binding.binding_name.clone(),
         }
     }
 
