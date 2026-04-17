@@ -240,7 +240,20 @@ A cluster called from N external sites produces N `Behavior::Loop` nodes, each r
 
 ### Consumers
 
-**Termination lens** (Lane 2 — `src/v3/lenses/termination.dag`, to be created): walks `Behavior::Loop`. When `bound = Descent { cluster }`, reads `Dag.clusters[cluster]` for members. For each `MemberDescent.param: ParamRef`, the lens queries `ParamRef.member_of()` and `ParamRef.slot_of()` to recover the member node and the descent slot. For each `IntraClusterCall.transform: TransformRef` in `intra_cluster_calls`, the lens reaches into the authoritative `Transform` node to read the argument list and verifies the argument at the caller-member's descent slot is structurally smaller than the caller's parameter at the same slot. No SCC re-detection. Diagnostic on failure names the exact Transform (so `transform.span` points at the failing call site — two `a → b` sites diagnose distinctly).
+**Termination lens** (Lane 2 — `src/v3/lenses/termination.dag`, to be created): walks `Behavior::Loop`. When `bound = Descent { cluster }`, reads `Dag.clusters[cluster]` for members and builds a map `member_node → ParamRef` by querying each `MemberDescent.param`'s `member_of()` / `slot_of()` accessors.
+
+For each `IntraClusterCall.transform: TransformRef` in `intra_cluster_calls`, the lens resolves the edge's **caller** (the enclosing Bind of the Transform — looked up via `TransformRef` and an enclosing-Bind walk) and its **callee** (the Bind identified by `transform.target = Callable(decl)` that resolves back to one of the cluster members). It looks up **both** members' `ParamRef` entries:
+
+- `caller_slot` = the caller member's descent slot (from the caller's `MemberDescent.param.slot_of()`)
+- `callee_slot` = the callee member's descent slot (from the callee's `MemberDescent.param.slot_of()`)
+
+These need not be the same slot — the `process` / `help` case (§"Per-member descent positions") has them at different positions. The check is:
+
+> The argument at position `callee_slot` in the Transform's argument list (i.e. the value the callsite binds to the callee's descent param) is structurally smaller than the caller's formal parameter at position `caller_slot` (i.e. the caller's descent param).
+
+This crosses the boundary the `ParamRef` carrier was introduced to preserve: the callee-side slot selects *which argument* is being fed into the callee's decreasing parameter, the caller-side slot selects *which formal* is the caller's decreasing measure, and the structural-smaller check relates the two. A single-slot formulation (comparing "argument at caller's slot" against "caller's param at caller's slot") would silently collapse mixed-position SCCs back into the single-position regime.
+
+No SCC re-detection. Diagnostic on failure names the exact `TransformRef` (so `transform.span` points at the failing call site — two `a → b` sites diagnose distinctly) plus both `ParamRef` handles so the user can see which caller-param and which callee-param the check was keyed on.
 
 **Complexity lens** (Lane 2 — `src/v3/lenses/complexity.dag`): reads `Loop.bound × cost(body)` per the standard cost rule. When `bound = Descent`, the bound reads from the cluster's shared measure. No SCC re-detection. Matches SELF_HOSTING:708-713 verbatim.
 
@@ -289,12 +302,15 @@ ERROR at <cluster span>: mutually-recursive cluster does not terminate
   fn b(n: Int) -> Int = if n == 0 then 1 else a(n - 1)
 
 Cluster: {a, b}
-Descent failure: call edge `a → b` passes position 0 without decreasing it.
+Descent failure at call `a → b`:
+  - `a`'s descent param: `n` (slot 0)
+  - `b`'s descent param: `n` (slot 0)
+  - Argument at `b`'s slot 0 (`n`) is not structurally smaller than `a`'s slot 0 (`n`).
 
-FIX: decrease position 0 on every intra-cluster call, e.g., `b(n - 1)`.
+FIX: on this call, pass a structurally-smaller value at `b`'s descent slot, e.g., `b(n - 1)`.
 ```
 
-Uses the DB-1 Correction shape (source-level). The diagnostic names the failing `IntraClusterCall.transform: TransformRef` (typed handle into the authoritative `Transform`, which carries its own `span`) and the `MemberDescent.param: ParamRef` whose slot did not decrease across that intra-cluster edge. "Position 0" in the diagnostic body comes from `ParamRef.slot_of()` on the caller's descent param.
+Uses the DB-1 Correction shape (source-level). The diagnostic names the failing `IntraClusterCall.transform: TransformRef` (typed handle into the authoritative `Transform`, which carries its own `span`) plus both `ParamRef` handles — the caller's descent param (for the expected-smaller side) and the callee's descent param (for the slot the argument is being fed into). In the mixed-position case, slot labels in the diagnostic come from the respective `ParamRef.slot_of()` calls and may differ; both are shown so the user can see exactly which caller-formal and which callee-formal the check was keyed on.
 
 ---
 
@@ -348,7 +364,8 @@ None blocking. Two deliberately-deferred refinements for the implementation PR t
 - [ ] Rust / Go / Python emission produces N separate `fn` declarations calling each other
 
 **Negative fixtures:**
-- [ ] SCC with no shared descent measure (argument preserved or grows on some edge) → fail-closed diagnostic naming the failing `IntraClusterCall.transform: TransformRef`'s span + the caller's `MemberDescent.param: ParamRef` (slot recoverable via `ParamRef.slot_of`)
+- [ ] SCC with no shared descent measure (argument preserved or grows on some edge) → fail-closed diagnostic naming the failing `IntraClusterCall.transform: TransformRef`'s span + **both** the caller's and callee's `MemberDescent.param: ParamRef` handles (slots recoverable via `ParamRef.slot_of`; the two slots may differ in mixed-position SCCs)
+- [ ] Mixed-position SCC fixture (e.g. `process(state, remaining)` / `help(tasks, state)`) with a valid descent: lens verifies the argument at the *callee*'s descent slot is smaller than the *caller*'s descent param — not the caller's slot — and compiles without diagnostics
 - [ ] Two distinct `a → b` call sites with different argument shapes produce two distinct `IntraClusterCall` entries; diagnostic differentiates which site failed
 - [ ] Non-SCC call pattern → single-recursion path unchanged (regression guard)
 
@@ -399,6 +416,7 @@ R2 landed after a four-round design review. Each round narrowed the shape:
 
 ## Changelog
 
+- **2026-04-17 R2.1 (ChatGPT-review follow-up #2)** — on PR #516 sha `3910d440e` ChatGPT flagged that the termination-lens prose still validated only caller-aligned positions ("argument at the caller-member's descent slot [vs] the caller's parameter at the same slot"), dropping the callee-side slot that the newly-introduced per-member `ParamRef` carrier was meant to preserve. Under that wording, mixed-position SCCs (e.g. `process` at slot 1, `help` at slot 0) would silently collapse back to single-position validation and mis-check the wrong argument. Termination-lens paragraph rewritten to explicitly resolve **both** members' `ParamRef` handles at each intra-cluster edge: `caller_slot` for the caller's decreasing-formal side, `callee_slot` for the argument-feeding-the-callee side, and the structural-smaller check relates the two across the boundary. Error-reporting example updated to show both slot labels in the diagnostic body. Acceptance criteria tightened: added a mixed-position positive-fixture acceptance, and the negative-fixture diagnostic now must name both `ParamRef` handles rather than just the caller's.
 - **2026-04-17 R2.1 (ChatGPT-review follow-up)** — on PR #516 sha `1ef38dbd` ChatGPT flagged that pairing `MemberDescent.position: ArityIndex` with `member: NodeId` made only non-negativity structural; the member-relative bound still sat outside the shape, so "out-of-arity is unrepresentable by the type shape" overclaimed the guarantee. Collapsed `MemberDescent { member: NodeId, position: ArityIndex }` → `MemberDescent { param: ParamRef }`, a single typed handle whose sole constructor `param_of(member, slot) -> ParamRef?` fails closed on any invalid (member, slot). "Valid parameter of this member" now lives on the handle, not on constructor prose. `ArityIndex` drops out as a standalone Track 9 primitive. `IndexedElement<T>.index` planned consumer updated to the analogous `ElementRef` pattern.
 - **2026-04-17 R2.1** — graduated substrate records onto Track 9 substrate integrity primitives. `Cluster.members: List<MemberDescent>` → `NonSingletonList<MemberDescent>`; `Cluster.intra_cluster_calls: List<IntraClusterCall>` → `NonEmptyList<IntraClusterCall>`; `IntraClusterCall.transform: NodeId` → `TransformRef`. Closes the four blockers on PR #511 post-review (chatgpt-auto-review REQUEST_CHANGES, codex-review BLOCKING, three inline BLOCKING comments) by replacing "enforced by construction" with type-shape enforcement. Dissolution-receipt paragraph rewritten to reflect the type-level answer. Primitives are proposed here as substrate additions; their declarations (`type NonEmptyList<element>`, `type NonSingletonList<element>`, `type ParamRef`, `type TransformRef`) land in `src/v3/std/substrate.dag` with the DB-9 Lane 3 Stage 3a.1 implementation PR alongside the `Cluster` / `MemberDescent` / `IntraClusterCall` consumers. Track 9 ROADMAP entry captures the ledger and the planned second consumer (`IndexedElement<T>.index`).
 - **2026-04-17 R2 post-review** — addressed PR #511 ChatGPT + codex review. Three blocking fixes: (1) reflected `type Dag` gains `clusters: List<Cluster>` so `.dag` lens consumers see the sidecar (facts-flow-forward at lower → lens boundary); (2) `CallEdge { caller, callee }` replaced with `IntraClusterCall { transform: NodeId }` — typed handle into the authoritative `Transform` node, preserves per-call-site identity, removes the second edge authority; (3) `LoopBound` four-pattern dissolution receipt stamped in-doc, not deferred. Non-blocking forbidden-string ratchet extension deferred to Lane 1 Stage 1a per codex suggestion.
