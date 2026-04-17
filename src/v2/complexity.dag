@@ -80,7 +80,7 @@ import std.algebra {
   CostShape, ShapeConstant, ShapeLinearScan, ShapeIterateBody, ShapeSortBody
 }
 import std.graph {
-  CallGraph, CallGraphAcc, DfsFinishAcc, SccComponentAcc, SccCycleAcc,
+  CallGraph, DfsFinishAcc, SccComponentAcc, SccCycleAcc,
   seed_adjacency_map, build_call_graph_from_proof_edges,
   dfs_finish_order, dfs_collect_component, graph_has_multi_node_scc,
   is_lexicographic_descent, is_valid_proof
@@ -1197,7 +1197,7 @@ fn seed_func_entry_map(key: String, value: FuncEntry) -> Map<String, FuncEntry> 
 fn build_call_graph_from_parser_edges(names: List<String>, edges: List<ParserProgressEdge>) -> CallGraph {
   let initial_forward = seed_adjacency_map(names: names)
   let initial_reverse = seed_adjacency_map(names: names)
-  let graph_acc = edges |> fold(init: CallGraphAcc { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
+  edges |> fold(init: CallGraph { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
     let forward_neighbors = match map_get(acc.forward, edge.caller) {
       Some { value: ns } => ns
       None => []
@@ -1206,12 +1206,11 @@ fn build_call_graph_from_parser_edges(names: List<String>, edges: List<ParserPro
       Some { value: ns } => ns
       None => []
     }
-    CallGraphAcc {
+    CallGraph {
       forward: map_insert(acc.forward, edge.caller, list_push(forward_neighbors, edge.callee)),
       reverse: map_insert(acc.reverse, edge.callee, list_push(reverse_neighbors, edge.caller))
     }
   )
-  CallGraph { forward: graph_acc.forward, reverse: graph_acc.reverse }
 }
 
 // Check whether the NonIncreasing-only subgraph contains a cycle.
@@ -3204,7 +3203,7 @@ fn build_call_graph(func_entries: List<FuncEntry>, si: Map<String, NewlineIndex>
   )
   let initial_forward = seed_adjacency_map(names: names)
   let initial_reverse = seed_adjacency_map(names: names)
-  let graph_acc = edges |> fold(init: CallGraphAcc { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
+  edges |> fold(init: CallGraph { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
     let forward_neighbors = match map_get(acc.forward, edge.caller) {
       Some { value: ns } => ns
       None => []
@@ -3213,12 +3212,11 @@ fn build_call_graph(func_entries: List<FuncEntry>, si: Map<String, NewlineIndex>
       Some { value: ns } => ns
       None => []
     }
-    CallGraphAcc {
+    CallGraph {
       forward: map_insert(acc.forward, edge.caller, list_push(forward_neighbors, edge.callee)),
       reverse: map_insert(acc.reverse, edge.callee, list_push(reverse_neighbors, edge.caller))
     }
   )
-  CallGraph { forward: graph_acc.forward, reverse: graph_acc.reverse }
 }
 
 fn scc_label(members: List<String>) -> String {

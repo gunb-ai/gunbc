@@ -16,7 +16,10 @@ module extdeps.llm.llm
 import std.serialization { VariantEncoding, StringVariant, VariantNaming, SnakeCase }
 
 // Wire contract: LLM APIs return enum values as snake_case strings ("user", "end_turn").
-data wire_contract: VariantEncoding = StringVariant { naming: SnakeCase }
+// Shared across LLM provider modules (anthropic, openai) — each must declare its own
+// module-scoped wire_contract, but the value is the single authority here.
+data llm_snake_wire_contract: VariantEncoding = StringVariant { naming: SnakeCase }
+data wire_contract: VariantEncoding = llm_snake_wire_contract
 
 // -- Message protocol ----------------------------------------------
 

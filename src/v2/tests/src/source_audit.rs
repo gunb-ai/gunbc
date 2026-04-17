@@ -402,7 +402,7 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
     // Check they exist in the graph module's stage0 mirror instead.
     let graph_stage0 = read_v2_file("src/v2/stage0/src/std_graph.rs");
     for needle in [
-        "pub struct CallGraphAcc",
+        "pub struct CallGraph",
         "pub struct DfsFinishAcc",
         "pub struct SccComponentAcc",
         "pub fn dfs_finish_order(",

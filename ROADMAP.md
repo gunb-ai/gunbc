@@ -734,18 +734,18 @@ described but not structurally modeled in .dag:
 
 | Item | Current state | Fix |
 |------|--------------|-----|
-| Encoding lattice | **DONE** — consolidated to `Encoding` in encoding.dag with BoundedLattice meet/join; `ContentEncoding` deleted; `FileClassification` moved to filesystem.dag | — |
-| Stack\<T\> → FreeMonoid | **DONE** — imports algebra.dag; operations aligned to FreeMonoid vocabulary; inhabitation declared | — |
+| Encoding lattice | **PARTIAL** — `Encoding` in encoding.dag has `encoding_meet`/`encoding_join` functions; `ContentEncoding` deleted; `FileClassification` moved to filesystem.dag. Structural `data _: BoundedLattice<Encoding> = ...` inhabitance is blocked (see line 739 — encoding.dag:137-138 comment: "Data declaration deferred: compiler does not yet emit generic type parameters for data constants"). | Declare inhabitance once generic data constants are emittable. |
+| Stack\<T\> → FreeMonoid | **PARTIAL** — stack.dag imports algebra.dag and aligns operation names to FreeMonoid vocabulary; inhabitance described in comments only (stack.dag:109-125). Formal `data _: FreeMonoid<Stack<T>> = ...` blocked on the same compiler limitation as Encoding. | Declare inhabitance once generic data constants are emittable. |
 | User-defined generic emission | Generic functions (T, V, K params) parse and type-check but emit unresolved type variables in Rust | Emitter needs monomorphization or generic Rust output |
 
 **Surfaced by ChatGPT Pro audit (2026-04-12) — record shape duplicates:**
 
 | Pair | Files | Fix |
 |------|-------|-----|
-| `CargoDependency` / `CrateDep` | `extdeps/cargo.dag:25` / `extdeps/languages/rust/imports.dag:76` | Identical fields (name, version, features). Merge to one type. |
-| `TransportResponse` / `HttpResponse` | `std/types.dag:472` / `std/types.dag:496` | Identical fields (status, headers, body). Merge to one. |
-| `ShellResponse` / `CliResult` | `std/types.dag:484` / `std/types.dag:502` | Same 3 fields, different order. Merge. |
-| Dual `Credential` | `std/types.dag:448` / `extdeps/cloud/cloud.dag:43` | Same concept name, DIFFERENT schemas. Rename cloud one to `CloudCredential` or unify. |
+| `CargoDependency` / `CrateDep` | `extdeps/cargo.dag:25` | **DONE** — `CrateDep` deleted; only `CargoDependency` remains. |
+| `TransportResponse` / `HttpResponse` | `std/types.dag` | **DONE** — `HttpResponse` deleted; `TransportResponse` is sole authority. |
+| `ShellResponse` / `CliResult` | `std/types.dag` | **DONE** — `CliResult` deleted; `ShellResponse` is sole authority. |
+| Dual `Credential` | `std/types.dag:451` | **DONE** — cloud-side `Credential` no longer exists; only `Credential` in std/types.dag remains. |
 
 ### Track 10: Extdeps modeling fidelity (Lane D)
 
@@ -782,15 +782,15 @@ modeling needed.
 
 | Item | Authority | Duplicated at | Fix |
 |------|-----------|-------------|-----|
-| API base URL | `github.dag:70` `default_api_base` | `gists.dag:42`, `pulls.dag:60` hardcode `"https://api.github.com"` | Reference the constant |
-| Per-page default | `github.dag:72` `default_per_page` | `pulls.dag:75` hardcodes `30` | Reference the constant |
+| API base URL | `github.dag:70` `default_api_base` | **DONE** — `gists.dag:40` and `pulls.dag:58` both reference `default_api_base` via import. | — |
+| Per-page default | `github.dag:72` `default_per_page` | **DONE** — `pulls.dag:73` references `default_per_page` via import. | — |
 
 **Also surfaced — semantic drift:**
 
 | Item | Conflict | Fix |
 |------|---------|-----|
-| Rust `chars` | `std/languages.dag:1006` returns strings (`.to_string()`), `extdeps/languages/rust/emit.dag:60` returns ints (`c as i64`). `Char = Int` in types.dag. | Decide which is authority; delete the other. emit.dag (ints) matches the type declaration. |
-| Python `chars` | `extdeps/languages/python/runtime.dag:43` returns string chars (`list()`), `emit.dag:94` returns ints (`ord()`). | Same decision — pick one. |
+| Rust `chars` | **DONE** — runtime.dag + languages.dag aligned with emit.dag's `c as i64` codepoint form. `Char = Int` is the authority. | — |
+| Python `chars` | **DONE** — runtime.dag + languages.dag aligned with emit.dag's `[ord(c) for c in {recv}]` codepoint form. | — |
 
 **Also surfaced — fabrication sentinels:**
 

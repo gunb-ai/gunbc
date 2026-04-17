@@ -8,13 +8,13 @@
 //
 module extdeps.llm.openai
 
-import extdeps.llm.llm { Role, StopReason, TokenUsage }
+import extdeps.llm.llm { Role, StopReason, TokenUsage, llm_snake_wire_contract }
 import std.errors { OpenAiErrorShape }
-import std.serialization { VariantEncoding, StringVariant, VariantNaming, SnakeCase }
+import std.serialization { VariantEncoding }
 import std.types { HttpMethod, AuthScheme }
 
 // Wire contract: OpenAI API returns enum values as snake_case strings.
-data wire_contract: VariantEncoding = StringVariant { naming: SnakeCase }
+data wire_contract: VariantEncoding = llm_snake_wire_contract
 
 // -- Models --------------------------------------------------------
 

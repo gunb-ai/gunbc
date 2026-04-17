@@ -39,8 +39,9 @@ data string_split_template: String = "\{recv\}.split(\{delim\})"
 data string_join_template: String = "\{sep\}.join(\{recv\})"
 
 // "How does Python get characters from a string?"
-// list(s) converts a string to a list of single-character strings.
-data string_chars_template: String = "list(\{recv\})"
+// Authority: Char = Int (std/types.dag). chars() returns List<Int> of
+// Unicode codepoints. Mirrors emit.dag and algebra.dag's chars return type.
+data string_chars_template: String = "[ord(c) for c in \{recv\}]"
 
 // -- Collection operations -------------------------------------------
 // Ref: list, tuple, set (docs.python.org/3/library/stdtypes.html)
@@ -58,7 +59,7 @@ data collection_method_translations: List<MethodTranslation> = [
   { dag_method: "last",      python_template: "\{recv\}[-1] if \{recv\} else None" },
   { dag_method: "first",     python_template: "\{recv\}[0] if \{recv\} else None" },
   { dag_method: "enumerate", python_template: "list(enumerate(\{recv\}))" },
-  { dag_method: "chars",     python_template: "list(\{recv\})" }
+  { dag_method: "chars",     python_template: "[ord(c) for c in \{recv\}]" }
 ]
 
 // "How does Python iterate?"
