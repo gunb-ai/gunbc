@@ -24,6 +24,9 @@ fn structural_fields(decl: &Declaration) -> &[(String, FieldValue)] {
     match &decl.value_body {
         Some(ValueBody::Structural { fields }) => fields.as_slice(),
         Some(ValueBody::Unparsed(_)) => panic!("generated claim should lower structurally"),
+        Some(ValueBody::Scalar(_)) => panic!(
+            "generated claim should lower as Structural (record shape), got Scalar"
+        ),
         None => panic!("generated claim declaration should carry a structural value body"),
     }
 }

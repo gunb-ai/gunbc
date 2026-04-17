@@ -289,8 +289,8 @@ fn collect_symbols(
             type_params: Vec::new(),
             meta_tag: None,
             inhabits: None,
-
             value_body: None,
+            refinement: None,
             span: span.clone(),
         });
 
@@ -316,6 +316,7 @@ fn collect_symbols(
                     inhabits: None,
 
                     value_body: None,
+                    refinement: None,
                     span: span.clone(),
                 });
                 param_ids.push(param_id);
@@ -663,6 +664,7 @@ fn lower_type_sum(
             inhabits: None,
 
             value_body: None,
+            refinement: None,
             span: variant.span.clone(),
         });
         variant_fields.push(Field {
@@ -731,6 +733,7 @@ fn type_to_declaration_id(
                 inhabits: None,
 
                 value_body: None,
+                refinement: None,
                 span: span.clone(),
             });
             id
@@ -750,6 +753,7 @@ fn type_to_declaration_id(
                 inhabits: None,
 
                 value_body: None,
+                refinement: None,
                 span: span.clone(),
             });
             id
@@ -778,6 +782,7 @@ fn type_to_declaration_id(
                 inhabits: None,
 
                 value_body: None,
+                refinement: None,
                 span: span.clone(),
             });
             id
@@ -931,6 +936,7 @@ fn alloc_identifier_stub(dag: &mut Dag, name: &str, span: &SourceSpan) -> Declar
         inhabits: None,
 
         value_body: None,
+        refinement: None,
         span: span.clone(),
     });
     id
@@ -1188,14 +1194,37 @@ fn lower_data_item(
     // field, value isn't a literal, type mismatch). Fail-closed
     // paths attach a diagnostic via `report_declaration_error` so
     // user-facing code sees the error.
-    let value_body = body
-        .and_then(|b| match b {
-            SurfaceExpr::Record { fields, .. } => Some(fields),
-            _ => None,
-        })
-        .and_then(|record_fields| {
-            lower_record_to_structural(name, record_fields, ty_decl_id, body_span, symbols, dag)
-        });
+    // DB-10 (3a.2): `data x: T = v` bodies lower by shape:
+    //   - Record literal → ValueBody::Structural (existing path).
+    //   - Scalar literal  → ValueBody::Scalar (new path, DB-10).
+    //   - Anything else   → ValueBody::Unparsed fallback.
+    let value_body = match body {
+        Some(SurfaceExpr::Record { fields, .. }) => lower_record_to_structural(
+            name,
+            fields,
+            ty_decl_id,
+            body_span,
+            symbols,
+            dag,
+        ),
+        Some(lit_expr @ SurfaceExpr::Literal { .. }) => {
+            lower_scalar_literal_for_type(lit_expr, ty_decl_id, dag)
+                .map(|bits| crate::dag::ValueBody::Scalar(crate::dag::FieldValue::Literal(bits)))
+                .or_else(|| {
+                    report_declaration_error(
+                        dag,
+                        Diagnostic::ResolveError {
+                            name: format!(
+                                "data `{name}`'s scalar body does not match declared type",
+                            ),
+                            span: body_span.clone(),
+                        },
+                    );
+                    None
+                })
+        }
+        _ => None,
+    };
     let final_body =
         value_body.unwrap_or_else(|| crate::dag::ValueBody::Unparsed(body_span.clone()));
     dag.declaration_mut(decl_id).value_body = Some(final_body);
@@ -2599,6 +2628,7 @@ fn lower_lambda_expr(
         meta_tag: None,
         inhabits: None,
         value_body: None,
+        refinement: None,
         span: span.clone(),
     });
     Ok(lambda_decl_id)
@@ -2922,6 +2952,7 @@ fn specialize_decl_for_lowering(
                 meta_tag: None,
                 inhabits: None,
                 value_body: None,
+                refinement: None,
                 span: decl.span,
             });
             id
@@ -2953,6 +2984,7 @@ fn specialize_decl_for_lowering(
                 meta_tag: None,
                 inhabits: None,
                 value_body: None,
+                refinement: None,
                 span: decl.span,
             });
             id
@@ -2984,6 +3016,7 @@ fn specialize_decl_for_lowering(
                 meta_tag: None,
                 inhabits: None,
                 value_body: None,
+                refinement: None,
                 span: decl.span,
             });
             id
@@ -3015,6 +3048,7 @@ fn specialize_decl_for_lowering(
                 meta_tag: None,
                 inhabits: None,
                 value_body: None,
+                refinement: None,
                 span: decl.span,
             });
             id
@@ -3036,6 +3070,7 @@ fn lower_field_path_expr(
     span: &SourceSpan,
     dag: &mut Dag,
     scope: &HashMap<String, PortId>,
+    symbols: &HashMap<String, DeclarationId>,
 ) -> PortId {
     let Some((head, rest)) = segments.split_first() else {
         return unresolved_port(
@@ -3046,40 +3081,129 @@ fn lower_field_path_expr(
             },
         );
     };
-    let Some(mut current_port) = scope.get(head).copied() else {
-        return unresolved_port(
-            dag,
-            Diagnostic::ResolveError {
-                name: format!(
-                    "dotted path `{}` is not a local field access; expression-position dotted paths currently require a local-variable head",
-                    segments.join("."),
-                ),
+    // Path A: head is in local variable scope (fn params, let bindings,
+    // match-arm pattern bindings). Existing type-driven walk.
+    if let Some(&port) = scope.get(head) {
+        let mut current_port = port;
+        for field_label in rest {
+            let node_id = dag.alloc_node_id();
+            let output = dag.alloc_port(Some(node_id));
+            let static_resolution = resolve_static_field_project(dag, current_port, field_label);
+            dag.push_node(Behavior::Transform(TransformNode {
+                id: node_id,
+                target: TransformTarget::FieldProject {
+                    field_label: field_label.clone(),
+                    field_child: static_resolution.map(|(field_child, _)| field_child),
+                },
+                inputs: vec![current_port],
+                output,
                 span: span.clone(),
-            },
-        );
-    };
-
-    for field_label in rest {
-        let node_id = dag.alloc_node_id();
-        let output = dag.alloc_port(Some(node_id));
-        let static_resolution = resolve_static_field_project(dag, current_port, field_label);
-        dag.push_node(Behavior::Transform(TransformNode {
-            id: node_id,
-            target: TransformTarget::FieldProject {
-                field_label: field_label.clone(),
-                field_child: static_resolution.map(|(field_child, _)| field_child),
-            },
-            inputs: vec![current_port],
-            output,
-            span: span.clone(),
-        }));
-        if let Some((_, ty)) = static_resolution {
-            dag.set_port_type(output, ty);
+            }));
+            if let Some((_, ty)) = static_resolution {
+                dag.set_port_type(output, ty);
+            }
+            current_port = output;
         }
-        current_port = output;
+        return current_port;
     }
+    // Path B: DB-10 (3a.2) — head resolves to a `data` declaration
+    // with a structural value_body. Walk the compile-time value
+    // literal rather than performing a runtime FieldProject walk.
+    // `cfg.host` where cfg: Config = { host: 1, port: 8080 } becomes
+    // a Value(Int(1)) node directly.
+    if let Some(&decl_id) = symbols.get(head) {
+        let value_body_opt = dag.declaration(decl_id).value_body.clone();
+        if let Some(value_body) = value_body_opt {
+            if let Some(port) = resolve_data_path(dag, &value_body, rest, span) {
+                return port;
+            }
+        }
+    }
+    unresolved_port(
+        dag,
+        Diagnostic::ResolveError {
+            name: format!(
+                "dotted path `{}` is not a local field access; expression-position dotted paths currently require a local-variable head or a `data` declaration with a compile-time value",
+                segments.join("."),
+            ),
+            span: span.clone(),
+        },
+    )
+}
 
-    current_port
+/// DB-10 (3a.2): walk a sequence of field segments through a data
+/// declaration's `ValueBody`, emitting a `Value` node at the terminal
+/// scalar literal. Returns `None` if the path cannot be fully
+/// resolved — caller falls back to an unresolved diagnostic.
+///
+/// Only scalar literals terminate the walk; nested `Record` payloads
+/// admit further descent but `List`, `Map`, and `Variant` terminal
+/// reads are out of scope for 3a.2 and fall through to `None`.
+fn resolve_data_path(
+    dag: &mut Dag,
+    value_body: &crate::dag::ValueBody,
+    segments: &[String],
+    span: &SourceSpan,
+) -> Option<PortId> {
+    match value_body {
+        crate::dag::ValueBody::Unparsed(_) => None,
+        crate::dag::ValueBody::Scalar(fv) => {
+            if !segments.is_empty() {
+                return None;
+            }
+            emit_field_value_as_port(dag, fv, span)
+        }
+        crate::dag::ValueBody::Structural { fields } => {
+            resolve_structural_field_path(dag, fields, segments, span)
+        }
+    }
+}
+
+fn resolve_structural_field_path(
+    dag: &mut Dag,
+    fields: &[(String, crate::dag::FieldValue)],
+    segments: &[String],
+    span: &SourceSpan,
+) -> Option<PortId> {
+    let (head, rest) = segments.split_first()?;
+    let field_value = fields
+        .iter()
+        .find(|(label, _)| label == head)
+        .map(|(_, v)| v.clone())?;
+    if rest.is_empty() {
+        return emit_field_value_as_port(dag, &field_value, span);
+    }
+    match &field_value {
+        crate::dag::FieldValue::Record(inner) => {
+            resolve_structural_field_path(dag, inner, rest, span)
+        }
+        _ => None,
+    }
+}
+
+fn emit_field_value_as_port(
+    dag: &mut Dag,
+    fv: &crate::dag::FieldValue,
+    span: &SourceSpan,
+) -> Option<PortId> {
+    match fv {
+        crate::dag::FieldValue::Literal(bits) => {
+            let node_id = dag.alloc_node_id();
+            let output = dag.alloc_port(Some(node_id));
+            dag.push_node(Behavior::Value(ValueNode {
+                id: node_id,
+                data: bits.clone(),
+                output,
+                span: span.clone(),
+            }));
+            Some(output)
+        }
+        // Reference / Record / List / Variant terminal reads require
+        // more emission machinery than DB-10 covers (acceptance is
+        // scalar-at-leaf). Leave unresolved; call site falls back to
+        // an unresolved diagnostic.
+        _ => None,
+    }
 }
 
 fn lower_payload_binding(dag: &mut Dag, binding_name: &str) -> PayloadBinding {
@@ -3129,6 +3253,32 @@ fn lower_expr(
                 if let Some(target) = resolve_expected_variant_constructor(dag, expected_decl, name)
                 {
                     return lower_constructor_invocation(dag, target, Vec::new(), span.clone());
+                }
+                // DB-10 (3a.2): if `name` resolves to a `data` decl
+                // with a scalar value_body, inline the value at this
+                // use site as a Value(LiteralBits) node. Emission then
+                // renders the target-native literal without extra
+                // wiring. Record-valued data references are currently
+                // unsupported — those sites fall through to the
+                // existing unresolved diagnostic (acceptance test
+                // `test_3a2_data_referenced_in_fn_body_compiles`
+                // uses scalar only).
+                if let Some(decl_id) = symbols.get(name) {
+                    if let Some(crate::dag::ValueBody::Scalar(
+                        crate::dag::FieldValue::Literal(bits),
+                    )) = &dag.declaration(*decl_id).value_body
+                    {
+                        let bits = bits.clone();
+                        let node_id = dag.alloc_node_id();
+                        let output = dag.alloc_port(Some(node_id));
+                        dag.push_node(Behavior::Value(ValueNode {
+                            id: node_id,
+                            data: bits,
+                            output,
+                            span: span.clone(),
+                        }));
+                        return output;
+                    }
                 }
                 let port = dag.alloc_port(None);
                 dag.mark_unresolved(
@@ -3257,6 +3407,7 @@ fn lower_expr(
                     meta_tag: None,
                     inhabits: None,
                     value_body: None,
+                    refinement: None,
                     span: span.clone(),
                 });
                 instantiation_id
@@ -3448,7 +3599,9 @@ fn lower_expr(
             symbols,
             expected_decl,
         ),
-        SurfaceExpr::Path { segments, span } => lower_field_path_expr(segments, span, dag, scope),
+        SurfaceExpr::Path { segments, span } => {
+            lower_field_path_expr(segments, span, dag, scope, symbols)
+        }
     }
 }
 
@@ -3691,6 +3844,7 @@ fn resolve_expected_variant_constructor(
                 meta_tag: None,
                 inhabits: None,
                 value_body: None,
+                refinement: None,
                 span: expected_span,
             });
             Some(instantiation_id)

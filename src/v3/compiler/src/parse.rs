@@ -186,6 +186,12 @@ pub enum SurfaceItem {
 pub struct SurfaceParam {
     pub name: String,
     pub ty: SurfaceType,
+    /// DB-11 (3a.3): optional `where <expr>` refinement predicate on
+    /// the parameter. `None` for bare `x: Int`; `Some(expr)` for
+    /// `x: Int where x > 0`. Lowered to a predicate `Declaration`
+    /// whose resolved expression DAG becomes
+    /// `Declaration.refinement` on a cloned type declaration.
+    pub refinement: Option<SurfaceExpr>,
 }
 
 #[derive(Debug, Clone)]
@@ -674,6 +680,27 @@ impl<'a> Parser<'a> {
         self.expect_kind(TokenKind::Colon)?;
         let ty = self.parse_type_expr()?;
         self.expect_kind(TokenKind::Eq)?;
+        // DB-10 (3a.2): `data x: T = <expr>` accepts three body shapes:
+        //   1. Record literal (`{ name: v, ... }`) — lowered to
+        //      ValueBody::Structural via inhabitance checking.
+        //   2. Opaque brace body (`{ ... }` without record-literal
+        //      shape) — preserved as ValueBody::Unparsed.
+        //   3. Scalar expression (no leading `{`) — lowered to
+        //      ValueBody::Scalar. Required for scalar constants
+        //      like `data answer: Int = 42` that `compiler.dag` uses.
+        if !matches!(self.peek().kind, TokenKind::LBrace) {
+            let body_expr = self.parse_expr()?;
+            let body_span_ref = expr_span(&body_expr);
+            let body_start = body_span_ref.byte_start;
+            let body_end = body_span_ref.byte_end;
+            return Ok(SurfaceItem::Data {
+                name,
+                ty,
+                body: Some(body_expr),
+                body_span: SourceSpan::new(self.file, body_start, body_end),
+                span: SourceSpan::new(self.file, kw.span.byte_start, body_end),
+            });
+        }
         // Peek three tokens for the record-literal lookahead.
         let open_span = self.peek().span.clone();
         let is_record_literal = self.looks_like_record_literal();
@@ -1118,7 +1145,21 @@ impl<'a> Parser<'a> {
             let name = self.parse_ident()?;
             self.expect_kind(TokenKind::Colon)?;
             let ty = self.parse_type_expr()?;
-            params.push(SurfaceParam { name, ty });
+            // DB-11 (3a.3): optional refinement predicate after the
+            // parameter's type. Parsed as an ordinary expression in
+            // the parameter's scope; lowering resolves operators
+            // against the parameter's type algebra.
+            let refinement = if matches!(self.peek().kind, TokenKind::KwWhere) {
+                self.bump();
+                Some(self.parse_expr()?)
+            } else {
+                None
+            };
+            params.push(SurfaceParam {
+                name,
+                ty,
+                refinement,
+            });
             if matches!(self.peek().kind, TokenKind::Comma) {
                 self.bump();
                 continue;

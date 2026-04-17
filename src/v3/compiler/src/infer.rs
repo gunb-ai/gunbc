@@ -222,6 +222,7 @@ fn ensure_optional_match_disj(
         meta_tag: None,
         inhabits: None,
         value_body: None,
+        refinement: None,
         span: span.clone(),
     });
 
@@ -236,6 +237,7 @@ fn ensure_optional_match_disj(
         meta_tag: None,
         inhabits: None,
         value_body: None,
+        refinement: None,
         span: span.clone(),
     });
 
@@ -259,6 +261,7 @@ fn ensure_optional_match_disj(
         meta_tag: None,
         inhabits: None,
         value_body: None,
+        refinement: None,
         span,
     });
     dag.set_optional_match_disj(cardinality_decl_id, disj_id);
@@ -1937,6 +1940,7 @@ fn resolve_callable_targets(dag: &mut Dag) -> bool {
                 meta_tag: None,
                 inhabits: None,
                 value_body: None,
+                refinement: None,
                 span: synthetic_span(),
             });
             instantiation_id
@@ -2419,6 +2423,7 @@ fn materialize_specialized_payload_record(
         meta_tag: None,
         inhabits: None,
         value_body: None,
+        refinement: None,
         span: variant_decl.span,
     });
     TypeShape::new(id)
@@ -2467,6 +2472,7 @@ fn concretize_decl_with_subst(
                 meta_tag: None,
                 inhabits: None,
                 value_body: None,
+                refinement: None,
                 span: decl.span,
             });
             id
@@ -2490,6 +2496,7 @@ fn concretize_decl_with_subst(
                 meta_tag: None,
                 inhabits: None,
                 value_body: None,
+                refinement: None,
                 span: decl.span,
             });
             id

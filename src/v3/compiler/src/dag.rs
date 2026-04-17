@@ -120,6 +120,14 @@ pub struct Declaration {
     pub meta_tag: Option<DeclarationId>,
     pub inhabits: Option<DeclarationId>,
     pub value_body: Option<ValueBody>,
+    /// DB-11 (3a.3): optional refinement predicate. `None` for
+    /// ordinary declarations; `Some(pred_id)` for refined parameter
+    /// types where `pred_id` points at a predicate-expression
+    /// declaration whose connective resolves to a `Bool` expression
+    /// DAG over the parameter name. Two refinements are structurally
+    /// equal iff their predicate expression DAGs walk equal; no
+    /// interning, no SMT entailment.
+    pub refinement: Option<DeclarationId>,
     pub span: SourceSpan,
 }
 
@@ -182,6 +190,13 @@ pub enum ValueBody {
     /// recursively structural `FieldValue`; the label matches a
     /// field on the type's Conj children.
     Structural { fields: Vec<(String, FieldValue)> },
+    /// Scalar-valued data declaration: `data answer: Int = 42`.
+    /// The body parsed as a single scalar expression (Literal) and
+    /// lowered to a `FieldValue::Literal(LiteralBits)`. DB-10
+    /// (Lane 3 Stage 3a.2) — `compiler.dag` needs compile-time
+    /// scalar constants; previously the parser rejected non-
+    /// `{`-shaped RHS, so scalar `data` declarations could not exist.
+    Scalar(FieldValue),
 }
 
 /// Per-field value payload inside a `ValueBody::Structural`.
@@ -1386,6 +1401,15 @@ impl Dag {
                     std::cmp::Reverse(decl.id.raw()),
                 )
             })
+    }
+
+    /// DB-10 (3a.2): read the compile-time value body attached to a
+    /// `data` declaration. Returns `None` for type aliases and for
+    /// `data` declarations whose body could not be lowered (e.g.
+    /// `ValueBody::Unparsed` scaffolds). Used by emission and by
+    /// dotted-path lowering to inline `data` values at use sites.
+    pub fn data_value_at(&self, id: DeclarationId) -> Option<&ValueBody> {
+        self.declaration(id).value_body.as_ref()
     }
 
     pub fn port(&self, id: PortId) -> &Port {
