@@ -168,7 +168,7 @@ When a reviewer points at a rejected shape in a lane/master doc, the fix is to d
 | `RestTransport`, `ShellTransport`, `GrpcTransport`, `TransportKind` (as closed compiler coproduct) | [DB-6](./design-transport-taxonomy.md) | `TransportDeclaration { spec_ref, fields }` |
 | `target_language: TargetLanguageId?` on `Correction` | [DB-1](./design-correction-shape.md) | Future `TargetCorrection` carrier (out of scope for DB-1) |
 | `struct_fields: StructFieldRule` / `AllowAttributeOnStructDecl` on `CleanEmissionContract` | [DB-4](./design-clean-emission-contract.md) | Visibility/publicity concern, outside E-5 |
-| `MutualLoop` 6th `Behavior` variant | [DB-9](./design-mutual-recursion-lowering.md) | SCC fact at lens level; substrate stays at 5 behaviors |
+| `MutualLoop` 6th `Behavior` variant | [DB-9 R2](./design-mutual-recursion-lowering.md) | Lowering produces `Behavior::Loop` with `LoopBound::Descent { cluster }`; cluster materializes in `Dag.clusters` sidecar; five `Behavior` variants unchanged. (R1's lens-level approach also rejected — conflicted with INVARIANTS:555.) |
 | `#[deprecated]` shims for `emit_rust`/`emit_go`/`emit_python` | [DB-2](./design-generic-walker-api.md) | Atomic caller flip; delete old entrypoints in the same PR |
 | New `Map<K, V>` declaration in v3 std (parallel to `dsl/std/types.dag`) | [DB-5](./design-substrate-keyed-lookup-api.md) | Port existing `Map<K, V> = PartialFunction<K, V>` binding |
 
