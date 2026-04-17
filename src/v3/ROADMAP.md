@@ -497,6 +497,39 @@ Implementation scope (M, once design locks): extend `TestClaim` with `requires: 
 
 **Deferral: self-compile perf ratchet investigation (M, not on any critical path but compounding).** Self-compile time drifted from ~60s to ~70s in recent cycles (~16% growth). The ratchet keeps getting bumped without a root-cause investigation; each bump normalizes the regression. Scope: (1) profile a single `cargo test -p v3-compiler-tests` run, identify the top hot paths; (2) measure where the 10s came from across recent PRs (bisect across #479, #489, #490 if signal is unclear); (3) either fix the regression or document it as an accepted cost with a new ratchet ceiling. **Yellow-flag threshold: 90s.** If self-compile exceeds that before this deferral is scheduled, it preempts other work. No design doc needed; profiling is a data-gathering exercise.
 
+### Cross-cutting — workflow scripts modeled in .dag
+
+**Deferral: model the commit pipeline in .dag (XL, thesis-coherence, ACTIVE).** This is active now, not "awaiting a second instance." Four hand-written workflow scripts already exist — `.githooks/pre-push` (PRs #503 + #509), `scripts/install-hooks.sh`, `scripts/check-stage0-freshness.sh`, `scripts/regenerate-stage0.sh` — and THESIS.md's meta-process claim already says bootstrap, CI, and dev-workflow should be modeled as `.dag` programs. The tolerated-until-second-instance framing in an earlier draft understated this.
+
+**Pre-push hook as a working example, not a load-bearing contract.** The hand-written hook at PR #509 HEAD fmt-checks, optionally fmt-fixes + auto-commits, and signals the push outcome. A `.dag`-modeled version would inherit the same behavior and add the stdin/delete/HEAD-in-push handling as declared structure — but that full contract belongs in the `.dag` design work, not in the ROADMAP entry as if it were the existing hook's shape.
+
+**Shape A vs Shape B — Shape B.** Per ROADMAP Track 16 (`ROADMAP.md:920-935`), the compiler emits real programming languages (Rust, Go, Python) as Shape A; non-program artifacts (YAML, shell scripts) are Shape B — produced by `.dag` programs via `concat`/`fold`/`match` over structured values. The pre-push hook is Shape B. A `.dag` program walks a `ShellScript` or `HookDefinition` value, constructs the script text, and writes it via `shell.Exec.Run` (or analogous). No compiler-target surface growth; same pattern as `tools/ratchet.dag`'s grep-command generation and Track 16's CI YAML.
+
+**Existing substrate consumed:**
+- `dsl/extdeps/git.dag` — `service git.Core` declares `CurrentBranch`, `RemoteBranches`, `LsFiles`, `Diff`, `RevList`, `Show`. Needs extensions for `Commit`/`Push`/`Add`/`StatusClean` (if absent) plus stdin-as-input for pre-push's ref list.
+- `dsl/extdeps/cargo.dag` — `service cargo.Build` has `Build`/`Test`/`Clippy`/`Doc`/`Run`. **Missing `Fmt` operation (check + apply).** Small S extension.
+- `dsl/extdeps/shell.dag` — `Find`, `Env`, `Which`, `Exec` — adequate for shell primitives the hook needs.
+- `dsl/extdeps/github/` — GitHub-specific (not on critical path for pre-push).
+
+**Separable prerequisite deferrals:**
+- **`cargo.dag` Fmt operations (S).** Add `operation FmtCheck` / `operation FmtApply` to `service cargo.Build`. Mechanical.
+- **Track 15 tool resolution (prerequisite, already tracked as M5 Phase 2 / Track 15).** Every shell-out to `cargo`, `git`, etc. today uses bare command names that depend on PATH. Track 15 exists specifically to replace PATH-based resolution with explicit `Tool { path, version, ... }` lookups; `shell.Which.Check` already exists with zero consumers. The pre-push-hook-in-.dag work must use Track 15's resolution model — not add new bare-command-name call sites. Without this, the emitted hook preserves the hidden-PATH-dependency debt the roadmap already flagged.
+- **Shape B emission pattern, no new compiler target.** Per Track 16: `.dag` programs build shell scripts via data manipulation; interpreter runs the program; program writes the file. No substrate amendment, no DB for "shell emission target" — that was a misread of my earlier draft.
+- **Hook invocation contract as structural declaration.** The pre-push contract (stdin format, exit codes, the four decision cases) needs a structural shape — probably a small type like `type PrePushHook { read_stdin: ..., decide: ..., emit_result: ... }` authored in a shared location that future hook generators consume. Design work, but lives in a `.dag` program, not a compiler feature. Sizeable because the shape has to generalize across hook kinds (pre-push, pre-commit, post-receive, etc.) or explicitly say it's pre-push-only and future hooks get their own types.
+- **Test coverage via DB-15 R2.** `MockBackedInvariant` predicates test the compiled hook against: delete push, HEAD push with drift, cross-branch push, clean push. Validates the Shape B emission pipeline end-to-end.
+
+**Dissolution sequence:**
+1. Track 15 tool resolution wired (if not already; see Track 15 entry for current state).
+2. `cargo.dag` Fmt operations land (S, mechanical).
+3. `scripts/pre-push-hook.dag` declares the workflow as a Shape B program — walks a `PrePushHook` value, builds the script via `concat`/`fold`/`match`, writes via `shell.Exec.Run`.
+4. Build invokes the `.dag` program to produce `.githooks/pre-push` (or install-hooks.sh does).
+5. Hand-written `.githooks/pre-push` (PRs #503 + #509) goes in §Scheduled deletions with trigger "emitted pre-push hook replaces it."
+6. DB-15 R2 test suite verifies behavior across the four scenarios.
+
+**Scope for the other three hand-written scripts.** `install-hooks.sh`, `check-stage0-freshness.sh`, `regenerate-stage0.sh` follow the same pattern — Shape B `.dag` programs emitting shell text. Each gets its own dissolution PR once the pre-push case proves the pattern.
+
+**No design doc committed yet.** This deferral tracks the structural ordering (Track 15 → cargo.Fmt → pre-push-hook.dag → dissolve hand-written). Formal DB lands when someone starts the `pre-push-hook.dag` work and needs to pin down the `PrePushHook` type shape.
+
 ### How the active-deferrals discipline works
 
 1. A PR that defers scope opens or appends an entry in this section with:
