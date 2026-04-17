@@ -29,7 +29,7 @@ use crate::dag::{
     PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
-use crate::operators::OperatorKind;
+use crate::operators::{LogicalOp, OperatorKind};
 use crate::types::TypeShape;
 
 pub fn infer(dag: &mut Dag) {
@@ -995,22 +995,20 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
 
 /// DB-11 (3a.3) call-site refinement discharge. Returns `None` when
 /// the expected parameter has no refinement (unconditionally OK), or
-/// when any refinement in the actual argument's `ResolvedIdentifier`
-/// alias chain walks structurally equal to the expected predicate.
-/// Returns a `Diagnostic` otherwise. Pure structural walk — no
-/// interning, no SMT, no entailment.
+/// when the actual argument's top-level refinement discharges the
+/// expected predicate. Returns a `Diagnostic` otherwise. Pure
+/// structural walk — no SMT, no entailment beyond conjunction-member
+/// matching against the canonical composite form.
 ///
-/// The alias walk is load-bearing for narrowed refined parameters.
-/// Narrowing (`narrow_scope_for_predicate`) creates a declaration that
-/// carries the narrow predicate as its `refinement` and aliases the
-/// outer refined decl via `Atom(ResolvedIdentifier(outer))`. The outer
-/// decl still carries its own refinement. The effective refinement of
-/// the narrowed port is the conjunction of the chain — so discharge
-/// succeeds if ANY level in the chain satisfies the callee's predicate.
-/// Without the chain walk, a caller like `caller(x: Int where x > 0)`
-/// narrowed with `x > 10` would be rejected when forwarded to a callee
-/// expecting `x > 0`, because the innermost refinement is `x > 10` not
-/// `x > 0` — even though `x > 0` is structurally carried on the alias.
+/// Composite-canonical invariant (post-narrowing refactor): every
+/// refinement in the DAG is a single predicate Declaration. Narrowing
+/// produces a composite `outer_body && new_body` rather than an alias
+/// chain of unary refinements, so discharge only has to look at the
+/// top-level refinement on `actual.declaration` — no chain walk. The
+/// composite-vs-single asymmetry is handled by
+/// `predicate_discharges`, which accepts either a full structural
+/// match against the expected predicate or a match against a
+/// conjunct of `actual`'s composite body.
 fn check_refinement_discharge(
     dag: &Dag,
     actual: &TypeShape,
@@ -1019,68 +1017,129 @@ fn check_refinement_discharge(
     span: &SourceSpan,
 ) -> Option<Diagnostic> {
     let expected_pred = dag.declaration(expected.declaration).refinement?;
-    let mut current = actual.declaration;
-    let mut any_refined = false;
-    for _ in 0..WALK_DEPTH_LIMIT {
-        let decl = dag.declaration(current);
-        if let Some(actual_pred) = decl.refinement {
-            any_refined = true;
-            if predicates_structurally_equal(dag, actual_pred, expected_pred, 0) {
-                return None;
-            }
-        }
-        match &decl.connective {
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
-                current = *next;
-            }
-            _ => break,
+    let actual_pred = dag.declaration(actual.declaration).refinement;
+    match actual_pred {
+        Some(actual_pred) if predicate_discharges(dag, actual_pred, expected_pred, 0) => None,
+        _ => {
+            let callee = transform_target_display_name(dag, target);
+            let name = if actual_pred.is_some() {
+                format!(
+                    "argument to `{callee}` does not satisfy the expected \
+                     `where` refinement (caller's predicate does not walk \
+                     structurally equal to the callee's, and no conjunct \
+                     of the caller's composite matches)"
+                )
+            } else {
+                format!(
+                    "argument to `{callee}` does not satisfy the expected \
+                     `where` refinement — no narrowing branch in scope"
+                )
+            };
+            Some(Diagnostic::ResolveError {
+                name,
+                span: span.clone(),
+            })
         }
     }
-    let callee = transform_target_display_name(dag, target);
-    let name = if any_refined {
-        format!(
-            "argument to `{callee}` does not satisfy the expected \
-             `where` refinement (no refinement in the caller's alias \
-             chain walks structurally equal to the callee's)"
-        )
-    } else {
-        format!(
-            "argument to `{callee}` does not satisfy the expected \
-             `where` refinement — no narrowing branch in scope"
-        )
-    };
-    Some(Diagnostic::ResolveError {
-        name,
-        span: span.clone(),
-    })
 }
 
-/// Structural walk over two predicate `Declaration`s. Both should be
-/// `Arrow { inputs, output, body: UserDefined(bind_id) }` where the
-/// `Bind`'s `params[0]` is the predicate's "refined parameter" slot
-/// and `value` is the predicate's Bool-typed output port. Walks
-/// node-by-node; references to each side's `params[0]` are the pairing
-/// point for the parameter slot.
-fn predicates_structurally_equal(
+/// Structural discharge check between an actual and expected
+/// predicate declaration. Succeeds when:
+///
+/// - The two predicates are the same declaration id; OR
+/// - The actual predicate's body walks structurally equal to the
+///   expected predicate's body (param-paired); OR
+/// - The actual predicate's body is a `Transform(Logical(And), [a, b])`
+///   and either `a` or `b` (as a virtual sub-predicate sharing the
+///   actual's `Bind.params[0]`) discharges the expected predicate.
+///
+/// The composite conjunct case is the load-bearing piece that lets
+/// the post-narrowing composite `outer_body && new_body` match a
+/// callee whose refinement is just `outer_body`. Pure structural,
+/// depth-bounded.
+fn predicate_discharges(
     dag: &Dag,
-    lhs_pred_decl: DeclarationId,
-    rhs_pred_decl: DeclarationId,
+    actual_pred_decl: DeclarationId,
+    expected_pred_decl: DeclarationId,
     depth: usize,
 ) -> bool {
     if depth >= WALK_DEPTH_LIMIT {
         return false;
     }
-    if lhs_pred_decl == rhs_pred_decl {
+    if actual_pred_decl == expected_pred_decl {
         return true;
     }
-    let lhs = predicate_info(dag, lhs_pred_decl);
-    let rhs = predicate_info(dag, rhs_pred_decl);
-    match (lhs, rhs) {
-        (Some((lhs_param, lhs_root)), Some((rhs_param, rhs_root))) => {
-            refinement_ports_equal(dag, lhs_root, rhs_root, lhs_param, rhs_param, 0)
-        }
-        _ => false,
+    let Some((actual_param, actual_body)) = predicate_info(dag, actual_pred_decl) else {
+        return false;
+    };
+    let Some((expected_param, expected_body)) = predicate_info(dag, expected_pred_decl) else {
+        return false;
+    };
+    body_discharges(
+        dag,
+        actual_body,
+        expected_body,
+        actual_param,
+        expected_param,
+        0,
+    )
+}
+
+/// Walk the actual predicate's body looking for a conjunct that
+/// matches the expected body (param-paired). Accepts full structural
+/// equality OR recursion into either operand of a
+/// `Transform(Logical(And), [lhs, rhs])`.
+fn body_discharges(
+    dag: &Dag,
+    actual_body: PortId,
+    expected_body: PortId,
+    actual_param: PortId,
+    expected_param: PortId,
+    depth: usize,
+) -> bool {
+    if depth >= WALK_DEPTH_LIMIT {
+        return false;
     }
+    if refinement_ports_equal(
+        dag,
+        actual_body,
+        expected_body,
+        actual_param,
+        expected_param,
+        0,
+    ) {
+        return true;
+    }
+    // Composite conjunct case: if the actual body root is
+    // `Logical(And)`, the composite is provable iff EITHER of its
+    // conjuncts discharges the expected predicate (virtual
+    // sub-predicate sharing the actual's param slot).
+    if let Some(node_id) = dag.port(actual_body).produced_by {
+        if let Behavior::Transform(t) = dag.node(node_id) {
+            if matches!(
+                &t.target,
+                TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And))
+            ) && t.inputs.len() == 2
+            {
+                return body_discharges(
+                    dag,
+                    t.inputs[0],
+                    expected_body,
+                    actual_param,
+                    expected_param,
+                    depth + 1,
+                ) || body_discharges(
+                    dag,
+                    t.inputs[1],
+                    expected_body,
+                    actual_param,
+                    expected_param,
+                    depth + 1,
+                );
+            }
+        }
+    }
+    false
 }
 
 fn predicate_info(dag: &Dag, pred_decl: DeclarationId) -> Option<(PortId, PortId)> {

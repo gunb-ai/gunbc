@@ -30,7 +30,7 @@ use crate::dag::{
     PortId, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
-use crate::operators::{ArithmeticOp, OperatorKind};
+use crate::operators::{ArithmeticOp, LogicalOp, OperatorKind};
 use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceModule, SurfaceParam,
     SurfacePattern, SurfaceType, SurfaceVariant, VariantPayload,
@@ -400,15 +400,25 @@ fn narrow_scope_for_predicate(
         crate::dag::PortState::Resolved(ty) => *ty,
         _ => return None,
     };
-    let base_decl = outer_shape.declaration;
-    let refined_decl = lower_parameter_refinement(
-        base_decl,
+    // DB-11 (3a.3) composite-canonical narrowing. Walk past any
+    // existing refinement to the TRUE BASE; the new refined
+    // declaration aliases that base directly, not the outer refined
+    // declaration. No alias chain survives. If the outer port already
+    // carried a refinement, its predicate body is cloned into the new
+    // composite Bind with the refined-parameter slot re-pointed at the
+    // composite's fresh param, then `&&`-joined with the freshly
+    // lowered cond — the result is one composite predicate Declaration,
+    // structurally identical to what a user-written
+    // `where outer_pred && new_cond` would produce.
+    let (true_base_decl, outer_pred_decl) = walk_to_refinement_base(dag, outer_shape.declaration);
+    let refined_decl = build_narrowed_refinement(
+        dag,
+        symbols,
+        true_base_decl,
+        outer_pred_decl,
         cond,
         &narrow_name,
-        symbols,
-        dag,
-        expr_span(cond).clone(),
-    );
+    )?;
     let narrow_port = dag.alloc_port(None);
     match declaration_to_port_shape(refined_decl, dag, expr_span(cond)) {
         Ok(shape) => dag.set_port_type(narrow_port, shape),
@@ -417,6 +427,267 @@ fn narrow_scope_for_predicate(
     let mut narrowed = scope.clone();
     narrowed.insert(narrow_name, narrow_port);
     Some(narrowed)
+}
+
+/// Walk the `Atom(ResolvedIdentifier(...))` chain from a parameter's
+/// declaration, skipping past any refinement-carrier declarations to
+/// reach the true base declaration. Returns `(base_decl, deepest_refinement)`
+/// where `deepest_refinement` is the top-level refinement that was on
+/// the input declaration (if any) — the outer predicate that the
+/// caller wants to compose with a new narrowing predicate.
+///
+/// For a freshly seeded `Int where d != 0` parameter, returns
+/// `(Int_decl, Some(d_ne_0_pred_decl))`. For an unrefined `Int`
+/// parameter, returns `(Int_decl, None)`. The loop is depth-bounded
+/// so pathological cyclic aliases can't hang lowering.
+fn walk_to_refinement_base(
+    dag: &Dag,
+    decl_id: DeclarationId,
+) -> (DeclarationId, Option<DeclarationId>) {
+    const DEPTH_LIMIT: usize = 32;
+    let top_refinement = dag.declaration(decl_id).refinement;
+    let mut current = decl_id;
+    for _ in 0..DEPTH_LIMIT {
+        let decl = dag.declaration(current);
+        if decl.refinement.is_none() {
+            return (current, top_refinement);
+        }
+        match &decl.connective {
+            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                current = *next;
+            }
+            _ => return (current, top_refinement),
+        }
+    }
+    (current, top_refinement)
+}
+
+/// Build a refined parameter declaration for a narrowed scope. The
+/// returned declaration aliases `true_base_decl` directly (no alias
+/// chain) and carries a single composite predicate:
+///
+/// - If `outer_pred_decl` is `None`, the predicate is the freshly
+///   lowered `new_cond` — identical shape to what a bare
+///   `where new_cond` parameter clause would produce.
+/// - If `outer_pred_decl` is `Some`, the predicate body is
+///   `outer_body && new_body`, where `outer_body` is cloned from
+///   the outer predicate's `Bind` with its param slot re-pointed at
+///   the fresh composite param. Structurally identical to
+///   `where outer_pred_source && new_cond_source` if the user had
+///   written it that way.
+fn build_narrowed_refinement(
+    dag: &mut Dag,
+    symbols: &HashMap<String, DeclarationId>,
+    true_base_decl: DeclarationId,
+    outer_pred_decl: Option<DeclarationId>,
+    new_cond: &SurfaceExpr,
+    narrow_name: &str,
+) -> Option<DeclarationId> {
+    let Some(outer_pred_decl) = outer_pred_decl else {
+        // No existing refinement — the fresh predicate IS the
+        // refinement. Same shape as a seeded `where` clause.
+        return Some(lower_parameter_refinement(
+            true_base_decl,
+            new_cond,
+            narrow_name,
+            symbols,
+            dag,
+            expr_span(new_cond).clone(),
+        ));
+    };
+
+    let pred_span = expr_span(new_cond).clone();
+    // Allocate a fresh composite parameter port typed as the true
+    // base — the composite predicate's sole parameter slot.
+    let composite_param_port = dag.alloc_port(None);
+    match declaration_to_port_shape(true_base_decl, dag, &pred_span) {
+        Ok(shape) => dag.set_port_type(composite_param_port, shape),
+        Err(diag) => dag.mark_unresolved(composite_param_port, diag),
+    }
+
+    // Clone the outer predicate's body into the composite's scope,
+    // substituting outer's Bind.params[0] → composite_param_port.
+    let (outer_param_port, outer_value_port) = outer_predicate_slots(dag, outer_pred_decl)?;
+    let outer_cloned_value = clone_predicate_body(
+        dag,
+        outer_value_port,
+        outer_param_port,
+        composite_param_port,
+        0,
+    )?;
+
+    // Lower the new cond in a scope where narrow_name resolves to
+    // composite_param_port.
+    let mut pred_scope: HashMap<String, PortId> = HashMap::new();
+    pred_scope.insert(narrow_name.to_string(), composite_param_port);
+    let pred_callable_scope: CallableScope = CallableScope::new();
+    let bool_decl_id = symbols
+        .get("Bool")
+        .copied()
+        .unwrap_or_else(|| alloc_identifier_stub(dag, "Bool", &pred_span));
+    let new_value_port = lower_expr(
+        new_cond,
+        dag,
+        &pred_scope,
+        &pred_callable_scope,
+        symbols,
+        Some(bool_decl_id),
+    );
+
+    // `outer_cloned && new` — single Transform(Logical(And)). The
+    // output port inherits Bool shape via `resolve_operator_arrow`
+    // during inference.
+    let and_node_id = dag.alloc_node_id();
+    let and_output = dag.alloc_port(Some(and_node_id));
+    dag.push_node(Behavior::Transform(TransformNode {
+        id: and_node_id,
+        target: TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+        inputs: vec![outer_cloned_value, new_value_port],
+        output: and_output,
+        span: pred_span.clone(),
+    }));
+
+    // Wrap in the composite Bind; single params slot, composite body.
+    let bind_id = dag.alloc_node_id();
+    dag.push_node(Behavior::Bind(BindNode {
+        id: bind_id,
+        name: format!("<refinement:{narrow_name}>"),
+        value: and_output,
+        params: vec![composite_param_port],
+        span: pred_span.clone(),
+    }));
+
+    // Predicate declaration with Arrow body, same shape as
+    // `lower_parameter_refinement` produces — so discharge logic
+    // does not need a special case.
+    let pred_decl_id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id: pred_decl_id,
+        name: None,
+        connective: TypeConnective::Arrow {
+            inputs: vec![true_base_decl],
+            output: bool_decl_id,
+            body: ArrowBody::UserDefined(bind_id),
+        },
+        type_params: Vec::new(),
+        meta_tag: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        span: pred_span.clone(),
+    });
+
+    // Refined type declaration aliasing the TRUE BASE (not the
+    // outer refined decl) — no alias chain.
+    let refined_id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id: refined_id,
+        name: None,
+        connective: TypeConnective::Atom(AtomPayload::ResolvedIdentifier(true_base_decl)),
+        type_params: Vec::new(),
+        meta_tag: None,
+        inhabits: None,
+        value_body: None,
+        refinement: Some(pred_decl_id),
+        span: pred_span,
+    });
+    Some(refined_id)
+}
+
+/// Read a predicate declaration's Bind slots: the sole parameter
+/// port (`Bind.params[0]`) and the body value port (`Bind.value`).
+/// Returns `None` if the predicate declaration isn't the expected
+/// `Arrow { body: UserDefined(bind) }` shape with a single param
+/// slot — in which case composite narrowing falls back to treating
+/// the outer refinement as absent (safe degradation).
+fn outer_predicate_slots(dag: &Dag, pred_decl: DeclarationId) -> Option<(PortId, PortId)> {
+    let TypeConnective::Arrow {
+        body: ArrowBody::UserDefined(bind_id),
+        ..
+    } = &dag.declaration(pred_decl).connective
+    else {
+        return None;
+    };
+    let Behavior::Bind(bind) = dag.node(*bind_id) else {
+        return None;
+    };
+    let param = *bind.params.first()?;
+    Some((param, bind.value))
+}
+
+/// Clone a predicate body sub-DAG, rewriting every reference to
+/// `substitute_from` into `substitute_to`. Fresh node ids + port ids
+/// are allocated for each cloned node so the result is structurally
+/// independent from the source — two composite Binds in the same
+/// DAG do not share intermediate ports.
+///
+/// Walks only `Value` and `Transform` nodes, matching the predicate
+/// fragment that `predicates_structurally_equal` already accepts.
+/// `Branch` / `Loop` / `Bind` in a predicate body are out of scope
+/// for DB-11 3a.3 (tracked ROADMAP debt) — clone returns `None` and
+/// narrowing falls back cleanly.
+fn clone_predicate_body(
+    dag: &mut Dag,
+    source_port: PortId,
+    substitute_from: PortId,
+    substitute_to: PortId,
+    depth: usize,
+) -> Option<PortId> {
+    const DEPTH_LIMIT: usize = 64;
+    if depth >= DEPTH_LIMIT {
+        return None;
+    }
+    if source_port == substitute_from {
+        return Some(substitute_to);
+    }
+    let Some(node_id) = dag.port(source_port).produced_by else {
+        // No producer — external port (e.g. another function's
+        // param). Reuse directly; no rewrite needed.
+        return Some(source_port);
+    };
+    let cloned = match dag.node(node_id).clone() {
+        Behavior::Value(v) => {
+            let new_node_id = dag.alloc_node_id();
+            let new_output = dag.alloc_port(Some(new_node_id));
+            dag.push_node(Behavior::Value(ValueNode {
+                id: new_node_id,
+                data: v.data,
+                output: new_output,
+                span: v.span,
+            }));
+            new_output
+        }
+        Behavior::Transform(t) => {
+            let mut new_inputs = Vec::with_capacity(t.inputs.len());
+            for input_port in &t.inputs {
+                new_inputs.push(clone_predicate_body(
+                    dag,
+                    *input_port,
+                    substitute_from,
+                    substitute_to,
+                    depth + 1,
+                )?);
+            }
+            let new_node_id = dag.alloc_node_id();
+            let new_output = dag.alloc_port(Some(new_node_id));
+            dag.push_node(Behavior::Transform(TransformNode {
+                id: new_node_id,
+                target: t.target,
+                inputs: new_inputs,
+                output: new_output,
+                span: t.span,
+            }));
+            new_output
+        }
+        Behavior::Branch(_) | Behavior::Loop(_) | Behavior::Bind(_) => {
+            // Out-of-fragment predicate shapes — tracked as DB-11
+            // 3a.3 ROADMAP debt (admitted surface > supported
+            // fragment). Fail-closed at narrowing time rather than
+            // producing a malformed composite.
+            return None;
+        }
+    };
+    Some(cloned)
 }
 
 /// Return the name of the single scope-bound `Var` referenced in a
@@ -818,15 +1089,12 @@ fn lower_item(
             );
             scope
         }
-        SurfaceItem::FnExternalBody {
-            name,
-            params,
-            return_type,
-            body_span,
-            span: _,
-            ..
-        } => {
-            lower_fn_item_unparsed(name, params, return_type, body_span, dag, symbols);
+        SurfaceItem::FnExternalBody { .. } => {
+            // DB-11 (3a.3): signature was fully built by
+            // `seed_function_signatures_phase` with
+            // `ArrowBody::Unparsed(body_span)`. Nothing remains to do
+            // at body-lowering time — the declaration is already in
+            // its final form.
             scope
         }
         SurfaceItem::Data {
@@ -1441,53 +1709,19 @@ fn template_param_id(dag: &Dag, template: DeclarationId, idx: usize) -> Option<D
     dag.declaration(template).type_params.get(idx).copied()
 }
 
-/// Lower a `SurfaceItem::FnExternalBody` — a block-bodied fn whose
-/// body is not expressible in the M1(2.7) surface grammar. The
-/// declaration's connective becomes an `Arrow` carrying
-/// `ArrowBody::Unparsed(body_span)`. Inputs and output flow through
-/// `type_to_declaration_id` so the signature matches what a fully
-/// lowered `Fn` would produce.
-///
-/// **Scaffold honesty** (QW1): the fact "this name declares a fn
-/// with this signature" flows forward through the declaration
-/// table. Callers that reference the name resolve it correctly
-/// against the Arrow signature at M1(2.7). The body is preserved
-/// by `SourceSpan` for M2+ parser extensions to complete the
-/// lowering.
-fn lower_fn_item_unparsed(
-    name: &str,
-    params: &[SurfaceParam],
-    return_type: &SurfaceType,
-    body_span: &SourceSpan,
-    dag: &mut Dag,
-    symbols: &HashMap<String, DeclarationId>,
-) {
-    let fn_decl_id = symbols[name];
-    let local = local_scope_from_parent(dag, fn_decl_id);
-    let param_decl_inputs: Vec<DeclarationId> = params
-        .iter()
-        .map(|p| {
-            let base = type_to_declaration_id(&p.ty, symbols, &local, dag);
-            match &p.refinement {
-                Some(predicate) => lower_parameter_refinement(
-                    base,
-                    predicate,
-                    &p.name,
-                    symbols,
-                    dag,
-                    p.ty.span().clone(),
-                ),
-                None => base,
-            }
-        })
-        .collect();
-    let return_decl_id = type_to_declaration_id(return_type, symbols, &local, dag);
-    dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
-        inputs: param_decl_inputs,
-        output: return_decl_id,
-        body: ArrowBody::Unparsed(body_span.clone()),
-    };
-}
+// DB-11 (3a.3) single-construction-authority cleanup:
+// `lower_fn_item_unparsed` used to run a full parameter-decl walk
+// and an Arrow overwrite here — duplicating the work that
+// `seed_function_signatures_phase` already did for every
+// `SurfaceItem::FnExternalBody`. When a parameter carried a `where`
+// refinement, the duplication pushed a second predicate Bind and a
+// second refined Declaration into the DAG and then overwrote the
+// Arrow's `inputs` to point at the duplicates, leaving the seeded
+// predicate Bind and refined Declaration orphaned. Seeding already
+// produces the final Arrow shape (`ArrowBody::Unparsed(body_span)`),
+// so the function was redundant and is now deleted; the caller in
+// the `SurfaceItem::FnExternalBody` arm has been simplified to a
+// no-op since the signature flows directly from seeding.
 
 /// Lower a `SurfaceItem::Data` — a typed constant whose body is not
 /// yet parseable as a `SurfaceExpr`. The declaration carries two
@@ -2486,42 +2720,54 @@ fn lower_fn_item_expr_body(
 ) -> HashMap<String, PortId> {
     let fn_decl_id = symbols[name];
 
-    // 1. Allocate parameter ports and set declared port types. Unknown
-    //    names fail-closed via mark_unresolved; the sentinel TypeShape
-    //    returned from the Err arm is never observed by inference
-    //    (the port is already Unresolved).
+    // 1. Read the seeded Arrow — single-construction-authority for
+    //    parameter declarations (DB-11 3a.3). `seed_function_signatures_phase`
+    //    already ran `type_to_declaration_id` for each parameter and,
+    //    when a `where` refinement is present, built the predicate
+    //    Declaration + refined Declaration via `lower_parameter_refinement`.
+    //    Re-lowering them here would push a parallel Bind + refined
+    //    Declaration into the DAG for every `where` clause and then
+    //    overwrite the fn's Arrow inputs to point at the duplicates
+    //    — the seeded ones would stay in the DAG, orphaned. Read
+    //    the seeded inputs directly instead.
+    let (param_decl_inputs, return_decl_id) = match &dag.declaration(fn_decl_id).connective {
+        TypeConnective::Arrow { inputs, output, .. } => (inputs.clone(), *output),
+        _ => {
+            // Defensive fallback — should not occur because
+            // `seed_function_signatures_phase` runs unconditionally
+            // on every `Fn` item before bodies are lowered. If the
+            // connective is not an Arrow here, the seed phase was
+            // skipped or the declaration was clobbered; re-derive
+            // to keep the body-lowering pass going and surface the
+            // real issue upstream.
+            let local_fallback = local_scope_from_parent(dag, fn_decl_id);
+            let inputs: Vec<DeclarationId> = params
+                .iter()
+                .map(|p| {
+                    let base = type_to_declaration_id(&p.ty, symbols, &local_fallback, dag);
+                    match &p.refinement {
+                        Some(predicate) => lower_parameter_refinement(
+                            base,
+                            predicate,
+                            &p.name,
+                            symbols,
+                            dag,
+                            p.ty.span().clone(),
+                        ),
+                        None => base,
+                    }
+                })
+                .collect();
+            let output = type_to_declaration_id(return_type, symbols, &local_fallback, dag);
+            (inputs, output)
+        }
+    };
     let mut param_ports: Vec<PortId> = Vec::with_capacity(params.len());
     let mut param_types: Vec<TypeShape> = Vec::with_capacity(params.len());
     let mut body_scope: HashMap<String, PortId> = outer_scope.clone();
     let mut callable_scope: CallableScope = CallableScope::new();
-    let mut param_decl_inputs: Vec<DeclarationId> = Vec::with_capacity(params.len());
-    let local = local_scope_from_parent(dag, fn_decl_id);
-    for param in params {
+    for (param, &input_decl) in params.iter().zip(param_decl_inputs.iter()) {
         let port = dag.alloc_port(None);
-        // Compute the param's declaration id ONCE. The Arrow input
-        // and the port's TypeShape wrap the same id — no double
-        // allocation, no lower↔infer identity split for compound
-        // types like `List<Int>`.
-        let base_decl = type_to_declaration_id(&param.ty, symbols, &local, dag);
-        // DB-11 (3a.3): if the parameter carries a `where` refinement,
-        // lower the predicate into a predicate Declaration and wrap
-        // the base type in a refined Declaration that points at the
-        // predicate via `refinement`. Downstream type-equivalence
-        // still walks through the `ResolvedIdentifier` alias to the
-        // base type; refinement discharge is a separate check in
-        // `decide_transform`.
-        let input_decl = match &param.refinement {
-            Some(predicate) => lower_parameter_refinement(
-                base_decl,
-                predicate,
-                &param.name,
-                symbols,
-                dag,
-                param.ty.span().clone(),
-            ),
-            None => base_decl,
-        };
-        param_decl_inputs.push(input_decl);
         let ty = match declaration_to_port_shape(input_decl, dag, param.ty.span()) {
             Ok(ty) => {
                 dag.set_port_type(port, ty);
@@ -2540,9 +2786,9 @@ fn lower_fn_item_expr_body(
         param_types.push(ty);
     }
 
-    // 2. Compute return type. Single walk, shared id — same shape as
-    //    the param loop.
-    let return_decl_id = type_to_declaration_id(return_type, symbols, &local, dag);
+    // 2. Compute return `TypeShape` from the seeded Arrow's output
+    //    declaration (read above). Same single-construction-authority
+    //    invariant as the parameter loop.
     let return_ty = match declaration_to_port_shape(return_decl_id, dag, return_type.span()) {
         Ok(ty) => ty,
         Err(diag) => {
