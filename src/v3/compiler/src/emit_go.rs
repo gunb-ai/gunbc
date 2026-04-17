@@ -2288,7 +2288,6 @@ fn render_value(v: &crate::dag::ValueNode, literals: &LiteralSyntaxBinding) -> S
     }
 }
 
-
 fn is_bootstrap_file(file: &str) -> bool {
     file.starts_with("dsl/std/")
         || file.starts_with("src/v3/std/")
