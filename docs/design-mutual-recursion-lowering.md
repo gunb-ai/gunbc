@@ -11,7 +11,7 @@
 
 ## Summary
 
-Mutual recursion lowers at `lower.rs` time into a `Behavior::Loop` whose `bound` carries a new `Descent` variant pointing at a `Cluster` in a `Dag.clusters` sidecar table. Each member function's body keeps real `Transform` edges to its real callees — call topology is preserved. The substrate gains **one coproduct-variant addition** (`LoopBound::Descent`) plus one sidecar (`Dag.clusters`) and three terminal types (`Cluster`, `MemberDescent`, `CallEdge`); **no new `Behavior` variant**. Lenses (termination, complexity) and the inference pass read cluster membership from the sidecar via `ClusterId` — single authority, no re-derivation.
+Mutual recursion lowers at `lower.rs` time into a `Behavior::Loop` whose `bound` carries a new `Descent` variant pointing at a `Cluster` in a `Dag.clusters` sidecar table. Each member function's body keeps real `Transform` edges to its real callees — call topology is preserved. The substrate gains **one coproduct-variant addition** (`LoopBound::Descent`), **one field on the reflected `type Dag` + matching Rust `Dag` struct** (`clusters: List<Cluster>`), and three terminal types (`Cluster`, `MemberDescent`, `IntraClusterCall`); **no new `Behavior` variant**. `IntraClusterCall` is a typed handle into the authoritative `Transform` node — not a caller/callee compression. Lenses (termination, complexity) and the inference pass read cluster membership from the sidecar via `ClusterId` and per-edge structure through the `Transform` handle — single authority, no re-derivation.
 
 ---
 
@@ -19,7 +19,7 @@ Mutual recursion lowers at `lower.rs` time into a `Behavior::Loop` whose `bound`
 
 - **R0** (rejected): added `MutualLoop` as a 6th `Behavior` variant. Violated THESIS:604-629 five-behavior commitment.
 - **R1** (rejected): computed cluster membership at lens level post-lowering, substrate unchanged. Violated INVARIANTS:555 / :665 (which prescribe lowering-to-`descend`, not a lens pass) and created parallel representation with `compute_mutually_recursive` in `lower.rs`. Preserved inline below for the rejected-alternatives record.
-- **R2** (current, approved): substrate extension localized to `LoopBound` + `Dag.clusters` sidecar. Preserves the five-behavior commitment, honors INVARIANTS:555, keeps single authority.
+- **R2** (current, approved): substrate extension localized to `LoopBound` + `Dag.clusters` sidecar (both reflected and Rust). Preserves the five-behavior commitment, honors INVARIANTS:555, keeps single authority. **R2 post-review (PR #511 ChatGPT + codex feedback):** reflected `type Dag` explicitly carries `clusters` to preserve facts-flow-forward at the lens boundary; `CallEdge { caller, callee }` replaced by `IntraClusterCall { transform }` (typed handle, not lossy compression); `LoopBound` four-pattern dissolution receipt stamped in-doc rather than deferred.
 
 ---
 
@@ -44,7 +44,7 @@ Mutual recursion lowers at `lower.rs` time into a `Behavior::Loop` whose `bound`
 // from compile-time structural-descent (SCC) loops. Each variant
 // carries exactly the carrier it needs; illegal combinations
 // (Cardinality with members, Descent with a count port) are
-// unrepresentable.
+// unrepresentable. Dissolution receipt stamped in-doc below.
 type LoopBound
   = Cardinality { count: PortId }        // existing: fold / descend-on-source
   | Descent { cluster: ClusterId }       // new: SCC cluster descent
@@ -53,11 +53,16 @@ type LoopBound
 type ClusterId = Int
 
 // 🟢 TERMINAL. Structural descent witness for an SCC. Members stay
-// as ordinary peer Binds in Dag.nodes; this record is the compiler's
-// single-authority cluster fact.
+// as ordinary peer Binds in Dag.nodes; their bodies' Transform
+// edges remain the authoritative call topology. This record is
+// a typed index over that authority, not a copy of it — it names
+// which members the SCC contains and gives lenses a direct handle
+// list for the N intra-cluster call-site Transforms so they can
+// point diagnostics at the exact failing Transform without
+// re-scanning bodies.
 type Cluster {
   members: List<MemberDescent>
-  internal_edges: List<CallEdge>
+  intra_cluster_calls: List<IntraClusterCall>
 }
 
 // 🟢 TERMINAL.
@@ -66,25 +71,31 @@ type MemberDescent {
   position: Int            // parameter index that decreases at intra-cluster calls
 }
 
-// 🟢 TERMINAL.
-type CallEdge {
-  caller: NodeId
-  callee: NodeId
+// 🟢 TERMINAL. Typed handle to the authoritative `Transform` node
+// inside a member body. The Transform IS the call edge; this
+// record is a typed reference, not a caller/callee compression.
+// Callee is recoverable via `transform.target = Callable(decl)`;
+// caller is recoverable via the enclosing Bind; source span lives
+// on the Transform itself. No callsite identity is lost — two
+// `a → b` call sites are two distinct Transforms, hence two
+// distinct `IntraClusterCall` entries.
+type IntraClusterCall {
+  transform: NodeId
 }
 ```
 
-`Behavior` is unchanged:
+**The reflected `type Dag` gains the sidecar** (`src/v3/std/substrate.dag`):
 
 ```dag
-type Behavior
-  = Value(ValueNode)
-  | Transform(TransformNode)
-  | Branch(BranchNode)
-  | Loop(LoopNode)          // same variant, extended via LoopBound::Descent
-  | Bind(BindNode)
+type Dag {
+  declarations: List<Declaration>
+  nodes: List<Behavior>
+  ports: List<DagPort>
+  clusters: List<Cluster>       // NEW: SCC facts for mutual-recursion Loops
+}
 ```
 
-**Add the sidecar on `Dag`** (`src/v3/compiler/src/dag.rs`):
+**The Rust `Dag` struct mirrors it** (`src/v3/compiler/src/dag.rs`):
 
 ```rust
 pub struct Dag {
@@ -94,7 +105,26 @@ pub struct Dag {
 }
 ```
 
-Matches the established sidecar pattern (`PrimitiveCache`, `SubstrateMarkers`, `RealizationMetaCache`, `StdlibTypeCache`, `optional_match_disjs` — see dag.rs:1140-1162). Write-once from lowering's perspective; lenses and inference are pure readers.
+Both surfaces must match. The reflected `type Dag` is the one `.dag` lens consumers (termination, complexity) walk; the Rust `Dag` is the one lowering writes. The reflection invariant (FieldBinding check in `m2_field_access_binding_test.rs`) enforces the two stay in sync. Matches the established sidecar pattern (`PrimitiveCache`, `SubstrateMarkers`, `RealizationMetaCache`, `StdlibTypeCache`, `optional_match_disjs` — see dag.rs:1140-1162). Write-once from lowering's perspective; lenses and inference are pure readers.
+
+### Dissolution receipt — `LoopBound` coproduct (four-pattern check)
+
+Per `feedback_coproduct_dissolution`, every new coproduct must pass the four-pattern dissolution check before being stamped `🟢 TERMINAL`. Receipt stamped here, not deferred:
+
+**Pattern 1 — Fact placement (multiple consumers, different DAG locations).** Both variants are attached to the same `LoopNode.bound` slot at the same DAG location. The variant discriminates KIND OF BOUND, not WHERE THE FACT LIVES. No fact-placement compression to dissolve. ✓ does not apply
+
+**Pattern 2 — Variant-is-data (same shape, different label).** `Cardinality { count: PortId }` and `Descent { cluster: ClusterId }` carry structurally different payloads. `PortId` is a runtime value handle; `ClusterId` is a compile-time sidecar index. They neither share a common payload shape nor differ only in label. ✓ does not apply
+
+**Pattern 3 — Algebraic-form (traces to intro/elim of algebraic structures).** Both variants express "evidence that a loop terminates," but the algebraic origins are genuinely distinct:
+- `Cardinality` reduces to cardinal-number bound on an iterable source (runtime port value ≤ source cardinality).
+- `Descent` reduces to structural-descent well-foundedness on an SCC (compile-time measure decreases on every intra-cluster edge).
+There is no shared algebraic form these dissolve into — they are two distinct termination authorities (runtime vs compile-time). ✓ does not apply
+
+**Pattern 4 — Dimensional (flat enum hides M-dimensional record).** The variants don't share a coordinate space. There is no `count + cluster` hidden record where one coordinate is `None` in each variant; the two fields are genuinely alternative representations of the bound, not orthogonal dimensions. ✓ does not apply
+
+**Conclusion:** `LoopBound` is structurally irreducible. The coproduct is the correct shape. Stamp stands: `🟢 TERMINAL`.
+
+Dissolution receipts for the other new types (records, not coproducts) — `Cluster`, `MemberDescent`, `IntraClusterCall` — the four-pattern check applies only to coproducts. These are records; the relevant check is "state-space vs behavioral invariants" (`feedback_state_space_vs_behavioral_invariants`): can the record admit illegal states? `Cluster.members` (non-empty is enforced by construction — lowering only allocates clusters with ≥2 members), `MemberDescent.position` (Int; any non-negative index is meaningful), `IntraClusterCall.transform` (any NodeId pointing at a Transform is meaningful — type discipline enforces the Transform-vs-other-Behavior distinction). No illegal state-space combinations are representable. All three stamp as `🟢 TERMINAL`.
 
 ### Per-member descent positions
 
@@ -116,21 +146,19 @@ Both members have a structurally-decreasing argument but at different positions.
 For `fn a(n: Int) = if n == 0 then 0 else b(n - 1)` + `fn b(n: Int) = if n == 0 then 0 else a(n - 1)`, with one external call site `a(x)`:
 
 ```
-Dag.clusters[ClusterId(0)] = Cluster {
-  members: [
-    MemberDescent { member: bind_a, position: 0 },
-    MemberDescent { member: bind_b, position: 0 }
-  ],
-  internal_edges: [
-    CallEdge { caller: bind_a, callee: bind_b },
-    CallEdge { caller: bind_b, callee: bind_a }
-  ]
-}
-
 Dag.nodes:
   Bind(BindNode { id: bind_a, name: "a", ... })       // peer
   Bind(BindNode { id: bind_b, name: "b", ... })       // peer
-  /* bodies of a and b — Transforms pointing at each other's Arrow decls */
+  Transform(TransformNode {                           // authoritative a→b edge
+    id: xform_a_to_b,
+    target: Callable(arrow_b_decl),
+    ...
+  })
+  Transform(TransformNode {                           // authoritative b→a edge
+    id: xform_b_to_a,
+    target: Callable(arrow_a_decl),
+    ...
+  })
   Loop(LoopNode {
     id:          <loop_id>,
     body:        bind_a,                              // entry Bind for this call site
@@ -140,7 +168,20 @@ Dag.nodes:
     result_port: <loop result port>,
     span:        <cluster span>,
   })
+
+Dag.clusters[ClusterId(0)] = Cluster {
+  members: [
+    MemberDescent { member: bind_a, position: 0 },
+    MemberDescent { member: bind_b, position: 0 }
+  ],
+  intra_cluster_calls: [
+    IntraClusterCall { transform: xform_a_to_b },    // handle into the authoritative Transform above
+    IntraClusterCall { transform: xform_b_to_a }     // handle, not a copy — callee = transform.target, caller = enclosing Bind
+  ]
+}
 ```
+
+Authority layering: the `Transform` nodes in `Dag.nodes` are the sole call-topology authority. The `Cluster.intra_cluster_calls` list is a typed-handle index into that authority — lowering knows which Transforms are intra-cluster (that's what the SCC computation produced), so it populates the index rather than forcing lenses to re-scan bodies. Reading the callee: `transform.target` resolves to `Callable(arrow_decl)`. Reading the caller: walk up from the Transform to its enclosing Bind. Reading the source span: `transform.span`. No facts live only in the Cluster; every fact lives on the Transform and the Cluster just indexes the subset that's intra-cluster.
 
 ### What changes in `compute_mutually_recursive`
 
@@ -152,15 +193,20 @@ Dag.nodes:
 struct ClusterShape {
     members:              Vec<DeclarationId>,
     per_member_positions: HashMap<DeclarationId, usize>,
-    internal_edges:       Vec<(DeclarationId, DeclarationId)>,
     shared_witness_ok:    bool,                       // false → fail-closed diagnostic path
+    // Note: no edges field — intra-cluster Transform NodeIds are
+    // resolved at lowering *after* member bodies are emitted, at
+    // which point lowering has both the Transform NodeIds and the
+    // ClusterShape in hand. The Cluster.intra_cluster_calls list
+    // is populated with those NodeIds.
 }
 ```
 
-Lowering consumes this to:
-1. Allocate a `ClusterId` per cluster; populate `Dag.clusters[cluster_id]` with the `Cluster` record.
-2. For each external call site into the cluster, emit one `Behavior::Loop` with `body = NodeId` of the entry member's Bind, `bound = LoopBound::Descent { cluster: cluster_id }`.
-3. Lower each member's body as today — `Transform` edges remain literal, pointing at real callee declarations.
+Lowering consumes this in order:
+1. Lower each member's body as today — `Transform` edges remain literal, pointing at real callee declarations.
+2. For each member body, identify Transforms whose `target = Callable(decl)` where `decl ∈ cluster_members`; collect those as `IntraClusterCall { transform: NodeId }` entries.
+3. Allocate a `ClusterId`; populate `Dag.clusters[cluster_id]` with the `Cluster` record (members + per-member positions + intra_cluster_calls).
+4. For each external call site into the cluster, emit one `Behavior::Loop` with `body = NodeId` of the entry member's Bind, `bound = LoopBound::Descent { cluster: cluster_id }`.
 
 The "mutual recursion is not yet supported in v3" rejection diagnostic at lower.rs:2293 **deletes** in the implementation PR.
 
@@ -170,7 +216,7 @@ A cluster called from N external sites produces N `Behavior::Loop` nodes, each r
 
 ### Consumers
 
-**Termination lens** (Lane 2 — `src/v3/lenses/termination.dag`, to be created): walks `Behavior::Loop`. When `bound = Descent { cluster }`, reads `Dag.clusters[cluster]` for members + per-member positions and verifies each `internal_edge` passes a structurally-smaller value at the recorded `position`. No SCC re-detection.
+**Termination lens** (Lane 2 — `src/v3/lenses/termination.dag`, to be created): walks `Behavior::Loop`. When `bound = Descent { cluster }`, reads `Dag.clusters[cluster]` for members + per-member positions. For each `IntraClusterCall { transform }` in `intra_cluster_calls`, the lens reaches into the authoritative `Transform` node to read the argument list and verifies the argument at the recorded `position` is structurally smaller than the enclosing member's parameter at the same position. No SCC re-detection. Diagnostic on failure names the exact Transform (so `transform.span` points at the failing call site — two `a → b` sites diagnose distinctly).
 
 **Complexity lens** (Lane 2 — `src/v3/lenses/complexity.dag`): reads `Loop.bound × cost(body)` per the standard cost rule. When `bound = Descent`, the bound reads from the cluster's shared measure. No SCC re-detection. Matches SELF_HOSTING:708-713 verbatim.
 
@@ -224,7 +270,7 @@ Descent failure: call edge `a → b` passes position 0 without decreasing it.
 FIX: decrease position 0 on every intra-cluster call, e.g., `b(n - 1)`.
 ```
 
-Uses the DB-1 Correction shape (source-level). The diagnostic names the failing `CallEdge` and the `MemberDescent.position` that did not decrease.
+Uses the DB-1 Correction shape (source-level). The diagnostic names the failing `IntraClusterCall` (handle into the authoritative `Transform`, which carries its own `span`) and the `MemberDescent.position` that did not decrease.
 
 ---
 
@@ -239,6 +285,9 @@ Uses the DB-1 Correction shape (source-level). The diagnostic names the failing 
 | Encoding C1 — `ClusterDeclaration` as new `Declaration` kind | R2 candidate | `Declaration` is about type connectives and user-facing types, not compiler-computed SCC metadata. Adding a Declaration kind for lowering-only facts conflates layers. Sidecar (established pattern) is the right shape. |
 | Single `position: Int` on `Descent` variant | R2 drafting | Forces implicit signature-alignment on cluster members; fails on `process/help` case (position 0 vs position 1). Per-member `MemberDescent` captures the general case. |
 | Inline `members` list on each `Loop.bound.Descent` | R2 drafting | N copies of one lowering-output fact; inconsistent with sidecar pattern. `ClusterId` handles + shared `Dag.clusters` entry replaces. |
+| `CallEdge { caller: NodeId, callee: NodeId }` as edge payload | R2 R1-review | Compresses away call-site identity: two `a → b` sites with different argument shapes collapse structurally, so the termination diagnostic can't point at the failing site without re-walking bodies. Also creates a second authority for call topology alongside the authoritative `Transform` nodes. Replaced by `IntraClusterCall { transform: NodeId }` — a typed handle into the authoritative Transform; callee/caller/span all readable through the handle. |
+| Rust-only `Dag.clusters` sidecar (no reflected `type Dag` field) | R2 R1-review | The `.dag` lens consumers (`termination.dag`, `complexity.dag`) walk the reflected `type Dag`; an unreflected Rust-only sidecar dies at the lower → lens boundary. Violates facts-flow-forward. Fixed by adding `clusters: List<Cluster>` to `type Dag` in `src/v3/std/substrate.dag` alongside the Rust struct. |
+| Deferring LoopBound dissolution receipt to implementation PR | R2 R1-review | Stamp-before-receipt — a new substrate coproduct earning `🟢 TERMINAL` without the four-pattern check creates a hole that propagates. Fixed by running the check in §Dissolution receipt above; receipt stamped in-doc. |
 | Annotate each `Bind` with `cluster_id` | R0/R1 | Parallel authority: call graph IS the authority for cluster membership; annotation duplicates and can drift. |
 | Require users to declare `mutual` explicitly | R0/R1 | Compiler detects SCCs automatically; user annotation is ceremony. |
 | Defer mutual recursion | R0/R1 | `compiler.dag` requires it (M2 feature parity). Cannot defer. |
@@ -259,7 +308,8 @@ None blocking. Two deliberately-deferred refinements for the implementation PR t
 **Substrate invariants:**
 - [ ] `type Behavior` in `src/v3/std/substrate.dag` still has exactly 5 variants (`Value | Transform | Branch | Loop | Bind`)
 - [ ] `type LoopBound` is a 2-variant coproduct (`Cardinality { count }`, `Descent { cluster }`)
-- [ ] `Cluster`, `MemberDescent`, `CallEdge` terminal types present
+- [ ] `Cluster`, `MemberDescent`, `IntraClusterCall` terminal types present
+- [ ] `type Dag` in `src/v3/std/substrate.dag` carries `clusters: List<Cluster>` (matches Rust Dag sidecar; reflection FieldBinding test passes)
 - [ ] `Dag.clusters` sidecar present; write-once from lowering
 
 **Positive fixtures (SCC sizes 2, 3, 5):**
@@ -272,7 +322,8 @@ None blocking. Two deliberately-deferred refinements for the implementation PR t
 - [ ] Rust / Go / Python emission produces N separate `fn` declarations calling each other
 
 **Negative fixtures:**
-- [ ] SCC with no shared descent measure (argument preserved or grows on some edge) → fail-closed diagnostic naming `CallEdge` + failing `MemberDescent.position`
+- [ ] SCC with no shared descent measure (argument preserved or grows on some edge) → fail-closed diagnostic naming the failing `IntraClusterCall.transform`'s span + `MemberDescent.position`
+- [ ] Two distinct `a → b` call sites with different argument shapes produce two distinct `IntraClusterCall` entries; diagnostic differentiates which site failed
 - [ ] Non-SCC call pattern → single-recursion path unchanged (regression guard)
 
 **Authority checks (single-representation invariant):**
@@ -297,7 +348,7 @@ None blocking. Two deliberately-deferred refinements for the implementation PR t
 - **Lane 3 Stage 3a.1** ([lane3-self-hosting-cycle.md](./lane3-self-hosting-cycle.md)) — R2 is that sub-stage's design
 - **DB-1 Correction shape** ([design-correction-shape.md](./design-correction-shape.md)) — cluster termination diagnostics emit Corrections
 - **DB-7 Symbolic cost** ([design-symbolic-cost-algebra.md](./design-symbolic-cost-algebra.md)) — reads `LoopBound::Descent.cluster` for recursion depth bound
-- **`src/v3/std/substrate.dag`** — `LoopBound` grows `Descent` variant; `Cluster`, `MemberDescent`, `CallEdge` terminal types added
+- **`src/v3/std/substrate.dag`** — `LoopBound` grows `Descent` variant; `Cluster`, `MemberDescent`, `IntraClusterCall` terminal types added; `type Dag` gains `clusters: List<Cluster>` field
 - **`src/v3/compiler/src/dag.rs`** — `Dag.clusters: Vec<Cluster>` sidecar
 - **`src/v3/compiler/src/lower.rs`** — `compute_mutually_recursive` return upgraded; cluster-Loop construction replaces rejection
 - **`src/v3/compiler/src/infer.rs`** — reads `LoopBound::Descent` for bottom-up cluster inference
@@ -321,6 +372,7 @@ R2 landed after a four-round design review. Each round narrowed the shape:
 
 ## Changelog
 
+- **2026-04-17 R2 post-review** — addressed PR #511 ChatGPT + codex review. Three blocking fixes: (1) reflected `type Dag` gains `clusters: List<Cluster>` so `.dag` lens consumers see the sidecar (facts-flow-forward at lower → lens boundary); (2) `CallEdge { caller, callee }` replaced with `IntraClusterCall { transform: NodeId }` — typed handle into the authoritative `Transform` node, preserves per-call-site identity, removes the second edge authority; (3) `LoopBound` four-pattern dissolution receipt stamped in-doc, not deferred. Non-blocking forbidden-string ratchet extension deferred to Lane 1 Stage 1a per codex suggestion.
 - **2026-04-17** — R2 landed. Supersedes R1. Director-approved Revised Encoding C (LoopBound coproduct + Dag.clusters sidecar + per-member descent positions).
 - **2026-04-17** — R1 rejected during review. Lens-level SCC conflicted with INVARIANTS:555 / :665 and introduced parallel representation with `compute_mutually_recursive`.
 - **2026-04-17** — R0 proposal rejected by PR #491 review. `MutualLoop` as a 6th `Behavior` variant violated THESIS:604-629.
