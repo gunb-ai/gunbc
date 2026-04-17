@@ -14,7 +14,9 @@
 
 **Revision 2.** Moved target dispatch out of bootstrap to emission. Used `meta_tag = substrate_accessor` + per-target `CallableRealization` in each spec. Reviewers (round 2, unanimous) flagged: authority split three ways (Arrow stub-body + meta_tag + spec lookup); external-vs-user-defined distinction moved OFF `Arrow.body` onto side marker; violates the thesis's "substrates meet at `Transform → Arrow` and `Arrow → body`." Meta-review issued PAUSE_AND_REGROUP: "bank the rule first, then redesign."
 
-**This revision (R3).** Banks [E-9](../INVARIANTS.md#e-9-external-realization-lives-on-arrowbody-2026-04-17) in the same PR. Places the "external" fact on `Arrow.body` as the single structural authority. Keeps target dispatch at emission via per-target spec files. No meta_tag, no convention-based markers, no side lookup table.
+**Revision 3.** Banked [E-9](../INVARIANTS.md#e-9-external-realization-lives-on-arrowbody-2026-04-17) in the same PR. Placed the "external" fact on `Arrow.body` via a `SubstrateAccessor` marker type + `SubstrateAccessorBinding` table; bootstrap walked bindings, rewrote Arrow bodies. Reviewer flagged a smaller version of the same authority-split class: the `accessor → marker` relation lived twice (in the binding table AND in the rewritten Arrow body), the "one binding per accessor" invariant was prose not shape, and duplicate/malformed bindings admitted illegal states the model said were impossible.
+
+**This revision (R4).** Drops the `SubstrateAccessor` marker type and `SubstrateAccessorBinding` binding table entirely. The accessor's own declaration IS the identity the spec realizes — `ExternalRealization` self-references. One enumeration list (`substrate_accessors: List<DeclarationRef>`) tells bootstrap which Arrows to rewrite; duplicates are a fail-closed bootstrap diagnostic. Spec realizations reference the accessor declaration directly.
 
 ---
 
@@ -32,124 +34,126 @@ Lane 1 Stage 1b's original design called for declaring `port`/`node`/`resolve_pr
 
 ---
 
-## Design (R3)
+## Design (R4)
 
 ### Principle (E-9)
 
 The structural authority for "this callable is externally realized" is `Arrow.body == ArrowBody::ExternalRealization(ref)`. Nothing else. Emission dispatches on `Arrow.body`.
 
-### Target-neutral accessor markers in substrate.dag
+### Accessor is its own identity — no separate marker, no binding table
 
-One declaration per accessor, target-neutral. These markers exist only as identity nodes — shared between substrate (for `Arrow.body` to reference) and spec files (for realization records to reference).
+R3 added a `SubstrateAccessor` marker type + `SubstrateAccessorBinding` table. The reviewer correctly flagged this as a smaller version of the authority-split class — the `accessor → marker` relation lived both in the permanent binding table and in the rewritten Arrow body, the "one binding per accessor" invariant was prose-only, and duplicates could slip past.
 
-```dag
-// src/v3/std/substrate.dag
-type SubstrateAccessor {
-  name: String   // debugging aid; structural identity is by DeclarationId
-}
-
-data port_accessor: SubstrateAccessor = { name: "port" }
-data node_accessor: SubstrateAccessor = { name: "node" }
-data resolve_producer_accessor: SubstrateAccessor = { name: "resolve_producer" }
-```
-
-No per-target info. No carrier template. Just identity.
-
-### Accessor Arrows + one-per-accessor bootstrap binding
-
-Accessor fns declared with trivial stub bodies (mirroring pipeline.dag pattern). A single `SubstrateAccessorBinding` per accessor links it to its marker.
+R4 removes the marker layer entirely. **The accessor declaration IS the identity the spec realizes.** `ExternalRealization` self-references.
 
 ```dag
 // src/v3/std/substrate.dag
 fn port(d: Dag, id: PortId) -> DagPort? {
-  accessor port
+  accessor
 }
 fn node(d: Dag, id: NodeId) -> Behavior? {
-  accessor node
+  accessor
 }
 fn resolve_producer(d: Dag, port_id: PortId) -> Behavior? {
-  accessor resolve_producer
-}
-
-type SubstrateAccessorBinding {
-  accessor: DeclarationRef       // the Arrow (e.g., `port`)
-  marker: DeclarationRef         // the SubstrateAccessor instance (e.g., `port_accessor`)
-}
-
-data port_binding: SubstrateAccessorBinding = {
-  accessor: port
-  marker: port_accessor
-}
-data node_binding: SubstrateAccessorBinding = {
-  accessor: node
-  marker: node_accessor
-}
-data resolve_producer_binding: SubstrateAccessorBinding = {
-  accessor: resolve_producer
-  marker: resolve_producer_accessor
+  accessor
 }
 ```
 
-**One binding per accessor — NOT per target.** The revision-1 last-binding-wins bug is impossible: there's exactly one binding per accessor, the bootstrap rewrite is deterministic, and there's no per-target info at this layer.
+Stub bodies follow the pipeline.dag pattern (unparseable-to-M1(2.7) block, later rewritten by bootstrap). The keyword `accessor` inside the block is a visual marker for contributors; it is NOT load-bearing for the machinery.
 
-### Bootstrap upgrade (parallels pipeline.dag precisely)
+### One enumeration — the authoritative list of which Arrows are accessors
 
-Extend `bootstrap.rs` with `upgrade_substrate_accessor_bodies`, mirroring `upgrade_pipeline_stage_bodies`:
+Bootstrap needs to know which Arrows to rewrite. R4 uses a single enumeration, replacing the R3 per-accessor binding table:
+
+```dag
+// src/v3/std/substrate.dag
+data substrate_accessors: List<DeclarationRef> = [
+  port,
+  node,
+  resolve_producer,
+]
+```
+
+One list. No pair type. No per-accessor binding declaration. Adding a new accessor is: declare the Arrow, append the ref to the list. Deleting: remove from list, delete the Arrow.
+
+**Structural uniqueness.** Duplicates in the list are a fail-closed bootstrap diagnostic — a single pre-mutation pass validates the list contains each DeclarationRef at most once. If the compiler's existing `List` validation supports uniqueness natively at the substrate level, the check becomes structural; if not, it lives as bootstrap-side validation with a clear error. Either way, the "two bindings for one accessor" class is an explicit diagnostic, not a last-write-wins silent drift.
+
+### Bootstrap upgrade — self-referential ExternalRealization
+
+Extend `bootstrap.rs` with `upgrade_substrate_accessor_bodies`:
 
 ```rust
 // src/v3/compiler/src/bootstrap.rs
 fn upgrade_substrate_accessor_bodies(dag: &mut Dag) {
-    for binding in substrate_accessor_bindings(dag) {
-        let accessor_decl = dag.declaration_mut(binding.accessor);
+    let accessors = read_substrate_accessors_list(dag);
+
+    // Pre-mutation uniqueness check — fail closed on any duplicate.
+    if let Some(duplicate) = first_duplicate(&accessors) {
+        report_substrate_accessor_error(
+            dag,
+            format!("`substrate_accessors` lists `{}` more than once — \
+                     each accessor must appear exactly once",
+                    dag.declaration(duplicate).name),
+        );
+        return;
+    }
+
+    for accessor_id in accessors {
+        let accessor_decl = dag.declaration_mut(accessor_id);
         match &mut accessor_decl.connective {
             TypeConnective::Arrow { body, .. } => {
-                *body = ArrowBody::ExternalRealization(binding.marker);
+                // Self-reference: the accessor IS its own identity.
+                *body = ArrowBody::ExternalRealization(accessor_id);
             }
             _ => report_substrate_accessor_error(
                 dag,
-                format!("substrate accessor `{}` must lower to an Arrow",
-                        accessor_decl.name),
+                format!("substrate accessor `{}` must lower to an Arrow, got {:?}",
+                        accessor_decl.name, accessor_decl.connective),
             ),
         }
     }
 }
 ```
 
-Fail-closed: if an accessor declaration isn't an Arrow, or the binding's accessor/marker edges don't resolve, bootstrap attaches a diagnostic and fails. No silent bypass.
+Fail-closed on two conditions:
+- **Duplicate accessor in list:** pre-mutation diagnostic; bootstrap halts before any rewrite. Eliminates last-write-wins.
+- **Accessor declaration isn't an Arrow:** per-item diagnostic; bootstrap notes the error and continues (other accessors still upgrade correctly, but the Dag carries the diagnostic).
 
-**Post-bootstrap invariant (E-9):** each accessor's `Arrow.body == ExternalRealization(marker)`. The marker is the single structural fact. Any emitter, lens, or self-hosted analyzer walking the substrate reaches "this is externally realized" through one path: Arrow.body.
+**Post-bootstrap invariant (E-9):** each accessor's `Arrow.body == ExternalRealization(accessor_id)`. The accessor IS its own identity reference. No marker declaration exists to disagree with the Arrow body — there's nothing else for the identity to live in.
 
-### Per-target realizations (decentralized spec files, reusing existing shape)
+### Per-target realizations — direct reference, no indirection
 
-Each target's spec file declares a `BehaviorRealization` entry per accessor it supports. `BehaviorRealization` already exists in `src/v3/std/emit_model.dag` with the shape `{ language, target, carrier, cost }` — the same shape `rust_let_stmt`, `rust_if_expr`, and every other behavior-variant realization uses today. We reuse it directly; no new realization type.
+Each target's spec declares a `BehaviorRealization` entry per accessor, reusing the existing `{ language, target, carrier, cost }` shape. The `target` field points at the accessor's own declaration directly:
 
 ```dag
 // src/v3/spec/rust.dag
 data rust_port: BehaviorRealization = {
   language: rust_language
-  target: port_accessor                    // <- references the marker
+  target: port                    // <- the accessor declaration, directly
   carrier: "({d}).port_opt({id}).cloned()"
   cost: 1
 }
 
 data rust_node: BehaviorRealization = {
   language: rust_language
-  target: node_accessor
+  target: node
   carrier: "({d}).node_opt({id}).cloned()"
   cost: 1
 }
 
 data rust_resolve_producer: BehaviorRealization = {
   language: rust_language
-  target: resolve_producer_accessor
+  target: resolve_producer
   carrier: "({d}).resolve_producer({port_id})"
   cost: 1
 }
 ```
 
-Analogous `go_*` in `go.dag`, `python_*` in `python.dag`. Each spec is self-contained — adding a new target means adding one spec file with realizations for accessors it supports. No substrate edit.
+Analogous `go_*` in `go.dag`, `python_*` in `python.dag`. Each spec is self-contained.
 
-**Note on `BehaviorRealization.target` semantics.** Today its usages point at Behavior-kind declarations (`Bind`, `Branch`, `Transform`, `Loop`, `Value`). DB-14 extends usage to include `SubstrateAccessor`-typed declarations. The field's type is `DeclarationRef` — structurally unconstrained — so this is not a schema violation. The semantic widening of `target` ("the thing being realized" rather than "the Behavior variant being realized") is legitimate; a future PR may rename `target` → `realizes` for clarity or consider unifying OperatorRealization/BehaviorRealization/etc. into a general `TargetCarrierRealization`. That consolidation is out of scope for DB-14 and tracked separately.
+The accessor declaration plays exactly one role here — identity. It is the declaration the Arrow.body references (via self-reference) AND the declaration the spec realization targets. Emission joins them through that single identity.
+
+**Note on `BehaviorRealization.target` semantics.** Today its usages point at Behavior-kind declarations (`Bind`, `Branch`, `Transform`, `Loop`, `Value`). DB-14 extends usage to include externally-realized Arrow declarations (accessor Arrows). The field's type is `DeclarationRef` — structurally unconstrained — so this is not a schema violation. The semantic widening of `target` ("the thing being realized") is legitimate; a future PR may rename `target` → `realizes` for clarity or consider unifying OperatorRealization/BehaviorRealization/etc. into a general `TargetCarrierRealization`. Out of scope for DB-14.
 
 ### Emission dispatch
 
@@ -157,9 +161,10 @@ When an emitter renders a `Transform` node whose target is `Callable(decl_id)`:
 
 ```
 decl = dag.declaration(decl_id)
-if decl.connective is TypeConnective::Arrow { body: ExternalRealization(marker_id), .. }:
-    # E-9: Arrow.body is the single authority. No meta_tag check, no name match.
-    realization = find_realization_in_active_spec(marker_id, current_language)
+if decl.connective is TypeConnective::Arrow { body: ExternalRealization(self_id), .. }:
+    # E-9: Arrow.body is the single authority.
+    # self_id == decl_id by R4 invariant (self-reference); assert and use decl_id.
+    realization = find_realization_in_active_spec(decl_id, current_language)
     if realization is None:
         emit Diagnostic::ResolveError {
             name: "target `{current_language}` does not realize `{decl.name}`",
@@ -172,24 +177,36 @@ else:
     ...
 ```
 
-`find_realization_in_active_spec(marker_id, language)`: walks `BehaviorRealization` data items in the loaded Dag, returns the one whose `target == marker_id` and `language == current_language`. If multiple match or none match for a used accessor, emission fails closed.
+`find_realization_in_active_spec(accessor_id, language)`: walks `BehaviorRealization` data items in the loaded Dag, returns the one whose `target == accessor_id` and `language == current_language`. If multiple match or none match for a used accessor, emission fails closed.
 
 `render_carrier_template`: string substitution of `{arg_name}` → rendered input expression. Aligned with existing `rust_let_stmt` / `rust_if_expr` template handling in `emit_rust.rs::render_template`.
 
-Wired in all three current emit files (`emit_rust.rs`, `emit_go.rs`, `emit_python.rs`). When Lane 1e collapses emitters into a single walker + per-target specs, this dispatch becomes one site. No design change at that point — just three-to-one consolidation. **E-9 holds identically through that transition** because the structural fact lives on Arrow.body, not in emit-file-specific code.
+Wired in all three current emit files. When Lane 1e collapses emitters into a single walker + per-target specs, this becomes one site. **E-9 holds identically** — the structural fact is on Arrow.body; emission-layer consolidation doesn't touch it.
+
+### Self-reference sanity check
+
+`Arrow.body == ExternalRealization(self_decl_id)` is not a structural cycle. The Arrow's connective carries a body variant whose payload is a DeclarationId that happens to name the same declaration. Consumers walk body → DeclarationId → declaration; the walk terminates because the declaration's body is a terminal variant (`ExternalRealization`), not a recursive structure. No graph traversal revisits the Arrow.
+
+Conceptually: "this Arrow is externally realized; my identity for finding my per-target realization IS me." The self-reference is the explicit form of "the accessor is its own identity," which is exactly what R4 makes structural.
 
 ---
 
-## Why this design satisfies all three reviewer BLOCKING concerns
+## Why this design satisfies all five reviewer concerns (R3 review)
 
-**BLOCKING 1 (illegal states unrepresentable):** The three illegal states from revision 2 are now structurally ruled out:
-- *Marked accessor with a real body*: impossible — `ArrowBody::ExternalRealization(_)` is the body; there IS no user-defined sub-DAG competing with it.
-- *Unmarked accessor with realizations*: an orphan `BehaviorRealization` pointing at a marker that no Arrow.body references is still findable (it's just dead data), but it has no consumer — an accessor used by lens code MUST have Arrow.body reference matching the realization's target; otherwise emission fails closed with a diagnostic.
-- *Stub-bodied accessor whose semantic authority exists only in emitter convention*: impossible — post-bootstrap, stub bodies are replaced with `ExternalRealization`. Any stub-bodied accessor discovered at emission time is a bootstrap failure (diagnosed).
+**BLOCKING: illegal states unrepresentable (R3 binding table admitted duplicate/malformed).**
+R4 drops the binding table. There's no `{accessor, marker}` pair whose pairing could be wrong. The accessor IS its identity; `substrate_accessors` is a flat list; pre-mutation uniqueness check makes "two rows for the same accessor" a fail-closed diagnostic, not a silent last-write-wins.
 
-**BLOCKING 2 (single-authority metadata):** One authority — `Arrow.body`. The marker (`port_accessor` etc.) is a target-neutral identity fact that both substrate and specs reference, but it's not a parallel authority for "externally realized" — that fact is structural on the body variant. Spec-side realization records are DOWNSTREAM CONSUMERS of the marker identity, not competing authorities.
+**BLOCKING: single-authority metadata (R3 represented accessor→marker twice).**
+R4 has no marker. The accessor's DeclarationId serves both roles — as Arrow body's self-reference AND as the spec realization's `target`. One identity, one authoritative source. There's no second representation for the accessor→marker relation to drift against.
 
-**BLOCKING 3 (API-level enforcement):** E-9 is the enforcement. Arrow body variant is structurally checked by every consumer (emit, lens, self-hosted analyzer). No discipline-checked stub-body convention; no convention-level meta_tag. A "substrate accessor with a non-trivial body" is impossible because there's no body to be non-trivial — it's `ExternalRealization(marker)`.
+**BLOCKING: API-level enforcement (R3 "one binding per accessor" was prose).**
+R4's uniqueness is enforced pre-mutation in bootstrap with an explicit diagnostic. Any attempt to list an accessor twice in `substrate_accessors` halts bootstrap before a single Arrow body is rewritten. The "one per accessor" rule is checked by machinery, not by reviewer vigilance.
+
+**Fail-closed: duplicate binding / wrong-kind marker (R3 partially behavioral).**
+R4: duplicate → pre-mutation diagnostic, bootstrap halts. Wrong-kind marker → impossible; there are no markers.
+
+**Facts flow forward (R3 was already satisfied, preserved in R4).**
+Arrow.body still carries the "externally realized" fact structurally. The walk `Transform → Arrow → body → ExternalRealization(self_id) → decl` reaches emission through the exact thesis-boundary path (`Transform → Arrow` and `Arrow → body`).
 
 ---
 
@@ -211,15 +228,17 @@ Wired in all three current emit files (`emit_rust.rs`, `emit_go.rs`, `emit_pytho
 
 - **New `SubstrateAccessorRealization` type parallel to `BehaviorRealization`.** Proliferates realization schemas when the existing `{ language, target, carrier, cost }` shape already fits. Rejected per codex's "collapse to one code-verified realization family" concern.
 
+- **`SubstrateAccessor` marker type + per-accessor `SubstrateAccessorBinding` table** (revision 3). The `accessor → marker` relation ended up represented twice (in the binding table AND in the rewritten Arrow body); "one binding per accessor" was prose, not shape; duplicates admitted last-write-wins at the bootstrap iteration. Replaced by: the accessor declaration IS its own identity; ExternalRealization self-references; one enumeration list of accessors drives bootstrap with structural uniqueness. Rejected per round-3 reviewer feedback.
+
 ---
 
 ## Open questions
 
-1. **Semantic widening of `BehaviorRealization.target`.** Today used for Behavior kinds (Bind/Branch/Transform/etc.); DB-14 extends to SubstrateAccessor markers. Legitimate because the field type is `DeclarationRef`, but the name `target` suggests Behavior specifically. Options: rename `target` → `realizes` (broader), or leave and document. A future unification PR may also merge Operator/Behavior/substrate realization types into `TargetCarrierRealization`. Neither is in DB-14's scope.
+1. **Semantic widening of `BehaviorRealization.target`.** Today used for Behavior kinds (Bind/Branch/Transform/etc.); DB-14 extends to externally-realized Arrow declarations. Legitimate because the field type is `DeclarationRef`, but the name `target` suggests Behavior specifically. Options: rename `target` → `realizes` (broader), or leave and document. A future unification PR may also merge Operator/Behavior realization types into `TargetCarrierRealization`. Neither is in DB-14's scope.
 
-2. **`PythonCallableRealization`'s status.** `python.dag` still uses a Python-specific type (`PythonCallableRealization`) instead of the shared `CallableRealization`. This is an orthogonal debt item already noted in the existing code comment. DB-14 uses `BehaviorRealization` (the correctly-shared schema) throughout, so it doesn't aggravate this. The Python-callable migration remains a separate task.
+2. **`PythonCallableRealization`'s status.** `python.dag` still uses a Python-specific type (`PythonCallableRealization`) instead of the shared `CallableRealization`. Orthogonal debt item; DB-14 uses `BehaviorRealization` throughout, so it doesn't aggravate this.
 
-3. **Accessor marker shape.** Chose `type SubstrateAccessor { name: String }` (identity + debug-friendly name). Could be structurally nameless (identity-only) if future reflection doesn't need the name. Debug clarity wins for now; `name` is not structurally load-bearing.
+3. **List uniqueness at the substrate level.** R4 relies on a pre-mutation check in bootstrap to diagnose duplicates in `substrate_accessors`. If v3's `List<DeclarationRef>` substrate supports set-like uniqueness natively (e.g., `Set<DeclarationRef>`), the check becomes structural rather than imperative. Worth verifying which shape v3's list-or-set substrate currently exposes; if only `List`, the bootstrap-side check stays but is tiny and local.
 
 4. **`emit.dag` migration impact.** When emission moves from `emit_rust.rs`/`emit_go.rs`/`emit_python.rs` into `.dag` (Lane 1e + beyond), the E-9 dispatch rule applies unchanged: `emit.dag` walks Arrow.body and handles the `ExternalRealization` variant structurally. No design refactor required at that boundary.
 
@@ -228,15 +247,15 @@ Wired in all three current emit files (`emit_rust.rs`, `emit_go.rs`, `emit_pytho
 ## Acceptance (Lane 1 Stage 1b owns)
 
 - [ ] E-9 invariant present in INVARIANTS.md (this PR lands it alongside DB-14)
-- [ ] `SubstrateAccessor` type + three accessor markers (`port_accessor`, `node_accessor`, `resolve_producer_accessor`) declared in `substrate.dag`
-- [ ] Three accessor fns (`port`, `node`, `resolve_producer`) declared as Arrows with stub bodies in `substrate.dag`
-- [ ] Three `SubstrateAccessorBinding` data items (one per accessor, NOT per target) in `substrate.dag`
-- [ ] `bootstrap.rs::upgrade_substrate_accessor_bodies` implemented, mirroring `upgrade_pipeline_stage_bodies`; fail-closed on missing/non-Arrow accessors
-- [ ] Three per-target `BehaviorRealization` data items in `src/v3/spec/rust.dag`, `go.dag`, `python.dag` (9 total), `target` fields reference the accessor markers
-- [ ] Post-bootstrap invariant test: each accessor's `Arrow.body == ExternalRealization(marker)` — NOT `Unparsed`, NOT a real sub-DAG. Mirrors pipeline.dag's invariant test (from DB-16 §3)
+- [ ] Three accessor fns (`port`, `node`, `resolve_producer`) declared as Arrows with trivial stub bodies in `substrate.dag`. **No `SubstrateAccessor` type; no `SubstrateAccessorBinding` table.**
+- [ ] Single `data substrate_accessors: List<DeclarationRef> = [port, node, resolve_producer]` in `substrate.dag`
+- [ ] `bootstrap.rs::upgrade_substrate_accessor_bodies` implemented: (a) pre-mutation uniqueness check on `substrate_accessors` — duplicates are a fail-closed diagnostic; (b) for each accessor, rewrite Arrow body to `ExternalRealization(self_id)` (self-reference); non-Arrow connectives fail closed.
+- [ ] Three per-target `BehaviorRealization` data items in `src/v3/spec/rust.dag`, `go.dag`, `python.dag` (9 total); each `target` field references the accessor declaration **directly** (no marker indirection)
+- [ ] Post-bootstrap invariant test: each accessor's `Arrow.body == ExternalRealization(self_id)` where `self_id` matches the accessor's own DeclarationId. Mirrors pipeline.dag's invariant test (DB-16 §3).
+- [ ] Duplicate-list regression test: a test fixture adds `port` twice to `substrate_accessors`, bootstrap emits the expected fail-closed diagnostic pointing at the duplicate
 - [ ] `dag.nodes()` delta from substrate.dag load + bootstrap is bounded — zero Callable Transforms contributed by the three accessor declarations
 - [ ] Emission dispatch on `ArrowBody::ExternalRealization` wired in `emit_rust.rs`, `emit_go.rs`, `emit_python.rs`
-- [ ] Fail-closed emission test: a program that calls a substrate accessor whose marker has no realization in the active target's spec produces a diagnostic naming the (target, accessor) pair
+- [ ] Fail-closed emission test: a program that calls a substrate accessor whose declaration has no realization in the active target's spec produces a diagnostic naming the (target, accessor) pair
 - [ ] Three existing lenses (`complexity.dag`, `provenance.dag`, `unused_parameters.dag`) migrate to call `port(d, id)` / `node(d, id)` / `resolve_producer(d, id)`; oracle tests pass
 - [ ] Line count reduction in `src/v3/lenses/*.dag` ≥ 15%
 - [ ] INVARIANTS.md L-7 landed (lenses don't reconstruct lookup locally) — separate from E-9
