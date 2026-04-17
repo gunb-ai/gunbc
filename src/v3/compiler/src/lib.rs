@@ -17,6 +17,8 @@
 
 pub mod dag;
 pub mod diagnostics;
+pub mod emit_go;
+pub mod emit_python;
 pub mod emit_rust;
 pub mod lens_cost;
 pub mod lens_depth;

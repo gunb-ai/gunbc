@@ -1,0 +1,393 @@
+module v3.spec.python
+
+import v3.spec.v3_l1 { DeclarationRef }
+import v3.std.substrate {
+  NodeId, PortId, DeclarationId, SourceSpan, DagPort, Dag, ValueNode,
+  TransformNode, BranchNode, LoopNode, BindNode, BranchPath, Behavior
+}
+import std.list {
+  List, empty, singleton, cons, concat, length, is_empty, fold, map, filter, contains
+}
+import std.algebra { OrderedRing }
+import v3.std.computation_model {
+  TargetExecutionModel, MemoryModel,
+  GarbageCollected, LexicalScoping
+}
+
+// 🟡 SCAFFOLD per INVARIANTS.md E-7. Parallel to
+// `v3.std.emit_model.TypeRealization`. emit_python consumes
+// PythonTypeRealization instead of the shared schema; the shared
+// schema lacks an `is_copy` field that Python's per-value rendering
+// reads, so a direct migration requires extending TypeRealization
+// OR lifting is_copy into a separate per-target lens.
+// Dissolution trigger: Lane 1e (consolidation) migrates emit_python
+// onto shared TypeRealization after the schema grows an is_copy
+// equivalent (or after emit_rust's copy-handling moves to a lens).
+type PythonTypeRealization {
+  target: DeclarationRef
+  carrier: String
+  is_copy: Bool
+  cost: Int
+}
+
+// 🟡 SCAFFOLD per INVARIANTS.md E-7. Parallel to
+// `v3.std.emit_model.OperatorRealization` — identical shape, just
+// private meta-type. No schema gap; this is a pure-migration target.
+// Dissolution trigger: Lane 1e migrates emit_python to read
+// OperatorRealization (shared).
+type PythonOperatorRealization {
+  target: DeclarationRef
+  op: DeclarationRef
+  carrier: String
+  cost: Int
+}
+
+// 🟡 SCAFFOLD per INVARIANTS.md E-7. Parallel to
+// `v3.std.emit_model.CallableRealization`. Shared schema has
+// `parameters: List<CallableParameter>` (slot-keyed dispositions
+// that Go parses but doesn't consume for GC rendering); Python
+// doesn't need that field, so migrating requires either making
+// parameters optional in the shared schema (regression against
+// E-6) or accepting that emit_python validates-and-ignores the
+// field (the Go pattern).
+// Dissolution trigger: Lane 1e decides the policy. Until then,
+// the private family is the bounded scaffold.
+type PythonCallableRealization {
+  target: DeclarationRef
+  strategy: PythonCallableStrategy
+  cost: Int
+}
+
+// 🟡 SCAFFOLD. Parallel to v3.std.emit_model.CallableStrategy. Lives
+// here because emit_python is on a Python-private realization
+// vocabulary (PythonCallableRealization etc.) that hasn't migrated
+// to the shared schema yet. Dissolution path: when emit_python reads
+// CallableRealization (shared) instead of PythonCallableRealization
+// (private), this enum dissolves into the shared CallableStrategy.
+type PythonCallableStrategy
+  = ListEmpty
+  | ListSingleton
+  | ListCons
+  | ListConcat
+  | ListLength
+  | ListIsEmpty
+  | ListFold
+  | ListMap
+  | ListFilter
+  | ListContains
+
+// 🟡 SCAFFOLD per INVARIANTS.md E-7. Parallel to
+// `v3.std.emit_model.TypeInstantiationRealization` — identical
+// shape. No schema gap; pure-migration target.
+// Dissolution trigger: Lane 1e migrates emit_python to read
+// TypeInstantiationRealization (shared).
+type PythonTypeInstantiationRealization {
+  target: DeclarationRef
+  carrier: String
+  cost: Int
+}
+
+// 🟡 SCAFFOLD per INVARIANTS.md E-7. Parallel to
+// `v3.std.emit_model.PatternRealization`. Shared schema carries
+// typed pattern strings (scrutinee, empty_pattern, cons_pattern,
+// head_expr, tail_expr); Python's pattern lowering currently
+// uses hardcoded list-variant name lookups in render_list_branch
+// (blocked on parser dotted-path variant access, tracked as B13
+// in Lane 3 Stage 3a). The type exists for schema-shape symmetry
+// but is NOT currently loaded by PythonIndexes::build — the
+// record's only consumer is still prose.
+// Dissolution trigger: B13 (Lane 3 Stage 3a parser feature) lands
+// AND emit_python migrates to shared PatternRealization in Lane 1e.
+type PythonPatternRealization {
+  target: DeclarationRef
+  strategy: PythonPatternStrategy
+  cost: Int
+}
+
+// 🟡 SCAFFOLD. Parallel to v3.std.emit_model.PatternStrategy. Same
+// dissolution path as PythonCallableStrategy — when emit_python
+// reads PatternRealization (shared) and the planned typed-variant
+// authority (B13) replaces hardcoded "Empty"/"Cons" name lookups,
+// this enum dissolves into the shared PatternStrategy.
+type PythonPatternStrategy
+  = ListPattern
+
+type PythonExpressionSyntax {
+  binary_op: String
+  field_access: String
+  function_call: String
+  closure: String
+}
+
+type PythonCollectionOps {
+  empty_list: String
+  list_literal: String
+  cons: String
+  concat: String
+  length: String
+  is_empty: String
+  fold: String
+  map: String
+  filter: String
+  contains: String
+}
+
+type PythonTypeApplicationSyntax {
+  optional: String
+}
+
+data python_target: TargetExecutionModel = {
+  memory: GarbageCollected
+  scope: LexicalScoping
+}
+
+data python_expressions: PythonExpressionSyntax = {
+  binary_op: "({lhs} {op} {rhs})"
+  field_access: "{object}.{field}"
+  function_call: "{func}({args})"
+  closure: "lambda {params}: {body}"
+}
+
+data python_collections: PythonCollectionOps = {
+  empty_list: "[]"
+  list_literal: "[{elements}]"
+  cons: "[{head}, *{tail}]"
+  concat: "[*{left}, *{right}]"
+  length: "len({recv})"
+  is_empty: "(len({recv}) == 0)"
+  fold: "__v3_fold({recv}, {init}, {body})"
+  map: "[{body} for {item} in {recv}]"
+  filter: "[{item_push} for {item} in {recv} if {predicate}]"
+  contains: "({item} in {recv})"
+}
+
+data python_type_applications: PythonTypeApplicationSyntax = {
+  optional: "typing.Optional[{element}]"
+}
+
+data python_int: PythonTypeRealization = {
+  target: Int
+  carrier: "int"
+  is_copy: true
+  cost: 1
+}
+
+data python_bool: PythonTypeRealization = {
+  target: Bool
+  carrier: "bool"
+  is_copy: true
+  cost: 1
+}
+
+data python_string: PythonTypeRealization = {
+  target: String
+  carrier: "str"
+  is_copy: true
+  cost: 1
+}
+
+data python_node_id: PythonTypeRealization = {
+  target: NodeId
+  carrier: "NodeId"
+  is_copy: true
+  cost: 1
+}
+
+data python_port_id: PythonTypeRealization = {
+  target: PortId
+  carrier: "PortId"
+  is_copy: true
+  cost: 1
+}
+
+data python_declaration_id: PythonTypeRealization = {
+  target: DeclarationId
+  carrier: "DeclarationId"
+  is_copy: true
+  cost: 1
+}
+
+data python_declaration_ref: PythonTypeRealization = {
+  target: DeclarationRef
+  carrier: "DeclarationId"
+  is_copy: true
+  cost: 1
+}
+
+data python_source_span: PythonTypeRealization = {
+  target: SourceSpan
+  carrier: "SourceSpan"
+  is_copy: false
+  cost: 1
+}
+
+data python_dag_port: PythonTypeRealization = {
+  target: DagPort
+  carrier: "DagPort"
+  is_copy: false
+  cost: 1
+}
+
+data python_branch_path: PythonTypeRealization = {
+  target: BranchPath
+  carrier: "BranchPath"
+  is_copy: false
+  cost: 1
+}
+
+data python_value_node: PythonTypeRealization = {
+  target: ValueNode
+  carrier: "ValueNode"
+  is_copy: false
+  cost: 1
+}
+
+data python_transform_node: PythonTypeRealization = {
+  target: TransformNode
+  carrier: "TransformNode"
+  is_copy: false
+  cost: 1
+}
+
+data python_branch_node: PythonTypeRealization = {
+  target: BranchNode
+  carrier: "BranchNode"
+  is_copy: false
+  cost: 1
+}
+
+data python_loop_node: PythonTypeRealization = {
+  target: LoopNode
+  carrier: "LoopNode"
+  is_copy: false
+  cost: 1
+}
+
+data python_bind_node: PythonTypeRealization = {
+  target: BindNode
+  carrier: "BindNode"
+  is_copy: false
+  cost: 1
+}
+
+data python_behavior: PythonTypeRealization = {
+  target: Behavior
+  carrier: "Behavior"
+  is_copy: false
+  cost: 1
+}
+
+data python_dag: PythonTypeRealization = {
+  target: Dag
+  carrier: "Dag"
+  is_copy: false
+  cost: 1
+}
+
+data python_int_add: PythonOperatorRealization = {
+  target: Int
+  op: OrderedRing.add
+  carrier: "+"
+  cost: 1
+}
+
+data python_int_sub: PythonOperatorRealization = {
+  target: Int
+  op: OrderedRing.sub
+  carrier: "-"
+  cost: 1
+}
+
+data python_int_eq: PythonOperatorRealization = {
+  target: Int
+  op: OrderedRing.eq
+  carrier: "=="
+  cost: 1
+}
+
+data python_node_id_eq: PythonOperatorRealization = {
+  target: NodeId
+  op: OrderedRing.eq
+  carrier: "=="
+  cost: 1
+}
+
+data python_port_id_eq: PythonOperatorRealization = {
+  target: PortId
+  op: OrderedRing.eq
+  carrier: "=="
+  cost: 1
+}
+
+data python_declaration_id_eq: PythonOperatorRealization = {
+  target: DeclarationId
+  op: OrderedRing.eq
+  carrier: "=="
+  cost: 1
+}
+
+data python_empty_callable: PythonCallableRealization = {
+  target: empty
+  strategy: ListEmpty
+  cost: 1
+}
+
+data python_singleton_callable: PythonCallableRealization = {
+  target: singleton
+  strategy: ListSingleton
+  cost: 1
+}
+
+data python_cons_callable: PythonCallableRealization = {
+  target: cons
+  strategy: ListCons
+  cost: 1
+}
+
+data python_concat_callable: PythonCallableRealization = {
+  target: concat
+  strategy: ListConcat
+  cost: 1
+}
+
+data python_length_callable: PythonCallableRealization = {
+  target: length
+  strategy: ListLength
+  cost: 1
+}
+
+data python_is_empty_callable: PythonCallableRealization = {
+  target: is_empty
+  strategy: ListIsEmpty
+  cost: 1
+}
+
+data python_fold_callable: PythonCallableRealization = {
+  target: fold
+  strategy: ListFold
+  cost: 1
+}
+
+data python_map_callable: PythonCallableRealization = {
+  target: map
+  strategy: ListMap
+  cost: 1
+}
+
+data python_filter_callable: PythonCallableRealization = {
+  target: filter
+  strategy: ListFilter
+  cost: 1
+}
+
+data python_contains_callable: PythonCallableRealization = {
+  target: contains
+  strategy: ListContains
+  cost: 1
+}
+
+data python_list_instantiation: PythonTypeInstantiationRealization = {
+  target: List
+  carrier: "list[{element}]"
+  cost: 1
+}

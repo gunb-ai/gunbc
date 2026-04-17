@@ -1,0 +1,257 @@
+module v3.std.emit_model
+
+import v3.spec.v3_l1 { DeclarationRef }
+import std.list { List }
+
+// Target ownership is carried on every shared realization as a
+// typed `language: DeclarationRef` field pointing at the owning
+// target's language-spec declaration (e.g., `rust_language`,
+// `go_language`). The reference is resolved via dotted-path
+// lowering at spec parse time; each emitter compares it to its
+// own cached language-spec id to pick up only its entries.
+// Adding a new shared target is a pure spec-file change — drop a
+// `<target>.dag` with a LanguageSpec data item and reference it
+// from each realization. No compiler enum roster to edit.
+type TypeRealization {
+  language: DeclarationRef
+  target: DeclarationRef
+  carrier: String
+  is_copy: Bool
+  fields: List<FieldBinding>
+  cost: Int
+}
+
+type FieldBinding {
+  dag_name: String
+  access: FieldAccess
+  borrowed_read: Bool
+}
+
+// 🟢 TERMINAL. Two-way split of field access shapes a target language
+// can offer: direct field access (`x.field`) vs an accessor method
+// call (`x.field()` in Java-style getters, or method-style projection
+// in Rust where the carrier type exposes the field via a fn). Each
+// variant carries the rendered carrier string. Durable because
+// targets really do split this way.
+type FieldAccess
+  = DirectField(String)
+  | AccessorMethod(String)
+
+type OperatorRealization {
+  language: DeclarationRef
+  target: DeclarationRef
+  op: DeclarationRef
+  carrier: String
+  cost: Int
+}
+
+type BehaviorRealization {
+  language: DeclarationRef
+  target: DeclarationRef
+  carrier: String
+  cost: Int
+}
+
+type CallableRealization {
+  language: DeclarationRef
+  target: DeclarationRef
+  strategy: CallableStrategy
+  parameters: List<CallableParameter>
+  cost: Int
+}
+
+// 🟢 TERMINAL. One entry per Arrow input slot, keyed by `slot` so
+// arity and order drift become representable as a build-time error
+// rather than a silent positional default. Validation: every slot
+// in [0, arity) must appear exactly once. Replaces the bare
+// `List<ParameterDisposition>` shape, which silently defaulted to
+// Borrowed when the spec list was shorter than the callable's
+// declared input arity.
+type CallableParameter {
+  slot: Int
+  disposition: ParameterDisposition
+}
+
+// 🟢 TERMINAL. Per-parameter ownership classification. Borrowed
+// means the callee reads the value and returns ownership to the
+// caller; Consumed means the callee takes ownership. This is the
+// primary fact ownership-rendering-design.md proposes for replacing
+// downstream rendering enums (ReadStrategy/ConstructStrategy) with
+// derivations. Durable because every memory-managed target has
+// to make this distinction at every callable boundary.
+type ParameterDisposition
+  = Borrowed
+  | Consumed
+
+type TypeInstantiationRealization {
+  language: DeclarationRef
+  target: DeclarationRef
+  carrier: String
+  cost: Int
+}
+
+// Dissolution receipt — 🟡 mixed lifecycle. These variants are the staged target
+// callable-emission strategies that still live in host emitters while `.dag`
+// emission remains partly in Rust. They dissolve when `emit.dag` owns callable
+// lowering directly from the target-language facts; until then, the strategy tag
+// is the single authority for how a std callable lowers into target syntax.
+type CallableStrategy
+  = ListEmpty
+  | ListSingleton
+  | ListCons
+  | ListConcat
+  | ListLength
+  | ListIsEmpty
+  | ListFold
+  | ListMap
+  | ListFilter
+  | ListContains
+
+// Dissolution receipt — 🟡 mixed lifecycle. `PatternRealization` is a staged
+// carrier for structural-match lowering onto realized target carriers such as
+// `List<T> -> Vec<T>` or `[]T`. The terminal target is the same authority
+// expressed as target-language facts consumed by `.dag` emission; this record
+// remains the single authority until that stage lands.
+type PatternRealization {
+  language: DeclarationRef
+  target: DeclarationRef
+  strategy: PatternStrategy
+  scrutinee: String
+  empty_pattern: String
+  cons_pattern: String
+  head_expr: String
+  tail_expr: String
+  cost: Int
+}
+
+// Dissolution receipt — 🟡 mixed lifecycle. The current staged emitters need a
+// small structural strategy tag to decide which pattern-lowering path to take.
+// It dissolves with `PatternRealization` when the emitters themselves become
+// data.
+type PatternStrategy
+  = PlaceholderPatternStrategy
+  | VectorList
+
+type StatementSyntax {
+  let_binding: String
+  let_binding_inferred: String
+}
+
+type ExpressionSyntax {
+  binary_op: String
+  field_access: String
+  function_call: String
+  closure: String
+}
+
+type ForEachSyntax {
+  prefix: String
+  separator: String
+}
+
+type ControlFlowSyntax {
+  if_else: String
+  match_arm: String
+  for_each_syntax: ForEachSyntax
+}
+
+type LiteralSyntax {
+  true_keyword: String
+  false_keyword: String
+  string_delimiter: String
+}
+
+type ModuleSyntax {
+  path_separator: String
+}
+
+type FunctionSyntax {
+  definition: String
+  definition_void: String
+  param_with_type: String
+  param_separator: String
+}
+
+type TypeApplicationSyntax {
+  optional: String
+}
+
+type TypeDefinitionSyntax {
+  struct_def: String
+  struct_field: String
+  enum_def: String
+  enum_unit_variant: String
+  enum_data_variant: String
+}
+
+type PatternMatchSyntax {
+  match_expr: String
+  match_arm: String
+  variant_pattern: String
+  variant_pattern_positional: String
+  variant_pattern_empty: String
+  field_binding: String
+  field_binding_separator: String
+  wildcard: String
+}
+
+type CollectionOps {
+  concat: String
+  length: String
+  is_empty: String
+  fold: String
+  map: String
+  filter: String
+  contains: String
+  empty_list: String
+  list_literal: String
+  cons: String
+}
+
+type ValueConstructionSyntax {
+  struct_literal: String
+  struct_field_init: String
+  struct_field_separator: String
+  variant_construction: String
+  variant_named_construction: String
+}
+
+type RenderingModel {
+  read: ReadStrategy
+  construct: ConstructStrategy
+}
+
+// 🟡 SCAFFOLD. Per-target read strategy: Borrow renders `&T`-style
+// references; PassByValue renders owned values. Lives here because
+// the current emitter dispatches on a target-level rendering tag.
+// Dissolution path: ownership-rendering-design.md proposes deriving
+// per-edge read mode from MemoryModel × ParameterDisposition × the
+// edge's use-site classification (Read vs Construct). Once that
+// derivation lands, RenderingModel.read goes away — this enum
+// dissolves with it.
+type ReadStrategy
+  = Borrow
+  | PassByValue
+
+// 🟡 SCAFFOLD. Per-target construction strategy: CopyOrClone renders
+// `.clone()`-style duplication on Conj construction; PassByValue
+// renders direct value moves. Same dissolution path as ReadStrategy
+// — replaced by per-edge derivation from MemoryModel ×
+// ParameterDisposition.
+type ConstructStrategy
+  = CopyOrClone
+  | PassByValue
+
+type LanguageSpec {
+  statements: DeclarationRef
+  expressions: DeclarationRef
+  control_flow: DeclarationRef
+  literals: DeclarationRef
+  modules: DeclarationRef
+  functions: DeclarationRef
+  type_applications: DeclarationRef
+  type_definitions: DeclarationRef
+  patterns: DeclarationRef
+  collection_ops: DeclarationRef
+  values: DeclarationRef
+}

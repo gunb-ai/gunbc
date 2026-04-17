@@ -19,7 +19,10 @@ fn type_realization_fields_for(
         .declarations()
         .iter()
         .find(|decl| {
-            decl.meta_tag == Some(type_realization_meta)
+            decl.name
+                .as_deref()
+                .is_some_and(|name| name.starts_with("rust_"))
+                && decl.meta_tag == Some(type_realization_meta)
                 && matches!(
                     &decl.value_body,
                     Some(ValueBody::Structural { fields })
@@ -56,17 +59,17 @@ fn type_realization_fields_for(
                 _ => None,
             })
             .expect("FieldBinding.dag_name string");
-        let rust_access = fields
+        let access = fields
             .iter()
-            .find(|(label, _)| label == "rust_access")
+            .find(|(label, _)| label == "access")
             .map(|(_, value)| value)
-            .expect("FieldBinding.rust_access");
+            .expect("FieldBinding.access");
         let FieldValue::Variant {
             constructor,
             payload,
-        } = rust_access
+        } = access
         else {
-            panic!("FieldBinding.rust_access must be a RustFieldAccess variant");
+            panic!("FieldBinding.access must be a FieldAccess variant");
         };
         let borrowed_read = fields
             .iter()
@@ -78,7 +81,7 @@ fn type_realization_fields_for(
             .unwrap_or(false);
         let [FieldValue::Literal(v3_compiler::dag::LiteralBits::String(name))] = &payload[..]
         else {
-            panic!("RustFieldAccess payload must be a single String literal");
+            panic!("FieldAccess payload must be a single String literal");
         };
         out.insert(
             dag_name,

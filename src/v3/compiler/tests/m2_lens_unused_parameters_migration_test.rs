@@ -248,7 +248,18 @@ fn unused_parameters_generated_module_matches_checked_in_snapshot() {
 
 #[test]
 fn unused_parameters_generated_module_clone_count_is_ratcheted() {
-    const MAX_CLONE_CALLS: usize = 6;
+    // Ratchet was previously 1 (assumed an OwnedConstructLastUse
+    // optimization that skipped the clone on the last consume). The
+    // optimization was unsound when the rendered template reorders
+    // evaluation relative to dag.nodes() iteration order — e.g.,
+    // `cons(entry_for(acc, _), acc)` rendering moves `acc` (slot 1)
+    // before borrowing it (slot 0), producing use-after-move in the
+    // emitted Rust. emit_rust now conservatively clones for every
+    // Consumed disposition (matching origin/main's safe behavior),
+    // which is correct but pessimistic. The ratchet floor reflects
+    // that pessimistic state; future template-aware last-use will
+    // reduce it back down.
+    const MAX_CLONE_CALLS: usize = 5;
 
     let fresh = emit_lens_module();
     let clone_calls = clone_call_count(&fresh);

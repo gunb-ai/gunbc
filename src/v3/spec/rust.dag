@@ -48,238 +48,23 @@
 
 module v3.spec.rust
 
-import v3.spec.v3_l1 { Bind, Branch, Main, DeclarationRef }
-import std.list { List }
-
-// ─────────────────────────────────────────────────────────────────
-// Realization meta-types — three distinct shapes.
-// ─────────────────────────────────────────────────────────────────
-
-// Type realization. Maps a primitive type declaration to its
-// target-language type name. Looked up by the emitter via
-// `(target: DeclarationRef)` to produce `let x: <carrier> = ...`.
-type TypeRealization {
-  target: DeclarationRef
-  carrier: String
-  is_copy: Bool
-  fields: List<FieldBinding>
-  cost: Int
+import v3.spec.v3_l1 { Bind, Branch, Main }
+import v3.std.computation_model { TargetExecutionModel, OwnershipBased, LexicalScoping }
+import v3.std.emit_model {
+  TypeRealization, FieldBinding, FieldAccess,
+  OperatorRealization, BehaviorRealization, CallableRealization,
+  TypeInstantiationRealization, CallableStrategy,
+  ParameterDisposition, Borrowed, Consumed,
+  PatternRealization, PatternStrategy,
+  StatementSyntax, ExpressionSyntax, ControlFlowSyntax,
+  LiteralSyntax, ModuleSyntax, FunctionSyntax, TypeApplicationSyntax,
+  TypeDefinitionSyntax, PatternMatchSyntax, CollectionOps,
+  ValueConstructionSyntax, RenderingModel, LanguageSpec
 }
 
-type FieldBinding {
-  dag_name: String
-  rust_access: RustFieldAccess
-  borrowed_read: Bool
-}
-
-type RustFieldAccess
-  = DirectField(String)
-  | AccessorMethod(String)
-
-// Operator realization. Maps a `(operand_type, algebra_field)`
-// pair to its target-language operator symbol. The operand type
-// is the LHS operand's primitive type (Int / Bool / String /
-// etc.); the algebra field is the corresponding field on the
-// operand type's algebra (e.g. OrderedRing.add). The emitter
-// looks up by `(target: DeclarationRef, op: DeclarationRef)` when
-// rendering a `Transform { target: Operator(_), .. }`.
-type OperatorRealization {
-  target: DeclarationRef
-  op: DeclarationRef
-  carrier: String
-  cost: Int
-}
-
-// Behavior template realization. Maps a substrate marker from
-// `dsl/std/v3_l1.dag` to a target-language template string with
-// placeholders for downstream substitution. Looked up by the
-// emitter via `(target: DeclarationRef)` where target is one of the
-// L1 behavior markers (Bind / Branch / Main / etc.).
-//
-// Placeholders the template engine recognizes:
-//   {name}  — the Bind's name
-//   {type}  — the resolved target-language type name (looked up via
-//         the corresponding TypeRealization)
-//   {value} — the value sub-expression rendered into target syntax
-//   {cond}  — Branch condition expression
-//   {then}  — Branch "then" arm body
-//   {else}  — Branch "else" arm body
-//   {body}  — the joined sequence of let-statements in main body
-//   {final} — the name of the final let-binding (printed by main)
-//   {quote} — a literal `"` character (workaround for the M1(3)
-//         tokenizer having no escape sequences)
-type BehaviorRealization {
-  target: DeclarationRef
-  carrier: String
-  cost: Int
-}
-
-// Callable realization. Maps a callable declaration to the
-// target-language render strategy the emitter should use when it
-// sees a `TransformTarget::Callable` instantiation of that
-// declaration. This keeps list builtin dispatch in rust.dag
-// instead of in name-keyed Rust code.
-type CallableRealization {
-  target: DeclarationRef
-  strategy: RustCallableStrategy
-  cost: Int
-}
-
-type TypeInstantiationRealization {
-  target: DeclarationRef
-  carrier: String
-  cost: Int
-}
-
-// Dissolution receipt — 🟡 mixed lifecycle. These variants are the staged Rust
-// callable-emission strategies that still live in host Rust while `emit_rust.rs`
-// exists. They dissolve when `emit.dag` owns callable lowering directly from the
-// target-language facts; until then, the strategy tag is the single authority for
-// how a std callable lowers into Rust syntax.
-type RustCallableStrategy
-  = ListEmpty
-  | ListSingleton
-  | ListCons
-  | ListConcat
-  | ListLength
-  | ListIsEmpty
-  | ListFold
-  | ListMap
-  | ListFilter
-  | ListContains
-
-// Dissolution receipt — 🟡 mixed lifecycle. `PatternRealization` is a staged
-// carrier for structural-match lowering onto realized Rust carriers such as
-// `List<T> -> Vec<T>`. The terminal target is the same authority expressed as
-// target-language facts consumed by `.dag` emission; this record remains the
-// single authority until that stage lands.
-type PatternRealization {
-  target: DeclarationRef
-  strategy: RustPatternStrategy
-  scrutinee: String
-  empty_pattern: String
-  cons_pattern: String
-  head_expr: String
-  tail_expr: String
-  cost: Int
-}
-
-// Dissolution receipt — 🟡 mixed lifecycle. The current staged emitter needs a
-// small structural strategy tag to decide which pattern-lowering path to take.
-// It dissolves with `PatternRealization` when the emitter itself becomes data.
-type RustPatternStrategy
-  = PlaceholderPatternStrategy
-  | VectorList
-
-type StatementSyntax {
-  let_binding: String
-  let_binding_inferred: String
-}
-
-type ExpressionSyntax {
-  binary_op: String
-  field_access: String
-  function_call: String
-  closure: String
-}
-
-type ForEachSyntax {
-  prefix: String
-  separator: String
-}
-
-type ControlFlowSyntax {
-  if_else: String
-  match_arm: String
-  for_each_syntax: ForEachSyntax
-}
-
-type LiteralSyntax {
-  true_keyword: String
-  false_keyword: String
-  string_delimiter: String
-}
-
-type ModuleSyntax {
-  path_separator: String
-}
-
-type FunctionSyntax {
-  definition: String
-  definition_void: String
-  param_with_type: String
-  param_separator: String
-}
-
-type TypeApplicationSyntax {
-  optional: String
-}
-
-type TypeDefinitionSyntax {
-  struct_def: String
-  struct_field: String
-  enum_def: String
-  enum_unit_variant: String
-  enum_data_variant: String
-}
-
-type PatternMatchSyntax {
-  match_expr: String
-  match_arm: String
-  variant_pattern: String
-  variant_pattern_positional: String
-  variant_pattern_empty: String
-  field_binding: String
-  field_binding_separator: String
-  wildcard: String
-}
-
-type CollectionOps {
-  concat: String
-  length: String
-  is_empty: String
-  fold: String
-  map: String
-  filter: String
-  contains: String
-  empty_list: String
-  list_literal: String
-  cons: String
-}
-
-type ValueConstructionSyntax {
-  struct_literal: String
-  struct_field_init: String
-  struct_field_separator: String
-  variant_construction: String
-  variant_named_construction: String
-}
-
-type RenderingModel {
-  read: ReadStrategy
-  construct: ConstructStrategy
-}
-
-type ReadStrategy
-  = Borrow
-  | PassByValue
-
-type ConstructStrategy
-  = CopyOrClone
-  | PassByValue
-
-type LanguageSpec {
-  statements: DeclarationRef
-  expressions: DeclarationRef
-  control_flow: DeclarationRef
-  literals: DeclarationRef
-  modules: DeclarationRef
-  functions: DeclarationRef
-  type_applications: DeclarationRef
-  type_definitions: DeclarationRef
-  patterns: DeclarationRef
-  collection_ops: DeclarationRef
-  values: DeclarationRef
+data rust_execution_model: TargetExecutionModel = {
+  memory: OwnershipBased
+  scope: LexicalScoping
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -287,6 +72,7 @@ type LanguageSpec {
 // ─────────────────────────────────────────────────────────────────
 
 data rust_int: TypeRealization = {
+  language: rust_language
   target: Int
   carrier: "i64"
   is_copy: true
@@ -295,6 +81,7 @@ data rust_int: TypeRealization = {
 }
 
 data rust_bool: TypeRealization = {
+  language: rust_language
   target: Bool
   carrier: "bool"
   is_copy: true
@@ -303,6 +90,7 @@ data rust_bool: TypeRealization = {
 }
 
 data rust_string: TypeRealization = {
+  language: rust_language
   target: String
   carrier: "String"
   is_copy: false
@@ -311,6 +99,7 @@ data rust_string: TypeRealization = {
 }
 
 data rust_node_id: TypeRealization = {
+  language: rust_language
   target: NodeId
   carrier: "NodeId"
   is_copy: true
@@ -319,6 +108,7 @@ data rust_node_id: TypeRealization = {
 }
 
 data rust_port_id: TypeRealization = {
+  language: rust_language
   target: PortId
   carrier: "PortId"
   is_copy: true
@@ -327,6 +117,7 @@ data rust_port_id: TypeRealization = {
 }
 
 data rust_declaration_id: TypeRealization = {
+  language: rust_language
   target: DeclarationId
   carrier: "DeclarationId"
   is_copy: true
@@ -335,16 +126,18 @@ data rust_declaration_id: TypeRealization = {
 }
 
 data rust_type_shape: TypeRealization = {
+  language: rust_language
   target: TypeShape
   carrier: "TypeShape"
   is_copy: false
   fields: [
-    { dag_name: "declaration", rust_access: DirectField("declaration"), borrowed_read: false }
+    { dag_name: "declaration", access: DirectField("declaration"), borrowed_read: false }
   ]
   cost: 1
 }
 
 data rust_port_state: TypeRealization = {
+  language: rust_language
   target: PortState
   carrier: "PortState"
   is_copy: false
@@ -353,30 +146,33 @@ data rust_port_state: TypeRealization = {
 }
 
 data rust_port: TypeRealization = {
+  language: rust_language
   target: DagPort
   carrier: "Port"
   is_copy: false
   fields: [
-    { dag_name: "id", rust_access: AccessorMethod("id"), borrowed_read: false },
-    { dag_name: "state", rust_access: AccessorMethod("state_value"), borrowed_read: false },
-    { dag_name: "produced_by", rust_access: DirectField("produced_by"), borrowed_read: false }
+    { dag_name: "id", access: AccessorMethod("id"), borrowed_read: false },
+    { dag_name: "state", access: AccessorMethod("state_value"), borrowed_read: false },
+    { dag_name: "produced_by", access: DirectField("produced_by"), borrowed_read: false }
   ]
   cost: 1
 }
 
 data rust_source_span: TypeRealization = {
+  language: rust_language
   target: SourceSpan
   carrier: "SourceSpan"
   is_copy: false
   fields: [
-    { dag_name: "file", rust_access: DirectField("file"), borrowed_read: false },
-    { dag_name: "start", rust_access: DirectField("byte_start"), borrowed_read: false },
-    { dag_name: "end", rust_access: DirectField("byte_end"), borrowed_read: false }
+    { dag_name: "file", access: DirectField("file"), borrowed_read: false },
+    { dag_name: "start", access: DirectField("byte_start"), borrowed_read: false },
+    { dag_name: "end", access: DirectField("byte_end"), borrowed_read: false }
   ]
   cost: 1
 }
 
 data rust_literal_bits: TypeRealization = {
+  language: rust_language
   target: LiteralBits
   carrier: "LiteralBits"
   is_copy: false
@@ -385,6 +181,7 @@ data rust_literal_bits: TypeRealization = {
 }
 
 data rust_atom_payload: TypeRealization = {
+  language: rust_language
   target: AtomPayload
   carrier: "AtomPayload"
   is_copy: false
@@ -393,6 +190,7 @@ data rust_atom_payload: TypeRealization = {
 }
 
 data rust_cardinality_bound: TypeRealization = {
+  language: rust_language
   target: CardinalityBound
   carrier: "CardinalityBound"
   is_copy: false
@@ -401,39 +199,43 @@ data rust_cardinality_bound: TypeRealization = {
 }
 
 data rust_conj_field: TypeRealization = {
+  language: rust_language
   target: ConjField
   carrier: "Field"
   is_copy: false
   fields: [
-    { dag_name: "label", rust_access: DirectField("label"), borrowed_read: false },
-    { dag_name: "ty", rust_access: DirectField("ty"), borrowed_read: false }
+    { dag_name: "label", access: DirectField("label"), borrowed_read: false },
+    { dag_name: "ty", access: DirectField("ty"), borrowed_read: false }
   ]
   cost: 1
 }
 
 data rust_template_argument: TypeRealization = {
+  language: rust_language
   target: TemplateArgument
   carrier: "TemplateArgument"
   is_copy: false
   fields: [
-    { dag_name: "parameter", rust_access: DirectField("parameter"), borrowed_read: false },
-    { dag_name: "value", rust_access: DirectField("value"), borrowed_read: false }
+    { dag_name: "parameter", access: DirectField("parameter"), borrowed_read: false },
+    { dag_name: "value", access: DirectField("value"), borrowed_read: false }
   ]
   cost: 1
 }
 
 data rust_field_entry: TypeRealization = {
+  language: rust_language
   target: FieldEntry
   carrier: "(String, FieldValue)"
   is_copy: false
   fields: [
-    { dag_name: "label", rust_access: DirectField("0"), borrowed_read: false },
-    { dag_name: "value", rust_access: DirectField("1"), borrowed_read: false }
+    { dag_name: "label", access: DirectField("0"), borrowed_read: false },
+    { dag_name: "value", access: DirectField("1"), borrowed_read: false }
   ]
   cost: 1
 }
 
 data rust_field_value: TypeRealization = {
+  language: rust_language
   target: FieldValue
   carrier: "FieldValue"
   is_copy: false
@@ -442,6 +244,7 @@ data rust_field_value: TypeRealization = {
 }
 
 data rust_value_body: TypeRealization = {
+  language: rust_language
   target: ValueBody
   carrier: "ValueBody"
   is_copy: false
@@ -450,6 +253,7 @@ data rust_value_body: TypeRealization = {
 }
 
 data rust_arrow_body: TypeRealization = {
+  language: rust_language
   target: ArrowBody
   carrier: "ArrowBody"
   is_copy: false
@@ -458,6 +262,7 @@ data rust_arrow_body: TypeRealization = {
 }
 
 data rust_type_connective: TypeRealization = {
+  language: rust_language
   target: TypeConnective
   carrier: "TypeConnective"
   is_copy: false
@@ -466,23 +271,25 @@ data rust_type_connective: TypeRealization = {
 }
 
 data rust_declaration: TypeRealization = {
+  language: rust_language
   target: Declaration
   carrier: "Declaration"
   is_copy: false
   fields: [
-    { dag_name: "id", rust_access: DirectField("id"), borrowed_read: false },
-    { dag_name: "name", rust_access: DirectField("name"), borrowed_read: false },
-    { dag_name: "connective", rust_access: DirectField("connective"), borrowed_read: false },
-    { dag_name: "type_params", rust_access: DirectField("type_params"), borrowed_read: false },
-    { dag_name: "meta_tag", rust_access: DirectField("meta_tag"), borrowed_read: false },
-    { dag_name: "inhabits", rust_access: DirectField("inhabits"), borrowed_read: false },
-    { dag_name: "value_body", rust_access: DirectField("value_body"), borrowed_read: false },
-    { dag_name: "span", rust_access: DirectField("span"), borrowed_read: false }
+    { dag_name: "id", access: DirectField("id"), borrowed_read: false },
+    { dag_name: "name", access: DirectField("name"), borrowed_read: false },
+    { dag_name: "connective", access: DirectField("connective"), borrowed_read: false },
+    { dag_name: "type_params", access: DirectField("type_params"), borrowed_read: false },
+    { dag_name: "meta_tag", access: DirectField("meta_tag"), borrowed_read: false },
+    { dag_name: "inhabits", access: DirectField("inhabits"), borrowed_read: false },
+    { dag_name: "value_body", access: DirectField("value_body"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
   ]
   cost: 1
 }
 
 data rust_arithmetic_op: TypeRealization = {
+  language: rust_language
   target: ArithmeticOp
   carrier: "ArithmeticOp"
   is_copy: false
@@ -491,6 +298,7 @@ data rust_arithmetic_op: TypeRealization = {
 }
 
 data rust_comparison_op: TypeRealization = {
+  language: rust_language
   target: ComparisonOp
   carrier: "ComparisonOp"
   is_copy: false
@@ -499,6 +307,7 @@ data rust_comparison_op: TypeRealization = {
 }
 
 data rust_operator_kind: TypeRealization = {
+  language: rust_language
   target: OperatorKind
   carrier: "OperatorKind"
   is_copy: false
@@ -507,6 +316,7 @@ data rust_operator_kind: TypeRealization = {
 }
 
 data rust_transform_target: TypeRealization = {
+  language: rust_language
   target: TransformTarget
   carrier: "TransformTarget"
   is_copy: false
@@ -515,6 +325,7 @@ data rust_transform_target: TypeRealization = {
 }
 
 data rust_branch_pattern: TypeRealization = {
+  language: rust_language
   target: BranchPattern
   carrier: "BranchPattern"
   is_copy: false
@@ -523,111 +334,120 @@ data rust_branch_pattern: TypeRealization = {
 }
 
 data rust_payload_binding: TypeRealization = {
+  language: rust_language
   target: PayloadBinding
   carrier: "PayloadBinding"
   is_copy: false
   fields: [
-    { dag_name: "binding_name", rust_access: DirectField("binding_name"), borrowed_read: false },
-    { dag_name: "payload_port", rust_access: DirectField("payload_port"), borrowed_read: false }
+    { dag_name: "binding_name", access: DirectField("binding_name"), borrowed_read: false },
+    { dag_name: "payload_port", access: DirectField("payload_port"), borrowed_read: false }
   ]
   cost: 1
 }
 
 data rust_branch_path: TypeRealization = {
+  language: rust_language
   target: BranchPath
   carrier: "Path"
   is_copy: false
   fields: [
-    { dag_name: "body", rust_access: DirectField("body"), borrowed_read: false },
-    { dag_name: "result_port", rust_access: AccessorMethod("result_port"), borrowed_read: false },
-    { dag_name: "pattern", rust_access: DirectField("pattern"), borrowed_read: false },
-    { dag_name: "binding", rust_access: DirectField("binding"), borrowed_read: false }
+    { dag_name: "body", access: DirectField("body"), borrowed_read: false },
+    { dag_name: "result_port", access: AccessorMethod("result_port"), borrowed_read: false },
+    { dag_name: "pattern", access: DirectField("pattern"), borrowed_read: false },
+    { dag_name: "binding", access: DirectField("binding"), borrowed_read: false }
   ]
   cost: 1
 }
 
 data rust_loop_bound: TypeRealization = {
+  language: rust_language
   target: LoopBound
   carrier: "Bound"
   is_copy: false
   fields: [
-    { dag_name: "count", rust_access: DirectField("count"), borrowed_read: false }
+    { dag_name: "count", access: DirectField("count"), borrowed_read: false }
   ]
   cost: 1
 }
 
 data rust_value_node: TypeRealization = {
+  language: rust_language
   target: ValueNode
   carrier: "ValueNode"
   is_copy: false
   fields: [
-    { dag_name: "id", rust_access: DirectField("id"), borrowed_read: false },
-    { dag_name: "payload", rust_access: DirectField("data"), borrowed_read: false },
-    { dag_name: "result_port", rust_access: AccessorMethod("result_port"), borrowed_read: false },
-    { dag_name: "span", rust_access: DirectField("span"), borrowed_read: false }
+    { dag_name: "id", access: DirectField("id"), borrowed_read: false },
+    { dag_name: "payload", access: DirectField("data"), borrowed_read: false },
+    { dag_name: "result_port", access: AccessorMethod("result_port"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
   ]
   cost: 1
 }
 
 data rust_transform_node: TypeRealization = {
+  language: rust_language
   target: TransformNode
   carrier: "TransformNode"
   is_copy: false
   fields: [
-    { dag_name: "id", rust_access: DirectField("id"), borrowed_read: false },
-    { dag_name: "target", rust_access: DirectField("target"), borrowed_read: false },
-    { dag_name: "inputs", rust_access: DirectField("inputs"), borrowed_read: false },
-    { dag_name: "result_port", rust_access: AccessorMethod("result_port"), borrowed_read: false },
-    { dag_name: "span", rust_access: DirectField("span"), borrowed_read: false }
+    { dag_name: "id", access: DirectField("id"), borrowed_read: false },
+    { dag_name: "target", access: DirectField("target"), borrowed_read: false },
+    { dag_name: "inputs", access: DirectField("inputs"), borrowed_read: false },
+    { dag_name: "result_port", access: AccessorMethod("result_port"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
   ]
   cost: 1
 }
 
 data rust_branch_node: TypeRealization = {
+  language: rust_language
   target: BranchNode
   carrier: "BranchNode"
   is_copy: false
   fields: [
-    { dag_name: "id", rust_access: DirectField("id"), borrowed_read: false },
-    { dag_name: "input", rust_access: DirectField("input"), borrowed_read: false },
-    { dag_name: "paths", rust_access: DirectField("paths"), borrowed_read: false },
-    { dag_name: "result_port", rust_access: AccessorMethod("result_port"), borrowed_read: false },
-    { dag_name: "span", rust_access: DirectField("span"), borrowed_read: false }
+    { dag_name: "id", access: DirectField("id"), borrowed_read: false },
+    { dag_name: "input", access: DirectField("input"), borrowed_read: false },
+    { dag_name: "paths", access: DirectField("paths"), borrowed_read: false },
+    { dag_name: "result_port", access: AccessorMethod("result_port"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
   ]
   cost: 1
 }
 
 data rust_loop_node: TypeRealization = {
+  language: rust_language
   target: LoopNode
   carrier: "LoopNode"
   is_copy: false
   fields: [
-    { dag_name: "id", rust_access: DirectField("id"), borrowed_read: false },
-    { dag_name: "source", rust_access: DirectField("source"), borrowed_read: false },
-    { dag_name: "init", rust_access: DirectField("init"), borrowed_read: false },
-    { dag_name: "body", rust_access: DirectField("body"), borrowed_read: false },
-    { dag_name: "bound", rust_access: DirectField("bound"), borrowed_read: false },
-    { dag_name: "result_port", rust_access: AccessorMethod("result_port"), borrowed_read: false },
-    { dag_name: "span", rust_access: DirectField("span"), borrowed_read: false }
+    { dag_name: "id", access: DirectField("id"), borrowed_read: false },
+    { dag_name: "source", access: DirectField("source"), borrowed_read: false },
+    { dag_name: "init", access: DirectField("init"), borrowed_read: false },
+    { dag_name: "body", access: DirectField("body"), borrowed_read: false },
+    { dag_name: "bound", access: DirectField("bound"), borrowed_read: false },
+    { dag_name: "result_port", access: AccessorMethod("result_port"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
   ]
   cost: 1
 }
 
 data rust_bind_node: TypeRealization = {
+  language: rust_language
   target: BindNode
   carrier: "BindNode"
   is_copy: false
   fields: [
-    { dag_name: "id", rust_access: DirectField("id"), borrowed_read: false },
-    { dag_name: "name", rust_access: DirectField("name"), borrowed_read: false },
-    { dag_name: "result_port", rust_access: AccessorMethod("result_port"), borrowed_read: false },
-    { dag_name: "params", rust_access: DirectField("params"), borrowed_read: false },
-    { dag_name: "span", rust_access: DirectField("span"), borrowed_read: false }
+    { dag_name: "id", access: DirectField("id"), borrowed_read: false },
+    { dag_name: "name", access: DirectField("name"), borrowed_read: false },
+    { dag_name: "result_port", access: AccessorMethod("result_port"), borrowed_read: false },
+    { dag_name: "params", access: DirectField("params"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
   ]
   cost: 1
 }
 
 data rust_behavior: TypeRealization = {
+  language: rust_language
   target: Behavior
   carrier: "Behavior"
   is_copy: false
@@ -636,13 +456,14 @@ data rust_behavior: TypeRealization = {
 }
 
 data rust_dag: TypeRealization = {
+  language: rust_language
   target: Dag
   carrier: "Dag"
   is_copy: false
   fields: [
-    { dag_name: "declarations", rust_access: AccessorMethod("declarations"), borrowed_read: true },
-    { dag_name: "nodes", rust_access: AccessorMethod("nodes"), borrowed_read: true },
-    { dag_name: "ports", rust_access: AccessorMethod("ports"), borrowed_read: false }
+    { dag_name: "declarations", access: AccessorMethod("declarations"), borrowed_read: true },
+    { dag_name: "nodes", access: AccessorMethod("nodes"), borrowed_read: true },
+    { dag_name: "ports", access: AccessorMethod("ports"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -660,6 +481,7 @@ data rust_dag: TypeRealization = {
 // type's algebra chain.
 
 data rust_int_add: OperatorRealization = {
+  language: rust_language
   target: Int
   op: OrderedRing.add
   carrier: "+"
@@ -667,6 +489,7 @@ data rust_int_add: OperatorRealization = {
 }
 
 data rust_int_sub: OperatorRealization = {
+  language: rust_language
   target: Int
   op: OrderedRing.sub
   carrier: "-"
@@ -674,6 +497,7 @@ data rust_int_sub: OperatorRealization = {
 }
 
 data rust_int_mul: OperatorRealization = {
+  language: rust_language
   target: Int
   op: OrderedRing.mul
   carrier: "*"
@@ -681,6 +505,7 @@ data rust_int_mul: OperatorRealization = {
 }
 
 data rust_int_div: OperatorRealization = {
+  language: rust_language
   target: Int
   op: OrderedRing.div
   carrier: "/"
@@ -692,6 +517,7 @@ data rust_int_div: OperatorRealization = {
 // ─────────────────────────────────────────────────────────────────
 
 data rust_int_eq: OperatorRealization = {
+  language: rust_language
   target: Int
   op: OrderedRing.eq
   carrier: "=="
@@ -699,6 +525,7 @@ data rust_int_eq: OperatorRealization = {
 }
 
 data rust_node_id_eq: OperatorRealization = {
+  language: rust_language
   target: NodeId
   op: OrderedRing.eq
   carrier: "=="
@@ -706,6 +533,7 @@ data rust_node_id_eq: OperatorRealization = {
 }
 
 data rust_port_id_eq: OperatorRealization = {
+  language: rust_language
   target: PortId
   op: OrderedRing.eq
   carrier: "=="
@@ -713,6 +541,7 @@ data rust_port_id_eq: OperatorRealization = {
 }
 
 data rust_declaration_id_eq: OperatorRealization = {
+  language: rust_language
   target: DeclarationId
   op: OrderedRing.eq
   carrier: "=="
@@ -720,6 +549,7 @@ data rust_declaration_id_eq: OperatorRealization = {
 }
 
 data rust_int_ne: OperatorRealization = {
+  language: rust_language
   target: Int
   op: OrderedRing.ne
   carrier: "!="
@@ -727,6 +557,7 @@ data rust_int_ne: OperatorRealization = {
 }
 
 data rust_node_id_ne: OperatorRealization = {
+  language: rust_language
   target: NodeId
   op: OrderedRing.ne
   carrier: "!="
@@ -734,6 +565,7 @@ data rust_node_id_ne: OperatorRealization = {
 }
 
 data rust_port_id_ne: OperatorRealization = {
+  language: rust_language
   target: PortId
   op: OrderedRing.ne
   carrier: "!="
@@ -741,6 +573,7 @@ data rust_port_id_ne: OperatorRealization = {
 }
 
 data rust_declaration_id_ne: OperatorRealization = {
+  language: rust_language
   target: DeclarationId
   op: OrderedRing.ne
   carrier: "!="
@@ -748,6 +581,7 @@ data rust_declaration_id_ne: OperatorRealization = {
 }
 
 data rust_int_lt: OperatorRealization = {
+  language: rust_language
   target: Int
   op: OrderedRing.lt
   carrier: "<"
@@ -755,6 +589,7 @@ data rust_int_lt: OperatorRealization = {
 }
 
 data rust_int_le: OperatorRealization = {
+  language: rust_language
   target: Int
   op: OrderedRing.le
   carrier: "<="
@@ -762,6 +597,7 @@ data rust_int_le: OperatorRealization = {
 }
 
 data rust_int_gt: OperatorRealization = {
+  language: rust_language
   target: Int
   op: OrderedRing.gt
   carrier: ">"
@@ -769,6 +605,7 @@ data rust_int_gt: OperatorRealization = {
 }
 
 data rust_int_ge: OperatorRealization = {
+  language: rust_language
   target: Int
   op: OrderedRing.ge
   carrier: ">="
@@ -780,18 +617,21 @@ data rust_int_ge: OperatorRealization = {
 // ─────────────────────────────────────────────────────────────────
 
 data rust_let_stmt: BehaviorRealization = {
+  language: rust_language
   target: Bind
   carrier: "let {name}: {type} = {value};"
   cost: 0
 }
 
 data rust_if_expr: BehaviorRealization = {
+  language: rust_language
   target: Branch
   carrier: "if {cond} { {then} } else { {else} }"
   cost: 0
 }
 
 data rust_main_wrap: BehaviorRealization = {
+  language: rust_language
   target: Main
   carrier: "fn main() { {body} println!({quote}{{}}{quote}, {final}); }"
   cost: 0
@@ -802,78 +642,126 @@ data rust_main_wrap: BehaviorRealization = {
 // ─────────────────────────────────────────────────────────────────
 
 data rust_empty_callable: CallableRealization = {
+  language: rust_language
   target: empty
   strategy: ListEmpty
+  parameters: []
   cost: 1
 }
 
 data rust_singleton_callable: CallableRealization = {
+  language: rust_language
   target: singleton
   strategy: ListSingleton
+  parameters: [
+    { slot: 0, disposition: Consumed }
+  ]
   cost: 1
 }
 
 data rust_cons_callable: CallableRealization = {
+  language: rust_language
   target: cons
   strategy: ListCons
+  parameters: [
+    { slot: 0, disposition: Consumed },
+    { slot: 1, disposition: Consumed }
+  ]
   cost: 1
 }
 
 data rust_concat_callable: CallableRealization = {
+  language: rust_language
   target: concat
   strategy: ListConcat
+  parameters: [
+    { slot: 0, disposition: Consumed },
+    { slot: 1, disposition: Consumed }
+  ]
   cost: 1
 }
 
 data rust_length_callable: CallableRealization = {
+  language: rust_language
   target: length
   strategy: ListLength
+  parameters: [
+    { slot: 0, disposition: Borrowed }
+  ]
   cost: 1
 }
 
 data rust_list_instantiation: TypeInstantiationRealization = {
+  language: rust_language
   target: List
   carrier: "Vec<{element}>"
   cost: 1
 }
 
 data rust_map_instantiation: TypeInstantiationRealization = {
+  language: rust_language
   target: Map
   carrier: "HashMap<{key}, {value}>"
   cost: 1
 }
 
 data rust_is_empty_callable: CallableRealization = {
+  language: rust_language
   target: is_empty
   strategy: ListIsEmpty
+  parameters: [
+    { slot: 0, disposition: Borrowed }
+  ]
   cost: 1
 }
 
 data rust_fold_callable: CallableRealization = {
+  language: rust_language
   target: fold
   strategy: ListFold
+  parameters: [
+    { slot: 0, disposition: Borrowed },
+    { slot: 1, disposition: Consumed },
+    { slot: 2, disposition: Borrowed }
+  ]
   cost: 1
 }
 
 data rust_map_callable: CallableRealization = {
+  language: rust_language
   target: map
   strategy: ListMap
+  parameters: [
+    { slot: 0, disposition: Borrowed },
+    { slot: 1, disposition: Borrowed }
+  ]
   cost: 1
 }
 
 data rust_filter_callable: CallableRealization = {
+  language: rust_language
   target: filter
   strategy: ListFilter
+  parameters: [
+    { slot: 0, disposition: Borrowed },
+    { slot: 1, disposition: Borrowed }
+  ]
   cost: 1
 }
 
 data rust_contains_callable: CallableRealization = {
+  language: rust_language
   target: contains
   strategy: ListContains
+  parameters: [
+    { slot: 0, disposition: Borrowed },
+    { slot: 1, disposition: Borrowed }
+  ]
   cost: 1
 }
 
 data rust_list_pattern: PatternRealization = {
+  language: rust_language
   target: List
   strategy: VectorList
   scrutinee: "{expr}"

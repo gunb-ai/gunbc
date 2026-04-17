@@ -94,28 +94,23 @@ fn prepare_stage1_for_build(stage1_dir: &std::path::Path, ws: &std::path::Path) 
     }
 }
 
-/// Run rustfmt in-place on every .rs file under `dir`. Used to normalize
-/// self-compile output before diffing against committed (fmt-compliant)
-/// stage0. Pure whitespace normalization — no semantic change.
-fn rustfmt_rs_files(dir: &std::path::Path) -> Result<(), String> {
-    let read = std::fs::read_dir(dir).map_err(|e| format!("read_dir {}: {e}", dir.display()))?;
-    for entry in read {
-        let entry = entry.map_err(|e| format!("dir entry: {e}"))?;
-        let path = entry.path();
-        if path.extension().map(|e| e == "rs").unwrap_or(false) {
-            let out = std::process::Command::new("rustfmt")
-                .arg("--edition=2021")
-                .arg(&path)
-                .output()
-                .map_err(|e| format!("spawn rustfmt: {e}"))?;
-            if !out.status.success() {
-                return Err(format!(
-                    "rustfmt failed on {}:\n{}",
-                    path.display(),
-                    String::from_utf8_lossy(&out.stderr)
-                ));
-            }
-        }
+/// Run cargo fmt over a generated temp crate so formatting matches the same
+/// crate-wide normalization used by committed stage0.
+fn rustfmt_generated_crate(dir: &std::path::Path) -> Result<(), String> {
+    let cargo_toml = dir.join("Cargo.toml");
+    let out = std::process::Command::new("cargo")
+        .arg("fmt")
+        .arg("--all")
+        .arg("--manifest-path")
+        .arg(&cargo_toml)
+        .output()
+        .map_err(|e| format!("spawn cargo fmt: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "cargo fmt failed for {}:\n{}",
+            dir.display(),
+            String::from_utf8_lossy(&out.stderr)
+        ));
     }
     Ok(())
 }
@@ -486,6 +481,13 @@ fn bootstrap_fixed_point() {
     // Compare stage1 and stage2 source output (excluding hand-maintained files)
     let stage1_src = stage1_dir.join("src");
     let stage2_src = stage2_dir.join("src");
+    prepare_stage1_for_build(&stage2_dir, &ws);
+    if let Err(err) = rustfmt_generated_crate(&stage1_dir) {
+        panic!("failed to rustfmt stage1 fixed-point output: {err}");
+    }
+    if let Err(err) = rustfmt_generated_crate(&stage2_dir) {
+        panic!("failed to rustfmt stage2 fixed-point output: {err}");
+    }
     if let Err(diff) = diff_excluding_hand_maintained(&stage1_src, &stage2_src) {
         eprintln!("Fixed point NOT reached — diff:\n{}", diff);
         let _ = std::fs::remove_dir_all(&stage1_dir);
@@ -695,6 +697,11 @@ static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
         stderr
     );
 
+    // rustfmt resolves sibling `mod foo;` declarations while formatting
+    // lib.rs, so seed the hand-maintained companion files before the
+    // pass1 whitespace-normalization step.
+    prepare_stage1_for_build(&output_dir, &ws);
+
     // Freshness: diff pass 1 output against committed stage0.
     // Must be computed HERE, before CI_PASS2 copies pass1 files into stage0.
     //
@@ -704,11 +711,11 @@ static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
     // committed stage0 only in whitespace/layout. Normalize pass1 output
     // via rustfmt before the diff so whitespace never masquerades as
     // staleness.
-    let pass1_src = output_dir.join("src");
-    copy_stage0_support_modules(&output_dir, &ws);
-    if let Err(err) = rustfmt_rs_files(&pass1_src) {
+    prepare_stage1_for_build(&output_dir, &ws);
+    if let Err(err) = rustfmt_generated_crate(&output_dir) {
         panic!("failed to rustfmt pass1 output: {err}");
     }
+    let pass1_src = output_dir.join("src");
     let committed_src = ws.join("src/v2/stage0/src");
     let freshness = diff_excluding_hand_maintained(&pass1_src, &committed_src);
     ci_timing("PASS1: freshness diff done");
@@ -768,9 +775,8 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
         "pass 2 (stage1->2) compile failed:\n{}",
         String::from_utf8_lossy(&pass2_output.stderr)
     );
-    copy_stage0_support_modules(&output_dir, &ws);
-    let pass2_src = output_dir.join("src");
-    if let Err(err) = rustfmt_rs_files(&pass2_src) {
+    prepare_stage1_for_build(&output_dir, &ws);
+    if let Err(err) = rustfmt_generated_crate(&output_dir) {
         panic!("failed to rustfmt pass2 output: {err}");
     }
 
@@ -873,9 +879,9 @@ fn ci_freshness() {
 #[test]
 #[ignore] // CI: cargo test -p v2-compiler-tests ci_ -- --ignored
 fn ci_fixed_point() {
-    let pass1 = &*CI_PASS1;
     let pass2 = &*CI_PASS2;
-    let pass1_src = pass1.output_dir.join("src");
+    let ws = crate::helpers::workspace_root();
+    let pass1_src = ws.join("src/v2/stage0/src");
     let pass2_src = pass2.output_dir.join("src");
     if let Err(diff) = diff_excluding_hand_maintained(&pass1_src, &pass2_src) {
         eprintln!("Fixed point NOT reached — diff:\n{}", diff);

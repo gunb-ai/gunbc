@@ -1,0 +1,803 @@
+module v3.spec.go
+
+import v3.spec.v3_l1 { Bind, Branch, Main }
+import v3.std.emit_model {
+  TypeRealization, FieldBinding, FieldAccess,
+  OperatorRealization, BehaviorRealization, CallableRealization,
+  TypeInstantiationRealization, CallableStrategy,
+  ParameterDisposition, Borrowed, Consumed,
+  PatternRealization, PatternStrategy,
+  StatementSyntax, ExpressionSyntax, ControlFlowSyntax,
+  LiteralSyntax, ModuleSyntax, FunctionSyntax, TypeApplicationSyntax,
+  TypeDefinitionSyntax, PatternMatchSyntax, CollectionOps,
+  ValueConstructionSyntax, LanguageSpec
+}
+import v3.std.computation_model {
+  TargetExecutionModel, GarbageCollected, LexicalScoping
+}
+import std.list { List }
+
+data go_execution_model: TargetExecutionModel = {
+  memory: GarbageCollected
+  scope: LexicalScoping
+}
+
+data go_int: TypeRealization = {
+  language: go_language
+  target: Int
+  carrier: "int64"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+data go_bool: TypeRealization = {
+  language: go_language
+  target: Bool
+  carrier: "bool"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+data go_string: TypeRealization = {
+  language: go_language
+  target: String
+  carrier: "string"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+data go_node_id: TypeRealization = {
+  language: go_language
+  target: NodeId
+  carrier: "NodeId"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+data go_port_id: TypeRealization = {
+  language: go_language
+  target: PortId
+  carrier: "PortId"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+data go_declaration_id: TypeRealization = {
+  language: go_language
+  target: DeclarationId
+  carrier: "DeclarationId"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+data go_type_shape: TypeRealization = {
+  language: go_language
+  target: TypeShape
+  carrier: "TypeShape"
+  is_copy: false
+  fields: [
+    { dag_name: "declaration", access: DirectField("declaration"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_port_state: TypeRealization = {
+  language: go_language
+  target: PortState
+  carrier: "PortState"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data go_port: TypeRealization = {
+  language: go_language
+  target: DagPort
+  carrier: "DagPort"
+  is_copy: false
+  fields: [
+    { dag_name: "id", access: DirectField("id"), borrowed_read: false },
+    { dag_name: "state", access: DirectField("state"), borrowed_read: false },
+    { dag_name: "produced_by", access: DirectField("produced_by"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_source_span: TypeRealization = {
+  language: go_language
+  target: SourceSpan
+  carrier: "SourceSpan"
+  is_copy: false
+  fields: [
+    { dag_name: "file", access: DirectField("file"), borrowed_read: false },
+    { dag_name: "start", access: DirectField("byte_start"), borrowed_read: false },
+    { dag_name: "end", access: DirectField("byte_end"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_literal_bits: TypeRealization = {
+  language: go_language
+  target: LiteralBits
+  carrier: "LiteralBits"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data go_atom_payload: TypeRealization = {
+  language: go_language
+  target: AtomPayload
+  carrier: "AtomPayload"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data go_cardinality_bound: TypeRealization = {
+  language: go_language
+  target: CardinalityBound
+  carrier: "CardinalityBound"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data go_conj_field: TypeRealization = {
+  language: go_language
+  target: ConjField
+  carrier: "ConjField"
+  is_copy: false
+  fields: [
+    { dag_name: "label", access: DirectField("label"), borrowed_read: false },
+    { dag_name: "ty", access: DirectField("ty"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_template_argument: TypeRealization = {
+  language: go_language
+  target: TemplateArgument
+  carrier: "TemplateArgument"
+  is_copy: false
+  fields: [
+    { dag_name: "parameter", access: DirectField("parameter"), borrowed_read: false },
+    { dag_name: "value", access: DirectField("value"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_field_entry: TypeRealization = {
+  language: go_language
+  target: FieldEntry
+  carrier: "FieldEntry"
+  is_copy: false
+  fields: [
+    { dag_name: "label", access: DirectField("label"), borrowed_read: false },
+    { dag_name: "value", access: DirectField("value"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_field_value: TypeRealization = {
+  language: go_language
+  target: FieldValue
+  carrier: "FieldValue"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data go_value_body: TypeRealization = {
+  language: go_language
+  target: ValueBody
+  carrier: "ValueBody"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data go_arrow_body: TypeRealization = {
+  language: go_language
+  target: ArrowBody
+  carrier: "ArrowBody"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data go_type_connective: TypeRealization = {
+  language: go_language
+  target: TypeConnective
+  carrier: "TypeConnective"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data go_declaration: TypeRealization = {
+  language: go_language
+  target: Declaration
+  carrier: "Declaration"
+  is_copy: false
+  fields: [
+    { dag_name: "id", access: DirectField("id"), borrowed_read: false },
+    { dag_name: "name", access: DirectField("name"), borrowed_read: false },
+    { dag_name: "connective", access: DirectField("connective"), borrowed_read: false },
+    { dag_name: "type_params", access: DirectField("type_params"), borrowed_read: false },
+    { dag_name: "meta_tag", access: DirectField("meta_tag"), borrowed_read: false },
+    { dag_name: "inhabits", access: DirectField("inhabits"), borrowed_read: false },
+    { dag_name: "value_body", access: DirectField("value_body"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_arithmetic_op: TypeRealization = {
+  language: go_language
+  target: ArithmeticOp
+  carrier: "ArithmeticOp"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data go_comparison_op: TypeRealization = {
+  language: go_language
+  target: ComparisonOp
+  carrier: "ComparisonOp"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data go_operator_kind: TypeRealization = {
+  language: go_language
+  target: OperatorKind
+  carrier: "OperatorKind"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data go_transform_target: TypeRealization = {
+  language: go_language
+  target: TransformTarget
+  carrier: "TransformTarget"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data go_branch_pattern: TypeRealization = {
+  language: go_language
+  target: BranchPattern
+  carrier: "BranchPattern"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data go_payload_binding: TypeRealization = {
+  language: go_language
+  target: PayloadBinding
+  carrier: "PayloadBinding"
+  is_copy: false
+  fields: [
+    { dag_name: "binding_name", access: DirectField("binding_name"), borrowed_read: false },
+    { dag_name: "payload_port", access: DirectField("payload_port"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_branch_path: TypeRealization = {
+  language: go_language
+  target: BranchPath
+  carrier: "BranchPath"
+  is_copy: false
+  fields: [
+    { dag_name: "body", access: DirectField("body"), borrowed_read: false },
+    { dag_name: "result_port", access: DirectField("result_port"), borrowed_read: false },
+    { dag_name: "pattern", access: DirectField("pattern"), borrowed_read: false },
+    { dag_name: "binding", access: DirectField("binding"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_loop_bound: TypeRealization = {
+  language: go_language
+  target: LoopBound
+  carrier: "LoopBound"
+  is_copy: false
+  fields: [
+    { dag_name: "count", access: DirectField("count"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_value_node: TypeRealization = {
+  language: go_language
+  target: ValueNode
+  carrier: "ValueNode"
+  is_copy: false
+  fields: [
+    { dag_name: "id", access: DirectField("id"), borrowed_read: false },
+    { dag_name: "payload", access: DirectField("payload"), borrowed_read: false },
+    { dag_name: "result_port", access: DirectField("result_port"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_transform_node: TypeRealization = {
+  language: go_language
+  target: TransformNode
+  carrier: "TransformNode"
+  is_copy: false
+  fields: [
+    { dag_name: "id", access: DirectField("id"), borrowed_read: false },
+    { dag_name: "target", access: DirectField("target"), borrowed_read: false },
+    { dag_name: "inputs", access: DirectField("inputs"), borrowed_read: false },
+    { dag_name: "result_port", access: DirectField("result_port"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_branch_node: TypeRealization = {
+  language: go_language
+  target: BranchNode
+  carrier: "BranchNode"
+  is_copy: false
+  fields: [
+    { dag_name: "id", access: DirectField("id"), borrowed_read: false },
+    { dag_name: "input", access: DirectField("input"), borrowed_read: false },
+    { dag_name: "paths", access: DirectField("paths"), borrowed_read: false },
+    { dag_name: "result_port", access: DirectField("result_port"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_loop_node: TypeRealization = {
+  language: go_language
+  target: LoopNode
+  carrier: "LoopNode"
+  is_copy: false
+  fields: [
+    { dag_name: "id", access: DirectField("id"), borrowed_read: false },
+    { dag_name: "source", access: DirectField("source"), borrowed_read: false },
+    { dag_name: "init", access: DirectField("init"), borrowed_read: false },
+    { dag_name: "body", access: DirectField("body"), borrowed_read: false },
+    { dag_name: "bound", access: DirectField("bound"), borrowed_read: false },
+    { dag_name: "result_port", access: DirectField("result_port"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_bind_node: TypeRealization = {
+  language: go_language
+  target: BindNode
+  carrier: "BindNode"
+  is_copy: false
+  fields: [
+    { dag_name: "id", access: DirectField("id"), borrowed_read: false },
+    { dag_name: "name", access: DirectField("name"), borrowed_read: false },
+    { dag_name: "result_port", access: DirectField("result_port"), borrowed_read: false },
+    { dag_name: "params", access: DirectField("params"), borrowed_read: false },
+    { dag_name: "span", access: DirectField("span"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_behavior: TypeRealization = {
+  language: go_language
+  target: Behavior
+  carrier: "Behavior"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data go_dag: TypeRealization = {
+  language: go_language
+  target: Dag
+  carrier: "Dag"
+  is_copy: false
+  fields: [
+    { dag_name: "declarations", access: DirectField("declarations"), borrowed_read: false },
+    { dag_name: "nodes", access: DirectField("nodes"), borrowed_read: false },
+    { dag_name: "ports", access: DirectField("ports"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data go_int_add: OperatorRealization = {
+  language: go_language
+  target: Int
+  op: OrderedRing.add
+  carrier: "+"
+  cost: 1
+}
+
+data go_int_sub: OperatorRealization = {
+  language: go_language
+  target: Int
+  op: OrderedRing.sub
+  carrier: "-"
+  cost: 1
+}
+
+data go_int_mul: OperatorRealization = {
+  language: go_language
+  target: Int
+  op: OrderedRing.mul
+  carrier: "*"
+  cost: 1
+}
+
+data go_int_div: OperatorRealization = {
+  language: go_language
+  target: Int
+  op: OrderedRing.div
+  carrier: "/"
+  cost: 1
+}
+
+data go_int_eq: OperatorRealization = {
+  language: go_language
+  target: Int
+  op: OrderedRing.eq
+  carrier: "=="
+  cost: 1
+}
+
+data go_node_id_eq: OperatorRealization = {
+  language: go_language
+  target: NodeId
+  op: OrderedRing.eq
+  carrier: "=="
+  cost: 1
+}
+
+data go_port_id_eq: OperatorRealization = {
+  language: go_language
+  target: PortId
+  op: OrderedRing.eq
+  carrier: "=="
+  cost: 1
+}
+
+data go_declaration_id_eq: OperatorRealization = {
+  language: go_language
+  target: DeclarationId
+  op: OrderedRing.eq
+  carrier: "=="
+  cost: 1
+}
+
+data go_int_ne: OperatorRealization = {
+  language: go_language
+  target: Int
+  op: OrderedRing.ne
+  carrier: "!="
+  cost: 1
+}
+
+data go_node_id_ne: OperatorRealization = {
+  language: go_language
+  target: NodeId
+  op: OrderedRing.ne
+  carrier: "!="
+  cost: 1
+}
+
+data go_port_id_ne: OperatorRealization = {
+  language: go_language
+  target: PortId
+  op: OrderedRing.ne
+  carrier: "!="
+  cost: 1
+}
+
+data go_declaration_id_ne: OperatorRealization = {
+  language: go_language
+  target: DeclarationId
+  op: OrderedRing.ne
+  carrier: "!="
+  cost: 1
+}
+
+data go_int_lt: OperatorRealization = {
+  language: go_language
+  target: Int
+  op: OrderedRing.lt
+  carrier: "<"
+  cost: 1
+}
+
+data go_int_le: OperatorRealization = {
+  language: go_language
+  target: Int
+  op: OrderedRing.le
+  carrier: "<="
+  cost: 1
+}
+
+data go_int_gt: OperatorRealization = {
+  language: go_language
+  target: Int
+  op: OrderedRing.gt
+  carrier: ">"
+  cost: 1
+}
+
+data go_int_ge: OperatorRealization = {
+  language: go_language
+  target: Int
+  op: OrderedRing.ge
+  carrier: ">="
+  cost: 1
+}
+
+data go_let_stmt: BehaviorRealization = {
+  language: go_language
+  target: Bind
+  carrier: "var {name} {type} = {value}"
+  cost: 0
+}
+
+data go_if_expr: BehaviorRealization = {
+  language: go_language
+  target: Branch
+  carrier: "if {cond} { {then} } else { {else} }"
+  cost: 0
+}
+
+data go_main_wrap: BehaviorRealization = {
+  language: go_language
+  target: Main
+  carrier: "func main() {\n{body}\nfmt.Println({final})\n}"
+  cost: 0
+}
+
+data go_empty_callable: CallableRealization = {
+  language: go_language
+  target: empty
+  strategy: ListEmpty
+  parameters: []
+  cost: 1
+}
+
+data go_singleton_callable: CallableRealization = {
+  language: go_language
+  target: singleton
+  strategy: ListSingleton
+  parameters: [
+    { slot: 0, disposition: Consumed }
+  ]
+  cost: 1
+}
+
+data go_cons_callable: CallableRealization = {
+  language: go_language
+  target: cons
+  strategy: ListCons
+  parameters: [
+    { slot: 0, disposition: Consumed },
+    { slot: 1, disposition: Consumed }
+  ]
+  cost: 1
+}
+
+data go_concat_callable: CallableRealization = {
+  language: go_language
+  target: concat
+  strategy: ListConcat
+  parameters: [
+    { slot: 0, disposition: Consumed },
+    { slot: 1, disposition: Consumed }
+  ]
+  cost: 1
+}
+
+data go_length_callable: CallableRealization = {
+  language: go_language
+  target: length
+  strategy: ListLength
+  parameters: [
+    { slot: 0, disposition: Borrowed }
+  ]
+  cost: 1
+}
+
+data go_list_instantiation: TypeInstantiationRealization = {
+  language: go_language
+  target: List
+  carrier: "[]{element}"
+  cost: 1
+}
+
+data go_map_instantiation: TypeInstantiationRealization = {
+  language: go_language
+  target: Map
+  carrier: "map[{key}]{value}"
+  cost: 1
+}
+
+data go_is_empty_callable: CallableRealization = {
+  language: go_language
+  target: is_empty
+  strategy: ListIsEmpty
+  parameters: [
+    { slot: 0, disposition: Borrowed }
+  ]
+  cost: 1
+}
+
+data go_fold_callable: CallableRealization = {
+  language: go_language
+  target: fold
+  strategy: ListFold
+  parameters: [
+    { slot: 0, disposition: Borrowed },
+    { slot: 1, disposition: Consumed },
+    { slot: 2, disposition: Borrowed }
+  ]
+  cost: 1
+}
+
+data go_map_callable: CallableRealization = {
+  language: go_language
+  target: map
+  strategy: ListMap
+  parameters: [
+    { slot: 0, disposition: Borrowed },
+    { slot: 1, disposition: Borrowed }
+  ]
+  cost: 1
+}
+
+data go_filter_callable: CallableRealization = {
+  language: go_language
+  target: filter
+  strategy: ListFilter
+  parameters: [
+    { slot: 0, disposition: Borrowed },
+    { slot: 1, disposition: Borrowed }
+  ]
+  cost: 1
+}
+
+data go_contains_callable: CallableRealization = {
+  language: go_language
+  target: contains
+  strategy: ListContains
+  parameters: [
+    { slot: 0, disposition: Borrowed },
+    { slot: 1, disposition: Borrowed }
+  ]
+  cost: 1
+}
+
+data go_list_pattern: PatternRealization = {
+  language: go_language
+  target: List
+  strategy: VectorList
+  scrutinee: "{expr}"
+  empty_pattern: "len({expr}) == 0"
+  cons_pattern: "{expr}"
+  head_expr: "{list}[0]"
+  tail_expr: "{list}[1:]"
+  cost: 1
+}
+
+data go_statements: StatementSyntax = {
+  let_binding: "var {name} {type} = {value}"
+  let_binding_inferred: "{name} := {value}"
+}
+
+data go_expressions: ExpressionSyntax = {
+  binary_op: "({lhs} {op} {rhs})"
+  field_access: "({object}).{field}"
+  function_call: "{func}({args})"
+  closure: "func({params}) { return {body} }"
+}
+
+data go_control_flow: ControlFlowSyntax = {
+  if_else: "if {cond} { {then} } else { {else} }"
+  match_arm: "{pattern}: return {body}"
+  for_each_syntax: { prefix: "for _, ", separator: " := range " }
+}
+
+data go_literals: LiteralSyntax = {
+  true_keyword: "true"
+  false_keyword: "false"
+  string_delimiter: "%Q"
+}
+
+data go_modules: ModuleSyntax = {
+  path_separator: "."
+}
+
+data go_functions: FunctionSyntax = {
+  definition: "func {name}({params}) {ret} { return {body} }"
+  definition_void: "func {name}({params}) { {body} }"
+  param_with_type: "{name} {type}"
+  param_separator: ", "
+}
+
+data go_type_applications: TypeApplicationSyntax = {
+  optional: "*{element}"
+}
+
+data go_type_defs: TypeDefinitionSyntax = {
+  struct_def: "type {name} struct { {fields} }"
+  struct_field: "{name} {type}"
+  enum_def: "type {name} interface{}"
+  enum_unit_variant: "{name}"
+  enum_data_variant: "{name}"
+}
+
+data go_patterns: PatternMatchSyntax = {
+  match_expr: "{expr}"
+  match_arm: "{pattern}: return {body}"
+  variant_pattern: "{name}"
+  variant_pattern_positional: "{name}"
+  variant_pattern_empty: "{name}"
+  field_binding: "{field}: {binding}"
+  field_binding_separator: ", "
+  wildcard: "_"
+}
+
+data go_collection_ops: CollectionOps = {
+  concat: "append({left}, {right}...)"
+  length: "int64(len({recv}))"
+  is_empty: "len({recv}) == 0"
+  fold: "/* fold({recv}, {init}, {body}) */"
+  map: "/* map({recv}, {body}) */"
+  filter: "/* filter({recv}, {body}) */"
+  contains: "/* contains({recv}, {item}) */"
+  empty_list: "nil"
+  list_literal: "[]{element_type}{{{elements}}}"
+  cons: "append([]{element_type}{{{head}}}, {tail}...)"
+}
+
+data go_value_construction: ValueConstructionSyntax = {
+  struct_literal: "{type}{{ {fields} }}"
+  struct_field_init: "{name}: {value}"
+  struct_field_separator: ", "
+  variant_construction: "{variant}({args})"
+  variant_named_construction: "{variant}{{ {fields} }}"
+}
+
+// `go_rendering` previously declared a RenderingModel for Go (copied
+// from rust_rendering's shape for schema parity), but no emit_go
+// decision actually consumed it — emit_go's GC rendering makes no
+// borrow/move distinctions, so ReadStrategy/ConstructStrategy aren't
+// load-bearing on this target. Removed per INVARIANTS.md E-6 (no
+// target-spec field without a same-PR consumer). When Go grows a
+// rendering choice that needs the model (e.g. RefCounted pointer
+// vs value struct), re-declare it AND wire the emitter consumer
+// in the same PR.
+
+data go_language: LanguageSpec = {
+  statements: go_statements
+  expressions: go_expressions
+  control_flow: go_control_flow
+  literals: go_literals
+  modules: go_modules
+  functions: go_functions
+  type_applications: go_type_applications
+  type_definitions: go_type_defs
+  patterns: go_patterns
+  collection_ops: go_collection_ops
+  values: go_value_construction
+}
