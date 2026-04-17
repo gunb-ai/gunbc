@@ -73,3 +73,8 @@ fn verification_dag_parses() {
         "verification.dag",
     );
 }
+
+#[test]
+fn effects_dag_parses() {
+    parse_file(include_str!("../../std/effects.dag"), "effects.dag");
+}
