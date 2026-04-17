@@ -170,17 +170,37 @@ When a reviewer points at a rejected shape in a lane/master doc, the fix is to d
 
 **Mechanical gate (runs in Lane 1 Stage 1a):** a CI grep check that fails the build if any lane doc (`docs/lane*.md`, `docs/phase*.md`) contains a forbidden string. Two files are exempt from the scan because they legitimately enumerate rejected names: the DB docs themselves (`docs/design-*.md`) — where rejection is recorded — and this master plan (`docs/post-l15-phase-plan.md`) — where the ratchet itself lives.
 
+The `FORBIDDEN=(...)` block below is the **single authority** for the ratchet. `scripts/check-banked-dissolutions.sh` parses this block directly — adding a rejected shape means extending this list in the master plan, not mirroring it in the script. The human-readable table above must stay in sync (enforced at review).
+
 ```bash
-# Sketch: scan only lane/stage docs; DB docs and master plan are exempt
 FORBIDDEN=(
+  # Row 1 — DB-5: substrate fields
   "port_by_id" "node_by_id"
+  # Row 2 — DB-6: closed transport coproduct
   "RestTransport" "ShellTransport" "GrpcTransport" "TransportKind"
+  # Row 3 — DB-1: target_language on Correction
   "target_language: TargetLanguageId"
+  # Row 4 — DB-4: clean-emission contract fields
+  "struct_fields: StructFieldRule"
   "StructFieldRule" "AllowAttributeOnStructDecl"
+  # Row 5 — DB-9: 6th Behavior variant
   "MutualLoop"
+  # Row 6 — DB-2: emitter shim deprecations
+  "#[deprecated]"
+  # Row 7 — DB-5: new Map declaration in v3 std (parallel to dsl/std/types.dag)
+  "Map<K, V>"
 )
 # Scan: docs/lane*.md and docs/phase*.md, fail on any match.
 ```
+
+**Coverage invariant.** The array above carries at least one forbidden
+substring for every row in the rejected-shape table. When a new row is
+added to the table, the corresponding strings land in the array in the
+same edit. Conversely, the array must not carry entries whose
+rejections aren't documented in a table row — every entry is
+answerable with a DB doc reference. Reviewers enforce both directions
+by hand when the table/array change; the per-row comments above
+cross-reference DB docs to make the mapping explicit.
 
 When a future DB doc rejects a shape, add the rejected name to this list as part of the DB's acceptance. The list only grows; a banked dissolution is permanent.
 

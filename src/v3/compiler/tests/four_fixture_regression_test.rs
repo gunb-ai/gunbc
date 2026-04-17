@@ -64,6 +64,7 @@ use std::path::PathBuf;
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, BindNode};
+use v3_compiler::emit_go::emit_go;
 use v3_compiler::emit_rust::emit_rust;
 use v3_compiler::lens_unused_parameters::{UnusedParametersConfig, UnusedParametersLens};
 use v3_compiler::Dag;
@@ -235,7 +236,6 @@ fn four_fixture_id_pins_reach_return_no_construct() {
 }
 
 #[test]
-#[ignore = "unignore when Track 1 Phase 2 teaches emit_rust to honor ParameterContract::Consumed"]
 fn four_fixture_id_phase2_consumed_contract() {
     let (_dag, emitted) = load("id.v3");
     assert_parameter_contract(&emitted, "id", ParameterContract::Consumed);
@@ -268,7 +268,6 @@ fn four_fixture_wrap_pins_reach_return_through_construct() {
 }
 
 #[test]
-#[ignore = "unignore when Track 1 Phase 2 teaches emit_rust to honor ParameterContract::Consumed"]
 fn four_fixture_wrap_phase2_consumed_contract() {
     let (_dag, emitted) = load("wrap.v3");
     assert_parameter_contract(&emitted, "wrap", ParameterContract::Consumed);
@@ -340,26 +339,61 @@ fn four_fixture_suite_shares_one_reachability_shape() {
     }
 }
 
-// --- Cross-target placeholders (Track 2 soft dependency) --------------
+// --- Cross-target assertions (Track 2, Half B landed go.dag) ----------
 //
-// Enable once Lane 3 / Track 2 lands `go.dag` as the authoritative
-// multi-target spec. Go has no `&T` vs `T` distinction at the ABI —
-// all parameters pass by value — so the go-side assertion is
-// uniform regardless of §3.3 contract. Each placeholder exists so
-// adding the go emitter doesn't need to remember to add variants.
+// Go has no `&T` vs `T` distinction at the ABI — all parameters pass
+// by value — so the go-side assertion is uniform regardless of §3.3
+// contract. These tests verify emit_go produces a function with a
+// pass-by-value first parameter for each fixture.
+
+fn assert_go_param_pass_by_value(fixture: &str, function_name: &str) {
+    let path = fixtures_dir().join(fixture);
+    let source = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("read fixture {}: {e}", path.display()));
+    let dag = compile_to_dag(&source, path.to_string_lossy().as_ref())
+        .unwrap_or_else(|e| panic!("fixture {fixture} must compile cleanly, got: {e:?}"));
+    let emitted = emit_go(&dag).expect("emit_go");
+    let needle = format!("func {function_name}(");
+    let start = emitted
+        .find(&needle)
+        .unwrap_or_else(|| panic!("emit_go output must contain `{needle}`; emitted:\n{emitted}"));
+    let after_open = &emitted[start + needle.len()..];
+    let close = after_open
+        .find(')')
+        .unwrap_or_else(|| panic!("unterminated paren in `{needle}`; emitted:\n{emitted}"));
+    let params = after_open[..close].trim();
+    assert!(
+        !params.is_empty(),
+        "signature for `{function_name}` has no parameters in:\n{emitted}"
+    );
+    let first_param = params.split(',').next().unwrap().trim();
+    let space = first_param
+        .find(char::is_whitespace)
+        .unwrap_or_else(|| panic!("malformed Go param (no type): `{first_param}`"));
+    let ty = first_param[(space + 1)..].trim();
+    assert!(
+        !ty.starts_with('*') && !ty.starts_with('&'),
+        "Go cross-target: param for `{function_name}` must pass by value (no `*`/`&`); \
+         got type `{ty}` in first-param `{first_param}`. Emitted:\n{emitted}"
+    );
+}
 
 #[test]
-#[ignore = "enable when Lane 3 / Track 2 (go.dag) lands"]
-fn four_fixture_id_cross_target_go_placeholder() {}
+fn four_fixture_id_cross_target_go_placeholder() {
+    assert_go_param_pass_by_value("id.v3", "id");
+}
 
 #[test]
-#[ignore = "enable when Lane 3 / Track 2 (go.dag) lands"]
-fn four_fixture_drop_cross_target_go_placeholder() {}
+fn four_fixture_drop_cross_target_go_placeholder() {
+    assert_go_param_pass_by_value("drop.v3", "drop");
+}
 
 #[test]
-#[ignore = "enable when Lane 3 / Track 2 (go.dag) lands"]
-fn four_fixture_wrap_cross_target_go_placeholder() {}
+fn four_fixture_wrap_cross_target_go_placeholder() {
+    assert_go_param_pass_by_value("wrap.v3", "wrap");
+}
 
 #[test]
-#[ignore = "enable when Lane 3 / Track 2 (go.dag) lands"]
-fn four_fixture_is_empty_cross_target_go_placeholder() {}
+fn four_fixture_is_empty_cross_target_go_placeholder() {
+    assert_go_param_pass_by_value("is_empty.v3", "is_empty_fx");
+}

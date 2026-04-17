@@ -1,7 +1,7 @@
 use crate::dag::{
     AtomPayload, Dag, Declaration, DeclarationId, Field, FieldValue, LiteralBits, TypeConnective,
 };
-use crate::lens_cost::CostLens;
+use crate::lens_cost::{cost_of, CostLookup};
 use crate::{compile_to_dag, CompileError};
 use std::collections::HashMap;
 
@@ -428,13 +428,50 @@ impl<'a> TestgenLens<'a> {
         )
     }
 
+    /// Return the complexity-lens cost for `bind_name` in a freshly
+    /// compiled fixture. `None` means the bind is not in the fixture
+    /// (legitimate skip — some testgen paths construct probes that
+    /// don't include a named bind). The two other failure modes
+    /// panic, because they indicate a structural invariant violation
+    /// the test harness must surface, not a silent "skip this claim":
+    ///
+    ///   - `CostLookup::MissingCost` — the lens computed no cost for
+    ///     a bind that testgen explicitly constructed. A well-formed
+    ///     fixture always has a cost for the named bind; MissingCost
+    ///     here means the fixture is malformed or the lens regressed.
+    ///
+    ///   - `i64 → usize` conversion failure — the lens emitted a
+    ///     negative cost. The complexity algebra is non-negative by
+    ///     construction, so a negative is a compiler invariant
+    ///     violation, not a caller concern.
+    ///
+    /// Keeping the two failure modes distinct prevents silently
+    /// dropping generated cost claims (Half A review blocker).
     fn bind_cost_of(&self, source: &str, file_name: &str, bind_name: &str) -> Option<usize> {
         let dag = compile_any(source, file_name);
         let bind = dag.nodes().iter().find_map(|node| match node {
             crate::dag::Behavior::Bind(bind) if bind.name == bind_name => Some(bind),
             _ => None,
         })?;
-        Some(CostLens::new(&dag).cost_of(bind.value))
+        let cost = match cost_of(&dag, &bind.value) {
+            CostLookup::FoundCost { _0: cost } => cost,
+            CostLookup::MissingCost => {
+                panic!(
+                    "testgen: cost lens returned MissingCost for bind `{bind_name}` \
+                     in fixture `{file_name}` — the named bind was found in the \
+                     Dag but has no cost entry. Indicates a malformed fixture or \
+                     a regression in the complexity lens."
+                );
+            }
+        };
+        Some(usize::try_from(cost).unwrap_or_else(|_| {
+            panic!(
+                "testgen: complexity lens emitted negative cost `{cost}` for bind \
+                 `{bind_name}` in fixture `{file_name}` — the cost algebra is \
+                 non-negative by construction; a negative value is a compiler \
+                 invariant violation."
+            )
+        }))
     }
 
     fn named_std_type_ids(&self) -> Vec<DeclarationId> {

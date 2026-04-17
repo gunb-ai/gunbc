@@ -103,3 +103,34 @@ jobs:
 
       - name: v3 Compiler Clippy
         run: cargo clippy -p v3-compiler --all-targets -- -D warnings
+
+      - name: L-8 Lens surface gate
+        run: |
+          # L-8 (INVARIANTS.md): migrated .dag lenses must not collapse
+          # their typed failure carriers into primitives at the public
+          # Rust surface. The forbidden shape is any `pub fn ... -> T`
+          # for T in {usize, bool, i64} inside a hand-written wrapper
+          # alongside a generated lens module — e.g., the deleted
+          # `pub fn cost_of(&self, port: PortId) -> usize` wrapper that
+          # shadowed the generated `CostLookup` carrier.
+          #
+          # Scope: every `src/v3/compiler/src/lens_*.rs` wrapper except
+          # `lens_depth.rs` (hand-written legacy lens, not migrated
+          # from .dag, so out of L-8 scope). `*_generated.rs` files are
+          # also scanned — they should never contain a collapsing
+          # wrapper, and catching one there would mean the emitter
+          # regressed.
+          wrappers=$(ls src/v3/compiler/src/lens_*.rs 2>/dev/null | grep -v "/lens_depth.rs$" || true)
+          if [ -z "$wrappers" ]; then
+            echo "L-8: no lens wrapper files to scan"
+            exit 0
+          fi
+          matches=$(grep -nE "pub fn .*-> (usize|bool|i64)" $wrappers 2>/dev/null || true)
+          if [ -n "$matches" ]; then
+            echo "::error::L-8 violation: lens wrapper collapses typed carrier to a primitive"
+            echo "$matches"
+            exit 1
+          fi
+
+      - name: Banked-dissolutions ratchet
+        run: scripts/check-banked-dissolutions.sh

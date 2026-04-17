@@ -20,13 +20,41 @@ pub mod diagnostics;
 pub mod emit_go;
 pub mod emit_python;
 pub mod emit_rust;
-pub mod lens_cost;
 pub mod lens_depth;
 pub mod lens_testgen;
 pub mod lens_unused_parameters;
 pub mod operators;
 pub mod serialize;
 pub mod types;
+
+/// Cost lens. The authority lives in `src/v3/lenses/complexity.dag`;
+/// the Rust projection is auto-emitted into
+/// `src/v3/compiler/src/lens_cost_generated.rs` and re-exported here
+/// so callers use `v3_compiler::lens_cost::{cost_of, CostLookup}`.
+/// Editing the lens means editing the `.dag` — there is no
+/// hand-written implementation on this crate side.
+///
+/// L-8 compliance: `cost_of` returns the typed `CostLookup` carrier
+/// (`MissingCost | FoundCost(Int)`). Callers pattern-match on the
+/// variant rather than receiving a panicked-collapsed `usize`.
+pub mod lens_cost {
+    #[allow(
+        dead_code,
+        unused_imports,
+        unused_parens,
+        unused_variables,
+        clippy::clone_on_copy,
+        clippy::collapsible_else_if
+    )]
+    mod generated {
+        use crate::dag::*;
+        use crate::diagnostics::*;
+
+        include!("lens_cost_generated.rs");
+    }
+
+    pub use generated::{cost_of, CostLookup};
+}
 
 /// Provenance lens. The authority lives in
 /// `src/v3/lenses/provenance.dag`; the Rust projection is auto-emitted

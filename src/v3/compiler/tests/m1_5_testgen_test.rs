@@ -3,7 +3,7 @@ use v3_compiler::dag::{
     Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, PortState, TypeConnective,
     ValueBody,
 };
-use v3_compiler::lens_cost::CostLens;
+use v3_compiler::lens_cost::{cost_of, CostLookup};
 use v3_compiler::lens_testgen::{GeneratedClaim, TestgenLens};
 use v3_compiler::{CompileError, Diagnostic};
 
@@ -233,7 +233,12 @@ fn predicate_holds(
             }) else {
                 return false;
             };
-            let actual = CostLens::new(&dag).cost_of(bind.value) as i64;
+            let actual = match cost_of(&dag, &bind.value) {
+                CostLookup::FoundCost { _0: cost } => cost,
+                CostLookup::MissingCost => {
+                    panic!("cost lens returned MissingCost for bind `{bind_name}`")
+                }
+            };
             compare_cost(expectation_dag, comparator, actual, *bound)
         }
         other => panic!("unsupported TestPredicate variant {other}"),

@@ -8,7 +8,7 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Dag, PortState, TransformTarget};
-use v3_compiler::lens_cost::CostLens;
+use v3_compiler::lens_cost::{cost_of, CostLookup};
 use v3_compiler::types::TypeShape;
 use v3_compiler::{CompileError, Diagnostic};
 
@@ -41,7 +41,15 @@ fn bind_named<'a>(dag: &'a Dag, name: &str) -> &'a v3_compiler::dag::BindNode {
 }
 
 fn bind_cost(dag: &Dag, name: &str) -> usize {
-    CostLens::new(dag).cost_of(bind_named(dag, name).value)
+    let port = bind_named(dag, name).value;
+    match cost_of(dag, &port) {
+        CostLookup::FoundCost { _0: cost } => {
+            usize::try_from(cost).expect("complexity lens emits non-negative cost")
+        }
+        CostLookup::MissingCost => {
+            panic!("cost lens returned MissingCost for bind `{name}` (malformed fixture)")
+        }
+    }
 }
 
 #[test]
@@ -354,8 +362,8 @@ fn lens_cost_nested_program_counts_more_structure_than_flat_program() {
     )
     .expect("nested program compiles");
 
-    let flat_cost = CostLens::new(&flat).cost_of(bind_named(&flat, "total").value);
-    let nested_cost = CostLens::new(&nested).cost_of(bind_named(&nested, "total").value);
+    let flat_cost = bind_cost(&flat, "total");
+    let nested_cost = bind_cost(&nested, "total");
 
     assert!(
         flat_cost > 0,
