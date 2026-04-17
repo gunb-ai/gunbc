@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Pre-push hook: auto-fix fmt drift and commit it as a chore.
+#
+# Rationale: three fmt-fail CI incidents in the last week. Running
+# `cargo fmt --all --check` locally at push time catches drift before
+# it reaches CI. Auto-fixing + auto-committing means the developer's
+# intent (their original commits) flows unchanged; the fmt fix lands
+# as a distinct chore commit on top, preserving audit clarity.
+#
+# Enable via: scripts/install-hooks.sh (sets core.hooksPath .githooks)
+
+set -e
+
+# Pre-push should run on a clean tree. Unstaged or staged-but-uncommitted
+# changes indicate the developer hasn't finished the work they want to
+# push; bail rather than silently sweep those up into a fmt commit.
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo "[pre-push] uncommitted changes in working tree — commit or stash before pushing."
+  exit 1
+fi
+
+echo "[pre-push] cargo fmt --all --check"
+if cargo fmt --all --check 2>/dev/null; then
+  exit 0  # clean, nothing to do
+fi
+
+echo "[pre-push] fmt drift detected; running cargo fmt --all and committing as chore"
+cargo fmt --all
+
+# Only stage tracked files; never sweep up untracked files.
+git add -u
+
+if git diff --cached --quiet; then
+  # cargo fmt reported drift via --check but --all produced no diff?
+  # Shouldn't happen; exit clean rather than commit nothing.
+  exit 0
+fi
+
+git commit -m "chore: apply cargo fmt"
+echo "[pre-push] committed fmt fixes — push continuing with the new commit"
+exit 0

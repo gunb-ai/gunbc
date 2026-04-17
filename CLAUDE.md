@@ -14,8 +14,17 @@ Read these docs before working:
 cargo test --workspace --exclude v2-compiler-tests  # hand-written tests
 cargo test -p v2-compiler-tests                     # v2 compiler tests
 cargo clippy --all-targets -- -D warnings           # lint
+cargo fmt --all --check                             # format check (also runs via pre-push hook)
 cargo test -p v2-compiler-tests v2_strict_compile_diagnostic_count -- --ignored  # stage0 diagnostic ratchet (0 diagnostics)
 ```
+
+## One-time setup
+
+```bash
+scripts/install-hooks.sh  # enables .githooks/pre-push
+```
+
+The pre-push hook auto-fixes fmt drift: on push, if `cargo fmt --all --check` fails, the hook runs `cargo fmt --all`, stages the changes to tracked files, and lands a `chore: apply cargo fmt` commit on top of the push. Requires a clean working tree (no uncommitted changes) at push time — bails otherwise.
 
 ## Cost of Change
 
