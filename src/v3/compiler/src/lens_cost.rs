@@ -27,7 +27,14 @@ impl<'a> CostLens<'a> {
     }
 
     pub fn cost_of(&self, port: PortId) -> usize {
-        usize::try_from(generated::cost_of(self.dag, &port))
-            .expect("compiled complexity lens should emit a non-negative cost")
+        match generated::cost_of(self.dag, &port) {
+            generated::CostLookup::FoundCost { _0: cost } => usize::try_from(cost)
+                .expect("compiled complexity lens should emit a non-negative cost"),
+            generated::CostLookup::MissingCost => panic!(
+                "complexity lens returned MissingCost for port {port:?}; \
+                 the DAG references a port whose producer is not in `d.nodes` \
+                 and is not a bind parameter — malformed substrate"
+            ),
+        }
     }
 }

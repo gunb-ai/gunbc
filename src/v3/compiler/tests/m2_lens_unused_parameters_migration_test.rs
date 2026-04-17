@@ -114,6 +114,8 @@ fn compile_with_current_crate(src_path: &Path, bin_path: &Path) {
     let current_rlib = find_current_rlib("v3_compiler");
     let compile = Command::new("rustc")
         .arg("--edition=2021")
+        .arg("-D")
+        .arg("warnings")
         .arg(src_path)
         .arg("-o")
         .arg(bin_path)
@@ -128,9 +130,13 @@ fn compile_with_current_crate(src_path: &Path, bin_path: &Path) {
     assert!(compile.success(), "rustc failed on emitted lens source");
 }
 
-fn roundtrip_lens_render(module_source: &str, program_source: &str, file_name: &str) -> String {
+/// Compile the unused-parameters roundtrip harness once. `main` reads
+/// `program_source` + `file_name` from argv so each fixture is a
+/// single process spawn rather than a fresh rustc invocation.
+fn build_roundtrip_harness(module_source: &str) -> PathBuf {
     let wrapped = format!(
-        "mod emitted {{ use v3_compiler::dag::*; use v3_compiler::diagnostics::*; {module_source} }} \
+        "#[allow(warnings, clippy::all)] \
+         mod emitted {{ use v3_compiler::dag::*; use v3_compiler::diagnostics::*; {module_source} }} \
          fn render(dag: &v3_compiler::Dag, function: v3_compiler::dag::NodeId) -> String {{ \
            dag.nodes().iter().find_map(|node| match node {{ \
              v3_compiler::dag::Behavior::Bind(bind) if bind.id == function => Some(bind.name.clone()), \
@@ -138,9 +144,12 @@ fn roundtrip_lens_render(module_source: &str, program_source: &str, file_name: &
            }}).unwrap_or_else(|| format!(\"{{:?}}\", function)) \
          }} \
          fn main() {{ \
-           let dag = v3_compiler::compile_to_dag({program_source:?}, {file_name:?}).expect(\"compiles\"); \
+           let mut __args = std::env::args(); __args.next(); \
+           let program_source = __args.next().expect(\"program_source arg\"); \
+           let file_name = __args.next().expect(\"file_name arg\"); \
+           let dag = v3_compiler::compile_to_dag(&program_source, &file_name).expect(\"compiles\"); \
            let mut rendered: Vec<String> = emitted::check(&dag).iter().map(|v| {{ \
-             format!(\"{{}}:param[{{}}]\", render(&v3_compiler::compile_to_dag({program_source:?}, {file_name:?}).expect(\"compiles\"), v.function), v.parameter_index) \
+             format!(\"{{}}:param[{{}}]\", render(&dag, v.function), v.parameter_index) \
            }}).collect(); \
            rendered.sort(); \
            println!(\"{{}}\", rendered.join(\"|\")); \
@@ -156,11 +165,20 @@ fn roundtrip_lens_render(module_source: &str, program_source: &str, file_name: &
         .expect("write wrapped rust source");
 
     compile_with_current_crate(&src_path, &bin_path);
+    bin_path
+}
 
-    let run = Command::new(&bin_path)
+fn roundtrip_lens_render(bin_path: &Path, program_source: &str, file_name: &str) -> String {
+    let run = Command::new(bin_path)
+        .arg(program_source)
+        .arg(file_name)
         .output()
         .expect("run compiled binary");
-    assert!(run.status.success(), "compiled binary failed");
+    assert!(
+        run.status.success(),
+        "compiled binary failed: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
     String::from_utf8_lossy(&run.stdout).trim().to_string()
 }
 
@@ -329,9 +347,10 @@ fn unused_parameters_dag_matches_rust_lens_on_core_fixtures() {
         ),
     ];
 
+    let bin_path = build_roundtrip_harness(&module);
     for (source, file_name) in fixtures {
         let rust_rendered = render_handwritten_oracle(source, file_name);
-        let dag_rendered = roundtrip_lens_render(&module, source, file_name);
+        let dag_rendered = roundtrip_lens_render(&bin_path, source, file_name);
         assert_eq!(
             dag_rendered, rust_rendered,
             "compiled .dag lens should match handwritten Rust oracle on {file_name}"
@@ -342,8 +361,9 @@ fn unused_parameters_dag_matches_rust_lens_on_core_fixtures() {
 #[test]
 fn unused_parameters_dag_self_analysis_reports_zero_findings() {
     let module = emit_lens_module();
+    let bin_path = build_roundtrip_harness(&module);
     let rendered = roundtrip_lens_render(
-        &module,
+        &bin_path,
         &lens_source(),
         lens_path().to_string_lossy().as_ref(),
     );

@@ -107,6 +107,8 @@ fn compile_with_current_crate(src_path: &Path, bin_path: &Path) {
     let current_rlib = find_current_rlib("v3_compiler");
     let compile = Command::new("rustc")
         .arg("--edition=2021")
+        .arg("-D")
+        .arg("warnings")
         .arg(src_path)
         .arg("-o")
         .arg(bin_path)
@@ -121,21 +123,28 @@ fn compile_with_current_crate(src_path: &Path, bin_path: &Path) {
     assert!(compile.success(), "rustc failed on emitted lens source");
 }
 
-fn roundtrip_cost(
-    module_source: &str,
-    program_source: &str,
-    file_name: &str,
-    bind_name: &str,
-) -> usize {
+/// Compile the cost-lens roundtrip harness exactly once per test run.
+/// The emitted module is embedded and `main` reads `program_source`,
+/// `file_name`, and `bind_name` from argv, so each fixture re-run is a
+/// single process spawn instead of a fresh `rustc` invocation.
+fn build_roundtrip_harness(module_source: &str) -> PathBuf {
     let wrapped = format!(
-        "mod emitted {{ use v3_compiler::dag::*; use v3_compiler::diagnostics::*; {module_source} }} \
+        "#[allow(warnings, clippy::all)] \
+         mod emitted {{ use v3_compiler::dag::*; {module_source} }} \
          fn main() {{ \
-           let dag = v3_compiler::compile_to_dag({program_source:?}, {file_name:?}).expect(\"compiles\"); \
+           let mut __args = std::env::args(); __args.next(); \
+           let program_source = __args.next().expect(\"program_source arg\"); \
+           let file_name = __args.next().expect(\"file_name arg\"); \
+           let bind_name = __args.next().expect(\"bind_name arg\"); \
+           let dag = v3_compiler::compile_to_dag(&program_source, &file_name).expect(\"compiles\"); \
            let bind = dag.nodes().iter().find_map(|node| match node {{ \
-             v3_compiler::dag::Behavior::Bind(bind) if bind.name == {bind_name:?} => Some(bind.clone()), \
+             v3_compiler::dag::Behavior::Bind(bind) if bind.name == bind_name => Some(bind.clone()), \
              _ => None \
            }}).expect(\"bind\"); \
-           println!(\"{{}}\", emitted::cost_of(&dag, &bind.value)); \
+           match emitted::cost_of(&dag, &bind.value) {{ \
+             emitted::CostLookup::FoundCost {{ _0: cost }} => println!(\"{{}}\", cost), \
+             emitted::CostLookup::MissingCost => panic!(\"complexity lens returned MissingCost for bind `{{}}` — malformed DAG\", bind.name), \
+           }} \
          }}"
     );
 
@@ -148,11 +157,26 @@ fn roundtrip_cost(
         .expect("write wrapped rust source");
 
     compile_with_current_crate(&src_path, &bin_path);
+    bin_path
+}
 
-    let run = Command::new(&bin_path)
+fn roundtrip_cost(
+    bin_path: &Path,
+    program_source: &str,
+    file_name: &str,
+    bind_name: &str,
+) -> usize {
+    let run = Command::new(bin_path)
+        .arg(program_source)
+        .arg(file_name)
+        .arg(bind_name)
         .output()
         .expect("run compiled binary");
-    assert!(run.status.success(), "compiled binary failed");
+    assert!(
+        run.status.success(),
+        "compiled binary failed: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
     String::from_utf8_lossy(&run.stdout)
         .trim()
         .parse()
@@ -248,11 +272,26 @@ fn countdown(n: Int) -> Int =
             "nested_fold.v3",
             "total",
         ),
+        // Bind with parameters: exercises both the seed_bind_params pre-seed
+        // (x_port gets FoundCost(0), matching the oracle's None-produced = 0)
+        // and the Bind branch of entry_for (result_port lookup over the
+        // transform that produced `x + x`).
+        (
+            "fn double(x: Int) -> Int = x + x",
+            "bind_with_param.v3",
+            "double",
+        ),
+        (
+            "fn add(x: Int, y: Int) -> Int = x + y",
+            "bind_with_two_params.v3",
+            "add",
+        ),
     ];
 
+    let bin_path = build_roundtrip_harness(&module);
     for (source, file_name, bind_name) in fixtures {
         let expected = handwritten_bind_cost(source, file_name, bind_name);
-        let actual = roundtrip_cost(&module, source, file_name, bind_name);
+        let actual = roundtrip_cost(&bin_path, source, file_name, bind_name);
         assert_eq!(
             actual, expected,
             "compiled complexity.dag should match handwritten oracle on {file_name}"
