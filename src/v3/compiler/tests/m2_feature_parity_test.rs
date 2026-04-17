@@ -532,6 +532,58 @@ fn test_3a3_callable_predicate_structural_identity_across_sites() {
 }
 
 #[test]
+fn test_3a3_logical_and_in_refinement_parses_and_lowers() {
+    // Acceptance (DB-11): `where <lhs> && <rhs>` — the `&&` /
+    // `||` logical primitives land so composite refinement bodies
+    // and narrowing-over-narrowing can be represented canonically.
+    // Bool-monomorphic: inputs and output are always Bool,
+    // independent of `lhs_type`.
+    //
+    // The composite-canonical refactor that makes structural
+    // discharge accept a sub-conjunct of actual's predicate is a
+    // separate concern; this test only locks that the primitive
+    // parses, lowers to `TransformTarget::Operator(Logical(And))`,
+    // and type-checks.
+    let src = "fn in_range(d: Int where d > 0 && d < 10) -> Int = d";
+    let _ = compile_to_dag(src, "test.v3").expect(
+        "`where d > 0 && d < 10` must compile — logical conjunction \
+         must parse, infer Bool-Bool-Bool, and lower to a \
+         Logical(And) Transform",
+    );
+}
+
+#[test]
+fn test_3a3_logical_or_in_refinement_parses_and_lowers() {
+    // Acceptance (DB-11): counterpart to the `&&` test — `||`
+    // lands in the same round and with the same semantics.
+    let src = "fn out_of_range(d: Int where d < 0 || d > 100) -> Int = d";
+    let _ = compile_to_dag(src, "test.v3").expect(
+        "`where d < 0 || d > 100` must compile — logical disjunction \
+         must parse, infer Bool-Bool-Bool, and lower to a \
+         Logical(Or) Transform",
+    );
+}
+
+#[test]
+fn test_3a3_logical_operator_rejects_non_bool_operand() {
+    // Acceptance (DB-11): `&&` is Bool-monomorphic. An Int operand
+    // must surface as a type mismatch on the Bool input slot, not
+    // silently propagate through as the Arithmetic / Comparison
+    // fallback does with `lhs_type`. Counterexample lock for the
+    // Logical arm of `resolve_operator_arrow`'s primitive fallback.
+    let src = "fn f(d: Int) -> Bool = d && d";
+    let err = compile_to_dag(src, "test.v3")
+        .expect_err("`Int && Int` must fail: `&&` operands must be Bool");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.to_lowercase().contains("type")
+            || msg.to_lowercase().contains("mismatch")
+            || msg.to_lowercase().contains("bool"),
+        "diagnostic must name the type mismatch or Bool expectation; got: {msg}"
+    );
+}
+
+#[test]
 fn test_3a3_substrate_integrity_behavior_still_five_variants() {
     // Acceptance (DB-11 §Acceptance): "Substrate integrity:
     // Declaration.refinement is the only new edge. type Behavior

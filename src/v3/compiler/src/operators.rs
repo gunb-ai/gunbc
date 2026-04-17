@@ -131,14 +131,45 @@ pub enum ComparisonOp {
     Ge,
 }
 
+/// Logical binary operators — `&&` and `||` on Bool.
+///
+/// **🟡 Scaffold — inherits the outer `OperatorKind` receipt.**
+/// Landed to support composite refinement predicates
+/// (`where d > 0 && d < 10`) and narrowing composition, and as the
+/// canonical conjunction shape inside the discharge walker. Same
+/// dissolution trigger as the other two variants: M2+ parser
+/// desugaring replaces `SurfaceExpr::Operator` with direct
+/// algebra-field calls, and this enum disappears.
+///
+/// 4-pattern check:
+/// - Pattern 1 (fact placement): label-only. Unlike Arithmetic and
+///   Comparison, there is no `OrderedRing<T>` field to dispatch
+///   into — Logical is Bool-monomorphic and the fallback signature
+///   is the authority until a `Boolean`/`Lattice` algebra lands.
+/// - Pattern 2 (variant-is-data): fails. No payloads.
+/// - Pattern 3 (algebraic form): partial. Two variants partition
+///   binary Boolean connectives. `!` (negation) is unary and
+///   would need a separate enum / surface hook.
+/// - Pattern 4 (dimensional): fails.
+///
+/// Verdict: 🟡 scaffold inheriting `OperatorKind`'s trigger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LogicalOp {
+    And,
+    Or,
+}
+
 /// Top-level operator kind. Structural dispatch target for the
 /// `TransformTarget::Operator` variant. The split between
-/// `Arithmetic` and `Comparison` encodes the output-type rule:
-/// arithmetic returns the operand type, comparison returns Bool.
+/// `Arithmetic`, `Comparison`, and `Logical` encodes the typing
+/// rule: arithmetic returns the operand type, comparison returns
+/// Bool from any operand type, logical takes Bool inputs and
+/// returns Bool.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OperatorKind {
     Arithmetic(ArithmeticOp),
     Comparison(ComparisonOp),
+    Logical(LogicalOp),
 }
 
 impl OperatorKind {
@@ -158,6 +189,8 @@ impl OperatorKind {
             "<=" => Some(OperatorKind::Comparison(ComparisonOp::Le)),
             ">" => Some(OperatorKind::Comparison(ComparisonOp::Gt)),
             ">=" => Some(OperatorKind::Comparison(ComparisonOp::Ge)),
+            "&&" => Some(OperatorKind::Logical(LogicalOp::And)),
+            "||" => Some(OperatorKind::Logical(LogicalOp::Or)),
             _ => None,
         }
     }
@@ -177,6 +210,8 @@ impl OperatorKind {
             OperatorKind::Comparison(ComparisonOp::Le) => "<=",
             OperatorKind::Comparison(ComparisonOp::Gt) => ">",
             OperatorKind::Comparison(ComparisonOp::Ge) => ">=",
+            OperatorKind::Logical(LogicalOp::And) => "&&",
+            OperatorKind::Logical(LogicalOp::Or) => "||",
         }
     }
 
@@ -207,6 +242,14 @@ impl OperatorKind {
             OperatorKind::Comparison(ComparisonOp::Le) => "le",
             OperatorKind::Comparison(ComparisonOp::Gt) => "gt",
             OperatorKind::Comparison(ComparisonOp::Ge) => "ge",
+            // No algebra-field dispatch today: Bool has no
+            // `OrderedRing`-style algebra declaration, so
+            // `resolve_operator_arrow`'s primitive fallback and the
+            // emit-side Logical special case are the authority. Kept
+            // for symmetry so the `algebra_field_name` / `symbol`
+            // maps stay total.
+            OperatorKind::Logical(LogicalOp::And) => "and",
+            OperatorKind::Logical(LogicalOp::Or) => "or",
         }
     }
 }

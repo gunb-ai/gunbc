@@ -693,6 +693,21 @@ impl<'a> Ctx<'a> {
                 t.inputs.len()
             )));
         }
+        // Logical operators are Bool-monomorphic and do not dispatch
+        // through a Bool algebra today — render the symbol directly.
+        // Go uses `&&` / `||`; same as the source surface.
+        if let OperatorKind::Logical(logical_op) = op {
+            let symbol = match logical_op {
+                crate::operators::LogicalOp::And => "&&",
+                crate::operators::LogicalOp::Or => "||",
+            };
+            let lhs = self.render_port(t.inputs[0], locals)?;
+            let rhs = self.render_port(t.inputs[1], locals)?;
+            return Ok(render_named_template(
+                &self.indexes.syntax.expressions.binary_op,
+                &[("lhs", &lhs), ("op", symbol), ("rhs", &rhs)],
+            ));
+        }
         let operand_type = primitive_type_id_for_port(self.dag, t.inputs[0])?;
         let op_decl = algebra_field_for_operator(self.dag, operand_type, op)?;
         let carrier = self.indexes.operators.get(&(operand_type, op_decl)).ok_or(

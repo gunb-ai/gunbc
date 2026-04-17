@@ -2994,12 +2994,21 @@ fn resolve_operator_arrow(
     // Fallback: Rust-side scaffold bridge for primitives whose
     // structural walk doesn't terminate at an algebra Conj (Bool,
     // Classical; collection-level algebras). Documented class-5 gap.
-    let output = match op_kind {
-        OperatorKind::Arithmetic(_) => base_lhs,
-        OperatorKind::Comparison(_) => dag.bool_shape()?,
+    //
+    // Logical operators are Bool-monomorphic: both operands and the
+    // output are always Bool, independent of `lhs_type`. An Int lhs
+    // on `&&` / `||` must surface a type mismatch, not propagate
+    // through the operand slots the way Arithmetic / Comparison do.
+    let (inputs, output) = match op_kind {
+        OperatorKind::Arithmetic(_) => (vec![base_lhs, base_lhs], base_lhs),
+        OperatorKind::Comparison(_) => (vec![base_lhs, base_lhs], dag.bool_shape()?),
+        OperatorKind::Logical(_) => {
+            let bool_shape = dag.bool_shape()?;
+            (vec![bool_shape, bool_shape], bool_shape)
+        }
     };
     Some(ResolvedArrow {
-        inputs: vec![base_lhs, base_lhs],
+        inputs,
         output,
         body: ArrowBody::Pending,
     })
