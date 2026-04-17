@@ -1,29 +1,74 @@
 #!/usr/bin/env bash
-# Pre-push hook: auto-fix fmt drift and commit it as a chore.
+# Pre-push hook: auto-fix fmt drift and commit it as a chore, but ONLY
+# when the push actually includes the current HEAD (so the auto-commit
+# lands on the ref being pushed). Skips entirely on delete-only pushes.
 #
-# Rationale: three fmt-fail CI incidents in the last week. Running
-# `cargo fmt --all --check` locally at push time catches drift before
-# it reaches CI. Auto-fixing + auto-committing means the developer's
-# intent (their original commits) flows unchanged; the fmt fix lands
-# as a distinct chore commit on top, preserving audit clarity.
+# Decision table:
+#   Push is delete-only              → skip entirely (nothing to fmt-check)
+#   Push includes current HEAD       → auto-commit fmt fix on top of HEAD
+#   Push excludes current HEAD       → fmt-check + fail with actionable msg
+#                                        (don't auto-commit to a ref that
+#                                         isn't being pushed; the fix
+#                                         wouldn't reach the remote)
 #
 # Enable via: scripts/install-hooks.sh (sets core.hooksPath .githooks)
 
 set -e
 
-# Pre-push should run on a clean tree. Unstaged or staged-but-uncommitted
-# changes indicate the developer hasn't finished the work they want to
-# push; bail rather than silently sweep those up into a fmt commit.
-if ! git diff --quiet || ! git diff --cached --quiet; then
-  echo "[pre-push] uncommitted changes in working tree — commit or stash before pushing."
-  exit 1
+ZERO_SHA="0000000000000000000000000000000000000000"
+current_head=$(git rev-parse HEAD 2>/dev/null || echo "")
+
+pushes_content=0
+current_head_in_push=0
+
+# Pre-push stdin format (one line per ref being pushed):
+#   <local_ref> <local_sha> <remote_ref> <remote_sha>
+# All-zero local_sha means delete (no content pushed for this ref).
+while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
+  if [[ "$local_sha" == "$ZERO_SHA" ]]; then
+    continue  # delete, no content to check
+  fi
+  pushes_content=1
+  if [[ "$local_sha" == "$current_head" ]]; then
+    current_head_in_push=1
+  fi
+done
+
+# Delete-only push (e.g., `git push origin --delete branch-name`): skip.
+if [[ "$pushes_content" == "0" ]]; then
+  exit 0
+fi
+
+# If auto-commit is in scope (HEAD is being pushed), require a clean tree.
+# Don't silently sweep uncommitted work into a fmt commit.
+if [[ "$current_head_in_push" == "1" ]]; then
+  if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo "[pre-push] uncommitted changes in working tree — commit or stash before pushing."
+    exit 1
+  fi
 fi
 
 echo "[pre-push] cargo fmt --all --check"
 if cargo fmt --all --check 2>/dev/null; then
-  exit 0  # clean, nothing to do
+  exit 0  # clean
 fi
 
+# Fmt drift detected. Two paths:
+if [[ "$current_head_in_push" == "0" ]]; then
+  # Push doesn't include current HEAD — auto-committing would land on a
+  # ref that isn't being pushed, so the fmt fix wouldn't reach the remote
+  # anyway. Fail with an actionable message; let the developer decide.
+  echo ""
+  echo "[pre-push] fmt drift detected, but the push doesn't include the current HEAD."
+  echo "[pre-push] auto-commit would land on a ref that isn't being pushed."
+  echo ""
+  echo "Either:"
+  echo "  - switch to the branch you intend to push and push again (hook will auto-fix), or"
+  echo "  - run 'cargo fmt --all' now, commit, and include the fmt fix in your push."
+  exit 1
+fi
+
+# HEAD is being pushed → safe to auto-commit on top of it.
 echo "[pre-push] fmt drift detected; running cargo fmt --all and committing as chore"
 cargo fmt --all
 
@@ -31,7 +76,7 @@ cargo fmt --all
 git add -u
 
 if git diff --cached --quiet; then
-  # cargo fmt reported drift via --check but --all produced no diff?
+  # cargo fmt --check reported drift but --all produced no diff?
   # Shouldn't happen; exit clean rather than commit nothing.
   exit 0
 fi
