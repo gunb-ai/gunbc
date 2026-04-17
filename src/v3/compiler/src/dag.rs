@@ -120,6 +120,26 @@ pub struct Declaration {
     pub meta_tag: Option<DeclarationId>,
     pub inhabits: Option<DeclarationId>,
     pub value_body: Option<ValueBody>,
+    /// DB-11 (3a.3): optional refinement predicate. `None` for
+    /// ordinary declarations; `Some(pred_id)` for refined parameter
+    /// types where `pred_id` points at a predicate-expression
+    /// declaration whose connective resolves to a `Bool` expression
+    /// DAG over the parameter name. Two refinements are structurally
+    /// equal iff their predicate expression DAGs walk equal; no
+    /// interning, no SMT entailment.
+    ///
+    /// **🟡 Scaffold (dissolves when 3a.3-followup lands the
+    /// consumer).** PR #496 landed the field and the parser's
+    /// `SurfaceParam.refinement` capture, but the lowering path that
+    /// attaches a predicate `Declaration` to this edge, the
+    /// call-site structural-DAG comparison, and the Branch-arm
+    /// predicate narrowing extension to M1(2.8) pattern resolution
+    /// are all deferred to the follow-up PR. Until then, every
+    /// declaration carries `refinement: None` unconditionally and
+    /// no lens or emitter reads the field. If you find yourself
+    /// setting this to `Some(..)` in this branch, the 3a.3-followup
+    /// is already landing — update the tracking marker.
+    pub refinement: Option<DeclarationId>,
     pub span: SourceSpan,
 }
 
@@ -182,6 +202,25 @@ pub enum ValueBody {
     /// recursively structural `FieldValue`; the label matches a
     /// field on the type's Conj children.
     Structural { fields: Vec<(String, FieldValue)> },
+    /// Scalar-valued data declaration: `data answer: Int = 42`.
+    /// Carries `LiteralBits` directly (Int / Bool / String) —
+    /// NOT a full `FieldValue`. This is deliberate:
+    ///
+    /// - `FieldValue::Record { .. }` at the top level is already
+    ///   representable as `ValueBody::Structural { fields }`;
+    ///   allowing `ValueBody::Scalar(FieldValue::Record(..))` would
+    ///   make illegal/overlapping states representable (two distinct
+    ///   encodings of the same top-level record body). Rejected.
+    /// - `FieldValue::Reference`, `List`, `Variant` as top-level
+    ///   data bodies are out of scope for DB-10's acceptance
+    ///   (scalar + structural record only). When those shapes
+    ///   become parseable at the top level, grow `ValueBody` with
+    ///   a new variant — do not widen `Scalar` to swallow them.
+    ///
+    /// DB-10 (Lane 3 Stage 3a.2) — `compiler.dag` needs compile-time
+    /// scalar constants; previously the parser rejected non-
+    /// `{`-shaped RHS, so scalar `data` declarations could not exist.
+    Scalar(LiteralBits),
 }
 
 /// Per-field value payload inside a `ValueBody::Structural`.
@@ -1386,6 +1425,23 @@ impl Dag {
                     std::cmp::Reverse(decl.id.raw()),
                 )
             })
+    }
+
+    /// DB-10 (3a.2): read the compile-time value body attached to a
+    /// declaration. Returns `None` for declarations without a
+    /// value body (type aliases, bare type declarations, function
+    /// declarations); returns `Some(&ValueBody)` for every `data`
+    /// declaration — including `ValueBody::Unparsed` scaffolds
+    /// whose body shape wasn't recognizable. Consumers that need
+    /// an inhabitance-checked body must match on the variant
+    /// directly and handle `Unparsed` explicitly; this accessor
+    /// does not filter scaffolds.
+    ///
+    /// Used by dotted-path lowering (to inline record-field values
+    /// at use sites) and by any future emission-time consumer that
+    /// wants to render a declared constant directly.
+    pub fn data_value_at(&self, id: DeclarationId) -> Option<&ValueBody> {
+        self.declaration(id).value_body.as_ref()
     }
 
     pub fn port(&self, id: PortId) -> &Port {

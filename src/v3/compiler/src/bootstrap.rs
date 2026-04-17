@@ -306,6 +306,7 @@ mod tests {
             inhabits: None,
 
             value_body: None,
+            refinement: None,
             span: span.clone(),
         });
 
@@ -321,6 +322,7 @@ mod tests {
             inhabits: None,
 
             value_body: None,
+            refinement: None,
             span: span.clone(),
         });
 
@@ -361,6 +363,7 @@ mod tests {
             inhabits: None,
 
             value_body: None,
+            refinement: None,
             span,
         });
 
