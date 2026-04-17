@@ -207,6 +207,15 @@ impl RealizationIndexes {
             HashMap::new();
         let mut patterns = HashMap::new();
 
+        // Cache the Go language-spec declaration id once; shared
+        // realizations reference it via `language: DeclarationRef`
+        // and this emitter picks up only entries that match.
+        // Replaces the previous TargetLanguage enum roster with a
+        // declaration-identity compare (INVARIANTS.md E-6).
+        let go_language_id = dag
+            .go_language_spec()
+            .ok_or(EmitError::MissingTargetSyntax("go_language"))?;
+
         for decl in dag.declarations() {
             let Some(meta_tag) = decl.meta_tag else {
                 continue;
@@ -234,13 +243,12 @@ impl RealizationIndexes {
                 });
             };
             // Skip realizations declared for other shared targets
-            // (e.g. Rust) by reading the typed `language: TargetLanguage`
-            // discriminator. Replaces the previous `name.starts_with("go_")`
-            // prefix filter — a name like `go_int` no longer
-            // determines ownership; the language tag does.
-            if crate::emit_rust::require_target_language(dag, fields, decl.id)?
-                != crate::emit_rust::TargetLanguageBinding::Go
-            {
+            // (e.g. Rust) by comparing the typed `language` field to
+            // this emitter's cached language-spec declaration id.
+            // Replaces the previous TargetLanguage enum roster; adding
+            // a new shared target is now a pure spec-file change.
+            let language_ref = require_field_decl_ref(fields, "language", decl.id)?;
+            if language_ref != go_language_id {
                 continue;
             }
             let target = require_field_decl_ref(fields, "target", decl.id)?;

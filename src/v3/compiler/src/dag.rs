@@ -1041,10 +1041,6 @@ pub(crate) struct TargetSyntaxCache {
     /// `go_language` syntax bundle declaration loaded from
     /// `src/v3/spec/go.dag`.
     pub go_language: Option<DeclarationId>,
-    /// `go_rendering` ownership-model declaration loaded from
-    /// `src/v3/spec/go.dag`. Present for parity with Rust, but GC
-    /// targets may skip reading it entirely.
-    pub go_rendering: Option<DeclarationId>,
     /// `go_execution_model` declaration loaded from
     /// `src/v3/spec/go.dag`.
     pub go_execution_model: Option<DeclarationId>,
@@ -1291,12 +1287,6 @@ impl Dag {
     /// declared in `src/v3/spec/go.dag`.
     pub fn go_language_spec(&self) -> Option<DeclarationId> {
         self.target_syntax.go_language
-    }
-
-    /// Typed accessor for the Go target-language ownership model
-    /// declaration loaded from `src/v3/spec/go.dag`.
-    pub fn go_rendering_spec(&self) -> Option<DeclarationId> {
-        self.target_syntax.go_rendering
     }
 
     /// Typed accessor for the Go target execution model
@@ -1574,7 +1564,6 @@ impl Dag {
             .map(|d| d.id);
         self.target_syntax.dag_model = self.declaration_by_name("dag_model").map(|d| d.id);
         self.target_syntax.go_language = self.declaration_by_name("go_language").map(|d| d.id);
-        self.target_syntax.go_rendering = self.declaration_by_name("go_rendering").map(|d| d.id);
         self.target_syntax.go_execution_model =
             self.declaration_by_name("go_execution_model").map(|d| d.id);
         self.stdlib_types.list = self.declaration_by_name("List").map(|d| d.id);

@@ -3,18 +3,17 @@ module v3.std.emit_model
 import v3.spec.v3_l1 { DeclarationRef }
 import std.list { List }
 
-// 🟢 TERMINAL. Closed enumeration of emit targets that share the
-// emit_model schema. Each shared realization data item declares its
-// owning target via a `language` field, so emit_rust / emit_go pick
-// up only their own entries instead of relying on a `name.starts_with`
-// prefix filter. New shared targets append a variant; targets on
-// their own private vocabulary (Python today) are unaffected.
-type TargetLanguage
-  = Rust
-  | Go
-
+// Target ownership is carried on every shared realization as a
+// typed `language: DeclarationRef` field pointing at the owning
+// target's language-spec declaration (e.g., `rust_language`,
+// `go_language`). The reference is resolved via dotted-path
+// lowering at spec parse time; each emitter compares it to its
+// own cached language-spec id to pick up only its entries.
+// Adding a new shared target is a pure spec-file change — drop a
+// `<target>.dag` with a LanguageSpec data item and reference it
+// from each realization. No compiler enum roster to edit.
 type TypeRealization {
-  language: TargetLanguage
+  language: DeclarationRef
   target: DeclarationRef
   carrier: String
   is_copy: Bool
@@ -39,7 +38,7 @@ type FieldAccess
   | AccessorMethod(String)
 
 type OperatorRealization {
-  language: TargetLanguage
+  language: DeclarationRef
   target: DeclarationRef
   op: DeclarationRef
   carrier: String
@@ -47,14 +46,14 @@ type OperatorRealization {
 }
 
 type BehaviorRealization {
-  language: TargetLanguage
+  language: DeclarationRef
   target: DeclarationRef
   carrier: String
   cost: Int
 }
 
 type CallableRealization {
-  language: TargetLanguage
+  language: DeclarationRef
   target: DeclarationRef
   strategy: CallableStrategy
   parameters: List<CallableParameter>
@@ -85,7 +84,7 @@ type ParameterDisposition
   | Consumed
 
 type TypeInstantiationRealization {
-  language: TargetLanguage
+  language: DeclarationRef
   target: DeclarationRef
   carrier: String
   cost: Int
@@ -114,7 +113,7 @@ type CallableStrategy
 // expressed as target-language facts consumed by `.dag` emission; this record
 // remains the single authority until that stage lands.
 type PatternRealization {
-  language: TargetLanguage
+  language: DeclarationRef
   target: DeclarationRef
   strategy: PatternStrategy
   scrutinee: String

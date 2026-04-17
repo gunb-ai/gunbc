@@ -2,7 +2,6 @@ module v3.spec.go
 
 import v3.spec.v3_l1 { Bind, Branch, Main }
 import v3.std.emit_model {
-  TargetLanguage, Go,
   TypeRealization, FieldBinding, FieldAccess,
   OperatorRealization, BehaviorRealization, CallableRealization,
   TypeInstantiationRealization, CallableStrategy,
@@ -11,7 +10,7 @@ import v3.std.emit_model {
   StatementSyntax, ExpressionSyntax, ControlFlowSyntax,
   LiteralSyntax, ModuleSyntax, FunctionSyntax, TypeApplicationSyntax,
   TypeDefinitionSyntax, PatternMatchSyntax, CollectionOps,
-  ValueConstructionSyntax, RenderingModel, LanguageSpec
+  ValueConstructionSyntax, LanguageSpec
 }
 import v3.std.computation_model {
   TargetExecutionModel, GarbageCollected, LexicalScoping
@@ -24,7 +23,7 @@ data go_execution_model: TargetExecutionModel = {
 }
 
 data go_int: TypeRealization = {
-  language: Go
+  language: go_language
   target: Int
   carrier: "int64"
   is_copy: true
@@ -33,7 +32,7 @@ data go_int: TypeRealization = {
 }
 
 data go_bool: TypeRealization = {
-  language: Go
+  language: go_language
   target: Bool
   carrier: "bool"
   is_copy: true
@@ -42,7 +41,7 @@ data go_bool: TypeRealization = {
 }
 
 data go_string: TypeRealization = {
-  language: Go
+  language: go_language
   target: String
   carrier: "string"
   is_copy: true
@@ -51,7 +50,7 @@ data go_string: TypeRealization = {
 }
 
 data go_node_id: TypeRealization = {
-  language: Go
+  language: go_language
   target: NodeId
   carrier: "NodeId"
   is_copy: true
@@ -60,7 +59,7 @@ data go_node_id: TypeRealization = {
 }
 
 data go_port_id: TypeRealization = {
-  language: Go
+  language: go_language
   target: PortId
   carrier: "PortId"
   is_copy: true
@@ -69,7 +68,7 @@ data go_port_id: TypeRealization = {
 }
 
 data go_declaration_id: TypeRealization = {
-  language: Go
+  language: go_language
   target: DeclarationId
   carrier: "DeclarationId"
   is_copy: true
@@ -78,7 +77,7 @@ data go_declaration_id: TypeRealization = {
 }
 
 data go_type_shape: TypeRealization = {
-  language: Go
+  language: go_language
   target: TypeShape
   carrier: "TypeShape"
   is_copy: false
@@ -89,7 +88,7 @@ data go_type_shape: TypeRealization = {
 }
 
 data go_port_state: TypeRealization = {
-  language: Go
+  language: go_language
   target: PortState
   carrier: "PortState"
   is_copy: false
@@ -98,7 +97,7 @@ data go_port_state: TypeRealization = {
 }
 
 data go_port: TypeRealization = {
-  language: Go
+  language: go_language
   target: DagPort
   carrier: "DagPort"
   is_copy: false
@@ -111,7 +110,7 @@ data go_port: TypeRealization = {
 }
 
 data go_source_span: TypeRealization = {
-  language: Go
+  language: go_language
   target: SourceSpan
   carrier: "SourceSpan"
   is_copy: false
@@ -124,7 +123,7 @@ data go_source_span: TypeRealization = {
 }
 
 data go_literal_bits: TypeRealization = {
-  language: Go
+  language: go_language
   target: LiteralBits
   carrier: "LiteralBits"
   is_copy: false
@@ -133,7 +132,7 @@ data go_literal_bits: TypeRealization = {
 }
 
 data go_atom_payload: TypeRealization = {
-  language: Go
+  language: go_language
   target: AtomPayload
   carrier: "AtomPayload"
   is_copy: false
@@ -142,7 +141,7 @@ data go_atom_payload: TypeRealization = {
 }
 
 data go_cardinality_bound: TypeRealization = {
-  language: Go
+  language: go_language
   target: CardinalityBound
   carrier: "CardinalityBound"
   is_copy: false
@@ -151,7 +150,7 @@ data go_cardinality_bound: TypeRealization = {
 }
 
 data go_conj_field: TypeRealization = {
-  language: Go
+  language: go_language
   target: ConjField
   carrier: "ConjField"
   is_copy: false
@@ -163,7 +162,7 @@ data go_conj_field: TypeRealization = {
 }
 
 data go_template_argument: TypeRealization = {
-  language: Go
+  language: go_language
   target: TemplateArgument
   carrier: "TemplateArgument"
   is_copy: false
@@ -175,7 +174,7 @@ data go_template_argument: TypeRealization = {
 }
 
 data go_field_entry: TypeRealization = {
-  language: Go
+  language: go_language
   target: FieldEntry
   carrier: "FieldEntry"
   is_copy: false
@@ -187,7 +186,7 @@ data go_field_entry: TypeRealization = {
 }
 
 data go_field_value: TypeRealization = {
-  language: Go
+  language: go_language
   target: FieldValue
   carrier: "FieldValue"
   is_copy: false
@@ -196,7 +195,7 @@ data go_field_value: TypeRealization = {
 }
 
 data go_value_body: TypeRealization = {
-  language: Go
+  language: go_language
   target: ValueBody
   carrier: "ValueBody"
   is_copy: false
@@ -205,7 +204,7 @@ data go_value_body: TypeRealization = {
 }
 
 data go_arrow_body: TypeRealization = {
-  language: Go
+  language: go_language
   target: ArrowBody
   carrier: "ArrowBody"
   is_copy: false
@@ -214,7 +213,7 @@ data go_arrow_body: TypeRealization = {
 }
 
 data go_type_connective: TypeRealization = {
-  language: Go
+  language: go_language
   target: TypeConnective
   carrier: "TypeConnective"
   is_copy: false
@@ -223,7 +222,7 @@ data go_type_connective: TypeRealization = {
 }
 
 data go_declaration: TypeRealization = {
-  language: Go
+  language: go_language
   target: Declaration
   carrier: "Declaration"
   is_copy: false
@@ -241,7 +240,7 @@ data go_declaration: TypeRealization = {
 }
 
 data go_arithmetic_op: TypeRealization = {
-  language: Go
+  language: go_language
   target: ArithmeticOp
   carrier: "ArithmeticOp"
   is_copy: false
@@ -250,7 +249,7 @@ data go_arithmetic_op: TypeRealization = {
 }
 
 data go_comparison_op: TypeRealization = {
-  language: Go
+  language: go_language
   target: ComparisonOp
   carrier: "ComparisonOp"
   is_copy: false
@@ -259,7 +258,7 @@ data go_comparison_op: TypeRealization = {
 }
 
 data go_operator_kind: TypeRealization = {
-  language: Go
+  language: go_language
   target: OperatorKind
   carrier: "OperatorKind"
   is_copy: false
@@ -268,7 +267,7 @@ data go_operator_kind: TypeRealization = {
 }
 
 data go_transform_target: TypeRealization = {
-  language: Go
+  language: go_language
   target: TransformTarget
   carrier: "TransformTarget"
   is_copy: false
@@ -277,7 +276,7 @@ data go_transform_target: TypeRealization = {
 }
 
 data go_branch_pattern: TypeRealization = {
-  language: Go
+  language: go_language
   target: BranchPattern
   carrier: "BranchPattern"
   is_copy: false
@@ -286,7 +285,7 @@ data go_branch_pattern: TypeRealization = {
 }
 
 data go_payload_binding: TypeRealization = {
-  language: Go
+  language: go_language
   target: PayloadBinding
   carrier: "PayloadBinding"
   is_copy: false
@@ -298,7 +297,7 @@ data go_payload_binding: TypeRealization = {
 }
 
 data go_branch_path: TypeRealization = {
-  language: Go
+  language: go_language
   target: BranchPath
   carrier: "BranchPath"
   is_copy: false
@@ -312,7 +311,7 @@ data go_branch_path: TypeRealization = {
 }
 
 data go_loop_bound: TypeRealization = {
-  language: Go
+  language: go_language
   target: LoopBound
   carrier: "LoopBound"
   is_copy: false
@@ -323,7 +322,7 @@ data go_loop_bound: TypeRealization = {
 }
 
 data go_value_node: TypeRealization = {
-  language: Go
+  language: go_language
   target: ValueNode
   carrier: "ValueNode"
   is_copy: false
@@ -337,7 +336,7 @@ data go_value_node: TypeRealization = {
 }
 
 data go_transform_node: TypeRealization = {
-  language: Go
+  language: go_language
   target: TransformNode
   carrier: "TransformNode"
   is_copy: false
@@ -352,7 +351,7 @@ data go_transform_node: TypeRealization = {
 }
 
 data go_branch_node: TypeRealization = {
-  language: Go
+  language: go_language
   target: BranchNode
   carrier: "BranchNode"
   is_copy: false
@@ -367,7 +366,7 @@ data go_branch_node: TypeRealization = {
 }
 
 data go_loop_node: TypeRealization = {
-  language: Go
+  language: go_language
   target: LoopNode
   carrier: "LoopNode"
   is_copy: false
@@ -384,7 +383,7 @@ data go_loop_node: TypeRealization = {
 }
 
 data go_bind_node: TypeRealization = {
-  language: Go
+  language: go_language
   target: BindNode
   carrier: "BindNode"
   is_copy: false
@@ -399,7 +398,7 @@ data go_bind_node: TypeRealization = {
 }
 
 data go_behavior: TypeRealization = {
-  language: Go
+  language: go_language
   target: Behavior
   carrier: "Behavior"
   is_copy: false
@@ -408,7 +407,7 @@ data go_behavior: TypeRealization = {
 }
 
 data go_dag: TypeRealization = {
-  language: Go
+  language: go_language
   target: Dag
   carrier: "Dag"
   is_copy: false
@@ -421,7 +420,7 @@ data go_dag: TypeRealization = {
 }
 
 data go_int_add: OperatorRealization = {
-  language: Go
+  language: go_language
   target: Int
   op: OrderedRing.add
   carrier: "+"
@@ -429,7 +428,7 @@ data go_int_add: OperatorRealization = {
 }
 
 data go_int_sub: OperatorRealization = {
-  language: Go
+  language: go_language
   target: Int
   op: OrderedRing.sub
   carrier: "-"
@@ -437,7 +436,7 @@ data go_int_sub: OperatorRealization = {
 }
 
 data go_int_mul: OperatorRealization = {
-  language: Go
+  language: go_language
   target: Int
   op: OrderedRing.mul
   carrier: "*"
@@ -445,7 +444,7 @@ data go_int_mul: OperatorRealization = {
 }
 
 data go_int_div: OperatorRealization = {
-  language: Go
+  language: go_language
   target: Int
   op: OrderedRing.div
   carrier: "/"
@@ -453,7 +452,7 @@ data go_int_div: OperatorRealization = {
 }
 
 data go_int_eq: OperatorRealization = {
-  language: Go
+  language: go_language
   target: Int
   op: OrderedRing.eq
   carrier: "=="
@@ -461,7 +460,7 @@ data go_int_eq: OperatorRealization = {
 }
 
 data go_node_id_eq: OperatorRealization = {
-  language: Go
+  language: go_language
   target: NodeId
   op: OrderedRing.eq
   carrier: "=="
@@ -469,7 +468,7 @@ data go_node_id_eq: OperatorRealization = {
 }
 
 data go_port_id_eq: OperatorRealization = {
-  language: Go
+  language: go_language
   target: PortId
   op: OrderedRing.eq
   carrier: "=="
@@ -477,7 +476,7 @@ data go_port_id_eq: OperatorRealization = {
 }
 
 data go_declaration_id_eq: OperatorRealization = {
-  language: Go
+  language: go_language
   target: DeclarationId
   op: OrderedRing.eq
   carrier: "=="
@@ -485,7 +484,7 @@ data go_declaration_id_eq: OperatorRealization = {
 }
 
 data go_int_ne: OperatorRealization = {
-  language: Go
+  language: go_language
   target: Int
   op: OrderedRing.ne
   carrier: "!="
@@ -493,7 +492,7 @@ data go_int_ne: OperatorRealization = {
 }
 
 data go_node_id_ne: OperatorRealization = {
-  language: Go
+  language: go_language
   target: NodeId
   op: OrderedRing.ne
   carrier: "!="
@@ -501,7 +500,7 @@ data go_node_id_ne: OperatorRealization = {
 }
 
 data go_port_id_ne: OperatorRealization = {
-  language: Go
+  language: go_language
   target: PortId
   op: OrderedRing.ne
   carrier: "!="
@@ -509,7 +508,7 @@ data go_port_id_ne: OperatorRealization = {
 }
 
 data go_declaration_id_ne: OperatorRealization = {
-  language: Go
+  language: go_language
   target: DeclarationId
   op: OrderedRing.ne
   carrier: "!="
@@ -517,7 +516,7 @@ data go_declaration_id_ne: OperatorRealization = {
 }
 
 data go_int_lt: OperatorRealization = {
-  language: Go
+  language: go_language
   target: Int
   op: OrderedRing.lt
   carrier: "<"
@@ -525,7 +524,7 @@ data go_int_lt: OperatorRealization = {
 }
 
 data go_int_le: OperatorRealization = {
-  language: Go
+  language: go_language
   target: Int
   op: OrderedRing.le
   carrier: "<="
@@ -533,7 +532,7 @@ data go_int_le: OperatorRealization = {
 }
 
 data go_int_gt: OperatorRealization = {
-  language: Go
+  language: go_language
   target: Int
   op: OrderedRing.gt
   carrier: ">"
@@ -541,7 +540,7 @@ data go_int_gt: OperatorRealization = {
 }
 
 data go_int_ge: OperatorRealization = {
-  language: Go
+  language: go_language
   target: Int
   op: OrderedRing.ge
   carrier: ">="
@@ -549,28 +548,28 @@ data go_int_ge: OperatorRealization = {
 }
 
 data go_let_stmt: BehaviorRealization = {
-  language: Go
+  language: go_language
   target: Bind
   carrier: "var {name} {type} = {value}"
   cost: 0
 }
 
 data go_if_expr: BehaviorRealization = {
-  language: Go
+  language: go_language
   target: Branch
   carrier: "if {cond} { {then} } else { {else} }"
   cost: 0
 }
 
 data go_main_wrap: BehaviorRealization = {
-  language: Go
+  language: go_language
   target: Main
   carrier: "func main() {\n{body}\nfmt.Println({final})\n}"
   cost: 0
 }
 
 data go_empty_callable: CallableRealization = {
-  language: Go
+  language: go_language
   target: empty
   strategy: ListEmpty
   parameters: []
@@ -578,7 +577,7 @@ data go_empty_callable: CallableRealization = {
 }
 
 data go_singleton_callable: CallableRealization = {
-  language: Go
+  language: go_language
   target: singleton
   strategy: ListSingleton
   parameters: [
@@ -588,7 +587,7 @@ data go_singleton_callable: CallableRealization = {
 }
 
 data go_cons_callable: CallableRealization = {
-  language: Go
+  language: go_language
   target: cons
   strategy: ListCons
   parameters: [
@@ -599,7 +598,7 @@ data go_cons_callable: CallableRealization = {
 }
 
 data go_concat_callable: CallableRealization = {
-  language: Go
+  language: go_language
   target: concat
   strategy: ListConcat
   parameters: [
@@ -610,7 +609,7 @@ data go_concat_callable: CallableRealization = {
 }
 
 data go_length_callable: CallableRealization = {
-  language: Go
+  language: go_language
   target: length
   strategy: ListLength
   parameters: [
@@ -620,21 +619,21 @@ data go_length_callable: CallableRealization = {
 }
 
 data go_list_instantiation: TypeInstantiationRealization = {
-  language: Go
+  language: go_language
   target: List
   carrier: "[]{element}"
   cost: 1
 }
 
 data go_map_instantiation: TypeInstantiationRealization = {
-  language: Go
+  language: go_language
   target: Map
   carrier: "map[{key}]{value}"
   cost: 1
 }
 
 data go_is_empty_callable: CallableRealization = {
-  language: Go
+  language: go_language
   target: is_empty
   strategy: ListIsEmpty
   parameters: [
@@ -644,7 +643,7 @@ data go_is_empty_callable: CallableRealization = {
 }
 
 data go_fold_callable: CallableRealization = {
-  language: Go
+  language: go_language
   target: fold
   strategy: ListFold
   parameters: [
@@ -656,7 +655,7 @@ data go_fold_callable: CallableRealization = {
 }
 
 data go_map_callable: CallableRealization = {
-  language: Go
+  language: go_language
   target: map
   strategy: ListMap
   parameters: [
@@ -667,7 +666,7 @@ data go_map_callable: CallableRealization = {
 }
 
 data go_filter_callable: CallableRealization = {
-  language: Go
+  language: go_language
   target: filter
   strategy: ListFilter
   parameters: [
@@ -678,7 +677,7 @@ data go_filter_callable: CallableRealization = {
 }
 
 data go_contains_callable: CallableRealization = {
-  language: Go
+  language: go_language
   target: contains
   strategy: ListContains
   parameters: [
@@ -689,7 +688,7 @@ data go_contains_callable: CallableRealization = {
 }
 
 data go_list_pattern: PatternRealization = {
-  language: Go
+  language: go_language
   target: List
   strategy: VectorList
   scrutinee: "{expr}"
@@ -779,10 +778,15 @@ data go_value_construction: ValueConstructionSyntax = {
   variant_named_construction: "{variant}{{ {fields} }}"
 }
 
-data go_rendering: RenderingModel = {
-  read: PassByValue
-  construct: PassByValue
-}
+// `go_rendering` previously declared a RenderingModel for Go (copied
+// from rust_rendering's shape for schema parity), but no emit_go
+// decision actually consumed it — emit_go's GC rendering makes no
+// borrow/move distinctions, so ReadStrategy/ConstructStrategy aren't
+// load-bearing on this target. Removed per INVARIANTS.md E-6 (no
+// target-spec field without a same-PR consumer). When Go grows a
+// rendering choice that needs the model (e.g. RefCounted pointer
+// vs value struct), re-declare it AND wire the emitter consumer
+// in the same PR.
 
 data go_language: LanguageSpec = {
   statements: go_statements

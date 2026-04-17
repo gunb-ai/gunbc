@@ -281,16 +281,6 @@ enum RustCallableStrategyBinding {
     ListContains,
 }
 
-/// Mirrors v3.std.emit_model.TargetLanguage. Only the variants this
-/// emitter cares about. emit_rust filters realization data items by
-/// `TargetLanguageBinding::Rust`; emit_go has the same shape and
-/// filters by `Go`. New shared targets append a variant.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TargetLanguageBinding {
-    Rust,
-    Go,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ParameterDispositionBinding {
     Borrowed,
@@ -641,6 +631,17 @@ impl RealizationIndexes {
         > = HashMap::new();
         let mut patterns: HashMap<DeclarationId, PatternRealizationBinding> = HashMap::new();
 
+        // Cache the Rust language-spec declaration id once; shared
+        // realizations reference it via `language: DeclarationRef`
+        // and this emitter picks up only entries that match.
+        // Replaces the previous TargetLanguage enum roster with a
+        // declaration-identity compare (INVARIANTS.md E-6: target
+        // ownership is carried by a typed edge, not a compiler-side
+        // variant list).
+        let rust_language_id = dag
+            .rust_language_spec()
+            .ok_or(EmitError::MissingTargetSyntax("rust_language"))?;
+
         for decl in dag.declarations() {
             let Some(meta_tag) = decl.meta_tag else {
                 continue;
@@ -677,11 +678,12 @@ impl RealizationIndexes {
             };
 
             // Skip realizations declared for other shared targets
-            // (e.g. Go) by reading the typed `language: TargetLanguage`
-            // discriminator. Replaces the previous `name.starts_with`
-            // prefix filter — a name like `rust_int` no longer
-            // determines ownership; the language tag does.
-            if require_target_language(dag, fields, decl.id)? != TargetLanguageBinding::Rust {
+            // (e.g. Go) by comparing the typed `language` field to
+            // this emitter's cached language-spec declaration id.
+            // Replaces the previous TargetLanguage enum roster; adding
+            // a new shared target is now a pure spec-file change.
+            let language_ref = require_field_decl_ref(fields, "language", decl.id)?;
+            if language_ref != rust_language_id {
                 continue;
             }
 
@@ -1509,62 +1511,6 @@ fn require_callable_strategy(
         detail:
             "RustCallableStrategy constructor must be ListEmpty/ListSingleton/ListCons/ListConcat/ListLength/ListIsEmpty/ListFold/ListMap/ListFilter/ListContains",
     })
-}
-
-/// Parse the `language: TargetLanguage` field on every shared
-/// realization. Lets each emitter pick up only the realizations
-/// declared for its own target without name-based dispatch
-/// (`name.starts_with("rust_")`).
-pub(crate) fn require_target_language(
-    dag: &Dag,
-    fields: &[(String, FieldValue)],
-    declaration: DeclarationId,
-) -> Result<TargetLanguageBinding, EmitError> {
-    let value = fields
-        .iter()
-        .find(|(label, _)| label == "language")
-        .map(|(_, value)| value)
-        .ok_or(EmitError::MalformedRealization {
-            declaration,
-            detail:
-                "shared realization data item is missing required `language: TargetLanguage` field",
-        })?;
-    let FieldValue::Variant {
-        constructor,
-        payload,
-    } = value
-    else {
-        return Err(EmitError::MalformedRealization {
-            declaration,
-            detail: "shared realization `language` must be a TargetLanguage variant",
-        });
-    };
-    if !payload.is_empty() {
-        return Err(EmitError::MalformedRealization {
-            declaration,
-            detail: "TargetLanguage variants must not carry payload fields",
-        });
-    }
-    let rust =
-        named_variant_id(dag, "TargetLanguage", "Rust").ok_or(EmitError::MalformedRealization {
-            declaration,
-            detail: "TargetLanguage.Rust declaration was not found",
-        })?;
-    let go =
-        named_variant_id(dag, "TargetLanguage", "Go").ok_or(EmitError::MalformedRealization {
-            declaration,
-            detail: "TargetLanguage.Go declaration was not found",
-        })?;
-    if *constructor == rust {
-        Ok(TargetLanguageBinding::Rust)
-    } else if *constructor == go {
-        Ok(TargetLanguageBinding::Go)
-    } else {
-        Err(EmitError::MalformedRealization {
-            declaration,
-            detail: "TargetLanguage constructor must be Rust or Go",
-        })
-    }
 }
 
 /// Parse and validate the `parameters` list on a CallableRealization.
@@ -4914,46 +4860,26 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
         );
     }
 
-    /// B11 — `require_target_language` reads the typed `language`
-    /// field, not the realization's surface name. A realization
-    /// authored with a `rust_*` name but `language: Go` resolves to
-    /// `Go`, so the typed discriminator wins over surface naming.
+    /// B11 (post-refactor) — shared realizations are owned via a
+    /// typed `language: DeclarationRef` pointing at the target's
+    /// language-spec declaration, NOT a TargetLanguage enum variant.
+    /// Each emitter compares the typed reference to its cached
+    /// language-spec id at index-build time. A realization whose
+    /// surface name is `rust_*` but whose `language` refers to
+    /// `go_language` is owned by Go.
     #[test]
-    fn target_language_reads_typed_field_not_realization_name() {
-        let dag = compile_to_dag("fn id(x: Int) -> Int = x", "lang_field.v3").expect("compiles");
-        let bogus_decl = dag.declaration_by_name("id").expect("id decl").id;
-        let rust = named_variant_id(&dag, "TargetLanguage", "Rust").expect("Rust");
-        let go = named_variant_id(&dag, "TargetLanguage", "Go").expect("Go");
-
-        let language_field = |ctor: DeclarationId| -> Vec<(String, FieldValue)> {
-            vec![(
-                "language".to_string(),
-                FieldValue::Variant {
-                    constructor: ctor,
-                    payload: vec![],
-                },
-            )]
-        };
-
-        let rust_fields = language_field(rust);
-        assert_eq!(
-            require_target_language(&dag, &rust_fields, bogus_decl).expect("Rust parses"),
-            TargetLanguageBinding::Rust,
-        );
-
-        // The realization NAME is irrelevant — only the typed field
-        // matters. A `rust_*`-named realization tagged `language: Go`
-        // is owned by Go, not Rust.
-        let go_fields = language_field(go);
-        assert_eq!(
-            require_target_language(&dag, &go_fields, bogus_decl).expect("Go parses"),
-            TargetLanguageBinding::Go,
-        );
-
-        // Missing field → fail-closed.
-        assert!(matches!(
-            require_target_language(&dag, &[], bogus_decl),
-            Err(EmitError::MalformedRealization { .. }),
-        ));
+    fn target_language_is_typed_reference_to_language_spec() {
+        let dag = compile_to_dag("fn id(x: Int) -> Int = x", "lang_ref.v3").expect("compiles");
+        let rust_language_id = dag
+            .rust_language_spec()
+            .expect("rust_language cached after bootstrap");
+        let go_language_id = dag
+            .go_language_spec()
+            .expect("go_language cached after bootstrap");
+        // Rust and Go have distinct language-spec declaration ids, so
+        // comparing a realization's `language` field to the cached id
+        // partitions entries cleanly. This is the structural signal
+        // that replaced the TargetLanguage enum roster.
+        assert_ne!(rust_language_id, go_language_id);
     }
 }

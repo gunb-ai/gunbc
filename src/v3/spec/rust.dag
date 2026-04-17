@@ -51,7 +51,6 @@ module v3.spec.rust
 import v3.spec.v3_l1 { Bind, Branch, Main }
 import v3.std.computation_model { TargetExecutionModel, OwnershipBased, LexicalScoping }
 import v3.std.emit_model {
-  TargetLanguage, Rust,
   TypeRealization, FieldBinding, FieldAccess,
   OperatorRealization, BehaviorRealization, CallableRealization,
   TypeInstantiationRealization, CallableStrategy,
@@ -73,7 +72,7 @@ data rust_execution_model: TargetExecutionModel = {
 // ─────────────────────────────────────────────────────────────────
 
 data rust_int: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: Int
   carrier: "i64"
   is_copy: true
@@ -82,7 +81,7 @@ data rust_int: TypeRealization = {
 }
 
 data rust_bool: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: Bool
   carrier: "bool"
   is_copy: true
@@ -91,7 +90,7 @@ data rust_bool: TypeRealization = {
 }
 
 data rust_string: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: String
   carrier: "String"
   is_copy: false
@@ -100,7 +99,7 @@ data rust_string: TypeRealization = {
 }
 
 data rust_node_id: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: NodeId
   carrier: "NodeId"
   is_copy: true
@@ -109,7 +108,7 @@ data rust_node_id: TypeRealization = {
 }
 
 data rust_port_id: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: PortId
   carrier: "PortId"
   is_copy: true
@@ -118,7 +117,7 @@ data rust_port_id: TypeRealization = {
 }
 
 data rust_declaration_id: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: DeclarationId
   carrier: "DeclarationId"
   is_copy: true
@@ -127,7 +126,7 @@ data rust_declaration_id: TypeRealization = {
 }
 
 data rust_type_shape: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: TypeShape
   carrier: "TypeShape"
   is_copy: false
@@ -138,7 +137,7 @@ data rust_type_shape: TypeRealization = {
 }
 
 data rust_port_state: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: PortState
   carrier: "PortState"
   is_copy: false
@@ -147,7 +146,7 @@ data rust_port_state: TypeRealization = {
 }
 
 data rust_port: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: DagPort
   carrier: "Port"
   is_copy: false
@@ -160,7 +159,7 @@ data rust_port: TypeRealization = {
 }
 
 data rust_source_span: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: SourceSpan
   carrier: "SourceSpan"
   is_copy: false
@@ -173,7 +172,7 @@ data rust_source_span: TypeRealization = {
 }
 
 data rust_literal_bits: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: LiteralBits
   carrier: "LiteralBits"
   is_copy: false
@@ -182,7 +181,7 @@ data rust_literal_bits: TypeRealization = {
 }
 
 data rust_atom_payload: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: AtomPayload
   carrier: "AtomPayload"
   is_copy: false
@@ -191,7 +190,7 @@ data rust_atom_payload: TypeRealization = {
 }
 
 data rust_cardinality_bound: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: CardinalityBound
   carrier: "CardinalityBound"
   is_copy: false
@@ -200,7 +199,7 @@ data rust_cardinality_bound: TypeRealization = {
 }
 
 data rust_conj_field: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: ConjField
   carrier: "Field"
   is_copy: false
@@ -212,7 +211,7 @@ data rust_conj_field: TypeRealization = {
 }
 
 data rust_template_argument: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: TemplateArgument
   carrier: "TemplateArgument"
   is_copy: false
@@ -224,7 +223,7 @@ data rust_template_argument: TypeRealization = {
 }
 
 data rust_field_entry: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: FieldEntry
   carrier: "(String, FieldValue)"
   is_copy: false
@@ -236,7 +235,7 @@ data rust_field_entry: TypeRealization = {
 }
 
 data rust_field_value: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: FieldValue
   carrier: "FieldValue"
   is_copy: false
@@ -245,7 +244,7 @@ data rust_field_value: TypeRealization = {
 }
 
 data rust_value_body: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: ValueBody
   carrier: "ValueBody"
   is_copy: false
@@ -254,7 +253,7 @@ data rust_value_body: TypeRealization = {
 }
 
 data rust_arrow_body: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: ArrowBody
   carrier: "ArrowBody"
   is_copy: false
@@ -263,7 +262,7 @@ data rust_arrow_body: TypeRealization = {
 }
 
 data rust_type_connective: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: TypeConnective
   carrier: "TypeConnective"
   is_copy: false
@@ -272,7 +271,7 @@ data rust_type_connective: TypeRealization = {
 }
 
 data rust_declaration: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: Declaration
   carrier: "Declaration"
   is_copy: false
@@ -290,7 +289,7 @@ data rust_declaration: TypeRealization = {
 }
 
 data rust_arithmetic_op: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: ArithmeticOp
   carrier: "ArithmeticOp"
   is_copy: false
@@ -299,7 +298,7 @@ data rust_arithmetic_op: TypeRealization = {
 }
 
 data rust_comparison_op: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: ComparisonOp
   carrier: "ComparisonOp"
   is_copy: false
@@ -308,7 +307,7 @@ data rust_comparison_op: TypeRealization = {
 }
 
 data rust_operator_kind: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: OperatorKind
   carrier: "OperatorKind"
   is_copy: false
@@ -317,7 +316,7 @@ data rust_operator_kind: TypeRealization = {
 }
 
 data rust_transform_target: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: TransformTarget
   carrier: "TransformTarget"
   is_copy: false
@@ -326,7 +325,7 @@ data rust_transform_target: TypeRealization = {
 }
 
 data rust_branch_pattern: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: BranchPattern
   carrier: "BranchPattern"
   is_copy: false
@@ -335,7 +334,7 @@ data rust_branch_pattern: TypeRealization = {
 }
 
 data rust_payload_binding: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: PayloadBinding
   carrier: "PayloadBinding"
   is_copy: false
@@ -347,7 +346,7 @@ data rust_payload_binding: TypeRealization = {
 }
 
 data rust_branch_path: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: BranchPath
   carrier: "Path"
   is_copy: false
@@ -361,7 +360,7 @@ data rust_branch_path: TypeRealization = {
 }
 
 data rust_loop_bound: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: LoopBound
   carrier: "Bound"
   is_copy: false
@@ -372,7 +371,7 @@ data rust_loop_bound: TypeRealization = {
 }
 
 data rust_value_node: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: ValueNode
   carrier: "ValueNode"
   is_copy: false
@@ -386,7 +385,7 @@ data rust_value_node: TypeRealization = {
 }
 
 data rust_transform_node: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: TransformNode
   carrier: "TransformNode"
   is_copy: false
@@ -401,7 +400,7 @@ data rust_transform_node: TypeRealization = {
 }
 
 data rust_branch_node: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: BranchNode
   carrier: "BranchNode"
   is_copy: false
@@ -416,7 +415,7 @@ data rust_branch_node: TypeRealization = {
 }
 
 data rust_loop_node: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: LoopNode
   carrier: "LoopNode"
   is_copy: false
@@ -433,7 +432,7 @@ data rust_loop_node: TypeRealization = {
 }
 
 data rust_bind_node: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: BindNode
   carrier: "BindNode"
   is_copy: false
@@ -448,7 +447,7 @@ data rust_bind_node: TypeRealization = {
 }
 
 data rust_behavior: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: Behavior
   carrier: "Behavior"
   is_copy: false
@@ -457,7 +456,7 @@ data rust_behavior: TypeRealization = {
 }
 
 data rust_dag: TypeRealization = {
-  language: Rust
+  language: rust_language
   target: Dag
   carrier: "Dag"
   is_copy: false
@@ -482,7 +481,7 @@ data rust_dag: TypeRealization = {
 // type's algebra chain.
 
 data rust_int_add: OperatorRealization = {
-  language: Rust
+  language: rust_language
   target: Int
   op: OrderedRing.add
   carrier: "+"
@@ -490,7 +489,7 @@ data rust_int_add: OperatorRealization = {
 }
 
 data rust_int_sub: OperatorRealization = {
-  language: Rust
+  language: rust_language
   target: Int
   op: OrderedRing.sub
   carrier: "-"
@@ -498,7 +497,7 @@ data rust_int_sub: OperatorRealization = {
 }
 
 data rust_int_mul: OperatorRealization = {
-  language: Rust
+  language: rust_language
   target: Int
   op: OrderedRing.mul
   carrier: "*"
@@ -506,7 +505,7 @@ data rust_int_mul: OperatorRealization = {
 }
 
 data rust_int_div: OperatorRealization = {
-  language: Rust
+  language: rust_language
   target: Int
   op: OrderedRing.div
   carrier: "/"
@@ -518,7 +517,7 @@ data rust_int_div: OperatorRealization = {
 // ─────────────────────────────────────────────────────────────────
 
 data rust_int_eq: OperatorRealization = {
-  language: Rust
+  language: rust_language
   target: Int
   op: OrderedRing.eq
   carrier: "=="
@@ -526,7 +525,7 @@ data rust_int_eq: OperatorRealization = {
 }
 
 data rust_node_id_eq: OperatorRealization = {
-  language: Rust
+  language: rust_language
   target: NodeId
   op: OrderedRing.eq
   carrier: "=="
@@ -534,7 +533,7 @@ data rust_node_id_eq: OperatorRealization = {
 }
 
 data rust_port_id_eq: OperatorRealization = {
-  language: Rust
+  language: rust_language
   target: PortId
   op: OrderedRing.eq
   carrier: "=="
@@ -542,7 +541,7 @@ data rust_port_id_eq: OperatorRealization = {
 }
 
 data rust_declaration_id_eq: OperatorRealization = {
-  language: Rust
+  language: rust_language
   target: DeclarationId
   op: OrderedRing.eq
   carrier: "=="
@@ -550,7 +549,7 @@ data rust_declaration_id_eq: OperatorRealization = {
 }
 
 data rust_int_ne: OperatorRealization = {
-  language: Rust
+  language: rust_language
   target: Int
   op: OrderedRing.ne
   carrier: "!="
@@ -558,7 +557,7 @@ data rust_int_ne: OperatorRealization = {
 }
 
 data rust_node_id_ne: OperatorRealization = {
-  language: Rust
+  language: rust_language
   target: NodeId
   op: OrderedRing.ne
   carrier: "!="
@@ -566,7 +565,7 @@ data rust_node_id_ne: OperatorRealization = {
 }
 
 data rust_port_id_ne: OperatorRealization = {
-  language: Rust
+  language: rust_language
   target: PortId
   op: OrderedRing.ne
   carrier: "!="
@@ -574,7 +573,7 @@ data rust_port_id_ne: OperatorRealization = {
 }
 
 data rust_declaration_id_ne: OperatorRealization = {
-  language: Rust
+  language: rust_language
   target: DeclarationId
   op: OrderedRing.ne
   carrier: "!="
@@ -582,7 +581,7 @@ data rust_declaration_id_ne: OperatorRealization = {
 }
 
 data rust_int_lt: OperatorRealization = {
-  language: Rust
+  language: rust_language
   target: Int
   op: OrderedRing.lt
   carrier: "<"
@@ -590,7 +589,7 @@ data rust_int_lt: OperatorRealization = {
 }
 
 data rust_int_le: OperatorRealization = {
-  language: Rust
+  language: rust_language
   target: Int
   op: OrderedRing.le
   carrier: "<="
@@ -598,7 +597,7 @@ data rust_int_le: OperatorRealization = {
 }
 
 data rust_int_gt: OperatorRealization = {
-  language: Rust
+  language: rust_language
   target: Int
   op: OrderedRing.gt
   carrier: ">"
@@ -606,7 +605,7 @@ data rust_int_gt: OperatorRealization = {
 }
 
 data rust_int_ge: OperatorRealization = {
-  language: Rust
+  language: rust_language
   target: Int
   op: OrderedRing.ge
   carrier: ">="
@@ -618,21 +617,21 @@ data rust_int_ge: OperatorRealization = {
 // ─────────────────────────────────────────────────────────────────
 
 data rust_let_stmt: BehaviorRealization = {
-  language: Rust
+  language: rust_language
   target: Bind
   carrier: "let {name}: {type} = {value};"
   cost: 0
 }
 
 data rust_if_expr: BehaviorRealization = {
-  language: Rust
+  language: rust_language
   target: Branch
   carrier: "if {cond} { {then} } else { {else} }"
   cost: 0
 }
 
 data rust_main_wrap: BehaviorRealization = {
-  language: Rust
+  language: rust_language
   target: Main
   carrier: "fn main() { {body} println!({quote}{{}}{quote}, {final}); }"
   cost: 0
@@ -643,7 +642,7 @@ data rust_main_wrap: BehaviorRealization = {
 // ─────────────────────────────────────────────────────────────────
 
 data rust_empty_callable: CallableRealization = {
-  language: Rust
+  language: rust_language
   target: empty
   strategy: ListEmpty
   parameters: []
@@ -651,7 +650,7 @@ data rust_empty_callable: CallableRealization = {
 }
 
 data rust_singleton_callable: CallableRealization = {
-  language: Rust
+  language: rust_language
   target: singleton
   strategy: ListSingleton
   parameters: [
@@ -661,7 +660,7 @@ data rust_singleton_callable: CallableRealization = {
 }
 
 data rust_cons_callable: CallableRealization = {
-  language: Rust
+  language: rust_language
   target: cons
   strategy: ListCons
   parameters: [
@@ -672,7 +671,7 @@ data rust_cons_callable: CallableRealization = {
 }
 
 data rust_concat_callable: CallableRealization = {
-  language: Rust
+  language: rust_language
   target: concat
   strategy: ListConcat
   parameters: [
@@ -683,7 +682,7 @@ data rust_concat_callable: CallableRealization = {
 }
 
 data rust_length_callable: CallableRealization = {
-  language: Rust
+  language: rust_language
   target: length
   strategy: ListLength
   parameters: [
@@ -693,21 +692,21 @@ data rust_length_callable: CallableRealization = {
 }
 
 data rust_list_instantiation: TypeInstantiationRealization = {
-  language: Rust
+  language: rust_language
   target: List
   carrier: "Vec<{element}>"
   cost: 1
 }
 
 data rust_map_instantiation: TypeInstantiationRealization = {
-  language: Rust
+  language: rust_language
   target: Map
   carrier: "HashMap<{key}, {value}>"
   cost: 1
 }
 
 data rust_is_empty_callable: CallableRealization = {
-  language: Rust
+  language: rust_language
   target: is_empty
   strategy: ListIsEmpty
   parameters: [
@@ -717,7 +716,7 @@ data rust_is_empty_callable: CallableRealization = {
 }
 
 data rust_fold_callable: CallableRealization = {
-  language: Rust
+  language: rust_language
   target: fold
   strategy: ListFold
   parameters: [
@@ -729,7 +728,7 @@ data rust_fold_callable: CallableRealization = {
 }
 
 data rust_map_callable: CallableRealization = {
-  language: Rust
+  language: rust_language
   target: map
   strategy: ListMap
   parameters: [
@@ -740,7 +739,7 @@ data rust_map_callable: CallableRealization = {
 }
 
 data rust_filter_callable: CallableRealization = {
-  language: Rust
+  language: rust_language
   target: filter
   strategy: ListFilter
   parameters: [
@@ -751,7 +750,7 @@ data rust_filter_callable: CallableRealization = {
 }
 
 data rust_contains_callable: CallableRealization = {
-  language: Rust
+  language: rust_language
   target: contains
   strategy: ListContains
   parameters: [
@@ -762,7 +761,7 @@ data rust_contains_callable: CallableRealization = {
 }
 
 data rust_list_pattern: PatternRealization = {
-  language: Rust
+  language: rust_language
   target: List
   strategy: VectorList
   scrutinee: "{expr}"

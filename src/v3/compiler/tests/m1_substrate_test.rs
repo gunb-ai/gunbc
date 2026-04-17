@@ -976,31 +976,18 @@ fn m1_3_prb_rust_dag_bootstrap_loads_structurally() {
     // language, target, op, carrier, cost.
     assert_eq!(fields.len(), 5);
 
-    // language → Rust (typed Variant on TargetLanguage)
+    // language → rust_language (typed Reference to the rust_language
+    // data declaration). Replaces the prior TargetLanguage enum variant;
+    // target ownership is now carried by a typed edge, not a compiler-
+    // side variant roster (INVARIANTS.md E-6).
     assert_eq!(fields[0].0, "language");
-    let target_language_id = find_named(&dag, "TargetLanguage");
-    let rust_variant_id = match &dag.declaration(target_language_id).connective {
-        TypeConnective::Disj { variants } => {
-            variants
-                .iter()
-                .find(|v| v.label == "Rust")
-                .expect("TargetLanguage has a Rust variant")
-                .ty
-        }
-        other => panic!("TargetLanguage should be a Disj, got {other:?}"),
-    };
+    let rust_language_id = find_named(&dag, "rust_language");
     match &fields[0].1 {
-        v3_compiler::dag::FieldValue::Variant {
-            constructor,
-            payload,
-        } => {
-            assert_eq!(
-                *constructor, rust_variant_id,
-                "rust_int_add's language should reference TargetLanguage.Rust"
-            );
-            assert!(payload.is_empty(), "Rust variant has no payload");
-        }
-        other => panic!("expected Variant for language, got {other:?}"),
+        v3_compiler::dag::FieldValue::Reference(id) => assert_eq!(
+            *id, rust_language_id,
+            "rust_int_add's language should reference the rust_language declaration"
+        ),
+        other => panic!("expected Reference for language, got {other:?}"),
     }
 
     // target → Int (typed Reference)
