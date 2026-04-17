@@ -190,6 +190,16 @@ pub enum EmitError {
         declaration: DeclarationId,
         detail: &'static str,
     },
+    /// A user-defined callable's Arrow shape doesn't match the
+    /// structural invariants the ownership analysis depends on —
+    /// e.g., the body isn't a `Bind`, or `Bind.params` has fewer
+    /// ports than the Arrow declares inputs. The IR should be
+    /// well-formed before emit runs; reaching this arm is an
+    /// upstream bug, not a spec issue.
+    MalformedUserDefinedCallable {
+        declaration: DeclarationId,
+        detail: &'static str,
+    },
 }
 
 /// Typed tag identifying which realization category a
@@ -531,8 +541,14 @@ struct InputUseKey {
 
 #[derive(Debug, Clone, Default)]
 struct InputUseFacts {
+    /// Per-edge total ordering across all input slots in the DAG.
+    /// Includes every consumer/slot — Borrowed and Consumed alike.
     edge_order: HashMap<InputUseKey, usize>,
-    last_consumed_order_by_port: HashMap<PortId, usize>,
+    /// Per-port, the order of the LAST edge that touches the port —
+    /// regardless of whether that edge is a Borrow or a Consume.
+    /// "Safe to move at edge E" requires E's order equal this value:
+    /// any later use (borrow or consume) makes the move unsafe.
+    last_use_order_by_port: HashMap<PortId, usize>,
 }
 
 impl RealizationIndexes {
@@ -755,7 +771,7 @@ impl RealizationIndexes {
         let computation = ComputationModelBinding::build(dag)?;
         let execution = TargetExecutionModelBinding::build(dag)?;
         let callable_dispositions =
-            derive_callable_dispositions(dag, &external_callable_dispositions);
+            derive_callable_dispositions(dag, &external_callable_dispositions)?;
 
         Ok(Self {
             types,
@@ -825,38 +841,52 @@ impl TargetExecutionModelBinding {
 }
 
 impl InputUseFacts {
-    fn build(dag: &Dag, indexes: &RealizationIndexes) -> Self {
+    fn build(dag: &Dag, _indexes: &RealizationIndexes) -> Self {
         let mut facts = Self::default();
         let mut order = 0usize;
+
+        // Record every edge — Borrowed and Consumed — so the
+        // last-use check can see borrows that come after consumes
+        // (a later borrow makes a move unsafe even though it isn't
+        // itself a consume).
+        let mut record = |port: PortId, key: InputUseKey, order: &mut usize| {
+            facts.edge_order.insert(key, *order);
+            facts.last_use_order_by_port.insert(port, *order);
+            *order += 1;
+        };
 
         for node in dag.nodes() {
             match node {
                 Behavior::Transform(transform) => {
-                    for slot in 0..transform.inputs.len() {
-                        if transform_input_disposition(
-                            dag,
-                            transform,
-                            slot,
-                            &indexes.callable_dispositions,
-                        ) != ParameterDispositionBinding::Consumed
-                        {
-                            continue;
-                        }
+                    for (slot, &port) in transform.inputs.iter().enumerate() {
                         let key = InputUseKey {
                             consumer: transform.id,
                             slot: InputSlot::Positional(slot),
                         };
-                        facts.edge_order.insert(key, order);
-                        facts
-                            .last_consumed_order_by_port
-                            .insert(transform.inputs[slot], order);
-                        order += 1;
+                        record(port, key, &mut order);
                     }
                 }
-                Behavior::Value(_)
-                | Behavior::Branch(_)
-                | Behavior::Loop(_)
-                | Behavior::Bind(_) => {}
+                Behavior::Branch(branch) => {
+                    let key = InputUseKey {
+                        consumer: branch.id,
+                        slot: InputSlot::BranchInput,
+                    };
+                    record(branch.input, key, &mut order);
+                }
+                Behavior::Loop(loop_node) => {
+                    for (slot, port) in [
+                        (InputSlot::LoopSource, loop_node.source),
+                        (InputSlot::LoopInit, loop_node.init),
+                        (InputSlot::LoopBoundCount, loop_node.bound.count),
+                    ] {
+                        let key = InputUseKey {
+                            consumer: loop_node.id,
+                            slot,
+                        };
+                        record(port, key, &mut order);
+                    }
+                }
+                Behavior::Value(_) | Behavior::Bind(_) => {}
             }
         }
 
@@ -1886,7 +1916,7 @@ fn named_variant_id(dag: &Dag, parent_name: &str, variant_label: &str) -> Option
 fn derive_callable_dispositions(
     dag: &Dag,
     external: &HashMap<DeclarationId, Vec<ParameterDispositionBinding>>,
-) -> HashMap<DeclarationId, Vec<ParameterDispositionBinding>> {
+) -> Result<HashMap<DeclarationId, Vec<ParameterDispositionBinding>>, EmitError> {
     let mut dispositions = external.clone();
     let user_defined: Vec<DeclarationId> = dag
         .declarations()
@@ -1912,7 +1942,7 @@ fn derive_callable_dispositions(
     loop {
         let mut changed = false;
         for declaration in &user_defined {
-            let next = analyze_user_defined_callable(dag, *declaration, &dispositions);
+            let next = analyze_user_defined_callable(dag, *declaration, &dispositions)?;
             let entry = dispositions
                 .entry(*declaration)
                 .or_insert_with(|| next.clone());
@@ -1928,7 +1958,7 @@ fn derive_callable_dispositions(
             }
         }
         if !changed {
-            return dispositions;
+            return Ok(dispositions);
         }
     }
 }
@@ -1937,19 +1967,31 @@ fn analyze_user_defined_callable(
     dag: &Dag,
     declaration: DeclarationId,
     dispositions: &HashMap<DeclarationId, Vec<ParameterDispositionBinding>>,
-) -> Vec<ParameterDispositionBinding> {
+) -> Result<Vec<ParameterDispositionBinding>, EmitError> {
     let TypeConnective::Arrow { inputs, body, .. } = &dag.declaration(declaration).connective
     else {
-        return Vec::new();
+        return Err(EmitError::MalformedUserDefinedCallable {
+            declaration,
+            detail: "callable declaration is not an Arrow",
+        });
     };
     let ArrowBody::UserDefined(bind_id) = body else {
-        return vec![ParameterDispositionBinding::Borrowed; inputs.len()];
+        return Err(EmitError::MalformedUserDefinedCallable {
+            declaration,
+            detail: "user-defined callable does not have a UserDefined Arrow body",
+        });
     };
     let Some(bind) = dag.node(*bind_id).as_bind() else {
-        return vec![ParameterDispositionBinding::Borrowed; inputs.len()];
+        return Err(EmitError::MalformedUserDefinedCallable {
+            declaration,
+            detail: "user-defined callable body does not point to a Bind node",
+        });
     };
     if bind.params.len() < inputs.len() {
-        return vec![ParameterDispositionBinding::Borrowed; inputs.len()];
+        return Err(EmitError::MalformedUserDefinedCallable {
+            declaration,
+            detail: "Bind.params has fewer ports than the Arrow declares inputs",
+        });
     }
 
     let runtime_params = &bind.params[bind.params.len() - inputs.len()..];
@@ -2012,15 +2054,17 @@ fn analyze_user_defined_callable(
                 queue.push(body_port);
             }
             Behavior::Bind(b) => {
-                if let Some(&index) = runtime_index.get(&b.value) {
-                    observed[index] = observed[index].merge(ParameterDispositionBinding::Consumed);
-                }
+                // Bind is a naming node (thesis: let-bindings give a
+                // name to a value, they do not consume it). The
+                // disposition of the bound value is determined by the
+                // downstream consumer of the bound name, not by the
+                // Bind itself. Walk through transparently.
                 queue.push(b.value);
             }
         }
     }
 
-    observed
+    Ok(observed)
 }
 
 fn transform_input_disposition(
@@ -2447,7 +2491,7 @@ impl<'a> Ctx<'a> {
                 self.render_port(port, locals, RenderMode::BorrowedRead)
             }
             ParameterDispositionBinding::Consumed => {
-                let mode = if self.is_last_consumed_use(port, consumer, slot) {
+                let mode = if self.is_last_use(port, consumer, slot) {
                     RenderMode::OwnedConstructLastUse
                 } else {
                     RenderMode::OwnedConstruct
@@ -2513,7 +2557,12 @@ impl<'a> Ctx<'a> {
         }
     }
 
-    fn is_last_consumed_use(
+    /// True iff the edge identified by `(consumer, slot)` is the
+    /// last edge that touches `port` in the total ordering — meaning
+    /// no later borrow or consume references this port. Only when
+    /// this holds is it safe to render a Consumed edge as a move
+    /// (`OwnedConstructLastUse`); otherwise we must clone.
+    fn is_last_use(
         &self,
         port: PortId,
         consumer: InputConsumer<'_>,
@@ -2536,7 +2585,7 @@ impl<'a> Ctx<'a> {
         self.input_use_facts
             .edge_order
             .get(&key)
-            .zip(self.input_use_facts.last_consumed_order_by_port.get(&port))
+            .zip(self.input_use_facts.last_use_order_by_port.get(&port))
             .is_some_and(|(edge, last)| edge == last)
     }
 
@@ -3936,30 +3985,48 @@ impl<'a> Ctx<'a> {
             .port(port)
             .value_type()
             .ok_or(EmitError::UntypedPort(port))?;
-        self.decl_is_copy(ty.declaration)
+        let mut visited = HashSet::new();
+        self.decl_is_copy_rec(ty.declaration, &mut visited)
     }
 
     fn decl_is_copy(&self, declaration: DeclarationId) -> Result<bool, EmitError> {
+        let mut visited = HashSet::new();
+        self.decl_is_copy_rec(declaration, &mut visited)
+    }
+
+    fn decl_is_copy_rec(
+        &self,
+        declaration: DeclarationId,
+        visited: &mut HashSet<DeclarationId>,
+    ) -> Result<bool, EmitError> {
+        if !visited.insert(declaration) {
+            // Self-referential cycle. A recursive type holds itself,
+            // which requires heap indirection on every target we emit —
+            // it is never Copy.
+            return Ok(false);
+        }
         let decl = self.dag.declaration(declaration);
         if let Some(binding) = self.indexes.types.get(&declaration) {
             return Ok(binding.is_copy);
         }
         match &decl.connective {
-            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => self.decl_is_copy(*next),
+            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                self.decl_is_copy_rec(*next, visited)
+            }
             TypeConnective::Conj { children } => children
                 .iter()
-                .map(|child| self.decl_is_copy(child.ty))
+                .map(|child| self.decl_is_copy_rec(child.ty, visited))
                 .collect::<Result<Vec<_>, _>>()
                 .map(|values| values.into_iter().all(|value| value)),
             TypeConnective::Disj { variants } => variants
                 .iter()
-                .map(|variant| self.decl_is_copy(variant.ty))
+                .map(|variant| self.decl_is_copy_rec(variant.ty, visited))
                 .collect::<Result<Vec<_>, _>>()
                 .map(|values| values.into_iter().all(|value| value)),
             TypeConnective::Cardinality {
                 element,
                 bound: crate::dag::CardinalityBound::AtMostOne,
-            } => self.decl_is_copy(*element),
+            } => self.decl_is_copy_rec(*element, visited),
             TypeConnective::Instantiation { .. } | TypeConnective::Cardinality { .. } => Ok(false),
             _ => Ok(false),
         }
