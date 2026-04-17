@@ -179,9 +179,63 @@ design revisits them rather than inheriting the revert:
   Achievable once the ownership lens is the single authority and
   the walker reads from it.
 
+**D. `Behavior::Loop` fail-closed in emit_go / emit_python**
+- Half B landed the fix that `emit_go` and `emit_python` no longer
+  silently render `Loop` as "the loop body's result port" (a
+  semantic collapse). They now fail-closed on unsupported `Loop`
+  emission.
+- Side effect: three previously-passing-by-accident tests got
+  `#[ignore]`d pending real Loop support:
+  - `emit_go::tests::go_lens_unused_parameters_module`
+  - `emit_python::tests::emit_python_module_marks_ownership_as_skipped_for_gc_target`
+  - `emit_python::tests::emitted_python_lens_matches_emitted_rust_lens_on_reflected_programs`
+- **Re-enables during Lane 1e**: once the consolidated walker
+  dispatches `Loop` through each target's LanguageSpec, all three
+  targets gain Loop emission simultaneously. The cleanup checklist
+  for 1e includes:
+  ```
+  grep -rE '#\[ignore = "blocked on emit_.* Behavior::Loop support' src/v3/compiler/tests/
+  # → must return zero hits at Stage 1e completion
+  ```
+- Also adds a Stage 1e acceptance bullet: all three Half-B-ignored
+  tests pass.
+
 These are **explicit revisit items** during Stage 1e execution. Flag in
 the build plan's bridge inventory so the walker design accounts for
 them.
+
+### 6. Candidate invariants for Lane 1c INVARIANTS.md additions
+
+Half B's principle audit suggested three structural invariants that
+predate the next round of consolidation work. All three fit naturally
+into Lane 1c's clean-emission-invariant work (E-5 framing) and should
+be evaluated for INVARIANTS.md inclusion during that stage:
+
+**E-6 — No target-spec field lands without a same-PR consumer.**
+If `rust_foo: FooType` appears in `src/v3/spec/rust.dag`, the
+emitter change that CONSUMES `rust_foo` lands in the same PR.
+Prevents "declared-facts-not-wired" drift (the exact pattern that
+landed B-NEW-2 and B-NEW-3 in Half B as follow-up commits).
+
+**E-7 — No target-private realization schema lands without a
+dissolution ratchet.**
+If a target-specific type (e.g., `PythonPatternRealization`) is
+added, the PR lists the path to dissolve it into a target-agnostic
+substrate fact. Not every target-private type is pure debt (some
+are genuinely per-target), but all should have an exit path or an
+explicit "permanent per-target" receipt.
+
+**E-8 — Unsupported core behaviors fail closed; never collapse
+semantically.**
+When an emitter encounters a core Behavior variant it doesn't
+support (e.g., `emit_python` on `Loop` in GC-target mode), it
+returns `EmitError::UnsupportedBehavior` — not a semantic
+approximation (like "render the body's result port" as Half B's
+pre-fix emit_go did for Loop). This is what Half B just enforced.
+
+Lane 1c owns evaluating these for inclusion alongside E-5. If
+adopted, they gain mechanical gates (same pattern as E-5's
+post-emit verifier + L-7's grep check).
 
 ---
 

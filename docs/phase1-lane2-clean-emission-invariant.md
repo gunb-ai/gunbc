@@ -42,7 +42,7 @@ the pilot implementation that proves the shape.
 
 ## Scope
 
-Three deliverables:
+Three deliverables, plus evaluation of three candidate invariants from Half B audit (see bottom of this doc):
 
 ### 1. Design doc: the invariant
 
@@ -247,13 +247,44 @@ Imagine a contributor adds a Shape A target like Swift or Kotlin. If the clean-e
 contract is right, they should be able to write:
 
 ```
-data verilog_clean_emission: CleanEmissionContract = {
+data swift_clean_emission: CleanEmissionContract = {
   pattern_bindings: ...   // whatever Swift's convention is
   ...
-  post_emit_verifier: { command: "verilator", args: ["--lint-only"] }
+  post_emit_verifier: { command: "swiftc", args: ["-parse", "-warnings-as-errors"] }
 }
 ```
 
 …and the existing generic emitter (from P2) produces warning-clean
 Swift without any new Rust code. That's the shape this lane is
 designing toward.
+
+---
+
+## Candidate companion invariants (E-6, E-7, E-8)
+
+Half B's principle audit proposed three additional invariants that
+predate Lane 1e consolidation. Evaluate for INVARIANTS.md inclusion
+alongside E-5:
+
+**E-6 — No target-spec field lands without a same-PR consumer.** If
+`rust_foo: FooType` is added to `src/v3/spec/rust.dag`, the emitter
+change that CONSUMES `rust_foo` lands in the same PR. Prevents
+"declared-facts-not-wired" drift (the pattern that produced B-NEW-2
+and B-NEW-3 as Half B follow-up commits).
+
+**E-7 — No target-private realization schema lands without a
+dissolution ratchet.** If a target-specific type (e.g.,
+`PythonPatternRealization`) is added, the PR lists the path to
+dissolve it into a target-agnostic substrate fact. Permanent
+per-target types are allowed with explicit receipt.
+
+**E-8 — Unsupported core behaviors fail closed; never collapse
+semantically.** When an emitter encounters a core Behavior variant
+it doesn't support, it returns `EmitError::UnsupportedBehavior` —
+not a semantic approximation (like rendering `Loop` as its body's
+result port). Half B just enforced this for Loop in emit_go /
+emit_python.
+
+Lane 1c evaluates these alongside E-5. Each has a mechanical gate
+path (grep / PR-review-checklist / test-based). Adoption
+individually decided; the three form a coherent set with E-5.
