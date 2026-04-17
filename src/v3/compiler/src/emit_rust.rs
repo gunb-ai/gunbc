@@ -3483,19 +3483,28 @@ impl<'a> Ctx<'a> {
         if children.len() != 1 {
             // Multi-field struct-variant: Rust won't let us access
             // `binding.field` on the enum because the payload has
-            // no nominal type. Destructure each field into an
-            // aliased local (`__<binding>_<field>`) and rely on
-            // `render_path_body` to mirror the same naming into
-            // `field_overrides`, so downstream `binding.field`
+            // no nominal type. When the payload is bound, destructure
+            // each field into an aliased local (`__<binding>_<field>`)
+            // and rely on `render_path_body` to mirror the same naming
+            // into `field_overrides`, so downstream `binding.field`
             // projections route through `render_field_project`'s
-            // override lookup at `locals.field_overrides`.
+            // override lookup at `locals.field_overrides`. When E-5's
+            // `EmitUnderscoreWhenUnused` short-circuits the binding to
+            // `_`, the arm body cannot reference any field projection,
+            // so emit field wildcards and skip the `@` alias.
+            let wildcard = self.indexes.syntax.patterns.wildcard.clone();
+            let payload_unused = rendered_binding == wildcard;
             let field_bindings = children
                 .iter()
                 .map(|child| {
-                    let alias = destructured_field_alias(&binding.binding_name, &child.label);
+                    let binding_text = if payload_unused {
+                        wildcard.clone()
+                    } else {
+                        destructured_field_alias(&binding.binding_name, &child.label)
+                    };
                     Ok(render_named_template(
                         &self.indexes.syntax.patterns.field_binding,
-                        &[("field", &child.label), ("binding", &alias)],
+                        &[("field", &child.label), ("binding", &binding_text)],
                     ))
                 })
                 .collect::<Result<Vec<_>, EmitError>>()?;
@@ -3512,7 +3521,7 @@ impl<'a> Ctx<'a> {
                     ),
                 ],
             );
-            if rendered_binding == wildcard {
+            if payload_unused {
                 return Ok(inner_pattern);
             }
             return Ok(format!("{rendered_binding} @ {inner_pattern}"));
