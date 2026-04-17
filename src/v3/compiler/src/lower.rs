@@ -220,7 +220,6 @@ fn seed_function_signatures_phase(
                 return_type,
                 ..
             } => {
-                report_unsupported_parameter_refinements(params, dag);
                 seed_function_signature(name, params, return_type, ArrowBody::Pending, dag, symbols)
             }
             SurfaceItem::FnExternalBody {
@@ -229,50 +228,108 @@ fn seed_function_signatures_phase(
                 return_type,
                 body_span,
                 ..
-            } => {
-                report_unsupported_parameter_refinements(params, dag);
-                seed_function_signature(
-                    name,
-                    params,
-                    return_type,
-                    ArrowBody::Unparsed(body_span.clone()),
-                    dag,
-                    symbols,
-                )
-            }
+            } => seed_function_signature(
+                name,
+                params,
+                return_type,
+                ArrowBody::Unparsed(body_span.clone()),
+                dag,
+                symbols,
+            ),
             _ => {}
         }
     }
 }
 
-/// DB-11 (3a.3, foundation-only scope per PR #496): the parser now
-/// accepts `where <expr>` on a parameter, but the semantics
-/// (predicate lowering, call-site structural-DAG check, Branch-arm
-/// narrowing) are tracked in issue #498 as a size-overrun follow-up.
-/// Until that lands, every parsed refinement is reported as an
-/// unsupported-feature Diagnostic so the fact flows forward as a
-/// compile error instead of being silently dropped. Fail-closed per
-/// C-8: the compiler either enforces the refinement or refuses to
-/// compile code that requests it — never accepts silently.
-fn report_unsupported_parameter_refinements(params: &[SurfaceParam], dag: &mut Dag) {
-    for param in params {
-        if let Some(predicate) = &param.refinement {
-            let span = crate::parse::expr_span(predicate).clone();
-            report_declaration_error(
-                dag,
-                Diagnostic::ResolveError {
-                    name: format!(
-                        "`where` refinement on parameter `{}` is not yet enforced \
-                         (DB-11 foundation-only scope; see issue #498 for the \
-                         predicate-lowering follow-up). Remove the `where` clause \
-                         until the consumer lands, or guard call sites explicitly.",
-                        param.name,
-                    ),
-                    span,
-                },
-            );
-        }
+/// DB-11 (3a.3): lower a parameter's `where` refinement into a
+/// predicate `Declaration` and a refined type `Declaration`.
+///
+/// - `base_decl_id`: the parameter's declared type declaration
+///   (e.g. `Int` for `d: Int where d != 0`).
+/// - `predicate`: the parsed surface expression after `where`. Lowered
+///   in an isolated scope containing only the parameter (bound to a
+///   fresh port typed as `base_decl_id`).
+/// - Returns a refined type Declaration whose connective is
+///   `Atom(ResolvedIdentifier(base_decl_id))` (structurally
+///   equivalent to the base type) with `refinement: Some(pred_decl)`
+///   pointing at the predicate declaration.
+///
+/// The predicate is itself a Declaration with an `Arrow` connective
+/// taking the base type and returning `Bool`, with body
+/// `UserDefined(bind_id)` pointing at a Bind that owns the predicate
+/// sub-DAG. The Bind's `params[0]` is the predicate parameter port —
+/// structural equality on predicates treats this slot as "the refined
+/// parameter" and pairs it across both sides.
+fn lower_parameter_refinement(
+    base_decl_id: DeclarationId,
+    predicate: &SurfaceExpr,
+    param_name: &str,
+    symbols: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+    param_span: SourceSpan,
+) -> DeclarationId {
+    let pred_span = crate::parse::expr_span(predicate).clone();
+    let pred_param_port = dag.alloc_port(None);
+    match declaration_to_port_shape(base_decl_id, dag, &param_span) {
+        Ok(shape) => dag.set_port_type(pred_param_port, shape),
+        Err(diag) => dag.mark_unresolved(pred_param_port, diag),
     }
+
+    let mut pred_scope: HashMap<String, PortId> = HashMap::new();
+    pred_scope.insert(param_name.to_string(), pred_param_port);
+    let pred_callable_scope: CallableScope = CallableScope::new();
+    let bool_decl_id = symbols
+        .get("Bool")
+        .copied()
+        .unwrap_or_else(|| alloc_identifier_stub(dag, "Bool", &pred_span));
+    let pred_value_port = lower_expr(
+        predicate,
+        dag,
+        &pred_scope,
+        &pred_callable_scope,
+        symbols,
+        Some(bool_decl_id),
+    );
+
+    let bind_id = dag.alloc_node_id();
+    dag.push_node(Behavior::Bind(BindNode {
+        id: bind_id,
+        name: format!("<refinement:{param_name}>"),
+        value: pred_value_port,
+        params: vec![pred_param_port],
+        span: pred_span.clone(),
+    }));
+
+    let pred_decl_id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id: pred_decl_id,
+        name: None,
+        connective: TypeConnective::Arrow {
+            inputs: vec![base_decl_id],
+            output: bool_decl_id,
+            body: ArrowBody::UserDefined(bind_id),
+        },
+        type_params: Vec::new(),
+        meta_tag: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        span: pred_span,
+    });
+
+    let refined_id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id: refined_id,
+        name: None,
+        connective: TypeConnective::Atom(AtomPayload::ResolvedIdentifier(base_decl_id)),
+        type_params: Vec::new(),
+        meta_tag: None,
+        inhabits: None,
+        value_body: None,
+        refinement: Some(pred_decl_id),
+        span: param_span,
+    });
+    refined_id
 }
 
 fn seed_function_signature(
@@ -287,7 +344,20 @@ fn seed_function_signature(
     let local = local_scope_from_parent(dag, fn_decl_id);
     let param_decl_inputs: Vec<DeclarationId> = params
         .iter()
-        .map(|p| type_to_declaration_id(&p.ty, symbols, &local, dag))
+        .map(|p| {
+            let base = type_to_declaration_id(&p.ty, symbols, &local, dag);
+            match &p.refinement {
+                Some(predicate) => lower_parameter_refinement(
+                    base,
+                    predicate,
+                    &p.name,
+                    symbols,
+                    dag,
+                    p.ty.span().clone(),
+                ),
+                None => base,
+            }
+        })
         .collect();
     let return_decl_id = type_to_declaration_id(return_type, symbols, &local, dag);
     dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
@@ -295,6 +365,175 @@ fn seed_function_signature(
         output: return_decl_id,
         body,
     };
+}
+
+/// DB-11 (3a.3) arm-local refinement narrowing. Given an `if` / match
+/// guard expression `cond` and the outer scope, if `cond` is a
+/// recognizable predicate on a scope-bound name (e.g. `d != 0` where
+/// `d` is in scope), returns a new scope where that name is rebound to
+/// a freshly-allocated port whose type carries a refinement matching
+/// the predicate. The predicate is lowered identically to a parameter
+/// refinement, so call-site structural discharge in
+/// `infer::decide_transform` treats the two predicates as equal.
+///
+/// Returns `None` when the cond doesn't match a narrowing shape, when
+/// no scope-bound Var appears in the cond's operand list, or when the
+/// outer port's type cannot be recovered. The caller keeps using the
+/// unmodified outer scope in that case.
+///
+/// Scope of recognition (3a.3 M-sized subset): two-argument
+/// `SurfaceExpr::Operator` / `SurfaceExpr::Call` forms where exactly
+/// one operand is a `Var` bound in the outer scope. More complex
+/// predicate shapes (conjunctions, nested calls on the narrowed
+/// parameter, negation-of-predicate on else-arm) fall through with
+/// `None` — users either add an explicit guard or live without
+/// narrowing. Expanding this recognition is 3a.3-follow-up work.
+fn narrow_scope_for_predicate(
+    cond: &SurfaceExpr,
+    scope: &HashMap<String, PortId>,
+    symbols: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+) -> Option<HashMap<String, PortId>> {
+    let narrow_name = narrowable_var_name(cond, scope)?;
+    let &outer_port = scope.get(&narrow_name)?;
+    let outer_shape = match dag.port(outer_port).state() {
+        crate::dag::PortState::Resolved(ty) => *ty,
+        _ => return None,
+    };
+    let base_decl = outer_shape.declaration;
+    let refined_decl = lower_parameter_refinement(
+        base_decl,
+        cond,
+        &narrow_name,
+        symbols,
+        dag,
+        expr_span(cond).clone(),
+    );
+    let narrow_port = dag.alloc_port(None);
+    match declaration_to_port_shape(refined_decl, dag, expr_span(cond)) {
+        Ok(shape) => dag.set_port_type(narrow_port, shape),
+        Err(_) => return None,
+    }
+    let mut narrowed = scope.clone();
+    narrowed.insert(narrow_name, narrow_port);
+    Some(narrowed)
+}
+
+/// Return the name of the single scope-bound `Var` referenced in a
+/// predicate-shaped cond expression, or `None` if the cond doesn't
+/// match the narrowing-eligible shape.
+///
+/// A cond is narrowing-eligible iff:
+/// - it is a two-argument `Operator` or `Call` expression, AND
+/// - it references **exactly one** scope-bound name (the candidate
+///   refined parameter). Top-level symbols and literals are fine.
+///
+/// The single-scope-bound-var requirement is load-bearing: a predicate
+/// that references two scope-locals (e.g. `x != y`) would need a
+/// multi-arity refinement, which DB-11's structural-equality proof
+/// theory does not model. Inside a match-arm body where a pattern
+/// binding (e.g. `Cons(payload)`) is in scope, predicates like
+/// `behavior_id(payload.head) == node_id` have two scope-bound vars
+/// (`payload` and `node_id`) and skip narrowing — otherwise the
+/// predicate-lowering side effects would attempt to resolve the
+/// non-candidate vars in an isolated scope and fail, polluting the
+/// main DAG with unresolvable sub-expressions.
+fn narrowable_var_name(cond: &SurfaceExpr, scope: &HashMap<String, PortId>) -> Option<String> {
+    match cond {
+        SurfaceExpr::Operator { args, .. } if args.len() == 2 => {}
+        SurfaceExpr::Call { args, .. } if args.len() == 2 => {}
+        _ => return None,
+    }
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    collect_scope_bound_free_vars(cond, scope, &mut seen);
+    if seen.len() == 1 {
+        seen.into_iter().next()
+    } else {
+        None
+    }
+}
+
+/// Walk a surface expression and collect the names of all free
+/// variables that resolve to entries in `scope`. Lambda parameter
+/// shadowing and match-arm binding shadowing are respected. Top-level
+/// declarations (not in `scope`) are filtered out by construction
+/// since `scope` holds only local-variable bindings, not symbols.
+fn collect_scope_bound_free_vars(
+    expr: &SurfaceExpr,
+    scope: &HashMap<String, PortId>,
+    out: &mut std::collections::HashSet<String>,
+) {
+    match expr {
+        SurfaceExpr::Var { name, .. } => {
+            if scope.contains_key(name) {
+                out.insert(name.clone());
+            }
+        }
+        SurfaceExpr::Literal { .. } => {}
+        SurfaceExpr::Path { segments, .. } => {
+            // The head of a dotted path is a local-variable reference
+            // when it resolves to scope (field access). A top-level
+            // typed path (e.g. `OrderedRing.add`) wouldn't be in
+            // `scope` so it's filtered out.
+            if let Some(head) = segments.first() {
+                if scope.contains_key(head) {
+                    out.insert(head.clone());
+                }
+            }
+        }
+        SurfaceExpr::Call { args, .. } | SurfaceExpr::Operator { args, .. } => {
+            for arg in args {
+                collect_scope_bound_free_vars(arg, scope, out);
+            }
+        }
+        SurfaceExpr::Lambda { params, body, .. } => {
+            let mut shadowed = scope.clone();
+            for p in params {
+                shadowed.remove(p);
+            }
+            // Use a placeholder port so `contains_key` would return
+            // true only for non-shadowed names; we don't use it.
+            collect_scope_bound_free_vars(body, &shadowed, out);
+        }
+        SurfaceExpr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            collect_scope_bound_free_vars(cond, scope, out);
+            collect_scope_bound_free_vars(then_branch, scope, out);
+            collect_scope_bound_free_vars(else_branch, scope, out);
+        }
+        SurfaceExpr::Match {
+            scrutinee, arms, ..
+        } => {
+            collect_scope_bound_free_vars(scrutinee, scope, out);
+            for arm in arms {
+                // Arm payload bindings shadow the scope within the arm
+                // body. Use a synthetic shadowed scope by removing the
+                // binding name from a clone. We only remove — not
+                // insert a new port — because this routine only cares
+                // about scope membership for filtering, not port
+                // identity.
+                let mut arm_scope = scope.clone();
+                if let SurfacePattern::VariantWith { binding, .. } = &arm.pattern {
+                    arm_scope.remove(binding);
+                }
+                collect_scope_bound_free_vars(&arm.body, &arm_scope, out);
+            }
+        }
+        SurfaceExpr::Record { fields, .. } => {
+            for field in fields {
+                collect_scope_bound_free_vars(&field.value, scope, out);
+            }
+        }
+        SurfaceExpr::List { elements, .. } => {
+            for el in elements {
+                collect_scope_bound_free_vars(el, scope, out);
+            }
+        }
+    }
 }
 
 /// Pass 1: allocate a placeholder Declaration for every named top-level
@@ -1227,7 +1466,20 @@ fn lower_fn_item_unparsed(
     let local = local_scope_from_parent(dag, fn_decl_id);
     let param_decl_inputs: Vec<DeclarationId> = params
         .iter()
-        .map(|p| type_to_declaration_id(&p.ty, symbols, &local, dag))
+        .map(|p| {
+            let base = type_to_declaration_id(&p.ty, symbols, &local, dag);
+            match &p.refinement {
+                Some(predicate) => lower_parameter_refinement(
+                    base,
+                    predicate,
+                    &p.name,
+                    symbols,
+                    dag,
+                    p.ty.span().clone(),
+                ),
+                None => base,
+            }
+        })
         .collect();
     let return_decl_id = type_to_declaration_id(return_type, symbols, &local, dag);
     dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
@@ -2250,7 +2502,25 @@ fn lower_fn_item_expr_body(
         // and the port's TypeShape wrap the same id — no double
         // allocation, no lower↔infer identity split for compound
         // types like `List<Int>`.
-        let input_decl = type_to_declaration_id(&param.ty, symbols, &local, dag);
+        let base_decl = type_to_declaration_id(&param.ty, symbols, &local, dag);
+        // DB-11 (3a.3): if the parameter carries a `where` refinement,
+        // lower the predicate into a predicate Declaration and wrap
+        // the base type in a refined Declaration that points at the
+        // predicate via `refinement`. Downstream type-equivalence
+        // still walks through the `ResolvedIdentifier` alias to the
+        // base type; refinement discharge is a separate check in
+        // `decide_transform`.
+        let input_decl = match &param.refinement {
+            Some(predicate) => lower_parameter_refinement(
+                base_decl,
+                predicate,
+                &param.name,
+                symbols,
+                dag,
+                param.ty.span().clone(),
+            ),
+            None => base_decl,
+        };
         param_decl_inputs.push(input_decl);
         let ty = match declaration_to_port_shape(input_decl, dag, param.ty.span()) {
             Ok(ty) => {
@@ -3546,10 +3816,23 @@ fn lower_expr(
             span,
         } => {
             let cond_port = lower_expr(cond, dag, scope, callable_scope, symbols, None);
+            // DB-11 (3a.3) arm-local refinement narrowing. If `cond` is
+            // a predicate applied to a scope-bound Var (e.g. `d != 0`
+            // where `d` is a parameter), allocate a narrowed port in
+            // the then-arm whose type carries a refinement matching
+            // the predicate. Call-site refinement discharge in
+            // `decide_transform` then sees the refinement on the
+            // narrowed port and accepts calls that would otherwise
+            // fail. No narrowing on the else-arm — by convention the
+            // else-arm's refinement would be the negation, and DB-11
+            // does not model negated predicates (structural equality
+            // only).
+            let then_scope_owned = narrow_scope_for_predicate(cond, scope, symbols, dag);
+            let then_scope_ref = then_scope_owned.as_ref().unwrap_or(scope);
             let then_port = lower_expr(
                 then_branch,
                 dag,
-                scope,
+                then_scope_ref,
                 callable_scope,
                 symbols,
                 expected_decl,

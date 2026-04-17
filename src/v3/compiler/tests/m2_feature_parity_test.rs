@@ -320,40 +320,180 @@ fn test_3a2_data_field_access_resolves_statically() {
 }
 
 // =================================================================
-// 3a.3 — where refinement
+// 3a.3 — where refinement (DB-11 consumer landing)
 // =================================================================
 
 #[test]
-fn test_3a3_where_clause_parses_and_reports_unsupported() {
-    // Foundation (PR #496, DB-11): the parser accepts `where` on
-    // a fn parameter and carries it into `SurfaceParam.refinement`;
-    // the substrate exposes `Declaration.refinement`. But the
-    // consumer (predicate lowering + call-site check + Branch-arm
-    // narrowing) is deferred to issue #498 as a size overrun.
-    //
-    // Per C-8 fail-closed: the parsed fact must not silently flow
-    // through without enforcement. Lowering emits an explicit
-    // "refinement not yet enforced" Diagnostic pointing at the
-    // predicate span. This preserves "facts flow forward" — the
-    // `where` is visible at compile time — without claiming an
-    // enforcement the code doesn't yet deliver.
-    let src = "fn div(n: Int, d: Int where d != 0) -> Int = n";
-    let err = compile_to_dag(src, "test.v3")
-        .expect_err("where clause on parameter must emit an unsupported-feature diagnostic");
-    let msg = format!("{err:?}");
+fn test_3a3_refined_parameter_compiles() {
+    // Acceptance (DB-11): a fn whose parameter carries a `where`
+    // refinement compiles cleanly. The parser captures the predicate,
+    // lowering creates a predicate Declaration and a refined type
+    // Declaration, and the refined decl's `refinement` edge points at
+    // the predicate. Internal use of `d` (e.g. `n / d`) is fine
+    // because the `/` operator doesn't require a refinement.
+    let src = "fn div(n: Int, d: Int where d != 0) -> Int = n / d";
+    let dag = compile_to_dag(src, "test.v3")
+        .expect("refined parameter fn must compile; body's use of `d` in `/` doesn't require the refinement");
+    let div = dag
+        .declaration_by_name("div")
+        .expect("`div` declaration must exist");
+    // The div Arrow's second input (d's type) must be a refined decl,
+    // i.e. carry `refinement: Some(_)`.
+    let TypeConnective::Arrow { inputs, .. } = &div.connective else {
+        panic!(
+            "`div` must have an Arrow connective; got {:?}",
+            div.connective
+        );
+    };
+    assert_eq!(inputs.len(), 2, "div has two parameters");
+    let d_decl = dag.declaration(inputs[1]);
     assert!(
-        msg.contains("refinement") && msg.contains("not yet enforced"),
-        "diagnostic should name the deferral; got: {msg}"
+        d_decl.refinement.is_some(),
+        "d's parameter declaration must carry a `refinement` edge; got None"
+    );
+}
+
+#[test]
+fn test_3a3_call_with_violating_literal_is_rejected() {
+    // Acceptance (DB-11): `div(1, 0)` is rejected at compile time
+    // because the literal `0` has no refinement, but div's second
+    // parameter expects `Int where d != 0`. The structural-equality
+    // check fails, emitting a diagnostic.
+    let src = "fn div(n: Int, d: Int where d != 0) -> Int = n\n\
+               fn bad() -> Int = div(1, 0)";
+    let err = compile_to_dag(src, "test.v3")
+        .expect_err("div(1, 0) must fail the refinement discharge check");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected Semantic error, got {err:?}");
+    };
+    let diagnostic_msgs: Vec<String> = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, d)| format!("{d:?}"))
+        .collect();
+    let joined = diagnostic_msgs.join("\n");
+    assert!(
+        joined.contains("refinement") || joined.contains("no narrowing"),
+        "at least one diagnostic must name refinement failure; got:\n{joined}"
+    );
+}
+
+#[test]
+fn test_3a3_call_with_matching_refined_arg_compiles() {
+    // Acceptance (DB-11): passing a parameter that already carries the
+    // same refinement as the callee's parameter discharges the check.
+    // `f(n: Int, d: Int where d != 0)` forwards `d` to `div(n, d)`
+    // whose second parameter also requires `d != 0`. Structural walk
+    // on the predicate DAGs pairs the two `d`-slots across sides and
+    // the `!=` operator resolution, so the predicates walk equal.
+    let src = "fn div(n: Int, d: Int where d != 0) -> Int = n\n\
+               fn f(n: Int, d: Int where d != 0) -> Int = div(n, d)";
+    let _dag = compile_to_dag(src, "test.v3").expect(
+        "forwarding a parameter with the same refinement to a callee \
+         with the same refinement must pass structural discharge",
+    );
+}
+
+#[test]
+fn test_3a3_distinct_refinements_do_not_discharge() {
+    // Acceptance (DB-11): refinements that aren't structurally
+    // identical do not discharge each other. `x > 1` does NOT
+    // automatically satisfy `x > 0` — the design commits to
+    // structural equality on predicate DAGs, no implication reasoning.
+    // Here the caller's refinement is `d > 1` and the callee expects
+    // `d > 0`. Predicate DAGs differ at the right operand (Value(1)
+    // vs Value(0)), so the walk rejects.
+    let src = "fn at_least_one(n: Int, d: Int where d > 0) -> Int = n\n\
+               fn caller(d: Int where d > 1) -> Int = at_least_one(0, d)";
+    let err = compile_to_dag(src, "test.v3")
+        .expect_err("distinct refinements should not entail each other (structural equality only)");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected Semantic error, got {err:?}");
+    };
+    let joined = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, d)| format!("{d:?}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("refinement"),
+        "diagnostic must name refinement failure; got:\n{joined}"
     );
 }
 
 #[test]
 fn test_3a3_where_clause_does_not_break_signatureless_fn() {
-    // Regression: the `where`-clause diagnostic must fire only when
-    // a `where` is present. Bare `fn id(x: Int) -> Int = x` still
-    // compiles cleanly.
+    // Regression: refinement lowering must fire only when a `where`
+    // is present. Bare `fn id(x: Int) -> Int = x` still compiles.
     let src = "fn id(x: Int) -> Int = x";
     let _ = compile_to_dag(src, "test.v3").expect("bare-parameter fn must still compile");
+}
+
+#[test]
+fn test_3a3_if_predicate_narrows_then_arm_discharge() {
+    // Acceptance (DB-11): inside the `then` arm of an `if` whose
+    // condition is a predicate on a scope-bound parameter, the
+    // parameter is narrowed to a refined type carrying that predicate.
+    // Forwarding the narrowed port to a callee expecting the same
+    // refinement discharges structurally — no guard call is needed.
+    //
+    // `caller(n, d)` calls `div(n, d)` only inside `if d != 0`; the
+    // narrowing makes `d`'s port type `Int where d != 0` inside the
+    // then arm, matching `div`'s expected refinement.
+    let src = "fn div(n: Int, d: Int where d != 0) -> Int = n\n\
+               fn caller(n: Int, d: Int) -> Int = \
+                 if d != 0 then div(n, d) else 0";
+    let _ = compile_to_dag(src, "test.v3")
+        .expect("narrowing Branch arm must discharge the callee's refinement on the forwarded `d`");
+}
+
+#[test]
+fn test_3a3_if_without_narrowing_rejects_forwarded_unrefined() {
+    // Counterpart to the narrowing test: if the caller does NOT guard
+    // the call with a matching predicate, the forwarded `d` carries no
+    // refinement and the discharge check fails.
+    let src = "fn div(n: Int, d: Int where d != 0) -> Int = n\n\
+               fn caller(n: Int, d: Int) -> Int = div(n, d)";
+    let err = compile_to_dag(src, "test.v3")
+        .expect_err("unrefined `d` forwarded to a refined-parameter callee must fail discharge");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected Semantic error, got {err:?}");
+    };
+    let joined = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, d)| format!("{d:?}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("refinement"),
+        "diagnostic must name refinement failure; got:\n{joined}"
+    );
+}
+
+#[test]
+fn test_3a3_substrate_integrity_behavior_still_five_variants() {
+    // Acceptance (DB-11 §Acceptance): "Substrate integrity:
+    // Declaration.refinement is the only new edge. type Behavior
+    // remains at five variants." Compile a refined-parameter fn and
+    // verify the DAG contains no unexpected Behavior variant — the
+    // predicate sub-DAG is built from Value/Transform/Bind, all
+    // pre-existing variants.
+    let src = "fn div(n: Int, d: Int where d != 0) -> Int = n / d";
+    let dag = compile_to_dag(src, "test.v3").expect("must compile");
+    for node in dag.nodes() {
+        match node {
+            v3_compiler::dag::Behavior::Value(_)
+            | v3_compiler::dag::Behavior::Transform(_)
+            | v3_compiler::dag::Behavior::Branch(_)
+            | v3_compiler::dag::Behavior::Loop(_)
+            | v3_compiler::dag::Behavior::Bind(_) => {}
+        }
+    }
+    // If a sixth variant existed the match above would not compile;
+    // this test locks in the five-variant substrate while DB-11 is
+    // consumed.
 }
 
 // =================================================================

@@ -122,23 +122,25 @@ pub struct Declaration {
     pub value_body: Option<ValueBody>,
     /// DB-11 (3a.3): optional refinement predicate. `None` for
     /// ordinary declarations; `Some(pred_id)` for refined parameter
-    /// types where `pred_id` points at a predicate-expression
-    /// declaration whose connective resolves to a `Bool` expression
-    /// DAG over the parameter name. Two refinements are structurally
-    /// equal iff their predicate expression DAGs walk equal; no
-    /// interning, no SMT entailment.
+    /// types where `pred_id` points at a predicate `Declaration`
+    /// whose connective is `Arrow { inputs: [base], output: Bool,
+    /// body: UserDefined(bind) }`. The `Bind`'s `params[0]` is the
+    /// refinement's parameter slot; walking from `Bind.value` through
+    /// the predicate's node sub-DAG reaches the Bool output. Two
+    /// refinements are structurally equal iff their predicate
+    /// expression DAGs walk equal via
+    /// `infer::predicates_structurally_equal` — no interning, no SMT
+    /// entailment.
     ///
-    /// **🟡 Scaffold (dissolves when 3a.3-followup lands the
-    /// consumer).** PR #496 landed the field and the parser's
-    /// `SurfaceParam.refinement` capture, but the lowering path that
-    /// attaches a predicate `Declaration` to this edge, the
-    /// call-site structural-DAG comparison, and the Branch-arm
-    /// predicate narrowing extension to M1(2.8) pattern resolution
-    /// are all deferred to the follow-up PR. Until then, every
-    /// declaration carries `refinement: None` unconditionally and
-    /// no lens or emitter reads the field. If you find yourself
-    /// setting this to `Some(..)` in this branch, the 3a.3-followup
-    /// is already landing — update the tracking marker.
+    /// **Consumers.** `infer::decide_transform` consults
+    /// `refinement` on the callee's parameter type declaration via
+    /// `check_refinement_discharge` after structural equivalence
+    /// passes; argument-side ports carry the refined declaration id
+    /// through `declaration_to_port_shape` and `signature_type_shape`
+    /// (which stops at refinement carriers so the alias walk doesn't
+    /// strip the edge). `lower::narrow_scope_for_predicate` creates
+    /// refined declarations for arm-local narrowing when an `if`
+    /// cond is a single-parameter predicate.
     pub refinement: Option<DeclarationId>,
     pub span: SourceSpan,
 }

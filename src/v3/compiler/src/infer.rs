@@ -958,7 +958,21 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                     },
                 );
             }
-            PortState::Resolved(actual) if type_shapes_equivalent(dag, actual, expected_ty) => {}
+            PortState::Resolved(actual) if type_shapes_equivalent(dag, actual, expected_ty) => {
+                // DB-11 (3a.3) refinement discharge. Structural type
+                // equivalence just passed; now check that any refinement
+                // declared on the callee's parameter type is also carried
+                // by the argument's port type, with structurally-equal
+                // predicate expression DAGs. No SMT, no implication — if
+                // the predicates don't walk equal, the caller must
+                // introduce a narrowing Branch that does satisfy the
+                // expected refinement.
+                if let Some(diag) =
+                    check_refinement_discharge(dag, actual, expected_ty, &t.target, &t.span)
+                {
+                    return Decision::Fail(t.output, diag);
+                }
+            }
             PortState::Resolved(actual) => {
                 if is_retryable_generic_decl(dag, actual.declaration)
                     || is_retryable_generic_decl(dag, expected_ty.declaration)
@@ -977,6 +991,143 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
         }
     }
     Decision::Set(t.output, signature.output)
+}
+
+/// DB-11 (3a.3) call-site refinement discharge. Returns `None` when
+/// the expected parameter has no refinement (unconditionally OK), or
+/// when the actual argument carries a refinement whose resolved
+/// predicate expression DAG walks structurally equal to the expected
+/// one. Returns a `Diagnostic` otherwise. Pure structural walk — no
+/// interning, no SMT, no entailment.
+fn check_refinement_discharge(
+    dag: &Dag,
+    actual: &TypeShape,
+    expected: &TypeShape,
+    target: &TransformTarget,
+    span: &SourceSpan,
+) -> Option<Diagnostic> {
+    let expected_pred = dag.declaration(expected.declaration).refinement?;
+    let actual_pred = dag.declaration(actual.declaration).refinement;
+    match actual_pred {
+        Some(actual_pred) if predicates_structurally_equal(dag, actual_pred, expected_pred, 0) => {
+            None
+        }
+        _ => {
+            let callee = transform_target_display_name(dag, target);
+            let name = if actual_pred.is_some() {
+                format!(
+                    "argument to `{callee}` does not satisfy the expected \
+                     `where` refinement (caller's refinement predicate \
+                     does not walk structurally equal to the callee's)"
+                )
+            } else {
+                format!(
+                    "argument to `{callee}` does not satisfy the expected \
+                     `where` refinement — no narrowing branch in scope"
+                )
+            };
+            Some(Diagnostic::ResolveError {
+                name,
+                span: span.clone(),
+            })
+        }
+    }
+}
+
+/// Structural walk over two predicate `Declaration`s. Both should be
+/// `Arrow { inputs, output, body: UserDefined(bind_id) }` where the
+/// `Bind`'s `params[0]` is the predicate's "refined parameter" slot
+/// and `value` is the predicate's Bool-typed output port. Walks
+/// node-by-node; references to each side's `params[0]` are the pairing
+/// point for the parameter slot.
+fn predicates_structurally_equal(
+    dag: &Dag,
+    lhs_pred_decl: DeclarationId,
+    rhs_pred_decl: DeclarationId,
+    depth: usize,
+) -> bool {
+    if depth >= WALK_DEPTH_LIMIT {
+        return false;
+    }
+    if lhs_pred_decl == rhs_pred_decl {
+        return true;
+    }
+    let lhs = predicate_info(dag, lhs_pred_decl);
+    let rhs = predicate_info(dag, rhs_pred_decl);
+    match (lhs, rhs) {
+        (Some((lhs_param, lhs_root)), Some((rhs_param, rhs_root))) => {
+            refinement_ports_equal(dag, lhs_root, rhs_root, lhs_param, rhs_param, 0)
+        }
+        _ => false,
+    }
+}
+
+fn predicate_info(dag: &Dag, pred_decl: DeclarationId) -> Option<(PortId, PortId)> {
+    if let TypeConnective::Arrow {
+        body: ArrowBody::UserDefined(bind_id),
+        ..
+    } = &dag.declaration(pred_decl).connective
+    {
+        if let Behavior::Bind(bind) = dag.node(*bind_id) {
+            if let Some(param_port) = bind.params.first() {
+                return Some((*param_port, bind.value));
+            }
+        }
+    }
+    None
+}
+
+fn refinement_ports_equal(
+    dag: &Dag,
+    lhs_port: PortId,
+    rhs_port: PortId,
+    lhs_param: PortId,
+    rhs_param: PortId,
+    depth: usize,
+) -> bool {
+    if depth >= WALK_DEPTH_LIMIT {
+        return false;
+    }
+    let lhs_is_param = lhs_port == lhs_param;
+    let rhs_is_param = rhs_port == rhs_param;
+    if lhs_is_param || rhs_is_param {
+        return lhs_is_param && rhs_is_param;
+    }
+    let Some(lhs_nid) = dag.port(lhs_port).produced_by else {
+        return lhs_port == rhs_port;
+    };
+    let Some(rhs_nid) = dag.port(rhs_port).produced_by else {
+        return false;
+    };
+    match (dag.node(lhs_nid), dag.node(rhs_nid)) {
+        (Behavior::Value(lv), Behavior::Value(rv)) => lv.data == rv.data,
+        (Behavior::Transform(lt), Behavior::Transform(rt)) => {
+            refinement_targets_equal(&lt.target, &rt.target)
+                && lt.inputs.len() == rt.inputs.len()
+                && lt.inputs.iter().zip(rt.inputs.iter()).all(|(l, r)| {
+                    refinement_ports_equal(dag, *l, *r, lhs_param, rhs_param, depth + 1)
+                })
+        }
+        _ => false,
+    }
+}
+
+fn refinement_targets_equal(lhs: &TransformTarget, rhs: &TransformTarget) -> bool {
+    match (lhs, rhs) {
+        (TransformTarget::Callable(a), TransformTarget::Callable(b)) => a == b,
+        (TransformTarget::Operator(a), TransformTarget::Operator(b)) => a == b,
+        (
+            TransformTarget::FieldProject {
+                field_label: a_label,
+                ..
+            },
+            TransformTarget::FieldProject {
+                field_label: b_label,
+                ..
+            },
+        ) => a_label == b_label,
+        _ => false,
+    }
 }
 
 struct ResolvedArrow {
@@ -3067,6 +3218,15 @@ fn signature_type_shape(
     }
     let decl = dag.declaration(current);
     if decl.name.is_some() {
+        return Some(TypeShape::new(current));
+    }
+    // DB-11 (3a.3): refinement-bearing declarations are identity
+    // terminators for signature walks. Without this, a refined param
+    // type `Int where d != 0` (connective: ResolvedIdentifier(Int),
+    // refinement: Some(pred)) would be walked to its base `Int`, and
+    // the call-site refinement-discharge check in `decide_transform`
+    // would never see the predicate edge on the callee side.
+    if decl.refinement.is_some() {
         return Some(TypeShape::new(current));
     }
     match &decl.connective {
