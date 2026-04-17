@@ -481,6 +481,14 @@ Sub-stage status (as of 2026-04-17):
 
 **Deferral: 3a.3-full (L).** Lower `SurfaceParam.refinement` to a predicate `Declaration`; call-site structural-DAG comparison (no interning, no SMT entailment — structural equality on resolved predicate expression DAGs); extend M1(2.8) pattern resolution to narrow arm-scoped ports for predicate-checked values (e.g., `if d != 0 then ...` narrows `d`). **Scaffold cost in main:** `Declaration.refinement: Option<DeclarationId>` is now authored-but-unread at ~15 construction sites. Dissolution trigger: this deferral lands. **Yellow-flag threshold:** if scaffold sits >1 week, actively schedule. Design: [design-m2-feature-parity.md §DB-11](../../docs/design-m2-feature-parity.md). Acceptance in DB-11 §Acceptance.
 
+### Lane 2 Stage 2c — test infrastructure
+
+**Deferral: DB-15 tests-as-declarations extensions (M, blocks Lane 2 Stage 2c).** Design doc (R2 draft): [design-test-infra.md](../../docs/design-test-infra.md). R2 consumes the compiler-as-dependency-analyzer thesis: tests are declarations (extending the existing `src/v3/std/verification.dag` `TestClaim`/`TestSuite` authority), resources are references to `dsl/std/resources.dag`, sharing/caching/incremental execution fall out of the compiler's existing dependency walk. No new caches or runner mechanisms — DB-15 names HOW things depend, then the walk does the rest.
+
+Implementation scope (M, once design locks): extend `TestClaim` with `requires: List<ResourceReference>` and two new `TestPredicate` variants (`BehavioralObservation`, `MockBackedInvariant`); apply tautology-avoidance rule structurally; one-file migration proof. Yellow-flag threshold: design must lock before Lane 2 Stage 2c kickoff.
+
+**Prerequisite deferral: `dsl/std/resources.dag` → v3 reconciliation (S).** Zero references to `Resource`/`acquire`/`release` under `src/v3/` today. DB-15's `requires: List<ResourceReference>` is authored but unconsumed until this lands. Options: port declaration into `src/v3/std/resources.dag`, OR make `dsl/std/resources.dag` bootstrap-consumable by v3. Preferring the latter for single-authority. Separable from DB-15 implementation — can land independently. This is also a dissolution-of-dual-representation item; consider parking it in §Scheduled deletions if dsl/v3 duplication is the framing, or keep as a prerequisite deferral here. Preferring here for now since it's narrowly scoped.
+
 ### Lane 1 Stage 1b
 
 **Deferral: 1b full implementation (M).** 1b's first attempt escalated (PR #495 shipped 1a; 1b code was reverted). Root cause: `.dag` linear-walk bodies for substrate accessors polluted every user DAG. DB-14 codifies the correct pattern (ExternalRealization mirroring pipeline.dag). Unblocked once DB-14 (PR #497) lands. Design: [design-substrate-external-primitives.md](../../docs/design-substrate-external-primitives.md) (DB-14). Acceptance in DB-14 §Acceptance.
