@@ -84,6 +84,7 @@ data rust_clean_emission: CleanEmissionContract = {
     args: ["--edition=2021", "-D", "warnings"]
     syntax_only: false
     expected_exit_code: 0
+    output_policy: IgnoreVerifierOutput
   }
 }
 ```
@@ -150,8 +151,9 @@ current targets (Rust/Go/Python) in one sweep." Practical scope split:
 ### 3. CI gate: post_emit_verifier as a hard check (follow-up PR)
 
 Each emitter test suite adds a step: after emission, invoke the target's
-declared `post_emit_verifier`. If it reports any diagnostic (warning or
-error), the test fails.
+declared `post_emit_verifier` and apply its `output_policy`. If it
+reports any diagnostic or output shape the contract marks as failure,
+the test fails.
 
 **Today's rustc roundtrip tests do this partially** — they invoke rustc
 but without `-D warnings`. After Stage 1c's follow-up PR, `-D warnings`
@@ -271,8 +273,10 @@ Stage 1c is done when the following hold across its PRs.
 **PR 3 (post_emit_verifier CI gate) — gates:**
 
 - Test harness reads `post_emit_verifier` from each target's
-  contract and invokes it (Rust: rustc with `-D warnings`; Go:
-  gofmt; Python: py_compile).
+  contract and invokes it with its verdict policy (Rust: rustc
+  with `-D warnings` + `IgnoreVerifierOutput`; Go: `gofmt -l` +
+  `RequireEmptyStdout`; Python: py_compile +
+  `IgnoreVerifierOutput`).
 - `unused_variables` removed from each test-wrapper
   `#[allow(warnings, clippy::all)]` umbrella (replaced with an
   explicit residual list naming only the not-yet-structurally-fixed

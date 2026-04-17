@@ -1046,6 +1046,74 @@ fn m1_3_prb_rust_dag_bootstrap_loads_structurally() {
 }
 
 #[test]
+fn rust_clean_emission_verifier_declares_structural_output_policy() {
+    let dag = Dag::new();
+    let verifier_policy = find_named(&dag, "VerifierOutputPolicy");
+    let ignore_output = match &dag.declaration(verifier_policy).connective {
+        TypeConnective::Disj { variants } => {
+            variants
+                .iter()
+                .find(|variant| variant.label == "IgnoreVerifierOutput")
+                .expect("VerifierOutputPolicy.IgnoreVerifierOutput exists")
+                .ty
+        }
+        other => panic!("VerifierOutputPolicy must be a Disj, got {other:?}"),
+    };
+    let post_emit_verifier = dag
+        .declaration_by_name("PostEmitVerifier")
+        .expect("PostEmitVerifier type exists");
+    let verifier_fields = match &dag.declaration(post_emit_verifier.id).connective {
+        TypeConnective::Conj { children } => children,
+        other => panic!("PostEmitVerifier must be a Conj, got {other:?}"),
+    };
+    assert_eq!(
+        field(verifier_fields, "output_policy").ty,
+        verifier_policy,
+        "PostEmitVerifier.output_policy must point at VerifierOutputPolicy"
+    );
+
+    let rust_clean_emission = dag
+        .declaration_by_name("rust_clean_emission")
+        .expect("rust_clean_emission exists");
+    let clean_fields = match rust_clean_emission
+        .value_body
+        .as_ref()
+        .expect("rust_clean_emission must carry a value_body")
+    {
+        v3_compiler::dag::ValueBody::Structural { fields } => fields,
+        other => panic!("rust_clean_emission must be Structural, got {other:?}"),
+    };
+    let post_emit_value = clean_fields
+        .iter()
+        .find(|(label, _)| label == "post_emit_verifier")
+        .expect("rust_clean_emission.post_emit_verifier field exists");
+    let verifier_record = match &post_emit_value.1 {
+        v3_compiler::dag::FieldValue::Record(fields) => fields,
+        other => panic!("post_emit_verifier must be a Record, got {other:?}"),
+    };
+    let output_policy = verifier_record
+        .iter()
+        .find(|(label, _)| label == "output_policy")
+        .expect("post_emit_verifier.output_policy field exists");
+    match &output_policy.1 {
+        v3_compiler::dag::FieldValue::Variant {
+            constructor,
+            payload,
+        } => {
+            assert_eq!(
+                *constructor, ignore_output,
+                "rust_clean_emission should declare IgnoreVerifierOutput for rustc"
+            );
+            assert!(
+                payload.is_empty(),
+                "IgnoreVerifierOutput must stay payload-free"
+            );
+        }
+        other => panic!("output_policy must be a Variant, got {other:?}"),
+    }
+}
+
+#[test]
 fn instantiation_arguments_participate_in_type_shape_equivalence() {
     let src = "\
 fn expect_ints(xs: List<Int>) -> Int = 0

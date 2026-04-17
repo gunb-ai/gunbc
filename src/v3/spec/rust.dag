@@ -73,7 +73,8 @@ import v3.std.clean_emission {
   BlockReturnRule, NoWrappingOnTerminalExpression,
   VariableBindingRule, EmitLetUnderscoreWhenUnused,
   MatchArmBodyRule, NoWrappingOnNonComplexBody,
-  CorrectionStyle, PostEmitVerifier
+  CorrectionStyle, PostEmitVerifier,
+  VerifierOutputPolicy, IgnoreVerifierOutput
 }
 
 data rust_execution_model: TargetExecutionModel = {
@@ -920,6 +921,7 @@ data rust_clean_emission: CleanEmissionContract = {
     args: ["--edition=2021", "-D", "warnings"]
     syntax_only: false
     expected_exit_code: 0
+    output_policy: IgnoreVerifierOutput
   }
 }
 

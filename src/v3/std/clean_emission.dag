@@ -86,13 +86,24 @@ type CorrectionStyle {
 // 🟢 TERMINAL. Declares the external verifier that validates
 // emitted source for this target. `syntax_only` distinguishes
 // shallow checks (gofmt, py_compile) from full compiles (rustc).
-// `expected_exit_code` is explicit because some verifiers use a
-// non-zero exit (e.g., gofmt's "-l" mode exits 0 with empty stdout
-// on clean input and 0 with diff stdout when reformatting is
-// needed; harness inspects both).
+// `expected_exit_code` and `output_policy` together define the
+// verifier's verdict semantics. Exit code alone is insufficient
+// for tools like `gofmt -l`, which report dirty files via stdout
+// while still exiting 0.
 type PostEmitVerifier {
   command: String
   args: List<String>
   syntax_only: Bool
   expected_exit_code: Int
+  output_policy: VerifierOutputPolicy
 }
+
+// 🟢 TERMINAL. Defines how verifier process output affects the
+// pass/fail verdict once `expected_exit_code` matched. Keeps
+// verifier-result semantics structural instead of hardcoding
+// tool-specific stdout/stderr rules in the harness.
+type VerifierOutputPolicy
+  = IgnoreVerifierOutput
+  | RequireEmptyStdout
+  | RequireEmptyStderr
+  | RequireEmptyStdoutAndStderr
