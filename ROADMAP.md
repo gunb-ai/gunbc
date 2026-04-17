@@ -747,6 +747,33 @@ described but not structurally modeled in .dag:
 | `ShellResponse` / `CliResult` | `std/types.dag` | **DONE** — `CliResult` deleted; `ShellResponse` is sole authority. |
 | Dual `Credential` | `std/types.dag:451` | **DONE** — cloud-side `Credential` no longer exists; only `Credential` in std/types.dag remains. |
 
+**Surfaced by PR #511 review loop (2026-04-17) — substrate integrity
+primitives graduation:**
+
+Substrate records across v3 std/ carry fields whose validity is
+"enforced by construction" — the type shape admits illegal states
+(empty lists, negative indices, mis-kinded node handles) and the
+producer is trusted to never emit them. The PR #511 review cycle
+(chatgpt-auto-review + codex + three director review comments) forced
+the graduation of four primitives that move the invariants onto the
+type shape. Primitives land in `src/v3/std/substrate.dag`; consumers
+listed below.
+
+| Primitive | Role | First consumer | Planned consumers |
+|---|---|---|---|
+| `NonEmptyList<T>` | List with cardinality ≥ 1 by type shape | `Cluster.intra_cluster_calls` (DB-9 R2.1) | Any substrate set whose definition forbids emptiness |
+| `NonSingletonList<T>` | List with cardinality ≥ 2 by type shape | `Cluster.members` (DB-9 R2.1) | Any substrate set requiring a distinct pair (mutual-recursion clusters, binary-relation carriers) |
+| `ArityIndex` | Typed newtype over NonNegativeInt, paired with arity-bearing carrier | `MemberDescent.position` (DB-9 R2.1) | `IndexedElement<T>.index` in `src/v3/std/list.dag` |
+| `TransformRef` | Typed newtype over NodeId, statically witnesses `Behavior::Transform` | `IntraClusterCall.transform` (DB-9 R2.1) | Any substrate handle that today carries raw `NodeId` + "must be a Transform" prose |
+
+**Deferred (separate substrate refactor track):** segregating
+`Dag.nodes: List<Behavior>` into per-kind lists (`Dag.transforms`,
+`Dag.branches`, ...) so typed handles index into the right carrier by
+construction rather than via a fallible constructor. Considered during
+R2.1; rejected as in-scope because the Rust-side consumer migration is
+independent of this doc-level graduation. File a separate track when a
+consumer actually benefits from the stronger guarantee.
+
 ### Track 10: Extdeps modeling fidelity (Lane D)
 
 Stringly-typed fields that should be structural, surfaced by external
