@@ -490,17 +490,14 @@ struct CleanEmissionContractBinding {
     pattern_bindings: PatternBindingRuleBinding,
 }
 
-/// Rust side of `std.clean_emission.PatternBindingRule`. Dispatched
-/// by `render_branch_pattern` to shape an arm's payload binding when
-/// the arm body does not consume it. `NotApplicablePatternBinding`
-/// is accepted for spec completeness but never expected in Rust —
-/// reaching it in the Rust emitter is an invariant violation.
+/// Rust-valid slice of `std.clean_emission.PatternBindingRule`.
+/// Parsed in `CleanEmissionContractBinding::build`, which rejects
+/// target-invalid constructors instead of letting the renderer
+/// normalize them later.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PatternBindingRuleBinding {
     EmitBindingAlways,
     EmitUnderscoreWhenUnused,
-    EmitPrefixedUnderscoreWhenUnused,
-    NotApplicablePatternBinding,
 }
 
 struct RealizationIndexes {
@@ -948,9 +945,15 @@ fn parse_pattern_binding_rule(
     } else if *constructor == emit_underscore {
         Ok(PatternBindingRuleBinding::EmitUnderscoreWhenUnused)
     } else if *constructor == emit_prefixed {
-        Ok(PatternBindingRuleBinding::EmitPrefixedUnderscoreWhenUnused)
+        Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "rust_clean_emission.pattern_bindings cannot use PatternBindingRule.EmitPrefixedUnderscoreWhenUnused; Rust only supports EmitBindingAlways or EmitUnderscoreWhenUnused",
+        })
     } else if *constructor == not_applicable {
-        Ok(PatternBindingRuleBinding::NotApplicablePatternBinding)
+        Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "rust_clean_emission.pattern_bindings cannot use PatternBindingRule.NotApplicablePatternBinding; Rust only supports EmitBindingAlways or EmitUnderscoreWhenUnused",
+        })
     } else {
         Err(EmitError::MalformedTargetSyntax {
             declaration,
@@ -3484,11 +3487,9 @@ impl<'a> Ctx<'a> {
     /// per `rust_clean_emission.pattern_bindings`. When the rule is
     /// `EmitUnderscoreWhenUnused` and the arm body does not consume
     /// `binding.payload_port`, emit `_` so `rustc -D warnings` does
-    /// not fire `unused_variables`. The prefixed-underscore variant
-    /// is a Python convention and is not expected here; reaching it
-    /// falls through to `EmitBindingAlways` for safety — the Rust
-    /// spec never selects it, so the fallthrough is unreachable in
-    /// practice but keeps the match total.
+    /// not fire `unused_variables`. Rust-invalid contract variants
+    /// are rejected while building `CleanEmissionContractBinding`,
+    /// so the renderer only sees Rust-valid states.
     fn render_payload_binding_name(
         &self,
         path: &Path,
@@ -3501,9 +3502,7 @@ impl<'a> Ctx<'a> {
                 self.indexes.syntax.patterns.wildcard.clone()
             }
             PatternBindingRuleBinding::EmitBindingAlways
-            | PatternBindingRuleBinding::EmitUnderscoreWhenUnused
-            | PatternBindingRuleBinding::EmitPrefixedUnderscoreWhenUnused
-            | PatternBindingRuleBinding::NotApplicablePatternBinding => {
+            | PatternBindingRuleBinding::EmitUnderscoreWhenUnused => {
                 binding.binding_name.clone()
             }
         }
@@ -5114,6 +5113,51 @@ fn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }",
         assert!(
             rendered.contains("fn classify(p0: Sign) -> i64 {"),
             "expected PassByValue read strategy to render owned function params, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn clean_emission_rejects_rust_invalid_pattern_binding_variants() {
+        let assert_rejected = |variant_name: &'static str, expected_detail: &'static str| {
+            let mut dag = compile_to_dag(
+                "type Sign = Plus | Minus
+fn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }",
+                "test.v3",
+            )
+            .expect("compiles");
+            let clean_decl = dag
+                .rust_clean_emission_spec()
+                .expect("rust_clean_emission cached");
+            let invalid_ctor = named_variant_id(&dag, "PatternBindingRule", variant_name)
+                .expect("PatternBindingRule variant exists");
+            dag.declaration_mut(clean_decl).value_body = Some(ValueBody::Structural {
+                fields: vec![(
+                    "pattern_bindings".to_string(),
+                    FieldValue::Variant {
+                        constructor: invalid_ctor,
+                        payload: Vec::new(),
+                    },
+                )],
+            });
+
+            let err = emit_rust_with_mode(&dag, EmitRustMode::Module)
+                .expect_err("Rust-invalid pattern binding rule must fail closed");
+            assert!(matches!(
+                err,
+                EmitError::MalformedTargetSyntax {
+                    declaration,
+                    detail,
+                } if declaration == clean_decl && detail == expected_detail
+            ));
+        };
+
+        assert_rejected(
+            "EmitPrefixedUnderscoreWhenUnused",
+            "rust_clean_emission.pattern_bindings cannot use PatternBindingRule.EmitPrefixedUnderscoreWhenUnused; Rust only supports EmitBindingAlways or EmitUnderscoreWhenUnused",
+        );
+        assert_rejected(
+            "NotApplicablePatternBinding",
+            "rust_clean_emission.pattern_bindings cannot use PatternBindingRule.NotApplicablePatternBinding; Rust only supports EmitBindingAlways or EmitUnderscoreWhenUnused",
         );
     }
 
