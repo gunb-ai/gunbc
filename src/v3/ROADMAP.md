@@ -25,7 +25,8 @@ substrate fields.
 | **M1(3)** First downstream consumer (PR-B) | ✅ Landed on PR #445 | The first v3 emitter pipeline ran end-to-end: `compile_to_dag("let x: Int = 1 + 2") → emit_rust → rustc → execute → "3"`. Substrate additions: `ValueBody::Structural { fields: Vec<(String, LiteralBits)> }` for record-literal data bodies, `SurfaceExpr::Record` parser support, `lower_record_to_structural` inhabitance check (walks the type's Conj, fail-closed on extras / missing / wrong-type fields), `src/v3/spec/rust.dag` as the first extdeps fixture in production bootstrap (declaring `Realization` + 18 `data rust_*` items covering primitives, operators, and structural templates). New lenses + emitter: `lens_cost.rs` (third pure-reader lens, ~80 lines, follows the lens_depth/lens_provenance template), `emit_rust.rs` (~340 lines, builds a `(target_name, op_name) → carrier` index from rust.dag declarations and walks the DAG translating per Behavior). End-to-end roundtrip test gated behind `#[ignore]` so CI doesn't depend on a Rust toolchain. **Current: 41 M0 + 35 M1 substrate + 6 lens_cost + 7 emit_rust + 7 real-stdlib parse smoke + 1 realization smoke = 97 green.** |
 | **L1** Reflection framework | ✅ Complete | PR #466 merged 2026-04-16. All prereqs shipped: Prereq 0 (HoF, #460), Prereq 0.5 (implicit generics, #466), Prereq 1 (FieldProject, #458), Prereq 2 (Path.binding, #458), Prereq 3 (contextual lambda, #460), Prereq 4 (list.dag bootstrap, #463), Prereq 5 (pipe sugar, #462). substrate.dag reflects Dag/Behavior/Declaration types. First lens migration (unused_parameters.dag) compiles, matches handwritten oracle, self-analyzes to zero. Optional-handle support (T? with Some/None) landed. Module-mode emission + crate-linked roundtrip proven. |
 | **L1.5** Clean bootstrap | 🟡 In progress (2026-04-16) | Test authority types (#474 ✅), ownership Phase 1 / 72→6 clones (#475 ✅), dependency+rendering design doc (#477 ✅). **Remaining:** pipeline composition declaration + fixed-point regen (#476 — PAUSED pending Option B authority migration: pipeline.dag becomes live authority, Rust derives from it). Ownership Phase 2 (→ clone count 1) and multi-target validation (go.dag) queued as parallel tracks. See `SELF_HOSTING.md` §2, §11, §14 and `docs/dependency-and-rendering-design.md`. |
-| **M1(4)** Multi-target emission | ⏸ Deferred | Add `go.dag` / `python.dag` as parallel extdeps fixtures and parallel `emit_go` / `emit_python` walks reusing PR-B's RealizationIndex pattern. Validates the thesis claim "add a new emission target = one spec-file edit." |
+| **Post-L1.5** Phase Plan | 🟡 Planned (2026-04-17) | Four phases × 3 lanes each, ~12 weeks total. P1 design docs complete: [post-l15-phase-plan.md](../../docs/post-l15-phase-plan.md), [phase1-lane1-l15-tail.md](../../docs/phase1-lane1-l15-tail.md), [phase1-lane2-clean-emission-invariant.md](../../docs/phase1-lane2-clean-emission-invariant.md), [phase1-lane3-consolidation-build-plan.md](../../docs/phase1-lane3-consolidation-build-plan.md). P2–P4 lanes stubbed; design docs written at start of prior phase. |
+| **M1(4)** Multi-target emission | ⏸ Superseded by P2 | Originally planned as parallel `emit_go` / `emit_python` walks. Post-L1.5 P2 consolidates all emitters into a single generic walker + per-target specs (see [post-l15-phase-plan.md](../../docs/post-l15-phase-plan.md)). Delete the "add a file per target" framing. |
 | **M2** Feature parity | ⏸ Partially complete | Generics in user code: ✅ (Prereq 0.5). Match in user code: ✅ (M1(2.8) + Prereq 2). List operations: ✅ (Prereq 4, structural List<T>). Recursion → Loop: ✅ (numeric descent). **Remaining:** transport declarations, interpreter (`dag run`), mutual recursion → Loop (§2.4), `data` value semantics, `where` refinement, full surface generics. |
 | **M3** Self-hosting | ⏸ Deferred | `.dag` rewrite of the compiler. Design: `SELF_HOSTING.md`. |
 | **M4** Thesis completion | ⏸ Deferred | All lenses, verification, omni-emission. |
@@ -410,12 +411,40 @@ Full design: [`src/v3/SELF_HOSTING.md`](SELF_HOSTING.md). Key points:
   v2 20-minute self-compile prevention — non-negotiable before
   generated artifacts accumulate.
 
+## Post-L1.5 Phase Plan
+
+Sequential phases of 3 lanes each, ~12 weeks total. Full plan:
+[../../docs/post-l15-phase-plan.md](../../docs/post-l15-phase-plan.md).
+
+| Phase | Weeks | Theme |
+|---|---|---|
+| **P1 Foundation** | 1–3 | Close L1.5 tail, establish clean-emission invariant, design consolidation |
+| **P2 Consolidation** | 4–6 | Collapse `emit_*.rs` into one generic walker + target specs |
+| **P3 Self-host + symbolic** | 7–9 | Self-hosting cycle, L2 M1 symbolic bounds, parallelism-as-lens |
+| **P4 Diagnostics + breadth** | 10–12 | Diagnostics-as-corrections, Verilog + SPICE/English targets |
+
+**Hard sequencing:** P2 before P3 (self-hosting inherits emitter shape).
+P1 before P2 (consolidation needs the clean-emission contract).
+
+P1 lanes (design docs complete):
+
+- [P1-L1: L1.5 tail — ownership Phase 2 + ignore hygiene](../../docs/phase1-lane1-l15-tail.md)
+- [P1-L2: Clean-emission invariant](../../docs/phase1-lane2-clean-emission-invariant.md)
+- [P1-L3: Single-emitter consolidation build plan](../../docs/phase1-lane3-consolidation-build-plan.md)
+
+Each lane carries scope, direction, escalation criteria, and acceptance
+gates. P2–P4 lane design docs are written at the start of the prior
+phase so they reflect what the running phase learns.
+
 ## What NOT to build yet
 
 - Generic dimension mechanism (user-defined optimization lenses)
-- Multi-target emission (start with Rust only)
-- Advanced diagnostics (Level 3 auto-fix)
-- Async/concurrent emission strategies
+- **Any fourth per-language emit file** (e.g., `emit_verilog.rs`,
+  `emit_spice.rs`). Defer all new emit targets until P2 consolidation
+  lands — each additional `emit_X.rs` makes the consolidation
+  proportionally harder. Covered in [post-l15-phase-plan.md](../../docs/post-l15-phase-plan.md) §"What NOT to do".
+- Advanced diagnostics (Level 3 auto-fix) — P4 territory.
+- Async/concurrent emission strategies.
 
 These are thesis goals that fall out when the foundation is right.
 Let them emerge.
