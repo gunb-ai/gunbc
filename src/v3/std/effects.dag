@@ -69,9 +69,11 @@ import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 // that a future port of `http_path.dag` can replace these inline
 // definitions without reshaping `effects.dag`.
 //
-// Carriers only: the parsing functions (`parse_path_template`,
-// `has_path_params`, `last_path_param`) live in `std.http_path`
-// and are referenced only through their symbolic names below.
+// Minimal helper subset inlined here too: `parse_path_template`
+// and `last_path_param` are used by the staged v3 effect-derivation
+// bodies below, while `src/v3/std/` does not yet ship a separate
+// `http_path.dag`. Keep these definitions structurally aligned with
+// the v2 authority until the standalone v3 port lands.
 
 type UrlPathToken
   = LiteralToken { text: String }
@@ -79,6 +81,69 @@ type UrlPathToken
 
 type PathTemplate {
   tokens: List<UrlPathToken>
+}
+
+fn parse_path_template(raw: String) -> PathTemplate {
+  let path_only = match raw |> split(delimiter: "?") |> first {
+    Some(p) => p
+    None => raw
+  }
+  let segments = path_only |> split(delimiter: "/") |> filter(s => s != "")
+  let tokens = segments |> flat_map(seg => parse_segment_tokens(seg: seg))
+  PathTemplate { tokens: tokens }
+}
+
+fn parse_segment_tokens(seg: String) -> List<UrlPathToken> {
+  if seg |> contains("{") then
+    let before_and_rest = seg |> split(delimiter: "{")
+    let prefix = match before_and_rest |> first {
+      Some(p) => p
+      None => ""
+    }
+    let after_open = match before_and_rest |> skip(1) |> first {
+      Some(r) => r
+      None => ""
+    }
+    let name_and_suffix = after_open |> split(delimiter: "}")
+    let param_name = match name_and_suffix |> first {
+      Some(p) => p
+      None => ""
+    }
+    let suffix = match name_and_suffix |> skip(1) |> first {
+      Some(s) => s
+      None => ""
+    }
+    let prefix_tokens = if prefix != "" then
+      [LiteralToken { text: prefix }]
+    else
+      []
+    let param_tokens = if param_name != "" then
+      [ParamToken { name: param_name }]
+    else
+      []
+    let suffix_tokens = if suffix != "" then
+      [LiteralToken { text: suffix }]
+    else
+      []
+    concat(prefix_tokens, param_tokens, suffix_tokens)
+  else
+    [LiteralToken { text: seg }]
+}
+
+fn last_path_param(template: PathTemplate) -> String? {
+  let params = template.tokens |> filter(t =>
+    match t {
+      ParamToken => true
+      LiteralToken => false
+    })
+  match params |> last {
+    Some(tok) =>
+      match tok {
+        ParamToken { name: n } => Some(n)
+        LiteralToken => None
+      }
+    None => None
+  }
 }
 
 // ── Effect shapes ───────────────────────────────────────────────

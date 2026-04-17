@@ -70,6 +70,15 @@ fn effects_dag_exposes_five_representative_function_signatures() {
 }
 
 #[test]
+fn effects_dag_inlines_required_http_path_helpers() {
+    let dag = Dag::new();
+
+    for name in ["parse_path_template", "last_path_param"] {
+        let _body = arrow_body(&dag, name);
+    }
+}
+
+#[test]
 fn effects_dag_exposes_core_effect_algebra_types() {
     let dag = Dag::new();
 
