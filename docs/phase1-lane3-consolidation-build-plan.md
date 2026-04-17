@@ -126,6 +126,58 @@ templates prove too weak, SPICE earlier.
 This lane produces the evaluation; P2-L1 owner makes the final call
 informed by it.
 
+### 5. Pessimistic fallbacks from Half B to revisit
+
+Half B's merge reconciliation (2026-04-17) reverted two optimizations
+back to pessimistic behavior because they misbehaved under merge with
+main's cached-bootstrap state. These are **known-pessimistic areas**,
+not silent regressions — explicitly catalog them here so the walker
+design revisits them rather than inheriting the revert:
+
+**A. `decl_is_copy` structural walk**
+- **Reverted:** the structural walk over user-defined sum types was
+  over-eagerly classifying variants with all-Copy payload as Copy.
+  Reverted to main's "sum types are non-Copy" conservative behavior.
+- **Revisit during consolidation:** structural copy-detection for
+  user-defined sums is legitimately decidable. The walker can read
+  each variant's payload fields and compute Copy-ness from the Conj
+  structure. This should re-land during Lane 1e as part of the
+  copy-type lens.
+- **Path forward:** copy-type becomes a dedicated lens (it's one of
+  the extractions identified in the function inventory). The lens
+  does the structural walk correctly once; every consumer reads
+  from it. This eliminates the local-reconstruction issue that
+  caused the Half B revert.
+
+**B. `OwnedConstructLastUse` optimization**
+- **Reverted:** the optimization that emitted move-on-last-use
+  (`value` instead of `value.clone()`) was unsound under template
+  reordering. Reverted to always-clone behavior.
+- **Revisit during consolidation:** this is the "template-aware
+  ownership emission" problem. The consolidated walker has full
+  template context (CleanEmissionContract + LocalScope with
+  position tracking per DB-2). A template-aware move-or-clone
+  decision is tractable once the walker is authority for emission
+  order.
+- **Path forward:** the ownership lens (extracted from
+  `analyze_user_defined_callable`, per Lane 1e function inventory)
+  computes borrow/move/clone decisions from substrate facts. The
+  walker consumes those decisions without needing to re-derive
+  ownership during emission — which is what made the Half B
+  optimization unsound.
+
+**C. Clone ratchet 1 → 5 (main was 6)**
+- Current state: 5 clones in `lens_unused_parameters_generated.rs`.
+  Main was at 6; Half B initially got to 1 but reverted to 5 due
+  to A and B above.
+- **Target after Lane 1e:** ≤ 1 (Half B's original target).
+  Achievable once the ownership lens is the single authority and
+  the walker reads from it.
+
+These are **explicit revisit items** during Stage 1e execution. Flag in
+the build plan's bridge inventory so the walker design accounts for
+them.
+
 ---
 
 ## Out-of-scope

@@ -155,8 +155,32 @@ Nine cross-cutting design decisions needed to be locked before implementation. E
 | DB-7 | Symbolic cost algebra | Lane 2 Stage 2d | [design-symbolic-cost-algebra.md](./design-symbolic-cost-algebra.md) |
 | DB-8 | Fixed-point ratchet mechanics | Lane 3 Stage 3c | [design-fixed-point-ratchet.md](./design-fixed-point-ratchet.md) |
 | DB-9 | Mutual recursion → Loop lowering | Lane 3 Stage 3a | [design-mutual-recursion-lowering.md](./design-mutual-recursion-lowering.md) |
+| DB-10 | Lens Rust-boundary contract (L-8) | Lane 1 Stage 1a (cost lens migration) | [design-lens-rust-boundary.md](./design-lens-rust-boundary.md) |
 
-Dependencies between design docs (DB-4 references DB-1, DB-2 references DB-4 and DB-5): each design doc calls out its dependencies in the header. The doc set is internally consistent.
+Dependencies between design docs (DB-4 references DB-1, DB-2 references DB-4 and DB-5, DB-10 added post-Half-A review): each design doc calls out its dependencies in the header. The doc set is internally consistent.
+
+## Half B → lane dissolution map
+
+Half B (PR #490) landed 8 of 9 original blockers + 3 new issues. Classifying each against the post-merge lanes helps reviewers understand what's durable vs what has a short half-life in Lane 1e consolidation:
+
+**Survives consolidation (substrate / semantic invariants):**
+- B1 typed `CallableParameter` — slot-keyed shape; foundational for DB-6 transport taxonomy
+- B7 `Bind`-not-consume — permanent semantic invariant (reinforced in DB-9 mutual recursion cluster analysis)
+- B11 typed `TargetLanguage` dispatch — the pattern persists; field names may reshape in Lane 1e consolidation but name-prefix dispatch is gone
+- B-NEW-1 dissolution receipts on all new sum types — modeling-discipline pattern that keeps
+
+**Dissolves in Lane 1e (emit_*.rs → single generic walker + specs):**
+- B3 last-use tracking → moves to dedicated ownership lens
+- B4 `decl_is_copy` cycle guard → becomes a copy-type lens
+- B6 fail-closed in `analyze_user_defined_callable` → folded into walker realization dispatch
+- B14 operand algebra walk in `emit_python` → spec-driven dispatch per DB-2
+- B-NEW-2 Go consumes `parameter_dispositions` → walker reads from CallableRealization spec
+- B-NEW-3 Python `TargetExecutionModel` typed → walker reads from target spec
+
+**Deferred to an explicit future lane:**
+- B13 (.dag parser dotted-path Disj variant access) → Lane 3 Stage 3a (M2 feature parity)
+
+**Pessimistic fallbacks to revisit in Lane 1e:** `decl_is_copy` structural walk (over-eager Copy classification) and `OwnedConstructLastUse` optimization (unsound under template reorder) were reverted during Half B merge reconciliation. Clone ratchet bumped 1 → 5 (vs main's 6). These are known-pessimistic areas catalogued in Lane 1 Stage 1d's [consolidation build plan](./phase1-lane3-consolidation-build-plan.md) §5.
 
 ### Critical path
 
@@ -221,6 +245,7 @@ A concrete test for "did we finish":
 - [ ] `dag run fixture.dag` executes a cloud workflow through declared transports
 - [ ] Side-effect and space-bound dimensions are live `Dimension` instances; violating declarations fail compile
 - [ ] An async Rust variant of a program emits through the same walker as sync Rust with one spec-field change
+- [ ] No `.dag` lens's public Rust surface erases its typed failure carrier via panic or opaque primitive — L-8 invariant enforced by CI grep gate (see [design-lens-rust-boundary.md](./design-lens-rust-boundary.md))
 
 **If any of these bullets fails, the plan is not done.** There is no backlog to push them to.
 

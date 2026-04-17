@@ -31,21 +31,23 @@ Lane 3 closes all three.
 
 **Scope:** the surface features `compiler.dag` needs that v3 doesn't yet have.
 
-From ROADMAP.md §M2:
-- **Mutual recursion → Loop** (SELF_HOSTING §2.4). Currently single recursion only. Compiler pipelines (parse → lower → infer → emit) are structurally mutually recursive across modules.
+From ROADMAP.md §M2 + Half B B13 deferral:
+- **Mutual recursion → Loop** (SELF_HOSTING §2.4, design locked in [DB-9](./design-mutual-recursion-lowering.md)). Compiler pipelines (parse → lower → infer → emit) are structurally mutually recursive across modules.
 - **`data` value semantics** — `data foo: Type = value` as structural value declarations. Today parsed but semantics incomplete for generic `data`.
 - **`where` refinement predicates** — `fn f(x: Int where x > 0)`. Needs refinement carrier on Port types + Branch-boundary verification.
 - **Full surface generics** — implicit generic inference (Prereq 0.5) covers inference; explicit surface generics `fn f<T>(x: T) -> T` for compiler code.
 - **Transport declarations** — compiler-internal services (parser, emitter) need transport-compatible calling conventions.
+- **Dotted-path access to `Disj` variants** (Half B B13 deferral). Currently the `.dag` parser supports dotted-path access only for `Conj` fields (`record.field`). Half B needed `enum.variant.field` access for typed Python pattern emission but had to defer because the parser rejects it. Stage 3a wires this: parser extension + lowering to field-access on variant payload.
 
 Each feature has a tightly-scoped acceptance:
 
 | Feature | Acceptance test |
 |---|---|
-| Mutual recursion | `fn a(n: Int) -> Int = if n == 0 then 0 else b(n - 1)` + `fn b(n: Int) -> Int = if n == 0 then 0 else a(n - 1)` compiles, both marked as Loop |
+| Mutual recursion | `fn a(n: Int) -> Int = if n == 0 then 0 else b(n - 1)` + `fn b(n: Int) -> Int = if n == 0 then 0 else a(n - 1)` compiles, both marked as `MutualLoop` per DB-9 |
 | `data` value semantics | `data answer: Int = 42` + `data config: Config = { ... }` compile, values accessible at emission |
 | `where` refinement | `fn div(n: Int, d: Int where d != 0) -> Int` — compile-time rejection of `div(1, 0)` |
 | Surface generics | `fn id<T>(x: T) -> T` — compiles with explicit type param |
+| Disj dotted-path | `match opt { Some(s) => s.field, None => ... }` parses and lowers — unblocks Half B's B13 |
 
 **Escalation:** each sub-feature has its own failure mode. If mutual recursion needs a substrate extension to represent SCC (strongly-connected-component) binds, surface — that's a legitimate substrate gap, not a Loop pattern hack.
 

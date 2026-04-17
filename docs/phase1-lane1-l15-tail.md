@@ -32,7 +32,7 @@ This lane is the "sweep up" before P2 starts.
 
 ## Scope
 
-Five work items, roughly ordered:
+Six work items, roughly ordered:
 
 ### 1. ParameterContract::Consumed → pass-by-value in emit_rust
 Today emit_rust renders every parameter as `&T` (borrowed). Half B's
@@ -77,7 +77,45 @@ shape, fold them into a single harness call (same pattern as
 
 **Target:** cut CI time on m1_3_emit_rust_test from ~12s to ~4s.
 
-### 5. Delete `#[allow(warnings)]` from test wrappers
+### 5. Migrate `CostLens` to L-8 canonical shape
+
+From Half A review: the `CostLens::cost_of → usize` shim collapses the
+typed `CostLookup = MissingCost | FoundCost(Int)` carrier into a
+panic-on-miss primitive. This violates invariant **L-8** (lens Rust
+surfaces preserve typed failure carriers — see
+[design-lens-rust-boundary.md](./design-lens-rust-boundary.md)).
+
+**Change:** rewrite `src/v3/compiler/src/lens_cost.rs` to re-export
+`CostLookup` and `cost_of` directly (matching the Provenance pattern
+that's already canonical):
+
+```rust
+// Before (today)
+pub struct CostLens<'a> { dag: &'a Dag }
+impl<'a> CostLens<'a> {
+    pub fn cost_of(&self, port: PortId) -> usize {
+        match generated::cost_of(self.dag, &port) {
+            generated::CostLookup::FoundCost { _0: cost } => ...,
+            generated::CostLookup::MissingCost => panic!(...),
+        }
+    }
+}
+
+// After (L-8)
+pub use generated::{CostLookup, cost_of};
+```
+
+Update test callers (`src/v3/compiler/tests/m1_3_lens_cost_test.rs`)
+to match on `CostLookup` instead of comparing `usize`.
+
+Add `INVARIANTS.md` L-8 entry + CI grep gate that blocks
+`fn .*Lens.* -> usize` declarations in `src/v3/compiler/src/lens_*.rs`.
+
+**Affects:** `src/v3/compiler/src/lens_cost.rs`,
+`src/v3/compiler/tests/m1_3_lens_cost_test.rs`, `INVARIANTS.md`,
+`.github/workflows/ci.yml`.
+
+### 6. Delete `#[allow(warnings)]` from test wrappers
 The emitted-code `#[allow(warnings, clippy::all)]` attributes currently
 in `m2_lens_cost_migration_test.rs`, `m2_lens_provenance_migration_test.rs`,
 `m2_lens_unused_parameters_migration_test.rs`, and `m1_3_emit_rust_test.rs`
