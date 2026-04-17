@@ -148,6 +148,12 @@ fn last_path_param(template: PathTemplate) -> String? {
 
 // ── Effect shapes ───────────────────────────────────────────────
 //
+// 🟢 TERMINAL at the staged effect-algebra scope. These variants are
+// the irreducible operation-effect classes later lanes compose:
+// read, keyed overwrite, keyed delete, create, append. Richer
+// transport facts refine *which* variant a given operation derives,
+// not the variant set itself.
+//
 // The fundamental classification of an operation's effect. Each
 // shape corresponds to an algebraic structure on the state space:
 //
@@ -177,6 +183,12 @@ type EffectShape
   | CreateEffect { cause: CreateCause }
   | AppendEffect
 
+// 🟢 TERMINAL at current derivation scope. `CreateEffect` has two
+// semantically distinct provenances that later diagnostics need to
+// keep separate: conservative POST-create and keyless fail-closed
+// fallback. Future richer transport witnesses may change which case
+// derives, but do not remove the distinction.
+//
 // Why a create-shaped effect was derived. This keeps legitimate
 // POST-creates distinct from fail-closed fallback on methods that
 // should have carried a path key.
@@ -184,6 +196,11 @@ type CreateCause
   = PostAlways
   | KeylessFallback { method: HttpMethod }
 
+// 🟢 TERMINAL. These are the durable structural places an idempotency
+// key can come from in the current effect algebra: path, one field,
+// or a structural tuple of fields. They classify key provenance
+// without inventing a second authority for the operation itself.
+//
 // Where the idempotency key comes from. The key is what makes
 // upsert/delete convergent: operating on the same key with the
 // same value produces the same state regardless of how many times
@@ -199,6 +216,11 @@ type KeySource
   | CompositeKey { fields: List<String> }
 
 // ── Effect evidence ─────────────────────────────────────────────
+//
+// 🟢 TERMINAL at proof-reporting scope. `EffectShape` remains the
+// single authority; this coproduct is the derived proof carrier a
+// later lens/report can project from shape when it needs to explain
+// *why* an operation is or is not idempotent.
 //
 // Per-operation evidence of idempotency. Analogous to
 // `DescentEvidence` in termination proofs:
@@ -218,6 +240,24 @@ fn is_idempotent_effect(shape: EffectShape) -> Bool {
     DeleteEffect => true
     CreateEffect => false
     AppendEffect => false
+  }
+}
+
+// Derived proof carrier for later reports. This is a projection from
+// the single `EffectShape` authority, not a second authored fact.
+fn derive_idempotency_evidence(shape: EffectShape) -> IdempotencyEvidence {
+  match shape {
+    ReadEffect => IdentityEffect
+    UpsertEffect => LatticeEffect
+    DeleteEffect => LatticeEffect
+    CreateEffect =>
+      NonIdempotent {
+        reason: "create-shaped effect duplicates on repeat application"
+      }
+    AppendEffect =>
+      NonIdempotent {
+        reason: "append-shaped effect duplicates on repeat application"
+      }
   }
 }
 
@@ -243,13 +283,13 @@ type ComposedEffect {
 type OperationEffect {
   operation_name: String
   shape: EffectShape
-  evidence: IdempotencyEvidence
 }
 
-// True if this operation's evidence records non-idempotency.
-// Extracted as a helper so `compose_effects` stays a clean pipe.
+// True if this operation's derived evidence records non-idempotency.
+// The evidence is projected from `shape` on demand so `shape`
+// remains the only authored authority.
 fn operation_is_breaking(op: OperationEffect) -> Bool {
-  match op.evidence {
+  match derive_idempotency_evidence(shape: op.shape) {
     LatticeEffect => false
     IdentityEffect => false
     NonIdempotent => true
@@ -381,11 +421,19 @@ fn derive_op_effect(
 // reports `Disagrees` or `DerivationUnknown` rather than silently
 // trusting one source over the other.
 
+// 🟢 TERMINAL. This is the irreducible judgment space for a declared
+// modifier against structural derivation: it agrees, it disagrees,
+// or derivation cannot decide and must say so explicitly.
 type ModifierAgreement
   = Agrees
   | Disagrees          { reason: String }
   | DerivationUnknown  { reason: String }
 
+// 🟢 TERMINAL at modifier-check scope. The two states are genuinely
+// distinct: a modifier was never declared, or it was declared and
+// therefore must carry a structural judgment. This prevents
+// "declared but no verdict" from becoming representable.
+//
 // Per-axis modifier result. `ModifierNotDeclared` means the user did
 // not state that modifier; `ModifierDeclared` guarantees there is a
 // judgment for every declared modifier fact.
