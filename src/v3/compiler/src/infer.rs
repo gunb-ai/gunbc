@@ -1081,65 +1081,79 @@ fn predicate_discharges(
         expected_body,
         actual_param,
         expected_param,
-        0,
     )
 }
 
-/// Walk the actual predicate's body looking for a conjunct that
-/// matches the expected body (param-paired). Accepts full structural
-/// equality OR recursion into either operand of a
-/// `Transform(Logical(And), [lhs, rhs])`.
+/// Flatten-and-subset discharge check. A predicate body is treated
+/// as a CONJUNCTION OF LEAVES — the maximal multiset of non-`And`
+/// operand ports reachable by recursively unfolding every
+/// `Transform(Logical(And), [lhs, rhs])` root. Actual discharges
+/// expected iff every expected leaf is walk-equal (param-paired) to
+/// some actual leaf.
+///
+/// This makes conjunction associativity / grouping irrelevant to
+/// discharge: `a && (b && c)`, `(a && b) && c`, and `a && b && c`
+/// all flatten to the same leaf set `{a, b, c}` and therefore
+/// discharge each other symmetrically. Without the flattening,
+/// `body_discharges` could only recurse into one root conjunct of
+/// the actual side at a time, so an asymmetric grouping would fail
+/// to discharge a syntax-equivalent callee contract (the
+/// substrate-level blocker ChatGPT's R5 review called out on
+/// `31a3709d`).
+///
+/// Still pure structural — no SMT, no absorption laws, no ordering
+/// reasoning. The "canonical form" is the leaf multiset; two bodies
+/// representing the same conjunction share one leaf multiset up to
+/// reordering, and the subset check tolerates the multiset shape.
 fn body_discharges(
     dag: &Dag,
     actual_body: PortId,
     expected_body: PortId,
     actual_param: PortId,
     expected_param: PortId,
-    depth: usize,
 ) -> bool {
+    let mut actual_leaves: Vec<PortId> = Vec::new();
+    collect_conjunct_leaves(dag, actual_body, &mut actual_leaves, 0);
+    let mut expected_leaves: Vec<PortId> = Vec::new();
+    collect_conjunct_leaves(dag, expected_body, &mut expected_leaves, 0);
+    expected_leaves.into_iter().all(|expected_leaf| {
+        actual_leaves.iter().any(|&actual_leaf| {
+            refinement_ports_equal(
+                dag,
+                actual_leaf,
+                expected_leaf,
+                actual_param,
+                expected_param,
+                0,
+            )
+        })
+    })
+}
+
+/// Recursively unfold `Transform(Logical(And), [lhs, rhs])` roots
+/// and collect the non-`And` leaves. Depth-bounded by
+/// `WALK_DEPTH_LIMIT`; on overflow the current port is pushed as a
+/// leaf so discharge degrades to the pre-flatten shape rather than
+/// silently dropping conjuncts.
+fn collect_conjunct_leaves(dag: &Dag, body_port: PortId, out: &mut Vec<PortId>, depth: usize) {
     if depth >= WALK_DEPTH_LIMIT {
-        return false;
+        out.push(body_port);
+        return;
     }
-    if refinement_ports_equal(
-        dag,
-        actual_body,
-        expected_body,
-        actual_param,
-        expected_param,
-        0,
-    ) {
-        return true;
-    }
-    // Composite conjunct case: if the actual body root is
-    // `Logical(And)`, the composite is provable iff EITHER of its
-    // conjuncts discharges the expected predicate (virtual
-    // sub-predicate sharing the actual's param slot).
-    if let Some(node_id) = dag.port(actual_body).produced_by {
+    if let Some(node_id) = dag.port(body_port).produced_by {
         if let Behavior::Transform(t) = dag.node(node_id) {
             if matches!(
                 &t.target,
                 TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And))
             ) && t.inputs.len() == 2
             {
-                return body_discharges(
-                    dag,
-                    t.inputs[0],
-                    expected_body,
-                    actual_param,
-                    expected_param,
-                    depth + 1,
-                ) || body_discharges(
-                    dag,
-                    t.inputs[1],
-                    expected_body,
-                    actual_param,
-                    expected_param,
-                    depth + 1,
-                );
+                collect_conjunct_leaves(dag, t.inputs[0], out, depth + 1);
+                collect_conjunct_leaves(dag, t.inputs[1], out, depth + 1);
+                return;
             }
         }
     }
-    false
+    out.push(body_port);
 }
 
 fn predicate_info(dag: &Dag, pred_decl: DeclarationId) -> Option<(PortId, PortId)> {

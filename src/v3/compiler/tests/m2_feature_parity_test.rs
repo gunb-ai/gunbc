@@ -584,6 +584,38 @@ fn test_3a3_logical_operator_rejects_non_bool_operand() {
 }
 
 #[test]
+fn test_3a3_conjunction_discharge_ignores_grouping() {
+    // Acceptance (DB-11): conjunction is a logical fact, not a
+    // syntax tree. `a && (b && c)` and `(a && b) && c` represent
+    // the same fact and must discharge symmetrically. Regression
+    // lock against the substrate-level grouping blocker called out
+    // by the ChatGPT review on `31a3709d`.
+    //
+    // Narrowing naturally produces right-associated composites
+    // because `build_narrowed_refinement` wraps `outer && new_cond`:
+    // when the narrowing cond is itself a composite `b && c` (left-
+    // associated by the parser), the final composite is
+    // `outer && (b && c)` — structurally distinct from the callee's
+    // left-associated `outer && b`.
+    //
+    // Caller outer: `a` (= d != 0). Narrowing cond: `b && c`
+    // (= d > 0 && d < 100). Narrowed composite body:
+    // `a && (b && c)`. Callee expected: `a && b`. Pre-flatten the
+    // root-conjunct-only walk couldn't find `a && b` as a subtree
+    // of `a && (b && c)` and rejected the program. Post-flatten,
+    // both sides reduce to conjunct multisets (actual: {a, b, c};
+    // expected: {a, b}) and the subset check discharges.
+    let src = "fn takes_ab(d: Int where d != 0 && d > 0) -> Int = d\n\
+               fn caller(n: Int, d: Int where d != 0) -> Int = \
+                 if d > 0 && d < 100 then takes_ab(d) else 0";
+    let _ = compile_to_dag(src, "test.v3").expect(
+        "narrowing-produced right-associated composite `a && (b && c)` \
+         must discharge callee's `a && b` — flatten-and-subset \
+         normalizes conjunction independently of guard grouping",
+    );
+}
+
+#[test]
 fn test_3a3_refinement_references_top_level_data_constant() {
     // Acceptance (DB-11): a `where` predicate that references a
     // top-level `data` declaration must resolve cleanly. Regression
