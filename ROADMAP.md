@@ -756,8 +756,9 @@ Substrate records across v3 std/ carry fields whose validity is
 producer is trusted to never emit them. The PR #511 review cycle
 (chatgpt-auto-review + codex + three director review comments) forced
 the graduation of four primitives that move the invariants onto the
-type shape. Primitives land in `src/v3/std/substrate.dag`; consumers
-listed below.
+type shape. Declarations land in `src/v3/std/substrate.dag` with the
+DB-9 Lane 3 Stage 3a.1 implementation PR (same commit as the first
+consumers — the primitives without consumers would be decorative).
 
 | Primitive | Role | First consumer | Planned consumers |
 |---|---|---|---|
@@ -765,6 +766,9 @@ listed below.
 | `NonSingletonList<T>` | List with cardinality ≥ 2 by type shape | `Cluster.members` (DB-9 R2.1) | Any substrate set requiring a distinct pair (mutual-recursion clusters, binary-relation carriers) |
 | `ArityIndex` | Typed newtype over NonNegativeInt, paired with arity-bearing carrier | `MemberDescent.position` (DB-9 R2.1) | `IndexedElement<T>.index` in `src/v3/std/list.dag` |
 | `TransformRef` | Typed newtype over NodeId, statically witnesses `Behavior::Transform` | `IntraClusterCall.transform` (DB-9 R2.1) | Any substrate handle that today carries raw `NodeId` + "must be a Transform" prose |
+
+**Status:** 🟡 Design — proposed in `docs/design-mutual-recursion-lowering.md`
+(DB-9 R2.1). Declarations land with the DB-9 implementation PR.
 
 **Deferred (separate substrate refactor track):** segregating
 `Dag.nodes: List<Behavior>` into per-kind lists (`Dag.transforms`,

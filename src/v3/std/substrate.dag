@@ -9,61 +9,6 @@ type NodeId
 type PortId
 type DeclarationId
 
-// ── Substrate integrity primitives (Track 9 — DB-9 R2 graduation) ──
-//
-// Graduation of "enforced by construction" carriers into type-shape
-// enforcement. Surfaced by PR #511 review loop: substrate records
-// that accept `List<T>` / `Int` / `NodeId` admit illegal states
-// (empty lists, negative indices, mis-kinded handles). These four
-// primitives make the invariants structural so the offending states
-// are unrepresentable by the type, not merely avoided by the
-// producer. Consumers so far: `Cluster` / `MemberDescent` /
-// `IntraClusterCall` (DB-9 R2.1); planned: `IndexedElement.index`
-// in `src/v3/std/list.dag`. See ROADMAP.md Track 9 for the full
-// consumer ledger.
-
-// 🟢 TERMINAL. List constrained to cardinality ≥ 1 by type shape.
-// Construction requires one element; `[]` is unrepresentable.
-type NonEmptyList<element> {
-  head: element
-  tail: List<element>
-}
-
-// 🟢 TERMINAL. List constrained to cardinality ≥ 2 by type shape.
-// Construction requires two distinct element slots; both `[]` and
-// `[x]` are unrepresentable. Used for substrate sets whose definition
-// requires at least a pair (e.g. a mutual-recursion cluster's
-// members — a single-member "cluster" is a simple-recursion case
-// and has a different termination proof obligation).
-type NonSingletonList<element> {
-  first: element
-  second: element
-  rest: List<element>
-}
-
-// 🟢 TERMINAL. Typed newtype over a non-negative integer. Semantically
-// a parameter index into an arity-bearing carrier (a Transform's
-// param list, a Bind's formal-parameter list). The upper bound is
-// conveyed by the paired carrier reference, not stored alongside
-// the int — the single authority for "how many parameters" is the
-// carrier, and the index is only meaningful relative to it.
-// Construction routes through a typed constructor that rejects
-// negative values; bound-relative validity is checked at the
-// construction site that pairs an ArityIndex with its carrier
-// (e.g. a `MemberDescent { member, position }` constructor).
-type ArityIndex
-
-// 🟢 TERMINAL. Typed newtype over NodeId, statically witnessing that
-// the underlying node resolves to a `Behavior::Transform` variant.
-// Construction routes through `as_transform(dag, id) -> TransformRef?`
-// which returns `None` if the NodeId resolves to any other Behavior.
-// Because `as_transform` is the sole producer, a value of type
-// `TransformRef` carries the invariant "dereferencing yields a
-// Transform" with no runtime check at consumer sites. Replaces raw
-// `NodeId` fields whose accompanying comment would otherwise have
-// to read "must point at a Transform — enforced by construction."
-type TransformRef
-
 type TypeShape {
   declaration: DeclarationId
 }
