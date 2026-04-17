@@ -174,20 +174,20 @@ pub fn tokenize_for_test(source: &str, file: &str) -> Result<Vec<tokenize::Token
 /// the "named user fn seeded with Pending and never patched" shape
 /// that `lower_fn_item` forbids but that a future regression in the
 /// body-patching path could re-introduce (see the R13 fix in
-/// `lower.rs:2293` for the historical precedent). Lives here rather
-/// than in `dag.rs` because exposing the raw `push_declaration` /
-/// `alloc_declaration_id` primitives would widen the mutation
-/// surface well beyond what the lens's synthetic-Dag test needs;
-/// the narrow "inject one named Arrow(Pending)" form matches
-/// exactly what the acceptance test requires.
+/// `lower.rs:2293` for the historical precedent). Lives here and
+/// calls the `pub(crate)` `alloc_declaration_id` / `push_declaration`
+/// primitives directly so that this narrow "inject one named
+/// Arrow(Pending)" form is the only public construction path —
+/// exposing the raw primitives would widen the mutation surface
+/// beyond what the lens's synthetic-Dag test needs.
 #[doc(hidden)]
 pub fn inject_named_pending_arrow_for_test(
     dag: &mut Dag,
     name: &str,
     output_type: dag::DeclarationId,
 ) -> dag::DeclarationId {
-    let id = dag.alloc_declaration_id_for_test();
-    dag.push_declaration_for_test(dag::Declaration {
+    let id = dag.alloc_declaration_id();
+    dag.push_declaration(dag::Declaration {
         id,
         name: Some(name.to_string()),
         connective: dag::TypeConnective::Arrow {
