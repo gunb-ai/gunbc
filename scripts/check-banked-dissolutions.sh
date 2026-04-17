@@ -2,9 +2,10 @@
 # Banked-dissolutions ratchet (Lane 1 Stage 1a).
 #
 # Scans lane and phase docs for shapes that the design-blocker set
-# (DB-1…DB-10) has formally rejected. These rejected names become a
-# forbidden-string list — the master authority is
-# docs/post-l15-phase-plan.md § "Banked dissolutions — rejected shapes".
+# (DB-1…DB-10) has formally rejected. The single authority is the
+# `FORBIDDEN=(...)` array in docs/post-l15-phase-plan.md § "Banked
+# dissolutions — rejected shapes" — this script PARSES that block
+# directly instead of hardcoding a second list.
 #
 # Exempt from the scan:
 #   docs/design-*.md         — DB docs record the rejections
@@ -18,21 +19,31 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
-FORBIDDEN=(
-  "port_by_id"
-  "node_by_id"
-  "RestTransport"
-  "ShellTransport"
-  "GrpcTransport"
-  "TransportKind"
-  "target_language: TargetLanguageId"
-  "StructFieldRule"
-  "AllowAttributeOnStructDecl"
-  "MutualLoop"
-)
+MASTER_PLAN="docs/post-l15-phase-plan.md"
 
-# Lane/phase docs only. DB docs and the master plan are exempt because
-# they legitimately enumerate the rejected names.
+if [ ! -f "$MASTER_PLAN" ]; then
+  echo "banked-dissolutions: missing master plan $MASTER_PLAN" >&2
+  exit 1
+fi
+
+# Parse the authoritative FORBIDDEN array from the master plan. awk
+# isolates the lines between `FORBIDDEN=(` and `)`; the shell regex
+# pulls each quoted string out. The master plan's block is the single
+# source of truth — see the plan's § Banked dissolutions for rationale.
+FORBIDDEN=()
+while IFS= read -r line; do
+  while [[ $line =~ \"([^\"]+)\" ]]; do
+    FORBIDDEN+=("${BASH_REMATCH[1]}")
+    line="${line/${BASH_REMATCH[0]}/}"
+  done
+done < <(awk '/^FORBIDDEN=\($/,/^\)$/' "$MASTER_PLAN")
+
+if [ "${#FORBIDDEN[@]}" -eq 0 ]; then
+  echo "banked-dissolutions: could not extract FORBIDDEN array from $MASTER_PLAN" >&2
+  echo "The master plan's § Banked dissolutions block must contain a bash-style \`FORBIDDEN=(...)\` array." >&2
+  exit 1
+fi
+
 shopt -s nullglob
 FILES=()
 for pattern in docs/lane*.md docs/phase*.md; do
@@ -57,7 +68,7 @@ for pat in "${FORBIDDEN[@]}"; do
   if [ -n "$hits" ]; then
     if [ "$violations" -eq 0 ]; then
       echo "banked-dissolutions ratchet: forbidden shapes found in lane/phase docs."
-      echo "Authority: docs/post-l15-phase-plan.md § Banked dissolutions."
+      echo "Authority: $MASTER_PLAN § Banked dissolutions."
       echo
     fi
     echo "--- forbidden: $pat ---"
@@ -73,4 +84,4 @@ if [ "$violations" -gt 0 ]; then
   exit 1
 fi
 
-echo "banked-dissolutions ratchet: clean (${#FILES[@]} docs scanned)"
+echo "banked-dissolutions ratchet: clean (${#FILES[@]} docs scanned, ${#FORBIDDEN[@]} forbidden shapes from $MASTER_PLAN)"

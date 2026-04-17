@@ -170,8 +170,9 @@ When a reviewer points at a rejected shape in a lane/master doc, the fix is to d
 
 **Mechanical gate (runs in Lane 1 Stage 1a):** a CI grep check that fails the build if any lane doc (`docs/lane*.md`, `docs/phase*.md`) contains a forbidden string. Two files are exempt from the scan because they legitimately enumerate rejected names: the DB docs themselves (`docs/design-*.md`) — where rejection is recorded — and this master plan (`docs/post-l15-phase-plan.md`) — where the ratchet itself lives.
 
+The `FORBIDDEN=(...)` block below is the **single authority** for the ratchet. `scripts/check-banked-dissolutions.sh` parses this block directly — adding a rejected shape means extending this list in the master plan, not mirroring it in the script. The human-readable table above must stay in sync (enforced at review).
+
 ```bash
-# Sketch: scan only lane/stage docs; DB docs and master plan are exempt
 FORBIDDEN=(
   "port_by_id" "node_by_id"
   "RestTransport" "ShellTransport" "GrpcTransport" "TransportKind"
