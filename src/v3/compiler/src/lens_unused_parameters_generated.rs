@@ -17,7 +17,7 @@ pub fn check(p0: &Dag) -> Vec<UnusedParameter> {
     ((p0).nodes())
         .iter()
         .fold(Vec::new(), |__fold_acc, __fold_item| {
-            let mut __left = __fold_acc;
+            let mut __left = (__fold_acc).clone();
             __left.extend(check_behavior(p0, __fold_item));
             __left
         })
@@ -88,7 +88,7 @@ pub fn walk_steps(p0: &i64, p1: &Dag, p2: &[PortId], p3: Vec<PortId>) -> Vec<Por
                 &((*(p0)) - 1),
                 p1,
                 &(expand_frontier_list(p2, p1, &p3)),
-                expand_referenced_list(p2, p3),
+                expand_referenced_list(p2, (p3).clone()),
             )
         }
     }
@@ -110,12 +110,12 @@ pub fn expand_frontier_list(p0: &[PortId], p1: &Dag, p2: &[PortId]) -> Vec<PortI
     }
 }
 pub fn expand_referenced_list(p0: &[PortId], p1: Vec<PortId>) -> Vec<PortId> {
-    (p0).iter().fold(p1, |__fold_acc, __fold_item| {
+    (p0).iter().fold((p1).clone(), |__fold_acc, __fold_item| {
         if (__fold_acc).contains(__fold_item) {
             __fold_acc
         } else {
             {
-                let mut __list = __fold_acc;
+                let mut __list = (__fold_acc).clone();
                 __list.insert(0, (*(__fold_item)));
                 __list
             }

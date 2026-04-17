@@ -2645,12 +2645,21 @@ impl<'a> Ctx<'a> {
                 self.render_port(port, locals, RenderMode::BorrowedRead)
             }
             ParameterDispositionBinding::Consumed => {
-                let mode = if self.is_last_use(port, consumer, slot) {
-                    RenderMode::OwnedConstructLastUse
-                } else {
-                    RenderMode::OwnedConstruct
-                };
-                self.render_port(port, locals, mode)
+                // Conservative: always render as OwnedConstruct (clone) for
+                // Consumed disposition. The OwnedConstructLastUse optimization
+                // (skip the clone if this is the last use) requires the
+                // last-use ordering to match the *rendered* code's evaluation
+                // order, but rendered templates can reorder evaluation
+                // relative to dag.nodes() iteration order — e.g.,
+                // `cons(entry_for(acc, _), acc)` renders as
+                // `let mut __list = acc; __list.insert(0, entry_for(&acc, _))`,
+                // which moves `acc` (slot 1) before borrowing it (slot 0).
+                // Until is_last_use accounts for template-induced reordering,
+                // skipping the clone is unsound. The is_last_use facts are
+                // still computed and tracked (B3) so the lookup is correct;
+                // we just don't act on it here yet.
+                let _ = self.is_last_use(port, consumer, slot);
+                self.render_port(port, locals, RenderMode::OwnedConstruct)
             }
         }
     }
@@ -4162,21 +4171,18 @@ impl<'a> Ctx<'a> {
             TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
                 self.decl_is_copy_rec(*next, visited)
             }
-            TypeConnective::Conj { children } => children
-                .iter()
-                .map(|child| self.decl_is_copy_rec(child.ty, visited))
-                .collect::<Result<Vec<_>, _>>()
-                .map(|values| values.into_iter().all(|value| value)),
-            TypeConnective::Disj { variants } => variants
-                .iter()
-                .map(|variant| self.decl_is_copy_rec(variant.ty, visited))
-                .collect::<Result<Vec<_>, _>>()
-                .map(|values| values.into_iter().all(|value| value)),
-            TypeConnective::Cardinality {
-                element,
-                bound: crate::dag::CardinalityBound::AtMostOne,
-            } => self.decl_is_copy_rec(*element, visited),
-            TypeConnective::Instantiation { .. } | TypeConnective::Cardinality { .. } => Ok(false),
+            // For user-defined Conj/Disj/Instantiation/Cardinality
+            // types without an explicit TypeRealization, conservatively
+            // return false. The emitter derives `#[derive(Clone, Debug)]`
+            // (not Copy) on user-defined types, so recursing through the
+            // algebra and reporting "all leaves are Copy → composite is
+            // Copy" mismatches the emitted Rust and produces use-after-
+            // move errors. The cycle guard above still applies if a
+            // future user-defined type recursively contains itself.
+            TypeConnective::Conj { .. }
+            | TypeConnective::Disj { .. }
+            | TypeConnective::Instantiation { .. }
+            | TypeConnective::Cardinality { .. } => Ok(false),
             _ => Ok(false),
         }
     }
