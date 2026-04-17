@@ -48,14 +48,15 @@ type CleanEmissionContract {
   imports: ImportRule
   block_return: BlockReturnRule
   variable_bindings: VariableBindingRule
-  struct_fields: StructFieldRule
   match_arm_body: MatchArmBodyRule
   correction_style: CorrectionStyle  // from DB-1
   post_emit_verifier: PostEmitVerifier
 }
 ```
 
-Nine fields cover the warning categories observed in the current codebase plus extensibility. Each field is a typed rule enum, not a boolean.
+**Eight fields.** Each is a typed rule enum covering a constructive rendering concern — how to shape emitted code so it doesn't trigger a warning by construction. Dead-code / struct-visibility is explicitly NOT in the contract (removed per codex feedback on PR #491); it's a separate publicity concern.
+
+**Framing the E-5 universal claim**: E-5 means ***"no escape hatches"*** — NOT "we've already covered every warning category." The 8 rules cover the warning classes currently observed. As new targets surface new warnings (Verilog's unused-regs, Python's import-star, etc.), the contract GROWS with a new typed rule — it does NOT grow with `#[allow(...)]` / `# noqa` / pragma suppression. Growth is structural (new rule type + new dispatch point in the walker); suppression is forbidden.
 
 ### Rule type definitions
 
@@ -125,18 +126,13 @@ type VariableBindingRule
 
 Rust: `EmitUnderscoreWhenUnused`. Python: `EmitUnderscoreWhenUnused` (convention: prefix underscore). Go: compile error on unused — emitter MUST reference or use `_ =` assignment. SPICE: N/A (all values are named). English: N/A.
 
-#### StructFieldRule (handles `dead_code` on emitted structs)
+#### (Removed) StructFieldRule
 
-```dag
-type StructFieldRule
-  = EmitAllDeclaredFields         // current — emit every field regardless of use
-  | EmitOnlyConstructed            // emit fields only when a constructor mentions them (risky)
-  | AllowAttributeOnStructDecl     // add `#[allow(dead_code)]` on emitted structs used only as constructors
-```
+**Dead-code on emitted structs is NOT an E-5 concern.** Reviewer (codex on PR #491) correctly identified that `StructFieldRule::AllowAttributeOnStructDecl` treats a target-context symptom as part of the emission contract, when it's actually a visibility/publicity concern.
 
-Rust: `AllowAttributeOnStructDecl` — targets the specific case where a struct is constructed in test code and its fields are only sometimes read. Python: N/A (dataclasses don't warn). Go: `EmitAllDeclaredFields` (Go doesn't warn on unused struct fields). SPICE / Verilog / English: N/A.
+Removed from E-5. The clean-emission invariant covers **constructive rendering rules** — how to SHAPE emitted code so it doesn't trigger warnings by construction. `#[allow(dead_code)]` is suppression, which is what E-5 forbids.
 
-**Note**: `AllowAttributeOnStructDecl` is the one place the invariant admits a target-native attribute (`#[allow(dead_code)]` in Rust). This is NOT a workaround — it's the Rust-idiomatic way to declare "this struct is public API; field consumption varies." The contract declares WHEN to emit the attribute (only on structs that are publicly emitted). The E-5 invariant still holds: emitted code passes the verifier by construction; the attribute is part of construction, not a suppression.
+The real fix for dead-code on emitted structs lives in a separate concern: a **publicity declaration** on the struct (is this struct's field set part of a public API boundary? is it used only internally?). That's separate design work deferred until a concrete use case demands it. Meanwhile, emitted test wrappers may carry targeted `#[allow(dead_code)]` in the wrapper code itself — explicitly, in one place, not baked into every struct via `CleanEmissionContract`.
 
 #### MatchArmBodyRule (handles `unused_parens around match arm expression`)
 

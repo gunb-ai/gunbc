@@ -27,29 +27,31 @@ Lane 3 closes all three.
 
 ## Stages
 
-### Stage 3a — M2 feature parity for compiler.dag (1.5 weeks)
+### Stage 3a — M2 feature parity for compiler.dag (3 weeks, 5 sub-stages)
 
-**Scope:** the surface features `compiler.dag` needs that v3 doesn't yet have.
+**Scope:** five surface-language / substrate extensions `compiler.dag` needs.
 
-From ROADMAP.md §M2 + Half B B13 deferral:
-- **Mutual recursion → Loop** (SELF_HOSTING §2.4, design locked in [DB-9](./design-mutual-recursion-lowering.md)). Compiler pipelines (parse → lower → infer → emit) are structurally mutually recursive across modules.
-- **`data` value semantics** — `data foo: Type = value` as structural value declarations. Today parsed but semantics incomplete for generic `data`.
-- **`where` refinement predicates** — `fn f(x: Int where x > 0)`. Needs refinement carrier on Port types + Branch-boundary verification.
-- **Full surface generics** — implicit generic inference (Prereq 0.5) covers inference; explicit surface generics `fn f<T>(x: T) -> T` for compiler code.
-- **Transport declarations** — compiler-internal services (parser, emitter) need transport-compatible calling conventions.
-- **Dotted-path access to `Disj` variants** (Half B B13 deferral). Currently the `.dag` parser supports dotted-path access only for `Conj` fields (`record.field`). Half B needed `enum.variant.field` access for typed Python pattern emission but had to defer because the parser rejects it. Stage 3a wires this: parser extension + lowering to field-access on variant payload.
+**Why 3 weeks, not 1.5:** director review (PR #491) correctly flagged 1.5 weeks as unrealistic. Several of these are multi-week historically. Split into sub-stages with honest per-feature budgets:
 
-Each feature has a tightly-scoped acceptance:
+| Sub-stage | Time | Scope | Design doc |
+|---|---|---|---|
+| 3a.1 | 1.5 weeks | Mutual recursion → `MutualLoop` substrate variant + SCC detection pass + cluster descent verification. Substrate gap proven in DB-9. | [DB-9](./design-mutual-recursion-lowering.md) |
+| 3a.2 | 0.5 week | `data` value semantics: `data foo: Type = value` as structural value declarations accessible at emission | (written at start of 3a.2) |
+| 3a.3 | 1 week | `where` refinement predicates: `fn f(x: Int where x > 0)`. Needs refinement carrier on Port types + Branch-boundary verification. Not trivial. | (written at start of 3a.3) |
+| 3a.4 | 0.5 week | Full surface generics: explicit `fn f<T>(x: T) -> T` syntax for compiler code (Prereq 0.5 covers inference; 3a.4 is surface/lowering) | (written at start of 3a.4) |
+| 3a.5 | 0.5 week | Disj dotted-path parser extension: `match opt { Some(s) => s.field }` — unblocks Half B B13 | (written at start of 3a.5) |
 
-| Feature | Acceptance test |
+**Acceptance per sub-stage:**
+
+| Sub-stage | Acceptance test |
 |---|---|
-| Mutual recursion | `fn a(n: Int) -> Int = if n == 0 then 0 else b(n - 1)` + `fn b(n: Int) -> Int = if n == 0 then 0 else a(n - 1)` compiles, both marked as `MutualLoop` per DB-9 |
-| `data` value semantics | `data answer: Int = 42` + `data config: Config = { ... }` compile, values accessible at emission |
-| `where` refinement | `fn div(n: Int, d: Int where d != 0) -> Int` — compile-time rejection of `div(1, 0)` |
-| Surface generics | `fn id<T>(x: T) -> T` — compiles with explicit type param |
-| Disj dotted-path | `match opt { Some(s) => s.field, None => ... }` parses and lowers — unblocks Half B's B13 |
+| 3a.1 Mutual recursion | `fn a(n: Int) -> Int = if n == 0 then 0 else b(n - 1)` + `fn b(n: Int) -> Int = if n == 0 then 0 else a(n - 1)` compiles, both marked as `MutualLoop`; `fn a(n) = b(n); fn b(n) = a(n)` fails with cluster termination diagnostic |
+| 3a.2 `data` value semantics | `data answer: Int = 42` + `data config: Config = { ... }` compile, values accessible at emission |
+| 3a.3 `where` refinement | `fn div(n: Int, d: Int where d != 0) -> Int` — compile-time rejection of `div(1, 0)` |
+| 3a.4 Surface generics | `fn id<T>(x: T) -> T` — compiles with explicit type param |
+| 3a.5 Disj dotted-path | `match opt { Some(s) => s.field, None => ... }` parses and lowers — unblocks Half B's B13 |
 
-**Escalation:** each sub-feature has its own failure mode. If mutual recursion needs a substrate extension to represent SCC (strongly-connected-component) binds, surface — that's a legitimate substrate gap, not a Loop pattern hack.
+**Escalation:** if any single sub-stage exceeds +25% of its budget, stop and escalate. Don't silently absorb; each sub-stage is individually sized to give real overrun signal.
 
 ### Stage 3b — Diagnostics as corrections (1 week)
 

@@ -12,15 +12,94 @@
 
 Today v3 supports single recursion: `fn f(n) = ...f(n-1)...`. The substrate represents this as a `Loop` node with structural descent evidence (n → n-1).
 
-`compiler.dag` (and many real programs) needs **mutual recursion**: `fn a(n) = ...b(n-1)...; fn b(n) = ...a(n-1)...`. Functions call each other with the call graph forming a cycle. SELF_HOSTING.md §2.4 identifies this as a blocker.
+`compiler.dag` (and many real programs) needs **mutual recursion**: `fn a(n) = ...b(n-1)...; fn b(n) = ...a(n-1)...`. Functions call each other; the call graph forms a cycle.
 
-The substrate has no current way to represent a mutually-recursive cluster. Each function's body is a separate Bind; the call edge from `a → b → a` crosses Bind boundaries. The termination checker needs to treat the whole cluster (the **SCC** — strongly connected component) as one structural-descent target.
+**Reviewer concern (codex, PR #491):** *"Stage 3a is optimizing for SCC convenience before proving the existing recursion substrate cannot carry the cluster fact. Rerun the terminal-Behavior stop signal and record why Loop/Bind cannot express mutual-recursion descent before committing to MutualLoop."*
 
-This design specifies:
-- How to detect mutually-recursive clusters (SCC computation)
-- What substrate representation the cluster lowers to
-- How structural descent evidence is carried
-- How emission handles mutually-recursive functions in Rust/Go/Python
+Fair. Section below proves the substrate gap before proposing the extension.
+
+---
+
+## Substrate-gap proof: why existing Behavior variants cannot carry mutual recursion
+
+Existing Behavior variants: `Value`, `Transform`, `Branch`, `Loop`, `Bind`. We need to show each cannot represent a mutually-recursive cluster `{a, b}` where `a` calls `b(n-1)` and `b` calls `a(n-1)`, with the termination checker able to verify both calls decrease structurally on a shared parameter position.
+
+### Attempt 1: Encode as two separate `Bind` nodes (status quo)
+
+```
+Bind(a) { body: ... call_transform(b, n-1) ... }
+Bind(b) { body: ... call_transform(a, n-1) ... }
+```
+
+The substrate allows this structurally — two Binds whose bodies reference each other. But:
+
+- **Termination checker failure**: the per-Bind check asks "does `a(arg)` call itself with a structurally smaller arg?" `a` doesn't call itself directly; it calls `b`. No local self-recursion means the per-function check passes vacuously, missing the cycle.
+- **Cluster descent invariant cannot be expressed**: `a`'s descent witness is independent of `b`'s. There's no place in the substrate to say "these two Binds share a descent witness across intra-cluster calls."
+- **Consequence**: `fn a(n) = b(n); fn b(n) = a(n)` compiles today because each function's check is local and passes vacuously. **Non-terminating program slips through.** This IS the failure mode the thesis's "termination is inescapable" claim forbids.
+
+**Stop signal**: attempt 1 fails. The substrate cannot represent shared cluster descent.
+
+### Attempt 2: Encode as one `Loop` node with a sum-type dispatch body
+
+Rewrite `{a, b}` as a single Loop node whose body is a Branch that dispatches on a synthetic "current function" variant:
+
+```
+Loop {
+  source: ...
+  init: ...
+  body: Branch {
+    input: synthetic_function_tag
+    paths: [
+      Path { pattern: "a" => ...call_body_of_a_that_tail_calls_b... }
+      Path { pattern: "b" => ...call_body_of_b_that_tail_calls_a... }
+    ]
+  }
+}
+```
+
+Termination check: Loop's existing descent check on `source → init` works — the shared parameter decreases per iteration. Call sites get converted to variant tag flips.
+
+But:
+
+- **Function identity destroyed**: at emission, the user's `fn a` and `fn b` become ONE function with an internal dispatch. Callers outside the cluster that invoked `a(5)` now invoke `run_cluster(Tag::A, 5)`. Rust/Go/Python emission has to reconstruct the separate `fn a`, `fn b` names from the synthetic tag — every intra-cluster call becomes a dispatch-on-variant match at runtime.
+- **Calling convention broken**: external callers expected `fn a(Int) -> Int`; they'd now need `fn run_cluster(Tag, Int) -> Int`. Renaming every external caller = not mechanical.
+- **Consequence**: this representation is correct *in principle* (it does terminate and does compute the same values) but is **incompatible with the target languages' function identity**. Rust's mutually-recursive functions emit as two `fn` definitions; forcing a single-dispatch function is a representation mismatch with the target.
+
+**Stop signal**: attempt 2 fails. It satisfies termination but destroys function identity at the emission boundary — which Rust/Go/Python all preserve naturally. The substrate would be lying about the program shape.
+
+### Attempt 3: `Loop` with call-graph annotation on each Bind
+
+Keep two Binds; add a `loop_cluster_id: NodeId?` annotation on each Bind indicating cluster membership:
+
+```
+Bind(a) { loop_cluster_id: Some(cluster_0), body: ... }
+Bind(b) { loop_cluster_id: Some(cluster_0), body: ... }
+```
+
+Termination checker reads annotations to identify cluster members.
+
+But:
+
+- **Annotation is derivable**: SCC detection on the call graph IS what determines cluster membership. Storing it as an annotation on each Bind is storing the RESULT of the detection, not the fact. Any Bind membership change (e.g., a call added/removed) invalidates the annotation silently.
+- **Single authority violated**: now there are TWO authorities for cluster membership — the call graph (implicit) and the annotation (explicit but derived). If they disagree, which wins?
+- **Still can't express shared descent witness**: each Bind annotation says "I'm in cluster X" but nowhere does the substrate say "cluster X's shared descent witness is parameter position K." That fact needs its own home.
+
+**Stop signal**: attempt 3 fails. It introduces parallel authority AND still doesn't carry the shared descent witness.
+
+### Conclusion: substrate gap is real
+
+No existing Behavior variant can:
+1. Carry the shared descent witness across a cluster of Bind bodies
+2. Preserve per-function identity at emission
+3. Enforce termination through cluster-wide verification (vs per-function vacuous checks)
+
+All three requirements exceed what `Value`, `Transform`, `Branch`, `Loop`, `Bind` individually or in composition can express. MutualLoop IS a genuine substrate extension, not a convenience.
+
+---
+
+## Design (original, now with substrate-gap proof above)
+
+The substrate gap is real, so we add a new Behavior variant. Details below.
 
 ---
 

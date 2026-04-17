@@ -83,6 +83,8 @@ Lens reads each operation's declared `idempotent` modifier AND derives from path
 
 ### Stage 2c — Test obligation materialization (1 week)
 
+> **Load-bearing for Lane 2's acceptance.** Stage 2c is the bridge between "compile-time proof" and "we can demonstrate the proof." If 2c slips or gets descoped, Lane 2's acceptance gate degrades from *"compile-time-enforced + runtime-validated"* to *"compile-time-enforced only"* — the thesis claim that idempotency is "inescapable" weakens because we can't point at runnable tests proving it. Implementer must not silently descope this stage; if it needs more time, escalate per the plan's escalation protocol.
+
 **Scope:** `generate_idempotency_obligations` today returns `List<IdempotencyTestObligation>`. Today nothing consumes it. L2c wires it to actual emitted tests.
 
 For each idempotent op, emit (via Lane 1e's generic walker):

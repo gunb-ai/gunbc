@@ -63,9 +63,27 @@ type Diagnostic {
 - `new_source` is the literal text that replaces `span`'s range. No markup, no placeholders.
 - `target_language` is `None` for source-level fixes (most common). `Some(TargetLanguageId)` for target-specific fixes (e.g., "add `async` keyword" in async Rust mode).
 
+### Future extension: TargetCorrection (out of scope for DB-1)
+
+If a future consumer needs target-language fixes (e.g., "the emitted Rust has a lint; here's the Rust fix"), introduce a separate carrier:
+
+```dag
+// Hypothetical — NOT in scope for DB-1
+type TargetCorrection {
+  description: String
+  target: TargetLanguageId        // Rust / Go / Python / ...
+  target_span: TargetFileSpan     // DIFFERENT from SourceSpan;
+                                   // identifies a location in the
+                                   // emitted file, not the .dag source
+  new_target_source: String       // target-language syntax, not .dag
+}
+```
+
+Location model is genuinely different (emitted file path, line/col in that file, regenerated-on-every-compile identity). Replacement text is in the target language. Deferred until concrete use case.
+
 ### Correction style per target
 
-Different targets format corrections differently. Rust fixes need certain indentation rules; Python differs.
+The per-target style covers how the IDE surfaces the source-level fix (e.g., rustfmt re-run after applying the fix for smart reformat) — NOT target-language syntax for the fix. Fixes themselves are always `.dag`-source edits.
 
 Add to each target spec (extends Lane 1 Stage 1c's `CleanEmissionContract`):
 
@@ -147,13 +165,11 @@ Diagnostic {
       description: "did you mean `p.a`?"
       span: <p.c span>
       new_source: "p.a"
-      target_language: None
     }
     Correction {
       description: "did you mean `p.b`?"
       span: <p.c span>
       new_source: "p.b"
-      target_language: None
     }
   ]
 }

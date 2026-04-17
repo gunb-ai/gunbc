@@ -54,6 +54,14 @@ plus an `INVARIANTS.md` entry.
 > source code that passes T's declared clean-code verifier without
 > modification. Violations are emission bugs, not formatting
 > differences.
+>
+> **What "no escape hatches" means:** the contract GROWS by adding
+> typed rules to `CleanEmissionContract` when new warning categories
+> are encountered. It does NOT grow by adding `#[allow(...)]` /
+> `# noqa` / pragma suppression. E-5's commitment is to
+> constructive emission, not "we've already covered every
+> category" — new targets will surface new categories, and each
+> lands as a structural rule, not a silenced warning.
 
 Per-target spec extension:
 

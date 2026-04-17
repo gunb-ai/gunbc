@@ -14,12 +14,14 @@ Three load-bearing claims in THESIS.md. Working backward, each claim has a gap b
 
 | Thesis claim | Current gap | Lane that closes it |
 |---|---|---|
-| *"Emission is mechanical translation. Adding a new target = one spec file."* | Three hand-written per-target Rust emitters (emit_rust.rs 3600+ lines, emit_go.rs, emit_python.rs). Substrate exposes `Dag.ports`/`Dag.nodes` as linear lists, forcing every lens to reinvent `find_port`/`find_behavior`. Targets beyond Rust/Go/Python (Verilog, SPICE, English) named in architecture.md but zero code. | **Lane 1: Emission unification** |
+| *"Emission is mechanical translation. Adding a new Shape A target = one spec file."* | Three hand-written per-target Rust emitters (emit_rust.rs 3600+ lines, emit_go.rs, emit_python.rs). Consumers reach for linear-list walks over `Dag.ports`/`Dag.nodes`. Adding a fourth Shape A programming-language target today costs a fourth per-language `.rs` file. | **Lane 1: Emission unification** |
 | *"Correctness is many orthogonal dimensions… inescapable like conservation laws."* | Termination ✓ and structural cost ✓ proven at compile time. Idempotency **declared** in `dsl/std/effects.dag` with 16 v2 tests but **compiler consumption not wired** (THESIS.md:1291). Symbolic bounds, parallelism-as-diagnostic both declared as "NOT YET IMPLEMENTED". | **Lane 2: Compile-time proofs** |
 | *"Causal engine. The compiler describes itself in .dag and is its own first consumer."* | Compiler is ~97% hand-written Rust sketch. `compiler.dag` exists (PR #418) but emit → compile → emit fixed-point not wired. Diagnostics explain in compiler-internal vocabulary, not user-pasteable corrections. Mutual recursion, `data` semantics, `where` refinement still block self-describing compiler. | **Lane 3: Self-hosting cycle** |
 | *(tail obligations not cleanly derived from a single claim)* | Transport declarations, `dag run` interpreter, side effects as a compile-time dimension, space bounds as a compile-time dimension, async emission modeling. None fit Lanes 1–3's themes but all are thesis obligations. | **Lane 4: Completion layer** |
 
 The four lanes exhaust the thesis. When all complete, gunbc cashes out its claim: one source, provably correct across every declared dimension, self-describing, executable through declared transports. There is no post-plan backlog.
+
+**Shape B artifacts are explicitly out of scope** (SPICE netlists, Verilog, English docs, YAML, Terraform, K8s manifests, SQL schemas, etc.). Per THESIS.md §"Two shapes of omni-emission," these are outputs produced by `.dag` PROGRAMS using ordinary `concat`/`fold`/`match` operations — NOT compiler emission targets. A user writing a SPICE emitter writes a `.dag` library; the compiler's job is to compile that library to Rust/Go/Python so its users can invoke it. Enlarging the compiler core to know about Shape B formats is a category error.
 
 ---
 
@@ -38,9 +40,11 @@ Six internal stages. Each builds on the previous:
 | 1c | 1 week | Clean-emission invariant E-5: `CleanEmissionContract` per-target spec, pilot with unused pattern bindings | [phase1-lane2-clean-emission-invariant.md](./phase1-lane2-clean-emission-invariant.md) |
 | 1d | 1 week | Consolidation build plan: function inventory, spec gaps, bridge inventory, pilot target choice | [phase1-lane3-consolidation-build-plan.md](./phase1-lane3-consolidation-build-plan.md) |
 | 1e | 2 weeks | Consolidation execution: dissolve emit_rust.rs/go.rs/python.rs into one generic walker + per-target specs | (written at start of 1d, after build-plan locks design) |
-| 1f | 1 week | New targets as smoking gun: add Verilog + SPICE + English — each is ONE spec file, zero new Rust | (written at end of 1e, sized by what consolidation actually shipped) |
+| 1f | 1 week | Consolidation proof: re-emission of Rust/Go/Python through the walker produces bit-identical output to current per-language emitters. Optional: add one additional Shape A language (another programming language, e.g. Swift/Kotlin) to prove "one new target = one spec file" | (written at end of 1e, sized by what consolidation actually shipped) |
 
-**Acceptance:** `grep -r "fn render_" src/v3/compiler/src/` returns zero target-specific matches; every current target + three new ones (Verilog, SPICE, English) roundtrip through a single generic walker; zero `#[allow(warnings)]` attributes anywhere; adding a fourth new target requires no Rust changes.
+**Acceptance:** `grep -r "fn render_" src/v3/compiler/src/` returns zero target-specific matches; Rust, Go, Python all roundtrip through a single generic walker with bit-identical output to pre-consolidation; zero `#[allow(warnings)]` attributes anywhere.
+
+**Not in scope for Lane 1** (per THESIS.md §"Two shapes of omni-emission"): SPICE netlists, Verilog hardware descriptions, English documentation, YAML, Terraform, etc. These are **Shape B artifacts** — outputs of `.dag` PROGRAMS, not compiler emission targets. Writing a SPICE-netlist emitter is writing a `.dag` library, which any user program can invoke. Compiler core stays focused on Shape A (programming languages).
 
 ### Lane 2 — Compile-time proofs (~4 weeks, overlaps Lane 1 from week 3)
 
@@ -69,7 +73,7 @@ Three stages. This is M2 feature parity + diagnostics-as-corrections + the self-
 
 | Stage | Time | Scope |
 |---|---|---|
-| 3a | 1.5 weeks | M2 feature parity blockers for `compiler.dag`: mutual recursion → Loop (SELF_HOSTING §2.4), `data` value semantics, `where` refinement predicates, full surface generics |
+| 3a | 3 weeks (split into 5 sub-stages) | M2 feature parity for `compiler.dag`. Budget covers **design + implementation** for five substrate/surface extensions; 1.5 weeks was original estimate but reviewer correctly flagged as unrealistic. Split: 3a.1 mutual recursion (0.5w design + 1w impl, via DB-9), 3a.2 `data` value semantics (0.5w), 3a.3 `where` refinement (1w), 3a.4 surface generics (0.5w), 3a.5 Disj dotted-path parser extension (0.5w, unblocks Half B B13). See [lane3 design](./lane3-self-hosting-cycle.md) |
 | 3b | 1 week | Diagnostics-as-corrections: every diagnostic carries `fix: List<Correction>` with literal code. Per-target fix syntax declared in spec (same `CleanEmissionContract` surface as Lane 1c — Rust fix syntax, Python fix syntax, etc.) |
 | 3c | 1.5 weeks | Self-hosting cycle: `compiler.dag` → Lane 1e emitter → Rust → `rustc` → v3_compiler binary. Fixed-point ratchet: re-emit is bit-identical. `cargo run --bin self-host-fixed-point` is a CI gate |
 
@@ -101,12 +105,14 @@ Full design doc: [lane4-completion.md](./lane4-completion.md)
 ## Sequencing (Gantt)
 
 ```
-Week:      1    2    3    4    5    6    7    8    9   10   11   12   13   14
+Week:      1    2    3    4    5    6    7    8    9   10   11   12   13   14   15
 Lane 1:  [1a] [1b] [1c] [1d] [       1e (2w)      ] [1f]
 Lane 2:             [2a] [     2b    ] [2c] [2d] [2e] [2f]
-Lane 3:  [    3a     ] [3b] [               wait             ] [      3c     ]
-Lane 4:                                                         [   4a   ] [4b] [4c] [4d]
+Lane 3:  [          3a (3 sub-stages)           ] [3b] [     wait    ] [  3c  ]
+Lane 4:                                                          [   4a   ] [4b] [4c] [4d]
 ```
+
+Plan total extends to ~15 weeks with Stage 3a honestly sized. Critical path is now `1a → 1b → 1c → 1d → 1e → 3c`, ~10 weeks. Stage 3a runs in parallel with Lane 1 throughout.
 
 Week-by-week view:
 
@@ -130,8 +136,8 @@ Week-by-week view:
 ### Hard dependencies
 
 ```
-1a → 1b, 1c, 1d, 3a (clean repo state)
-1b → 2a, 2b, 2c, 2d, 2e (Lane 2 reads keyed accessors)
+1a → 1b, 1c, 1d (Lane 1 internal chain)
+1b → 2a, 2b, 2c, 2d, 2e (Lane 2 reads substrate accessors)
 1c → 3b (corrections share CleanEmissionContract surface)
 1d → 1e (build plan gates execution)
 1e → 1f, 3c, 4d (consolidated walker needed downstream)
@@ -139,6 +145,8 @@ Week-by-week view:
 2f → 4b, 4c (Dimension framework extends for side effects, space bounds)
 2b–2e → 2f (user-dim abstraction generalizes over the concrete lenses)
 ```
+
+**Note on 1a ↔ 3a**: Stage 3a (M2 feature parity) is *soft-coupled* to 1a (L1.5 tail), not hard-dependent. 3a CAN start Week 1 in parallel with 1a if implementer slots allow; the Gantt reflects this. Hard dep would be if 3a needed the post-1a repo state; it doesn't — 3a touches parser/lowering/substrate, 1a touches test cleanup and a renderer path.
 
 ### Design blockers (all resolved — design docs ready for implementer review)
 
@@ -233,7 +241,7 @@ Each lane has its own design doc with per-stage escalation criteria. Universal r
 
 A concrete test for "did we finish":
 
-- [ ] One `.dag` source compiles to Rust, Go, Python, Verilog, SPICE, and English with one `cargo run` invocation
+- [ ] One `.dag` source compiles to Rust, Go, Python through one generic walker + per-target specs; adding a fourth Shape A programming language requires one spec file, zero new Rust
 - [ ] Zero `#[allow(warnings)]` attributes in the codebase
 - [ ] Zero per-language emit files (`emit_X.rs` does not exist)
 - [ ] Zero lens-local lookup helpers (every lens reads from substrate accessors)
