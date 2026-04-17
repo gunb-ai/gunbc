@@ -764,8 +764,12 @@ consumers — the primitives without consumers would be decorative).
 |---|---|---|---|
 | `NonEmptyList<T>` | List with cardinality ≥ 1 by type shape | `Cluster.intra_cluster_calls` (DB-9 R2.1) | Any substrate set whose definition forbids emptiness |
 | `NonSingletonList<T>` | List with cardinality ≥ 2 by type shape | `Cluster.members` (DB-9 R2.1) | Any substrate set requiring a distinct pair (mutual-recursion clusters, binary-relation carriers) |
-| `ArityIndex` | Typed newtype over NonNegativeInt, paired with arity-bearing carrier | `MemberDescent.position` (DB-9 R2.1) | `IndexedElement<T>.index` in `src/v3/std/list.dag` |
+| `ParamRef` | Typed opaque handle to a specific formal parameter of a specific Bind; sole producer `param_of(member, slot) -> ParamRef?` fails closed for non-Bind members and out-of-arity slots | `MemberDescent.param` (DB-9 R2.1) | Any substrate record that today pairs `member: NodeId` with `position: Int` + "position must be valid for member" prose |
 | `TransformRef` | Typed newtype over NodeId, statically witnesses `Behavior::Transform` | `IntraClusterCall.transform` (DB-9 R2.1) | Any substrate handle that today carries raw `NodeId` + "must be a Transform" prose |
+
+**Pattern.** `ParamRef` and `TransformRef` are the same shape applied to two different authoritative carriers ("parameter list of a Bind" / "Behavior variant of a NodeId"). `IndexedElement<T>.index: Int` in `src/v3/std/list.dag` is the planned follow-up — it fits the same pattern ("position in *this* list") and would graduate into an `ElementRef<T>` handle whose constructor is `element_of(list, slot) -> ElementRef<T>?`. Deliberately **not** pre-declared in Track 9 today: the handle lands when a concrete consumer needs it, not speculatively.
+
+**Rejected as a standalone primitive.** `ArityIndex` (typed newtype over non-negative integer). It graduates only *non-negativity* into the type; the member-relative bound remains outside the shape, so any consumer pairing `ArityIndex` with a carrier NodeId still has to check "index is valid for this carrier" at its own constructor — the exact "enforced by construction" anti-pattern Track 9 exists to dissolve. `ParamRef` folds the relation into the handle. `ArityIndex` may exist as an *input* to `param_of`, but not as a stored substrate field.
 
 **Status:** 🟡 Design — proposed in `docs/design-mutual-recursion-lowering.md`
 (DB-9 R2.1). Declarations land with the DB-9 implementation PR.
