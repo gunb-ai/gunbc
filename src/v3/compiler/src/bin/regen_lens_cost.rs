@@ -20,18 +20,25 @@ fn main() {
     let combined = format!("{HEADER}{raw}");
 
     let mut child = Command::new("rustfmt")
-        .arg("--emit").arg("stdout")
+        .arg("--emit")
+        .arg("stdout")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
         .expect("spawn rustfmt");
-    child.stdin.as_mut().unwrap().write_all(combined.as_bytes()).unwrap();
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(combined.as_bytes())
+        .unwrap();
     let output = child.wait_with_output().expect("rustfmt");
     assert!(output.status.success(), "rustfmt failed");
     let formatted = String::from_utf8(output.stdout).expect("utf8");
 
     let out_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("src").join("lens_cost_generated.rs");
+        .join("src")
+        .join("lens_cost_generated.rs");
     std::fs::write(&out_path, &formatted).expect("write lens_cost_generated.rs");
     println!("wrote {}", out_path.display());
 }
