@@ -25,10 +25,11 @@ substrate fields.
 | **M1(3)** First downstream consumer (PR-B) | ✅ Landed on PR #445 | The first v3 emitter pipeline ran end-to-end: `compile_to_dag("let x: Int = 1 + 2") → emit_rust → rustc → execute → "3"`. Substrate additions: `ValueBody::Structural { fields: Vec<(String, LiteralBits)> }` for record-literal data bodies, `SurfaceExpr::Record` parser support, `lower_record_to_structural` inhabitance check (walks the type's Conj, fail-closed on extras / missing / wrong-type fields), `src/v3/spec/rust.dag` as the first extdeps fixture in production bootstrap (declaring `Realization` + 18 `data rust_*` items covering primitives, operators, and structural templates). New lenses + emitter: `lens_cost.rs` (third pure-reader lens, ~80 lines, follows the lens_depth/lens_provenance template), `emit_rust.rs` (~340 lines, builds a `(target_name, op_name) → carrier` index from rust.dag declarations and walks the DAG translating per Behavior). End-to-end roundtrip test gated behind `#[ignore]` so CI doesn't depend on a Rust toolchain. **Current: 41 M0 + 35 M1 substrate + 6 lens_cost + 7 emit_rust + 7 real-stdlib parse smoke + 1 realization smoke = 97 green.** |
 | **L1** Reflection framework | ✅ Complete | PR #466 merged 2026-04-16. All prereqs shipped: Prereq 0 (HoF, #460), Prereq 0.5 (implicit generics, #466), Prereq 1 (FieldProject, #458), Prereq 2 (Path.binding, #458), Prereq 3 (contextual lambda, #460), Prereq 4 (list.dag bootstrap, #463), Prereq 5 (pipe sugar, #462). substrate.dag reflects Dag/Behavior/Declaration types. First lens migration (unused_parameters.dag) compiles, matches handwritten oracle, self-analyzes to zero. Optional-handle support (T? with Some/None) landed. Module-mode emission + crate-linked roundtrip proven. |
 | **L1.5** Clean bootstrap | 🟡 In progress (2026-04-16) | Test authority types (#474 ✅), ownership Phase 1 / 72→6 clones (#475 ✅), dependency+rendering design doc (#477 ✅). **Remaining:** pipeline composition declaration + fixed-point regen (#476 — PAUSED pending Option B authority migration: pipeline.dag becomes live authority, Rust derives from it). Ownership Phase 2 (→ clone count 1) and multi-target validation (go.dag) queued as parallel tracks. See `SELF_HOSTING.md` §2, §11, §14 and `docs/dependency-and-rendering-design.md`. |
-| **M1(4)** Multi-target emission | ⏸ Deferred | Add `go.dag` / `python.dag` as parallel extdeps fixtures and parallel `emit_go` / `emit_python` walks reusing PR-B's RealizationIndex pattern. Validates the thesis claim "add a new emission target = one spec-file edit." |
-| **M2** Feature parity | ⏸ Partially complete | Generics in user code: ✅ (Prereq 0.5). Match in user code: ✅ (M1(2.8) + Prereq 2). List operations: ✅ (Prereq 4, structural List<T>). Recursion → Loop: ✅ (numeric descent). **Remaining:** transport declarations, interpreter (`dag run`), mutual recursion → Loop (§2.4), `data` value semantics, `where` refinement, full surface generics. |
-| **M3** Self-hosting | ⏸ Deferred | `.dag` rewrite of the compiler. Design: `SELF_HOSTING.md`. |
-| **M4** Thesis completion | ⏸ Deferred | All lenses, verification, omni-emission. |
+| **Post-A/B** Lane Plan | 🟡 Planned (2026-04-17) | Four major lanes derived backward from THESIS.md claims, sixteen stages total (per-stage t-shirt sizes S/M/L/XL), **no backlog** — every open thesis obligation is placed in a lane. Master: [post-l15-phase-plan.md](../../docs/post-l15-phase-plan.md) (includes sequencing + dependency graph). Lane 1 (emission unification): [lane1-stage-b-substrate-keyed-lookup.md](../../docs/lane1-stage-b-substrate-keyed-lookup.md), [phase1-lane1-l15-tail.md](../../docs/phase1-lane1-l15-tail.md), [phase1-lane2-clean-emission-invariant.md](../../docs/phase1-lane2-clean-emission-invariant.md), [phase1-lane3-consolidation-build-plan.md](../../docs/phase1-lane3-consolidation-build-plan.md). Lane 2 (compile-time proofs): [lane2-compile-time-proofs.md](../../docs/lane2-compile-time-proofs.md). Lane 3 (self-hosting cycle): [lane3-self-hosting-cycle.md](../../docs/lane3-self-hosting-cycle.md). Lane 4 (completion): [lane4-completion.md](../../docs/lane4-completion.md). |
+| **M1(4)** Multi-target emission | ⏸ Absorbed into Lane 1 | Originally planned as parallel `emit_go` / `emit_python` walks. Lane 1 consolidates all emitters into a single generic walker + per-target specs, then adds Verilog + SPICE + English as the smoking-gun. "One file per target" framing inverted: each target is one spec file, zero new Rust. |
+| **M2** Feature parity | ⏸ Absorbed into Lane 3 Stage 3a | Generics in user code: ✅ (Prereq 0.5). Match in user code: ✅ (M1(2.8) + Prereq 2). List operations: ✅ (Prereq 4, structural List<T>). Recursion → Loop: ✅ (numeric descent). **Remaining:** transport declarations, interpreter (`dag run`), mutual recursion → Loop (§2.4), `data` value semantics, `where` refinement, full surface generics — all blockers for `compiler.dag`, sequenced in [lane3-self-hosting-cycle.md](../../docs/lane3-self-hosting-cycle.md) Stage 3a. |
+| **M3** Self-hosting | ⏸ Absorbed into Lane 3 Stage 3c | `.dag` rewrite of the compiler IS the self-hosting cycle: `compiler.dag` → Lane 1e emitter → Rust → `rustc` → identical binary. Design: [lane3-self-hosting-cycle.md](../../docs/lane3-self-hosting-cycle.md), SELF_HOSTING.md. |
+| **M4** Thesis completion | ⏸ Absorbed across Lanes 1–3 | "All lenses, verification, omni-emission" decomposes to: omni-emission = Lane 1e + 1f. Lenses = Lane 2 (idempotency, symbolic cost, parallelism, user-dimensions). Verification = Lane 3b (diagnostics-as-corrections). No longer a vague milestone — every component has an owning lane. |
 
 ## Principles
 
@@ -410,12 +411,49 @@ Full design: [`src/v3/SELF_HOSTING.md`](SELF_HOSTING.md). Key points:
   v2 20-minute self-compile prevention — non-negotiable before
   generated artifacts accumulate.
 
+## Post-A/B Lane Plan
+
+Four major lanes derived backward from the thesis, sixteen stages
+total. Per-stage sizes use S/M/L/XL t-shirts; lane totals are
+aggregate sizes, not calendar weeks. Full plan with sequencing and
+dependency graph:
+[../../docs/post-l15-phase-plan.md](../../docs/post-l15-phase-plan.md).
+
+| Lane | Size | Closes | Design doc |
+|---|---|---|---|
+| **Lane 1 — Emission unification** | XL (six stages) | "Adding a new target = one spec file, zero new Rust" | 4 stage docs, master embedded in phase plan |
+| **Lane 2 — Compile-time proofs** | XL (six stages) | "Structural properties are inescapable" (idempotency, symbolic cost, parallelism, user dims) | [lane2-compile-time-proofs.md](../../docs/lane2-compile-time-proofs.md) |
+| **Lane 3 — Self-hosting cycle** | XL (three stages, one with five sub-stages) | "Causal engine: compiler is its own first consumer" | [lane3-self-hosting-cycle.md](../../docs/lane3-self-hosting-cycle.md) |
+| **Lane 4 — Completion layer** | L (four stages) | Transport declarations, `dag run`, side effects, space bounds, async emission | [lane4-completion.md](../../docs/lane4-completion.md) |
+
+**Hard sequencing:** Lane 1 Stage 1b gates Lane 2 start. Lane 1 Stage
+1e gates Lane 3 Stage 3c and Lane 4 Stage 4d. Lane 2 Stage 2f gates
+Lane 4 Stages 4b/4c. Lane 3 Stage 3a gates Lane 4 Stage 4a. Critical
+path is six stages: `1a → 1b → 1c → 1d → 1e → 3c` (five M, one L).
+
+**Nothing is backlog.** Every item previously marked "deferred M3/M4"
+or "what NOT to build yet" is now a stage in a lane with acceptance
+gates. Including async emission.
+
+Lane 1 stages and their design docs:
+- 1a: [phase1-lane1-l15-tail.md](../../docs/phase1-lane1-l15-tail.md)
+- 1b: [lane1-stage-b-substrate-keyed-lookup.md](../../docs/lane1-stage-b-substrate-keyed-lookup.md)
+- 1c: [phase1-lane2-clean-emission-invariant.md](../../docs/phase1-lane2-clean-emission-invariant.md)
+- 1d: [phase1-lane3-consolidation-build-plan.md](../../docs/phase1-lane3-consolidation-build-plan.md)
+- 1e, 1f: written just before each stage starts, informed by what 1a–1d learn
+
+Each stage carries scope, direction, escalation criteria, and
+acceptance gates. See the master plan for sequencing details and the
+full acceptance checklist for "plan complete."
+
 ## What NOT to build yet
 
-- Generic dimension mechanism (user-defined optimization lenses)
-- Multi-target emission (start with Rust only)
-- Advanced diagnostics (Level 3 auto-fix)
-- Async/concurrent emission strategies
+- **Any fourth per-language emit file** (e.g., `emit_verilog.rs`,
+  `emit_spice.rs`). Defer all new emit targets until P2 consolidation
+  lands — each additional `emit_X.rs` makes the consolidation
+  proportionally harder. Covered in [post-l15-phase-plan.md](../../docs/post-l15-phase-plan.md) §"What NOT to do".
+- Advanced diagnostics (Level 3 auto-fix) — P4 territory.
+- Async/concurrent emission strategies.
 
 These are thesis goals that fall out when the foundation is right.
 Let them emerge.
