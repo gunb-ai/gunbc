@@ -489,6 +489,34 @@ Sub-stage status (as of 2026-04-17):
 
 **Deferral: self-compile perf ratchet investigation (M, not on any critical path but compounding).** Self-compile time drifted from ~60s to ~70s in recent cycles (~16% growth). The ratchet keeps getting bumped without a root-cause investigation; each bump normalizes the regression. Scope: (1) profile a single `cargo test -p v3-compiler-tests` run, identify the top hot paths; (2) measure where the 10s came from across recent PRs (bisect across #479, #489, #490 if signal is unclear); (3) either fix the regression or document it as an accepted cost with a new ratchet ceiling. **Yellow-flag threshold: 90s.** If self-compile exceeds that before this deferral is scheduled, it preempts other work. No design doc needed; profiling is a data-gathering exercise.
 
+### Cross-cutting — workflow scripts modeled in .dag
+
+**Deferral: model the commit pipeline in .dag (XL, thesis-coherence, not on critical path).** Hand-written shell scripts (`.githooks/pre-push` from PRs #503/#509, `scripts/install-hooks.sh`, `scripts/check-stage0-freshness.sh`, `scripts/regenerate-stage0.sh`) bypass the compiler's dependency-analysis machinery. Per the compiler-as-dependency-analyzer thesis, they should be `.dag` programs composing existing service operations (`extdeps/git.dag`, `extdeps/cargo.dag`, `extdeps/shell.dag`) and emitted as standalone shell scripts at build time.
+
+**First concrete use case:** pre-push fmt hook. It's a workflow that reads git's stdin format, detects delete/HEAD-in-push, calls `cargo fmt --all --check`, optionally calls `cargo fmt --all` + `git add -u` + `git commit`, and signals the push outcome. Every primitive operation here has a declared or plausibly-declarable service operation in extdeps.
+
+**Existing substrate to consume:**
+- `dsl/extdeps/git.dag` — `service git.Core` declares `CurrentBranch`, `RemoteBranches`, `LsFiles`, `Diff`, `RevList`, `Show` (181 lines; mock_response pattern; shell transport). Needs extensions: `RevParseHead` detailed form, stdin-as-input operations, `Commit`/`Push`/`Add`/`StatusClean` if not present.
+- `dsl/extdeps/cargo.dag` — `service cargo.Build` has `Build`/`Test`/`Clippy`/`Doc`/`Run`. **Missing `Fmt` operation (check + apply).** Small S extension.
+- `dsl/extdeps/shell.dag` — generic POSIX (`Find`, `Env`). Adequate for the hook's shell primitives.
+- `dsl/extdeps/github/` — GitHub-specific (auth, pulls, gists, actions). Not on the critical path for the hook itself but part of the broader commit-pipeline surface.
+
+**Separable prerequisite deferrals:**
+- **cargo.dag Fmt operations (S).** Add `operation FmtCheck` and `operation FmtApply` to `service cargo.Build`. Mechanical; uses existing shell transport pattern.
+- **Shell-emission target (M, needs design).** Compiler emits `.dag` programs to standalone shell scripts with an invocation contract (stdin format, env vars, exit codes). Today v3 emits Rust/Go/Python (programming languages). Shell is used as a transport but not yet as an emission target. Needs a DB that clarifies what "emit to shell" means structurally — most likely uses the E-9 pattern (shell is a target realization declared in spec) but with the output being a standalone executable text rather than a compilable source.
+- **"Hook-as-program" pattern (M, needs design).** How does a `.dag` program declare its invocation contract — "this is a pre-push hook, stdin has git refs, env has these vars, exit codes mean these things"? Probably a new DB or extension of shell emission.
+- **Test coverage via DB-15 R2.** Once DB-15 R2 lands, `MockBackedInvariant` predicates can test the compiled hook against scenarios: delete push, HEAD push with drift, cross-branch push, clean push. That's the end-to-end validation the hand-written hook never had.
+
+**Dissolution sequence once prerequisites land:**
+1. `scripts/pre-push-hook.dag` declares the workflow.
+2. Build emits `.githooks/pre-push` from the `.dag` declaration.
+3. Hand-written `.githooks/pre-push` (PRs #503 + #509) goes in §Scheduled deletions with trigger "emitted pre-push hook replaces it."
+4. Test coverage: DB-15 R2 test suite verifies behavior across the four scenarios.
+
+**Yellow-flag threshold:** triggers actively when a *second* hand-written workflow script needs the same modeling. Until then, the hand-written pre-push hook is tolerated as the one instance.
+
+**No design doc committed to yet.** This deferral tracks the intent and the prerequisite structure; a DB lands when the shell-emission design takes concrete shape (likely driven by the second use case or by self-hosting making it unavoidable).
+
 ### How the active-deferrals discipline works
 
 1. A PR that defers scope opens or appends an entry in this section with:
