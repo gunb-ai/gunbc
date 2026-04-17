@@ -5,7 +5,7 @@
 **Lane:** 1 (Emission unification)
 **Stage:** 1b (after L1.5 tail; before clean-emission invariant)
 **Size:** M (unblocked by DB-14)
-**Status:** Plan. No code changes yet.
+**Status:** Landed on PR #501 (shipped with R1/R2 shape; `docs/design-substrate-external-primitives.md` is now at R3 and the convergence will land in a follow-up per that PR's merge commit).
 
 > **Escalation update (2026-04-17).** The first overnight implementer attempt (session on `sharp-yak-750`) escalated — declaring `.dag` linear-walk bodies for the three accessors caused bootstrap pollution (every user DAG gained recursive Callable Transforms before the user's code). Attempt reverted; 1a shipped separately as PR #495. The mechanism for "declared fn with target-provided body" already exists in the substrate (`ArrowBody::ExternalRealization`) and is production-wired for the compiler's own pipeline stages (`src/v3/compiler/pipeline.dag`); the pattern just wasn't in the original 1b spec. [DB-14](./design-substrate-external-primitives.md) codifies the pattern. 1b now implements against DB-14.
 
