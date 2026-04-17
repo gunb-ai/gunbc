@@ -262,25 +262,61 @@ fn test_3a2_record_data_compiles_structural() {
 
 #[test]
 fn test_3a2_data_field_access_resolves_statically() {
-    // Acceptance: `cfg.host` inside a fn body must resolve to the
-    // record-literal field's value at compile time.
+    // Acceptance (DB-10, lowering-time inlining): `cfg.host` inside
+    // a fn body must resolve to the record-literal field's value at
+    // compile time, producing a `Value(Int(1))` node *instead of* a
+    // runtime `FieldProject` on the `cfg` declaration. Ratchets the
+    // lowering-time-inlining choice (codex review on e0b4ded2f):
+    // if `cfg.host` ever silently regressed to a field-read
+    // Transform, this would catch it.
     let src = "type Config { host: Int, port: Int }\n\
                data cfg: Config = { host: 1, port: 8080 }\n\
                fn get_host() -> Int = cfg.host";
-    match compile_to_dag(src, "test.v3") {
-        Ok(dag) => {
-            let _ = dag
-                .declaration_by_name("get_host")
-                .expect("get_host must exist");
-        }
-        Err(CompileError::Semantic(dag)) => {
-            panic!(
-                "semantic error on data field access: {}",
-                diagnostic_summary(&dag)
-            );
-        }
+    let dag = match compile_to_dag(src, "test.v3") {
+        Ok(dag) => dag,
+        Err(CompileError::Semantic(dag)) => panic!(
+            "semantic error on data field access: {}",
+            diagnostic_summary(&dag)
+        ),
         Err(other) => panic!("structural error: {other:?}"),
-    }
+    };
+    let _ = dag
+        .declaration_by_name("get_host")
+        .expect("get_host must exist");
+
+    // Must contain a Value node holding Int(1) — the inlined `host`
+    // field value from the record literal.
+    let has_value_1 = dag.nodes().iter().any(|n| {
+        matches!(
+            n,
+            v3_compiler::dag::Behavior::Value(v)
+            if matches!(&v.data, v3_compiler::dag::LiteralBits::Int(1))
+        )
+    });
+    assert!(
+        has_value_1,
+        "`cfg.host` must lower to Value(Int(1)) (inlined field); got no such node"
+    );
+
+    // Must NOT contain a FieldProject<host> Transform — that would
+    // indicate runtime field access on a data value, defeating the
+    // lowering-time inlining.
+    let has_field_project_host = dag.nodes().iter().any(|n| {
+        matches!(
+            n,
+            v3_compiler::dag::Behavior::Transform(t)
+            if matches!(
+                &t.target,
+                v3_compiler::dag::TransformTarget::FieldProject { field_label, .. }
+                    if field_label == "host"
+            )
+        )
+    });
+    assert!(
+        !has_field_project_host,
+        "`cfg.host` on a data declaration must NOT lower to a runtime \
+         FieldProject<host> Transform; the literal must be inlined at compile time"
+    );
 }
 
 // =================================================================
