@@ -1,0 +1,78 @@
+// lenses.structural_resolution — detect leaked `ArrowBody::Pending`
+// in named user declarations.
+//
+// Defense-in-depth regression pin for the R13 fix (lower.rs:2293).
+// User `fn` declarations are seeded by `seed_function_signature`
+// with `ArrowBody::Pending`, then `lower_fn_item` patches the
+// connective to `ArrowBody::UserDefined(bind_id)` on every path,
+// including error paths (the R13 fix replaced a prior `Pending` in
+// the mutual-recursion error arm because `decide_transform` accepts
+// Pending as a realization-lag scaffold and would have let callers
+// Resolve against an invalid fn — a fail-closed leak).
+//
+// **Detection rule.** A `Declaration` with `name: Some(_)` and a
+// connective of `Arrow { body: Pending }` is a violation. The naming
+// filter does the boundary work: algebra field arrows synthesized by
+// `type_to_declaration_id` in `lower.rs` are anonymous
+// (`name: None`) and intentionally `Pending` at M1, so they never
+// match. Only a regression in `lower_fn_item`'s body-patching path
+// can produce a named `Arrow(Pending)` in the final Dag.
+//
+// **Deletes** when §8.11's Pending-elimination ratchet reaches zero
+// and the `ArrowBody::Pending` variant is removed from the
+// substrate entirely.
+
+module lenses.structural_resolution
+
+import std.list { List, empty, cons, fold }
+import std.substrate {
+  Dag, Declaration, DeclarationId, TypeConnective, ArrowBody, SourceSpan
+}
+
+type UnresolvedArrowBody {
+  declaration: DeclarationId
+  name: String
+  span: SourceSpan
+}
+
+fn check(d: Dag) -> List<UnresolvedArrowBody> =
+  fold(d.declarations, empty(), |acc, decl|
+    prepend_all(check_declaration(decl), acc)
+  )
+
+fn check_declaration(decl: Declaration) -> List<UnresolvedArrowBody> =
+  match decl.name {
+    None => empty()
+    Some(name_str) => check_named_connective(decl, name_str)
+  }
+
+fn check_named_connective(decl: Declaration, name_str: String) -> List<UnresolvedArrowBody> =
+  match decl.connective {
+    Atom(payload) => empty()
+    Conj(c) => empty()
+    Disj(d) => empty()
+    Arrow(a) => check_arrow_body(decl, name_str, a.body)
+    Cardinality(c) => empty()
+    Instantiation(i) => empty()
+  }
+
+fn check_arrow_body(decl: Declaration, name_str: String, body: ArrowBody) -> List<UnresolvedArrowBody> =
+  match body {
+    UserDefined(node_id) => empty()
+    ExternalRealization(decl_id) => empty()
+    Pending => singleton_violation(decl, name_str)
+    Unparsed(span) => empty()
+  }
+
+fn singleton_violation(decl: Declaration, name_str: String) -> List<UnresolvedArrowBody> =
+  cons(
+    {
+      declaration: decl.id
+      name: name_str
+      span: decl.span
+    },
+    empty()
+  )
+
+fn prepend_all(additions: List<UnresolvedArrowBody>, acc: List<UnresolvedArrowBody>) -> List<UnresolvedArrowBody> =
+  fold(additions, acc, |running, v| cons(v, running))
