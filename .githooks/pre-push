@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Pre-push hook: enforce `cargo fmt --all --check` locally so fmt
+# failures don't land on CI. Three fmt-fail incidents in the last
+# week motivated this.
+#
+# Enable for your clone:
+#   git config core.hooksPath .githooks
+#
+# Or run scripts/install-hooks.sh from the repo root.
+
+set -e
+
+echo "[pre-push] cargo fmt --all --check"
+if ! cargo fmt --all --check; then
+  echo ""
+  echo "[pre-push] fmt check failed. Run:"
+  echo "  cargo fmt --all"
+  echo "and re-push."
+  exit 1
+fi

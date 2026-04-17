@@ -14,7 +14,14 @@ Read these docs before working:
 cargo test --workspace --exclude v2-compiler-tests  # hand-written tests
 cargo test -p v2-compiler-tests                     # v2 compiler tests
 cargo clippy --all-targets -- -D warnings           # lint
+cargo fmt --all --check                             # format check (also runs via pre-push hook)
 cargo test -p v2-compiler-tests v2_strict_compile_diagnostic_count -- --ignored  # stage0 diagnostic ratchet (0 diagnostics)
+```
+
+## One-time setup
+
+```bash
+scripts/install-hooks.sh  # enables .githooks/pre-push (runs cargo fmt --all --check before every push)
 ```
 
 ## Cost of Change
