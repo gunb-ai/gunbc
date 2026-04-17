@@ -43,6 +43,15 @@ substrate fields.
 - **Single authority.** One declaration per concept. If the compiler
   needs a primitive operator, it walks inhabitance, not a bootstrap
   pre-registration table.
+- **ROADMAP is the tracker.** All in-flight work, deferrals, and
+  follow-ups from merged PRs live in `src/v3/ROADMAP.md` (and the lane
+  / design docs it points at) — not in GitHub issues. A PR merging
+  in/out of main MUST leave the ROADMAP reflecting the new state:
+  new ✅ checkboxes for what shipped, new entries in the Active
+  Deferrals section for anything deferred. Reviewers block on this.
+  Rationale: GitHub issues fork authority from the code+docs the ROADMAP
+  points at, and they rot silently when a session forgets to update
+  them. A single file the whole project reads every day doesn't rot.
 
 ## Sketch vs Oracle framing (M0–M2)
 
@@ -445,6 +454,52 @@ Lane 1 stages and their design docs:
 Each stage carries scope, direction, escalation criteria, and
 acceptance gates. See the master plan for sequencing details and the
 full acceptance checklist for "plan complete."
+
+## Active deferrals — follow-up work from merged PRs
+
+**Discipline:** every PR that defers scope appends an entry below. A
+deferral clears when the follow-up PR lands and the entry moves to the
+top-table "landed" record. No deferral lives outside this list — if
+someone says "we'll do that later," it's either in this list or it's
+fiction.
+
+Format: `- [PR #N] title — scope remaining, size, triggering follow-up context.`
+
+### Lane 3 Stage 3a
+
+Sub-stage status (as of 2026-04-17):
+
+| Sub-stage | State | Landed in | Notes |
+|---|---|---|---|
+| 3a.1 mutual recursion (DB-9, L) | ⏸ Deferred | — | Design approved; unblocks Lane 3 Stage 3c (self-hosting cycle). See **Deferral: 3a.1** below. |
+| 3a.2 `data` value semantics (DB-10, S) | ✅ Shipped | PR #496 | Inlining-at-lowering chosen over emit-time inlining — trade-off recorded in DB-10. |
+| 3a.3 `where` refinement (DB-11, M→L overrun) | 🟡 Partial | PR #496 | Parser foundation + substrate field `Declaration.refinement` shipped. Semantics deferred — see **Deferral: 3a.3-full** below. |
+| 3a.4 surface generics (DB-12, S) | ✅ Shipped | PR #496 | Tests-only landing; infrastructure already wired. |
+| 3a.5 Disj dotted-path (DB-13, S) | ✅ Shipped | PR #496 | Tests-only landing; infrastructure already wired. |
+
+**Deferral: 3a.1 mutual recursion (L).** SCC detection + cluster descent verification + flip the `test_mutual_recursion_is_rejected` lock-in test. Unblocks Lane 3 Stage 3c eventually (self-hosting cycle needs mutual recursion in `compiler.dag`). Parallel-startable; no dependencies from tonight's merged PRs. Design: [design-mutual-recursion-lowering.md](../../docs/design-mutual-recursion-lowering.md) (DB-9). Acceptance in DB-9 §Acceptance.
+
+**Deferral: 3a.3-full (L).** Lower `SurfaceParam.refinement` to a predicate `Declaration`; call-site structural-DAG comparison (no interning, no SMT entailment — structural equality on resolved predicate expression DAGs); extend M1(2.8) pattern resolution to narrow arm-scoped ports for predicate-checked values (e.g., `if d != 0 then ...` narrows `d`). **Scaffold cost in main:** `Declaration.refinement: Option<DeclarationId>` is now authored-but-unread at ~15 construction sites. Dissolution trigger: this deferral lands. **Yellow-flag threshold:** if scaffold sits >1 week, actively schedule. Design: [design-m2-feature-parity.md §DB-11](../../docs/design-m2-feature-parity.md). Acceptance in DB-11 §Acceptance.
+
+### Lane 1 Stage 1b
+
+**Deferral: 1b full implementation (M).** 1b's first attempt escalated (PR #495 shipped 1a; 1b code was reverted). Root cause: `.dag` linear-walk bodies for substrate accessors polluted every user DAG. DB-14 codifies the correct pattern (ExternalRealization mirroring pipeline.dag). Unblocked once DB-14 (PR #497) lands. Design: [design-substrate-external-primitives.md](../../docs/design-substrate-external-primitives.md) (DB-14). Acceptance in DB-14 §Acceptance.
+
+### How the active-deferrals discipline works
+
+1. A PR that defers scope opens or appends an entry in this section with:
+   - Name and triggering PR reference.
+   - Concrete remaining scope (fields / functions / tests that must land).
+   - Size classification (S/M/L/XL).
+   - Design-doc link(s) with the acceptance gates.
+   - Yellow-flag threshold — how long the deferral can sit before it needs active scheduling.
+2. When the follow-up PR merges, it:
+   - Removes the deferral entry from this section.
+   - Updates the Stage 3a (or relevant) sub-stage table from 🟡 to ✅ or adds new rows.
+   - Notes in the commit message which deferral is cleared.
+3. A PR reviewer blocks merge if the deferrals section is stale vs the PR's actual changes.
+
+GitHub issues for this kind of tracking are **closed with a pointer here.** Issues exist for external coordination (user-facing bug reports, security advisories); internal deferrals do not live in issues.
 
 ## What NOT to build yet
 
