@@ -376,6 +376,27 @@ let zero: Int = 0",
     assert!(out.contains("BoxedInt::Empty => 1,"), "got: {out}");
 }
 
+/// Multi-field payloads still need a full variant pattern for type
+/// shape, but an unused whole-payload binding must not be rendered
+/// as `_ @ Variant { ... }` because Rust only permits identifiers on
+/// the left side of `@`.
+#[test]
+fn emit_rust_unused_multi_field_payload_binding_avoids_wildcard_alias() {
+    let out = emit(
+        "type IntList = Empty | Cons { head: Int, tail: IntList }
+fn ignore_payload(list: IntList) -> Int = match list { Empty => 0, Cons(payload) => 1 }
+let zero: Int = 0",
+    );
+    assert!(
+        out.contains("IntList::Cons { head: _, tail: _ } => 1,"),
+        "expected unused multi-field payload to render as a plain variant pattern, got: {out}"
+    );
+    assert!(
+        !out.contains("_ @ IntList::Cons"),
+        "unused multi-field payload rendered an invalid wildcard alias, got: {out}"
+    );
+}
+
 /// E-5 / Lane 1 Stage 1c pilot (rustc roundtrip) — emitted code with
 /// an unused match-arm payload binding passes `rustc -D
 /// unused_variables`. Proves the rule fires end-to-end, not just

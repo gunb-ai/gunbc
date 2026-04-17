@@ -3454,6 +3454,9 @@ impl<'a> Ctx<'a> {
                     ),
                 ],
             );
+            if rendered_binding == wildcard {
+                return Ok(inner_pattern);
+            }
             return Ok(format!("{rendered_binding} @ {inner_pattern}"));
         }
         if children[0].label == "_0"

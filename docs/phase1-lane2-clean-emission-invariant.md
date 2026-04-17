@@ -92,10 +92,10 @@ data rust_clean_emission: CleanEmissionContract = {
 (closed enums with `NotApplicable` variants where relevant) live in
 `std/clean_emission.dag`. See DB-4 for the complete type table.
 
-**Explicitly out of the E-5 surface:** `StructFieldRule` / dead-code
-on emitted structs. Removed from DB-4 per codex feedback on PR #491 —
-that's a publicity/visibility concern, not a clean-emission one. E-5
-covers constructive rendering rules only.
+**Explicitly out of the E-5 surface:** emitted-struct dead-code.
+Removed from DB-4 per codex feedback on PR #491 — that's a
+publicity/visibility concern, not a clean-emission one. E-5 covers
+constructive rendering rules only.
 
 ### 2. Pilot implementation: unused pattern bindings (Rust first)
 
