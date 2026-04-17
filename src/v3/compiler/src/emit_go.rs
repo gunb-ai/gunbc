@@ -67,6 +67,8 @@ enum PatternStrategyBinding {
 struct PatternRealizationBinding {
     strategy: PatternStrategyBinding,
     scrutinee: String,
+    empty_pattern: String,
+    cons_pattern: String,
     head_expr: String,
     tail_expr: String,
 }
@@ -881,8 +883,16 @@ impl<'a> Ctx<'a> {
         let empty_body = self.render_path_body(empty_path, locals)?;
         let list_name = "__list";
         let realized_scrutinee = render_named_template(&binding.scrutinee, &[("expr", &scrutinee)]);
-        let head_expr = render_named_template(&binding.head_expr, &[("list", list_name)]);
-        let tail_expr = render_named_template(&binding.tail_expr, &[("list", list_name)]);
+        // Empty/cons branches dispatch on the typed PatternRealization
+        // fields (`empty_pattern`, `cons_pattern`) rather than a
+        // hardcoded `len(__list) == 0` check. Go's empty_pattern
+        // template rendered with `expr=__list` becomes the if
+        // condition; cons_pattern (a passthrough on Go) becomes the
+        // list expression head/tail are extracted from.
+        let empty_predicate = render_named_template(&binding.empty_pattern, &[("expr", list_name)]);
+        let cons_expr = render_named_template(&binding.cons_pattern, &[("expr", list_name)]);
+        let head_expr = render_named_template(&binding.head_expr, &[("list", &cons_expr)]);
+        let tail_expr = render_named_template(&binding.tail_expr, &[("list", &cons_expr)]);
         let mut cons_locals = locals.clone();
         if let Some(payload) = &cons_path.binding {
             let mut fields = HashMap::new();
@@ -894,7 +904,7 @@ impl<'a> Ctx<'a> {
         }
         let cons_body = self.render_port(cons_path.output, &cons_locals)?;
         Ok(format!(
-            "func() {ret} {{ {list_name} := {realized_scrutinee}; if len({list_name}) == 0 {{ return {empty_body} }}; return {cons_body} }}()"
+            "func() {ret} {{ {list_name} := {realized_scrutinee}; if {empty_predicate} {{ return {empty_body} }}; return {cons_body} }}()"
         ))
     }
 
@@ -2027,6 +2037,8 @@ fn require_pattern_realization(
     Ok(PatternRealizationBinding {
         strategy: PatternStrategyBinding::VectorList,
         scrutinee: require_field_string(fields, "scrutinee", declaration)?,
+        empty_pattern: require_field_string(fields, "empty_pattern", declaration)?,
+        cons_pattern: require_field_string(fields, "cons_pattern", declaration)?,
         head_expr: require_field_string(fields, "head_expr", declaration)?,
         tail_expr: require_field_string(fields, "tail_expr", declaration)?,
     })

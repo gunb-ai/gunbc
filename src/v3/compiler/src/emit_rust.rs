@@ -464,9 +464,16 @@ enum MemoryModelBinding {
     OwnershipBased,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScopeModelBinding {
+    LexicalScoping,
+    DynamicScoping,
+}
+
 #[derive(Debug, Clone)]
 struct TargetExecutionModelBinding {
     memory: MemoryModelBinding,
+    scope: ScopeModelBinding,
 }
 
 #[derive(Debug, Clone)]
@@ -851,11 +858,16 @@ impl TargetExecutionModelBinding {
         let fields = structural_fields_for_decl(dag, declaration)?;
         Ok(Self {
             memory: require_memory_model(dag, fields, declaration)?,
+            scope: require_scope_model(dag, fields, declaration)?,
         })
     }
 
     fn is_ownership_based(&self) -> bool {
         self.memory == MemoryModelBinding::OwnershipBased
+    }
+
+    fn is_lexically_scoped(&self) -> bool {
+        self.scope == ScopeModelBinding::LexicalScoping
     }
 }
 
@@ -2024,6 +2036,41 @@ fn require_memory_model(
     })
 }
 
+fn require_scope_model(
+    dag: &Dag,
+    fields: &[(String, FieldValue)],
+    declaration: DeclarationId,
+) -> Result<ScopeModelBinding, EmitError> {
+    let value = require_unit_variant_field(fields, "scope", declaration)?;
+    let variants = [
+        (
+            "LexicalScoping",
+            ScopeModelBinding::LexicalScoping,
+            "ScopeModel.LexicalScoping declaration was not found",
+        ),
+        (
+            "DynamicScoping",
+            ScopeModelBinding::DynamicScoping,
+            "ScopeModel.DynamicScoping declaration was not found",
+        ),
+    ];
+    for (variant_name, binding, detail) in variants {
+        let variant = named_variant_id(dag, "ScopeModel", variant_name).ok_or(
+            EmitError::MalformedTargetSyntax {
+                declaration,
+                detail,
+            },
+        )?;
+        if value == variant {
+            return Ok(binding);
+        }
+    }
+    Err(EmitError::MalformedTargetSyntax {
+        declaration,
+        detail: "TargetExecutionModel.scope must be LexicalScoping or DynamicScoping",
+    })
+}
+
 fn require_unit_variant_field(
     fields: &[(String, FieldValue)],
     label: &str,
@@ -2286,6 +2333,11 @@ enum EmitRustMode {
 
 fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<String, EmitError> {
     let indexes = RealizationIndexes::build(dag)?;
+    if !indexes.execution.is_lexically_scoped() {
+        return Err(EmitError::UnsupportedBehavior(
+            "emit_rust requires rust_execution_model.scope = LexicalScoping".to_string(),
+        ));
+    }
     let input_use_facts = InputUseFacts::build(dag, &indexes);
 
     // Resolve the substrate markers we need ONCE up front. Each
