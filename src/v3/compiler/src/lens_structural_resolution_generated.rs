@@ -22,30 +22,30 @@ pub fn check_declaration(p0: &Declaration) -> Vec<UnresolvedArrowBody> {
 }
 pub fn check_named_connective(p0: &Declaration, p1: String) -> Vec<UnresolvedArrowBody> {
     match &((p0).connective) {
-        TypeConnective::Atom(payload) => Vec::new(),
-        TypeConnective::Conj { children: c } => Vec::new(),
-        TypeConnective::Disj { variants: d } => Vec::new(),
+        TypeConnective::Atom(_) => Vec::new(),
+        TypeConnective::Conj { children: _ } => Vec::new(),
+        TypeConnective::Disj { variants: _ } => Vec::new(),
         a @ TypeConnective::Arrow {
             inputs: __a_inputs,
             output: __a_output,
             body: __a_body,
         } => check_arrow_body(p0, (p1).clone(), __a_body),
-        c @ TypeConnective::Cardinality {
-            element: __c_element,
-            bound: __c_bound,
+        TypeConnective::Cardinality {
+            element: _,
+            bound: _,
         } => Vec::new(),
-        i @ TypeConnective::Instantiation {
-            template: __i_template,
-            arguments: __i_arguments,
+        TypeConnective::Instantiation {
+            template: _,
+            arguments: _,
         } => Vec::new(),
     }
 }
 pub fn check_arrow_body(p0: &Declaration, p1: String, p2: &ArrowBody) -> Vec<UnresolvedArrowBody> {
     match p2 {
-        ArrowBody::UserDefined(node_id) => Vec::new(),
-        ArrowBody::ExternalRealization(decl_id) => Vec::new(),
+        ArrowBody::UserDefined(_) => Vec::new(),
+        ArrowBody::ExternalRealization(_) => Vec::new(),
         ArrowBody::Pending => singleton_violation(p0, (p1).clone()),
-        ArrowBody::Unparsed(span) => Vec::new(),
+        ArrowBody::Unparsed(_) => Vec::new(),
     }
 }
 pub fn singleton_violation(p0: &Declaration, p1: String) -> Vec<UnresolvedArrowBody> {
