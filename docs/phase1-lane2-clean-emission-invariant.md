@@ -1,10 +1,16 @@
 > Part of: [post-l15-phase-plan.md](./post-l15-phase-plan.md) > [single-emitter-design.md](./single-emitter-design.md)
 
-# P1-L2: Clean-emission invariant
+# Lane 1 Stage 1c — Clean-emission invariant
 
-**Phase:** 1 (Foundation)
+**Lane:** 1 (Emission unification)
+**Stage:** 1c (after substrate keyed-lookup; before consolidation build plan)
 **Time budget:** ~1 week
 **Status:** Plan. No code changes yet.
+
+> Role in the plan: establishes E-5 invariant (warnings-by-construction)
+> as the contract that Stage 1e's consolidation dispatches on. The
+> pilot implementation (unused pattern bindings) proves the contract
+> shape before mass application.
 
 ---
 

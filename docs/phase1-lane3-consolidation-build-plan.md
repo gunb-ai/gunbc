@@ -1,10 +1,16 @@
 > Part of: [post-l15-phase-plan.md](./post-l15-phase-plan.md) > [single-emitter-design.md](./single-emitter-design.md)
 
-# P1-L3: Single-emitter consolidation build plan
+# Lane 1 Stage 1d — Single-emitter consolidation build plan
 
-**Phase:** 1 (Foundation)
+**Lane:** 1 (Emission unification)
+**Stage:** 1d (last design stage; gates Stage 1e implementation start)
 **Time budget:** ~1 week
 **Status:** Plan. Pure design, no code changes.
+
+> Role in the plan: produces the file-by-file build plan for Stage 1e's
+> consolidation execution. Stage 1e does NOT start until this
+> stage signs off on the inventory, gap list, bridges, and pilot
+> target choice.
 
 ---
 

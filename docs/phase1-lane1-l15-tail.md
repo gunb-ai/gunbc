@@ -1,10 +1,16 @@
 > Part of: [post-l15-phase-plan.md](./post-l15-phase-plan.md)
 
-# P1-L1: L1.5 tail — ownership Phase 2 + ignore hygiene
+# Lane 1 Stage 1a — L1.5 tail: ownership Phase 2 + ignore hygiene
 
-**Phase:** 1 (Foundation)
+**Lane:** 1 (Emission unification)
+**Stage:** 1a (first stage; prerequisite for all of Lane 1)
 **Time budget:** ~1 week (one full implementer-week; split into ~5 commits)
 **Status:** Plan. No code changes yet.
+
+> Role in the plan: housekeeping sweep that closes the visible
+> L1.5 tail before substrate and emission work begins. Unblocks
+> Stage 1b by leaving the repo in a clean state for substrate
+> refactoring.
 
 ---
 
