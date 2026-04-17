@@ -1,278 +1,177 @@
-> Part of: [post-l15-phase-plan.md](./post-l15-phase-plan.md) | Unblocks: Lane 3 Stage 3a
+> Part of: [post-l15-phase-plan.md](./post-l15-phase-plan.md) | Unblocks: Lane 3 Stage 3a.1
 
-# Design DB-9 — Mutual recursion → Loop lowering
+# Design DB-9 — Mutual recursion (lens-level, no substrate extension)
 
 **Design blocker:** DB-9
-**Consumers:** Lane 3 Stage 3a (M2 feature parity)
+**Consumers:** Lane 3 Stage 3a.1 (M2 feature parity — mutual recursion)
 **Status:** Design ready for implementer review.
+
+---
+
+## Critical correction from prior revision
+
+An earlier version of this doc proposed a new `Behavior` variant `MutualLoop` to represent mutually-recursive clusters. That proposal is **rejected** because it violates THESIS.md:604-629:
+
+> *"Computation is five L1 behaviors... No sixth behavior. M0 validated these five under three reviewer rounds and never hit a stop signal... the five-behavior claim is the project's strongest empirical substrate commitment and is not revisited here."*
+
+Reviewer (PR #491, 2026-04-17) correctly flagged this as a thesis violation. Adding a sixth Behavior is not a stage-level design choice; it would require reopening the substrate commitment in THESIS.md / ROADMAP.md through an explicit process.
+
+**The corrected design below encodes mutual recursion entirely within the existing five behaviors.** The substrate does not change. Clustering becomes a lens-level fact, computed from the call graph at lowering time and consumed by the termination lens.
 
 ---
 
 ## Problem
 
-Today v3 supports single recursion: `fn f(n) = ...f(n-1)...`. The substrate represents this as a `Loop` node with structural descent evidence (n → n-1).
+`compiler.dag` (and real programs) needs mutual recursion: `fn a(n) = ...b(n-1)...; fn b(n) = ...a(n-1)...`. Functions call each other; the call graph forms a cycle.
 
-`compiler.dag` (and many real programs) needs **mutual recursion**: `fn a(n) = ...b(n-1)...; fn b(n) = ...a(n-1)...`. Functions call each other; the call graph forms a cycle.
+Today's substrate handles single recursion (`fn f(n) = f(n-1)`) via `Loop` with structural descent on the argument. Mutual recursion needs:
+1. Both functions to compile (no new substrate extension)
+2. The termination checker to verify the cluster terminates (not just each function individually)
+3. Emission in Rust / Go / Python to produce two separate `fn` declarations calling each other
 
-**Reviewer concern (codex, PR #491):** *"Stage 3a is optimizing for SCC convenience before proving the existing recursion substrate cannot carry the cluster fact. Rerun the terminal-Behavior stop signal and record why Loop/Bind cannot express mutual-recursion descent before committing to MutualLoop."*
-
-Fair. Section below proves the substrate gap before proposing the extension.
-
----
-
-## Substrate-gap proof: why existing Behavior variants cannot carry mutual recursion
-
-Existing Behavior variants: `Value`, `Transform`, `Branch`, `Loop`, `Bind`. We need to show each cannot represent a mutually-recursive cluster `{a, b}` where `a` calls `b(n-1)` and `b` calls `a(n-1)`, with the termination checker able to verify both calls decrease structurally on a shared parameter position.
-
-### Attempt 1: Encode as two separate `Bind` nodes (status quo)
-
-```
-Bind(a) { body: ... call_transform(b, n-1) ... }
-Bind(b) { body: ... call_transform(a, n-1) ... }
-```
-
-The substrate allows this structurally — two Binds whose bodies reference each other. But:
-
-- **Termination checker failure**: the per-Bind check asks "does `a(arg)` call itself with a structurally smaller arg?" `a` doesn't call itself directly; it calls `b`. No local self-recursion means the per-function check passes vacuously, missing the cycle.
-- **Cluster descent invariant cannot be expressed**: `a`'s descent witness is independent of `b`'s. There's no place in the substrate to say "these two Binds share a descent witness across intra-cluster calls."
-- **Consequence**: `fn a(n) = b(n); fn b(n) = a(n)` compiles today because each function's check is local and passes vacuously. **Non-terminating program slips through.** This IS the failure mode the thesis's "termination is inescapable" claim forbids.
-
-**Stop signal**: attempt 1 fails. The substrate cannot represent shared cluster descent.
-
-### Attempt 2: Encode as one `Loop` node with a sum-type dispatch body
-
-Rewrite `{a, b}` as a single Loop node whose body is a Branch that dispatches on a synthetic "current function" variant:
-
-```
-Loop {
-  source: ...
-  init: ...
-  body: Branch {
-    input: synthetic_function_tag
-    paths: [
-      Path { pattern: "a" => ...call_body_of_a_that_tail_calls_b... }
-      Path { pattern: "b" => ...call_body_of_b_that_tail_calls_a... }
-    ]
-  }
-}
-```
-
-Termination check: Loop's existing descent check on `source → init` works — the shared parameter decreases per iteration. Call sites get converted to variant tag flips.
-
-But:
-
-- **Function identity destroyed**: at emission, the user's `fn a` and `fn b` become ONE function with an internal dispatch. Callers outside the cluster that invoked `a(5)` now invoke `run_cluster(Tag::A, 5)`. Rust/Go/Python emission has to reconstruct the separate `fn a`, `fn b` names from the synthetic tag — every intra-cluster call becomes a dispatch-on-variant match at runtime.
-- **Calling convention broken**: external callers expected `fn a(Int) -> Int`; they'd now need `fn run_cluster(Tag, Int) -> Int`. Renaming every external caller = not mechanical.
-- **Consequence**: this representation is correct *in principle* (it does terminate and does compute the same values) but is **incompatible with the target languages' function identity**. Rust's mutually-recursive functions emit as two `fn` definitions; forcing a single-dispatch function is a representation mismatch with the target.
-
-**Stop signal**: attempt 2 fails. It satisfies termination but destroys function identity at the emission boundary — which Rust/Go/Python all preserve naturally. The substrate would be lying about the program shape.
-
-### Attempt 3: `Loop` with call-graph annotation on each Bind
-
-Keep two Binds; add a `loop_cluster_id: NodeId?` annotation on each Bind indicating cluster membership:
-
-```
-Bind(a) { loop_cluster_id: Some(cluster_0), body: ... }
-Bind(b) { loop_cluster_id: Some(cluster_0), body: ... }
-```
-
-Termination checker reads annotations to identify cluster members.
-
-But:
-
-- **Annotation is derivable**: SCC detection on the call graph IS what determines cluster membership. Storing it as an annotation on each Bind is storing the RESULT of the detection, not the fact. Any Bind membership change (e.g., a call added/removed) invalidates the annotation silently.
-- **Single authority violated**: now there are TWO authorities for cluster membership — the call graph (implicit) and the annotation (explicit but derived). If they disagree, which wins?
-- **Still can't express shared descent witness**: each Bind annotation says "I'm in cluster X" but nowhere does the substrate say "cluster X's shared descent witness is parameter position K." That fact needs its own home.
-
-**Stop signal**: attempt 3 fails. It introduces parallel authority AND still doesn't carry the shared descent witness.
-
-### Conclusion: substrate gap is real
-
-No existing Behavior variant can:
-1. Carry the shared descent witness across a cluster of Bind bodies
-2. Preserve per-function identity at emission
-3. Enforce termination through cluster-wide verification (vs per-function vacuous checks)
-
-All three requirements exceed what `Value`, `Transform`, `Branch`, `Loop`, `Bind` individually or in composition can express. MutualLoop IS a genuine substrate extension, not a convenience.
-
----
-
-## Design (original, now with substrate-gap proof above)
-
-The substrate gap is real, so we add a new Behavior variant. Details below.
+Requirement (1) is satisfied by the existing substrate. Requirement (2) is the interesting part: per-Bind termination checks pass vacuously on mutual recursion because no single function recurses into itself. Requirement (3) is already handled by target languages with first-class mutual recursion.
 
 ---
 
 ## Design
 
-### SCC detection pass
+### Substrate: unchanged
 
-New pass in the lowering pipeline, after individual function bodies are lowered:
+The two Binds remain two Binds. Their bodies reference each other via ordinary `Transform` + `FunctionRef` edges, which is how any two functions call each other in the substrate.
 
-```rust
-// src/v3/compiler/src/mutual_recursion.rs (new)
-pub struct RecursionCluster {
-    pub bind_ids: Vec<NodeId>,           // the mutually-recursive Binds
-    pub descent_witness: DescentEvidence,  // structural argument shared across the cluster
+```
+Bind(a) {
+  body: ... Transform { target: Callable(b_decl_id), inputs: [...] } ...
 }
-
-pub fn detect_clusters(dag: &Dag) -> Vec<RecursionCluster> {
-    // 1. Build call graph: edges from Bind A to Bind B iff A's body contains a
-    //    Transform whose target resolves to B.
-    // 2. Compute SCCs via Tarjan's algorithm (standard, O(V+E)).
-    // 3. Each non-trivial SCC (size ≥ 2, OR size 1 with self-edge) is a RecursionCluster.
-    // 4. For each cluster, find the SHARED descent witness: a parameter position that
-    //    decreases structurally across all calls within the cluster.
-    ...
+Bind(b) {
+  body: ... Transform { target: Callable(a_decl_id), inputs: [...] } ...
 }
 ```
 
-The `descent_witness` is the crux. For a cluster `{a, b}` where `a` calls `b(n-1)` and `b` calls `a(n-1)`, both recursive calls decrease `n` by the same structural step. The termination checker must verify this.
+This is VALID substrate today. What fails today is that the termination lens doesn't verify cluster descent.
 
-### Substrate representation
+### Lens extension: cluster-aware termination
 
-Add a new `Behavior` variant:
+The termination lens gets extended:
 
-```dag
-// src/v3/std/substrate.dag
-type Behavior
-  = Value(ValueNode)
-  | Transform(TransformNode)
-  | Branch(BranchNode)
-  | Loop(LoopNode)
-  | Bind(BindNode)
-  | MutualLoop(MutualLoopNode)  // NEW
-```
+1. **Detect clusters.** Build the call graph: edges from Bind A to Bind B iff A's body contains a `Transform` whose target resolves to B. Compute SCCs via Tarjan's algorithm (standard, O(V+E)).
+
+2. **Per-cluster termination check.** For each non-trivial SCC:
+   - Identify the shared descent witness: a parameter position that decreases structurally across all intra-cluster call edges
+   - Verify every intra-cluster call passes a structurally-smaller value at that position
+   - If no shared witness exists, emit diagnostic naming which edge fails
+
+3. **Cluster membership lives IN the lens, not the substrate.** `ClusterRegistry` is a lens-computed fact keyed by cluster-ID, carrying member Bind NodeIds + shared descent witness. Other lenses (symbolic cost, parallelism) can consume it.
 
 ```dag
-type MutualLoopNode {
-  id: NodeId
-  bodies: List<NodeId>          // the Binds in the cluster
-  descent_witness: DescentEvidence
-  entry: NodeId                  // the Bind that's called from outside the cluster
-  result_port: PortId
-  span: SourceSpan
-}
-```
-
-`entry` identifies the Bind that's the "public face" of the cluster — the one external callers reach. All other Binds in the cluster are only reachable via intra-cluster calls.
-
-### Lowering from surface
-
-Parser/lowering pipeline:
-
-1. Parse user code as before — `fn a` and `fn b` each produce a `Bind` node
-2. Type-check and infer as before
-3. After inference: run `detect_clusters(dag)` — identifies `{a, b}` is mutually recursive
-4. Wrap the cluster: replace the standalone Binds with a single `MutualLoop` node carrying both as `bodies`
-5. External callers now reference the `MutualLoop`'s entry port, not the individual Binds
-6. Termination check: verify `descent_witness` holds across all intra-cluster call edges; fail-closed if not
-
-### Structural descent for clusters
-
-Current single-recursion termination: `a(n)` calling `a(n-1)` is allowed iff `n-1 < n` structurally (for integers: arithmetic, for lists: tail).
-
-For a cluster `{a, b}`: every call edge `a → b` or `b → a` must pass a structurally-smaller argument for the SAME position. Cluster terminates iff `∀edge. arg_at_edge < arg_caller`.
-
-```dag
-// src/v3/lenses/termination.dag (extended)
-fn verify_cluster_descent(cluster: MutualLoopNode) -> TerminationWitness {
-  let descent_param_idx = cluster.descent_witness.parameter_position
-  let edges = collect_intra_cluster_call_edges(cluster)
-  for edge in edges {
-    let caller_arg = edge.caller_params[descent_param_idx]
-    let callee_arg = edge.call_args[descent_param_idx]
-    if !is_structurally_smaller(callee_arg, caller_arg) {
-      return TerminationWitness::FailedAt { edge, reason: "non-decreasing on shared witness" }
+// src/v3/lenses/termination.dag — extended
+fn verify_termination(d: Dag) -> TerminationReport {
+  let clusters = detect_sccs(call_graph(d))
+  let violations = fold(clusters, empty(), |acc, cluster|
+    match verify_cluster_descent(d, cluster) {
+      Terminates => acc
+      FailsAt(edge, reason) => cons(diagnostic_for(edge, reason), acc)
     }
-  }
-  TerminationWitness::Proved { cluster_id: cluster.id }
+  )
+  TerminationReport { clusters, violations }
+}
+
+// Non-thesis-violating: ClusterRegistry is a LENS fact, not substrate
+type ClusterRegistry {
+  clusters: List<RecursionCluster>
+}
+
+type RecursionCluster {
+  bind_ids: List<NodeId>
+  descent_witness: DescentPosition
+  entry: NodeId?
 }
 ```
 
-### Emission
+### Emission: unchanged
 
-**Rust** — mutually-recursive functions are already first-class; emission generates N function declarations, one per cluster member. The walker (DB-2) descends into each Bind normally; the MutualLoop node is a grouping wrapper, not a separate code structure.
+Rust, Go, Python all support mutual recursion natively. The emitter generates N separate `fn` declarations, one per Bind in the cluster. Each `fn` has its own body that calls the other Binds via ordinary callable emission. No cluster-aware emission logic needed at the target language level.
 
 ```rust
-// Rust emission of a MutualLoop{bodies: [a, b]}:
+// Rust emission of Bind(a) + Bind(b):
 fn a(n: i64) -> i64 { if n == 0 { 0 } else { b(n - 1) } }
 fn b(n: i64) -> i64 { if n == 0 { 1 } else { a(n - 1) } }
 ```
 
-**Go** — same shape; Go supports mutual recursion natively.
+Clean. No dispatch. No sum-type wrapping. Target-native.
 
-**Python** — same; Python's late binding makes mutual recursion trivial.
+### SPICE / Verilog / English (Shape B — NOT compiler targets)
 
-**SPICE / Verilog** — N/A. These targets don't express recursion at all; a MutualLoop in the source means the program isn't emittable to those targets. Emit error: "SPICE doesn't support recursion." This is correct fail-closed behavior.
-
-### Differentiation from single-recursion Loop
-
-| Feature | `LoopNode` (single-recursion) | `MutualLoopNode` (mutual) |
-|---|---|---|
-| Bodies | 1 | N ≥ 2 (or N = 1 with self-edge and other structural reason for separation) |
-| Entry | implicit (the Loop itself) | explicit `entry: NodeId` |
-| Descent witness | on the single body | shared across all bodies |
-| Emission | single `fn` | N `fn`s |
-| Termination check | single call edge | all intra-cluster edges |
-
-Single self-recursion (`fn f(n) = ...f(n-1)...`) continues to lower to `LoopNode`, not `MutualLoopNode`. The SCC detection correctly identifies `{f}` with a self-edge but the single-recursion case is a strict subset — if the compiler can use the simpler `LoopNode` representation, prefer it. `MutualLoopNode` is only for N ≥ 2 OR N = 1 with structural complexity the single-body Loop can't express.
-
-### Receipts
-
-```dag
-// 🟡 SCAFFOLD until the compiler's dependency resolver can natively
-// represent recursive callable types. Today, `MutualLoopNode.bodies`
-// is a flat list — resolution order within the cluster is
-// (arbitrary but deterministic). Once type-level recursive callable
-// support lands, this may graduate to 🟢.
-```
+These are Shape B artifacts produced by `.dag` programs (see THESIS.md §"Two shapes"). A `.dag` program that produces a SPICE netlist is ordinary user code; if that user code wants to support mutual recursion in its domain model, that's a `.dag`-library concern, not a compiler concern.
 
 ---
 
-## Rationale
+## Why per-Bind termination fails on mutual recursion today (motivating failure)
 
-**Why a new Behavior variant, not just "multiple Binds"?** Because the substrate must represent the cluster as a unit for termination checking. Without `MutualLoopNode`, the termination lens would have to recompute the SCC on every check — re-derivation of a structural fact.
+Current per-function check:
+- `a(n)` calls `b(n-1)` — no call to `a` itself visible → per-function check passes vacuously
+- `b(n)` calls `a(n-1)` — no call to `b` itself visible → per-function check passes vacuously
+- Cluster `{a, b}` has a non-terminating candidate like `fn a(n) = b(n); fn b(n) = a(n)` that today **compiles** despite being provably non-terminating
 
-**Why `descent_witness: DescentEvidence` shared across the cluster?** Because that's the invariant: all intra-cluster calls decrease the SAME parameter. If each function has its own independent witness, the termination check degenerates to per-edge instead of cluster-wide — and cycles can still occur (a decreases one param; b decreases a different one; the composition doesn't decrease anything consistently).
+Cluster-aware check at the lens level is the fix. The substrate doesn't change.
 
-**Why `entry: NodeId` explicit?** Because external callers need a single referenceable entry point. If user code calls `a(5)` externally, the call edge from outside the cluster targets the cluster's `a` Bind, not `b`. Making the entry explicit means external callers don't need to know the cluster's internal structure.
+---
 
-**Why Tarjan's algorithm for SCC?** Standard, linear-time (O(V+E)), well-understood. Kosaraju's alternative is equally valid; Tarjan chosen for single-pass simplicity.
+## How does this satisfy ROADMAP.md §M2 "mutual recursion → Loop"?
 
-**Why fail fast on cluster descent violation?** Because a non-decreasing cluster is provably non-terminating. The termination lens's job is compile-time rejection; rejecting the cluster at lowering means downstream passes don't see an invalid node.
+The roadmap line reads: *"Remaining: ... mutual recursion → Loop (§2.4)"*. Interpreted literally as "add a new Behavior," this would violate the thesis.
 
-**Why emission unchanged for Rust/Go/Python?** Because those languages have mutual recursion as a primitive. The MutualLoop is an INTERMEDIATE representation that helps the compiler; the target language doesn't need anything special. SPICE/Verilog fail-close.
+Re-reading with the thesis-compliant lens: **the Loop behavior already handles bounded iteration**. The "mutual recursion → Loop" phrasing refers to the **lens's termination handling**, not a substrate change. Mutual recursion is proven terminating using the same structural-descent machinery `Loop` uses (cardinality-bounded iteration). The cluster-descent check reuses that machinery across a multi-function cluster.
+
+If SELF_HOSTING.md §2.4 meant something different (a substrate extension), this design opens that discussion explicitly — but the thesis has stronger precedence, and the thesis says "no sixth behavior." Deferring to thesis. If SELF_HOSTING.md §2.4 conflicts, it's the SELF_HOSTING doc that needs reconciliation, not the thesis.
 
 ---
 
 ## Rejected alternatives
 
-**Represent mutual recursion via annotated Bind flags (`Bind { mutually_recursive_with: List<NodeId> }`)** — spreads the cluster information across N nodes instead of centralizing. Every consumer reconstructs the cluster. Rejected.
+**Add `MutualLoop` as a 6th Behavior variant** (original DB-9 proposal) — **thesis violation per THESIS.md:604-629.** The five-behavior commitment is explicit and not a stage-level design choice. Rejected.
 
-**Track the call graph as a separate `Dag.call_graph: Graph<NodeId>` field** — duplicates information already computable from node inspection. Rejected; compute on demand via `detect_clusters`.
+**Encode cluster as single Loop with sum-type dispatch body** — preserves substrate shape but destroys per-function identity at the surface Bind level. N Binds become 1 Bind at the substrate level, and emission must reconstruct the N `fn` names from cluster metadata. Possible but unnecessarily complicated — the cleaner design keeps N Binds as separate substrate nodes and pushes clustering up to the lens. Rejected for this design; kept as a fallback encoding if the lens-level approach proves insufficient.
 
-**Allow mutually-recursive clusters without termination proof** — punts non-termination to runtime. Violates the "properties are inescapable" thesis. Rejected.
+**Annotate each Bind with cluster_id** — parallel authority. The call graph IS the authority for cluster membership; an annotation duplicates it and can drift. Rejected.
 
-**Auto-inline the cluster into a single Bind with a sum-type dispatch** — loses the function identity; makes emission awkward (every intra-cluster call becomes a dispatch match). Heavier than needed when the target languages already support mutual recursion. Rejected.
+**Require users to declare `mutual` explicitly** — compiler can detect clusters automatically via SCC. User annotation would be ceremony. Rejected.
 
-**Require users to annotate `mutual` explicitly** — users shouldn't have to declare something the compiler can detect. Rejected; SCC detection is fully automatic.
+**Defer mutual recursion entirely** — `compiler.dag` needs it. Can't defer. Rejected.
 
 ---
 
 ## Implementation notes
 
-### Detection performance
+### Lens walk
 
-For a compiler-scale program (~100 functions), Tarjan's O(V+E) is negligible. No performance concerns.
+```dag
+fn call_graph(d: Dag) -> List<CallEdge> =
+  // For each Bind b in d.nodes, scan b.body for Transforms whose
+  // target resolves to another Bind. Emit (caller=b, callee=target).
+  ...
+
+fn detect_sccs(edges: List<CallEdge>) -> List<SCC> =
+  // Tarjan's algorithm. Standard.
+  ...
+
+fn verify_cluster_descent(d: Dag, cluster: SCC) -> ClusterTerminationWitness =
+  if length(cluster.members) == 1 && !has_self_edge(cluster) then
+    Terminates
+  else
+    match find_shared_descent(d, cluster) {
+      Some(position) => verify_all_calls_decrease(d, cluster, position)
+      None => FailsAt { edge: first_intra_cluster_edge(d, cluster), reason: "no shared descent witness" }
+    }
+```
 
 ### Interaction with inference
 
-Inference on a mutually-recursive cluster needs to handle "f's type depends on g's type depends on f's type." Standard fix: bottom-up inference on SCCs, using fixed-point iteration within each SCC. Already solved pattern in Haskell/OCaml/Rust compilers; v3's inference pass needs to recognize clusters.
+Mutual recursion complicates type inference (`f`'s type depends on `g`'s type depends on `f`'s type). Standard fix: bottom-up inference on SCCs with fixed-point iteration. v3's inference pass needs to recognize clusters at type-check time.
 
-This is its own sub-task. Deferred detail; the important structural fact is that **inference pass must run SCC detection BEFORE type-checking function bodies**, so each SCC can be type-checked as a unit.
+Sub-task of Lane 3 Stage 3a.1. NOT a substrate change — an inference-pass algorithm change.
 
-### Error reporting on cluster termination failure
+### Error reporting
 
 ```
 ERROR at <cluster span>: mutually-recursive cluster does not terminate
@@ -288,47 +187,37 @@ Descent failure: call edge `a → b` passes `n` without decreasing it.
 FIX: decrease `n` on every intra-cluster call, e.g., `b(n - 1)`.
 ```
 
-Uses DB-1 Correction shape.
-
-### Substrate reflection
-
-`substrate.dag` already reflects the `Behavior` enum into Rust. Adding `MutualLoop(MutualLoopNode)` variant follows the existing pattern — one-for-one mapping between `.dag` enum variants and Rust enum variants.
+Uses DB-1 Correction shape (source-level).
 
 ---
 
 ## Associations
 
-- **Lane 3 Stage 3a** ([lane3-self-hosting-cycle.md](./lane3-self-hosting-cycle.md)) — this is that stage's mutual recursion deliverable
-- **DB-1 `Correction` shape** ([design-correction-shape.md](./design-correction-shape.md)) — cluster termination failure emits diagnostics with fixes
-- **DB-7 Symbolic cost** ([design-symbolic-cost-algebra.md](./design-symbolic-cost-algebra.md)) — symbolic cost on a MutualLoop is `iterate(cluster_depth_bound, body_cost)`, using the shared descent witness to derive the depth bound
-- **Update `src/v3/std/substrate.dag`** — add `MutualLoop(MutualLoopNode)` variant + `MutualLoopNode` type
-- **Create `src/v3/compiler/src/mutual_recursion.rs`** — SCC detection pass
-- **Update `src/v3/lenses/termination.dag`** — verify_cluster_descent function
-- **Update `src/v3/compiler/src/emit.rs`** (DB-2 walker) — MutualLoop descent into individual bodies, no special emission logic
-- **Thesis anchor** — SELF_HOSTING.md §2.4
+- **Lane 3 Stage 3a.1** ([lane3-self-hosting-cycle.md](./lane3-self-hosting-cycle.md)) — this is that sub-stage's design
+- **DB-1 Correction shape** ([design-correction-shape.md](./design-correction-shape.md)) — cluster termination diagnostics emit Corrections
+- **DB-7 Symbolic cost** ([design-symbolic-cost-algebra.md](./design-symbolic-cost-algebra.md)) — symbolic cost for a cluster reads the lens's cluster registry to compute recursion depth bound
+- **`src/v3/std/substrate.dag`** — **UNCHANGED.** No new Behavior variant. Substrate commitment per THESIS.md:604-629 preserved.
+- **Update termination lens** (`src/v3/lenses/termination.dag` or equivalent) — add SCC detection + cluster descent verification
+- **Update inference pass** — bottom-up SCC-aware type inference
+- **Thesis anchor** — THESIS.md:602-629 (five behaviors, no sixth)
 
 ---
 
-## Acceptance (Lane 3 Stage 3a owns)
+## Acceptance (Lane 3 Stage 3a.1 owns)
 
-- [ ] `src/v3/std/substrate.dag` declares `MutualLoopNode` + adds `MutualLoop(MutualLoopNode)` variant to `Behavior`
-- [ ] SCC detection pass correctly identifies `{a, b}` as a cluster for the example above
-- [ ] Single-recursion functions still lower to `LoopNode`, not `MutualLoopNode` (strict subset relation)
-- [ ] Termination lens verifies cluster descent; fails fixtures with non-decreasing calls
-- [ ] Emission in Rust / Go / Python produces N separate `fn` declarations per cluster
-- [ ] SPICE / Verilog / English emission fails with "recursion not supported" when a MutualLoop appears
-- [ ] Test: `fn a(n) = if n == 0 then 0 else b(n - 1); fn b(n) = if n == 0 then 1 else a(n - 1)` compiles and runs (mock or via `dag run`)
-- [ ] Test: `fn a(n) = b(n); fn b(n) = a(n)` fails compile with cluster termination diagnostic
-- [ ] Test: `compiler.dag` (at least its parser / lowerer / emitter sub-modules that are mutually recursive) compiles
+- [ ] Substrate unchanged: `type Behavior` in `src/v3/std/substrate.dag` still has exactly 5 variants (`Value | Transform | Branch | Loop | Bind`)
+- [ ] Termination lens performs SCC detection + cluster descent verification
+- [ ] Test: `fn a(n: Int) = if n == 0 then 0 else b(n - 1); fn b(n: Int) = if n == 0 then 1 else a(n - 1)` compiles and passes termination
+- [ ] Test: `fn a(n: Int) = b(n); fn b(n: Int) = a(n)` fails compile with cluster termination diagnostic naming the non-decreasing edge
+- [ ] Emission in Rust / Go / Python produces N separate `fn` declarations
+- [ ] SELF_HOSTING.md §2.4 reconciled with this design (either: §2.4 already meant lens-level, or §2.4 is updated to match this)
 
 ---
 
 ## Open questions
 
-1. **What if the shared descent witness doesn't exist at any single parameter position?** E.g., `a(n) → b(n - 1)` and `b(n) → a(n + 1)` individually decrease THEIR callee's arg but the cluster doesn't terminate overall. Detection: compute a global ranking function over all parameters. Deferred — initial implementation requires single-position shared witness; extend when a concrete fixture demands it.
+1. **What if SELF_HOSTING.md §2.4 genuinely specifies a substrate extension?** Then SELF_HOSTING.md is older than THESIS.md:604-629's commitment and needs a forward-update. The thesis has higher authority; any conflict resolves in thesis's favor.
 
-2. **Can a cluster have > 2 members?** Yes — Tarjan's finds SCCs of arbitrary size. Descent witness still works if N bodies all decrease the same parameter position.
+2. **Does cluster inference make type-checking slower?** SCC + fixed-point inference IS more expensive than per-Bind inference, but only on mutually-recursive clusters (rare). Implementation can short-circuit non-recursive clusters (common case stays fast).
 
-3. **What about nested clusters?** SCCs are maximal by definition; a strongly-connected region is a single SCC. Nesting isn't possible in the usual sense. If a cluster's body internally calls another cluster, that's captured as a call edge between SCCs (no intra-cluster coupling).
-
-4. **How does mutual recursion interact with generic functions?** E.g., `fn a<T>(x: T) → b<T>(x)` where `b<T>` calls `a<T>`. Each instantiation creates its own cluster? Or one cluster over the generic signatures? Likely: instantiate-then-detect. Defer until surface generics stabilize (Lane 3 Stage 3a sub-task).
+3. **Cross-module clusters** — if `a` is in module X and `b` in module Y, does SCC detection cross module boundaries? Design says yes, but surfaces compilation ordering. Deferred — `compiler.dag`'s cluster likely lives within a single module; cross-module handled later.

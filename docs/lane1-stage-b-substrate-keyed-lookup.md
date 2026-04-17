@@ -37,22 +37,23 @@ Five deliverables:
 New substrate fields (Rust-side HashMap materialized at Dag construction, exposed to .dag via typed accessors):
 
 ```
-// in src/v3/std/substrate.dag
+// in src/v3/std/substrate.dag — substrate shape UNCHANGED
 type Dag {
   declarations: List<Declaration>
-  nodes: List<Behavior>
-  ports: List<DagPort>
-  // NEW:
-  port_by_id: Map<PortId, DagPort>
-  node_by_id: Map<NodeId, Behavior>
+  nodes: List<Behavior>     // SINGLE authority for node identity
+  ports: List<DagPort>      // SINGLE authority for port identity
+  // NO new fields. No port_by_id, no node_by_id — those would be
+  // parallel authority per the meta-review on PR #491.
 }
 
-// Accessor returning Option<T> — structural fail-closed
-fn port(d: Dag, id: PortId) -> DagPort? = lookup(d.port_by_id, id)
-fn node(d: Dag, id: NodeId) -> Behavior? = lookup(d.node_by_id, id)
+// NEW: substrate-level query functions (not fields)
+fn port(d: Dag, id: PortId) -> DagPort?
+fn node(d: Dag, id: NodeId) -> Behavior?
 ```
 
-The Rust side (`src/v3/compiler/src/dag.rs`) already builds these — `Dag::port(id) -> &DagPort` exists. This stage exposes them IN substrate.dag so `.dag` lenses can call them too. The backing storage is the same HashMap the Rust emitter already uses.
+The Rust side (`src/v3/compiler/src/dag.rs`) already has HashMap-backed O(1) lookup as implementation detail. That HashMap stays PRIVATE implementation — not exposed as a substrate field. The new `.dag`-side functions `port(d, id)` and `node(d, id)` lower to the existing Rust methods. Single authority preserved: the Lists ARE the substrate; the HashMap is a cache.
+
+See [design-substrate-keyed-lookup-api.md](./design-substrate-keyed-lookup-api.md) for the full design rationale, including the earlier `port_by_id`/`node_by_id` field proposal that was rejected per meta-review.
 
 ### 2. Add Bind-pass-through primitive
 
@@ -82,11 +83,11 @@ This is the canonical "follow the chain until you hit a non-Bind producer" walk.
 
 ### 3. Migrate existing lenses to use the new accessors
 
-- **complexity.dag**: delete `lookup_cost`'s linear walk through the accumulator; keep the pre-seed logic but replace inner `find_port`-style helpers with `d.port_by_id` lookups
-- **provenance.dag**: replace inline `produced_by` chain walks with `resolve_producer`
-- **unused_parameters.dag**: replace `expand_frontier_list`'s `contains(referenced, payload.head)` with `Map<PortId, Bool>` — the referenced-set becomes a keyed lookup too
+- **complexity.dag**: replace any local `find_port(d.ports, id)` / `find_behavior(d.nodes, id)` with substrate-level `port(d, id)` / `node(d, id)`. The lens's own accumulator can keep using lists OR optionally switch to `Map<PortId, CostLookup>` for O(1) lookup (lens-local, not substrate)
+- **provenance.dag**: replace inline `produced_by` chain walks with `resolve_producer(d, port_id)`
+- **unused_parameters.dag**: same substitution — `find_port` / `find_behavior` → substrate-level functions
 
-**Expected line reduction:** ~30% across the three lens files. Measure and include in the PR description.
+**Expected line reduction:** ~15% across the three lens files. Lower than the original 30% estimate because the primary change is a helper-deletion swap, not a full data-shape refactor.
 
 ### 4. Add invariant L-7 to INVARIANTS.md
 

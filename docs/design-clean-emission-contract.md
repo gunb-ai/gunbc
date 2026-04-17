@@ -91,7 +91,7 @@ Lane 1c pilot uses `EmitUnderscoreWhenUnused` (with `EmitPrefixedUnderscoreWhenU
 
 Emitter dispatch: walks the arm body, collects referenced PortIds. For each payload binding in the pattern, emits the binding name if referenced, else dispatches to the rule variant.
 
-Rust: `EmitUnderscoreWhenUnused`. Python: `EmitPrefixedUnderscoreWhenUnused`. Go: `EmitUnderscoreWhenUnused` (Go accepts `_`). SPICE: N/A (no patterns — rule ignored). Verilog: `EmitUnderscoreWhenUnused`. English: N/A.
+Rust: `EmitUnderscoreWhenUnused`. Python: `EmitPrefixedUnderscoreWhenUnused`. Go: `EmitUnderscoreWhenUnused` (Go accepts `_`). Additional Shape A targets declare their own rule.
 
 #### ImportRule (handles `unused_imports`)
 
@@ -102,7 +102,7 @@ type ImportRule
   | ImportPerUsageSite            // (future) emit import at the site where it's used
 ```
 
-Rust: `IncludeOnlyReferenced`. Python: `IncludeOnlyReferenced`. Go: `IncludeOnlyReferenced`. SPICE: N/A. Verilog: N/A (modules don't import). English: `IncludeOnlyReferenced`.
+Rust: `IncludeOnlyReferenced`. Python: `IncludeOnlyReferenced`. Go: `IncludeOnlyReferenced`. Additional Shape A targets declare their own rule (most programming languages want `IncludeOnlyReferenced`).
 
 #### BlockReturnRule (handles `unused_parens around block return value`)
 
@@ -113,7 +113,7 @@ type BlockReturnRule
   | ExplicitReturnKeyword         // emits `{ return expr; }` (Go / explicit-return languages)
 ```
 
-Rust: `NoWrappingOnTerminalExpression`. Python: `ExplicitReturnKeyword` (Python requires `return`). Go: `ExplicitReturnKeyword`. SPICE: `NoWrappingOnTerminalExpression`. Verilog: `NoWrappingOnTerminalExpression`. English: `NoWrappingOnTerminalExpression`.
+Rust: `NoWrappingOnTerminalExpression`. Python: `ExplicitReturnKeyword`. Go: `ExplicitReturnKeyword`. Additional Shape A targets declare their own rule.
 
 #### VariableBindingRule (handles `unused_variables` at let bindings)
 
@@ -124,7 +124,7 @@ type VariableBindingRule
   | OmitBinding                    // if the target allows bare expressions, skip the let
 ```
 
-Rust: `EmitUnderscoreWhenUnused`. Python: `EmitUnderscoreWhenUnused` (convention: prefix underscore). Go: compile error on unused — emitter MUST reference or use `_ =` assignment. SPICE: N/A (all values are named). English: N/A.
+Rust: `EmitUnderscoreWhenUnused`. Python: `EmitUnderscoreWhenUnused` (convention: prefix underscore). Go: compile error on unused — emitter MUST reference or use `_ =` assignment.
 
 #### (Removed) StructFieldRule
 
@@ -142,7 +142,7 @@ type MatchArmBodyRule
   | NoWrappingOnNonComplexBody   // emits `=> expr,` for atoms; wraps only for multi-statement blocks
 ```
 
-Rust: `NoWrappingOnNonComplexBody`. Python: `NoWrappingOnNonComplexBody`. Go: N/A (uses switch, different shape). SPICE / Verilog / English: N/A.
+Rust: `NoWrappingOnNonComplexBody`. Python: `NoWrappingOnNonComplexBody`. Go: N/A (uses switch, different shape).
 
 #### CorrectionStyle (from DB-1)
 
@@ -171,9 +171,7 @@ type PostEmitVerifier {
 Rust: `{ command: "rustc", args: ["--edition=2021", "-D", "warnings"], syntax_only: false, expected_exit_code: 0 }`.
 Go: `{ command: "gofmt", args: ["-l"], syntax_only: true, expected_exit_code: 0 }` (exit 0 + empty stdout = clean).
 Python: `{ command: "python3", args: ["-m", "py_compile"], syntax_only: true, expected_exit_code: 0 }`.
-SPICE: `{ command: "ngspice", args: ["--syntax-check"], syntax_only: true, expected_exit_code: 0 }`.
-Verilog: `{ command: "verilator", args: ["--lint-only", "-Wall"], syntax_only: true, expected_exit_code: 0 }`.
-English: `{ command: "diff", args: ["oracle.txt", "-"], syntax_only: false, expected_exit_code: 0 }` (exit 0 = no diff).
+Additional Shape A targets (Swift, Kotlin, etc.) declare their own `post_emit_verifier`. **Shape B formats** (SPICE, Verilog, English, YAML) are NOT compiler targets per THESIS.md §"Two shapes of omni-emission" — they're produced by `.dag` programs, not emitted by the compiler.
 
 ### Per-target declarations
 
@@ -199,7 +197,7 @@ data rust_clean_emission: CleanEmissionContract = {
 }
 ```
 
-Similar for `go_clean_emission`, `python_clean_emission`, `verilog_clean_emission`, `spice_clean_emission`, `english_clean_emission`.
+Similar for `go_clean_emission`, `python_clean_emission`, and future Shape A targets (Swift, Kotlin, etc.).
 
 ---
 
@@ -209,7 +207,7 @@ Similar for `go_clean_emission`, `python_clean_emission`, `verilog_clean_emissio
 
 **Why closed enum per rule, not `fn (Input) -> Output` callbacks?** Walker implementation is simpler: dispatch on variant via match, no first-class functions needed. Targets' rule choice is visible in the spec file. Future "user-defined rules" could add a variant like `Custom(RuleFn)` but not needed today.
 
-**Why `N/A` per-target for some rules?** Explicit "this target doesn't have this concept" beats implicit "field is null." Targets without patterns (SPICE) declare `PatternBindingRule::N/A` or just omit the field via a Maybe type — TBD per target. For this design: every field is present in every `CleanEmissionContract` instance, with `N/A`-shaped variants where the rule doesn't apply.
+**Why `NotApplicable` per-target for some rules?** Explicit "this target doesn't have this concept" beats implicit "field is null." If a future Shape A target lacks pattern matching (rare), it declares `PatternBindingRule::NotApplicable`. Every field is present in every `CleanEmissionContract` instance, with `NotApplicable` variants where the rule doesn't apply.
 
 Actually, simpler: introduce `N/A` variants per rule where relevant:
 
@@ -332,7 +330,7 @@ By end of Lane 1 Stage 1c pilot (unused pattern bindings): `unused_variables` re
 
 ## Open questions
 
-1. **Is the rule set closed?** 8 rules cover current warnings. If a new target (SPICE, Verilog) introduces a new warning category not covered (e.g., Verilog's always-block sensitivity lists), add a rule. Deferred to Lane 1 Stage 1f.
+1. **Is the rule set closed?** 8 rules cover current warnings for Rust/Go/Python. Additional Shape A targets may introduce new warning categories (e.g., Kotlin's null-safety lints); add a typed rule when a real case arises. Per E-5's "no escape hatches" framing, suppression is not an alternative to adding the rule.
 
 2. **Should `post_emit_verifier.args` templates support variable substitution** (e.g., `{file}`, `{target_dir}`)? Probably yes, but deferred — first concrete use case determines the variable set.
 

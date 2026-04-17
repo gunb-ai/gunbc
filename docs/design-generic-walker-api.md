@@ -3,7 +3,7 @@
 # Design DB-2 — Generic walker API
 
 **Design blocker:** DB-2
-**Consumers:** Lane 1 Stage 1e (consolidation implementation); Lane 1 Stage 1f (Verilog/SPICE/English targets); Lane 3 Stage 3c (self-hosting cycle runs through walker); Lane 4 Stage 4d (async emission via walker's spec dispatch)
+**Consumers:** Lane 1 Stage 1e (consolidation implementation); Lane 1 Stage 1f (consolidation proof, optionally adding one additional Shape A language); Lane 3 Stage 3c (self-hosting cycle runs through walker); Lane 4 Stage 4d (async emission via walker's spec dispatch)
 **Status:** Design ready for implementer review.
 **Depends on:** DB-4 ([design-clean-emission-contract.md](./design-clean-emission-contract.md)) — walker reads `CleanEmissionContract`; DB-5 ([design-substrate-keyed-lookup-api.md](./design-substrate-keyed-lookup-api.md)) — walker consumes keyed accessors
 
@@ -15,7 +15,7 @@ Today `src/v3/compiler/src/emit_rust.rs` is ~3600 lines of hand-written per-targ
 
 The walker's API determines:
 - How much logic actually disappears from per-language files
-- Whether adding Verilog/SPICE/English is realistic (Lane 1f)
+- Whether adding one additional Shape A language (Swift, Kotlin, etc.) is realistic (Lane 1f). **Shape B artifacts (SPICE, Verilog, English, YAML, etc.) are NOT compiler targets** per THESIS.md §"Two shapes" — they're produced by `.dag` programs.
 - Whether self-hosting cycles cleanly (Lane 3c)
 - Whether async variants can emit from the same walker (Lane 4d)
 
@@ -256,7 +256,7 @@ What callers can rely on:
 
 ## Rationale
 
-**Why one `emit(dag, target)` entry point not three?** Because the target is data, not a function identity. Calling `emit(dag, TargetLanguageId::Verilog)` adds a target without adding a function. Matches the thesis claim "adding a new target = one spec file, zero new Rust." One Rust function that reads the new spec.
+**Why one `emit(dag, target)` entry point not three?** Because the target is data, not a function identity. Calling `emit(dag, TargetLanguageId::Swift)` adds a target without adding a function. Matches the thesis claim "adding a new target = one spec file, zero new Rust." One Rust function that reads the new spec.
 
 **Why `TargetContext` bundles contract + realizations + post-emit?** Because they're read together at every emission site. Bundling avoids threading three arguments through every helper; mirrors the existing `Ctx` struct in `emit_rust.rs`.
 
@@ -306,10 +306,10 @@ A meta-test proving the "one spec = one target" claim:
 ```rust
 #[test]
 fn adding_new_target_changes_zero_walker_code() {
-    // Set up a tiny Verilog spec (just enough to emit `let x = 1`)
-    // Call emit(dag, TargetLanguageId::Verilog)
-    // Assert: output matches expected Verilog snippet
-    // No src/v3/compiler/src/emit.rs changes committed between this test and the Verilog spec addition
+    // Set up a tiny Swift spec (just enough to emit `let x = 1`)
+    // Call emit(dag, TargetLanguageId::Swift)
+    // Assert: output matches expected Swift snippet
+    // No src/v3/compiler/src/emit.rs changes committed between this test and the Swift spec addition
 }
 ```
 
@@ -320,7 +320,7 @@ This test is the regression gate for Lane 1 Stage 1f (new targets).
 ## Associations
 
 - **Lane 1 Stage 1e** ([phase1-lane3-consolidation-build-plan.md](./phase1-lane3-consolidation-build-plan.md) → execution doc TBD) — this is its core design
-- **Lane 1 Stage 1f** — adding Verilog/SPICE/English via target spec only, no walker changes
+- **Lane 1 Stage 1f** — adding one additional Shape A language via target spec only, no walker changes
 - **Lane 3 Stage 3c** ([lane3-self-hosting-cycle.md](./lane3-self-hosting-cycle.md)) — self-hosting cycle runs compiler.dag through this walker
 - **Lane 4 Stage 4d** ([lane4-completion.md](./lane4-completion.md)) — async emission = target spec field, walker dispatches
 - **DB-4 `CleanEmissionContract`** ([design-clean-emission-contract.md](./design-clean-emission-contract.md)) — walker reads this for every rule dispatch
@@ -338,7 +338,7 @@ This test is the regression gate for Lane 1 Stage 1f (new targets).
 - [ ] `grep -rn "fn render_" src/v3/compiler/src/emit.rs` — target-agnostic helpers only; no `fn render_rust_*` etc.
 - [ ] Every `Realization` entry in spec/*.dag carries a typed `target: TargetLanguageId` field (no name-prefix dispatch)
 - [ ] Post-emit verifier invocation is part of `emit`; `emit()` fails on verifier errors
-- [ ] Lane 1f test: adding `spec/verilog.dag` with `verilog_spec: TargetSpec` enables `emit(dag, TargetLanguageId::Verilog)` without any change to `emit.rs`
+- [ ] Lane 1f test (if Option B chosen): adding `spec/swift.dag` with `swift_spec: TargetSpec` enables `emit(dag, TargetLanguageId::Swift)` without any change to `emit.rs`
 
 ---
 

@@ -130,8 +130,10 @@ Emits diagnostic for unexpected complexity (e.g., hidden O(n²) via captured lis
 
 **Acceptance:**
 - Unignores `kf_1_lambda_body_cost_contributes_to_fold` (test passes, because symbolic cost correctly attributes lambda body × N iterations)
-- Thesis doc example `all_pairs` reports O(|items|²) with diagnostic
-- Thesis doc "dead work detection": sort before commutative fold emits warning
+- Thesis doc example `all_pairs` reports `O(|items|²)` as a **lens output** queryable via `symbolic_cost(d, port)`; IDE tooling may surface this to users, but the compiler does NOT emit a diagnostic for high-complexity code unless a `where cost_bounded(...)` declaration is violated (in which case it IS an error)
+- Thesis doc "dead work detection" (sort before commutative fold): returns a structured `DeadWorkReport` from the lens as queryable data. Also NOT a warning — per INVARIANTS.md:410-417 there is no warning severity. If the user declares `where no_dead_work`, violation is an error; otherwise the report is informational data only.
+
+**Severity discipline**: neither symbolic cost nor dead-work detection emits soft warnings. INVARIANTS.md §Diagnostic-severity is explicit: a reportable condition is either an error OR not a diagnostic. Cost analysis results are DATA consumed by downstream tools (IDE, CI reports, optimization lenses). The user opts into errors via refinement predicates (`where cost_bounded(...)`, `where no_dead_work`) which ARE compile-time errors when violated.
 
 **Escalation:** if recognition rules for O(n²) require solving arbitrary symbolic arithmetic, scope tighter — recognize the thesis doc's two patterns (nested fold, sort-before-commutative) and document what's not recognized. Don't build a full symbolic math library.
 
@@ -152,9 +154,11 @@ type ParallelizationOpportunity
 Unignores `parallel_fold_on_commutative_monoid_is_reducible`.
 
 **Acceptance:**
-- Structural parallelism tests from `thesis_parallelism_test.rs` now emit a corresponding `ParallelizationOpportunity`
+- Structural parallelism tests from `thesis_parallelism_test.rs` now emit a corresponding `ParallelizationOpportunity` entry in the lens's output
 - Commutative monoid fold produces `CommutativeReduction` entry
-- Diagnostic emitted as compiler info (not error) — "this computation can be parallelized"
+- Lens output is **data, not a diagnostic**. Per INVARIANTS.md:410-417 there is no "info" severity. IDE tooling reads the lens output and may surface "this fold is parallelizable" as an inline hint; the compiler itself treats the output as structured data, not as a diagnostic
+
+**Severity discipline**: parallelism-as-lens output is DATA. Not a warning, not an info, not a diagnostic. Downstream tooling (IDE, docs generation, compile-time parallelization passes) consume it. If user code declares `where parallel_reducible` and the analysis disagrees, THAT declaration mismatch IS an error — but "this could be parallelized" on unconstrained code is just information the lens produces.
 
 **Escalation:** if commutative-monoid detection requires algebra-awareness the `.dag` compiler doesn't have yet (operator-on-declared-Monoid-instance lookup), surface. That primitive might live in algebra.dag; if it doesn't, it's a prerequisite.
 
@@ -162,18 +166,9 @@ Unignores `parallel_fold_on_commutative_monoid_is_reducible`.
 
 **Scope:** the infrastructure from 2b–2e (lens walks workflow, composes algebra, emits diagnostic) has a common shape. Generalize so users can add new compile-time dimensions via `.dag` declaration alone.
 
-New substrate type in `src/v3/std/dimensions.dag`:
-```
-type Dimension {
-  name: String
-  carrier: TypeRef                  // what the algebra operates on
-  compose: fn(Carrier, Carrier) -> Carrier
-  witness_predicate: fn(OperationEffect) -> DimensionWitness
-  break_diagnostic: DiagnosticTemplate
-}
-```
+Type shape is **locked in [DB-3](./design-dimension-abstraction.md)** — `Dimension<Carrier>` with `name`, `witness_of`, `compose`, `identity`, `break_diagnostic` fields. See DB-3 for full signature, algebraic requirements (monoid laws on compose), and instance declarations.
 
-Ship with idempotency, symbolic-cost, parallelism as instances. Document how users declare their own (e.g., "resource exhaustion" dimension on cloud ops).
+Ship with idempotency, symbolic-cost, parallelism as Dimension instances. Document how users declare their own (e.g., "resource exhaustion" dimension on cloud ops).
 
 **Acceptance:**
 - Idempotency lens (2b) rewritten to consume the `Dimension` abstraction — same behavior, less bespoke code

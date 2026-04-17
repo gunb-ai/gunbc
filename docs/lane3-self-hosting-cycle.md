@@ -35,7 +35,7 @@ Lane 3 closes all three.
 
 | Sub-stage | Time | Scope | Design doc |
 |---|---|---|---|
-| 3a.1 | 1.5 weeks | Mutual recursion → `MutualLoop` substrate variant + SCC detection pass + cluster descent verification. Substrate gap proven in DB-9. | [DB-9](./design-mutual-recursion-lowering.md) |
+| 3a.1 | 1.5 weeks | Mutual recursion: SCC detection in termination lens + cluster descent verification. **No substrate change** — uses existing 5 behaviors (see [DB-9](./design-mutual-recursion-lowering.md) for why). | [DB-9](./design-mutual-recursion-lowering.md) |
 | 3a.2 | 0.5 week | `data` value semantics: `data foo: Type = value` as structural value declarations accessible at emission | (written at start of 3a.2) |
 | 3a.3 | 1 week | `where` refinement predicates: `fn f(x: Int where x > 0)`. Needs refinement carrier on Port types + Branch-boundary verification. Not trivial. | (written at start of 3a.3) |
 | 3a.4 | 0.5 week | Full surface generics: explicit `fn f<T>(x: T) -> T` syntax for compiler code (Prereq 0.5 covers inference; 3a.4 is surface/lowering) | (written at start of 3a.4) |
@@ -45,7 +45,7 @@ Lane 3 closes all three.
 
 | Sub-stage | Acceptance test |
 |---|---|
-| 3a.1 Mutual recursion | `fn a(n: Int) -> Int = if n == 0 then 0 else b(n - 1)` + `fn b(n: Int) -> Int = if n == 0 then 0 else a(n - 1)` compiles, both marked as `MutualLoop`; `fn a(n) = b(n); fn b(n) = a(n)` fails with cluster termination diagnostic |
+| 3a.1 Mutual recursion | `fn a(n: Int) -> Int = if n == 0 then 0 else b(n - 1)` + `fn b(n: Int) -> Int = if n == 0 then 0 else a(n - 1)` compiles (both stay as ordinary Binds per DB-9; substrate still 5 behaviors); termination lens detects the `{a, b}` SCC and verifies shared descent; `fn a(n) = b(n); fn b(n) = a(n)` fails with cluster termination diagnostic |
 | 3a.2 `data` value semantics | `data answer: Int = 42` + `data config: Config = { ... }` compile, values accessible at emission |
 | 3a.3 `where` refinement | `fn div(n: Int, d: Int where d != 0) -> Int` — compile-time rejection of `div(1, 0)` |
 | 3a.4 Surface generics | `fn id<T>(x: T) -> T` — compiles with explicit type param |
@@ -70,31 +70,9 @@ FIX (option 1): did you mean `point.a`?
 FIX (option 2): did you mean `point.b`?
 ```
 
-New substrate additions:
+Type shapes are **locked in [DB-1](./design-correction-shape.md)** — `Diagnostic.fixes: List<Correction>` (note: `fixes` plural, not `fix`), `Correction { description, span, new_source }` (source-only; no `target_language` field), and `CorrectionStyle { indent_unit, line_ending, string_quote, trailing_semicolon }`. See DB-1 for field semantics, rejected alternatives, and per-target `CorrectionStyle` declarations.
 
-```
-type Diagnostic {
-  // existing fields...
-  fix: List<Correction>
-}
-
-type Correction {
-  description: String
-  new_source: String  // literal replacement code
-  span: SourceSpan    // what to replace
-}
-```
-
-Per-target fix syntax declared in the same spec surface as Lane 1c's `CleanEmissionContract`:
-
-```
-data rust_correction_style: CorrectionStyle = {
-  braces_required: true
-  ...
-}
-
-data python_correction_style: CorrectionStyle = { ... }
-```
+Per-target correction style is declared in each target spec alongside its `CleanEmissionContract` — DB-1 specifies the exact field set. Don't restate here; reference the locked shape.
 
 **Acceptance:**
 - Every T-series test in `thesis_validation_test.rs` (T1.1–T1.5, T2.4) emits at least one Correction

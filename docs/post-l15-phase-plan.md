@@ -125,7 +125,7 @@ Week-by-week view:
 | 5  | 1e (consolidation) | 2b | — | — |
 | 6  | 1e | 2c (test materialize) | — | — |
 | 7  | 1e | 2d (symbolic bounds) | — | — |
-| 8  | 1f (Verilog/SPICE/English) | 2e (parallelism lens) | — | — |
+| 8  | 1f (consolidation proof) | 2e (parallelism lens) | — | — |
 | 9  | — | 2f (user dims) | 3c start | — |
 | 10 | — | — | 3c | 4a (transports + dag run) |
 | 11 | — | — | 3c | 4a |

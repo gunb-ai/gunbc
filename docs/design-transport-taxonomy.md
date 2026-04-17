@@ -1,300 +1,267 @@
-> Part of: [post-l15-phase-plan.md](./post-l15-phase-plan.md) | Unblocks: Lane 4 Stage 4a, Lane 2 Stage 2b (idempotency lens reads transport facts)
+> Part of: [post-l15-phase-plan.md](./post-l15-phase-plan.md) | Unblocks: Lane 4 Stage 4a, Lane 2 Stage 2b (idempotency lens reads transport specs)
 
-# Design DB-6 — Transport type taxonomy
+# Design DB-6 — Transports as spec declarations (no closed coproduct)
 
 **Design blocker:** DB-6
-**Consumers:** Lane 4 Stage 4a (transport declarations + `dag run` interpreter); Lane 2 Stage 2b (idempotency lens consumes `TransportVariant` to derive effect shape); `dsl/extdeps/*/` declarations (already use `transport rest {...}` / `transport shell {...}` as string-tagged today — migrate to typed)
+**Consumers:** Lane 4 Stage 4a (transport declarations + `dag run` interpreter); Lane 2 Stage 2b (idempotency lens); `dsl/extdeps/*/` declarations
 **Status:** Design ready for implementer review.
 
 ---
 
-## Problem
+## Critical correction from prior revision
 
-Today `dsl/extdeps/*.dag` declares transports as string-annotation blocks:
+An earlier version of this doc proposed a closed `TransportKind` coproduct — `RestTransport | ShellTransport | GrpcTransport | LocalFunctionTransport` — with typed per-variant sub-data AND per-transport dispatchers in the Rust emitter / interpreter.
 
-```dag
-operation Exchange {
-  ...
-  transport rest { method: POST, path: "/v1/token" }
-}
+Reviewer (PR #491, 2026-04-17) correctly flagged this as **parallel authority** per THESIS.md:117-139:
 
-operation DeployScript {
-  ...
-  transport shell { command: "gcloud", args: ["auth", "login"] }
-}
-```
+> *"the interpreter does not have per-transport handlers. It reads the same transport specs as the emitter (`extdeps/transports/`). ... Adding a new transport (gRPC, WebSocket, etc.) means adding a spec in `extdeps/transports/` — zero compiler changes, zero emitter changes, zero interpreter changes."*
+>
+> *"The sustainability test: when the system grows by one transport or one language, how many files need editing? The answer should be 1: the spec file. If it's more, there's a parallel list somewhere that will drift and break."*
 
-The `rest` and `shell` keywords are **parser-level tags** that lower into generic `Transport` nodes carrying `kind: String`. Consumers (effect derivation, Rust emitter's HTTP client generation) reconstruct per-variant fields from string matching on `kind`.
+A closed `TransportKind` enum in Rust plus per-variant dispatch code IS that parallel list.
 
-This is the same name-based-dispatch antipattern as `rust_` prefix filtering. Fixing it: declare the transport taxonomy as a typed coproduct, parser lowers to the typed variant directly, consumers dispatch on variant not on string.
-
-Bounded closed set required for Lane 4a: which transports to ship?
+**The corrected design: transports are declared in `extdeps/transports/` specs. The compiler's substrate knows only that a Transport IS a spec reference. No closed enum, no per-variant dispatch.**
 
 ---
 
 ## Design
 
-### The taxonomy (closed coproduct)
+### Substrate shape (minimal)
+
+User / extdeps code:
 
 ```dag
-// src/v3/std/transports.dag (new)
-module std.transports
+service gcp.STS {
+  operation Exchange {
+    transport rest {
+      method: POST
+      path: "/v1/token"
+      body_shape: JsonBody(TokenExchangeRequest)
+    }
+  }
+}
+```
 
-import std.list { List }
-import std.types { HttpMethod, Url, NonEmptyStr }
+Parser lowers this into a substrate `TransportDeclaration`:
 
-// 🟢 TERMINAL. Transport kinds are the closed set of runtime
-// mechanisms gunbc knows how to invoke. Each variant carries its
-// own typed payload — no string matching on "kind".
-type TransportKind
-  = RestTransport(RestTransportData)
-  | ShellTransport(ShellTransportData)
-  | GrpcTransport(GrpcTransportData)
-  | LocalFunctionTransport(LocalFunctionData)
+```dag
+// src/v3/std/substrate.dag — single substrate carrier
+type TransportDeclaration {
+  spec_ref: DeclarationId   // points at `rest` in extdeps/transports/rest.dag
+  fields: List<FieldEntry>  // method, path, body_shape — the literal declared fields
+}
+```
 
-// --- REST --------------------------------------------------------
+`spec_ref` points to the transport spec file. `fields` is the bag of declarations the user supplied. The substrate makes NO assumptions about what "rest" means; that's the spec's job.
 
-// HTTP request/response over REST. Most cloud APIs (GCP, AWS,
-// GitHub, etc.) are REST.
-type RestTransportData {
-  method: HttpMethod                 // GET, PUT, POST, DELETE, PATCH, HEAD, OPTIONS
-  path: String                       // e.g. "/v1/secrets/{id}"
+### Transport specs as authority
+
+`dsl/extdeps/transports/rest.dag`:
+
+```dag
+module extdeps.transports.rest
+
+type RestTransportFields {
+  method: HttpMethod
+  path: String
   body_shape: RestBodyShape
-  response_codes: List<Int>          // expected 2xx codes; fail-closed on unexpected
+  response_codes: List<Int>
 }
 
-type RestBodyShape
-  = NoBody                           // GET / DELETE / HEAD
-  | JsonBody(DeclarationId)          // type of the body struct
-  | FormUrlEncoded(List<String>)     // form field names
-  | RawBytes                         // for upload/download
+// Primitive operations the emitter/interpreter consume.
+data rest_invocation: TransportInvocation = {
+  steps: [
+    SerializeBody,
+    OpenConnection,
+    IssueMethod,
+    ParseResponse
+  ]
+}
+```
 
-// --- Shell --------------------------------------------------------
+`dsl/extdeps/transports/shell.dag`:
 
-// Shell command invocation. `dag run` spawns a subprocess;
-// emission generates `Command::new(...)` (Rust) /
-// `subprocess.run(...)` (Python) / `exec.Command(...)` (Go).
-type ShellTransportData {
-  command: String                    // the executable, e.g. "gcloud"
-  args: List<String>                 // argv; may contain {placeholders}
+```dag
+module extdeps.transports.shell
+
+type ShellTransportFields {
+  command: String
+  args: List<String>
   stdin: ShellStdinShape
   stdout_interpretation: ShellStdoutShape
   exit_code_policy: ExitCodePolicy
 }
 
-type ShellStdinShape
-  = NoStdin
-  | LiteralStdin(String)
-  | InputFieldStdin(String)          // feeds one input field as stdin
-
-type ShellStdoutShape
-  = IgnoreStdout
-  | ParseJson(DeclarationId)
-  | ParseLines                       // List<String> one per line
-  | RawStdout
-
-type ExitCodePolicy
-  = ZeroIsSuccess
-  | SpecificExitCodes(List<Int>)
-
-// --- gRPC ---------------------------------------------------------
-
-// gRPC calls. Alternative to REST for some Google APIs and
-// intra-service calls. Binary protocol, streaming supported.
-type GrpcTransportData {
-  service: String                    // fully-qualified service, e.g. "google.cloud.storage.v2.Storage"
-  method: String                     // e.g. "GetObject"
-  request_type: DeclarationId        // typed request message
-  response_type: DeclarationId       // typed response message
-  streaming: StreamingMode
-}
-
-type StreamingMode
-  = Unary                            // single request, single response
-  | ServerStreaming                  // single request, response stream
-  | ClientStreaming                  // request stream, single response
-  | BidiStreaming                    // both
-
-// --- Local function (for intra-program calls) -------------------
-
-// Not a "transport" in the network sense — models direct function
-// invocation for ops that are local to the generated program. This
-// exists so that workflows can mix local helpers and remote ops
-// without special-casing.
-type LocalFunctionData {
-  callable: DeclarationId            // the function being invoked
+data shell_invocation: TransportInvocation = {
+  steps: [
+    ConstructArgv,
+    SpawnSubprocess,
+    FeedStdin,
+    CaptureStdoutStderr,
+    MapExitToOutput
+  ]
 }
 ```
 
-### Migration path from string tags
+Each transport spec declares required fields + abstract invocation steps. These are data declarations — no Rust code changes to add a new transport.
 
-`dsl/extdeps/*.dag` currently has:
+### Emitter reads the spec
 
-```dag
-transport rest { method: POST, path: "/v1/token" }
+The Rust emitter does NOT have `match transport.kind { Rest => ..., Shell => ... }`. Instead:
+
+```rust
+fn emit_transport_call(
+    dag: &Dag,
+    ctx: &TargetContext,
+    transport_decl: &TransportDeclaration,
+) -> Result<String, EmitError> {
+    let spec = dag.declaration(transport_decl.spec_ref)?;
+    let invocation = spec.find_data("invocation")
+        .ok_or(EmitError::MalformedTransportSpec)?;
+    let steps = invocation.steps.iter().map(|step| {
+        render_step_for_target(ctx, step, &transport_decl.fields)
+    }).collect::<Result<Vec<_>, _>>()?;
+    Ok(join_rendered(&steps, &ctx.clean_emission.line_ending))
+}
 ```
 
-Parser lowers this into a `TransportDeclaration` with `TransportKind::RestTransport(RestTransportData { method: Post, path: "/v1/token", body_shape: JsonBody(...), ... })`.
+`render_step_for_target` dispatches on the **step name** (`SerializeBody`, `OpenConnection`, etc.) by looking up per-target realization in the target spec. Adding gRPC = add `extdeps/transports/grpc.dag` declaring its steps + add `rust_grpc_steps` realizations in `rust.dag`.
 
-Syntax changes are minimal: the parser rule for `transport <kind> { ... }` stays; the lowered AST uses the typed coproduct.
+**No new Rust code in the walker.**
 
-### Consumer dispatch pattern
+### Interpreter reads the spec
 
-Effect derivation (v2's `derive_effect_shape(method, path)`) becomes:
+The `dag run` interpreter (Lane 4 Stage 4a) reads the transport spec's `invocation` steps and runs each step using platform primitives. NOT `match transport.kind` — dispatch on step name, with interpreter-side handlers per abstract step (process primitive, http primitive, file primitive).
+
+The interpreter is small: ~N handlers where N = number of abstract primitive steps (process, http, file, possibly grpc). Adding a new transport that composes these primitives adds ZERO interpreter code.
+
+### What the parser changes
+
+Current parser: `transport rest { method: POST, path: "/v1/token" }` lowers to `Transport { kind: "rest", fields: Map<String, Value> }` (string-typed `kind`).
+
+After DB-6:
+- `rest` is a DECLARATION REFERENCE to `extdeps/transports/rest.dag`
+- Parser resolves the reference at lowering time
+- `TransportDeclaration { spec_ref: DeclarationId(rest_spec), fields: [...] }` is the lowered substrate form
+- `spec_ref` is a real typed reference, not a string-keyed lookup
+
+Validation at lowering: `rest.dag` declares `RestTransportFields { method, path, body_shape, response_codes }`. Parser verifies the user's field set matches; missing/extra fields fail with diagnostic. This is the "typed" part of the design the original wanted to express — typed per-spec, not per-closed-enum.
+
+### Effect derivation consumes declared behavior
 
 ```dag
-fn derive_effect_shape(transport: TransportKind) -> EffectShape {
-  match transport {
-    RestTransport(rest) => derive_rest_effect(rest.method, rest.path)
-    ShellTransport(shell) => derive_shell_effect(shell.command, shell.args)
-    GrpcTransport(grpc) => derive_grpc_effect(grpc.service, grpc.method, grpc.streaming)
-    LocalFunctionTransport(local) => ReadEffect
+fn derive_effect_shape_from_transport(
+  d: Dag,
+  transport: TransportDeclaration
+) -> EffectShape {
+  let spec = d.declaration(transport.spec_ref)
+  match spec.find_declaration("derive_effect") {
+    Some(derive_fn) => apply(derive_fn, transport.fields)
+    None => UnknownEffect("transport spec does not declare effect derivation")
   }
 }
 ```
 
-No string comparison anywhere. Each transport has its own derivation function.
-
-### `dag run` interpreter dispatch
-
-```rust
-// Rust-side for Lane 4 Stage 4a
-fn invoke_transport(
-    transport: &TransportKind,
-    inputs: &TransportInputs,
-) -> Result<TransportOutput, TransportError> {
-    match transport {
-        TransportKind::RestTransport(data) => invoke_rest(data, inputs),
-        TransportKind::ShellTransport(data) => invoke_shell(data, inputs),
-        TransportKind::GrpcTransport(data) => invoke_grpc(data, inputs),
-        TransportKind::LocalFunctionTransport(data) => invoke_local(data, inputs),
-    }
-}
-```
-
-Each `invoke_*` function handles runtime concerns (HTTP client, subprocess spawn, gRPC stub) specific to the transport. Shared machinery in `invoke_transport` handles retry, rate limiting, logging.
-
-### Target emitters
-
-Each target spec declares how to emit a call for each transport variant:
-
-```dag
-// spec/rust.dag additions
-data rust_rest_emission: RestEmissionStrategy = {
-  client_module: "reqwest"
-  construct_client: "reqwest::Client::new()"
-  call_template: "{client}.{method_lowercase}(\"{path}\").send()"
-  ...
-}
-
-data rust_shell_emission: ShellEmissionStrategy = {
-  module: "std::process::Command"
-  construct_template: "std::process::Command::new(\"{command}\").args(&[{args}]).output()"
-  ...
-}
-```
-
-Generic walker (DB-2) dispatches on transport variant + reads the target's emission strategy for that variant. Adding gRPC support to Rust = adding `rust_grpc_emission` data item; no walker change.
+Each transport spec declares how effects derive from its fields (e.g., `rest.derive_effect(method, path) = ...`). Compiler doesn't need to know "REST means HTTP means idempotent when PUT with key" — the REST spec declares that.
 
 ---
 
 ## Rationale
 
-**Why closed set of 4 variants?** Because these cover every transport gunbc has actually needed:
-- REST: all cloud SaaS APIs (GCP, AWS, GitHub, Stripe, …)
-- Shell: local tool invocation (gcloud CLI, terraform, docker, kubectl)
-- gRPC: some Google APIs, intra-service calls
-- LocalFunction: in-program function dispatch (not strictly "transport" but models calls uniformly)
+**Why no closed enum?** Because a closed enum forces every new transport to be a compiler change. The thesis explicitly forbids this.
 
-Anything else can be added later. Shipping 4 well is better than enumerating 12 speculatively.
+**Why typed per-spec, not per-closed-taxonomy?** Each transport spec CAN declare its own field shape and validation. `rest.dag` declares `RestTransportFields`; user code `transport rest { method: POST }` is validated against THAT shape. No compiler-wide "TransportKind" enum needed.
 
-**Why not "any transport is a string + bag of attributes" (open extensibility)?** Because open-string sets inherit the name-dispatch problem. If the goal is "users declare new transports," add them as substrate-level additions (requires substrate PR), not runtime string soup.
+**Why abstract `steps` in the invocation spec?** N transports × M targets = N*M specific rendering paths. Factoring into abstract primitives (SerializeBody, OpenConnection, etc.) collapses to N+M declarations: each transport declares its steps; each target declares per-step templates. Adding a transport = declare its steps. Adding a target = declare per-step templates.
 
-**Why carry `RestBodyShape`, `ShellStdinShape`, etc. as sub-types?** Because the variant choice determines downstream code generation (e.g., how to serialize the body, how to feed stdin). Opaque strings here would push the decision to the emitter, which would then need to string-match. Keep decisions in the substrate.
+**Why doesn't this just become another "the compiler knows primitives X, Y, Z" closed list?** Because the steps are target-agnostic names. The compiler doesn't KNOW what `SerializeBody` means; it looks up `rust_serialize_body: CodeTemplate` in the target spec. Missing realization = concrete missing-realization error, not "unsupported."
 
-**Why include LocalFunctionTransport?** Because workflows mix local helpers and remote calls; if local calls aren't "transports," every consumer needs a separate branch for local-vs-remote. Making local-dispatch a transport variant unifies the handling.
-
-**Why typed `HttpMethod` (existing) but String `method` field in gRPC?** Because HTTP methods are a closed verb set; gRPC methods are arbitrary user-declared names on a service. Different modeling fits different domains.
-
-**Why separate `response_codes: List<Int>` on REST?** Because extdeps already declares expected response codes per op. Surfacing them structurally on the transport lets the generic walker emit exhaustive response handling. Removes another layer of string-keyed lookup.
+**Brand-new primitive mechanisms (e.g., WebSocket)?** The transport spec declares its steps. If the step set grows, that's per-spec. The interpreter side may need a new platform primitive — that's the one exception: the interpreter has a fixed set of platform primitives it knows how to invoke (process, http, file, possibly WebSocket). Growing that set IS a compiler change, but only when an entirely new platform mechanism is needed.
 
 ---
 
 ## Rejected alternatives
 
-**Single `Transport` type with `kind: String` + `attributes: Map<String, String>`** — opaque, name-dispatched, every consumer reinvents the shape. Rejected.
+**Closed `TransportKind` coproduct with typed sub-variants + per-variant dispatch** (original DB-6 proposal) — **thesis violation per THESIS.md:117-139.** Creates parallel authority. Rejected.
 
-**Separate trait per transport in Rust** — implementation detail; not a substrate concern. Taxonomy is data. Rejected (at substrate level).
+**String-keyed transport with no validation** (pre-DB-6 status quo) — no validation means broken transport declarations fail at emission time, not at compile time. Rejected.
 
-**Include WebSocket / queue transports** — no current consumer needs them. Add when a real use case arrives. Rejected for now.
-
-**Transport declared as a first-class type (like Behavior), not a Conj sub-type** — overcomplicates. Transport is data tied to an operation, not an independent execution node. Rejected.
-
-**Model async vs sync as a transport variant** — wrong axis; async is an emission mode (Lane 4d), not a transport kind. Rejected.
+**Move all transport logic into Rust code** — maximal compiler involvement per transport. Rejected.
 
 ---
 
 ## Implementation notes
 
-### Parser changes
+### Parser change
 
-- `transport rest { ... }` currently parses into `Transport { kind: "rest", fields: List<(String, Value)> }` (string-typed)
-- After DB-6: parses into `TransportKind::RestTransport(RestTransportData { method: ..., path: ..., ... })`
-- The `rest` / `shell` / `grpc` / `local` keywords become variant constructors recognized by the parser (similar to how v3 recognizes `Empty` / `Cons` as variant patterns today)
+`transport <name> { <fields> }` — parser resolves `<name>` as a declaration reference to `extdeps/transports/<name>.dag`. Error if no such spec. Validates field shape per the spec's declared fields type.
 
-### Validation at lowering
+### Substrate addition
 
-Each transport variant has required fields; lowering fails with diagnostic if any is missing. Example:
+One new substrate type `TransportDeclaration`. The spec's declared fields type (e.g., `RestTransportFields`) isn't in substrate — it's an ordinary `.dag` type declared in the spec file.
 
-```dag
-transport rest {
-  method: POST
-  // path missing → LoweringError: "REST transport requires `path` field"
-}
-```
+### Emitter dispatch
 
-Stage 1a of Lane 4 covers this.
+Walker reads the transport spec's `invocation` data item. Walks the steps list. Per step, looks up per-target realization. Renders.
 
-### Effect derivation simplification
+### Interpreter dispatch
 
-`dsl/std/effects.dag`'s `derive_effect_shape(method: HttpMethod, path: PathTemplate)` becomes `derive_rest_effect(method, path)` and is called from the top-level `derive_effect_shape(transport: TransportKind)` dispatcher. v2's per-op effect tests migrate directly.
+Reads same `invocation` steps. Per step, dispatches to a platform-primitive handler. Platform primitive set IS fixed (small, maybe 5–10 total), but combinations per transport are open-ended.
 
-### Backward compatibility during migration
+---
 
-`dsl/extdeps/*.dag` files stay valid — parser converts `transport rest { method: POST, path: "/..." }` to the typed variant transparently. No file edits needed when DB-6 lands; user-facing syntax unchanged.
+## Example: adding gRPC transport after DB-6 lands
+
+1. Create `dsl/extdeps/transports/grpc.dag`:
+   ```dag
+   type GrpcTransportFields { service: String, method: String, ... }
+   data grpc_invocation: TransportInvocation = {
+     steps: [SerializeProto, OpenGrpcChannel, InvokeMethod, ParseProtoResponse]
+   }
+   ```
+
+2. Add per-target step realizations in `spec/rust.dag`:
+   ```dag
+   data rust_serialize_proto: CodeTemplate = "{service}::{method}_request({fields})"
+   ...
+   ```
+
+3. Done. No compiler changes. No interpreter changes. No walker changes.
+
+Users now write `transport grpc { service: "...", method: "..." }` and the compiler routes it through the new spec.
 
 ---
 
 ## Associations
 
-- **Lane 4 Stage 4a** ([lane4-completion.md](./lane4-completion.md)) — this is the core substrate change for transports
-- **Lane 2 Stage 2b** ([lane2-compile-time-proofs.md](./lane2-compile-time-proofs.md)) — idempotency lens reads `TransportKind` to derive `EffectShape`
-- **`dsl/std/effects.dag`** — `derive_effect_shape` refactored to dispatch on `TransportKind`
-- **`dsl/extdeps/*.dag`** — no syntax changes; lowering updated
-- **`src/v3/std/transports.dag`** — NEW file with the taxonomy
-- **`src/v3/spec/rust.dag`** — add `rust_rest_emission`, `rust_shell_emission`, etc. for each variant
-- **`src/v3/compiler/src/emit.rs`** (DB-2 walker) — dispatch on `TransportKind` variant when emitting transport calls
+- **Lane 4 Stage 4a** ([lane4-completion.md](./lane4-completion.md)) — transport declarations + `dag run` interpreter consume this shape
+- **Lane 2 Stage 2b** ([lane2-compile-time-proofs.md](./lane2-compile-time-proofs.md)) — idempotency lens reads the transport spec's declared effect derivation
+- **`dsl/std/effects.dag`** — `derive_effect_shape` refactored to look up spec-declared derivation
+- **`dsl/extdeps/transports/`** — per-transport spec files (rest.dag, shell.dag, grpc.dag, ...)
+- **`src/v3/std/substrate.dag`** — add minimal `TransportDeclaration { spec_ref, fields }` carrier. No `TransportKind` enum.
+- **`src/v3/spec/rust.dag`, etc.** — per-target step realizations
+- **Thesis anchor** — THESIS.md:117-139 (spec IS the implementation; sustainability test)
 
 ---
 
 ## Acceptance (Lane 4 Stage 4a owns)
 
-- [ ] `std/transports.dag` declares `TransportKind` coproduct with 4 variants + sub-types per variant
-- [ ] Parser lowers `transport rest {...}` / `shell` / `grpc` / `local` into the typed variant; lowering fails on missing required fields
-- [ ] `dsl/extdeps/cloud/gcp/*.dag` (STS, Secret Manager, IAM) round-trip through the new pipeline with zero syntax changes
-- [ ] Effect derivation dispatches on `TransportKind` variant (no string matching)
-- [ ] `dag run` interpreter invokes transports via `invoke_transport(TransportKind, inputs)` dispatch
-- [ ] Target emitters each declare `*_rest_emission`, `*_shell_emission`, etc. strategies in their spec
-- [ ] v2's 16 effects tests (from `src/v2/tests/src/effects.rs`) have v3 equivalents passing against the new typed transports
+- [ ] `src/v3/std/substrate.dag` adds `TransportDeclaration { spec_ref: DeclarationId, fields: List<FieldEntry> }`. **No `TransportKind` enum.**
+- [ ] `dsl/extdeps/transports/rest.dag`, `shell.dag` declare required fields + invocation steps
+- [ ] Parser lowers `transport <name> { ... }` into typed `TransportDeclaration` with spec-ref resolution
+- [ ] Effect derivation looks up spec-declared derivation functions; no string-matching on transport names
+- [ ] Adding `grpc.dag` spec + Rust gRPC-step realizations enables gRPC end-to-end with zero Rust compiler/walker/interpreter code changes
+- [ ] v2's 16 effects tests have v3 equivalents passing against spec-driven dispatch
+- [ ] CI gate: grep for `match.*TransportKind` or `match transport.kind` in Rust returns zero results
 
 ---
 
 ## Open questions
 
-1. **Is 4 variants enough?** Cover REST, shell, gRPC, local. Possibly add WebSocket / message queue / SSH later. Defer until concrete need.
+1. **Initial set of platform primitives the interpreter knows?** Rough estimate: process (Command::spawn), http (reqwest-like), file (stdlib), possibly grpc (tonic-like). Start minimal; grow per concrete need.
 
-2. **Do transports need a `timeout: Duration?` field, a `retry: RetryPolicy?` field, a `rate_limit: RateLimit?` field?** Likely yes — today these are declared at `service { config { ... } }` level in extdeps. Decision: keep them at service/operation level, not on `TransportKind`. The transport variant is WHAT is being called; service config is HOW.
+2. **Per-spec validation of declared fields** — each transport spec declares its field shape; parser validates user declarations. Overlapping field names across specs have different semantics (e.g., `path` = URL in REST vs filesystem in Shell) — spec-per-transport field types prevent confusion.
 
-3. **Authentication declaration** — today extdeps declare `AuthScheme` per service. Stays at service level, not on transport. Confirmed.
+3. **Migration path for existing extdeps** — current `dsl/extdeps/cloud/gcp/*.dag` uses `transport rest { ... }`. After DB-6: parser resolves `rest` to `extdeps/transports/rest.dag`, which must EXIST. Creating those spec files is concurrent with this design's implementation.
 
-4. **Should `RestTransportData.path` be a parsed `PathTemplate` (typed with parameters marked)** not a `String`? v2's `dsl/std/http_path.dag` declares `PathTemplate`; reuse rather than re-parse. Yes: `path: PathTemplate`.
+4. **Transports that don't decompose into steps?** If a transport needs custom logic not expressible as step composition, it needs to break into primitives addable to the interpreter. Pressure on such transports to decompose is GOOD — keeps primitive-set small. If genuinely bespoke, that's a thesis-level discussion (growing the primitive set), not a stage-level bypass.

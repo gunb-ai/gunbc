@@ -146,7 +146,7 @@ folds into P2's emitter consolidation.
 - Conditional imports (`unused_imports`) — fold into P2's generic module header
 - Dead-code attributes on generated structs (`dead_code`) — test-context
   concern, separate lane
-- New per-language emit files (Verilog, SPICE) — defer to P4
+- Any Shape B emission concerns (SPICE / Verilog / English) — **not compiler targets** per THESIS.md §"Two shapes"; Shape B artifacts are produced by `.dag` PROGRAMS, not the compiler
 - `gofmt`/`black`/`pylint` wrapper work beyond declaring the
   verifier commands — actual tool integration is P2
 
@@ -243,17 +243,17 @@ Total: ~6 implementer-days.
 
 ## Success signal
 
-Imagine a contributor adds a Verilog target in P4. If the clean-emission
+Imagine a contributor adds a Shape A target like Swift or Kotlin. If the clean-emission
 contract is right, they should be able to write:
 
 ```
 data verilog_clean_emission: CleanEmissionContract = {
-  pattern_bindings: ...   // whatever Verilog's convention is
+  pattern_bindings: ...   // whatever Swift's convention is
   ...
   post_emit_verifier: { command: "verilator", args: ["--lint-only"] }
 }
 ```
 
 …and the existing generic emitter (from P2) produces warning-clean
-Verilog without any new Rust code. That's the shape this lane is
+Swift without any new Rust code. That's the shape this lane is
 designing toward.

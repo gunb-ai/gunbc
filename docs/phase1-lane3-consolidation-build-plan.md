@@ -103,28 +103,33 @@ spec should do. Examples already known:
 Each bridge is scoped: what kills it, what spec field replaces it,
 whether the substrate supports it today.
 
-### 4. Pilot target decision
+### 4. Consolidation proof target
 
-Output: a section in this file (or a separate `docs/p2-pilot-target-choice.md`).
+Output: a section in this file.
 
-Evaluate SPICE vs English as the P2 pilot. Criteria:
+**Corrected from an earlier revision**: an earlier version of this section proposed SPICE or English as the "consolidation pilot target." Per THESIS.md §1505 ("Two shapes of omni-emission"), SPICE netlists and natural-language documentation are **Shape B artifacts** — outputs of `.dag` PROGRAMS, not compiler targets. Using them as compiler emission pilots would be a category error. Corrected per PR #491 review.
 
-| Criterion | SPICE | English |
-|---|---|---|
-| Ownership complexity | None (analog) | None (prose) |
-| Scope model | None | None |
-| Pattern emission | Sum types → mux synthesis | Sum types → prose |
-| Verifier availability | `ngspice --syntax-check` | Oracle diff vs golden |
-| Substrate coverage | Needs analog algebra — might be a gap | Needs text templates — already covered |
-| Test cost | Medium (ngspice runtime) | Low (text comparison) |
+The consolidation proof is either:
 
-**Recommendation framework, not decision:** prefer the target that
-exposes the *fewest* new substrate gaps for its pilot run. If SPICE
-needs analog algebra additions, English may be safer. If English's text
-templates prove too weak, SPICE earlier.
+**Option A — Rust/Go/Python re-emission stability**
+The consolidated walker re-emits existing Rust/Go/Python output with bit-identical results. No new target needed; the proof is that the consolidation didn't change observable behavior.
 
-This lane produces the evaluation; P2-L1 owner makes the final call
-informed by it.
+**Option B — Add one additional Shape A target** (another programming language)
+Evaluate one additional programming language that could join Rust/Go/Python — Swift, Kotlin, TypeScript — as a consolidation smoking-gun ("adding a new target = one spec file"). Criteria:
+
+| Criterion | Swift | Kotlin | TypeScript |
+|---|---|---|---|
+| Ownership complexity | Similar to Rust (ARC) | GC | GC |
+| Pattern emission | Enums with associated values | Sealed classes | Discriminated unions |
+| Verifier availability | `swiftc -parse` | `kotlinc` | `tsc --noEmit` |
+| Substrate coverage | Full — standard spec shape fits | Full | Full |
+| Test cost | Low | Low | Low |
+
+**Recommendation framework, not decision:** pick the target exposing the fewest new substrate gaps. Swift's ARC maps cleanly to existing ParameterDisposition; Kotlin/TypeScript's GC maps cleanly to existing MemoryModel variants.
+
+**Shape B is explicitly out of scope** for this lane (and all of Lane 1): per THESIS.md, SPICE / English / Verilog / YAML / Terraform / K8s manifests etc. are outputs of user programs, not compiler targets. A `.dag` program that emits SPICE is a user-space library, not a compiler feature.
+
+This lane produces the Option A vs Option B evaluation; P2-L1 owner makes the final call informed by it.
 
 ### 5. Pessimistic fallbacks from Half B to revisit
 
