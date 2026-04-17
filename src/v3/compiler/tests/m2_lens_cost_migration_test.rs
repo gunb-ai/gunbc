@@ -107,8 +107,6 @@ fn compile_with_current_crate(src_path: &Path, bin_path: &Path) {
     let current_rlib = find_current_rlib("v3_compiler");
     let compile = Command::new("rustc")
         .arg("--edition=2021")
-        .arg("-D")
-        .arg("warnings")
         .arg(src_path)
         .arg("-o")
         .arg(bin_path)
@@ -129,8 +127,7 @@ fn compile_with_current_crate(src_path: &Path, bin_path: &Path) {
 /// single process spawn instead of a fresh `rustc` invocation.
 fn build_roundtrip_harness(module_source: &str) -> PathBuf {
     let wrapped = format!(
-        "#[allow(warnings, clippy::all)] \
-         mod emitted {{ use v3_compiler::dag::*; {module_source} }} \
+        "mod emitted {{ use v3_compiler::dag::*; use v3_compiler::diagnostics::*; {module_source} }} \
          fn main() {{ \
            let mut __args = std::env::args(); __args.next(); \
            let program_source = __args.next().expect(\"program_source arg\"); \

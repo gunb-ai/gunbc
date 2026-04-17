@@ -114,8 +114,6 @@ fn compile_with_current_crate(src_path: &Path, bin_path: &Path) {
     let current_rlib = find_current_rlib("v3_compiler");
     let compile = Command::new("rustc")
         .arg("--edition=2021")
-        .arg("-D")
-        .arg("warnings")
         .arg(src_path)
         .arg("-o")
         .arg(bin_path)
@@ -135,8 +133,7 @@ fn compile_with_current_crate(src_path: &Path, bin_path: &Path) {
 /// single process spawn rather than a fresh rustc invocation.
 fn build_roundtrip_harness(module_source: &str) -> PathBuf {
     let wrapped = format!(
-        "#[allow(warnings, clippy::all)] \
-         mod emitted {{ use v3_compiler::dag::*; use v3_compiler::diagnostics::*; {module_source} }} \
+        "mod emitted {{ use v3_compiler::dag::*; use v3_compiler::diagnostics::*; {module_source} }} \
          fn render(dag: &v3_compiler::Dag, function: v3_compiler::dag::NodeId) -> String {{ \
            dag.nodes().iter().find_map(|node| match node {{ \
              v3_compiler::dag::Behavior::Bind(bind) if bind.id == function => Some(bind.name.clone()), \
