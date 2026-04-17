@@ -818,6 +818,13 @@ pub struct BindNode {
 }
 
 impl BindNode {
+    /// Structural alias for `self.value`. `std/substrate.dag` names this
+    /// field `result_port` across all behavior variants; the Rust struct
+    /// kept the historical name `value` for BindNode only. `.dag`-generated
+    /// lenses read `bind.result_port` (see `lenses/complexity.dag` Bind
+    /// branch); hand-written Rust reads `bind.value` (see
+    /// `tests/m2_lens_cost_migration_test.rs`). This method is the single
+    /// point of agreement between the two.
     pub fn result_port(&self) -> PortId {
         self.value
     }

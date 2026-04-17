@@ -1,0 +1,136 @@
+// lenses.provenance — observational lens over `Port.produced_by`.
+//
+// One-hop backward walk from a port to the producing Behavior, returning
+// an `Origin` classification tagged by the producer's behavior kind.
+// Zero reconstruction: the lens only follows the edge that `infer`
+// already wrote to `produced_by` and dispatches on the producer's
+// variant.
+//
+// **L2 pilot.** First lens migrated from hand-written Rust (the
+// deleted `lens_provenance.rs`) to a `.dag` declaration consumed by
+// the pipeline. The authority lives here; the Rust emission is a
+// mechanical projection regenerated from this file via
+// `emit_rust_module` and checked in at
+// `src/v3/compiler/src/lens_provenance_generated.rs`.
+//
+// **Bootstrap placement.** Sibling to `src/v3/lenses/unused_parameters.dag`
+// rather than `src/v3/std/`. build.rs auto-enumerates `src/v3/std/*.dag`
+// into STAGED_FILES, so placing the lens there would double-load its
+// declarations when tests re-compile the file through `compile_to_dag`.
+// Moving bootstrap-loaded lenses into std/ is a follow-up once the
+// compile pipeline tolerates re-lowering a file bootstrap already
+// staged.
+//
+// **No Option in expression position.** v3's current surface grammar
+// does not support `Some(...)` / `None` as construction expressions
+// (only as match patterns, synthesized by `infer`). The pre-migration
+// Rust `Origin::Source { by: Option<NodeId> }` therefore flattens into
+// `NoProducer` (was `by: None` for an un-produced port) plus
+// `Source(NodeId)` (was `by: Some(v_or_bind.id)`). Consumers that need
+// to recover the old three-state `Source` read both variants and merge.
+//
+// **Fail-closed lookup.** Two internal lookup helpers (`find_port`,
+// `find_behavior`) linearly walk `Dag.ports` / `Dag.nodes`. When either
+// misses, the lens reports `MissingPort` / `MissingBehavior` as
+// distinct `Origin` variants rather than folding the failure into
+// `NoProducer` — a malformed Dag must not masquerade as a valid
+// "parameter port" answer. These two variants are defensive: they
+// should never fire on a well-formed Dag and collapse back into a
+// single `Origin` axis the day the substrate exposes total keyed
+// `port(id)` / `node(id)` accessors to `.dag` callers.
+
+module lenses.provenance
+
+import std.list { List }
+import std.substrate {
+  Dag, DagPort, Behavior, NodeId, PortId,
+  ValueNode, TransformNode, BranchNode, LoopNode, BindNode
+}
+
+// Provenance classification for a Port. Tags the producing Behavior
+// by its kind so callers can ask "where did this value come from?"
+// without reimplementing the produced_by walk themselves.
+//
+// `NoProducer` is the only "absent producer" answer a well-formed Dag
+// should emit — a function parameter or any other port whose
+// `produced_by` is `None`. `MissingPort` and `MissingBehavior` are the
+// two structurally distinct lookup-miss outcomes from the linear
+// `find_port` / `find_behavior` walks: a port id with no entry in
+// `Dag.ports`, or a producer id with no matching `Dag.nodes` entry.
+// They stay as their own variants so malformed-Dag failures are never
+// indistinguishable from legitimate "no producer" answers.
+//
+// `Source(id)` means the producing behavior is a literal Value or a
+// Bind — both carry source values, not computed ones.
+type Origin
+  = NoProducer
+  | MissingPort
+  | MissingBehavior
+  | Source(NodeId)
+  | Computed(NodeId)
+  | Selected(NodeId)
+  | Accumulated(NodeId)
+
+// Internal lookup result carriers. Mirror the unused_parameters lens's
+// pattern because the substrate still exposes ports/nodes as `List<_>`
+// rather than keyed tables; once the substrate grows direct `port(id)`
+// and `node(id)` accessors in `.dag`, both helpers dissolve.
+type PortLookup
+  = MissingPort
+  | FoundPort(DagPort)
+
+type BehaviorLookup
+  = MissingBehavior
+  | FoundBehavior(Behavior)
+
+fn origin_of(d: Dag, port_id: PortId) -> Origin =
+  match find_port(d.ports, port_id) {
+    MissingPort => MissingPort
+    FoundPort(port) =>
+      match port.produced_by {
+        None => NoProducer
+        Some(producer_id) =>
+          match find_behavior(d.nodes, producer_id) {
+            MissingBehavior => MissingBehavior
+            FoundBehavior(behavior) => origin_for_behavior(behavior)
+          }
+      }
+  }
+
+fn origin_for_behavior(behavior: Behavior) -> Origin =
+  match behavior {
+    Value(v) => Source(v.id)
+    Transform(t) => Computed(t.id)
+    Branch(b) => Selected(b.id)
+    Loop(l) => Accumulated(l.id)
+    Bind(bind) => Source(bind.id)
+  }
+
+fn find_port(ports: List<DagPort>, port_id: PortId) -> PortLookup =
+  match ports {
+    Empty => MissingPort
+    Cons(payload) =>
+      if payload.head.id == port_id then
+        FoundPort(payload.head)
+      else
+        find_port(payload.tail, port_id)
+  }
+
+fn find_behavior(nodes: List<Behavior>, node_id: NodeId) -> BehaviorLookup =
+  match nodes {
+    Empty => MissingBehavior
+    Cons(payload) =>
+      if behavior_id(payload.head) == node_id then
+        FoundBehavior(payload.head)
+      else
+        find_behavior(payload.tail, node_id)
+  }
+
+fn behavior_id(behavior: Behavior) -> NodeId =
+  match behavior {
+    Value(v) => v.id
+    Transform(t) => t.id
+    Branch(b) => b.id
+    Loop(l) => l.id
+    Bind(bind) => bind.id
+  }
