@@ -1,41 +1,121 @@
 #!/usr/bin/env bash
-# Pre-push hook: auto-fix fmt drift and commit it as a chore.
+# Pre-push hook: fmt check on push. On drift, auto-fix + commit
+# locally (convenience), then ABORT THE PUSH so the developer
+# re-runs git push to pick up the new commit.
 #
-# Rationale: three fmt-fail CI incidents in the last week. Running
-# `cargo fmt --all --check` locally at push time catches drift before
-# it reaches CI. Auto-fixing + auto-committing means the developer's
-# intent (their original commits) flows unchanged; the fmt fix lands
-# as a distinct chore commit on top, preserving audit clarity.
+# Why not auto-continue the push?  Git resolves the local SHA and
+# builds the push pack BEFORE calling this hook. A commit created
+# inside the hook advances the local ref, but git already captured
+# the pre-hook SHA in the pack — the new commit stays local and
+# never reaches the remote. See PR #509 review (codex 35d67a7d).
+#
+# Ref matching: we match on the pushed ref NAME (e.g., "refs/heads/main"),
+# not just SHA equality with HEAD. This avoids the alias-ref bug where
+# a push of a tag or a different branch that happens to point at the
+# same commit as HEAD would otherwise be treated as a HEAD push. Per
+# pre-push review (chatgpt on PR #509).
+#
+# Decision table:
+#   Delete-only push                   → skip entirely
+#   Detached HEAD (no current branch)  → fmt-check only; no auto-commit
+#   Push of HEAD's branch, clean       → exit 0, push proceeds
+#   Push of HEAD's branch, drift       → auto-fix + auto-commit + ABORT
+#                                          (developer re-runs `git push`)
+#   Push of other refs, clean          → exit 0, push proceeds
+#   Push of other refs, drift          → fail with actionable message
 #
 # Enable via: scripts/install-hooks.sh (sets core.hooksPath .githooks)
 
 set -e
 
-# Pre-push should run on a clean tree. Unstaged or staged-but-uncommitted
-# changes indicate the developer hasn't finished the work they want to
-# push; bail rather than silently sweep those up into a fmt commit.
-if ! git diff --quiet || ! git diff --cached --quiet; then
-  echo "[pre-push] uncommitted changes in working tree — commit or stash before pushing."
-  exit 1
+ZERO_SHA="0000000000000000000000000000000000000000"
+
+# Full ref path of the currently-checked-out branch, e.g. "refs/heads/main".
+# Empty on detached HEAD — in that case no ref-name match is possible.
+head_ref=$(git symbolic-ref HEAD 2>/dev/null || echo "")
+
+pushes_content=0
+head_branch_in_push=0
+
+# Pre-push stdin format (one line per ref being pushed):
+#   <local_ref> <local_sha> <remote_ref> <remote_sha>
+# All-zero local_sha means delete (no content pushed for this ref).
+while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
+  if [[ "$local_sha" == "$ZERO_SHA" ]]; then
+    continue  # delete, no content to check
+  fi
+  pushes_content=1
+  # Match on ref NAME, not SHA, so tag pushes or other-branch pushes
+  # that alias HEAD's SHA don't spuriously trigger auto-commit.
+  if [[ -n "$head_ref" ]] && [[ "$local_ref" == "$head_ref" ]]; then
+    head_branch_in_push=1
+  fi
+done
+
+# Delete-only push (e.g., `git push origin --delete branch-name`): skip.
+if [[ "$pushes_content" == "0" ]]; then
+  exit 0
+fi
+
+# If auto-commit is in scope (HEAD's branch is being pushed), require a
+# clean tree. Don't silently sweep uncommitted work into a fmt commit.
+if [[ "$head_branch_in_push" == "1" ]]; then
+  if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo "[pre-push] uncommitted changes in working tree — commit or stash before pushing."
+    exit 1
+  fi
 fi
 
 echo "[pre-push] cargo fmt --all --check"
 if cargo fmt --all --check 2>/dev/null; then
-  exit 0  # clean, nothing to do
+  exit 0  # clean, push proceeds
 fi
 
-echo "[pre-push] fmt drift detected; running cargo fmt --all and committing as chore"
+# Fmt drift detected. Two paths:
+if [[ "$head_branch_in_push" == "0" ]]; then
+  # Push doesn't include HEAD's branch (or HEAD is detached).
+  # Auto-committing would either land on a ref that isn't being pushed,
+  # or fail in detached state. Fail with an actionable message.
+  echo ""
+  if [[ -z "$head_ref" ]]; then
+    echo "[pre-push] fmt drift detected, but HEAD is detached — no current branch to auto-commit onto."
+    echo ""
+    echo "Attach HEAD to a branch (git checkout <branch>) and push again, or"
+    echo "run 'cargo fmt --all' and commit the fix explicitly."
+  else
+    echo "[pre-push] fmt drift detected, but the push doesn't include the current branch ($head_ref)."
+    echo "[pre-push] auto-commit would land on a ref that isn't being pushed."
+    echo ""
+    echo "Either:"
+    echo "  - switch to the branch you intend to push and push again (hook will auto-fix), or"
+    echo "  - run 'cargo fmt --all' now, commit, and include the fmt fix in your push."
+  fi
+  exit 1
+fi
+
+# HEAD's branch is being pushed. Auto-fix + commit as a convenience,
+# then abort the push so the developer re-runs and the new commit ships.
+echo "[pre-push] fmt drift detected; running cargo fmt --all"
 cargo fmt --all
 
 # Only stage tracked files; never sweep up untracked files.
 git add -u
 
 if git diff --cached --quiet; then
-  # cargo fmt reported drift via --check but --all produced no diff?
-  # Shouldn't happen; exit clean rather than commit nothing.
-  exit 0
+  # cargo fmt --check reported drift but --all produced no diff?
+  # Shouldn't happen; fail loud rather than exit silently.
+  echo "[pre-push] cargo fmt --check reported drift but cargo fmt --all produced no diff."
+  echo "[pre-push] this shouldn't happen; please investigate. Aborting push."
+  exit 1
 fi
 
 git commit -m "chore: apply cargo fmt"
-echo "[pre-push] committed fmt fixes — push continuing with the new commit"
-exit 0
+
+echo ""
+echo "[pre-push] fmt fixes committed locally as 'chore: apply cargo fmt'."
+echo "[pre-push] Git has already built the push pack with the pre-hook SHA, so"
+echo "[pre-push] the new commit would NOT reach the remote on this push."
+echo ""
+echo "Run 'git push' again to push the fmt commit alongside your original work."
+echo ""
+exit 1

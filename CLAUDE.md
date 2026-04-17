@@ -24,7 +24,7 @@ cargo test -p v2-compiler-tests v2_strict_compile_diagnostic_count -- --ignored 
 scripts/install-hooks.sh  # enables .githooks/pre-push
 ```
 
-The pre-push hook auto-fixes fmt drift: on push, if `cargo fmt --all --check` fails, the hook runs `cargo fmt --all`, stages the changes to tracked files, and lands a `chore: apply cargo fmt` commit on top of the push. Requires a clean working tree (no uncommitted changes) at push time — bails otherwise.
+The pre-push hook runs `cargo fmt --all --check` on push. If drift is detected **on the branch being pushed (HEAD)**: the hook runs `cargo fmt --all`, stages tracked files, lands a `chore: apply cargo fmt` commit — and then **aborts the push**. Re-run `git push` to ship the new commit. (Git builds the push pack before the hook runs, so a commit created inside the hook can't be added to the in-flight push — a second push is required to ship it.) Requires a clean working tree (no uncommitted changes) at push time. Delete-only pushes and cross-branch pushes skip the auto-commit path.
 
 ## Cost of Change
 
