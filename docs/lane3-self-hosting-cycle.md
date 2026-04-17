@@ -35,7 +35,7 @@ Lane 3 closes all three.
 
 | Sub-stage | Size | Scope | Design doc |
 |---|---|---|---|
-| 3a.1 | L | Mutual recursion: SCC detection in termination lens + cluster descent verification. **No substrate change** — uses existing 5 behaviors (see [DB-9](./design-mutual-recursion-lowering.md) for why). | [DB-9](./design-mutual-recursion-lowering.md) |
+| 3a.1 | L | Mutual recursion: lowering produces a `Behavior::Loop` whose `bound = LoopBound::Descent { cluster }` references a `Cluster` in the new `Dag.clusters` sidecar. Per-member descent positions; real call topology preserved. **Five `Behavior` variants unchanged**; localized substrate extension on `LoopBound` + sidecar. See [DB-9 R2](./design-mutual-recursion-lowering.md). | [DB-9 R2](./design-mutual-recursion-lowering.md) |
 | 3a.2 | S | `data` value semantics: `data foo: Type = value` as structural value declarations accessible at emission | [DB-10 (consolidated)](./design-m2-feature-parity.md) |
 | 3a.3 | M | `where` refinement predicates: `fn f(x: Int where x > 0)`. Needs refinement carrier on type declarations + Branch-arm narrowing integration. | [DB-11 (consolidated)](./design-m2-feature-parity.md) |
 | 3a.4 | S | Full surface generics: explicit `fn f<T>(x: T) -> T` syntax for compiler code (Prereq 0.5 covers inference; 3a.4 is surface/lowering) | [DB-12 (consolidated)](./design-m2-feature-parity.md) |
@@ -45,7 +45,7 @@ Lane 3 closes all three.
 
 | Sub-stage | Acceptance test |
 |---|---|
-| 3a.1 Mutual recursion | `fn a(n: Int) -> Int = if n == 0 then 0 else b(n - 1)` + `fn b(n: Int) -> Int = if n == 0 then 0 else a(n - 1)` compiles (both stay as ordinary Binds per DB-9; substrate still 5 behaviors); termination lens detects the `{a, b}` SCC and verifies shared descent; `fn a(n) = b(n); fn b(n) = a(n)` fails with cluster termination diagnostic |
+| 3a.1 Mutual recursion | `fn a(n: Int) -> Int = if n == 0 then 0 else b(n - 1)` + `fn b(n: Int) -> Int = if n == 0 then 0 else a(n - 1)` compiles (members stay as ordinary peer Binds in `Dag.nodes`; lowering wraps the cluster in a `Behavior::Loop` whose `bound = LoopBound::Descent { cluster }` points at `Dag.clusters[cluster]`; five `Behavior` variants unchanged per [DB-9 R2](./design-mutual-recursion-lowering.md)); termination lens reads cluster membership from the sidecar and verifies per-member descent positions; `fn a(n) = b(n); fn b(n) = a(n)` fails with cluster termination diagnostic naming the failing `CallEdge` + `MemberDescent.position` |
 | 3a.2 `data` value semantics | `data answer: Int = 42` + `data config: Config = { ... }` compile, values accessible at emission |
 | 3a.3 `where` refinement | `fn div(n: Int, d: Int where d != 0) -> Int` — compile-time rejection of `div(1, 0)` |
 | 3a.4 Surface generics | `fn id<T>(x: T) -> T` — compiles with explicit type param |
