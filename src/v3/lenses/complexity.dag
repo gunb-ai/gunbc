@@ -1,0 +1,162 @@
+// lenses.complexity — structural cost lens for the v3 DAG.
+//
+// 🟢 TERMINAL. Forward fold over `d.nodes` builds a per-port cost
+// map. The substrate invariant that producers precede consumers in
+// `d.nodes` makes this a pure catamorphism — no fuel, no mutual
+// recursion, no manual termination measure. Structural termination:
+// `fold` drives the walk on the finite list `d.nodes`.
+//
+// **Equivalent to the original Rust lens** at
+// `src/v3/compiler/src/lens_cost.rs` on commit 1247f4b1d, which
+// walked `produced_by` recursively. That oracle encodes the same
+// algebra; this forward-fold is the substrate-native rewriting
+// that exchanges recursive graph descent for sequential map build.
+//
+// **Fail-closed on malformed references.** `CostLookup` keeps
+// `MissingCost` distinct from `FoundCost(0)` so a port referenced by
+// a consumer but absent from the cost map cannot masquerade as a
+// legitimate zero-cost leaf. The accumulator is pre-seeded with an
+// entry (cost 0) for every `bind.params` port — parameters are the
+// only legitimate absent-from-d.nodes zero-cost leaves. Any remaining
+// `MissingCost` at lookup time means the DAG references a port whose
+// producer is not in `d.nodes`, which is malformed and surfaces at
+// the Rust boundary (`CostLens::cost_of` panics).
+
+module lenses.complexity
+
+import std.list { List, empty, fold, cons, concat }
+import std.substrate { Dag, DagPort, Behavior, BranchPath, NodeId, PortId }
+
+type CostEntry {
+  port: PortId
+  cost: CostLookup
+}
+
+type CostLookup
+  = MissingCost
+  | FoundCost(Int)
+
+fn cost_of(d: Dag, port_id: PortId) -> CostLookup =
+  lookup_cost(compute_costs(d), port_id)
+
+fn compute_costs(d: Dag) -> List<CostEntry> =
+  fold(d.nodes, seed_bind_params(d.nodes), |acc, behavior|
+    cons(entry_for(acc, behavior), acc)
+  )
+
+// Pre-seed the accumulator with a `FoundCost(0)` entry for every
+// `bind.params` port. Parameters have `produced_by = None` and are not
+// Behaviors in `d.nodes`, so without this seed their lookups would
+// return `MissingCost` and a malformed reference would be
+// indistinguishable from a legitimate parameter.
+fn seed_bind_params(nodes: List<Behavior>) -> List<CostEntry> =
+  match nodes {
+    Empty => empty()
+    Cons(payload) =>
+      concat(params_of(payload.head), seed_bind_params(payload.tail))
+  }
+
+fn params_of(behavior: Behavior) -> List<CostEntry> =
+  match behavior {
+    Value(v) => empty()
+    Transform(t) => empty()
+    Branch(b) => empty()
+    Loop(l) => empty()
+    Bind(bind) => param_entries(bind.params)
+  }
+
+fn param_entries(params: List<PortId>) -> List<CostEntry> =
+  match params {
+    Empty => empty()
+    Cons(payload) =>
+      cons(
+        { port: payload.head, cost: FoundCost(0) },
+        param_entries(payload.tail)
+      )
+  }
+
+fn entry_for(acc: List<CostEntry>, behavior: Behavior) -> CostEntry =
+  match behavior {
+    Value(v) => { port: v.result_port, cost: FoundCost(0) }
+    Transform(t) =>
+      {
+        port: t.result_port
+        cost: add_one(sum_costs(acc, t.inputs))
+      }
+    Branch(b) =>
+      {
+        port: b.result_port
+        cost:
+          add_one(
+            add_cost(
+              lookup_cost(acc, b.input),
+              max_path_cost(acc, b.paths)
+            )
+          )
+      }
+    Loop(l) =>
+      {
+        port: l.result_port
+        cost:
+          add_one(
+            add_cost(
+              lookup_cost(acc, l.source),
+              lookup_cost(acc, l.init)
+            )
+          )
+      }
+    Bind(bind) =>
+      {
+        port: bind.result_port
+        cost: lookup_cost(acc, bind.result_port)
+      }
+  }
+
+fn sum_costs(acc: List<CostEntry>, ports: List<PortId>) -> CostLookup =
+  fold(ports, FoundCost(0), |sum, port_id|
+    add_cost(sum, lookup_cost(acc, port_id))
+  )
+
+fn max_path_cost(acc: List<CostEntry>, paths: List<BranchPath>) -> CostLookup =
+  fold(paths, FoundCost(0), |best, path|
+    max_cost(best, lookup_cost(acc, path.result_port))
+  )
+
+fn lookup_cost(acc: List<CostEntry>, port_id: PortId) -> CostLookup =
+  match acc {
+    Empty => MissingCost
+    Cons(payload) =>
+      if payload.head.port == port_id then
+        payload.head.cost
+      else
+        lookup_cost(payload.tail, port_id)
+  }
+
+// Fail-closed arithmetic: a missing operand makes the whole sum
+// missing. Silent zero-fallback would let a malformed DAG masquerade
+// as a valid computation with cost 0.
+fn add_one(c: CostLookup) -> CostLookup =
+  match c {
+    MissingCost => MissingCost
+    FoundCost(n) => FoundCost(1 + n)
+  }
+
+fn add_cost(a: CostLookup, b: CostLookup) -> CostLookup =
+  match a {
+    MissingCost => MissingCost
+    FoundCost(x) =>
+      match b {
+        MissingCost => MissingCost
+        FoundCost(y) => FoundCost(x + y)
+      }
+  }
+
+fn max_cost(a: CostLookup, b: CostLookup) -> CostLookup =
+  match a {
+    MissingCost => MissingCost
+    FoundCost(x) =>
+      match b {
+        MissingCost => MissingCost
+        FoundCost(y) => FoundCost(if x > y then x else y)
+      }
+  }

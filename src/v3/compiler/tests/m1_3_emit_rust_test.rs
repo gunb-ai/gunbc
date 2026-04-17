@@ -18,12 +18,18 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit_rust::{emit_rust, emit_rust_module};
 
-static ROUNDTRIP_ID: AtomicUsize = AtomicUsize::new(0);
+mod common;
+use common::{HarnessLinkMode, RustcHarness};
+
+static HARNESS: OnceLock<RustcHarness> = OnceLock::new();
+fn harness() -> &'static RustcHarness {
+    HARNESS.get_or_init(|| RustcHarness::new("emit_rust"))
+}
 
 fn emit(source: &str) -> String {
     let dag = compile_to_dag(source, "test.v3").expect("compiles");
@@ -35,20 +41,10 @@ fn emit_module(source: &str) -> String {
     emit_rust_module(&dag).expect("emits module")
 }
 
-fn next_roundtrip_dir() -> std::path::PathBuf {
-    let id = ROUNDTRIP_ID.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "v3_emit_rust_roundtrip_{}_{}",
-        std::process::id(),
-        id
-    ))
-}
-
 fn roundtrip_stdout(source: &str) -> String {
     let source = emit(source);
 
-    let tmp_dir = next_roundtrip_dir();
-    std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
+    let tmp_dir = harness().next_child_dir();
     let src_path = tmp_dir.join("main.rs");
     let bin_path = tmp_dir.join("main_bin");
     std::fs::File::create(&src_path)
@@ -75,78 +71,201 @@ fn roundtrip_stdout(source: &str) -> String {
     String::from_utf8_lossy(&run.stdout).trim().to_string()
 }
 
-fn deps_dir() -> PathBuf {
-    std::env::current_exe()
-        .expect("current test binary path")
-        .parent()
-        .expect("deps dir")
-        .to_path_buf()
+/// Descriptor for a self-contained program fixture. Each fixture's
+/// v3 source is emitted via `emit_rust` (full program with its own
+/// `fn main`), wrapped in a submodule so the nested `main` becomes
+/// namespaced, and the batched harness dispatches via argv.
+struct ProgramFixture {
+    name: &'static str,
+    source: &'static str,
 }
 
-fn find_current_rlib(crate_name: &str) -> PathBuf {
-    let prefix = format!("lib{crate_name}-");
-    let mut matches: Vec<PathBuf> = std::fs::read_dir(deps_dir())
-        .expect("read deps dir")
-        .filter_map(|entry| {
-            let path = entry.ok()?.path();
-            let file_name = path.file_name()?.to_str()?;
-            if file_name.starts_with(&prefix) && file_name.ends_with(".rlib") {
-                Some(path)
-            } else {
-                None
-            }
-        })
-        .collect();
-    matches.sort_by_key(|path| {
-        std::fs::metadata(path)
-            .and_then(|meta| meta.modified())
-            .ok()
-    });
-    matches
-        .into_iter()
-        .last()
-        .expect("compiled rlib for current crate")
-}
+const PROGRAM_FIXTURES: &[ProgramFixture] = &[
+    ProgramFixture {
+        name: "list_fold_six",
+        source: "let total: Int = fold(cons(1, cons(2, singleton(3))), 0, |acc, x| acc + x)",
+    },
+    ProgramFixture {
+        name: "generic_list_fold_one",
+        source: "let total: Int = fold(singleton(1), 0, |acc, x| acc + x)",
+    },
+    ProgramFixture {
+        name: "list_map_then_fold_twelve",
+        source: "let total: Int = fold(map(cons(1, cons(2, singleton(3))), |x| x * 2), 0, |acc, x| acc + x)",
+    },
+    ProgramFixture {
+        name: "list_filter_then_fold_seven",
+        source: "let total: Int = fold(filter(cons(1, cons(2, cons(3, singleton(4)))), |x| x > 2), 0, |acc, x| acc + x)",
+    },
+    ProgramFixture {
+        name: "nested_list_builtins_inside_lambda_six",
+        source: "let total: Int = fold(cons(1, singleton(2)), 0, |acc, x| acc + fold(map(singleton(x), |y| y * 2), 0, |n, y| n + y))",
+    },
+    ProgramFixture {
+        name: "user_function_call_three",
+        source: "fn add(a: Int, b: Int) -> Int = a + b\nlet total: Int = add(1, 2)",
+    },
+    ProgramFixture {
+        name: "recursive_function_call_six",
+        source: "fn count_down(n: Int) -> Int = if n == 0 then 0 else n + count_down(n - 1)\nlet total: Int = count_down(3)",
+    },
+    ProgramFixture {
+        name: "record_literal_through_function_one",
+        source: "type Point { x: Int y: Int }\nfn x_of(p: Point) -> Int = p.x\nlet total: Int = x_of({ x: 1, y: 2 })",
+    },
+    ProgramFixture {
+        name: "user_sum_match_zero",
+        source: "type Sign = Plus | Minus\nfn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }\nlet total: Int = classify(Plus)",
+    },
+];
 
-fn compile_with_current_crate(src_path: &Path, bin_path: &Path) {
-    let deps = deps_dir();
-    let current_rlib = find_current_rlib("v3_compiler");
-    let compile = Command::new("rustc")
-        .arg("--edition=2021")
-        .arg(src_path)
-        .arg("-o")
-        .arg(bin_path)
-        .arg("-L")
-        .arg(format!("dependency={}", deps.display()))
-        .arg("--extern")
-        .arg(format!("v3_compiler={}", current_rlib.display()))
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .expect("invoke rustc — install a rust toolchain to run this test");
-    assert!(compile.success(), "rustc failed on emitted source");
-}
+static PROGRAM_HARNESS_BIN: OnceLock<PathBuf> = OnceLock::new();
 
-fn roundtrip_module_stdout(module_source: &str, wrapper_body: &str) -> String {
-    let wrapped = format!(
-        "mod emitted {{ use v3_compiler::dag::*; use v3_compiler::diagnostics::*; {module_source} pub fn __run() -> i64 {{ {wrapper_body} }} }} fn main() {{ println!(\"{{}}\", emitted::__run()); }}"
+fn build_program_harness() -> PathBuf {
+    let mut body = String::new();
+    for fixture in PROGRAM_FIXTURES {
+        let emitted = emit(fixture.source);
+        // emit_rust produces `fn main() { ... }`; wrapping in a submodule
+        // would leave the nested main private. Promote to `pub fn main`
+        // so the outer dispatcher can invoke it.
+        let emitted_pub_main = emitted.replace("fn main()", "pub fn main()");
+        body.push_str(&format!(
+            "#[allow(warnings, clippy::all)] pub mod {name} {{ {emitted} }}\n",
+            name = fixture.name,
+            emitted = emitted_pub_main,
+        ));
+    }
+    body.push_str(
+        "fn main() { \
+           let name = std::env::args().nth(1).expect(\"program fixture name\"); \
+           match name.as_str() { \
+        ",
+    );
+    for fixture in PROGRAM_FIXTURES {
+        body.push_str(&format!("\"{0}\" => {0}::main(), ", fixture.name));
+    }
+    body.push_str(
+        "other => panic!(\"unknown program fixture: {other}\"), \
+         } \
+         }\n",
     );
 
-    let tmp_dir = next_roundtrip_dir();
-    std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
-    let src_path = tmp_dir.join("main.rs");
-    let bin_path = tmp_dir.join("main_bin");
-    std::fs::File::create(&src_path)
-        .and_then(|mut f| f.write_all(wrapped.as_bytes()))
-        .expect("write wrapped rust source");
+    // Group 1 emissions are self-contained Rust (no v3_compiler deps),
+    // so the batched harness compiles with plain rustc. If one fixture's
+    // emission fails to compile, rustc surfaces the file + line — the
+    // submodule name narrows attribution.
+    harness().compile(&body, "main_bin", HarnessLinkMode::Standalone)
+}
 
-    compile_with_current_crate(&src_path, &bin_path);
+fn program_harness_bin() -> &'static Path {
+    PROGRAM_HARNESS_BIN
+        .get_or_init(build_program_harness)
+        .as_path()
+}
 
-    let run = Command::new(&bin_path)
-        .output()
-        .expect("run compiled binary");
-    assert!(run.status.success(), "compiled binary failed");
-    String::from_utf8_lossy(&run.stdout).trim().to_string()
+fn run_program(name: &str) -> String {
+    RustcHarness::run(program_harness_bin(), &[name])
+}
+
+/// Descriptor for one reflected-module rustc roundtrip fixture. Each
+/// descriptor becomes a submodule in the batched harness; tests
+/// dispatch by `name` at runtime.
+///
+/// Previously each fixture compiled its own rustc binary, paying a
+/// fresh linker + codegen cost per test (~3-5s on CI cold cache).
+/// Batching all fixtures into one compilation amortizes that cost.
+struct ReflectedFixture {
+    name: &'static str,
+    module_source: &'static str,
+    wrapper_body: &'static str,
+}
+
+const REFLECTED_FIXTURES: &[ReflectedFixture] = &[
+    ReflectedFixture {
+        name: "node_count",
+        module_source: "fn node_count(d: Dag) -> Int = fold(d.nodes, 0, |n, node| n + 1)",
+        wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); node_count(&dag)",
+    },
+    ReflectedFixture {
+        name: "bind_count",
+        module_source: "fn bind_count(d: Dag) -> Int = fold(d.nodes, 0, |n, behavior| match behavior { Value(v) => n, Transform(t) => n, Branch(b) => n, Loop(l) => n, Bind(bind) => n + 1 })",
+        wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); bind_count(&dag)",
+    },
+    ReflectedFixture {
+        name: "singleton_span",
+        module_source: "fn singleton_span(bind: BindNode) -> List<SourceSpan> = [bind.span]",
+        wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) => Some(bind.clone()), _ => None }).expect(\"bind\"); singleton_span(&bind).len() as i64",
+    },
+    ReflectedFixture {
+        name: "result_port_is_param",
+        module_source: "fn result_port_is_param(bind: BindNode) -> Bool = contains(bind.params, bind.result_port)",
+        wrapper_body: "let dag = v3_compiler::compile_to_dag(\"fn id(x: Int) -> Int = x\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) if !bind.params.is_empty() => Some(bind.clone()), _ => None }).expect(\"function bind\"); if result_port_is_param(&bind) { 1 } else { 0 }",
+    },
+    ReflectedFixture {
+        name: "bind_names",
+        module_source: "type FoundBind { name: String }\n\
+             fn bind_names(d: Dag) -> List<FoundBind> = \
+               fold(d.nodes, empty(), |acc, behavior| \
+                 match behavior { \
+                   Value(v) => acc, \
+                   Transform(t) => acc, \
+                   Branch(b) => acc, \
+                   Loop(l) => acc, \
+                   Bind(bind) => cons({ name: bind.name }, acc) \
+                 })",
+        wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); bind_names(&dag).len() as i64",
+    },
+];
+
+/// Lazily-initialized path to the batched reflected-module harness.
+/// All five fixtures compile into one binary on first access; each
+/// subsequent `run_reflected(name)` call dispatches via argv.
+static REFLECTED_HARNESS_BIN: OnceLock<PathBuf> = OnceLock::new();
+
+fn build_reflected_harness() -> PathBuf {
+    let mut body = String::new();
+    for fixture in REFLECTED_FIXTURES {
+        let module = emit_module(fixture.module_source);
+        body.push_str(&format!(
+            "#[allow(warnings, clippy::all)] \
+             pub mod {name} {{ \
+               use v3_compiler::dag::*; \
+               use v3_compiler::diagnostics::*; \
+               {module} \
+               pub fn run() -> i64 {{ {wrapper} }} \
+             }}\n",
+            name = fixture.name,
+            module = module,
+            wrapper = fixture.wrapper_body,
+        ));
+    }
+    body.push_str(
+        "fn main() { \
+           let name = std::env::args().nth(1).expect(\"test name arg\"); \
+           let value: i64 = match name.as_str() { \
+        ",
+    );
+    for fixture in REFLECTED_FIXTURES {
+        body.push_str(&format!("\"{0}\" => {0}::run(), ", fixture.name));
+    }
+    body.push_str(
+        "other => panic!(\"unknown reflected harness test: {other}\"), \
+         }; \
+         println!(\"{value}\"); \
+         }\n",
+    );
+
+    harness().compile(&body, "reflected_bin", HarnessLinkMode::WithV3Compiler)
+}
+
+fn reflected_harness_bin() -> &'static Path {
+    REFLECTED_HARNESS_BIN
+        .get_or_init(build_reflected_harness)
+        .as_path()
+}
+
+fn run_reflected(name: &str) -> String {
+    RustcHarness::run(reflected_harness_bin(), &[name])
 }
 
 #[test]
@@ -409,85 +528,75 @@ fn composition_opacity_gate_is_documented() {
 
 #[test]
 fn roundtrip_temp_dirs_are_unique() {
-    assert_ne!(next_roundtrip_dir(), next_roundtrip_dir());
+    assert_ne!(harness().next_child_dir(), harness().next_child_dir());
 }
+
+// The nine tests below dispatch into one batched rustc-roundtrip
+// program harness. Fixture sources live in `PROGRAM_FIXTURES`; the
+// harness compiles on first access and is reused across tests.
 
 #[test]
 fn rustc_roundtrip_list_fold_prints_six() {
-    let stdout = roundtrip_stdout(
-        "let total: Int = fold(cons(1, cons(2, singleton(3))), 0, |acc, x| acc + x)",
-    );
+    let stdout = run_program("list_fold_six");
     assert_eq!(stdout, "6", "compiled binary printed {stdout:?}, not `6`");
 }
 
 #[test]
 fn rustc_roundtrip_generic_list_fold_prints_one() {
-    let stdout = roundtrip_stdout("let total: Int = fold(singleton(1), 0, |acc, x| acc + x)");
+    let stdout = run_program("generic_list_fold_one");
     assert_eq!(stdout, "1", "compiled binary printed {stdout:?}, not `1`");
 }
 
 #[test]
 fn rustc_roundtrip_list_map_then_fold_prints_twelve() {
-    let stdout = roundtrip_stdout(
-        "let total: Int = fold(map(cons(1, cons(2, singleton(3))), |x| x * 2), 0, |acc, x| acc + x)",
-    );
+    let stdout = run_program("list_map_then_fold_twelve");
     assert_eq!(stdout, "12", "compiled binary printed {stdout:?}, not `12`");
 }
 
 #[test]
 fn rustc_roundtrip_list_filter_then_fold_prints_seven() {
-    let stdout = roundtrip_stdout(
-        "let total: Int = fold(filter(cons(1, cons(2, cons(3, singleton(4)))), |x| x > 2), 0, |acc, x| acc + x)",
-    );
+    let stdout = run_program("list_filter_then_fold_seven");
     assert_eq!(stdout, "7", "compiled binary printed {stdout:?}, not `7`");
 }
 
 #[test]
 fn rustc_roundtrip_nested_list_builtins_inside_lambda_prints_six() {
-    let stdout = roundtrip_stdout(
-        "let total: Int = fold(cons(1, singleton(2)), 0, |acc, x| acc + fold(map(singleton(x), |y| y * 2), 0, |n, y| n + y))",
-    );
+    let stdout = run_program("nested_list_builtins_inside_lambda_six");
     assert_eq!(stdout, "6", "compiled binary printed {stdout:?}, not `6`");
 }
 
 #[test]
 fn rustc_roundtrip_user_function_call_prints_three() {
-    let stdout =
-        roundtrip_stdout("fn add(a: Int, b: Int) -> Int = a + b\nlet total: Int = add(1, 2)");
+    let stdout = run_program("user_function_call_three");
     assert_eq!(stdout, "3", "compiled binary printed {stdout:?}, not `3`");
 }
 
 #[test]
 fn rustc_roundtrip_recursive_function_call_prints_six() {
-    let stdout = roundtrip_stdout(
-        "fn count_down(n: Int) -> Int = if n == 0 then 0 else n + count_down(n - 1)\nlet total: Int = count_down(3)",
-    );
+    let stdout = run_program("recursive_function_call_six");
     assert_eq!(stdout, "6", "compiled binary printed {stdout:?}, not `6`");
 }
 
 #[test]
 fn rustc_roundtrip_record_literal_through_function_prints_one() {
-    let stdout = roundtrip_stdout(
-        "type Point { x: Int y: Int }\nfn x_of(p: Point) -> Int = p.x\nlet total: Int = x_of({ x: 1, y: 2 })",
-    );
+    let stdout = run_program("record_literal_through_function_one");
     assert_eq!(stdout, "1", "compiled binary printed {stdout:?}, not `1`");
 }
 
 #[test]
 fn rustc_roundtrip_user_sum_match_prints_zero() {
-    let stdout = roundtrip_stdout(
-        "type Sign = Plus | Minus\nfn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }\nlet total: Int = classify(Plus)",
-    );
+    let stdout = run_program("user_sum_match_zero");
     assert_eq!(stdout, "0", "compiled binary printed {stdout:?}, not `0`");
 }
 
+// The five reflected-module tests below share one batched harness
+// built lazily by `reflected_harness_bin()`. Each test invokes the
+// same binary with a different argv[1]; fixture source lives in
+// `REFLECTED_FIXTURES`.
+
 #[test]
 fn rustc_roundtrip_emitted_module_invokes_reflected_dag_function() {
-    let module = emit_module("fn node_count(d: Dag) -> Int = fold(d.nodes, 0, |n, node| n + 1)");
-    let stdout = roundtrip_module_stdout(
-        &module,
-        "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); node_count(&dag)",
-    );
+    let stdout = run_reflected("node_count");
     assert!(
         stdout.parse::<i64>().is_ok_and(|count| count > 0),
         "compiled reflected Dag function should return a positive node count, got {stdout:?}"
@@ -496,13 +605,7 @@ fn rustc_roundtrip_emitted_module_invokes_reflected_dag_function() {
 
 #[test]
 fn rustc_roundtrip_emitted_module_matches_reflected_behavior_payloads() {
-    let module = emit_module(
-        "fn bind_count(d: Dag) -> Int = fold(d.nodes, 0, |n, behavior| match behavior { Value(v) => n, Transform(t) => n, Branch(b) => n, Loop(l) => n, Bind(bind) => n + 1 })",
-    );
-    let stdout = roundtrip_module_stdout(
-        &module,
-        "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); bind_count(&dag)",
-    );
+    let stdout = run_reflected("bind_count");
     assert_eq!(
         stdout, "2",
         "compiled reflected Behavior match should count the two top-level binds, got {stdout:?}"
@@ -511,11 +614,7 @@ fn rustc_roundtrip_emitted_module_matches_reflected_behavior_payloads() {
 
 #[test]
 fn rustc_roundtrip_emitted_module_returns_reflected_source_span_list() {
-    let module = emit_module("fn singleton_span(bind: BindNode) -> List<SourceSpan> = [bind.span]");
-    let stdout = roundtrip_module_stdout(
-        &module,
-        "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) => Some(bind.clone()), _ => None }).expect(\"bind\"); singleton_span(&bind).len() as i64",
-    );
+    let stdout = run_reflected("singleton_span");
     assert_eq!(
         stdout, "1",
         "compiled reflected function returning List<SourceSpan> should yield a singleton list, got {stdout:?}"
@@ -524,13 +623,7 @@ fn rustc_roundtrip_emitted_module_returns_reflected_source_span_list() {
 
 #[test]
 fn rustc_roundtrip_emitted_module_compares_reflected_port_ids_in_list_contains() {
-    let module = emit_module(
-        "fn result_port_is_param(bind: BindNode) -> Bool = contains(bind.params, bind.result_port)",
-    );
-    let stdout = roundtrip_module_stdout(
-        &module,
-        "let dag = v3_compiler::compile_to_dag(\"fn id(x: Int) -> Int = x\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) if !bind.params.is_empty() => Some(bind.clone()), _ => None }).expect(\"function bind\"); if result_port_is_param(&bind) { 1 } else { 0 }",
-    );
+    let stdout = run_reflected("result_port_is_param");
     assert_eq!(
         stdout, "1",
         "compiled reflected function should compare PortId handles through list contains, got {stdout:?}"
@@ -539,22 +632,7 @@ fn rustc_roundtrip_emitted_module_compares_reflected_port_ids_in_list_contains()
 
 #[test]
 fn rustc_roundtrip_emitted_module_returns_user_record_list_from_reflected_binds() {
-    let module = emit_module(
-        "type FoundBind { name: String }\n\
-         fn bind_names(d: Dag) -> List<FoundBind> = \
-           fold(d.nodes, empty(), |acc, behavior| \
-             match behavior { \
-               Value(v) => acc, \
-               Transform(t) => acc, \
-               Branch(b) => acc, \
-               Loop(l) => acc, \
-               Bind(bind) => cons({ name: bind.name }, acc) \
-             })",
-    );
-    let stdout = roundtrip_module_stdout(
-        &module,
-        "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); bind_names(&dag).len() as i64",
-    );
+    let stdout = run_reflected("bind_names");
     assert_eq!(
         stdout, "2",
         "compiled reflected function should return a user record per top-level bind, got {stdout:?}"

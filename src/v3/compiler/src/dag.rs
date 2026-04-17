@@ -47,6 +47,7 @@
 //   forward through lowering; no side tables, no reconstruction.
 
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 use crate::diagnostics::{Diagnostic, DiagnosticTable, SourceSpan};
 use crate::types::TypeShape;
@@ -817,6 +818,13 @@ pub struct BindNode {
 }
 
 impl BindNode {
+    /// Structural alias for `self.value`. `std/substrate.dag` names this
+    /// field `result_port` across all behavior variants; the Rust struct
+    /// kept the historical name `value` for BindNode only. `.dag`-generated
+    /// lenses read `bind.result_port` (see `lenses/complexity.dag` Bind
+    /// branch); hand-written Rust reads `bind.value` (see
+    /// `tests/m2_lens_cost_migration_test.rs`). This method is the single
+    /// point of agreement between the two.
     pub fn result_port(&self) -> PortId {
         self.value
     }
@@ -1119,9 +1127,15 @@ pub struct Dag {
     optional_match_disjs: HashMap<DeclarationId, DeclarationId>,
 }
 
+static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
+    let mut dag = Dag::empty();
+    crate::bootstrap::bootstrap(&mut dag);
+    dag
+});
+
 impl Dag {
-    pub fn new() -> Self {
-        let mut dag = Self {
+    fn empty() -> Self {
+        Self {
             nodes: Vec::new(),
             declarations: Vec::new(),
             ports: HashMap::new(),
@@ -1135,9 +1149,11 @@ impl Dag {
             target_syntax: TargetSyntaxCache::default(),
             stdlib_types: StdlibTypeCache::default(),
             optional_match_disjs: HashMap::new(),
-        };
-        crate::bootstrap::bootstrap(&mut dag);
-        dag
+        }
+    }
+
+    pub fn new() -> Self {
+        (*BOOTSTRAPPED_DAG).clone()
     }
 
     /// Typed accessor for the cached `Int` primitive `TypeShape`. `None`
