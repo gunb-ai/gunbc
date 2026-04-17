@@ -1385,6 +1385,25 @@ impl Dag {
         node
     }
 
+    /// Option-returning variant for the .dag substrate accessor
+    /// `node(d, id) -> Behavior?`. Same pattern as `port_opt`.
+    pub fn node_opt(&self, id: &NodeId) -> Option<&Behavior> {
+        self.nodes.get(id.index())
+    }
+
+    /// One-hop producer walk for the .dag substrate accessor
+    /// `resolve_producer(d, port_id) -> Behavior?`. Looks up the
+    /// port, follows its `produced_by`, returns the producing
+    /// behavior. `None` covers all three miss modes (missing port,
+    /// port has no producer, or produced_by references a missing
+    /// node — all structurally equivalent to "no producer found" at
+    /// this substrate boundary; richer lens-local enums layer on top).
+    pub fn resolve_producer_opt(&self, port_id: &PortId) -> Option<&Behavior> {
+        let port = self.port_opt(port_id)?;
+        let producer_id = port.produced_by?;
+        self.node_opt(&producer_id)
+    }
+
     /// O(1) lookup by DeclarationId. Same dense-sequential invariant as nodes.
     pub fn declaration(&self, id: DeclarationId) -> &Declaration {
         let decl = &self.declarations[id.index()];
@@ -1446,6 +1465,14 @@ impl Dag {
 
     pub fn port(&self, id: PortId) -> &Port {
         self.ports.get(&id).expect("PortId not in dag")
+    }
+
+    /// Option-returning variant for the .dag substrate accessor
+    /// `port(d, id) -> DagPort?`. DB-14 wires this to the generated
+    /// Rust via a carrier template; callers that need fail-closed
+    /// carriers use this instead of `port`.
+    pub fn port_opt(&self, id: &PortId) -> Option<&Port> {
+        self.ports.get(id)
     }
 
     pub fn all_ports(&self) -> impl Iterator<Item = &Port> {

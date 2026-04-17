@@ -2782,6 +2782,122 @@ let n: Int = count([1, 2, 3])
 }
 
 #[test]
+fn substrate_accessors_exist_in_bootstrap_dag() {
+    let dag = v3_compiler::Dag::new();
+    let port_decl = dag.declaration_by_name("port").expect("port exists");
+    let node_decl = dag.declaration_by_name("node").expect("node exists");
+    let resolve_decl = dag
+        .declaration_by_name("resolve_producer")
+        .expect("resolve_producer exists");
+    // Each accessor must be an Arrow with inputs + output + body.
+    use v3_compiler::dag::{ArrowBody, TypeConnective};
+    match (&port_decl.connective, &node_decl.connective, &resolve_decl.connective) {
+        (
+            TypeConnective::Arrow { inputs: pi, body: pb, .. },
+            TypeConnective::Arrow { inputs: ni, body: nb, .. },
+            TypeConnective::Arrow { inputs: ri, body: rb, .. },
+        ) => {
+            assert_eq!(pi.len(), 2, "port arity");
+            assert_eq!(ni.len(), 2, "node arity");
+            assert_eq!(ri.len(), 2, "resolve_producer arity");
+            // Bodies should be upgraded to ExternalRealization by bootstrap.
+            assert!(
+                matches!(pb, ArrowBody::ExternalRealization(_)),
+                "port body should be ExternalRealization after bootstrap upgrade; got {pb:?}"
+            );
+            assert!(
+                matches!(nb, ArrowBody::ExternalRealization(_)),
+                "node body should be ExternalRealization; got {nb:?}"
+            );
+            assert!(
+                matches!(rb, ArrowBody::ExternalRealization(_)),
+                "resolve_producer body should be ExternalRealization; got {rb:?}"
+            );
+        }
+        other => panic!("accessor shapes: {other:?}"),
+    }
+    // No bootstrap diagnostics.
+    assert!(
+        dag.diagnostics().is_empty(),
+        "bootstrap should be clean: {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
+fn substrate_port_call_lowers_without_match() {
+    let src = "\
+fn test(d: Dag, pid: PortId) -> DagPort? = port(d, pid)
+";
+    let dag = compile_any(src, "probe_port_no_match.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "port call without match should resolve: {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
+fn substrate_accessor_realization_shape_passes_checks() {
+    let dag = v3_compiler::Dag::new();
+    use v3_compiler::dag::TypeConnective;
+    let rust_port = dag
+        .declaration_by_name("rust_port_accessor")
+        .expect("rust_port_accessor exists");
+    let meta = dag
+        .declaration_by_name("SubstrateAccessorRealization")
+        .expect("SubstrateAccessorRealization type exists");
+    assert_eq!(
+        rust_port.meta_tag,
+        Some(meta.id),
+        "rust_port_accessor must be tagged with SubstrateAccessorRealization"
+    );
+    assert!(
+        matches!(rust_port.connective, TypeConnective::Conj { .. }),
+        "rust_port_accessor must lower to Conj; got {:?}",
+        rust_port.connective
+    );
+}
+
+#[test]
+fn substrate_port_accessor_resolves_from_user_code() {
+    let src = "\
+import std.substrate { Dag, DagPort, PortId, port }
+
+fn test(d: Dag, pid: PortId) -> Bool =
+  match port(d, pid) {
+    None => false
+    Some(p) => true
+  }
+";
+    let dag = compile_any(src, "probe_port.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "substrate port accessor should resolve from user code: {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
+fn substrate_node_accessor_resolves_from_user_code() {
+    let src = "\
+import std.substrate { Dag, Behavior, NodeId, node }
+
+fn test(d: Dag, nid: NodeId) -> Bool =
+  match node(d, nid) {
+    None => false
+    Some(b) => true
+  }
+";
+    let dag = compile_any(src, "probe_node.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "substrate node accessor should resolve from user code: {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
 fn std_list_cons_accepts_user_record_element() {
     let src = "\
 type FoundBind { name: String }

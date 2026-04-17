@@ -236,6 +236,20 @@ fn unused_parameters_dag_compiles_cleanly() {
     );
 }
 
+/// Regenerate helper: `cargo test -p v3-compiler --test
+/// m2_lens_unused_parameters_migration_test -- --ignored
+/// emit_lens_unused_parameters_snapshot`.
+#[test]
+#[ignore]
+fn emit_lens_unused_parameters_snapshot() {
+    let fresh = emit_lens_module();
+    let out_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("src")
+        .join("lens_unused_parameters_generated.rs");
+    std::fs::write(&out_path, fresh).expect("write lens_unused_parameters_generated.rs");
+    println!("wrote {}", out_path.display());
+}
+
 #[test]
 fn unused_parameters_generated_module_matches_checked_in_snapshot() {
     let fresh = emit_lens_module();

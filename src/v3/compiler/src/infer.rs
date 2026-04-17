@@ -3090,7 +3090,11 @@ fn signature_type_shape(
         TypeConnective::Conj { .. } => None,
         TypeConnective::Disj { .. } => None,
         TypeConnective::Arrow { .. } => None,
-        TypeConnective::Cardinality { .. } => None,
+        // Cardinality-typed signatures (e.g., `fn port(d, id) -> DagPort?`)
+        // keep the anonymous Cardinality declaration id as the port's type
+        // identity. Mirrors `walk_to_type_shape`'s Cardinality case —
+        // optional returns are legal throughout the substrate.
+        TypeConnective::Cardinality { .. } => Some(TypeShape::new(current)),
     }
 }
 

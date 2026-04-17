@@ -61,6 +61,10 @@ import v3.std.emit_model {
   TypeDefinitionSyntax, PatternMatchSyntax, CollectionOps,
   ValueConstructionSyntax, RenderingModel, LanguageSpec
 }
+import v3.std.substrate {
+  SubstrateAccessorRealization, SubstrateAccessorBinding,
+  port, node, resolve_producer
+}
 
 data rust_execution_model: TargetExecutionModel = {
   memory: OwnershipBased
@@ -868,4 +872,47 @@ data rust_language: LanguageSpec = {
   patterns: rust_patterns
   collection_ops: rust_collection_ops
   values: rust_value_construction
+}
+
+// ─────────────────────────────────────────────────────────────────
+// DB-14 substrate accessor realizations (Rust target).
+// ─────────────────────────────────────────────────────────────────
+//
+// Each accessor's Rust implementation is a method on `Dag` declared
+// in `src/v3/compiler/src/dag.rs`. The carrier templates below are
+// substituted per call-site by the emitter's ExternalRealization
+// dispatch (`render_callable_transform` → Arrow body check).
+// Placeholders match the accessor's parameter names.
+
+// Placeholder convention: `{pN}` is the N-th input expression at the
+// call-site. The emitter substitutes them positionally per DB-14's
+// emission dispatch. Using positional keys (rather than source-level
+// param names) keeps the carrier declaration independent of the
+// accessor fn's parameter identifiers.
+
+data rust_port_accessor: SubstrateAccessorRealization = {
+  carrier: "({p0}).port_opt({p1}).cloned()"
+}
+
+data rust_node_accessor: SubstrateAccessorRealization = {
+  carrier: "({p0}).node_opt({p1}).cloned()"
+}
+
+data rust_resolve_producer_accessor: SubstrateAccessorRealization = {
+  carrier: "({p0}).resolve_producer_opt({p1}).cloned()"
+}
+
+data port_binding_rust: SubstrateAccessorBinding = {
+  accessor: port
+  realization: rust_port_accessor
+}
+
+data node_binding_rust: SubstrateAccessorBinding = {
+  accessor: node
+  realization: rust_node_accessor
+}
+
+data resolve_producer_binding_rust: SubstrateAccessorBinding = {
+  accessor: resolve_producer
+  realization: rust_resolve_producer_accessor
 }

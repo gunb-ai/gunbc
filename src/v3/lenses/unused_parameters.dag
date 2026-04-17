@@ -4,7 +4,8 @@ import std.list {
   List, empty, singleton, cons, concat, fold, contains, is_empty, length
 }
 import std.substrate {
-  Dag, DagPort, Behavior, BranchPath, BindNode, LoopNode, NodeId, PortId, SourceSpan
+  Dag, DagPort, Behavior, BranchPath, BindNode, LoopNode, NodeId, PortId, SourceSpan,
+  port, node
 }
 
 type UnusedParameter {
@@ -13,10 +14,6 @@ type UnusedParameter {
   parameter_index: Int
   function_span: SourceSpan
 }
-
-type ResultPortLookup
-  = MissingResultPort
-  | FoundResultPort(PortId)
 
 fn check(d: Dag) -> List<UnusedParameter> =
   fold(d.nodes, empty(), |acc, behavior|
@@ -101,32 +98,19 @@ fn expand_referenced_list(frontier: List<PortId>, referenced: List<PortId>) -> L
   )
 
 fn inputs_for_port(d: Dag, port_id: PortId) -> List<PortId> =
-  inputs_for_port_list(d.ports, d, port_id)
-
-fn inputs_for_port_list(ports: List<DagPort>, d: Dag, port_id: PortId) -> List<PortId> =
-  match ports {
-    Empty => empty()
-    Cons(payload) =>
-      if payload.head.id == port_id then
-        match payload.head.produced_by {
-          None => empty()
-          Some(node_id) => inputs_for_node(d, node_id)
-        }
-      else
-        inputs_for_port_list(payload.tail, d, port_id)
+  match port(d, port_id) {
+    None => empty()
+    Some(p) =>
+      match p.produced_by {
+        None => empty()
+        Some(node_id) => inputs_for_node(d, node_id)
+      }
   }
 
 fn inputs_for_node(d: Dag, node_id: NodeId) -> List<PortId> =
-  inputs_for_node_list(d.nodes, d, node_id)
-
-fn inputs_for_node_list(nodes: List<Behavior>, d: Dag, node_id: NodeId) -> List<PortId> =
-  match nodes {
-    Empty => empty()
-    Cons(payload) =>
-      if behavior_id(payload.head) == node_id then
-        inputs_for_behavior(d, payload.head)
-      else
-        inputs_for_node_list(payload.tail, d, node_id)
+  match node(d, node_id) {
+    None => empty()
+    Some(behavior) => inputs_for_behavior(d, behavior)
   }
 
 fn inputs_for_behavior(d: Dag, behavior: Behavior) -> List<PortId> =
@@ -144,9 +128,9 @@ fn loop_inputs(d: Dag, loop_node: LoopNode) -> List<PortId> =
       loop_node.source,
       cons(loop_node.init, singleton(loop_node.bound.count))
     ),
-    match behavior_result_port(d.nodes, loop_node.body) {
-      MissingResultPort => empty()
-      FoundResultPort(port) => singleton(port)
+    match node(d, loop_node.body) {
+      None => empty()
+      Some(body_node) => singleton(behavior_port(body_node))
     }
   )
 
@@ -154,25 +138,6 @@ fn branch_path_outputs(paths: List<BranchPath>) -> List<PortId> =
   match paths {
     Empty => empty()
     Cons(payload) => cons(payload.head.result_port, branch_path_outputs(payload.tail))
-  }
-
-fn behavior_result_port(nodes: List<Behavior>, node_id: NodeId) -> ResultPortLookup =
-  match nodes {
-    Empty => MissingResultPort
-    Cons(payload) =>
-      if behavior_id(payload.head) == node_id then
-        FoundResultPort(behavior_port(payload.head))
-      else
-        behavior_result_port(payload.tail, node_id)
-  }
-
-fn behavior_id(behavior: Behavior) -> NodeId =
-  match behavior {
-    Value(v) => v.id
-    Transform(t) => t.id
-    Branch(b) => b.id
-    Loop(l) => l.id
-    Bind(bind) => bind.id
   }
 
 fn behavior_port(behavior: Behavior) -> PortId =

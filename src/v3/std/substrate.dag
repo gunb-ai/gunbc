@@ -1,5 +1,7 @@
 module v3.std.substrate
 
+import v3.spec.v3_l1 { DeclarationRef }
+
 // Atomic identity handles. These stay opaque at the .dag layer and
 // are realized by Rust newtypes in dag.rs plus seed TypeRealization
 // entries in rust.dag.
@@ -231,4 +233,49 @@ type Dag {
   declarations: List<Declaration>
   nodes: List<Behavior>
   ports: List<DagPort>
+}
+
+// ── Substrate keyed accessors (DB-14, INVARIANTS.md L-7) ────────────
+//
+// These three functions are the single authority for id-keyed lookup
+// over `Dag.ports` / `Dag.nodes`. Every lens consumes them; no lens
+// reconstructs its own `find_port` / `find_behavior`.
+//
+// Implementation: the fn bodies below are trivial `host` stubs. Bootstrap
+// upgrades them to `ArrowBody::ExternalRealization` using the per-target
+// `SubstrateAccessorBinding` records. Emission dispatches on the upgraded
+// body and renders the target's `carrier` template from
+// `SubstrateAccessorRealization`. Pattern mirrors `pipeline.dag`'s
+// `CompilerHostRealization`. See docs/design-substrate-external-primitives.md.
+
+// 🟡 SCAFFOLD per DB-14. Carries a per-target rendering template for
+// a substrate accessor. `carrier` is a template string with `{name}`
+// placeholders matching the accessor's parameter names; the emitter
+// substitutes per call-site. Dissolves when Lane 1e collapses the
+// three emitters into a single spec-driven walker — the carrier
+// field moves into the per-target spec, but the dispatch mechanism
+// (this record, its binding, bootstrap upgrade) stays.
+type SubstrateAccessorRealization {
+  carrier: String
+}
+
+// 🟡 SCAFFOLD per DB-14. One record per (accessor × target) pair.
+// Bootstrap reads these to upgrade each accessor's ArrowBody from
+// Unparsed to ExternalRealization(realization_id). Dissolves with
+// the same Lane 1e trigger as SubstrateAccessorRealization.
+type SubstrateAccessorBinding {
+  accessor: DeclarationRef
+  realization: DeclarationRef
+}
+
+fn port(d: Dag, id: PortId) -> DagPort? {
+  host port
+}
+
+fn node(d: Dag, id: NodeId) -> Behavior? {
+  host node
+}
+
+fn resolve_producer(d: Dag, port_id: PortId) -> Behavior? {
+  host resolve_producer
 }

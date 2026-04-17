@@ -3322,10 +3322,75 @@ impl<'a> Ctx<'a> {
         locals: &RenderLocals,
     ) -> Result<String, EmitError> {
         let (template, arguments) = callable_template(target, self.dag);
+        if let Some(rendered) = self.render_external_realization(t, template, locals)? {
+            return Ok(rendered);
+        }
         if let Some(strategy) = self.indexes.callables.get(&template) {
             return self.render_realized_callable(t, template, *strategy, &arguments, locals);
         }
         self.render_general_callable(t, template, locals)
+    }
+
+    /// DB-14: dispatch on `ArrowBody::ExternalRealization`. If the
+    /// callable's Arrow body points at a realization declaration
+    /// (`SubstrateAccessorRealization` or a future analog), extract
+    /// the `carrier: String` template and render via positional
+    /// `{p0}`, `{p1}` substitution with the Transform's input
+    /// expressions.
+    fn render_external_realization(
+        &self,
+        t: &TransformNode,
+        template: DeclarationId,
+        locals: &RenderLocals,
+    ) -> Result<Option<String>, EmitError> {
+        let TypeConnective::Arrow { body, .. } = &self.dag.declaration(template).connective else {
+            return Ok(None);
+        };
+        let ArrowBody::ExternalRealization(realization_id) = body else {
+            return Ok(None);
+        };
+        let realization = self.dag.declaration(*realization_id);
+        let Some(ValueBody::Structural { fields }) = &realization.value_body else {
+            return Err(EmitError::UnsupportedBehavior(format!(
+                "ExternalRealization target for `{}` lacks a structural value body",
+                self.dag
+                    .declaration(template)
+                    .name
+                    .as_deref()
+                    .unwrap_or("<anonymous>")
+            )));
+        };
+        let carrier = fields
+            .iter()
+            .find_map(|(label, value)| match (label.as_str(), value) {
+                ("carrier", FieldValue::Literal(LiteralBits::String(s))) => Some(s.clone()),
+                _ => None,
+            })
+            .ok_or_else(|| {
+                EmitError::UnsupportedBehavior(format!(
+                    "ExternalRealization target `{}` is missing required String field `carrier`",
+                    realization.name.as_deref().unwrap_or("<anonymous>")
+                ))
+            })?;
+        let rendered_inputs = t
+            .inputs
+            .iter()
+            .enumerate()
+            .map(|(slot, _)| {
+                self.render_input_use(
+                    InputConsumer::Transform(t),
+                    InputSlot::Positional(slot),
+                    locals,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let placeholders: Vec<String> = (0..rendered_inputs.len()).map(|i| format!("p{i}")).collect();
+        let bindings: Vec<(&str, &str)> = placeholders
+            .iter()
+            .zip(rendered_inputs.iter())
+            .map(|(p, expr)| (p.as_str(), expr.as_str()))
+            .collect();
+        Ok(Some(render_named_template(&carrier, &bindings)))
     }
 
     fn render_realized_callable(
