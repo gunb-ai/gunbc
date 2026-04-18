@@ -1,17 +1,8 @@
 module v3.std.diagnostics
 
 import std.list { List }
+import std.verification { DiagnosticKind }
 import v3.std.substrate { SourceSpan }
-
-// 🟡 SCAFFOLD. Mirrors the compiler's native diagnostic taxonomy until
-// diagnostics themselves are surfaced as reflected declaration-shaped
-// facts instead of a Rust enum.
-type DiagnosticKind
-  = TokenizerError
-  | ParseError
-  | TypeMismatch
-  | ArityMismatch
-  | ResolveError
 
 // 🟢 TERMINAL for DB-1's source-level correction carrier. Corrections
 // replace a span in user-authored `.dag` source with new `.dag`

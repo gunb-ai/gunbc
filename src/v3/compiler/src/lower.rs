@@ -2608,6 +2608,13 @@ fn lower_structural_field_value(
         }
     }
 
+    if let Some(decl_id) = resolve_field_value_as_declaration_ref(expr, symbols, dag) {
+        let referenced = dag.declaration(decl_id);
+        if referenced.meta_tag == Some(expected_type) {
+            return Some(crate::dag::FieldValue::Reference(decl_id));
+        }
+    }
+
     if let Some(literal_bits) = lower_scalar_literal_for_type(expr, expected_type, dag) {
         return Some(crate::dag::FieldValue::Literal(literal_bits));
     }
