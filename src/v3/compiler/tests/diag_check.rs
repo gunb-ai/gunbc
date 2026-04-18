@@ -1,8 +1,8 @@
 #[test]
 fn print_bootstrap_diagnostics() {
     let dag = v3_compiler::dag::Dag::new();
-    for (span, diag) in dag.diagnostics() {
-        println!("DIAG {:?} @ {:?}:{}", diag, span.file, span.byte_start);
+    for (port, diag) in dag.diagnostics().iter() {
+        println!("DIAG port={:?}: {:?}", port, diag);
     }
-    panic!("total diagnostics: {}", dag.diagnostics().len());
+    assert_eq!(dag.diagnostics().len(), 0, "see printed output");
 }

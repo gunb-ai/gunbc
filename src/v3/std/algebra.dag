@@ -268,27 +268,42 @@ fn reduce_product(terms: List<SymbolicCost>) -> SymbolicCost =
 // a two-element ProductCost.
 fn combine_binary_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
   match a {
-    LinearCost(va) =>
-      match b {
-        LinearCost(vb) =>
-          if same_size_variable(va, vb) then
-            PolynomialCost { var: va, degree: 2 }
-          else
-            ProductCost(cons(a, cons(b, empty())))
-        ConstantCost(_) => ProductCost(cons(a, cons(b, empty())))
-        PolynomialCost(_) => ProductCost(cons(a, cons(b, empty())))
-        LogCost(_) => ProductCost(cons(a, cons(b, empty())))
-        SumCost(_) => ProductCost(cons(a, cons(b, empty())))
-        ProductCost(_) => ProductCost(cons(a, cons(b, empty())))
-        UnknownCost(_) => ProductCost(cons(a, cons(b, empty())))
-      }
-    ConstantCost(_) => ProductCost(cons(a, cons(b, empty())))
-    PolynomialCost(_) => ProductCost(cons(a, cons(b, empty())))
-    LogCost(_) => ProductCost(cons(a, cons(b, empty())))
-    SumCost(_) => ProductCost(cons(a, cons(b, empty())))
-    ProductCost(_) => ProductCost(cons(a, cons(b, empty())))
-    UnknownCost(_) => ProductCost(cons(a, cons(b, empty())))
+    LinearCost(va) => combine_linear_with(va, a, b)
+    ConstantCost(_) => product_pair(a, b)
+    PolynomialCost(_) => product_pair(a, b)
+    LogCost(_) => product_pair(a, b)
+    SumCost(_) => product_pair(a, b)
+    ProductCost(_) => product_pair(a, b)
+    UnknownCost(_) => product_pair(a, b)
   }
+
+fn combine_linear_with(va: SizeVariable, a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
+  match b {
+    LinearCost(vb) => collapse_linear_square(va, vb, a, b)
+    ConstantCost(_) => product_pair(a, b)
+    PolynomialCost(_) => product_pair(a, b)
+    LogCost(_) => product_pair(a, b)
+    SumCost(_) => product_pair(a, b)
+    ProductCost(_) => product_pair(a, b)
+    UnknownCost(_) => product_pair(a, b)
+  }
+
+fn collapse_linear_square(
+  va: SizeVariable,
+  vb: SizeVariable,
+  a: SymbolicCost,
+  b: SymbolicCost
+) -> SymbolicCost =
+  if same_size_variable(va, vb) then
+    polynomial_square(va)
+  else
+    product_pair(a, b)
+
+fn polynomial_square(v: SizeVariable) -> SymbolicCost =
+  PolynomialCost { var: v, degree: 2 }
+
+fn product_pair(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
+  ProductCost(cons(a, cons(b, empty())))
 
 // Drops terms from a SumCost list that are dominated by another
 // term in the list. MVP: O(n²) pairwise walk; acceptable because
