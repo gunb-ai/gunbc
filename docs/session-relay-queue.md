@@ -4,10 +4,11 @@ Operational pointers relayed into the worktree — **not** product authority (co
 
 ## still-deer-308 — PR [#530](https://github.com/gunb-ai/gunbc/pull/530)
 
-**Head:** `ca4540dcc03b89357ee087e2e7eda6269b49e09d`
+**Head:** `10bd34e5433ce6349820ed55448b7efd87a76df0` (ChatGPT review **pending** @ 2026-04-18 15:49Z — prior tip `ca4540dcc03b89357ee087e2e7eda6269b49e09d` fully reviewed)
 
 | Ingested (UTC) | Source | Summary |
 |---|---|---|
+| 2026-04-18 15:49:23Z | ChatGPT auto-review (`sha:10bd34e5433ce6349820ed55448b7efd87a76df0`) **status:pending** | **In progress** — placeholder only; [view conversation](https://chatgpt.com/g/g-p-69d1a39d61e88191835a38f9eba3ec9b-auto-review/c/69e3a260-873c-83ea-9f43-a2557027ae71). Re-check ~30m for full review. |
 | 2026-04-18 ~15:26 | ChatGPT auto-review (placeholder) | Superseded by later comments — was “check back ~30m.” |
 | 2026-04-18 15:26:46Z | Claude review (`[claude-review]` sha `ca4540d`) | **Approve.** Confirms C+D bundle: Track 9 / 3a.1 / M2 / §4.1 memos / cross-ROADMAP v3 notes / DB-numbering fix / migration-candidates section. **Explicitly not in PR (OK):** `ParamRef`/`TransformRef` substrate.dag comment (defer tiny PR or next substrate touch); #519 planner vs `is_first` code (separate XS PR); `feedback_substrate_principle_audit` → INVARIANTS graduation (trigger-gated). |
 | 2026-04-18 15:27:05Z | Codex connector (bot) | Boilerplate only — no code suggestions in excerpt. |
