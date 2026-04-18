@@ -6,6 +6,10 @@ use crate::dag::{
     TypeConnective,
 };
 use crate::operators::OperatorKind;
+use crate::variant_payload::{
+    variant_payload_shape, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
+    VariantPayloadShape,
+};
 use crate::Dag;
 
 #[derive(Debug, Clone)]
@@ -104,6 +108,7 @@ struct PythonTarget {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CleanEmissionContractBinding {
     pattern_bindings: PatternBindingRuleBinding,
+    variant_payload_field_access: VariantPayloadFieldAccessRuleBinding,
 }
 
 /// Python-valid slice of `std.clean_emission.PatternBindingRule`.
@@ -141,6 +146,7 @@ struct PythonIndexes {
 #[derive(Debug, Clone, Default)]
 struct RenderLocals {
     names: HashMap<PortId, String>,
+    payload_bindings: HashMap<PortId, VariantPayloadBinding<String>>,
 }
 
 struct Ctx<'a> {
