@@ -1,16 +1,34 @@
 // lenses.idempotency — Lane 2 Stage 2b workflow idempotency lens.
 //
-// Delegates to `std.effects::analyze_workflow` — the algebraic authority
-// lives in `src/v3/std/effects.dag` alongside `compose_effects`.
+// Logic mirrors `std.effects::analyze_workflow` (keep in sync). Full
+// algebraic authority: `src/v3/std/effects.dag`.
 
 module lenses.idempotency
 
 import v3.std.substrate { Dag }
-import std.effects {
-  WorkflowEffect,
-  WorkflowIdempotencyReport,
-  analyze_workflow as analyze_workflow_effects,
-}
+import std.effects { WorkflowEffect, WorkflowIdempotencyReport, compose_effects, nel_to_operation_effect_list, report_unsupported_workflow_variant }
 
-fn analyze_workflow(d: Dag, workflow: WorkflowEffect) -> WorkflowIdempotencyReport =
-  analyze_workflow_effects(_d: d, workflow: workflow)
+fn analyze_workflow(_d: Dag, workflow: WorkflowEffect) -> WorkflowIdempotencyReport {
+  match workflow {
+    LinearEffect { ops } =>
+      WorkflowCompositionVerdict(compose_effects(effects: nel_to_operation_effect_list(ops: ops)))
+    BranchEffect { arms } =>
+      report_unsupported_workflow_variant(
+        variant_name: "BranchEffect",
+        downstream_stage: "lane2_stage2b_idempotency_lens",
+        reason: "non-linear workflow; branch-wise idempotency composition is not in the Stage 2b algebra",
+      )
+    LoopEffect { body } =>
+      report_unsupported_workflow_variant(
+        variant_name: "LoopEffect",
+        downstream_stage: "lane2_stage2b_idempotency_lens",
+        reason: "non-linear workflow; loop-carried idempotency composition is not in the Stage 2b algebra",
+      )
+    ParallelEffect { branches } =>
+      report_unsupported_workflow_variant(
+        variant_name: "ParallelEffect",
+        downstream_stage: "lane2_stage2b_idempotency_lens",
+        reason: "non-linear workflow; parallel idempotency composition is not in the Stage 2b algebra",
+      )
+  }
+}

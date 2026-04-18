@@ -4,6 +4,7 @@ use std::process::{Command, Stdio};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit_rust::emit_rust_module;
+use v3_compiler::CompileError;
 
 const HEADER: &str = "// AUTO-GENERATED from `src/v3/lenses/idempotency.dag` via\n\
      // `emit_rust_module`. Regenerate instead of hand-editing.\n\n";
@@ -14,8 +15,14 @@ fn main() {
         .join("lenses")
         .join("idempotency.dag");
     let source = std::fs::read_to_string(&lens_path).expect("read idempotency.dag");
-    let dag = compile_to_dag(&source, lens_path.to_string_lossy().as_ref())
-        .expect("idempotency.dag compiles");
+    let dag = match compile_to_dag(&source, lens_path.to_string_lossy().as_ref()) {
+        Ok(d) => d,
+        Err(CompileError::Semantic(d)) => {
+            eprintln!("idempotency.dag diagnostics: {:?}", d.diagnostics());
+            panic!("idempotency.dag compile failed (semantic)");
+        }
+        Err(e) => panic!("idempotency.dag compile failed: {e:?}"),
+    };
     let raw = emit_rust_module(&dag).expect("emit lens module");
     let combined = format!("{HEADER}{raw}");
 
