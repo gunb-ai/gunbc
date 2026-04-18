@@ -94,10 +94,6 @@ impl ClusterId {
     pub fn raw(self) -> u32 {
         self.0
     }
-
-    pub(crate) fn placeholder() -> Self {
-        Self(u32::MAX)
-    }
 }
 
 /// A type-system declaration. The unit of the type substrate.
@@ -981,6 +977,12 @@ pub struct Cluster {
     pub intra_cluster_calls: NonEmptyList<IntraClusterCall>,
 }
 
+/// 🟢 TERMINAL. `LoopBound` records the irreducible witness that makes
+/// a `Behavior::Loop` honest at the substrate layer: either an
+/// explicit runtime count port or a proved mutual-recursion cluster.
+/// Collapsing the variants would either fabricate a count fact or
+/// erase a structural termination proof. See
+/// `docs/design-mutual-recursion-lowering.md` for the full receipt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoopBound {
     Cardinality { count: PortId },
@@ -1773,32 +1775,18 @@ impl Dag {
         &mut self.declarations[id.index()]
     }
 
-    pub(crate) fn patch_loop_descent_cluster(&mut self, loop_id: NodeId, cluster: ClusterId) {
-        let Some(Behavior::Loop(loop_node)) = self.nodes.get_mut(loop_id.index()) else {
+    pub(crate) fn patch_bind_value(&mut self, bind_id: NodeId, value: PortId) {
+        let Some(Behavior::Bind(bind_node)) = self.nodes.get_mut(bind_id.index()) else {
             return;
         };
-        if let LoopBound::Descent {
-            cluster: bound_cluster,
-        } = &mut loop_node.bound
-        {
-            *bound_cluster = cluster;
-        }
+        bind_node.value = value;
     }
 
-    pub(crate) fn fail_loop_descent_placeholder(&mut self, loop_id: NodeId, reason: String) {
-        let (output, span) = {
-            let Some(Behavior::Loop(loop_node)) = self.nodes.get_mut(loop_id.index()) else {
-                return;
-            };
-            let LoopBound::Descent { .. } = loop_node.bound else {
-                return;
-            };
-            loop_node.bound = LoopBound::Cardinality {
-                count: loop_node.source,
-            };
-            (loop_node.output, loop_node.span.clone())
+    pub(crate) fn set_port_producer(&mut self, port: PortId, produced_by: Option<NodeId>) {
+        let Some(existing) = self.ports.get_mut(&port) else {
+            return;
         };
-        self.mark_unresolved(output, Diagnostic::ResolveError { name: reason, span });
+        existing.produced_by = produced_by;
     }
 
     /// Transition a port from Uninferred to Resolved. Idempotent when the new

@@ -1404,6 +1404,19 @@ let c = a(1)
         "caller of a mutually-recursive fn must cascade to Unresolved; got {:?}",
         dag.port(bind_c.value).state()
     );
+    assert_eq!(
+        dag.clusters().len(),
+        0,
+        "failed mutual recursion must not materialize a cluster witness"
+    );
+    assert!(
+        dag.nodes()
+            .iter()
+            .filter_map(Behavior::as_loop)
+            .next()
+            .is_none(),
+        "failed mutual recursion must not fabricate Loop materialization"
+    );
 }
 
 #[test]
@@ -2803,6 +2816,40 @@ fn odd(n: Int, even: fn(Int) -> Bool) -> Bool = even(n)
             .next()
             .is_none(),
         "shadowed callable parameters must not introduce synthetic recursion loops"
+    );
+}
+
+#[test]
+fn mutual_recursion_checker_uses_shadow_aware_recursive_edges() {
+    let src = "\
+fn apply_once(f: fn(Int) -> Bool, x: Int) -> Bool = f(x)
+fn even(n: Int) -> Bool = if n == 0 then true else odd(n - 1)
+fn odd(n: Int) -> Bool = if n == 0 then false else if n == 1 then apply_once(|even| even(n), n) else even(n - 1)
+";
+    let dag = compile_to_dag(src, "mutual_shadowing_inside_cluster.v3").expect("compiles");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "shadowed lambda parameters inside a real cluster must not poison descent checking: {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(
+        dag.clusters().len(),
+        1,
+        "real recursive edges still form one cluster"
+    );
+    let odd_bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "odd")
+        .expect("Bind(odd) exists");
+    let odd_producer = dag
+        .port(odd_bind.value)
+        .produced_by
+        .expect("odd loop exists");
+    assert!(
+        matches!(dag.node(odd_producer), Behavior::Loop(_)),
+        "accepted mutual recursion should still lower odd through Loop"
     );
 }
 

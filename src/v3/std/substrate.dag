@@ -191,11 +191,24 @@ type BranchPath {
   binding: PayloadBinding?
 }
 
+// Constructor-validation asymmetry (tracked Track 9 debt): the
+// reflected substrate carries the witness fields, while validity is
+// enforced today by Rust-side constructors. `Dag::param_of(member,
+// slot)` fails closed for non-Bind members and out-of-arity slots.
+// When .dag-side construction matures in the Lane 3c self-hosting
+// cycle, add the equivalent substrate-level constructor authority so
+// direct .dag producers cannot forge invalid handles.
 type ParamRef {
   member: NodeId
   slot: Int
 }
 
+// Constructor-validation asymmetry (tracked Track 9 debt): validity is
+// enforced today by `Dag::as_transform_ref(node)`, which fails closed
+// unless `node` carries `Behavior::Transform`. The reflected substrate
+// currently exposes the witness field shape only; .dag-side
+// construction must gain the same constructor authority in the Lane 3c
+// self-hosting cycle.
 type TransformRef {
   node: NodeId
 }
@@ -213,6 +226,12 @@ type Cluster {
   intra_cluster_calls: NonEmptyList<IntraClusterCall>
 }
 
+// 🟢 TERMINAL. `LoopBound` records the irreducible witness that makes a
+// reflected `LoopNode` honest: either an explicit runtime count port or
+// a proved mutual-recursion descent cluster. Collapsing the variants
+// would either fabricate a count fact or erase the structural proof.
+// See `docs/design-mutual-recursion-lowering.md` for the full
+// dissolution receipt and named trigger rationale.
 type LoopBound
   = Cardinality { count: PortId }
   | Descent { cluster: ClusterId }

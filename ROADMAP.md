@@ -774,6 +774,17 @@ consumers — the primitives without consumers would be decorative).
 **Status:** 🟡 Design — proposed in `docs/design-mutual-recursion-lowering.md`
 (DB-9 R2.1). Declarations land with the DB-9 implementation PR.
 
+**Tracked debt — substrate constructor-validation asymmetry.**
+`ParamRef` and `TransformRef` already move the witness SHAPE into the
+reflected substrate, but their validity still depends on Rust-side sole
+producers (`param_of(member, slot) -> ParamRef?`,
+`as_transform_ref(node) -> TransformRef?`). Until `.dag`-side
+construction matures, a direct reflected producer could still construct
+the raw record fields without those fail-closed checks. Graduation
+trigger: Lane 3 Stage 3c self-hosting cycle grows equivalent `.dag`-side
+constructor authority, so the substrate contract and the Rust helper
+story converge.
+
 **Deferred (separate substrate refactor track):** segregating
 `Dag.nodes: List<Behavior>` into per-kind lists (`Dag.transforms`,
 `Dag.branches`, ...) so typed handles index into the right carrier by
