@@ -156,10 +156,13 @@ pub enum SurfaceItem {
     /// `pipeline_compile_order_stage_names` to that source and retire this
     /// span-backed path — **not** “M2 parses `compile` as `SurfaceExpr`.”
     ///
-    /// Downstream: per-stage pipeline fns via `PipelineStageBinding`; `compile`
-    /// span via `pipeline_authority`. Neither implies case 1 — disambiguate by
-    /// declaration name + bootstrap role for pipeline authority, not by
-    /// "absence of binding" alone.
+    /// Downstream: **case 1** only for std/ `FnExternalBody` parse lag. **2a**
+    /// per-stage fns via `PipelineStageBinding` → `ExternalRealization`. **2c**
+    /// `compile`: `pipeline_compile_order_names` / `pipeline_compile_order_stage_names`
+    /// always consume **`compile`'s `body_span`** for stage ordering — a live
+    /// authority path independent of “has `PipelineStageBinding` or not.” Do
+    /// not infer case 1 from absence of bindings: if the decl is `compile` in
+    /// `pipeline.dag`, treat as **2c** (ordering text), not parse lag.
     FnExternalBody {
         name: String,
         type_params: Vec<String>,
