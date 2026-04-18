@@ -143,8 +143,7 @@ fn main() {
     // `dimensions.dag` ahead of `list.dag`/`substrate.dag`, and their
     // recursive helpers fail termination against placeholder
     // connectives.
-    let staged_entries =
-        collect_dag_entries(&std_dir, &["list.dag", "substrate.dag"]);
+    let staged_entries = collect_dag_entries(&std_dir, &["list.dag", "substrate.dag"]);
     let spec_entries = collect_dag_entries(&spec_dir, &["v3_l1.dag"]);
     let compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"]);
     let staged_generated =
