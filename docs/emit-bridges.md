@@ -43,15 +43,15 @@ rg 'label == "(Empty|Cons|None|Some)"' src/v3/compiler/src/emit_{rust,go,python}
 rg 'label == "_0"' src/v3/compiler/src/emit_python.rs
 ```
 
-**Approximate site counts (2026-04, this worktree):**
+**Reproducible site counts (2026-04, this worktree):**
 
-| Bucket | ~Sites | Files (rust / go / python) |
-|--------|--------|----------------------------|
-| `(label, _) == "…"` structural probes | 26 | 10 / 12 / 4 |
-| `named_variant_id` *calls* | 47 | 34 / 9 / 4 |
-| `declaration_by_name("` | 11 | 8 / 1 / 1 |
-| Literal `Empty`/`Cons`/`None`/`Some` on variants | 12 | 2 / 4 / 4 |
-| **Total (union, hand-checked overlap)** | **≥ 86** | Matches manager lane estimate (emit_rust ≫ emit_go ≫ emit_python). |
+| Bucket | Count | Command / pattern |
+|--------|------:|-------------------|
+| `(label, _) == "…"` structural probes | **25** | `rg 'find\(\|\(label, _\)\| label ==' emit_{rust,go,python}.rs` |
+| `named_variant_id(` occurrences | **47** | `rg 'named_variant_id\(' emit_{rust,go,python}.rs` (includes **3** `fn named_variant_id` definitions — ~**44** call sites) |
+| `declaration_by_name("` | **11** | `rg 'declaration_by_name\("' emit_{rust,go,python}.rs` |
+| `label == "Empty"\|"Cons"\|"None"\|"Some"` | **8** | `rg 'label == "(Empty\|Cons\|None\|Some)"' emit_{rust,go,python}.rs` |
+| **Ordered sum (categories overlap minimally)** | **≥ 86** | Matches the lane estimate (**emit_rust ≫ emit_go ≫ emit_python**). |
 
 *Notes:* `named_variant_id` is **shared infrastructure** — it is still a bridge relative to the thesis “substrate ids only,” because **parent/variant strings** cross the boundary until the walker caches **DeclarationId** handles earlier. Dissolution is “resolve once at index time; emit only typed ids.”
 

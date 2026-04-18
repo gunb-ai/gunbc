@@ -30,15 +30,15 @@ rg -c 'fn (render_|emit_)' \
 
 | Emitter file | `fn render_*` / `fn emit_*` count | spec-driven | per-target integration | lens | substrate-walk | Notes |
 |--------------|-----------------------------------|-------------|------------------------|------|----------------|-------|
-| `emit_rust.rs` | 40 | 36 | 4 | 0 | 0 | 3 rows are `#[cfg(test)]` helpers (not production emission). |
+| `emit_rust.rs` | 40 | 34 | 3 | 0 | 0 | 3 rows are `#[cfg(test)]` helpers (not production emission). |
 | `emit_go.rs` | 25 | 22 | 3 | 0 | 0 | — |
 | `emit_python.rs` | 27 | 24 | 3 | 0 | 0 | — |
-| **Total** | **92** | **82** | **10** | **0** | **0** | See §Interpretation. |
+| **Total** | **92** | **80** | **9** | **0** | **0** | See §Interpretation. |
 
 ### Interpretation
 
 - **No row in the 92 is classified `lens` or `substrate-walk`.** Lens builders (`InputUseFacts::build`, copy/ownership analysis, etc.) and algebra walks (`algebra_field_for_operator`, `walk_to_algebra_conj`, optional/list disj walks) use other names — they live beside these functions and are called from them. Stage 1e still extracts them per the build plan; they are simply outside the `render_*` / `emit_*` grep surface.
-- **Per-target integration (10):** the nine public/module entrypoints (`emit_*`, `emit_*_module`, `emit_*_with_mode`) plus **`emit_rust_with_mode`** which owns orchestration (mode, main template assembly, declaration filtering). Everything else is **spec-driven** relative to the “walker + spec” split: recursive rendering from `RealizationIndexes` and `CleanEmissionContract`, with Rust-only presentation details (e.g. `pub` prefix) localized inside the same functions until spec fields absorb them.
+- **Per-target integration (9):** the three public/module drivers per emitter (`emit_*`, `emit_*_module`, `emit_*_with_mode`). **`emit_rust_with_mode`** is the Rust driver (indexes, `InputUseFacts`, `EmitRustMode`, main shell) — still counted once here. Everything else is **spec-driven** relative to the “walker + spec” split: recursive rendering from `RealizationIndexes` and `CleanEmissionContract`, with Rust-only presentation details (e.g. `pub` prefix) localized inside `render_*` bodies until spec fields absorb them.
 - **Tests (3 rows in `emit_rust.rs`):** counted by `grep` for acceptance; they are regression harnesses, not production emission. Marked explicitly below.
 
 ---
@@ -172,5 +172,5 @@ These are **not** counted in the 92 but are load-bearing for consolidation:
 
 ## Escalation check (build plan)
 
-- **Per-target integration share:** 10 / 92 ≈ **11%** — above the “~5%” illustrative split but **far below** the 30% escalation threshold; the extra share is concentrated in the intentional **driver** layer (`emit_*_with_mode`), not scattered semantic branches.
+- **Per-target integration share:** 9 / 92 ≈ **10%** — above the “~5%” illustrative split but **far below** the 30% escalation threshold; the share is concentrated in the intentional **driver** layer (`emit_*_with_mode`), not scattered semantic branches.
 - **Lens / substrate-walk** work is **not** missing — it is **named outside** the `render_*` / `emit_*` inventory, as documented above.
