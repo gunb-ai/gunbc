@@ -2896,7 +2896,10 @@ fn resolve_field_value_as_declaration_ref(
         _ => return None,
     };
     let (first, rest) = segments.split_first()?;
-    let mut current = *symbols.get(*first)?;
+    let mut current = symbols
+        .get(*first)
+        .copied()
+        .or_else(|| dag.declaration_by_name(first).map(|d| d.id))?;
     for segment in rest {
         // Walk `current` through aliases / instantiation to a Conj,
         // then find the child field whose label matches `segment`.

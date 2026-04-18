@@ -1,8 +1,20 @@
 module v3.std.diagnostics
 
 import std.list { List }
-import std.verification { DiagnosticKind }
 import v3.std.substrate { SourceSpan }
+
+// 🟡 SCAFFOLD. Mirrors the compiler's native diagnostic taxonomy for
+// the staged v3 diagnostics surface. Kept distinct from
+// `std.verification.DiagnosticKind` to avoid introducing a second
+// imported top-level declaration with the same name during bootstrap.
+// Dissolution trigger: reflected diagnostics or a shared diagnostic
+// kind authority once the staged/bootstrap-local split disappears.
+type CompilerDiagnosticKind
+  = TokenizerError
+  | ParseError
+  | TypeMismatch
+  | ArityMismatch
+  | ResolveError
 
 // 🟢 TERMINAL for DB-1's source-level correction carrier. Corrections
 // replace a span in user-authored `.dag` source with new `.dag`
@@ -17,7 +29,7 @@ type Correction {
 // native enum. The record shape is the authority for consumers that
 // only need the diagnostic carrier, including `fixes`.
 type Diagnostic {
-  kind: DiagnosticKind
+  kind: CompilerDiagnosticKind
   span: SourceSpan
   message: String
   fixes: List<Correction>
