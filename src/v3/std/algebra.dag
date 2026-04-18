@@ -17,7 +17,34 @@
 //   - `ProductCost(List<SymbolicCost>)` — O(n·m) product
 //   - `SumCost(List<SymbolicCost>)` — O(n + m) sum, dominated terms drop
 //   - `LogCost(SizeVariable)`      — O(log n)
-//   - `UnknownCost(String)`        — fail-open with diagnostic reason
+//   - `UnknownCost(String)`        — top of the dominance lattice
+//
+// **`UnknownCost` role — algebra element, not failure channel.**
+// Reviewer call-out on PR #537: the earlier "fail-open" framing
+// straddled two stories. Locked here: `UnknownCost` is a
+// legitimate member of the cost algebra representing the most
+// conservative asymptotic upper bound. `dominates(Unknown, X) =
+// True` for every `X`; nothing but itself dominates Unknown.
+// The `String` payload carries a user-facing reason (exotic
+// bound the thesis doesn't yet model — O(n!), O(2^n) — or "the
+// analyzer could not prove a tighter bound"). Treating Unknown
+// as top keeps the composition algebra total and keeps
+// downstream consumers from having to special-case "bound not
+// known yet."
+//
+// Failure — "this behavior cannot inhabit the cost dimension at
+// all" (malformed DAG reference, missing producer) — lives
+// OUTSIDE `SymbolicCost`:
+//   - `SymbolicCostLookup::MissingCost` is the lens-boundary
+//     failure carrier (see `src/v3/lenses/cost.dag`); every
+//     composition wrapper propagates it.
+//   - `Witness<SymbolicCost>::Violates` from
+//     `src/v3/std/dimensions.dag` is the Dimension-boundary
+//     failure carrier. Stage 2f's generic `analyze` will route
+//     MissingCost-at-the-lens into Violates-at-the-dimension.
+// Keeping the two failure channels outside the algebra carrier
+// lets `SymbolicCost` stay a trustworthy algebra element without
+// a "maybe" mode consumers have to unwrap.
 //
 // Four-pattern dissolution receipt (Q4 per DB-7):
 //
@@ -272,13 +299,35 @@ fn is_zero_constant(c: SymbolicCost) -> Bool =
 
 // If a SumCost reduces to a single term, return that term; else
 // keep the SumCost wrapper with dominated terms dropped.
+//
+// PR #537 reviewer (ChatGPT) call-out: the Cons-branch previously
+// wrapped the result of `drop_dominated` in `SumCost(...)`
+// unconditionally, so an input like `SumCost([Linear(n),
+// Constant(5)])` — where `drop_dominated` correctly strips the
+// dominated `Constant(5)` and leaves a singleton — landed as the
+// invalid `SumCost([Linear(n)])`. Now a post-drop singleton
+// unwraps via `wrap_sum` so the post-normalize carrier stays
+// canonical (≥ 2 terms in any surviving `SumCost`). Rust mirror
+// in `dag.rs::reduce_sum` already handles this via its
+// `match terms.len()` arms; this keeps the .dag authority in
+// sync.
 fn reduce_sum(terms: List<SymbolicCost>) -> SymbolicCost =
   match terms {
     Empty => ConstantCost(0)
     Cons(payload) =>
       match payload.tail {
         Empty => payload.head
-        Cons(_) => SumCost(drop_dominated(cons(payload.head, payload.tail)))
+        Cons(_) => wrap_sum(drop_dominated(cons(payload.head, payload.tail)))
+      }
+  }
+
+fn wrap_sum(terms: List<SymbolicCost>) -> SymbolicCost =
+  match terms {
+    Empty => ConstantCost(0)
+    Cons(payload) =>
+      match payload.tail {
+        Empty => payload.head
+        Cons(_) => SumCost(cons(payload.head, payload.tail))
       }
   }
 
