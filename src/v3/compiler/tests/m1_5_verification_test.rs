@@ -126,22 +126,6 @@ fn bootstrap_loads_verification_authority_types() {
                     String::from("bound"),
                 ],
             ),
-            (
-                String::from("BehavioralObservation"),
-                vec![
-                    String::from("subject"),
-                    String::from("input_sample"),
-                    String::from("expected_output"),
-                ],
-            ),
-            (
-                String::from("MockBackedInvariant"),
-                vec![
-                    String::from("subject"),
-                    String::from("mock_transport"),
-                    String::from("invariant"),
-                ],
-            ),
         ]
     );
 }

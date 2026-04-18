@@ -17,7 +17,6 @@
 module std.verification
 
 import std.list { List }
-import v3.spec.v3_l1 { DeclarationRef }
 import v3.std.substrate { ComparisonOp }
 
 // **🟡 Scaffold — DiagnosticKind.** This mirrors the compiler's native
@@ -61,17 +60,19 @@ type PortStateExpectation
 
 // **🟡 Scaffold — ResourceReference.** Typed sentinel for compile-time
 // resource declaration references carried on `TestClaim.requires`.
-// Shape mirrors `DeclarationRef` (`src/v3/spec/v3_l1.dag:69`): an
-// identifier is accepted at the data-body parse site and resolved to
-// a `DeclarationId` during lowering. Kept distinct from `DeclarationRef`
-// so the accepted target set can narrow structurally once resources
-// land in v3 — today any declaration is accepted, post-port only
-// `resource` declarations are.
+// Carries an `identifier` string today — the v3 grammar has no
+// `resource` declaration form yet, so there is no structurally
+// narrowed accept set to target; the string is the bootstrap-local
+// carrier pending the resources-in-v3 port.
 // Dissolution trigger: `dsl/std/resources.dag` → `src/v3/std/resources.dag`
 // reconciliation (see `src/v3/ROADMAP.md` §Lane 2 Stage 2c
 // "Prerequisite deferral: `dsl/std/resources.dag` → v3
-// reconciliation"). DB-15 R2 §Prerequisite.
-type ResourceReference {}
+// reconciliation"). Post-port, `ResourceReference` becomes a typed
+// `DeclarationRef`-shape accepting only `resource` declarations.
+// DB-15 R2 §Prerequisite + Open Question #1.
+type ResourceReference {
+  identifier: String
+}
 
 // **🟡 Scaffold — TestPredicate.** The remaining bootstrap carrier is
 // the outer "what property are we asserting?" coproduct. The
@@ -104,16 +105,6 @@ type TestPredicate
       bind_name: String
       comparator: ComparisonOp
       bound: Int
-    }
-  | BehavioralObservation {
-      subject: DeclarationRef
-      input_sample: DeclarationRef
-      expected_output: DeclarationRef
-    }
-  | MockBackedInvariant {
-      subject: DeclarationRef
-      mock_transport: ResourceReference
-      invariant: DeclarationRef
     }
 
 // `requires` names the resource declarations a claim must acquire to
