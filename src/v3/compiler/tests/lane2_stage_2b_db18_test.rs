@@ -11,7 +11,14 @@ use v3_compiler::Dag;
 use v3_compiler::NodeId;
 
 fn lane2_anchor(dag: &Dag) -> NodeId {
-    dag.nodes()[0].id()
+    // Do not use `nodes()[0]`: allocation order can place Transform/Branch/Loop
+    // before the first Value/Bind — `try_register_lane2_workflow_effect` only
+    // accepts Value or Bind.
+    dag.nodes()
+        .iter()
+        .find(|b| matches!(b, Behavior::Value(_) | Behavior::Bind(_)))
+        .expect("compile fixture should include a Value or Bind for lane2 staging")
+        .id()
 }
 
 fn op(name: &str, shape: EffectShape) -> OperationEffect {
