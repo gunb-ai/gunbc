@@ -13,7 +13,7 @@
 
 Stage 2b's pre-DB-18 design (`lane2-compile-time-proofs.md` §Stage 2b) assumed a workflow is a linear `List<OperationEffect>` — `compose_effects` walks the list, composes effect shapes, emits a verdict. That shape is correct for the narrow case (GCP Secret Manager upsert → STS Exchange → IAM grant, all linear) but the escalation clause in the same section already names the extension: *"if workflow structure isn't representable cleanly — e.g., control flow in a pipeline doesn't map to a linear `List<OperationEffect>` — surface. Don't stretch `compose_effects` to handle branches silently; the algebra needs to reflect branch-wise composition, which is a legitimate design extension."*
 
-DB-18 is that legitimate design extension. The substrate gains **one new coproduct** (`WorkflowEffect`), **one helper record** (`BranchArm`), and **one typed opaque handle** (`BranchPredicateRef`, same pattern as `ParamRef` / `TransformRef`). The authority site for `WorkflowEffect` values is an optional field on the computation-substrate `ValueNode` (`ValueNode.lane2_workflow: Option<Box<WorkflowEffect>>`) — one workflow per Value node, keyed by the workflow root's `NodeId`. Accessors: `Dag::try_register_lane2_workflow_effect(root, workflow) -> bool` (populated by lowering, once the data-declaration surface lands in Part 3) and `Dag::lane2_workflow_effect_at(root) -> Option<&WorkflowEffect>` (read by the analyzer). The five-`Behavior` commitment and the effect algebra (`compose_effects`, `CompositionVerdict`) are untouched. Stage 2b's `analyze_workflow` matches on `LinearEffect` only and emits explicit diagnostics on the other three variants via `WorkflowIdempotencyReport::Unsupported { detail: IdempotencyUnsupportedDetail }`. The fail-closed contract from INVARIANTS §C-8 applies at the `Dag::branch_arm_of(root, port, body) -> Option<BranchArm>` boundary: the constructor validates the port resolves to `Bool` on the root's graph; `None` is the typed failure that lowering must surface as a `Diagnostic` — never silently absorb.
+DB-18 is that legitimate design extension. The substrate gains **one new coproduct** (`WorkflowEffect`, 🟡 scaffold), **one helper record** (`BranchArm`), and **one typed opaque handle** (`BranchPredicateRef`, same pattern as `ParamRef` / `TransformRef`). The authority site for `WorkflowEffect` values is an optional `lane2_workflow: Option<Box<WorkflowEffect>>` field on both the `Value` and `Bind` computation-substrate behaviors — one workflow per root node, keyed by the root's `NodeId`. Accessors on `Dag`: `try_register_lane2_workflow_effect(root, workflow) -> bool` (writer; installs on either `Value` or `Bind`) and `lane2_workflow_effect_at(root) -> Option<&WorkflowEffect>` (reader; pattern-matches both variants). The five-`Behavior` commitment and the effect algebra (`compose_effects`, `CompositionVerdict`) are untouched. Stage 2b's `analyze_workflow` matches on `LinearEffect` only and emits explicit diagnostics on the other three variants via `WorkflowIdempotencyReport::Unsupported { detail: IdempotencyUnsupportedDetail }`. The fail-closed contract from INVARIANTS §C-8 applies at the `Dag::branch_arm_of(&self, port, body) -> Option<BranchArm>` boundary: the method validates the port resolves to `Bool` on the graph; `None` is the typed failure the caller must surface as a `Diagnostic` — never silently absorb.
 
 `WorkflowEffect` is the input-structure carrier. `CompositionVerdict` (PR #529) is the output-verdict carrier. They meet at exactly one edge: Stage 2b's lens projects `LinearEffect { ops }` through `compose_effects(ops)` to obtain a `CompositionVerdict`; other `WorkflowEffect` variants produce diagnostics without invoking the algebra.
 
@@ -53,46 +53,39 @@ DB-18 is that legitimate design extension. The substrate gains **one new coprodu
 // variant traces to a distinct algebraic operation and the coproduct
 // is structurally irreducible.
 //
-// Recursive composition: BranchEffect, LoopEffect, and ParallelEffect
-// each carry sub-WorkflowEffect fields, so arbitrary nesting composes.
-// LinearEffect terminates the recursion at a (possibly empty) list of
-// OperationEffect values — the same carrier compose_effects consumes
-// post-PR-#529. The empty case is the monoidal identity.
+// 🟡 SCAFFOLD. Four-variant workflow sum aligned with effects.dag.
+// Stage 2b consumes only LinearEffect today; the other three variants
+// are structurally present for round-trip parity but produce
+// WorkflowIdempotencyReport::Unsupported until their consumer stages
+// (2d / 2e) bind. Dissolution trigger: all four variants have live
+// consumers, at which point the 🟡 marker graduates to 🟢.
 type WorkflowEffect
-  = LinearEffect { ops: List<OperationEffect> }
+  = LinearEffect { ops: NonEmptyList<OperationEffect> }
   | BranchEffect { arms: NonSingletonList<BranchArm> }
   | LoopEffect { body: WorkflowEffect }
   | ParallelEffect { branches: NonSingletonList<WorkflowEffect> }
 
-// 🟢 TERMINAL. A single arm of a BranchEffect — the Bool-typed
-// condition port witnessing "this arm is taken" plus the workflow
-// executed when the condition holds. Separating condition from
-// workflow makes the payload structurally distinct from
-// ParallelEffect's NonSingletonList<WorkflowEffect>, so the Q4
-// dissolution receipt passes at the payload level rather than
-// requiring a separate discriminator tag.
-//
-// `condition: BranchPredicateRef` — a typed opaque handle statically
-// witnessing that the referenced port is Bool-typed. Because
-// BranchPredicateRef has no unsafe constructor (see `type BranchPredicateRef`
-// below), a raw-literal `BranchArm { condition: <arbitrary PortId>, ... }`
-// is not representable: the field type itself rejects non-Bool ports
-// at the type level. No convention-level constructor discipline is
-// required.
+// A single arm of a BranchEffect. condition carries a typed Bool
+// witness (BranchPredicateRef below) that ParallelEffect's plain
+// WorkflowEffect branches do not — the Q4 Pattern 2 dissolution
+// distinguisher. No public constructor; the only way to produce a
+// BranchArm is Dag::branch_arm_of, which validates the predicate
+// port.
 type BranchArm {
   condition: BranchPredicateRef
   body: WorkflowEffect
 }
 ```
 
-**`BranchPredicateRef` — typed opaque handle** (shipped in PR #534 as `src/v3/compiler/src/dag.rs::BranchPredicateRef`, following the `ParamRef` / `TransformRef` Track 9 pattern from DB-9 R2.1):
+**`BranchPredicateRef` — typed opaque handle** in `src/v3/compiler/src/dag.rs`, following the `ParamRef` / `TransformRef` Track 9 pattern from DB-9 R2.1:
 
 ```rust
-// Shipped in src/v3/compiler/src/dag.rs.
+// src/v3/compiler/src/dag.rs (PR #534, open).
 // Typed opaque handle statically witnessing that the referenced
-// substrate port's declared type is Bool. There is no public
-// constructor; the only way to produce one is via Dag::branch_arm_of,
-// which validates the port and builds the whole BranchArm at once.
+// substrate port's declared type is Bool. The inner field is
+// crate-private; there is no public constructor. The only way to
+// produce one is via Dag::branch_arm_of, which validates the port
+// and builds the whole BranchArm at once.
 pub struct BranchPredicateRef {
     port: PortId,
 }
@@ -105,30 +98,21 @@ impl BranchPredicateRef {
 }
 ```
 
-**Sole constructor: `Dag::branch_arm_of`** (shipped in PR #534).
+**Sole constructor: `Dag::branch_arm_of(&self, port, body) -> Option<BranchArm>`.** Validates that `port` resolves to `Bool` on the graph and builds the `BranchArm` in one step; returns `None` if the port's declared type is not Bool. The method takes the port and the body — no `root` argument; port-type resolution uses the `Dag`'s own graph state.
 
 ```rust
 impl Dag {
-    // The only way to produce a BranchArm (and therefore the only way
-    // to inhabit BranchPredicateRef). Validates that `port` resolves
-    // to Bool on the graph rooted at `root`; returns None if the
-    // port's declared type is not Bool.
     pub fn branch_arm_of(
         &self,
-        root: NodeId,
         port: PortId,
         body: WorkflowEffect,
-    ) -> Option<BranchArm> { ... }
+    ) -> Option<BranchArm> { /* checks port resolves to Bool */ }
 }
 ```
 
-**Fail-closed boundary placement.** `Dag::branch_arm_of` returning `Option<BranchArm>` is the Track 9 internal-validation contract (matching `param_of`). The constructor itself does not emit a `Diagnostic` — emitting diagnostics is not the responsibility of a typed-handle primitive. The *caller that constructs a BranchArm* is required to handle `None` by emitting a `Diagnostic` identifying the non-Bool branch condition, never by silently absorbing the absence. Today the only caller is in-Rust test / lowering scaffolding; when Part 3 (data-declaration ingestion) lands, the surface-to-`BranchArm` lowering path inherits the same fail-closed discipline per C-8.
+**Fail-closed boundary placement.** `Dag::branch_arm_of` returning `Option<BranchArm>` is the Track 9 internal-validation contract (matching `param_of`). The method itself does not emit a `Diagnostic` — emitting diagnostics is not the responsibility of a typed-handle primitive. The *caller that constructs a BranchArm* is required to handle `None` by emitting a `Diagnostic` identifying the non-Bool branch condition, never by silently absorbing the absence. Today the only callers are in-Rust tests and scaffolding; when Part 3 (data-declaration ingestion) lands, the surface-to-`BranchArm` lowering path inherits the same fail-closed discipline per C-8.
 
-**Why this belongs in `std/effects.dag` rather than `std/substrate.dag`.** `WorkflowEffect` is a concept of the effect algebra — it describes input shapes that `compose_effects` (and its downstream peers) dispatch over. The substrate's own declarations (`Dag`, `Declaration`, `Behavior`, `LoopBound`, `Cluster`) describe the *computation and type substrate*; the effect algebra is a lens-writable layer above that substrate. The existing file already hosts `OperationEffect`, `EffectShape`, `IdempotencyEvidence`, `CompositionVerdict` — all effect-algebra types. `WorkflowEffect` joins that family.
-
-**No reflected `type Dag` changes.** `WorkflowEffect` values live inside user code (as fields of workflow declarations) and inside lens output, not as a sidecar table on `Dag`. The authority for "what workflow does this call site model?" is the user's declaration; the lens walks declarations and reads their `WorkflowEffect`-typed fields. No new `Dag.workflows: List<...>` field is needed (cf. DB-9 R2.1 `Dag.clusters` sidecar which is necessary because clusters span multiple declarations; a `WorkflowEffect` is a single declaration-local value).
-
-**No Rust mirror yet.** Because Part 1 is design-only, no `src/v3/compiler/src/dag.rs` change is proposed here. Part 2 mirrors `WorkflowEffect` and `BranchArm` in `dag.rs` under the same reflection-invariant check (`m2_field_access_binding_test.rs`) that DB-9 R2.1 used for `Cluster` / `MemberDescent` / `IntraClusterCall`. The single-authority discipline from DB-9 R2.1 carries over: lowering writes `WorkflowEffect` values; lenses and inference are pure readers.
+**Why `WorkflowEffect` is NOT reflected into `std/effects.dag` today.** The `.dag` substrate carries types that `.dag`-authored lenses can walk. `WorkflowEffect` is still Rust-only: the shipped `ValueNode.lane2_workflow` comment explicitly flags *"not part of the reflected `Behavior` surface in `substrate.dag`, so `.dag` lenses cannot read it until a workflow fact is reflected + realized."* Reflection is Part 3 work (and, once landed, graduates the 🟡 scaffold to 🟢 terminal once all four variants have consumers). Until then, the carrier is a Rust mirror consumed by a Rust analyzer (`workflow_idempotency::analyze_workflow`).
 
 ### Dissolution receipt — `WorkflowEffect` coproduct (four-pattern check)
 
