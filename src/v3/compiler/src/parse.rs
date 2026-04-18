@@ -627,7 +627,7 @@ impl<'a> Parser<'a> {
             Err(Diagnostic::ParseError {
                 message: format!("expected {expected:?}, got {:?}", token.kind),
                 span: token.span,
-            fixes: Vec::new(),
+                fixes: Vec::new(),
             })
         }
     }
@@ -650,7 +650,7 @@ impl<'a> Parser<'a> {
                     "expected `let`, `fn`, `type`, `module`, `import`, or `data`, got {other:?}"
                 ),
                 span: self.peek().span.clone(),
-            fixes: Vec::new(),
+                fixes: Vec::new(),
             }),
         }
     }
@@ -809,7 +809,21 @@ impl<'a> Parser<'a> {
         let open = self.expect_kind(TokenKind::LBrace)?;
         let mut fields: Vec<SurfaceRecordField> = Vec::new();
         while !matches!(self.peek().kind, TokenKind::RBrace) {
+<<<<<<< HEAD
             let (field_name, name_span) = self.parse_field_label()?;
+=======
+            let name_token = self.bump().clone();
+            let field_name = match name_token.kind {
+                TokenKind::Ident(n) => n,
+                other => {
+                    return Err(Diagnostic::ParseError {
+                        message: format!("expected field name in record literal, got {other:?}"),
+                        span: name_token.span,
+                        fixes: Vec::new(),
+                    });
+                }
+            };
+>>>>>>> dc36be6aa (chore: apply cargo fmt)
             self.expect_kind(TokenKind::Colon)?;
             let value = self.parse_expr()?;
             let field_end = expr_span(&value).byte_end;
@@ -852,7 +866,7 @@ impl<'a> Parser<'a> {
                 return Err(Diagnostic::ParseError {
                     message: "unterminated block body: reached EOF before closing `}`".to_string(),
                     span: open.span,
-                fixes: Vec::new(),
+                    fixes: Vec::new(),
                 });
             }
             let token = self.bump().clone();
@@ -934,7 +948,7 @@ impl<'a> Parser<'a> {
             other => Err(Diagnostic::ParseError {
                 message: format!("expected `=` or `{{` after fn return type, got {other:?}"),
                 span: self.peek().span.clone(),
-            fixes: Vec::new(),
+                fixes: Vec::new(),
             }),
         }
     }
@@ -948,7 +962,7 @@ impl<'a> Parser<'a> {
                 return Err(Diagnostic::ParseError {
                     message: format!("expected type name, got {other:?}"),
                     span: name_token.span.clone(),
-                fixes: Vec::new(),
+                    fixes: Vec::new(),
                 });
             }
         };
@@ -1160,7 +1174,7 @@ impl<'a> Parser<'a> {
                 return Err(Diagnostic::ParseError {
                     message: format!("expected variant name, got {other:?}"),
                     span: name_token.span.clone(),
-                fixes: Vec::new(),
+                    fixes: Vec::new(),
                 });
             }
         };
@@ -1270,7 +1284,7 @@ impl<'a> Parser<'a> {
                 return Err(Diagnostic::ParseError {
                     message: format!("expected type name, got {other:?}"),
                     span: token.span,
-                fixes: Vec::new(),
+                    fixes: Vec::new(),
                 });
             }
         };
@@ -1327,7 +1341,7 @@ impl<'a> Parser<'a> {
             other => Err(Diagnostic::ParseError {
                 message: format!("expected identifier, got {other:?}"),
                 span: token.span,
-            fixes: Vec::new(),
+                fixes: Vec::new(),
             }),
         }
     }
@@ -1528,7 +1542,7 @@ impl<'a> Parser<'a> {
             TokenKind::IntLit(value) => Ok(SurfaceExpr::Literal {
                 value: SurfaceLiteral::Int(value),
                 span: token.span,
-            fixes: Vec::new(),
+                fixes: Vec::new(),
             }),
             TokenKind::KwTrue => Ok(SurfaceExpr::Literal {
                 value: SurfaceLiteral::Bool(true),
@@ -1547,7 +1561,7 @@ impl<'a> Parser<'a> {
             other => Err(Diagnostic::ParseError {
                 message: format!("expected primary expression, got {other:?}"),
                 span: token.span,
-            fixes: Vec::new(),
+                fixes: Vec::new(),
             }),
         }
     }
@@ -1566,7 +1580,7 @@ impl<'a> Parser<'a> {
                         self.peek().kind
                     ),
                     span: self.peek().span.clone(),
-                fixes: Vec::new(),
+                    fixes: Vec::new(),
                 });
             }
         }
@@ -1616,7 +1630,7 @@ impl<'a> Parser<'a> {
                                 "expected identifier after `.` in dotted path, got {other:?}"
                             ),
                             span: next.span,
-                        fixes: Vec::new(),
+                            fixes: Vec::new(),
                         });
                     }
                 }
@@ -1643,7 +1657,7 @@ impl<'a> Parser<'a> {
                                 "expected identifier in lambda parameter list, got {other:?}"
                             ),
                             span: token.span,
-                        fixes: Vec::new(),
+                            fixes: Vec::new(),
                         });
                     }
                 }

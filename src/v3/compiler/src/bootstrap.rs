@@ -323,7 +323,7 @@ mod tests {
             value_body: None,
             refinement: None,
             span: span.clone(),
-        fixes: Vec::new(),
+            fixes: Vec::new(),
         });
 
         let instance_id = dag.alloc_declaration_id();
