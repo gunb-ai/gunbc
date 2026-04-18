@@ -944,6 +944,15 @@ impl<T> NonEmptyList<T> {
         })
     }
 
+    pub fn to_vec(&self) -> Vec<T>
+    where
+        T: Clone,
+    {
+        std::iter::once(self.first.clone())
+            .chain(self.rest.iter().cloned())
+            .collect()
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         std::iter::once(&self.first).chain(self.rest.iter())
     }
@@ -973,6 +982,121 @@ impl<T> NonSingletonList<T> {
             .chain(std::iter::once(&self.second))
             .chain(self.rest.iter())
     }
+}
+
+// ── std.effects mirror (DB-18 / Lane 2 Stage 2b) ───────────────────
+//
+// Structural carriers aligned with `src/v3/std/effects.dag` — the
+// compiler-side authority for `compose_effects`, `WorkflowEffect`, and
+// `BranchArm` until the self-hosted pipeline consumes the `.dag` forms
+// directly.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HttpMethodScalar {
+    Get,
+    Post,
+    Put,
+    Patch,
+    Delete,
+    Head,
+    Options,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KeySource {
+    PathParam { param: String },
+    InputField { field: String },
+    CompositeKey { fields: Vec<String> },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CreateCause {
+    PostAlways,
+    KeylessFallback { method: HttpMethodScalar },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IdempotentShape {
+    ReadEffect,
+    UpsertEffect { key_source: KeySource },
+    DeleteEffect { key_source: KeySource },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BreakingShape {
+    CreateEffect { cause: CreateCause },
+    AppendEffect,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EffectShape {
+    IsIdempotent(IdempotentShape),
+    IsBreaking(BreakingShape),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OperationEffect {
+    pub operation_name: String,
+    pub shape: EffectShape,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BreakingOperation {
+    pub operation_name: String,
+    pub shape: BreakingShape,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CompositionVerdict {
+    IdempotentComposition,
+    BrokenBy { first_breaker: BreakingOperation },
+}
+
+/// Branch arm with a condition port witnessed as `Bool` by
+/// [`Dag::branch_arm_of`] — the sole constructor for valid arms.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BranchArm {
+    condition: PortId,
+    body: Box<WorkflowEffect>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkflowEffect {
+    LinearEffect {
+        ops: NonEmptyList<OperationEffect>,
+    },
+    BranchEffect {
+        arms: NonSingletonList<BranchArm>,
+    },
+    LoopEffect {
+        body: Box<WorkflowEffect>,
+    },
+    ParallelEffect {
+        branches: NonSingletonList<Box<WorkflowEffect>>,
+    },
+}
+
+impl BranchArm {
+    pub fn condition_port(&self) -> PortId {
+        self.condition
+    }
+
+    pub fn body(&self) -> &WorkflowEffect {
+        &self.body
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IdempotencyUnsupportedDetail {
+    pub variant_name: String,
+    pub downstream_stage: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkflowIdempotencyReport {
+    WorkflowCompositionVerdict(CompositionVerdict),
+    IdempotencyUnsupported(IdempotencyUnsupportedDetail),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2111,6 +2235,22 @@ impl Dag {
         let bind = self.node(member).as_bind()?;
         bind.params.get(slot)?;
         Some(ParamRef { member, slot })
+    }
+
+    /// Construct a [`BranchArm`] only when `port` is resolved to the `Bool`
+    /// primitive — the Track-9-style witness for a valid branch predicate
+    /// port (DB-18 / `branch_arm_of` parity with `param_of`).
+    pub fn branch_arm_of(&self, port: PortId, body: WorkflowEffect) -> Option<BranchArm> {
+        let bool_ty = self.bool_shape()?;
+        let p = self.port_opt(&port)?;
+        let ty = p.value_type()?;
+        if *ty != bool_ty {
+            return None;
+        }
+        Some(BranchArm {
+            condition: port,
+            body: Box::new(body),
+        })
     }
 
     pub fn as_transform_ref(&self, node: NodeId) -> Option<TransformRef> {

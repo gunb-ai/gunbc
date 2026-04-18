@@ -1,0 +1,16 @@
+// lenses.idempotency — Lane 2 Stage 2b workflow idempotency lens.
+//
+// Delegates to `std.effects::analyze_workflow` — the algebraic authority
+// lives in `src/v3/std/effects.dag` alongside `compose_effects`.
+
+module lenses.idempotency
+
+import v3.std.substrate { Dag }
+import std.effects {
+  WorkflowEffect,
+  WorkflowIdempotencyReport,
+  analyze_workflow as analyze_workflow_effects,
+}
+
+fn analyze_workflow(d: Dag, workflow: WorkflowEffect) -> WorkflowIdempotencyReport =
+  analyze_workflow_effects(_d: d, workflow: workflow)

@@ -128,8 +128,10 @@ mod lower;
 mod parse;
 mod pipeline_authority;
 mod tokenize;
+mod workflow_idempotency;
 
 pub use dag::Dag;
+pub use workflow_idempotency::{analyze_workflow, compose_operation_effects, operation_to_breaker};
 pub use diagnostics::{Diagnostic, SourceSpan};
 pub use emit_rust::EmitError;
 
