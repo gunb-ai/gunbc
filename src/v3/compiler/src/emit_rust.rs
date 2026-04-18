@@ -923,27 +923,27 @@ fn parse_pattern_binding_rule(
             detail: "PatternBindingRule variants must not carry payload fields",
         });
     }
-    let emit_always = named_variant_id(dag, "PatternBindingRule", "EmitBindingAlways").ok_or(
-        EmitError::MalformedTargetSyntax {
+    let variants = dag.pattern_binding_rule_variants();
+    let emit_always = variants
+        .emit_always
+        .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "PatternBindingRule.EmitBindingAlways declaration was not found",
-        },
-    )?;
-    let emit_underscore = named_variant_id(dag, "PatternBindingRule", "EmitUnderscoreWhenUnused")
+        })?;
+    let emit_underscore = variants
+        .emit_underscore
         .ok_or(EmitError::MalformedTargetSyntax {
-        declaration,
-        detail: "PatternBindingRule.EmitUnderscoreWhenUnused declaration was not found",
-    })?;
-    let emit_prefixed = named_variant_id(
-        dag,
-        "PatternBindingRule",
-        "EmitPrefixedUnderscoreWhenUnused",
-    )
-    .ok_or(EmitError::MalformedTargetSyntax {
-        declaration,
-        detail: "PatternBindingRule.EmitPrefixedUnderscoreWhenUnused declaration was not found",
-    })?;
-    let not_applicable = named_variant_id(dag, "PatternBindingRule", "NotApplicablePatternBinding")
+            declaration,
+            detail: "PatternBindingRule.EmitUnderscoreWhenUnused declaration was not found",
+        })?;
+    let emit_prefixed = variants
+        .emit_prefixed
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "PatternBindingRule.EmitPrefixedUnderscoreWhenUnused declaration was not found",
+        })?;
+    let not_applicable = variants
+        .not_applicable
         .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "PatternBindingRule.NotApplicablePatternBinding declaration was not found",
@@ -5216,45 +5216,47 @@ fn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }",
 
     #[test]
     fn clean_emission_rejects_rust_invalid_pattern_binding_variants() {
-        let assert_rejected = |variant_name: &'static str, expected_detail: &'static str| {
-            let mut dag = compile_to_dag(
-                "type Sign = Plus | Minus
+        let assert_rejected =
+            |pick: fn(&crate::dag::PatternBindingRuleVariants) -> Option<DeclarationId>,
+             expected_detail: &'static str| {
+                let mut dag = compile_to_dag(
+                    "type Sign = Plus | Minus
 fn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }",
-                "test.v3",
-            )
-            .expect("compiles");
-            let clean_decl = dag
-                .rust_clean_emission_spec()
-                .expect("rust_clean_emission cached");
-            let invalid_ctor = named_variant_id(&dag, "PatternBindingRule", variant_name)
-                .expect("PatternBindingRule variant exists");
-            dag.declaration_mut(clean_decl).value_body = Some(ValueBody::Structural {
-                fields: vec![(
-                    "pattern_bindings".to_string(),
-                    FieldValue::Variant {
-                        constructor: invalid_ctor,
-                        payload: Vec::new(),
-                    },
-                )],
-            });
+                    "test.v3",
+                )
+                .expect("compiles");
+                let clean_decl = dag
+                    .rust_clean_emission_spec()
+                    .expect("rust_clean_emission cached");
+                let invalid_ctor = pick(dag.pattern_binding_rule_variants())
+                    .expect("PatternBindingRule variant cached");
+                dag.declaration_mut(clean_decl).value_body = Some(ValueBody::Structural {
+                    fields: vec![(
+                        "pattern_bindings".to_string(),
+                        FieldValue::Variant {
+                            constructor: invalid_ctor,
+                            payload: Vec::new(),
+                        },
+                    )],
+                });
 
-            let err = emit_rust_with_mode(&dag, EmitRustMode::Module)
-                .expect_err("Rust-invalid pattern binding rule must fail closed");
-            assert!(matches!(
-                err,
-                EmitError::MalformedTargetSyntax {
-                    declaration,
-                    detail,
-                } if declaration == clean_decl && detail == expected_detail
-            ));
-        };
+                let err = emit_rust_with_mode(&dag, EmitRustMode::Module)
+                    .expect_err("Rust-invalid pattern binding rule must fail closed");
+                assert!(matches!(
+                    err,
+                    EmitError::MalformedTargetSyntax {
+                        declaration,
+                        detail,
+                    } if declaration == clean_decl && detail == expected_detail
+                ));
+            };
 
         assert_rejected(
-            "EmitPrefixedUnderscoreWhenUnused",
+            |v| v.emit_prefixed,
             "rust_clean_emission.pattern_bindings cannot use PatternBindingRule.EmitPrefixedUnderscoreWhenUnused; Rust only supports EmitBindingAlways or EmitUnderscoreWhenUnused",
         );
         assert_rejected(
-            "NotApplicablePatternBinding",
+            |v| v.not_applicable,
             "rust_clean_emission.pattern_bindings cannot use PatternBindingRule.NotApplicablePatternBinding; Rust only supports EmitBindingAlways or EmitUnderscoreWhenUnused",
         );
     }
