@@ -1,11 +1,11 @@
-> Parent: [post-l15-phase-plan.md](./post-l15-phase-plan.md) | [ROADMAP.md](../ROADMAP.md) (root, authoritative)
+> Parent: [post-l15-phase-plan.md](./post-l15-phase-plan.md) | [ROADMAP.md](../ROADMAP.md) (root, authoritative) | [Session relay](./session-relay-queue.md) (pointer to PR #530 / GitHub — not a mutable ledger)
 
 # Phase plan — Post-merge-wave coordination (snapshot 2026-04-18)
 
 **Author:** director chat session `clever-lark-108`
 **As of:** 2026-04-18
 **Refresh cadence:** session start + after every merge wave (never more than ~1 day stale)
-**Since last refresh:** initial landing. Incorporates director review of the 2026-04-18 draft (staleness fix for #523, DB-numbering audit, Stage 3c exploration filled in).
+**Since last refresh:** §4.1 trimmed to **pointer index only**; Lane 1e + determinism mirror added to [post-l15-phase-plan.md](./post-l15-phase-plan.md). PR [#530](https://github.com/gunb-ai/gunbc/pull/530) bot/review status is **not** mirrored here — see [session-relay-queue.md](./session-relay-queue.md) (pointer only).
 
 ---
 
@@ -169,7 +169,7 @@ ROADMAP Lane 2 Stage 2c names it: *"DB-15 tests-as-declarations extensions (M, b
 - Read DB-15 R2 and confirm it locks the open questions the draft raised: obligation shape (✅ extends `TestClaim`), target test framework interaction (✅ via declared resources), composition rules (N obligations vs workflow obligation vs both — confirm R2 answers or escalate to R3).
 - Confirm the prerequisite `dsl/std/resources.dag` → v3 reconciliation (S) deferral plan in ROADMAP.
 
-**Output:** a one-page audit memo. Not a new DB.
+**Output:** confirm against the DB doc; add a **pointer row** in §4.1 only — do not restate gates here.
 
 ### Stage 2d — Symbolic cost
 
@@ -182,7 +182,7 @@ DB-7 locks: `SymbolicCost` carrier (7 variants: Constant/Linear/Polynomial/Produ
 - Confirm the Stage 2b → 2d handoff: DB-7 composes through `Loop`'s `LoopBound::Descent` for mutual-recursion clusters (post-#519 substrate) — no gap.
 - Decide whether `WorkflowEffect` integration (Stage 2b) needs any DB-7 extension. If yes, write a specific ask; if no, Stage 2d dispatches directly against DB-7.
 
-**Output:** one-page audit memo. Not a new DB.
+**Output:** confirm against the DB doc; add a **pointer row** in §4.1 only — do not restate gates here.
 
 ### Stage 3b — Diagnostics-as-corrections
 
@@ -206,9 +206,22 @@ The draft reserved DB-18/19/20/21/22 speculatively. This review dropped those re
 - DB-15 (test-infra) already covers Stage 2c → "DB-18 candidate" is redundant.
 - DB-7 (symbolic cost) already covers Stage 2d → "DB-19 candidate" is redundant.
 - DB-8 (fixed-point) already covers Stage 3c mechanics → "DB-20 candidate" is redundant.
-- **DB-17 is already allocated to reference-resolution provenance** — allocating authority is [`docs/design-reference-resolution-provenance.md`](./design-reference-resolution-provenance.md); also referenced from `src/v3/ROADMAP.md` §Scheduled deletions (the "Needs DB-17" enforcement marker). Using DB-17 for WorkflowEffect would collide.
+- **DB-17 is already allocated to reference-resolution provenance** — allocating authority is [`design-reference-resolution-provenance.md`](./design-reference-resolution-provenance.md); also referenced from `src/v3/ROADMAP.md` §Scheduled deletions (the "Needs DB-17" enforcement marker). Using DB-17 for WorkflowEffect would collide.
 
 **Rule for this doc:** do not pre-reserve DB numbers. A DB number gets assigned at the moment a DB design doc is opened, not at the moment of speculation.
+
+### 4.1 Director session — audit index (still-deer-308, 2026-04-18)
+
+§4 above asked for director-chat **read-and-confirm** of DB docs, not new design. This subsection is an **index only**: it records *where* the 2026-04-18 session looked. **Gates, acceptance criteria, and pre-clearance verdicts live in the cited files** — not here. (Keeps this doc from becoming a second authority for stage decisions; see ChatGPT review on #530.)
+
+| Topic | Authority to read (single source of truth) |
+|---|---|
+| DB-15 / Lane 2 Stage 2c | [`design-test-infra.md`](./design-test-infra.md) R2; deferrals [`src/v3/ROADMAP.md`](../src/v3/ROADMAP.md) §Lane 2 Stage 2c |
+| DB-7 / Lane 2 Stage 2d | [`design-symbolic-cost-algebra.md`](./design-symbolic-cost-algebra.md) |
+| Stage 3b | [`design-correction-shape.md`](./design-correction-shape.md) (DB-1), [`lane3-self-hosting-cycle.md`](./lane3-self-hosting-cycle.md) §Stage 3b; Lane 1c blockers [`src/v3/ROADMAP.md`](../src/v3/ROADMAP.md) §Lane 1 Stage 1c |
+| Stage 3c mechanics | [`design-fixed-point-ratchet.md`](./design-fixed-point-ratchet.md) (DB-8) |
+| Lane 1 Stage 1e scope, emit determinism, `tests/determinism_test.rs` | [`post-l15-phase-plan.md`](./post-l15-phase-plan.md) Lane 1 summary (incl. DB-8 pointer), [`design-generic-walker-api.md`](./design-generic-walker-api.md) (DB-2) |
+| Open program questions (what `compiler.dag` is today) | **§6** below — not a design substitute for DB-8 |
 
 ---
 

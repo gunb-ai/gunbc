@@ -267,7 +267,7 @@ pub(crate) fn lower_bodies_phase(
     // Sole caller of `lower_parameter_refinement` for parameter
     // `where` clauses (single construction authority).
     lower_parameter_refinements_phase(dag, module, symbols, is_first);
-    let mutual_recursion = compute_mutually_recursive(&module.items, dag, symbols);
+    let mutual_recursion = compute_mutually_recursive(&module.items, dag, symbols, is_first);
     let mut mutual_state = MutualRecursionState::new(&mutual_recursion);
     for (idx, item) in module.items.iter().enumerate() {
         if !is_first[idx] {
@@ -5262,15 +5262,25 @@ struct FunctionSurfaceInfo<'a> {
     body: &'a SurfaceExpr,
 }
 
+/// `is_first` must parallel `items` (from [`collect_symbols`]). Only
+/// first-authority surface items participate — same filter as
+/// [`lower_bodies_phase`]'s body lowering loop — so duplicate `fn`
+/// declarations cannot overwrite the mutual-recursion call graph with a
+/// later duplicate's body.
 fn compute_mutually_recursive(
     items: &[SurfaceItem],
     dag: &Dag,
     symbols: &HashMap<String, DeclarationId>,
+    is_first: &[bool],
 ) -> MutualRecursionPlans {
+    debug_assert_eq!(items.len(), is_first.len());
     let mut order: Vec<DeclarationId> = Vec::new();
     let mut fn_infos: HashMap<DeclarationId, FunctionSurfaceInfo<'_>> = HashMap::new();
     let mut function_symbols: HashMap<String, DeclarationId> = HashMap::new();
-    for item in items {
+    for (idx, item) in items.iter().enumerate() {
+        if !is_first[idx] {
+            continue;
+        }
         if let SurfaceItem::Fn {
             name, params, body, ..
         } = item

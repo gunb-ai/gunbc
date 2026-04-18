@@ -45,6 +45,8 @@ Six internal stages. Each builds on the previous:
 
 **Acceptance:** `grep -r "fn render_" src/v3/compiler/src/` returns zero target-specific matches; Rust, Go, Python all roundtrip through a single generic walker with bit-identical output to pre-consolidation; zero `#[allow(warnings)]` attributes anywhere.
 
+**Emit-level determinism (Lane 1e / DB-8, prerequisite alongside walker consolidation):** invariant D-1 and `tests/determinism_test.rs` (per-fixture 5× re-run) are specified in [design-fixed-point-ratchet.md](./design-fixed-point-ratchet.md). The consolidated emitter must not introduce run-to-run drift before Stage 3c’s full fixed-point gate — same design doc, §acceptance checklist. This is **not** a second gate definition: phase-plan snapshots may point here but do not restate criteria.
+
 **Not in scope for Lane 1** (per THESIS.md §"Two shapes of omni-emission"): SPICE netlists, Verilog hardware descriptions, English documentation, YAML, Terraform, etc. These are **Shape B artifacts** — outputs of `.dag` PROGRAMS, not compiler emission targets. Writing a SPICE-netlist emitter is writing a `.dag` library, which any user program can invoke. Compiler core stays focused on Shape A (programming languages).
 
 ### Lane 2 — Compile-time proofs (XL, six stages, overlaps Lane 1 after 1b)
@@ -150,7 +152,7 @@ Nine cross-cutting design decisions needed to be locked before implementation. E
 | DB-10..DB-13 (m2) | M2 feature parity (data value semantics, `where` refinement, surface generics, Disj dotted-path) | Lane 3 Stage 3a.2 / 3a.3 / 3a.4 / 3a.5 | [design-m2-feature-parity.md](./design-m2-feature-parity.md) |
 | DB-14 | Substrate external primitives (unblocks 1b accessors) | Lane 1 Stage 1b | [design-substrate-external-primitives.md](./design-substrate-external-primitives.md) |
 
-**Numbering note.** PR #494 introduced `design-m2-feature-parity.md` with its four sub-blockers numbered `DB-10`..`DB-13`, colliding with the existing `DB-10` (Lens Rust-boundary) already listed above. The collision is visible here rather than papered over. Suggested cleanup in a separate PR: renumber `design-m2-feature-parity.md`'s sub-blockers to `DB-11`..`DB-14` and renumber DB-14 (substrate external primitives, this PR) to `DB-15`. Not blocking any implementation; readers can distinguish by design-doc link.
+**Numbering note.** PR #494 introduced `design-m2-feature-parity.md` with its four sub-blockers numbered `DB-10`..`DB-13`, colliding with the existing `DB-10` (Lens Rust-boundary) already listed above. The collision is visible here rather than papered over. An older suggestion to renumber substrate **DB-14 → DB-15** is **withdrawn:** **DB-15** is now allocated to test infrastructure ([`design-test-infra.md`](./design-test-infra.md), Lane 2 Stage 2c). Until a dedicated renumbering pass lands, distinguish M2 sub-blockers from the original DB-10 by **design-doc link** (`design-m2-feature-parity.md` §DB-10..DB-13 vs `design-lens-rust-boundary.md`).
 
 Dependencies between design docs (DB-4 references DB-1, DB-2 references DB-4 and DB-5, DB-10 added post-Half-A review, DB-14 added post-Stage-1b-escalation): each design doc calls out its dependencies in the header.
 
