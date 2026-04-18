@@ -7,27 +7,12 @@
 **Lane:** 1 (Emission unification)
 **Stage:** 1d (last design stage; gates Stage 1e implementation start)
 **Size:** M
-**Status:** 🟡 Design partial (2026-04-18). Pure design, no code changes.
+**Status:** 🟢 Design complete, pending P2-L1 sign-off. Pure design, no code changes.
 
-> **Status honesty note.** Sections §§7–12 (walker contract, spec
-> reading protocol, determinism plan, migration plan, bootstrap-
-> once + snapshot-ratchet, determinism test suite) landed 2026-04-18.
-> The pre-existing sections §§1–3 remain inventory-stub shape: each
-> sketches the output doc and names its target path
-> (`docs/emit-functions-inventory.md`,
-> `docs/spec-field-gaps.md`, `docs/emit-bridges.md`) but does not
-> enumerate the per-function / per-gap / per-bridge rows the
-> separate doc files are meant to carry. The §Acceptance gates
-> below are the single authority on 1d readiness; those three
-> files plus P2-L1 sign-off remain open scope before Stage 1e
-> actually dispatches. "Design partial" is the accurate shape
-> today; "Design complete" applies only once §Acceptance gates
-> all hold.
-
-> Role in the plan: produces the file-by-file build plan for Stage 1e's
-> consolidation execution. Stage 1e does NOT start until this
-> stage signs off on the inventory, gap list, bridges, and pilot
-> target choice.
+> Role in the plan: the file-by-file build plan for Stage 1e's
+> consolidation execution. Stage 1e dispatches on P2-L1 sign-off
+> against §Acceptance gates (inventory, gap list, bridges, pilot
+> target choice are all written).
 
 **No new DB number.** This document extends the already-locked
 DB-2 (walker API), DB-4 (clean-emission contract), and DB-8
