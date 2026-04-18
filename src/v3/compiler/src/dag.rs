@@ -1087,9 +1087,7 @@ pub struct SizeVariable {
 //     dominant-child summary.
 
 pub fn sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
-    normalize(SymbolicCost::SumCost {
-        _0: vec![a, b],
-    })
+    normalize(SymbolicCost::SumCost { _0: vec![a, b] })
 }
 
 pub fn iterate(bound: SymbolicCost, body: SymbolicCost) -> SymbolicCost {
@@ -1099,13 +1097,15 @@ pub fn iterate(bound: SymbolicCost, body: SymbolicCost) -> SymbolicCost {
 }
 
 pub fn max_path(paths: Vec<SymbolicCost>) -> SymbolicCost {
-    paths.into_iter().fold(SymbolicCost::ConstantCost { _0: 0 }, |acc, candidate| {
-        if dominates(&candidate, &acc) {
-            candidate
-        } else {
-            acc
-        }
-    })
+    paths
+        .into_iter()
+        .fold(SymbolicCost::ConstantCost { _0: 0 }, |acc, candidate| {
+            if dominates(&candidate, &acc) {
+                candidate
+            } else {
+                acc
+            }
+        })
 }
 
 pub fn normalize(cost: SymbolicCost) -> SymbolicCost {
@@ -1147,11 +1147,7 @@ fn reduce_product(terms: Vec<SymbolicCost>) -> SymbolicCost {
 }
 
 fn combine_binary_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
-    if let (
-        SymbolicCost::LinearCost { _0: va },
-        SymbolicCost::LinearCost { _0: vb },
-    ) = (&a, &b)
-    {
+    if let (SymbolicCost::LinearCost { _0: va }, SymbolicCost::LinearCost { _0: vb }) = (&a, &b) {
         if va == vb {
             return SymbolicCost::PolynomialCost {
                 var: va.clone(),
@@ -1185,10 +1181,16 @@ pub fn dominates(a: &SymbolicCost, b: &SymbolicCost) -> bool {
             SymbolicCost::PolynomialCost { var, degree } => va == var && *degree <= 1,
             _ => false,
         },
-        SymbolicCost::PolynomialCost { var: va, degree: ka } => match b {
+        SymbolicCost::PolynomialCost {
+            var: va,
+            degree: ka,
+        } => match b {
             SymbolicCost::ConstantCost { .. } | SymbolicCost::LogCost { .. } => true,
             SymbolicCost::LinearCost { _0: vb } => va == vb && *ka >= 1,
-            SymbolicCost::PolynomialCost { var: vb, degree: kb } => va == vb && *ka >= *kb,
+            SymbolicCost::PolynomialCost {
+                var: vb,
+                degree: kb,
+            } => va == vb && *ka >= *kb,
             _ => false,
         },
         SymbolicCost::LogCost { _0: va } => match b {
