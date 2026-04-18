@@ -1031,7 +1031,9 @@ impl<'a> Ctx<'a> {
                 Behavior::Loop(l) => {
                     queue.push(l.source);
                     queue.push(l.init);
-                    queue.push(l.bound.count);
+                    if let Some(count) = l.bound.count_port() {
+                        queue.push(count);
+                    }
                     queue.push(go_behavior_result_port(self.dag.node(l.body)));
                 }
                 Behavior::Bind(b) => {
