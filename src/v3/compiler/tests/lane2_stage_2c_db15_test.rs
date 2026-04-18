@@ -1,7 +1,5 @@
 //! DB-15 — `requires` on `TestClaim` + obligation materialization entry (Stage 2c).
 
-use std::collections::HashSet;
-
 use v3_compiler::dag::{Dag, TypeConnective};
 
 #[test]
@@ -25,6 +23,8 @@ fn db15_obligation_surface_is_declared() {
         .expect("TestObligation type");
     dag.declaration_by_name("materialize_test_obligations")
         .expect("materialize_test_obligations");
+    dag.declaration_by_name("claim_obligation_resources")
+        .expect("claim_obligation_resources — sole projection from requires");
 }
 
 #[test]
@@ -37,11 +37,11 @@ fn resource_handle_matches_dsl_authority_including_cap() {
     let TypeConnective::Conj { children } = &decl.connective else {
         panic!("ResourceHandle not a record");
     };
-    let labels: HashSet<_> = children.iter().map(|c| c.label.as_str()).collect();
+    let labels_ordered: Vec<_> = children.iter().map(|c| c.label.as_str()).collect();
     assert_eq!(
-        labels,
-        HashSet::from(["cap", "key", "resource_id", "type"]),
-        "ResourceHandle field names must match dsl/std/resources.dag exactly"
+        labels_ordered,
+        vec!["type", "resource_id", "key", "cap"],
+        "ResourceHandle field order must match dsl/std/resources.dag `ResourceHandle` (lines 20–25) exactly"
     );
     let secret_decl = dag
         .declaration_by_name("Secret")

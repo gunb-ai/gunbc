@@ -5,9 +5,10 @@
 // full resource grammar ports. Dissolution trigger: merge with dsl authority
 // when v3 parses `resource` items.
 //
-// Model fidelity: field labels match `dsl/std/resources.dag` `ResourceHandle`
-// exactly (`type` / `resource_id` / `key` / `cap: Secret`) so downstream code
-// shares one structural spelling with the dsl authority.
+// Model fidelity: `ResourceHandle` is a **mechanical** copy of
+// `dsl/std/resources.dag` lines 20–25 — same field **order** and labels
+// (`type` → `resource_id` → `key` → `cap: Secret`). Ratchet:
+// `lane2_stage_2c_db15_test::resource_handle_matches_dsl_authority_including_cap`.
 
 module v3.std.resources
 

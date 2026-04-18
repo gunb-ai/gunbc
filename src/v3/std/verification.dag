@@ -119,8 +119,17 @@ type TestObligation {
   resources: List<ResourceReference>
 }
 
+// **Single authority for resource edges (including mock backends).** Every
+// `ResourceReference` for obligation materialization lives on `TestClaim.requires`
+// only. `TestPredicate` variants (including `MockBackedInvariant`) never carry
+// parallel resource facts — downstream walks call this projection instead of
+// inspecting the predicate for mock transports.
+fn claim_obligation_resources(c: TestClaim) -> List<ResourceReference> {
+  c.requires
+}
+
 fn obligation_for_claim(c: TestClaim) -> TestObligation {
-  TestObligation { claim_name: c.name, resources: c.requires }
+  TestObligation { claim_name: c.name, resources: claim_obligation_resources(c) }
 }
 
 fn materialize_test_obligations(claims: List<TestClaim>) -> List<TestObligation> {
