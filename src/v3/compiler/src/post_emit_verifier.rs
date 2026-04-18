@@ -13,15 +13,29 @@
 //! The harness is deliberately minimal:
 //! - `parse_post_emit_verifier` walks the declared structural fields
 //!   of a `python_clean_emission` / `rust_clean_emission` /
-//!   `go_clean_emission` declaration and extracts the five-field
-//!   `PostEmitVerifier` record into a typed binding.
+//!   `go_clean_emission` declaration and extracts the four
+//!   consumed fields (`command`, `args`, `expected_exit_code`,
+//!   `output_policy`) of the `PostEmitVerifier` record into a typed
+//!   binding. (`syntax_only` is authored on the spec but not yet
+//!   consumed by any Rust-side consumer — see
+//!   `PostEmitVerifierBinding` doc.)
 //! - `run_post_emit_verifier` invokes `Command::new(binding.command)
 //!   .args(&binding.args).arg(source_path)`, collects stdout/stderr,
 //!   and applies the binding's `expected_exit_code` +
-//!   `output_policy` as the verdict. The source file path is
-//!   appended as the final positional argument — that's the
-//!   pattern every declared verifier expects (`rustc <file>`,
-//!   `gofmt -l <file>`, `python3 -m py_compile <file>`).
+//!   `output_policy` as the verdict.
+//!
+//! Scope caveat — calling convention: the harness assumes the
+//! verifier takes the source file as its final positional argument.
+//! That shape fits every target declared today (`rustc <file>`,
+//! `gofmt -l <file>`, `python3 -m py_compile <file>`), but the
+//! `PostEmitVerifier` record does not yet encode argument-placement
+//! structurally. A verifier that wants stdin, a fixed `-o` slot, or
+//! a non-terminal source-path position cannot be expressed without
+//! extending the contract shape. When such a target concretely
+//! arrives, the fix is a structural extension to `PostEmitVerifier`
+//! (e.g. `source_position: SourcePositionPolicy`), not a bespoke
+//! Rust branch inside this runner — same discipline as
+//! `pattern_bindings` / `output_policy`.
 
 use std::path::Path;
 use std::process::Command;

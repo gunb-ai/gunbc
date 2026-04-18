@@ -588,18 +588,6 @@ fn use_payload(b: BoxedInt) -> Int = match b { Boxed(unique_value) => unique_val
     run_python_module(&module);
 }
 
-/// E-5 / Lane 1 Stage 1c PR 3 pilot — emitted Python with a match
-/// expression passes `python3 -m py_compile` exactly as the
-/// contract's `post_emit_verifier` declares. Proves the pilot
-/// invariant end-to-end, not just that the emission string shape
-/// looks right.
-///
-/// Gated behind `#[ignore]` like the other end-to-end roundtrips —
-/// CI sandboxes don't always carry python3. Run locally:
-///
-///     cargo test -p v3-compiler --test m1_4_emit_python_test \
-///         emit_python_unused_payload_binding_passes_py_compile \
-///         -- --ignored --nocapture
 /// E-5 / Lane 1 Stage 1c PR 4 — emitted Python passes
 /// `python_clean_emission.post_emit_verifier` as invoked through
 /// the shared harness (`python3 -m py_compile` +
@@ -607,6 +595,12 @@ fn use_payload(b: BoxedInt) -> Int = match b { Boxed(unique_value) => unique_val
 /// `parse_post_emit_verifier` so any future spec change (different
 /// verifier, new args) picks up automatically without updating the
 /// test body.
+///
+/// This is the sole py_compile roundtrip for the Python pilot —
+/// there is no separate hardcoded-command version. `run_post_emit_verifier`
+/// IS the only verifier-invocation authority the test suite uses, so
+/// spec drift (e.g. flipping to `ruff --select=E` in the future)
+/// shows up here without test-code edits.
 ///
 /// Gated behind `#[ignore]` — CI sandboxes don't always carry
 /// python3. Run locally:
@@ -634,34 +628,6 @@ fn ignore_payload(b: BoxedInt) -> Int = match b { Boxed(unique_value) => 0, Empt
         .expect("write python source");
     run_post_emit_verifier(&binding, &src_path)
         .expect("python post_emit_verifier rejected pilot source — E-5 contract regression");
-}
-
-#[test]
-#[ignore]
-fn emit_python_unused_payload_binding_passes_py_compile() {
-    let module = emit_python_module_from_source(
-        "type BoxedInt = Boxed(Int) | Empty
-fn ignore_payload(b: BoxedInt) -> Int = match b { Boxed(unique_value) => 0, Empty => 1 }",
-        "python_clean_emission_py_compile.v3",
-    );
-    let tmp_dir = next_roundtrip_dir();
-    std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
-    let src_path = tmp_dir.join("module.py");
-    std::fs::File::create(&src_path)
-        .and_then(|mut f| f.write_all(module.as_bytes()))
-        .expect("write python module source");
-    let compile = Command::new("python3")
-        .arg("-m")
-        .arg("py_compile")
-        .arg(&src_path)
-        .output()
-        .expect("invoke python3 -m py_compile");
-    assert!(
-        compile.status.success(),
-        "emitted Python failed `python3 -m py_compile` — E-5 pilot regression\nstdout:\n{}\nstderr:\n{}\nsource:\n{module}",
-        String::from_utf8_lossy(&compile.stdout),
-        String::from_utf8_lossy(&compile.stderr)
-    );
 }
 
 // Same Loop blocker as emit_python_module_marks_ownership_as_skipped_for_gc_target.
