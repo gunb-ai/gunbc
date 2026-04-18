@@ -110,23 +110,53 @@ Choice: `pattern_bindings: EmitUnderscoreWhenUnused`.
 - Clean test: pattern match arms with unused bindings must emit `_`
 
 **Scope split across PRs.** The stage originally sketched "all three
-current targets (Rust/Go/Python) in one sweep." Practical scope split:
+current targets (Rust/Go/Python) in one sweep," then bundled Go +
+Python as a single PR 2. Split further because the three target
+surfaces are not equally isomorphic:
 
-- **PR 1 (this PR):** Rust pilot — `std/clean_emission.dag` type
-  system; `rust_clean_emission` data item in `spec/rust.dag`;
+- Rust's `render_branch_pattern` emits `_` INSIDE the pattern
+  (`Variant { _0: _ } => 0`).
+- Go has no pattern-level binding site at all; the per-arm `{name}
+  := v.field;` declaration lives at the statement level, and Go's
+  compiler enforces unused-local as a hard error. The pilot elides
+  the declaration (and drops the type-switch `v :=` when no arm
+  binds) — structurally near-isomorphic to Rust's "swap identifier
+  for the discard form," with the translation happening one level
+  up in the emission tree.
+- Python's pattern-bind does not emit the binding as part of the
+  pattern at all. It's the third axis — different surface entirely
+  — and the one that actually validates the contract generalizes.
+  Bundling it with Go hid that signal.
+
+Three PRs, not two:
+
+- **PR 1:** Rust pilot — `std/clean_emission.dag` type system;
+  `rust_clean_emission` data item in `spec/rust.dag`;
   `render_branch_pattern` dispatch; targeted test under
   `#[deny(unused_variables)]` proving the rule fires; E-5 entry in
   `INVARIANTS.md`.
-- **PR 2 (follow-up):** Go + Python pilots — `go_clean_emission` /
-  `python_clean_emission` data items and per-emitter dispatch.
-  Deferred because Go's binding surface is `{x} := {expr};` (blank
-  identifier path) and Python's pattern-bind doesn't emit the binding
-  as part of the pattern at all — two distinct structural proofs,
-  separate from Rust's `render_branch_pattern` path. E-6 holds in PR 1
-  because each target's spec item lands only when its emitter
-  consumer lands.
-- **PR 3 (follow-up):** Wire `post_emit_verifier` into the test
-  harness (rustc `-D warnings` hard gate, test-wrapper
+- **PR 2:** Go pilot — `go_clean_emission` in `spec/go.dag`;
+  `emit_go::render_sum_branch` dispatch (elide `{name} := v.field;`
+  prefix when the payload is not consumed; drop `switch v :=` when
+  no arm binds); targeted test asserting elision + structural
+  `go_clean_emission` port-liveness proof; ignored `go run`
+  roundtrip. Near-isomorphic to Rust at the structural level — the
+  second-target proof that the contract shape is reusable when the
+  pattern-site surface stays recognizable.
+- **PR 3:** Python pilot — `python_clean_emission` in
+  `spec/python.dag`; `emit_python` dispatch at whatever render path
+  Python's pattern-bind surface implies. The true target-agnostic
+  validation: if the contract needs a SHAPE change (not just a new
+  instantiation) to absorb Python, that's a structural finding
+  worth flagging rather than absorbing silently — it would mean the
+  contract over-fit Rust+Go.
+
+E-6 holds in every PR because each target's spec item lands only
+when its emitter consumer lands.
+
+- **PR 4 (follow-up):** Wire `post_emit_verifier` into the test
+  harness (rustc `-D warnings` hard gate, `gofmt -l` +
+  `RequireEmptyStdout`, `python3 -m py_compile`, test-wrapper
   `#[allow(unused_variables)]` strike). Deferred because the test
   harness change is a distinct chunk that doesn't gate correctness
   of the rule dispatch.

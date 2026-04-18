@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, CardinalityBound, DeclarationId,
@@ -149,6 +149,28 @@ struct TargetExecutionModelBinding {
     scope: ScopeModelBinding,
 }
 
+/// Typed read of `data go_clean_emission: CleanEmissionContract`
+/// from `src/v3/spec/go.dag` — the portion this pilot consumes (E-5
+/// / Lane 1 Stage 1c PR 2). Other contract rules land here as their
+/// consumers wire in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CleanEmissionContractBinding {
+    pattern_bindings: PatternBindingRuleBinding,
+}
+
+/// Go-valid slice of `std.clean_emission.PatternBindingRule`. Parsed
+/// in `CleanEmissionContractBinding::build`, which rejects
+/// target-invalid constructors instead of letting the renderer
+/// normalize them later. Go has no pattern-level underscore
+/// convention (blank identifier is statement-level), so
+/// `EmitPrefixedUnderscoreWhenUnused` is a Python-shaped choice
+/// the Go emitter refuses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PatternBindingRuleBinding {
+    EmitBindingAlways,
+    EmitUnderscoreWhenUnused,
+}
+
 struct RealizationIndexes {
     types: HashMap<DeclarationId, TypeRealizationBinding>,
     instantiations: HashMap<DeclarationId, TypeInstantiationBinding>,
@@ -165,6 +187,12 @@ struct RealizationIndexes {
     patterns: HashMap<DeclarationId, PatternRealizationBinding>,
     syntax: GoLanguageSyntax,
     execution_model: TargetExecutionModelBinding,
+    /// The Go clean-emission contract loaded from `data
+    /// go_clean_emission: CleanEmissionContract` (E-5 / Lane 1 Stage
+    /// 1c PR 2). Rule variants dispatch inside the emitter to shape
+    /// emitted code so `gofmt -l` stays empty and Go's
+    /// unused-local compile error never fires.
+    clean_emission: CleanEmissionContractBinding,
 }
 
 impl RealizationIndexes {
@@ -357,6 +385,7 @@ impl RealizationIndexes {
             ));
         }
         let syntax = GoLanguageSyntax::build(dag)?;
+        let clean_emission = CleanEmissionContractBinding::build(dag)?;
 
         Ok(Self {
             types,
@@ -368,6 +397,99 @@ impl RealizationIndexes {
             patterns,
             syntax,
             execution_model,
+            clean_emission,
+        })
+    }
+}
+
+impl CleanEmissionContractBinding {
+    /// Parse the portion of `data go_clean_emission:
+    /// CleanEmissionContract` this emitter consumes. Currently only
+    /// `pattern_bindings` dispatches (Lane 1 Stage 1c PR 2 pilot);
+    /// other rules parse when their consumers land.
+    fn build(dag: &Dag) -> Result<Self, EmitError> {
+        let declaration = dag
+            .go_clean_emission_spec()
+            .ok_or(EmitError::MissingTargetSyntax("go_clean_emission"))?;
+        let fields = structural_fields_for_decl(dag, declaration)?;
+        let pattern_bindings_value = fields
+            .iter()
+            .find(|(label, _)| label == "pattern_bindings")
+            .map(|(_, value)| value)
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "go_clean_emission is missing required `pattern_bindings` field",
+            })?;
+        let pattern_bindings =
+            parse_pattern_binding_rule(dag, pattern_bindings_value, declaration)?;
+        Ok(Self { pattern_bindings })
+    }
+}
+
+fn parse_pattern_binding_rule(
+    dag: &Dag,
+    value: &FieldValue,
+    declaration: DeclarationId,
+) -> Result<PatternBindingRuleBinding, EmitError> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "go_clean_emission.pattern_bindings must be a PatternBindingRule variant",
+        });
+    };
+    if !payload.is_empty() {
+        return Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "PatternBindingRule variants must not carry payload fields",
+        });
+    }
+    let emit_always = named_variant_id(dag, "PatternBindingRule", "EmitBindingAlways").ok_or(
+        EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "PatternBindingRule.EmitBindingAlways declaration was not found",
+        },
+    )?;
+    let emit_underscore = named_variant_id(dag, "PatternBindingRule", "EmitUnderscoreWhenUnused")
+        .ok_or(EmitError::MalformedTargetSyntax {
+        declaration,
+        detail: "PatternBindingRule.EmitUnderscoreWhenUnused declaration was not found",
+    })?;
+    let emit_prefixed = named_variant_id(
+        dag,
+        "PatternBindingRule",
+        "EmitPrefixedUnderscoreWhenUnused",
+    )
+    .ok_or(EmitError::MalformedTargetSyntax {
+        declaration,
+        detail: "PatternBindingRule.EmitPrefixedUnderscoreWhenUnused declaration was not found",
+    })?;
+    let not_applicable = named_variant_id(dag, "PatternBindingRule", "NotApplicablePatternBinding")
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "PatternBindingRule.NotApplicablePatternBinding declaration was not found",
+        })?;
+    if *constructor == emit_always {
+        Ok(PatternBindingRuleBinding::EmitBindingAlways)
+    } else if *constructor == emit_underscore {
+        Ok(PatternBindingRuleBinding::EmitUnderscoreWhenUnused)
+    } else if *constructor == emit_prefixed {
+        Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "go_clean_emission.pattern_bindings cannot use PatternBindingRule.EmitPrefixedUnderscoreWhenUnused; Go only supports EmitBindingAlways or EmitUnderscoreWhenUnused",
+        })
+    } else if *constructor == not_applicable {
+        Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "go_clean_emission.pattern_bindings cannot use PatternBindingRule.NotApplicablePatternBinding; Go only supports EmitBindingAlways or EmitUnderscoreWhenUnused",
+        })
+    } else {
+        Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "go_clean_emission.pattern_bindings constructor is not a known PatternBindingRule variant",
         })
     }
 }
@@ -814,6 +936,12 @@ impl<'a> Ctx<'a> {
         let scrutinee = self.render_port(branch.input, locals)?;
         let ret = self.go_type_name_for_port(branch.output)?;
         let mut arms = Vec::new();
+        // E-5 / Lane 1 Stage 1c PR 2: track whether any arm emitted a
+        // `name := v.field;` prefix. If zero arms do, the type-switch
+        // header drops `v :=` — otherwise Go would flag `v` as
+        // `declared and not used`. Structural: driven by port liveness,
+        // not by scanning the rendered arm text.
+        let mut any_arm_binds_v = false;
         for path in &branch.paths {
             let variant_id = match &path.pattern {
                 BranchPattern::ResolvedVariant(id) => *id,
@@ -835,21 +963,83 @@ impl<'a> Ctx<'a> {
             let mut arm_locals = locals.clone();
             let mut binding_prefix = String::new();
             if let Some(binding) = &path.binding {
-                let binding_expr = self.variant_binding_expr(variant_id)?;
-                binding_prefix = format!("{} := {binding_expr}; ", binding.binding_name);
-                arm_locals
-                    .names
-                    .insert(binding.payload_port, binding.binding_name.clone());
+                let elide = matches!(
+                    self.indexes.clean_emission.pattern_bindings,
+                    PatternBindingRuleBinding::EmitUnderscoreWhenUnused
+                ) && !self.port_is_consumed_from(path.output, binding.payload_port);
+                if !elide {
+                    let binding_expr = self.variant_binding_expr(variant_id)?;
+                    binding_prefix = format!("{} := {binding_expr}; ", binding.binding_name);
+                    arm_locals
+                        .names
+                        .insert(binding.payload_port, binding.binding_name.clone());
+                    any_arm_binds_v = true;
+                }
             }
             let body = self.render_port(path.output, &arm_locals)?;
             arms.push(format!(
                 "case {variant_name}: {binding_prefix}return {body}"
             ));
         }
+        let switch_header = if any_arm_binds_v {
+            format!("switch v := any({scrutinee}).(type)")
+        } else {
+            format!("switch any({scrutinee}).(type)")
+        };
         Ok(format!(
-            "func() {ret} {{ switch v := any({scrutinee}).(type) {{ {} default: panic(\"non-exhaustive match\") }} }}()",
+            "func() {ret} {{ {switch_header} {{ {} default: panic(\"non-exhaustive match\") }} }}()",
             arms.join(" ")
         ))
+    }
+
+    /// Structural port-liveness walk. Returns true if `target` appears
+    /// as any port reachable from `root` via producer→input edges.
+    /// Mirrors `emit_rust::Ctx::port_is_consumed_from` — the fact is
+    /// structural, so the check is structural too (no textual scan of
+    /// rendered arm bodies). Ports with no producer are leaves; the
+    /// walk hits them and either returns true (hit the target) or
+    /// skips (unrelated parameter port).
+    fn port_is_consumed_from(&self, root: PortId, target: PortId) -> bool {
+        if root == target {
+            return true;
+        }
+        let mut visited: HashSet<PortId> = HashSet::new();
+        let mut queue: Vec<PortId> = vec![root];
+        while let Some(port) = queue.pop() {
+            if !visited.insert(port) {
+                continue;
+            }
+            if port == target {
+                return true;
+            }
+            let Some(producer) = self.dag.port(port).produced_by else {
+                continue;
+            };
+            match self.dag.node(producer) {
+                Behavior::Value(_) => {}
+                Behavior::Transform(t) => {
+                    for input in t.inputs.iter().copied() {
+                        queue.push(input);
+                    }
+                }
+                Behavior::Branch(b) => {
+                    queue.push(b.input);
+                    for path in &b.paths {
+                        queue.push(path.output);
+                    }
+                }
+                Behavior::Loop(l) => {
+                    queue.push(l.source);
+                    queue.push(l.init);
+                    queue.push(l.bound.count);
+                    queue.push(go_behavior_result_port(self.dag.node(l.body)));
+                }
+                Behavior::Bind(b) => {
+                    queue.push(b.value);
+                }
+            }
+        }
+        false
     }
 
     fn render_realized_pattern_branch(
@@ -1560,6 +1750,16 @@ impl<'a> Ctx<'a> {
             [field] => Ok(format!("v.{}", field.label)),
             _ => Ok("v".to_string()),
         }
+    }
+}
+
+fn go_behavior_result_port(behavior: &Behavior) -> PortId {
+    match behavior {
+        Behavior::Value(v) => v.result_port(),
+        Behavior::Transform(t) => t.result_port(),
+        Behavior::Branch(b) => b.result_port(),
+        Behavior::Loop(l) => l.result_port(),
+        Behavior::Bind(b) => b.result_port(),
     }
 }
 
