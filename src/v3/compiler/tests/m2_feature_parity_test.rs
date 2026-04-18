@@ -641,6 +641,41 @@ fn test_3a3_refinement_references_top_level_data_constant() {
 }
 
 #[test]
+fn test_3a3_rejects_out_of_fragment_refinement_predicate() {
+    // Acceptance (DB-11): the discharge walker and composite-
+    // narrowing clone path only model `Value` / `Transform` predicate
+    // bodies. `where` predicates that lower through `Branch` / `Loop` /
+    // `Bind` are admitted by lowering but cannot be compared or cloned
+    // downstream — pre-fix they failed silently at discharge as
+    // generic "not equal" diagnostics, never at the actual boundary.
+    //
+    // Lowering now fail-closes at the refinement phase with an
+    // explicit "unsupported shape" diagnostic naming the out-of-
+    // fragment construct. Reviewer R6 (`df5fc7b3` codex review)
+    // called this out as a BLOCKING fail-closed violation — admitted
+    // surface > supported fragment without an honest boundary
+    // diagnostic.
+    let src = "fn f(d: Int where if d > 0 then d != 0 else d > 1) -> Int = d";
+    let err = compile_to_dag(src, "test.v3")
+        .expect_err("`where if cond then ... else ...` must be rejected at lowering");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected Semantic error, got {err:?}");
+    };
+    let joined = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, d)| format!("{d:?}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.to_lowercase().contains("not supported")
+            || joined.to_lowercase().contains("unsupported")
+            || joined.contains("`if`"),
+        "diagnostic must name the unsupported refinement shape; got:\n{joined}"
+    );
+}
+
+#[test]
 fn test_3a3_substrate_integrity_behavior_still_five_variants() {
     // Acceptance (DB-11 §Acceptance): "Substrate integrity:
     // Declaration.refinement is the only new edge. type Behavior

@@ -411,14 +411,50 @@ fn lower_parameter_refinements_phase(
         let mut refined_inputs = Vec::with_capacity(params.len());
         for (param, &base_decl) in params.iter().zip(existing_inputs.iter()) {
             let input_decl = match &param.refinement {
-                Some(predicate) => lower_parameter_refinement(
-                    base_decl,
-                    predicate,
-                    &param.name,
-                    symbols,
-                    dag,
-                    param.ty.span().clone(),
-                ),
+                Some(predicate) => match refinement_predicate_out_of_fragment(predicate) {
+                    Some((shape_label, span)) => {
+                        // DB-11 (3a.3) fail-closed boundary. The
+                        // discharge walker (`predicate_discharges` +
+                        // `refinement_ports_equal`) and the
+                        // composite-narrowing clone
+                        // (`clone_predicate_body`) both model only
+                        // `Value` and `Transform` predicate bodies.
+                        // Admitting a `where` predicate that lowers
+                        // through `Branch` / `Loop` / `Bind` would
+                        // produce a substrate state the consumers
+                        // silently disagree about — discharge would
+                        // reject matching shapes as "not equal," and
+                        // narrowing would discard the composite.
+                        // Reject at the lowering boundary so the
+                        // user gets an honest "unsupported shape"
+                        // diagnostic instead of a misleading
+                        // downstream mismatch.
+                        report_declaration_error(
+                            dag,
+                            Diagnostic::ResolveError {
+                                name: format!(
+                                    "`where` predicate shape not supported in \
+                                     DB-11 3a.3: `{shape_label}` lowers through \
+                                     a Branch/Loop/Bind node, but the discharge \
+                                     walker and composite-narrowing path only \
+                                     support Value and Transform expression \
+                                     bodies. Use a direct comparison or a call \
+                                     to a Bool-returning helper instead."
+                                ),
+                                span,
+                            },
+                        );
+                        base_decl
+                    }
+                    None => lower_parameter_refinement(
+                        base_decl,
+                        predicate,
+                        &param.name,
+                        symbols,
+                        dag,
+                        param.ty.span().clone(),
+                    ),
+                },
                 None => base_decl,
             };
             refined_inputs.push(input_decl);
@@ -428,6 +464,39 @@ fn lower_parameter_refinements_phase(
             output,
             body,
         };
+    }
+}
+
+/// DB-11 (3a.3) fragment gate. Walks a `where`-predicate
+/// `SurfaceExpr` and returns `Some((shape_label, span))` for the
+/// first sub-expression whose lowering would produce a `Branch`,
+/// `Loop`, or `Bind` behavior — i.e., an out-of-fragment shape that
+/// the discharge walker and composite-narrowing clone path cannot
+/// compare or reproduce.
+///
+/// Supported shapes return `None`:
+/// - `Literal`, `Var`, `Path` — leaf Value / field-project
+///   Transforms.
+/// - `Call` / `Operator` — Transform nodes; arguments are recursed
+///   into.
+///
+/// Out-of-fragment shapes:
+/// - `If` / `Match` — lower to `Branch`.
+/// - `Lambda` — lowers to `Bind`.
+/// - `Record` / `List` — lower to fail-closed diagnostics at user
+///   scope today; still rejected here so the user sees the refinement
+///   boundary clearly rather than the generic lowering failure.
+fn refinement_predicate_out_of_fragment(expr: &SurfaceExpr) -> Option<(&'static str, SourceSpan)> {
+    match expr {
+        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => None,
+        SurfaceExpr::Call { args, .. } | SurfaceExpr::Operator { args, .. } => {
+            args.iter().find_map(refinement_predicate_out_of_fragment)
+        }
+        SurfaceExpr::Lambda { span, .. } => Some(("lambda", span.clone())),
+        SurfaceExpr::If { span, .. } => Some(("if", span.clone())),
+        SurfaceExpr::Match { span, .. } => Some(("match", span.clone())),
+        SurfaceExpr::Record { span, .. } => Some(("record literal", span.clone())),
+        SurfaceExpr::List { span, .. } => Some(("list literal", span.clone())),
     }
 }
 
