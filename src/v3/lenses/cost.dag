@@ -56,7 +56,11 @@ fn concat_entries(
     Cons(payload) => cons(payload.head, concat_entries(payload.tail, b))
   }
 
-fn entry_for(acc: List<SymbolicCostEntry>, behavior: Behavior) -> SymbolicCostEntry =
+fn entry_for(
+  d: Dag,
+  acc: List<SymbolicCostEntry>,
+  behavior: Behavior
+) -> SymbolicCostEntry =
   match behavior {
     Value(v) =>
       { port: v.result_port, cost: FoundCost(ConstantCost(0)) }
@@ -65,19 +69,57 @@ fn entry_for(acc: List<SymbolicCostEntry>, behavior: Behavior) -> SymbolicCostEn
     Branch(b) =>
       { port: b.result_port, cost: branch_cost(acc, b.input, b.paths) }
     Loop(l) =>
-      { port: l.result_port, cost: loop_cost(acc, l.source) }
+      { port: l.result_port, cost: loop_cost(d, acc, l) }
     Bind(bind) =>
       { port: bind.result_port, cost: lookup_cost(acc, bind.result_port) }
   }
 
+// `loop_cost` composes iteration: bound × body.
+//
+// - Bound: `LinearCost(size_var_of(l.source))` — the runtime value
+//   the Loop descends upon (same carrier for `Cardinality { count }`
+//   and `Descent { cluster }` via `LoopNode.source`).
+// - Body: the already-lowered cost of `l.body`'s result port. The
+//   forward-fold contract guarantees the body's `entry_for` ran
+//   earlier in the walk (producers precede consumers in
+//   `d.nodes`), so its cost is already in `acc`.
+//
+// PR #537 reviewer call-out (briansrls, BLOCKING): the earlier
+// shape `loop_cost(acc, l.source)` passed only the source port
+// and then looked that same port up as "body cost" — so
+// recursive-body work silently contributed zero, violating Facts
+// Flow Forward. Now `l.body: NodeId` is resolved through the
+// `node(d, NodeId) -> Behavior?` substrate accessor to recover
+// the body's result port, and THAT port's cost is the honest
+// body cost.
 fn loop_cost(
+  d: Dag,
   acc: List<SymbolicCostEntry>,
-  source: PortId
+  l: LoopNode
 ) -> SymbolicCostLookup =
   combine_iterate(
-    linear_at(source),
-    lookup_cost(acc, source)
+    linear_at(l.source),
+    body_cost(d, acc, l.body)
   )
+
+fn body_cost(
+  d: Dag,
+  acc: List<SymbolicCostEntry>,
+  body_id: NodeId
+) -> SymbolicCostLookup =
+  match node(d, body_id) {
+    None => MissingCost
+    Some(body_behavior) => lookup_cost(acc, behavior_result_port(body_behavior))
+  }
+
+fn behavior_result_port(b: Behavior) -> PortId =
+  match b {
+    Value(v) => v.result_port
+    Transform(t) => t.result_port
+    Branch(br) => br.result_port
+    Loop(lp) => lp.result_port
+    Bind(bind) => bind.result_port
+  }
 
 fn linear_at(port_id: PortId) -> SymbolicCostLookup =
   FoundCost(LinearCost({ source_port: port_id }))

@@ -19,7 +19,7 @@ pub fn compute_symbolic_costs(p0: &Dag) -> Vec<SymbolicCostEntry> {
         .iter()
         .fold(seed_bind_params((p0).nodes()), |__fold_acc, __fold_item| {
             let mut __list = (__fold_acc).clone();
-            __list.insert(0, entry_for(&__fold_acc, __fold_item));
+            __list.insert(0, entry_for(p0, &__fold_acc, __fold_item));
             __list
         })
 }
@@ -71,8 +71,8 @@ pub fn concat_entries(
         }
     }
 }
-pub fn entry_for(p0: &[SymbolicCostEntry], p1: &Behavior) -> SymbolicCostEntry {
-    match p1 {
+pub fn entry_for(p0: &Dag, p1: &[SymbolicCostEntry], p2: &Behavior) -> SymbolicCostEntry {
+    match p2 {
         Behavior::Value(v) => SymbolicCostEntry {
             port: (v).result_port(),
             cost: SymbolicCostLookup::FoundCost {
@@ -81,24 +81,42 @@ pub fn entry_for(p0: &[SymbolicCostEntry], p1: &Behavior) -> SymbolicCostEntry {
         },
         Behavior::Transform(t) => SymbolicCostEntry {
             port: (t).result_port(),
-            cost: transform_cost(p0, &((t).inputs)),
+            cost: transform_cost(p1, &((t).inputs)),
         },
         Behavior::Branch(b) => SymbolicCostEntry {
             port: (b).result_port(),
-            cost: branch_cost(p0, &((b).input), &((b).paths)),
+            cost: branch_cost(p1, &((b).input), &((b).paths)),
         },
         Behavior::Loop(l) => SymbolicCostEntry {
             port: (l).result_port(),
-            cost: loop_cost(p0, (l).source),
+            cost: loop_cost(p0, p1, l),
         },
         Behavior::Bind(bind) => SymbolicCostEntry {
             port: (bind).result_port(),
-            cost: lookup_cost(p0, &((bind).result_port())),
+            cost: lookup_cost(p1, &((bind).result_port())),
         },
     }
 }
-pub fn loop_cost(p0: &[SymbolicCostEntry], p1: PortId) -> SymbolicCostLookup {
-    combine_iterate(&(linear_at(p1)), &(lookup_cost(p0, &p1)))
+pub fn loop_cost(p0: &Dag, p1: &[SymbolicCostEntry], p2: &LoopNode) -> SymbolicCostLookup {
+    combine_iterate(
+        &(linear_at((p2).source)),
+        &(body_cost(p0, p1, &((p2).body))),
+    )
+}
+pub fn body_cost(p0: &Dag, p1: &[SymbolicCostEntry], p2: &NodeId) -> SymbolicCostLookup {
+    match &((p0).node_opt(p2).cloned()) {
+        None => SymbolicCostLookup::MissingCost,
+        Some(body_behavior) => lookup_cost(p1, &(behavior_result_port(body_behavior))),
+    }
+}
+pub fn behavior_result_port(p0: &Behavior) -> PortId {
+    match p0 {
+        Behavior::Value(v) => (v).result_port(),
+        Behavior::Transform(t) => (t).result_port(),
+        Behavior::Branch(br) => (br).result_port(),
+        Behavior::Loop(lp) => (lp).result_port(),
+        Behavior::Bind(bind) => (bind).result_port(),
+    }
 }
 pub fn linear_at(p0: PortId) -> SymbolicCostLookup {
     SymbolicCostLookup::FoundCost {

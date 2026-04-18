@@ -129,6 +129,61 @@ fn branch_reports_constant_when_both_arms_constant() {
 }
 
 #[test]
+fn recursive_fn_body_contributes_to_loop_cost() {
+    // PR #537 reviewer call-out (briansrls, BLOCKING): the prior
+    // `loop_cost(acc, l.source)` shape fed the loop its source
+    // port as the body cost — the SAME port as the bound — so
+    // body work contributed `ConstantCost(0)` (the pre-seeded
+    // param-port cost) and `normalize` dropped it from the
+    // iteration. A recursive fn `fn f(n) = if ... else f(n - 1)`
+    // then flattened to a bare `LinearCost` instead of a
+    // `ProductCost([LinearCost, body-cost])`.
+    //
+    // Post-fix: `l.body: NodeId` is resolved through
+    // `node(d, body_id)` → result_port, and THAT port's cost
+    // enters the iterate composition. The recursive fn's Branch
+    // body has a `ConstantCost(1)` (the comparison op), which is
+    // non-zero and does NOT drop in `drop_zero`. The resulting
+    // shape is `ProductCost([LinearCost, ConstantCost])` — the
+    // iterate composition is preserved structurally.
+    //
+    // Pin the structural signal: the cost must be a `ProductCost`
+    // that carries BOTH a LinearCost term (from `l.source`) and a
+    // non-zero leaf (from the body). A regression that drops the
+    // body fact collapses this back to bare LinearCost, which
+    // this assertion catches.
+    let dag = compile_to_dag(
+        "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
+        "loop_body_countdown.v3",
+    )
+    .expect("compiles");
+    let cost = expect_cost(&dag, find_bind_value(&dag, "countdown"));
+    match &cost {
+        SymbolicCost::ProductCost { _0: terms } => {
+            let has_linear = terms
+                .iter()
+                .any(|t| matches!(t, SymbolicCost::LinearCost { .. }));
+            let has_nonzero_body = terms.iter().any(|t| {
+                matches!(t, SymbolicCost::ConstantCost { _0: n } if *n != 0)
+            });
+            assert!(
+                has_linear,
+                "Loop cost must carry a LinearCost term from the bound port, got {cost:?}"
+            );
+            assert!(
+                has_nonzero_body,
+                "Loop cost must carry a non-zero body-cost term (regression of briansrls BLOCKING \
+                 on PR #537 — body fact silently dropped), got {cost:?}"
+            );
+        }
+        other => panic!(
+            "recursive fn should produce a ProductCost wrapping `iterate(Linear, body-cost)`; \
+             a bare LinearCost means body is being dropped. Got {other:?}"
+        ),
+    }
+}
+
+#[test]
 fn recursive_fn_reports_linear_via_loop_lowering() {
     // `fn countdown(n) = if n == 0 then 0 else countdown(n - 1)`
     // lowers to a Loop whose source is the `n` param port. The
