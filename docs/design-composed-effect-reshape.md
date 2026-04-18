@@ -4,7 +4,12 @@
 
 **Brief:** Brief A (Lane 2 Stage 2a / Track 17a boundary follow-up)
 **Consumers:** Stage 2b workflow-idempotency lens; Stage 2c test-obligation materialization; Track 17a REST consumers (once wired).
-**Status:** Implemented — with an R2 revision in response to reviewer feedback on commit `b42edc15`. The initial reshape (R1) lifted the `Bool + String?` summary into `CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: OperationEffect }`; the reviewer correctly pointed out that `OperationEffect` still admits any `EffectShape`, including idempotent ones, so `BrokenBy` remained state-space-unsound and the Stage 2a boundary was "improved rather than fully cleared." R2 goes to root cause: partition `EffectShape` into `IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)` and narrow the `BrokenBy` payload to `BreakingOperation { shape: BreakingShape }`. Naming an idempotent op as the workflow breaker is now unrepresentable, not merely disallowed.
+**Status:** Implemented — with two revisions in response to PR review on commit `b42edc15`.
+- **R1 (landed at `b42edc15`):** lifted the `Bool + String?` summary into `CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: OperationEffect }` wrapped in `ComposedEffect { operations, verdict }`.
+- **R2 (responding to codex review):** partitioned `EffectShape` into `IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)` and narrowed `BrokenBy` to `BreakingOperation { shape: BreakingShape }`. Fixed the inner-variant hole (idempotent ops could no longer be named as the breaker).
+- **R3 (responding to ChatGPT review):** dropped `ComposedEffect` entirely. `compose_effects` now returns `CompositionVerdict` directly. The R2 record still correlated two fields — the `operations` walk and the `verdict` — that the constructor could keep coherent by convention but the type could not. `.dag` records are directly constructible, so any caller could build an incoherent `ComposedEffect`. R3 fixes the outer-record hole by deleting the record.
+
+After R3 the verdict carrier is structurally sound all the way down: `CompositionVerdict` is a sum whose each variant is internally coherent, and there is no correlated sibling field for it to disagree with. The evidence chain (`List<OperationEffect>`) stays at its natural site — the caller's input — not duplicated onto the output.
 
 ---
 
@@ -43,9 +48,9 @@ No current consumer reads `.idempotent` or `.breaking_operation` — grep shows 
 
 ## Design
 
-### R2 — partition `EffectShape`; narrow `BrokenBy` payload to `BreakingShape`
+### R3 — drop the outer record; partition `EffectShape`; narrow the breaker carrier
 
-The final shape partitions `EffectShape` by idempotency class and narrows the `BrokenBy` carrier to the breaking subset:
+The final shape has three structural pieces — the partitioned `EffectShape`, the narrowed `BreakingOperation`, and the sum-shaped `CompositionVerdict` — and no outer record around them:
 
 ```dag
 // Partition: idempotent-subset.
@@ -77,17 +82,14 @@ type BreakingOperation {
   shape: BreakingShape
 }
 
+// The effects-algebra verdict for a composed workflow. Returned
+// directly by `compose_effects` — no enclosing record.
 type CompositionVerdict
   = IdempotentComposition
   | BrokenBy { first_breaker: BreakingOperation }
-
-type ComposedEffect {
-  operations: List<OperationEffect>   // evidence chain (walk)
-  verdict: CompositionVerdict         // state-space-sound judgment
-}
 ```
 
-`compose_effects` now projects each op via `operation_to_breaker` and takes the first breaker:
+`compose_effects` projects each op via `operation_to_breaker` and returns the verdict directly:
 
 ```dag
 fn operation_to_breaker(op: OperationEffect) -> BreakingOperation? {
@@ -101,32 +103,35 @@ fn operation_to_breaker(op: OperationEffect) -> BreakingOperation? {
   }
 }
 
-fn compose_effects(effects: List<OperationEffect>) -> ComposedEffect {
+fn compose_effects(effects: List<OperationEffect>) -> CompositionVerdict {
   let breaker_candidates = effects |> flat_map(op =>
     match operation_to_breaker(op: op) {
       Some(b) => [b]
       None => []
     }
   )
-  let verdict = match breaker_candidates |> first {
+  match breaker_candidates |> first {
     Some(b) => BrokenBy { first_breaker: b }
     None => IdempotentComposition
   }
-  ComposedEffect { operations: effects, verdict: verdict }
 }
 ```
 
-Properties (R2):
+Properties (R3):
 
-- **State-space sound at the verdict boundary.** `BrokenBy` carries a `BreakingOperation` whose `shape: BreakingShape` cannot admit `ReadEffect` / `UpsertEffect` / `DeleteEffect`. Naming an idempotent op as the workflow breaker is not representable by the type.
+- **State-space sound at the verdict.** `CompositionVerdict` is a sum whose each variant is internally coherent. `IdempotentComposition` carries no payload; `BrokenBy` carries exactly one `BreakingOperation`, and `BreakingOperation.shape: BreakingShape` cannot admit idempotent variants. Nothing beside the verdict can be made to disagree with it because nothing *is* beside it.
 - **State-space sound at the shape boundary.** `EffectShape = IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)` makes the idempotent/breaking partition structural. Consumers that need the classification (`is_idempotent_effect`, `operation_is_breaking`) read the outer variant directly rather than enumerating variants and deciding each case. Adding a new `EffectShape` member requires choosing which side of the partition it inhabits — the compiler enforces this via exhaustive match on the two-arm outer sum.
-- **Evidence preserved.** `operations: List<OperationEffect>` stays on the record — Stage 2c's obligation generator walks it; diagnostic rendering can project the full chain.
-- **Cleaner consumers.** `classify_idempotent_disagreement` now takes `shape: BreakingShape` directly — the previous "dead arms" for idempotent shapes (unreachable but required by exhaustive match on the old flat `EffectShape`) dissolve. `check_modifier_vs_derivation` matches the op's outer partition variant instead of calling `is_idempotent_effect` and then re-destructuring.
-- **Single authority.** `compose_effects` remains the only constructor of `ComposedEffect`; the sum-shaped verdict plus the partitioned shape replace two correlated invariants with two structural ones.
+- **Evidence at its natural site.** `List<OperationEffect>` is the caller's own input to `compose_effects`. Callers that want both the walk and the verdict keep the input in scope and read the return value — two facts, two sites, zero correlation to enforce. Stage 2c's obligation generator already consumes `List<OperationEffect>` directly (not `ComposedEffect`), so nothing regresses.
+- **Single-authority by type shape, not by convention.** There is no carrier for a caller to incoherently construct. `BrokenBy { first_breaker: some_BreakingOperation }` is locally coherent: the variant carries what the variant carries. `.dag` lets anyone construct it, but the constructed value's state-space is the variant itself — there is no sibling field to correlate with.
+- **Cleaner consumers.** `classify_idempotent_disagreement` takes `shape: BreakingShape` directly — the previous "dead arms" for idempotent shapes (unreachable but required by exhaustive match on the old flat `EffectShape`) dissolve. `check_modifier_vs_derivation` matches the op's outer partition variant instead of calling `is_idempotent_effect` and then re-destructuring.
 
-### Why not R1 (flat `BrokenBy { first_breaker: OperationEffect }`)
+### Revision trail
 
-R1 (the first-landed shape) kept `EffectShape` flat and let `BrokenBy.first_breaker` carry any `OperationEffect`. The payload type admitted `OperationEffect { shape: ReadEffect }` — an idempotent op in the breaker slot. `compose_effects` filtered those out by behavioral invariant (`filter(operation_is_breaking)`), but the type itself allowed the illegal combination. Per `feedback_state_space_vs_behavioral_invariants`: when the type admits a state the constructor cannot justify, the invariant is API-level, not structural. The reshape has to reach the type, not the call site. Reviewer feedback on commit `b42edc15` caught this; R2 is the root-cause fix.
+- **R1 (landed at `b42edc15`).** `type CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: OperationEffect }` wrapped in `type ComposedEffect { operations, verdict }`. codex review flagged: `BrokenBy.first_breaker: OperationEffect` admits idempotent shapes.
+- **R2.** Partitioned `EffectShape` into `IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)`; narrowed `BrokenBy.first_breaker: BreakingOperation { shape: BreakingShape }`. ChatGPT review flagged: the `{ operations, verdict }` record still admits incoherent pairs — `operations: [breaker]` + `verdict: IdempotentComposition`, or `BrokenBy { first_breaker }` where the breaker isn't the first breaker in `operations` or isn't in `operations` at all. Records are directly constructible in `.dag`; the constructor's coherence is behavioral, not structural.
+- **R3 (this land).** Dropped `ComposedEffect`. `compose_effects` returns `CompositionVerdict` directly. The record-level correlation problem dissolves because there is no record.
+
+Each revision goes one layer deeper into the same critique: *make illegal states unrepresentable at every structural level*, not just the outer one or the inner one. R3 hits all levels at once.
 
 ### Alternatives considered
 
