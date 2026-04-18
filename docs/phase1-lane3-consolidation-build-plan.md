@@ -299,17 +299,22 @@ Each `TargetContext` bundles five structural authorities sourced
 from the per-target spec file (currently
 `src/v3/spec/<target>.dag` as bootstrap-loaded fixture —
 Rust/Go/Python today). Rust and Go have all five authored and
-parseable post-Stage-1c. **Python has only `python_clean_emission:
-CleanEmissionContract` and `python_target: TargetExecutionModel`
-authored on the shared schema today; the remaining three
-authorities (LanguageSpec, shared-schema Realizations,
-CorrectionStyle via DB-4) currently sit on private `Python*` scaffolds
-marked for dissolution in `spec/python.dag`.** Migrating Python
-onto the shared walker-authority surface is the explicit
-prerequisite bridge sub-stage 1e.0 (see §10 Migration plan). The
-authority table below describes the post-1e.0 surface all three
-targets MUST present; 1e.1's `TargetContext::resolve` gate runs
-against that surface:
+parseable post-Stage-1c. **Python has three of the five authored
+on the shared schema today: `python_clean_emission:
+CleanEmissionContract` (which also carries `correction_style:
+CorrectionStyle` as its embedded DB-4 sub-record),
+`python_target: TargetExecutionModel`, and the DB-14-shared
+accessor bindings. The two that remain on private `Python*`
+scaffolds marked for dissolution in `spec/python.dag` are
+`LanguageSpec` (no `python_language` root today, plus the eight
+missing sub-spec records) and the shared-schema Realization
+families (all five realization families use private
+`Python*Realization` variants).** Migrating Python onto the
+shared walker-authority surface is the explicit prerequisite
+bridge sub-stage 1e.0 (see §10 Migration plan). The authority
+table below describes the post-1e.0 surface all three targets
+MUST present; 1e.1's `TargetContext::resolve` gate runs against
+that surface:
 
 | Authority | Source declaration | Walker uses for |
 |---|---|---|
