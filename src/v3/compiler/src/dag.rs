@@ -1309,38 +1309,6 @@ pub(crate) struct SubstrateMarkers {
     pub declaration_ref: Option<DeclarationId>,
 }
 
-/// Typed handles for the four `PatternBindingRule` variants declared
-/// in `src/v3/std/clean_emission.dag`. Populated at bootstrap end.
-///
-/// Every per-target emitter (`emit_rust`, `emit_go`, future
-/// `emit_python`) parses the `pattern_bindings` field of its
-/// `CleanEmissionContract` by comparing the field's constructor id
-/// against these handles. Caching once at bootstrap end is the
-/// single bridge from the variant names in `clean_emission.dag` to
-/// declaration ids; every consumer downstream dispatches on the
-/// typed id. Without this cache, each emitter would re-resolve the
-/// same four names on every contract parse — the exact anti-pattern
-/// `feedback_substrate_principle_audit` Q5 calls out ("multiple
-/// call sites independently reconstructing the same fact").
-#[derive(Debug, Default, Clone)]
-pub(crate) struct PatternBindingRuleVariants {
-    /// `EmitBindingAlways` — the emitter always writes the binding,
-    /// even when the body does not consume it. Used by targets
-    /// whose native compilers do not warn on unused pattern
-    /// bindings.
-    pub emit_always: Option<DeclarationId>,
-    /// `EmitUnderscoreWhenUnused` — the emitter replaces the
-    /// binding name with `_` (Rust) or elides the binding
-    /// statement (Go) when the body does not consume it.
-    pub emit_underscore: Option<DeclarationId>,
-    /// `EmitPrefixedUnderscoreWhenUnused` — the emitter keeps the
-    /// binding but prefixes its name with `_` (Python-style).
-    pub emit_prefixed: Option<DeclarationId>,
-    /// `NotApplicablePatternBinding` — targets without structural
-    /// pattern matching (no variant applicable).
-    pub not_applicable: Option<DeclarationId>,
-}
-
 #[derive(Debug, Clone)]
 pub struct Dag {
     /// Behaviors in construction order. NodeId(k) lives at `nodes[k]`; a forward
@@ -1373,15 +1341,6 @@ pub struct Dag {
     target_syntax: TargetSyntaxCache,
     /// Cached stdlib type-template declarations.
     stdlib_types: StdlibTypeCache,
-    /// Cached `PatternBindingRule` variant DeclarationIds resolved
-    /// from `src/v3/std/clean_emission.dag`. Populated at bootstrap
-    /// end alongside `SubstrateMarkers` / `RealizationMetaCache`.
-    /// Every per-target emitter dispatches on the cached typed ids
-    /// when parsing its `CleanEmissionContract.pattern_bindings`
-    /// field — see `PatternBindingRuleVariants` for why one
-    /// central cache is the right shape instead of per-emitter
-    /// name lookups.
-    pattern_binding_rule_variants: PatternBindingRuleVariants,
     /// Sidecar structural facts for mutually-recursive SCCs.
     clusters: Vec<Cluster>,
     /// Synthetic match carriers for anonymous `T?` cardinalities. Used when
@@ -1411,7 +1370,6 @@ impl Dag {
             realization_metas: RealizationMetaCache::default(),
             target_syntax: TargetSyntaxCache::default(),
             stdlib_types: StdlibTypeCache::default(),
-            pattern_binding_rule_variants: PatternBindingRuleVariants::default(),
             clusters: Vec::new(),
             optional_match_disjs: HashMap::new(),
         }
@@ -1588,15 +1546,6 @@ impl Dag {
     /// Typed accessor for the cached `std.list.List` template.
     pub fn list_template(&self) -> Option<DeclarationId> {
         self.stdlib_types.list
-    }
-
-    /// Typed accessor for the cached `PatternBindingRule` variant
-    /// handles resolved from `src/v3/std/clean_emission.dag` at
-    /// bootstrap end. Consumed by per-target emitters when
-    /// dispatching on their `CleanEmissionContract.pattern_bindings`
-    /// field — see `PatternBindingRuleVariants` for the rationale.
-    pub(crate) fn pattern_binding_rule_variants(&self) -> &PatternBindingRuleVariants {
-        &self.pattern_binding_rule_variants
     }
 
     pub fn nodes(&self) -> &[Behavior] {
@@ -1965,36 +1914,6 @@ impl Dag {
         self.target_syntax.go_clean_emission =
             self.declaration_by_name("go_clean_emission").map(|d| d.id);
         self.stdlib_types.list = self.declaration_by_name("List").map(|d| d.id);
-
-        // `PatternBindingRule` variant resolution. Walks the
-        // `std/clean_emission.dag` declaration's `Disj` variants
-        // once at bootstrap end and caches the typed id per label.
-        // Consumers in `emit_rust` / `emit_go` / (future)
-        // `emit_python` read these typed handles instead of each
-        // calling `named_variant_id` four times per contract parse.
-        let mut pattern_binding_variants = PatternBindingRuleVariants::default();
-        if let Some(parent) = self.declaration_by_name("PatternBindingRule") {
-            if let TypeConnective::Disj { variants } = &parent.connective {
-                for variant in variants {
-                    match variant.label.as_str() {
-                        "EmitBindingAlways" => {
-                            pattern_binding_variants.emit_always = Some(variant.ty);
-                        }
-                        "EmitUnderscoreWhenUnused" => {
-                            pattern_binding_variants.emit_underscore = Some(variant.ty);
-                        }
-                        "EmitPrefixedUnderscoreWhenUnused" => {
-                            pattern_binding_variants.emit_prefixed = Some(variant.ty);
-                        }
-                        "NotApplicablePatternBinding" => {
-                            pattern_binding_variants.not_applicable = Some(variant.ty);
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-        self.pattern_binding_rule_variants = pattern_binding_variants;
     }
 
     pub fn param_of(&self, member: NodeId, slot: usize) -> Option<ParamRef> {
