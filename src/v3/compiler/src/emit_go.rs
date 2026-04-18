@@ -539,13 +539,14 @@ fn parse_variant_payload_field_access_rule(
         });
     }
     let variants = dag.variant_payload_field_access_rule_variants();
-    let access_from_payload_binding = variants.access_from_payload_binding.ok_or(
-        EmitError::MalformedTargetSyntax {
+    let access_from_payload_binding =
+        variants
+            .access_from_payload_binding
+            .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail:
                 "VariantPayloadFieldAccessRule.AccessFromPayloadBinding declaration was not found",
-        },
-    )?;
+        })?;
     let override_named_fields_at_binding_site = variants
         .override_named_fields_at_binding_site
         .ok_or(EmitError::MalformedTargetSyntax {
@@ -1828,9 +1829,9 @@ impl<'a> Ctx<'a> {
         };
         Ok(match shape {
             VariantPayloadShape::Empty => None,
-            VariantPayloadShape::PositionalSingle => Some(VariantPayloadBinding::Direct(
-                format!("{binding_expr}._0"),
-            )),
+            VariantPayloadShape::PositionalSingle => {
+                Some(VariantPayloadBinding::Direct(format!("{binding_expr}._0")))
+            }
             VariantPayloadShape::NamedFields(field_labels) => {
                 match self.indexes.clean_emission.variant_payload_field_access {
                     VariantPayloadFieldAccessRuleBinding::AccessFromPayloadBinding => {
