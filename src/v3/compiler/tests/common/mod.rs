@@ -252,16 +252,13 @@ macro_rules! budgeted_test {
     ($ms:literal, $name:ident, $body:block) => {
         #[test]
         fn $name() {
-            $crate::common::budgeted::with_budget_ms($ms, || $body);
+            $crate::common::with_budget_ms($ms, || $body);
         }
     };
     ($name:ident, $body:block) => {
         #[test]
         fn $name() {
-            $crate::common::budgeted::with_budget_ms(
-                $crate::common::budgeted::DEFAULT_BUDGET_MS,
-                || $body,
-            );
+            $crate::common::with_budget_ms($crate::common::DEFAULT_BUDGET_MS, || $body);
         }
     };
 }

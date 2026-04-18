@@ -98,8 +98,21 @@ jobs:
             cargo-v3-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
             cargo-v3-${{ runner.os }}-
 
-      - name: v3 Compiler Tests
-        run: cargo test -p v3-compiler
+      # Wall-clock ratchet for the v3 integration suite (catches per-test
+      # full bootstrap + compile regressions). Scoped to `-p v3-compiler`:
+      # `cargo test --workspace --exclude v2-compiler-tests` also runs
+      # stage0 `self_compile_all_modules`, which exceeds this budget.
+      - name: v3 tests with 120s budget
+        run: |
+          start=$(date +%s)
+          cargo test -p v3-compiler
+          end=$(date +%s)
+          elapsed=$((end - start))
+          echo "v3 test wall time: ${elapsed}s"
+          if [ "$elapsed" -gt 120 ]; then
+            echo "::error::v3 tests took ${elapsed}s (budget: 120s). Likely cause: a test doing full bootstrap + compile in its body without sharing setup. Share the DAG via OnceLock/lazy_static or collapse fine-grained tests into parametrized shared-setup tests."
+            exit 1
+          fi
 
       - name: v3 Compiler Clippy
         run: cargo clippy -p v3-compiler --all-targets -- -D warnings
