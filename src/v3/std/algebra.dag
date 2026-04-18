@@ -85,13 +85,18 @@ fn sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
 fn iterate(bound: SymbolicCost, body: SymbolicCost) -> SymbolicCost =
   normalize(ProductCost(cons(bound, cons(body, empty()))))
 
+// Lambda-free helper so `max_path`'s fold below resolves its
+// function-type parameter without relying on bidirectional
+// inference through a closure. Returns whichever argument
+// dominates.
+fn dominant_of(acc: SymbolicCost, candidate: SymbolicCost) -> SymbolicCost =
+  if dominates(candidate, acc) then candidate else acc
+
 // `max_path(paths)` takes the dominant cost across alternative
 // control-flow paths (Branch arms). Worst-case asymptotic semantics:
 // a branch between O(n) and O(n²) costs O(n²) overall.
 fn max_path(paths: List<SymbolicCost>) -> SymbolicCost =
-  fold(paths, ConstantCost(0), |acc, path|
-    if dominates(path, acc) then path else acc
-  )
+  fold(paths, ConstantCost(0), dominant_of)
 
 // ── Dominance ───────────────────────────────────────────────────
 //
@@ -219,19 +224,21 @@ fn drop_zero(terms: List<SymbolicCost>) -> List<SymbolicCost> =
   match terms {
     Empty => empty()
     Cons(payload) =>
-      match payload.head {
-        ConstantCost(n) =>
-          if n == 0 then
-            drop_zero(payload.tail)
-          else
-            cons(payload.head, drop_zero(payload.tail))
-        LinearCost(_) => cons(payload.head, drop_zero(payload.tail))
-        PolynomialCost(_) => cons(payload.head, drop_zero(payload.tail))
-        LogCost(_) => cons(payload.head, drop_zero(payload.tail))
-        UnknownCost(_) => cons(payload.head, drop_zero(payload.tail))
-        SumCost(_) => cons(payload.head, drop_zero(payload.tail))
-        ProductCost(_) => cons(payload.head, drop_zero(payload.tail))
-      }
+      if is_zero_constant(payload.head) then
+        drop_zero(payload.tail)
+      else
+        cons(payload.head, drop_zero(payload.tail))
+  }
+
+fn is_zero_constant(c: SymbolicCost) -> Bool =
+  match c {
+    ConstantCost(n) => n == 0
+    LinearCost(_) => False
+    PolynomialCost(_) => False
+    ProductCost(_) => False
+    SumCost(_) => False
+    LogCost(_) => False
+    UnknownCost(_) => False
   }
 
 // If a SumCost reduces to a single term, return that term; else
@@ -306,17 +313,6 @@ fn polynomial_square(v: SizeVariable) -> SymbolicCost {
 fn product_pair(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
   ProductCost(cons(a, cons(b, empty())))
 
-// Drops terms from a SumCost list that are dominated by another
-// term in the list. MVP: O(n²) pairwise walk; acceptable because
-// the sum lists in practice are short (≤ 3 terms).
-fn drop_dominated(terms: List<SymbolicCost>) -> List<SymbolicCost> =
-  fold(terms, empty(), |acc, term|
-    if any_dominates(acc, term) then
-      acc
-    else
-      cons(term, filter_not_dominated_by(acc, term))
-  )
-
 fn any_dominates(candidates: List<SymbolicCost>, term: SymbolicCost) -> Bool =
   match candidates {
     Empty => False
@@ -339,3 +335,18 @@ fn filter_not_dominated_by(
       else
         cons(payload.head, filter_not_dominated_by(payload.tail, winner))
   }
+
+fn drop_dominated_step(
+  acc: List<SymbolicCost>,
+  term: SymbolicCost
+) -> List<SymbolicCost> =
+  if any_dominates(acc, term) then
+    acc
+  else
+    cons(term, filter_not_dominated_by(acc, term))
+
+// Drops terms from a SumCost list that are dominated by another
+// term in the list. MVP: O(n²) pairwise walk; acceptable because
+// the sum lists in practice are short (≤ 3 terms).
+fn drop_dominated(terms: List<SymbolicCost>) -> List<SymbolicCost> =
+  fold(terms, empty(), drop_dominated_step)
