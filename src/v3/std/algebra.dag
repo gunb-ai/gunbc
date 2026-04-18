@@ -208,11 +208,11 @@ fn same_size_variable(a: SizeVariable, b: SizeVariable) -> Bool =
 // MVP handles that surface directly.
 fn normalize(c: SymbolicCost) -> SymbolicCost =
   match c {
-    ConstantCost(n) => ConstantCost(n)
-    LinearCost(v) => LinearCost(v)
-    PolynomialCost(p) => PolynomialCost(p)
-    LogCost(v) => LogCost(v)
-    UnknownCost(r) => UnknownCost(r)
+    ConstantCost => c
+    LinearCost => c
+    PolynomialCost => c
+    LogCost => c
+    UnknownCost => c
     SumCost(terms) => reduce_sum(drop_zero(terms))
     ProductCost(terms) => reduce_product(drop_zero(terms))
   }
