@@ -155,7 +155,16 @@ pub fn run_post_emit_verifier(
     // next to / in cwd. Pinning cwd to the source's parent directory
     // contains those artifacts inside the caller's tmp dir instead
     // of dropping them into the workspace root.
-    if let Some(parent) = source_path.parent() {
+    //
+    // `Path::parent()` returns `Some("")` for single-component
+    // relative paths (e.g. `main.rs`); `current_dir("")` fails the
+    // spawn on most platforms. Filter empties so relative paths in
+    // the current directory fall through to the inherited cwd
+    // instead of rejecting valid inputs at spawn time.
+    if let Some(parent) = source_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         command.current_dir(parent);
     }
     let output = command
@@ -420,5 +429,31 @@ mod tests {
             binding.output_policy,
             VerifierOutputPolicyBinding::IgnoreVerifierOutput
         );
+    }
+
+    /// Regression: `Path::parent()` returns `Some("")` for
+    /// single-component relative paths like `main.rs`. Setting
+    /// `current_dir("")` fails the spawn on most platforms, so the
+    /// runner used to reject valid inputs whenever callers passed
+    /// a bare relative filename. The fix filters empty parents so
+    /// the spawn inherits the ambient cwd instead. This test uses
+    /// an environment-probe binary that exists on every
+    /// POSIX-shaped test runner and expects exit 0 regardless of
+    /// the path passed; the specific file does not need to exist
+    /// because the probe doesn't read it.
+    #[cfg(unix)]
+    #[test]
+    fn run_accepts_single_component_relative_source_path() {
+        use std::path::PathBuf;
+        let binding = PostEmitVerifierBinding {
+            command: "true".to_string(),
+            args: Vec::new(),
+            syntax_only: true,
+            expected_exit_code: 0,
+            output_policy: VerifierOutputPolicyBinding::IgnoreVerifierOutput,
+        };
+        let relative = PathBuf::from("main.rs");
+        run_post_emit_verifier(&binding, &relative)
+            .expect("single-component relative source path must not fail the spawn");
     }
 }
