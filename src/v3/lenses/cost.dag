@@ -171,3 +171,38 @@ fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> SymbolicCostLoo
       else
         lookup_cost(payload.tail, port_id)
   }
+
+// ── Dimension<SymbolicCost> wiring — DEFERRED to Stage 2f ───────
+//
+// DB-7 §"Dimension<SymbolicCost> wiring" specifies a
+// `data symbolic_cost_dimension: Dimension<SymbolicCost> = {..}`
+// declaration with `witness_of`, `compose`, `identity` fields
+// carrying function references.
+//
+// Stage 2d does NOT ship this data declaration because v3's
+// current parser/lowerer rejects two v3 surface-grammar gaps that
+// the declaration's shape requires simultaneously:
+//
+//   1. Record literals inside `data X: T = { ... }` bodies. At
+//      M1(2.8) the lowerer reports "data has an opaque body —
+//      user code cannot yet use record / list / map literals
+//      inside data bodies" (DOWNSTREAM_REQUIREMENTS.md class-5
+//      gap #3).
+//   2. Record literals / match / lambdas inside `fn X { body }`
+//      block-bodied definitions. Constructing `Witness::Violates
+//      { reason, at }` — the MissingCost-to-violation shim the
+//      Dimension contract requires — hits the same block-body
+//      restriction.
+//
+// The lens ships its Behavior-variant lowering (`entry_for` +
+// helpers) as the authority. When Stage 2f's generic `analyze`
+// walker lands, it will materialize the `Dimension<SymbolicCost>`
+// instance alongside the surface-grammar extensions that unlock
+// the receipt form. Dispatching the instance from here today
+// would either require a parallel Rust-side declaration (bypassing
+// `.dag`-as-authority) or wait on the grammar extension — the
+// second path is the one the ROADMAP already sequences (Stage 2f
+// extracts the abstraction once multiple instances exist).
+//
+// See `docs/design-symbolic-cost-algebra.md` §"Dimension<SymbolicCost>
+// wiring" for the target shape.
