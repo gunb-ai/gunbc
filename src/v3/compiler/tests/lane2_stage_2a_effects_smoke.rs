@@ -88,12 +88,15 @@ fn effects_dag_exposes_core_effect_algebra_types() {
     // parse-only carry-over where the types fail to lower.
     for name in [
         "EffectShape",
+        "IdempotentShape",
+        "BreakingShape",
         "CreateCause",
         "KeySource",
         "IdempotencyEvidence",
         "ComposedEffect",
         "CompositionVerdict",
         "OperationEffect",
+        "BreakingOperation",
         "ModifierAgreement",
         "ModifierAxisCheck",
         "ModifierCheck",

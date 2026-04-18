@@ -4,7 +4,7 @@
 
 **Brief:** Brief A (Lane 2 Stage 2a / Track 17a boundary follow-up)
 **Consumers:** Stage 2b workflow-idempotency lens; Stage 2c test-obligation materialization; Track 17a REST consumers (once wired).
-**Status:** Implemented. Brief + reshape shipped in the same PR. The brief is preserved as the rationale for why `ComposedEffect` took this shape; no promotion to a numbered DB was necessary (the carrier is one new sum type, and the brief doubled as the design doc).
+**Status:** Implemented — with an R2 revision in response to reviewer feedback on commit `b42edc15`. The initial reshape (R1) lifted the `Bool + String?` summary into `CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: OperationEffect }`; the reviewer correctly pointed out that `OperationEffect` still admits any `EffectShape`, including idempotent ones, so `BrokenBy` remained state-space-unsound and the Stage 2a boundary was "improved rather than fully cleared." R2 goes to root cause: partition `EffectShape` into `IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)` and narrow the `BrokenBy` payload to `BreakingOperation { shape: BreakingShape }`. Naming an idempotent op as the workflow breaker is now unrepresentable, not merely disallowed.
 
 ---
 

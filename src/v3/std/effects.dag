@@ -19,26 +19,54 @@
 // `dsl/std/effects.dag`; keep the two in sync during the bootstrap
 // window. See `THESIS.md` §"Two groundings" bootstrap note.
 //
-// **Scope (Lane 2 Stage 2a).** Structural carry-over only:
-//   - `EffectShape`, `CreateCause`, `KeySource`, `IdempotencyEvidence`
-//   - `ComposedEffect`, `OperationEffect`
-//   - `is_idempotent_effect`, `compose_effects`
+// **Scope (Lane 2 Stage 2a + follow-ups).** Structural carry-over of
+// the v2 authority, with two v3-only refinements already landed:
+//   - `EffectShape = IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)` (partition)
+//   - `IdempotentShape`, `BreakingShape`
+//   - `CreateCause`, `KeySource`, `IdempotencyEvidence`
+//   - `ComposedEffect`, `OperationEffect`, `BreakingOperation`
+//   - `CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: BreakingOperation }`
+//   - `is_idempotent_effect`, `operation_is_breaking`, `operation_to_breaker`
+//   - `compose_effects`
 //   - `derive_effect_shape(method, path)` — HTTP method + path → EffectShape
 //   - `generate_idempotency_obligations`, `check_modifier_vs_derivation`
 // v2-specific imports, parser quirks, and Rust bridge code do NOT
 // come over. Pure `.dag` declarations.
 //
-// Stage 2a follow-up (cleared): `DerivedOpEffect` was collapsed into
-// `OperationEffect`. The previous shape carried `method` and
-// `path_template` fields alongside `operation_name` + `shape`, but
-// nothing downstream ever read the transport fields — the modifier
-// check and obligation generator both project through `shape` alone,
-// and the `ReadEffect` variant already encodes "method was GET/HEAD/
-// OPTIONS." `OperationEffect` is the durable carrier Stage 2b's
-// `compose_effects` walks; `derive_op_effect` now returns it
-// directly. Future diagnostic rendering that wants the originating
-// method/path should attach a separate evidence carrier to the
-// diagnostic, not smuggle transport facts onto the effect record.
+// Stage 2a follow-ups (cleared):
+//
+// 1. `DerivedOpEffect` was collapsed into `OperationEffect` (PR #521).
+// The previous shape carried `method` and `path_template` fields
+// alongside `operation_name` + `shape`, but nothing downstream ever
+// read the transport fields — the modifier check and obligation
+// generator both project through `shape` alone, and the
+// `ReadEffect` variant already encodes "method was GET/HEAD/OPTIONS."
+// `OperationEffect` is the durable carrier Stage 2b's `compose_effects`
+// walks; `derive_op_effect` now returns it directly. Future diagnostic
+// rendering that wants the originating method/path should attach a
+// separate evidence carrier to the diagnostic, not smuggle transport
+// facts onto the effect record.
+//
+// 2. `ComposedEffect { operations, idempotent: Bool, breaking_operation: String? }`
+// was reshaped to `ComposedEffect { operations, verdict: CompositionVerdict }`
+// with `CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: BreakingOperation }`.
+// The old `Bool + String?` summary admitted two illegal combinations
+// that the constructor maintained only by behavioral invariant; the
+// sum-shaped verdict makes the invariant structural.
+//
+// 3. `EffectShape` was partitioned into
+// `IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)`,
+// and `BrokenBy`'s payload narrowed to `BreakingOperation { shape: BreakingShape }`.
+// The previous `BrokenBy { first_breaker: OperationEffect }` shape
+// still admitted `OperationEffect { shape: ReadEffect }` — an
+// idempotent op in the breaker slot — enforced only by the
+// `compose_effects` filter. Partitioning EffectShape at the type
+// level, and narrowing the carrier to `BreakingShape`, makes naming
+// an idempotent op as the workflow breaker unrepresentable rather
+// than disallowed-by-convention. Consumers still match on the five
+// concrete variants (ReadEffect / UpsertEffect / DeleteEffect /
+// CreateEffect / AppendEffect) through the outer-variant destructure;
+// the per-variant algebra is unchanged.
 //
 // DESIGN PRINCIPLE:
 //   Idempotency is not a flag. It is a DERIVED PROPERTY of the
@@ -529,11 +557,15 @@ type ModifierCheck {
 }
 
 // Disagreement classifier when the user declared idempotent but
-// the derivation says otherwise. POST-create stays the
-// fail-closed-but-maybe-idempotent case (DerivationUnknown); a
-// keyless fallback on PUT/PATCH/DELETE is a hard disagreement
-// because the required subject-key witness is missing.
-fn classify_idempotent_disagreement(shape: EffectShape) -> ModifierAgreement {
+// the derivation says otherwise. Takes `BreakingShape` directly —
+// the partition already guarantees the derivation says
+// non-idempotent, so no idempotent-shape arms are reachable.
+// POST-create stays the fail-closed-but-maybe-idempotent case
+// (DerivationUnknown); a keyless fallback on PUT/PATCH/DELETE is a
+// hard disagreement because the required subject-key witness is
+// missing; AppendEffect is a hard disagreement because free-monoid
+// append cannot be retried convergently.
+fn classify_idempotent_disagreement(shape: BreakingShape) -> ModifierAgreement {
   match shape {
     CreateEffect { cause } =>
       match cause {
@@ -546,28 +578,27 @@ fn classify_idempotent_disagreement(shape: EffectShape) -> ModifierAgreement {
             reason: "declared idempotent but method-derived effect fell back to keyless CreateEffect"
           }
       }
-    ReadEffect =>
-      Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
-    UpsertEffect =>
-      Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
-    DeleteEffect =>
-      Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
     AppendEffect =>
-      Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
+      Disagrees { reason: "declared idempotent but derivation says non-idempotent via append-shaped effect" }
   }
 }
 
-// Readonly-declaration classifier: only read-shaped effects agree.
+// Readonly-declaration classifier: only `ReadEffect` agrees; every
+// other idempotent shape (upsert/delete) writes the target, and every
+// breaking shape does too. Nested match keeps the specific reasons per
+// write-shape available, but the `IsBreaking` arm collapses because the
+// verdict is identical across create/append.
 fn classify_readonly_agreement(shape: EffectShape) -> ModifierAgreement {
   match shape {
-    ReadEffect => Agrees
-    UpsertEffect =>
-      Disagrees { reason: "readonly declared but derived effect writes target state" }
-    DeleteEffect =>
-      Disagrees { reason: "readonly declared but derived effect writes target state" }
-    CreateEffect =>
-      Disagrees { reason: "readonly declared but derived effect writes target state" }
-    AppendEffect =>
+    IsIdempotent(inner) =>
+      match inner {
+        ReadEffect => Agrees
+        UpsertEffect =>
+          Disagrees { reason: "readonly declared but derived effect writes target state" }
+        DeleteEffect =>
+          Disagrees { reason: "readonly declared but derived effect writes target state" }
+      }
+    IsBreaking =>
       Disagrees { reason: "readonly declared but derived effect writes target state" }
   }
 }
@@ -577,14 +608,14 @@ fn check_modifier_vs_derivation(
   declared_idempotent: Bool,
   declared_readonly: Bool
 ) -> ModifierCheck {
-  let derived_idempotent = is_idempotent_effect(shape: op.shape)
   let idempotent_check = if declared_idempotent then
-    if derived_idempotent then
-      ModifierDeclared { agreement: Agrees }
-    else
-      ModifierDeclared {
-        agreement: classify_idempotent_disagreement(shape: op.shape)
-      }
+    match op.shape {
+      IsIdempotent => ModifierDeclared { agreement: Agrees }
+      IsBreaking(breaking) =>
+        ModifierDeclared {
+          agreement: classify_idempotent_disagreement(shape: breaking)
+        }
+    }
   else
     ModifierNotDeclared
   let readonly_check = if declared_readonly then
