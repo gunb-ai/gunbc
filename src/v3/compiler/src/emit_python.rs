@@ -488,10 +488,10 @@ fn parse_variant_payload_field_access_rule(
         variants
             .access_from_payload_binding
             .ok_or(EmitPythonError::MalformedSpec {
-                declaration,
-                detail:
-                    "VariantPayloadFieldAccessRule.AccessFromPayloadBinding declaration was not found",
-            })?;
+            declaration,
+            detail:
+                "VariantPayloadFieldAccessRule.AccessFromPayloadBinding declaration was not found",
+        })?;
     let override_named_fields_at_binding_site = variants
         .override_named_fields_at_binding_site
         .ok_or(EmitPythonError::MalformedSpec {
