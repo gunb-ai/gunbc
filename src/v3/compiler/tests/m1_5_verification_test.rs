@@ -147,7 +147,7 @@ let claim_compiles: TestClaim = {
   source: "let x: Int = 1",
   file_name: "compiles.v3",
   predicate: pred_compiles,
-  requires: []
+  requires: ["runner"]
 }
 
 let claim_fails: TestClaim = {
@@ -155,7 +155,7 @@ let claim_fails: TestClaim = {
   source: "let x: Bool = 1",
   file_name: "fails.v3",
   predicate: pred_fails,
-  requires: []
+  requires: ["runner"]
 }
 
 let suite: TestSuite = {

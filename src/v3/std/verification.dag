@@ -107,20 +107,12 @@ type TestPredicate
       bound: Int
     }
 
-// `requires` names the resource declarations a claim must acquire to
-// run. Per DB-15 R2 Open Question #1: per-claim (not per-predicate-
-// variant) — the execution-context needs of a single subject don't
-// duplicate across the predicate axes that exercise it. Compile-time
-// predicates (`Compiles`, `FailsWithDiagnostic`, `PortHasState`,
-// `CostBounded`) carry `requires: []`; runtime-backed predicates
-// (`BehavioralObservation`, `MockBackedInvariant`) typically carry a
-// non-empty list (test runner, mock transport, etc.).
 type TestClaim {
   name: String
   source: String
   file_name: String
   predicate: TestPredicate
-  requires: List<ResourceReference>
+  requires: List<String>
 }
 
 type TestSuite {
