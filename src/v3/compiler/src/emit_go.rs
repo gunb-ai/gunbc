@@ -447,27 +447,27 @@ fn parse_pattern_binding_rule(
             detail: "PatternBindingRule variants must not carry payload fields",
         });
     }
-    let emit_always = named_variant_id(dag, "PatternBindingRule", "EmitBindingAlways").ok_or(
-        EmitError::MalformedTargetSyntax {
+    let variants = dag.pattern_binding_rule_variants();
+    let emit_always = variants
+        .emit_always
+        .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "PatternBindingRule.EmitBindingAlways declaration was not found",
-        },
-    )?;
-    let emit_underscore = named_variant_id(dag, "PatternBindingRule", "EmitUnderscoreWhenUnused")
+        })?;
+    let emit_underscore = variants
+        .emit_underscore
         .ok_or(EmitError::MalformedTargetSyntax {
-        declaration,
-        detail: "PatternBindingRule.EmitUnderscoreWhenUnused declaration was not found",
-    })?;
-    let emit_prefixed = named_variant_id(
-        dag,
-        "PatternBindingRule",
-        "EmitPrefixedUnderscoreWhenUnused",
-    )
-    .ok_or(EmitError::MalformedTargetSyntax {
-        declaration,
-        detail: "PatternBindingRule.EmitPrefixedUnderscoreWhenUnused declaration was not found",
-    })?;
-    let not_applicable = named_variant_id(dag, "PatternBindingRule", "NotApplicablePatternBinding")
+            declaration,
+            detail: "PatternBindingRule.EmitUnderscoreWhenUnused declaration was not found",
+        })?;
+    let emit_prefixed = variants
+        .emit_prefixed
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "PatternBindingRule.EmitPrefixedUnderscoreWhenUnused declaration was not found",
+        })?;
+    let not_applicable = variants
+        .not_applicable
         .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "PatternBindingRule.NotApplicablePatternBinding declaration was not found",
