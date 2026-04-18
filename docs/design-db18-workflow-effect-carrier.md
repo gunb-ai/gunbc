@@ -183,8 +183,8 @@ Per `feedback_substrate_principle_audit`, all six questions walk before greenlig
 
 **Q5 — Construction authority.** Are multiple call sites independently constructing the same fact?
 
-- **Authority site for `WorkflowEffect` values.** See §"Authority site for WorkflowEffect" below — `WorkflowEffect` values live exclusively on user-declared `data` declarations whose declared type is structurally `WorkflowEffect`. Exactly one `WorkflowEffect` per qualifying `Declaration`; no sidecar table, no parallel hosting. Lowering is the sole producer; lens and downstream consumers are pure readers.
-- **Construction authority for `BranchArm`.** `BranchArm` itself is directly constructible (it is a plain record), but its validity is witnessed by the `condition: BranchPredicateRef` field type, NOT by a constructor. The sole constructor `Dag::branch_arm_of(dag: Dag, port: PortId) -> BranchPredicateRef?` is the Track 9 primitive; any lowering path that obtains a `BranchPredicateRef` did so via `Dag::branch_arm_of` and therefore either (a) emitted a `Diagnostic::BranchConditionNotBool` on `None` or (b) proceeded with a type-level Bool witness. Direct `BranchArm { condition: bool_port_ref, body: ... }` construction is fine by design because the condition field CANNOT carry an invalid port. Raw-literal `BranchArm { condition: <arbitrary PortId>, ... }` is a type error. ✓ single authority on the typed-witness construction path; no convention-level escape hatch.
+- **Authority site for `WorkflowEffect` values.** `ValueNode.lane2_workflow: Option<Box<WorkflowEffect>>` on the computation-substrate Value node at the workflow root. Writes go through `Dag::try_register_lane2_workflow_effect(root, workflow)`; reads go through `Dag::lane2_workflow_effect_at(root)`. Exactly one workflow per root; no sidecar table; no parallel hosting. See §"Authority site for WorkflowEffect" below.
+- **Construction authority for `BranchArm`.** `BranchArm` has no safe direct constructor (the `condition: BranchPredicateRef` field has a crate-private inner field). The sole producer is `Dag::branch_arm_of(root, port, body) -> Option<BranchArm>`, which validates the port resolves to `Bool` on the root's graph. Any caller that obtains a `BranchArm` went through that validation; `None` is the typed failure the caller must surface as a `Diagnostic`. Raw-literal `BranchArm { condition: <arbitrary PortId>, ... }` is a type error. ✓ single authority on the typed-witness construction path; no convention-level escape hatch.
 
 **Q6 — Representation duality.** Can the same fact be expressed in two structurally different shapes that comparison treats differently?
 
@@ -436,19 +436,15 @@ Design-contract items (locked in this doc, independent of shipping-phase):
 
 ---
 
-## Pre-start gate for Part 2 implementation
+## STOP-AND-ESCALATE rules (Part 3 dispatch)
 
-**Gate status: CLEARED.** Part 2 dispatch is structurally unblocked — `compose_effects(List<OperationEffect>) -> CompositionVerdict` is the live signature on `main`; DB-18's `LinearEffect` consumer delegates to it without divergence.
-
-**STOP-AND-ESCALATE rule for Part 2 dispatch:**
-
-If Part 2 implementation discovers any of the following, HALT and report to director chat rather than patching forward:
+Part 2 shipped in PR #534; Part 3 (value-body reflection + data-declaration surface) is the next dispatch under DB-18. If Part 3 implementation discovers any of the following, HALT and report to director chat rather than patching forward:
 
 - `WorkflowEffect`'s 4-variant shape is insufficient — e.g., a real workflow fixture requires a fifth variant or a variant payload reshape. DB-18 locks the shape; reshape is a DB revision, not an in-flight patch.
-- `BranchPredicateRef` does not distinguish BranchEffect from ParallelEffect structurally in practice (Q4 receipt regresses), OR the `Dag::branch_arm_of` fail-closed semantics require an escape hatch for some legitimate lowering case. Same rule — reshape the substrate only through a DB revision.
-- Stage 2b's `analyze_workflow` / `analyze_workflow_value` signature needs to return something other than `WorkflowIdempotencyReport` (e.g., `List<Diagnostic>` for multi-diagnostic workflows). This is an API refinement, possibly an open question for director-chat clearance; do not silently change the signature.
-- The authority-site decision (user-declared `data` typed `WorkflowEffect`) turns out to be insufficient — e.g., a real fixture needs WorkflowEffect hosted somewhere `data` cannot reach. DB-18 locks the authority site; changing it is a DB revision, not an in-flight patch.
-- `Dag::branch_arm_of` returning `None` is silently absorbed at any lowering site (no `Diagnostic::BranchConditionNotBool` emission). This is a C-8 violation — Part 2 review must reject it.
+- `BranchPredicateRef` does not distinguish BranchEffect from ParallelEffect structurally in practice (Q4 receipt regresses), OR `Dag::branch_arm_of` fail-closed semantics require an escape hatch for some legitimate lowering case. Same rule — reshape the substrate only through a DB revision.
+- The authority-site decision (`ValueNode.lane2_workflow` keyed by workflow-root `NodeId`) turns out to be insufficient — e.g., a real fixture needs `WorkflowEffect` hosted somewhere the computation-substrate root cannot reach. DB-18 locks the host; changing it is a DB revision, not an in-flight patch.
+- `Dag::branch_arm_of` returning `None` is silently absorbed at any lowering site (no `Diagnostic::BranchConditionNotBool` emission). This is a C-8 violation — Part 3 review must reject it.
+- The data-declaration surface for authoring `WorkflowEffect` requires a new FieldValue variant (i.e., the current `ValueBody` / `FieldValue` substrate cannot encode the `data my_flow: WorkflowEffect = ...` literal). This is a substrate extension, not a Part 3 patch — escalate before extending.
 
 The director chat owns the call on each of these. Silent in-flight patches destroy the structural-finding signal the pre-clearance exists to capture (per `phase-plan-2026-04-18.md` §7 "Structural-finding escalation rule").
 
@@ -482,13 +478,11 @@ Each entry names a shape a reader might reasonably propose and states the live r
 
 **Raw `PortId` on `BranchArm.condition` with constructor-level validation only.** Relies on a `branch_arm_of(port, body) -> Option<BranchArm>` constructor to validate "port is Bool-typed" and requires every lowering site to obey the constructor-only-no-raw-literals convention. That is API-level enforcement: a contributor writing `BranchArm { condition: <non_bool_port>, body: ... }` directly produces a type-checkable value whose condition port is invalid. The Q4 Pattern-2 receipt leans on the condition field as the load-bearing structural distinction between `BranchEffect` and `ParallelEffect`; if that field admits invalid ports, the receipt degrades to convention-level enforcement and the coproduct dissolution argument collapses. Adopted shape: `BranchPredicateRef` typed witness — invariant on the type, not the constructor. Additional benefit: `BranchPredicateRef` is reusable for other Bool-typed-port consumers (e.g., the computation substrate's Branch behavior condition slot) as a Track 9 primitive graduation.
 
-**Host `WorkflowEffect` on a new `WorkflowDeclaration` kind.** Adds a substrate concept without capability gain — `data` already provides name + type + value hosting, and the type annotation (`WorkflowEffect`) carries the workflow-specificity. Per `feedback_std_over_patterns`, reuse the generic surface rather than enumerating special cases. See §"Authority site for `WorkflowEffect`" for the full argument.
+**Host `WorkflowEffect` on a new `WorkflowDeclaration` kind or as a field on `OperationDeclaration`.** Adds a substrate concept (or conflates workflow composition with per-op effect) without capability gain. The adopted host (`ValueNode.lane2_workflow` on the computation-substrate root) attaches the workflow to the node it describes and reuses the existing `ValueNode` machinery. The Part 3 data-declaration surface for authoring workflows reuses the existing `data` surface with the `WorkflowEffect` type annotation — no new declaration kind, no specific-to-workflow hosting concept.
 
-**Host `WorkflowEffect` as a field on `OperationDeclaration`.** Conflates per-op effect (the operation's own effect shape) with workflow-level composition (how ops compose). They are different kinds of fact and live on different declarations.
+**Sidecar table `Dag.workflows`.** Parallel to `ValueNode.lane2_workflow`; would require a derivation to stay in sync with the field. Violates Q3 (no duplicated facts) and Q5 (single authority). Sidecars are justified when a fact spans multiple declarations (e.g., `Dag.clusters`); a `WorkflowEffect` is attached to one root node.
 
-**Sidecar table `Dag.workflows`.** Parallel to the authoring declaration; would require a derivation to stay in sync with the `data` declaration's value slot. Violates Q3 (no duplicated facts) and Q5 (single authority). Sidecars are justified when a fact spans multiple declarations (e.g., `Dag.clusters`); a `WorkflowEffect` is single-declaration-local.
-
-**Defer authority-site selection to Part 2.** "Stage 2b can read `WorkflowEffect` values from any declaration slot" is a Q5 single-authority violation: "any slot" is not a single authority. The authority site is locked at Part 1 — user-declared `data` declarations typed `WorkflowEffect`.
+**Host `WorkflowEffect` on the declaration's `value_body` (FieldValue tree) directly.** Considered and rejected for the shipped shape because `ValueBody` / `FieldValue` today cannot carry opaque handles like `BranchPredicateRef` — a `FieldValue::Variant { constructor, payload }` literal cannot inhabit a Rust-only opaque type. The Part 3 data-declaration surface compiles the surface literal into a computation sub-DAG, calls `Dag::branch_arm_of` on the resulting ports, and registers the final `WorkflowEffect` on the root's `ValueNode.lane2_workflow` field. This is the single-authority path — the data-declaration surface is the authoring surface; `ValueNode.lane2_workflow` is the authority storage; the two are connected by the Part 3 lowering pipeline.
 
 ---
 
@@ -499,13 +493,14 @@ Each entry names a shape a reader might reasonably propose and states the live r
 - `feedback_state_space_vs_behavioral_invariants` — cardinality invariants via `NonEmptyList` / `NonSingletonList`; rejected alternative R-alt-A.
 - `feedback_lenses_not_passes` — anchor for the lens-level re-derivation rejection (see §Rejected alternatives).
 - `feedback_no_metadata_markers` — `BranchArm.condition: BranchPredicateRef` is a typed opaque handle, not a string marker or raw index.
-- `feedback_fail_closed_discipline` — `report_unsupported_variant` produces a `Diagnostic`, not a silent skip; `Dag::branch_arm_of` returning `None` must be surfaced as `Diagnostic::BranchConditionNotBool` at the caller (Part 2 Acceptance item 4).
-- `feedback_std_over_patterns` — authority-site decision reuses `data` rather than inventing `WorkflowDeclaration` (R-alt-F rejection).
-- DB-9 R2.1 (`design-mutual-recursion-lowering.md`) — worked example of the six-question audit; mirrors DB-18's format. Also: the `ParamRef` / `TransformRef` Track 9 primitive pattern that `BranchPredicateRef` follows (third primitive graduation).
+- `feedback_fail_closed_discipline` — `WorkflowIdempotencyReport::Unsupported` carries a typed `IdempotencyUnsupportedDetail`, not a silent skip; `Dag::branch_arm_of` returning `None` must be surfaced as a `Diagnostic` identifying the non-Bool condition port at the caller.
+- `feedback_std_over_patterns` — authority site reuses `ValueNode` rather than introducing a new declaration kind; Part 3 surface reuses `data` rather than introducing a workflow-specific surface.
+- DB-9 R2.1 (`design-mutual-recursion-lowering.md`) — worked example of the six-question audit; mirrors DB-18's format. Also: the `ParamRef` / `TransformRef` Track 9 primitive pattern that `BranchPredicateRef` follows.
 - DB-16 (`design-db16-refined-generic-substitution.md`) — worked example of Part 1 design / Part 2 impl split; mirrors DB-18's scope discipline.
 - PR #529 (`design-composed-effect-reshape.md`) — `CompositionVerdict` authority that DB-18's `LinearEffect` path delegates to. Merged 2026-04-18 as `8c7e7acdd`.
-- ROADMAP (`../ROADMAP.md` and `../src/v3/ROADMAP.md`) — Lane 2 Stage 2b entry; this DB advances the row from planned lens-only to substrate-carrier + lens per director escalation. Track 9 line 763-772 references for primitive-graduation discipline.
+- PR #534 (eager-fox-851) — shipped DB-18 Part 2: Rust mirrors in `src/v3/compiler/src/dag.rs`, `Dag::branch_arm_of` constructor, `workflow_idempotency::analyze_workflow` consumer, `ValueNode.lane2_workflow` authority field. Part 3 (reflection + data-declaration surface) is the follow-up dispatch.
+- ROADMAP (`../ROADMAP.md` and `../src/v3/ROADMAP.md`) — Lane 2 Stage 2b entry; this DB advances the row to ✅ Shipped for the Rust carrier + analyzer; Part 3 remains tracked follow-up.
 
 ---
 
-End of DB-18 Part 1.
+End of DB-18.
