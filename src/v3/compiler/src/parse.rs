@@ -216,8 +216,8 @@ pub struct SurfaceParam {
     /// the parameter. `None` for bare `x: Int`; `Some(expr)` for
     /// `x: Int where x > 0`. Lowered into `Declaration.refinement` via
     /// `lower_parameter_refinements_phase` except where fail-closed:
-    /// out-of-fragment predicate shapes, refinements on generic type
-    /// parameters, etc. (see `lower.rs`).
+    /// out-of-fragment predicate shapes (see `lower.rs`). Generic refined
+    /// carriers are materialized at inference via substitution (PR #522).
     pub refinement: Option<SurfaceExpr>,
 }
 
