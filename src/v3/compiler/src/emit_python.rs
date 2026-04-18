@@ -97,6 +97,29 @@ struct PythonTarget {
     scope: ScopeModelBinding,
 }
 
+/// Typed read of `data python_clean_emission: CleanEmissionContract`
+/// from `src/v3/spec/python.dag` — the portion this pilot consumes
+/// (E-5 / Lane 1 Stage 1c PR 3). Other contract rules land here as
+/// their consumers wire in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CleanEmissionContractBinding {
+    pattern_bindings: PatternBindingRuleBinding,
+}
+
+/// Python-valid slice of `std.clean_emission.PatternBindingRule`.
+/// Parsed in `CleanEmissionContractBinding::build`, which rejects
+/// target-invalid constructors instead of letting the renderer
+/// normalize them later. emit_python does not emit Python's native
+/// `match` statement — it substitutes an extraction expression
+/// (`__match._0` / `__match`) at every payload-binding port
+/// reference inside the rendered arm body, so no binding identifier
+/// is ever written at a pattern site. `NotApplicablePatternBinding`
+/// is the only valid rule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PatternBindingRuleBinding {
+    NotApplicable,
+}
+
 #[derive(Debug, Clone)]
 struct PythonIndexes {
     types: HashMap<DeclarationId, String>,
@@ -105,6 +128,14 @@ struct PythonIndexes {
     callables: HashMap<DeclarationId, PythonCallableStrategy>,
     syntax: PythonSyntax,
     target: PythonTarget,
+    /// The Python clean-emission contract loaded from `data
+    /// python_clean_emission: CleanEmissionContract` (E-5 / Lane 1
+    /// Stage 1c PR 3). Rule variants dispatch inside the emitter so
+    /// emitted Python passes `python3 -m py_compile` by
+    /// construction. For the current pilot only `pattern_bindings`
+    /// is dispatched on; other fields are authored-but-unread until
+    /// Lane 1d/1e consolidation.
+    clean_emission: CleanEmissionContractBinding,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -283,6 +314,8 @@ impl PythonIndexes {
             scope: require_scope_model(dag, target_fields, target_decl)?,
         };
 
+        let clean_emission = CleanEmissionContractBinding::build(dag)?;
+
         Ok(Self {
             types,
             type_instantiations,
@@ -290,6 +323,117 @@ impl PythonIndexes {
             callables,
             syntax,
             target,
+            clean_emission,
+        })
+    }
+}
+
+impl CleanEmissionContractBinding {
+    /// Parse the portion of `data python_clean_emission:
+    /// CleanEmissionContract` this pilot consumes. Mirrors
+    /// emit_rust / emit_go's `CleanEmissionContractBinding::build`.
+    fn build(dag: &Dag) -> Result<Self, EmitPythonError> {
+        let declaration = dag
+            .python_clean_emission_spec()
+            .ok_or(EmitPythonError::MissingSpec("python_clean_emission"))?;
+        let decl = dag.declaration(declaration);
+        let fields = structural_fields(decl).ok_or(EmitPythonError::MalformedSpec {
+            declaration,
+            detail: "python_clean_emission must be a structural data item",
+        })?;
+        let pattern_bindings_value = fields
+            .iter()
+            .find(|(label, _)| label == "pattern_bindings")
+            .map(|(_, value)| value)
+            .ok_or(EmitPythonError::MalformedSpec {
+                declaration,
+                detail: "python_clean_emission is missing required `pattern_bindings` field",
+            })?;
+        let pattern_bindings =
+            parse_pattern_binding_rule(dag, pattern_bindings_value, declaration)?;
+        Ok(Self { pattern_bindings })
+    }
+}
+
+/// Parse `python_clean_emission.pattern_bindings` via the typed
+/// `PatternBindingRuleVariants` cache on `Dag` (Lane 1 Stage 1c
+/// PR 2.5). NOT `named_variant_id` — the typed cache is the single
+/// authority that lets emit_rust / emit_go / emit_python share the
+/// same resolution path without each reconstructing the same fact.
+///
+/// Rejects every variant except `NotApplicablePatternBinding`: the
+/// other rules (`EmitBindingAlways` / `EmitUnderscoreWhenUnused` /
+/// `EmitPrefixedUnderscoreWhenUnused`) describe pattern-site
+/// binding elisions that emit_python has no pattern site to apply
+/// them to — the emitter substitutes an extraction expression at
+/// every port reference in the rendered arm body, so the binding
+/// identifier never appears in source by construction.
+fn parse_pattern_binding_rule(
+    dag: &Dag,
+    value: &FieldValue,
+    declaration: DeclarationId,
+) -> Result<PatternBindingRuleBinding, EmitPythonError> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return Err(EmitPythonError::MalformedSpec {
+            declaration,
+            detail: "python_clean_emission.pattern_bindings must be a PatternBindingRule variant",
+        });
+    };
+    if !payload.is_empty() {
+        return Err(EmitPythonError::MalformedSpec {
+            declaration,
+            detail: "PatternBindingRule variants must not carry payload fields",
+        });
+    }
+    let variants = dag.pattern_binding_rule_variants();
+    let emit_always = variants.emit_always.ok_or(EmitPythonError::MalformedSpec {
+        declaration,
+        detail: "PatternBindingRule.EmitBindingAlways declaration was not found",
+    })?;
+    let emit_underscore = variants
+        .emit_underscore
+        .ok_or(EmitPythonError::MalformedSpec {
+            declaration,
+            detail: "PatternBindingRule.EmitUnderscoreWhenUnused declaration was not found",
+        })?;
+    let emit_prefixed = variants
+        .emit_prefixed
+        .ok_or(EmitPythonError::MalformedSpec {
+            declaration,
+            detail: "PatternBindingRule.EmitPrefixedUnderscoreWhenUnused declaration was not found",
+        })?;
+    let not_applicable = variants
+        .not_applicable
+        .ok_or(EmitPythonError::MalformedSpec {
+            declaration,
+            detail: "PatternBindingRule.NotApplicablePatternBinding declaration was not found",
+        })?;
+    if *constructor == not_applicable {
+        Ok(PatternBindingRuleBinding::NotApplicable)
+    } else if *constructor == emit_always {
+        Err(EmitPythonError::MalformedSpec {
+            declaration,
+            detail: "python_clean_emission.pattern_bindings cannot use PatternBindingRule.EmitBindingAlways; Python only supports NotApplicablePatternBinding",
+        })
+    } else if *constructor == emit_underscore {
+        Err(EmitPythonError::MalformedSpec {
+            declaration,
+            detail: "python_clean_emission.pattern_bindings cannot use PatternBindingRule.EmitUnderscoreWhenUnused; Python only supports NotApplicablePatternBinding",
+        })
+    } else if *constructor == emit_prefixed {
+        Err(EmitPythonError::MalformedSpec {
+            declaration,
+            detail: "python_clean_emission.pattern_bindings cannot use PatternBindingRule.EmitPrefixedUnderscoreWhenUnused; Python only supports NotApplicablePatternBinding",
+        })
+    } else {
+        Err(EmitPythonError::MalformedSpec {
+            declaration,
+            detail:
+                "python_clean_emission.pattern_bindings constructor is not a known PatternBindingRule variant",
         })
     }
 }
@@ -615,6 +759,18 @@ impl<'a> Ctx<'a> {
         Ok(format!("isinstance(__match, {variant_name})"))
     }
 
+    /// E-5 / Lane 1 Stage 1c PR 3: dispatch on
+    /// `python_clean_emission.pattern_bindings`.
+    /// `NotApplicablePatternBinding` selects the substitute-at-
+    /// render-time path: for every payload-binding port we map it
+    /// to an extraction expression (`__match._0` / `__match`), so
+    /// the binding's identifier never appears in emitted Python at
+    /// a pattern site. If the arm body does not reference the
+    /// port, the substitution is never invoked and no dead
+    /// identifier leaks into the source — py_compile stays silent
+    /// by construction. Python-invalid contract variants are
+    /// rejected while building `CleanEmissionContractBinding`, so
+    /// the renderer only sees Python-valid states.
     fn render_branch_body_expr(
         &self,
         disj_id: DeclarationId,
@@ -624,8 +780,12 @@ impl<'a> Ctx<'a> {
     ) -> Result<String, EmitPythonError> {
         let mut arm_locals = locals.clone();
         if let Some(binding) = &path.binding {
-            let extracted = self.render_match_binding(disj_id, is_optional, path)?;
-            arm_locals.names.insert(binding.payload_port, extracted);
+            match self.indexes.clean_emission.pattern_bindings {
+                PatternBindingRuleBinding::NotApplicable => {
+                    let extracted = self.render_match_binding(disj_id, is_optional, path)?;
+                    arm_locals.names.insert(binding.payload_port, extracted);
+                }
+            }
         }
         self.render_port(path.output, &arm_locals)
     }

@@ -529,6 +529,107 @@ fn second_value(v: Second) -> String = match v { Shared(s) => s, SecondMissing =
     );
 }
 
+/// E-5 / Lane 1 Stage 1c PR 3 pilot — unused match-arm payload
+/// bindings never leak the source-level identifier into emitted
+/// Python. `python_clean_emission.pattern_bindings =
+/// NotApplicablePatternBinding` encodes the structural fact that
+/// emit_python does not use Python's native `match` statement and
+/// therefore has no pattern-site to emit a binding at; it
+/// substitutes an extraction expression (`__match._0` / `__match`)
+/// at every payload-port reference in the rendered arm body, and
+/// unused references produce no identifier at all.
+///
+/// Before the pilot the emitter dropped the binding into
+/// `arm_locals.names` unconditionally without consulting the
+/// contract. After the pilot the dispatch reads
+/// `python_clean_emission` via the typed `PatternBindingRuleVariants`
+/// cache (Lane 1 Stage 1c PR 2.5) and rejects Python-invalid
+/// variants at contract-parse time.
+#[test]
+fn emit_python_unused_payload_binding_never_leaks_identifier() {
+    let module = emit_python_module_from_source(
+        "type BoxedInt = Boxed(Int) | Empty
+fn ignore_payload(b: BoxedInt) -> Int = match b { Boxed(unique_value) => 0, Empty => 1 }",
+        "python_clean_emission_unused.v3",
+    );
+    assert!(
+        !module.contains("unique_value"),
+        "unused payload leaked binding identifier into emitted Python, got:\n{module}"
+    );
+    assert!(
+        module.contains("isinstance(__match, BoxedInt_Boxed)"),
+        "expected qualified isinstance dispatch, got:\n{module}"
+    );
+    run_python_module(&module);
+}
+
+/// Complement to `emit_python_unused_payload_binding_never_leaks_identifier`:
+/// when the arm body references the payload binding, the emitter
+/// substitutes `__match._0` at the port reference. The source-level
+/// identifier is still absent — Python's
+/// `NotApplicablePatternBinding` rule never surfaces it, used or
+/// unused. Proves the contract dispatch doesn't regress the
+/// used-binding path.
+#[test]
+fn emit_python_used_payload_binding_substitutes_match_extraction() {
+    let module = emit_python_module_from_source(
+        "type BoxedInt = Boxed(Int) | Empty
+fn use_payload(b: BoxedInt) -> Int = match b { Boxed(unique_value) => unique_value, Empty => 1 }",
+        "python_clean_emission_used.v3",
+    );
+    assert!(
+        !module.contains("unique_value"),
+        "used payload leaked binding identifier into emitted Python, got:\n{module}"
+    );
+    assert!(
+        module.contains("__match._0"),
+        "expected used payload to render via __match._0 substitution, got:\n{module}"
+    );
+    run_python_module(&module);
+}
+
+/// E-5 / Lane 1 Stage 1c PR 4 — emitted Python passes
+/// `python_clean_emission.post_emit_verifier` as invoked through
+/// the shared harness (`python3 -m py_compile` +
+/// `IgnoreVerifierOutput`). Reads the contract via
+/// `parse_post_emit_verifier` so any future spec change (different
+/// verifier, new args) picks up automatically without updating the
+/// test body.
+///
+/// This is the sole py_compile roundtrip for the Python pilot —
+/// there is no separate hardcoded-command version. `run_post_emit_verifier`
+/// IS the only verifier-invocation authority the test suite uses, so
+/// spec drift (e.g. flipping to `ruff --select=E` in the future)
+/// shows up here without test-code edits.
+///
+/// Gated behind `#[ignore]` — CI sandboxes don't always carry
+/// python3. Run locally:
+///
+///     cargo test -p v3-compiler --test m1_4_emit_python_test \
+///         python_pilot_source_passes_post_emit_verifier_harness \
+///         -- --ignored --nocapture
+#[test]
+#[ignore]
+fn python_pilot_source_passes_post_emit_verifier_harness() {
+    use v3_compiler::post_emit_verifier::{parse_post_emit_verifier, run_post_emit_verifier};
+    let source = "type BoxedInt = Boxed(Int) | Empty
+fn ignore_payload(b: BoxedInt) -> Int = match b { Boxed(unique_value) => 0, Empty => 1 }";
+    let dag = compile_to_dag(source, "python_post_emit_verifier.v3").expect("source compiles");
+    let spec = dag
+        .python_clean_emission_spec()
+        .expect("python_clean_emission cached");
+    let binding = parse_post_emit_verifier(&dag, spec).expect("parse contract");
+    let rendered = emit_python_module(&dag).expect("emits python module");
+    let tmp_dir = next_roundtrip_dir();
+    std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
+    let src_path = tmp_dir.join("module.py");
+    std::fs::File::create(&src_path)
+        .and_then(|mut f| f.write_all(rendered.as_bytes()))
+        .expect("write python source");
+    run_post_emit_verifier(&binding, &src_path)
+        .expect("python post_emit_verifier rejected pilot source — E-5 contract regression");
+}
+
 // Same Loop blocker as emit_python_module_marks_ownership_as_skipped_for_gc_target.
 #[test]
 #[ignore = "blocked on emit_python Behavior::Loop support; previously passed via silent loop-body collapse"]

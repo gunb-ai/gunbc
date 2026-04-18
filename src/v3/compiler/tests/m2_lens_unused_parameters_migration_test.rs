@@ -78,8 +78,22 @@ fn format_rust_source(source: &str) -> String {
 /// `program_source` + `file_name` from argv so each fixture is a
 /// single process spawn rather than a fresh rustc invocation.
 fn build_roundtrip_harness(module_source: &str) -> PathBuf {
+    // E-5 / Lane 1 Stage 1c PR 4: the umbrella `#[allow(warnings,
+    // clippy::all)]` still wraps the emitted module because other
+    // warning categories (unused_imports, dead_code, unused_parens,
+    // etc.) haven't shipped their structural pilots yet. But
+    // `unused_variables` HAS shipped — Rust's `pattern_bindings =
+    // EmitUnderscoreWhenUnused`, Go's pattern-bind elision, and
+    // Python's `NotApplicablePatternBinding` all close the
+    // unused-binding surface by construction. Striking it from the
+    // umbrella — via a paired `#[deny(unused_variables)]` that
+    // overrides the warnings group — turns the emitted-code
+    // contract from "silenced" into "fail-closed." A regression in
+    // any emitter's unused-binding dispatch surfaces here as a
+    // rustc error, not a silent warning.
     let wrapped = format!(
         "#[allow(warnings, clippy::all)] \
+         #[deny(unused_variables)] \
          mod emitted {{ use v3_compiler::dag::*; use v3_compiler::diagnostics::*; {module_source} }} \
          fn render(dag: &v3_compiler::Dag, function: v3_compiler::dag::NodeId) -> String {{ \
            dag.nodes().iter().find_map(|node| match node {{ \

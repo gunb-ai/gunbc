@@ -13,6 +13,17 @@ import v3.std.computation_model {
   TargetExecutionModel, MemoryModel,
   GarbageCollected, LexicalScoping
 }
+import v3.std.clean_emission {
+  CleanEmissionContract,
+  ExpressionWrappingRule, WrapOnlyInOperandPosition,
+  PatternBindingRule, NotApplicablePatternBinding,
+  ImportRule, IncludeOnlyReferenced,
+  BlockReturnRule, ExplicitReturnKeyword,
+  VariableBindingRule, EmitLetBindingAlways,
+  MatchArmBodyRule, NotApplicableMatchArmBody,
+  CorrectionStyle, PostEmitVerifier,
+  VerifierOutputPolicy, IgnoreVerifierOutput
+}
 
 // 🟡 SCAFFOLD per INVARIANTS.md E-7. Parallel to
 // `v3.std.emit_model.TypeRealization`. emit_python consumes
@@ -390,4 +401,55 @@ data python_list_instantiation: PythonTypeInstantiationRealization = {
   target: List
   carrier: "list[{element}]"
   cost: 1
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Clean-emission contract (E-5 / Lane 1 Stage 1c PR 3).
+// ─────────────────────────────────────────────────────────────────
+//
+// Per-target rule choices for the E-5 invariant. Python's match
+// emission is structurally different from Rust and Go: emit_python
+// does not use Python's native `match` statement, it lowers
+// branches to `isinstance(__match, V)` dispatch inside a lambda,
+// and substitutes each payload binding's port with an extraction
+// expression (`__match._0` / `__match`) at render time. The binding
+// identifier itself is never emitted at the pattern site — the
+// substitution happens at every port reference inside the arm body,
+// so unused bindings produce no identifier in the emitted Python at
+// all. `NotApplicablePatternBinding` encodes that surface fact.
+//
+// **Dispatch state at this PR (Lane 1 Stage 1c PR 3):**
+// - `pattern_bindings` is LIVE — `emit_python::render_branch_body_expr`
+//   dispatches on it. `NotApplicablePatternBinding` selects the
+//   substitute-at-render-time path (the emitter's existing behavior);
+//   any other rule is rejected at contract-parse time.
+// - Every other field is authored-but-unread. Each field has a
+//   named rollout: the emitter change that consumes it removes
+//   the corresponding lint from the test-wrapper allow list in
+//   the same PR (Lane 1d/1e consolidation).
+//
+// Python's post-emit verifier is `python3 -m py_compile` —
+// syntax-only validation. Semantic verifiers (ruff, mypy --strict)
+// are Lane 1d/1e concerns, not this PR.
+
+data python_clean_emission: CleanEmissionContract = {
+  expression_wrapping: WrapOnlyInOperandPosition
+  pattern_bindings: NotApplicablePatternBinding
+  imports: IncludeOnlyReferenced
+  block_return: ExplicitReturnKeyword
+  variable_bindings: EmitLetBindingAlways
+  match_arm_body: NotApplicableMatchArmBody
+  correction_style: {
+    indent_unit: "    "
+    line_ending: "\n"
+    string_quote: "%Q"
+    trailing_semicolon: false
+  }
+  post_emit_verifier: {
+    command: "python3"
+    args: ["-m", "py_compile"]
+    syntax_only: true
+    expected_exit_code: 0
+    output_policy: IgnoreVerifierOutput
+  }
 }

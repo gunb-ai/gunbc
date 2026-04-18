@@ -24,6 +24,7 @@ pub mod lens_depth;
 pub mod lens_testgen;
 pub mod lens_unused_parameters;
 pub mod operators;
+pub mod post_emit_verifier;
 pub mod serialize;
 pub mod types;
 
