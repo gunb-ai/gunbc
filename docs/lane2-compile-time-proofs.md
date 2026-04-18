@@ -89,7 +89,7 @@ type WorkflowIdempotencyReport
 // CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: BreakingOperation }
 ```
 
-**Single authority.** `analyze_workflow` does **not** take a caller-authored `WorkflowEffect`. Facts are read only from the `Dag` at `workflow_root` (compiler-local map until pipeline lowering attaches workflow structure from L1 / declared pipelines). The obsolete flat `{ idempotent: Bool, breaking_op: String?, … }` sketch below is superseded by the `CompositionVerdict` partition + explicit `IdempotencyUnsupported` carrier.
+**Single authority.** `analyze_workflow` does **not** take a caller-authored `WorkflowEffect`. Facts are read only from substrate `Value` / `Bind` nodes at `workflow_root` (`lane2_workflow` on those behaviors — populated by lowering or staging hooks, not a parallel `NodeId` map). The obsolete flat `{ idempotent: Bool, breaking_op: String?, … }` sketch below is superseded by the `CompositionVerdict` partition + explicit `IdempotencyUnsupported` carrier.
 
 Lens reads each operation's declared `idempotent` modifier AND derives from path+method, then cross-checks via `check_modifier_vs_derivation`. Diagnostic fires when:
 - Declared idempotent but derivation disagrees (`Disagrees` case)

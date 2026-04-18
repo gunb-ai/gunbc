@@ -2,7 +2,9 @@
 //!
 //! Authority for the algebra lives in `src/v3/std/effects.dag`; these helpers
 //! are the compiler-side projection used by tests and native consumers until
-//! the emitted lens module is the sole entry point.
+//! the emitted lens module is the sole entry point. Workflow structure for
+//! analysis is read from substrate `Value` / `Bind` fields on the [`Dag`], not
+//! from a free-floating `WorkflowEffect` argument or a parallel hash map.
 
 use crate::dag::{
     CompositionVerdict, Dag, EffectShape, IdempotencyUnsupportedDetail, NodeId, OperationEffect,
