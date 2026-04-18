@@ -136,7 +136,6 @@ pub fn parse_post_emit_verifier(
 
     let command = require_string(verifier_fields, "command", spec_declaration)?;
     let args = require_string_list(verifier_fields, "args", spec_declaration)?;
-    let syntax_only = require_bool(verifier_fields, "syntax_only", spec_declaration)?;
     let expected_exit_code = require_int(verifier_fields, "expected_exit_code", spec_declaration)?;
     let output_policy =
         parse_output_policy(dag, verifier_fields, "output_policy", spec_declaration)?;
@@ -144,7 +143,6 @@ pub fn parse_post_emit_verifier(
     Ok(PostEmitVerifierBinding {
         command,
         args,
-        syntax_only,
         expected_exit_code,
         output_policy,
     })
@@ -232,24 +230,6 @@ fn require_string(
         .ok_or(VerifierParseError::MalformedSpec {
             declaration,
             detail: "required string field missing or malformed",
-        })
-}
-
-fn require_bool(
-    fields: &[(String, FieldValue)],
-    name: &'static str,
-    declaration: DeclarationId,
-) -> Result<bool, VerifierParseError> {
-    fields
-        .iter()
-        .find(|(label, _)| label == name)
-        .and_then(|(_, value)| match value {
-            FieldValue::Literal(LiteralBits::Bool(b)) => Some(*b),
-            _ => None,
-        })
-        .ok_or(VerifierParseError::MalformedSpec {
-            declaration,
-            detail: "required bool field missing or malformed",
         })
 }
 
@@ -403,7 +383,6 @@ mod tests {
         let binding = parse_post_emit_verifier(&dag, spec).expect("parse");
         assert_eq!(binding.command, "rustc");
         assert_eq!(binding.args, vec!["--edition=2021", "-D", "warnings"]);
-        assert!(!binding.syntax_only);
         assert_eq!(binding.expected_exit_code, 0);
         assert_eq!(
             binding.output_policy,
@@ -420,7 +399,6 @@ mod tests {
         let binding = parse_post_emit_verifier(&dag, spec).expect("parse");
         assert_eq!(binding.command, "gofmt");
         assert_eq!(binding.args, vec!["-l"]);
-        assert!(binding.syntax_only);
         assert_eq!(binding.expected_exit_code, 0);
         assert_eq!(
             binding.output_policy,
@@ -437,7 +415,6 @@ mod tests {
         let binding = parse_post_emit_verifier(&dag, spec).expect("parse");
         assert_eq!(binding.command, "python3");
         assert_eq!(binding.args, vec!["-m", "py_compile"]);
-        assert!(binding.syntax_only);
         assert_eq!(binding.expected_exit_code, 0);
         assert_eq!(
             binding.output_policy,
@@ -462,7 +439,6 @@ mod tests {
         let binding = PostEmitVerifierBinding {
             command: "true".to_string(),
             args: Vec::new(),
-            syntax_only: true,
             expected_exit_code: 0,
             output_policy: VerifierOutputPolicyBinding::IgnoreVerifierOutput,
         };
