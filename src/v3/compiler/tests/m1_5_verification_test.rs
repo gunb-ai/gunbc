@@ -144,10 +144,7 @@ fn bootstrap_loads_verification_authority_types() {
             ),
         ]
     );
-    assert_eq!(
-        record_fields(&dag, "ResourceReference"),
-        vec!["identifier"]
-    );
+    assert_eq!(record_fields(&dag, "ResourceReference"), vec!["identifier"]);
 }
 
 #[test]
