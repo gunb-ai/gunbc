@@ -5,7 +5,7 @@
 **Author:** director chat session `clever-lark-108`
 **As of:** 2026-04-18
 **Refresh cadence:** session start + after every merge wave (never more than ~1 day stale)
-**Since last refresh:** §4.1 trimmed to **pointer index only** (single-authority hygiene per ChatGPT review 2026-04-18); Lane 1e + determinism mirror added to [post-l15-phase-plan.md](./post-l15-phase-plan.md). **Relay:** PR [#530](https://github.com/gunb-ai/gunbc/pull/530) — [session-relay-queue.md](./session-relay-queue.md) pointer-only; ChatGPT `sha:10bd34e…` **APPROVE_WITH_COMMENTS** @ 2026-04-18T16:10:15Z; **pending** on tips `sha:210381a…` (meta-review) and `sha:4014aa…` (full review) — see relay.
+**Since last refresh:** §4.1 trimmed to **pointer index only**; Lane 1e + determinism mirror added to [post-l15-phase-plan.md](./post-l15-phase-plan.md). PR [#530](https://github.com/gunb-ai/gunbc/pull/530) bot/review status is **not** mirrored here — see [session-relay-queue.md](./session-relay-queue.md) (pointer only).
 
 ---
 
