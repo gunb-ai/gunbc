@@ -12,6 +12,8 @@
 
 These commands are intentionally broad — they over-approximate “name-adjacent” logic so the inventory stays **complete**; manual triage marks which rows are benign (single-sourced bootstrap) vs debt.
 
+**Policy:** Treat `rg` here as **Stage 1d reconnaissance input** to name bridges. If a pattern later becomes an enforcement gate, route it through a **lens**, **substrate** fact, or **compiler ratchet** — not permanent “CI grep” as the long-term authority for semantics (see `ROADMAP.md` on moving beyond source grep for system behavior).
+
 **A — Tuple field probes on structural value bodies** (`(label, value)` string keys):
 
 ```bash

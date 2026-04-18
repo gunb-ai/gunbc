@@ -28,18 +28,24 @@ rg -c 'fn (render_|emit_)' \
 
 ## Summary
 
-| Emitter file | `fn render_*` / `fn emit_*` count | spec-driven | per-target integration | lens | substrate-walk | Notes |
-|--------------|-----------------------------------|-------------|------------------------|------|----------------|-------|
-| `emit_rust.rs` | 40 | 34 | 3 | 0 | 0 | 3 rows are `#[cfg(test)]` helpers (not production emission). |
-| `emit_go.rs` | 25 | 22 | 3 | 0 | 0 | — |
-| `emit_python.rs` | 27 | 24 | 3 | 0 | 0 | — |
-| **Total** | **92** | **80** | **9** | **0** | **0** | See §Interpretation. |
+Counts are the **same grep surface** as §Verification (every `fn render_*` / `fn emit_*`). **Production** rows = spec-driven + per-target (consolidation-relevant). **Test-only** rows satisfy the acceptance `grep` but are **not** part of driver-vs-walker or escalation percentages.
+
+| Emitter file | Grep total | spec-driven | per-target integration | test-only | lens | substrate-walk |
+|--------------|-----------:|------------:|------------------------:|----------:|-----:|---------------:|
+| `emit_rust.rs` | 40 | 34 | 3 | 3 | 0 | 0 |
+| `emit_go.rs` | 25 | 22 | 3 | 0 | 0 | 0 |
+| `emit_python.rs` | 27 | 24 | 3 | 0 | 0 | 0 |
+| **Total** | **92** | **80** | **9** | **3** | **0** | **0** |
+
+**Checksum (must close):** `34+3+3 = 40`, `22+3+0 = 25`, `24+3+0 = 27`; **`80+9+3 = 92`**.
+
+**Production-only (89 functions):** `80` spec-driven + `9` per-target integration — this is the set the consolidation split applies to. **Test-only (3):** all in `emit_rust.rs` §tables below.
 
 ### Interpretation
 
 - **No row in the 92 is classified `lens` or `substrate-walk`.** Lens builders (`InputUseFacts::build`, copy/ownership analysis, etc.) and algebra walks (`algebra_field_for_operator`, `walk_to_algebra_conj`, optional/list disj walks) use other names — they live beside these functions and are called from them. Stage 1e still extracts them per the build plan; they are simply outside the `render_*` / `emit_*` grep surface.
-- **Per-target integration (9):** the three public/module drivers per emitter (`emit_*`, `emit_*_module`, `emit_*_with_mode`). **`emit_rust_with_mode`** is the Rust driver (indexes, `InputUseFacts`, `EmitRustMode`, main shell) — still counted once here. Everything else is **spec-driven** relative to the “walker + spec” split: recursive rendering from `RealizationIndexes` and `CleanEmissionContract`, with Rust-only presentation details (e.g. `pub` prefix) localized inside `render_*` bodies until spec fields absorb them.
-- **Tests (3 rows in `emit_rust.rs`):** counted by `grep` for acceptance; they are regression harnesses, not production emission. Marked explicitly below.
+- **Per-target integration (9, production only):** the three public/module drivers per emitter (`emit_*`, `emit_*_module`, `emit_*_with_mode`). **`emit_rust_with_mode`** is the Rust driver (indexes, `InputUseFacts`, `EmitRustMode`, main shell). Everything else in production is **spec-driven** relative to the “walker + spec” split: recursive rendering from `RealizationIndexes` and `CleanEmissionContract`, with Rust-only presentation details (e.g. `pub` prefix) localized inside `render_*` bodies until spec fields absorb them.
+- **Test-only (3 rows in `emit_rust.rs`):** counted by acceptance `grep`; regression harnesses only — **excluded** from the **80 / 9** production split and from §Escalation driver share (see below).
 
 ---
 
@@ -172,5 +178,5 @@ These are **not** counted in the 92 but are load-bearing for consolidation:
 
 ## Escalation check (build plan)
 
-- **Per-target integration share:** 9 / 92 ≈ **10%** — above the “~5%” illustrative split but **far below** the 30% escalation threshold; the share is concentrated in the intentional **driver** layer (`emit_*_with_mode`), not scattered semantic branches.
+- **Per-target integration share (production only):** 9 / 89 ≈ **10.1%** — above the “~5%” illustrative split but **far below** the 30% escalation threshold; the share is concentrated in the intentional **driver** layer (`emit_*_with_mode`), not scattered semantic branches. *(Denominator **89** = production `fn`; the **3** test-only rows are excluded.)*
 - **Lens / substrate-walk** work is **not** missing — it is **named outside** the `render_*` / `emit_*` inventory, as documented above.
