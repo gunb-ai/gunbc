@@ -1890,7 +1890,13 @@ fn resolve_direct_target_signature(
     Some(ResolvedArrow {
         inputs,
         output: TypeShape::new(enclosing_disj_for_variant(dag, template).unwrap_or(target)),
-        body: ArrowBody::Pending,
+        // Variant constructor synthesis: `Variant(payload)` is direct
+        // construction, not a function call with an executable body.
+        // `NoBody` rather than `Pending` so the synthesized signature
+        // semantically matches the "no body by construction" cases in
+        // declarations, even though this `ResolvedArrow` is transient
+        // inference state (never stored in `Dag.declarations`).
+        body: ArrowBody::NoBody,
     })
 }
 
