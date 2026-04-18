@@ -142,6 +142,18 @@ pub enum SurfaceItem {
     /// flow forward). Not parse lag (case 1): the body is intentional
     /// structured text, not std/ grammar debt.
     ///
+    /// **Receipt — terminal vs bridge:** Case 2c is **not** a bridge to
+    /// `ExternalRealization` (there is no host stage body to realize). For the
+    /// current substrate, the span is the **deliberate terminal encoding** of
+    /// pipeline order in bootstrap-range — same thesis meeting point (`Arrow →
+    /// body`), with the “implementation kind” being *ordering text* read by
+    /// `pipeline_authority`, not user DAG execution. **Dissolution trigger
+    /// (future substrate):** when pipeline stage order is represented by a
+    /// first-class structural fact (e.g. ordered declarations or a dedicated
+    /// carrier) that supersedes parsing `compile`'s brace body, migrate
+    /// `pipeline_compile_order_stage_names` to that source and retire this
+    /// span-backed path — **not** “M2 parses `compile` as `SurfaceExpr`.”
+    ///
     /// Downstream: per-stage pipeline fns via `PipelineStageBinding`; `compile`
     /// span via `pipeline_authority`. Neither implies case 1 — disambiguate by
     /// declaration name + bootstrap role for pipeline authority, not by

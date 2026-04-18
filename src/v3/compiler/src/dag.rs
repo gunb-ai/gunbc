@@ -571,17 +571,22 @@ pub struct TemplateArgument {
 ///   inference — so `Unparsed` does not persist for those stages in a
 ///   bootstrapped DAG. **`fn compile` (case 2c)** has no `PipelineStageBinding`:
 ///   **`Unparsed` persists**; `pipeline_compile_order_stage_names` reads its
-///   **body span** as pipeline ordering authority. The signature flows forward
-///   through the declaration table so callers can type-check against it; the
-///   body source span is preserved so M2+ parser extensions can reach in for
-///   case 1, or so pipeline authority can parse ordering for `compile`.
+///   **body span** as pipeline ordering authority — **terminal for bootstrap
+///   ordering**, not a host bridge (contrast 2a) and not parse-lag debt
+///   (contrast case 1). **Dissolution for 2c:** a future substrate change that
+///   records stage order structurally and supersedes span extraction (then this
+///   path retires). The signature flows forward through the declaration table
+///   so callers can type-check against it; the body source span is preserved so
+///   M2+ parser extensions can reach in for case 1, or so pipeline authority can
+///   parse ordering for `compile`.
 ///   **User-range boundary:** `reject_user_unparsed_scaffolds` in
 ///   `src/v3/compiler/src/lower.rs` fails-closed any user-range
 ///   declaration carrying this variant (R14 + M1(2.8) Scaffold
 ///   Boundaries invariant). Bootstrap-range declarations stay
-///   tolerated. Dissolution trigger for case-1 `Unparsed`: the M2
-///   surface-grammar extension. When every std/ block body becomes parseable,
-///   case-1 `Unparsed` is removed via a reverse substrate-extension PR.
+///   tolerated. **Case 1** dissolution: M2 surface-grammar extension — when
+///   every relevant std/ block body becomes parseable, case-1 `Unparsed` is
+///   removed via a reverse substrate-extension PR. **Case 2c** is not waiting on
+///   that grammar milestone.
 ///
 /// Verdict: terminal form is 3 variants (`UserDefined`,
 /// `ExternalRealization`, `NoBody`). The 5-variant shape is a
