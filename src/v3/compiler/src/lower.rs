@@ -5803,3 +5803,90 @@ fn collect_recursive_callees(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dag::Declaration;
+    use crate::diagnostics::SourceSpan;
+    use std::collections::HashMap;
+
+    fn test_span() -> SourceSpan {
+        SourceSpan::new("lower_decl_ref_test.v3", 0, 0)
+    }
+
+    fn push_test_declaration(
+        dag: &mut Dag,
+        name: &str,
+        connective: TypeConnective,
+        meta_tag: Option<DeclarationId>,
+    ) -> DeclarationId {
+        let id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id,
+            name: Some(name.to_string()),
+            connective,
+            type_params: Vec::new(),
+            meta_tag,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            span: test_span(),
+        });
+        id
+    }
+
+    #[test]
+    fn aliased_expected_type_accepts_same_typed_declaration_reference() {
+        let mut dag = Dag::new();
+        let span = test_span();
+        let style_type = push_test_declaration(
+            &mut dag,
+            "LocalStyle",
+            TypeConnective::Conj {
+                children: Vec::new(),
+            },
+            None,
+        );
+        let aliased_style = push_test_declaration(
+            &mut dag,
+            "AliasedLocalStyle",
+            TypeConnective::Instantiation {
+                template: style_type,
+                arguments: Vec::new(),
+            },
+            None,
+        );
+        let style_value = push_test_declaration(
+            &mut dag,
+            "local_style_value",
+            TypeConnective::Instantiation {
+                template: style_type,
+                arguments: Vec::new(),
+            },
+            Some(style_type),
+        );
+        let mut symbols = HashMap::new();
+        symbols.insert("local_style_value".to_string(), style_value);
+
+        let lowered = lower_structural_field_value(
+            "local_contract_value",
+            "style",
+            &SurfaceExpr::Var {
+                name: "local_style_value".to_string(),
+                span: span.clone(),
+            },
+            aliased_style,
+            &symbols,
+            &mut dag,
+            None,
+            &span,
+        );
+
+        assert_eq!(
+            lowered,
+            Some(crate::dag::FieldValue::Reference(style_value)),
+            "alias-wrapped expected types should still accept same-typed declaration refs"
+        );
+    }
+}
