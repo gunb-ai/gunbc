@@ -1,4 +1,4 @@
-> Part of: [THESIS.md](../THESIS.md) > [src/v3/ROADMAP.md](../src/v3/ROADMAP.md)
+> Part of: [THESIS.md](../THESIS.md) > [ROADMAP.md](../ROADMAP.md)
 
 # Post-A/B Lane Plan — Working backward from the thesis
 

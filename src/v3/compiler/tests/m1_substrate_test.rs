@@ -3002,7 +3002,7 @@ fn substrate_accessors_exist_in_bootstrap_dag() {
     // `language: <active LanguageSpec>`). See DB-14 and
     // `emit_rust::build_substrate_accessor_index`. E-9-shaped bootstrap
     // rewrite deferred — see **Deferral: E-9 substrate accessor bootstrap
-    // rewrite** in `src/v3/ROADMAP.md`.
+    // rewrite** in `ROADMAP.md`.
     use v3_compiler::dag::{ArrowBody, TypeConnective};
     match (
         &port_decl.connective,
