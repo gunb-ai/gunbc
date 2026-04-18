@@ -509,6 +509,7 @@ fn lower_parameter_refinement(
         value: pred_value_port,
         params: vec![pred_param_port],
         span: pred_span.clone(),
+        lane2_workflow: None,
     }));
 
     let pred_decl_id = dag.alloc_declaration_id();
@@ -897,6 +898,7 @@ fn build_narrowed_refinement(
         value: and_output,
         params: vec![composite_param_port],
         span: pred_span.clone(),
+        lane2_workflow: None,
     }));
 
     // Predicate declaration with Arrow body, same shape as
@@ -1011,6 +1013,7 @@ pub(crate) fn clone_predicate_body(
                 data: v.data,
                 output: new_output,
                 span: v.span,
+                lane2_workflow: v.lane2_workflow.clone(),
             }));
             new_output
         }
@@ -1464,6 +1467,7 @@ fn lower_item(
                 value: value_port,
                 params: Vec::new(),
                 span: bind_span,
+                lane2_workflow: None,
             }));
             scope.values.insert(name.clone(), value_port);
             if let Some(lambda_decl_id) = lambda_callable {
@@ -3255,6 +3259,7 @@ fn lower_fn_item_expr_body(
             value: err_port,
             params: param_ports,
             span: body_span,
+            lane2_workflow: None,
         }));
         dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
             inputs: param_decl_inputs,
@@ -3366,6 +3371,7 @@ fn lower_fn_item_expr_body(
         value: bind_value_port,
         params: param_ports,
         span: body_span,
+        lane2_workflow: None,
     }));
 
     if let Some(cluster_index) = mutual_recursion.by_member.get(&fn_decl_id).copied() {
@@ -3686,6 +3692,7 @@ fn lower_lambda_expr(
         value: body_return_port,
         params: bind_params,
         span: span.clone(),
+        lane2_workflow: None,
     }));
 
     let lambda_decl_id = ctx.dag.alloc_declaration_id();
@@ -4283,6 +4290,7 @@ fn emit_literal_as_value_port(dag: &mut Dag, bits: LiteralBits, span: &SourceSpa
         data: bits,
         output,
         span: span.clone(),
+        lane2_workflow: None,
     }));
     output
 }
@@ -4325,6 +4333,7 @@ fn lower_expr(
                 data,
                 output,
                 span: span.clone(),
+                lane2_workflow: None,
             }));
             output
         }

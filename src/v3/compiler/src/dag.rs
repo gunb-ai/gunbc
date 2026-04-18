@@ -719,6 +719,10 @@ pub struct ValueNode {
     pub data: LiteralBits,
     pub output: PortId,
     pub span: SourceSpan,
+    /// Lane 2 Stage 2b: idempotency projection for this node. Populated only by
+    /// lowering or the staging hook [`Dag::try_register_lane2_workflow_effect`];
+    /// [`crate::workflow_idempotency::analyze_workflow`] reads it from the graph.
+    pub(crate) lane2_workflow: Option<Box<WorkflowEffect>>,
 }
 
 impl ValueNode {
@@ -1180,6 +1184,9 @@ pub struct BindNode {
     /// no type tag. See the C2 dissolution receipt at the top of this file.
     pub params: Vec<PortId>,
     pub span: SourceSpan,
+    /// Lane 2 Stage 2b: idempotency projection for this bind. Same contract as
+    /// [`ValueNode::lane2_workflow`].
+    pub(crate) lane2_workflow: Option<Box<WorkflowEffect>>,
 }
 
 impl BindNode {
@@ -1583,12 +1590,6 @@ pub struct Dag {
     /// inference needs stable `Some` / `None` variant identities without
     /// promoting optionals into named top-level declarations.
     optional_match_disjs: HashMap<DeclarationId, DeclarationId>,
-    /// Lane 2 Stage 2b: idempotency analysis reads [`WorkflowEffect`] facts
-    /// only from this map (keyed by an anchor [`NodeId`]). **Single authority**
-    /// for `analyze_workflow` — callers must not pass a parallel
-    /// caller-constructed carrier. Staging: [`Dag::try_register_lane2_workflow_effect`]
-    /// until pipeline / service lowering attaches carriers from source.
-    lane2_workflow_effects: HashMap<NodeId, WorkflowEffect>,
 }
 
 static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
@@ -1616,7 +1617,6 @@ impl Dag {
             verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),
             clusters: Vec::new(),
             optional_match_disjs: HashMap::new(),
-            lane2_workflow_effects: HashMap::new(),
         }
     }
 
@@ -1850,24 +1850,38 @@ impl Dag {
         &self.clusters[id.index()]
     }
 
-    /// Staging hook: attach a [`WorkflowEffect`] for `analyze_workflow` keyed by
-    /// `root`. Returns `false` if `root` is not a live behavior id.
-    /// Future: only lowering from source populates this map; the hook exists so
-    /// tests and native callers share the same Dag-local read path.
+    /// Staging hook: attach a [`WorkflowEffect`] on the substrate [`Behavior`] at
+    /// `root` (`Value` or `Bind` only). Returns `false` if `root` is missing or
+    /// not a node that carries lane-2 workflow facts. Downstream lowering should
+    /// populate the same fields so [`crate::workflow_idempotency::analyze_workflow`]
+    /// reads a single graph-local authority — not a parallel side table.
     pub fn try_register_lane2_workflow_effect(
         &mut self,
         root: NodeId,
         workflow: WorkflowEffect,
     ) -> bool {
-        if self.node_opt(&root).is_none() {
+        let Some(behavior) = self.nodes.get_mut(root.index()) else {
             return false;
+        };
+        match behavior {
+            Behavior::Value(v) => {
+                v.lane2_workflow = Some(Box::new(workflow));
+                true
+            }
+            Behavior::Bind(b) => {
+                b.lane2_workflow = Some(Box::new(workflow));
+                true
+            }
+            Behavior::Transform(_) | Behavior::Branch(_) | Behavior::Loop(_) => false,
         }
-        self.lane2_workflow_effects.insert(root, workflow);
-        true
     }
 
     pub fn lane2_workflow_effect_at(&self, root: NodeId) -> Option<&WorkflowEffect> {
-        self.lane2_workflow_effects.get(&root)
+        match self.node_opt(&root)? {
+            Behavior::Value(v) => v.lane2_workflow.as_deref(),
+            Behavior::Bind(b) => b.lane2_workflow.as_deref(),
+            Behavior::Transform(_) | Behavior::Branch(_) | Behavior::Loop(_) => None,
+        }
     }
 
     pub fn optional_match_disj(&self, cardinality_decl_id: DeclarationId) -> Option<DeclarationId> {

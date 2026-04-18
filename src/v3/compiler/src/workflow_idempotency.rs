@@ -34,7 +34,7 @@ pub fn analyze_workflow(d: &Dag, workflow_root: NodeId) -> WorkflowIdempotencyRe
             IdempotencyUnsupportedDetail {
                 variant_name: "Lane2WorkflowRoot".to_string(),
                 downstream_stage: "lane2_stage2b_idempotency_lens".to_string(),
-                reason: "no WorkflowEffect facts on the Dag for this NodeId — analysis reads only Dag-local carriers (try_register_lane2_workflow_effect until lowering attaches them)"
+                reason: "no WorkflowEffect projection on this substrate node — analysis reads only `Value`/`Bind` fields set by lowering or `try_register_lane2_workflow_effect`"
                     .to_string(),
             },
         );
