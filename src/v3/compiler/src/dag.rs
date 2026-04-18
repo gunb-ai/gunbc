@@ -562,20 +562,24 @@ pub struct TemplateArgument {
 ///
 ///   No dissolution trigger — terminal at the substrate level.
 ///
-/// - **`Unparsed`** — surface-grammar lag. Used at M1(2.7) for
-///   block-bodied `fn foo(x) -> T { body }` declarations in std/
-///   files where the body contains match/pipe/lambda/etc. —
-///   syntactic forms the parser can't yet lower. The signature
-///   flows forward through the declaration table so callers can
-///   type-check against it; the body source span is preserved so
-///   M2+ parser extensions can reach in and complete the lowering.
+/// - **`Unparsed`** — surface-grammar lag (**case 1 only** in DB-16's
+///   split). Used at M1(2.7) for block-bodied `fn foo(x) -> T { body }`
+///   declarations in std/ files where the body contains match/pipe/lambda/
+///   etc. — syntactic forms the parser can't yet lower. **Case 2**
+///   (host-runtime bridges such as `pipeline.dag` stages) also parses as
+///   `FnExternalBody` → `Unparsed`, but bootstrap rewrites those Arrow
+///   bodies to `ExternalRealization` before inference — `Unparsed` does
+///   not persist for case 2 in a bootstrapped DAG. The signature flows
+///   forward through the declaration table so callers can type-check
+///   against it; the body source span is preserved so M2+ parser
+///   extensions can reach in and complete the lowering for case 1.
 ///   **User-range boundary:** `reject_user_unparsed_scaffolds` in
 ///   `src/v3/compiler/src/lower.rs` fails-closed any user-range
 ///   declaration carrying this variant (R14 + M1(2.8) Scaffold
 ///   Boundaries invariant). Bootstrap-range declarations stay
-///   tolerated. Dissolution trigger: the M2 surface-grammar
-///   extension. When every std/ block body becomes parseable,
-///   `Unparsed` is removed via a reverse substrate-extension PR.
+///   tolerated. Dissolution trigger for persisted `Unparsed`: the M2
+///   surface-grammar extension. When every std/ block body becomes
+///   parseable, `Unparsed` is removed via a reverse substrate-extension PR.
 ///
 /// Verdict: terminal form is 3 variants (`UserDefined`,
 /// `ExternalRealization`, `NoBody`). The 5-variant shape is a

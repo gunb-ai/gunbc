@@ -65,9 +65,14 @@ pub struct SurfaceModule {
 ///   structurally separate variants, not an `Option<SurfaceExpr>`
 ///   with the discriminator in the Option.
 /// - **`FnExternalBody`** records `name + params + return_type +
-///   body_span`. Lowers to a declaration whose connective is an
-///   `Arrow` with `ArrowBody::Unparsed(body_span)`. The signature
-///   flows forward; the body is preserved by span.
+///   body_span`. The parser does not distinguish **case 1** (std/
+///   block bodies the surface grammar cannot lower yet) from **case 2**
+///   (compiler-internal `host`-backed fns) — both are "block body that
+///   is not a `SurfaceExpr`." Both initially lower to `ArrowBody::
+///   Unparsed(body_span)`; **case 2** is rewritten to
+///   `ExternalRealization` at bootstrap when a binding declaration
+///   targets the fn (see DB-16). The signature flows forward; the body
+///   is preserved by span for case 1's eventual parser growth.
 /// - **`Data`**, **`Module`**, **`Import`** replace the three former
 ///   parser-absorbed items. `Data` lowers to a declaration whose
 ///   connective is the resolved type; `Module` and `Import` lower
@@ -86,9 +91,10 @@ pub struct SurfaceModule {
 /// - Pattern 4 (dimensional): fails.
 ///
 /// Verdict: terminal at M1(2.7) modulo the two M2 collapses noted
-/// above. `FnExternalBody` has its own dissolution trigger (when
-/// match/lambda and block-body parsing land in the parser, block bodies become real
-/// `Fn` items with full `SurfaceExpr` bodies).
+/// above. `FnExternalBody` has **two** dissolution paths (DB-16):
+/// case 1 dissolves when match/lambda/block-body parsing lands; case 2
+/// dissolves via bootstrap rewrite to `ExternalRealization`, not via
+/// the parser.
 #[derive(Debug, Clone)]
 pub enum SurfaceItem {
     Let {
@@ -110,12 +116,23 @@ pub enum SurfaceItem {
         span: SourceSpan,
     },
     /// Block-body scaffold: `fn f(x) -> T { body }` where the body is
-    /// not expressible in the M1(2.7) surface grammar. The parser
-    /// brace-skipped the body range and records its span. Lowers to
-    /// a declaration whose connective is an `Arrow` with
-    /// `ArrowBody::Unparsed(body_span)`. The signature flows forward
-    /// so callers can type-check against it; the body stays
-    /// scaffolded until the parser adopts match/lambda and block-body parsing.
+    /// not expressible as a `SurfaceExpr` at this parser stage.
+    ///
+    /// **Case 1 — parse lag.** Bodies in std/ that use match/lambda/
+    /// pipe / etc. Dissolves when the grammar grows: re-parse yields a
+    /// regular [`SurfaceItem::Fn`] with a full `SurfaceExpr` body, and
+    /// `ArrowBody::Unparsed` retires with this case.
+    ///
+    /// **Case 2 — target-native.** Compiler-internal fns whose body is a
+    /// host bridge (e.g. `pipeline.dag`'s `{ host parse }`). At parse
+    /// time this is indistinguishable from case 1; at bootstrap, a
+    /// `PipelineStageBinding`-style pass rewrites the Arrow body from
+    /// `Unparsed` to `ExternalRealization`. This path never becomes a
+    /// parseable `.dag` body.
+    ///
+    /// The disambiguator is **downstream**: presence of a binding
+    /// declaration that rewrites the Arrow body (case 2); absence means
+    /// case 1.
     FnExternalBody {
         name: String,
         type_params: Vec<String>,
@@ -188,20 +205,10 @@ pub struct SurfaceParam {
     pub ty: SurfaceType,
     /// DB-11 (3a.3): optional `where <expr>` refinement predicate on
     /// the parameter. `None` for bare `x: Int`; `Some(expr)` for
-    /// `x: Int where x > 0`.
-    ///
-    /// **Current behavior (PR #496 foundation-only scope):**
-    /// lowering does NOT propagate this into
-    /// `Declaration.refinement`. Instead,
-    /// `report_unsupported_parameter_refinements` (in `lower.rs`)
-    /// emits an explicit "refinement not yet enforced"
-    /// `ResolveError` pointing at the predicate span, so the parsed
-    /// fact flows forward as a compile error rather than being
-    /// silently dropped. Fail-closed per C-8.
-    ///
-    /// Predicate lowering + call-site structural-DAG check +
-    /// Branch-arm narrowing are tracked in issue #498 as a
-    /// size-overrun follow-up to 3a.3.
+    /// `x: Int where x > 0`. Lowered into `Declaration.refinement` via
+    /// `lower_parameter_refinements_phase` except where fail-closed:
+    /// out-of-fragment predicate shapes, refinements on generic type
+    /// parameters, etc. (see `lower.rs`).
     pub refinement: Option<SurfaceExpr>,
 }
 

@@ -467,13 +467,13 @@ Format: `- [PR #N] title — scope remaining, size, triggering follow-up context
 
 ### Lane 3 Stage 3a
 
-Sub-stage status (as of 2026-04-17):
+Sub-stage status (as of 2026-04-18):
 
 | Sub-stage | State | Landed in | Notes |
 |---|---|---|---|
 | 3a.1 mutual recursion (DB-9, L) | ⏸ Deferred | — | Design approved; unblocks Lane 3 Stage 3c (self-hosting cycle). See **Deferral: 3a.1** below. |
 | 3a.2 `data` value semantics (DB-10, S) | ✅ Shipped | PR #496 | Inlining-at-lowering chosen over emit-time inlining — trade-off recorded in DB-10. |
-| 3a.3 `where` refinement (DB-11, M→L overrun) | 🟡 Partial (2026-04-17) | PR #496 (foundation) + 3a.3-full (#515, ongoing) | Predicate lowering, call-site structural-equality discharge (alias-chain walk), arm-local narrowing, operator-operand refinement stripping, and structural callable-predicate identity all wired. **Remaining:** admitted surface > supported fragment — `predicates_structurally_equal` walks `Value`/`Transform` only, so refinement predicates that lower through `Branch` (if/match inside `where`) still fail discharge, and lowering does not reject them. Must either reject out-of-fragment predicate shapes at lowering time or extend the walker. See **Landing: 3a.3-full** below. |
+| 3a.3 `where` refinement (DB-11, M→L overrun) | ✅ Shipped (2026-04-18) | PR #496 (foundation) + 3a.3-full follow-ups | Predicate lowering, discharge, narrowing, out-of-fragment and refined-generic-parameter rejection at lowering, and DB-16 pipeline invariant test. See **Landing: 3a.3-full** and **DB-16 (`FnExternalBody` reconciliation)** below. |
 | 3a.4 surface generics (DB-12, S) | ✅ Shipped | PR #496 | Tests-only landing; infrastructure already wired. |
 | 3a.5 Disj dotted-path (DB-13, S) | ✅ Shipped | PR #496 | Tests-only landing; infrastructure already wired. |
 
@@ -489,15 +489,15 @@ Sub-stage status (as of 2026-04-17):
 - **Structural callable identity.** `refinement_targets_equal` compares `TransformTarget::Callable` targets via `declaration_shapes_equivalent` rather than nominal decl id. Call lowering materializes a fresh `Instantiation` per call-site when the callee has retained template arguments; structural comparison on template + arguments is the authoritative identity.
 - **Arm-local narrowing.** `lower_expr`'s `If` arm runs `narrow_scope_for_predicate` on the cond. When the cond is a two-argument `Operator`/`Call` with **exactly one** scope-bound free variable (the candidate parameter), lowering rebuilds the then-arm's scope with that name pointing at a freshly-allocated narrowed port typed as the composite refinement described above. Multi-var predicates skip narrowing — single-parameter refinement is the 3a.3 scope.
 
-Acceptance: `src/v3/compiler/tests/m2_feature_parity_test.rs::test_3a3_*` — 14 tests lock refined-parameter compile, literal-arg rejection, matching-refinement forwarding, distinct-refinement non-discharge, if-predicate narrowing (both unrefined and already-refined caller — the latter exercises composite-canonical conjunct matching), non-narrowing rejection, signatureless regression, `&&` / `||` parse + lower + Bool typing, non-Bool operand rejection, structural-callable-identity-across-sites, and substrate integrity (Behavior still 5 variants). Design: [design-m2-feature-parity.md §DB-11](../../docs/design-m2-feature-parity.md).
+Acceptance: `src/v3/compiler/tests/m2_feature_parity_test.rs::test_3a3_*` — tests lock refined-parameter compile, literal-arg rejection, matching-refinement forwarding, distinct-refinement non-discharge, if-predicate narrowing (both unrefined and already-refined caller — the latter exercises composite-canonical conjunct matching), non-narrowing rejection, signatureless regression, `&&` / `||` parse + lower + Bool typing, non-Bool operand rejection, structural-callable-identity-across-sites, substrate integrity (Behavior still 5 variants), out-of-fragment predicates, **refined type-parameter rejection**, and top-level `data` references inside predicates. Design: [design-m2-feature-parity.md §DB-11](../../docs/design-m2-feature-parity.md).
 
-Remaining (blocking for ✅ Shipped):
+**DB-16 (`FnExternalBody` reconciliation).** [design-fn-external-body-reconciliation.md](../../docs/design-fn-external-body-reconciliation.md) — documents the two cases sharing `SurfaceItem::FnExternalBody` / `ArrowBody::Unparsed` (parse lag vs host-runtime bootstrap rewrite). Landed: expanded `parse.rs` / `dag.rs` doc comments distinguishing case 1 vs case 2; invariant `pipeline_stages_lower_to_external_realization_not_unparsed` in `src/v3/compiler/tests/m1_fn_external_body_reconciliation_test.rs` asserts every `pipeline.dag` stage listed in `compile`'s ordering has `ArrowBody::ExternalRealization` after bootstrap (not `Unparsed`).
 
-1. **Refined generic parameters.** `signature_type_shape` stops walking at any declaration where `decl.refinement.is_some()`, including refined `TypeParam` / `Instantiation` declarations. For `fn f<T>(x: T where pred(x)) -> T`, the callee's expected shape stays tied to the template's `T`-param declaration instead of the caller's instantiated argument — equivalent refined generic calls can't fully match because substitution is bypassed. Fix requires either (a) substituting through the refinement carrier and re-attaching the refinement to the substituted base at the call site, or (b) rejecting refinements on type parameters at lowering. Latent before DB-11 (no tests exercise refined generics); visible now that discharge is consumer-wired.
+Closed (3a.3-full scope):
 
-Closed (this PR):
+- **Admitted surface vs supported fragment.** `lower_parameter_refinements_phase` calls `refinement_predicate_out_of_fragment` on every `where` predicate before lowering; `Branch` / `Loop` / `Bind`-shaped predicate surfaces are rejected at the lowering boundary with an explicit diagnostic. Admitted surface matches the fragment `refinement_ports_equal` and `clone_predicate_body` support.
 
-- **Admitted surface vs supported fragment.** `lower_parameter_refinements_phase` now calls `refinement_predicate_out_of_fragment` on every `where` predicate before lowering; `Branch` / `Loop` / `Bind`-shaped predicate surfaces (`SurfaceExpr::If` / `Match` / `Lambda`) are rejected at the lowering boundary with an explicit "unsupported shape" diagnostic instead of failing silently at discharge as generic "not equal" mismatches. Admitted surface now matches the fragment `refinement_ports_equal` and `clone_predicate_body` actually support.
+- **Refined generic parameters (fail-closed).** `where` on a parameter whose type is a `TypeParam` is rejected at lowering with an explicit diagnostic until substitution through refinement carriers is implemented (`test_3a3_rejects_refinement_on_type_parameter`). Full **refined generics** (discharge across instantiation) remain follow-up work if the surface is extended beyond this rejection.
 
 Follow-up (not blocking): emission for narrowed ports currently errors if `emit_rust` is invoked on a DAG whose narrow ports lack a producer. Acceptable today because Lane 1e's single-emitter consolidation hasn't landed and the 3a.3 acceptance is compile-only; wire a Bind-alias or emission-local name shim alongside Lane 1e when it lands.
 

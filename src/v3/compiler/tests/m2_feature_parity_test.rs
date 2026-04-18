@@ -641,6 +641,28 @@ fn test_3a3_refinement_references_top_level_data_constant() {
 }
 
 #[test]
+fn test_3a3_rejects_refinement_on_type_parameter() {
+    // DB-11 / ROADMAP: refined generic parameters need substitution
+    // through refinement carriers; until then, fail-closed at lowering.
+    let src = "fn f<T>(x: T where x == x) -> T = x";
+    let err = compile_to_dag(src, "test.v3")
+        .expect_err("`where` on a generic type parameter must be rejected at lowering");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected Semantic error, got {err:?}");
+    };
+    let joined = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, d)| format!("{d:?}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("generic type parameters") || joined.contains("not supported"),
+        "diagnostic must name unsupported refined generic param; got:\n{joined}"
+    );
+}
+
+#[test]
 fn test_3a3_rejects_out_of_fragment_refinement_predicate() {
     // Acceptance (DB-11): the discharge walker and composite-
     // narrowing clone path only model `Value` / `Transform` predicate

@@ -615,50 +615,71 @@ fn lower_parameter_refinements_phase(
         let mut refined_inputs = Vec::with_capacity(params.len());
         for (param, &base_decl) in params.iter().zip(existing_inputs.iter()) {
             let input_decl = match &param.refinement {
-                Some(predicate) => match refinement_predicate_out_of_fragment(predicate) {
-                    Some((shape_label, span)) => {
-                        // DB-11 (3a.3) fail-closed boundary. The
-                        // discharge walker (`predicate_discharges` +
-                        // `refinement_ports_equal`) and the
-                        // composite-narrowing clone
-                        // (`clone_predicate_body`) both model only
-                        // `Value` and `Transform` predicate bodies.
-                        // Admitting a `where` predicate that lowers
-                        // through `Branch` / `Loop` / `Bind` would
-                        // produce a substrate state the consumers
-                        // silently disagree about — discharge would
-                        // reject matching shapes as "not equal," and
-                        // narrowing would discard the composite.
-                        // Reject at the lowering boundary so the
-                        // user gets an honest "unsupported shape"
-                        // diagnostic instead of a misleading
-                        // downstream mismatch.
+                Some(predicate) => {
+                    if matches!(
+                        &dag.declaration(base_decl).connective,
+                        TypeConnective::Atom(AtomPayload::TypeParam(_))
+                    ) {
+                        let span = crate::parse::expr_span(predicate).clone();
                         report_declaration_error(
                             dag,
                             Diagnostic::ResolveError {
-                                name: format!(
-                                    "`where` predicate shape not supported in \
+                                name: "`where` refinements on generic type parameters are not \
+                                       supported (DB-11 / 3a.3). Use a concrete parameter type \
+                                       or a monomorphic helper until substitution through \
+                                       refinement carriers is implemented."
+                                    .to_string(),
+                                span,
+                            },
+                        );
+                        base_decl
+                    } else {
+                        match refinement_predicate_out_of_fragment(predicate) {
+                            Some((shape_label, span)) => {
+                                // DB-11 (3a.3) fail-closed boundary. The
+                                // discharge walker (`predicate_discharges` +
+                                // `refinement_ports_equal`) and the
+                                // composite-narrowing clone
+                                // (`clone_predicate_body`) both model only
+                                // `Value` and `Transform` predicate bodies.
+                                // Admitting a `where` predicate that lowers
+                                // through `Branch` / `Loop` / `Bind` would
+                                // produce a substrate state the consumers
+                                // silently disagree about — discharge would
+                                // reject matching shapes as "not equal," and
+                                // narrowing would discard the composite.
+                                // Reject at the lowering boundary so the
+                                // user gets an honest "unsupported shape"
+                                // diagnostic instead of a misleading
+                                // downstream mismatch.
+                                report_declaration_error(
+                                    dag,
+                                    Diagnostic::ResolveError {
+                                        name: format!(
+                                            "`where` predicate shape not supported in \
                                      DB-11 3a.3: `{shape_label}` lowers through \
                                      a Branch/Loop/Bind node, but the discharge \
                                      walker and composite-narrowing path only \
                                      support Value and Transform expression \
                                      bodies. Use a direct comparison or a call \
                                      to a Bool-returning helper instead."
-                                ),
-                                span,
-                            },
-                        );
-                        base_decl
+                                        ),
+                                        span,
+                                    },
+                                );
+                                base_decl
+                            }
+                            None => lower_parameter_refinement(
+                                base_decl,
+                                predicate,
+                                &param.name,
+                                symbols,
+                                dag,
+                                param.ty.span().clone(),
+                            ),
+                        }
                     }
-                    None => lower_parameter_refinement(
-                        base_decl,
-                        predicate,
-                        &param.name,
-                        symbols,
-                        dag,
-                        param.ty.span().clone(),
-                    ),
-                },
+                }
                 None => base_decl,
             };
             refined_inputs.push(input_decl);
