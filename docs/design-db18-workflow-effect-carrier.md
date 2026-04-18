@@ -147,14 +147,14 @@ Per `feedback_coproduct_dissolution`, every new coproduct must pass the four-pat
 
 | Variant A | Variant B | Payload A | Payload B | Distinct? |
 |---|---|---|---|---|
-| `LinearEffect` | `BranchEffect` | `NonEmptyList<OperationEffect>` | `NonSingletonList<BranchArm>` | ✓ different element types + different cardinality contract |
-| `LinearEffect` | `LoopEffect` | `NonEmptyList<OperationEffect>` | `WorkflowEffect` | ✓ list vs single |
-| `LinearEffect` | `ParallelEffect` | `NonEmptyList<OperationEffect>` | `NonSingletonList<WorkflowEffect>` | ✓ different element types + different cardinality contract |
+| `LinearEffect` | `BranchEffect` | `List<OperationEffect>` | `NonSingletonList<BranchArm>` | ✓ different element types + different cardinality contract |
+| `LinearEffect` | `LoopEffect` | `List<OperationEffect>` | `WorkflowEffect` | ✓ list vs single |
+| `LinearEffect` | `ParallelEffect` | `List<OperationEffect>` | `NonSingletonList<WorkflowEffect>` | ✓ different element types + different cardinality contract |
 | `BranchEffect` | `LoopEffect` | `NonSingletonList<BranchArm>` | `WorkflowEffect` | ✓ list vs single |
-| `BranchEffect` | `ParallelEffect` | `NonSingletonList<BranchArm>` | `NonSingletonList<WorkflowEffect>` | ✓ `BranchArm` ≠ `WorkflowEffect` (BranchArm carries `condition: PortId` that ParallelEffect branches do not) |
+| `BranchEffect` | `ParallelEffect` | `NonSingletonList<BranchArm>` | `NonSingletonList<WorkflowEffect>` | ✓ `BranchArm` ≠ `WorkflowEffect` (BranchArm carries `condition: BoolPortRef` that ParallelEffect branches do not; the typed-witness field is unrepresentable in ParallelEffect's element type) |
 | `LoopEffect` | `ParallelEffect` | `WorkflowEffect` | `NonSingletonList<WorkflowEffect>` | ✓ single vs list |
 
-The critical pair is BranchEffect vs ParallelEffect — both use `NonSingletonList<...>` at the outer shape and recurse on `WorkflowEffect` at the element level. The distinction is carried by `BranchArm { condition: PortId, body: WorkflowEffect }` versus a plain `WorkflowEffect`: a branch arm is an arm-gated-by-condition, a parallel branch is an unconditioned concurrent workflow. The `condition: PortId` is the load-bearing structural fact — it encodes "which arm is taken is a function of this specific DAG port's value," which is irreducibly different from "all branches execute concurrently and converge at a join." Pattern 2's dissolution criterion ("same shape, different label") does not apply because the BranchArm wrapper carries a structurally required field ParallelEffect's branches do not. ✓ does not apply.
+The critical pair is BranchEffect vs ParallelEffect — both use `NonSingletonList<...>` at the outer shape and recurse on `WorkflowEffect` at the element level. The distinction is carried by `BranchArm { condition: BoolPortRef, body: WorkflowEffect }` versus a plain `WorkflowEffect`: a branch arm is an arm-gated-by-a-Bool-typed-port, a parallel branch is an unconditioned concurrent workflow. `condition: BoolPortRef` is the load-bearing structural fact — and after R2 it is carried by a **typed opaque handle**, not a raw `PortId`. `BoolPortRef`'s sole constructor `bool_port_of(dag, port)` returns `None` for non-Bool ports, and has no unsafe escape hatch, so the "port is Bool-typed" invariant is witnessed by the type itself rather than by constructor convention. A raw-literal `BranchArm { condition: <arbitrary PortId>, body: ... }` is not type-checkable; only `BranchArm { condition: <BoolPortRef>, body: ... }` is, and a `BoolPortRef` can only come from the fail-closed constructor. Pattern 2's dissolution criterion ("same shape, different label") does not apply because the `BranchArm` wrapper carries a structurally required *typed* field `ParallelEffect`'s branches do not, and the type-level witness closes the convention-level hole the R1 draft left open. ✓ does not apply.
 
 **Pattern 3 — Algebraic-form (traces to intro/elim of algebraic structures).** The four variants trace to four distinct categorical operations on effect algebras:
 
@@ -175,14 +175,14 @@ Per `feedback_substrate_principle_audit`, all six questions walk before greenlig
 
 **Q1 — Cardinality invariants.** Does any variant admit `[]` where invariant says ≥1, or singletons where ≥2?
 
-- `LinearEffect.ops: NonEmptyList<OperationEffect>` — a linear workflow with zero ops is meaningless (nothing to compose). Type rejects `[]`.
+- `LinearEffect.ops: List<OperationEffect>` — empty is explicitly allowed as the **monoidal identity** (the unit element of the free monoid on `OperationEffect`). `compose_effects([])` already returns `IdempotentComposition`; the type accepts empty for carrier/algebra symmetry. This is also the honest representation of a no-op workflow (e.g., a branch arm whose body does nothing). R1's `NonEmptyList` rejection of empty was a state-space error — the R2 relaxation fixes it. No ≥1 invariant applies here; the invariant is "a list of ops (zero or more)," matching the algebra.
 - `BranchEffect.arms: NonSingletonList<BranchArm>` — a branch with 0 or 1 arms is meaningless (0: no workflow; 1: just the arm itself, use the arm's `body` directly). Type rejects both.
 - `LoopEffect.body: WorkflowEffect` — singleton (one body), never empty. Type is non-optional.
-- `ParallelEffect.branches: NonSingletonList<WorkflowEffect>` — 0 branches is empty parallelism; 1 branch is just the branch itself, no concurrency. Type rejects both. ✓ cardinality invariants at the type level; no "lowering guarantees" prose required.
+- `ParallelEffect.branches: NonSingletonList<WorkflowEffect>` — 0 branches is empty parallelism; 1 branch is just the branch itself, no concurrency. Type rejects both. ✓ cardinality invariants at the type level (including the correctly-permissive empty `LinearEffect` case); no "lowering guarantees" prose required.
 
 **Q2 — Index/handle types.** Does a raw `Int` or `NodeId` encode something with a domain restriction?
 
-- `BranchArm.condition: PortId` is a typed substrate handle. The existing `PortId` carrier already witnesses "this is a substrate port." Construction validity ("the port is Bool-typed at the condition slot") is the `branch_arm_of(port, body) -> Option<BranchArm>` responsibility, matching the `param_of` pattern from Track 9. ✓ no raw Int/NodeId with comment-level validity.
+- `BranchArm.condition: BoolPortRef` is a typed opaque handle (Track 9-style primitive, R2 graduation). The sole constructor `bool_port_of(dag: Dag, port: PortId) -> BoolPortRef?` validates the port's declared type is Bool; there is no unsafe escape hatch. A raw `PortId` does not typecheck in `BranchArm.condition`; the field type is `BoolPortRef`, not `PortId`. Matching the `ParamRef` / `TransformRef` pattern from DB-9 R2.1 — the handle carries both "is a valid port reference" AND "is Bool-typed," with the relation folded into the type rather than carried by constructor discipline. ✓ no raw `Int`/`NodeId`/`PortId` with comment-level or constructor-level validity; the invariant is carried by the type itself.
 
 **Q3 — Duplicated fact.** Does Field A duplicate what's derivable from Field B?
 
@@ -190,7 +190,8 @@ Per `feedback_substrate_principle_audit`, all six questions walk before greenlig
 
 **Q5 — Construction authority.** Are multiple call sites independently constructing the same fact?
 
-- Single authority: lowering is the sole producer of `WorkflowEffect` values (Part 2 wires this). The lens and downstream consumers are pure readers. No parallel construction path through multiple lowering sites. `branch_arm_of` is the sole `BranchArm` constructor; no raw `BranchArm { ... }` literal should appear outside that constructor. ✓ single authority.
+- **Authority site for `WorkflowEffect` values (locked, per R2 blocking finding).** See §"Authority site for WorkflowEffect" below — `WorkflowEffect` values live exclusively on user-declared `data` declarations whose declared type is structurally `WorkflowEffect`. Exactly one `WorkflowEffect` per qualifying `Declaration`; no sidecar table, no parallel hosting. Lowering is the sole producer; lens and downstream consumers are pure readers.
+- **Construction authority for `BranchArm`.** `BranchArm` itself is directly constructible (it is a plain record), but its validity is witnessed by the `condition: BoolPortRef` field type, NOT by a constructor. The sole constructor `bool_port_of(dag: Dag, port: PortId) -> BoolPortRef?` is the Track 9 primitive; any lowering path that obtains a `BoolPortRef` did so via `bool_port_of` and therefore either (a) emitted a `Diagnostic::BranchConditionNotBool` on `None` or (b) proceeded with a type-level Bool witness. Direct `BranchArm { condition: bool_port_ref, body: ... }` construction is fine by design because the condition field CANNOT carry an invalid port. Raw-literal `BranchArm { condition: <arbitrary PortId>, ... }` is a type error. ✓ single authority on the typed-witness construction path; no convention-level escape hatch.
 
 **Q6 — Representation duality.** Can the same fact be expressed in two structurally different shapes that comparison treats differently?
 
