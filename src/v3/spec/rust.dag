@@ -140,6 +140,15 @@ data rust_declaration_id: TypeRealization = {
   cost: 1
 }
 
+data rust_cluster_id: TypeRealization = {
+  language: rust_language
+  target: ClusterId
+  carrier: "ClusterId"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
 data rust_type_shape: TypeRealization = {
   language: rust_language
   target: TypeShape
@@ -245,6 +254,88 @@ data rust_field_entry: TypeRealization = {
   fields: [
     { dag_name: "label", access: DirectField("0"), borrowed_read: false },
     { dag_name: "value", access: DirectField("1"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data rust_non_empty_list: TypeRealization = {
+  language: rust_language
+  target: NonEmptyList
+  carrier: "NonEmptyList"
+  is_copy: false
+  fields: [
+    { dag_name: "first", access: DirectField("first"), borrowed_read: false },
+    { dag_name: "rest", access: DirectField("rest"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data rust_non_singleton_list: TypeRealization = {
+  language: rust_language
+  target: NonSingletonList
+  carrier: "NonSingletonList"
+  is_copy: false
+  fields: [
+    { dag_name: "first", access: DirectField("first"), borrowed_read: false },
+    { dag_name: "second", access: DirectField("second"), borrowed_read: false },
+    { dag_name: "rest", access: DirectField("rest"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data rust_param_ref: TypeRealization = {
+  language: rust_language
+  target: ParamRef
+  carrier: "ParamRef"
+  is_copy: true
+  fields: [
+    { dag_name: "member", access: AccessorMethod("member_of"), borrowed_read: false },
+    { dag_name: "slot", access: AccessorMethod("slot_of"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data rust_transform_ref: TypeRealization = {
+  language: rust_language
+  target: TransformRef
+  carrier: "TransformRef"
+  is_copy: true
+  fields: [
+    { dag_name: "node", access: AccessorMethod("node_id"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data rust_member_descent: TypeRealization = {
+  language: rust_language
+  target: MemberDescent
+  carrier: "MemberDescent"
+  is_copy: false
+  fields: [
+    { dag_name: "param", access: DirectField("param"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data rust_intra_cluster_call: TypeRealization = {
+  language: rust_language
+  target: IntraClusterCall
+  carrier: "IntraClusterCall"
+  is_copy: false
+  fields: [
+    { dag_name: "transform", access: DirectField("transform"), borrowed_read: false }
+  ]
+  cost: 1
+}
+
+data rust_cluster: TypeRealization = {
+  language: rust_language
+  target: Cluster
+  carrier: "Cluster"
+  is_copy: false
+  fields: [
+    { dag_name: "members", access: DirectField("members"), borrowed_read: false },
+    { dag_name: "intra_cluster_calls", access: DirectField("intra_cluster_calls"), borrowed_read: false }
   ]
   cost: 1
 }
@@ -377,11 +468,9 @@ data rust_branch_path: TypeRealization = {
 data rust_loop_bound: TypeRealization = {
   language: rust_language
   target: LoopBound
-  carrier: "Bound"
+  carrier: "LoopBound"
   is_copy: false
-  fields: [
-    { dag_name: "count", access: DirectField("count"), borrowed_read: false }
-  ]
+  fields: []
   cost: 1
 }
 
@@ -478,7 +567,8 @@ data rust_dag: TypeRealization = {
   fields: [
     { dag_name: "declarations", access: AccessorMethod("declarations"), borrowed_read: true },
     { dag_name: "nodes", access: AccessorMethod("nodes"), borrowed_read: true },
-    { dag_name: "ports", access: AccessorMethod("ports"), borrowed_read: false }
+    { dag_name: "ports", access: AccessorMethod("ports"), borrowed_read: false },
+    { dag_name: "clusters", access: AccessorMethod("clusters"), borrowed_read: true }
   ]
   cost: 1
 }

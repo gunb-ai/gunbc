@@ -75,7 +75,19 @@ fn substrate_declares_expected_reflection_surface() {
         record_fields(&dag, "BranchPath"),
         vec!["body", "result_port", "pattern", "binding"]
     );
-    assert_eq!(record_fields(&dag, "LoopBound"), vec!["count"]);
+    assert_eq!(record_fields(&dag, "NonEmptyList"), vec!["first", "rest"]);
+    assert_eq!(
+        record_fields(&dag, "NonSingletonList"),
+        vec!["first", "second", "rest"]
+    );
+    assert_eq!(record_fields(&dag, "ParamRef"), vec!["member", "slot"]);
+    assert_eq!(record_fields(&dag, "TransformRef"), vec!["node"]);
+    assert_eq!(record_fields(&dag, "MemberDescent"), vec!["param"]);
+    assert_eq!(record_fields(&dag, "IntraClusterCall"), vec!["transform"]);
+    assert_eq!(
+        record_fields(&dag, "Cluster"),
+        vec!["members", "intra_cluster_calls"]
+    );
     assert_eq!(
         record_fields(&dag, "ValueNode"),
         vec!["id", "payload", "result_port", "span"]
@@ -106,7 +118,7 @@ fn substrate_declares_expected_reflection_surface() {
     );
     assert_eq!(
         record_fields(&dag, "Dag"),
-        vec!["declarations", "nodes", "ports"]
+        vec!["declarations", "nodes", "ports", "clusters"]
     );
 }
 
@@ -259,6 +271,13 @@ fn substrate_coproducts_match_runtime_carriers() {
         ]
     );
     assert_eq!(
+        sum_variants(&dag, "LoopBound"),
+        vec![
+            (String::from("Cardinality"), vec![String::from("count")]),
+            (String::from("Descent"), vec![String::from("cluster")]),
+        ]
+    );
+    assert_eq!(
         sum_variants(&dag, "Behavior"),
         vec![
             (String::from("Value"), vec![String::from("_0")]),
@@ -290,6 +309,13 @@ fn rust_dag_realizes_reflected_substrate_types() {
         "OperatorKind",
         "PayloadBinding",
         "BranchPath",
+        "NonEmptyList",
+        "NonSingletonList",
+        "ParamRef",
+        "TransformRef",
+        "MemberDescent",
+        "IntraClusterCall",
+        "Cluster",
         "LoopBound",
         "ValueNode",
         "TransformNode",

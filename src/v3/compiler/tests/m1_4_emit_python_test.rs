@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    Behavior, BindNode, Bound, BranchNode, LoopNode, Path as DagPath, Port, TransformNode,
+    Behavior, BindNode, BranchNode, LoopBound, LoopNode, Path as DagPath, Port, TransformNode,
     ValueNode,
 };
 use v3_compiler::emit_python::emit_python_module;
@@ -169,9 +169,16 @@ class BranchPath:
     pattern: typing.Any = None
     binding: typing.Any = None
 
-@dataclass
 class LoopBound:
+    pass
+
+@dataclass
+class LoopBound_Cardinality(LoopBound):
     count: PortId
+
+@dataclass
+class LoopBound_Descent(LoopBound):
+    cluster: str
 
 @dataclass
 class ValueNode:
@@ -242,6 +249,7 @@ class Dag:
     declarations: list[typing.Any]
     nodes: list[Behavior]
     ports: list[DagPort]
+    clusters: list[typing.Any]
 "#
 }
 
@@ -309,7 +317,7 @@ fn split_future_annotations(module_source: &str) -> (&str, &str) {
 
 fn serialize_dag(dag: &Dag) -> String {
     format!(
-        "Dag(declarations=[], nodes=[{}], ports=[{}])",
+        "Dag(declarations=[], nodes=[{}], ports=[{}], clusters=[])",
         dag.nodes()
             .iter()
             .map(serialize_behavior)
@@ -397,8 +405,15 @@ fn serialize_loop_node(node: &LoopNode) -> String {
     )
 }
 
-fn serialize_loop_bound(bound: &Bound) -> String {
-    format!("LoopBound(count={})", py_debug(&bound.count))
+fn serialize_loop_bound(bound: &LoopBound) -> String {
+    match bound {
+        LoopBound::Cardinality { count } => {
+            format!("LoopBound_Cardinality(count={})", py_debug(count))
+        }
+        LoopBound::Descent { cluster } => {
+            format!("LoopBound_Descent(cluster={})", py_debug(cluster))
+        }
+    }
 }
 
 fn serialize_bind_node(node: &BindNode) -> String {

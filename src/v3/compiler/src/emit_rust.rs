@@ -1125,10 +1125,13 @@ impl InputUseFacts {
                 }
                 Behavior::Loop(loop_node) => {
                     for (slot, port) in [
-                        (InputSlot::LoopSource, loop_node.source),
-                        (InputSlot::LoopInit, loop_node.init),
-                        (InputSlot::LoopBoundCount, loop_node.bound.count),
+                        (InputSlot::LoopSource, Some(loop_node.source)),
+                        (InputSlot::LoopInit, Some(loop_node.init)),
+                        (InputSlot::LoopBoundCount, loop_node.bound.count_port()),
                     ] {
+                        let Some(port) = port else {
+                            continue;
+                        };
                         let key = InputUseKey {
                             consumer: loop_node.id,
                             slot,
@@ -2414,7 +2417,10 @@ fn analyze_user_defined_callable(
                 }
             }
             Behavior::Loop(l) => {
-                for input in [l.source, l.init, l.bound.count] {
+                for input in [Some(l.source), Some(l.init), l.bound.count_port()] {
+                    let Some(input) = input else {
+                        continue;
+                    };
                     if let Some(&index) = runtime_index.get(&input) {
                         observed[index] =
                             observed[index].merge(ParameterDispositionBinding::Borrowed);
@@ -2916,7 +2922,11 @@ impl<'a> Ctx<'a> {
             (InputConsumer::Loop(loop_node), InputSlot::LoopSource) => Ok(loop_node.source),
             (InputConsumer::Loop(loop_node), InputSlot::LoopInit) => Ok(loop_node.init),
             (InputConsumer::Loop(loop_node), InputSlot::LoopBoundCount) => {
-                Ok(loop_node.bound.count)
+                loop_node.bound.count_port().ok_or_else(|| {
+                    EmitError::UnsupportedBehavior(
+                        "loop does not carry a cardinality-bound input".to_string(),
+                    )
+                })
             }
             _ => Err(EmitError::UnsupportedBehavior(
                 "input-slot kind does not match the selected consumer".to_string(),
@@ -3424,27 +3434,26 @@ impl<'a> Ctx<'a> {
                 binding.payload_port,
                 LocalBinding::Borrowed(binding.binding_name.clone()),
             );
-            // Multi-field struct-variant payloads have no nominal
-            // payload type — Rust can't resolve `binding.field` on
-            // the enum. The pattern emitter destructures each field
-            // into an aliased local (`__<binding>_<field>`); mirror
-            // that here by routing `.dag`-level `binding.field`
-            // accesses through `field_overrides` to those locals.
+            // Named struct-variant payloads are observed at the .dag
+            // layer as a record value, even when the variant has just
+            // one field. Rust pattern matching binds named fields
+            // directly, so route downstream `.dag`-level
+            // `binding.field` projections through `field_overrides`
+            // instead of trying to read fields off the bound leaf.
             if let BranchPattern::ResolvedVariant(resolved_id) = &path.pattern {
                 if let TypeConnective::Conj { children } =
                     &self.dag.declaration(*resolved_id).connective
                 {
-                    if children.len() > 1 {
+                    if children.iter().any(|child| child.label != "_0") {
                         let overrides = children
                             .iter()
                             .map(|child| {
-                                (
-                                    child.label.clone(),
-                                    LocalBinding::Borrowed(destructured_field_alias(
-                                        &binding.binding_name,
-                                        &child.label,
-                                    )),
-                                )
+                                let local_name = if children.len() == 1 {
+                                    binding.binding_name.clone()
+                                } else {
+                                    destructured_field_alias(&binding.binding_name, &child.label)
+                                };
+                                (child.label.clone(), LocalBinding::Borrowed(local_name))
                             })
                             .collect();
                         arm_locals
@@ -3639,7 +3648,9 @@ impl<'a> Ctx<'a> {
                 Behavior::Loop(l) => {
                     queue.push(l.source);
                     queue.push(l.init);
-                    queue.push(l.bound.count);
+                    if let Some(count) = l.bound.count_port() {
+                        queue.push(count);
+                    }
                     queue.push(behavior_result_port(self.dag.node(l.body)));
                 }
                 Behavior::Bind(b) => {

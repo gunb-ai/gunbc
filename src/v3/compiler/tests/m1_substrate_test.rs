@@ -1376,29 +1376,19 @@ fn m18_r14_user_data_with_opaque_body_is_rejected() {
 
 #[test]
 fn m18_r13_mutual_recursion_poisons_callers() {
-    // M1(2.8) R13: the mutually-recursive fn rejection path used to
-    // store ArrowBody::Pending, which decide_transform accepts as
-    // scaffold (signature type-checks, body walking skipped).
-    // Downstream callers of a mutually-recursive fn got Resolved
-    // types even though the callee's Bind value port was already
-    // Unresolved — a FAIL-CLOSED leak.
-    //
-    // Fix: emit ArrowBody::UserDefined(bind_id) so decide_transform's
-    // UserDefined arm reads the Bind's value port state and
-    // cascades Decision::Fail to callers when it's Unresolved.
-    //
-    // Regression shape: define two mutually recursive fns, then a
-    // let binding that calls one of them. After R13, the let port
-    // must cascade to Unresolved.
+    // Mutual recursion now compiles when a shared descent witness
+    // exists, so the fail-closed regression shape is an SCC where at
+    // least one intra-cluster edge preserves the measure. Downstream
+    // callers must still cascade to Unresolved.
     let src = "\
 fn a(n: Int) -> Int = b(n)
-fn b(n: Int) -> Int = a(n)
+fn b(n: Int) -> Int = a(n - 1)
 let c = a(1)
 ";
     let dag = compile_any(src, "mutual_recursion_cascade.v3");
     assert!(
         !dag.diagnostics().is_empty(),
-        "mutual recursion should produce a diagnostic"
+        "non-terminating mutual recursion should produce a diagnostic"
     );
     let bind_c = dag
         .nodes()
@@ -1413,6 +1403,19 @@ let c = a(1)
         ),
         "caller of a mutually-recursive fn must cascade to Unresolved; got {:?}",
         dag.port(bind_c.value).state()
+    );
+    assert_eq!(
+        dag.clusters().len(),
+        0,
+        "failed mutual recursion must not materialize a cluster witness"
+    );
+    assert!(
+        dag.nodes()
+            .iter()
+            .filter_map(Behavior::as_loop)
+            .next()
+            .is_none(),
+        "failed mutual recursion must not fabricate Loop materialization"
     );
 }
 
@@ -2770,6 +2773,87 @@ fn count(list: IntList) -> Int = match list { Empty => 0, Cons(payload) => 1 + c
 }
 
 #[test]
+fn mutual_recursion_accepts_structural_descent_on_later_recursive_type() {
+    let src = "\
+fn even(list: IntList) -> Bool = match list { Empty => true, Cons(payload) => odd(payload.tail) }
+fn odd(list: IntList) -> Bool = match list { Empty => false, Cons(payload) => even(payload.tail) }
+type IntList = Empty | Cons { head: Int, tail: IntList }
+";
+    let dag = compile_to_dag(src, "mutual_structural_descent_later_type.v3").expect("compiles");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "mutual structural descent through a later recursive type should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(
+        dag.clusters().len(),
+        1,
+        "later type lowering should not block mutual cluster planning"
+    );
+}
+
+#[test]
+fn mutual_recursion_planner_ignores_callable_parameter_shadowing() {
+    let src = "\
+fn even(n: Int, odd: fn(Int) -> Bool) -> Bool = odd(n)
+fn odd(n: Int, even: fn(Int) -> Bool) -> Bool = even(n)
+";
+    let dag = compile_to_dag(src, "mutual_shadowing_false_positive.v3").expect("compiles");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "callable-parameter shadowing should not fabricate a mutual-recursion diagnostic: {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(
+        dag.clusters().len(),
+        0,
+        "shadowed callable parameters are not top-level mutual recursion"
+    );
+    assert!(
+        dag.nodes()
+            .iter()
+            .filter_map(Behavior::as_loop)
+            .next()
+            .is_none(),
+        "shadowed callable parameters must not introduce synthetic recursion loops"
+    );
+}
+
+#[test]
+fn mutual_recursion_checker_uses_shadow_aware_recursive_edges() {
+    let src = "\
+fn apply_once(f: fn(Int) -> Bool, x: Int) -> Bool = f(x)
+fn even(n: Int) -> Bool = if n == 0 then true else odd(n - 1)
+fn odd(n: Int) -> Bool = if n == 0 then false else if n == 1 then apply_once(|even| even(n), n) else even(n - 1)
+";
+    let dag = compile_to_dag(src, "mutual_shadowing_inside_cluster.v3").expect("compiles");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "shadowed lambda parameters inside a real cluster must not poison descent checking: {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(
+        dag.clusters().len(),
+        1,
+        "real recursive edges still form one cluster"
+    );
+    let odd_bind = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .find(|b| b.name == "odd")
+        .expect("Bind(odd) exists");
+    let odd_producer = dag
+        .port(odd_bind.value)
+        .produced_by
+        .expect("odd loop exists");
+    assert!(
+        matches!(dag.node(odd_producer), Behavior::Loop(_)),
+        "accepted mutual recursion should still lower odd through Loop"
+    );
+}
+
+#[test]
 fn recursive_generic_sum_can_reference_itself_in_payload_types() {
     let src = "\
 type MyList<T> = Empty | Cons { head: T, tail: MyList<T> }
@@ -3239,15 +3323,18 @@ fn inputs_for_behavior(d: Dag, behavior: Behavior) -> List<PortId> =
 
 fn loop_inputs(d: Dag, loop_node: LoopNode) -> List<PortId> =
   concat(
-    cons(
-      loop_node.source,
-      cons(loop_node.init, singleton(loop_node.bound.count))
-    ),
+    cons(loop_node.source, cons(loop_node.init, loop_bound_inputs(loop_node.bound))),
     match behavior_result_port(d.nodes, loop_node.body) {
       MissingResultPort => empty()
       FoundResultPort(port) => singleton(port)
     }
   )
+
+fn loop_bound_inputs(bound: LoopBound) -> List<PortId> =
+  match bound {
+    Cardinality(payload) => singleton(payload.count)
+    Descent(_) => empty()
+  }
 
 fn branch_path_outputs(paths: List<BranchPath>) -> List<PortId> =
   match paths {

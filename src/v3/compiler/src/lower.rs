@@ -25,9 +25,10 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, BindNode, Bound, BranchNode, BranchPattern, CardinalityBound,
-    Dag, Declaration, DeclarationId, Field, LiteralBits, LoopNode, NodeId, Path, PayloadBinding,
-    PortId, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
+    ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, CardinalityBound,
+    Cluster, Dag, Declaration, DeclarationId, Field, IntraClusterCall, LiteralBits, LoopBound,
+    LoopNode, MemberDescent, NodeId, NonEmptyList, NonSingletonList, Path, PayloadBinding, PortId,
+    TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::operators::{ArithmeticOp, LogicalOp, OperatorKind};
@@ -38,6 +39,78 @@ use crate::parse::{
 use crate::types::TypeShape;
 
 type CallableScope = HashMap<String, DeclarationId>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct RecursiveEdge {
+    caller: DeclarationId,
+    callee: DeclarationId,
+}
+
+#[derive(Debug, Clone)]
+struct MutualClusterShape {
+    members: Vec<DeclarationId>,
+    member_names: Vec<String>,
+    per_member_positions: HashMap<DeclarationId, usize>,
+    recursive_edges: HashSet<RecursiveEdge>,
+}
+
+impl MutualClusterShape {
+    fn has_recursive_edge(&self, caller: DeclarationId, callee: DeclarationId) -> bool {
+        self.recursive_edges
+            .contains(&RecursiveEdge { caller, callee })
+    }
+}
+
+#[derive(Debug, Clone)]
+struct InvalidMutualCluster {
+    members: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct MutualRecursionPlans {
+    clusters: Vec<MutualClusterShape>,
+    by_member: HashMap<DeclarationId, usize>,
+    invalid_by_member: HashMap<DeclarationId, InvalidMutualCluster>,
+}
+
+impl MutualRecursionPlans {
+    fn cluster_for_member(&self, member: DeclarationId) -> Option<&MutualClusterShape> {
+        self.by_member
+            .get(&member)
+            .and_then(|idx| self.clusters.get(*idx))
+    }
+}
+
+#[derive(Debug, Clone)]
+struct PendingMutualLoop {
+    bind_id: Option<NodeId>,
+    source: PortId,
+    body_port: PortId,
+    loop_output: PortId,
+    body_root: Option<NodeId>,
+    span: SourceSpan,
+}
+
+#[derive(Debug, Default)]
+struct MutualClusterBuildState {
+    pending_loops: HashMap<DeclarationId, PendingMutualLoop>,
+    intra_cluster_transform_ids: Vec<NodeId>,
+}
+
+#[derive(Debug, Default)]
+struct MutualRecursionState {
+    clusters: Vec<MutualClusterBuildState>,
+}
+
+impl MutualRecursionState {
+    fn new(plans: &MutualRecursionPlans) -> Self {
+        Self {
+            clusters: (0..plans.clusters.len())
+                .map(|_| MutualClusterBuildState::default())
+                .collect(),
+        }
+    }
+}
 
 fn declaration_name_preference_rank(file: &str) -> usize {
     if file.starts_with("src/v3/") {
@@ -129,8 +202,9 @@ pub(crate) fn lower_bodies_phase(
     is_first: &[bool],
 ) {
     seed_function_signatures_phase(dag, &module.items, symbols, is_first);
-    let mutually_recursive = compute_mutually_recursive(&module.items);
     let mut scope = ScopeState::default();
+    let empty_mutual_recursion = MutualRecursionPlans::default();
+    let mut empty_mutual_state = MutualRecursionState::default();
     // DB-10 (3a.2) ordering: dependency-ordered pre-passes so
     // references to top-level declarations resolve independent of
     // source order.
@@ -161,7 +235,14 @@ pub(crate) fn lower_bodies_phase(
                 | SurfaceItem::TypeAlias { .. }
                 | SurfaceItem::TypeAtom { .. }
         ) {
-            scope = lower_item(item, dag, scope, symbols, &mutually_recursive);
+            scope = lower_item(
+                item,
+                dag,
+                scope,
+                symbols,
+                &empty_mutual_recursion,
+                &mut empty_mutual_state,
+            );
         }
     }
     for (idx, item) in module.items.iter().enumerate() {
@@ -185,6 +266,8 @@ pub(crate) fn lower_bodies_phase(
     // Sole caller of `lower_parameter_refinement` for parameter
     // `where` clauses (single construction authority).
     lower_parameter_refinements_phase(dag, module, symbols, is_first);
+    let mutual_recursion = compute_mutually_recursive(&module.items, dag, symbols);
+    let mut mutual_state = MutualRecursionState::new(&mutual_recursion);
     for (idx, item) in module.items.iter().enumerate() {
         if !is_first[idx] {
             // Duplicate declaration — skipped at lower time so the
@@ -205,7 +288,128 @@ pub(crate) fn lower_bodies_phase(
         ) {
             continue;
         }
-        scope = lower_item(item, dag, scope, symbols, &mutually_recursive);
+        scope = lower_item(
+            item,
+            dag,
+            scope,
+            symbols,
+            &mutual_recursion,
+            &mut mutual_state,
+        );
+    }
+    finalize_mutual_clusters(dag, &mutual_recursion, &mutual_state);
+}
+
+fn finalize_mutual_clusters(
+    dag: &mut Dag,
+    mutual_recursion: &MutualRecursionPlans,
+    mutual_state: &MutualRecursionState,
+) {
+    for (cluster_index, cluster_plan) in mutual_recursion.clusters.iter().enumerate() {
+        let Some(build_state) = mutual_state.clusters.get(cluster_index) else {
+            continue;
+        };
+        if build_state.pending_loops.len() != cluster_plan.members.len() {
+            fail_mutual_cluster_build(
+                dag,
+                build_state,
+                cluster_plan,
+                "not every cluster member produced a pending loop witness",
+            );
+            continue;
+        }
+
+        let members: Vec<MemberDescent> = cluster_plan
+            .members
+            .iter()
+            .filter_map(|member_decl| {
+                let pending_loop = build_state.pending_loops.get(member_decl)?;
+                let bind_id = pending_loop.bind_id?;
+                let slot = *cluster_plan.per_member_positions.get(member_decl)?;
+                dag.param_of(bind_id, slot)
+                    .map(|param| MemberDescent { param })
+            })
+            .collect();
+        let intra_cluster_calls: Vec<IntraClusterCall> = build_state
+            .intra_cluster_transform_ids
+            .iter()
+            .copied()
+            .filter_map(|transform_id| {
+                dag.as_transform_ref(transform_id)
+                    .map(|transform| IntraClusterCall { transform })
+            })
+            .collect();
+
+        let Some(member_list) = NonSingletonList::from_vec(members) else {
+            fail_mutual_cluster_build(
+                dag,
+                build_state,
+                cluster_plan,
+                "member descent witnesses could not be materialized",
+            );
+            continue;
+        };
+        let Some(call_list) = NonEmptyList::from_vec(intra_cluster_calls) else {
+            fail_mutual_cluster_build(
+                dag,
+                build_state,
+                cluster_plan,
+                "lowered bodies did not produce any intra-cluster calls",
+            );
+            continue;
+        };
+
+        let cluster_id = dag.push_cluster(Cluster {
+            members: member_list,
+            intra_cluster_calls: call_list,
+        });
+        for member_decl in &cluster_plan.members {
+            let Some(pending_loop) = build_state.pending_loops.get(member_decl) else {
+                continue;
+            };
+            let loop_id = dag.alloc_node_id();
+            dag.set_port_producer(pending_loop.loop_output, Some(loop_id));
+            dag.push_node(Behavior::Loop(LoopNode {
+                id: loop_id,
+                source: pending_loop.source,
+                init: pending_loop.source,
+                body: pending_loop.body_root.unwrap_or(loop_id),
+                bound: LoopBound::Descent {
+                    cluster: cluster_id,
+                },
+                output: pending_loop.loop_output,
+                span: pending_loop.span.clone(),
+            }));
+            if let Some(bind_id) = pending_loop.bind_id {
+                dag.patch_bind_value(bind_id, pending_loop.loop_output);
+            }
+        }
+    }
+}
+
+fn fail_mutual_cluster_build(
+    dag: &mut Dag,
+    build_state: &MutualClusterBuildState,
+    cluster_plan: &MutualClusterShape,
+    detail: &str,
+) {
+    let members = cluster_plan.member_names.join(", ");
+    let reason = format!("cannot finalize mutual recursion cluster [{members}]: {detail}");
+    for pending_loop in build_state.pending_loops.values() {
+        dag.mark_unresolved(
+            pending_loop.body_port,
+            Diagnostic::ResolveError {
+                name: reason.clone(),
+                span: pending_loop.span.clone(),
+            },
+        );
+        dag.mark_unresolved(
+            pending_loop.loop_output,
+            Diagnostic::ResolveError {
+                name: reason.clone(),
+                span: pending_loop.span.clone(),
+            },
+        );
     }
 }
 
@@ -1114,7 +1318,8 @@ fn lower_item(
     dag: &mut Dag,
     scope: ScopeState,
     symbols: &HashMap<String, DeclarationId>,
-    mutually_recursive: &HashSet<String>,
+    mutual_recursion: &MutualRecursionPlans,
+    mutual_state: &mut MutualRecursionState,
 ) -> ScopeState {
     let mut scope = scope;
     match item {
@@ -1218,7 +1423,8 @@ fn lower_item(
                 dag,
                 scope.values,
                 symbols,
-                mutually_recursive,
+                mutual_recursion,
+                mutual_state,
             );
             scope
         }
@@ -2864,7 +3070,8 @@ fn lower_fn_item_expr_body(
     dag: &mut Dag,
     outer_scope: HashMap<String, PortId>,
     symbols: &HashMap<String, DeclarationId>,
-    mutually_recursive: &HashSet<String>,
+    mutual_recursion: &MutualRecursionPlans,
+    mutual_state: &mut MutualRecursionState,
 ) -> HashMap<String, PortId> {
     let fn_decl_id = symbols[name];
 
@@ -2964,14 +3171,15 @@ fn lower_fn_item_expr_body(
     //    non-mutually-recursive rejection paths below (zero-param
     //    recursion, non-descent-provable recursion) already use this
     //    shape via the common bottom-of-function code.
-    if mutually_recursive.contains(name) {
+    if let Some(invalid_cluster) = mutual_recursion.invalid_by_member.get(&fn_decl_id) {
         let err_port = dag.alloc_port(None);
         let body_span = expr_span(body).clone();
         dag.mark_unresolved(
             err_port,
             Diagnostic::ResolveError {
                 name: format!(
-                    "function `{name}` is part of a mutual recursion cycle; mutual recursion is not yet supported in v3"
+                    "cannot prove mutually-recursive cluster {{{}}} terminates",
+                    invalid_cluster.members.join(", ")
                 ),
                 span: body_span.clone(),
             },
@@ -2995,6 +3203,7 @@ fn lower_fn_item_expr_body(
     }
 
     // 4. Lower the body.
+    let body_start_index = dag.nodes().len();
     let body_return_port = lower_expr(
         body,
         dag,
@@ -3005,12 +3214,29 @@ fn lower_fn_item_expr_body(
     );
     let body_root = dag.port(body_return_port).produced_by;
     let body_span = expr_span(body).clone();
+    let body_end_index = dag.nodes().len();
+
+    let mutual_cluster = mutual_recursion.cluster_for_member(fn_decl_id);
 
     // 5. Handle recursion: bounded Loop wrapping (descent-provable) or
     //    fail-closed rejection (unprovable or zero-arg). Same M0 logic; the
     //    descent check operates on the unresolved operator-identifier shape
     //    (SurfaceExpr::Call with target "-"), per §8.9 Option A.
-    let value_port = if is_recursive(body, name) {
+    let mut pending_loop: Option<PendingMutualLoop> = None;
+    let (bind_value_port, value_port) = if let Some(cluster) = mutual_cluster {
+        let slot = cluster.per_member_positions[&fn_decl_id];
+        let loop_output = dag.alloc_port(None);
+        dag.set_port_type(loop_output, return_ty);
+        pending_loop = Some(PendingMutualLoop {
+            bind_id: None,
+            source: param_ports[slot],
+            body_port: body_return_port,
+            loop_output,
+            body_root,
+            span: body_span.clone(),
+        });
+        (body_return_port, loop_output)
+    } else if is_recursive(body, name) {
         if param_ports.is_empty() {
             let err_port = dag.alloc_port(None);
             dag.mark_unresolved(
@@ -3022,7 +3248,7 @@ fn lower_fn_item_expr_body(
                     span: body_span.clone(),
                 },
             );
-            err_port
+            (err_port, err_port)
         } else if !descent_provable(
             body,
             dag,
@@ -3042,7 +3268,7 @@ fn lower_fn_item_expr_body(
                     span: body_span.clone(),
                 },
             );
-            err_port
+            (err_port, err_port)
         } else {
             let loop_id = dag.alloc_node_id();
             let loop_output = dag.alloc_port(Some(loop_id));
@@ -3053,27 +3279,50 @@ fn lower_fn_item_expr_body(
                 source: param_ports[0],
                 init: param_ports[0],
                 body: loop_body_node,
-                bound: Bound {
+                bound: LoopBound::Cardinality {
                     count: param_ports[0],
                 },
                 output: loop_output,
                 span: body_span.clone(),
             }));
-            loop_output
+            (loop_output, loop_output)
         }
     } else {
-        body_return_port
+        (body_return_port, body_return_port)
     };
 
-    dag.set_port_type(value_port, return_ty);
+    dag.set_port_type(bind_value_port, return_ty);
+    if value_port != bind_value_port {
+        dag.set_port_type(value_port, return_ty);
+    }
     let bind_id = dag.alloc_node_id();
     dag.push_node(Behavior::Bind(BindNode {
         id: bind_id,
         name: name.to_string(),
-        value: value_port,
+        value: bind_value_port,
         params: param_ports,
         span: body_span,
     }));
+
+    if let Some(cluster_index) = mutual_recursion.by_member.get(&fn_decl_id).copied() {
+        let cluster_state = &mut mutual_state.clusters[cluster_index];
+        if let Some(mut pending) = pending_loop {
+            pending.bind_id = Some(bind_id);
+            cluster_state.pending_loops.insert(fn_decl_id, pending);
+        }
+        let cluster_plan = &mutual_recursion.clusters[cluster_index];
+        cluster_state.intra_cluster_transform_ids.extend(
+            dag.nodes()[body_start_index..body_end_index]
+                .iter()
+                .filter_map(Behavior::as_transform)
+                .filter_map(|transform| match transform.target {
+                    TransformTarget::Callable(target_decl) => cluster_plan
+                        .has_recursive_edge(fn_decl_id, callable_target_template(target_decl, dag))
+                        .then_some(transform.id),
+                    _ => None,
+                }),
+        );
+    }
 
     // 6. Fill in the function's Declaration with the Arrow connective.
     dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
@@ -3166,6 +3415,13 @@ fn declaration_callable_inputs(
 
 fn declaration_is_callable(dag: &Dag, current: DeclarationId, depth: usize) -> bool {
     declaration_callable_inputs(dag, current, depth).is_some()
+}
+
+fn callable_target_template(target: DeclarationId, dag: &Dag) -> DeclarationId {
+    match &dag.declaration(target).connective {
+        TypeConnective::Instantiation { template, .. } => *template,
+        _ => target,
+    }
 }
 
 fn declaration_callable_output(
@@ -4934,83 +5190,432 @@ fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
     }
 }
 
-fn compute_mutually_recursive(items: &[SurfaceItem]) -> HashSet<String> {
-    // Only expression-body fns participate in the mutual recursion
-    // analysis — block-bodied `FnExternalBody` items have their bodies
-    // deferred as `ArrowBody::Unparsed`, so there's no reachable call
-    // graph to walk at M1(2.7).
-    let fn_names: HashSet<String> = items
-        .iter()
-        .filter_map(|i| match i {
-            SurfaceItem::Fn { name, .. } => Some(name.clone()),
-            _ => None,
-        })
-        .collect();
-
-    let mut calls: HashMap<String, HashSet<String>> = HashMap::new();
-    for item in items {
-        if let SurfaceItem::Fn { name, body, .. } = item {
-            let mut callees = HashSet::new();
-            collect_calls(body, &fn_names, &mut callees);
-            calls.insert(name.clone(), callees);
-        }
-    }
-
-    let mut reach_cache: HashMap<String, HashSet<String>> = HashMap::new();
-    for f in &fn_names {
-        reach_cache.insert(f.clone(), transitive_reach(f, &calls));
-    }
-
-    let mut mutually = HashSet::new();
-    for f in &fn_names {
-        let reach_f = &reach_cache[f];
-        for g in reach_f {
-            if g == f {
-                continue;
-            }
-            let reach_g = &reach_cache[g];
-            if reach_g.contains(f) {
-                mutually.insert(f.clone());
-                mutually.insert(g.clone());
-            }
-        }
-    }
-    mutually
+#[derive(Clone, Copy)]
+struct FunctionSurfaceInfo<'a> {
+    name: &'a str,
+    decl_id: DeclarationId,
+    params: &'a [SurfaceParam],
+    body: &'a SurfaceExpr,
 }
 
-fn transitive_reach(start: &str, calls: &HashMap<String, HashSet<String>>) -> HashSet<String> {
-    let mut visited = HashSet::new();
-    let mut queue = vec![start.to_string()];
-    while let Some(f) = queue.pop() {
-        if !visited.insert(f.clone()) {
+fn compute_mutually_recursive(
+    items: &[SurfaceItem],
+    dag: &Dag,
+    symbols: &HashMap<String, DeclarationId>,
+) -> MutualRecursionPlans {
+    let mut order: Vec<DeclarationId> = Vec::new();
+    let mut fn_infos: HashMap<DeclarationId, FunctionSurfaceInfo<'_>> = HashMap::new();
+    let mut function_symbols: HashMap<String, DeclarationId> = HashMap::new();
+    for item in items {
+        if let SurfaceItem::Fn {
+            name, params, body, ..
+        } = item
+        {
+            let Some(&decl_id) = symbols.get(name) else {
+                continue;
+            };
+            order.push(decl_id);
+            fn_infos.insert(
+                decl_id,
+                FunctionSurfaceInfo {
+                    name,
+                    decl_id,
+                    params,
+                    body,
+                },
+            );
+            function_symbols.insert(name.clone(), decl_id);
+        }
+    }
+
+    let order_index: HashMap<DeclarationId, usize> = order
+        .iter()
+        .enumerate()
+        .map(|(idx, decl_id)| (*decl_id, idx))
+        .collect();
+    let mut calls: HashMap<DeclarationId, Vec<DeclarationId>> = HashMap::new();
+    for decl_id in &order {
+        let Some(info) = fn_infos.get(decl_id) else {
+            continue;
+        };
+        let mut callees = HashSet::new();
+        let mut shadowed: HashSet<String> =
+            info.params.iter().map(|param| param.name.clone()).collect();
+        collect_recursive_callees(info.body, &function_symbols, &mut shadowed, &mut callees);
+        let mut sorted_callees: Vec<DeclarationId> = callees.into_iter().collect();
+        sorted_callees.sort_by_key(|callee| order_index.get(callee).copied().unwrap_or(usize::MAX));
+        calls.insert(*decl_id, sorted_callees);
+    }
+
+    let mut plans = MutualRecursionPlans::default();
+    for members in strongly_connected_components(&order, &calls)
+        .into_iter()
+        .filter(|component| component.len() > 1)
+    {
+        if let Some(per_member_positions) =
+            find_cluster_slot_assignment(&members, dag, &fn_infos, &function_symbols, &calls)
+        {
+            let member_names: Vec<String> = members
+                .iter()
+                .filter_map(|member| fn_infos.get(member).map(|info| info.name.to_string()))
+                .collect();
+            let member_set: HashSet<DeclarationId> = members.iter().copied().collect();
+            let recursive_edges = members
+                .iter()
+                .flat_map(|caller| {
+                    calls
+                        .get(caller)
+                        .into_iter()
+                        .flatten()
+                        .copied()
+                        .filter(|callee| member_set.contains(callee))
+                        .map(|callee| RecursiveEdge {
+                            caller: *caller,
+                            callee,
+                        })
+                })
+                .collect();
+            let cluster_index = plans.clusters.len();
+            for member in &members {
+                plans.by_member.insert(*member, cluster_index);
+            }
+            plans.clusters.push(MutualClusterShape {
+                members,
+                member_names,
+                per_member_positions,
+                recursive_edges,
+            });
+        } else {
+            let invalid = InvalidMutualCluster {
+                members: members
+                    .iter()
+                    .filter_map(|member| fn_infos.get(member).map(|info| info.name.to_string()))
+                    .collect(),
+            };
+            for member in members {
+                plans.invalid_by_member.insert(member, invalid.clone());
+            }
+        }
+    }
+    plans
+}
+
+fn strongly_connected_components(
+    order: &[DeclarationId],
+    calls: &HashMap<DeclarationId, Vec<DeclarationId>>,
+) -> Vec<Vec<DeclarationId>> {
+    let order_index: HashMap<DeclarationId, usize> = order
+        .iter()
+        .enumerate()
+        .map(|(idx, decl_id)| (*decl_id, idx))
+        .collect();
+    let mut visited: HashSet<DeclarationId> = HashSet::new();
+    let mut finish_order: Vec<DeclarationId> = Vec::new();
+
+    fn dfs(
+        node: DeclarationId,
+        calls: &HashMap<DeclarationId, Vec<DeclarationId>>,
+        visited: &mut HashSet<DeclarationId>,
+        finish_order: &mut Vec<DeclarationId>,
+    ) {
+        if !visited.insert(node) {
+            return;
+        }
+        if let Some(callees) = calls.get(&node) {
+            for callee in callees {
+                dfs(*callee, calls, visited, finish_order);
+            }
+        }
+        finish_order.push(node);
+    }
+
+    for decl_id in order {
+        dfs(*decl_id, calls, &mut visited, &mut finish_order);
+    }
+
+    let mut reverse: HashMap<DeclarationId, Vec<DeclarationId>> =
+        order.iter().map(|decl_id| (*decl_id, Vec::new())).collect();
+    for (caller, callees) in calls {
+        for callee in callees {
+            reverse.entry(*callee).or_default().push(*caller);
+        }
+    }
+
+    fn dfs_reverse(
+        node: DeclarationId,
+        reverse: &HashMap<DeclarationId, Vec<DeclarationId>>,
+        assigned: &mut HashSet<DeclarationId>,
+        component: &mut Vec<DeclarationId>,
+    ) {
+        if !assigned.insert(node) {
+            return;
+        }
+        component.push(node);
+        if let Some(callers) = reverse.get(&node) {
+            for caller in callers {
+                dfs_reverse(*caller, reverse, assigned, component);
+            }
+        }
+    }
+
+    let mut assigned: HashSet<DeclarationId> = HashSet::new();
+    let mut components: Vec<Vec<DeclarationId>> = Vec::new();
+    for decl_id in finish_order.into_iter().rev() {
+        if assigned.contains(&decl_id) {
             continue;
         }
-        if let Some(callees) = calls.get(&f) {
-            for c in callees {
-                queue.push(c.clone());
-            }
-        }
+        let mut component = Vec::new();
+        dfs_reverse(decl_id, &reverse, &mut assigned, &mut component);
+        component.sort_by_key(|member| order_index.get(member).copied().unwrap_or(usize::MAX));
+        components.push(component);
     }
-    visited.remove(start);
-    visited
+    components.sort_by_key(|component| {
+        component
+            .first()
+            .and_then(|member| order_index.get(member))
+            .copied()
+            .unwrap_or(usize::MAX)
+    });
+    components
 }
 
-fn collect_calls(expr: &SurfaceExpr, fn_names: &HashSet<String>, out: &mut HashSet<String>) {
+fn find_cluster_slot_assignment(
+    members: &[DeclarationId],
+    dag: &Dag,
+    fn_infos: &HashMap<DeclarationId, FunctionSurfaceInfo<'_>>,
+    function_symbols: &HashMap<String, DeclarationId>,
+    calls: &HashMap<DeclarationId, Vec<DeclarationId>>,
+) -> Option<HashMap<DeclarationId, usize>> {
+    if members.iter().any(|member| {
+        fn_infos
+            .get(member)
+            .map(|info| info.params.is_empty())
+            .unwrap_or(true)
+    }) {
+        return None;
+    }
+
+    fn search(
+        member_index: usize,
+        members: &[DeclarationId],
+        dag: &Dag,
+        fn_infos: &HashMap<DeclarationId, FunctionSurfaceInfo<'_>>,
+        function_symbols: &HashMap<String, DeclarationId>,
+        calls: &HashMap<DeclarationId, Vec<DeclarationId>>,
+        assignment: &mut HashMap<DeclarationId, usize>,
+    ) -> Option<HashMap<DeclarationId, usize>> {
+        if member_index == members.len() {
+            if validate_cluster_slot_assignment(
+                members,
+                dag,
+                fn_infos,
+                function_symbols,
+                calls,
+                assignment,
+            ) {
+                return Some(assignment.clone());
+            }
+            return None;
+        }
+
+        let member = &members[member_index];
+        let info = fn_infos.get(member)?;
+        for slot in 0..info.params.len() {
+            assignment.insert(*member, slot);
+            if let Some(found) = search(
+                member_index + 1,
+                members,
+                dag,
+                fn_infos,
+                function_symbols,
+                calls,
+                assignment,
+            ) {
+                return Some(found);
+            }
+        }
+        assignment.remove(member);
+        None
+    }
+
+    search(
+        0,
+        members,
+        dag,
+        fn_infos,
+        function_symbols,
+        calls,
+        &mut HashMap::new(),
+    )
+}
+
+fn validate_cluster_slot_assignment(
+    members: &[DeclarationId],
+    dag: &Dag,
+    fn_infos: &HashMap<DeclarationId, FunctionSurfaceInfo<'_>>,
+    function_symbols: &HashMap<String, DeclarationId>,
+    calls: &HashMap<DeclarationId, Vec<DeclarationId>>,
+    assignment: &HashMap<DeclarationId, usize>,
+) -> bool {
+    let cluster_members: HashSet<DeclarationId> = members.iter().copied().collect();
+    members.iter().all(|member| {
+        let Some(info) = fn_infos.get(member) else {
+            return false;
+        };
+        let Some(&slot) = assignment.get(member) else {
+            return false;
+        };
+        let TypeConnective::Arrow { inputs, .. } = &dag.declaration(info.decl_id).connective else {
+            return false;
+        };
+        let Some(param_decl) = inputs.get(slot).copied() else {
+            return false;
+        };
+        let Some(param) = info.params.get(slot) else {
+            return false;
+        };
+        let recursive_callees: HashSet<DeclarationId> = calls
+            .get(member)
+            .into_iter()
+            .flatten()
+            .copied()
+            .filter(|callee| cluster_members.contains(callee))
+            .collect();
+        let initial_shadowed: HashSet<String> = info
+            .params
+            .iter()
+            .map(|surface_param| surface_param.name.clone())
+            .collect();
+        ClusterDescentChecker {
+            dag,
+            current_param_decl: param_decl,
+            current_param: &param.name,
+            recursive_callees: &recursive_callees,
+            assignment,
+            function_symbols,
+        }
+        .expr(info.body, &HashMap::new(), &initial_shadowed)
+    })
+}
+
+struct ClusterDescentChecker<'a> {
+    dag: &'a Dag,
+    current_param_decl: DeclarationId,
+    current_param: &'a str,
+    recursive_callees: &'a HashSet<DeclarationId>,
+    assignment: &'a HashMap<DeclarationId, usize>,
+    function_symbols: &'a HashMap<String, DeclarationId>,
+}
+
+impl ClusterDescentChecker<'_> {
+    fn expr(
+        &self,
+        expr: &SurfaceExpr,
+        bindings: &HashMap<String, StructuralBindingInfo>,
+        shadowed: &HashSet<String>,
+    ) -> bool {
+        match expr {
+            SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => {
+                true
+            }
+            SurfaceExpr::Call { target, args, .. } => {
+                if !shadowed.contains(target) {
+                    if let Some(&callee_decl) = self.function_symbols.get(target) {
+                        if self.recursive_callees.contains(&callee_decl) {
+                            let Some(&callee_slot) = self.assignment.get(&callee_decl) else {
+                                return false;
+                            };
+                            let Some(callee_arg) = args.get(callee_slot) else {
+                                return false;
+                            };
+                            if !is_strictly_smaller(callee_arg, self.current_param, bindings) {
+                                return false;
+                            }
+                        }
+                    }
+                }
+                args.iter().all(|arg| self.expr(arg, bindings, shadowed))
+            }
+            SurfaceExpr::Operator { args, .. } => {
+                args.iter().all(|arg| self.expr(arg, bindings, shadowed))
+            }
+            SurfaceExpr::If {
+                cond,
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                self.expr(cond, bindings, shadowed)
+                    && self.expr(then_branch, bindings, shadowed)
+                    && self.expr(else_branch, bindings, shadowed)
+            }
+            SurfaceExpr::Match {
+                scrutinee, arms, ..
+            } => {
+                if !self.expr(scrutinee, bindings, shadowed) {
+                    return false;
+                }
+
+                let scrutinee_is_current_param = matches!(
+                    scrutinee.as_ref(),
+                    SurfaceExpr::Var { name, .. } if name == self.current_param
+                );
+                arms.iter().all(|arm| {
+                    let mut arm_bindings = bindings.clone();
+                    let mut arm_shadowed = shadowed.clone();
+                    if let SurfacePattern::VariantWith { binding, .. } = &arm.pattern {
+                        arm_shadowed.insert(binding.clone());
+                    }
+                    if scrutinee_is_current_param {
+                        if let SurfacePattern::VariantWith { name, binding, .. } = &arm.pattern {
+                            if let Some(info) = structural_binding_info_for_variant(
+                                self.dag,
+                                self.current_param_decl,
+                                name,
+                            ) {
+                                arm_bindings.insert(binding.clone(), info);
+                            }
+                        }
+                    }
+                    self.expr(&arm.body, &arm_bindings, &arm_shadowed)
+                })
+            }
+            SurfaceExpr::Lambda { params, body, .. } => {
+                let mut lambda_shadowed = shadowed.clone();
+                lambda_shadowed.extend(params.iter().cloned());
+                self.expr(body, bindings, &lambda_shadowed)
+            }
+            SurfaceExpr::Record { fields, .. } => fields
+                .iter()
+                .all(|field| self.expr(&field.value, bindings, shadowed)),
+            SurfaceExpr::List { elements, .. } => elements
+                .iter()
+                .all(|element| self.expr(element, bindings, shadowed)),
+        }
+    }
+}
+
+fn collect_recursive_callees(
+    expr: &SurfaceExpr,
+    function_symbols: &HashMap<String, DeclarationId>,
+    shadowed: &mut HashSet<String>,
+    out: &mut HashSet<DeclarationId>,
+) {
     match expr {
         SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => {}
         SurfaceExpr::Call { target, args, .. } => {
-            if fn_names.contains(target) {
-                out.insert(target.clone());
+            if !shadowed.contains(target) {
+                if let Some(&callee_decl) = function_symbols.get(target) {
+                    out.insert(callee_decl);
+                }
             }
             for a in args {
-                collect_calls(a, fn_names, out);
+                collect_recursive_callees(a, function_symbols, shadowed, out);
             }
         }
         SurfaceExpr::Operator { args, .. } => {
-            // Operators never name user functions; just recurse into
-            // the operand expressions.
             for a in args {
-                collect_calls(a, fn_names, out);
+                collect_recursive_callees(a, function_symbols, shadowed, out);
             }
         }
         SurfaceExpr::If {
@@ -5019,27 +5624,35 @@ fn collect_calls(expr: &SurfaceExpr, fn_names: &HashSet<String>, out: &mut HashS
             else_branch,
             ..
         } => {
-            collect_calls(cond, fn_names, out);
-            collect_calls(then_branch, fn_names, out);
-            collect_calls(else_branch, fn_names, out);
+            collect_recursive_callees(cond, function_symbols, shadowed, out);
+            collect_recursive_callees(then_branch, function_symbols, shadowed, out);
+            collect_recursive_callees(else_branch, function_symbols, shadowed, out);
         }
         SurfaceExpr::Match {
             scrutinee, arms, ..
         } => {
-            collect_calls(scrutinee, fn_names, out);
+            collect_recursive_callees(scrutinee, function_symbols, shadowed, out);
             for arm in arms {
-                collect_calls(&arm.body, fn_names, out);
+                let mut arm_shadowed = shadowed.clone();
+                if let SurfacePattern::VariantWith { binding, .. } = &arm.pattern {
+                    arm_shadowed.insert(binding.clone());
+                }
+                collect_recursive_callees(&arm.body, function_symbols, &mut arm_shadowed, out);
             }
         }
-        SurfaceExpr::Lambda { body, .. } => collect_calls(body, fn_names, out),
+        SurfaceExpr::Lambda { params, body, .. } => {
+            let mut lambda_shadowed = shadowed.clone();
+            lambda_shadowed.extend(params.iter().cloned());
+            collect_recursive_callees(body, function_symbols, &mut lambda_shadowed, out)
+        }
         SurfaceExpr::Record { fields, .. } => {
             for f in fields {
-                collect_calls(&f.value, fn_names, out);
+                collect_recursive_callees(&f.value, function_symbols, shadowed, out);
             }
         }
         SurfaceExpr::List { elements, .. } => {
             for element in elements {
-                collect_calls(element, fn_names, out);
+                collect_recursive_callees(element, function_symbols, shadowed, out);
             }
         }
     }

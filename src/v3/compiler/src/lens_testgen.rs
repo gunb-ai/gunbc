@@ -480,7 +480,10 @@ impl<'a> TestgenLens<'a> {
             let Some(name) = &decl.name else {
                 continue;
             };
-            if decl.value_body.is_some() || !is_bootstrapped_std_file(&decl.span.file) {
+            if decl.value_body.is_some()
+                || !is_bootstrapped_std_file(&decl.span.file)
+                || decl.span.file == "src/v3/std/substrate.dag"
+            {
                 continue;
             }
             match chosen.get(name).copied() {
