@@ -5,7 +5,7 @@
 // full resource grammar ports. Dissolution trigger: merge with dsl authority
 // when v3 parses `resource` items.
 
-module std.resources
+module v3.std.resources
 
 import v3.spec.v3_l1 { DeclarationRef }
 

@@ -19,7 +19,7 @@ module std.verification
 import std.list { List, map }
 import v3.std.substrate { ComparisonOp }
 import v3.spec.v3_l1 { DeclarationRef }
-import std.resources { ResourceReference }
+import v3.std.resources { ResourceReference }
 
 // **🟡 Scaffold — DiagnosticKind.** This mirrors the compiler's native
 // diagnostic taxonomy until reflected substrate diagnostic facts can be
@@ -113,8 +113,10 @@ type TestObligation {
   resources: List<ResourceReference>
 }
 
-fn obligation_for_claim(c: TestClaim) -> TestObligation =
+fn obligation_for_claim(c: TestClaim) -> TestObligation {
   TestObligation { claim_name: c.name, resources: c.requires }
+}
 
-fn materialize_test_obligations(claims: List<TestClaim>) -> List<TestObligation> =
+fn materialize_test_obligations(claims: List<TestClaim>) -> List<TestObligation> {
   map(claims, obligation_for_claim)
+}
