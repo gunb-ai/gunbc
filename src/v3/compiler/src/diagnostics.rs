@@ -54,7 +54,7 @@
 
 use std::collections::HashMap;
 
-use crate::dag::PortId;
+use crate::dag::{Dag, DeclarationId, FieldValue, PortId};
 use crate::types::TypeShape;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,30 +74,42 @@ impl SourceSpan {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Correction {
+    pub description: String,
+    pub span: SourceSpan,
+    pub new_source: String,
+}
+
 #[derive(Debug, Clone)]
 pub enum Diagnostic {
     TokenizerError {
         message: String,
         span: SourceSpan,
+        fixes: Vec<Correction>,
     },
     ParseError {
         message: String,
         span: SourceSpan,
+        fixes: Vec<Correction>,
     },
     TypeMismatch {
         expected: TypeShape,
         actual: TypeShape,
         span: SourceSpan,
+        fixes: Vec<Correction>,
     },
     ArityMismatch {
         function: String,
         expected: usize,
         actual: usize,
         span: SourceSpan,
+        fixes: Vec<Correction>,
     },
     ResolveError {
         name: String,
         span: SourceSpan,
+        fixes: Vec<Correction>,
     },
 }
 
@@ -110,6 +122,187 @@ impl Diagnostic {
             | Diagnostic::ArityMismatch { span, .. }
             | Diagnostic::ResolveError { span, .. } => span,
         }
+    }
+
+    pub fn fixes(&self) -> &[Correction] {
+        match self {
+            Diagnostic::TokenizerError { fixes, .. }
+            | Diagnostic::ParseError { fixes, .. }
+            | Diagnostic::TypeMismatch { fixes, .. }
+            | Diagnostic::ArityMismatch { fixes, .. }
+            | Diagnostic::ResolveError { fixes, .. } => fixes,
+        }
+    }
+
+    pub fn message(&self) -> String {
+        match self {
+            Diagnostic::TokenizerError { message, .. } | Diagnostic::ParseError { message, .. } => {
+                message.clone()
+            }
+            Diagnostic::TypeMismatch {
+                expected, actual, ..
+            } => format!("expected {expected:?}, got {actual:?}"),
+            Diagnostic::ArityMismatch {
+                function,
+                expected,
+                actual,
+                ..
+            } => format!("{function} expected {expected}, got {actual}"),
+            Diagnostic::ResolveError { name, .. } => name.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticStyleTarget {
+    Rust,
+    Go,
+    Python,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DiagnosticRenderError {
+    MissingCorrectionStyle(&'static str),
+    MalformedCorrectionStyle {
+        declaration: DeclarationId,
+        detail: &'static str,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CorrectionStyleBinding {
+    indent_unit: String,
+    line_ending: String,
+    string_quote: String,
+    trailing_semicolon: bool,
+}
+
+impl CorrectionStyleBinding {
+    fn build(dag: &Dag, declaration: DeclarationId) -> Result<Self, DiagnosticRenderError> {
+        let fields = match dag.declaration(declaration).value_body.as_ref() {
+            Some(crate::dag::ValueBody::Structural { fields }) => fields,
+            _ => {
+                return Err(DiagnosticRenderError::MalformedCorrectionStyle {
+                    declaration,
+                    detail: "correction_style declaration must carry a Structural value_body",
+                });
+            }
+        };
+        Ok(Self {
+            indent_unit: require_string(fields, "indent_unit", declaration)?,
+            line_ending: require_string(fields, "line_ending", declaration)?,
+            string_quote: require_string(fields, "string_quote", declaration)?.replace("%Q", "\""),
+            trailing_semicolon: require_bool(fields, "trailing_semicolon", declaration)?,
+        })
+    }
+}
+
+pub fn render_diagnostic_for_target(
+    dag: &Dag,
+    target: DiagnosticStyleTarget,
+    diagnostic: &Diagnostic,
+) -> Result<String, DiagnosticRenderError> {
+    let declaration = match target {
+        DiagnosticStyleTarget::Rust => dag
+            .rust_correction_style_spec()
+            .ok_or(DiagnosticRenderError::MissingCorrectionStyle(
+                "rust_correction_style",
+            ))?,
+        DiagnosticStyleTarget::Go => dag
+            .go_correction_style_spec()
+            .ok_or(DiagnosticRenderError::MissingCorrectionStyle(
+                "go_correction_style",
+            ))?,
+        DiagnosticStyleTarget::Python => dag
+            .python_correction_style_spec()
+            .ok_or(DiagnosticRenderError::MissingCorrectionStyle(
+                "python_correction_style",
+            ))?,
+    };
+    let style = CorrectionStyleBinding::build(dag, declaration)?;
+    Ok(render_diagnostic_with_style(diagnostic, &style))
+}
+
+fn render_diagnostic_with_style(
+    diagnostic: &Diagnostic,
+    style: &CorrectionStyleBinding,
+) -> String {
+    let mut lines = vec![format!(
+        "ERROR at {}:{}-{}: {}",
+        diagnostic.span().file,
+        diagnostic.span().byte_start,
+        diagnostic.span().byte_end,
+        diagnostic.message()
+    )];
+    for (index, fix) in diagnostic.fixes().iter().enumerate() {
+        lines.push(format!("FIX (option {}): {}", index + 1, fix.description));
+        lines.push(render_correction_source(fix, style));
+    }
+    lines.join(&style.line_ending)
+}
+
+fn render_correction_source(fix: &Correction, style: &CorrectionStyleBinding) -> String {
+    let suffix = if style.trailing_semicolon { ";" } else { "" };
+    let normalized = fix.new_source.replace("\r\n", "\n").replace('\r', "\n");
+    if !normalized.contains('\n') {
+        return format!(
+            "{}{}{}{}{}",
+            style.indent_unit, style.string_quote, normalized, style.string_quote, suffix
+        );
+    }
+
+    let body = normalized
+        .split('\n')
+        .map(|line| format!("{}{}", style.indent_unit, line))
+        .collect::<Vec<_>>()
+        .join(&style.line_ending);
+    format!(
+        "{}{}{}{}",
+        style.string_quote, style.line_ending, body, style.string_quote
+    ) + suffix
+}
+
+fn require_string(
+    fields: &[(String, FieldValue)],
+    label: &'static str,
+    declaration: DeclarationId,
+) -> Result<String, DiagnosticRenderError> {
+    let value = fields
+        .iter()
+        .find(|(field_label, _)| field_label == label)
+        .map(|(_, value)| value)
+        .ok_or(DiagnosticRenderError::MalformedCorrectionStyle {
+            declaration,
+            detail: "correction_style is missing a required String field",
+        })?;
+    match value {
+        FieldValue::Literal(crate::dag::LiteralBits::String(value)) => Ok(value.clone()),
+        _ => Err(DiagnosticRenderError::MalformedCorrectionStyle {
+            declaration,
+            detail: "correction_style String field must be a string literal",
+        }),
+    }
+}
+
+fn require_bool(
+    fields: &[(String, FieldValue)],
+    label: &'static str,
+    declaration: DeclarationId,
+) -> Result<bool, DiagnosticRenderError> {
+    let value = fields
+        .iter()
+        .find(|(field_label, _)| field_label == label)
+        .map(|(_, value)| value)
+        .ok_or(DiagnosticRenderError::MalformedCorrectionStyle {
+            declaration,
+            detail: "correction_style is missing a required Bool field",
+        })?;
+    match value {
+        FieldValue::Literal(crate::dag::LiteralBits::Bool(value)) => Ok(*value),
+        _ => Err(DiagnosticRenderError::MalformedCorrectionStyle {
+            declaration,
+            detail: "correction_style Bool field must be a bool literal",
+        }),
     }
 }
 

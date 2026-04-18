@@ -937,12 +937,7 @@ data go_clean_emission: CleanEmissionContract = {
   block_return: ExplicitReturnKeyword
   variable_bindings: EmitLetUnderscoreWhenUnused
   match_arm_body: NotApplicableMatchArmBody
-  correction_style: {
-    indent_unit: "\t"
-    line_ending: "\n"
-    string_quote: "%Q"
-    trailing_semicolon: false
-  }
+  correction_style: go_correction_style
   post_emit_verifier: {
     command: "gofmt"
     args: ["-l"]
@@ -950,4 +945,11 @@ data go_clean_emission: CleanEmissionContract = {
     expected_exit_code: 0
     output_policy: RequireEmptyStdout
   }
+}
+
+data go_correction_style: CorrectionStyle = {
+  indent_unit: "\t"
+  line_ending: "\n"
+  string_quote: "%Q"
+  trailing_semicolon: false
 }
