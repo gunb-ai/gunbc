@@ -17,9 +17,7 @@
 // PR per the brief's consumer-contract deferral.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{
-    ArrowBody, Dag, DeclarationId, PortState, TypeConnective,
-};
+use v3_compiler::dag::{ArrowBody, Dag, DeclarationId, PortState, TypeConnective};
 use v3_compiler::CompileError;
 
 fn compile_any(src: &str, file: &str) -> Dag {
@@ -273,9 +271,7 @@ let suite: TestSuite = {
         .nodes()
         .iter()
         .find_map(|node| match node {
-            v3_compiler::dag::Behavior::Bind(bind) if bind.name == "suite" => {
-                Some(bind.value)
-            }
+            v3_compiler::dag::Behavior::Bind(bind) if bind.name == "suite" => Some(bind.value),
             _ => None,
         })
         .unwrap_or_else(|| panic!("bind `suite` not found"));
