@@ -50,13 +50,17 @@ import std.list { List, empty, fold, cons }
 import std.substrate { PortId }
 
 // 🟢 TERMINAL. `SizeVariable` names the runtime size of a DAG
-// port's value. Two cost expressions referring to "|items|"
-// correlate structurally via `source_port` equality, not by label
-// — different folds over the same port describe the SAME size;
-// two folds over different ports do NOT, even if both lists have
-// the same declared type.
+// port's value. Two cost expressions correlate structurally via
+// `source_port` equality — different folds over the same port
+// describe the SAME size; two folds over different ports do NOT,
+// even if both lists have the same declared type.
+//
+// No `name: String` field: MVP rendering pins on port equality
+// alone, and the user-facing label the DB-7 design doc sketches
+// needs an InternTable lookup the lens doesn't yet run. When a
+// render consumer pins the missing piece, `SizeVariable` grows a
+// `name` field alongside the Rust mirror in `src/v3/compiler/src/dag.rs`.
 type SizeVariable {
-  name: String
   source_port: PortId
 }
 

@@ -80,7 +80,7 @@ fn loop_cost(
   )
 
 fn linear_at(port_id: PortId) -> SymbolicCostLookup =
-  FoundCost(LinearCost({ name: "n", source_port: port_id }))
+  FoundCost(LinearCost({ source_port: port_id }))
 
 fn combine_iterate(
   bound: SymbolicCostLookup,
