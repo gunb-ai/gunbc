@@ -5336,180 +5336,91 @@ fn validate_cluster_slot_assignment(
         let Some(param) = info.params.get(slot) else {
             return false;
         };
-        cluster_descent_provable(
-            info.body,
+        ClusterDescentChecker {
             dag,
-            param_decl,
-            member,
-            &param.name,
-            &cluster_members,
+            current_param_decl: param_decl,
+            current_param: &param.name,
+            cluster_members: &cluster_members,
             assignment,
-            &HashMap::new(),
-        )
+        }
+        .expr(info.body, &HashMap::new())
     })
 }
 
-fn cluster_descent_provable(
-    expr: &SurfaceExpr,
-    dag: &Dag,
+struct ClusterDescentChecker<'a> {
+    dag: &'a Dag,
     current_param_decl: DeclarationId,
-    current_member: &str,
-    current_param: &str,
-    cluster_members: &HashSet<String>,
-    assignment: &HashMap<String, usize>,
-    bindings: &HashMap<String, StructuralBindingInfo>,
-) -> bool {
-    match expr {
-        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => true,
-        SurfaceExpr::Call { target, args, .. } => {
-            if cluster_members.contains(target) {
-                let Some(&callee_slot) = assignment.get(target) else {
-                    return false;
-                };
-                let Some(callee_arg) = args.get(callee_slot) else {
-                    return false;
-                };
-                if !is_strictly_smaller(callee_arg, current_param, bindings) {
-                    return false;
-                }
-            }
-            args.iter().all(|arg| {
-                cluster_descent_provable(
-                    arg,
-                    dag,
-                    current_param_decl,
-                    current_member,
-                    current_param,
-                    cluster_members,
-                    assignment,
-                    bindings,
-                )
-            })
-        }
-        SurfaceExpr::Operator { args, .. } => args.iter().all(|arg| {
-            cluster_descent_provable(
-                arg,
-                dag,
-                current_param_decl,
-                current_member,
-                current_param,
-                cluster_members,
-                assignment,
-                bindings,
-            )
-        }),
-        SurfaceExpr::If {
-            cond,
-            then_branch,
-            else_branch,
-            ..
-        } => {
-            cluster_descent_provable(
-                cond,
-                dag,
-                current_param_decl,
-                current_member,
-                current_param,
-                cluster_members,
-                assignment,
-                bindings,
-            ) && cluster_descent_provable(
-                then_branch,
-                dag,
-                current_param_decl,
-                current_member,
-                current_param,
-                cluster_members,
-                assignment,
-                bindings,
-            ) && cluster_descent_provable(
-                else_branch,
-                dag,
-                current_param_decl,
-                current_member,
-                current_param,
-                cluster_members,
-                assignment,
-                bindings,
-            )
-        }
-        SurfaceExpr::Match {
-            scrutinee, arms, ..
-        } => {
-            if !cluster_descent_provable(
-                scrutinee,
-                dag,
-                current_param_decl,
-                current_member,
-                current_param,
-                cluster_members,
-                assignment,
-                bindings,
-            ) {
-                return false;
-            }
+    current_param: &'a str,
+    cluster_members: &'a HashSet<String>,
+    assignment: &'a HashMap<String, usize>,
+}
 
-            let scrutinee_is_current_param = matches!(
-                scrutinee.as_ref(),
-                SurfaceExpr::Var { name, .. } if name == current_param
-            );
-            arms.iter().all(|arm| {
-                let mut arm_bindings = bindings.clone();
-                if scrutinee_is_current_param {
-                    if let SurfacePattern::VariantWith { name, binding, .. } = &arm.pattern {
-                        if let Some(info) =
-                            structural_binding_info_for_variant(dag, current_param_decl, name)
-                        {
-                            arm_bindings.insert(binding.clone(), info);
-                        }
+impl ClusterDescentChecker<'_> {
+    fn expr(&self, expr: &SurfaceExpr, bindings: &HashMap<String, StructuralBindingInfo>) -> bool {
+        match expr {
+            SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => {
+                true
+            }
+            SurfaceExpr::Call { target, args, .. } => {
+                if self.cluster_members.contains(target) {
+                    let Some(&callee_slot) = self.assignment.get(target) else {
+                        return false;
+                    };
+                    let Some(callee_arg) = args.get(callee_slot) else {
+                        return false;
+                    };
+                    if !is_strictly_smaller(callee_arg, self.current_param, bindings) {
+                        return false;
                     }
                 }
-                cluster_descent_provable(
-                    &arm.body,
-                    dag,
-                    current_param_decl,
-                    current_member,
-                    current_param,
-                    cluster_members,
-                    assignment,
-                    &arm_bindings,
-                )
-            })
+                args.iter().all(|arg| self.expr(arg, bindings))
+            }
+            SurfaceExpr::Operator { args, .. } => args.iter().all(|arg| self.expr(arg, bindings)),
+            SurfaceExpr::If {
+                cond,
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                self.expr(cond, bindings)
+                    && self.expr(then_branch, bindings)
+                    && self.expr(else_branch, bindings)
+            }
+            SurfaceExpr::Match {
+                scrutinee, arms, ..
+            } => {
+                if !self.expr(scrutinee, bindings) {
+                    return false;
+                }
+
+                let scrutinee_is_current_param = matches!(
+                    scrutinee.as_ref(),
+                    SurfaceExpr::Var { name, .. } if name == self.current_param
+                );
+                arms.iter().all(|arm| {
+                    let mut arm_bindings = bindings.clone();
+                    if scrutinee_is_current_param {
+                        if let SurfacePattern::VariantWith { name, binding, .. } = &arm.pattern {
+                            if let Some(info) = structural_binding_info_for_variant(
+                                self.dag,
+                                self.current_param_decl,
+                                name,
+                            ) {
+                                arm_bindings.insert(binding.clone(), info);
+                            }
+                        }
+                    }
+                    self.expr(&arm.body, &arm_bindings)
+                })
+            }
+            SurfaceExpr::Lambda { body, .. } => self.expr(body, bindings),
+            SurfaceExpr::Record { fields, .. } => {
+                fields.iter().all(|field| self.expr(&field.value, bindings))
+            }
+            SurfaceExpr::List { elements, .. } => {
+                elements.iter().all(|element| self.expr(element, bindings))
+            }
         }
-        SurfaceExpr::Lambda { body, .. } => cluster_descent_provable(
-            body,
-            dag,
-            current_param_decl,
-            current_member,
-            current_param,
-            cluster_members,
-            assignment,
-            bindings,
-        ),
-        SurfaceExpr::Record { fields, .. } => fields.iter().all(|field| {
-            cluster_descent_provable(
-                &field.value,
-                dag,
-                current_param_decl,
-                current_member,
-                current_param,
-                cluster_members,
-                assignment,
-                bindings,
-            )
-        }),
-        SurfaceExpr::List { elements, .. } => elements.iter().all(|element| {
-            cluster_descent_provable(
-                element,
-                dag,
-                current_param_decl,
-                current_member,
-                current_param,
-                cluster_members,
-                assignment,
-                bindings,
-            )
-        }),
     }
 }
 
