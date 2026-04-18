@@ -1,19 +1,12 @@
 # Session relay (pointer)
 
-Transient PR review and CI state lives on **GitHub** — not as a hand-maintained mutable ledger in git (ChatGPT #530 review, 2026-04-18: coordination docs should **point**, not copy live bot/review fields).
+**Single authority:** PR review threads, bot comments, inline findings, and CI status are **authoritative on GitHub** — not duplicated as a mutable ledger in this repo (see [PR #530 discussion](https://github.com/gunb-ai/gunbc/pull/530), ChatGPT review 2026-04-18: docs should **point**, not copy live review fields).
 
-- **PR #530 —** https://github.com/gunb-ai/gunbc/pull/530 — use the PR **Conversation** and **Checks** tabs for current threads and status.
+| PR | URL |
+|:---|:---|
+| #530 | https://github.com/gunb-ai/gunbc/pull/530 |
+| #540 | https://github.com/gunb-ai/gunbc/pull/540 |
 
-- **PR #540 —** https://github.com/gunb-ai/gunbc/pull/540 — Stage 1d emitter consolidation design docs (`emit-functions-inventory.md`, `spec-field-gaps.md`, `emit-bridges.md`), plus edits to this file ([`session-relay-queue.md`](./session-relay-queue.md)) so the branch carries **review relay pointers** alongside the design artifacts. Same tabs for review threads and CI.
+For each PR: use **Conversation** (reviews, bots, threads) and **Checks** (CI).
 
-**Latest ingest — PR #540 inline @ 2026-04-18T20:26:10Z** (`docs/emit-bridges.md:55`): **ADDRESSED** (was **BLOCKING**). Bucket **E** had been documented as **Python-only**; **`emit_rust.rs`** still compares conj child field labels to **`_0`** in **`render_path_body`** (`!= "_0"`) and **`render_branch_pattern`** (`== "_0"`). **E** is now **2 + 0 + 2 = 4** with `rg 'label == "_0"\|label != "_0"'` on all three emitters; **B13** catalog + [`spec-field-gaps.md`](./spec-field-gaps.md) §5 name the Rust path. Restores single-authority bridge inventory for consolidation planning.
-
-**Previous — PR #540 `claude-review` / human @ 2026-04-18T20:05:02Z** (`sha:4a0c5de`, `stage:stage1d-acceptance-gates-1-3`): **MERGE-READY.** Independent `rg` verification: **92** `fn render_*`/`emit_*` (40+25+27); **8** `label == "(Empty|Cons|None|Some)"` lines (2+2+4); **`name.starts_with("rust_")`** **0** hits in emitters — B11 hot-path concern **closed** (guard via CI grep). **Acceptance:** three design gates satisfied by this PR’s docs; **pilot evaluation** already in PR #533 §4; **only P2-L1 sign-off** remains (process). **Follow-ups (non-blocking):** optional **CI ratchet** on std-sum label `rg`; after merge + sign-off, refresh **#533 ROADMAP** (*design complete* / *1e unblocked*). **HEAD note:** review text cited **82/10** spec-driven vs per-target — current [`emit-functions-inventory.md`](./emit-functions-inventory.md) summary is **80 / 9** + **3** test-only rows; [`emit-bridges.md`](./emit-bridges.md) uses **A+B+C+D = 84** and separate **`named_variant_id(dag,` vs `(`** rows (post-review table fix).
-
-**Previous — PR #540 Codex @ 2026-04-18T20:04:47Z:** **INFORMATIONAL.** Top-level [Codex Review](https://github.com/gunb-ai/gunbc/pull/540) comment (wrapper + “About Codex”); **reviewed commit `4a0c5dedfb`**. No separate actionable items in that comment body — substantive bot thread was the **inline P2** on `emit-bridges.md` (already **ADDRESSED** at `session/stern-badger-526` HEAD vs that SHA).
-
-**Previous — PR #540 `chatgpt-codex-connector` inline (`docs/emit-bridges.md:54`, P2):** **ADDRESSED.** Bridge “site counts” table drifted from methodology §B: **`named_variant_id(dag,` is 29/8/3 (40 total)**, not the broader `named_variant_id(` line count. Table now has **per-file `rg -c` columns**, separate **B** vs **B′** rows, **A+B+C+D = 84**, and bucket **E** for **`_0`** — later expanded to **Rust + Python** (see **Latest ingest** above).
-
-**Also pending — PR #540 ChatGPT auto-review `sha:4a0c5dedfb48b046164e72415ada26b4becb04a0` @ 2026-04-18T20:03:45Z:** **PENDING.** Placeholder comment only — full verdict not yet posted; use the [conversation](https://chatgpt.com/g/g-p-69e3c70def688191bf8fa7c2cb3292ba-gunbc-review/c/69e3e39f-d4b8-83ea-a330-3a17941f70e2) for the completed review. _(That SHA predates follow-up doc commits on the branch; re-run or re-read against current `session/stern-badger-526` HEAD if the bot does not auto-update.)_
-
-**Previous ingest — PR #530 ChatGPT auto-review `sha:4014aa346e67b88090b47055ebf7061c9d38b7ee` complete @ 2026-04-18T16:31:14Z:** **APPROVE_WITH_COMMENTS.** Confirms `lower.rs` `is_first` → mutual-recursion planner + regression test; doc pointer/index cleanup (phase-plan §4.1, M2 vs Lane 3 Stage 3a, `post-l15` → DB-8 determinism); substrate `ParamRef` / `TransformRef` comment-only tracked debt. **Non-blocking:** phase-plan header should not mirror bot verdicts — **addressed** in [`phase-plan-2026-04-18.md`](./phase-plan-2026-04-18.md) **Since last refresh** (this ingest); optional follow-up if `compute_mutually_recursive` gains callers: a first-authority view vs parallel `(items, is_first)` slices. [View conversation](https://chatgpt.com/g/g-p-69d1a39d61e88191835a38f9eba3ec9b-auto-review/c/69e3ada0-b13c-83ea-9da3-00184b788a28)
+Stage 1d design artifacts carried on #540: [`emit-functions-inventory.md`](./emit-functions-inventory.md), [`spec-field-gaps.md`](./spec-field-gaps.md), [`emit-bridges.md`](./emit-bridges.md).
