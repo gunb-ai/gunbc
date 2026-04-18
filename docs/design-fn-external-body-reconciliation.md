@@ -10,7 +10,7 @@
 
 ## Problem
 
-`SurfaceItem::FnExternalBody` and its lowered `ArrowBody::Unparsed` partner carry several semantically distinct use cases that share the same variant and post-parse shape. A future reader — including the next session working on M2 parser extensions — could conflate them and dissolve case (1) in a way that breaks pipeline bootstrap or ordering authority.
+`SurfaceItem::FnExternalBody` and its lowered `ArrowBody::Unparsed` partner carry multiple use cases that share the same variant and post-parse shape. **DB-16** documents the **pipeline-relevant** split (cases 1, 2a, 2c). A future reader — including the next session working on M2 parser extensions — could conflate them and dissolve case (1) in a way that breaks pipeline bootstrap or ordering authority.
 
 ### Case 1: Parse lag
 
@@ -143,9 +143,7 @@ The proper disambiguator is **downstream bootstrap / authority role**, not a sin
 ## Associations
 
 - **`src/v3/ROADMAP.md`** — deferral entry for E-9 substrate accessor bootstrap rewrite (accessor `Arrow.body` → `ExternalRealization(ref)`); substrate accessor semantics are **not** canonically documented in DB-16.
-- **Pipeline** — `PipelineStageBinding` + `materialize_pipeline_realizations` (case 2a, aligned with E-9).
-- **`src/v3/compiler/src/parse.rs:64-91`** — `SurfaceItem::FnExternalBody` doc comment to update
-- **`src/v3/compiler/src/dag.rs:492-505`** — `ArrowBody::Unparsed` doc comment to review
-- **`src/v3/compiler/src/bootstrap.rs:238-252`** — the production case 2 bootstrap pass
-- **`src/v3/compiler/pipeline.dag`** — production case 2a (per-stage `host` fns) and case 2c (`fn compile { ... }` ordering surface)
+- **Pipeline** — `PipelineStageBinding` + `materialize_pipeline_realizations` (case 2a).
+- **`src/v3/compiler/src/bootstrap.rs`** — `materialize_pipeline_realizations`
+- **`src/v3/compiler/pipeline.dag`** — case 2a (per-stage `host` fns) and case 2c (`fn compile { ... }` ordering surface)
 - **`dsl/std/logic.dag`** — case 1 example (`classical_not`, `classical_and`, `classical_or`)
