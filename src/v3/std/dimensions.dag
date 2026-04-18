@@ -20,7 +20,7 @@
 
 module v3.std.dimensions
 
-import v3.std.substrate { Dag, Behavior }
+import std.substrate { Dag, Behavior }
 
 // 🟢 TERMINAL at the structural-witness scope. `Witness<Carrier>`
 // partitions per-operation evidence into two disjoint cases:

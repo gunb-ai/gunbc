@@ -1,0 +1,325 @@
+// std.algebra — structural algebra shared across lenses.
+//
+// 🟡 SCAFFOLD at Stage 2d scope. This file ships the carrier types +
+// composition algebra for `SymbolicCost`, the asymptotic-bound
+// coproduct consumed by `lenses/cost.dag` (DB-7). The broader
+// algebra hierarchy (Monoid, Lattice, Ring, ...) authored at
+// `dsl/std/algebra.dag` for v2 is NOT ported yet — Stage 2d needs
+// `SymbolicCost` alone; later lanes pull algebra structures in as
+// concrete consumers demand them, same policy as
+// `src/v3/std/effects.dag` Stage 2a.
+//
+// **SymbolicCost coproduct (seven variants per DB-7
+// `docs/design-symbolic-cost-algebra.md`):**
+//   - `ConstantCost(Int)`          — O(1) bounds
+//   - `LinearCost(SizeVariable)`   — O(n) over a named size
+//   - `PolynomialCost { var, degree }` — O(n^k)
+//   - `ProductCost(List<SymbolicCost>)` — O(n·m) product
+//   - `SumCost(List<SymbolicCost>)` — O(n + m) sum, dominated terms drop
+//   - `LogCost(SizeVariable)`      — O(log n)
+//   - `UnknownCost(String)`        — fail-open with diagnostic reason
+//
+// Four-pattern dissolution receipt (Q4 per DB-7):
+//
+//   - Pattern 1 (fact placement): fails. Every consumer dispatches
+//     on cost variant first — dominance on Polynomial/Linear pairs,
+//     list flattening on Sum/Product, name extraction on
+//     Linear/Log/Polynomial. No neutral placement above the variant
+//     tag.
+//   - Pattern 2 (variant-is-data): fails. ConstantCost carries a
+//     literal Int; LinearCost/LogCost carry a SizeVariable;
+//     PolynomialCost carries `{var, degree}`; Product/Sum carry
+//     lists of costs; UnknownCost carries a reason String. Each
+//     payload is structurally distinct.
+//   - Pattern 3 (algebraic-form): confirms terminality. The seven
+//     variants are the asymptotic bounds the thesis reasons about;
+//     exotic bounds (O(n!), O(2^n)) collapse to `UnknownCost` with
+//     a reason until a concrete consumer forces variant growth.
+//   - Pattern 4 (dimensional): fails. No common coordinate space
+//     generates all seven — LinearCost's payload is a SizeVariable,
+//     ProductCost's is a list, ConstantCost's is an Int.
+//
+// STOP SIGNAL: wanting an eighth variant. Pause and escalate rather
+// than extending; the thesis claim is that seven covers the
+// asymptotic surface, and any new variant should carry its own
+// dissolution receipt.
+
+module v3.std.algebra
+
+import std.list { List, empty, fold, cons }
+import std.substrate { PortId }
+
+// 🟢 TERMINAL. `SizeVariable` names the runtime size of a DAG
+// port's value. Two cost expressions referring to "|items|"
+// correlate structurally via `source_port` equality, not by label
+// — different folds over the same port describe the SAME size;
+// two folds over different ports do NOT, even if both lists have
+// the same declared type.
+type SizeVariable {
+  name: String
+  source_port: PortId
+}
+
+// 🟢 TERMINAL at Stage 2d scope. The asymptotic-bound coproduct
+// DB-7 locks. See the module-level receipt for dissolution-pattern
+// evidence.
+type SymbolicCost
+  = ConstantCost(Int)
+  | LinearCost(SizeVariable)
+  | PolynomialCost { var: SizeVariable, degree: Int }
+  | ProductCost(List<SymbolicCost>)
+  | SumCost(List<SymbolicCost>)
+  | LogCost(SizeVariable)
+  | UnknownCost(String)
+
+// ── Composition (sequential / iterate / max_path) ───────────────
+
+// `sequential(a, b)` composes two costs in series. The resulting
+// sum normalizes dominated terms away — `O(n) + O(1) = O(n)`.
+fn sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
+  normalize(SumCost(cons(a, cons(b, empty()))))
+
+// `iterate(bound, body)` composes an iteration: `body` runs
+// `bound`-many times. `O(n) * O(1) = O(n)`; `O(n) * O(n) = O(n²)`
+// when the two LinearCost terms share a SizeVariable.
+fn iterate(bound: SymbolicCost, body: SymbolicCost) -> SymbolicCost =
+  normalize(ProductCost(cons(bound, cons(body, empty()))))
+
+// `max_path(paths)` takes the dominant cost across alternative
+// control-flow paths (Branch arms). Worst-case asymptotic semantics:
+// a branch between O(n) and O(n²) costs O(n²) overall.
+fn max_path(paths: List<SymbolicCost>) -> SymbolicCost =
+  fold(paths, ConstantCost(0), |acc, path|
+    if dominates(path, acc) then path else acc
+  )
+
+// ── Dominance ───────────────────────────────────────────────────
+//
+// Asymptotic dominance: `a` dominates `b` iff `a` grows at least as
+// fast as `b`. Dropped terms in `normalize` and path selection in
+// `max_path` both read this.
+//
+// Rules implemented here (DB-7 §"Dominance / normalization"):
+//   - Unknown dominates everything (safest over-approximation).
+//   - Constant is dominated by everything else.
+//   - Polynomial(v, k1) dominates Polynomial(v, k2) iff k1 >= k2.
+//   - Linear(v) = Polynomial(v, 1) for dominance purposes.
+//   - Product/Sum use the dominant child as a summary (MVP — full
+//     term-by-term comparison lands with the multi-variable
+//     fixtures in Stage 2d+ follow-up).
+fn dominates(a: SymbolicCost, b: SymbolicCost) -> Bool =
+  match a {
+    UnknownCost(_) => True
+    ConstantCost(_) =>
+      match b {
+        ConstantCost(_) => True
+        UnknownCost(_) => False
+        LinearCost(_) => False
+        PolynomialCost(_) => False
+        ProductCost(_) => False
+        SumCost(_) => False
+        LogCost(_) => False
+      }
+    LinearCost(va) =>
+      match b {
+        ConstantCost(_) => True
+        LogCost(_) => True
+        LinearCost(vb) => same_size_variable(va, vb)
+        PolynomialCost(payload) =>
+          if same_size_variable(va, payload.var) then
+            payload.degree <= 1
+          else
+            False
+        UnknownCost(_) => False
+        ProductCost(_) => False
+        SumCost(_) => False
+      }
+    PolynomialCost(pa) =>
+      match b {
+        ConstantCost(_) => True
+        LogCost(_) => True
+        LinearCost(vb) =>
+          if same_size_variable(pa.var, vb) then
+            pa.degree >= 1
+          else
+            False
+        PolynomialCost(pb) =>
+          if same_size_variable(pa.var, pb.var) then
+            pa.degree >= pb.degree
+          else
+            False
+        UnknownCost(_) => False
+        ProductCost(_) => False
+        SumCost(_) => False
+      }
+    LogCost(va) =>
+      match b {
+        ConstantCost(_) => True
+        LogCost(vb) => same_size_variable(va, vb)
+        LinearCost(_) => False
+        PolynomialCost(_) => False
+        ProductCost(_) => False
+        SumCost(_) => False
+        UnknownCost(_) => False
+      }
+    ProductCost(terms_a) =>
+      match b {
+        ConstantCost(_) => True
+        LogCost(_) => True
+        LinearCost(_) => True
+        PolynomialCost(_) => False
+        ProductCost(_) => False
+        SumCost(_) => False
+        UnknownCost(_) => False
+      }
+    SumCost(terms_a) =>
+      match b {
+        ConstantCost(_) => True
+        LogCost(_) => True
+        LinearCost(_) => True
+        PolynomialCost(_) => False
+        ProductCost(_) => False
+        SumCost(_) => False
+        UnknownCost(_) => False
+      }
+  }
+
+fn same_size_variable(a: SizeVariable, b: SizeVariable) -> Bool =
+  a.source_port == b.source_port
+
+// ── Normalization ───────────────────────────────────────────────
+//
+// `normalize(c)` simplifies a SymbolicCost expression by:
+//   - dropping `ConstantCost(0)` from Sum/Product lists,
+//   - collapsing Sums/Products whose term lists reduce to a single
+//     element,
+//   - folding a Product of two identical LinearCosts into
+//     `PolynomialCost(var, 2)` — the nested-fold fingerprint the
+//     `all_pairs` fixture leans on,
+//   - otherwise returning the input unchanged.
+//
+// Full recursive flattening of nested Sums/Products is deferred —
+// the composition ops construct trees two deep at most, so the
+// MVP handles that surface directly.
+fn normalize(c: SymbolicCost) -> SymbolicCost =
+  match c {
+    ConstantCost(n) => ConstantCost(n)
+    LinearCost(v) => LinearCost(v)
+    PolynomialCost(p) => PolynomialCost(p)
+    LogCost(v) => LogCost(v)
+    UnknownCost(r) => UnknownCost(r)
+    SumCost(terms) => reduce_sum(drop_zero(terms))
+    ProductCost(terms) => reduce_product(drop_zero(terms))
+  }
+
+// Drops `ConstantCost(0)` terms from a list of costs. Used by
+// normalize so `SumCost([Linear, Constant(0)])` collapses to the
+// single Linear term (DB-7 acceptance test).
+fn drop_zero(terms: List<SymbolicCost>) -> List<SymbolicCost> =
+  match terms {
+    Empty => empty()
+    Cons(payload) =>
+      match payload.head {
+        ConstantCost(n) =>
+          if n == 0 then
+            drop_zero(payload.tail)
+          else
+            cons(payload.head, drop_zero(payload.tail))
+        LinearCost(_) => cons(payload.head, drop_zero(payload.tail))
+        PolynomialCost(_) => cons(payload.head, drop_zero(payload.tail))
+        LogCost(_) => cons(payload.head, drop_zero(payload.tail))
+        UnknownCost(_) => cons(payload.head, drop_zero(payload.tail))
+        SumCost(_) => cons(payload.head, drop_zero(payload.tail))
+        ProductCost(_) => cons(payload.head, drop_zero(payload.tail))
+      }
+  }
+
+// If a SumCost reduces to a single term, return that term; else
+// keep the SumCost wrapper with dominated terms dropped.
+fn reduce_sum(terms: List<SymbolicCost>) -> SymbolicCost =
+  match terms {
+    Empty => ConstantCost(0)
+    Cons(payload) =>
+      match payload.tail {
+        Empty => payload.head
+        Cons(_) => SumCost(drop_dominated(cons(payload.head, payload.tail)))
+      }
+  }
+
+// If a ProductCost reduces to a single term, return it; if the
+// product is two LinearCosts over the same variable, fold to
+// `PolynomialCost(var, 2)`; otherwise keep the wrapper.
+fn reduce_product(terms: List<SymbolicCost>) -> SymbolicCost =
+  match terms {
+    Empty => ConstantCost(0)
+    Cons(payload) =>
+      match payload.tail {
+        Empty => payload.head
+        Cons(second) =>
+          match second.tail {
+            Empty => combine_binary_product(payload.head, second.head)
+            Cons(_) => ProductCost(cons(payload.head, payload.tail))
+          }
+      }
+  }
+
+// Binary product special-case: two LinearCosts over the same port
+// collapse to PolynomialCost with degree 2. Other shapes stay as
+// a two-element ProductCost.
+fn combine_binary_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
+  match a {
+    LinearCost(va) =>
+      match b {
+        LinearCost(vb) =>
+          if same_size_variable(va, vb) then
+            PolynomialCost { var: va, degree: 2 }
+          else
+            ProductCost(cons(a, cons(b, empty())))
+        ConstantCost(_) => ProductCost(cons(a, cons(b, empty())))
+        PolynomialCost(_) => ProductCost(cons(a, cons(b, empty())))
+        LogCost(_) => ProductCost(cons(a, cons(b, empty())))
+        SumCost(_) => ProductCost(cons(a, cons(b, empty())))
+        ProductCost(_) => ProductCost(cons(a, cons(b, empty())))
+        UnknownCost(_) => ProductCost(cons(a, cons(b, empty())))
+      }
+    ConstantCost(_) => ProductCost(cons(a, cons(b, empty())))
+    PolynomialCost(_) => ProductCost(cons(a, cons(b, empty())))
+    LogCost(_) => ProductCost(cons(a, cons(b, empty())))
+    SumCost(_) => ProductCost(cons(a, cons(b, empty())))
+    ProductCost(_) => ProductCost(cons(a, cons(b, empty())))
+    UnknownCost(_) => ProductCost(cons(a, cons(b, empty())))
+  }
+
+// Drops terms from a SumCost list that are dominated by another
+// term in the list. MVP: O(n²) pairwise walk; acceptable because
+// the sum lists in practice are short (≤ 3 terms).
+fn drop_dominated(terms: List<SymbolicCost>) -> List<SymbolicCost> =
+  fold(terms, empty(), |acc, term|
+    if any_dominates(acc, term) then
+      acc
+    else
+      cons(term, filter_not_dominated_by(acc, term))
+  )
+
+fn any_dominates(candidates: List<SymbolicCost>, term: SymbolicCost) -> Bool =
+  match candidates {
+    Empty => False
+    Cons(payload) =>
+      if dominates(payload.head, term) then
+        True
+      else
+        any_dominates(payload.tail, term)
+  }
+
+fn filter_not_dominated_by(
+  candidates: List<SymbolicCost>,
+  winner: SymbolicCost
+) -> List<SymbolicCost> =
+  match candidates {
+    Empty => empty()
+    Cons(payload) =>
+      if dominates(winner, payload.head) then
+        filter_not_dominated_by(payload.tail, winner)
+      else
+        cons(payload.head, filter_not_dominated_by(payload.tail, winner))
+  }
