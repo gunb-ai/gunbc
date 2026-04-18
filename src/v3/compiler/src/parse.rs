@@ -809,21 +809,7 @@ impl<'a> Parser<'a> {
         let open = self.expect_kind(TokenKind::LBrace)?;
         let mut fields: Vec<SurfaceRecordField> = Vec::new();
         while !matches!(self.peek().kind, TokenKind::RBrace) {
-<<<<<<< HEAD
             let (field_name, name_span) = self.parse_field_label()?;
-=======
-            let name_token = self.bump().clone();
-            let field_name = match name_token.kind {
-                TokenKind::Ident(n) => n,
-                other => {
-                    return Err(Diagnostic::ParseError {
-                        message: format!("expected field name in record literal, got {other:?}"),
-                        span: name_token.span,
-                        fixes: Vec::new(),
-                    });
-                }
-            };
->>>>>>> dc36be6aa (chore: apply cargo fmt)
             self.expect_kind(TokenKind::Colon)?;
             let value = self.parse_expr()?;
             let field_end = expr_span(&value).byte_end;
