@@ -567,12 +567,9 @@ Cleared (this PR): `DerivedOpEffect { method, path_template, shape }` collapsed 
 
 **No design doc committed yet.** This deferral tracks the structural ordering (Track 15 → cargo.Fmt → pre-push-hook.dag → dissolve hand-written). Formal DB lands when someone starts the `pre-push-hook.dag` work and needs to pin down the `PrePushHook` type shape.
 
-### Phase-plan migration candidates (coordination snapshot)
+### Phase-plan migration candidates (pointer)
 
-See [`docs/phase-plan-2026-04-18.md`](../../docs/phase-plan-2026-04-18.md) §5b. **Not duplicate deferrals** — items awaiting director pre-clearance or a dedicated PR before they graduate into scoped deferral rows above:
-
-- **Variant-payload field-access general model** (#518 / #519 follow-up) — infra debt; needs Lane 1 follow-up or substrate note when scheduled.
-- **`compiler.dag` `hand_maintained_src` v2 path carryover** — open whether Stage 3c requires a v3-centric rewrite or self-resolves; see phase-plan §6 Q3.
+Items awaiting director pre-clearance (before they graduate into **scoped deferrals** above) are listed **only** in [`docs/phase-plan-2026-04-18.md`](../../docs/phase-plan-2026-04-18.md) §5b — do not duplicate or hand-sync bullets here.
 
 ### How the active-deferrals discipline works
 
