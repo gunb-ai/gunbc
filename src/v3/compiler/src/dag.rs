@@ -1664,11 +1664,6 @@ pub(crate) struct TargetSyntaxCache {
     /// construction. Go / Python cache analogues land when their
     /// respective pilots do.
     pub rust_clean_emission: Option<DeclarationId>,
-    /// `rust_correction_style` declaration loaded from
-    /// `src/v3/spec/rust.dag`. Diagnostic rendering reads the
-    /// source-level correction style through this typed handle
-    /// rather than reconstructing it with per-consumer name scans.
-    pub rust_correction_style: Option<DeclarationId>,
     /// `rust_execution_model` declaration loaded from
     /// `src/v3/spec/rust.dag`. Used by emitters to gate the
     /// ownership stage on the target memory model.
@@ -1690,9 +1685,6 @@ pub(crate) struct TargetSyntaxCache {
     /// emitted Go compiles under `gofmt -l` + the Go compiler's
     /// own unused-local check by construction.
     pub go_clean_emission: Option<DeclarationId>,
-    /// `go_correction_style` declaration loaded from
-    /// `src/v3/spec/go.dag`. Mirrors `rust_correction_style`.
-    pub go_correction_style: Option<DeclarationId>,
     /// `python_clean_emission` CleanEmissionContract declaration
     /// loaded from `src/v3/spec/python.dag`. Lane 1 Stage 1c PR 3 /
     /// E-5: the Python emitter dispatches on this contract's
@@ -1701,10 +1693,6 @@ pub(crate) struct TargetSyntaxCache {
     /// identifier is never emitted at the pattern site, so
     /// py_compile never flags an unused binding.
     pub python_clean_emission: Option<DeclarationId>,
-    /// `python_correction_style` declaration loaded from
-    /// `src/v3/spec/python.dag`. Mirrors the Rust/Go correction-style
-    /// handles for DB-1 source-level diagnostic rendering.
-    pub python_correction_style: Option<DeclarationId>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -2051,15 +2039,6 @@ impl Dag {
         self.target_syntax.rust_clean_emission
     }
 
-    /// Typed accessor for the Rust `CorrectionStyle` declaration
-    /// loaded from `src/v3/spec/rust.dag`. Consumers render
-    /// source-level `Diagnostic.fixes` through this style rather
-    /// than re-resolving `rust_correction_style` by name at each
-    /// call site.
-    pub fn rust_correction_style_spec(&self) -> Option<DeclarationId> {
-        self.target_syntax.rust_correction_style
-    }
-
     /// Typed accessor for the Rust target execution model
     /// declaration loaded from `src/v3/spec/rust.dag`.
     pub fn rust_execution_model_spec(&self) -> Option<DeclarationId> {
@@ -2093,12 +2072,6 @@ impl Dag {
         self.target_syntax.go_clean_emission
     }
 
-    /// Typed accessor for the Go `CorrectionStyle` declaration
-    /// loaded from `src/v3/spec/go.dag`.
-    pub fn go_correction_style_spec(&self) -> Option<DeclarationId> {
-        self.target_syntax.go_correction_style
-    }
-
     /// Typed accessor for the Python `CleanEmissionContract`
     /// declaration loaded from `src/v3/spec/python.dag` (E-5 / Lane
     /// 1 Stage 1c PR 3). Mirrors `rust_clean_emission_spec` and
@@ -2106,12 +2079,6 @@ impl Dag {
     /// fields and dispatches on the rule variants.
     pub fn python_clean_emission_spec(&self) -> Option<DeclarationId> {
         self.target_syntax.python_clean_emission
-    }
-
-    /// Typed accessor for the Python `CorrectionStyle` declaration
-    /// loaded from `src/v3/spec/python.dag`.
-    pub fn python_correction_style_spec(&self) -> Option<DeclarationId> {
-        self.target_syntax.python_correction_style
     }
 
     /// Typed accessor for the cached `std.list.List` template.
@@ -2543,9 +2510,6 @@ impl Dag {
         self.target_syntax.rust_clean_emission = self
             .declaration_by_name("rust_clean_emission")
             .map(|d| d.id);
-        self.target_syntax.rust_correction_style = self
-            .declaration_by_name("rust_correction_style")
-            .map(|d| d.id);
         self.target_syntax.rust_execution_model = self
             .declaration_by_name("rust_execution_model")
             .map(|d| d.id);
@@ -2555,14 +2519,8 @@ impl Dag {
             self.declaration_by_name("go_execution_model").map(|d| d.id);
         self.target_syntax.go_clean_emission =
             self.declaration_by_name("go_clean_emission").map(|d| d.id);
-        self.target_syntax.go_correction_style = self
-            .declaration_by_name("go_correction_style")
-            .map(|d| d.id);
         self.target_syntax.python_clean_emission = self
             .declaration_by_name("python_clean_emission")
-            .map(|d| d.id);
-        self.target_syntax.python_correction_style = self
-            .declaration_by_name("python_correction_style")
             .map(|d| d.id);
         self.stdlib_types.list = self.declaration_by_name("List").map(|d| d.id);
 

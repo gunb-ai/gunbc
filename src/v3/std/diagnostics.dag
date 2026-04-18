@@ -21,6 +21,9 @@ type CompilerDiagnosticKind
 // syntax; target-native fix syntax is deliberately out of scope.
 type Correction {
   description: String
+  // Retained so future fix surfaces can point at the precise source
+  // range the correction applies to. The current source-level
+  // renderer only prints `new_source`.
   span: SourceSpan
   new_source: String
 }

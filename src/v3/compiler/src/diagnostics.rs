@@ -54,7 +54,7 @@
 
 use std::collections::HashMap;
 
-use crate::dag::{Dag, DeclarationId, FieldValue, PortId};
+use crate::dag::{Dag, DeclarationId, FieldValue, PortId, ValueBody};
 use crate::types::TypeShape;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,6 +77,10 @@ impl SourceSpan {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Correction {
     pub description: String,
+    // Retained even though the current source-level renderer only
+    // prints replacement text. Future fix surfaces can use this to
+    // point at the precise range the correction applies to without
+    // changing the carrier shape.
     pub span: SourceSpan,
     pub new_source: String,
 }
@@ -162,6 +166,11 @@ pub enum DiagnosticStyleTarget {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiagnosticRenderError {
+    MissingCleanEmissionContract(&'static str),
+    MalformedCleanEmissionContract {
+        declaration: DeclarationId,
+        detail: &'static str,
+    },
     MissingCorrectionStyle(&'static str),
     MalformedCorrectionStyle {
         declaration: DeclarationId,
@@ -202,20 +211,52 @@ pub fn render_diagnostic_for_target(
     target: DiagnosticStyleTarget,
     diagnostic: &Diagnostic,
 ) -> Result<String, DiagnosticRenderError> {
-    let declaration =
-        match target {
-            DiagnosticStyleTarget::Rust => dag.rust_correction_style_spec().ok_or(
-                DiagnosticRenderError::MissingCorrectionStyle("rust_correction_style"),
-            )?,
-            DiagnosticStyleTarget::Go => dag.go_correction_style_spec().ok_or(
-                DiagnosticRenderError::MissingCorrectionStyle("go_correction_style"),
-            )?,
-            DiagnosticStyleTarget::Python => dag.python_correction_style_spec().ok_or(
-                DiagnosticRenderError::MissingCorrectionStyle("python_correction_style"),
-            )?,
-        };
+    let declaration = correction_style_for_target(dag, target)?;
     let style = CorrectionStyleBinding::build(dag, declaration)?;
     Ok(render_diagnostic_with_style(diagnostic, &style))
+}
+
+fn correction_style_for_target(
+    dag: &Dag,
+    target: DiagnosticStyleTarget,
+) -> Result<DeclarationId, DiagnosticRenderError> {
+    let (clean_emission_decl, missing_name) = match target {
+        DiagnosticStyleTarget::Rust => (
+            dag.rust_clean_emission_spec(),
+            "rust_clean_emission.correction_style",
+        ),
+        DiagnosticStyleTarget::Go => (
+            dag.go_clean_emission_spec(),
+            "go_clean_emission.correction_style",
+        ),
+        DiagnosticStyleTarget::Python => (
+            dag.python_clean_emission_spec(),
+            "python_clean_emission.correction_style",
+        ),
+    };
+    let clean_emission_decl =
+        clean_emission_decl.ok_or(DiagnosticRenderError::MissingCleanEmissionContract(
+            missing_name,
+        ))?;
+    let Some(ValueBody::Structural { fields }) = &dag.declaration(clean_emission_decl).value_body
+    else {
+        return Err(DiagnosticRenderError::MalformedCleanEmissionContract {
+            declaration: clean_emission_decl,
+            detail: "clean emission declaration must carry a structural value_body",
+        });
+    };
+    let value = fields
+        .iter()
+        .find(|(label, _)| label == "correction_style")
+        .map(|(_, value)| value)
+        .ok_or(DiagnosticRenderError::MissingCorrectionStyle(missing_name))?;
+    match value {
+        FieldValue::Reference(declaration) => Ok(*declaration),
+        _ => Err(DiagnosticRenderError::MalformedCleanEmissionContract {
+            declaration: clean_emission_decl,
+            detail: "clean emission correction_style field must be a declaration reference",
+        }),
+    }
 }
 
 fn render_diagnostic_with_style(diagnostic: &Diagnostic, style: &CorrectionStyleBinding) -> String {
@@ -346,36 +387,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn dag_caches_named_correction_style_specs() {
-        let dag = Dag::new();
-        assert_eq!(
-            dag.declaration(dag.rust_correction_style_spec().expect("rust style cached"))
-                .name
-                .as_deref(),
-            Some("rust_correction_style")
-        );
-        assert_eq!(
-            dag.declaration(dag.go_correction_style_spec().expect("go style cached"))
-                .name
-                .as_deref(),
-            Some("go_correction_style")
-        );
-        assert_eq!(
-            dag.declaration(
-                dag.python_correction_style_spec()
-                    .expect("python style cached")
-            )
-            .name
-            .as_deref(),
-            Some("python_correction_style")
-        );
-    }
-
-    #[test]
     fn clean_emission_contracts_reference_named_correction_styles() {
         let dag = Dag::new();
         let assert_reference =
-            |clean_decl: DeclarationId, expected_style: DeclarationId, expected_name: &str| {
+            |clean_decl: DeclarationId, expected_style_name: &str, expected_name: &str| {
                 let fields = match dag
                     .declaration(clean_decl)
                     .value_body
@@ -392,7 +407,8 @@ mod tests {
                     .expect("correction_style field exists");
                 match value {
                     FieldValue::Reference(actual) => assert_eq!(
-                        *actual, expected_style,
+                        dag.declaration(*actual).name.as_deref(),
+                        Some(expected_style_name),
                         "{expected_name} should point at its named correction style"
                     ),
                     other => panic!("correction_style must be a Reference, got {other:?}"),
@@ -400,18 +416,18 @@ mod tests {
             };
         assert_reference(
             dag.rust_clean_emission_spec().expect("rust clean emission"),
-            dag.rust_correction_style_spec().expect("rust style"),
+            "rust_correction_style",
             "rust_clean_emission",
         );
         assert_reference(
             dag.go_clean_emission_spec().expect("go clean emission"),
-            dag.go_correction_style_spec().expect("go style"),
+            "go_correction_style",
             "go_clean_emission",
         );
         assert_reference(
             dag.python_clean_emission_spec()
                 .expect("python clean emission"),
-            dag.python_correction_style_spec().expect("python style"),
+            "python_correction_style",
             "python_clean_emission",
         );
     }
