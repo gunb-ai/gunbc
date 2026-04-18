@@ -928,12 +928,14 @@ fn type_to_connective(
                 .map(|i| type_to_declaration_id(i, symbols, local, dag))
                 .collect(),
             output: type_to_declaration_id(output, symbols, local, dag),
-            // `type_to_connective` is only invoked from `lower_type_alias`,
-            // so every Arrow created here is a NAMED type-alias declaration
-            // with no executable body by construction (e.g.
-            // `type Callback = fn(Int) -> Int`). `NoBody` rather than
-            // `Pending` so `lens_structural_resolution`'s `name: Some(_)`
-            // filter doesn't false-positive.
+            // `type_to_connective` is invoked from two callers:
+            // `lower_type_alias` (`type Callback = fn(Int) -> Int`) and
+            // `lower_data_item` (`data x: fn(Int) -> Int = ...`). In
+            // both contexts an Arrow shape here is a TYPE-LEVEL function
+            // type with no executable body, so `NoBody` is correct in
+            // both. `Pending` would false-positive on
+            // `lens_structural_resolution` for the named-declaration
+            // outputs of either caller.
             body: ArrowBody::NoBody,
         },
     }

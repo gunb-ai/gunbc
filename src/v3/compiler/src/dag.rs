@@ -574,6 +574,14 @@ pub enum ArrowBody {
     /// in the ledger above (bootstrap algebra fields, user Arrow type
     /// annotations, operator fallback bridge); the named "no body needed"
     /// case lives in `NoBody`.
+    ///
+    /// One named usage of `Pending` remains by design:
+    /// `seed_function_signature` writes `Pending` for executable-fn
+    /// seeding before body lowering patches it to `UserDefined`. That
+    /// transient named-Pending shape is exactly the R13-class regression
+    /// `lens_structural_resolution` is built to detect — if body
+    /// patching is ever skipped on some path, the leaked named Pending
+    /// becomes the lens's positive case.
     Pending,
     /// Terminal "no body by construction." The Arrow signature exists but
     /// the declaration carries no executable body and never will. Used by
