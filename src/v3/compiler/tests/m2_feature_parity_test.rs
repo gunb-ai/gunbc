@@ -700,5 +700,208 @@ fn test_3a3_substrate_integrity_behavior_still_five_variants() {
 }
 
 // =================================================================
+// 3a.3 closure — DB-16 refined-generic substitution (test_3a4_*)
+// =================================================================
+
+#[test]
+fn test_3a4_refined_generic_discharges_across_substitution() {
+    // Acceptance (DB-16): the core case. A generic function with a
+    // refined parameter `fn gate<T>(x: T where p(x))` called with a
+    // refined `Int` argument discharges — the phase materializes a
+    // substituted-refined-Int carrier; signature_type_shape's lookup
+    // returns it; discharge sees two concrete-refined carriers on
+    // both sides and runs the DB-11 flatten-and-subset walk unchanged.
+    // Uses a generic helper `always_true<T>(x: T) -> Bool` so the
+    // predicate type-checks for both abstract T and concrete Int.
+    let src = "fn always_true<T>(x: T) -> Bool = 0 == 0\n\
+               fn gate<T>(x: T where always_true(x)) -> T = x\n\
+               fn caller(n: Int where always_true(n)) -> Int = gate(n)";
+    let _ = compile_to_dag(src, "test.v3").expect(
+        "refined generic gate<T>(x: T where p(x)) called with n: Int where p(n) must discharge \
+         — DB-16's substituted-refined carrier should match the caller's concrete-refined carrier",
+    );
+}
+
+#[test]
+fn test_3a4_refined_generic_distinct_refinement_rejects() {
+    // Acceptance (DB-16): no-entailment preserved under substitution.
+    // Distinct predicate bodies must not discharge, even when the
+    // substituted base and callable identity both pass.
+    let src = "fn always_true<T>(x: T) -> Bool = 0 == 0\n\
+               fn always_false<T>(x: T) -> Bool = 0 == 1\n\
+               fn gate<T>(x: T where always_true(x)) -> T = x\n\
+               fn caller(n: Int where always_false(n)) -> Int = gate(n)";
+    let err = compile_to_dag(src, "test.v3").expect_err(
+        "distinct predicates (`always_true` vs `always_false`) must not discharge under substitution",
+    );
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected Semantic error, got {err:?}");
+    };
+    let joined = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, d)| format!("{d:?}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("refinement"),
+        "diagnostic must name refinement failure; got:\n{joined}"
+    );
+}
+
+#[test]
+fn test_3a4_refined_generic_identity_across_instantiation_sites() {
+    // Acceptance (DB-16): two distinct call sites of the same refined
+    // generic with matching concrete arguments must discharge
+    // symmetrically — dedup via find_equivalent_substituted_refined_decl
+    // keeps a canonical DeclarationId per (template, subst) so both
+    // sites see the same materialized carrier.
+    let src = "fn always_true<T>(x: T) -> Bool = 0 == 0\n\
+               fn gate<T>(x: T where always_true(x)) -> T = x\n\
+               fn one(n: Int where always_true(n)) -> Int = gate(n)\n\
+               fn two(m: Int where always_true(m)) -> Int = gate(m)";
+    let _ = compile_to_dag(src, "test.v3").expect(
+        "two distinct call sites of a refined generic with matching concrete refinements \
+         must both discharge symmetrically",
+    );
+}
+
+#[test]
+fn test_3a4_refined_generic_literal_arg_rejects() {
+    // Acceptance (DB-16): an unrefined literal argument against a
+    // refined-generic parameter must fail discharge. Substitution
+    // produces the callee's expected concrete-refined shape; the
+    // caller's literal port has no refinement; DB-11's
+    // `check_refinement_discharge` rejects with "no narrowing branch
+    // in scope."
+    let src = "fn always_true<T>(x: T) -> Bool = 0 == 0\n\
+               fn gate<T>(x: T where always_true(x)) -> T = x\n\
+               fn bad() -> Int = gate(0)";
+    let err = compile_to_dag(src, "test.v3").expect_err(
+        "refined generic called with a literal 0 must fail — the literal has no refinement",
+    );
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected Semantic error, got {err:?}");
+    };
+    let joined = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, d)| format!("{d:?}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("refinement") || joined.contains("no narrowing"),
+        "diagnostic must name refinement failure or missing narrowing; got:\n{joined}"
+    );
+}
+
+#[test]
+fn test_3a4_refined_generic_composite_discharges() {
+    // Acceptance (DB-16): conjunction interaction. A refined generic
+    // with a composite `where a && b` predicate called with a
+    // concrete argument carrying the same composite discharges —
+    // flatten-and-subset (DB-11) operates on the cloned body unchanged.
+    let src = "fn always_true<T>(x: T) -> Bool = 0 == 0\n\
+               fn also_true<T>(x: T) -> Bool = 1 == 1\n\
+               fn gate<T>(x: T where always_true(x) && also_true(x)) -> T = x\n\
+               fn caller(n: Int where always_true(n) && also_true(n)) -> Int = gate(n)";
+    let _ = compile_to_dag(src, "test.v3").expect(
+        "composite refined generic + matching composite caller must discharge \
+         — DB-11's flatten-and-subset walk runs unchanged on the substituted carrier",
+    );
+}
+
+#[test]
+fn test_3a4_refined_generic_callable_in_predicate_discharges() {
+    // Acceptance (DB-16, R2 Transform-target substitution): a refined
+    // generic whose predicate body contains a generic-callable target
+    // must discharge against a caller whose body uses the same
+    // callable concretely. Without D2's Callable-target substitution,
+    // the cloned body's Callable(Instantiation{args: [T -> S]})
+    // would mismatch the caller's Callable(Instantiation{args: [T -> Int]})
+    // at declaration_shapes_equivalent's atom-to-atom bottom, and
+    // discharge would silently fail.
+    let src = "fn always_false<T>(x: T, y: T) -> Bool = 0 == 1\n\
+               fn gate<S>(d: S where always_false(d, d)) -> S = d\n\
+               fn caller(n: Int where always_false(n, n)) -> Int = gate(n)";
+    let _ = compile_to_dag(src, "test.v3").expect(
+        "refined generic with generic-callable predicate + concrete-call caller must discharge \
+         — DB-16's Transform-target substitution rewrites T -> Int in the cloned body",
+    );
+}
+
+#[test]
+fn test_3a4_refined_generic_callable_in_predicate_distinct_template_rejects() {
+    // Acceptance (DB-16): negative counterpart to #9 above. When the
+    // caller uses a DIFFERENT generic helper in its refinement, the
+    // callable-target identity differs — substitution does not
+    // conflate distinct callables. Confirms no-entailment preserved
+    // across Transform-target substitution.
+    let src = "fn always_false<T>(x: T, y: T) -> Bool = 0 == 1\n\
+               fn always_true<T>(x: T, y: T) -> Bool = 0 == 0\n\
+               fn gate<S>(d: S where always_false(d, d)) -> S = d\n\
+               fn caller(n: Int where always_true(n, n)) -> Int = gate(n)";
+    let err = compile_to_dag(src, "test.v3").expect_err(
+        "callable identity must not be conflated across substitution — \
+         `always_false` is not `always_true`",
+    );
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected Semantic error, got {err:?}");
+    };
+    let joined = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, d)| format!("{d:?}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("refinement"),
+        "diagnostic must name refinement failure; got:\n{joined}"
+    );
+}
+
+#[test]
+fn test_3a4_refined_generic_field_project_in_predicate_discharges() {
+    // Acceptance (DB-16, R2.2 FieldProject-target substitution): a
+    // refined generic whose predicate projects a field on a generic
+    // record must discharge against a caller using the same
+    // projection concretely. Tag-over-Int keeps the operator arm
+    // concrete; the FieldProject's `field_child` is the
+    // substitution-bearing slot.
+    let src = "type Box<element> { inner: element, tag: Int }\n\
+               fn gate<T>(x: Box<T> where x.tag != 0) -> Box<T> = x\n\
+               fn caller(b: Box<Int> where b.tag != 0) -> Box<Int> = gate(b)";
+    let _ = compile_to_dag(src, "test.v3").expect(
+        "refined generic with FieldProject predicate on a generic record must discharge \
+         — DB-16's FieldProject.field_child substitution rewrites Box<T> -> Box<Int>",
+    );
+}
+
+#[test]
+fn test_3a4_refined_generic_substrate_integrity_behavior_still_five_variants() {
+    // Acceptance (DB-16 substrate lock-in): materialization and
+    // lookup add no new Behavior variant. The substituted-refined
+    // carrier is an existing-shape Declaration; its predicate body
+    // is cloned via the same Value/Transform/Bind substrate DB-11
+    // uses.
+    let src = "fn always_true<T>(x: T) -> Bool = 0 == 0\n\
+               fn gate<T>(x: T where always_true(x)) -> T = x\n\
+               fn caller(n: Int where always_true(n)) -> Int = gate(n)";
+    let dag = compile_to_dag(src, "test.v3").expect("must compile");
+    for node in dag.nodes() {
+        match node {
+            v3_compiler::dag::Behavior::Value(_)
+            | v3_compiler::dag::Behavior::Transform(_)
+            | v3_compiler::dag::Behavior::Branch(_)
+            | v3_compiler::dag::Behavior::Loop(_)
+            | v3_compiler::dag::Behavior::Bind(_) => {}
+        }
+    }
+    // If a sixth variant existed the match above would not compile;
+    // this test locks in the five-variant substrate while DB-16 is
+    // consumed.
+}
+
+// =================================================================
 // 3a.1 — Mutual recursion (TODO: unimplemented)
 // =================================================================
