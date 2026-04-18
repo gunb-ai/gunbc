@@ -225,14 +225,20 @@ Non-goals:
 
 ## Open question (resolved at land)
 
-Did this warrant a numbered DB? No, even after R2. The reshape introduces four new carriers (`IdempotentShape`, `BreakingShape`, `BreakingOperation`, `CompositionVerdict`) but they are all tight refinements of shapes already in the same file; no cross-lane footprint, no new substrate concept. The brief is the design doc. The ROADMAP deferral now points at this brief as the design anchor and reads "Cleared (this PR)." Future reshapes of similar scope can follow the same pattern — brief + implementation in one PR, no separate DB promotion — unless the carrier footprint is larger or more consumers cut across lanes. **Lesson from R1 → R2:** the first-round brief recommended a sum-shaped verdict but missed that `first_breaker: OperationEffect` still left the illegal-state boundary unsound. "Make illegal states unrepresentable" has to reach every carrier in the chain, not just the outermost one; a future brief reviewer should check every field of every new carrier against the feedback-state-space-vs-behavioral-invariants audit.
+Did this warrant a numbered DB? No, even after R3. The final reshape introduces four new carriers (`IdempotentShape`, `BreakingShape`, `BreakingOperation`, `CompositionVerdict`) but they are all tight refinements of shapes already in the same file; no cross-lane footprint, no new substrate concept. The brief is the design doc.
+
+**Lessons from the R1 → R2 → R3 arc.** Each revision went one layer deeper into the same critique:
+- **R1 → R2 (codex review):** the outer summary was a sum, but the sum's *payload* still admitted incoherent inner shapes. State-space soundness has to reach the nested carriers, not stop at the outer variant.
+- **R2 → R3 (ChatGPT review):** the payload was sound, but the *record wrapper* paired it with a sibling field (the walk) that the type system couldn't correlate. State-space soundness across sibling fields of a record is convention unless the record's own construction is restricted — and `.dag` records don't restrict construction.
+
+The brief-review discipline that falls out: when adding a new carrier, audit *every field* and *every sibling-field pair* against `feedback_state_space_vs_behavioral_invariants`. "This sum is clean" is not enough; the sum's payload, and anything paired with the sum in a record, needs the same scrutiny. If the pairing requires a constructor discipline to stay coherent, the pairing is API-level and should be removed or replaced with a structural tie (index-plus-refinement, split variants, or just "return one, let the caller keep the other in scope").
 
 ---
 
 ## Pointers
 
-- Authoring site: `src/v3/std/effects.dag` — `type EffectShape`, `type IdempotentShape`, `type BreakingShape`, `type BreakingOperation`, `type CompositionVerdict`, `type ComposedEffect`, `fn compose_effects`, `fn operation_to_breaker`.
+- Authoring site: `src/v3/std/effects.dag` — `type EffectShape`, `type IdempotentShape`, `type BreakingShape`, `type OperationEffect`, `type BreakingOperation`, `type CompositionVerdict`, `fn compose_effects`, `fn operation_to_breaker`, `fn operation_is_breaking`.
 - v2 parallel authority (explicitly not mirrored by this reshape): `dsl/std/effects.dag` (`ComposedEffect` still on the `Bool + String?` shape; `EffectShape` still flat).
 - Roadmap: `src/v3/ROADMAP.md` §"Lane 2 Stage 2a / Track 17a boundary".
 - Stage 2a boundary note: `docs/lane2-compile-time-proofs.md` §Stage 2a.
-- Pattern authority: `feedback_state_space_vs_behavioral_invariants` — "dissolve the bools into a single enum whose variants are only the valid combinations." Extended in R2 to: *every field* of a verdict carrier must be state-space-sound; outer-only soundness is not enough.
+- Pattern authority: `feedback_state_space_vs_behavioral_invariants` — "dissolve the bools into a single enum whose variants are only the valid combinations." Extended by the R1→R3 arc: soundness must reach *every* structural level — the outer variant, every field of every carrier, and every sibling-field pair within any record.
