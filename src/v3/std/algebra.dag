@@ -171,26 +171,22 @@ fn dominates(a: SymbolicCost, b: SymbolicCost) -> Bool =
         SumCost(_) => False
         UnknownCost(_) => False
       }
-    ProductCost(terms_a) =>
-      match b {
-        ConstantCost(_) => True
-        LogCost(_) => True
-        LinearCost(_) => True
-        PolynomialCost(_) => False
-        ProductCost(_) => False
-        SumCost(_) => False
-        UnknownCost(_) => False
-      }
-    SumCost(terms_a) =>
-      match b {
-        ConstantCost(_) => True
-        LogCost(_) => True
-        LinearCost(_) => True
-        PolynomialCost(_) => False
-        ProductCost(_) => False
-        SumCost(_) => False
-        UnknownCost(_) => False
-      }
+    ProductCost(terms_a) => composite_dominates(terms_a, b)
+    SumCost(terms_a) => composite_dominates(terms_a, b)
+  }
+
+// Composite dominance: `Sum([A, B])` and `Product([A, B])` bound
+// each child from below, so the composite dominates `b` iff *any*
+// child does. Fixes PR #537 review (codex): prior code hardcoded
+// `LinearCost(_) => True` / `LogCost(_) => True` without inspecting
+// terms, so e.g. `Product([Log(n)])` incorrectly dominated
+// `Linear(n)`. Mirrors the Rust fix in `dag.rs`.
+fn composite_dominates(terms: List<SymbolicCost>, b: SymbolicCost) -> Bool =
+  match terms {
+    Empty => False
+    Cons(payload) =>
+      if dominates(payload.head, b) then True
+      else composite_dominates(payload.tail, b)
   }
 
 fn same_size_variable(a: SizeVariable, b: SizeVariable) -> Bool =

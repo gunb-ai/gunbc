@@ -1198,12 +1198,19 @@ pub fn dominates(a: &SymbolicCost, b: &SymbolicCost) -> bool {
             SymbolicCost::LogCost { _0: vb } => va == vb,
             _ => false,
         },
-        SymbolicCost::ProductCost { .. } | SymbolicCost::SumCost { .. } => matches!(
-            b,
-            SymbolicCost::ConstantCost { .. }
-                | SymbolicCost::LogCost { .. }
-                | SymbolicCost::LinearCost { .. }
-        ),
+        // Composite dominance via "dominant child summary" (DB-7
+        // §Dominance). Both `Sum([A, B])` and `Product([A, B])` bound
+        // each child from below — sum and product of non-negative
+        // terms are ≥ any single term — so the composite dominates
+        // `b` iff *any* child does. Short-circuit evaluation keeps
+        // this O(n) worst-case over the (post-normalize) ≤ few-term
+        // lists. Fixes PR #537 review (codex): prior code hardcoded
+        // `LinearCost(_) => True` / `LogCost(_) => True` without
+        // inspecting terms, so e.g. `Product([Log(n)])` incorrectly
+        // dominated `Linear(n)`.
+        SymbolicCost::ProductCost { _0: terms } | SymbolicCost::SumCost { _0: terms } => {
+            terms.iter().any(|child| dominates(child, b))
+        }
     }
 }
 
