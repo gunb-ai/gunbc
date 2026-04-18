@@ -329,10 +329,9 @@ fn max_path_order_independence_on_incomparable_branches() {
     let forward = max_path(&[linear(port_a), linear(port_b)]);
     let reversed = max_path(&[linear(port_b), linear(port_a)]);
     let (forward_terms, reversed_terms) = match (&forward, &reversed) {
-        (
-            SymbolicCost::SumCost { _0: fwd },
-            SymbolicCost::SumCost { _0: rev },
-        ) => (fwd.clone(), rev.clone()),
+        (SymbolicCost::SumCost { _0: fwd }, SymbolicCost::SumCost { _0: rev }) => {
+            (fwd.clone(), rev.clone())
+        }
         _ => panic!(
             "both orderings should produce a SumCost, got forward={forward:?} reversed={reversed:?}"
         ),
