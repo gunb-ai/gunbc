@@ -2119,8 +2119,8 @@ impl Dag {
                 for variant in variants {
                     match variant.label.as_str() {
                         "AccessFromPayloadBinding" => {
-                            variant_payload_field_access_variants
-                                .access_from_payload_binding = Some(variant.ty);
+                            variant_payload_field_access_variants.access_from_payload_binding =
+                                Some(variant.ty);
                         }
                         "OverrideNamedFieldsAtBindingSite" => {
                             variant_payload_field_access_variants

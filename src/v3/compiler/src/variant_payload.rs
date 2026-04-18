@@ -53,7 +53,10 @@ impl<T> VariantPayloadBinding<T> {
     }
 }
 
-pub(crate) fn variant_payload_shape(dag: &Dag, variant_id: DeclarationId) -> Option<VariantPayloadShape> {
+pub(crate) fn variant_payload_shape(
+    dag: &Dag,
+    variant_id: DeclarationId,
+) -> Option<VariantPayloadShape> {
     let TypeConnective::Conj { children } = &dag.declaration(variant_id).connective else {
         return None;
     };
