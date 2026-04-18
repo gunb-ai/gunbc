@@ -279,19 +279,37 @@ fn render_correction_source(fix: &Correction, style: &CorrectionStyleBinding) ->
     if !normalized.contains('\n') {
         return format!(
             "{}{}{}{}{}",
-            style.indent_unit, style.string_quote, normalized, style.string_quote, suffix
+            style.indent_unit,
+            style.string_quote,
+            escape_for_string_literal(&normalized, &style.string_quote),
+            style.string_quote,
+            suffix
         );
     }
 
     let body = normalized
         .split('\n')
-        .map(|line| format!("{}{}", style.indent_unit, line))
+        .map(|line| {
+            format!(
+                "{}{}",
+                style.indent_unit,
+                escape_for_string_literal(line, &style.string_quote)
+            )
+        })
         .collect::<Vec<_>>()
         .join(&style.line_ending);
     format!(
         "{}{}{}{}",
         style.string_quote, style.line_ending, body, style.string_quote
     ) + suffix
+}
+
+fn escape_for_string_literal(source: &str, string_quote: &str) -> String {
+    let escaped = source.replace('\\', "\\\\");
+    if string_quote.is_empty() {
+        return escaped;
+    }
+    escaped.replace(string_quote, &format!("\\{string_quote}"))
 }
 
 fn require_string(
@@ -494,5 +512,45 @@ mod tests {
         assert!(rendered.contains("FIX (option 1): did you mean `point.a`?"));
         assert!(rendered.contains("\n    \"point.a\""));
         assert!(!rendered.contains("\n    \"point.a\";"));
+    }
+
+    #[test]
+    fn render_rust_diagnostic_escapes_quotes_and_backslashes_in_fix_source() {
+        let dag = Dag::new();
+        let rendered = render_diagnostic_for_target(
+            &dag,
+            DiagnosticStyleTarget::Rust,
+            &Diagnostic::ResolveError {
+                name: "field `path` does not exist on `Config`".to_string(),
+                span: SourceSpan::new("field.v3", 12, 19),
+                fixes: vec![Correction {
+                    description: "did you mean `config.path`?".to_string(),
+                    span: SourceSpan::new("field.v3", 12, 19),
+                    new_source: "config[\"path\\\\name\"]".to_string(),
+                }],
+            },
+        )
+        .expect("render");
+        assert!(rendered.contains("\n    \"config[\\\"path\\\\\\\\name\\\"]\";"));
+    }
+
+    #[test]
+    fn render_multiline_fix_escapes_quotes_and_backslashes_in_each_line() {
+        let dag = Dag::new();
+        let rendered = render_diagnostic_for_target(
+            &dag,
+            DiagnosticStyleTarget::Python,
+            &Diagnostic::ResolveError {
+                name: "field `path` does not exist on `Config`".to_string(),
+                span: SourceSpan::new("field.v3", 12, 19),
+                fixes: vec![Correction {
+                    description: "did you mean `config.path`?".to_string(),
+                    span: SourceSpan::new("field.v3", 12, 19),
+                    new_source: "config[\n\"path\\\\name\"\n]".to_string(),
+                }],
+            },
+        )
+        .expect("render");
+        assert!(rendered.contains("\"\n    config[\n    \\\"path\\\\\\\\name\\\"\n    ]\""));
     }
 }
