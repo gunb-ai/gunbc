@@ -1277,7 +1277,39 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expr(&mut self) -> Result<SurfaceExpr, Diagnostic> {
-        self.parse_comparison()
+        self.parse_logical_or()
+    }
+
+    fn parse_logical_or(&mut self) -> Result<SurfaceExpr, Diagnostic> {
+        let mut lhs = self.parse_logical_and()?;
+        while matches!(self.peek().kind, TokenKind::PipePipe) {
+            self.bump();
+            let rhs = self.parse_logical_and()?;
+            let start = expr_span(&lhs).byte_start;
+            let end = expr_span(&rhs).byte_end;
+            lhs = SurfaceExpr::Operator {
+                op: crate::operators::OperatorKind::Logical(crate::operators::LogicalOp::Or),
+                args: vec![lhs, rhs],
+                span: SourceSpan::new(self.file, start, end),
+            };
+        }
+        Ok(lhs)
+    }
+
+    fn parse_logical_and(&mut self) -> Result<SurfaceExpr, Diagnostic> {
+        let mut lhs = self.parse_comparison()?;
+        while matches!(self.peek().kind, TokenKind::AmpAmp) {
+            self.bump();
+            let rhs = self.parse_comparison()?;
+            let start = expr_span(&lhs).byte_start;
+            let end = expr_span(&rhs).byte_end;
+            lhs = SurfaceExpr::Operator {
+                op: crate::operators::OperatorKind::Logical(crate::operators::LogicalOp::And),
+                args: vec![lhs, rhs],
+                span: SourceSpan::new(self.file, start, end),
+            };
+        }
+        Ok(lhs)
     }
 
     fn parse_comparison(&mut self) -> Result<SurfaceExpr, Diagnostic> {

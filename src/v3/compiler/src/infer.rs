@@ -29,7 +29,7 @@ use crate::dag::{
     PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
-use crate::operators::OperatorKind;
+use crate::operators::{LogicalOp, OperatorKind};
 use crate::types::TypeShape;
 
 pub fn infer(dag: &mut Dag) {
@@ -958,7 +958,21 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                     },
                 );
             }
-            PortState::Resolved(actual) if type_shapes_equivalent(dag, actual, expected_ty) => {}
+            PortState::Resolved(actual) if type_shapes_equivalent(dag, actual, expected_ty) => {
+                // DB-11 (3a.3) refinement discharge. Structural type
+                // equivalence just passed; now check that any refinement
+                // declared on the callee's parameter type is also carried
+                // by the argument's port type, with structurally-equal
+                // predicate expression DAGs. No SMT, no implication — if
+                // the predicates don't walk equal, the caller must
+                // introduce a narrowing Branch that does satisfy the
+                // expected refinement.
+                if let Some(diag) =
+                    check_refinement_discharge(dag, actual, expected_ty, &t.target, &t.span)
+                {
+                    return Decision::Fail(t.output, diag);
+                }
+            }
             PortState::Resolved(actual) => {
                 if is_retryable_generic_decl(dag, actual.declaration)
                     || is_retryable_generic_decl(dag, expected_ty.declaration)
@@ -977,6 +991,251 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
         }
     }
     Decision::Set(t.output, signature.output)
+}
+
+/// DB-11 (3a.3) call-site refinement discharge. Returns `None` when
+/// the expected parameter has no refinement (unconditionally OK), or
+/// when the actual argument's top-level refinement discharges the
+/// expected predicate. Returns a `Diagnostic` otherwise. Pure
+/// structural walk — no SMT, no entailment beyond conjunction-member
+/// matching against the canonical composite form.
+///
+/// Composite-canonical invariant (post-narrowing refactor): every
+/// refinement in the DAG is a single predicate Declaration. Narrowing
+/// produces a composite `outer_body && new_body` rather than an alias
+/// chain of unary refinements, so discharge only has to look at the
+/// top-level refinement on `actual.declaration` — no chain walk. The
+/// composite-vs-single asymmetry is handled by
+/// `predicate_discharges`, which accepts either a full structural
+/// match against the expected predicate or a match against a
+/// conjunct of `actual`'s composite body.
+fn check_refinement_discharge(
+    dag: &Dag,
+    actual: &TypeShape,
+    expected: &TypeShape,
+    target: &TransformTarget,
+    span: &SourceSpan,
+) -> Option<Diagnostic> {
+    let expected_pred = dag.declaration(expected.declaration).refinement?;
+    let actual_pred = dag.declaration(actual.declaration).refinement;
+    match actual_pred {
+        Some(actual_pred) if predicate_discharges(dag, actual_pred, expected_pred, 0) => None,
+        _ => {
+            let callee = transform_target_display_name(dag, target);
+            let name = if actual_pred.is_some() {
+                format!(
+                    "argument to `{callee}` does not satisfy the expected \
+                     `where` refinement (caller's predicate does not walk \
+                     structurally equal to the callee's, and no conjunct \
+                     of the caller's composite matches)"
+                )
+            } else {
+                format!(
+                    "argument to `{callee}` does not satisfy the expected \
+                     `where` refinement — no narrowing branch in scope"
+                )
+            };
+            Some(Diagnostic::ResolveError {
+                name,
+                span: span.clone(),
+            })
+        }
+    }
+}
+
+/// Structural discharge check between an actual and expected
+/// predicate declaration. Succeeds when:
+///
+/// - The two predicates are the same declaration id; OR
+/// - The actual predicate's body walks structurally equal to the
+///   expected predicate's body (param-paired); OR
+/// - The actual predicate's body is a `Transform(Logical(And), [a, b])`
+///   and either `a` or `b` (as a virtual sub-predicate sharing the
+///   actual's `Bind.params[0]`) discharges the expected predicate.
+///
+/// The composite conjunct case is the load-bearing piece that lets
+/// the post-narrowing composite `outer_body && new_body` match a
+/// callee whose refinement is just `outer_body`. Pure structural,
+/// depth-bounded.
+fn predicate_discharges(
+    dag: &Dag,
+    actual_pred_decl: DeclarationId,
+    expected_pred_decl: DeclarationId,
+    depth: usize,
+) -> bool {
+    if depth >= WALK_DEPTH_LIMIT {
+        return false;
+    }
+    if actual_pred_decl == expected_pred_decl {
+        return true;
+    }
+    let Some((actual_param, actual_body)) = predicate_info(dag, actual_pred_decl) else {
+        return false;
+    };
+    let Some((expected_param, expected_body)) = predicate_info(dag, expected_pred_decl) else {
+        return false;
+    };
+    body_discharges(
+        dag,
+        actual_body,
+        expected_body,
+        actual_param,
+        expected_param,
+    )
+}
+
+/// Flatten-and-subset discharge check. A predicate body is treated
+/// as a CONJUNCTION OF LEAVES — the maximal multiset of non-`And`
+/// operand ports reachable by recursively unfolding every
+/// `Transform(Logical(And), [lhs, rhs])` root. Actual discharges
+/// expected iff every expected leaf is walk-equal (param-paired) to
+/// some actual leaf.
+///
+/// This makes conjunction associativity / grouping irrelevant to
+/// discharge: `a && (b && c)`, `(a && b) && c`, and `a && b && c`
+/// all flatten to the same leaf set `{a, b, c}` and therefore
+/// discharge each other symmetrically. Without the flattening,
+/// `body_discharges` could only recurse into one root conjunct of
+/// the actual side at a time, so an asymmetric grouping would fail
+/// to discharge a syntax-equivalent callee contract (the
+/// substrate-level blocker ChatGPT's R5 review called out on
+/// `31a3709d`).
+///
+/// Still pure structural — no SMT, no absorption laws, no ordering
+/// reasoning. The "canonical form" is the leaf multiset; two bodies
+/// representing the same conjunction share one leaf multiset up to
+/// reordering, and the subset check tolerates the multiset shape.
+fn body_discharges(
+    dag: &Dag,
+    actual_body: PortId,
+    expected_body: PortId,
+    actual_param: PortId,
+    expected_param: PortId,
+) -> bool {
+    let mut actual_leaves: Vec<PortId> = Vec::new();
+    collect_conjunct_leaves(dag, actual_body, &mut actual_leaves, 0);
+    let mut expected_leaves: Vec<PortId> = Vec::new();
+    collect_conjunct_leaves(dag, expected_body, &mut expected_leaves, 0);
+    expected_leaves.into_iter().all(|expected_leaf| {
+        actual_leaves.iter().any(|&actual_leaf| {
+            refinement_ports_equal(
+                dag,
+                actual_leaf,
+                expected_leaf,
+                actual_param,
+                expected_param,
+                0,
+            )
+        })
+    })
+}
+
+/// Recursively unfold `Transform(Logical(And), [lhs, rhs])` roots
+/// and collect the non-`And` leaves. Depth-bounded by
+/// `WALK_DEPTH_LIMIT`; on overflow the current port is pushed as a
+/// leaf so discharge degrades to the pre-flatten shape rather than
+/// silently dropping conjuncts.
+fn collect_conjunct_leaves(dag: &Dag, body_port: PortId, out: &mut Vec<PortId>, depth: usize) {
+    if depth >= WALK_DEPTH_LIMIT {
+        out.push(body_port);
+        return;
+    }
+    if let Some(node_id) = dag.port(body_port).produced_by {
+        if let Behavior::Transform(t) = dag.node(node_id) {
+            if matches!(
+                &t.target,
+                TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And))
+            ) && t.inputs.len() == 2
+            {
+                collect_conjunct_leaves(dag, t.inputs[0], out, depth + 1);
+                collect_conjunct_leaves(dag, t.inputs[1], out, depth + 1);
+                return;
+            }
+        }
+    }
+    out.push(body_port);
+}
+
+fn predicate_info(dag: &Dag, pred_decl: DeclarationId) -> Option<(PortId, PortId)> {
+    if let TypeConnective::Arrow {
+        body: ArrowBody::UserDefined(bind_id),
+        ..
+    } = &dag.declaration(pred_decl).connective
+    {
+        if let Behavior::Bind(bind) = dag.node(*bind_id) {
+            if let Some(param_port) = bind.params.first() {
+                return Some((*param_port, bind.value));
+            }
+        }
+    }
+    None
+}
+
+fn refinement_ports_equal(
+    dag: &Dag,
+    lhs_port: PortId,
+    rhs_port: PortId,
+    lhs_param: PortId,
+    rhs_param: PortId,
+    depth: usize,
+) -> bool {
+    if depth >= WALK_DEPTH_LIMIT {
+        return false;
+    }
+    let lhs_is_param = lhs_port == lhs_param;
+    let rhs_is_param = rhs_port == rhs_param;
+    if lhs_is_param || rhs_is_param {
+        return lhs_is_param && rhs_is_param;
+    }
+    let Some(lhs_nid) = dag.port(lhs_port).produced_by else {
+        return lhs_port == rhs_port;
+    };
+    let Some(rhs_nid) = dag.port(rhs_port).produced_by else {
+        return false;
+    };
+    match (dag.node(lhs_nid), dag.node(rhs_nid)) {
+        (Behavior::Value(lv), Behavior::Value(rv)) => lv.data == rv.data,
+        (Behavior::Transform(lt), Behavior::Transform(rt)) => {
+            refinement_targets_equal(dag, &lt.target, &rt.target)
+                && lt.inputs.len() == rt.inputs.len()
+                && lt.inputs.iter().zip(rt.inputs.iter()).all(|(l, r)| {
+                    refinement_ports_equal(dag, *l, *r, lhs_param, rhs_param, depth + 1)
+                })
+        }
+        _ => false,
+    }
+}
+
+fn refinement_targets_equal(dag: &Dag, lhs: &TransformTarget, rhs: &TransformTarget) -> bool {
+    match (lhs, rhs) {
+        // DB-11 (3a.3) structural callable identity. Call lowering
+        // materializes a fresh `Instantiation` declaration per
+        // call-site when the callee has retained template arguments
+        // (see `retained_template_arguments_for_target` in lower.rs).
+        // Two syntactically identical calls to a generic predicate
+        // (e.g., `is_eq(d, 0)`) from two different refinement
+        // contexts therefore carry different `Callable(DeclarationId)`
+        // targets even though their template + argument values match.
+        // Nominal id equality would reject those as distinct; the
+        // authoritative identity is template + substituted arguments,
+        // which `declaration_shapes_equivalent` already walks through
+        // `Instantiation`/`ResolvedIdentifier` edges.
+        (TransformTarget::Callable(a), TransformTarget::Callable(b)) => {
+            declaration_shapes_equivalent(dag, *a, *b, 0)
+        }
+        (TransformTarget::Operator(a), TransformTarget::Operator(b)) => a == b,
+        (
+            TransformTarget::FieldProject {
+                field_label: a_label,
+                ..
+            },
+            TransformTarget::FieldProject {
+                field_label: b_label,
+                ..
+            },
+        ) => a_label == b_label,
+        _ => false,
+    }
 }
 
 struct ResolvedArrow {
@@ -2758,7 +3017,18 @@ fn resolve_operator_arrow(
     op_kind: OperatorKind,
     lhs_type: &TypeShape,
 ) -> Option<ResolvedArrow> {
-    let source_id = lhs_type.declaration;
+    // DB-11 (3a.3) operand normalization. Primitive operators (`+`,
+    // `>`, `!=`, etc.) are structurally over BASE types — refinements
+    // are surface-level facts about values, not part of the operator's
+    // arrow contract. Mirroring a refined lhs like `Int where d != 0`
+    // onto both operand positions (as the old fallback did) made the
+    // call-site refinement-discharge pass treat the refinement as a
+    // real requirement on every operand — so a literal `10` in
+    // `d > 10` failed discharge because literals carry no refinement.
+    // Strip refinements once up front; algebra-Conj walks and the
+    // primitive fallback both operate on the base.
+    let source_id = strip_refinement_to_base(dag, lhs_type.declaration);
+    let base_lhs = TypeShape::new(source_id);
     // Walk the source type's declaration chain to find the algebra
     // Conj. We follow Instantiation/ResolvedIdentifier edges; at
     // each step the template argument bindings are intentionally
@@ -2773,7 +3043,7 @@ fn resolve_operator_arrow(
                 // name.
                 let field_name = op_kind.algebra_field_name();
                 if let Some(field) = children.iter().find(|f| f.label == field_name) {
-                    return read_algebra_field(dag, decl, field.ty, source_id, op_kind, lhs_type);
+                    return read_algebra_field(dag, decl, field.ty, source_id, op_kind, &base_lhs);
                 }
                 // Algebra doesn't declare this operator's field —
                 // fall back to the Rust-side scaffold bridge below.
@@ -2797,15 +3067,52 @@ fn resolve_operator_arrow(
     // Fallback: Rust-side scaffold bridge for primitives whose
     // structural walk doesn't terminate at an algebra Conj (Bool,
     // Classical; collection-level algebras). Documented class-5 gap.
-    let output = match op_kind {
-        OperatorKind::Arithmetic(_) => *lhs_type,
-        OperatorKind::Comparison(_) => dag.bool_shape()?,
+    //
+    // Logical operators are Bool-monomorphic: both operands and the
+    // output are always Bool, independent of `lhs_type`. An Int lhs
+    // on `&&` / `||` must surface a type mismatch, not propagate
+    // through the operand slots the way Arithmetic / Comparison do.
+    let (inputs, output) = match op_kind {
+        OperatorKind::Arithmetic(_) => (vec![base_lhs, base_lhs], base_lhs),
+        OperatorKind::Comparison(_) => (vec![base_lhs, base_lhs], dag.bool_shape()?),
+        OperatorKind::Logical(_) => {
+            let bool_shape = dag.bool_shape()?;
+            (vec![bool_shape, bool_shape], bool_shape)
+        }
     };
     Some(ResolvedArrow {
-        inputs: vec![*lhs_type, *lhs_type],
+        inputs,
         output,
         body: ArrowBody::Pending,
     })
+}
+
+/// DB-11 (3a.3) refinement-strip helper. Walks the
+/// `Atom(ResolvedIdentifier(...))` chain, skipping past any
+/// declaration that carries a `refinement` edge, until it reaches a
+/// declaration with no refinement. Used by `resolve_operator_arrow`
+/// to normalize primitive-operator inputs to their base types —
+/// refinements are surface-level facts about values, not part of an
+/// operator's arrow contract.
+///
+/// Terminates at the first un-refined declaration OR when the chain
+/// can no longer be followed (any non-ResolvedIdentifier connective).
+/// Depth-bounded by `WALK_DEPTH_LIMIT`.
+fn strip_refinement_to_base(dag: &Dag, decl_id: DeclarationId) -> DeclarationId {
+    let mut current = decl_id;
+    for _ in 0..WALK_DEPTH_LIMIT {
+        let decl = dag.declaration(current);
+        if decl.refinement.is_none() {
+            return current;
+        }
+        match &decl.connective {
+            TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+                current = *next;
+            }
+            _ => return current,
+        }
+    }
+    current
 }
 
 /// Read an algebra field's Arrow signature and substitute the
@@ -3067,6 +3374,15 @@ fn signature_type_shape(
     }
     let decl = dag.declaration(current);
     if decl.name.is_some() {
+        return Some(TypeShape::new(current));
+    }
+    // DB-11 (3a.3): refinement-bearing declarations are identity
+    // terminators for signature walks. Without this, a refined param
+    // type `Int where d != 0` (connective: ResolvedIdentifier(Int),
+    // refinement: Some(pred)) would be walked to its base `Int`, and
+    // the call-site refinement-discharge check in `decide_transform`
+    // would never see the predicate edge on the callee side.
+    if decl.refinement.is_some() {
         return Some(TypeShape::new(current));
     }
     match &decl.connective {
