@@ -30,9 +30,10 @@ type CompileCacheMap = HashMap<(String, String), CompileCell>;
 /// Full `compile_to_dag` keyed by `(source, file)` so each fine-grained
 /// `#[test]` does not pay a cold bootstrap + pipeline run.
 ///
-/// Per-key [`OnceLock`]: the global mutex only guards map insert/lookup — it is
-/// not held across `compile_to_dag`, so unrelated keys compile in parallel and
-/// per-test wall budgets are not inflated by lock contention.
+/// Per-key [`OnceLock`]: [`compile_cell_for_key`] only holds the map mutex; cold
+/// `compile_to_dag` runs inside [`OnceLock::get_or_init`] after the guard is
+/// dropped, so unrelated keys compile in parallel and per-test budgets measure
+/// real work (same-key init still serializes on that cell, by design).
 static COMPILE_CACHE: LazyLock<Mutex<CompileCacheMap>> =
     LazyLock::new(|| Mutex::new(CompileCacheMap::new()));
 
