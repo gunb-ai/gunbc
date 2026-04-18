@@ -54,7 +54,7 @@
 
 use std::collections::HashMap;
 
-use crate::dag::PortId;
+use crate::dag::{Dag, DeclarationId, FieldValue, PortId, ValueBody};
 use crate::types::TypeShape;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,30 +74,46 @@ impl SourceSpan {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Correction {
+    pub description: String,
+    // Retained even though the current source-level renderer only
+    // prints replacement text. Future fix surfaces can use this to
+    // point at the precise range the correction applies to without
+    // changing the carrier shape.
+    pub span: SourceSpan,
+    pub new_source: String,
+}
+
 #[derive(Debug, Clone)]
 pub enum Diagnostic {
     TokenizerError {
         message: String,
         span: SourceSpan,
+        fixes: Vec<Correction>,
     },
     ParseError {
         message: String,
         span: SourceSpan,
+        fixes: Vec<Correction>,
     },
     TypeMismatch {
         expected: TypeShape,
         actual: TypeShape,
         span: SourceSpan,
+        fixes: Vec<Correction>,
     },
     ArityMismatch {
         function: String,
         expected: usize,
         actual: usize,
         span: SourceSpan,
+        fixes: Vec<Correction>,
     },
     ResolveError {
         name: String,
         span: SourceSpan,
+        fixes: Vec<Correction>,
     },
 }
 
@@ -110,6 +126,233 @@ impl Diagnostic {
             | Diagnostic::ArityMismatch { span, .. }
             | Diagnostic::ResolveError { span, .. } => span,
         }
+    }
+
+    pub fn fixes(&self) -> &[Correction] {
+        match self {
+            Diagnostic::TokenizerError { fixes, .. }
+            | Diagnostic::ParseError { fixes, .. }
+            | Diagnostic::TypeMismatch { fixes, .. }
+            | Diagnostic::ArityMismatch { fixes, .. }
+            | Diagnostic::ResolveError { fixes, .. } => fixes,
+        }
+    }
+
+    pub fn message(&self) -> String {
+        match self {
+            Diagnostic::TokenizerError { message, .. } | Diagnostic::ParseError { message, .. } => {
+                message.clone()
+            }
+            Diagnostic::TypeMismatch {
+                expected, actual, ..
+            } => format!("expected {expected:?}, got {actual:?}"),
+            Diagnostic::ArityMismatch {
+                function,
+                expected,
+                actual,
+                ..
+            } => format!("{function} expected {expected}, got {actual}"),
+            Diagnostic::ResolveError { name, .. } => name.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticStyleTarget {
+    Rust,
+    Go,
+    Python,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DiagnosticRenderError {
+    MissingCleanEmissionContract(&'static str),
+    MalformedCleanEmissionContract {
+        declaration: DeclarationId,
+        detail: &'static str,
+    },
+    MissingCorrectionStyle(&'static str),
+    MalformedCorrectionStyle {
+        declaration: DeclarationId,
+        detail: &'static str,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CorrectionStyleBinding {
+    indent_unit: String,
+    line_ending: String,
+    string_quote: String,
+    trailing_semicolon: bool,
+}
+
+impl CorrectionStyleBinding {
+    fn build(dag: &Dag, declaration: DeclarationId) -> Result<Self, DiagnosticRenderError> {
+        let fields = match dag.declaration(declaration).value_body.as_ref() {
+            Some(crate::dag::ValueBody::Structural { fields }) => fields,
+            _ => {
+                return Err(DiagnosticRenderError::MalformedCorrectionStyle {
+                    declaration,
+                    detail: "correction_style declaration must carry a Structural value_body",
+                });
+            }
+        };
+        Ok(Self {
+            indent_unit: require_string(fields, "indent_unit", declaration)?,
+            line_ending: require_string(fields, "line_ending", declaration)?,
+            string_quote: require_string(fields, "string_quote", declaration)?.replace("%Q", "\""),
+            trailing_semicolon: require_bool(fields, "trailing_semicolon", declaration)?,
+        })
+    }
+}
+
+pub fn render_diagnostic_for_target(
+    dag: &Dag,
+    target: DiagnosticStyleTarget,
+    diagnostic: &Diagnostic,
+) -> Result<String, DiagnosticRenderError> {
+    let declaration = correction_style_for_target(dag, target)?;
+    let style = CorrectionStyleBinding::build(dag, declaration)?;
+    Ok(render_diagnostic_with_style(diagnostic, &style))
+}
+
+fn correction_style_for_target(
+    dag: &Dag,
+    target: DiagnosticStyleTarget,
+) -> Result<DeclarationId, DiagnosticRenderError> {
+    let (clean_emission_decl, missing_name) = match target {
+        DiagnosticStyleTarget::Rust => (
+            dag.rust_clean_emission_spec(),
+            "rust_clean_emission.correction_style",
+        ),
+        DiagnosticStyleTarget::Go => (
+            dag.go_clean_emission_spec(),
+            "go_clean_emission.correction_style",
+        ),
+        DiagnosticStyleTarget::Python => (
+            dag.python_clean_emission_spec(),
+            "python_clean_emission.correction_style",
+        ),
+    };
+    let clean_emission_decl = clean_emission_decl.ok_or(
+        DiagnosticRenderError::MissingCleanEmissionContract(missing_name),
+    )?;
+    let Some(ValueBody::Structural { fields }) = &dag.declaration(clean_emission_decl).value_body
+    else {
+        return Err(DiagnosticRenderError::MalformedCleanEmissionContract {
+            declaration: clean_emission_decl,
+            detail: "clean emission declaration must carry a structural value_body",
+        });
+    };
+    let value = fields
+        .iter()
+        .find(|(label, _)| label == "correction_style")
+        .map(|(_, value)| value)
+        .ok_or(DiagnosticRenderError::MissingCorrectionStyle(missing_name))?;
+    match value {
+        FieldValue::Reference(declaration) => Ok(*declaration),
+        _ => Err(DiagnosticRenderError::MalformedCleanEmissionContract {
+            declaration: clean_emission_decl,
+            detail: "clean emission correction_style field must be a declaration reference",
+        }),
+    }
+}
+
+fn render_diagnostic_with_style(diagnostic: &Diagnostic, style: &CorrectionStyleBinding) -> String {
+    let mut lines = vec![format!(
+        "ERROR at {}:{}-{}: {}",
+        diagnostic.span().file,
+        diagnostic.span().byte_start,
+        diagnostic.span().byte_end,
+        diagnostic.message()
+    )];
+    for (index, fix) in diagnostic.fixes().iter().enumerate() {
+        lines.push(format!("FIX (option {}): {}", index + 1, fix.description));
+        lines.push(render_correction_source(fix, style));
+    }
+    lines.join(&style.line_ending)
+}
+
+fn render_correction_source(fix: &Correction, style: &CorrectionStyleBinding) -> String {
+    let suffix = if style.trailing_semicolon { ";" } else { "" };
+    let normalized = fix.new_source.replace("\r\n", "\n").replace('\r', "\n");
+    if !normalized.contains('\n') {
+        return format!(
+            "{}{}{}{}{}",
+            style.indent_unit,
+            style.string_quote,
+            escape_for_string_literal(&normalized, &style.string_quote),
+            style.string_quote,
+            suffix
+        );
+    }
+
+    let body = normalized
+        .split('\n')
+        .map(|line| {
+            format!(
+                "{}{}",
+                style.indent_unit,
+                escape_for_string_literal(line, &style.string_quote)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(&style.line_ending);
+    format!(
+        "{}{}{}{}",
+        style.string_quote, style.line_ending, body, style.string_quote
+    ) + suffix
+}
+
+fn escape_for_string_literal(source: &str, string_quote: &str) -> String {
+    let escaped = source.replace('\\', "\\\\");
+    if string_quote.is_empty() {
+        return escaped;
+    }
+    escaped.replace(string_quote, &format!("\\{string_quote}"))
+}
+
+fn require_string(
+    fields: &[(String, FieldValue)],
+    label: &'static str,
+    declaration: DeclarationId,
+) -> Result<String, DiagnosticRenderError> {
+    let value = fields
+        .iter()
+        .find(|(field_label, _)| field_label == label)
+        .map(|(_, value)| value)
+        .ok_or(DiagnosticRenderError::MalformedCorrectionStyle {
+            declaration,
+            detail: "correction_style is missing a required String field",
+        })?;
+    match value {
+        FieldValue::Literal(crate::dag::LiteralBits::String(value)) => Ok(value.clone()),
+        _ => Err(DiagnosticRenderError::MalformedCorrectionStyle {
+            declaration,
+            detail: "correction_style String field must be a string literal",
+        }),
+    }
+}
+
+fn require_bool(
+    fields: &[(String, FieldValue)],
+    label: &'static str,
+    declaration: DeclarationId,
+) -> Result<bool, DiagnosticRenderError> {
+    let value = fields
+        .iter()
+        .find(|(field_label, _)| field_label == label)
+        .map(|(_, value)| value)
+        .ok_or(DiagnosticRenderError::MalformedCorrectionStyle {
+            declaration,
+            detail: "correction_style is missing a required Bool field",
+        })?;
+    match value {
+        FieldValue::Literal(crate::dag::LiteralBits::Bool(value)) => Ok(*value),
+        _ => Err(DiagnosticRenderError::MalformedCorrectionStyle {
+            declaration,
+            detail: "correction_style Bool field must be a bool literal",
+        }),
     }
 }
 
@@ -153,5 +396,161 @@ impl DiagnosticTable {
     /// independently from outside the crate.
     pub(crate) fn insert(&mut self, port: PortId, diagnostic: Diagnostic) {
         self.entries.insert(port, diagnostic);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clean_emission_contracts_reference_named_correction_styles() {
+        let dag = Dag::new();
+        let assert_reference =
+            |clean_decl: DeclarationId, expected_style_name: &str, expected_name: &str| {
+                let fields = match dag
+                    .declaration(clean_decl)
+                    .value_body
+                    .as_ref()
+                    .expect("clean emission carries value_body")
+                {
+                    crate::dag::ValueBody::Structural { fields } => fields,
+                    other => panic!("clean emission must be structural, got {other:?}"),
+                };
+                let value = fields
+                    .iter()
+                    .find(|(label, _)| label == "correction_style")
+                    .map(|(_, value)| value)
+                    .expect("correction_style field exists");
+                match value {
+                    FieldValue::Reference(actual) => assert_eq!(
+                        dag.declaration(*actual).name.as_deref(),
+                        Some(expected_style_name),
+                        "{expected_name} should point at its named correction style"
+                    ),
+                    other => panic!("correction_style must be a Reference, got {other:?}"),
+                }
+            };
+        assert_reference(
+            dag.rust_clean_emission_spec().expect("rust clean emission"),
+            "rust_correction_style",
+            "rust_clean_emission",
+        );
+        assert_reference(
+            dag.go_clean_emission_spec().expect("go clean emission"),
+            "go_correction_style",
+            "go_clean_emission",
+        );
+        assert_reference(
+            dag.python_clean_emission_spec()
+                .expect("python clean emission"),
+            "python_correction_style",
+            "python_clean_emission",
+        );
+    }
+
+    #[test]
+    fn render_rust_diagnostic_uses_rust_correction_style() {
+        let dag = Dag::new();
+        let rendered = render_diagnostic_for_target(
+            &dag,
+            DiagnosticStyleTarget::Rust,
+            &Diagnostic::ResolveError {
+                name: "field `c` does not exist on `Point`".to_string(),
+                span: SourceSpan::new("field.v3", 12, 19),
+                fixes: vec![Correction {
+                    description: "did you mean `point.a`?".to_string(),
+                    span: SourceSpan::new("field.v3", 12, 19),
+                    new_source: "point.a".to_string(),
+                }],
+            },
+        )
+        .expect("render");
+        assert!(rendered.contains("FIX (option 1): did you mean `point.a`?"));
+        assert!(rendered.contains("\n    \"point.a\";"));
+    }
+
+    #[test]
+    fn render_go_diagnostic_uses_go_correction_style() {
+        let dag = Dag::new();
+        let rendered = render_diagnostic_for_target(
+            &dag,
+            DiagnosticStyleTarget::Go,
+            &Diagnostic::ResolveError {
+                name: "field `c` does not exist on `Point`".to_string(),
+                span: SourceSpan::new("field.v3", 12, 19),
+                fixes: vec![Correction {
+                    description: "did you mean `point.a`?".to_string(),
+                    span: SourceSpan::new("field.v3", 12, 19),
+                    new_source: "point.a".to_string(),
+                }],
+            },
+        )
+        .expect("render");
+        assert!(rendered.contains("FIX (option 1): did you mean `point.a`?"));
+        assert!(rendered.contains("\n\t\"point.a\""));
+        assert!(!rendered.contains("\n\t\"point.a\";"));
+    }
+
+    #[test]
+    fn render_python_diagnostic_uses_python_correction_style() {
+        let dag = Dag::new();
+        let rendered = render_diagnostic_for_target(
+            &dag,
+            DiagnosticStyleTarget::Python,
+            &Diagnostic::ResolveError {
+                name: "field `c` does not exist on `Point`".to_string(),
+                span: SourceSpan::new("field.v3", 12, 19),
+                fixes: vec![Correction {
+                    description: "did you mean `point.a`?".to_string(),
+                    span: SourceSpan::new("field.v3", 12, 19),
+                    new_source: "point.a".to_string(),
+                }],
+            },
+        )
+        .expect("render");
+        assert!(rendered.contains("FIX (option 1): did you mean `point.a`?"));
+        assert!(rendered.contains("\n    \"point.a\""));
+        assert!(!rendered.contains("\n    \"point.a\";"));
+    }
+
+    #[test]
+    fn render_rust_diagnostic_escapes_quotes_and_backslashes_in_fix_source() {
+        let dag = Dag::new();
+        let rendered = render_diagnostic_for_target(
+            &dag,
+            DiagnosticStyleTarget::Rust,
+            &Diagnostic::ResolveError {
+                name: "field `path` does not exist on `Config`".to_string(),
+                span: SourceSpan::new("field.v3", 12, 19),
+                fixes: vec![Correction {
+                    description: "did you mean `config.path`?".to_string(),
+                    span: SourceSpan::new("field.v3", 12, 19),
+                    new_source: "config[\"path\\\\name\"]".to_string(),
+                }],
+            },
+        )
+        .expect("render");
+        assert!(rendered.contains("\n    \"config[\\\"path\\\\\\\\name\\\"]\";"));
+    }
+
+    #[test]
+    fn render_multiline_fix_escapes_quotes_and_backslashes_in_each_line() {
+        let dag = Dag::new();
+        let rendered = render_diagnostic_for_target(
+            &dag,
+            DiagnosticStyleTarget::Python,
+            &Diagnostic::ResolveError {
+                name: "field `path` does not exist on `Config`".to_string(),
+                span: SourceSpan::new("field.v3", 12, 19),
+                fixes: vec![Correction {
+                    description: "did you mean `config.path`?".to_string(),
+                    span: SourceSpan::new("field.v3", 12, 19),
+                    new_source: "config[\n\"path\\\\name\"\n]".to_string(),
+                }],
+            },
+        )
+        .expect("render");
+        assert!(rendered.contains("\"\n    config[\n    \\\"path\\\\\\\\name\\\"\n    ]\""));
     }
 }

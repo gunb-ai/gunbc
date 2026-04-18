@@ -929,6 +929,13 @@ data go_language: LanguageSpec = {
 //   the corresponding lint from the test-wrapper allow list in
 //   the same PR (Lane 1d/1e consolidation).
 
+data go_correction_style: CorrectionStyle = {
+  indent_unit: "\t"
+  line_ending: "\n"
+  string_quote: "%Q"
+  trailing_semicolon: false
+}
+
 data go_clean_emission: CleanEmissionContract = {
   expression_wrapping: WrapOnlyInOperandPosition
   pattern_bindings: EmitUnderscoreWhenUnused
@@ -937,12 +944,7 @@ data go_clean_emission: CleanEmissionContract = {
   block_return: ExplicitReturnKeyword
   variable_bindings: EmitLetUnderscoreWhenUnused
   match_arm_body: NotApplicableMatchArmBody
-  correction_style: {
-    indent_unit: "\t"
-    line_ending: "\n"
-    string_quote: "%Q"
-    trailing_semicolon: false
-  }
+  correction_style: go_correction_style
   post_emit_verifier: {
     command: "gofmt"
     args: ["-l"]

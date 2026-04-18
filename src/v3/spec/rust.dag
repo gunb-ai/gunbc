@@ -997,6 +997,13 @@ data rust_language: LanguageSpec = {
 //   the corresponding lint from the test-wrapper allow list in
 //   the same PR (Lane 1d/1e consolidation).
 
+data rust_correction_style: CorrectionStyle = {
+  indent_unit: "    "
+  line_ending: "\n"
+  string_quote: "%Q"
+  trailing_semicolon: true
+}
+
 data rust_clean_emission: CleanEmissionContract = {
   expression_wrapping: WrapOnlyInOperandPosition
   pattern_bindings: EmitUnderscoreWhenUnused
@@ -1005,12 +1012,7 @@ data rust_clean_emission: CleanEmissionContract = {
   block_return: NoWrappingOnTerminalExpression
   variable_bindings: EmitLetUnderscoreWhenUnused
   match_arm_body: NoWrappingOnNonComplexBody
-  correction_style: {
-    indent_unit: "    "
-    line_ending: "\n"
-    string_quote: "%Q"
-    trailing_semicolon: true
-  }
+  correction_style: rust_correction_style
   post_emit_verifier: {
     command: "rustc"
     args: ["--edition=2021", "-D", "warnings"]

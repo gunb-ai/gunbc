@@ -109,6 +109,7 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
             let value: i64 = literal.parse().map_err(|_| Diagnostic::TokenizerError {
                 message: format!("invalid integer literal `{literal}`"),
                 span: SourceSpan::new(file, start as u32, end as u32),
+                fixes: Vec::new(),
             })?;
             tokens.push(Token {
                 kind: TokenKind::IntLit(value),
@@ -170,6 +171,7 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
                             return Err(Diagnostic::TokenizerError {
                                 message: "unterminated string escape".to_string(),
                                 span: SourceSpan::new(file, start as u32, (end + 1) as u32),
+                                fixes: Vec::new(),
                             });
                         };
                         match escaped {
@@ -195,6 +197,7 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
                 return Err(Diagnostic::TokenizerError {
                     message: "unterminated string literal".to_string(),
                     span: SourceSpan::new(file, start as u32, end as u32),
+                    fixes: Vec::new(),
                 });
             }
             tokens.push(Token {
@@ -208,6 +211,7 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
         return Err(Diagnostic::TokenizerError {
             message: format!("unexpected byte `{}`", byte as char),
             span: SourceSpan::new(file, start as u32, (start + 1) as u32),
+            fixes: Vec::new(),
         });
     }
 

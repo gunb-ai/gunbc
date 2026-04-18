@@ -435,6 +435,13 @@ data python_list_instantiation: PythonTypeInstantiationRealization = {
 // syntax-only validation. Semantic verifiers (ruff, mypy --strict)
 // are Lane 1d/1e concerns, not this PR.
 
+data python_correction_style: CorrectionStyle = {
+  indent_unit: "    "
+  line_ending: "\n"
+  string_quote: "%Q"
+  trailing_semicolon: false
+}
+
 data python_clean_emission: CleanEmissionContract = {
   expression_wrapping: WrapOnlyInOperandPosition
   pattern_bindings: NotApplicablePatternBinding
@@ -443,12 +450,7 @@ data python_clean_emission: CleanEmissionContract = {
   block_return: ExplicitReturnKeyword
   variable_bindings: EmitLetBindingAlways
   match_arm_body: NotApplicableMatchArmBody
-  correction_style: {
-    indent_unit: "    "
-    line_ending: "\n"
-    string_quote: "%Q"
-    trailing_semicolon: false
-  }
+  correction_style: python_correction_style
   post_emit_verifier: {
     command: "python3"
     args: ["-m", "py_compile"]

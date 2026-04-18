@@ -238,7 +238,7 @@ fn invalid_pipe_target_fails_closed_at_parse_time() {
         .expect_err("invalid pipe target must fail to parse");
 
     match err {
-        CompileError::Parse(Diagnostic::ParseError { message, span }) => {
+        CompileError::Parse(Diagnostic::ParseError { message, span, .. }) => {
             assert!(
                 message.contains("expected function name after `|>`"),
                 "unexpected parse error message: {message}"
