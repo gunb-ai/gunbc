@@ -562,18 +562,22 @@ pub struct TemplateArgument {
 ///
 ///   No dissolution trigger — terminal at the substrate level.
 ///
-/// - **`Unparsed`** — surface-grammar lag (**case 1**), plus **case 2b**
-///   host bridges that stay scaffolded (DB-14 substrate accessors). Used at
-///   M1(2.7) for block-bodied `fn foo(x) -> T { body }` declarations in std/
-///   files where the body contains match/pipe/lambda/ etc. **`pipeline.dag`
-///   stages (case 2a)** also parse as `FnExternalBody` → `Unparsed`, then
-///   bootstrap rewrites those Arrow bodies to `ExternalRealization` before
-///   inference — so `Unparsed` does not persist for pipeline stages in a
-///   bootstrapped DAG. **Substrate accessors** keep `Unparsed` through
-///   bootstrap by design (target-specific realization dispatch). The signature flows
-///   forward through the declaration table so callers can type-check
-///   against it; the body source span is preserved so M2+ parser
-///   extensions can reach in and complete the lowering for case 1.
+/// - **`Unparsed`** — surface-grammar lag (**case 1**), **case 2b** host
+///   bridges that stay scaffolded (DB-14 substrate accessors), and **case 2c**
+///   the `pipeline.dag` **`compile`** orchestrator (ordering authority).
+///   Used at M1(2.7) for block-bodied `fn foo(x) -> T { body }` declarations
+///   in std/ files where the body contains match/pipe/lambda/ etc.
+///   **`pipeline.dag` per-stage fns (case 2a)** parse as `FnExternalBody` →
+///   `Unparsed`, then bootstrap rewrites those Arrow bodies to
+///   `ExternalRealization` before inference — so `Unparsed` does not persist
+///   for those stages in a bootstrapped DAG. **`fn compile` (case 2c)** has no
+///   `PipelineStageBinding`: **`Unparsed` persists**; `pipeline_compile_order_names`
+///   reads its **body span** as pipeline ordering authority. **Substrate
+///   accessors** keep `Unparsed` through bootstrap by design (target-specific
+///   realization dispatch). The signature flows forward through the declaration
+///   table so callers can type-check against it; the body source span is
+///   preserved so M2+ parser extensions can reach in for case 1, or so
+///   pipeline authority can parse ordering for `compile`.
 ///   **User-range boundary:** `reject_user_unparsed_scaffolds` in
 ///   `src/v3/compiler/src/lower.rs` fails-closed any user-range
 ///   declaration carrying this variant (R14 + M1(2.8) Scaffold

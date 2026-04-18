@@ -65,18 +65,19 @@ pub struct SurfaceModule {
 ///   structurally separate variants, not an `Option<SurfaceExpr>`
 ///   with the discriminator in the Option.
 /// - **`FnExternalBody`** records `name + params + return_type +
-///   body_span`. The parser does not distinguish **case 1** (std/
-///   block bodies the surface grammar cannot lower yet) from **case 2a**
-///   (`pipeline.dag` host stages) or **case 2b** (other `host` bridges,
-///   e.g. substrate accessors) — all are "block body that is not a
-///   `SurfaceExpr`." All initially lower to `ArrowBody::Unparsed(body_span)`.
-///   At bootstrap, **`v3.compiler.pipeline` stages** alone are upgraded to
+///   body_span`. The parser does not distinguish **case 1** (std/ parse
+///   lag), **case 2a** (`pipeline.dag` per-stage host fns), **case 2b**
+///   (substrate accessors), or **case 2c** (`pipeline.dag`'s `compile`
+///   orchestrator) — all are "block body that is not a `SurfaceExpr`." All
+///   initially lower to `ArrowBody::Unparsed(body_span)`. At bootstrap,
+///   **per-stage pipeline fns** (`parse`, `lower`, …) are upgraded to
 ///   `ExternalRealization` via `PipelineStageBinding` /
-///   `materialize_pipeline_realizations` (DB-16). **Substrate accessors**
-///   (`src/v3/std/substrate.dag`, DB-14) intentionally **stay** `Unparsed`
-///   so each emitter resolves `SubstrateAccessorBinding` at emission time —
-///   see `bootstrap.rs` before `materialize_pipeline_realizations`. The
-///   signature flows forward; the body span is preserved for case 1 growth.
+///   `materialize_pipeline_realizations` (DB-16). **`compile` itself** has no
+///   stage binding: it **stays** `Unparsed`, and `pipeline_compile_order_names`
+///   reads its **body span** as ordering authority (`pipeline_authority.rs`).
+///   **Substrate accessors** (`src/v3/std/substrate.dag`, DB-14) **stay**
+///   `Unparsed` for per-target emission. The signature flows forward; body
+///   spans are preserved for parse-lag growth, ordering facts, or host stubs.
 /// - **`Data`**, **`Module`**, **`Import`** replace the three former
 ///   parser-absorbed items. `Data` lowers to a declaration whose
 ///   connective is the resolved type; `Module` and `Import` lower
@@ -96,8 +97,9 @@ pub struct SurfaceModule {
 ///
 /// Verdict: terminal at M1(2.7) modulo the two M2 collapses noted
 /// above. `FnExternalBody` dissolution (DB-16): case 1 via parser growth;
-/// pipeline **case 2a** via bootstrap `ExternalRealization`; accessors
-/// **case 2b** stay `Unparsed` through bootstrap (DB-14).
+/// pipeline **case 2a** via bootstrap `ExternalRealization`; **`compile` (2c)**
+/// keeps `Unparsed` for ordering authority; accessors **case 2b** stay
+/// `Unparsed` through bootstrap (DB-14).
 #[derive(Debug, Clone)]
 pub enum SurfaceItem {
     Let {
@@ -139,9 +141,18 @@ pub enum SurfaceItem {
     /// emitters dispatch via `SubstrateAccessorBinding` — not upgraded to
     /// `ExternalRealization` at bootstrap like pipeline stages.
     ///
-    /// Downstream: pipeline stages are recognized via `PipelineStageBinding`;
-    /// accessors via DB-14 markers and per-target emission. Absence of both
-    /// patterns means case 1 (parse lag).
+    /// **Case 2c — `compile` orchestrator (`pipeline.dag`).** `fn compile(...) {
+    /// ... }` lists stage names (`parse`, `lower`, …). No `PipelineStageBinding`
+    /// targets `compile` itself — **`ArrowBody::Unparsed` persists** after
+    /// bootstrap. `pipeline_compile_order_names` consumes **`body_span`** as
+    /// the authority for which stages participate and in what order (facts
+    /// flow forward). Not parse lag (case 1): the body is intentional
+    /// structured text, not std/ grammar debt.
+    ///
+    /// Downstream: per-stage pipeline fns via `PipelineStageBinding`; `compile`
+    /// span via `pipeline_authority`; accessors via DB-14. None of these
+    /// implies case 1 — disambiguate by declaration name + bootstrap role, not
+    /// by "absence of binding" alone.
     FnExternalBody {
         name: String,
         type_params: Vec<String>,
