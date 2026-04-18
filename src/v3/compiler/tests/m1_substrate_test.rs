@@ -112,7 +112,14 @@ fn parse_std_algebra_and_walk_int_add() {
     };
     let add_field = field(&ordered_ring_children, "add");
 
-    // `add`'s ty is an Arrow [T, T] → T, body: Pending. Substituting
+    // `add`'s ty is an Arrow [T, T] → T, body: NoBody. The algebra field
+    // declares the signature; the body is "no body by construction" — the
+    // realization lives in extdeps and is never attached back to the
+    // algebra field. (Pre-broader-migration this was `Pending`; after the
+    // migration, every "no body needed" site moved to `NoBody` so
+    // `lens_structural_resolution` can treat `Pending` as the structural
+    // R13-leak predicate without `name`-based proxying. See the ledger
+    // entry on `ArrowBody` in `src/v3/compiler/src/dag.rs`.) Substituting
     // T := Word64 yields [Word64, Word64] → Word64.
     let (arrow_inputs, arrow_output, arrow_body) = match &dag.declaration(add_field.ty).connective {
         TypeConnective::Arrow {
@@ -123,8 +130,8 @@ fn parse_std_algebra_and_walk_int_add() {
         other => panic!("expected add field to be Arrow, got {other:?}"),
     };
     assert!(
-        matches!(arrow_body, ArrowBody::Pending),
-        "algebra arrow bodies are Pending at M1(2.5) — got {arrow_body:?}"
+        matches!(arrow_body, ArrowBody::NoBody),
+        "algebra arrow bodies are NoBody (no body by construction) — got {arrow_body:?}"
     );
     assert_eq!(arrow_inputs.len(), 2, "add takes two arguments");
 

@@ -487,48 +487,67 @@ pub struct TemplateArgument {
 ///
 /// Scaffold variants with their dissolution triggers:
 ///
-/// - **`Pending`** — "no concrete body required." Used in three
-///   production positions, all of which are legitimately
-///   body-less and not "awaiting realization":
+/// - **`Pending`** — "body to come, transient." Two production sites
+///   write Pending today, both transient:
 ///
-///   1. **Bootstrap algebra field signatures.** Every
-///      `std/algebra.dag` record field that declares an arrow
-///      shape (`add: fn(T, T) -> T`, `compare: fn(T, T) -> Ordering`,
-///      etc.) lowers via `type_to_declaration_id`'s Arrow arm,
-///      which emits `body: Pending`. The algebra declaration
-///      owns the signature; the realization lives in extdeps
-///      (M2+) and is never attached back to the algebra field.
+///   1. **Executable-fn seeding (declarations).** `seed_function_signature`
+///      writes `Pending` for `fn foo(x) -> T = body` declarations as
+///      the initial substrate state. `lower_fn_item` is responsible
+///      for patching every such declaration to
+///      `ArrowBody::UserDefined(bind_id)` before the Dag is frozen
+///      — including on error paths (R13 fix at `lower.rs:2293`). A
+///      named `Arrow(Pending)` surviving into the final Dag is
+///      structurally equivalent to "body lowering missed a path,"
+///      which is exactly what `lens_structural_resolution` detects.
 ///
-///   2. **User Arrow type annotations.** A user-code declaration
-///      like `let f: fn(Int) -> Int = g` produces an anonymous
-///      Arrow declaration with `body: Pending` for the type
-///      annotation. This declaration is a type-level fact, not a
-///      dispatch target — the surface grammar at M1(2.8) does
-///      NOT allow calling a first-class function value, so this
-///      Pending arrow is never reached by `decide_transform`.
-///      Latent if M2 adds first-class fn call syntax, at which
-///      point it either becomes reachable and needs a
-///      rejection gate (M1(2.8) Scaffold Boundaries invariant)
-///      or gets split from Pending into its own variant.
+///   2. **Operator fallback bridge (transient `ResolvedArrow`).**
+///      `infer::resolve_operator_arrow` falls back to a synthetic
+///      `(T, T) -> T` / `(T, T) -> Bool` signature with `body:
+///      Pending` when the structural algebra walk can't find an
+///      algebra Conj (Bool, collection-level algebras — class-5
+///      gaps #1 and #2 in DOWNSTREAM_REQUIREMENTS.md). This shape
+///      lives in inference-only `ResolvedArrow` values, never in
+///      `Dag.declarations`, so the lens cannot see it. Dissolves
+///      when those class-5 gaps close.
 ///
-///   3. **Operator fallback bridge.** `infer::resolve_operator_arrow`
-///      falls back to a synthetic `(T, T) -> T` /
-///      `(T, T) -> Bool` signature with `body: Pending` when
-///      the structural algebra walk can't find an algebra
-///      Conj (Bool, collection-level algebras). Class-5 gaps
-///      #1 and #2 in DOWNSTREAM_REQUIREMENTS.md. Dissolves when
-///      those gaps close.
+///   **History.** Earlier rounds wrote Pending at four additional
+///   sites (anonymous nested Arrow type expressions, type-alias
+///   targets, data-item type annotations, variant constructor
+///   synthesis), all of which represented "no body by construction"
+///   rather than "body to come." Those sites migrated to `NoBody`
+///   in the (a)/broader-migration work — see the per-site comments
+///   at `lower.rs:931` (`type_to_connective`), `lower.rs:872`
+///   (anonymous nested Arrow), and `infer.rs:1893`
+///   (`resolve_direct_target_signature`).
 ///
-///   **Round-16 honesty update.** Earlier ledgers described
-///   Pending as "bootstrap realization lag" dissolving via a
-///   §8.11 monotonic-decrease ratchet "when every realization
-///   arrow binds to ExternalRealization." That framing was
-///   inaccurate: production bootstrap has zero realization-lag
-///   arrows and hundreds of Pending arrows in roles (1) and
-///   (3). The correct characterization is "no concrete body
-///   needed at this substrate position." The variant stays
-///   until the three roles above dissolve into their own
-///   structural homes.
+/// - **`NoBody`** — terminal "no body by construction." Used wherever
+///   an Arrow signature exists but the declaration carries no
+///   executable body and never will. Production sites:
+///
+///   1. **Type aliases / data items** with Arrow targets
+///      (`type Callback = fn(Int) -> Int`, `data x: fn(Int) -> Int = ...`)
+///      via `lower_type_alias` / `lower_data_item` →
+///      `type_to_connective`.
+///
+///   2. **Anonymous nested Arrow declarations** synthesized inside
+///      larger type expressions (`fn handler(cb: fn(Int) -> Int)`,
+///      bootstrap algebra arrows like `add: fn(T, T) -> T`) via
+///      `type_to_declaration_id`'s Arrow arm.
+///
+///   3. **Variant constructor signatures** synthesized by
+///      `infer::resolve_direct_target_signature` for `Variant(payload)`
+///      direct-construction calls (transient `ResolvedArrow`, never
+///      stored in `Dag.declarations`).
+///
+///   `decide_transform` treats `NoBody` identically to `Pending`
+///   (signature inhabitance, body-walking skipped). The variant
+///   distinction exists to make the substrate predicate "named
+///   `Arrow(Pending)` = R13-class regression" structurally exact
+///   rather than a `name`-based proxy — see the
+///   `lens_structural_resolution` ledger entry for the proxy
+///   dissolution this enables.
+///
+///   No dissolution trigger — terminal at the substrate level.
 ///
 /// - **`Unparsed`** — surface-grammar lag. Used at M1(2.7) for
 ///   block-bodied `fn foo(x) -> T { body }` declarations in std/
@@ -545,9 +564,11 @@ pub struct TemplateArgument {
 ///   extension. When every std/ block body becomes parseable,
 ///   `Unparsed` is removed via a reverse substrate-extension PR.
 ///
-/// Verdict: terminal form is 2 variants. The 4-variant shape is
-/// a transition state; both scaffolds have named triggers and
-/// (for `Unparsed`) an explicit user-range boundary gate.
+/// Verdict: terminal form is 3 variants (`UserDefined`,
+/// `ExternalRealization`, `NoBody`). The 5-variant shape is a
+/// transition state; both remaining scaffolds (`Pending`, `Unparsed`)
+/// have named triggers and (for `Unparsed`) an explicit user-range
+/// boundary gate.
 #[derive(Debug, Clone)]
 pub enum ArrowBody {
     /// User-defined function. NodeId is the root of a sub-DAG of L1 behavior
@@ -558,11 +579,43 @@ pub enum ArrowBody {
     /// DeclarationId points at the realization declaration via a typed edge;
     /// inference verifies signature compatibility.
     ExternalRealization(DeclarationId),
-    /// Bootstrap scaffold. Signature type-checks via inhabitance; body-
-    /// walking is skipped. Dissolves by M3 via the §8.11 Pending-elimination
-    /// monotonic-decrease ratchet (distinct from §8.10's substrate-extension
-    /// audit).
+    /// Transient "body to come." Signature type-checks via inhabitance;
+    /// body-walking is skipped. Two production sites write `Pending`:
+    ///
+    /// 1. `seed_function_signature` for `fn foo(x) -> T = body`
+    ///    declarations — the initial substrate state before
+    ///    `lower_fn_item` patches the body into `UserDefined(bind_id)`.
+    ///    A named `Arrow(Pending)` surviving into the final Dag is
+    ///    structurally a missed body-patching path: the R13-class
+    ///    regression `lens_structural_resolution` watches for.
+    /// 2. `infer::resolve_operator_arrow` for transient `ResolvedArrow`
+    ///    fallback signatures (class-5 gap; never stored in
+    ///    `Dag.declarations`, so the lens cannot see them).
+    ///
+    /// All "no body by construction" sites that earlier wrote `Pending`
+    /// (anonymous nested Arrows, type aliases, data items, variant
+    /// constructor synthesis) now write `NoBody` instead.
     Pending,
+    /// Terminal "no body by construction." The Arrow signature exists but
+    /// the declaration carries no executable body and never will. Used at
+    /// every "Arrow-as-data" production site:
+    ///
+    /// - `lower_type_alias` / `lower_data_item` → `type_to_connective`
+    ///   for named type aliases (`type Callback = fn(Int) -> Int`) and
+    ///   data items.
+    /// - `type_to_declaration_id` for anonymous nested Arrow
+    ///   declarations inside larger type expressions (parameter types,
+    ///   field types, bootstrap algebra arrows).
+    /// - `infer::resolve_direct_target_signature` for variant
+    ///   constructor `ResolvedArrow` synthesis (transient).
+    ///
+    /// `decide_transform` treats `NoBody` identically to `Pending` at
+    /// dispatch time (signature inhabitance, body-walking skipped). The
+    /// variant distinction exists so `lens_structural_resolution` can
+    /// match `Arrow(Pending)` as the structural fact for "executable-fn
+    /// body patching missed a path" without depending on `decl.name` as
+    /// a proxy for producer provenance.
+    NoBody,
     /// Surface-grammar scaffold. The arrow's signature is resolved and
     /// callers can type-check against it, but the body source is not
     /// yet parseable under the M1(2.7) surface grammar. Used by

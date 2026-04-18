@@ -371,6 +371,14 @@ struct PatternMatchSyntaxBinding {
     variant_pattern_empty: String,
     field_binding: String,
     field_binding_separator: String,
+    // Wildcard pattern (`_`). Declared by every target spec but
+    // currently unused by the Rust emitter: multi-field struct-variant
+    // patterns now alias every field for override routing, and
+    // zero-binding variant patterns flow through
+    // `variant_pattern_empty`. Kept on the binding so future emit
+    // paths (other target languages, partial-match forms) can consume
+    // it without another spec round-trip.
+    #[allow(dead_code)]
     wildcard: String,
 }
 
@@ -1418,6 +1426,16 @@ fn render_named_template(template: &str, bindings: &[(&str, &str)]) -> String {
     }
 
     rendered
+}
+
+/// Local name for a destructured field of a multi-field struct-variant
+/// payload. Used by both the pattern emitter and the arm-body renderer
+/// so the aliased destructure and the `field_overrides` lookup stay in
+/// lockstep. The leading `__` avoids colliding with user identifiers
+/// and silences unused-binding warnings on fields the arm body never
+/// references.
+fn destructured_field_alias(binding_name: &str, field_label: &str) -> String {
+    format!("__{binding_name}_{field_label}")
 }
 
 fn find_resolved_branch_path(branch: &BranchNode, variant_id: DeclarationId) -> Option<&Path> {
@@ -3406,6 +3424,35 @@ impl<'a> Ctx<'a> {
                 binding.payload_port,
                 LocalBinding::Borrowed(binding.binding_name.clone()),
             );
+            // Multi-field struct-variant payloads have no nominal
+            // payload type — Rust can't resolve `binding.field` on
+            // the enum. The pattern emitter destructures each field
+            // into an aliased local (`__<binding>_<field>`); mirror
+            // that here by routing `.dag`-level `binding.field`
+            // accesses through `field_overrides` to those locals.
+            if let BranchPattern::ResolvedVariant(resolved_id) = &path.pattern {
+                if let TypeConnective::Conj { children } =
+                    &self.dag.declaration(*resolved_id).connective
+                {
+                    if children.len() > 1 {
+                        let overrides = children
+                            .iter()
+                            .map(|child| {
+                                (
+                                    child.label.clone(),
+                                    LocalBinding::Borrowed(destructured_field_alias(
+                                        &binding.binding_name,
+                                        &child.label,
+                                    )),
+                                )
+                            })
+                            .collect();
+                        arm_locals
+                            .field_overrides
+                            .insert(binding.payload_port, overrides);
+                    }
+                }
+            }
         }
         self.render_port(path.output, &arm_locals, RenderMode::OwnedConstructLastUse)
     }
@@ -3457,17 +3504,40 @@ impl<'a> Ctx<'a> {
         };
         let rendered_binding = self.render_payload_binding_name(path, binding);
         if children.len() != 1 {
+            // Multi-field struct-variant: Rust won't let us access
+            // `binding.field` on the enum because the payload has
+            // no nominal type. The body can ONLY consume this payload
+            // via destructured fields routed through `field_overrides`
+            // — there is no Rust-level value the outer `binding @`
+            // alias could refer to (Rust rejects taking the anonymous
+            // struct payload as a value). So we always omit the
+            // `binding @` prefix here; field destructure carries
+            // everything the body can possibly use.
+            //
+            // When `EmitUnderscoreWhenUnused` reports the payload is
+            // unused, every field renders as wildcard too. When it's
+            // used, every field renders as its aliased local
+            // (`__<binding>_<field>`), and `render_path_body`'s
+            // `field_overrides` population at the same payload port
+            // routes downstream `binding.field` reads to those locals
+            // via `render_field_project`'s override lookup.
             let wildcard = self.indexes.syntax.patterns.wildcard.clone();
+            let payload_unused = rendered_binding == wildcard;
             let field_bindings = children
                 .iter()
                 .map(|child| {
+                    let binding_text = if payload_unused {
+                        wildcard.clone()
+                    } else {
+                        destructured_field_alias(&binding.binding_name, &child.label)
+                    };
                     Ok(render_named_template(
                         &self.indexes.syntax.patterns.field_binding,
-                        &[("field", &child.label), ("binding", &wildcard)],
+                        &[("field", &child.label), ("binding", &binding_text)],
                     ))
                 })
                 .collect::<Result<Vec<_>, EmitError>>()?;
-            let inner_pattern = render_named_template(
+            return Ok(render_named_template(
                 &self.indexes.syntax.patterns.variant_pattern,
                 &[
                     ("name", &qualified_name),
@@ -3479,11 +3549,7 @@ impl<'a> Ctx<'a> {
                         ),
                     ),
                 ],
-            );
-            if rendered_binding == wildcard {
-                return Ok(inner_pattern);
-            }
-            return Ok(format!("{rendered_binding} @ {inner_pattern}"));
+            ));
         }
         if children[0].label == "_0"
             && (self.indexes.types.contains_key(&disj_id) || is_optional_match)

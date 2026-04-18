@@ -91,6 +91,36 @@ pub mod lens_provenance {
     pub use generated::{origin_of, Origin};
 }
 
+/// Structural-resolution lens. The authority lives in
+/// `src/v3/lenses/structural_resolution.dag`; the Rust projection is
+/// auto-emitted into `src/v3/compiler/src/lens_structural_resolution_generated.rs`
+/// and wrapped here as a module so callers use
+/// `v3_compiler::lens_structural_resolution`. Editing the lens means
+/// editing the `.dag` — there is no hand-written implementation on
+/// this crate side.
+///
+/// Detects leaked `ArrowBody::Pending` on named user Declarations.
+/// Defense-in-depth regression pin for the R13 fix (see the `.dag`
+/// source for the full detection rule and disposal trigger).
+pub mod lens_structural_resolution {
+    #[allow(
+        dead_code,
+        unused_imports,
+        unused_parens,
+        unused_variables,
+        clippy::clone_on_copy,
+        clippy::collapsible_else_if
+    )]
+    mod generated {
+        use crate::dag::*;
+        use crate::diagnostics::*;
+
+        include!("lens_structural_resolution_generated.rs");
+    }
+
+    pub use generated::{check, UnresolvedArrowBody};
+}
+
 mod bootstrap;
 mod infer;
 mod lower;
@@ -136,6 +166,43 @@ pub struct FixedPointMismatch {
 #[doc(hidden)]
 pub fn tokenize_for_test(source: &str, file: &str) -> Result<Vec<tokenize::Token>, Diagnostic> {
     tokenize::tokenize(source, file)
+}
+
+/// Test-only hook: inject a named Arrow declaration with
+/// `ArrowBody::Pending` directly into `dag`. Synthesizes the exact
+/// shape that `lens_structural_resolution` is designed to flag —
+/// the "named user fn seeded with Pending and never patched" shape
+/// that `lower_fn_item` forbids but that a future regression in the
+/// body-patching path could re-introduce (see the R13 fix in
+/// `lower.rs:2293` for the historical precedent). Lives here and
+/// calls the `pub(crate)` `alloc_declaration_id` / `push_declaration`
+/// primitives directly so that this narrow "inject one named
+/// Arrow(Pending)" form is the only public construction path —
+/// exposing the raw primitives would widen the mutation surface
+/// beyond what the lens's synthetic-Dag test needs.
+#[doc(hidden)]
+pub fn inject_named_pending_arrow_for_test(
+    dag: &mut Dag,
+    name: &str,
+    output_type: dag::DeclarationId,
+) -> dag::DeclarationId {
+    let id = dag.alloc_declaration_id();
+    dag.push_declaration(dag::Declaration {
+        id,
+        name: Some(name.to_string()),
+        connective: dag::TypeConnective::Arrow {
+            inputs: Vec::new(),
+            output: output_type,
+            body: dag::ArrowBody::Pending,
+        },
+        type_params: Vec::new(),
+        meta_tag: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        span: diagnostics::SourceSpan::new("test", 0, 0),
+    });
+    id
 }
 
 /// Test-only hook: parse a token stream into a surface module.

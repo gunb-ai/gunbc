@@ -1509,7 +1509,14 @@ fn type_to_declaration_id(
                 connective: TypeConnective::Arrow {
                     inputs: input_ids,
                     output: output_id,
-                    body: ArrowBody::Pending,
+                    // Anonymous nested Arrow inside a larger type expression
+                    // (e.g. `cb: fn(Int) -> Int` as a parameter type, or
+                    // `handler: fn(Int) -> Int` as an algebra/record field).
+                    // Function-as-data: no executable body, by construction.
+                    // `NoBody` makes that fact structural so any future named
+                    // refactor of these declarations does not silently
+                    // become an `Arrow(Pending)` lens target.
+                    body: ArrowBody::NoBody,
                 },
                 type_params: Vec::new(),
                 meta_tag: None,
@@ -1568,7 +1575,15 @@ fn type_to_connective(
                 .map(|i| type_to_declaration_id(i, symbols, local, dag))
                 .collect(),
             output: type_to_declaration_id(output, symbols, local, dag),
-            body: ArrowBody::Pending,
+            // `type_to_connective` is invoked from two callers:
+            // `lower_type_alias` (`type Callback = fn(Int) -> Int`) and
+            // `lower_data_item` (`data x: fn(Int) -> Int = ...`). In
+            // both contexts an Arrow shape here is a TYPE-LEVEL function
+            // type with no executable body, so `NoBody` is correct in
+            // both. `Pending` would false-positive on
+            // `lens_structural_resolution` for the named-declaration
+            // outputs of either caller.
+            body: ArrowBody::NoBody,
         },
     }
 }

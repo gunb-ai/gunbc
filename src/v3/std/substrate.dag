@@ -84,13 +84,16 @@ type ValueBody
   | ValueBodyStructural { fields: List<FieldEntry> }
 
 // Type substrate.
-// 🟡 MIXED. `ArrowBody` carries durable user/external edges plus the
-// temporary `Pending` / `Unparsed` bootstrap states still present in
-// today's lowering pipeline.
+// 🟡 MIXED. `ArrowBody` carries the durable user/external/no-body
+// edges plus the temporary `Pending` / `Unparsed` bootstrap states
+// still present in today's lowering pipeline. See the Rust-side
+// ledger in `src/v3/compiler/src/dag.rs` for variant rationale and
+// dissolution triggers.
 type ArrowBody
   = UserDefined(NodeId)
   | ExternalRealization(DeclarationId)
   | Pending
+  | NoBody
   | Unparsed(SourceSpan)
 
 // 🟢 TERMINAL at reflected-substrate scope. The connective partition is
