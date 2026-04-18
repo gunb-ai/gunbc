@@ -24,3 +24,19 @@ fn db15_obligation_surface_is_declared() {
     dag.declaration_by_name("materialize_test_obligations")
         .expect("materialize_test_obligations");
 }
+
+#[test]
+fn resource_handle_matches_dsl_authority_including_cap() {
+    let dag = Dag::new();
+    let decl = dag
+        .declaration_by_name("ResourceHandle")
+        .expect("ResourceHandle from v3.std.resources");
+    let TypeConnective::Conj { children } = &decl.connective else {
+        panic!("ResourceHandle not a record");
+    };
+    let labels: Vec<_> = children.iter().map(|c| c.label.as_str()).collect();
+    assert!(
+        labels.contains(&"cap"),
+        "ResourceHandle must carry cap: Secret per dsl/std/resources.dag — got {labels:?}"
+    );
+}

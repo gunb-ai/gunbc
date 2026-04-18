@@ -4,15 +4,21 @@
 // bootstrap only needs typed handles for test `requires:` edges until the
 // full resource grammar ports. Dissolution trigger: merge with dsl authority
 // when v3 parses `resource` items.
+//
+// Model fidelity: `ResourceHandle` matches `dsl/std/resources.dag` — including
+// `cap: Secret` so handles stay non-forgeable at the type layer (illegal state:
+// no minted capability proof).
 
 module v3.std.resources
 
+import std.types { Secret }
 import v3.spec.v3_l1 { DeclarationRef }
 
 type ResourceHandle {
   resource_type: String
   resource_id: String
   resource_key: String
+  cap: Secret
 }
 
 type ResourceReference {
