@@ -17,6 +17,7 @@
 module std.verification
 
 import std.list { List }
+import v3.spec.v3_l1 { DeclarationRef }
 import v3.std.substrate { ComparisonOp }
 
 // **🟡 Scaffold — DiagnosticKind.** This mirrors the compiler's native
@@ -106,17 +107,62 @@ type TestPredicate
       comparator: ComparisonOp
       bound: Int
     }
+  | BehavioralObservation {
+      subject: DeclarationRef
+      input_sample: DeclarationRef
+      expected_output: DeclarationRef
+    }
+  | MockBackedInvariant {
+      subject: DeclarationRef
+      mock_transport: ResourceReference
+      invariant: DeclarationRef
+    }
 
+// `requires` names the resource declarations a claim must acquire to
+// run. Per DB-15 R2 Open Question #1 + #2: per-claim (not per-
+// predicate-variant) — the execution-context needs of a single
+// subject don't duplicate across the predicate axes that exercise it.
+// Compile-time predicates (`Compiles`, `FailsWithDiagnostic`,
+// `PortHasState`, `CostBounded`) carry the bootstrap-local sentinel
+// `compile_time` identifier; runtime-backed predicates
+// (`BehavioralObservation`, `MockBackedInvariant`) carry non-empty
+// lists of test-runner / mock-transport references. The empty-list
+// case is reserved for post-`resources.dag`-port dissolution, when
+// the grammar can narrow the accept set and v3 user code can express
+// empty list literals without template-inference ambiguity.
 type TestClaim {
   name: String
   source: String
   file_name: String
   predicate: TestPredicate
-  requires: List<String>
+  requires: List<ResourceReference>
 }
 
 type TestSuite {
   name: String
   claims: List<TestClaim>
+}
+
+// **DB-15 R2 materialization entry point.**
+//
+// Surfaces a declared suite's obligations to a downstream runner. The
+// compiler's existing dependency walk has already:
+//   1. compiled each claim's `source` keyed on `(source, file_name)`
+//      — shared across claims with matching subject;
+//   2. evaluated any lens embedded in the claim's `predicate`
+//      (e.g. the static cost bound for `CostBounded`) keyed on
+//      `(dag_hash, lens_decl_id)` — shared across claims over the
+//      same subject;
+//   3. staged acquires for the resources in `requires` at the
+//      outermost shared scope across claims with matching resource
+//      keys — per `dsl/std/resources.dag`.
+//
+// This function is a structural projection: it does NOT re-derive
+// the compilation, lens evaluation, or acquire placement. The
+// sharing / caching / scoping facts fall out of the dependency walk;
+// the projection names what a runner consumes, nothing more. See
+// `docs/design-test-infra.md` R2 §"Minimal model" for the framing.
+fn materialize_obligations(suite: TestSuite) -> List<TestClaim> {
+  suite.claims
 }
 

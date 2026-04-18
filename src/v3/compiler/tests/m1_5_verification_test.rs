@@ -126,7 +126,27 @@ fn bootstrap_loads_verification_authority_types() {
                     String::from("bound"),
                 ],
             ),
+            (
+                String::from("BehavioralObservation"),
+                vec![
+                    String::from("subject"),
+                    String::from("input_sample"),
+                    String::from("expected_output"),
+                ],
+            ),
+            (
+                String::from("MockBackedInvariant"),
+                vec![
+                    String::from("subject"),
+                    String::from("mock_transport"),
+                    String::from("invariant"),
+                ],
+            ),
         ]
+    );
+    assert_eq!(
+        record_fields(&dag, "ResourceReference"),
+        vec!["identifier"]
     );
 }
 
@@ -147,7 +167,7 @@ let claim_compiles: TestClaim = {
   source: "let x: Int = 1",
   file_name: "compiles.v3",
   predicate: pred_compiles,
-  requires: ["runner"]
+  requires: [{ identifier: "compile_time" }]
 }
 
 let claim_fails: TestClaim = {
@@ -155,7 +175,7 @@ let claim_fails: TestClaim = {
   source: "let x: Bool = 1",
   file_name: "fails.v3",
   predicate: pred_fails,
-  requires: ["runner"]
+  requires: [{ identifier: "compile_time" }]
 }
 
 let suite: TestSuite = {
