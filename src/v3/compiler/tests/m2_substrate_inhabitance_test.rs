@@ -182,6 +182,7 @@ fn substrate_coproducts_match_runtime_carriers() {
                 vec![String::from("_0")],
             ),
             (String::from("Pending"), Vec::new()),
+            (String::from("NoBody"), Vec::new()),
             (String::from("Unparsed"), vec![String::from("_0")]),
         ]
     );

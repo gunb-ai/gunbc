@@ -38,6 +38,7 @@ fn is_pending(body: ArrowBody) -> Bool =
     UserDefined(n) => false
     ExternalRealization(e) => false
     Pending => true
+    NoBody => false
     Unparsed(s) => false
   }
 ";

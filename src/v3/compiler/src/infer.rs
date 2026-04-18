@@ -864,9 +864,11 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
         }
     };
 
-    // Arrow-body state check. The three variants demand three different
-    // dispatch-time invariants; each failure surfaces as a fail-closed
-    // diagnostic on the call site's output port.
+    // Arrow-body state check. The five variants partition into the
+    // "check something" cases (UserDefined → Bind.value port state,
+    // ExternalRealization → realization shape) and the "no body to
+    // walk" cases (Pending/NoBody/Unparsed). Each failure surfaces as
+    // a fail-closed diagnostic on the call site's output port.
     match &signature.body {
         ArrowBody::UserDefined(bind_id) => {
             // User function: the call site's signature is only trustworthy
@@ -917,11 +919,18 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                 );
             }
         }
-        ArrowBody::Pending => {
-            // Realization-lag scaffold: signature type-checks via
-            // inhabitance, body-walking is skipped. Dissolves by M3
-            // per the §8.11 ratchet; at M1(2.7) it's valid at dispatch
-            // time.
+        ArrowBody::Pending | ArrowBody::NoBody => {
+            // Both shapes mean "no executable body to walk." `Pending`
+            // is the bootstrap/anonymous "no body needed" scaffold (see
+            // the `ArrowBody` ledger in `dag.rs`); `NoBody` is the
+            // terminal "no body by construction" form used by named
+            // type aliases (`type Callback = fn(Int) -> Int`).
+            // `decide_transform` treats them identically: signature
+            // inhabitance accepts; body walking is skipped. The variant
+            // distinction exists so `lens_structural_resolution` can
+            // single out the one shape (`Arrow { name: Some(_), body:
+            // Pending }`) that indicates an R13-class regression in
+            // body patching.
         }
         ArrowBody::Unparsed(_) => {
             // Surface-grammar scaffold: signature type-checks,

@@ -45,6 +45,7 @@ pub fn check_arrow_body(p0: &Declaration, p1: String, p2: &ArrowBody) -> Vec<Unr
         ArrowBody::UserDefined(_) => Vec::new(),
         ArrowBody::ExternalRealization(_) => Vec::new(),
         ArrowBody::Pending => singleton_violation(p0, (p1).clone()),
+        ArrowBody::NoBody => Vec::new(),
         ArrowBody::Unparsed(_) => Vec::new(),
     }
 }

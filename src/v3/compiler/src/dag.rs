@@ -528,6 +528,17 @@ pub struct TemplateArgument {
 ///   until the three roles above dissolve into their own
 ///   structural homes.
 ///
+/// - **`NoBody`** — terminal "no body by construction." Used at
+///   named user positions where the surface form declares an Arrow
+///   shape with no executable body, and never will: the canonical
+///   case is `type Callback = fn(Int) -> Int` lowered via
+///   `lower_type_alias` → `type_to_connective`. Distinct from
+///   `Pending` because (a) the absence-of-body is permanent rather
+///   than realization-lag, and (b) the declaration is named, so
+///   `lens_structural_resolution`'s `name: Some(_)` filter would
+///   false-positive if these arrows shared the `Pending` variant.
+///   No dissolution trigger — terminal at the substrate level.
+///
 /// - **`Unparsed`** — surface-grammar lag. Used at M1(2.7) for
 ///   block-bodied `fn foo(x) -> T { body }` declarations in std/
 ///   files where the body contains match/pipe/lambda/etc. —
@@ -543,9 +554,11 @@ pub struct TemplateArgument {
 ///   extension. When every std/ block body becomes parseable,
 ///   `Unparsed` is removed via a reverse substrate-extension PR.
 ///
-/// Verdict: terminal form is 2 variants. The 4-variant shape is
-/// a transition state; both scaffolds have named triggers and
-/// (for `Unparsed`) an explicit user-range boundary gate.
+/// Verdict: terminal form is 3 variants (`UserDefined`,
+/// `ExternalRealization`, `NoBody`). The 5-variant shape is a
+/// transition state; both remaining scaffolds (`Pending`, `Unparsed`)
+/// have named triggers and (for `Unparsed`) an explicit user-range
+/// boundary gate.
 #[derive(Debug, Clone)]
 pub enum ArrowBody {
     /// User-defined function. NodeId is the root of a sub-DAG of L1 behavior
@@ -557,10 +570,21 @@ pub enum ArrowBody {
     /// inference verifies signature compatibility.
     ExternalRealization(DeclarationId),
     /// Bootstrap scaffold. Signature type-checks via inhabitance; body-
-    /// walking is skipped. Dissolves by M3 via the §8.11 Pending-elimination
-    /// monotonic-decrease ratchet (distinct from §8.10's substrate-extension
-    /// audit).
+    /// walking is skipped. Used at anonymous positions per the three roles
+    /// in the ledger above (bootstrap algebra fields, user Arrow type
+    /// annotations, operator fallback bridge); the named "no body needed"
+    /// case lives in `NoBody`.
     Pending,
+    /// Terminal "no body by construction." The Arrow signature exists but
+    /// the declaration carries no executable body and never will. Used by
+    /// `lower_type_alias` → `type_to_connective` for named type aliases
+    /// like `type Callback = fn(Int) -> Int`. `decide_transform` treats
+    /// `NoBody` identically to `Pending` (signature inhabitance, body walk
+    /// skipped); the variant exists so `lens_structural_resolution` can
+    /// distinguish "named alias to Arrow shape" from a genuine R13-class
+    /// leak (`fn` declaration seeded with `Pending`, body-patching skipped)
+    /// without resorting to producer-specific lens predicates.
+    NoBody,
     /// Surface-grammar scaffold. The arrow's signature is resolved and
     /// callers can type-check against it, but the body source is not
     /// yet parseable under the M1(2.7) surface grammar. Used by

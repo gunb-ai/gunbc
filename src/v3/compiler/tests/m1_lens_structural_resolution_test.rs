@@ -92,6 +92,29 @@ fn lens_silent_on_anonymous_arrow_type_expression() {
 }
 
 #[test]
+fn lens_silent_on_named_type_alias_to_arrow() {
+    // `type Callback = fn(Int) -> Int` lowers via `lower_type_alias`
+    // → `type_to_connective` to a NAMED Declaration whose connective
+    // is `Arrow { body: NoBody }`. Before the §8.11-adjacent split,
+    // this site wrote `Arrow { body: Pending }` and the lens fired
+    // on it as a false positive — type aliases never need body
+    // patching, so a Pending here was structurally indistinguishable
+    // from the R13 leak the lens watches for.
+    //
+    // The fix: split `Pending` (executable-fn realization-lag scaffold,
+    // dissolves via the §8.11 ratchet) from `NoBody` (terminal —
+    // the arrow has no executable body by construction, e.g. type
+    // aliases). The lens still flags only `Pending`; `NoBody` is
+    // silently excluded.
+    let dag = compile_to_dag("type Callback = fn(Int) -> Int", "user.v3").expect("compiles");
+    let found = violations(&dag);
+    assert!(
+        found.is_empty(),
+        "named type-alias arrow (NoBody) must not be flagged, got: {found:?}"
+    );
+}
+
+#[test]
 fn lens_survives_co_existing_injected_and_compiled_declarations() {
     // Compose: a real source program + an injected named Pending on
     // top. Confirms the lens walks every declaration and flags the

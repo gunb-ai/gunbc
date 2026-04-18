@@ -928,7 +928,13 @@ fn type_to_connective(
                 .map(|i| type_to_declaration_id(i, symbols, local, dag))
                 .collect(),
             output: type_to_declaration_id(output, symbols, local, dag),
-            body: ArrowBody::Pending,
+            // `type_to_connective` is only invoked from `lower_type_alias`,
+            // so every Arrow created here is a NAMED type-alias declaration
+            // with no executable body by construction (e.g.
+            // `type Callback = fn(Int) -> Int`). `NoBody` rather than
+            // `Pending` so `lens_structural_resolution`'s `name: Some(_)`
+            // filter doesn't false-positive.
+            body: ArrowBody::NoBody,
         },
     }
 }

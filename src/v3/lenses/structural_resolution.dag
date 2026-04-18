@@ -15,8 +15,12 @@
 // filter does the boundary work: algebra field arrows synthesized by
 // `type_to_declaration_id` in `lower.rs` are anonymous
 // (`name: None`) and intentionally `Pending` at M1, so they never
-// match. Only a regression in `lower_fn_item`'s body-patching path
-// can produce a named `Arrow(Pending)` in the final Dag.
+// match. Named type-alias arrows (`type Callback = fn(Int) -> Int`)
+// carry `ArrowBody::NoBody` rather than `Pending` so they sit
+// outside the violation rule by construction; see the `ArrowBody`
+// ledger in `src/v3/compiler/src/dag.rs`. Only a regression in
+// `lower_fn_item`'s body-patching path can produce a named
+// `Arrow(Pending)` in the final Dag.
 //
 // **Deletes** when §8.11's Pending-elimination ratchet reaches zero
 // and the `ArrowBody::Pending` variant is removed from the
@@ -61,6 +65,7 @@ fn check_arrow_body(decl: Declaration, name_str: String, body: ArrowBody) -> Lis
     UserDefined(node_id) => empty()
     ExternalRealization(decl_id) => empty()
     Pending => singleton_violation(decl, name_str)
+    NoBody => empty()
     Unparsed(span) => empty()
   }
 
