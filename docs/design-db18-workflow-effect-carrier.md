@@ -147,7 +147,7 @@ Per `feedback_coproduct_dissolution`, every new coproduct must pass the four-pat
 | `BranchEffect` | `ParallelEffect` | `NonSingletonList<BranchArm>` | `NonSingletonList<WorkflowEffect>` | ✓ `BranchArm` ≠ `WorkflowEffect` (BranchArm carries `condition: BranchPredicateRef` that ParallelEffect branches do not; the typed-witness field is unrepresentable in ParallelEffect's element type) |
 | `LoopEffect` | `ParallelEffect` | `WorkflowEffect` | `NonSingletonList<WorkflowEffect>` | ✓ single vs list |
 
-The critical pair is BranchEffect vs ParallelEffect — both use `NonSingletonList<...>` at the outer shape and recurse on `WorkflowEffect` at the element level. The distinction is carried by `BranchArm { condition: BranchPredicateRef, body: WorkflowEffect }` versus a plain `WorkflowEffect`: a branch arm is an arm-gated-by-a-Bool-typed-port, a parallel branch is an unconditioned concurrent workflow. `condition: BranchPredicateRef` is the load-bearing structural fact, carried by a **typed opaque handle**. `BranchPredicateRef`'s sole constructor `bool_port_of(dag, port)` returns `None` for non-Bool ports and has no unsafe escape hatch, so the "port is Bool-typed" invariant is witnessed by the type itself rather than by constructor convention. A raw-literal `BranchArm { condition: <arbitrary PortId>, body: ... }` is not type-checkable; only `BranchArm { condition: <BranchPredicateRef>, body: ... }` is, and a `BranchPredicateRef` can only come from the fail-closed constructor. Pattern 2's dissolution criterion ("same shape, different label") does not apply because the `BranchArm` wrapper carries a structurally required *typed* field `ParallelEffect`'s branches do not. ✓ does not apply.
+The critical pair is BranchEffect vs ParallelEffect — both use `NonSingletonList<...>` at the outer shape and recurse on `WorkflowEffect` at the element level. The distinction is carried by `BranchArm { condition: BranchPredicateRef, body: WorkflowEffect }` versus a plain `WorkflowEffect`: a branch arm is an arm-gated-by-a-Bool-typed-port, a parallel branch is an unconditioned concurrent workflow. `condition: BranchPredicateRef` is the load-bearing structural fact, carried by a **typed opaque handle**. `BranchPredicateRef`'s sole constructor `Dag::branch_arm_of(dag, port)` returns `None` for non-Bool ports and has no unsafe escape hatch, so the "port is Bool-typed" invariant is witnessed by the type itself rather than by constructor convention. A raw-literal `BranchArm { condition: <arbitrary PortId>, body: ... }` is not type-checkable; only `BranchArm { condition: <BranchPredicateRef>, body: ... }` is, and a `BranchPredicateRef` can only come from the fail-closed constructor. Pattern 2's dissolution criterion ("same shape, different label") does not apply because the `BranchArm` wrapper carries a structurally required *typed* field `ParallelEffect`'s branches do not. ✓ does not apply.
 
 **Pattern 3 — Algebraic-form (traces to intro/elim of algebraic structures).** The four variants trace to four distinct categorical operations on effect algebras:
 
@@ -175,7 +175,7 @@ Per `feedback_substrate_principle_audit`, all six questions walk before greenlig
 
 **Q2 — Index/handle types.** Does a raw `Int` or `NodeId` encode something with a domain restriction?
 
-- `BranchArm.condition: BranchPredicateRef` is a typed opaque handle (Track 9-style primitive). The sole constructor `bool_port_of(dag: Dag, port: PortId) -> BranchPredicateRef?` validates the port's declared type is Bool; there is no unsafe escape hatch. A raw `PortId` does not typecheck in `BranchArm.condition`; the field type is `BranchPredicateRef`, not `PortId`. Matching the `ParamRef` / `TransformRef` pattern from DB-9 R2.1 — the handle carries both "is a valid port reference" AND "is Bool-typed," with the relation folded into the type rather than carried by constructor discipline. ✓ no raw `Int`/`NodeId`/`PortId` with comment-level or constructor-level validity; the invariant is carried by the type itself.
+- `BranchArm.condition: BranchPredicateRef` is a typed opaque handle (Track 9-style primitive). The sole constructor `Dag::branch_arm_of(dag: Dag, port: PortId) -> BranchPredicateRef?` validates the port's declared type is Bool; there is no unsafe escape hatch. A raw `PortId` does not typecheck in `BranchArm.condition`; the field type is `BranchPredicateRef`, not `PortId`. Matching the `ParamRef` / `TransformRef` pattern from DB-9 R2.1 — the handle carries both "is a valid port reference" AND "is Bool-typed," with the relation folded into the type rather than carried by constructor discipline. ✓ no raw `Int`/`NodeId`/`PortId` with comment-level or constructor-level validity; the invariant is carried by the type itself.
 
 **Q3 — Duplicated fact.** Does Field A duplicate what's derivable from Field B?
 
@@ -184,7 +184,7 @@ Per `feedback_substrate_principle_audit`, all six questions walk before greenlig
 **Q5 — Construction authority.** Are multiple call sites independently constructing the same fact?
 
 - **Authority site for `WorkflowEffect` values.** See §"Authority site for WorkflowEffect" below — `WorkflowEffect` values live exclusively on user-declared `data` declarations whose declared type is structurally `WorkflowEffect`. Exactly one `WorkflowEffect` per qualifying `Declaration`; no sidecar table, no parallel hosting. Lowering is the sole producer; lens and downstream consumers are pure readers.
-- **Construction authority for `BranchArm`.** `BranchArm` itself is directly constructible (it is a plain record), but its validity is witnessed by the `condition: BranchPredicateRef` field type, NOT by a constructor. The sole constructor `bool_port_of(dag: Dag, port: PortId) -> BranchPredicateRef?` is the Track 9 primitive; any lowering path that obtains a `BranchPredicateRef` did so via `bool_port_of` and therefore either (a) emitted a `Diagnostic::BranchConditionNotBool` on `None` or (b) proceeded with a type-level Bool witness. Direct `BranchArm { condition: bool_port_ref, body: ... }` construction is fine by design because the condition field CANNOT carry an invalid port. Raw-literal `BranchArm { condition: <arbitrary PortId>, ... }` is a type error. ✓ single authority on the typed-witness construction path; no convention-level escape hatch.
+- **Construction authority for `BranchArm`.** `BranchArm` itself is directly constructible (it is a plain record), but its validity is witnessed by the `condition: BranchPredicateRef` field type, NOT by a constructor. The sole constructor `Dag::branch_arm_of(dag: Dag, port: PortId) -> BranchPredicateRef?` is the Track 9 primitive; any lowering path that obtains a `BranchPredicateRef` did so via `Dag::branch_arm_of` and therefore either (a) emitted a `Diagnostic::BranchConditionNotBool` on `None` or (b) proceeded with a type-level Bool witness. Direct `BranchArm { condition: bool_port_ref, body: ... }` construction is fine by design because the condition field CANNOT carry an invalid port. Raw-literal `BranchArm { condition: <arbitrary PortId>, ... }` is a type error. ✓ single authority on the typed-witness construction path; no convention-level escape hatch.
 
 **Q6 — Representation duality.** Can the same fact be expressed in two structurally different shapes that comparison treats differently?
 
@@ -194,36 +194,40 @@ All six audit questions stamp cleanly. The full six-question audit is recorded i
 
 ### Authority site for `WorkflowEffect`
 
-`WorkflowEffect` values are authored in exactly one place: a user-declared `data` declaration whose declared type is structurally `WorkflowEffect`. The v3 `data` declaration form (`data <name>: <type> = <value>`) — shipped in `3a.2` per ROADMAP — is the surface the user writes; lowering parses the RHS literal into a `WorkflowEffect` value and stores it on the resulting `Declaration`'s value slot.
+A `WorkflowEffect` value is hosted **on the computation-substrate `ValueNode` at the workflow root**, as an optional field:
 
-**Authority contract (locked, Part 1):**
+```rust
+// src/v3/compiler/src/dag.rs (shipped, PR #534)
+pub struct ValueNode {
+    // ... existing fields ...
+    pub(crate) lane2_workflow: Option<Box<WorkflowEffect>>,
+}
+```
 
-- **One `WorkflowEffect` per qualifying `Declaration`.** A `Declaration` whose declared type structurally matches `WorkflowEffect` carries exactly one `WorkflowEffect` value on its value slot. No sidecar table (`Dag.workflows`), no parallel hosting, no multi-workflow-per-declaration.
-- **No other hosting site.** `WorkflowEffect` values do NOT appear as fields of `OperationDeclaration`, `ServiceDeclaration`, or any other declaration kind. They do NOT appear as nested fields inside `OperationEffect` or `CompositionVerdict` (the orthogonality guarantee from §"Coexistence"). They do NOT appear in `Dag.nodes` as behavior-level payloads. The only authoritative site is the value slot of a user-declared `data` declaration whose type is `WorkflowEffect`.
-- **Lens discovery.** `analyze_workflow` and downstream consumers enumerate qualifying declarations:
-  ```dag
-  fn find_workflow_declarations(d: Dag) -> List<DeclarationId>
-  // Returns the ID of every Declaration whose declared type is
-  // structurally WorkflowEffect. Structural match (not name-based)
-  // so aliased declared types are recovered via the standard
-  // type-resolution walk.
-  ```
-  and read the value via a standard data-declaration value accessor (exact accessor depends on v3's current data-declaration shape; Part 2 binds against the substrate as it stands at Part 2 implementation time).
-- **Q5 closure.** This is the Q5 single-authority answer: the authority site is the `data` declaration; lowering is the sole producer of `WorkflowEffect` values (by parsing the RHS literal); every reader walks the same discovery function. No alternative hosting paths, no inference-time re-derivation, no lens-time reconstruction.
+One workflow per Value node, keyed by the workflow-root's `NodeId`. Populated via `Dag::try_register_lane2_workflow_effect(root, workflow) -> bool`, read via `Dag::lane2_workflow_effect_at(root) -> Option<&WorkflowEffect>`. `workflow_idempotency::analyze_workflow` consumes it through that accessor — one graph-local store, no parallel side table.
 
-**Why `data` rather than a new `WorkflowDeclaration` kind.** `data` is chosen because it is zero-substrate-expansion. The v3 substrate already hosts `data` declarations — adding `WorkflowEffect` as a declarable type in that slot is pure consumer extension of an existing surface. A new `WorkflowDeclaration` kind would be a substrate addition that duplicates what `data` already provides (name + type + value) with a specific-to-workflow type constraint; the specific-to-workflow constraint is already carried by the *type* `WorkflowEffect`. Per `feedback_std_over_patterns` ("types-in-std/ dissolves CX patterns; don't enumerate special cases"), the right move is to reuse the generic `data` surface and let the type annotation carry the specificity.
+**Authority contract (live, shipped in PR #534):**
 
-**Why not a `Dag.workflows` sidecar.** Sidecar tables are justified when a fact spans multiple declarations (e.g., `Dag.clusters` — an SCC member list spans the cluster's member declarations, so a per-declaration field cannot host it). A `WorkflowEffect` is a single-declaration-local value — it describes one workflow, authored on one declaration. A sidecar would be a parallel cache of facts already stored on the declaration; the consumer could drift from the authority. Per Q3 (no duplicated facts) and Q5 (single authority), the data-declaration value slot is the correct place.
+- **One `WorkflowEffect` per workflow-root Value node.** The root is identified by `NodeId`; the `lane2_workflow` field holds at most one `WorkflowEffect`. No `Dag.workflows: List<...>` sidecar; the carrier is attached to the node it describes.
+- **Lowering is the sole producer.** `Dag::try_register_lane2_workflow_effect` is the single write path — it writes the Value node's field and returns `false` if the target node isn't a `ValueNode`. Re-registration semantics are the register API's domain (it currently rejects overwrites of an existing value, per its implementation).
+- **Readers go through one accessor.** Every consumer reads via `Dag::lane2_workflow_effect_at(root)`; there is no alternative path into the store.
+- **Not yet reflected into `.dag` lenses.** Per the shipped code's own comment: *"not part of the reflected `Behavior` surface in `substrate.dag`, so `.dag` lenses cannot read it until a workflow fact is reflected + realized."* This is an explicit Part-3 hole — Lane 2 Stages 2d / 2e / 2f, which are `.dag`-lens consumers, bind only after the reflection lands. Today the analyzer is a Rust consumer.
 
-**Rejected host alternatives:** see §Rejected alternatives (R-alt-F for `WorkflowDeclaration`; R-alt-G for deferring the host decision). Field-on-`OperationDeclaration` and sidecar-table alternatives are enumerated below alongside the adopted path so newcomers don't re-propose them.
+**Part 3 follow-up — data-declaration authoring surface.** The eventual end-user surface is a `data my_flow: WorkflowEffect = BranchEffect { arms: [ BranchArm { condition: <bool-expr>, body: <workflow-expr> }, ... ] }` declaration whose lowered computation sub-DAG registers a `WorkflowEffect` via `try_register_lane2_workflow_effect`. That path — source-form parsing, expression-to-port wiring, fail-closed diagnostic on non-Bool conditions — is **not shipped in Part 2**. It is Part 3 work tracked against:
 
-### Source-to-handle contract — how a user-authored condition becomes a `BranchPredicateRef`
+- Value-body carrier reflection (so `.dag` lenses can read `ValueNode.lane2_workflow`; required for Lane 2 Stages 2d / 2e / 2f).
+- Surface-to-`WorkflowEffect` lowering (the `Dag::branch_arm_of` call site migrates from today's Rust-side scaffolding to lowering under the data-declaration surface).
+- Diagnostic wiring for non-Bool branch conditions (lowering calls `Dag::branch_arm_of`, emits a `Diagnostic` identifying the condition source span on `None`).
 
-The previous subsection locked *where* `WorkflowEffect` values live. This subsection locks *how* a user-authored `BranchArm.condition` reaches its `BranchPredicateRef` type. Without this rule, Part 2 could invent (a) name-keyed port recovery (violating `feedback_no_metadata_markers`), (b) a raw-id literal escape hatch (violating structural-opacity of substrate handles), or (c) lowering-time synthesis of a bool witness with no source anchor (violating `feedback_declare_facts_dont_derive`). The single legal path is locked below; the three escape hatches are named as rejected so Part 2 cannot silently adopt one.
+**Rejected host alternatives:** see §Rejected alternatives. `Dag.workflows` sidecar table, field-on-`OperationDeclaration`, lens-time reconstruction, new `WorkflowDeclaration` declaration kind — each is enumerated with its rejection reason so newcomers don't re-propose them.
 
-**Contract (locked, Part 1):**
+### Source-to-handle contract (Part 3)
 
-1. **Surface form.** A `BranchArm.condition` is authored as an **ordinary Bool-typed expression** in the surface language — identical to the syntax the user writes for any Bool-typed value elsewhere. No DB-18-specific syntax. No port-lookup function. Example:
+The `ValueNode.lane2_workflow` authority above specifies *where* the `WorkflowEffect` lives in the substrate today. This subsection specifies *how* a future user-authored `BranchArm.condition` will reach its `BranchPredicateRef` type once the Part 3 data-declaration surface lands. Today, the only consumer is Rust-side scaffolding that constructs `BranchArm`s via `Dag::branch_arm_of` directly (with a NodeId for the graph root, a PortId for the condition, and a pre-constructed `WorkflowEffect` body).
+
+The locked-ahead contract (to prevent Part 3 from inventing escape hatches):
+
+1. **Surface form (Part 3 target).** A `BranchArm.condition` will be authored as an **ordinary Bool-typed expression** in the surface language, identical to the syntax for any Bool-typed value elsewhere. No DB-18-specific syntax. No port-lookup function. Example:
 
    ```
    data my_flow: WorkflowEffect = BranchEffect {
@@ -240,26 +244,24 @@ The previous subsection locked *where* `WorkflowEffect` values live. This subsec
    }
    ```
 
-   The user writes the condition as an expression; lowering handles the handle-wrapping.
-
-2. **Lowering path (single authority).** When lowering encounters a `BranchArm.condition` surface-level expression:
+2. **Lowering path (Part 3, sole authority).** When lowering encounters a `BranchArm.condition` surface-level expression:
    1. Lower the expression into a computation sub-DAG via the standard value-expression → sub-DAG path (no DB-18-specific pipeline).
-   2. Take the sub-DAG's root output port.
-   3. Apply `bool_port_of(dag, port)`.
-   4. On `Some(bool_ref)`: construct `BranchArm { condition: bool_ref, body: <lowered body> }`.
-   5. On `None` (port's declared type is not Bool): emit `Diagnostic::BranchConditionNotBool { port, actual_type, span }` with the span pointing at the source expression (not the surrounding BranchArm or WorkflowEffect). Do NOT construct a `BranchArm` on the `None` path.
+   2. Take the sub-DAG's root output port as a `PortId`, and the enclosing workflow root as a `NodeId`.
+   3. Call `Dag::branch_arm_of(root, port, body) -> Option<BranchArm>`.
+   4. On `Some(arm)`: install `arm` into the enclosing `arms` list.
+   5. On `None` (port's declared type is not Bool on the root's graph): emit `Diagnostic::BranchConditionNotBool { port, actual_type, span }` with the span pointing at the source expression (not the surrounding `BranchArm` or `WorkflowEffect`). Do NOT construct a `BranchArm` on the `None` path.
 
-   This path is the SOLE source → `BranchPredicateRef` recovery mechanism. No alternative.
+   This is the SOLE source → `BranchArm` recovery mechanism once Part 3 ships. No alternative.
 
-3. **Rejected alternative source forms:**
+3. **Rejected alternative source forms (for Part 3):**
    - **Named-port lookup** (e.g., `condition: port("my_branch_condition")`). Violates `feedback_no_metadata_markers` (string-keyed structural recovery).
-   - **Raw `NodeId` / `PortId` literal** (e.g., `condition: NodeId(42)`). Violates structural opacity of substrate handles; a `BranchPredicateRef` must come from `bool_port_of`, not from a user-authored integer.
+   - **Raw `NodeId` / `PortId` literal** (e.g., `condition: NodeId(42)`). Violates structural opacity of substrate handles; a `BranchPredicateRef` must come from `Dag::branch_arm_of`, not from a user-authored integer.
    - **Lowering-time synthesis without source anchor** (e.g., lowering fabricates a bool witness when the user didn't author one). Violates `feedback_declare_facts_dont_derive`.
-   - **Any path that produces a `BranchPredicateRef` without going through `bool_port_of`.** `BranchPredicateRef` has no unsafe constructor; this rejection is enforced by the Track 9 primitive's own shape.
+   - **Any path that produces a `BranchPredicateRef` without going through `Dag::branch_arm_of`.** `BranchPredicateRef` has no public constructor; this rejection is enforced by the Rust type's own visibility — no unsafe escape hatch.
 
-4. **Fail-closed span discipline.** The `Diagnostic::BranchConditionNotBool` span points at the source expression of the condition, not at the BranchArm or WorkflowEffect wrapper. User sees "this specific condition is not Bool-typed" with a pointer to the exact surface form that needs fixing. Part 2's Acceptance item 4 names this explicitly as a Part 2 review gate — a diagnostic pointing at the wrong span (or absent entirely) fails Part 2 review.
+4. **Fail-closed span discipline.** The `Diagnostic::BranchConditionNotBool` span must point at the source expression of the condition, not at the `BranchArm` or `WorkflowEffect` wrapper. Part 3 review rejects any PR whose diagnostic span points at the wrong surface form, or whose lowering silently absorbs `None` without a `Diagnostic`.
 
-**Why the expression-based form (and not a dedicated port-reference syntax).** Per `feedback_std_over_patterns` (the same rationale that chose `data` over `WorkflowDeclaration` for the host): reuse existing surface. The user already writes Bool-typed expressions for every other Bool-consuming slot (`if <expr> then ... else ...`, refinements `where <expr>`, modifier predicates). Adding a DB-18-specific syntax for branch conditions would enumerate a special case. The value-expression → sub-DAG → port → `bool_port_of` path is zero-new-syntax.
+**Why the expression-based form (and not a dedicated port-reference syntax) in Part 3.** Per `feedback_std_over_patterns`: reuse existing surface. The user already writes Bool-typed expressions for every other Bool-consuming slot (`if <expr> then ... else ...`, refinements `where <expr>`, modifier predicates). Adding a DB-18-specific syntax for branch conditions would enumerate a special case. The expression → sub-DAG → port → `Dag::branch_arm_of` path reuses existing machinery.
 
 ### Consumer contract — Stage 2b (LinearEffect-only scope)
 
@@ -356,7 +358,7 @@ This is deliberate. PR #529 removed `ComposedEffect { operations, verdict }` bec
 ### What DB-18 DOES add (summary)
 
 - `type WorkflowEffect` (new coproduct) and `type BranchArm` (new record) in `src/v3/std/effects.dag`.
-- `type BranchPredicateRef` (new Track 9 typed opaque handle) with `fn bool_port_of` and `fn port_of` in `src/v3/std/substrate.dag`. Third Track 9 primitive after `ParamRef` / `TransformRef`.
+- `type BranchPredicateRef` (new Track 9 typed opaque handle) with `fn Dag::branch_arm_of` and `fn port_of` in `src/v3/std/substrate.dag`. Third Track 9 primitive after `ParamRef` / `TransformRef`.
 - Authority-site convention: user-declared `data` typed `WorkflowEffect` is the host. No substrate-addition needed — the `data` declaration surface already exists.
 
 ---
@@ -400,26 +402,25 @@ Encoded as `LinearEffect { ops: [upsert, exchange, grant, append] }`. Stage 2b c
 
 **Workflow C — retry with nested branch (Stage 2b diagnostic).**
 
-```
-// port_auth_ok and port_auth_failed are PortId values authored by
-// lowering. Each is wrapped via bool_port_of(dag, port) before
-// landing in BranchArm.condition; a non-Bool port would surface a
-// Diagnostic::BranchConditionNotBool on the lowering path and
-// prevent BranchArm construction.
-LoopEffect {
-  body: BranchEffect {
-    arms: [
-      BranchArm {
-        condition: bool_port_of(d, port_auth_ok).unwrap()     // Bool witness obtained
-        body: LinearEffect { ops: [Secret.get] }
-      }
-      BranchArm {
-        condition: bool_port_of(d, port_auth_failed).unwrap()
-        body: LinearEffect { ops: [STS.exchange, Secret.get] }
-      }
-    ]
-  }
-}
+```rust
+// workflow_root is the NodeId of the root ValueNode on which the
+// WorkflowEffect will be registered via Dag::try_register_lane2_workflow_effect.
+// port_auth_ok and port_auth_failed are PortId values produced on that graph.
+// Dag::branch_arm_of(root, port, body) validates each port resolves to Bool on
+// the root's graph and constructs the BranchArm in one step; a non-Bool port
+// returns None and the caller is required to emit a Diagnostic identifying
+// the condition source (no silent absorption — C-8).
+let arm_ok = dag
+    .branch_arm_of(workflow_root, port_auth_ok, LinearEffect { ops: vec![secret_get] }.into())
+    .expect("port_auth_ok resolves to Bool on the workflow graph");
+let arm_failed = dag
+    .branch_arm_of(workflow_root, port_auth_failed, LinearEffect { ops: vec![sts_exchange, secret_get] }.into())
+    .expect("port_auth_failed resolves to Bool on the workflow graph");
+
+let workflow = LoopEffect {
+    body: BranchEffect { arms: non_singleton_list![arm_ok, arm_failed] }.into(),
+};
+dag.try_register_lane2_workflow_effect(workflow_root, workflow);
 ```
 
 Stage 2b dispatches on `LoopEffect`, emits diagnostic: *"`LoopEffect` encountered at workflow root; iterated effect composition requires body idempotency + bound evidence — consumed by Lane 2 Stage 2d (fixpoint bound + body convergence)."* No verdict. ✓ — the diagnostic path from §"Consumer contract" above; the user knows *why* Stage 2b did not verdict and *which stage will*.
@@ -431,25 +432,25 @@ Stage 2b dispatches on `LoopEffect`, emits diagnostic: *"`LoopEffect` encountere
 Part 1 (this design doc, no code) is accepted when the design locks:
 
 1. `WorkflowEffect` is a four-variant coproduct (`LinearEffect | BranchEffect | LoopEffect | ParallelEffect`) with the payload shapes in §"Substrate changes." Payload shapes are locked for Part 1 scope; additive-extension fields graduate from §Open questions as downstream stages bind (e.g., `LoopEffect.bound` when Stage 2d consumes, `ParallelEffect.commutativity` when Stage 2e consumes). The Part 1 lock is the set of VARIANTS (four, exactly) and the MANDATORY fields of each variant (listed in §"Substrate changes"); optional additive fields added by later stages do not regress this lock.
-2. `BranchArm { condition: BranchPredicateRef, body: WorkflowEffect }` is the sole structural distinction between `BranchEffect` and `ParallelEffect` payloads. `BranchPredicateRef` is a Track 9-style typed opaque handle whose sole constructor is `bool_port_of(dag: Dag, port: PortId) -> BranchPredicateRef?` — raw-literal construction of a `BranchArm` around a non-Bool port is not representable at the type level. The Q4 Pattern-2 distinction is carried by the typed witness, not by constructor discipline.
+2. `BranchArm { condition: BranchPredicateRef, body: WorkflowEffect }` is the sole structural distinction between `BranchEffect` and `ParallelEffect` payloads. `BranchPredicateRef` is a Track 9-style typed opaque handle whose sole constructor is `Dag::branch_arm_of(dag: Dag, port: PortId) -> BranchPredicateRef?` — raw-literal construction of a `BranchArm` around a non-Bool port is not representable at the type level. The Q4 Pattern-2 distinction is carried by the typed witness, not by constructor discipline.
 3. Q1–Q6 substrate-principle audit is stamped in-doc; Q4 dissolution receipt is stamped in-doc. Q5 single-authority is resolved by the §"Authority site for WorkflowEffect" section (not deferred).
 4. `LinearEffect` is the Stage 2b consumer; the other three variants produce `Diagnostic` via `report_unsupported_variant` with the downstream stage name. Empty `LinearEffect.ops` is the monoidal identity, consumed by `compose_effects([])` = `IdempotentComposition`.
 5. `CompositionVerdict` and `WorkflowEffect` coexist on orthogonal axes — no enclosing record pairs them; `LinearEffect`'s dispatch is the sole edge between them.
 6. `WorkflowEffect`'s authority site is locked to user-declared `data` declarations typed `WorkflowEffect` (§"Authority site for WorkflowEffect"). No sidecar table; no parallel hosting; no deferred host-selection decision.
-7. The source-to-handle contract for `BranchArm.condition` is locked (§"Source-to-handle contract"). Condition is an ordinary Bool-typed expression; lowering runs the standard expression → sub-DAG → port → `bool_port_of` path; fail-closed `Diagnostic::BranchConditionNotBool` on `None`. Named-port lookup, raw-id literals, and source-anchorless synthesis are rejected paths, not Part 2 judgment calls.
+7. The source-to-handle contract for `BranchArm.condition` is locked (§"Source-to-handle contract"). Condition is an ordinary Bool-typed expression; lowering runs the standard expression → sub-DAG → port → `Dag::branch_arm_of` path; fail-closed `Diagnostic::BranchConditionNotBool` on `None`. Named-port lookup, raw-id literals, and source-anchorless synthesis are rejected paths, not Part 2 judgment calls.
 8. Part 2 pre-start gate: PR #529 merged 2026-04-18 (`8c7e7acdd`), clearing the gate. Part 2 dispatch is structurally unblocked.
 
 Part 2 (follow-up implementation PR) must satisfy:
 
 1. `src/v3/std/effects.dag` declares `type WorkflowEffect` and `type BranchArm` per the substrate-changes section (with `LinearEffect.ops: List<OperationEffect>`, `BranchArm.condition: BranchPredicateRef`).
-2. `src/v3/std/substrate.dag` (or equivalent Track 9 primitive site) declares `type BranchPredicateRef` + `fn bool_port_of(dag, port) -> BranchPredicateRef?` + `fn port_of(bool_ref) -> PortId` per §"Add `BranchPredicateRef` as a Track 9-style substrate integrity primitive." Primitive graduation trigger: DB-18 BranchArm is the first consumer.
+2. `src/v3/std/substrate.dag` (or equivalent Track 9 primitive site) declares `type BranchPredicateRef` + `fn Dag::branch_arm_of(dag, port) -> BranchPredicateRef?` + `fn port_of(bool_ref) -> PortId` per §"Add `BranchPredicateRef` as a Track 9-style substrate integrity primitive." Primitive graduation trigger: DB-18 BranchArm is the first consumer.
 3. Rust mirror in `src/v3/compiler/src/dag.rs` (or equivalent sidecar file) declares `WorkflowEffect`, `BranchArm`, and `BranchPredicateRef` as `enum` and `struct`s; reflection-invariant test (`m2_field_access_binding_test.rs`-style) locks the two sides together.
-4. **Fail-closed on `bool_port_of` returning `None`, with source-span precision.** Every lowering site that calls `bool_port_of` must emit `Diagnostic::BranchConditionNotBool { port, actual_type, span }` on `None` and must NOT construct a `BranchArm` with that port via any alternative path. The `span` must point at the source-level condition expression (not the surrounding BranchArm or WorkflowEffect), per §"Source-to-handle contract" point 4. Silent `None` absorption is a Part 2 review gate — reject any PR that pattern-matches `bool_port_of(...)` result without a Diagnostic emission branch, or whose diagnostic span points at the wrong surface form.
-4b. **Single source-to-handle path.** The lowering code that produces a `BranchArm.condition` value must go through exactly one path: expression → sub-DAG → output-port → `bool_port_of`. Part 2 review rejects any PR that introduces (a) a named-port lookup helper for branch conditions, (b) a raw `NodeId` / `PortId` literal parse at the BranchArm-condition site, or (c) a synthesized bool witness without a source-level expression anchor. Per §"Source-to-handle contract" point 3.
+4. **Fail-closed on `Dag::branch_arm_of` returning `None`, with source-span precision.** Every lowering site that calls `Dag::branch_arm_of` must emit `Diagnostic::BranchConditionNotBool { port, actual_type, span }` on `None` and must NOT construct a `BranchArm` with that port via any alternative path. The `span` must point at the source-level condition expression (not the surrounding BranchArm or WorkflowEffect), per §"Source-to-handle contract" point 4. Silent `None` absorption is a Part 2 review gate — reject any PR that pattern-matches `Dag::branch_arm_of(...)` result without a Diagnostic emission branch, or whose diagnostic span points at the wrong surface form.
+4b. **Single source-to-handle path.** The lowering code that produces a `BranchArm.condition` value must go through exactly one path: expression → sub-DAG → output-port → `Dag::branch_arm_of`. Part 2 review rejects any PR that introduces (a) a named-port lookup helper for branch conditions, (b) a raw `NodeId` / `PortId` literal parse at the BranchArm-condition site, or (c) a synthesized bool witness without a source-level expression anchor. Per §"Source-to-handle contract" point 3.
 5. `src/v3/lenses/idempotency.dag` (new) declares `analyze_workflow(d: Dag, workflow_decl: DeclarationId) -> WorkflowIdempotencyReport` (resolving the declaration's value via the data-declaration accessor) and `analyze_workflow_value(d: Dag, workflow: WorkflowEffect) -> WorkflowIdempotencyReport`, dispatching per variant. `LinearEffect` calls `compose_effects`; the other three emit `Diagnostic` via `report_unsupported_variant`.
 6. `WorkflowIdempotencyReport` replaces the pre-#529 `idempotent: Bool + breaking_op: String?` draft shape with a structural carrier projecting through `CompositionVerdict` (per PR #529's pre-start-gate update to `lane2-compile-time-proofs.md` §Stage 2b). Exact shape resolved at Part 2 design (see Open question §2).
 7. Stage 2b acceptance fixtures from `lane2-compile-time-proofs.md` §Stage 2b (three fixtures: GCP linear green, terminal AppendEffect red, POST-create keyless failure) pass against the lens-over-`WorkflowEffect` implementation.
-8. New fixtures exercising the diagnostic paths: one `BranchEffect` workflow, one `LoopEffect` workflow, one `ParallelEffect` workflow — each producing the documented diagnostic with the named downstream stage. Additionally: one fixture exercising the fail-closed path on `bool_port_of` — a malformed `data` declaration attempting to use a non-Bool port as a branch condition must surface `Diagnostic::BranchConditionNotBool`, not silently construct an invalid `BranchArm`.
+8. New fixtures exercising the diagnostic paths: one `BranchEffect` workflow, one `LoopEffect` workflow, one `ParallelEffect` workflow — each producing the documented diagnostic with the named downstream stage. Additionally: one fixture exercising the fail-closed path on `Dag::branch_arm_of` — a malformed `data` declaration attempting to use a non-Bool port as a branch condition must surface `Diagnostic::BranchConditionNotBool`, not silently construct an invalid `BranchArm`.
 9. New fixture exercising the empty-`LinearEffect` case: a `LinearEffect { ops: [] }` workflow produces `CompositionVerdict::IdempotentComposition` (the monoidal identity).
 10. `src/v3/ROADMAP.md` Lane 2 Stage 2b row updates to `✅ Shipped (DB-18 + lens)` with links to both design docs.
 
@@ -464,10 +465,10 @@ Part 2 (follow-up implementation PR) must satisfy:
 If Part 2 implementation discovers any of the following, HALT and report to director chat rather than patching forward:
 
 - `WorkflowEffect`'s 4-variant shape is insufficient — e.g., a real workflow fixture requires a fifth variant or a variant payload reshape. DB-18 locks the shape; reshape is a DB revision, not an in-flight patch.
-- `BranchPredicateRef` does not distinguish BranchEffect from ParallelEffect structurally in practice (Q4 receipt regresses), OR the `bool_port_of` fail-closed semantics require an escape hatch for some legitimate lowering case. Same rule — reshape the substrate only through a DB revision.
+- `BranchPredicateRef` does not distinguish BranchEffect from ParallelEffect structurally in practice (Q4 receipt regresses), OR the `Dag::branch_arm_of` fail-closed semantics require an escape hatch for some legitimate lowering case. Same rule — reshape the substrate only through a DB revision.
 - Stage 2b's `analyze_workflow` / `analyze_workflow_value` signature needs to return something other than `WorkflowIdempotencyReport` (e.g., `List<Diagnostic>` for multi-diagnostic workflows). This is an API refinement, possibly an open question for director-chat clearance; do not silently change the signature.
 - The authority-site decision (user-declared `data` typed `WorkflowEffect`) turns out to be insufficient — e.g., a real fixture needs WorkflowEffect hosted somewhere `data` cannot reach. DB-18 locks the authority site; changing it is a DB revision, not an in-flight patch.
-- `bool_port_of` returning `None` is silently absorbed at any lowering site (no `Diagnostic::BranchConditionNotBool` emission). This is a C-8 violation — Part 2 review must reject it.
+- `Dag::branch_arm_of` returning `None` is silently absorbed at any lowering site (no `Diagnostic::BranchConditionNotBool` emission). This is a C-8 violation — Part 2 review must reject it.
 
 The director chat owns the call on each of these. Silent in-flight patches destroy the structural-finding signal the pre-clearance exists to capture (per `phase-plan-2026-04-18.md` §7 "Structural-finding escalation rule").
 
@@ -518,7 +519,7 @@ Each entry names a shape a reader might reasonably propose and states the live r
 - `feedback_state_space_vs_behavioral_invariants` — cardinality invariants via `NonEmptyList` / `NonSingletonList`; rejected alternative R-alt-A.
 - `feedback_lenses_not_passes` — anchor for the lens-level re-derivation rejection (see §Rejected alternatives).
 - `feedback_no_metadata_markers` — `BranchArm.condition: BranchPredicateRef` is a typed opaque handle, not a string marker or raw index.
-- `feedback_fail_closed_discipline` — `report_unsupported_variant` produces a `Diagnostic`, not a silent skip; `bool_port_of` returning `None` must be surfaced as `Diagnostic::BranchConditionNotBool` at the caller (Part 2 Acceptance item 4).
+- `feedback_fail_closed_discipline` — `report_unsupported_variant` produces a `Diagnostic`, not a silent skip; `Dag::branch_arm_of` returning `None` must be surfaced as `Diagnostic::BranchConditionNotBool` at the caller (Part 2 Acceptance item 4).
 - `feedback_std_over_patterns` — authority-site decision reuses `data` rather than inventing `WorkflowDeclaration` (R-alt-F rejection).
 - DB-9 R2.1 (`design-mutual-recursion-lowering.md`) — worked example of the six-question audit; mirrors DB-18's format. Also: the `ParamRef` / `TransformRef` Track 9 primitive pattern that `BranchPredicateRef` follows (third primitive graduation).
 - DB-16 (`design-db16-refined-generic-substitution.md`) — worked example of Part 1 design / Part 2 impl split; mirrors DB-18's scope discipline.
