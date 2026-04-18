@@ -70,9 +70,7 @@ fn size_var(source_port: PortId) -> SizeVariable {
 }
 
 fn linear(port: PortId) -> SymbolicCost {
-    SymbolicCost::LinearCost {
-        _0: size_var(port),
-    }
+    SymbolicCost::LinearCost { _0: size_var(port) }
 }
 
 fn polynomial(port: PortId, degree: i64) -> SymbolicCost {
@@ -83,9 +81,7 @@ fn polynomial(port: PortId, degree: i64) -> SymbolicCost {
 }
 
 fn log_cost(port: PortId) -> SymbolicCost {
-    SymbolicCost::LogCost {
-        _0: size_var(port),
-    }
+    SymbolicCost::LogCost { _0: size_var(port) }
 }
 
 fn constant(n: i64) -> SymbolicCost {
