@@ -208,7 +208,7 @@ let zero: Int = 0
     let dag = compile_to_dag(source, "variant_payload_named_single.v3").expect("compiles");
     let rendered = emit_go(&dag).expect("emits go");
     assert!(
-        rendered.contains("case Wrap: return v.inner.x"),
+        rendered.contains("case Wrap: return ((v).inner).x"),
         "named single-field payload access must project from the variant value, got: {rendered}"
     );
     assert!(
