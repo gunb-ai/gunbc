@@ -1,0 +1,59 @@
+// std.dimensions — the structural shape every compile-time proof
+// lens shares.
+//
+// 🟡 SCAFFOLD at Stage 2d scope. This file declares the minimum
+// `Dimension<C>` + `Witness<C>` types required for 2d's
+// `symbolic_cost_dimension: Dimension<SymbolicCost>` data
+// declaration. Per DB-3 (`docs/design-dimension-abstraction.md`),
+// Stage 2f owns the full abstraction — the generic `analyze` walker,
+// `DimensionReport<C>`, workflow detection, bootstrap discovery.
+// 2d ships the carrier shape so that (a) 2f's later refactor keeps
+// the same field names, and (b) 2b/2d/2e instances can already
+// declare against a single-authority type.
+//
+// **What does not come over yet:** `fn analyze<Carrier>`,
+// `DimensionReport<Carrier>`, monoid-law declarations. Those land
+// in Stage 2f when the abstraction is pulled back over three
+// concrete dimensions.
+//
+// See DB-3 §"Core type" for the full locked shape.
+
+module v3.std.dimensions
+
+import v3.std.substrate { Dag, Behavior }
+
+// 🟢 TERMINAL at the structural-witness scope. `Witness<Carrier>`
+// partitions per-operation evidence into two disjoint cases:
+//
+//   - `Inhabits(c)`  — this behavior is an ok member of the
+//                      dimension's algebra; compose absorbs `c`.
+//   - `Violates {..}` — this behavior breaks the dimension; a
+//                       diagnostic fires and composition stalls.
+//
+// The coproduct is authored at the witness level, not above it in
+// an `Option<Witness>` shape, so "no evidence" and "evidence of
+// violation" cannot masquerade as each other (DB-3 §Rationale).
+type Witness<Carrier>
+  = Inhabits(Carrier)
+  | Violates { reason: String, at: Behavior }
+
+// 🟢 TERMINAL at the dimension-surface scope. The four fields are
+// the irreducible contract a compile-time property has to publish:
+//   - `name`      — human-facing identifier
+//   - `witness_of`— per-op evidence extraction
+//   - `compose`   — how two pieces of evidence combine along a
+//                   workflow (must form a monoid with `identity`;
+//                   law is documented not mechanically enforced —
+//                   Stage 2f open question §2)
+//   - `identity`  — fold unit / empty workflow value
+//
+// Stage 2d consumers MAY additionally declare a
+// `break_diagnostic: fn(Behavior, Carrier) -> Diagnostic?` as a
+// free-standing function on the lens side; the field form lands
+// with the full abstraction in Stage 2f.
+type Dimension<Carrier> {
+  name: String
+  witness_of: fn(Dag, Behavior) -> Witness<Carrier>
+  compose: fn(Carrier, Carrier) -> Carrier
+  identity: Carrier
+}
