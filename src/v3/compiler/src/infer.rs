@@ -2871,17 +2871,26 @@ fn materialize_substituted_refined_decl(
 
     let template_decl = dag.declaration(template_refined).clone();
     let Some(template_pred_decl_id) = template_decl.refinement else {
-        // Caller should have checked `decl.refinement.is_some()`.
-        // Defensive fallthrough.
-        return template_refined;
+        // Caller (concretize_decl_with_subst's refinement branch) checks
+        // `decl.refinement.is_some()` before entering. Reaching this
+        // point means the caller contract was violated — surface that
+        // rather than masking it with a silent fallthrough.
+        unreachable!(
+            "materialize_substituted_refined_decl entered on declaration {:?} without refinement edge",
+            template_refined
+        );
     };
     let TypeConnective::Atom(AtomPayload::ResolvedIdentifier(template_base)) =
         template_decl.connective
     else {
-        // Caller should have checked `refinement_base_requires_substitution`,
-        // which itself rejects non-ResolvedIdentifier connectives.
-        // Defensive fallthrough.
-        return template_refined;
+        // Caller also checks `refinement_base_requires_substitution`,
+        // whose first step returns false for any connective other than
+        // `Atom(ResolvedIdentifier(_))`. Reaching this point means the
+        // caller contract was violated.
+        unreachable!(
+            "materialize_substituted_refined_decl entered on declaration {:?} whose connective is not Atom(ResolvedIdentifier(_))",
+            template_refined
+        );
     };
     let template_span = template_decl.span.clone();
 
@@ -2947,9 +2956,14 @@ fn materialize_substituted_refined_decl(
         ..
     } = &dag.declaration(template_pred_decl_id).connective
     else {
-        // outer_predicate_slots already rejected non-Arrow predicates,
-        // so this branch is unreachable; defensive fallthrough.
-        return template_refined;
+        // `outer_predicate_slots` rejected non-Arrow predicates at
+        // step 2 above; reaching this point means the predicate
+        // declaration's connective mutated between step 2 and step 5,
+        // which is impossible under `&mut Dag` exclusive access.
+        unreachable!(
+            "predicate declaration {:?} connective is not Arrow despite outer_predicate_slots succeeding",
+            template_pred_decl_id
+        );
     };
     let bool_decl_id = *bool_decl_id;
 
@@ -3224,6 +3238,23 @@ struct NormalizedInstantiation {
     args: Vec<TemplateArgument>,
 }
 
+/// DB-16 (3a.3 closure): normalize an `Instantiation` declaration by
+/// stripping **only** self-bindings (`arg.parameter == arg.value`).
+///
+/// Self-bindings are reattachment artifacts produced by
+/// `resolve_callable_target`'s unification when a generic call site
+/// is encountered under an outer generic scope: the outer TypeParam
+/// binds to itself in the callee's argument list because no concrete
+/// value has been inferred yet. Those self-bindings are no-op under
+/// substitution (`SubstStack::lookup` short-circuits to `None` on
+/// them) but inflate argument-length comparisons in strict
+/// structural checks.
+///
+/// Non-self bindings are NEVER stripped: retained callable-argument
+/// identities (per `retained_template_arguments_for_target`) carry
+/// semantic meaning that must survive DB-16's equivalence walk. Two
+/// Instantiations that differ only by a non-self retained binding
+/// are structurally distinct and must compare unequal.
 fn normalized_instantiation_args(
     dag: &Dag,
     decl: DeclarationId,
@@ -3235,15 +3266,9 @@ fn normalized_instantiation_args(
     else {
         return None;
     };
-    let allowed: HashSet<DeclarationId> = dag
-        .declaration(*template)
-        .type_params
-        .iter()
-        .copied()
-        .collect();
     let filtered: Vec<TemplateArgument> = arguments
         .iter()
-        .filter(|arg| allowed.contains(&arg.parameter))
+        .filter(|arg| arg.parameter != arg.value)
         .cloned()
         .collect();
     Some(NormalizedInstantiation {
