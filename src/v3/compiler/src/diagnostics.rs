@@ -234,10 +234,9 @@ fn correction_style_for_target(
             "python_clean_emission.correction_style",
         ),
     };
-    let clean_emission_decl =
-        clean_emission_decl.ok_or(DiagnosticRenderError::MissingCleanEmissionContract(
-            missing_name,
-        ))?;
+    let clean_emission_decl = clean_emission_decl.ok_or(
+        DiagnosticRenderError::MissingCleanEmissionContract(missing_name),
+    )?;
     let Some(ValueBody::Structural { fields }) = &dag.declaration(clean_emission_decl).value_body
     else {
         return Err(DiagnosticRenderError::MalformedCleanEmissionContract {
