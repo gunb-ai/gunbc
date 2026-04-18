@@ -131,7 +131,20 @@ fn main() {
     println!("cargo:rerun-if-changed={}", spec_dir.display());
     println!("cargo:rerun-if-changed={}", compiler_dir.display());
 
-    let staged_entries = collect_dag_entries(&std_dir, &[]);
+    // Structural-recursion termination analysis walks a recursing
+    // argument back to its declared Disj connective (see
+    // `structural_binding_info_for_variant` in `lower.rs`). The walk
+    // only succeeds after the declaring file has been phase-2 lowered,
+    // so `std/list.dag` (declares `List<element> = Empty | Cons {...}`)
+    // and `std/substrate.dag` (declares `Behavior = Value | Transform
+    // | Branch | Loop | Bind`) must land before any sibling std file
+    // that recursively descends over those variants. Without this
+    // priority list, alphabetical order puts `algebra.dag` and
+    // `dimensions.dag` ahead of `list.dag`/`substrate.dag`, and their
+    // recursive helpers fail termination against placeholder
+    // connectives.
+    let staged_entries =
+        collect_dag_entries(&std_dir, &["list.dag", "substrate.dag"]);
     let spec_entries = collect_dag_entries(&spec_dir, &["v3_l1.dag"]);
     let compiler_entries = collect_dag_entries(&compiler_dir, &["pipeline.dag"]);
     let staged_generated =
