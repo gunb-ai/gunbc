@@ -572,6 +572,102 @@ fn seed_function_signature(
     };
 }
 
+/// DB-11 (3a.3): `true` when the parameter type at `root` mentions one of
+/// **this function's** generic parameters (`fn_type_param_ids`).
+/// Refinements on such types need substitution-through-refinement work that
+/// is not implemented; lowering rejects them fail-closed.
+///
+/// Does **not** recurse into `Instantiation` templates — only argument
+/// values — so formal `TypeParam` atoms inside unrelated templates (e.g.
+/// `OrderedRing<T>` when following `Int`) are not mistaken for the caller's
+/// type parameters.
+///
+/// Bounded walk; if `MAX_DEPTH` is exceeded, returns **true** (fail-closed).
+fn type_declaration_mentions_fn_type_parameter(
+    dag: &Dag,
+    root: DeclarationId,
+    fn_type_param_ids: &HashSet<DeclarationId>,
+    seen: &mut HashSet<DeclarationId>,
+    depth: usize,
+) -> bool {
+    const MAX_DEPTH: usize = 64;
+    if depth >= MAX_DEPTH {
+        return true;
+    }
+    if fn_type_param_ids.contains(&root) {
+        return true;
+    }
+    if !seen.insert(root) {
+        return false;
+    }
+    match &dag.declaration(root).connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => false,
+        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            type_declaration_mentions_fn_type_parameter(
+                dag,
+                *next,
+                fn_type_param_ids,
+                seen,
+                depth + 1,
+            )
+        }
+        TypeConnective::Atom(AtomPayload::Literal(_) | AtomPayload::UnresolvedIdentifier(_)) => {
+            false
+        }
+        TypeConnective::Conj { children } => children.iter().any(|field| {
+            type_declaration_mentions_fn_type_parameter(
+                dag,
+                field.ty,
+                fn_type_param_ids,
+                seen,
+                depth + 1,
+            )
+        }),
+        TypeConnective::Disj { variants } => variants.iter().any(|field| {
+            type_declaration_mentions_fn_type_parameter(
+                dag,
+                field.ty,
+                fn_type_param_ids,
+                seen,
+                depth + 1,
+            )
+        }),
+        TypeConnective::Arrow { inputs, output, .. } => {
+            inputs.iter().any(|id| {
+                type_declaration_mentions_fn_type_parameter(
+                    dag,
+                    *id,
+                    fn_type_param_ids,
+                    seen,
+                    depth + 1,
+                )
+            }) || type_declaration_mentions_fn_type_parameter(
+                dag,
+                *output,
+                fn_type_param_ids,
+                seen,
+                depth + 1,
+            )
+        }
+        TypeConnective::Cardinality { element, .. } => type_declaration_mentions_fn_type_parameter(
+            dag,
+            *element,
+            fn_type_param_ids,
+            seen,
+            depth + 1,
+        ),
+        TypeConnective::Instantiation { arguments, .. } => arguments.iter().any(|arg| {
+            type_declaration_mentions_fn_type_parameter(
+                dag,
+                arg.value,
+                fn_type_param_ids,
+                seen,
+                depth + 1,
+            )
+        }),
+    }
+}
+
 /// DB-11 (3a.3): lower parameter `where` clauses for every Fn /
 /// FnExternalBody item and update the fn's Arrow inputs with the
 /// refined declaration ids. Runs between the data pre-pass and the
@@ -602,6 +698,12 @@ fn lower_parameter_refinements_phase(
             _ => continue,
         };
         let fn_decl_id = symbols[name];
+        let fn_type_param_ids: HashSet<DeclarationId> = dag
+            .declaration(fn_decl_id)
+            .type_params
+            .iter()
+            .copied()
+            .collect();
         // Read the seeded Arrow's inputs and output (set by
         // `seed_function_signature` to the base declarations).
         let (existing_inputs, output, body) = match &dag.declaration(fn_decl_id).connective {
@@ -616,18 +718,22 @@ fn lower_parameter_refinements_phase(
         for (param, &base_decl) in params.iter().zip(existing_inputs.iter()) {
             let input_decl = match &param.refinement {
                 Some(predicate) => {
-                    if matches!(
-                        &dag.declaration(base_decl).connective,
-                        TypeConnective::Atom(AtomPayload::TypeParam(_))
+                    let mut seen = HashSet::new();
+                    if type_declaration_mentions_fn_type_parameter(
+                        dag,
+                        base_decl,
+                        &fn_type_param_ids,
+                        &mut seen,
+                        0,
                     ) {
                         let span = crate::parse::expr_span(predicate).clone();
                         report_declaration_error(
                             dag,
                             Diagnostic::ResolveError {
-                                name: "`where` refinements on generic type parameters are not \
-                                       supported (DB-11 / 3a.3). Use a concrete parameter type \
-                                       or a monomorphic helper until substitution through \
-                                       refinement carriers is implemented."
+                                name: "`where` refinements on types that still depend on generic \
+                                       type parameters are not supported (DB-11 / 3a.3). Use \
+                                       concrete type arguments or a monomorphic helper until \
+                                       substitution through refinement carriers is implemented."
                                     .to_string(),
                                 span,
                             },

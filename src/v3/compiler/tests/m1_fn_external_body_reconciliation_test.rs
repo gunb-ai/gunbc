@@ -15,17 +15,10 @@ fn pipeline_stages_lower_to_external_realization_not_unparsed() {
         dag.diagnostics()
     );
 
-    // Order matches `compile` in pipeline.dag (stages with PipelineStageBinding
-    // data — not `compile` itself, which has no separate binding).
-    for stage in [
-        "parse",
-        "lower",
-        "infer",
-        "compute_ownership",
-        "lens_complexity",
-        "emit",
-    ] {
-        let decl = dag.declaration_by_name(stage).unwrap_or_else(|| {
+    let stages = v3_compiler::pipeline_compile_order_stage_names()
+        .expect("pipeline.dag `compile` body must list stages");
+    for stage in stages {
+        let decl = dag.declaration_by_name(&stage).unwrap_or_else(|| {
             panic!("pipeline stage `{stage}` missing from bootstrap DAG");
         });
         let TypeConnective::Arrow { body, .. } = &decl.connective else {

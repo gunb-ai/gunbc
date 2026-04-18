@@ -657,8 +657,31 @@ fn test_3a3_rejects_refinement_on_type_parameter() {
         .collect::<Vec<_>>()
         .join("\n");
     assert!(
-        joined.contains("generic type parameters") || joined.contains("not supported"),
-        "diagnostic must name unsupported refined generic param; got:\n{joined}"
+        joined.contains("depend on generic") || joined.contains("not supported"),
+        "diagnostic must name unsupported refined generic-dependent type; got:\n{joined}"
+    );
+}
+
+#[test]
+fn test_3a3_rejects_refinement_on_instantiation_with_type_param() {
+    // Same fail-closed boundary as bare `T`: `List<T>` still contains a free
+    // TypeParam in the lowered declaration graph.
+    let src = "fn f<T>(x: List<T> where x == x) -> List<T> = x";
+    let err = compile_to_dag(src, "test.v3").expect_err(
+        "`where` on List<T> must be rejected — substitution through refinement not modeled",
+    );
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected Semantic error, got {err:?}");
+    };
+    let joined = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, d)| format!("{d:?}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("depend on generic") || joined.contains("not supported"),
+        "diagnostic must reject refinement on generic-dependent type; got:\n{joined}"
     );
 }
 

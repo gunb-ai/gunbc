@@ -497,7 +497,7 @@ Closed (3a.3-full scope):
 
 - **Admitted surface vs supported fragment.** `lower_parameter_refinements_phase` calls `refinement_predicate_out_of_fragment` on every `where` predicate before lowering; `Branch` / `Loop` / `Bind`-shaped predicate surfaces are rejected at the lowering boundary with an explicit diagnostic. Admitted surface matches the fragment `refinement_ports_equal` and `clone_predicate_body` support.
 
-- **Refined generic parameters (fail-closed).** `where` on a parameter whose type is a `TypeParam` is rejected at lowering with an explicit diagnostic until substitution through refinement carriers is implemented (`test_3a3_rejects_refinement_on_type_parameter`). Full **refined generics** (discharge across instantiation) remain follow-up work if the surface is extended beyond this rejection.
+- **Refined generic-dependent parameters (fail-closed).** `where` on any parameter type that still contains a `TypeParam` in the lowered shape (bare `T`, `List<T>`, etc.) is rejected at lowering with an explicit diagnostic until substitution through refinement carriers is implemented (`test_3a3_rejects_refinement_on_type_parameter`, `test_3a3_rejects_refinement_on_instantiation_with_type_param`). Full **refined generics** with correct discharge across instantiation remains follow-up if the surface is extended beyond this rejection.
 
 Follow-up (not blocking): emission for narrowed ports currently errors if `emit_rust` is invoked on a DAG whose narrow ports lack a producer. Acceptable today because Lane 1e's single-emitter consolidation hasn't landed and the 3a.3 acceptance is compile-only; wire a Bind-alias or emission-local name shim alongside Lane 1e when it lands.
 

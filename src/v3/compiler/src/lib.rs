@@ -214,6 +214,13 @@ pub fn parse_for_test(
     parse::parse(tokens, file)
 }
 
+/// Test hook: pipeline stage identifiers in `compile { ... }` order in
+/// `pipeline.dag` — the same ordering as `materialize_pipeline_realizations`.
+#[doc(hidden)]
+pub fn pipeline_compile_order_stage_names() -> Result<Vec<String>, String> {
+    pipeline_authority::pipeline_compile_order_names()
+}
+
 /// Top-level compile failure. Distinguishes three structural
 /// categories of failure by phase of the pipeline where they occurred.
 ///
