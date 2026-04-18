@@ -23,9 +23,7 @@
 //! because the OS eventually reaps `/tmp` and because panics in tests
 //! benefit from leaving artifacts visible.
 
-mod budgeted;
-
-pub use budgeted::{with_budget_ms, DEFAULT_BUDGET_MS};
+pub mod budgeted;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -252,13 +250,16 @@ macro_rules! budgeted_test {
     ($ms:literal, $name:ident, $body:block) => {
         #[test]
         fn $name() {
-            $crate::common::with_budget_ms($ms, || $body);
+            $crate::common::budgeted::with_budget_ms($ms, || $body);
         }
     };
     ($name:ident, $body:block) => {
         #[test]
         fn $name() {
-            $crate::common::with_budget_ms($crate::common::DEFAULT_BUDGET_MS, || $body);
+            $crate::common::budgeted::with_budget_ms(
+                $crate::common::budgeted::DEFAULT_BUDGET_MS,
+                || $body,
+            );
         }
     };
 }
