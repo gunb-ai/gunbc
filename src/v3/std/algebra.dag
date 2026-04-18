@@ -91,16 +91,40 @@ fn iterate(bound: SymbolicCost, body: SymbolicCost) -> SymbolicCost =
 
 // Lambda-free helper so `max_path`'s fold below resolves its
 // function-type parameter without relying on bidirectional
-// inference through a closure. Returns whichever argument
-// dominates.
-fn dominant_of(acc: SymbolicCost, candidate: SymbolicCost) -> SymbolicCost =
-  if dominates(candidate, acc) then candidate else acc
+// inference through a closure.
+//
+// Three-way semantics (fixes PR #537 review: Facts Flow Forward
+// violation — pairing paths via `if dominates(c, acc) then c else
+// acc` silently dropped whichever path was ordered later when the
+// two were incomparable, e.g. `Linear(n)` vs `Linear(m)` with
+// distinct size variables):
+//
+//   - candidate dominates acc → return candidate (acc drops, Big-O
+//     dominance is stable).
+//   - acc dominates candidate → return acc (candidate drops).
+//   - neither dominates → preserve both via `sequential`, relying
+//     on `Big-O(f + g) = Big-O(max(f, g))` for non-negative
+//     asymptotic terms; `normalize` inside `sequential` still drops
+//     anything the other term dominates.
+fn max_path_step(acc: SymbolicCost, candidate: SymbolicCost) -> SymbolicCost =
+  if dominates(candidate, acc) then
+    candidate
+  else
+    keep_or_sum(acc, candidate)
+
+fn keep_or_sum(acc: SymbolicCost, candidate: SymbolicCost) -> SymbolicCost =
+  if dominates(acc, candidate) then
+    acc
+  else
+    sequential(acc, candidate)
 
 // `max_path(paths)` takes the dominant cost across alternative
-// control-flow paths (Branch arms). Worst-case asymptotic semantics:
-// a branch between O(n) and O(n²) costs O(n²) overall.
+// control-flow paths (Branch arms). Worst-case asymptotic
+// semantics: a branch between `O(n)` and `O(n²)` costs `O(n²)`
+// overall; a branch between `O(n)` and `O(m)` (incomparable)
+// costs `O(n + m)` — both facts flow forward.
 fn max_path(paths: List<SymbolicCost>) -> SymbolicCost =
-  fold(paths, ConstantCost(0), dominant_of)
+  fold(paths, ConstantCost(0), max_path_step)
 
 // ── Dominance ───────────────────────────────────────────────────
 //

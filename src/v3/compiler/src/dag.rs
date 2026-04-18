@@ -1097,13 +1097,24 @@ pub fn iterate(bound: SymbolicCost, body: SymbolicCost) -> SymbolicCost {
 }
 
 pub fn max_path(paths: &[SymbolicCost]) -> SymbolicCost {
+    // Three-way step: candidate-wins / acc-wins / keep-both. Fixes
+    // PR #537 review (Facts Flow Forward violation): pairing paths
+    // via a two-way `if dominates(c, acc) then c else acc` silently
+    // dropped whichever path was ordered later when the two were
+    // incomparable (e.g. `Linear(n)` vs `Linear(m)` with distinct
+    // size variables). When neither dominates, preserve both via
+    // `sequential`, which normalizes through `drop_dominated`;
+    // `Big-O(f + g) = Big-O(max(f, g))` makes the sum asymptotically
+    // identical to the max.
     paths
         .iter()
         .fold(SymbolicCost::ConstantCost { _0: 0 }, |acc, candidate| {
             if dominates(candidate, &acc) {
                 candidate.clone()
-            } else {
+            } else if dominates(&acc, candidate) {
                 acc
+            } else {
+                sequential(acc, candidate.clone())
             }
         })
 }

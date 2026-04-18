@@ -293,6 +293,64 @@ fn max_path_returns_dominant_term() {
 }
 
 #[test]
+fn max_path_preserves_both_incomparable_branches() {
+    // PR #537 review (briansrls, BLOCKING): two incomparable
+    // branches — `Linear(n)` over port_a vs `Linear(m)` over
+    // port_b — must NOT drop one silently. `Big-O(f + g) =
+    // Big-O(max(f, g))` for non-negative asymptotic terms, so the
+    // preserved-as-sum shape is the honest worst case.
+    let (port_a, port_b) = two_distinct_ports();
+    let paths = vec![linear(port_a), linear(port_b)];
+    let result = max_path(&paths);
+    match &result {
+        SymbolicCost::SumCost { _0: terms } => {
+            assert_eq!(
+                terms.len(),
+                2,
+                "incomparable Linear(n) + Linear(m) must preserve both as a two-element Sum, \
+                 got {result:?}"
+            );
+            assert!(
+                terms.contains(&linear(port_a)) && terms.contains(&linear(port_b)),
+                "both branch costs must remain in the Sum, got {result:?}"
+            );
+        }
+        other => panic!("expected SumCost preserving both branches, got {other:?}"),
+    }
+}
+
+#[test]
+fn max_path_order_independence_on_incomparable_branches() {
+    // Reversing the input order must yield the same asymptotic
+    // shape — the previous two-way dominance fold depended on
+    // fold order and dropped whichever branch landed later when
+    // both were incomparable.
+    let (port_a, port_b) = two_distinct_ports();
+    let forward = max_path(&[linear(port_a), linear(port_b)]);
+    let reversed = max_path(&[linear(port_b), linear(port_a)]);
+    let (forward_terms, reversed_terms) = match (&forward, &reversed) {
+        (
+            SymbolicCost::SumCost { _0: fwd },
+            SymbolicCost::SumCost { _0: rev },
+        ) => (fwd.clone(), rev.clone()),
+        _ => panic!(
+            "both orderings should produce a SumCost, got forward={forward:?} reversed={reversed:?}"
+        ),
+    };
+    assert_eq!(
+        forward_terms.len(),
+        reversed_terms.len(),
+        "element count must not depend on fold order"
+    );
+    assert!(
+        forward_terms.iter().all(|t| reversed_terms.contains(t))
+            && reversed_terms.iter().all(|t| forward_terms.contains(t)),
+        "the preserved set of terms must be the same regardless of input order; \
+         got forward={forward_terms:?} reversed={reversed_terms:?}"
+    );
+}
+
+#[test]
 fn normalize_keeps_singleton_costs_unchanged() {
     // `normalize` is structural — non-Sum/Product variants pass
     // through unmodified.
