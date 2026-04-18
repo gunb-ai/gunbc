@@ -21,12 +21,24 @@
 //
 // **Scope (Lane 2 Stage 2a).** Structural carry-over only:
 //   - `EffectShape`, `CreateCause`, `KeySource`, `IdempotencyEvidence`
-//   - `ComposedEffect`, `OperationEffect`, `DerivedOpEffect`
+//   - `ComposedEffect`, `OperationEffect`
 //   - `is_idempotent_effect`, `compose_effects`
 //   - `derive_effect_shape(method, path)` — HTTP method + path → EffectShape
 //   - `generate_idempotency_obligations`, `check_modifier_vs_derivation`
 // v2-specific imports, parser quirks, and Rust bridge code do NOT
 // come over. Pure `.dag` declarations.
+//
+// Stage 2a follow-up (cleared): `DerivedOpEffect` was collapsed into
+// `OperationEffect`. The previous shape carried `method` and
+// `path_template` fields alongside `operation_name` + `shape`, but
+// nothing downstream ever read the transport fields — the modifier
+// check and obligation generator both project through `shape` alone,
+// and the `ReadEffect` variant already encodes "method was GET/HEAD/
+// OPTIONS." `OperationEffect` is the durable carrier Stage 2b's
+// `compose_effects` walks; `derive_op_effect` now returns it
+// directly. Future diagnostic rendering that wants the originating
+// method/path should attach a separate evidence carrier to the
+// diagnostic, not smuggle transport facts onto the effect record.
 //
 // DESIGN PRINCIPLE:
 //   Idempotency is not a flag. It is a DERIVED PROPERTY of the
@@ -354,13 +366,6 @@ fn parse_http_method(raw: String) -> HttpMethod? {
   else None
 }
 
-type DerivedOpEffect {
-  operation_name: String
-  method: HttpMethod
-  path_template: PathTemplate
-  shape: EffectShape
-}
-
 fn keyless_create(method: HttpMethod) -> EffectShape {
   CreateEffect { cause: KeylessFallback { method: method } }
 }
@@ -402,14 +407,12 @@ fn derive_op_effect(
   operation_name: String,
   method_str: String,
   path_str: String
-) -> DerivedOpEffect? {
+) -> OperationEffect? {
   match parse_http_method(raw: method_str) {
     None => None
     Some(method) =>
-      Some(DerivedOpEffect {
+      Some(OperationEffect {
         operation_name: operation_name,
-        method: method,
-        path_template: parse_path_template(raw: path_str),
         shape: derive_effect_shape(
           method: method,
           path: parse_path_template(raw: path_str)
@@ -499,7 +502,7 @@ fn classify_readonly_agreement(shape: EffectShape) -> ModifierAgreement {
 }
 
 fn check_modifier_vs_derivation(
-  op: DerivedOpEffect,
+  op: OperationEffect,
   declared_idempotent: Bool,
   declared_readonly: Bool
 ) -> ModifierCheck {
@@ -542,7 +545,7 @@ type IdempotencyTestObligation {
 }
 
 fn generate_idempotency_obligations(
-  ops: List<DerivedOpEffect>
+  ops: List<OperationEffect>
 ) -> List<IdempotencyTestObligation> {
   ops |> filter(o => is_idempotent_effect(shape: o.shape))
       |> map(o => IdempotencyTestObligation {
