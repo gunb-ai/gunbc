@@ -1785,6 +1785,22 @@ impl Dag {
         }
     }
 
+    pub(crate) fn fail_loop_descent_placeholder(&mut self, loop_id: NodeId, reason: String) {
+        let (output, span) = {
+            let Some(Behavior::Loop(loop_node)) = self.nodes.get_mut(loop_id.index()) else {
+                return;
+            };
+            let LoopBound::Descent { .. } = loop_node.bound else {
+                return;
+            };
+            loop_node.bound = LoopBound::Cardinality {
+                count: loop_node.source,
+            };
+            (loop_node.output, loop_node.span.clone())
+        };
+        self.mark_unresolved(output, Diagnostic::ResolveError { name: reason, span });
+    }
+
     /// Transition a port from Uninferred to Resolved. Idempotent when the new
     /// type matches the existing Resolved type. Skips Unresolved ports — once
     /// Unresolved, stays so (otherwise the biconditional breaks).

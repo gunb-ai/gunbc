@@ -2760,6 +2760,53 @@ fn count(list: IntList) -> Int = match list { Empty => 0, Cons(payload) => 1 + c
 }
 
 #[test]
+fn mutual_recursion_accepts_structural_descent_on_later_recursive_type() {
+    let src = "\
+fn even(list: IntList) -> Bool = match list { Empty => true, Cons(payload) => odd(payload.tail) }
+fn odd(list: IntList) -> Bool = match list { Empty => false, Cons(payload) => even(payload.tail) }
+type IntList = Empty | Cons { head: Int, tail: IntList }
+";
+    let dag = compile_to_dag(src, "mutual_structural_descent_later_type.v3").expect("compiles");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "mutual structural descent through a later recursive type should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(
+        dag.clusters().len(),
+        1,
+        "later type lowering should not block mutual cluster planning"
+    );
+}
+
+#[test]
+fn mutual_recursion_planner_ignores_callable_parameter_shadowing() {
+    let src = "\
+fn even(n: Int, odd: fn(Int) -> Bool) -> Bool = odd(n)
+fn odd(n: Int, even: fn(Int) -> Bool) -> Bool = even(n)
+";
+    let dag = compile_to_dag(src, "mutual_shadowing_false_positive.v3").expect("compiles");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "callable-parameter shadowing should not fabricate a mutual-recursion diagnostic: {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(
+        dag.clusters().len(),
+        0,
+        "shadowed callable parameters are not top-level mutual recursion"
+    );
+    assert!(
+        dag.nodes()
+            .iter()
+            .filter_map(Behavior::as_loop)
+            .next()
+            .is_none(),
+        "shadowed callable parameters must not introduce synthetic recursion loops"
+    );
+}
+
+#[test]
 fn recursive_generic_sum_can_reference_itself_in_payload_types() {
     let src = "\
 type MyList<T> = Empty | Cons { head: T, tail: MyList<T> }

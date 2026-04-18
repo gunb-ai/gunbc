@@ -179,9 +179,9 @@ pub(crate) fn lower_bodies_phase(
     is_first: &[bool],
 ) {
     seed_function_signatures_phase(dag, &module.items, symbols, is_first);
-    let mutual_recursion = compute_mutually_recursive(&module.items, dag, symbols);
-    let mut mutual_state = MutualRecursionState::new(&mutual_recursion);
     let mut scope = ScopeState::default();
+    let empty_mutual_recursion = MutualRecursionPlans::default();
+    let mut empty_mutual_state = MutualRecursionState::default();
     // DB-10 (3a.2) ordering: dependency-ordered pre-passes so
     // references to top-level declarations resolve independent of
     // source order.
@@ -217,8 +217,8 @@ pub(crate) fn lower_bodies_phase(
                 dag,
                 scope,
                 symbols,
-                &mutual_recursion,
-                &mut mutual_state,
+                &empty_mutual_recursion,
+                &mut empty_mutual_state,
             );
         }
     }
@@ -243,6 +243,8 @@ pub(crate) fn lower_bodies_phase(
     // Sole caller of `lower_parameter_refinement` for parameter
     // `where` clauses (single construction authority).
     lower_parameter_refinements_phase(dag, module, symbols, is_first);
+    let mutual_recursion = compute_mutually_recursive(&module.items, dag, symbols);
+    let mut mutual_state = MutualRecursionState::new(&mutual_recursion);
     for (idx, item) in module.items.iter().enumerate() {
         if !is_first[idx] {
             // Duplicate declaration — skipped at lower time so the
@@ -285,6 +287,12 @@ fn finalize_mutual_clusters(
             continue;
         };
         if build_state.member_bind_ids.len() != cluster_plan.members.len() {
+            fail_mutual_cluster_build(
+                dag,
+                build_state,
+                cluster_plan,
+                "not every cluster member lowered to a bind",
+            );
             continue;
         }
 
@@ -309,9 +317,21 @@ fn finalize_mutual_clusters(
             .collect();
 
         let Some(member_list) = NonSingletonList::from_vec(members) else {
+            fail_mutual_cluster_build(
+                dag,
+                build_state,
+                cluster_plan,
+                "member descent witnesses could not be materialized",
+            );
             continue;
         };
         let Some(call_list) = NonEmptyList::from_vec(intra_cluster_calls) else {
+            fail_mutual_cluster_build(
+                dag,
+                build_state,
+                cluster_plan,
+                "lowered bodies did not produce any intra-cluster calls",
+            );
             continue;
         };
 
@@ -322,6 +342,21 @@ fn finalize_mutual_clusters(
         for loop_id in &build_state.loop_ids {
             dag.patch_loop_descent_cluster(*loop_id, cluster_id);
         }
+    }
+}
+
+fn fail_mutual_cluster_build(
+    dag: &mut Dag,
+    build_state: &MutualClusterBuildState,
+    cluster_plan: &MutualClusterShape,
+    detail: &str,
+) {
+    let members = cluster_plan.members.join(", ");
+    for loop_id in &build_state.loop_ids {
+        dag.fail_loop_descent_placeholder(
+            *loop_id,
+            format!("cannot finalize mutual recursion cluster [{members}]: {detail}"),
+        );
     }
 }
 
@@ -5149,7 +5184,9 @@ fn compute_mutually_recursive(
             continue;
         };
         let mut callees = HashSet::new();
-        collect_calls(info.body, &fn_names, &mut callees);
+        let mut shadowed: HashSet<String> =
+            info.params.iter().map(|param| param.name.clone()).collect();
+        collect_calls(info.body, &fn_names, &mut shadowed, &mut callees);
         let mut sorted_callees: Vec<String> = callees.into_iter().collect();
         sorted_callees.sort();
         calls.insert(name.clone(), sorted_callees);
@@ -5424,22 +5461,27 @@ impl ClusterDescentChecker<'_> {
     }
 }
 
-fn collect_calls(expr: &SurfaceExpr, fn_names: &HashSet<String>, out: &mut HashSet<String>) {
+fn collect_calls(
+    expr: &SurfaceExpr,
+    fn_names: &HashSet<String>,
+    shadowed: &mut HashSet<String>,
+    out: &mut HashSet<String>,
+) {
     match expr {
         SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => {}
         SurfaceExpr::Call { target, args, .. } => {
-            if fn_names.contains(target) {
+            if fn_names.contains(target) && !shadowed.contains(target) {
                 out.insert(target.clone());
             }
             for a in args {
-                collect_calls(a, fn_names, out);
+                collect_calls(a, fn_names, shadowed, out);
             }
         }
         SurfaceExpr::Operator { args, .. } => {
             // Operators never name user functions; just recurse into
             // the operand expressions.
             for a in args {
-                collect_calls(a, fn_names, out);
+                collect_calls(a, fn_names, shadowed, out);
             }
         }
         SurfaceExpr::If {
@@ -5448,27 +5490,35 @@ fn collect_calls(expr: &SurfaceExpr, fn_names: &HashSet<String>, out: &mut HashS
             else_branch,
             ..
         } => {
-            collect_calls(cond, fn_names, out);
-            collect_calls(then_branch, fn_names, out);
-            collect_calls(else_branch, fn_names, out);
+            collect_calls(cond, fn_names, shadowed, out);
+            collect_calls(then_branch, fn_names, shadowed, out);
+            collect_calls(else_branch, fn_names, shadowed, out);
         }
         SurfaceExpr::Match {
             scrutinee, arms, ..
         } => {
-            collect_calls(scrutinee, fn_names, out);
+            collect_calls(scrutinee, fn_names, shadowed, out);
             for arm in arms {
-                collect_calls(&arm.body, fn_names, out);
+                let mut arm_shadowed = shadowed.clone();
+                if let SurfacePattern::VariantWith { binding, .. } = &arm.pattern {
+                    arm_shadowed.insert(binding.clone());
+                }
+                collect_calls(&arm.body, fn_names, &mut arm_shadowed, out);
             }
         }
-        SurfaceExpr::Lambda { body, .. } => collect_calls(body, fn_names, out),
+        SurfaceExpr::Lambda { params, body, .. } => {
+            let mut lambda_shadowed = shadowed.clone();
+            lambda_shadowed.extend(params.iter().cloned());
+            collect_calls(body, fn_names, &mut lambda_shadowed, out)
+        }
         SurfaceExpr::Record { fields, .. } => {
             for f in fields {
-                collect_calls(&f.value, fn_names, out);
+                collect_calls(&f.value, fn_names, shadowed, out);
             }
         }
         SurfaceExpr::List { elements, .. } => {
             for element in elements {
-                collect_calls(element, fn_names, out);
+                collect_calls(element, fn_names, shadowed, out);
             }
         }
     }
