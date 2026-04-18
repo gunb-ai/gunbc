@@ -6,7 +6,8 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    AtomPayload, Behavior, Dag, LiteralBits, PortState, TransformTarget, TypeConnective,
+    AtomPayload, Behavior, Dag, LiteralBits, LoopBound, PortState, TransformTarget,
+    TypeConnective,
 };
 use v3_compiler::lens_depth::DepthLens;
 use v3_compiler::lens_provenance::{origin_of, Origin};
@@ -204,10 +205,10 @@ fn test_recursive_function_produces_loop_dag() {
         .as_loop()
         .expect("producer is a Loop (bounded recursion)");
 
-    assert_eq!(
-        loop_node.bound.count, param_port,
-        "Loop.bound.count chains back to the parameter n",
-    );
+    assert!(matches!(
+        loop_node.bound,
+        LoopBound::Cardinality { count } if count == param_port
+    ));
 
     let branch = dag
         .node(loop_node.body)
@@ -1337,57 +1338,58 @@ fn test_recursive_function_with_wrong_body_type_is_rejected() {
 }
 
 // ════════════════════════════════════════════════════════════════
-// M0.11 — mutual recursion rejection. `is_recursive` only finds
-// direct self-calls, so `fn even(n) = odd(n-1)` paired with
-// `fn odd(n) = even(n-1)` neither hits the Loop wrap path nor
-// gets rejected. The fix adds a pre-lowering pass that computes
-// the call graph, finds SCCs, and rejects any function in an SCC
-// of size > 1 with a specific "mutual recursion not yet supported"
-// diagnostic.
+// M0.11 — mutual recursion lowers to a bounded Loop backed by the
+// shared `Dag.clusters` sidecar instead of being rejected outright.
 // ════════════════════════════════════════════════════════════════
 
 #[test]
-fn test_mutual_recursion_is_rejected() {
+fn test_mutual_recursion_compiles_with_cluster_descent() {
     let src = "fn even(n: Int) -> Bool = if n == 0 then true else odd(n - 1)\nfn odd(n: Int) -> Bool = if n == 0 then false else even(n - 1)";
-    let dag = compile_any(src, "test.v3");
+    let dag = compile_to_dag(src, "test.v3").expect("mutual recursion compiles");
     let even_bind = dag
         .nodes()
         .iter()
         .filter_map(Behavior::as_bind)
         .find(|b| b.name == "even")
         .expect("Bind(even) must exist");
-    assert!(
-        matches!(dag.port(even_bind.value).state(), PortState::Unresolved),
-        "even's value port is Unresolved because mutual recursion is not supported; got {:?}",
-        dag.port(even_bind.value).state()
-    );
     let odd_bind = dag
         .nodes()
         .iter()
         .filter_map(Behavior::as_bind)
         .find(|b| b.name == "odd")
         .expect("Bind(odd) must exist");
-    assert!(
-        matches!(dag.port(odd_bind.value).state(), PortState::Unresolved),
-        "odd's value port is Unresolved because mutual recursion is not supported; got {:?}",
-        dag.port(odd_bind.value).state()
+    let even_loop = dag
+        .node(dag.port(even_bind.value).produced_by.expect("even loop exists"))
+        .as_loop()
+        .expect("even value is produced by a Loop");
+    let odd_loop = dag
+        .node(dag.port(odd_bind.value).produced_by.expect("odd loop exists"))
+        .as_loop()
+        .expect("odd value is produced by a Loop");
+
+    let even_cluster = match even_loop.bound {
+        LoopBound::Descent { cluster } => cluster,
+        other => panic!("expected mutual recursion descent bound, got {other:?}"),
+    };
+    let odd_cluster = match odd_loop.bound {
+        LoopBound::Descent { cluster } => cluster,
+        other => panic!("expected mutual recursion descent bound, got {other:?}"),
+    };
+    assert_eq!(even_cluster, odd_cluster, "cluster id is shared across members");
+    assert_eq!(dag.clusters().len(), 1, "one SCC sidecar entry");
+    assert_eq!(
+        dag.cluster(even_cluster)
+            .members
+            .iter()
+            .count(),
+        2,
+        "cluster records both members"
     );
-    // The diagnostic should be specific: a ResolveError whose name
-    // field mentions "mutual recursion", not a generic
-    // "(inference did not resolve this port)" post-sweep fallback.
-    let diag = dag
-        .diagnostics()
-        .get(even_bind.value)
-        .expect("diagnostic recorded for even");
-    match diag {
-        v3_compiler::Diagnostic::ResolveError { name, .. } => {
-            assert!(
-                name.contains("mutual recursion"),
-                "diagnostic should mention mutual recursion; got `{name}`"
-            );
-        }
-        other => panic!("expected ResolveError, got {other:?}"),
-    }
+    assert!(
+        dag.diagnostics().is_empty(),
+        "provably-descending mutual recursion should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
 }
 
 #[test]

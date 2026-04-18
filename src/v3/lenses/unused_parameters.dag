@@ -124,15 +124,18 @@ fn inputs_for_behavior(d: Dag, behavior: Behavior) -> List<PortId> =
 
 fn loop_inputs(d: Dag, loop_node: LoopNode) -> List<PortId> =
   concat(
-    cons(
-      loop_node.source,
-      cons(loop_node.init, singleton(loop_node.bound.count))
-    ),
+    cons(loop_node.source, cons(loop_node.init, loop_bound_inputs(loop_node.bound))),
     match node(d, loop_node.body) {
       None => empty()
       Some(body_node) => singleton(behavior_port(body_node))
     }
   )
+
+fn loop_bound_inputs(bound: LoopBound) -> List<PortId> =
+  match bound {
+    Cardinality(payload) => singleton(payload.count)
+    Descent(_) => empty()
+  }
 
 fn branch_path_outputs(paths: List<BranchPath>) -> List<PortId> =
   match paths {

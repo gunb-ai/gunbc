@@ -1376,29 +1376,19 @@ fn m18_r14_user_data_with_opaque_body_is_rejected() {
 
 #[test]
 fn m18_r13_mutual_recursion_poisons_callers() {
-    // M1(2.8) R13: the mutually-recursive fn rejection path used to
-    // store ArrowBody::Pending, which decide_transform accepts as
-    // scaffold (signature type-checks, body walking skipped).
-    // Downstream callers of a mutually-recursive fn got Resolved
-    // types even though the callee's Bind value port was already
-    // Unresolved — a FAIL-CLOSED leak.
-    //
-    // Fix: emit ArrowBody::UserDefined(bind_id) so decide_transform's
-    // UserDefined arm reads the Bind's value port state and
-    // cascades Decision::Fail to callers when it's Unresolved.
-    //
-    // Regression shape: define two mutually recursive fns, then a
-    // let binding that calls one of them. After R13, the let port
-    // must cascade to Unresolved.
+    // Mutual recursion now compiles when a shared descent witness
+    // exists, so the fail-closed regression shape is an SCC where at
+    // least one intra-cluster edge preserves the measure. Downstream
+    // callers must still cascade to Unresolved.
     let src = "\
 fn a(n: Int) -> Int = b(n)
-fn b(n: Int) -> Int = a(n)
+fn b(n: Int) -> Int = a(n - 1)
 let c = a(1)
 ";
     let dag = compile_any(src, "mutual_recursion_cascade.v3");
     assert!(
         !dag.diagnostics().is_empty(),
-        "mutual recursion should produce a diagnostic"
+        "non-terminating mutual recursion should produce a diagnostic"
     );
     let bind_c = dag
         .nodes()
@@ -3239,15 +3229,18 @@ fn inputs_for_behavior(d: Dag, behavior: Behavior) -> List<PortId> =
 
 fn loop_inputs(d: Dag, loop_node: LoopNode) -> List<PortId> =
   concat(
-    cons(
-      loop_node.source,
-      cons(loop_node.init, singleton(loop_node.bound.count))
-    ),
+    cons(loop_node.source, cons(loop_node.init, loop_bound_inputs(loop_node.bound))),
     match behavior_result_port(d.nodes, loop_node.body) {
       MissingResultPort => empty()
       FoundResultPort(port) => singleton(port)
     }
   )
+
+fn loop_bound_inputs(bound: LoopBound) -> List<PortId> =
+  match bound {
+    Cardinality(payload) => singleton(payload.count)
+    Descent(_) => empty()
+  }
 
 fn branch_path_outputs(paths: List<BranchPath>) -> List<PortId> =
   match paths {

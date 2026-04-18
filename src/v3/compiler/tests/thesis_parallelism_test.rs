@@ -30,7 +30,10 @@ fn behavior_inputs(dag: &Dag, behavior: &Behavior) -> Vec<PortId> {
             inputs
         }
         Behavior::Loop(l) => {
-            let mut inputs = vec![l.source, l.init, l.bound.count];
+            let mut inputs = vec![l.source, l.init];
+            if let Some(count) = l.bound.count_port() {
+                inputs.push(count);
+            }
             inputs.push(match dag.node(l.body) {
                 Behavior::Value(v) => v.output,
                 Behavior::Transform(t) => t.output,

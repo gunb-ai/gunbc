@@ -149,7 +149,7 @@ pub fn loop_inputs(p0: &Dag, p1: &LoopNode) -> Vec<PortId> {
     {
         let mut __left = {
             let mut __list = {
-                let mut __list = vec![((p1).bound).count];
+                let mut __list = loop_bound_inputs(&((p1).bound));
                 __list.insert(0, (p1).init);
                 __list
             };
@@ -161,6 +161,12 @@ pub fn loop_inputs(p0: &Dag, p1: &LoopNode) -> Vec<PortId> {
             Some(body_node) => vec![behavior_port(body_node)],
         });
         __left
+    }
+}
+pub fn loop_bound_inputs(p0: &LoopBound) -> Vec<PortId> {
+    match p0 {
+        LoopBound::Cardinality { count: payload } => vec![(*(payload))],
+        LoopBound::Descent { cluster: _ } => Vec::new(),
     }
 }
 pub fn branch_path_outputs(p0: &[Path]) -> Vec<PortId> {

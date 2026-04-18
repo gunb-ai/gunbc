@@ -142,7 +142,13 @@ fn every_realized_reflection_record_field_has_a_binding() {
         "TemplateArgument",
         "PayloadBinding",
         "BranchPath",
-        "LoopBound",
+        "NonEmptyList",
+        "NonSingletonList",
+        "ParamRef",
+        "TransformRef",
+        "MemberDescent",
+        "IntraClusterCall",
+        "Cluster",
         "ValueNode",
         "TransformNode",
         "BranchNode",
@@ -179,6 +185,10 @@ fn alias_bindings_cover_method_backed_fields() {
     assert_eq!(
         dag_fields.get("ports"),
         Some(&(String::from("AccessorMethod"), String::from("ports"), false))
+    );
+    assert_eq!(
+        dag_fields.get("clusters"),
+        Some(&(String::from("AccessorMethod"), String::from("clusters"), true))
     );
 
     let entry_fields = type_realization_fields_for(&dag, "FieldEntry");

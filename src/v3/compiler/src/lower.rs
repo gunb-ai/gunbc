@@ -25,9 +25,10 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, BindNode, Bound, BranchNode, BranchPattern, CardinalityBound,
-    Dag, Declaration, DeclarationId, Field, LiteralBits, LoopNode, NodeId, Path, PayloadBinding,
-    PortId, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
+    ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, CardinalityBound,
+    Cluster, Dag, Declaration, DeclarationId, Field, IntraClusterCall, LiteralBits, LoopBound,
+    LoopNode, MemberDescent, NodeId, NonEmptyList, NonSingletonList, Path, PayloadBinding, PortId,
+    TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::operators::{ArithmeticOp, LogicalOp, OperatorKind};
@@ -38,6 +39,55 @@ use crate::parse::{
 use crate::types::TypeShape;
 
 type CallableScope = HashMap<String, DeclarationId>;
+
+#[derive(Debug, Clone)]
+struct MutualClusterShape {
+    members: Vec<String>,
+    member_decl_ids: HashSet<DeclarationId>,
+    per_member_positions: HashMap<String, usize>,
+}
+
+#[derive(Debug, Clone)]
+struct InvalidMutualCluster {
+    members: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct MutualRecursionPlans {
+    clusters: Vec<MutualClusterShape>,
+    by_member: HashMap<String, usize>,
+    invalid_by_member: HashMap<String, InvalidMutualCluster>,
+}
+
+impl MutualRecursionPlans {
+    fn cluster_for_member(&self, name: &str) -> Option<&MutualClusterShape> {
+        self.by_member
+            .get(name)
+            .and_then(|idx| self.clusters.get(*idx))
+    }
+}
+
+#[derive(Debug, Default)]
+struct MutualClusterBuildState {
+    member_bind_ids: HashMap<String, NodeId>,
+    intra_cluster_transform_ids: Vec<NodeId>,
+    loop_ids: Vec<NodeId>,
+}
+
+#[derive(Debug, Default)]
+struct MutualRecursionState {
+    clusters: Vec<MutualClusterBuildState>,
+}
+
+impl MutualRecursionState {
+    fn new(plans: &MutualRecursionPlans) -> Self {
+        Self {
+            clusters: (0..plans.clusters.len())
+                .map(|_| MutualClusterBuildState::default())
+                .collect(),
+        }
+    }
+}
 
 fn declaration_name_preference_rank(file: &str) -> usize {
     if file.starts_with("src/v3/") {
@@ -129,7 +179,8 @@ pub(crate) fn lower_bodies_phase(
     is_first: &[bool],
 ) {
     seed_function_signatures_phase(dag, &module.items, symbols, is_first);
-    let mutually_recursive = compute_mutually_recursive(&module.items);
+    let mutual_recursion = compute_mutually_recursive(&module.items, dag, symbols);
+    let mut mutual_state = MutualRecursionState::new(&mutual_recursion);
     let mut scope = ScopeState::default();
     // DB-10 (3a.2) ordering: dependency-ordered pre-passes so
     // references to top-level declarations resolve independent of
@@ -161,7 +212,14 @@ pub(crate) fn lower_bodies_phase(
                 | SurfaceItem::TypeAlias { .. }
                 | SurfaceItem::TypeAtom { .. }
         ) {
-            scope = lower_item(item, dag, scope, symbols, &mutually_recursive);
+            scope = lower_item(
+                item,
+                dag,
+                scope,
+                symbols,
+                &mutual_recursion,
+                &mut mutual_state,
+            );
         }
     }
     for (idx, item) in module.items.iter().enumerate() {
@@ -205,7 +263,64 @@ pub(crate) fn lower_bodies_phase(
         ) {
             continue;
         }
-        scope = lower_item(item, dag, scope, symbols, &mutually_recursive);
+        scope = lower_item(
+            item,
+            dag,
+            scope,
+            symbols,
+            &mutual_recursion,
+            &mut mutual_state,
+        );
+    }
+    finalize_mutual_clusters(dag, &mutual_recursion, &mutual_state);
+}
+
+fn finalize_mutual_clusters(
+    dag: &mut Dag,
+    mutual_recursion: &MutualRecursionPlans,
+    mutual_state: &MutualRecursionState,
+) {
+    for (cluster_index, cluster_plan) in mutual_recursion.clusters.iter().enumerate() {
+        let Some(build_state) = mutual_state.clusters.get(cluster_index) else {
+            continue;
+        };
+        if build_state.member_bind_ids.len() != cluster_plan.members.len() {
+            continue;
+        }
+
+        let members: Vec<MemberDescent> = cluster_plan
+            .members
+            .iter()
+            .filter_map(|member_name| {
+                let bind_id = *build_state.member_bind_ids.get(member_name)?;
+                let slot = *cluster_plan.per_member_positions.get(member_name)?;
+                dag.param_of(bind_id, slot).map(|param| MemberDescent { param })
+            })
+            .collect();
+        let intra_cluster_calls: Vec<IntraClusterCall> = build_state
+            .intra_cluster_transform_ids
+            .iter()
+            .copied()
+            .filter_map(|transform_id| {
+                dag.as_transform_ref(transform_id)
+                    .map(|transform| IntraClusterCall { transform })
+            })
+            .collect();
+
+        let Some(member_list) = NonSingletonList::from_vec(members) else {
+            continue;
+        };
+        let Some(call_list) = NonEmptyList::from_vec(intra_cluster_calls) else {
+            continue;
+        };
+
+        let cluster_id = dag.push_cluster(Cluster {
+            members: member_list,
+            intra_cluster_calls: call_list,
+        });
+        for loop_id in &build_state.loop_ids {
+            dag.patch_loop_descent_cluster(*loop_id, cluster_id);
+        }
     }
 }
 
@@ -1114,7 +1229,8 @@ fn lower_item(
     dag: &mut Dag,
     scope: ScopeState,
     symbols: &HashMap<String, DeclarationId>,
-    mutually_recursive: &HashSet<String>,
+    mutual_recursion: &MutualRecursionPlans,
+    mutual_state: &mut MutualRecursionState,
 ) -> ScopeState {
     let mut scope = scope;
     match item {
@@ -1218,7 +1334,8 @@ fn lower_item(
                 dag,
                 scope.values,
                 symbols,
-                mutually_recursive,
+                mutual_recursion,
+                mutual_state,
             );
             scope
         }
@@ -2864,7 +2981,8 @@ fn lower_fn_item_expr_body(
     dag: &mut Dag,
     outer_scope: HashMap<String, PortId>,
     symbols: &HashMap<String, DeclarationId>,
-    mutually_recursive: &HashSet<String>,
+    mutual_recursion: &MutualRecursionPlans,
+    mutual_state: &mut MutualRecursionState,
 ) -> HashMap<String, PortId> {
     let fn_decl_id = symbols[name];
 
@@ -2964,14 +3082,15 @@ fn lower_fn_item_expr_body(
     //    non-mutually-recursive rejection paths below (zero-param
     //    recursion, non-descent-provable recursion) already use this
     //    shape via the common bottom-of-function code.
-    if mutually_recursive.contains(name) {
+    if let Some(invalid_cluster) = mutual_recursion.invalid_by_member.get(name) {
         let err_port = dag.alloc_port(None);
         let body_span = expr_span(body).clone();
         dag.mark_unresolved(
             err_port,
             Diagnostic::ResolveError {
                 name: format!(
-                    "function `{name}` is part of a mutual recursion cycle; mutual recursion is not yet supported in v3"
+                    "cannot prove mutually-recursive cluster {{{}}} terminates",
+                    invalid_cluster.members.join(", ")
                 ),
                 span: body_span.clone(),
             },
@@ -2995,6 +3114,7 @@ fn lower_fn_item_expr_body(
     }
 
     // 4. Lower the body.
+    let body_start_index = dag.nodes().len();
     let body_return_port = lower_expr(
         body,
         dag,
@@ -3005,12 +3125,33 @@ fn lower_fn_item_expr_body(
     );
     let body_root = dag.port(body_return_port).produced_by;
     let body_span = expr_span(body).clone();
+    let body_end_index = dag.nodes().len();
+
+    let mutual_cluster = mutual_recursion.cluster_for_member(name);
 
     // 5. Handle recursion: bounded Loop wrapping (descent-provable) or
     //    fail-closed rejection (unprovable or zero-arg). Same M0 logic; the
     //    descent check operates on the unresolved operator-identifier shape
     //    (SurfaceExpr::Call with target "-"), per §8.9 Option A.
-    let value_port = if is_recursive(body, name) {
+    let (value_port, produced_loop_id) = if let Some(cluster) = mutual_cluster {
+        let slot = cluster.per_member_positions[name];
+        let loop_id = dag.alloc_node_id();
+        let loop_output = dag.alloc_port(Some(loop_id));
+        dag.set_port_type(loop_output, return_ty);
+        let loop_body_node = body_root.unwrap_or(loop_id);
+        dag.push_node(Behavior::Loop(LoopNode {
+            id: loop_id,
+            source: param_ports[slot],
+            init: param_ports[slot],
+            body: loop_body_node,
+            bound: LoopBound::Descent {
+                cluster: crate::dag::ClusterId::placeholder(),
+            },
+            output: loop_output,
+            span: body_span.clone(),
+        }));
+        (loop_output, Some(loop_id))
+    } else if is_recursive(body, name) {
         if param_ports.is_empty() {
             let err_port = dag.alloc_port(None);
             dag.mark_unresolved(
@@ -3022,7 +3163,7 @@ fn lower_fn_item_expr_body(
                     span: body_span.clone(),
                 },
             );
-            err_port
+            (err_port, None)
         } else if !descent_provable(
             body,
             dag,
@@ -3042,7 +3183,7 @@ fn lower_fn_item_expr_body(
                     span: body_span.clone(),
                 },
             );
-            err_port
+            (err_port, None)
         } else {
             let loop_id = dag.alloc_node_id();
             let loop_output = dag.alloc_port(Some(loop_id));
@@ -3053,16 +3194,16 @@ fn lower_fn_item_expr_body(
                 source: param_ports[0],
                 init: param_ports[0],
                 body: loop_body_node,
-                bound: Bound {
+                bound: LoopBound::Cardinality {
                     count: param_ports[0],
                 },
                 output: loop_output,
                 span: body_span.clone(),
             }));
-            loop_output
+            (loop_output, Some(loop_id))
         }
     } else {
-        body_return_port
+        (body_return_port, None)
     };
 
     dag.set_port_type(value_port, return_ty);
@@ -3074,6 +3215,28 @@ fn lower_fn_item_expr_body(
         params: param_ports,
         span: body_span,
     }));
+
+    if let Some(cluster_index) = mutual_recursion.by_member.get(name).copied() {
+        let cluster_state = &mut mutual_state.clusters[cluster_index];
+        cluster_state.member_bind_ids.insert(name.to_string(), bind_id);
+        if let Some(loop_id) = produced_loop_id {
+            cluster_state.loop_ids.push(loop_id);
+        }
+        let cluster_decl_ids = &mutual_recursion.clusters[cluster_index].member_decl_ids;
+        cluster_state.intra_cluster_transform_ids.extend(
+            dag.nodes()[body_start_index..body_end_index]
+                .iter()
+                .filter_map(Behavior::as_transform)
+                .filter_map(|transform| match transform.target {
+                    TransformTarget::Callable(target_decl)
+                        if cluster_decl_ids.contains(&callable_target_template(target_decl, dag)) =>
+                    {
+                        Some(transform.id)
+                    }
+                    _ => None,
+                })
+        );
+    }
 
     // 6. Fill in the function's Declaration with the Arrow connective.
     dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
@@ -3166,6 +3329,13 @@ fn declaration_callable_inputs(
 
 fn declaration_is_callable(dag: &Dag, current: DeclarationId, depth: usize) -> bool {
     declaration_callable_inputs(dag, current, depth).is_some()
+}
+
+fn callable_target_template(target: DeclarationId, dag: &Dag) -> DeclarationId {
+    match &dag.declaration(target).connective {
+        TypeConnective::Instantiation { template, .. } => *template,
+        _ => target,
+    }
 }
 
 fn declaration_callable_output(
@@ -4934,65 +5104,407 @@ fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
     }
 }
 
-fn compute_mutually_recursive(items: &[SurfaceItem]) -> HashSet<String> {
-    // Only expression-body fns participate in the mutual recursion
-    // analysis — block-bodied `FnExternalBody` items have their bodies
-    // deferred as `ArrowBody::Unparsed`, so there's no reachable call
-    // graph to walk at M1(2.7).
-    let fn_names: HashSet<String> = items
-        .iter()
-        .filter_map(|i| match i {
-            SurfaceItem::Fn { name, .. } => Some(name.clone()),
-            _ => None,
-        })
-        .collect();
-
-    let mut calls: HashMap<String, HashSet<String>> = HashMap::new();
-    for item in items {
-        if let SurfaceItem::Fn { name, body, .. } = item {
-            let mut callees = HashSet::new();
-            collect_calls(body, &fn_names, &mut callees);
-            calls.insert(name.clone(), callees);
-        }
-    }
-
-    let mut reach_cache: HashMap<String, HashSet<String>> = HashMap::new();
-    for f in &fn_names {
-        reach_cache.insert(f.clone(), transitive_reach(f, &calls));
-    }
-
-    let mut mutually = HashSet::new();
-    for f in &fn_names {
-        let reach_f = &reach_cache[f];
-        for g in reach_f {
-            if g == f {
-                continue;
-            }
-            let reach_g = &reach_cache[g];
-            if reach_g.contains(f) {
-                mutually.insert(f.clone());
-                mutually.insert(g.clone());
-            }
-        }
-    }
-    mutually
+#[derive(Clone, Copy)]
+struct FunctionSurfaceInfo<'a> {
+    decl_id: DeclarationId,
+    params: &'a [SurfaceParam],
+    body: &'a SurfaceExpr,
 }
 
-fn transitive_reach(start: &str, calls: &HashMap<String, HashSet<String>>) -> HashSet<String> {
-    let mut visited = HashSet::new();
-    let mut queue = vec![start.to_string()];
-    while let Some(f) = queue.pop() {
-        if !visited.insert(f.clone()) {
-            continue;
+fn compute_mutually_recursive(
+    items: &[SurfaceItem],
+    dag: &Dag,
+    symbols: &HashMap<String, DeclarationId>,
+) -> MutualRecursionPlans {
+    let mut order: Vec<String> = Vec::new();
+    let mut fn_infos: HashMap<String, FunctionSurfaceInfo<'_>> = HashMap::new();
+    for item in items {
+        if let SurfaceItem::Fn {
+            name, params, body, ..
+        } = item
+        {
+            let Some(&decl_id) = symbols.get(name) else {
+                continue;
+            };
+            order.push(name.clone());
+            fn_infos.insert(
+                name.clone(),
+                FunctionSurfaceInfo {
+                    decl_id,
+                    params,
+                    body,
+                },
+            );
         }
-        if let Some(callees) = calls.get(&f) {
-            for c in callees {
-                queue.push(c.clone());
+    }
+
+    let fn_names: HashSet<String> = order.iter().cloned().collect();
+    let mut calls: HashMap<String, Vec<String>> = HashMap::new();
+    for name in &order {
+        let Some(info) = fn_infos.get(name) else {
+            continue;
+        };
+        let mut callees = HashSet::new();
+        collect_calls(info.body, &fn_names, &mut callees);
+        let mut sorted_callees: Vec<String> = callees.into_iter().collect();
+        sorted_callees.sort();
+        calls.insert(name.clone(), sorted_callees);
+    }
+
+    let mut plans = MutualRecursionPlans::default();
+    for members in strongly_connected_components(&order, &calls)
+        .into_iter()
+        .filter(|component| component.len() > 1)
+    {
+        if let Some(per_member_positions) = find_cluster_slot_assignment(&members, dag, &fn_infos) {
+            let member_decl_ids = members
+                .iter()
+                .filter_map(|member| fn_infos.get(member).map(|info| info.decl_id))
+                .collect();
+            let cluster_index = plans.clusters.len();
+            for member in &members {
+                plans.by_member.insert(member.clone(), cluster_index);
+            }
+            plans.clusters.push(MutualClusterShape {
+                members,
+                member_decl_ids,
+                per_member_positions,
+            });
+        } else {
+            let invalid = InvalidMutualCluster {
+                members: members.clone(),
+            };
+            for member in members {
+                plans.invalid_by_member.insert(member, invalid.clone());
             }
         }
     }
-    visited.remove(start);
-    visited
+    plans
+}
+
+fn strongly_connected_components(
+    order: &[String],
+    calls: &HashMap<String, Vec<String>>,
+) -> Vec<Vec<String>> {
+    let order_index: HashMap<String, usize> = order
+        .iter()
+        .enumerate()
+        .map(|(idx, name)| (name.clone(), idx))
+        .collect();
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut finish_order: Vec<String> = Vec::new();
+
+    fn dfs(
+        node: &str,
+        calls: &HashMap<String, Vec<String>>,
+        visited: &mut HashSet<String>,
+        finish_order: &mut Vec<String>,
+    ) {
+        if !visited.insert(node.to_string()) {
+            return;
+        }
+        if let Some(callees) = calls.get(node) {
+            for callee in callees {
+                dfs(callee, calls, visited, finish_order);
+            }
+        }
+        finish_order.push(node.to_string());
+    }
+
+    for name in order {
+        dfs(name, calls, &mut visited, &mut finish_order);
+    }
+
+    let mut reverse: HashMap<String, Vec<String>> =
+        order.iter().map(|name| (name.clone(), Vec::new())).collect();
+    for (caller, callees) in calls {
+        for callee in callees {
+            reverse
+                .entry(callee.clone())
+                .or_default()
+                .push(caller.clone());
+        }
+    }
+
+    fn dfs_reverse(
+        node: &str,
+        reverse: &HashMap<String, Vec<String>>,
+        assigned: &mut HashSet<String>,
+        component: &mut Vec<String>,
+    ) {
+        if !assigned.insert(node.to_string()) {
+            return;
+        }
+        component.push(node.to_string());
+        if let Some(callers) = reverse.get(node) {
+            for caller in callers {
+                dfs_reverse(caller, reverse, assigned, component);
+            }
+        }
+    }
+
+    let mut assigned: HashSet<String> = HashSet::new();
+    let mut components: Vec<Vec<String>> = Vec::new();
+    for name in finish_order.into_iter().rev() {
+        if assigned.contains(&name) {
+            continue;
+        }
+        let mut component = Vec::new();
+        dfs_reverse(&name, &reverse, &mut assigned, &mut component);
+        component.sort_by_key(|member| order_index.get(member).copied().unwrap_or(usize::MAX));
+        components.push(component);
+    }
+    components.sort_by_key(|component| {
+        component
+            .first()
+            .and_then(|member| order_index.get(member))
+            .copied()
+            .unwrap_or(usize::MAX)
+    });
+    components
+}
+
+fn find_cluster_slot_assignment(
+    members: &[String],
+    dag: &Dag,
+    fn_infos: &HashMap<String, FunctionSurfaceInfo<'_>>,
+) -> Option<HashMap<String, usize>> {
+    if members.iter().any(|member| {
+        fn_infos
+            .get(member)
+            .map(|info| info.params.is_empty())
+            .unwrap_or(true)
+    }) {
+        return None;
+    }
+
+    fn search(
+        member_index: usize,
+        members: &[String],
+        dag: &Dag,
+        fn_infos: &HashMap<String, FunctionSurfaceInfo<'_>>,
+        assignment: &mut HashMap<String, usize>,
+    ) -> Option<HashMap<String, usize>> {
+        if member_index == members.len() {
+            if validate_cluster_slot_assignment(members, dag, fn_infos, assignment) {
+                return Some(assignment.clone());
+            }
+            return None;
+        }
+
+        let member = &members[member_index];
+        let info = fn_infos.get(member)?;
+        for slot in 0..info.params.len() {
+            assignment.insert(member.clone(), slot);
+            if let Some(found) = search(member_index + 1, members, dag, fn_infos, assignment) {
+                return Some(found);
+            }
+        }
+        assignment.remove(member);
+        None
+    }
+
+    search(0, members, dag, fn_infos, &mut HashMap::new())
+}
+
+fn validate_cluster_slot_assignment(
+    members: &[String],
+    dag: &Dag,
+    fn_infos: &HashMap<String, FunctionSurfaceInfo<'_>>,
+    assignment: &HashMap<String, usize>,
+) -> bool {
+    let cluster_members: HashSet<String> = members.iter().cloned().collect();
+    members.iter().all(|member| {
+        let Some(info) = fn_infos.get(member) else {
+            return false;
+        };
+        let Some(&slot) = assignment.get(member) else {
+            return false;
+        };
+        let TypeConnective::Arrow { inputs, .. } = &dag.declaration(info.decl_id).connective else {
+            return false;
+        };
+        let Some(param_decl) = inputs.get(slot).copied() else {
+            return false;
+        };
+        let Some(param) = info.params.get(slot) else {
+            return false;
+        };
+        cluster_descent_provable(
+            info.body,
+            dag,
+            param_decl,
+            member,
+            &param.name,
+            &cluster_members,
+            assignment,
+            &HashMap::new(),
+        )
+    })
+}
+
+fn cluster_descent_provable(
+    expr: &SurfaceExpr,
+    dag: &Dag,
+    current_param_decl: DeclarationId,
+    current_member: &str,
+    current_param: &str,
+    cluster_members: &HashSet<String>,
+    assignment: &HashMap<String, usize>,
+    bindings: &HashMap<String, StructuralBindingInfo>,
+) -> bool {
+    match expr {
+        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => true,
+        SurfaceExpr::Call { target, args, .. } => {
+            if cluster_members.contains(target) {
+                let Some(&callee_slot) = assignment.get(target) else {
+                    return false;
+                };
+                let Some(callee_arg) = args.get(callee_slot) else {
+                    return false;
+                };
+                if !is_strictly_smaller(callee_arg, current_param, bindings) {
+                    return false;
+                }
+            }
+            args.iter().all(|arg| {
+                cluster_descent_provable(
+                    arg,
+                    dag,
+                    current_param_decl,
+                    current_member,
+                    current_param,
+                    cluster_members,
+                    assignment,
+                    bindings,
+                )
+            })
+        }
+        SurfaceExpr::Operator { args, .. } => args.iter().all(|arg| {
+            cluster_descent_provable(
+                arg,
+                dag,
+                current_param_decl,
+                current_member,
+                current_param,
+                cluster_members,
+                assignment,
+                bindings,
+            )
+        }),
+        SurfaceExpr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            cluster_descent_provable(
+                cond,
+                dag,
+                current_param_decl,
+                current_member,
+                current_param,
+                cluster_members,
+                assignment,
+                bindings,
+            ) && cluster_descent_provable(
+                then_branch,
+                dag,
+                current_param_decl,
+                current_member,
+                current_param,
+                cluster_members,
+                assignment,
+                bindings,
+            ) && cluster_descent_provable(
+                else_branch,
+                dag,
+                current_param_decl,
+                current_member,
+                current_param,
+                cluster_members,
+                assignment,
+                bindings,
+            )
+        }
+        SurfaceExpr::Match {
+            scrutinee, arms, ..
+        } => {
+            if !cluster_descent_provable(
+                scrutinee,
+                dag,
+                current_param_decl,
+                current_member,
+                current_param,
+                cluster_members,
+                assignment,
+                bindings,
+            ) {
+                return false;
+            }
+
+            let scrutinee_is_current_param = matches!(
+                scrutinee.as_ref(),
+                SurfaceExpr::Var { name, .. } if name == current_param
+            );
+            arms.iter().all(|arm| {
+                let mut arm_bindings = bindings.clone();
+                if scrutinee_is_current_param {
+                    if let SurfacePattern::VariantWith { name, binding, .. } = &arm.pattern {
+                        if let Some(info) =
+                            structural_binding_info_for_variant(dag, current_param_decl, name)
+                        {
+                            arm_bindings.insert(binding.clone(), info);
+                        }
+                    }
+                }
+                cluster_descent_provable(
+                    &arm.body,
+                    dag,
+                    current_param_decl,
+                    current_member,
+                    current_param,
+                    cluster_members,
+                    assignment,
+                    &arm_bindings,
+                )
+            })
+        }
+        SurfaceExpr::Lambda { body, .. } => cluster_descent_provable(
+            body,
+            dag,
+            current_param_decl,
+            current_member,
+            current_param,
+            cluster_members,
+            assignment,
+            bindings,
+        ),
+        SurfaceExpr::Record { fields, .. } => fields.iter().all(|field| {
+            cluster_descent_provable(
+                &field.value,
+                dag,
+                current_param_decl,
+                current_member,
+                current_param,
+                cluster_members,
+                assignment,
+                bindings,
+            )
+        }),
+        SurfaceExpr::List { elements, .. } => elements.iter().all(|element| {
+            cluster_descent_provable(
+                element,
+                dag,
+                current_param_decl,
+                current_member,
+                current_param,
+                cluster_members,
+                assignment,
+                bindings,
+            )
+        }),
+    }
 }
 
 fn collect_calls(expr: &SurfaceExpr, fn_names: &HashSet<String>, out: &mut HashSet<String>) {

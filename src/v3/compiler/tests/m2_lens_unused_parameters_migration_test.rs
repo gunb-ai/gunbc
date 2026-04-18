@@ -203,7 +203,9 @@ fn collect_referenced_ports(dag: &Dag, root_port: PortId) -> HashSet<PortId> {
             Behavior::Loop(l) => {
                 queue.push(l.source);
                 queue.push(l.init);
-                queue.push(l.bound.count);
+                if let Some(count) = l.bound.count_port() {
+                    queue.push(count);
+                }
                 queue.push(behavior_output_port(dag.node(l.body)));
             }
             Behavior::Bind(b) => {

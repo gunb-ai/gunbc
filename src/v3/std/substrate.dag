@@ -8,6 +8,7 @@ import v3.spec.v3_l1 { DeclarationRef }
 type NodeId
 type PortId
 type DeclarationId
+type ClusterId
 
 type TypeShape {
   declaration: DeclarationId
@@ -62,6 +63,17 @@ type TemplateArgument {
 type FieldEntry {
   label: String
   value: FieldValue
+}
+
+type NonEmptyList<element> {
+  first: element
+  rest: List<element>
+}
+
+type NonSingletonList<element> {
+  first: element
+  second: element
+  rest: List<element>
 }
 
 // 🟡 SCAFFOLD until reflected structural values dissolve into ordinary
@@ -179,9 +191,31 @@ type BranchPath {
   binding: PayloadBinding?
 }
 
-type LoopBound {
-  count: PortId
+type ParamRef {
+  member: NodeId
+  slot: Int
 }
+
+type TransformRef {
+  node: NodeId
+}
+
+type MemberDescent {
+  param: ParamRef
+}
+
+type IntraClusterCall {
+  transform: TransformRef
+}
+
+type Cluster {
+  members: NonSingletonList<MemberDescent>
+  intra_cluster_calls: NonEmptyList<IntraClusterCall>
+}
+
+type LoopBound
+  = Cardinality { count: PortId }
+  | Descent { cluster: ClusterId }
 
 type ValueNode {
   id: NodeId
@@ -236,6 +270,7 @@ type Dag {
   declarations: List<Declaration>
   nodes: List<Behavior>
   ports: List<DagPort>
+  clusters: List<Cluster>
 }
 
 // ── Substrate keyed accessors (DB-14, INVARIANTS.md L-7) ────────────

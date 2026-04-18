@@ -83,6 +83,23 @@ impl DeclarationId {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ClusterId(u32);
+
+impl ClusterId {
+    fn index(self) -> usize {
+        self.0 as usize
+    }
+
+    pub fn raw(self) -> u32 {
+        self.0
+    }
+
+    pub(crate) fn placeholder() -> Self {
+        Self(u32::MAX)
+    }
+}
+
 /// A type-system declaration. The unit of the type substrate.
 ///
 /// Every named declaration (primitive, algebra, user type, type alias) lives in
@@ -876,13 +893,116 @@ impl Path {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ParamRef {
+    member: NodeId,
+    slot: usize,
+}
+
+impl ParamRef {
+    pub fn member_of(self) -> NodeId {
+        self.member
+    }
+
+    pub fn slot_of(self) -> usize {
+        self.slot
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TransformRef(NodeId);
+
+impl TransformRef {
+    pub fn node_id(self) -> NodeId {
+        self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NonEmptyList<T> {
+    pub first: T,
+    pub rest: Vec<T>,
+}
+
+impl<T> NonEmptyList<T> {
+    pub fn from_vec(values: Vec<T>) -> Option<Self> {
+        let mut iter = values.into_iter();
+        let first = iter.next()?;
+        Some(Self {
+            first,
+            rest: iter.collect(),
+        })
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        std::iter::once(&self.first).chain(self.rest.iter())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NonSingletonList<T> {
+    pub first: T,
+    pub second: T,
+    pub rest: Vec<T>,
+}
+
+impl<T> NonSingletonList<T> {
+    pub fn from_vec(values: Vec<T>) -> Option<Self> {
+        let mut iter = values.into_iter();
+        let first = iter.next()?;
+        let second = iter.next()?;
+        Some(Self {
+            first,
+            second,
+            rest: iter.collect(),
+        })
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        std::iter::once(&self.first)
+            .chain(std::iter::once(&self.second))
+            .chain(self.rest.iter())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberDescent {
+    pub param: ParamRef,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IntraClusterCall {
+    pub transform: TransformRef,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cluster {
+    pub members: NonSingletonList<MemberDescent>,
+    pub intra_cluster_calls: NonEmptyList<IntraClusterCall>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoopBound {
+    Cardinality { count: PortId },
+    Descent { cluster: ClusterId },
+}
+
+impl LoopBound {
+    pub fn count_port(&self) -> Option<PortId> {
+        match self {
+            Self::Cardinality { count } => Some(*count),
+            Self::Descent { .. } => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct LoopNode {
     pub id: NodeId,
     pub source: PortId,
     pub init: PortId,
     pub body: NodeId,
-    pub bound: Bound,
+    pub bound: LoopBound,
     pub output: PortId,
     pub span: SourceSpan,
 }
@@ -891,11 +1011,6 @@ impl LoopNode {
     pub fn result_port(&self) -> PortId {
         self.output
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct Bound {
-    pub count: PortId,
 }
 
 #[derive(Debug, Clone)]
@@ -1218,6 +1333,8 @@ pub struct Dag {
     target_syntax: TargetSyntaxCache,
     /// Cached stdlib type-template declarations.
     stdlib_types: StdlibTypeCache,
+    /// Sidecar structural facts for mutually-recursive SCCs.
+    clusters: Vec<Cluster>,
     /// Synthetic match carriers for anonymous `T?` cardinalities. Used when
     /// inference needs stable `Some` / `None` variant identities without
     /// promoting optionals into named top-level declarations.
@@ -1245,6 +1362,7 @@ impl Dag {
             realization_metas: RealizationMetaCache::default(),
             target_syntax: TargetSyntaxCache::default(),
             stdlib_types: StdlibTypeCache::default(),
+            clusters: Vec::new(),
             optional_match_disjs: HashMap::new(),
         }
     }
@@ -1435,6 +1553,14 @@ impl Dag {
         ports
     }
 
+    pub fn clusters(&self) -> &[Cluster] {
+        &self.clusters
+    }
+
+    pub fn cluster(&self, id: ClusterId) -> &Cluster {
+        &self.clusters[id.index()]
+    }
+
     pub fn optional_match_disj(&self, cardinality_decl_id: DeclarationId) -> Option<DeclarationId> {
         self.optional_match_disjs.get(&cardinality_decl_id).copied()
     }
@@ -1616,6 +1742,12 @@ impl Dag {
         self.nodes.push(behavior);
     }
 
+    pub(crate) fn push_cluster(&mut self, cluster: Cluster) -> ClusterId {
+        let id = ClusterId(self.clusters.len() as u32);
+        self.clusters.push(cluster);
+        id
+    }
+
     /// Mutable access to the computation-graph node vector. Scoped to
     /// the post-infer pattern resolution pass that rewrites
     /// `BranchPattern::UnresolvedVariant` entries into
@@ -1639,6 +1771,18 @@ impl Dag {
     /// external mutator; resolution is an internal phase of lowering.
     pub(crate) fn declaration_mut(&mut self, id: DeclarationId) -> &mut Declaration {
         &mut self.declarations[id.index()]
+    }
+
+    pub(crate) fn patch_loop_descent_cluster(&mut self, loop_id: NodeId, cluster: ClusterId) {
+        let Some(Behavior::Loop(loop_node)) = self.nodes.get_mut(loop_id.index()) else {
+            return;
+        };
+        if let LoopBound::Descent {
+            cluster: bound_cluster,
+        } = &mut loop_node.bound
+        {
+            *bound_cluster = cluster;
+        }
     }
 
     /// Transition a port from Uninferred to Resolved. Idempotent when the new
@@ -1749,6 +1893,17 @@ impl Dag {
         self.target_syntax.go_execution_model =
             self.declaration_by_name("go_execution_model").map(|d| d.id);
         self.stdlib_types.list = self.declaration_by_name("List").map(|d| d.id);
+    }
+
+    pub fn param_of(&self, member: NodeId, slot: usize) -> Option<ParamRef> {
+        let bind = self.node(member).as_bind()?;
+        bind.params.get(slot)?;
+        Some(ParamRef { member, slot })
+    }
+
+    pub fn as_transform_ref(&self, node: NodeId) -> Option<TransformRef> {
+        self.node(node).as_transform()?;
+        Some(TransformRef(node))
     }
 }
 
