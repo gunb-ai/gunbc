@@ -4,9 +4,14 @@
 #[derive(Clone, Debug)]
 pub struct SymbolicCostEntry {
     pub port: PortId,
-    pub cost: SymbolicCost,
+    pub cost: SymbolicCostLookup,
 }
-pub fn symbolic_cost_of(p0: &Dag, p1: &PortId) -> SymbolicCost {
+#[derive(Clone, Debug)]
+pub enum SymbolicCostLookup {
+    MissingCost,
+    FoundCost { _0: SymbolicCost },
+}
+pub fn symbolic_cost_of(p0: &Dag, p1: &PortId) -> SymbolicCostLookup {
     lookup_cost(&(compute_symbolic_costs(p0)), p1)
 }
 pub fn compute_symbolic_costs(p0: &Dag) -> Vec<SymbolicCostEntry> {
@@ -14,7 +19,7 @@ pub fn compute_symbolic_costs(p0: &Dag) -> Vec<SymbolicCostEntry> {
         .iter()
         .fold(seed_bind_params((p0).nodes()), |__fold_acc, __fold_item| {
             let mut __list = (__fold_acc).clone();
-            __list.insert(0, entry_for(__fold_item));
+            __list.insert(0, entry_for(&__fold_acc, __fold_item));
             __list
         })
 }
@@ -44,7 +49,9 @@ pub fn param_entries(p0: &[PortId]) -> Vec<SymbolicCostEntry> {
                 0,
                 SymbolicCostEntry {
                     port: (*(__list_head)),
-                    cost: SymbolicCost::ConstantCost { _0: 0 },
+                    cost: SymbolicCostLookup::FoundCost {
+                        _0: SymbolicCost::ConstantCost { _0: 0 },
+                    },
                 },
             );
             __list
@@ -64,33 +71,131 @@ pub fn concat_entries(
         }
     }
 }
-pub fn entry_for(p0: &Behavior) -> SymbolicCostEntry {
-    match p0 {
+pub fn entry_for(p0: &[SymbolicCostEntry], p1: &Behavior) -> SymbolicCostEntry {
+    match p1 {
         Behavior::Value(v) => SymbolicCostEntry {
             port: (v).result_port(),
-            cost: SymbolicCost::ConstantCost { _0: 0 },
+            cost: SymbolicCostLookup::FoundCost {
+                _0: SymbolicCost::ConstantCost { _0: 0 },
+            },
         },
         Behavior::Transform(t) => SymbolicCostEntry {
             port: (t).result_port(),
-            cost: SymbolicCost::ConstantCost { _0: 0 },
+            cost: transform_cost(p0, &((t).inputs)),
         },
         Behavior::Branch(b) => SymbolicCostEntry {
             port: (b).result_port(),
-            cost: SymbolicCost::ConstantCost { _0: 0 },
+            cost: branch_cost(p0, &((b).input), &((b).paths)),
         },
         Behavior::Loop(l) => SymbolicCostEntry {
             port: (l).result_port(),
-            cost: SymbolicCost::ConstantCost { _0: 0 },
+            cost: loop_cost(p0, (l).source),
         },
         Behavior::Bind(bind) => SymbolicCostEntry {
             port: (bind).result_port(),
-            cost: SymbolicCost::ConstantCost { _0: 0 },
+            cost: lookup_cost(p0, &((bind).result_port())),
         },
     }
 }
-pub fn lookup_cost(p0: &[SymbolicCostEntry], p1: &PortId) -> SymbolicCost {
+pub fn loop_cost(p0: &[SymbolicCostEntry], p1: PortId) -> SymbolicCostLookup {
+    combine_iterate(&(linear_at(p1)), &(lookup_cost(p0, &p1)))
+}
+pub fn linear_at(p0: PortId) -> SymbolicCostLookup {
+    SymbolicCostLookup::FoundCost {
+        _0: SymbolicCost::LinearCost {
+            _0: SizeVariable {
+                name: "n",
+                source_port: p0,
+            },
+        },
+    }
+}
+pub fn combine_iterate(p0: &SymbolicCostLookup, p1: &SymbolicCostLookup) -> SymbolicCostLookup {
     match p0 {
-        [] => SymbolicCost::ConstantCost { _0: 0 },
+        SymbolicCostLookup::MissingCost => SymbolicCostLookup::MissingCost,
+        SymbolicCostLookup::FoundCost { _0: b } => match p1 {
+            SymbolicCostLookup::MissingCost => SymbolicCostLookup::MissingCost,
+            SymbolicCostLookup::FoundCost { _0: y } => SymbolicCostLookup::FoundCost {
+                _0: iterate((b).clone(), (y).clone()),
+            },
+        },
+    }
+}
+pub fn branch_cost(p0: &[SymbolicCostEntry], p1: &PortId, p2: &[Path]) -> SymbolicCostLookup {
+    combine_sequential(
+        &(SymbolicCostLookup::FoundCost {
+            _0: SymbolicCost::ConstantCost { _0: 1 },
+        }),
+        &(combine_sequential(&(lookup_cost(p0, p1)), &(max_of_paths(p0, p2)))),
+    )
+}
+pub fn max_of_paths(p0: &[SymbolicCostEntry], p1: &[Path]) -> SymbolicCostLookup {
+    (p1).iter().fold(
+        SymbolicCostLookup::FoundCost {
+            _0: SymbolicCost::ConstantCost { _0: 0 },
+        },
+        |__fold_acc, __fold_item| {
+            combine_max(
+                &__fold_acc,
+                &(lookup_cost(p0, &((__fold_item).result_port()))),
+            )
+        },
+    )
+}
+pub fn combine_max(p0: &SymbolicCostLookup, p1: &SymbolicCostLookup) -> SymbolicCostLookup {
+    match p0 {
+        SymbolicCostLookup::MissingCost => SymbolicCostLookup::MissingCost,
+        SymbolicCostLookup::FoundCost { _0: ax } => match p1 {
+            SymbolicCostLookup::MissingCost => SymbolicCostLookup::MissingCost,
+            SymbolicCostLookup::FoundCost { _0: bx } => SymbolicCostLookup::FoundCost {
+                _0: dominant((ax).clone(), (bx).clone()),
+            },
+        },
+    }
+}
+pub fn dominant(p0: SymbolicCost, p1: SymbolicCost) -> SymbolicCost {
+    max_path(
+        &({
+            let mut __list = {
+                let mut __list = Vec::new();
+                __list.insert(0, (p1).clone());
+                __list
+            };
+            __list.insert(0, (p0).clone());
+            __list
+        }),
+    )
+}
+pub fn transform_cost(p0: &[SymbolicCostEntry], p1: &[PortId]) -> SymbolicCostLookup {
+    combine_sequential(
+        &(SymbolicCostLookup::FoundCost {
+            _0: SymbolicCost::ConstantCost { _0: 1 },
+        }),
+        &(sum_costs(p0, p1)),
+    )
+}
+pub fn sum_costs(p0: &[SymbolicCostEntry], p1: &[PortId]) -> SymbolicCostLookup {
+    (p1).iter().fold(
+        SymbolicCostLookup::FoundCost {
+            _0: SymbolicCost::ConstantCost { _0: 0 },
+        },
+        |__fold_acc, __fold_item| combine_sequential(&__fold_acc, &(lookup_cost(p0, __fold_item))),
+    )
+}
+pub fn combine_sequential(p0: &SymbolicCostLookup, p1: &SymbolicCostLookup) -> SymbolicCostLookup {
+    match p0 {
+        SymbolicCostLookup::MissingCost => SymbolicCostLookup::MissingCost,
+        SymbolicCostLookup::FoundCost { _0: ax } => match p1 {
+            SymbolicCostLookup::MissingCost => SymbolicCostLookup::MissingCost,
+            SymbolicCostLookup::FoundCost { _0: bx } => SymbolicCostLookup::FoundCost {
+                _0: sequential((ax).clone(), (bx).clone()),
+            },
+        },
+    }
+}
+pub fn lookup_cost(p0: &[SymbolicCostEntry], p1: &PortId) -> SymbolicCostLookup {
+    match p0 {
+        [] => SymbolicCostLookup::MissingCost,
         [__list_head, __list_tail @ ..] => {
             if ((__list_head).port == (*(p1))) {
                 ((__list_head).cost).clone()

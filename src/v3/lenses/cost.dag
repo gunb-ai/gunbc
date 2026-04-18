@@ -2,10 +2,7 @@ module lenses.cost
 
 import std.list { List, empty, fold, cons }
 import std.substrate { Dag, Behavior, BranchPath, PortId }
-import std.algebra {
-  SymbolicCost, SizeVariable,
-  sequential, iterate, max_path
-}
+import std.algebra { SymbolicCost, SizeVariable, sequential, iterate, max_path }
 
 type SymbolicCostEntry {
   port: PortId
@@ -64,23 +61,39 @@ fn entry_for(acc: List<SymbolicCostEntry>, behavior: Behavior) -> SymbolicCostEn
     Value(v) =>
       { port: v.result_port, cost: FoundCost(ConstantCost(0)) }
     Transform(t) =>
-      { port: t.result_port, cost: FoundCost(ConstantCost(0)) }
+      { port: t.result_port, cost: transform_cost(acc, t.inputs) }
     Branch(b) =>
-      { port: b.result_port, cost: FoundCost(ConstantCost(0)) }
+      { port: b.result_port, cost: branch_cost(acc, b.input, b.paths) }
     Loop(l) =>
-      { port: l.result_port, cost: FoundCost(ConstantCost(0)) }
+      { port: l.result_port, cost: loop_cost(acc, l.source) }
     Bind(bind) =>
       { port: bind.result_port, cost: lookup_cost(acc, bind.result_port) }
   }
 
-fn transform_cost(
+fn loop_cost(
   acc: List<SymbolicCostEntry>,
-  inputs: List<PortId>
+  source: PortId
 ) -> SymbolicCostLookup =
-  combine_sequential(
-    FoundCost(ConstantCost(1)),
-    sum_costs(acc, inputs)
+  combine_iterate(
+    linear_at(source),
+    lookup_cost(acc, source)
   )
+
+fn linear_at(port_id: PortId) -> SymbolicCostLookup =
+  FoundCost(LinearCost({ name: "n", source_port: port_id }))
+
+fn combine_iterate(
+  bound: SymbolicCostLookup,
+  body: SymbolicCostLookup
+) -> SymbolicCostLookup =
+  match bound {
+    MissingCost => MissingCost
+    FoundCost(b) =>
+      match body {
+        MissingCost => MissingCost
+        FoundCost(y) => FoundCost(iterate(b, y))
+      }
+  }
 
 fn branch_cost(
   acc: List<SymbolicCostEntry>,
@@ -103,27 +116,30 @@ fn max_of_paths(
     combine_max(running, lookup_cost(acc, path.result_port))
   )
 
-fn loop_cost(
-  acc: List<SymbolicCostEntry>,
-  source: PortId
+fn combine_max(
+  a: SymbolicCostLookup,
+  b: SymbolicCostLookup
 ) -> SymbolicCostLookup =
-  combine_iterate(
-    linear_at(source),
-    lookup_cost(acc, source)
-  )
-
-fn linear_at(port_id: PortId) -> SymbolicCostLookup =
-  FoundCost(ConstantCost(0))
-
-fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> SymbolicCostLookup =
-  match acc {
-    Empty => MissingCost
-    Cons(payload) =>
-      if payload.head.port == port_id then
-        payload.head.cost
-      else
-        lookup_cost(payload.tail, port_id)
+  match a {
+    MissingCost => MissingCost
+    FoundCost(ax) =>
+      match b {
+        MissingCost => MissingCost
+        FoundCost(bx) => FoundCost(dominant(ax, bx))
+      }
   }
+
+fn dominant(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
+  max_path(cons(a, cons(b, empty())))
+
+fn transform_cost(
+  acc: List<SymbolicCostEntry>,
+  inputs: List<PortId>
+) -> SymbolicCostLookup =
+  combine_sequential(
+    FoundCost(ConstantCost(1)),
+    sum_costs(acc, inputs)
+  )
 
 fn sum_costs(
   acc: List<SymbolicCostEntry>,
@@ -146,31 +162,12 @@ fn combine_sequential(
       }
   }
 
-fn combine_iterate(
-  bound: SymbolicCostLookup,
-  body: SymbolicCostLookup
-) -> SymbolicCostLookup =
-  match bound {
-    MissingCost => MissingCost
-    FoundCost(b) =>
-      match body {
-        MissingCost => MissingCost
-        FoundCost(y) => FoundCost(iterate(b, y))
-      }
+fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> SymbolicCostLookup =
+  match acc {
+    Empty => MissingCost
+    Cons(payload) =>
+      if payload.head.port == port_id then
+        payload.head.cost
+      else
+        lookup_cost(payload.tail, port_id)
   }
-
-fn combine_max(
-  a: SymbolicCostLookup,
-  b: SymbolicCostLookup
-) -> SymbolicCostLookup =
-  match a {
-    MissingCost => MissingCost
-    FoundCost(ax) =>
-      match b {
-        MissingCost => MissingCost
-        FoundCost(bx) => FoundCost(dominant(ax, bx))
-      }
-  }
-
-fn dominant(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
-  max_path(cons(a, cons(b, empty())))
