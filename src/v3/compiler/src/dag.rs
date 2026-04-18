@@ -1096,12 +1096,12 @@ pub fn iterate(bound: SymbolicCost, body: SymbolicCost) -> SymbolicCost {
     })
 }
 
-pub fn max_path(paths: Vec<SymbolicCost>) -> SymbolicCost {
+pub fn max_path(paths: &[SymbolicCost]) -> SymbolicCost {
     paths
-        .into_iter()
+        .iter()
         .fold(SymbolicCost::ConstantCost { _0: 0 }, |acc, candidate| {
-            if dominates(&candidate, &acc) {
-                candidate
+            if dominates(candidate, &acc) {
+                candidate.clone()
             } else {
                 acc
             }

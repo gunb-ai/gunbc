@@ -103,10 +103,7 @@ pub fn loop_cost(p0: &[SymbolicCostEntry], p1: PortId) -> SymbolicCostLookup {
 pub fn linear_at(p0: PortId) -> SymbolicCostLookup {
     SymbolicCostLookup::FoundCost {
         _0: SymbolicCost::LinearCost {
-            _0: SizeVariable {
-                name: "n",
-                source_port: p0,
-            },
+            _0: SizeVariable { source_port: p0 },
         },
     }
 }
