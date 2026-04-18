@@ -51,6 +51,10 @@ use crate::dag::{
     TypeConnective, ValueBody, ValueNode,
 };
 use crate::operators::OperatorKind;
+use crate::variant_payload::{
+    variant_payload_shape, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
+    VariantPayloadShape,
+};
 
 /// Errors the Rust emitter surfaces when the DAG reaches a shape it
 /// cannot render under the PR-B scope. Each variant names a specific
@@ -496,6 +500,7 @@ struct RustLanguageSyntax {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CleanEmissionContractBinding {
     pattern_bindings: PatternBindingRuleBinding,
+    variant_payload_field_access: VariantPayloadFieldAccessRuleBinding,
 }
 
 /// Rust-valid slice of `std.clean_emission.PatternBindingRule`.
@@ -2697,7 +2702,7 @@ enum RenderMode {
 #[derive(Debug, Clone, Default)]
 struct RenderLocals {
     names: HashMap<PortId, LocalBinding>,
-    field_overrides: HashMap<PortId, HashMap<String, LocalBinding>>,
+    payload_bindings: HashMap<PortId, VariantPayloadBinding<LocalBinding>>,
 }
 
 #[allow(dead_code)]

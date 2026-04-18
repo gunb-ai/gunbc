@@ -423,6 +423,9 @@ data python_list_instantiation: PythonTypeInstantiationRealization = {
 //   dispatches on it. `NotApplicablePatternBinding` selects the
 //   substitute-at-render-time path (the emitter's existing behavior);
 //   any other rule is rejected at contract-parse time.
+// - `variant_payload_field_access` is LIVE — `emit_python` treats
+//   `__match` as the whole payload carrier for named payloads, while
+//   positional single-field payloads substitute `__match._0`.
 // - Every other field is authored-but-unread. Each field has a
 //   named rollout: the emitter change that consumes it removes
 //   the corresponding lint from the test-wrapper allow list in
@@ -435,6 +438,7 @@ data python_list_instantiation: PythonTypeInstantiationRealization = {
 data python_clean_emission: CleanEmissionContract = {
   expression_wrapping: WrapOnlyInOperandPosition
   pattern_bindings: NotApplicablePatternBinding
+  variant_payload_field_access: AccessFromPayloadBinding
   imports: IncludeOnlyReferenced
   block_return: ExplicitReturnKeyword
   variable_bindings: EmitLetBindingAlways

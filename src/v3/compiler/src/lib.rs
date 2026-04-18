@@ -128,6 +128,7 @@ mod lower;
 mod parse;
 mod pipeline_authority;
 mod tokenize;
+mod variant_payload;
 
 pub use dag::Dag;
 pub use diagnostics::{Diagnostic, SourceSpan};

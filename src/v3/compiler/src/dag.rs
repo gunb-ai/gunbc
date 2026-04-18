@@ -1363,6 +1363,27 @@ pub(crate) struct PatternBindingRuleVariants {
     pub not_applicable: Option<DeclarationId>,
 }
 
+/// Cached `VariantPayloadFieldAccessRule` variant DeclarationIds
+/// resolved from `src/v3/std/clean_emission.dag`. Populated at
+/// bootstrap end and consumed by emitters when parsing
+/// `CleanEmissionContract.variant_payload_field_access`.
+///
+/// Like `PatternBindingRuleVariants`, this central cache is the sole
+/// bridge from `clean_emission.dag`'s variant labels to typed
+/// `DeclarationId`s. That keeps the "how do target specs classify
+/// variant-payload field access?" fact in one place instead of letting
+/// three emitters re-resolve the same names independently (Q5
+/// construction authority).
+#[derive(Debug, Default, Clone)]
+pub(crate) struct VariantPayloadFieldAccessRuleVariants {
+    /// `AccessFromPayloadBinding` — the bound payload expression is a
+    /// whole carrier whose fields can be projected directly.
+    pub access_from_payload_binding: Option<DeclarationId>,
+    /// `OverrideNamedFieldsAtBindingSite` — named payload fields must
+    /// be broken into per-field bindings at the match site.
+    pub override_named_fields_at_binding_site: Option<DeclarationId>,
+}
+
 /// Cached `VerifierOutputPolicy` variant DeclarationIds resolved
 /// from `src/v3/std/clean_emission.dag`. Populated at bootstrap
 /// end alongside `PatternBindingRuleVariants`. The
@@ -1430,6 +1451,11 @@ pub struct Dag {
     /// central cache is the right shape instead of per-emitter
     /// name lookups.
     pattern_binding_rule_variants: PatternBindingRuleVariants,
+    /// Cached `VariantPayloadFieldAccessRule` variant DeclarationIds
+    /// resolved from `src/v3/std/clean_emission.dag`. Every emitter
+    /// reads these typed ids when parsing
+    /// `CleanEmissionContract.variant_payload_field_access`.
+    variant_payload_field_access_rule_variants: VariantPayloadFieldAccessRuleVariants,
     /// Cached `VerifierOutputPolicy` variant DeclarationIds
     /// resolved from `src/v3/std/clean_emission.dag`. The
     /// `post_emit_verifier` harness dispatches on the cached typed
@@ -1467,6 +1493,8 @@ impl Dag {
             target_syntax: TargetSyntaxCache::default(),
             stdlib_types: StdlibTypeCache::default(),
             pattern_binding_rule_variants: PatternBindingRuleVariants::default(),
+            variant_payload_field_access_rule_variants:
+                VariantPayloadFieldAccessRuleVariants::default(),
             verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),
             clusters: Vec::new(),
             optional_match_disjs: HashMap::new(),
@@ -1662,6 +1690,17 @@ impl Dag {
     /// field — see `PatternBindingRuleVariants` for the rationale.
     pub(crate) fn pattern_binding_rule_variants(&self) -> &PatternBindingRuleVariants {
         &self.pattern_binding_rule_variants
+    }
+
+    /// Typed accessor for the cached `VariantPayloadFieldAccessRule`
+    /// variant handles resolved from
+    /// `src/v3/std/clean_emission.dag`. Consumed by per-target
+    /// emitters when parsing
+    /// `CleanEmissionContract.variant_payload_field_access`.
+    pub(crate) fn variant_payload_field_access_rule_variants(
+        &self,
+    ) -> &VariantPayloadFieldAccessRuleVariants {
+        &self.variant_payload_field_access_rule_variants
     }
 
     /// Typed accessor for the cached `VerifierOutputPolicy` variant
@@ -2072,6 +2111,27 @@ impl Dag {
             }
         }
         self.pattern_binding_rule_variants = pattern_binding_variants;
+
+        let mut variant_payload_field_access_variants =
+            VariantPayloadFieldAccessRuleVariants::default();
+        if let Some(parent) = self.declaration_by_name("VariantPayloadFieldAccessRule") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "AccessFromPayloadBinding" => {
+                            variant_payload_field_access_variants
+                                .access_from_payload_binding = Some(variant.ty);
+                        }
+                        "OverrideNamedFieldsAtBindingSite" => {
+                            variant_payload_field_access_variants
+                                .override_named_fields_at_binding_site = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        self.variant_payload_field_access_rule_variants = variant_payload_field_access_variants;
 
         // `VerifierOutputPolicy` variant resolution. Same shape as
         // the pattern-binding cache above: one walk of the Disj's
