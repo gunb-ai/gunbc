@@ -409,6 +409,49 @@ let zero: Int = 0",
 ///     cargo test -p v3-compiler --test m1_3_emit_rust_test \
 ///         emit_rust_unused_payload_binding_passes_deny_unused \
 ///         -- --ignored --nocapture
+/// E-5 / Lane 1 Stage 1c PR 4 — the pilot Rust source passes
+/// `rust_clean_emission.post_emit_verifier` as invoked through the
+/// shared harness. The harness reads command / args / syntax_only /
+/// expected_exit_code / output_policy from the contract; the test
+/// does not hardcode `rustc -D warnings`. Adding a verifier flag
+/// (e.g. `--edition=2024`) means editing `spec/rust.dag` — the
+/// harness picks it up automatically.
+///
+/// Gated behind `#[ignore]` like `emit_rust_unused_payload_binding_passes_deny_unused`
+/// above — CI sandboxes don't always carry rustc. Run locally:
+///
+///     cargo test -p v3-compiler --test m1_3_emit_rust_test \
+///         rust_pilot_source_passes_post_emit_verifier_harness \
+///         -- --ignored --nocapture
+#[test]
+#[ignore]
+fn rust_pilot_source_passes_post_emit_verifier_harness() {
+    use v3_compiler::post_emit_verifier::{parse_post_emit_verifier, run_post_emit_verifier};
+    // `ignore_payload` has to be called so rustc's dead_code
+    // (implied by -D warnings) does not fire on it. The pilot rule
+    // under test is `pattern_bindings = EmitUnderscoreWhenUnused`
+    // — the unused `value` inside the match arm; the let-binding
+    // below wires the fn into `main` so the rest of the emitted
+    // module stays warning-clean.
+    let source = "type BoxedInt = Boxed(Int) | Empty
+fn ignore_payload(b: BoxedInt) -> Int = match b { Boxed(value) => 0, Empty => 1 }
+let result: Int = ignore_payload(Empty)";
+    let dag =
+        v3_compiler::compile_to_dag(source, "rust_post_emit_verifier.v3").expect("source compiles");
+    let spec = dag
+        .rust_clean_emission_spec()
+        .expect("rust_clean_emission cached");
+    let binding = parse_post_emit_verifier(&dag, spec).expect("parse contract");
+    let rendered = v3_compiler::emit_rust::emit_rust(&dag).expect("emits rust");
+    let tmp_dir = harness().next_child_dir();
+    let src_path = tmp_dir.join("main.rs");
+    std::fs::File::create(&src_path)
+        .and_then(|mut f| f.write_all(rendered.as_bytes()))
+        .expect("write rust source");
+    run_post_emit_verifier(&binding, &src_path)
+        .expect("rust post_emit_verifier rejected pilot source — E-5 contract regression");
+}
+
 #[test]
 #[ignore]
 fn emit_rust_unused_payload_binding_passes_deny_unused() {

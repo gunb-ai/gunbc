@@ -221,3 +221,51 @@ let result: Int = ignore_payload(Empty)
     };
     assert_eq!(stdout, "1");
 }
+
+/// E-5 / Lane 1 Stage 1c PR 4 — emitted Go passes
+/// `go_clean_emission.post_emit_verifier` as invoked through the
+/// shared harness. The verifier (gofmt -l + RequireEmptyStdout)
+/// enforces format-cleanliness by construction — gofmt lists
+/// ill-formatted files on stdout while exiting 0, so the output
+/// policy is the load-bearing verdict channel, not the exit code.
+///
+/// Gated behind `#[ignore]` like the other `go_*` roundtrips — CI
+/// sandboxes don't always carry a Go toolchain. Run locally:
+///
+///     cargo test -p v3-compiler --test m1_3_emit_go_test \
+///         go_pilot_source_passes_post_emit_verifier_harness \
+///         -- --ignored --nocapture
+#[test]
+#[ignore]
+fn go_pilot_source_passes_post_emit_verifier_harness() {
+    use v3_compiler::post_emit_verifier::{parse_post_emit_verifier, run_post_emit_verifier};
+    let go_available = Command::new("gofmt")
+        .arg("-h")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .ok()
+        .is_some_and(|status| status.code().is_some());
+    if !go_available {
+        return;
+    }
+    let source = "\
+type BoxedInt = Boxed(Int) | Empty
+fn ignore_payload(b: BoxedInt) -> Int = match b { Boxed(value) => 0, Empty => 1 }
+let result: Int = ignore_payload(Empty)
+";
+    let dag = compile_to_dag(source, "go_post_emit_verifier.v3").expect("source compiles");
+    let spec = dag
+        .go_clean_emission_spec()
+        .expect("go_clean_emission cached");
+    let binding = parse_post_emit_verifier(&dag, spec).expect("parse contract");
+    let rendered = emit_go(&dag).expect("emits go");
+    let tmp_dir = next_roundtrip_dir();
+    std::fs::create_dir_all(&tmp_dir).expect("create tmp dir");
+    let src_path = tmp_dir.join("main.go");
+    std::fs::File::create(&src_path)
+        .and_then(|mut f| f.write_all(rendered.as_bytes()))
+        .expect("write go source");
+    run_post_emit_verifier(&binding, &src_path)
+        .expect("go post_emit_verifier rejected pilot source — E-5 contract regression");
+}
