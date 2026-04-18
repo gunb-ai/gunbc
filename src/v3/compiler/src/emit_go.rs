@@ -2805,7 +2805,19 @@ mod tests {
         )
         .expect("compiles");
         let rendered = emit_go_module(&dag).expect("go emitter should render match");
-        assert!(rendered.contains("payload := v; return"), "got: {rendered}");
-        assert!(!rendered.contains("payload := v.value;"), "got: {rendered}");
+        assert!(rendered.contains("case Cons: return v.head"), "got: {rendered}");
+        assert!(!rendered.contains("payload := v;"), "got: {rendered}");
+    }
+
+    #[test]
+    fn go_named_single_field_variant_payload_binding_uses_the_variant_value() {
+        let dag = compile_to_dag(
+            "type Point { x: Int y: Int }\ntype Wrapped = Wrap { inner: Point } | Empty\nfn unwrap_or_zero(w: Wrapped) -> Int = match w { Wrap(payload) => payload.inner.x, Empty => 0 }\n",
+            "variant_payload_named_single.v3",
+        )
+        .expect("compiles");
+        let rendered = emit_go_module(&dag).expect("go emitter should render match");
+        assert!(rendered.contains("case Wrap: return v.inner.x"), "got: {rendered}");
+        assert!(!rendered.contains("payload := v.inner;"), "got: {rendered}");
     }
 }
