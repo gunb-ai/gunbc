@@ -395,7 +395,7 @@ IAM.grant(...)                              // UpsertEffect (idempotent)
 AuditLog.append(event=...)                  // AppendEffect (breaking)
 ```
 
-Encoded as `LinearEffect { ops: [upsert, exchange, grant, append] }`. Stage 2b calls `compose_effects`, receives `CompositionVerdict::BrokenBy { first_breaker: BreakingOperation { operation_name: "AuditLog.append", shape: IsBreaking(AppendEffect) } }`. Report red with diagnostic naming `AuditLog.append` as the breaker. ✓ — mirrors `lane2-compile-time-proofs.md` §Stage 2b Acceptance fixture 2.
+Encoded as `LinearEffect { ops: [upsert, exchange, grant, append] }`. Stage 2b calls `compose_effects`, receives `CompositionVerdict::BrokenBy { first_breaker: BreakingOperation { operation_name: "AuditLog.append", shape: AppendEffect } }`. (`BreakingOperation.shape: BreakingShape` already narrows to the breaking subset — no `IsBreaking` wrapper.) Report red with diagnostic naming `AuditLog.append` as the breaker. ✓ — mirrors `lane2-compile-time-proofs.md` §Stage 2b Acceptance fixture 2.
 
 **Workflow C — retry with nested branch (Stage 2b diagnostic).**
 
