@@ -357,7 +357,24 @@ impl CleanEmissionContractBinding {
             })?;
         let pattern_bindings =
             parse_pattern_binding_rule(dag, pattern_bindings_value, declaration)?;
-        Ok(Self { pattern_bindings })
+        let variant_payload_field_access_value = fields
+            .iter()
+            .find(|(label, _)| label == "variant_payload_field_access")
+            .map(|(_, value)| value)
+            .ok_or(EmitPythonError::MalformedSpec {
+                declaration,
+                detail:
+                    "python_clean_emission is missing required `variant_payload_field_access` field",
+            })?;
+        let variant_payload_field_access = parse_variant_payload_field_access_rule(
+            dag,
+            variant_payload_field_access_value,
+            declaration,
+        )?;
+        Ok(Self {
+            pattern_bindings,
+            variant_payload_field_access,
+        })
     }
 }
 
@@ -440,6 +457,58 @@ fn parse_pattern_binding_rule(
             declaration,
             detail:
                 "python_clean_emission.pattern_bindings constructor is not a known PatternBindingRule variant",
+        })
+    }
+}
+
+fn parse_variant_payload_field_access_rule(
+    dag: &Dag,
+    value: &FieldValue,
+    declaration: DeclarationId,
+) -> Result<VariantPayloadFieldAccessRuleBinding, EmitPythonError> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return Err(EmitPythonError::MalformedSpec {
+            declaration,
+            detail:
+                "python_clean_emission.variant_payload_field_access must be a VariantPayloadFieldAccessRule variant",
+        });
+    };
+    if !payload.is_empty() {
+        return Err(EmitPythonError::MalformedSpec {
+            declaration,
+            detail: "VariantPayloadFieldAccessRule variants must not carry payload fields",
+        });
+    }
+    let variants = dag.variant_payload_field_access_rule_variants();
+    let access_from_payload_binding =
+        variants
+            .access_from_payload_binding
+            .ok_or(EmitPythonError::MalformedSpec {
+                declaration,
+                detail:
+                    "VariantPayloadFieldAccessRule.AccessFromPayloadBinding declaration was not found",
+            })?;
+    let override_named_fields_at_binding_site = variants
+        .override_named_fields_at_binding_site
+        .ok_or(EmitPythonError::MalformedSpec {
+            declaration,
+            detail: "VariantPayloadFieldAccessRule.OverrideNamedFieldsAtBindingSite declaration was not found",
+        })?;
+    if *constructor == access_from_payload_binding {
+        Ok(VariantPayloadFieldAccessRuleBinding::AccessFromPayloadBinding)
+    } else if *constructor == override_named_fields_at_binding_site {
+        Err(EmitPythonError::MalformedSpec {
+            declaration,
+            detail: "python_clean_emission.variant_payload_field_access cannot use VariantPayloadFieldAccessRule.OverrideNamedFieldsAtBindingSite; Python requires AccessFromPayloadBinding for native match carriers",
+        })
+    } else {
+        Err(EmitPythonError::MalformedSpec {
+            declaration,
+            detail: "python_clean_emission.variant_payload_field_access constructor is not a known VariantPayloadFieldAccessRule variant",
         })
     }
 }
@@ -578,6 +647,13 @@ impl<'a> Ctx<'a> {
         if let Some(name) = locals.names.get(&port) {
             return Ok(name.clone());
         }
+        if let Some(name) = locals
+            .payload_bindings
+            .get(&port)
+            .and_then(VariantPayloadBinding::direct)
+        {
+            return Ok(name.clone());
+        }
         if let Some(name) = self.bound_names.get(&port) {
             return Ok(name.clone());
         }
@@ -611,6 +687,13 @@ impl<'a> Ctx<'a> {
         match &t.target {
             TransformTarget::Operator(op) => self.render_operator(t, *op, locals),
             TransformTarget::FieldProject { field_label, .. } => {
+                if let Some(binding) = locals
+                    .payload_bindings
+                    .get(&t.inputs[0])
+                    .and_then(|binding| binding.field(field_label))
+                {
+                    return Ok(binding.clone());
+                }
                 let object = self.render_port(t.inputs[0], locals)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.field_access,
@@ -712,9 +795,11 @@ impl<'a> Ctx<'a> {
         let empty_body = self.render_path_body(empty_path, locals)?;
         let mut cons_locals = locals.clone();
         if let Some(binding) = &cons_path.binding {
-            cons_locals.names.insert(
+            cons_locals.payload_bindings.insert(
                 binding.payload_port,
-                "types.SimpleNamespace(head=__match[0], tail=__match[1:])".to_string(),
+                VariantPayloadBinding::Direct(
+                    "types.SimpleNamespace(head=__match[0], tail=__match[1:])".to_string(),
+                ),
             );
         }
         let cons_body = self.render_port(cons_path.output, &cons_locals)?;
@@ -740,7 +825,7 @@ impl<'a> Ctx<'a> {
         let mut rendered = "__v3_unreachable(\"non-exhaustive match\")".to_string();
         for path in branch.paths.iter().rev() {
             let cond = self.render_branch_condition(disj_id, is_optional, path)?;
-            let body = self.render_branch_body_expr(disj_id, is_optional, path, locals)?;
+            let body = self.render_branch_body_expr(is_optional, path, locals)?;
             rendered = format!("({body} if {cond} else {rendered})");
         }
         Ok(format!("(lambda __match: {rendered})({scrutinee})"))
@@ -779,7 +864,6 @@ impl<'a> Ctx<'a> {
     /// the renderer only sees Python-valid states.
     fn render_branch_body_expr(
         &self,
-        disj_id: DeclarationId,
         is_optional: bool,
         path: &Path,
         locals: &RenderLocals,
@@ -788,42 +872,53 @@ impl<'a> Ctx<'a> {
         if let Some(binding) = &path.binding {
             match self.indexes.clean_emission.pattern_bindings {
                 PatternBindingRuleBinding::NotApplicable => {
-                    let extracted = self.render_match_binding(disj_id, is_optional, path)?;
-                    arm_locals.names.insert(binding.payload_port, extracted);
+                    if let Some(payload_binding) =
+                        self.render_variant_payload_binding(is_optional, path)?
+                    {
+                        arm_locals
+                            .payload_bindings
+                            .insert(binding.payload_port, payload_binding);
+                    }
                 }
             }
         }
         self.render_port(path.output, &arm_locals)
     }
 
-    fn render_match_binding(
+    fn render_variant_payload_binding(
         &self,
-        disj_id: DeclarationId,
         is_optional: bool,
         path: &Path,
-    ) -> Result<String, EmitPythonError> {
+    ) -> Result<Option<VariantPayloadBinding<String>>, EmitPythonError> {
         if is_optional {
-            return Ok("__match".to_string());
+            return Ok(Some(VariantPayloadBinding::Direct("__match".to_string())));
         }
         let variant_id = resolved_pattern_id(path)?;
-        let TypeConnective::Disj { variants } = &self.dag.declaration(disj_id).connective else {
-            unreachable!("match parent must be a disjunction")
+        let Some(shape) = variant_payload_shape(self.dag, variant_id) else {
+            return Ok(Some(VariantPayloadBinding::Direct("__match".to_string())));
         };
-        let variant = variants
-            .iter()
-            .find(|variant| variant.ty == variant_id)
-            .ok_or_else(|| {
-                EmitPythonError::Unsupported(
-                    "match variant missing from parent disjunction".to_string(),
-                )
-            })?;
-        let TypeConnective::Conj { children } = &self.dag.declaration(variant.ty).connective else {
-            return Ok("__match".to_string());
-        };
-        if children.len() == 1 && children[0].label == "_0" {
-            return Ok("__match._0".to_string());
-        }
-        Ok("__match".to_string())
+        Ok(match shape {
+            VariantPayloadShape::Empty => None,
+            VariantPayloadShape::PositionalSingle => {
+                Some(VariantPayloadBinding::Direct("__match._0".to_string()))
+            }
+            VariantPayloadShape::NamedFields(field_labels) => {
+                match self.indexes.clean_emission.variant_payload_field_access {
+                    VariantPayloadFieldAccessRuleBinding::AccessFromPayloadBinding => {
+                        Some(VariantPayloadBinding::Direct("__match".to_string()))
+                    }
+                    VariantPayloadFieldAccessRuleBinding::OverrideNamedFieldsAtBindingSite => {
+                        let fields = field_labels
+                            .into_iter()
+                            .map(|field_label| {
+                                (field_label.clone(), format!("__match.{field_label}"))
+                            })
+                            .collect();
+                        Some(VariantPayloadBinding::Fields(fields))
+                    }
+                }
+            }
+        })
     }
 
     fn render_path_body(
@@ -831,13 +926,7 @@ impl<'a> Ctx<'a> {
         path: &Path,
         locals: &RenderLocals,
     ) -> Result<String, EmitPythonError> {
-        let mut arm_locals = locals.clone();
-        if let Some(binding) = &path.binding {
-            arm_locals
-                .names
-                .insert(binding.payload_port, binding.binding_name.clone());
-        }
-        self.render_port(path.output, &arm_locals)
+        self.render_port(path.output, locals)
     }
 
     fn render_loop(
