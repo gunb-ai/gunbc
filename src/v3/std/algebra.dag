@@ -171,22 +171,27 @@ fn dominates(a: SymbolicCost, b: SymbolicCost) -> Bool =
         SumCost(_) => False
         UnknownCost(_) => False
       }
-    ProductCost(terms_a) => composite_dominates(terms_a, b)
-    SumCost(terms_a) => composite_dominates(terms_a, b)
-  }
-
-// Composite dominance: `Sum([A, B])` and `Product([A, B])` bound
-// each child from below, so the composite dominates `b` iff *any*
-// child does. Fixes PR #537 review (codex): prior code hardcoded
-// `LinearCost(_) => True` / `LogCost(_) => True` without inspecting
-// terms, so e.g. `Product([Log(n)])` incorrectly dominated
-// `Linear(n)`. Mirrors the Rust fix in `dag.rs`.
-fn composite_dominates(terms: List<SymbolicCost>, b: SymbolicCost) -> Bool =
-  match terms {
-    Empty => False
-    Cons(payload) =>
-      if dominates(payload.head, b) then True
-      else composite_dominates(payload.tail, b)
+    // Conservative fallback: the correct "dominant child summary"
+    // rule walks the composite's children and returns True iff any
+    // child dominates `b`. Expressing that walk in .dag requires
+    // mutual recursion between `dominates` (descending on
+    // `SymbolicCost`) and a list-iterating helper (descending on
+    // `List<SymbolicCost>`), which v3's termination analyzer
+    // cannot prove yet — cluster descent witnesses in #519 share
+    // a single type, and cross-type mutual recursion lands as a
+    // substrate extension (flagged as a Lane 1 / Stage 2d+
+    // follow-up in the ROADMAP). The Rust mirror in
+    // `src/v3/compiler/src/dag.rs::dominates` carries the
+    // recursive form; this .dag branch returns `False` as a
+    // conservative over-approximation — callers that ask "does a
+    // composite dominate `b`" get `False` (safe: composite stays
+    // in `drop_dominated`'s keep list, `max_path` preferring
+    // scalars), never a false True that could drop legitimate
+    // terms. The generated Rust projection of this lens is not
+    // affected because it reads through the Rust `dominates`
+    // function directly.
+    ProductCost(_) => False
+    SumCost(_) => False
   }
 
 fn same_size_variable(a: SizeVariable, b: SizeVariable) -> Bool =

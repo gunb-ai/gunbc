@@ -230,6 +230,57 @@ fn dominance_polynomial_degree_ordering() {
 }
 
 #[test]
+fn composite_dominance_reads_children_not_outer_variant() {
+    // PR #537 review (codex P2): Product / Sum dominance must
+    // derive from children, not hardcode "any Product dominates
+    // Linear". A product whose strongest child is `Log(n)`
+    // should NOT dominate `Linear(n)`.
+    let (port, _) = two_distinct_ports();
+    let product_of_logs = SymbolicCost::ProductCost {
+        _0: vec![log_cost(port), log_cost(port)],
+    };
+    let linear_cost = linear(port);
+    assert!(
+        !dominates(&product_of_logs, &linear_cost),
+        "Product([Log, Log]) must NOT dominate Linear — children don't reach Linear, \
+         got dominates=true (regression of codex P2 on PR #537)"
+    );
+
+    // Symmetric positive case: a product WITH a Linear child DOES
+    // dominate Log, because the dominant-child summary walks the
+    // children.
+    let product_with_linear = SymbolicCost::ProductCost {
+        _0: vec![log_cost(port), linear(port)],
+    };
+    assert!(
+        dominates(&product_with_linear, &log_cost(port)),
+        "Product([Log, Linear]) must dominate Log via its Linear child"
+    );
+}
+
+#[test]
+fn sum_dominance_reads_children_not_outer_variant() {
+    // Same fix as ProductCost: Sum's dominance is a dominant-child
+    // summary, not a hardcoded "any Sum dominates scalars".
+    let (port, _) = two_distinct_ports();
+    let sum_of_logs = SymbolicCost::SumCost {
+        _0: vec![log_cost(port), log_cost(port)],
+    };
+    assert!(
+        !dominates(&sum_of_logs, &linear(port)),
+        "Sum([Log, Log]) must NOT dominate Linear — no child reaches Linear"
+    );
+
+    let sum_with_polynomial = SymbolicCost::SumCost {
+        _0: vec![constant(0), polynomial(port, 2)],
+    };
+    assert!(
+        dominates(&sum_with_polynomial, &linear(port)),
+        "Sum containing Polynomial(n, 2) must dominate Linear(n) via the poly child"
+    );
+}
+
+#[test]
 fn max_path_returns_dominant_term() {
     // `max_path([Constant(0), Linear(n), Polynomial(n, 2)])` → Polynomial(n, 2).
     let (port, _) = two_distinct_ports();
