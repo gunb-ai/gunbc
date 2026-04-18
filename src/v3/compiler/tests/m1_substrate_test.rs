@@ -522,10 +522,15 @@ fn m17_operator_lowers_to_structural_transform_target() {
     // anonymous stub declaration is allocated for the operator
     // symbol; the dispatch fact lives on the Transform's variant.
     let dag = compile_to_dag("let x = 1 + 2", "test.v3").expect("compiles");
+    // Scope to user-source transforms — std modules loaded by
+    // bootstrap (e.g. `src/v3/std/algebra.dag`) also push Transform
+    // nodes, so the first entry in `dag.nodes()` is no longer
+    // guaranteed to be the user's.
     let add_node = dag
         .nodes()
         .iter()
-        .find_map(Behavior::as_transform)
+        .filter_map(Behavior::as_transform)
+        .find(|t| t.span.file == "test.v3")
         .expect("Transform node exists");
     match &add_node.target {
         TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)) => {}
@@ -543,7 +548,8 @@ fn m17_comparison_operator_lowers_to_structural_transform_target() {
     let cmp_node = dag
         .nodes()
         .iter()
-        .find_map(Behavior::as_transform)
+        .filter_map(Behavior::as_transform)
+        .find(|t| t.span.file == "test.v3")
         .expect("Transform node exists");
     match &cmp_node.target {
         TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Lt)) => {}
@@ -566,7 +572,7 @@ fn m17_user_function_call_lowers_to_callable_target() {
         .nodes()
         .iter()
         .filter_map(Behavior::as_transform)
-        .find(|t| matches!(&t.target, TransformTarget::Callable(_)))
+        .find(|t| t.span.file == "test.v3" && matches!(&t.target, TransformTarget::Callable(_)))
         .expect("Callable Transform exists");
     let target_id = match &f_call.target {
         TransformTarget::Callable(id) => *id,
@@ -1308,10 +1314,14 @@ fn classify(h: Hue) -> Int = match h { Red => 0, Green => 1, Blue => 2 }
 
     // The Branch exists and its pattern resolution ran through
     // the alias walk — each path should carry a ResolvedVariant.
+    // Scope to the user-source branch: bootstrap modules (notably
+    // `src/v3/std/algebra.dag`) now push Branch nodes for their own
+    // if/else lowering, so first-match is no longer reliable.
     let branch = dag
         .nodes()
         .iter()
-        .find_map(Behavior::as_branch)
+        .filter_map(Behavior::as_branch)
+        .find(|b| b.span.file == "aliased_sum.v3")
         .expect("Branch exists");
     assert_eq!(branch.paths.len(), 3);
     for path in &branch.paths {
@@ -1409,12 +1419,17 @@ let c = a(1)
         0,
         "failed mutual recursion must not materialize a cluster witness"
     );
+    // Scope the Loop check to this fixture — bootstrap std modules
+    // (e.g. `src/v3/std/algebra.dag`) correctly materialize Loop
+    // nodes for their own structural recursion, so a global
+    // `filter_map(as_loop).next().is_none()` no longer reflects the
+    // test's intent ("user's non-terminating SCC didn't fabricate a
+    // Loop").
     assert!(
         dag.nodes()
             .iter()
             .filter_map(Behavior::as_loop)
-            .next()
-            .is_none(),
+            .all(|l| l.span.file != "mutual_recursion_cascade.v3"),
         "failed mutual recursion must not fabricate Loop materialization"
     );
 }
@@ -2809,12 +2824,14 @@ fn odd(n: Int, even: fn(Int) -> Bool) -> Bool = even(n)
         0,
         "shadowed callable parameters are not top-level mutual recursion"
     );
+    // Scope the Loop check to this fixture's source — bootstrap
+    // std modules legitimately contribute Loop nodes for their own
+    // structural recursion (e.g. `src/v3/std/algebra.dag::drop_zero`).
     assert!(
         dag.nodes()
             .iter()
             .filter_map(Behavior::as_loop)
-            .next()
-            .is_none(),
+            .all(|l| l.span.file != "mutual_shadowing_false_positive.v3"),
         "shadowed callable parameters must not introduce synthetic recursion loops"
     );
 }
