@@ -590,9 +590,12 @@ pub struct TemplateArgument {
 ///
 /// Verdict: terminal form is 3 variants (`UserDefined`,
 /// `ExternalRealization`, `NoBody`). The 5-variant shape is a
-/// transition state; both remaining scaffolds (`Pending`, `Unparsed`)
-/// have named triggers and (for `Unparsed`) an explicit user-range
-/// boundary gate.
+/// transition state: `Pending` and **case-1** `Unparsed` are scaffolds with
+/// named dissolution (M3 / M2 grammar). **`Unparsed` on `pipeline.dag`'s
+/// `compile` (DB-16 case 2c)** is different — **persistent bootstrap-range
+/// ordering authority** until structural pipeline order supersedes span
+/// extraction; it does **not** share case 1’s “wait for M2 parser” story. User-range
+/// `Unparsed` stays gated (R14).
 #[derive(Debug, Clone)]
 pub enum ArrowBody {
     /// User-defined function. NodeId is the root of a sub-DAG of L1 behavior
