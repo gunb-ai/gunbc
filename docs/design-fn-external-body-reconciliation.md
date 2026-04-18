@@ -50,7 +50,9 @@ Substrate accessor callables (DB-14) are **out of scope** for this design doc: d
 
 `pipeline.dag` also declares `fn compile(...) -> String { parse \n lower \n infer \n ... }`. Like other block-bodied compiler fns, it parses as `FnExternalBody` → `ArrowBody::Unparsed(body_span)`. There is **no** `PipelineStageBinding` for `compile` itself — only per-stage fns get that rewrite — so **`Unparsed` persists for `compile` after bootstrap.** Downstream, `pipeline_compile_order_stage_names` reads **`compile`'s body span** as the authoritative ordering surface for which stages exist and in what sequence. This is not case 1 parse lag: the body is intentional structured text consumed by the compiler, not std/ grammar debt waiting for M2.
 
-**Dissolution trigger:** distinct from case 1 and from per-stage case 2a. Any change that retires `Unparsed` for `compile` must preserve or replace this ordering authority path.
+**Receipt — terminal (bootstrap-range):** 2c is **not** an interim bridge to `ExternalRealization` (nothing to “realize” for `compile` itself). For today’s substrate, the span is the **intended terminal carrier** of ordering facts at the `Arrow → body` edge — the meeting point is still structural (`Unparsed` holds the span token), but the *role* is compiler ordering authority, not user execution body.
+
+**Dissolution trigger (future):** introduce a **first-class structural representation** of pipeline stage order (e.g. ordered data in `pipeline.dag` or a dedicated substrate carrier) that `pipeline_authority` can read without scraping `compile`'s text; migrate consumers, then retire span-based extraction. **Not** “wait for M2 to parse `compile` as `SurfaceExpr`” — that would confuse ordering metadata with user grammar growth.
 
 ### Why the conflation is a real risk
 

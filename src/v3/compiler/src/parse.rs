@@ -98,7 +98,9 @@ pub struct SurfaceModule {
 /// Verdict: terminal at M1(2.7) modulo the two M2 collapses noted
 /// above. `FnExternalBody` dissolution (DB-16): case 1 via parser growth;
 /// pipeline **case 2a** via bootstrap `ExternalRealization`; **`compile` (2c)**
-/// keeps `Unparsed` for ordering authority.
+/// keeps `Unparsed` as the **terminal** ordering-authority encoding until a
+/// structural pipeline-order carrier supersedes span extraction (see variant
+/// docs).
 #[derive(Debug, Clone)]
 pub enum SurfaceItem {
     Let {
