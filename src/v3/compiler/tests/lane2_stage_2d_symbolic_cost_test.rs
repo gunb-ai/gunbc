@@ -4,18 +4,18 @@
 // `src/v3/compiler/src/lens_cost_symbolic_generated.rs`).
 //
 // These tests pin the per-Behavior lowering contract DB-7 specifies
-// — every Behavior variant produces a honest asymptotic bound, and
+// — every Behavior variant produces an honest asymptotic bound, and
 // the composition algebra in `src/v3/std/algebra.dag` (+ its Rust
 // mirror in `dag.rs`) normalizes correctly.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    dominates, iterate, max_path, normalize, sequential, Behavior, PortId, SizeVariable,
+    dominates, iterate, max_path, normalize, sequential, Behavior, Dag, PortId, SizeVariable,
     SymbolicCost,
 };
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 
-fn find_bind_value(dag: &v3_compiler::dag::Dag, name: &str) -> PortId {
+fn find_bind_value(dag: &Dag, name: &str) -> PortId {
     dag.nodes()
         .iter()
         .filter_map(Behavior::as_bind)
@@ -24,7 +24,7 @@ fn find_bind_value(dag: &v3_compiler::dag::Dag, name: &str) -> PortId {
         .value
 }
 
-fn expect_cost(dag: &v3_compiler::dag::Dag, port: PortId) -> SymbolicCost {
+fn expect_cost(dag: &Dag, port: PortId) -> SymbolicCost {
     match symbolic_cost_of(dag, &port) {
         SymbolicCostLookup::FoundCost { _0: cost } => cost,
         SymbolicCostLookup::MissingCost => {
@@ -52,8 +52,44 @@ fn mentions_linear(cost: &SymbolicCost) -> bool {
     }
 }
 
+// Two real PortIds from the bootstrap Dag — just need distinct
+// handles for the structural-equality checks the composition tests
+// exercise. `Dag::new()` ports are stable across runs.
+fn two_distinct_ports() -> (PortId, PortId) {
+    let dag = Dag::new();
+    let ports: Vec<PortId> = dag.ports().iter().map(|p| p.id()).collect();
+    assert!(
+        ports.len() >= 2,
+        "bootstrap Dag should allocate at least two ports"
+    );
+    (ports[0], ports[1])
+}
+
 fn size_var(source_port: PortId) -> SizeVariable {
     SizeVariable { source_port }
+}
+
+fn linear(port: PortId) -> SymbolicCost {
+    SymbolicCost::LinearCost {
+        _0: size_var(port),
+    }
+}
+
+fn polynomial(port: PortId, degree: i64) -> SymbolicCost {
+    SymbolicCost::PolynomialCost {
+        var: size_var(port),
+        degree,
+    }
+}
+
+fn log_cost(port: PortId) -> SymbolicCost {
+    SymbolicCost::LogCost {
+        _0: size_var(port),
+    }
+}
+
+fn constant(n: i64) -> SymbolicCost {
+    SymbolicCost::ConstantCost { _0: n }
 }
 
 // ── Per-Behavior lowering ────────────────────────────────────────
@@ -70,11 +106,9 @@ fn value_reports_constant() {
 }
 
 #[test]
-fn transform_single_op_reports_constant_only_sum() {
-    // `let x = 1 + 2` → sequential(Constant(1), Constant(0) + Constant(0))
-    // After normalization: Constant wrapper carrying the op-count —
-    // the lens reports Constant for a pure-scalar single op, which
-    // is the correct asymptotic bound: O(1).
+fn transform_single_op_reports_constant() {
+    // `let x = 1 + 2` → sequential(Constant(1), sum(Constant(0), Constant(0)))
+    // → Constant wrapper. Asymptotically O(1).
     let cost = bind_cost("let x = 1 + 2", "test.v3", "x");
     assert!(
         is_constant(&cost),
@@ -111,17 +145,17 @@ fn recursive_fn_reports_linear_via_loop_lowering() {
     );
 }
 
-// ── Composition algebra ─────────────────────────────────────────
+// ── Composition algebra (std.algebra Rust mirror) ────────────────
 
 #[test]
-fn sum_of_linear_and_constant_normalizes_to_linear() {
-    // DB-7 acceptance gate: `SumCost([LinearCost, ConstantCost])`
-    // normalizes to `LinearCost` (Constant is dominated).
-    let port = PortId::new(0);
-    let linear = SymbolicCost::LinearCost { _0: size_var(port) };
-    let result = sequential(linear.clone(), SymbolicCost::ConstantCost { _0: 0 });
+fn sum_of_linear_and_constant_zero_normalizes_to_linear() {
+    // DB-7 acceptance gate: `SumCost([LinearCost, ConstantCost(0)])`
+    // normalizes to `LinearCost` (zero drops out).
+    let (port, _) = two_distinct_ports();
+    let l = linear(port);
+    let result = sequential(l.clone(), constant(0));
     assert_eq!(
-        result, linear,
+        result, l,
         "Linear + Constant(0) should normalize to Linear, got {result:?}"
     );
 }
@@ -129,11 +163,10 @@ fn sum_of_linear_and_constant_normalizes_to_linear() {
 #[test]
 fn sum_of_constant_and_linear_normalizes_to_linear() {
     // Dominance is order-independent: Constant + Linear also
-    // normalizes to Linear.
-    let port = PortId::new(0);
-    let linear = SymbolicCost::LinearCost { _0: size_var(port) };
-    let result = sequential(SymbolicCost::ConstantCost { _0: 5 }, linear.clone());
-    // ConstantCost(5) is non-zero but still dominated by Linear.
+    // normalizes to Linear (Constant is dominated).
+    let (port, _) = two_distinct_ports();
+    let l = linear(port);
+    let result = sequential(constant(5), l);
     assert!(
         matches!(result, SymbolicCost::LinearCost { .. }),
         "Constant + Linear should normalize to Linear, got {result:?}"
@@ -144,9 +177,9 @@ fn sum_of_constant_and_linear_normalizes_to_linear() {
 fn product_of_two_linears_over_same_var_folds_to_polynomial_squared() {
     // DB-7 §"Nested fold detection (O(n²) diagnostic)":
     // `iterate(Linear(n), Linear(n))` folds to `Polynomial(n, 2)`.
-    let port = PortId::new(0);
-    let linear = SymbolicCost::LinearCost { _0: size_var(port) };
-    let result = iterate(linear.clone(), linear);
+    let (port, _) = two_distinct_ports();
+    let l = linear(port);
+    let result = iterate(l.clone(), l);
     match result {
         SymbolicCost::PolynomialCost { var, degree } => {
             assert_eq!(var, size_var(port));
@@ -161,15 +194,8 @@ fn product_of_linears_over_different_vars_stays_product() {
     // Two folds over DISTINCT lists stay as ProductCost — the
     // two size variables aren't the same, so the polynomial
     // collapse doesn't fire.
-    let port_a = PortId::new(0);
-    let port_b = PortId::new(1);
-    let linear_a = SymbolicCost::LinearCost {
-        _0: size_var(port_a),
-    };
-    let linear_b = SymbolicCost::LinearCost {
-        _0: size_var(port_b),
-    };
-    let result = iterate(linear_a, linear_b);
+    let (port_a, port_b) = two_distinct_ports();
+    let result = iterate(linear(port_a), linear(port_b));
     assert!(
         matches!(result, SymbolicCost::ProductCost { .. }),
         "Linear(a) * Linear(b) over different ports should stay Product, got {result:?}"
@@ -179,53 +205,34 @@ fn product_of_linears_over_different_vars_stays_product() {
 #[test]
 fn dominance_unknown_dominates_everything() {
     // DB-7 §"Dominance" — Unknown is the safest over-approximation.
-    let port = PortId::new(0);
+    let (port, _) = two_distinct_ports();
     let unknown = SymbolicCost::UnknownCost {
         _0: "reflection".to_string(),
     };
-    let linear = SymbolicCost::LinearCost { _0: size_var(port) };
-    assert!(dominates(&unknown, &linear));
-    assert!(dominates(&unknown, &SymbolicCost::ConstantCost { _0: 0 }));
+    assert!(dominates(&unknown, &linear(port)));
+    assert!(dominates(&unknown, &constant(0)));
 }
 
 #[test]
 fn dominance_linear_dominates_log_and_constant() {
-    let port = PortId::new(0);
-    let linear = SymbolicCost::LinearCost { _0: size_var(port) };
-    let log = SymbolicCost::LogCost { _0: size_var(port) };
-    let constant = SymbolicCost::ConstantCost { _0: 3 };
-    assert!(dominates(&linear, &log));
-    assert!(dominates(&linear, &constant));
-    assert!(!dominates(&constant, &linear));
+    let (port, _) = two_distinct_ports();
+    assert!(dominates(&linear(port), &log_cost(port)));
+    assert!(dominates(&linear(port), &constant(3)));
+    assert!(!dominates(&constant(3), &linear(port)));
 }
 
 #[test]
 fn dominance_polynomial_degree_ordering() {
-    let port = PortId::new(0);
-    let poly_2 = SymbolicCost::PolynomialCost {
-        var: size_var(port),
-        degree: 2,
-    };
-    let poly_3 = SymbolicCost::PolynomialCost {
-        var: size_var(port),
-        degree: 3,
-    };
-    assert!(dominates(&poly_3, &poly_2));
-    assert!(!dominates(&poly_2, &poly_3));
+    let (port, _) = two_distinct_ports();
+    assert!(dominates(&polynomial(port, 3), &polynomial(port, 2)));
+    assert!(!dominates(&polynomial(port, 2), &polynomial(port, 3)));
 }
 
 #[test]
 fn max_path_returns_dominant_term() {
     // `max_path([Constant(0), Linear(n), Polynomial(n, 2)])` → Polynomial(n, 2).
-    let port = PortId::new(0);
-    let paths = vec![
-        SymbolicCost::ConstantCost { _0: 0 },
-        SymbolicCost::LinearCost { _0: size_var(port) },
-        SymbolicCost::PolynomialCost {
-            var: size_var(port),
-            degree: 2,
-        },
-    ];
+    let (port, _) = two_distinct_ports();
+    let paths = vec![constant(0), linear(port), polynomial(port, 2)];
     let result = max_path(&paths);
     match result {
         SymbolicCost::PolynomialCost { degree, .. } => assert_eq!(degree, 2),
@@ -237,11 +244,11 @@ fn max_path_returns_dominant_term() {
 fn normalize_keeps_singleton_costs_unchanged() {
     // `normalize` is structural — non-Sum/Product variants pass
     // through unmodified.
-    let port = PortId::new(0);
+    let (port, _) = two_distinct_ports();
     for cost in [
-        SymbolicCost::ConstantCost { _0: 7 },
-        SymbolicCost::LinearCost { _0: size_var(port) },
-        SymbolicCost::LogCost { _0: size_var(port) },
+        constant(7),
+        linear(port),
+        log_cost(port),
         SymbolicCost::UnknownCost {
             _0: "opaque".to_string(),
         },
