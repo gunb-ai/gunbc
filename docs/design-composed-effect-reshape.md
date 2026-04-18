@@ -36,7 +36,7 @@ The record admits illegal state combinations:
 
 `compose_effects` happens to produce only valid combinations today, but that is a *behavioral* invariant (an `iff` the constructor maintains) rather than a *state-space* invariant (an `iff` the type enforces). This is the same bug class `feedback_state_space_vs_behavioral_invariants` names: a `Bool` + correlated `Option<T>` pair should be a single sum whose variants are exactly the valid combinations.
 
-The roadmap deferral at `src/v3/ROADMAP.md` §"Lane 2 Stage 2a / Track 17a boundary" already prescribes the direction:
+The roadmap deferral at `ROADMAP.md` §"Lane 2 Stage 2a / Track 17a boundary" already prescribes the direction:
 
 > ... before any Track 17a consumer lands. ... at minimum drop redundant `idempotent`, or **better encode "no breaker" versus "broken by operation X" in the type shape itself**.
 
@@ -222,7 +222,7 @@ Implementation PR must satisfy (R3-final):
 2. `compose_effects(effects: List<OperationEffect>) -> CompositionVerdict` returns `IdempotentComposition` iff `effects |> flat_map(operation_to_breaker) |> is_empty`, and `BrokenBy { first_breaker }` otherwise with `first_breaker` structurally equal to the first projected `BreakingOperation`.
 3. v2 is explicitly **not** touched (see §v2 scope). `dsl/std/effects.dag` and `src/v2/stage0/src/std_effects.rs` stay on the old shape.
 4. `lane2_stage_2a_effects_smoke.rs` asserts the following top-level types are present in the parsed DAG: `EffectShape`, `IdempotentShape`, `BreakingShape`, `CreateCause`, `KeySource`, `IdempotencyEvidence`, `CompositionVerdict`, `OperationEffect`, `BreakingOperation`, `ModifierAgreement`, `ModifierAxisCheck`, `ModifierCheck`. (Variants of sum types are not asserted separately — the v3 bootstrap does not expose variants as standalone declarations.)
-5. `src/v3/ROADMAP.md` §"Lane 2 Stage 2a / Track 17a boundary" reads **Cleared (this PR)** with a description that names the partition *and* the removal of the outer record; `lane2-compile-time-proofs.md` §Stage 2a boundary note updates to the R3 shape; the Stage 2b pre-start gate language names `CompositionVerdict` (not `ComposedEffect`) as the algebra's output and tells the lens implementer to pair it with the caller-held `List<OperationEffect>` rather than recreate the pairing at the lens boundary.
+5. `ROADMAP.md` §"Lane 2 Stage 2a / Track 17a boundary" reads **Cleared (this PR)** with a description that names the partition *and* the removal of the outer record; `lane2-compile-time-proofs.md` §Stage 2a boundary note updates to the R3 shape; the Stage 2b pre-start gate language names `CompositionVerdict` (not `ComposedEffect`) as the algebra's output and tells the lens implementer to pair it with the caller-held `List<OperationEffect>` rather than recreate the pairing at the lens boundary.
 6. Stage 2b's `WorkflowIdempotencyReport` design (in `lane2-compile-time-proofs.md` §Stage 2b) is not touched by this PR — but the lens implementer, when Stage 2b lands, must match on `CompositionVerdict` and project through `BrokenBy.first_breaker.shape: BreakingShape` rather than reintroduce a parallel `Bool + String?` pair; the draft `breaking_op: String?` field in the §Stage 2b report is a placeholder from before this reshape landed and should be replaced with a structural carrier derived from `CompositionVerdict`.
 
 Non-goals:
@@ -249,6 +249,6 @@ The brief-review discipline that falls out: when adding a new carrier, audit *ev
 
 - Authoring site: `src/v3/std/effects.dag` — `type EffectShape`, `type IdempotentShape`, `type BreakingShape`, `type OperationEffect`, `type BreakingOperation`, `type CompositionVerdict`, `fn compose_effects`, `fn operation_to_breaker`, `fn operation_is_breaking`.
 - v2 parallel authority (explicitly not mirrored by this reshape): `dsl/std/effects.dag` (`ComposedEffect` still on the `Bool + String?` shape; `EffectShape` still flat).
-- Roadmap: `src/v3/ROADMAP.md` §"Lane 2 Stage 2a / Track 17a boundary".
+- Roadmap: `ROADMAP.md` §"Lane 2 Stage 2a / Track 17a boundary".
 - Stage 2a boundary note: `docs/lane2-compile-time-proofs.md` §Stage 2a.
 - Pattern authority: `feedback_state_space_vs_behavioral_invariants` — "dissolve the bools into a single enum whose variants are only the valid combinations." Extended by the R1→R3 arc: soundness must reach *every* structural level — the outer variant, every field of every carrier, and every sibling-field pair within any record.

@@ -3,7 +3,7 @@
 # Design DB-16 — refined generic substitution (3a.3 closure)
 
 **Design blocker:** DB-16 (refined-generic substitution through the `where`-refinement carrier)
-**Consumer:** Lane 3 Stage 3a.3 — the sole remaining blocker for promoting 3a.3 from 🟡 Partial → ✅ Shipped (see `src/v3/ROADMAP.md:477` and `:496`).
+**Consumer:** Lane 3 Stage 3a.3 — the sole remaining blocker for promoting 3a.3 from 🟡 Partial → ✅ Shipped (see `ROADMAP.md:477` and `:496`).
 **Status:** Design ready for implementer review. Implementation and tests land in a separate Part 2 PR.
 **Companion:** [DB-11](./design-m2-feature-parity.md#db-11--where-refinement-predicates-3a3-size-m) — the design whose consumer wiring this doc extends. DB-16 is a *direct extension* of DB-11's substrate shape, composite-canonical refinement form, and flatten-and-subset discharge machinery; it does not introduce parallel authorities.
 
@@ -409,7 +409,7 @@ Pre-flatten every generic function into per-argument-type clones at lowering tim
 - **`src/v3/compiler/src/infer.rs`** — `concretize_decl_with_subst` (construction site, new refinement branch), `materialize_callable_signature_instantiations` (phase driver, unchanged but now exercised for refined generics), `signature_type_shape` (consumer site, gains read-only lookup gate), `resolve_decl_with_subst` + `SubstStack` (reused), `check_refinement_discharge` / `predicate_discharges` / `refinement_ports_equal` / `refinement_targets_equal` / `declaration_shapes_equivalent` (downstream consumers, unchanged).
 - **`src/v3/compiler/src/lower.rs`** — `clone_predicate_body` (gains a `subst: &SubstStack` parameter; called from the new `concretize_decl_with_subst` refinement branch) and `outer_predicate_slots` (reused for slot extraction); both become `pub(crate)`. `lower_parameter_refinement`, `narrow_scope_for_predicate`, `build_narrowed_refinement`, `refinement_predicate_out_of_fragment` (DB-11 authorities, unchanged — `build_narrowed_refinement`'s existing call to `clone_predicate_body` passes an empty `SubstStack`).
 - **`src/v3/compiler/src/dag.rs`** — `Declaration` shape (unchanged; `refinement: Option<DeclarationId>` edge consumed, not extended).
-- **ROADMAP anchor** (`src/v3/ROADMAP.md:477`, `:496`) — DB-16 closing is the sole gate on 3a.3's 🟡 → ✅ promotion. Part 2 PR flips the status row.
+- **ROADMAP anchor** (`ROADMAP.md:477`, `:496`) — DB-16 closing is the sole gate on 3a.3's 🟡 → ✅ promotion. Part 2 PR flips the status row.
 - **`INVARIANTS.md`** — strict forward progress (§425) and decidability (§482) preserved verbatim; DB-16 adds no unbounded walk and no new proof-theoretic reasoning.
 
 ---

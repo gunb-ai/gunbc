@@ -245,7 +245,7 @@ wiring — only the source of the Declarations changes. This sequencing
 puts the restructuring under pressure from real consumer requirements
 (the cost lens needs to read per-declaration algebra, emission needs
 to read per-declaration cost characteristics), which is the right
-place for it. See `src/v3/ROADMAP.md` §M1 for the explicit ordering.
+place for it. See `ROADMAP.md` §M1 for the explicit ordering.
 
 **Lesson for future substrate work:** when there's an existing
 canonical source for a class of facts, the substrate should consume
@@ -448,7 +448,7 @@ bar" section above.)**
 > fixture strings, `inject_primitive_operators`, the initial 42-green
 > test count) were explicitly transitional and were removed during
 > M1(2.6). For current v3 status and test counts, read
-> [`src/v3/ROADMAP.md`](./ROADMAP.md) — the retrospective is closed
+> [`ROADMAP.md`](../../ROADMAP.md) — the retrospective is closed
 > history.
 
 M1(2.5) supersedes the scaffolded primitive substrate from M0.1/M1(1).

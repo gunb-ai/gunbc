@@ -145,7 +145,7 @@ This is the difference between `CostBounded { bind_name, comparator, bound }` (e
 
 ## Prerequisite: `dsl/std/resources.dag` → v3 reconciliation
 
-**Update:** `src/v3/std/resources.dag` (module `v3.std.resources`) provides `ResourceHandle` (including `cap: Secret` per `dsl/std/resources.dag`) and `ResourceReference { target: DeclarationRef }` for v3 bootstrap so `TestClaim.requires` has typed carriers. Full `resource { }` syntax, acquire/release insertion, and loading `dsl/std/resources.dag` in the same bootstrap pass as v3-only files remain ROADMAP-tracked dissolution work — see `src/v3/ROADMAP.md` Stage 2c / resources.
+**Update:** `src/v3/std/resources.dag` (module `v3.std.resources`) provides `ResourceHandle` (including `cap: Secret` per `dsl/std/resources.dag`) and `ResourceReference { target: DeclarationRef }` for v3 bootstrap so `TestClaim.requires` has typed carriers. Full `resource { }` syntax, acquire/release insertion, and loading `dsl/std/resources.dag` in the same bootstrap pass as v3-only files remain ROADMAP-tracked dissolution work — see [ROADMAP.md](../ROADMAP.md) Stage 2c / resources.
 
 ## Runtime cost — three sharing classes, all derived from dependency placement
 

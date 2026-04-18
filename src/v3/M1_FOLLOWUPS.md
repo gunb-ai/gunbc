@@ -1,7 +1,7 @@
 # M1(2.5) Follow-ups — moved to ROADMAP
 
 This document's contents have been consolidated into
-[`src/v3/ROADMAP.md`](./ROADMAP.md) as the single source of truth for
+[`ROADMAP.md`](../../ROADMAP.md) as the single source of truth for
 v3 status, active work, and deferred items.
 
 - **M1(2.6) work in progress** (parser extensions, real `dsl/std/*.dag`

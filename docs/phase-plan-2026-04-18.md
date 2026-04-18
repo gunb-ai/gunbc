@@ -15,7 +15,7 @@
 
 Authority order on conflict:
 1. A specific DB design doc (`docs/design-*.md`) for anything it locks — shape, acceptance gate, rejected alternative.
-2. ROADMAP (root `ROADMAP.md` for cross-cutting tracks; `src/v3/ROADMAP.md` for lane/milestone active-deferrals).
+2. ROADMAP (root `ROADMAP.md` for cross-cutting tracks; `ROADMAP.md` for lane/milestone active-deferrals).
 3. Lane / phase docs (`post-l15-phase-plan.md`, `lane3-self-hosting-cycle.md`, etc.) for sequencing and dependency statements.
 
 Do NOT argue this doc into agreement with an outdated fact; that reintroduces the parallel-tracker debt this doc exists to reduce.
@@ -206,7 +206,7 @@ The draft reserved DB-18/19/20/21/22 speculatively. This review dropped those re
 - DB-15 (test-infra) already covers Stage 2c → "DB-18 candidate" is redundant.
 - DB-7 (symbolic cost) already covers Stage 2d → "DB-19 candidate" is redundant.
 - DB-8 (fixed-point) already covers Stage 3c mechanics → "DB-20 candidate" is redundant.
-- **DB-17 is already allocated to reference-resolution provenance** — allocating authority is [`design-reference-resolution-provenance.md`](./design-reference-resolution-provenance.md); also referenced from `src/v3/ROADMAP.md` §Scheduled deletions (the "Needs DB-17" enforcement marker). Using DB-17 for WorkflowEffect would collide.
+- **DB-17 is already allocated to reference-resolution provenance** — allocating authority is [`design-reference-resolution-provenance.md`](./design-reference-resolution-provenance.md); also referenced from `ROADMAP.md` §Scheduled deletions (the "Needs DB-17" enforcement marker). Using DB-17 for WorkflowEffect would collide.
 
 **Rule for this doc:** do not pre-reserve DB numbers. A DB number gets assigned at the moment a DB design doc is opened, not at the moment of speculation.
 
@@ -216,9 +216,9 @@ The draft reserved DB-18/19/20/21/22 speculatively. This review dropped those re
 
 | Topic | Authority to read (single source of truth) |
 |---|---|
-| DB-15 / Lane 2 Stage 2c | [`design-test-infra.md`](./design-test-infra.md) R2; deferrals [`src/v3/ROADMAP.md`](../src/v3/ROADMAP.md) §Lane 2 Stage 2c |
+| DB-15 / Lane 2 Stage 2c | [`design-test-infra.md`](./design-test-infra.md) R2; deferrals [`ROADMAP.md`](../ROADMAP.md) §Lane 2 Stage 2c |
 | DB-7 / Lane 2 Stage 2d | [`design-symbolic-cost-algebra.md`](./design-symbolic-cost-algebra.md) |
-| Stage 3b | [`design-correction-shape.md`](./design-correction-shape.md) (DB-1), [`lane3-self-hosting-cycle.md`](./lane3-self-hosting-cycle.md) §Stage 3b; Lane 1c blockers [`src/v3/ROADMAP.md`](../src/v3/ROADMAP.md) §Lane 1 Stage 1c |
+| Stage 3b | [`design-correction-shape.md`](./design-correction-shape.md) (DB-1), [`lane3-self-hosting-cycle.md`](./lane3-self-hosting-cycle.md) §Stage 3b; Lane 1c blockers [`ROADMAP.md`](../ROADMAP.md) §Lane 1 Stage 1c |
 | Stage 3c mechanics | [`design-fixed-point-ratchet.md`](./design-fixed-point-ratchet.md) (DB-8) |
 | Lane 1 Stage 1e scope, emit determinism, `tests/determinism_test.rs` | [`post-l15-phase-plan.md`](./post-l15-phase-plan.md) Lane 1 summary (incl. DB-8 pointer), [`design-generic-walker-api.md`](./design-generic-walker-api.md) (DB-2) |
 | Open program questions (what `compiler.dag` is today) | **§6** below — not a design substitute for DB-8 |

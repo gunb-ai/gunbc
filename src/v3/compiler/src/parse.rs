@@ -76,7 +76,7 @@ pub struct SurfaceModule {
 ///   `pipeline_compile_order_stage_names` reads its **body span** as ordering
 ///   authority. DB-16 documents cases **1**, **2a**, and **2c** only; substrate
 ///   accessor bootstrap alignment with **`INVARIANTS.md` §E-9** is **deferred**
-///   (see `src/v3/ROADMAP.md`). The signature flows forward; body spans are
+///   (see `ROADMAP.md`). The signature flows forward; body spans are
 ///   preserved for parse-lag growth, ordering facts, or host stubs.
 /// - **`Data`**, **`Module`**, **`Import`** replace the three former
 ///   parser-absorbed items. `Data` lowers to a declaration whose

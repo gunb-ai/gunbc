@@ -1,7 +1,7 @@
 # v3 Self-Hosting — Design Note
 
 > **Parent docs:** `THESIS.md`, `docs/substrate-reflection-design.md`
-> (§12.6 for the brief), `src/v3/ROADMAP.md` (M3 milestone).
+> (§12.6 for the brief), `ROADMAP.md` (M3 milestone).
 >
 > **Purpose:** specify how v3's compiler pipeline migrates from
 > Rust into `.dag`, how the stages interact with the reflection
