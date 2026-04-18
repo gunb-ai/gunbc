@@ -38,13 +38,11 @@ This lane closes the "❌ not wired" gaps across six stages. After Lane 2 comple
 
 **Scope:** port `dsl/std/effects.dag` → `src/v3/std/effects.dag`. Structural carry-over only.
 
-**Boundary note:** `DerivedOpEffect { method, path_template, shape }` is tolerated in Stage 2a only as bootstrap-local staging glue between HTTP surface facts and the ported effects algebra. It is NOT the durable boundary for downstream consumers. Before Track 17a REST wiring or Stage 2b teaches consumers that this is canonical, the follow-up must either:
-- collapse `DerivedOpEffect` into the existing authority carriers that actually survive the lane boundary, or
-- classify it explicitly as scaffold debt with a named dissolution trigger if it must persist longer.
+**Boundary note (cleared for `DerivedOpEffect`):** `DerivedOpEffect { method, path_template, shape }` was collapsed into `OperationEffect { operation_name, shape }` as the Stage 2a follow-up. The `method` / `path_template` fields were carried as bootstrap-local staging glue but never consumed downstream — both modifier falsification and obligation generation project through `shape` alone, and `ReadEffect` already encodes "method was GET/HEAD/OPTIONS" structurally. `derive_op_effect` now returns `OperationEffect?`, so derivation outputs the same shape `compose_effects` composes.
 
-`ComposedEffect { operations, idempotent, breaking_operation }` is also provisional. The workflow verdict must not harden around duplicated summary fields; before real Track 17a / Stage 2b consumers depend on it, the follow-up should either drop `idempotent` as redundant or replace the record with a sum-shaped result where "no breaker" versus "broken by operation X" is structural.
+`ComposedEffect { operations, idempotent, breaking_operation }` is still provisional. The workflow verdict must not harden around duplicated summary fields; before real Track 17a / Stage 2b consumers depend on it, the follow-up should either drop `idempotent` as redundant or replace the record with a sum-shaped result where "no breaker" versus "broken by operation X" is structural.
 
-Lane 2 does not get to silently normalize around either of these convenience shapes.
+Lane 2 does not get to silently normalize around this remaining convenience shape.
 
 Copy:
 - `EffectShape = ReadEffect | UpsertEffect | DeleteEffect | CreateEffect | AppendEffect`
@@ -89,7 +87,7 @@ Lens reads each operation's declared `idempotent` modifier AND derives from path
 
 **Escalation:** if workflow structure isn't representable cleanly — e.g., control flow in a pipeline doesn't map to a linear `List<OperationEffect>` — surface. Don't stretch `compose_effects` to handle branches silently; the algebra needs to reflect branch-wise composition, which is a legitimate design extension.
 
-**Pre-start gate:** Stage 2b does not start consuming `DerivedOpEffect` or `ComposedEffect` as if they were stable substrate. The Stage 2a follow-up above must land first: `DerivedOpEffect` must collapse to the durable authority shape or gain explicit scaffold accounting, and `ComposedEffect` must stop encoding workflow verdicts as duplicated summary fields.
+**Pre-start gate:** Stage 2b does not start consuming `ComposedEffect` as if it were stable substrate. The Stage 2a `DerivedOpEffect` collapse has landed (derivation now emits `OperationEffect`, which is the same shape `compose_effects` walks). The remaining Stage 2a follow-up is `ComposedEffect`: it must stop encoding workflow verdicts as duplicated summary fields before Stage 2b consumers depend on it.
 
 ### Stage 2c — Test obligation materialization (M)
 
