@@ -1,7 +1,7 @@
 module lenses.cost
 
 import std.list { List, empty, fold, cons }
-import std.substrate { Dag, Behavior, BranchPath, PortId }
+import std.substrate { Dag, Behavior, BranchPath, LoopNode, NodeId, PortId, node }
 import std.algebra { SymbolicCost, SizeVariable, sequential, iterate, max_path }
 
 type SymbolicCostEntry {
@@ -18,7 +18,7 @@ fn symbolic_cost_of(d: Dag, port_id: PortId) -> SymbolicCostLookup =
 
 fn compute_symbolic_costs(d: Dag) -> List<SymbolicCostEntry> =
   fold(d.nodes, seed_bind_params(d.nodes), |acc, behavior|
-    cons(entry_for(acc, behavior), acc)
+    cons(entry_for(d, acc, behavior), acc)
   )
 
 fn seed_bind_params(nodes: List<Behavior>) -> List<SymbolicCostEntry> =
