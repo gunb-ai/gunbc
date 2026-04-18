@@ -17,7 +17,9 @@
 // PR per the brief's consumer-contract deferral.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{ArrowBody, Dag, DeclarationId, FieldValue, LiteralBits, PortState, TypeConnective};
+use v3_compiler::dag::{
+    ArrowBody, Dag, DeclarationId, FieldValue, LiteralBits, PortState, TypeConnective,
+};
 use v3_compiler::lens_testgen::TestgenLens;
 use v3_compiler::CompileError;
 
@@ -316,7 +318,10 @@ fn testgen_claims_carry_compile_time_sentinel_in_requires() {
             .find(|(label, _)| label == "requires")
             .map(|(_, value)| value)
             .unwrap_or_else(|| {
-                panic!("generated claim `{}` missing `requires`", claim.declaration_name())
+                panic!(
+                    "generated claim `{}` missing `requires`",
+                    claim.declaration_name()
+                )
             });
 
         let FieldValue::List(entries) = requires_value else {
