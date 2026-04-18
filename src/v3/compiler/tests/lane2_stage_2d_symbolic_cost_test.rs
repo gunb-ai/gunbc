@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
@@ -24,20 +24,32 @@ use v3_compiler::dag::{
 use v3_compiler::emit_rust::emit_rust_module;
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 
+type CompileCell = Arc<OnceLock<Dag>>;
+type CompileCacheMap = HashMap<(String, String), CompileCell>;
+
 /// Full `compile_to_dag` keyed by `(source, file)` so each fine-grained
 /// `#[test]` does not pay a cold bootstrap + pipeline run.
-static COMPILE_CACHE: LazyLock<Mutex<HashMap<(String, String), Dag>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+///
+/// Per-key [`OnceLock`]: the global mutex only guards map insert/lookup — it is
+/// not held across `compile_to_dag`, so unrelated keys compile in parallel and
+/// per-test wall budgets are not inflated by lock contention.
+static COMPILE_CACHE: LazyLock<Mutex<CompileCacheMap>> =
+    LazyLock::new(|| Mutex::new(CompileCacheMap::new()));
+
+/// Map lookup / insert only — **must not** call `compile_to_dag`; the guard must
+/// not survive past this return, so compilation stays out of the critical section.
+fn compile_cell_for_key(key: (String, String)) -> CompileCell {
+    let mut guard = COMPILE_CACHE.lock().expect("compile cache mutex");
+    guard
+        .entry(key)
+        .or_insert_with(|| Arc::new(OnceLock::new()))
+        .clone()
+}
 
 fn cached_compile_to_dag(source: &str, file: &str) -> Dag {
-    let key = (source.to_string(), file.to_string());
-    let mut guard = COMPILE_CACHE.lock().expect("compile cache mutex");
-    if let Some(dag) = guard.get(&key) {
-        return dag.clone();
-    }
-    let dag = compile_to_dag(source, file).expect("fixture compiles");
-    guard.insert(key, dag.clone());
-    dag
+    let cell = compile_cell_for_key((source.to_string(), file.to_string()));
+    cell.get_or_init(|| compile_to_dag(source, file).expect("fixture compiles"))
+        .clone()
 }
 
 fn find_bind_value(dag: &Dag, name: &str) -> PortId {
