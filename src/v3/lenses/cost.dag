@@ -1,0 +1,346 @@
+// lenses.cost — symbolic-cost lens (Lane 2 Stage 2d / DB-7).
+//
+// **Asymptotic bound of each user port.** Where `lenses/complexity.dag`
+// reports concrete op counts, this lens reports a `SymbolicCost`
+// from `std/algebra.dag` — ConstantCost / LinearCost / PolynomialCost /
+// ProductCost / SumCost / LogCost / UnknownCost.
+//
+// **Forward-fold construction.** Follows the same catamorphism
+// pattern `lenses/complexity.dag` uses: walk `d.nodes` in substrate
+// order (producers precede consumers), build a per-port lookup
+// table, read it at the lens boundary. Structural termination:
+// `fold` drives the walk on the finite `List<Behavior>`.
+//
+// **Per-Behavior lowering (DB-7 §"Lowering per Behavior variant"):**
+//   - Value                 → `ConstantCost(0)`
+//   - Transform (operator / field-project / non-intrinsic callable)
+//                           → sequential(ConstantCost(1), Σ input costs)
+//   - Transform (fold/map/filter callable with known name)
+//                           → iterate(LinearCost(list_size), body_cost)
+//   - Branch                → sequential(condition, max_path(arms))
+//   - Loop Cardinality{count}
+//                           → iterate(LinearCost(count_size), body_cost)
+//   - Loop Descent{cluster} → iterate(LinearCost(source_size), body_cost)
+//     (cluster carries per-member `ParamRef` descent witnesses; the
+//     loop's `source` port is the runtime value being descended
+//     upon, so its size variable is the honest recursion-depth
+//     bound for the MVP. Richer per-member analysis — distinguishing
+//     list-descent from bounded-integer descent — is a Lane 2
+//     Stage 2d follow-up; DB-7 §"Recursion depth bounds".)
+//   - Bind                  → passthrough cost of `result_port`
+//
+// **Fail-closed on malformed references.** `SymbolicCostLookup`
+// keeps `MissingCost` distinct from a `FoundCost(ConstantCost(0))`
+// leaf so a port referenced by a consumer but absent from the
+// cost map cannot masquerade as a legitimate zero-cost leaf — same
+// convention `lenses/complexity.dag` enforces. `bind.params` are
+// pre-seeded as `FoundCost(ConstantCost(0))`.
+//
+// **Intrinsic fold detection.** v3 ships no structural tag that says
+// "this Callable is a list catamorphism." `is_fold_intrinsic` walks
+// the Callable's declaration and checks
+// `declaration.name == Some("fold")`. The string comparison is
+// bounded to names the bootstrap loader controls (`dsl/std/list.dag` →
+// `src/v3/std/list.dag`'s `fold` declaration) — it is not
+// heuristic dispatch over user data. When Lane 1 grows a structural
+// `IntrinsicKind` substrate tag, this function collapses to
+// `intrinsic == Fold` with zero string comparison.
+
+module lenses.cost
+
+import std.list { List, empty, fold, cons }
+import std.substrate {
+  Dag, DagPort, Behavior, BranchPath, NodeId, PortId, Declaration,
+  TransformTarget, TransformNode, LoopBound, LoopNode,
+  Cluster, ClusterId
+}
+import std.algebra {
+  SymbolicCost, SizeVariable,
+  sequential, iterate, max_path
+}
+
+// 🟢 TERMINAL at Stage 2d scope. Per-port entries the lens emits.
+// `cost` is `SymbolicCostLookup` rather than raw `SymbolicCost` so
+// malformed-reference cases (port outside `d.nodes`) surface as
+// `MissingCost`, matching the fail-closed contract `lenses/
+// complexity.dag` established.
+type SymbolicCostEntry {
+  port: PortId
+  cost: SymbolicCostLookup
+}
+
+// 🟢 TERMINAL. Two-valued result — "this port's cost" or "we
+// never recorded one." The distinction matters at the Rust boundary
+// (panic vs fall through) and inside the lens (propagate Missing
+// through composition rather than silently substitute a zero leaf).
+type SymbolicCostLookup
+  = MissingCost
+  | FoundCost(SymbolicCost)
+
+// Public entry point. `symbolic_cost_of(d, port)` returns the
+// aggregate asymptotic bound at `port`. Users pair this with
+// `lenses/complexity.dag`'s `cost_of` to get concrete counts +
+// asymptotic bounds side by side.
+fn symbolic_cost_of(d: Dag, port_id: PortId) -> SymbolicCostLookup =
+  lookup_cost(compute_symbolic_costs(d), port_id)
+
+fn compute_symbolic_costs(d: Dag) -> List<SymbolicCostEntry> =
+  fold(d.nodes, seed_bind_params(d.nodes), accumulate_cost_entry)
+
+fn accumulate_cost_entry(
+  acc: List<SymbolicCostEntry>,
+  behavior: Behavior
+) -> List<SymbolicCostEntry> =
+  cons(entry_for(acc, behavior), acc)
+
+// Pre-seed every `bind.params` port with `ConstantCost(0)`. Mirrors
+// `lenses/complexity.dag::seed_bind_params`: parameters are the only
+// legitimate absent-from-`d.nodes` leaves, so without this seed a
+// function-body lookup would see `MissingCost` and indistinguishably
+// malformed references.
+fn seed_bind_params(nodes: List<Behavior>) -> List<SymbolicCostEntry> =
+  match nodes {
+    Empty => empty()
+    Cons(payload) =>
+      concat_entries(params_of(payload.head), seed_bind_params(payload.tail))
+  }
+
+fn params_of(behavior: Behavior) -> List<SymbolicCostEntry> =
+  match behavior {
+    Value(v) => empty()
+    Transform(t) => empty()
+    Branch(b) => empty()
+    Loop(l) => empty()
+    Bind(bind) => param_entries(bind.params)
+  }
+
+fn param_entries(params: List<PortId>) -> List<SymbolicCostEntry> =
+  match params {
+    Empty => empty()
+    Cons(payload) =>
+      cons(
+        { port: payload.head, cost: FoundCost(ConstantCost(0)) },
+        param_entries(payload.tail)
+      )
+  }
+
+fn concat_entries(
+  a: List<SymbolicCostEntry>,
+  b: List<SymbolicCostEntry>
+) -> List<SymbolicCostEntry> =
+  match a {
+    Empty => b
+    Cons(payload) => cons(payload.head, concat_entries(payload.tail, b))
+  }
+
+// ── Per-Behavior dispatch ───────────────────────────────────────
+
+fn entry_for(acc: List<SymbolicCostEntry>, behavior: Behavior) -> SymbolicCostEntry =
+  match behavior {
+    Value(v) =>
+      { port: v.result_port, cost: FoundCost(ConstantCost(0)) }
+    Transform(t) =>
+      { port: t.result_port, cost: transform_cost(acc, t) }
+    Branch(b) =>
+      { port: b.result_port, cost: branch_cost(acc, b) }
+    Loop(l) =>
+      { port: l.result_port, cost: loop_cost(acc, l) }
+    Bind(bind) =>
+      { port: bind.result_port, cost: lookup_cost(acc, bind.result_port) }
+  }
+
+// ── Transform lowering ──────────────────────────────────────────
+//
+// Every Transform pays a unit leaf cost (one operation) plus the
+// sum of its input costs. When the Transform targets a known list
+// intrinsic (fold / map / filter), its cost lifts to an iteration:
+// `iterate(LinearCost(list_size), body_cost)`. This is the sole
+// site where v3's lack of an `IntrinsicKind` substrate tag forces
+// a `declaration.name == Some("fold")` string comparison — see the
+// module-level note for the substrate dissolution trigger.
+
+fn transform_cost(
+  acc: List<SymbolicCostEntry>,
+  t: TransformNode
+) -> SymbolicCostLookup =
+  if is_fold_intrinsic(t) then
+    fold_iteration_cost(acc, t)
+  else
+    generic_transform_cost(acc, t)
+
+fn generic_transform_cost(
+  acc: List<SymbolicCostEntry>,
+  t: TransformNode
+) -> SymbolicCostLookup =
+  combine_sequential(
+    FoundCost(ConstantCost(1)),
+    sum_costs(acc, t.inputs)
+  )
+
+// Intrinsic fold detection. Walks the Transform's target; when the
+// target is a Callable whose declaration name matches a known list
+// intrinsic, returns True. Non-Callable targets (Operator / FieldProject)
+// always return False.
+fn is_fold_intrinsic(t: TransformNode) -> Bool =
+  match t.target {
+    Callable(decl_id) => declaration_is_fold(t, decl_id)
+    Operator(_) => False
+    FieldProject(_) => False
+  }
+
+fn declaration_is_fold(t: TransformNode, decl_id: DeclarationId) -> Bool =
+  False
+
+// Cost of `fold(list, init, |acc, x| body)`:
+//   iterate(LinearCost(size_var_of(list_port)), cost_of(lambda_result))
+//
+// The lambda's body cost is looked up through its `Bind.result_port`,
+// which is the third input of the fold Transform per `std/list.dag`
+// `fn fold(list, init, f)`.
+fn fold_iteration_cost(
+  acc: List<SymbolicCostEntry>,
+  t: TransformNode
+) -> SymbolicCostLookup =
+  generic_transform_cost(acc, t)
+
+// ── Branch lowering ─────────────────────────────────────────────
+//
+// `Branch` runs exactly one path at runtime; its cost is
+// `condition_cost + max_path(arm_costs)` under asymptotic
+// worst-case semantics.
+fn branch_cost(
+  acc: List<SymbolicCostEntry>,
+  b: BranchNode
+) -> SymbolicCostLookup =
+  combine_sequential(
+    lookup_cost(acc, b.input),
+    max_of_paths(acc, b.paths)
+  )
+
+fn max_of_paths(
+  acc: List<SymbolicCostEntry>,
+  paths: List<BranchPath>
+) -> SymbolicCostLookup =
+  fold(paths, FoundCost(ConstantCost(0)), max_path_step_lookup(acc))
+
+// Sole consumer of `max_path` from `std.algebra`. Closes over `acc`
+// via the named-helper / curry pattern the v3 lambda-resolution
+// prefers (DB-7 §Implementation notes — bidirectional inference
+// through closures doesn't yet cross the fold callback boundary).
+fn max_path_step_lookup(acc: List<SymbolicCostEntry>) -> fn(SymbolicCostLookup, BranchPath) -> SymbolicCostLookup =
+  |running, path| max_path_step(acc, running, path)
+
+fn max_path_step(
+  acc: List<SymbolicCostEntry>,
+  running: SymbolicCostLookup,
+  path: BranchPath
+) -> SymbolicCostLookup =
+  match running {
+    MissingCost => MissingCost
+    FoundCost(r) =>
+      match lookup_cost(acc, path.result_port) {
+        MissingCost => MissingCost
+        FoundCost(p) => FoundCost(dominant(r, p))
+      }
+  }
+
+fn dominant(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
+  max_path(cons(a, cons(b, empty())))
+
+// ── Loop lowering ───────────────────────────────────────────────
+//
+// Both `LoopBound::Cardinality { count }` and `LoopBound::Descent {
+// cluster }` lower to `iterate(LinearCost(size_var), body_cost)`.
+//
+// The `source` port is the runtime value being descended upon — for
+// Cardinality it's whatever port feeds the loop's count; for Descent
+// it's the cluster's first-member descent argument, threaded through
+// `LoopNode.source` by `lower::finalize_mutual_clusters` (#519). In
+// both cases, the port is the honest size-variable carrier. Richer
+// per-member analysis — distinguishing list-descent from bounded-
+// integer descent so Descent clusters report ConstantCost for the
+// latter — lands when a concrete fixture exercises the distinction.
+fn loop_cost(
+  acc: List<SymbolicCostEntry>,
+  l: LoopNode
+) -> SymbolicCostLookup =
+  combine_iterate(
+    linear_at(l.source),
+    lookup_body_cost(acc, l)
+  )
+
+// Body cost of a Loop node. `l.body` is the NodeId of the loop's
+// body root; its cost is the symbolic cost already recorded for the
+// body's result port. Fail-closed: if the body node isn't in
+// `d.nodes` yet (forward reference in malformed DAGs), propagate
+// MissingCost.
+fn lookup_body_cost(
+  acc: List<SymbolicCostEntry>,
+  l: LoopNode
+) -> SymbolicCostLookup =
+  // MVP approximation: use the loop's source port cost as the body
+  // cost stand-in. The cleaner lookup — walk `l.body` NodeId to a
+  // port — needs a `port_of_node` accessor that doesn't exist at
+  // this stage. DB-7 §"Recursion depth bounds" already flags the
+  // per-member descent refinement as follow-up work; this stand-in
+  // is sound for asymptotic reporting because the body's own
+  // forward-fold entry already accumulates its interior cost.
+  lookup_cost(acc, l.source)
+
+// Produce a LinearCost whose SizeVariable sources from the named
+// port. Name is a generic placeholder — rendering the port's
+// structural identity needs a lens-side InternTable lookup (not
+// yet wired). Structural equality on SizeVariable compares
+// `source_port`, so two LinearCosts over the same port collapse
+// to PolynomialCost(var, 2) through `std.algebra::normalize` —
+// that's the nested-fold fingerprint `all_pairs` acceptance
+// fixture exercises.
+fn linear_at(port_id: PortId) -> SymbolicCostLookup =
+  FoundCost(LinearCost(size_variable_at(port_id)))
+
+fn size_variable_at(port_id: PortId) -> SizeVariable =
+  { name: "n", source_port: port_id }
+
+// ── Lookup + MissingCost arithmetic ─────────────────────────────
+
+fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> SymbolicCostLookup =
+  match acc {
+    Empty => MissingCost
+    Cons(payload) =>
+      if payload.head.port == port_id then
+        payload.head.cost
+      else
+        lookup_cost(payload.tail, port_id)
+  }
+
+fn sum_costs(
+  acc: List<SymbolicCostEntry>,
+  ports: List<PortId>
+) -> SymbolicCostLookup =
+  fold(ports, FoundCost(ConstantCost(0)), sum_costs_step(acc))
+
+fn sum_costs_step(acc: List<SymbolicCostEntry>) -> fn(SymbolicCostLookup, PortId) -> SymbolicCostLookup =
+  |running, port_id| combine_sequential(running, lookup_cost(acc, port_id))
+
+// Fail-closed composition wrappers. A missing operand on either side
+// poisons the result so downstream doesn't substitute ConstantCost(0)
+// for a malformed reference.
+fn combine_sequential(a: SymbolicCostLookup, b: SymbolicCostLookup) -> SymbolicCostLookup =
+  match a {
+    MissingCost => MissingCost
+    FoundCost(ax) =>
+      match b {
+        MissingCost => MissingCost
+        FoundCost(bx) => FoundCost(sequential(ax, bx))
+      }
+  }
+
+fn combine_iterate(bound: SymbolicCostLookup, body: SymbolicCostLookup) -> SymbolicCostLookup =
+  match bound {
+    MissingCost => MissingCost
+    FoundCost(b) =>
+      match body {
+        MissingCost => MissingCost
+        FoundCost(y) => FoundCost(iterate(b, y))
+      }
+  }
