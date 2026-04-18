@@ -78,17 +78,18 @@ Copy (post-reshape, R3):
 
 **Scope:** create `src/v3/lenses/idempotency.dag`. Walks a pipeline (sequence of service operations), composes effects, emits diagnostic on chain break.
 
-API shape:
+API shape (**shipped** — authority: `src/v3/std/effects.dag`, Rust: `workflow_idempotency.rs` / `lens_idempotency.rs`):
 ```
-fn analyze_workflow(d: Dag, workflow: NodeId) -> WorkflowIdempotencyReport
+fn analyze_workflow(d: Dag, workflow_root: NodeId) -> WorkflowIdempotencyReport
 
-type WorkflowIdempotencyReport {
-  idempotent: Bool
-  breaking_op: String?             // name of first non-idempotent op, if any
-  evidence_chain: List<OperationEffect>
-  diagnostic: Diagnostic?
-}
+type WorkflowIdempotencyReport
+  = WorkflowCompositionVerdict(CompositionVerdict)
+  | IdempotencyUnsupported(IdempotencyUnsupportedDetail)
+
+// CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: BreakingOperation }
 ```
+
+**Single authority.** `analyze_workflow` does **not** take a caller-authored `WorkflowEffect`. Facts are read only from the `Dag` at `workflow_root` (compiler-local map until pipeline lowering attaches workflow structure from L1 / declared pipelines). The obsolete flat `{ idempotent: Bool, breaking_op: String?, … }` sketch below is superseded by the `CompositionVerdict` partition + explicit `IdempotencyUnsupported` carrier.
 
 Lens reads each operation's declared `idempotent` modifier AND derives from path+method, then cross-checks via `check_modifier_vs_derivation`. Diagnostic fires when:
 - Declared idempotent but derivation disagrees (`Disagrees` case)

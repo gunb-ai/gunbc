@@ -4,7 +4,7 @@
 
 **Design blocker:** DB-15 (test infrastructure that consumes the compiler's dependency-analysis machinery)
 **Consumer:** Lane 2 Stage 2c (test obligation materialization) — forcing function
-**Status:** Revision 2 (discussion draft). R1 was rejected — see Correction history below.
+**Status:** R2 **locked for schema** — `src/v3/std/verification.dag` implements `TestClaim.requires`, `BehavioralObservation`, `MockBackedInvariant`, `TestObligation`, and `materialize_test_obligations`; `src/v3/std/resources.dag` supplies `ResourceReference` / `ResourceHandle` (including `cap: Secret` aligned with `dsl/std/resources.dag`). Test-runner wiring and doc-only checkboxes below remain follow-ups. R1 was rejected — see Correction history below.
 **Existing v3 authority being extended:** [`src/v3/std/verification.dag`](../src/v3/std/verification.dag) — quoted inline in §"What DB-15 extends" below.
 
 **Two verification.dag files exist in the repo** — this is important:
@@ -93,7 +93,7 @@ R2 keeps the above shapes and adds two things:
 1. **New `TestPredicate` variants for behavioral / mock-backed claims** — the case where a property holds by observation, not by lens re-reading. Matches Lane 2 Stage 2c's mandate.
 2. **A `requires: List<ResourceReference>` field (or equivalent)** — lets the claim declare what must be acquired to run it. This is NOT a new sharing mechanism; it's a declaration that the compiler's existing dependency walk reads to place acquires.
 
-Shape (preliminary — open question #1 below on exact syntax):
+Shape (**implemented** in `src/v3/std/verification.dag`):
 
 ```dag
 // src/v3/std/verification.dag — extensions, not replacement
@@ -102,7 +102,7 @@ type TestClaim {
   source: String
   file_name: String
   predicate: TestPredicate
-  requires: List<ResourceReference>   // NEW — declared dependencies
+  requires: List<ResourceReference>   // declared dependencies (per-claim)
 }
 
 type TestPredicate
@@ -145,14 +145,7 @@ This is the difference between `CostBounded { bind_name, comparator, bound }` (e
 
 ## Prerequisite: `dsl/std/resources.dag` → v3 reconciliation
 
-**Blocker for R2's resource references:** v3 does not yet consume `dsl/std/resources.dag`. Grep confirms zero references to `Resource`/`acquire`/`release` under `src/v3/`.
-
-This is a standalone dissolution-of-dual-representation item and belongs in ROADMAP §"Scheduled deletions" as its own row. Options:
-
-1. **Port the declaration into `src/v3/std/resources.dag`** (direct v3 port; dsl/std/resources.dag remains v2 reference).
-2. **Make `dsl/std/resources.dag` consumable by v3 bootstrap** (single authority across v2 and v3).
-
-Preferring option (2) for the single-authority reason. Either way, the work is **separable from DB-15**. DB-15's `requires: List<ResourceReference>` field is authored but unconsumed until resources.dag lands in v3 — and the `TestClaim` scaffold for `requires` should carry a 🟡 dissolution marker with a named trigger (the resources-in-v3 port PR).
+**Update:** `src/v3/std/resources.dag` (module `v3.std.resources`) provides `ResourceHandle` (including `cap: Secret` per `dsl/std/resources.dag`) and `ResourceReference { target: DeclarationRef }` for v3 bootstrap so `TestClaim.requires` has typed carriers. Full `resource { }` syntax, acquire/release insertion, and loading `dsl/std/resources.dag` in the same bootstrap pass as v3-only files remain ROADMAP-tracked dissolution work — see `src/v3/ROADMAP.md` Stage 2c / resources.
 
 ## Runtime cost — three sharing classes, all derived from dependency placement
 
@@ -191,26 +184,28 @@ The "more efficient than typical" intuition cashes out from ALL THREE collapses,
 
 ---
 
-## Open questions (for this draft)
+## Open questions — lock state (2026-04)
 
-1. **Exact syntax for `requires: List<ResourceReference>` on `TestClaim`.** Structural: should ResourceReference be a typed declaration reference (`DeclarationRef`) or a typed resource type (`ResourceHandle` in resources.dag terminology)? Probably the former — handles are runtime artifacts, not compile-time declarations. Verify at implementation time.
+Questions **1–3** from R2 draft are **resolved** by the shipped `src/v3/std/verification.dag` coproduct and `ResourceReference` shape:
 
-2. **Which existing `TestPredicate` variants need the `requires` declaration, and which are self-contained?** `PortStateExpectation` and `CostBounded` are compile-time assertions with no runtime resource needs. `BehavioralObservation` needs a test-runner resource. `MockBackedInvariant` needs both a test-runner AND a mock-transport resource. Open: is `requires` per-claim or per-predicate-variant?
+1. **`requires` syntax.** `TestClaim.requires: List<ResourceReference>` with `ResourceReference { target: DeclarationRef }` — compile-time declaration edges, not raw `ResourceHandle` literals in claims (handles remain the runtime minted carrier in `dsl/std/resources.dag` / `v3.std.resources`).
 
-3. **Tautology-avoidance enforcement.** The rule "predicate cannot rerun the producing lens" is currently prose. Can it be enforced structurally — e.g., the predicate variants are explicitly behavioral/observational by type, and "rerun lens X" is not even expressible? Needs a pass to confirm no variant sneaks in that permits the pattern.
+2. **Per-claim vs per-predicate.** `requires` is **per `TestClaim`** (one list on the claim). Predicates that need runtime backing declare resources at the claim level; compile-time-only predicates (`PortHasState`, `CostBounded`, etc.) may use empty `requires` where applicable.
 
-4. **Lane 2 Stage 2c generation surface.** Stage 2c generates `TestClaim` declarations from lens outputs. What's the structural shape of "this lens's output, materialized into a `TestPredicate`"? Likely one generation rule per `(lens, predicate-variant)` pair, declared once per lens. Out of scope for DB-15's design; in scope for Stage 2c's implementation.
+3. **Tautology avoidance.** Enforced by **construction**: behavioral/mock variants (`BehavioralObservation`, `MockBackedInvariant`) point at `DeclarationRef` edges for subject / mock / invariant; there is no `TestPredicate` variant meaning “invoke lens L and compare.” Prose rule matches the expressible surface.
+
+4. **Lane 2 Stage 2c generation surface.** Still open for **implementation** — how each lens materializes into `TestPredicate` (generation rules). Out of scope for this design doc’s schema lock; tracked under Stage 2c / testgen.
 
 ---
 
 ## Acceptance (for when this graduates from draft)
 
-- [ ] Open questions 1–3 locked with explicit answers.
-- [ ] Extensions to `src/v3/std/verification.dag` sketched with exact field shapes (`requires`, new `TestPredicate` variants).
-- [ ] Resources-in-v3 reconciliation scheduled — named PR or ROADMAP row identifying the upstream path.
+- [x] Open questions 1–3 locked with explicit answers (see section above).
+- [x] Extensions to `src/v3/std/verification.dag` with field shapes (`requires`, `BehavioralObservation`, `MockBackedInvariant`, obligations).
+- [x] Minimal resources surface in v3 (`src/v3/std/resources.dag`); full dsl merge / `resource { }` lowering still ROADMAP-tracked.
 - [ ] One existing test file (e.g., `m2_feature_parity_test.rs`'s 3a.2 tests) re-expressed as `TestClaim` declarations, showing the structural form consuming the compiler's dependency walk.
 - [ ] Lane 2 Stage 2c plan updates: generation emits `TestClaim` declarations via the R2 shape, not Rust functions.
-- [ ] Cost invariant phrased as derived from resource placement, not as a standalone claim.
+- [x] Cost / sharing narrative: derived from dependency walk (§Runtime cost); no standalone O(…) claim as primitive.
 
 ---
 

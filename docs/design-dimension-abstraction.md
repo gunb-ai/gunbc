@@ -128,16 +128,10 @@ fn witness_idempotency(d: Dag, behavior: Behavior) -> Witness<ComposedEffect> {
   }
 }
 
-// Lane 2b's analyze_workflow becomes:
-fn analyze_workflow(d: Dag, workflow: NodeId) -> WorkflowIdempotencyReport {
-  let report = analyze(d, workflow, idempotency_dimension)
-  WorkflowIdempotencyReport {
-    idempotent: is_empty(report.violations),
-    breaking_op: first_breaking_op(report.witnesses),
-    evidence_chain: report.witnesses,
-    diagnostic: first(report.violations)
-  }
-}
+// Lane 2b — shipped Rust API: analyze_workflow(d, workflow_root: NodeId);
+// WorkflowIdempotencyReport is the sum type in std.effects (not a flat record).
+// idempotency.dag is still a staging stub; Dimension<> wiring is future work.
+// See lane2-compile-time-proofs.md Stage 2b.
 ```
 
 ### Side effects as Dimension instance (Lane 4 Stage 4b)
