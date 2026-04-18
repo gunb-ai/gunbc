@@ -2627,6 +2627,15 @@ tracking issue, not the doc body.
 syntax and declarations — comments and historical notes are not structural
 evidence (see Testing Invariants).
 
+**Scope — implementation comments:** This section governs **checked-in
+documentation** (`docs/`, roadmap, similar). It does not impose the same
+mechanical bar on every inline comment in `src/`. The Testing Invariants
+cross-reference means **tests** must not treat comments as authoritative
+structure; it is not a substitute for a future, explicit rule on chronicle-style
+`//` prose. Audit passes that apply “Documentation Describes Live State” need
+not rewrite implementation comments unless a companion invariant or team
+standard says otherwise.
+
 ## Testing Invariants
 
 - **Behavioral only.** Tests assert observable behavior — outputs given
