@@ -562,14 +562,15 @@ pub struct TemplateArgument {
 ///
 ///   No dissolution trigger — terminal at the substrate level.
 ///
-/// - **`Unparsed`** — surface-grammar lag (**case 1 only** in DB-16's
-///   split). Used at M1(2.7) for block-bodied `fn foo(x) -> T { body }`
-///   declarations in std/ files where the body contains match/pipe/lambda/
-///   etc. — syntactic forms the parser can't yet lower. **Case 2**
-///   (host-runtime bridges such as `pipeline.dag` stages) also parses as
-///   `FnExternalBody` → `Unparsed`, but bootstrap rewrites those Arrow
-///   bodies to `ExternalRealization` before inference — `Unparsed` does
-///   not persist for case 2 in a bootstrapped DAG. The signature flows
+/// - **`Unparsed`** — surface-grammar lag (**case 1**), plus **case 2b**
+///   host bridges that stay scaffolded (DB-14 substrate accessors). Used at
+///   M1(2.7) for block-bodied `fn foo(x) -> T { body }` declarations in std/
+///   files where the body contains match/pipe/lambda/ etc. **`pipeline.dag`
+///   stages (case 2a)** also parse as `FnExternalBody` → `Unparsed`, then
+///   bootstrap rewrites those Arrow bodies to `ExternalRealization` before
+///   inference — so `Unparsed` does not persist for pipeline stages in a
+///   bootstrapped DAG. **Substrate accessors** keep `Unparsed` through
+///   bootstrap by design (target-specific realization dispatch). The signature flows
 ///   forward through the declaration table so callers can type-check
 ///   against it; the body source span is preserved so M2+ parser
 ///   extensions can reach in and complete the lowering for case 1.

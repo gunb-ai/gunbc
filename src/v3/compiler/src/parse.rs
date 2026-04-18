@@ -66,13 +66,17 @@ pub struct SurfaceModule {
 ///   with the discriminator in the Option.
 /// - **`FnExternalBody`** records `name + params + return_type +
 ///   body_span`. The parser does not distinguish **case 1** (std/
-///   block bodies the surface grammar cannot lower yet) from **case 2**
-///   (compiler-internal `host`-backed fns) — both are "block body that
-///   is not a `SurfaceExpr`." Both initially lower to `ArrowBody::
-///   Unparsed(body_span)`; **case 2** is rewritten to
-///   `ExternalRealization` at bootstrap when a binding declaration
-///   targets the fn (see DB-16). The signature flows forward; the body
-///   is preserved by span for case 1's eventual parser growth.
+///   block bodies the surface grammar cannot lower yet) from **case 2a**
+///   (`pipeline.dag` host stages) or **case 2b** (other `host` bridges,
+///   e.g. substrate accessors) — all are "block body that is not a
+///   `SurfaceExpr`." All initially lower to `ArrowBody::Unparsed(body_span)`.
+///   At bootstrap, **`v3.compiler.pipeline` stages** alone are upgraded to
+///   `ExternalRealization` via `PipelineStageBinding` /
+///   `materialize_pipeline_realizations` (DB-16). **Substrate accessors**
+///   (`src/v3/std/substrate.dag`, DB-14) intentionally **stay** `Unparsed`
+///   so each emitter resolves `SubstrateAccessorBinding` at emission time —
+///   see `bootstrap.rs` before `materialize_pipeline_realizations`. The
+///   signature flows forward; the body span is preserved for case 1 growth.
 /// - **`Data`**, **`Module`**, **`Import`** replace the three former
 ///   parser-absorbed items. `Data` lowers to a declaration whose
 ///   connective is the resolved type; `Module` and `Import` lower
@@ -91,10 +95,9 @@ pub struct SurfaceModule {
 /// - Pattern 4 (dimensional): fails.
 ///
 /// Verdict: terminal at M1(2.7) modulo the two M2 collapses noted
-/// above. `FnExternalBody` has **two** dissolution paths (DB-16):
-/// case 1 dissolves when match/lambda/block-body parsing lands; case 2
-/// dissolves via bootstrap rewrite to `ExternalRealization`, not via
-/// the parser.
+/// above. `FnExternalBody` dissolution (DB-16): case 1 via parser growth;
+/// pipeline **case 2a** via bootstrap `ExternalRealization`; accessors
+/// **case 2b** stay `Unparsed` through bootstrap (DB-14).
 #[derive(Debug, Clone)]
 pub enum SurfaceItem {
     Let {
@@ -123,16 +126,22 @@ pub enum SurfaceItem {
     /// regular [`SurfaceItem::Fn`] with a full `SurfaceExpr` body, and
     /// `ArrowBody::Unparsed` retires with this case.
     ///
-    /// **Case 2 — target-native.** Compiler-internal fns whose body is a
-    /// host bridge (e.g. `pipeline.dag`'s `{ host parse }`). At parse
-    /// time this is indistinguishable from case 1; at bootstrap, a
-    /// `PipelineStageBinding`-style pass rewrites the Arrow body from
-    /// `Unparsed` to `ExternalRealization`. This path never becomes a
-    /// parseable `.dag` body.
+    /// **Case 2a — pipeline host stages.** `v3.compiler.pipeline` fns such
+    /// as `{ host parse }`. Indistinguishable from case 1 at parse time; at
+    /// bootstrap, `PipelineStageBinding` data drives
+    /// `materialize_pipeline_realizations`, rewriting the Arrow body from
+    /// `Unparsed` to `ExternalRealization`. Never becomes a user `.dag`
+    /// body.
     ///
-    /// The disambiguator is **downstream**: presence of a binding
-    /// declaration that rewrites the Arrow body (case 2); absence means
-    /// case 1.
+    /// **Case 2b — other host bridges.** e.g. substrate accessors in
+    /// `substrate.dag` (`{ host port }`, …). Also `FnExternalBody` →
+    /// `Unparsed`, but **stay** `Unparsed` through bootstrap (DB-14) so
+    /// emitters dispatch via `SubstrateAccessorBinding` — not upgraded to
+    /// `ExternalRealization` at bootstrap like pipeline stages.
+    ///
+    /// Downstream: pipeline stages are recognized via `PipelineStageBinding`;
+    /// accessors via DB-14 markers and per-target emission. Absence of both
+    /// patterns means case 1 (parse lag).
     FnExternalBody {
         name: String,
         type_params: Vec<String>,
