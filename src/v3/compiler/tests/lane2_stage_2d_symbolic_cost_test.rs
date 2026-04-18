@@ -163,9 +163,9 @@ fn recursive_fn_body_contributes_to_loop_cost() {
             let has_linear = terms
                 .iter()
                 .any(|t| matches!(t, SymbolicCost::LinearCost { .. }));
-            let has_nonzero_body = terms.iter().any(|t| {
-                matches!(t, SymbolicCost::ConstantCost { _0: n } if *n != 0)
-            });
+            let has_nonzero_body = terms
+                .iter()
+                .any(|t| matches!(t, SymbolicCost::ConstantCost { _0: n } if *n != 0));
             assert!(
                 has_linear,
                 "Loop cost must carry a LinearCost term from the bound port, got {cost:?}"
