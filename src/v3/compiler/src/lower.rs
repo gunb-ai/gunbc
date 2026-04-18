@@ -649,6 +649,7 @@ fn lower_parameter_refinements_phase(
                                      bodies. Use a direct comparison or a call \
                                      to a Bool-returning helper instead."
                                 ),
+                                fixes: Vec::new(),
                                 span,
                             },
                         );
@@ -890,7 +891,6 @@ fn build_narrowed_refinement(
         inputs: vec![outer_cloned_value, new_value_port],
         output: and_output,
         span: pred_span.clone(),
-        fixes: Vec::new(),
     }));
 
     // Wrap in the composite Bind; single params slot, composite body.
@@ -1353,6 +1353,7 @@ fn collect_symbols(
                             existing_span.byte_start,
                             existing_span.byte_end,
                         ),
+                        fixes: Vec::new(),
                         span,
                     },
                 );
@@ -2054,6 +2055,7 @@ fn reject_user_unparsed_scaffolds(dag: &mut Dag, strict_from: usize) {
                 name: format!(
                     "function `{name}` has an opaque block body — M1(2.8) user code cannot yet use match / record literals / lambdas inside block-bodied fn definitions (see DOWNSTREAM_REQUIREMENTS.md class-5 gaps)"
                 ),
+                fixes: Vec::new(),
                 span,
             },
         );
@@ -2065,6 +2067,7 @@ fn reject_user_unparsed_scaffolds(dag: &mut Dag, strict_from: usize) {
                 name: format!(
                     "data `{name}` has an opaque body — M1(2.8) user code cannot yet use record / list / map literals inside data bodies (see DOWNSTREAM_REQUIREMENTS.md class-5 gap #3)"
                 ),
+                fixes: Vec::new(),
                 span,
             },
         );
@@ -2096,6 +2099,7 @@ fn run_identifier_sweep(dag: &mut Dag, strict_from: usize) {
                     dag,
                     Diagnostic::ResolveError {
                         name: format!("type `{name}` resolves to itself"),
+                        fixes: Vec::new(),
                         span,
                     },
                 );
@@ -2117,6 +2121,7 @@ fn run_identifier_sweep(dag: &mut Dag, strict_from: usize) {
                 dag,
                 Diagnostic::ResolveError {
                     name: format!("unresolved type identifier `{name}`"),
+                    fixes: Vec::new(),
                     span,
                 },
             );

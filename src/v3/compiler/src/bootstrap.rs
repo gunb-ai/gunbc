@@ -271,6 +271,7 @@ fn report_pipeline_authority_error(dag: &mut Dag, name: String) {
     dag.attach_diagnostic(Diagnostic::ResolveError {
         name,
         span: SourceSpan::new(PIPELINE_AUTHORITY_FILE, 0, 0),
+        fixes: Vec::new(),
     });
 }
 

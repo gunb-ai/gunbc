@@ -74,6 +74,7 @@ pub fn infer(dag: &mut Dag) {
                                 expected: existing,
                                 actual: ty,
                                 span,
+                                fixes: Vec::new(),
                             };
                             dag.mark_unresolved(port, diag);
                             changed = true;
@@ -129,6 +130,7 @@ pub fn infer(dag: &mut Dag) {
             Diagnostic::ResolveError {
                 name: "(inference did not resolve this port)".to_string(),
                 span,
+                fixes: Vec::new(),
             },
         );
     }
@@ -226,7 +228,6 @@ fn ensure_optional_match_disj(
         value_body: None,
         refinement: None,
         span: span.clone(),
-        fixes: Vec::new(),
     });
 
     let none_payload_id = dag.alloc_declaration_id();
@@ -514,6 +515,7 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
                         result: Err(Diagnostic::ResolveError {
                             name: "(upstream failure in match payload binding)".to_string(),
                             span: payload_binding_span(path, &b.span),
+                            fixes: Vec::new(),
                         }),
                     });
                 }
@@ -2974,7 +2976,7 @@ fn materialize_substituted_refined_decl(
             name: "refined-generic substitution: out-of-fragment predicate body reached materialization"
                 .to_string(),
             span: template_span.clone(),
-        fixes: Vec::new(),
+            fixes: Vec::new(),
         });
         return template_refined;
     };

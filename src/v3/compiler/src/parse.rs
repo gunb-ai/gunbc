@@ -1505,6 +1505,7 @@ impl<'a> Parser<'a> {
                     "expected function name or call after `|>`; dotted paths are not callable in the current surface grammar"
                         .to_string(),
                 span,
+                fixes: Vec::new(),
             }),
             _ => unreachable!("parse_ident_expr only returns Var, Call, or Path"),
         }
@@ -1528,7 +1529,6 @@ impl<'a> Parser<'a> {
             TokenKind::IntLit(value) => Ok(SurfaceExpr::Literal {
                 value: SurfaceLiteral::Int(value),
                 span: token.span,
-                fixes: Vec::new(),
             }),
             TokenKind::KwTrue => Ok(SurfaceExpr::Literal {
                 value: SurfaceLiteral::Bool(true),
