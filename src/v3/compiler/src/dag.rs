@@ -1015,6 +1015,9 @@ impl<T> NonSingletonList<T> {
 //
 // Each coproduct / boundary carrier below carries its own 🟢/🟡 dissolution
 // stamp (modeling-discipline principle 4); do not rely on this banner alone.
+// 🔴 does not appear in this block — there is no intentionally-wrong deferred
+// carrier here; unsupported control flow is modeled via explicit sums, not
+// silent placeholders.
 
 /// 🟢 **TERMINAL.** HTTP verb literals — 1:1 with `std.effects` `HttpMethod`;
 /// naming authority is `effects.dag`.
@@ -1149,16 +1152,25 @@ pub enum WorkflowIdempotencyReport {
     IdempotencyUnsupported(IdempotencyUnsupportedDetail),
 }
 
+// ── end std.effects mirror (DB-18) ───────────────────────────────────
+// Cluster / loop-bound carriers below are Track 9 mutual-recursion
+// witnesses — not part of the Lane 2 Stage 2b effects algebra.
+
+/// 🟢 **TERMINAL.** Single cluster member's descent parameter — typed
+/// `ParamRef` witness (see `docs/design-mutual-recursion-lowering.md`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemberDescent {
     pub param: ParamRef,
 }
 
+/// 🟢 **TERMINAL.** One intra-cluster `Transform` call edge inside the SCC.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IntraClusterCall {
     pub transform: TransformRef,
 }
 
+/// 🟢 **TERMINAL.** Typed index over authoritative member/call topology for
+/// `LoopBound::Descent` — not a parallel copy of the Dag call graph.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cluster {
     pub members: NonSingletonList<MemberDescent>,
