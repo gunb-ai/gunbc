@@ -11,12 +11,19 @@
 
 ## Snapshot discipline
 
-**This doc is a thin read-model over ROADMAP.** It originates coordination state (which chat is working what, dispatch order, next-batch briefs) but restates ROADMAP facts only where essential. When ROADMAP and this doc conflict, ROADMAP is right and this doc must be fixed — delete the restated fact, replace with a line reference. Do NOT argue the doc into agreement; that reintroduces the parallel-tracker debt this doc exists to reduce.
+**This doc is a thin read-model over ROADMAP and the design docs ROADMAP references** (DB-N design docs, lane docs, `post-l15-phase-plan.md`). It originates coordination state (who's working what, dispatch order, next-batch briefs) but restates facts from those authorities only where essential. When an authority doc and this doc conflict, the authority wins and this doc must be fixed — delete the restated fact, replace with a line reference.
+
+Authority order on conflict:
+1. A specific DB design doc (`docs/design-*.md`) for anything it locks — shape, acceptance gate, rejected alternative.
+2. ROADMAP (root `ROADMAP.md` for cross-cutting tracks; `src/v3/ROADMAP.md` for lane/milestone active-deferrals).
+3. Lane / phase docs (`post-l15-phase-plan.md`, `lane3-self-hosting-cycle.md`, etc.) for sequencing and dependency statements.
+
+Do NOT argue this doc into agreement with an outdated fact; that reintroduces the parallel-tracker debt this doc exists to reduce.
 
 When reading:
 1. Cross-check §1 merges against `git log --oneline --since=2026-04-17` before dispatching from §2/§3.
-2. For any DB reference, confirm against ROADMAP's active-deferrals + the DB doc file.
-3. For any restated ROADMAP fact (primitive lists, tracked debt, etc.), verify the ROADMAP line reference resolves — treat mismatch as a bug in this doc, not ROADMAP.
+2. For any DB reference, confirm the DB design doc exists at the cited path.
+3. For any restated authority fact (primitive lists, tracked debt, DB numbering), verify the line reference resolves — treat mismatch as a bug in this doc.
 
 ---
 
@@ -199,7 +206,7 @@ The draft reserved DB-18/19/20/21/22 speculatively. This review dropped those re
 - DB-15 (test-infra) already covers Stage 2c → "DB-18 candidate" is redundant.
 - DB-7 (symbolic cost) already covers Stage 2d → "DB-19 candidate" is redundant.
 - DB-8 (fixed-point) already covers Stage 3c mechanics → "DB-20 candidate" is redundant.
-- **DB-17 is already allocated to reference-resolution provenance** (`design-reference-resolution-provenance.md`, per ROADMAP §Scheduled deletions). Using DB-17 for WorkflowEffect would collide.
+- **DB-17 is already allocated to reference-resolution provenance** — allocating authority is [`docs/design-reference-resolution-provenance.md`](./design-reference-resolution-provenance.md); also referenced from `src/v3/ROADMAP.md` §Scheduled deletions (the "Needs DB-17" enforcement marker). Using DB-17 for WorkflowEffect would collide.
 
 **Rule for this doc:** do not pre-reserve DB numbers. A DB number gets assigned at the moment a DB design doc is opened, not at the moment of speculation.
 
