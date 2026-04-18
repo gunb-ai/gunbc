@@ -299,8 +299,9 @@ fn collapse_linear_square(
   else
     product_pair(a, b)
 
-fn polynomial_square(v: SizeVariable) -> SymbolicCost =
+fn polynomial_square(v: SizeVariable) -> SymbolicCost {
   PolynomialCost { var: v, degree: 2 }
+}
 
 fn product_pair(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
   ProductCost(cons(a, cons(b, empty())))
