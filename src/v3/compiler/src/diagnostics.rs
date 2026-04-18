@@ -340,3 +340,144 @@ impl DiagnosticTable {
         self.entries.insert(port, diagnostic);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dag_caches_named_correction_style_specs() {
+        let dag = Dag::new();
+        assert_eq!(
+            dag.declaration(dag.rust_correction_style_spec().expect("rust style cached"))
+                .name
+                .as_deref(),
+            Some("rust_correction_style")
+        );
+        assert_eq!(
+            dag.declaration(dag.go_correction_style_spec().expect("go style cached"))
+                .name
+                .as_deref(),
+            Some("go_correction_style")
+        );
+        assert_eq!(
+            dag.declaration(
+                dag.python_correction_style_spec()
+                    .expect("python style cached")
+            )
+            .name
+            .as_deref(),
+            Some("python_correction_style")
+        );
+    }
+
+    #[test]
+    fn clean_emission_contracts_reference_named_correction_styles() {
+        let dag = Dag::new();
+        let assert_reference =
+            |clean_decl: DeclarationId, expected_style: DeclarationId, expected_name: &str| {
+                let fields = match dag
+                    .declaration(clean_decl)
+                    .value_body
+                    .as_ref()
+                    .expect("clean emission carries value_body")
+                {
+                    crate::dag::ValueBody::Structural { fields } => fields,
+                    other => panic!("clean emission must be structural, got {other:?}"),
+                };
+                let value = fields
+                    .iter()
+                    .find(|(label, _)| label == "correction_style")
+                    .map(|(_, value)| value)
+                    .expect("correction_style field exists");
+                match value {
+                    FieldValue::Reference(actual) => assert_eq!(
+                        *actual, expected_style,
+                        "{expected_name} should point at its named correction style"
+                    ),
+                    other => panic!("correction_style must be a Reference, got {other:?}"),
+                }
+            };
+        assert_reference(
+            dag.rust_clean_emission_spec().expect("rust clean emission"),
+            dag.rust_correction_style_spec().expect("rust style"),
+            "rust_clean_emission",
+        );
+        assert_reference(
+            dag.go_clean_emission_spec().expect("go clean emission"),
+            dag.go_correction_style_spec().expect("go style"),
+            "go_clean_emission",
+        );
+        assert_reference(
+            dag.python_clean_emission_spec()
+                .expect("python clean emission"),
+            dag.python_correction_style_spec().expect("python style"),
+            "python_clean_emission",
+        );
+    }
+
+    #[test]
+    fn render_rust_diagnostic_uses_rust_correction_style() {
+        let dag = Dag::new();
+        let rendered = render_diagnostic_for_target(
+            &dag,
+            DiagnosticStyleTarget::Rust,
+            &Diagnostic::ResolveError {
+                name: "field `c` does not exist on `Point`".to_string(),
+                span: SourceSpan::new("field.v3", 12, 19),
+                fixes: vec![Correction {
+                    description: "did you mean `point.a`?".to_string(),
+                    span: SourceSpan::new("field.v3", 12, 19),
+                    new_source: "point.a".to_string(),
+                }],
+            },
+        )
+        .expect("render");
+        assert!(rendered.contains("FIX (option 1): did you mean `point.a`?"));
+        assert!(rendered.contains("\n    \"point.a\";"));
+    }
+
+    #[test]
+    fn render_go_diagnostic_uses_go_correction_style() {
+        let dag = Dag::new();
+        let rendered = render_diagnostic_for_target(
+            &dag,
+            DiagnosticStyleTarget::Go,
+            &Diagnostic::ResolveError {
+                name: "field `c` does not exist on `Point`".to_string(),
+                span: SourceSpan::new("field.v3", 12, 19),
+                fixes: vec![Correction {
+                    description: "did you mean `point.a`?".to_string(),
+                    span: SourceSpan::new("field.v3", 12, 19),
+                    new_source: "point.a".to_string(),
+                }],
+            },
+        )
+        .expect("render");
+        assert!(rendered.contains("FIX (option 1): did you mean `point.a`?"));
+        assert!(rendered.contains("\n\t\"point.a\""));
+        assert!(!rendered.contains("\n\t\"point.a\";"));
+    }
+
+    #[test]
+    fn render_python_diagnostic_uses_python_correction_style() {
+        let dag = Dag::new();
+        let rendered = render_diagnostic_for_target(
+            &dag,
+            DiagnosticStyleTarget::Python,
+            &Diagnostic::ResolveError {
+                name: "field `c` does not exist on `Point`".to_string(),
+                span: SourceSpan::new("field.v3", 12, 19),
+                fixes: vec![Correction {
+                    description: "did you mean `point.a`?".to_string(),
+                    span: SourceSpan::new("field.v3", 12, 19),
+                    new_source: "point.a".to_string(),
+                }],
+            },
+        )
+        .expect("render");
+        assert!(rendered.contains("FIX (option 1): did you mean `point.a`?"));
+        assert!(rendered.contains("\n    \"point.a\""));
+        assert!(!rendered.contains("\n    \"point.a\";"));
+    }
+}

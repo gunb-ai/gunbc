@@ -324,7 +324,6 @@ mod tests {
             value_body: None,
             refinement: None,
             span: span.clone(),
-            fixes: Vec::new(),
         });
 
         let instance_id = dag.alloc_declaration_id();
@@ -459,7 +458,7 @@ mod tests {
         assert!(
             dag.diagnostics().iter().any(|(_, diag)| matches!(
                 diag,
-                Diagnostic::ResolveError { name, span }
+                Diagnostic::ResolveError { name, span, .. }
                     if name.contains("pipeline stage `parse`")
                         && span.file == PIPELINE_AUTHORITY_FILE
             )),
