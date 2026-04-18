@@ -1349,6 +1349,32 @@ pub(crate) struct PatternBindingRuleVariants {
     pub not_applicable: Option<DeclarationId>,
 }
 
+/// Cached `VerifierOutputPolicy` variant DeclarationIds resolved
+/// from `src/v3/std/clean_emission.dag`. Populated at bootstrap
+/// end alongside `PatternBindingRuleVariants`. The
+/// `post_emit_verifier` harness dispatches on the cached typed
+/// ids when parsing `CleanEmissionContract.post_emit_verifier
+/// .output_policy`. Lives here for the same §Layer opacity /
+/// §Semantic authority reasons as `PatternBindingRuleVariants`:
+/// compiler-side consumers must compare constructor
+/// `DeclarationId`s, not variant label strings.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct VerifierOutputPolicyVariants {
+    /// `IgnoreVerifierOutput` — the verdict hinges entirely on
+    /// `expected_exit_code`; stdout / stderr are informational.
+    pub ignore_output: Option<DeclarationId>,
+    /// `RequireEmptyStdout` — the declared verifier (e.g. `gofmt
+    /// -l`) reports dirty files on stdout while exiting 0, so
+    /// empty stdout is the load-bearing signal.
+    pub require_empty_stdout: Option<DeclarationId>,
+    /// `RequireEmptyStderr` — exit code and stdout are
+    /// informational; stderr carries the verdict.
+    pub require_empty_stderr: Option<DeclarationId>,
+    /// `RequireEmptyStdoutAndStderr` — both streams must be empty
+    /// in addition to the expected exit code.
+    pub require_empty_stdout_and_stderr: Option<DeclarationId>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Dag {
     /// Behaviors in construction order. NodeId(k) lives at `nodes[k]`; a forward
@@ -1390,6 +1416,13 @@ pub struct Dag {
     /// central cache is the right shape instead of per-emitter
     /// name lookups.
     pattern_binding_rule_variants: PatternBindingRuleVariants,
+    /// Cached `VerifierOutputPolicy` variant DeclarationIds
+    /// resolved from `src/v3/std/clean_emission.dag`. The
+    /// `post_emit_verifier` harness dispatches on the cached typed
+    /// ids when parsing `CleanEmissionContract.post_emit_verifier
+    /// .output_policy` — same §Layer opacity shape as
+    /// `pattern_binding_rule_variants`.
+    verifier_output_policy_variants: VerifierOutputPolicyVariants,
     /// Sidecar structural facts for mutually-recursive SCCs.
     clusters: Vec<Cluster>,
     /// Synthetic match carriers for anonymous `T?` cardinalities. Used when
@@ -1420,6 +1453,7 @@ impl Dag {
             target_syntax: TargetSyntaxCache::default(),
             stdlib_types: StdlibTypeCache::default(),
             pattern_binding_rule_variants: PatternBindingRuleVariants::default(),
+            verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),
             clusters: Vec::new(),
             optional_match_disjs: HashMap::new(),
         }
@@ -1614,6 +1648,15 @@ impl Dag {
     /// field — see `PatternBindingRuleVariants` for the rationale.
     pub(crate) fn pattern_binding_rule_variants(&self) -> &PatternBindingRuleVariants {
         &self.pattern_binding_rule_variants
+    }
+
+    /// Typed accessor for the cached `VerifierOutputPolicy` variant
+    /// handles resolved from `src/v3/std/clean_emission.dag` at
+    /// bootstrap end. Consumed by the shared `post_emit_verifier`
+    /// harness when parsing
+    /// `CleanEmissionContract.post_emit_verifier.output_policy`.
+    pub(crate) fn verifier_output_policy_variants(&self) -> &VerifierOutputPolicyVariants {
+        &self.verifier_output_policy_variants
     }
 
     pub fn nodes(&self) -> &[Behavior] {
@@ -2015,6 +2058,39 @@ impl Dag {
             }
         }
         self.pattern_binding_rule_variants = pattern_binding_variants;
+
+        // `VerifierOutputPolicy` variant resolution. Same shape as
+        // the pattern-binding cache above: one walk of the Disj's
+        // variants at bootstrap end, then every downstream consumer
+        // (`post_emit_verifier::parse_output_policy` today; Lane 1e
+        // generic walker tomorrow) dispatches on cached typed ids.
+        // Resolving by variant.label at parse time would reintroduce
+        // the same name-bridge pattern PR 2.5 removed from the
+        // PatternBindingRule path.
+        let mut verifier_policy_variants = VerifierOutputPolicyVariants::default();
+        if let Some(parent) = self.declaration_by_name("VerifierOutputPolicy") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "IgnoreVerifierOutput" => {
+                            verifier_policy_variants.ignore_output = Some(variant.ty);
+                        }
+                        "RequireEmptyStdout" => {
+                            verifier_policy_variants.require_empty_stdout = Some(variant.ty);
+                        }
+                        "RequireEmptyStderr" => {
+                            verifier_policy_variants.require_empty_stderr = Some(variant.ty);
+                        }
+                        "RequireEmptyStdoutAndStderr" => {
+                            verifier_policy_variants.require_empty_stdout_and_stderr =
+                                Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        self.verifier_output_policy_variants = verifier_policy_variants;
     }
 
     pub fn param_of(&self, member: NodeId, slot: usize) -> Option<ParamRef> {

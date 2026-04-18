@@ -322,54 +322,57 @@ fn parse_output_policy(
             detail: "VerifierOutputPolicy variants must not carry payload fields",
         });
     }
-    // Variant resolution walks the VerifierOutputPolicy declaration's
-    // children once. Unlike `PatternBindingRule`, there is no cached
-    // `VerifierOutputPolicyVariants` sidecar yet — when a second
-    // consumer lands (Lane 1e generic walker invoking the verifier)
-    // this becomes the motivating case for a cache analogous to
-    // `PatternBindingRuleVariants`.
-    let policy_decl = dag.declaration_by_name("VerifierOutputPolicy").ok_or(
-        VerifierParseError::MalformedSpec {
+    // Variant resolution dispatches on the cached
+    // `VerifierOutputPolicyVariants` typed handles — the Dag
+    // resolves the Disj's variant ids once at bootstrap end and
+    // every downstream consumer compares `DeclarationId`s here. No
+    // variant.label string lookups at parse time; INVARIANTS.md
+    // §Layer opacity / §Semantic authority forbids post-lowering
+    // consumers from reaching for names. Mirrors the PR 2.5
+    // `PatternBindingRuleVariants` structure.
+    let variants = dag.verifier_output_policy_variants();
+    let ignore_output = variants
+        .ignore_output
+        .ok_or(VerifierParseError::MalformedSpec {
             declaration,
-            detail: "VerifierOutputPolicy declaration not found in the DAG",
-        },
-    )?;
-    let crate::dag::TypeConnective::Disj { variants } = &policy_decl.connective else {
-        return Err(VerifierParseError::MalformedSpec {
-            declaration,
-            detail: "VerifierOutputPolicy declaration is not a disjunction",
-        });
-    };
-    for variant in variants {
-        if variant.ty != *constructor {
-            continue;
-        }
-        return match variant.label.as_str() {
-            "IgnoreVerifierOutput" => Ok(VerifierOutputPolicyBinding::IgnoreVerifierOutput),
-            "RequireEmptyStdout" => Ok(VerifierOutputPolicyBinding::RequireEmptyStdout),
-            "RequireEmptyStderr" => Ok(VerifierOutputPolicyBinding::RequireEmptyStderr),
-            "RequireEmptyStdoutAndStderr" => {
-                Ok(VerifierOutputPolicyBinding::RequireEmptyStdoutAndStderr)
-            }
-            other => Err(VerifierParseError::MalformedSpec {
+            detail: "VerifierOutputPolicy.IgnoreVerifierOutput declaration was not found",
+        })?;
+    let require_empty_stdout =
+        variants
+            .require_empty_stdout
+            .ok_or(VerifierParseError::MalformedSpec {
                 declaration,
-                detail: {
-                    // Static str required by the error shape; fall
-                    // back to a named constant naming the offender
-                    // would require String support. For now surface
-                    // a generic "unknown variant" and include the
-                    // label in the variant declaration via a fresh
-                    // design pass if a new variant ever ships.
-                    let _ = other;
-                    "VerifierOutputPolicy variant is not a known policy"
-                },
-            }),
-        };
+                detail: "VerifierOutputPolicy.RequireEmptyStdout declaration was not found",
+            })?;
+    let require_empty_stderr =
+        variants
+            .require_empty_stderr
+            .ok_or(VerifierParseError::MalformedSpec {
+                declaration,
+                detail: "VerifierOutputPolicy.RequireEmptyStderr declaration was not found",
+            })?;
+    let require_empty_stdout_and_stderr =
+        variants
+            .require_empty_stdout_and_stderr
+            .ok_or(VerifierParseError::MalformedSpec {
+                declaration,
+                detail:
+                    "VerifierOutputPolicy.RequireEmptyStdoutAndStderr declaration was not found",
+            })?;
+    if *constructor == ignore_output {
+        Ok(VerifierOutputPolicyBinding::IgnoreVerifierOutput)
+    } else if *constructor == require_empty_stdout {
+        Ok(VerifierOutputPolicyBinding::RequireEmptyStdout)
+    } else if *constructor == require_empty_stderr {
+        Ok(VerifierOutputPolicyBinding::RequireEmptyStderr)
+    } else if *constructor == require_empty_stdout_and_stderr {
+        Ok(VerifierOutputPolicyBinding::RequireEmptyStdoutAndStderr)
+    } else {
+        Err(VerifierParseError::MalformedSpec {
+            declaration,
+            detail: "output_policy constructor is not a known VerifierOutputPolicy variant",
+        })
     }
-    Err(VerifierParseError::MalformedSpec {
-        declaration,
-        detail: "output_policy constructor does not resolve to any VerifierOutputPolicy variant",
-    })
 }
 
 #[cfg(test)]
