@@ -1,4 +1,4 @@
-> Parent: [post-l15-phase-plan.md](./post-l15-phase-plan.md) | [src/v3/ROADMAP.md](../src/v3/ROADMAP.md)
+> Parent: [post-l15-phase-plan.md](./post-l15-phase-plan.md) | [ROADMAP.md](../ROADMAP.md) (root, authoritative)
 
 # Phase plan — Post-merge-wave coordination (snapshot 2026-04-18)
 
@@ -11,10 +11,12 @@
 
 ## Snapshot discipline
 
-A snapshot doc ages fast. When reading:
+**This doc is a thin read-model over ROADMAP.** It originates coordination state (which chat is working what, dispatch order, next-batch briefs) but restates ROADMAP facts only where essential. When ROADMAP and this doc conflict, ROADMAP is right and this doc must be fixed — delete the restated fact, replace with a line reference. Do NOT argue the doc into agreement; that reintroduces the parallel-tracker debt this doc exists to reduce.
+
+When reading:
 1. Cross-check §1 merges against `git log --oneline --since=2026-04-17` before dispatching from §2/§3.
-2. For any DB reference, confirm against ROADMAP's active-deferrals + the DB doc file. This draft caught collisions where speculative DB numbers overlapped live ones.
-3. If ROADMAP contradicts this doc, **ROADMAP is authoritative** (per ROADMAP principle: *"ROADMAP is the tracker. All in-flight work, deferrals, and follow-ups live here."*).
+2. For any DB reference, confirm against ROADMAP's active-deferrals + the DB doc file.
+3. For any restated ROADMAP fact (primitive lists, tracked debt, etc.), verify the ROADMAP line reference resolves — treat mismatch as a bug in this doc, not ROADMAP.
 
 ---
 
@@ -29,7 +31,7 @@ A snapshot doc ages fast. When reading:
 | #514 | Lane 1 Stage 1c PR 1 — Rust pilot | Rust E-5 clean-emission contract shipped |
 | #511 | DB-9 R2 docs | Mutual recursion lowering design landed |
 | #515 | DB-11 — refinement consumer wiring + composite-canonical conjunction | 3a.3 partial closure (see ROADMAP Lane 3 Stage 3a.3 row) |
-| #516 | Track 9 substrate primitives graduation | `NonEmptyList`, `NonSingletonList`, `ArityIndex`, `TransformRef` declared |
+| #516 | Track 9 substrate primitives graduation | Canonical list in [ROADMAP Track 9](../ROADMAP.md) lines 765-768: `NonEmptyList<T>`, `NonSingletonList<T>`, `ParamRef`, `TransformRef`. `ArityIndex` was explicitly *rejected* as a standalone primitive (ROADMAP:772). |
 | #517 | Lane 2 Stage 2a — effects port (decompressed substrate) | `EffectShape`, `KeySource`, `IdempotencyEvidence`, etc. |
 | #518 | W3 — `lens_structural_resolution` + emit fix + `NoBody` substrate | E-5 reconciliation; `ArrowBody::NoBody` for type-alias arrows |
 | #521 | Lane 2 Stage 2a-followup — collapse `DerivedOpEffect` | Single-authority restored; Stage 2b unblocked except `ComposedEffect` |
@@ -134,14 +136,13 @@ If Python forces a `CleanEmissionContract` SHAPE change (not just a new instanti
 
 **Scope:** two tiny items folded into one chat:
 
-1. **ParamRef/TransformRef asymmetry.** Substrate (.dag) carries SHAPE only; enforcement lives in Rust constructors (`Dag::param_of` validates `slot < bind.params.len()`). Bootstrap-local debt — same pattern as Track 9 — but should be explicit-tracked. Add comment at `src/v3/std/substrate.dag` near `type ParamRef` / `type TransformRef`; add ROADMAP entry under Track 9 graduation as "tracked debt: substrate constructor-validation asymmetry." Graduation trigger: Lane 3c self-hosting cycle.
+1. **ParamRef/TransformRef asymmetry — substrate comment only.** ROADMAP already tracks this debt at [Track 9 lines 777-786](../ROADMAP.md) ("Tracked debt — substrate constructor-validation asymmetry"), including the Lane 3c graduation trigger. **Do NOT add a new ROADMAP entry — that would duplicate an existing one.** The remaining work is a cross-reference comment at `src/v3/std/substrate.dag` near `type ParamRef` / `type TransformRef` pointing readers to the ROADMAP entry so a reader of the substrate finds the asymmetry documentation.
 
-2. **Mutual-recursion planner vs `is_first` authority alignment.** Planner walks raw `module.items`; lowering applies the `is_first` duplicate filter. Filter `compute_mutually_recursive` to the same first-authority set lowering uses. Add regression test: duplicate fn declarations where the first is part of an SCC and the second isn't — planner sees only the first.
+2. **Mutual-recursion planner vs `is_first` authority alignment.** Planner walks raw `module.items`; lowering applies the `is_first` duplicate filter. Filter `compute_mutually_recursive` to the same first-authority set lowering uses. Add regression test: duplicate fn declarations where the first is part of an SCC and the second isn't — planner sees only the first. (Not currently in ROADMAP; add a Lane 3 Stage 3a.1 follow-up row in the same PR.)
 
 **Acceptance:**
-- Substrate comment explains construction validity is enforced by Rust constructors today.
-- ROADMAP entry (under Track 9 graduation section) names graduation trigger explicitly.
-- Planner filter applied + regression test passes.
+- Substrate comment references ROADMAP Track 9 tracked-debt entry (no new ROADMAP entry created).
+- Planner filter applied + regression test passes; Lane 3 Stage 3a.1 follow-up ROADMAP row added.
 
 **Size:** XS combined. Fold both into one dispatch.
 
@@ -218,21 +219,22 @@ Split into **already in ROADMAP** (point to authority) and **migration candidate
 | 1c PR 2.5 dissolve PatternBindingRule | Lane 1 Stage 1c |
 | Stage 2b → 2c handoff (via DB-15) | Lane 2 Stage 2c |
 | Self-compile perf ratchet investigation | Cross-cutting — performance |
+| ParamRef/TransformRef constructor-validation asymmetry | Track 9 lines 777-786 (authoritative; §3 XS brief adds only a substrate.dag cross-reference comment — no new ROADMAP row) |
+| Track 9 second consumer (`IndexedElement<T>.index` → `ElementRef<T>`) | Track 9 line 770 — deliberately NOT pre-declared; graduates when a concrete consumer arrives. No migration needed. |
 
-No migration needed — §3 briefs will clear as children dispatch.
+No migration needed for any row above — §3 briefs or ROADMAP's existing stance covers them.
 
 ### 5b. Migration candidates (new from this session)
 
 | Debt | Source | Suggested ROADMAP placement |
 |---|---|---|
-| ParamRef/TransformRef constructor-validation asymmetry | #519 chat A meta-review | Under Track 9 graduation as "tracked debt: substrate constructor authority" — §3 combined XS brief lands this |
 | Mutual-recursion planner vs `is_first` alignment | #519 ChatGPT non-blocking | Lane 3 Stage 3a.1 follow-up — §3 combined XS brief lands this |
 | Variant-payload field-access general model | #518 (multi-field) + #519 chat A (single-field) | New "infra debt" subsection OR Lane 1 follow-ups — needs a dedicated hygiene chat |
 | `feedback_substrate_principle_audit` → INVARIANTS.md graduation | This session's memo | INVARIANTS.md once cited ≥3 times in dispatches; Python pilot citation triggers graduation |
-| Track 9 second consumer (`IndexedElement<T>.index` in `std/list.dag`) | #516 graduation ledger | Track 9 section status: planned — needs a dedicated hygiene chat |
 | Lens-name-filter dissolution (#518 sites 2/4/5) | #518 broader migration | §3 brief handles; ROADMAP row added when that PR opens |
+| compiler.dag v2-path carryover (§6 Q3) | `hand_maintained_src` references `src/v2/stage0/src`, `cli_run.rs`, `v2_interpreter.rs` — v2 paths in a doc that should eventually key off v3 source | Lane 3 Stage 3c prerequisite OR downgrade to "open question until 3c starts" — needs director pre-clearance before migration |
 
-**Dispatch decision:** the §3 combined XS brief handles 2 items (ParamRef + planner). The remaining 3 items (variant-payload general model, audit-memo graduation, Track 9 second consumer) go to a **dedicated ROADMAP-hygiene chat** — do NOT fold into the XS brief, it won't get attention inside an XS dispatch.
+**Dispatch decision:** the §3 combined XS brief handles planner alignment. The remaining 4 items go to a **dedicated ROADMAP-hygiene chat** — do NOT fold into the XS brief, it won't get attention inside an XS dispatch. The compiler.dag v2-path row specifically should get director-chat pre-clearance first (is it a real 3c blocker, or a v2→v3 bridging detail that self-resolves?) before ROADMAP migration.
 
 ---
 
@@ -298,7 +300,7 @@ Current critical-path status:
 
 2. **Bootstrap sequencing for the first self-hosted run.** DB-8 assumes the v3-Rust-compiler can produce a working binary from compiler.dag. If compiler.dag doesn't include parser/lowerer/emitter logic, the binary doesn't actually DO the compiler's work — it runs the cycle-runner. Question for next director session: is there an intermediate "self-hosting of the cycle-runner" milestone before "self-hosting of the compiler proper"?
 
-3. **compiler.dag's `hand_maintained_src` references v2 paths** (`src/v2/stage0/src`, `cli_run.rs`, `v2_interpreter.rs`). Stage 3c operates on v3's compiler source, not v2. A follow-up: does 3c require compiler.dag itself to be rewritten to v3-centric first? **Likely yes** — this is a prerequisite for 3c that doesn't have a ROADMAP row yet.
+3. **compiler.dag's `hand_maintained_src` references v2 paths** (`src/v2/stage0/src`, `cli_run.rs`, `v2_interpreter.rs`). Stage 3c operates on v3's compiler source, not v2. Does 3c require compiler.dag itself to be rewritten to v3-centric first, or is it a v2→v3 bridging detail that self-resolves? Tracked as a §5b migration candidate pending director pre-clearance — don't speculate on the answer here.
 
 4. **Determinism test precedes 3c.** DB-8 prescribes `tests/determinism_test.rs` (per-fixture 5x re-run). This should land BEFORE 3c as part of Lane 1 Stage 1e acceptance — it's a unit-level prerequisite that catches non-determinism at emit-level before the full cycle runs. **Recommendation:** add `tests/determinism_test.rs` to Lane 1 Stage 1e acceptance list when 1e design is written.
 
