@@ -573,102 +573,6 @@ fn seed_function_signature(
     };
 }
 
-/// DB-11 (3a.3): `true` when the parameter type at `root` mentions one of
-/// **this function's** generic parameters (`fn_type_param_ids`).
-/// Refinements on such types need substitution-through-refinement work that
-/// is not implemented; lowering rejects them fail-closed.
-///
-/// Does **not** recurse into `Instantiation` templates — only argument
-/// values — so formal `TypeParam` atoms inside unrelated templates (e.g.
-/// `OrderedRing<T>` when following `Int`) are not mistaken for the caller's
-/// type parameters.
-///
-/// Bounded walk; if `MAX_DEPTH` is exceeded, returns **true** (fail-closed).
-fn type_declaration_mentions_fn_type_parameter(
-    dag: &Dag,
-    root: DeclarationId,
-    fn_type_param_ids: &HashSet<DeclarationId>,
-    seen: &mut HashSet<DeclarationId>,
-    depth: usize,
-) -> bool {
-    const MAX_DEPTH: usize = 64;
-    if depth >= MAX_DEPTH {
-        return true;
-    }
-    if fn_type_param_ids.contains(&root) {
-        return true;
-    }
-    if !seen.insert(root) {
-        return false;
-    }
-    match &dag.declaration(root).connective {
-        TypeConnective::Atom(AtomPayload::TypeParam(_)) => false,
-        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
-            type_declaration_mentions_fn_type_parameter(
-                dag,
-                *next,
-                fn_type_param_ids,
-                seen,
-                depth + 1,
-            )
-        }
-        TypeConnective::Atom(AtomPayload::Literal(_) | AtomPayload::UnresolvedIdentifier(_)) => {
-            false
-        }
-        TypeConnective::Conj { children } => children.iter().any(|field| {
-            type_declaration_mentions_fn_type_parameter(
-                dag,
-                field.ty,
-                fn_type_param_ids,
-                seen,
-                depth + 1,
-            )
-        }),
-        TypeConnective::Disj { variants } => variants.iter().any(|field| {
-            type_declaration_mentions_fn_type_parameter(
-                dag,
-                field.ty,
-                fn_type_param_ids,
-                seen,
-                depth + 1,
-            )
-        }),
-        TypeConnective::Arrow { inputs, output, .. } => {
-            inputs.iter().any(|id| {
-                type_declaration_mentions_fn_type_parameter(
-                    dag,
-                    *id,
-                    fn_type_param_ids,
-                    seen,
-                    depth + 1,
-                )
-            }) || type_declaration_mentions_fn_type_parameter(
-                dag,
-                *output,
-                fn_type_param_ids,
-                seen,
-                depth + 1,
-            )
-        }
-        TypeConnective::Cardinality { element, .. } => type_declaration_mentions_fn_type_parameter(
-            dag,
-            *element,
-            fn_type_param_ids,
-            seen,
-            depth + 1,
-        ),
-        TypeConnective::Instantiation { arguments, .. } => arguments.iter().any(|arg| {
-            type_declaration_mentions_fn_type_parameter(
-                dag,
-                arg.value,
-                fn_type_param_ids,
-                seen,
-                depth + 1,
-            )
-        }),
-    }
-}
-
 /// DB-11 (3a.3): lower parameter `where` clauses for every Fn /
 /// FnExternalBody item and update the fn's Arrow inputs with the
 /// refined declaration ids. Runs between the data pre-pass and the
@@ -699,12 +603,6 @@ fn lower_parameter_refinements_phase(
             _ => continue,
         };
         let fn_decl_id = symbols[name];
-        let fn_type_param_ids: HashSet<DeclarationId> = dag
-            .declaration(fn_decl_id)
-            .type_params
-            .iter()
-            .copied()
-            .collect();
         // Read the seeded Arrow's inputs and output (set by
         // `seed_function_signature` to the base declarations).
         let (existing_inputs, output, body) = match &dag.declaration(fn_decl_id).connective {
@@ -718,75 +616,50 @@ fn lower_parameter_refinements_phase(
         let mut refined_inputs = Vec::with_capacity(params.len());
         for (param, &base_decl) in params.iter().zip(existing_inputs.iter()) {
             let input_decl = match &param.refinement {
-                Some(predicate) => {
-                    let mut seen = HashSet::new();
-                    if type_declaration_mentions_fn_type_parameter(
-                        dag,
-                        base_decl,
-                        &fn_type_param_ids,
-                        &mut seen,
-                        0,
-                    ) {
-                        let span = crate::parse::expr_span(predicate).clone();
+                Some(predicate) => match refinement_predicate_out_of_fragment(predicate) {
+                    Some((shape_label, span)) => {
+                        // DB-11 (3a.3) fail-closed boundary. The
+                        // discharge walker (`predicate_discharges` +
+                        // `refinement_ports_equal`) and the
+                        // composite-narrowing clone
+                        // (`clone_predicate_body`) both model only
+                        // `Value` and `Transform` predicate bodies.
+                        // Admitting a `where` predicate that lowers
+                        // through `Branch` / `Loop` / `Bind` would
+                        // produce a substrate state the consumers
+                        // silently disagree about — discharge would
+                        // reject matching shapes as "not equal," and
+                        // narrowing would discard the composite.
+                        // Reject at the lowering boundary so the
+                        // user gets an honest "unsupported shape"
+                        // diagnostic instead of a misleading
+                        // downstream mismatch.
                         report_declaration_error(
                             dag,
                             Diagnostic::ResolveError {
-                                name: "`where` refinements on types that still depend on generic \
-                                       type parameters are not supported (DB-11 / 3a.3). Use \
-                                       concrete type arguments or a monomorphic helper until \
-                                       substitution through refinement carriers is implemented."
-                                    .to_string(),
-                                span,
-                            },
-                        );
-                        base_decl
-                    } else {
-                        match refinement_predicate_out_of_fragment(predicate) {
-                            Some((shape_label, span)) => {
-                                // DB-11 (3a.3) fail-closed boundary. The
-                                // discharge walker (`predicate_discharges` +
-                                // `refinement_ports_equal`) and the
-                                // composite-narrowing clone
-                                // (`clone_predicate_body`) both model only
-                                // `Value` and `Transform` predicate bodies.
-                                // Admitting a `where` predicate that lowers
-                                // through `Branch` / `Loop` / `Bind` would
-                                // produce a substrate state the consumers
-                                // silently disagree about — discharge would
-                                // reject matching shapes as "not equal," and
-                                // narrowing would discard the composite.
-                                // Reject at the lowering boundary so the
-                                // user gets an honest "unsupported shape"
-                                // diagnostic instead of a misleading
-                                // downstream mismatch.
-                                report_declaration_error(
-                                    dag,
-                                    Diagnostic::ResolveError {
-                                        name: format!(
-                                            "`where` predicate shape not supported in \
+                                name: format!(
+                                    "`where` predicate shape not supported in \
                                      DB-11 3a.3: `{shape_label}` lowers through \
                                      a Branch/Loop/Bind node, but the discharge \
                                      walker and composite-narrowing path only \
                                      support Value and Transform expression \
                                      bodies. Use a direct comparison or a call \
                                      to a Bool-returning helper instead."
-                                        ),
-                                        span,
-                                    },
-                                );
-                                base_decl
-                            }
-                            None => lower_parameter_refinement(
-                                base_decl,
-                                predicate,
-                                &param.name,
-                                symbols,
-                                dag,
-                                param.ty.span().clone(),
-                            ),
-                        }
+                                ),
+                                span,
+                            },
+                        );
+                        base_decl
                     }
-                }
+                    None => lower_parameter_refinement(
+                        base_decl,
+                        predicate,
+                        &param.name,
+                        symbols,
+                        dag,
+                        param.ty.span().clone(),
+                    ),
+                },
                 None => base_decl,
             };
             refined_inputs.push(input_decl);
