@@ -17,7 +17,8 @@
 // PR per the brief's consumer-contract deferral.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{ArrowBody, Dag, DeclarationId, PortState, TypeConnective};
+use v3_compiler::dag::{ArrowBody, Dag, DeclarationId, FieldValue, LiteralBits, PortState, TypeConnective};
+use v3_compiler::lens_testgen::TestgenLens;
 use v3_compiler::CompileError;
 
 fn compile_any(src: &str, file: &str) -> Dag {
@@ -283,5 +284,82 @@ let suite: TestSuite = {
             );
         }
         other => panic!("bind `suite` did not resolve, got {other:?}"),
+    }
+}
+
+// Regression guard for a DB-15 R2 consumer hole flagged in PR review:
+// `TestgenLens::push_claim` used to emit `requires: []` for every
+// generated claim, but `src/v3/std/verification.dag` documents the
+// bootstrap-local convention that compile-time predicates carry
+// `requires: [{ identifier: "compile_time" }]`. With the earlier
+// empty-list emission, a downstream runner consuming
+// `materialize_obligations(suite).requires` would read generated
+// compile-time claims as "no resources to acquire" and skip the
+// intended resource-classification path. Every predicate variant
+// this lens emits today (`Compiles`, `FailsWithDiagnostic`,
+// `PortHasState`, `CostBounded`) is compile-time, so all generated
+// claims must carry the single-element sentinel list.
+#[test]
+fn testgen_claims_carry_compile_time_sentinel_in_requires() {
+    let dag = Dag::new();
+    let claims = TestgenLens::new(&dag).query();
+    assert!(
+        !claims.is_empty(),
+        "testgen lens should emit at least one claim against the \
+         bootstrapped stdlib"
+    );
+
+    for claim in &claims {
+        let requires_value = claim
+            .fields()
+            .iter()
+            .find(|(label, _)| label == "requires")
+            .map(|(_, value)| value)
+            .unwrap_or_else(|| {
+                panic!("generated claim `{}` missing `requires`", claim.declaration_name())
+            });
+
+        let FieldValue::List(entries) = requires_value else {
+            panic!(
+                "generated claim `{}` `requires` should lower to a list, got {requires_value:?}",
+                claim.declaration_name()
+            );
+        };
+
+        assert_eq!(
+            entries.len(),
+            1,
+            "generated claim `{}` should carry a single compile-time \
+             sentinel; got {} entries — empty list silently re-opens the \
+             runner classification hole flagged in PR review",
+            claim.declaration_name(),
+            entries.len()
+        );
+
+        let FieldValue::Record(fields) = &entries[0] else {
+            panic!(
+                "generated claim `{}` `requires[0]` should be a \
+                 ResourceReference record, got {:?}",
+                claim.declaration_name(),
+                entries[0]
+            );
+        };
+        let identifier = fields
+            .iter()
+            .find(|(label, _)| label == "identifier")
+            .map(|(_, value)| value)
+            .unwrap_or_else(|| {
+                panic!(
+                    "generated claim `{}` `requires[0]` record missing `identifier`",
+                    claim.declaration_name()
+                )
+            });
+        assert_eq!(
+            identifier,
+            &FieldValue::Literal(LiteralBits::String("compile_time".to_string())),
+            "generated claim `{}` `requires[0].identifier` should be \
+             the compile-time sentinel",
+            claim.declaration_name()
+        );
     }
 }

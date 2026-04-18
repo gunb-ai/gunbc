@@ -297,6 +297,16 @@ impl<'a> TestgenLens<'a> {
     ) {
         let declaration_name = format!("generated_test_claim_{:03}", *next_claim_id);
         *next_claim_id += 1;
+        // Every predicate variant this lens emits today (`Compiles`,
+        // `FailsWithDiagnostic`, `PortHasState`, `CostBounded`) is a
+        // compile-time assertion. Per DB-15 R2's per-claim `requires`
+        // convention (see `src/v3/std/verification.dag` §TestClaim
+        // docblock), compile-time claims carry the bootstrap-local
+        // sentinel `{ identifier: "compile_time" }` so downstream
+        // runners classify them correctly — an empty list is reserved
+        // for the post-resources-port dissolution window and would
+        // read as "no resources to acquire" rather than "compile-time
+        // only."
         claims.push(GeneratedClaim::new(
             self.dag,
             declaration_name,
@@ -314,7 +324,13 @@ impl<'a> TestgenLens<'a> {
                     FieldValue::Literal(LiteralBits::String(file_name)),
                 ),
                 ("predicate".to_string(), predicate),
-                ("requires".to_string(), FieldValue::List(Vec::new())),
+                (
+                    "requires".to_string(),
+                    FieldValue::List(vec![FieldValue::Record(vec![(
+                        "identifier".to_string(),
+                        FieldValue::Literal(LiteralBits::String("compile_time".to_string())),
+                    )])]),
+                ),
             ],
         ));
     }
