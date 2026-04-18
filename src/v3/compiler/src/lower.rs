@@ -31,6 +31,7 @@ use crate::dag::{
     TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
+use crate::infer::{concretize_decl_with_subst, SubstStack};
 use crate::operators::{ArithmeticOp, LogicalOp, OperatorKind};
 use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceModule, SurfaceParam,
@@ -844,12 +845,16 @@ fn build_narrowed_refinement(
 
     // Clone the outer predicate's body into the composite's scope,
     // substituting outer's Bind.params[0] → composite_param_port.
+    // Narrowing operates within a single function's scope; no
+    // TypeParam substitution applies, so pass an empty SubstStack
+    // (DB-16: the Transform-target walk becomes a structural no-op).
     let (outer_param_port, outer_value_port) = outer_predicate_slots(dag, outer_pred_decl)?;
     let outer_cloned_value = clone_predicate_body(
         dag,
         outer_value_port,
         outer_param_port,
         composite_param_port,
+        &SubstStack::new(),
         0,
     )?;
 
@@ -937,7 +942,10 @@ fn build_narrowed_refinement(
 /// `Arrow { body: UserDefined(bind) }` shape with a single param
 /// slot — in which case composite narrowing falls back to treating
 /// the outer refinement as absent (safe degradation).
-fn outer_predicate_slots(dag: &Dag, pred_decl: DeclarationId) -> Option<(PortId, PortId)> {
+pub(crate) fn outer_predicate_slots(
+    dag: &Dag,
+    pred_decl: DeclarationId,
+) -> Option<(PortId, PortId)> {
     let TypeConnective::Arrow {
         body: ArrowBody::UserDefined(bind_id),
         ..
@@ -953,21 +961,33 @@ fn outer_predicate_slots(dag: &Dag, pred_decl: DeclarationId) -> Option<(PortId,
 }
 
 /// Clone a predicate body sub-DAG, rewriting every reference to
-/// `substitute_from` into `substitute_to`. Fresh node ids + port ids
-/// are allocated for each cloned node so the result is structurally
-/// independent from the source — two composite Binds in the same
-/// DAG do not share intermediate ports.
+/// `substitute_from` into `substitute_to`, and routing each
+/// `Transform` target's declaration-level references through
+/// `concretize_decl_with_subst` so generic-helper calls and
+/// generic-record projections land on concretized declarations.
+/// Fresh node ids + port ids are allocated for each cloned node so
+/// the result is structurally independent from the source — two
+/// composite Binds in the same DAG do not share intermediate ports.
 ///
 /// Walks only `Value` and `Transform` nodes, matching the predicate
 /// fragment that `predicates_structurally_equal` already accepts.
 /// `Branch` / `Loop` / `Bind` in a predicate body are out of scope
-/// for DB-11 3a.3 (tracked ROADMAP debt) — clone returns `None` and
-/// narrowing falls back cleanly.
-fn clone_predicate_body(
+/// for DB-11's admitted fragment — clone returns `None` and callers
+/// treat that as "cannot produce a well-formed composite."
+///
+/// DB-16 (3a.3 closure): the `subst` parameter carries the active
+/// substitution stack so Transform targets with `Callable(id)` or
+/// `FieldProject.field_child` referencing template TypeParams get
+/// re-rooted to their concrete instantiations. DB-11 callers
+/// (`build_narrowed_refinement`) pass an empty `SubstStack`, which
+/// makes the Transform-target walk a structural no-op (no
+/// substitution lookup ever fires).
+pub(crate) fn clone_predicate_body(
     dag: &mut Dag,
     source_port: PortId,
     substitute_from: PortId,
     substitute_to: PortId,
+    subst: &SubstStack,
     depth: usize,
 ) -> Option<PortId> {
     const DEPTH_LIMIT: usize = 64;
@@ -1002,14 +1022,16 @@ fn clone_predicate_body(
                     *input_port,
                     substitute_from,
                     substitute_to,
+                    subst,
                     depth + 1,
                 )?);
             }
+            let new_target = substitute_transform_target(dag, t.target, subst);
             let new_node_id = dag.alloc_node_id();
             let new_output = dag.alloc_port(Some(new_node_id));
             dag.push_node(Behavior::Transform(TransformNode {
                 id: new_node_id,
-                target: t.target,
+                target: new_target,
                 inputs: new_inputs,
                 output: new_output,
                 span: t.span,
@@ -1025,6 +1047,48 @@ fn clone_predicate_body(
         }
     };
     Some(cloned)
+}
+
+/// DB-16 (3a.3 closure): re-root a `TransformTarget`'s declaration-
+/// level references through the active substitution stack so cloned
+/// predicate bodies that reference generic helpers or generic-record
+/// projections land on concretized declarations.
+///
+/// - `Operator(_)`: no substitution. Operator kinds are intrinsic;
+///   `resolve_operator_arrow` handles TypeParam operands through its
+///   own substitution pipeline at inference time.
+/// - `FieldProject { field_child, .. }`: route `field_child` through
+///   `concretize_decl_with_subst`. When the parent record is generic
+///   (e.g., `Box<T>` scoped under `fn f<T>(x: Box<T> where ...)`),
+///   substitution re-roots `field_child` to the concrete
+///   instantiation (e.g., `Box<Int>`).
+/// - `Callable(id)`: route `id` through `concretize_decl_with_subst`.
+///   When `id` is an `Instantiation` whose arguments reference
+///   substitution-bound TypeParams, the result is a fresh
+///   Instantiation with concretized arguments, deduped via
+///   `find_equivalent_anonymous_instantiation`.
+///
+/// With an empty `SubstStack`, every call to
+/// `concretize_decl_with_subst` short-circuits to the input id (no
+/// TypeParam lookup ever hits) — DB-11 callers see no behavior change.
+fn substitute_transform_target(
+    dag: &mut Dag,
+    target: TransformTarget,
+    subst: &SubstStack,
+) -> TransformTarget {
+    match target {
+        TransformTarget::Operator(_) => target,
+        TransformTarget::FieldProject {
+            field_label,
+            field_child,
+        } => TransformTarget::FieldProject {
+            field_label,
+            field_child: field_child.map(|id| concretize_decl_with_subst(dag, id, subst, 0)),
+        },
+        TransformTarget::Callable(id) => {
+            TransformTarget::Callable(concretize_decl_with_subst(dag, id, subst, 0))
+        }
+    }
 }
 
 /// Return the name of the single scope-bound `Var` referenced in a
