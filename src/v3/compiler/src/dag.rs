@@ -1012,6 +1012,19 @@ impl<T> NonSingletonList<T> {
 // compiler-side authority for `compose_effects`, `WorkflowEffect`, and
 // `BranchArm` until the self-hosted pipeline consumes the `.dag` forms
 // directly.
+//
+// Receipt discipline (per coproduct — not only this section header):
+// - `HttpMethodScalar` … `EffectShape`, `OperationEffect`, `BreakingOperation`,
+//   `CompositionVerdict`: 🟢 **TERMINAL** — 1:1 mirrors of `std.effects` algebra
+//   carriers; the `.dag` file is naming authority, Rust is projection.
+// - `BranchPredicateRef`, `BranchArm`: 🟢 **TERMINAL** — Track 9 witness handles;
+//   only [`Dag::branch_arm_of`] constructs `BranchArm` with a Bool predicate port.
+// - `WorkflowEffect`: 🟡 **SCAFFOLD** — four-variant workflow sum aligned with
+//   `effects.dag`; Stage 2b idempotency analyzes `LinearEffect` in the shipped
+//   path; branch/loop/parallel return `IdempotencyUnsupported` until a branch-wise
+//   algebra exists (see `workflow_idempotency::analyze_workflow`).
+// - `WorkflowIdempotencyReport`, `IdempotencyUnsupportedDetail`: 🟢 **TERMINAL**
+//   lens boundary — explicit sum, not a silent `(verdict, Option<error>)` pair.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HttpMethodScalar {

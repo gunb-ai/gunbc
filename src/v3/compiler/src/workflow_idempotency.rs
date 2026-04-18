@@ -13,7 +13,7 @@ use crate::dag::{
     WorkflowEffect, WorkflowIdempotencyReport,
 };
 
-pub fn operation_to_breaker(op: &OperationEffect) -> Option<crate::dag::BreakingOperation> {
+pub(crate) fn operation_to_breaker(op: &OperationEffect) -> Option<crate::dag::BreakingOperation> {
     match &op.shape {
         EffectShape::IsIdempotent(_) => None,
         EffectShape::IsBreaking(shape) => Some(crate::dag::BreakingOperation {
@@ -23,7 +23,7 @@ pub fn operation_to_breaker(op: &OperationEffect) -> Option<crate::dag::Breaking
     }
 }
 
-pub fn compose_operation_effects(effects: &[OperationEffect]) -> CompositionVerdict {
+pub(crate) fn compose_operation_effects(effects: &[OperationEffect]) -> CompositionVerdict {
     for effect in effects {
         if let Some(b) = operation_to_breaker(effect) {
             return CompositionVerdict::BrokenBy { first_breaker: b };
@@ -32,7 +32,7 @@ pub fn compose_operation_effects(effects: &[OperationEffect]) -> CompositionVerd
     CompositionVerdict::IdempotentComposition
 }
 
-pub fn analyze_workflow(d: &Dag, workflow_root: NodeId) -> WorkflowIdempotencyReport {
+pub(crate) fn analyze_workflow(d: &Dag, workflow_root: NodeId) -> WorkflowIdempotencyReport {
     let Some(workflow) = d.lane2_workflow_effect_at(workflow_root) else {
         return WorkflowIdempotencyReport::IdempotencyUnsupported(
             IdempotencyUnsupportedDetail {

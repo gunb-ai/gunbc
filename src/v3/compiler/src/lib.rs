@@ -134,8 +134,10 @@ pub(crate) mod workflow_idempotency;
 pub use dag::{Dag, NodeId};
 pub use diagnostics::{Diagnostic, SourceSpan};
 pub use emit_rust::EmitError;
+/// Lane 2 Stage 2b — **supported** public entry: delegates to `std.effects` algebra
+/// (`WorkflowIdempotencyReport`). Helpers inside [`crate::workflow_idempotency`] stay
+/// crate-private staging until the self-hosted lens consumes `WorkflowEffect` directly.
 pub use lens_idempotency::analyze_workflow;
-pub use workflow_idempotency::{compose_operation_effects, operation_to_breaker};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StageSnapshotKind {
