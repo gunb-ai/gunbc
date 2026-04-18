@@ -4,5 +4,9 @@ fn bootstrap_clean() {
     for (p, d) in dag.diagnostics().iter() {
         println!("DIAG {:?}: {:?}", p, d);
     }
-    assert!(dag.diagnostics().is_empty(), "{} diags", dag.diagnostics().len());
+    assert!(
+        dag.diagnostics().is_empty(),
+        "{} diags",
+        dag.diagnostics().len()
+    );
 }
