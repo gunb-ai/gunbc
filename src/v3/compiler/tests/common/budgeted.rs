@@ -3,6 +3,11 @@
 //! Principle: a single `#[test]` that spends multiple seconds is usually
 //! either hanging or redoing full-pipeline work that should be shared
 //! (`std::sync::OnceLock`, module-level cache, or fewer parametrized cases).
+//!
+//! **Consumers:** same-PR as the helper (E-6-style discipline). Use the
+//! `budgeted_test!` macro from any `tests/*.rs` that declares `mod common;`
+//! (each integration test binary is its own crate; the macro expands to paths
+//! under `$crate::common::...`).
 
 use std::time::{Duration, Instant};
 
