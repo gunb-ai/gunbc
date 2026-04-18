@@ -1,11 +1,11 @@
-> Parent: [post-l15-phase-plan.md](./post-l15-phase-plan.md) | [ROADMAP.md](../ROADMAP.md) (root, authoritative)
+> Parent: [post-l15-phase-plan.md](./post-l15-phase-plan.md) | [ROADMAP.md](../ROADMAP.md) (root, authoritative) | [Session relay queue](./session-relay-queue.md) (ephemeral bot/dashboard ingests)
 
 # Phase plan — Post-merge-wave coordination (snapshot 2026-04-18)
 
 **Author:** director chat session `clever-lark-108`
 **As of:** 2026-04-18
 **Refresh cadence:** session start + after every merge wave (never more than ~1 day stale)
-**Since last refresh:** ROADMAP hygiene (root Tracks 9/10/12/13 + `src/v3/ROADMAP.md` 3a.1/M2 alignment) and §4.1 director audit memos (still-deer-308, 2026-04-18).
+**Since last refresh:** §4.1 trimmed to **pointer index only** (single-authority hygiene per ChatGPT review 2026-04-18); Lane 1e + determinism mirror added to [post-l15-phase-plan.md](./post-l15-phase-plan.md). **Relay:** PR [#530](https://github.com/gunb-ai/gunbc/pull/530) — see [session-relay-queue.md](./session-relay-queue.md) (ChatGPT **APPROVE_WITH_COMMENTS** ingested).
 
 ---
 
@@ -169,7 +169,7 @@ ROADMAP Lane 2 Stage 2c names it: *"DB-15 tests-as-declarations extensions (M, b
 - Read DB-15 R2 and confirm it locks the open questions the draft raised: obligation shape (✅ extends `TestClaim`), target test framework interaction (✅ via declared resources), composition rules (N obligations vs workflow obligation vs both — confirm R2 answers or escalate to R3).
 - Confirm the prerequisite `dsl/std/resources.dag` → v3 reconciliation (S) deferral plan in ROADMAP.
 
-**Output:** a one-page audit memo. Not a new DB.
+**Output:** confirm against the DB doc; add a **pointer row** in §4.1 only — do not restate gates here.
 
 ### Stage 2d — Symbolic cost
 
@@ -182,7 +182,7 @@ DB-7 locks: `SymbolicCost` carrier (7 variants: Constant/Linear/Polynomial/Produ
 - Confirm the Stage 2b → 2d handoff: DB-7 composes through `Loop`'s `LoopBound::Descent` for mutual-recursion clusters (post-#519 substrate) — no gap.
 - Decide whether `WorkflowEffect` integration (Stage 2b) needs any DB-7 extension. If yes, write a specific ask; if no, Stage 2d dispatches directly against DB-7.
 
-**Output:** one-page audit memo. Not a new DB.
+**Output:** confirm against the DB doc; add a **pointer row** in §4.1 only — do not restate gates here.
 
 ### Stage 3b — Diagnostics-as-corrections
 
@@ -210,38 +210,18 @@ The draft reserved DB-18/19/20/21/22 speculatively. This review dropped those re
 
 **Rule for this doc:** do not pre-reserve DB numbers. A DB number gets assigned at the moment a DB design doc is opened, not at the moment of speculation.
 
-### 4.1 Director-aligned audit memos (closed — session still-deer-308, 2026-04-18)
+### 4.1 Director session — audit index (still-deer-308, 2026-04-18)
 
-These close the "one-page audit memo" outputs called for in §4 above. They are **not** new design authorities; they record read-the-DB conclusions for dispatch. Authority remains each `docs/design-*.md` and [`src/v3/ROADMAP.md`](../src/v3/ROADMAP.md).
+§4 above asked for director-chat **read-and-confirm** of DB docs, not new design. This subsection is an **index only**: it records *where* the 2026-04-18 session looked. **Gates, acceptance criteria, and pre-clearance verdicts live in the cited files** — not here. (Keeps this doc from becoming a second authority for stage decisions; see ChatGPT review on #530.)
 
-#### DB-15 — Lane 2 Stage 2c (tests as declarations)
-
-- **Read:** [`design-test-infra.md`](./design-test-infra.md) R2 (discussion draft).
-- **Obligation shape:** extends existing `TestClaim` / `TestPredicate` / `TestSuite` in `src/v3/std/verification.dag` — no forked schema (R1 rejection stands).
-- **Resources / framework interaction:** `requires: List<ResourceReference>` (exact syntax TBD in R2 open questions 1–2) specializes "depends on" via `dsl/std/resources.dag`; prerequisite **resources-in-v3** remains the separate deferral in [`src/v3/ROADMAP.md`](../src/v3/ROADMAP.md) §Lane 2 Stage 2c — not blocking R2 design lock, blocking implementation consumption.
-- **Composition:** N per-claim obligations + workflow-level generation both fit the dependency-walk framing; no second runner mechanism.
-- **Verdict:** **Pre-cleared** for Stage 2c implementation dispatch once Lane 2 Stage 2b closes and R2 open questions 1–3 are answered in the implementation PR (or a tiny R2.1 doc patch). Escalate to R3 only if implementation discovers a tautology-avoidance hole the coproduct cannot express.
-
-#### DB-7 — Lane 2 Stage 2d (symbolic cost)
-
-- **Read:** [`design-symbolic-cost-algebra.md`](./design-symbolic-cost-algebra.md).
-- **Open questions:** Q3 (fail-compile vs warn-on-unknown cost) correctly scoped as downstream extension; Q4 (Branch arms with different costs) answered in doc.
-- **Stage 2b → 2d:** `WorkflowEffect` / `compose_effects` lives on the idempotency lens path; symbolic cost lowers per `Behavior` including `Loop` with `LoopBound::Descent` for mutual-recursion clusters post-#519. **No DB-7 addendum** required for WorkflowEffect — Stage 2d implements against DB-7 as written.
-
-#### Stage 3b — Diagnostics-as-corrections (brief)
-
-- **Authority:** [`design-correction-shape.md`](./design-correction-shape.md) (DB-1) + [`lane3-self-hosting-cycle.md`](./lane3-self-hosting-cycle.md) §Stage 3b.
-- **Blocker:** Lane 1 Stage **1c** must finish (CleanEmissionContract / DB-4 surface in specs) so per-target fix syntax shares the same spec mechanism as emission. Dispatch after Python pilot + post_emit_verifier gate per [`src/v3/ROADMAP.md`](../src/v3/ROADMAP.md) §Lane 1 Stage 1c deferrals — not a new design phase.
-
-#### Stage 3c — Open questions (pointer)
-
-- Recorded in **§6** below (compiler.dag scope vs horizon, bootstrap sequencing, v2 paths in `hand_maintained_src`, determinism-before-3c). **DB-8** remains the mechanics authority; §6 is program-management only.
-
-#### Lane 1 Stage 1e — scope anchor
-
-- **Thesis:** dissolve `emit_rust.rs` / `emit_go.rs` / `emit_python.rs` into one generic walker + per-target `LanguageSpec` data ([`design-generic-walker-api.md`](./design-generic-walker-api.md) / DB-2; master plan [`post-l15-phase-plan.md`](./post-l15-phase-plan.md)).
-- **Gates:** `1d` consolidation build plan ([`phase1-lane3-consolidation-build-plan.md`](./phase1-lane3-consolidation-build-plan.md)) completes before 1e execution; **1e** gates **Lane 3 Stage 3c** and **Lane 4 Stage 4d** per master plan.
-- **Acceptance anchor:** `grep -r "fn render_" src/v3/compiler/src/` → zero target-specific matches; Rust/Go/Python bit-identical to pre-consolidation output; add **`tests/determinism_test.rs`** (per-fixture 5× re-run) as a **1e** acceptance item per §6 recommendation — catches emit-level nondeterminism before the full self-hosting cycle runs.
+| Topic | Authority to read (single source of truth) |
+|---|---|
+| DB-15 / Lane 2 Stage 2c | [`design-test-infra.md`](./design-test-infra.md) R2; deferrals [`src/v3/ROADMAP.md`](../src/v3/ROADMAP.md) §Lane 2 Stage 2c |
+| DB-7 / Lane 2 Stage 2d | [`design-symbolic-cost-algebra.md`](./design-symbolic-cost-algebra.md) |
+| Stage 3b | [`design-correction-shape.md`](./design-correction-shape.md) (DB-1), [`lane3-self-hosting-cycle.md`](./lane3-self-hosting-cycle.md) §Stage 3b; Lane 1c blockers [`src/v3/ROADMAP.md`](../src/v3/ROADMAP.md) §Lane 1 Stage 1c |
+| Stage 3c mechanics | [`design-fixed-point-ratchet.md`](./design-fixed-point-ratchet.md) (DB-8) |
+| Lane 1 Stage 1e scope, emit determinism, `tests/determinism_test.rs` | [`post-l15-phase-plan.md`](./post-l15-phase-plan.md) Lane 1 summary (incl. DB-8 pointer), [`design-generic-walker-api.md`](./design-generic-walker-api.md) (DB-2) |
+| Open program questions (what `compiler.dag` is today) | **§6** below — not a design substitute for DB-8 |
 
 ---
 

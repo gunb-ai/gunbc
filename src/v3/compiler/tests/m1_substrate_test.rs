@@ -2820,6 +2820,36 @@ fn odd(n: Int, even: fn(Int) -> Bool) -> Bool = even(n)
 }
 
 #[test]
+fn mutual_recursion_planner_respects_is_first_on_duplicate_fn() {
+    // Second `fn a` is a duplicate (fail-closed diagnostic). The mutual-
+    // recursion planner must use only first-authority items — same as
+    // lowering — so the duplicate cannot replace `a`'s body with a
+    // non-recursive spine and destroy the a↔b cluster.
+    let src = "\
+fn even(n: Int) -> Bool = if n == 0 then true else odd(n - 1)
+fn odd(n: Int) -> Bool = if n == 0 then false else even(n - 1)
+fn odd(n: Int) -> Bool = false
+";
+    let dag = compile_any(src, "mutual_duplicate_is_first.v3");
+    assert!(
+        dag.diagnostics()
+            .iter()
+            .any(|d| format!("{d:?}").contains("duplicate declaration")),
+        "expected duplicate `odd` diagnostic, got {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(
+        dag.clusters().len(),
+        1,
+        "planner must keep the first `fn odd` body (mutual with `even`); duplicate must not overwrite call graph"
+    );
+    assert!(
+        dag.nodes().iter().filter_map(Behavior::as_loop).count() >= 1,
+        "mutual even/odd should still lower through Loop despite duplicate `odd`"
+    );
+}
+
+#[test]
 fn mutual_recursion_checker_uses_shadow_aware_recursive_edges() {
     let src = "\
 fn apply_once(f: fn(Int) -> Bool, x: Int) -> Bool = f(x)

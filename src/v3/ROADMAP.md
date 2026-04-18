@@ -331,22 +331,20 @@ multi-target emission, §8.11 ratchet) shifts shape:
 - **`ArrowBody::Pending` removal** — once the ratchet hits zero by
   M3, delete the variant.
 
-## M2 — Feature parity with v2 subset (deferred)
+## M2 — Feature parity (absorbed into Lane 3 Stage 3a)
 
-- Generics in user code
-- `Optional` / `Cardinality` user-code surface
-- Service calls (transport declarations)
-- Pattern matching in user-code fn bodies (Branch with destructuring)
-- Interpreter (`dag run`)
-- Recursive functions → `Loop` lowering — **shipped for mutual
-  recursion** (DB-9 R2, PR #519): `compute_mutually_recursive` produces
-  clusters; lowering emits `Loop` with `LoopBound::Descent`. Further
-  language surface for recursion remains in sync with
-  [lane3-self-hosting-cycle.md](../../docs/lane3-self-hosting-cycle.md).
-- Match expressions / pipe / lambda / named arguments in user code
-- `data` value semantics
-- `where` refinement checking
+**Authority split (avoids two competing “what shipped” lists):**
+
+- **Shipped 3a work** — **only** [**§ Lane 3 Stage 3a**](#lane-3-stage-3a) (sub-stage table + Landing notes). Do not infer shipped scope from this section’s prose; read the table rows 3a.1–3a.5.
+- **M2 row** in §Status at a glance — executive summary only; if it disagrees with the 3a table, **the 3a table wins**.
+
+**Remaining gaps** (M2-class tail *not* tracked as a 3a sub-stage row):
+
+- Service calls — **transport declarations**
+- **Interpreter** (`dag run`)
+- `Optional` / `Cardinality` user-code surface (where not already covered by shipped 3a work)
 - `TypeShape` → `DeclarationId` migration
+- Parser/body **class-5** gaps (e.g. variant RHS in match arms, `FnExternalBody` islands) — [`DOWNSTREAM_REQUIREMENTS.md`](DOWNSTREAM_REQUIREMENTS.md)
 
 ## M3 — Self-hosting (deferred)
 
@@ -468,7 +466,7 @@ Sub-stage status (as of 2026-04-18):
 | 3a.4 surface generics (DB-12, S) | ✅ Shipped | PR #496 | Tests-only landing; infrastructure already wired. |
 | 3a.5 Disj dotted-path (DB-13, S) | ✅ Shipped | PR #496 | Tests-only landing; infrastructure already wired. |
 
-**Landing: 3a.1 mutual recursion (DB-9 R2, PR #519).** Substrate extension (`LoopBound::Descent`, `Dag.clusters` sidecar, `Cluster` / `MemberDescent` / `IntraClusterCall`) + `compute_mutually_recursive` as cluster-shape producer + lock-in tests flipped from rejection to lowering. Substrate integrity primitives (`NonEmptyList`, `NonSingletonList`, `ParamRef`, `TransformRef`) landed with consumers in PR #516. Unblocks continued work toward Lane 3 Stage 3c (self-hosting cycle). Design: [design-mutual-recursion-lowering.md](../../docs/design-mutual-recursion-lowering.md) (**DB-9 R2** — supersedes R1 lens-level approach). Follow-up: planner vs `is_first` duplicate filter alignment — see [phase-plan-2026-04-18.md §3](../../docs/phase-plan-2026-04-18.md) combined XS brief; optional ROADMAP row when that PR lands.
+**Landing: 3a.1 mutual recursion (DB-9 R2, PR #519).** Substrate extension (`LoopBound::Descent`, `Dag.clusters` sidecar, `Cluster` / `MemberDescent` / `IntraClusterCall`) + `compute_mutually_recursive` as cluster-shape producer + lock-in tests flipped from rejection to lowering. Substrate integrity primitives (`NonEmptyList`, `NonSingletonList`, `ParamRef`, `TransformRef`) landed with consumers in PR #516. Unblocks continued work toward Lane 3 Stage 3c (self-hosting cycle). Design: [design-mutual-recursion-lowering.md](../../docs/design-mutual-recursion-lowering.md) (**DB-9 R2** — supersedes R1 lens-level approach). **`compute_mutually_recursive` uses the same `is_first` filter as lowering** (duplicate top-level `fn` bodies cannot overwrite the mutual-recursion call graph); regression: `mutual_recursion_planner_respects_is_first_on_duplicate_fn` in `m1_substrate_test.rs`. **`substrate.dag`:** `ParamRef` / `TransformRef` carry explicit pointers to this file's Track 9 "Tracked debt — substrate constructor-validation asymmetry" section ([phase-plan §3](../../docs/phase-plan-2026-04-18.md) combined XS brief — closed).
 
 **Landing: 3a.3-full (L).** Consumer wiring for `Declaration.refinement`:
 - **Single construction authority, phase-ordered.** A dedicated `lower_parameter_refinements_phase` is the sole caller of `lower_parameter_refinement` for parameter `where` clauses. It runs between the data pre-pass and the main fn-body pass so predicates referencing top-level `data` constants (e.g., `where d > THRESHOLD` with `data THRESHOLD: Int = 10`) resolve against lowered declarations, not placeholders. `seed_function_signature` seeds the Arrow with base declaration ids only; the refinement phase updates the Arrow inputs with refined decls. `lower_fn_item_expr_body` reads the refined Arrow directly; the previous `lower_fn_item_unparsed` helper is removed (seeding already produced the final `Arrow { body: Unparsed(body_span) }` for `SurfaceItem::FnExternalBody`). Before this refactor, body lowering re-ran `lower_parameter_refinement` and overwrote the Arrow, leaving the seeded predicate Bind + refined Declaration orphaned in the DAG.

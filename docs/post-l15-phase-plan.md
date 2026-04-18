@@ -45,6 +45,8 @@ Six internal stages. Each builds on the previous:
 
 **Acceptance:** `grep -r "fn render_" src/v3/compiler/src/` returns zero target-specific matches; Rust, Go, Python all roundtrip through a single generic walker with bit-identical output to pre-consolidation; zero `#[allow(warnings)]` attributes anywhere.
 
+**Emit-level determinism (Lane 1e / DB-8, prerequisite alongside walker consolidation):** invariant D-1 and `tests/determinism_test.rs` (per-fixture 5× re-run) are specified in [design-fixed-point-ratchet.md](./design-fixed-point-ratchet.md). The consolidated emitter must not introduce run-to-run drift before Stage 3c’s full fixed-point gate — same design doc, §acceptance checklist. This is **not** a second gate definition: phase-plan snapshots may point here but do not restate criteria.
+
 **Not in scope for Lane 1** (per THESIS.md §"Two shapes of omni-emission"): SPICE netlists, Verilog hardware descriptions, English documentation, YAML, Terraform, etc. These are **Shape B artifacts** — outputs of `.dag` PROGRAMS, not compiler emission targets. Writing a SPICE-netlist emitter is writing a `.dag` library, which any user program can invoke. Compiler core stays focused on Shape A (programming languages).
 
 ### Lane 2 — Compile-time proofs (XL, six stages, overlaps Lane 1 after 1b)

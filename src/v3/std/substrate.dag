@@ -198,6 +198,8 @@ type BranchPath {
 // When .dag-side construction matures in the Lane 3c self-hosting
 // cycle, add the equivalent substrate-level constructor authority so
 // direct .dag producers cannot forge invalid handles.
+// Full prose + graduation trigger: ../../../ROADMAP.md — Track 9
+// ("Tracked debt — substrate constructor-validation asymmetry").
 type ParamRef {
   member: NodeId
   slot: Int
@@ -209,6 +211,8 @@ type ParamRef {
 // currently exposes the witness field shape only; .dag-side
 // construction must gain the same constructor authority in the Lane 3c
 // self-hosting cycle.
+// Same ROADMAP authority as ParamRef: ../../../ROADMAP.md — Track 9
+// ("Tracked debt — substrate constructor-validation asymmetry").
 type TransformRef {
   node: NodeId
 }
