@@ -189,7 +189,11 @@ const REFLECTED_FIXTURES: &[ReflectedFixture] = &[
     ReflectedFixture {
         name: "bind_count",
         module_source: "fn bind_count(d: Dag) -> Int = fold(d.nodes, 0, |n, behavior| match behavior { Value(v) => n, Transform(t) => n, Branch(b) => n, Loop(l) => n, Bind(bind) => n + 1 })",
-        wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); bind_count(&dag)",
+        // Subtract the bootstrap baseline so the test still pins the
+        // user-program bind count after Lane 2 Stage 2d added
+        // `src/v3/std/algebra.dag` + `dimensions.dag`, whose lowered
+        // bodies contribute their own Bind nodes to `d.nodes`.
+        wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); let baseline = v3_compiler::dag::Dag::new(); bind_count(&dag) - bind_count(&baseline)",
     },
     ReflectedFixture {
         name: "singleton_span",
@@ -199,7 +203,11 @@ const REFLECTED_FIXTURES: &[ReflectedFixture] = &[
     ReflectedFixture {
         name: "result_port_is_param",
         module_source: "fn result_port_is_param(bind: BindNode) -> Bool = contains(bind.params, bind.result_port)",
-        wrapper_body: "let dag = v3_compiler::compile_to_dag(\"fn id(x: Int) -> Int = x\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) if !bind.params.is_empty() => Some(bind.clone()), _ => None }).expect(\"function bind\"); if result_port_is_param(&bind) { 1 } else { 0 }",
+        // Filter by source file so the bind picked is the user's `id`
+        // — after Lane 2 Stage 2d landed std-module binds with
+        // non-empty params, the raw `params.is_empty()` filter was
+        // no longer specific enough to isolate user code.
+        wrapper_body: "let dag = v3_compiler::compile_to_dag(\"fn id(x: Int) -> Int = x\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) if !bind.params.is_empty() && bind.span.file == \"runtime_reflection.v3\" => Some(bind.clone()), _ => None }).expect(\"function bind\"); if result_port_is_param(&bind) { 1 } else { 0 }",
     },
     ReflectedFixture {
         name: "bind_names",
@@ -213,7 +221,11 @@ const REFLECTED_FIXTURES: &[ReflectedFixture] = &[
                    Loop(l) => acc, \
                    Bind(bind) => cons({ name: bind.name }, acc) \
                  })",
-        wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); bind_names(&dag).len() as i64",
+        // Same bootstrap-baseline subtraction as `bind_count` — the
+        // test pins the two user-program binds (`x`, `y`) even
+        // though `bind_names` also materializes a record per std-
+        // module bind in `d.nodes`.
+        wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); let baseline = v3_compiler::dag::Dag::new(); (bind_names(&dag).len() as i64) - (bind_names(&baseline).len() as i64)",
     },
 ];
 

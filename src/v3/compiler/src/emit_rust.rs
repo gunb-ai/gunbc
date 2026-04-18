@@ -5200,6 +5200,7 @@ mod tests {
         };
         dag.set_port_type(parent_port, crate::types::TypeShape::new(dag_type));
 
+        let mut test_node_ids = Vec::new();
         for _ in 0..2 {
             let node_id = dag.alloc_node_id();
             let output = dag.alloc_port(Some(node_id));
@@ -5214,13 +5215,17 @@ mod tests {
                 span: SourceSpan::new("<test>", 0, 0),
             }));
             dag.set_port_type(output, crate::types::TypeShape::new(dag_nodes_type));
+            test_node_ids.push(node_id);
         }
 
-        let first_transform = dag
-            .nodes()
-            .iter()
-            .find_map(Behavior::as_transform)
-            .expect("first field project exists");
+        // Query by the specific node we just pushed — earlier Transform
+        // nodes in `dag.nodes()` belong to bootstrap-loaded std modules
+        // and have no `parent` binding in `bound_names`, which renders
+        // as the empty-list fallback rather than the expected projection.
+        let first_transform = match dag.node(test_node_ids[0]) {
+            Behavior::Transform(t) => t,
+            other => panic!("pushed transform went missing, got {other:?}"),
+        };
         let indexes = RealizationIndexes::build(&dag).expect("indexes build");
         let input_use_facts = InputUseFacts::build(&dag, &indexes);
         let mut bound_names = HashMap::new();
