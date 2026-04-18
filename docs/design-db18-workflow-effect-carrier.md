@@ -124,9 +124,9 @@ Per `feedback_coproduct_dissolution`, every new coproduct must pass the four-pat
 
 | Variant A | Variant B | Payload A | Payload B | Distinct? |
 |---|---|---|---|---|
-| `LinearEffect` | `BranchEffect` | `List<OperationEffect>` | `NonSingletonList<BranchArm>` | ✓ different element types + different cardinality contract |
-| `LinearEffect` | `LoopEffect` | `List<OperationEffect>` | `WorkflowEffect` | ✓ list vs single |
-| `LinearEffect` | `ParallelEffect` | `List<OperationEffect>` | `NonSingletonList<WorkflowEffect>` | ✓ different element types + different cardinality contract |
+| `LinearEffect` | `BranchEffect` | `NonEmptyList<OperationEffect>` | `NonSingletonList<BranchArm>` | ✓ different element types + different cardinality contract |
+| `LinearEffect` | `LoopEffect` | `NonEmptyList<OperationEffect>` | `WorkflowEffect` | ✓ list vs single |
+| `LinearEffect` | `ParallelEffect` | `NonEmptyList<OperationEffect>` | `NonSingletonList<WorkflowEffect>` | ✓ different element types + different cardinality contract |
 | `BranchEffect` | `LoopEffect` | `NonSingletonList<BranchArm>` | `WorkflowEffect` | ✓ list vs single |
 | `BranchEffect` | `ParallelEffect` | `NonSingletonList<BranchArm>` | `NonSingletonList<WorkflowEffect>` | ✓ `BranchArm` ≠ `WorkflowEffect` (BranchArm carries `condition: BranchPredicateRef` that ParallelEffect branches do not; the typed-witness field is unrepresentable in ParallelEffect's element type) |
 | `LoopEffect` | `ParallelEffect` | `WorkflowEffect` | `NonSingletonList<WorkflowEffect>` | ✓ single vs list |
@@ -135,7 +135,7 @@ The critical pair is BranchEffect vs ParallelEffect — both use `NonSingletonLi
 
 **Pattern 3 — Algebraic-form (traces to intro/elim of algebraic structures).** The four variants trace to four distinct categorical operations on effect algebras:
 
-- `LinearEffect` = **monoidal composition (∘)**. `compose_effects` already witnesses this: a linear sequence of effects composes as `∘` with `ReadEffect` (identity on state) as the unit on the effect-shape side AND with the empty list `[]` as the unit on the carrier side. The `CompositionVerdict` is the algebra's output for this case (`compose_effects([])` = `IdempotentComposition`, the identity verdict). The carrier `List<OperationEffect>` is the free monoid on `OperationEffect`, including the empty word as the monoidal identity.
+- `LinearEffect` = **monoidal composition (∘)**. `compose_effects` witnesses this: a linear sequence of effects composes as `∘` with `ReadEffect` (identity on state) as the unit on the effect-shape side. The `CompositionVerdict` is the algebra's output for this case. The carrier `NonEmptyList<OperationEffect>` is the free semigroup on `OperationEffect` (the identity element — the empty word — is not representable in the input carrier; when a `compose_effects` caller passes the algebra `[]` at the algebra boundary, the algebra returns `IdempotentComposition`, but the workflow input carrier itself enforces ≥1 so "no workflow here" is distinguished from "a linear workflow with zero ops").
 - `BranchEffect` = **coproduct (∨) / lattice meet over arms**. Exactly one arm executes at runtime; the verdict must hold for whichever arm is taken. At compile time this is a `∨`-over-arms: the workflow is idempotent iff every arm's workflow is idempotent. Structurally distinct from `∘` — composition order does not matter for arms that are alternatives, and the per-arm verdicts combine via lattice meet, not via monoidal multiplication.
 - `LoopEffect` = **fixpoint (μ) / iteration**. The body is re-applied 0..N times (bound structure tracked separately, potentially in Part 2). Idempotency under iteration demands the body itself be idempotent (`f ∘ f = f`) — a strictly stronger condition than linear composition, because monoidal composition of two different non-idempotent effects can still converge, but iteration of one non-idempotent effect cannot.
 - `ParallelEffect` = **concurrent product (⊗) / commutative composition**. Branches execute concurrently and require algebraic commutativity on the target state to compose safely. The verdict's validity depends on commutativity evidence (open question §1 below — Part 2 or Stage 2e may extend the carrier with a `commutativity` witness). Distinct from both `∘` (order-preserving) and `∨` (alternatives): `⊗` is unordered AND concurrent.
@@ -152,7 +152,7 @@ Per `feedback_substrate_principle_audit`, all six questions walk before greenlig
 
 **Q1 — Cardinality invariants.** Does any variant admit `[]` where invariant says ≥1, or singletons where ≥2?
 
-- `LinearEffect.ops: List<OperationEffect>` — empty is explicitly allowed as the **monoidal identity** (the unit element of the free monoid on `OperationEffect`). `compose_effects([])` already returns `IdempotentComposition`; the type accepts empty for carrier/algebra symmetry. This is also the honest representation of a no-op workflow (e.g., a branch arm whose body does nothing). No ≥1 invariant applies here; the invariant is "a list of ops (zero or more)," matching the algebra.
+- `LinearEffect.ops: NonEmptyList<OperationEffect>` — a linear workflow with zero operations is structurally unrepresentable; the carrier enforces ≥1 by type. (The monoidal-identity case is handled at the algebra level — `compose_effects([])` on the `List<OperationEffect>` the caller passes to `compose_effects` returns `IdempotentComposition` — but the workflow-*input* side does not need the zero-element carrier, and admitting it would create a representation-duality ambiguity with "no workflow here." The shipped impl chose the tighter carrier.)
 - `BranchEffect.arms: NonSingletonList<BranchArm>` — a branch with 0 or 1 arms is meaningless (0: no workflow; 1: just the arm itself, use the arm's `body` directly). Type rejects both.
 - `LoopEffect.body: WorkflowEffect` — singleton (one body), never empty. Type is non-optional.
 - `ParallelEffect.branches: NonSingletonList<WorkflowEffect>` — 0 branches is empty parallelism; 1 branch is just the branch itself, no concurrency. Type rejects both. ✓ cardinality invariants at the type level (including the correctly-permissive empty `LinearEffect` case); no "lowering guarantees" prose required.
@@ -172,7 +172,7 @@ Per `feedback_substrate_principle_audit`, all six questions walk before greenlig
 
 **Q6 — Representation duality.** Can the same fact be expressed in two structurally different shapes that comparison treats differently?
 
-- A workflow that is structurally a sequence with a nested branch is expressed *uniquely* as the outermost variant's shape. "Linear with branch in the middle" cannot be represented as `LinearEffect` (because `LinearEffect.ops` is `List<OperationEffect>`, not `List<WorkflowEffect>`); it must be lifted to `BranchEffect { arms: [LinearEffect{A∪B∪D}, LinearEffect{A∪C∪D}] }` — i.e., a branch between two linear paths. This is a structurally-unique canonical form, not a choice between two equivalent representations. A no-op workflow has exactly one canonical form — `LinearEffect { ops: [] }` — and cannot be spelled another way under the 4-variant coproduct. ✓ no representation duality.
+- A workflow that is structurally a sequence with a nested branch is expressed *uniquely* as the outermost variant's shape. "Linear with branch in the middle" cannot be represented as `LinearEffect` (because `LinearEffect.ops` is `NonEmptyList<OperationEffect>`, not a list of `WorkflowEffect`); it must be lifted to `BranchEffect { arms: [LinearEffect{A∪B∪D}, LinearEffect{A∪C∪D}] }` — i.e., a branch between two linear paths. This is a structurally-unique canonical form, not a choice between two equivalent representations. A node without a workflow has exactly one canonical state — `lane2_workflow: None` on the Value/Bind behavior — and cannot be spelled as a "zero-ops LinearEffect" because the carrier's `NonEmptyList` rejects that. ✓ no representation duality.
 
 All six audit questions stamp cleanly. The full six-question audit is recorded in this section for reviewer-bot verification rather than re-derivation at PR-review time.
 
@@ -455,7 +455,7 @@ Design-contract items (locked in this doc, independent of shipping-phase):
 2. `Dag::branch_arm_of(root, port, body) -> Option<BranchArm>` is the sole `BranchArm` constructor; validates `port` resolves to `Bool` on the graph rooted at `root`.
 3. `Dag::try_register_lane2_workflow_effect(root, workflow) -> bool` and `Dag::lane2_workflow_effect_at(root) -> Option<&WorkflowEffect>` are the write / read accessors for the authority site.
 4. `src/v3/compiler/src/workflow_idempotency.rs` declares `analyze_workflow(dag, root) -> WorkflowIdempotencyReport` dispatching per variant: `LinearEffect` delegates to `compose_effects` and returns a verdict; the other three variants return `WorkflowIdempotencyReport::Unsupported { detail: IdempotencyUnsupportedDetail }` identifying the variant and its downstream stage.
-5. Structural tests cover: GCP-style linear green path; terminal `AppendEffect` red path; fail-closed on non-Bool branch conditions (`Dag::branch_arm_of` returns `None`); empty-`LinearEffect` monoidal-identity case; diagnostic paths for `BranchEffect` / `LoopEffect` / `ParallelEffect`.
+5. Structural tests cover: GCP-style linear green path; terminal `AppendEffect` red path; fail-closed on non-Bool branch conditions (`Dag::branch_arm_of` returns `None`); diagnostic paths for `BranchEffect` / `LoopEffect` / `ParallelEffect`.
 
 **Part 3 — follow-up (NOT shipped by PR #534):**
 
@@ -489,7 +489,7 @@ The director chat owns the call on each of these. Silent in-flight patches destr
 
 3. **Does `LoopEffect.body` need a bound carrier in Part 1?** Substrate has `LoopBound = Cardinality { count: PortId } | Descent { cluster: ClusterId }`. Stage 2d (symbolic cost) will almost certainly need the bound to compute recursion depth. Part 1 does NOT include a bound field because Stage 2b emits a diagnostic on `LoopEffect` without reading bound info. Part 2 / Stage 2d can add `bound: LoopBound` as an additive extension when its consumer binds — consistent with Acceptance item 1's additive-extension clause. If director chat prefers a single shape-lock including the bound, a future DB revision adds `LoopEffect { body: WorkflowEffect, bound: LoopBound }`; decision is a scope judgment, not a correctness one.
 
-4. **Does `LinearEffect.ops` need to be `List<WorkflowEffect>` instead of `List<OperationEffect>` to allow mixed nesting?** The worked example C demonstrates the answer: a linear sequence with a branch in the middle lifts to a `BranchEffect` of two linear paths (distributive over composition). No `LinearEffect` with a `WorkflowEffect` in the middle is needed; the structural canonical form is always a variant at the outermost shape. Locked per Q6 (no representation duality) — not open.
+4. **Does `LinearEffect.ops` need to be `NonEmptyList<WorkflowEffect>` instead of `NonEmptyList<OperationEffect>` to allow mixed nesting?** The worked example C demonstrates the answer: a linear sequence with a branch in the middle lifts to a `BranchEffect` of two linear paths (distributive over composition). No `LinearEffect` with a `WorkflowEffect` in the middle is needed; the structural canonical form is always a variant at the outermost shape. Locked per Q6 (no representation duality) — not open.
 
 ---
 
