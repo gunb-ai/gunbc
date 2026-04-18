@@ -1,37 +1,176 @@
 module lenses.cost
 
 import std.list { List, empty, fold, cons }
-import std.substrate { Dag, Behavior, PortId }
-import std.algebra { SymbolicCost }
+import std.substrate { Dag, Behavior, BranchPath, PortId }
+import std.algebra {
+  SymbolicCost, SizeVariable,
+  sequential, iterate, max_path
+}
 
 type SymbolicCostEntry {
   port: PortId
-  cost: SymbolicCost
+  cost: SymbolicCostLookup
 }
 
-fn symbolic_cost_of(d: Dag, port_id: PortId) -> SymbolicCost =
+type SymbolicCostLookup
+  = MissingCost
+  | FoundCost(SymbolicCost)
+
+fn symbolic_cost_of(d: Dag, port_id: PortId) -> SymbolicCostLookup =
   lookup_cost(compute_symbolic_costs(d), port_id)
 
 fn compute_symbolic_costs(d: Dag) -> List<SymbolicCostEntry> =
-  fold(d.nodes, empty(), |acc, behavior|
-    cons(entry_for(behavior), acc)
+  fold(d.nodes, seed_bind_params(d.nodes), |acc, behavior|
+    cons(entry_for(acc, behavior), acc)
   )
 
-fn entry_for(behavior: Behavior) -> SymbolicCostEntry =
-  match behavior {
-    Value(v) => { port: v.result_port, cost: ConstantCost(0) }
-    Transform(t) => { port: t.result_port, cost: ConstantCost(0) }
-    Branch(b) => { port: b.result_port, cost: ConstantCost(0) }
-    Loop(l) => { port: l.result_port, cost: ConstantCost(0) }
-    Bind(bind) => { port: bind.result_port, cost: ConstantCost(0) }
+fn seed_bind_params(nodes: List<Behavior>) -> List<SymbolicCostEntry> =
+  match nodes {
+    Empty => empty()
+    Cons(payload) =>
+      concat_entries(params_of(payload.head), seed_bind_params(payload.tail))
   }
 
-fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> SymbolicCost =
+fn params_of(behavior: Behavior) -> List<SymbolicCostEntry> =
+  match behavior {
+    Value(v) => empty()
+    Transform(t) => empty()
+    Branch(b) => empty()
+    Loop(l) => empty()
+    Bind(bind) => param_entries(bind.params)
+  }
+
+fn param_entries(params: List<PortId>) -> List<SymbolicCostEntry> =
+  match params {
+    Empty => empty()
+    Cons(payload) =>
+      cons(
+        { port: payload.head, cost: FoundCost(ConstantCost(0)) },
+        param_entries(payload.tail)
+      )
+  }
+
+fn concat_entries(
+  a: List<SymbolicCostEntry>,
+  b: List<SymbolicCostEntry>
+) -> List<SymbolicCostEntry> =
+  match a {
+    Empty => b
+    Cons(payload) => cons(payload.head, concat_entries(payload.tail, b))
+  }
+
+fn entry_for(acc: List<SymbolicCostEntry>, behavior: Behavior) -> SymbolicCostEntry =
+  match behavior {
+    Value(v) =>
+      { port: v.result_port, cost: FoundCost(ConstantCost(0)) }
+    Transform(t) =>
+      { port: t.result_port, cost: FoundCost(ConstantCost(0)) }
+    Branch(b) =>
+      { port: b.result_port, cost: FoundCost(ConstantCost(0)) }
+    Loop(l) =>
+      { port: l.result_port, cost: FoundCost(ConstantCost(0)) }
+    Bind(bind) =>
+      { port: bind.result_port, cost: lookup_cost(acc, bind.result_port) }
+  }
+
+fn transform_cost(
+  acc: List<SymbolicCostEntry>,
+  inputs: List<PortId>
+) -> SymbolicCostLookup =
+  combine_sequential(
+    FoundCost(ConstantCost(1)),
+    sum_costs(acc, inputs)
+  )
+
+fn branch_cost(
+  acc: List<SymbolicCostEntry>,
+  input: PortId,
+  paths: List<BranchPath>
+) -> SymbolicCostLookup =
+  combine_sequential(
+    FoundCost(ConstantCost(1)),
+    combine_sequential(
+      lookup_cost(acc, input),
+      max_of_paths(acc, paths)
+    )
+  )
+
+fn max_of_paths(
+  acc: List<SymbolicCostEntry>,
+  paths: List<BranchPath>
+) -> SymbolicCostLookup =
+  fold(paths, FoundCost(ConstantCost(0)), |running, path|
+    combine_max(running, lookup_cost(acc, path.result_port))
+  )
+
+fn loop_cost(
+  acc: List<SymbolicCostEntry>,
+  source: PortId
+) -> SymbolicCostLookup =
+  combine_iterate(
+    linear_at(source),
+    lookup_cost(acc, source)
+  )
+
+fn linear_at(port_id: PortId) -> SymbolicCostLookup =
+  FoundCost(ConstantCost(0))
+
+fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> SymbolicCostLookup =
   match acc {
-    Empty => ConstantCost(0)
+    Empty => MissingCost
     Cons(payload) =>
       if payload.head.port == port_id then
         payload.head.cost
       else
         lookup_cost(payload.tail, port_id)
   }
+
+fn sum_costs(
+  acc: List<SymbolicCostEntry>,
+  ports: List<PortId>
+) -> SymbolicCostLookup =
+  fold(ports, FoundCost(ConstantCost(0)), |running, port_id|
+    combine_sequential(running, lookup_cost(acc, port_id))
+  )
+
+fn combine_sequential(
+  a: SymbolicCostLookup,
+  b: SymbolicCostLookup
+) -> SymbolicCostLookup =
+  match a {
+    MissingCost => MissingCost
+    FoundCost(ax) =>
+      match b {
+        MissingCost => MissingCost
+        FoundCost(bx) => FoundCost(sequential(ax, bx))
+      }
+  }
+
+fn combine_iterate(
+  bound: SymbolicCostLookup,
+  body: SymbolicCostLookup
+) -> SymbolicCostLookup =
+  match bound {
+    MissingCost => MissingCost
+    FoundCost(b) =>
+      match body {
+        MissingCost => MissingCost
+        FoundCost(y) => FoundCost(iterate(b, y))
+      }
+  }
+
+fn combine_max(
+  a: SymbolicCostLookup,
+  b: SymbolicCostLookup
+) -> SymbolicCostLookup =
+  match a {
+    MissingCost => MissingCost
+    FoundCost(ax) =>
+      match b {
+        MissingCost => MissingCost
+        FoundCost(bx) => FoundCost(dominant(ax, bx))
+      }
+  }
+
+fn dominant(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
+  max_path(cons(a, cons(b, empty())))
