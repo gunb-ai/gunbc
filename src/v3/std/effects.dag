@@ -435,6 +435,9 @@ fn compose_effects(effects: List<OperationEffect>) -> CompositionVerdict {
 
 // ── DB-18 workflow carrier (Stage 2b) ───────────────────────────
 //
+// Modeling-discipline principle 4: each coproduct / boundary carrier
+// below carries its own 🟢/🟡 stamp — not only this banner.
+//
 // Four-variant coproduct: linear composition delegates to
 // `compose_effects`; branching / loop / parallel are structurally
 // distinct control-flow shapes — the idempotency lens reports
@@ -446,15 +449,24 @@ fn compose_effects(effects: List<OperationEffect>) -> CompositionVerdict {
 // enforced today by `Dag::branch_arm_of` on the Rust side; substrate
 // constructor symmetry is tracked under the same ROADMAP Track 9 debt
 // as other reflected handles.
+
+// 🟢 TERMINAL. Bool-typed branch predicate port — Track 9 witness parallel to
+// `ParamRef` / `TransformRef`; illegal states (non-Bool port as predicate) are
+// rejected at the `Dag::branch_arm_of` constructor on the Rust substrate.
 type BranchPredicateRef {
   port: PortId
 }
 
+// 🟢 TERMINAL. One conditional arm: witnessed predicate + nested workflow body.
 type BranchArm {
   condition: BranchPredicateRef
   body: WorkflowEffect
 }
 
+// 🟡 SCAFFOLD. Four-way workflow sum — Stage 2b analyzes `LinearEffect` only;
+// `BranchEffect` / `LoopEffect` / `ParallelEffect` return explicit unsupported
+// reports until a branch-wise idempotency algebra lands (see
+// `WorkflowIdempotencyReport`).
 type WorkflowEffect
   = LinearEffect { ops: NonEmptyList<OperationEffect> }
   | BranchEffect { arms: NonSingletonList<BranchArm> }
@@ -465,15 +477,20 @@ fn nel_to_operation_effect_list(ops: NonEmptyList<OperationEffect>) -> List<Oper
   cons(ops.first, ops.rest)
 }
 
-// Lane 2 Stage 2b report: algebra verdict OR an explicit unsupported
-// diagnostic — no outer record pairing verdict with a parallel input list
-// (R3 `ComposedEffect` removal; DB-18 open question §2).
+// 🟢 TERMINAL. Explicit unsupported payload — names variant, downstream stage,
+// and reason; not a silent `Option` beside a verdict (fail-closed unsupported).
+//
+// Lane 2 Stage 2b report axis: algebra verdict OR this carrier — no outer
+// record pairing verdict with a parallel input list (R3 `ComposedEffect`
+// removal; DB-18 open question §2).
 type IdempotencyUnsupportedDetail {
   variant_name: String
   downstream_stage: String
   reason: String
 }
 
+// 🟢 TERMINAL. Lens boundary sum: composed verdict vs explicit unsupported —
+// two constructors only; no nullable parallel fields.
 type WorkflowIdempotencyReport
   = WorkflowCompositionVerdict(CompositionVerdict)
   | IdempotencyUnsupported(IdempotencyUnsupportedDetail)
