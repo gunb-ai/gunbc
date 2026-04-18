@@ -6,8 +6,8 @@
 //!
 //! **Consumers:** same-PR as the helper (E-6-style discipline). Use the
 //! `budgeted_test!` macro from any `tests/*.rs` that declares `mod common;`
-//! (each integration test binary is its own crate; the macro expands to paths
-//! under `$crate::common::...`).
+//! (each integration test binary is its own crate; the macro expands to
+//! `$crate::common::with_budget_ms` / `DEFAULT_BUDGET_MS`, re-exported here).
 
 use std::time::{Duration, Instant};
 

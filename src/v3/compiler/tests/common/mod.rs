@@ -25,6 +25,11 @@
 
 pub mod budgeted;
 
+// Re-exports for `budgeted_test!` (`$crate::common::with_budget_ms`, etc.).
+// Macro-generated references do not satisfy `unused_imports` for this line.
+#[allow(unused_imports)]
+pub use budgeted::{with_budget_ms, DEFAULT_BUDGET_MS};
+
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -247,7 +252,8 @@ pub fn require_fixture_cost_usize(lookup: CostLookup, context: &str) -> usize {
 ///
 /// **Requires** `mod common;` at the top of the same `tests/*.rs` file: each
 /// integration test binary is its own crate, and the macro expands to
-/// `$crate::common::budgeted::...`, which only exists when `common` is linked.
+/// `$crate::common::with_budget_ms` / `$crate::common::DEFAULT_BUDGET_MS`
+/// (re-exported from `budgeted`), which only exist when `common` is linked.
 ///
 /// Forms:
 /// - `budgeted_test! { name, { ... } }` — default 2000 ms.
@@ -257,16 +263,13 @@ macro_rules! budgeted_test {
     ($ms:literal, $name:ident, $body:block) => {
         #[test]
         fn $name() {
-            $crate::common::budgeted::with_budget_ms($ms, || $body);
+            $crate::common::with_budget_ms($ms, || $body);
         }
     };
     ($name:ident, $body:block) => {
         #[test]
         fn $name() {
-            $crate::common::budgeted::with_budget_ms(
-                $crate::common::budgeted::DEFAULT_BUDGET_MS,
-                || $body,
-            );
+            $crate::common::with_budget_ms($crate::common::DEFAULT_BUDGET_MS, || $body);
         }
     };
 }
