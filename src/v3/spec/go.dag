@@ -17,11 +17,11 @@ import v3.std.computation_model {
 }
 import v3.std.clean_emission {
   CleanEmissionContract,
-  ExpressionWrappingRule, NoWrapping,
+  ExpressionWrappingRule, WrapOnlyInOperandPosition,
   PatternBindingRule, EmitUnderscoreWhenUnused,
   ImportRule, IncludeOnlyReferenced,
   BlockReturnRule, ExplicitReturnKeyword,
-  VariableBindingRule, EmitLetBindingAlways,
+  VariableBindingRule, EmitLetUnderscoreWhenUnused,
   MatchArmBodyRule, NotApplicableMatchArmBody,
   CorrectionStyle, PostEmitVerifier,
   VerifierOutputPolicy, RequireEmptyStdout
@@ -836,11 +836,11 @@ data go_language: LanguageSpec = {
 //   the same PR (Lane 1d/1e consolidation).
 
 data go_clean_emission: CleanEmissionContract = {
-  expression_wrapping: NoWrapping
+  expression_wrapping: WrapOnlyInOperandPosition
   pattern_bindings: EmitUnderscoreWhenUnused
   imports: IncludeOnlyReferenced
   block_return: ExplicitReturnKeyword
-  variable_bindings: EmitLetBindingAlways
+  variable_bindings: EmitLetUnderscoreWhenUnused
   match_arm_body: NotApplicableMatchArmBody
   correction_style: {
     indent_unit: "\t"
