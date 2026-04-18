@@ -291,10 +291,28 @@ fn derive_idempotency_evidence(shape: EffectShape) -> IdempotencyEvidence {
 //   meet_a ∘ append_b applied twice ≠ applied once
 //   (the append duplicates on the second application)
 
+// 🟢 TERMINAL. The composition of idempotent lattice meets is
+// idempotent; a single non-idempotent operation poisons the chain.
+// The judgment space is therefore exactly two states: the workflow
+// converges, or some operation broke convergence. No third state.
+//
+// `first_breaker` carries the full `OperationEffect` (not just a
+// name) so downstream diagnostics can project the breaking op's
+// shape, cause, and key source without a name-keyed lookup back
+// into `ComposedEffect.operations`.
+type CompositionVerdict
+  = IdempotentComposition
+  | BrokenBy { first_breaker: OperationEffect }
+
+// The effects-algebra verdict for a composed workflow.
+//
+// `operations` retains the full evidence chain (the walk); `verdict`
+// is the projected judgment. Keeping them as two fields on one record
+// preserves both without duplication. `compose_effects` is the single
+// constructor and binds the two coherently by construction.
 type ComposedEffect {
   operations: List<OperationEffect>
-  idempotent: Bool
-  breaking_operation: String?
+  verdict: CompositionVerdict
 }
 
 // Per-operation effect entry in a workflow.
@@ -317,16 +335,13 @@ fn operation_is_breaking(op: OperationEffect) -> Bool {
 // Compose a list of operation effects into a workflow-level verdict.
 fn compose_effects(effects: List<OperationEffect>) -> ComposedEffect {
   let breakers = effects |> filter(op => operation_is_breaking(op: op))
-  let breaker_first = breakers |> first
-  let breaker_name = match breaker_first {
-    Some(op) => Some(op.operation_name)
-    None => None
+  let verdict = match breakers |> first {
+    Some(op) => BrokenBy { first_breaker: op }
+    None => IdempotentComposition
   }
-  let count_breakers = breakers |> count
   ComposedEffect {
     operations: effects,
-    idempotent: count_breakers == 0,
-    breaking_operation: breaker_name
+    verdict: verdict
   }
 }
 

@@ -38,16 +38,17 @@ This lane closes the "❌ not wired" gaps across six stages. After Lane 2 comple
 
 **Scope:** port `dsl/std/effects.dag` → `src/v3/std/effects.dag`. Structural carry-over only.
 
-**Boundary note (cleared for `DerivedOpEffect`):** `DerivedOpEffect { method, path_template, shape }` was collapsed into `OperationEffect { operation_name, shape }` as the Stage 2a follow-up. The `method` / `path_template` fields were carried as bootstrap-local staging glue but never consumed downstream — both modifier falsification and obligation generation project through `shape` alone, and `ReadEffect` already encodes "method was GET/HEAD/OPTIONS" structurally. `derive_op_effect` now returns `OperationEffect?`, so derivation outputs the same shape `compose_effects` composes.
+**Boundary note (cleared):** both Stage 2a follow-ups have landed.
 
-`ComposedEffect { operations, idempotent, breaking_operation }` is still provisional. The workflow verdict must not harden around duplicated summary fields; before real Track 17a / Stage 2b consumers depend on it, the follow-up should either drop `idempotent` as redundant or replace the record with a sum-shaped result where "no breaker" versus "broken by operation X" is structural.
+`DerivedOpEffect { method, path_template, shape }` was collapsed into `OperationEffect { operation_name, shape }` in PR #521. The `method` / `path_template` fields were carried as bootstrap-local staging glue but never consumed downstream — both modifier falsification and obligation generation project through `shape` alone, and `ReadEffect` already encodes "method was GET/HEAD/OPTIONS" structurally. `derive_op_effect` now returns `OperationEffect?`, so derivation outputs the same shape `compose_effects` composes.
 
-Lane 2 does not get to silently normalize around this remaining convenience shape.
+`ComposedEffect { operations, idempotent, breaking_operation }` was reshaped to `ComposedEffect { operations: List<OperationEffect>, verdict: CompositionVerdict }` with `type CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: OperationEffect }`. The previous `Bool + String?` summary admitted two illegal state combinations that the constructor maintained by behavioral invariant rather than structural one; the sum-shaped verdict makes the invariant load-bear on the type itself. `first_breaker` carries the full `OperationEffect` (not just a name) so downstream diagnostics project shape / cause / key-source directly. Design: [design-composed-effect-reshape.md](./design-composed-effect-reshape.md). v3-only per the same scope discipline PR #521 used.
 
-Copy:
+Copy (post-reshape):
 - `EffectShape = ReadEffect | UpsertEffect | DeleteEffect | CreateEffect | AppendEffect`
 - `KeySource` (for upsert/delete key derivation)
 - `IdempotencyEvidence = LatticeEffect | IdentityEffect | NonIdempotent`
+- `CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: OperationEffect }`
 - `is_idempotent_effect`, `compose_effects`, `ComposedEffect`, `OperationEffect`
 - `derive_effect_shape(method, path)` — HTTP method + path → EffectShape
 - `generate_idempotency_obligations`
@@ -87,7 +88,7 @@ Lens reads each operation's declared `idempotent` modifier AND derives from path
 
 **Escalation:** if workflow structure isn't representable cleanly — e.g., control flow in a pipeline doesn't map to a linear `List<OperationEffect>` — surface. Don't stretch `compose_effects` to handle branches silently; the algebra needs to reflect branch-wise composition, which is a legitimate design extension.
 
-**Pre-start gate:** Stage 2b does not start consuming `ComposedEffect` as if it were stable substrate. The Stage 2a `DerivedOpEffect` collapse has landed (derivation now emits `OperationEffect`, which is the same shape `compose_effects` walks). The remaining Stage 2a follow-up is `ComposedEffect`: it must stop encoding workflow verdicts as duplicated summary fields before Stage 2b consumers depend on it.
+**Pre-start gate:** cleared. Both Stage 2a follow-ups have landed — `DerivedOpEffect` collapsed into `OperationEffect` (PR #521), and `ComposedEffect` reshaped to a `{ operations, verdict: CompositionVerdict }` record where the verdict is a sum of `IdempotentComposition | BrokenBy { first_breaker: OperationEffect }`. `compose_effects` outputs the durable shape; Stage 2b can consume it directly. The Stage 2b `WorkflowIdempotencyReport` shape above is one layer higher (a lens report with diagnostic), not a duplication of the algebra verdict — when Stage 2b implements it, the report's `breaking_op` field should project through `CompositionVerdict::BrokenBy.first_breaker` rather than reintroduce a parallel `Bool + String?` pair.
 
 ### Stage 2c — Test obligation materialization (M)
 

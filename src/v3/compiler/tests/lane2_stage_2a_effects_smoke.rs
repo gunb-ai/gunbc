@@ -92,6 +92,7 @@ fn effects_dag_exposes_core_effect_algebra_types() {
         "KeySource",
         "IdempotencyEvidence",
         "ComposedEffect",
+        "CompositionVerdict",
         "OperationEffect",
         "ModifierAgreement",
         "ModifierAxisCheck",
