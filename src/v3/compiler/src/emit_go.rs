@@ -2805,7 +2805,10 @@ mod tests {
         )
         .expect("compiles");
         let rendered = emit_go_module(&dag).expect("go emitter should render match");
-        assert!(rendered.contains("case Cons: return v.head"), "got: {rendered}");
+        assert!(
+            rendered.contains("case Cons: return v.head"),
+            "got: {rendered}"
+        );
         assert!(!rendered.contains("payload := v;"), "got: {rendered}");
     }
 
@@ -2817,7 +2820,10 @@ mod tests {
         )
         .expect("compiles");
         let rendered = emit_go_module(&dag).expect("go emitter should render match");
-        assert!(rendered.contains("case Wrap: return v.inner.x"), "got: {rendered}");
+        assert!(
+            rendered.contains("case Wrap: return v.inner.x"),
+            "got: {rendered}"
+        );
         assert!(!rendered.contains("payload := v.inner;"), "got: {rendered}");
     }
 }
