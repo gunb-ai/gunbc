@@ -233,7 +233,7 @@ This is deliberate. PR #529's R3 removed `ComposedEffect { operations, verdict }
 - `OperationEffect`, `BreakingOperation`, `CompositionVerdict`, `IdempotencyEvidence`, `ModifierCheck`. Untouched.
 - The computation substrate (`Behavior`, `LoopBound`, `Cluster`). Untouched. `Behavior` stays at five variants.
 - The reflected `Dag` record. Untouched. No new sidecar table.
-- `WorkflowEffectConcern` (existing record at `src/v3/std/effects.dag:565–569`). This is a diagnostic-construction helper, not an input carrier; remains as-is. Part 2 may or may not project through it for the `LinearEffect` diagnostic construction.
+- `WorkflowEffectConcern` (existing record at `src/v3/std/effects.dag:669–673` post-PR #529; was `:565–569` pre-#529). This is a diagnostic-construction helper, not an input carrier; remains as-is. Part 2 may or may not project through it for the `LinearEffect` diagnostic construction.
 - V2 `dsl/std/effects.dag`. V3-only, per the same scope discipline PR #529 applied.
 
 ---
