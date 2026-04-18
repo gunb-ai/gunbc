@@ -7,8 +7,8 @@
 
 module lenses.idempotency
 
-import v3.std.substrate { Dag }
-import std.effects { WorkflowEffect, WorkflowIdempotencyReport, report_unsupported_workflow_variant }
+import v3.std.substrate { Dag, NodeId }
+import std.effects { WorkflowIdempotencyReport, report_unsupported_workflow_variant }
 
-fn analyze_workflow(_d: Dag, _wf: WorkflowEffect) -> WorkflowIdempotencyReport =
+fn analyze_workflow(_d: Dag, _workflow_root: NodeId) -> WorkflowIdempotencyReport =
   report_unsupported_workflow_variant("WorkflowEffect", "lane2_stage2b_idempotency_lens", "lens surface pending match-on-user-sum; use v3_compiler::analyze_workflow")

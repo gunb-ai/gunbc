@@ -131,7 +131,7 @@ mod pipeline_authority;
 mod tokenize;
 pub(crate) mod workflow_idempotency;
 
-pub use dag::Dag;
+pub use dag::{Dag, NodeId};
 pub use diagnostics::{Diagnostic, SourceSpan};
 pub use emit_rust::EmitError;
 pub use lens_idempotency::analyze_workflow;

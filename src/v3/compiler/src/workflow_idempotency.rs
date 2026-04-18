@@ -5,7 +5,7 @@
 //! the emitted lens module is the sole entry point.
 
 use crate::dag::{
-    CompositionVerdict, Dag, EffectShape, IdempotencyUnsupportedDetail, OperationEffect,
+    CompositionVerdict, Dag, EffectShape, IdempotencyUnsupportedDetail, NodeId, OperationEffect,
     WorkflowEffect, WorkflowIdempotencyReport,
 };
 
@@ -28,7 +28,17 @@ pub fn compose_operation_effects(effects: &[OperationEffect]) -> CompositionVerd
     CompositionVerdict::IdempotentComposition
 }
 
-pub fn analyze_workflow(_d: &Dag, workflow: &WorkflowEffect) -> WorkflowIdempotencyReport {
+pub fn analyze_workflow(d: &Dag, workflow_root: NodeId) -> WorkflowIdempotencyReport {
+    let Some(workflow) = d.lane2_workflow_effect_at(workflow_root) else {
+        return WorkflowIdempotencyReport::IdempotencyUnsupported(
+            IdempotencyUnsupportedDetail {
+                variant_name: "Lane2WorkflowRoot".to_string(),
+                downstream_stage: "lane2_stage2b_idempotency_lens".to_string(),
+                reason: "no WorkflowEffect facts on the Dag for this NodeId — analysis reads only Dag-local carriers (try_register_lane2_workflow_effect until lowering attaches them)"
+                    .to_string(),
+            },
+        );
+    };
     match workflow {
         WorkflowEffect::LinearEffect { ops } => WorkflowIdempotencyReport::WorkflowCompositionVerdict(
             compose_operation_effects(ops.to_vec().as_slice()),

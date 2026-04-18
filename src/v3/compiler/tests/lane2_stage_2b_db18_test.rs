@@ -8,6 +8,11 @@ use v3_compiler::dag::{
     WorkflowIdempotencyReport,
 };
 use v3_compiler::Dag;
+use v3_compiler::NodeId;
+
+fn lane2_anchor(dag: &Dag) -> NodeId {
+    dag.nodes()[0].id()
+}
 
 fn op(name: &str, shape: EffectShape) -> OperationEffect {
     OperationEffect {
@@ -50,7 +55,8 @@ fn branch_arm_of_requires_bool_port() {
 
 #[test]
 fn gcp_style_linear_chain_idempotent() {
-    let dag = Dag::new();
+    let mut dag = compile_to_dag("let _ = 1", "lane2_gcp.v3").expect("compile");
+    let root = lane2_anchor(&dag);
     let wf = WorkflowEffect::LinearEffect {
         ops: NonEmptyList::from_vec(vec![
             op(
@@ -72,7 +78,8 @@ fn gcp_style_linear_chain_idempotent() {
         ])
         .unwrap(),
     };
-    let r = analyze_workflow(&dag, &wf);
+    assert!(dag.try_register_lane2_workflow_effect(root, wf));
+    let r = analyze_workflow(&dag, root);
     assert!(matches!(
         r,
         WorkflowIdempotencyReport::WorkflowCompositionVerdict(
@@ -83,7 +90,8 @@ fn gcp_style_linear_chain_idempotent() {
 
 #[test]
 fn append_effect_breaks_linear_chain() {
-    let dag = Dag::new();
+    let mut dag = compile_to_dag("let _ = 1", "lane2_append.v3").expect("compile");
+    let root = lane2_anchor(&dag);
     let wf = WorkflowEffect::LinearEffect {
         ops: NonEmptyList::from_vec(vec![
             op(
@@ -97,7 +105,8 @@ fn append_effect_breaks_linear_chain() {
         ])
         .unwrap(),
     };
-    let r = analyze_workflow(&dag, &wf);
+    assert!(dag.try_register_lane2_workflow_effect(root, wf));
+    let r = analyze_workflow(&dag, root);
     let WorkflowIdempotencyReport::WorkflowCompositionVerdict(CompositionVerdict::BrokenBy {
         first_breaker,
     }) = r
@@ -110,7 +119,8 @@ fn append_effect_breaks_linear_chain() {
 
 #[test]
 fn post_create_is_breaking() {
-    let dag = Dag::new();
+    let mut dag = compile_to_dag("let _ = 1", "lane2_post.v3").expect("compile");
+    let root = lane2_anchor(&dag);
     let wf = WorkflowEffect::LinearEffect {
         ops: NonEmptyList::from_vec(vec![op(
             "post_create",
@@ -120,7 +130,8 @@ fn post_create_is_breaking() {
         )])
         .unwrap(),
     };
-    let r = analyze_workflow(&dag, &wf);
+    assert!(dag.try_register_lane2_workflow_effect(root, wf));
+    let r = analyze_workflow(&dag, root);
     assert!(matches!(
         r,
         WorkflowIdempotencyReport::WorkflowCompositionVerdict(CompositionVerdict::BrokenBy { .. })
@@ -129,7 +140,7 @@ fn post_create_is_breaking() {
 
 #[test]
 fn diagnostic_paths_name_stage2b() {
-    let dag = compile_to_dag("let c = 1 < 2\nlet d = 2 < 3", "cd.v3").expect("compile");
+    let mut dag = compile_to_dag("let c = 1 < 2\nlet d = 2 < 3", "cd.v3").expect("compile");
     let binds: Vec<_> = dag.nodes().iter().filter_map(Behavior::as_bind).collect();
     let c = binds.iter().find(|b| b.name == "c").expect("c");
     let d = binds.iter().find(|b| b.name == "d").expect("d");
@@ -141,6 +152,7 @@ fn diagnostic_paths_name_stage2b() {
         )])
         .unwrap(),
     };
+    let root = lane2_anchor(&dag);
     for (wf, name) in [
         (
             WorkflowEffect::BranchEffect {
@@ -169,7 +181,8 @@ fn diagnostic_paths_name_stage2b() {
             "ParallelEffect",
         ),
     ] {
-        let r = analyze_workflow(&dag, &wf);
+        assert!(dag.try_register_lane2_workflow_effect(root, wf));
+        let r = analyze_workflow(&dag, root);
         let WorkflowIdempotencyReport::IdempotencyUnsupported(d) = r else {
             panic!("expected diagnostic for {name}");
         };

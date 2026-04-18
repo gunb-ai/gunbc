@@ -1583,6 +1583,12 @@ pub struct Dag {
     /// inference needs stable `Some` / `None` variant identities without
     /// promoting optionals into named top-level declarations.
     optional_match_disjs: HashMap<DeclarationId, DeclarationId>,
+    /// Lane 2 Stage 2b: idempotency analysis reads [`WorkflowEffect`] facts
+    /// only from this map (keyed by an anchor [`NodeId`]). **Single authority**
+    /// for `analyze_workflow` — callers must not pass a parallel
+    /// caller-constructed carrier. Staging: [`Dag::try_register_lane2_workflow_effect`]
+    /// until pipeline / service lowering attaches carriers from source.
+    lane2_workflow_effects: HashMap<NodeId, WorkflowEffect>,
 }
 
 static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
@@ -1610,6 +1616,7 @@ impl Dag {
             verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),
             clusters: Vec::new(),
             optional_match_disjs: HashMap::new(),
+            lane2_workflow_effects: HashMap::new(),
         }
     }
 
@@ -1841,6 +1848,26 @@ impl Dag {
 
     pub fn cluster(&self, id: ClusterId) -> &Cluster {
         &self.clusters[id.index()]
+    }
+
+    /// Staging hook: attach a [`WorkflowEffect`] for `analyze_workflow` keyed by
+    /// `root`. Returns `false` if `root` is not a live behavior id.
+    /// Future: only lowering from source populates this map; the hook exists so
+    /// tests and native callers share the same Dag-local read path.
+    pub fn try_register_lane2_workflow_effect(
+        &mut self,
+        root: NodeId,
+        workflow: WorkflowEffect,
+    ) -> bool {
+        if self.node_opt(&root).is_none() {
+            return false;
+        }
+        self.lane2_workflow_effects.insert(root, workflow);
+        true
+    }
+
+    pub fn lane2_workflow_effect_at(&self, root: NodeId) -> Option<&WorkflowEffect> {
+        self.lane2_workflow_effects.get(&root)
     }
 
     pub fn optional_match_disj(&self, cardinality_decl_id: DeclarationId) -> Option<DeclarationId> {
