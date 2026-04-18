@@ -27,7 +27,7 @@ substrate fields.
 | **L1.5** Clean bootstrap | 🟡 In progress (2026-04-16) | Test authority types (#474 ✅), ownership Phase 1 / 72→6 clones (#475 ✅), dependency+rendering design doc (#477 ✅). **Remaining:** pipeline composition declaration + fixed-point regen (#476 — PAUSED pending Option B authority migration: pipeline.dag becomes live authority, Rust derives from it). Ownership Phase 2 (→ clone count 1) and multi-target validation (go.dag) queued as parallel tracks. See `SELF_HOSTING.md` §2, §11, §14 and `docs/dependency-and-rendering-design.md`. |
 | **Post-A/B** Lane Plan | 🟡 Planned (2026-04-17) | Four major lanes derived backward from THESIS.md claims, sixteen stages total (per-stage t-shirt sizes S/M/L/XL), **no backlog** — every open thesis obligation is placed in a lane. Master: [post-l15-phase-plan.md](../../docs/post-l15-phase-plan.md) (includes sequencing + dependency graph). Lane 1 (emission unification): [lane1-stage-b-substrate-keyed-lookup.md](../../docs/lane1-stage-b-substrate-keyed-lookup.md), [phase1-lane1-l15-tail.md](../../docs/phase1-lane1-l15-tail.md), [phase1-lane2-clean-emission-invariant.md](../../docs/phase1-lane2-clean-emission-invariant.md), [phase1-lane3-consolidation-build-plan.md](../../docs/phase1-lane3-consolidation-build-plan.md). Lane 2 (compile-time proofs): [lane2-compile-time-proofs.md](../../docs/lane2-compile-time-proofs.md). Lane 3 (self-hosting cycle): [lane3-self-hosting-cycle.md](../../docs/lane3-self-hosting-cycle.md). Lane 4 (completion): [lane4-completion.md](../../docs/lane4-completion.md). |
 | **M1(4)** Multi-target emission | ⏸ Absorbed into Lane 1 | Originally planned as parallel `emit_go` / `emit_python` walks. Lane 1 consolidates all emitters into a single generic walker + per-target specs, then adds Verilog + SPICE + English as the smoking-gun. "One file per target" framing inverted: each target is one spec file, zero new Rust. |
-| **M2** Feature parity | ⏸ Absorbed into Lane 3 Stage 3a | Generics in user code: ✅ (Prereq 0.5). Match in user code: ✅ (M1(2.8) + Prereq 2). List operations: ✅ (Prereq 4, structural List<T>). Recursion → Loop: ✅ (numeric descent). **Remaining:** transport declarations, interpreter (`dag run`), mutual recursion → Loop (§2.4), `data` value semantics, `where` refinement, full surface generics — all blockers for `compiler.dag`, sequenced in [lane3-self-hosting-cycle.md](../../docs/lane3-self-hosting-cycle.md) Stage 3a. |
+| **M2** Feature parity | ⏸ Absorbed into Lane 3 Stage 3a | Generics, match, list ops, numeric recursion → Loop, `data` values, `where` refinement, surface generics, Disj dotted-path, mutual recursion → Loop (DB-9 R2 / #519): ✅. **Remaining toward a self-describing `compiler.dag`:** transport declarations, interpreter (`dag run`), and any Stage 3a tail called out in [lane3-self-hosting-cycle.md](../../docs/lane3-self-hosting-cycle.md). |
 | **M3** Self-hosting | ⏸ Absorbed into Lane 3 Stage 3c | `.dag` rewrite of the compiler IS the self-hosting cycle: `compiler.dag` → Lane 1e emitter → Rust → `rustc` → identical binary. Design: [lane3-self-hosting-cycle.md](../../docs/lane3-self-hosting-cycle.md), SELF_HOSTING.md. |
 | **M4** Thesis completion | ⏸ Absorbed across Lanes 1–3 | "All lenses, verification, omni-emission" decomposes to: omni-emission = Lane 1e + 1f. Lenses = Lane 2 (idempotency, symbolic cost, parallelism, user-dimensions). Verification = Lane 3b (diagnostics-as-corrections). No longer a vague milestone — every component has an owning lane. |
 
@@ -338,20 +338,11 @@ multi-target emission, §8.11 ratchet) shifts shape:
 - Service calls (transport declarations)
 - Pattern matching in user-code fn bodies (Branch with destructuring)
 - Interpreter (`dag run`)
-- Recursive functions → `Loop` lowering (includes n-way mutual
-  recursion → bounded `descend` over SCC-ordered nodes). v3's
-  `lower.rs` already detects mutual recursion via
-  `compute_mutually_recursive` but currently REJECTS it. The
-  lowering step that transforms cycles into bounded Loop nodes
-  with descend semantics is the missing piece. The thesis's
-  lowering table (INVARIANTS.md §"Recursive syntax is sugar")
-  commits to handling every call pattern including mutual
-  recursion; this is the implementation of that commitment.
-  **Prereq for:** the complexity port (complexity reads SCC
-  structure from the substrate; if lowering doesn't produce it,
-  complexity has to reconstruct it). Also a general language
-  completeness feature — any `.dag` program with mutual recursion
-  should compile, not fail at lowering.
+- Recursive functions → `Loop` lowering — **shipped for mutual
+  recursion** (DB-9 R2, PR #519): `compute_mutually_recursive` produces
+  clusters; lowering emits `Loop` with `LoopBound::Descent`. Further
+  language surface for recursion remains in sync with
+  [lane3-self-hosting-cycle.md](../../docs/lane3-self-hosting-cycle.md).
 - Match expressions / pipe / lambda / named arguments in user code
 - `data` value semantics
 - `where` refinement checking
@@ -471,13 +462,13 @@ Sub-stage status (as of 2026-04-18):
 
 | Sub-stage | State | Landed in | Notes |
 |---|---|---|---|
-| 3a.1 mutual recursion (DB-9, L) | ⏸ Deferred | — | Design approved; unblocks Lane 3 Stage 3c (self-hosting cycle). See **Deferral: 3a.1** below. |
+| 3a.1 mutual recursion (DB-9, L) | ✅ Shipped | PR #519 (+ substrate primitives #516) | DB-9 R2 lowering: `LoopBound::Descent`, `Dag.clusters`, `Cluster` / `MemberDescent` / `IntraClusterCall`, Track 9 primitives consumed. See **Landing: 3a.1** below. |
 | 3a.2 `data` value semantics (DB-10, S) | ✅ Shipped | PR #496 | Inlining-at-lowering chosen over emit-time inlining — trade-off recorded in DB-10. |
 | 3a.3 `where` refinement (DB-11, M→L overrun; DB-16 closure) | ✅ Shipped | PR #496 (foundation) + #515 (3a.3-full) + #522 (DB-16 refined-generic substitution) | Predicate lowering, call-site flatten-and-subset discharge, arm-local narrowing, operator-operand refinement stripping, structural callable-predicate identity, and refined-generic substitution all wired. DB-11's out-of-fragment lowering-time rejection + DB-16's phase-materialized substituted-refined carriers close the 3a.3 admitted-vs-supported gate symmetrically. See **Landing: 3a.3-full** and **Landing: DB-16** below. |
 | 3a.4 surface generics (DB-12, S) | ✅ Shipped | PR #496 | Tests-only landing; infrastructure already wired. |
 | 3a.5 Disj dotted-path (DB-13, S) | ✅ Shipped | PR #496 | Tests-only landing; infrastructure already wired. |
 
-**Deferral: 3a.1 mutual recursion (L).** Substrate extension (`LoopBound` coproduct + `Dag.clusters` sidecar on both reflected `type Dag` and Rust struct + `Cluster` / `MemberDescent` / `IntraClusterCall` terminal types) + `compute_mutually_recursive` upgraded from rejection to cluster-shape producer + flip the `test_mutual_recursion_is_rejected` lock-in test. Unblocks Lane 3 Stage 3c eventually (self-hosting cycle needs mutual recursion in `compiler.dag`). Parallel-startable; no dependencies from tonight's merged PRs. Design: [design-mutual-recursion-lowering.md](../../docs/design-mutual-recursion-lowering.md) (**DB-9 R2 approved**, 2026-04-17 — supersedes R1 lens-level approach). Acceptance in DB-9 R2 §Acceptance.
+**Landing: 3a.1 mutual recursion (DB-9 R2, PR #519).** Substrate extension (`LoopBound::Descent`, `Dag.clusters` sidecar, `Cluster` / `MemberDescent` / `IntraClusterCall`) + `compute_mutually_recursive` as cluster-shape producer + lock-in tests flipped from rejection to lowering. Substrate integrity primitives (`NonEmptyList`, `NonSingletonList`, `ParamRef`, `TransformRef`) landed with consumers in PR #516. Unblocks continued work toward Lane 3 Stage 3c (self-hosting cycle). Design: [design-mutual-recursion-lowering.md](../../docs/design-mutual-recursion-lowering.md) (**DB-9 R2** — supersedes R1 lens-level approach). Follow-up: planner vs `is_first` duplicate filter alignment — see [phase-plan-2026-04-18.md §3](../../docs/phase-plan-2026-04-18.md) combined XS brief; optional ROADMAP row when that PR lands.
 
 **Landing: 3a.3-full (L).** Consumer wiring for `Declaration.refinement`:
 - **Single construction authority, phase-ordered.** A dedicated `lower_parameter_refinements_phase` is the sole caller of `lower_parameter_refinement` for parameter `where` clauses. It runs between the data pre-pass and the main fn-body pass so predicates referencing top-level `data` constants (e.g., `where d > THRESHOLD` with `data THRESHOLD: Int = 10`) resolve against lowered declarations, not placeholders. `seed_function_signature` seeds the Arrow with base declaration ids only; the refinement phase updates the Arrow inputs with refined decls. `lower_fn_item_expr_body` reads the refined Arrow directly; the previous `lower_fn_item_unparsed` helper is removed (seeding already produced the final `Arrow { body: Unparsed(body_span) }` for `SurfaceItem::FnExternalBody`). Before this refactor, body lowering re-ran `lower_parameter_refinement` and overwrote the Arrow, leaving the seeded predicate Bind + refined Declaration orphaned in the DAG.

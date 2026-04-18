@@ -771,8 +771,7 @@ consumers — the primitives without consumers would be decorative).
 
 **Rejected as a standalone primitive.** `ArityIndex` (typed newtype over non-negative integer). It graduates only *non-negativity* into the type; the member-relative bound remains outside the shape, so any consumer pairing `ArityIndex` with a carrier NodeId still has to check "index is valid for this carrier" at its own constructor — the exact "enforced by construction" anti-pattern Track 9 exists to dissolve. `ParamRef` folds the relation into the handle. `ArityIndex` may exist as an *input* to `param_of`, but not as a stored substrate field.
 
-**Status:** 🟡 Design — proposed in `docs/design-mutual-recursion-lowering.md`
-(DB-9 R2.1). Declarations land with the DB-9 implementation PR.
+**Status:** ✅ **Shipped (v3).** DB-9 R2.1 substrate primitives (#516) and mutual-recursion lowering (#519) landed in `src/v3/`; `docs/design-mutual-recursion-lowering.md` is the design authority. **Still open (this table):** generic `data` inhabitants for `Lattice<Encoding>` / `FreeMonoid<Stack<T>>` (blocked on generic data constants in emission); user-defined generic emission remains emitter work. Authoritative live deferrals: [`src/v3/ROADMAP.md`](src/v3/ROADMAP.md) §Active deferrals.
 
 **Tracked debt — substrate constructor-validation asymmetry.**
 `ParamRef` and `TransformRef` already move the witness SHAPE into the
@@ -796,7 +795,10 @@ consumer actually benefits from the stronger guarantee.
 ### Track 10: Extdeps modeling fidelity (Lane D)
 
 Stringly-typed fields that should be structural, surfaced by external
-audit (2026-04-10):
+audit (2026-04-10). **v3 alignment:** service-boundary typing and REST
+effect wiring feed Lane 2 Stage 2b→2c; test obligations that touch
+transports consume DB-15 R2 (`docs/design-test-infra.md`) and
+`src/v3/ROADMAP.md` Lane 2 Stage 2c deferral.
 
 | Item | File | Fix |
 |------|------|-----|
@@ -1413,7 +1415,9 @@ obligation-as-data form, awaiting an execution runner.
 
 **Blocked on:** nothing for L4 design + first tests. L5/L6 need
 broader emission coverage. L7 execution needs a test runner that
-reads obligation data and dispatches.
+reads obligation data and dispatches. **Lane 2 Stage 2c / DB-15 R2**
+names how `TestClaim` materializes from the dependency DAG (`docs/design-test-infra.md`);
+see `src/v3/ROADMAP.md` §Lane 2 Stage 2c.
 
 ### Track 13: Single emitter (compiler-laws.md Lane C)
 
@@ -1448,6 +1452,11 @@ data per target. Adding a new target language means adding a new
 model, module system. The unification pattern is proven; what remains
 is modeling the remaining language differences as data.
 **Blocked on (for Phase 5-6):** Track 2 LS-4 (borrow model design).
+
+**v3 consolidation (parallel thesis):** Lane 1 Stage 1e in
+[`docs/post-l15-phase-plan.md`](docs/post-l15-phase-plan.md) is the
+v3 program to dissolve `emit_rust` / `emit_go` / `emit_python` into one
+generic walker + per-target specs ([`design-generic-walker-api.md`](docs/design-generic-walker-api.md) / DB-2). When v3 is authoritative for your target, read `src/v3/ROADMAP.md` Lane 1 stages — not this v2 line-count snapshot alone.
 
 ### Track 14: Omni-emission
 

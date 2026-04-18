@@ -5,7 +5,7 @@
 **Author:** director chat session `clever-lark-108`
 **As of:** 2026-04-18
 **Refresh cadence:** session start + after every merge wave (never more than ~1 day stale)
-**Since last refresh:** initial landing. Incorporates director review of the 2026-04-18 draft (staleness fix for #523, DB-numbering audit, Stage 3c exploration filled in).
+**Since last refresh:** ROADMAP hygiene (root Tracks 9/10/12/13 + `src/v3/ROADMAP.md` 3a.1/M2 alignment) and §4.1 director audit memos (still-deer-308, 2026-04-18).
 
 ---
 
