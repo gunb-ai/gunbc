@@ -226,6 +226,7 @@ fn ensure_optional_match_disj(
         value_body: None,
         refinement: None,
         span: span.clone(),
+    fixes: Vec::new(),
     });
 
     let none_payload_id = dag.alloc_declaration_id();
@@ -391,6 +392,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                                 "variant `{name}` is not a constructor of this match's scrutinee type"
                             ),
                             span: span.clone(),
+                        fixes: Vec::new(),
                         }),
                     }
                 }
@@ -452,6 +454,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                         "duplicate match arm for variant `{name}` — each variant of a sum type must match exactly once"
                     ),
                     span: check.span.clone(),
+                fixes: Vec::new(),
                 },
             );
             changed = true;
@@ -475,6 +478,7 @@ fn resolve_branch_patterns(dag: &mut Dag) -> bool {
                         "non-exhaustive match: missing arm(s) for variant(s) `{missing_list}` — every constructor of the scrutinee's sum type must be covered"
                     ),
                     span: check.span,
+                fixes: Vec::new(),
                 },
             );
             changed = true;
@@ -545,6 +549,7 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
                                 binding.binding_name
                             ),
                             span: span.clone(),
+                        fixes: Vec::new(),
                         }),
                         Some(variants) => {
                             let variant = match &path.pattern {
@@ -580,6 +585,7 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
                                             "variant `{arm_name}` is not a constructor of this match's scrutinee type"
                                         ),
                                         span: span.clone(),
+                                    fixes: Vec::new(),
                                     })
                                 }
                             }
@@ -621,6 +627,7 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
                                 expected: existing,
                                 actual: ty,
                                 span: rewrite.span,
+                            fixes: Vec::new(),
                             },
                         );
                         changed = true;
@@ -669,6 +676,7 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                             shape_and_name.1
                         ),
                         span: v.span.clone(),
+                    fixes: Vec::new(),
                     },
                 );
             };
@@ -695,6 +703,7 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                         Diagnostic::ResolveError {
                             name: "(upstream failure in branch condition)".to_string(),
                             span: b.span.clone(),
+                        fixes: Vec::new(),
                         },
                     );
                 }
@@ -712,6 +721,7 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                                     name: "primitive `Bool` missing from declaration table — bootstrap failed"
                                         .to_string(),
                                     span: b.span.clone(),
+                                fixes: Vec::new(),
                                 },
                             );
                         };
@@ -721,6 +731,7 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                                 expected: bool_ty,
                                 actual: *ty,
                                 span: b.span.clone(),
+                            fixes: Vec::new(),
                             },
                         );
                     }
@@ -739,6 +750,7 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                         Diagnostic::ResolveError {
                             name: "(upstream failure in branch path)".to_string(),
                             span: b.span.clone(),
+                        fixes: Vec::new(),
                         },
                     );
                 }
@@ -753,6 +765,7 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                             Diagnostic::ResolveError {
                                 name: "(upstream failure in branch path)".to_string(),
                                 span: b.span.clone(),
+                            fixes: Vec::new(),
                             },
                         );
                     }
@@ -765,6 +778,7 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                                 expected: first_type,
                                 actual: *other,
                                 span: b.span.clone(),
+                            fixes: Vec::new(),
                             },
                         );
                     }
@@ -785,6 +799,7 @@ fn decide(dag: &Dag, index: usize) -> Decision {
                     Diagnostic::ResolveError {
                         name: "function body is unresolved".to_string(),
                         span: l.span.clone(),
+                    fixes: Vec::new(),
                     },
                 ),
                 PortState::Resolved(body_ty) => Decision::Set(l.output, *body_ty),
@@ -818,6 +833,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                             expected: 2,
                             actual: 0,
                             span: t.span.clone(),
+                        fixes: Vec::new(),
                         },
                     );
                 }
@@ -829,6 +845,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                             Diagnostic::ResolveError {
                                 name: format!("(upstream failure in {})", op_kind.symbol()),
                                 span: t.span.clone(),
+                            fixes: Vec::new(),
                             },
                         );
                     }
@@ -852,6 +869,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                                 op_kind.symbol()
                             ),
                             span: t.span.clone(),
+                        fixes: Vec::new(),
                         },
                     );
                 }
@@ -894,6 +912,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                         Diagnostic::ResolveError {
                             name: format!("function `{name}` has an invalid body"),
                             span: t.span.clone(),
+                        fixes: Vec::new(),
                         },
                     );
                 }
@@ -917,6 +936,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                             "arrow `{name}` carries an ExternalRealization body whose target is not a realization declaration"
                         ),
                         span: t.span.clone(),
+                    fixes: Vec::new(),
                     },
                 );
             }
@@ -951,6 +971,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                 expected: signature.inputs.len(),
                 actual: t.inputs.len(),
                 span: t.span.clone(),
+            fixes: Vec::new(),
             },
         );
     }
@@ -966,6 +987,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                             transform_target_display_name(dag, &t.target)
                         ),
                         span: t.span.clone(),
+                    fixes: Vec::new(),
                     },
                 );
             }
@@ -996,6 +1018,7 @@ fn decide_transform(dag: &Dag, t: &TransformNode) -> Decision {
                         expected: *expected_ty,
                         actual: *actual,
                         span: t.span.clone(),
+                    fixes: Vec::new(),
                     },
                 );
             }
@@ -1049,6 +1072,7 @@ fn check_refinement_discharge(
             Some(Diagnostic::ResolveError {
                 name,
                 span: span.clone(),
+            fixes: Vec::new(),
             })
         }
     }
@@ -1918,6 +1942,7 @@ fn callable_instantiation_conflict(
             target_display_name(dag, target)
         ),
         span: span.clone(),
+    fixes: Vec::new(),
     }
 }
 
@@ -1934,6 +1959,7 @@ fn resolve_callable_target(
         return CallableTargetResolution::Fail(Diagnostic::ResolveError {
             name,
             span: span.clone(),
+        fixes: Vec::new(),
         });
     };
     let mut raw_subst = SubstStack::new();
@@ -1956,6 +1982,7 @@ fn resolve_callable_target(
             expected: expected_runtime_arity,
             actual: runtime_inputs.len(),
             span: span.clone(),
+        fixes: Vec::new(),
         });
     }
 
@@ -1985,6 +2012,7 @@ fn resolve_callable_target(
                                     target_display_name(dag, target)
                                 ),
                                 span: span.clone(),
+                            fixes: Vec::new(),
                             },
                         );
                     }
@@ -2000,6 +2028,7 @@ fn resolve_callable_target(
                     return CallableTargetResolution::Fail(Diagnostic::ResolveError {
                         name: format!("(upstream failure in {})", target_display_name(dag, target)),
                         span: span.clone(),
+                    fixes: Vec::new(),
                     });
                 }
                 PortState::Resolved(_) => {}
@@ -2048,6 +2077,7 @@ fn resolve_callable_target(
                                 target_display_name(dag, target)
                             ),
                             span: span.clone(),
+                        fixes: Vec::new(),
                         });
                     }
                 }
@@ -2068,6 +2098,7 @@ fn resolve_callable_target(
                                 target_display_name(dag, target)
                             ),
                             span: span.clone(),
+                        fixes: Vec::new(),
                         });
                     }
                     PortState::Resolved(_) => {}
@@ -2109,6 +2140,7 @@ fn resolve_callable_target(
                             target_display_name(dag, target)
                         ),
                         span: span.clone(),
+                    fixes: Vec::new(),
                     });
                 }
             }
@@ -2120,6 +2152,7 @@ fn resolve_callable_target(
         return CallableTargetResolution::Fail(Diagnostic::ResolveError {
             name,
             span: span.clone(),
+        fixes: Vec::new(),
         });
     };
     CallableTargetResolution::Resolved {
@@ -2395,6 +2428,7 @@ fn validate_user_defined_function_signatures(dag: &mut Dag) -> bool {
                             .unwrap_or("<anonymous>")
                     ),
                     span: bind.span.clone(),
+                fixes: Vec::new(),
                 },
             });
             continue;
@@ -2440,6 +2474,7 @@ fn validate_user_defined_function_signatures(dag: &mut Dag) -> bool {
                         index + 1
                     ),
                     span: bind.span.clone(),
+                fixes: Vec::new(),
                 },
             });
             continue 'declarations;
@@ -2470,6 +2505,7 @@ fn validate_user_defined_function_signatures(dag: &mut Dag) -> bool {
                         .unwrap_or("<anonymous>")
                 ),
                 span: bind.span.clone(),
+            fixes: Vec::new(),
             },
         });
     }
@@ -2639,6 +2675,7 @@ fn resolve_payload_binding_type(
                     "variant `{variant_name}` does not carry a payload and cannot bind `{binding_name}`"
                 ),
                 span: span.clone(),
+            fixes: Vec::new(),
             })
         }
         TypeConnective::Conj { children }
@@ -2652,6 +2689,7 @@ fn resolve_payload_binding_type(
                         "variant `{variant_name}` payload does not resolve to a port type for binding `{binding_name}`"
                     ),
                     span: span.clone(),
+                fixes: Vec::new(),
                 })
         }
         TypeConnective::Conj { .. } => Ok(PayloadBindingResolution::SpecializedRecord {
@@ -2664,6 +2702,7 @@ fn resolve_payload_binding_type(
                     "variant `{variant_name}` does not lower to a payload Conj and cannot bind `{binding_name}`"
                 ),
                 span: span.clone(),
+            fixes: Vec::new(),
             })
         }
     }
@@ -2899,6 +2938,7 @@ fn materialize_substituted_refined_decl(
         dag.attach_diagnostic(Diagnostic::ResolveError {
             name: "refined-generic substitution: substituted base did not resolve".to_string(),
             span: template_span.clone(),
+        fixes: Vec::new(),
         });
         return template_refined;
     };
@@ -2911,6 +2951,7 @@ fn materialize_substituted_refined_decl(
         dag.attach_diagnostic(Diagnostic::ResolveError {
             name: "refined-generic substitution: malformed predicate shape".to_string(),
             span: pred_span,
+        fixes: Vec::new(),
         });
         return template_refined;
     };
@@ -2933,6 +2974,7 @@ fn materialize_substituted_refined_decl(
             name: "refined-generic substitution: out-of-fragment predicate body reached materialization"
                 .to_string(),
             span: template_span.clone(),
+        fixes: Vec::new(),
         });
         return template_refined;
     };
@@ -3361,6 +3403,7 @@ fn resolve_field_project(
             expected: 1,
             actual: t.inputs.len(),
             span: t.span.clone(),
+        fixes: Vec::new(),
         });
     }
 
@@ -3370,6 +3413,7 @@ fn resolve_field_project(
             return FieldProjectResolution::Fail(Diagnostic::ResolveError {
                 name: format!("(upstream failure in field `{field_label}`)"),
                 span: t.span.clone(),
+            fixes: Vec::new(),
             })
         }
         PortState::Resolved(ty) => *ty,
@@ -3384,6 +3428,7 @@ fn resolve_field_project(
                 target_display_name(dag, input_ty.declaration),
             ),
             span: t.span.clone(),
+        fixes: Vec::new(),
         });
     };
 
@@ -3409,6 +3454,7 @@ fn resolve_field_project(
                     target_display_name(dag, input_ty.declaration),
                 ),
                 span: t.span.clone(),
+            fixes: Vec::new(),
             });
         };
         field_decl_id
@@ -3420,6 +3466,7 @@ fn resolve_field_project(
                 target_display_name(dag, input_ty.declaration),
             ),
             span: t.span.clone(),
+        fixes: Vec::new(),
         });
     };
 

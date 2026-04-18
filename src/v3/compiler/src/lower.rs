@@ -402,6 +402,7 @@ fn fail_mutual_cluster_build(
             Diagnostic::ResolveError {
                 name: reason.clone(),
                 span: pending_loop.span.clone(),
+            fixes: Vec::new(),
             },
         );
         dag.mark_unresolved(
@@ -409,6 +410,7 @@ fn fail_mutual_cluster_build(
             Diagnostic::ResolveError {
                 name: reason.clone(),
                 span: pending_loop.span.clone(),
+            fixes: Vec::new(),
             },
         );
     }
@@ -888,6 +890,7 @@ fn build_narrowed_refinement(
         inputs: vec![outer_cloned_value, new_value_port],
         output: and_output,
         span: pred_span.clone(),
+    fixes: Vec::new(),
     }));
 
     // Wrap in the composite Bind; single params slot, composite body.
@@ -1404,6 +1407,7 @@ fn lower_item(
                         Diagnostic::ResolveError {
                             name: "lambda expressions currently require an expected function type (for example a `let` annotation or a function-typed parameter position)".to_string(),
                             span: span.clone(),
+                        fixes: Vec::new(),
                         },
                     );
                     scope.values.insert(name.clone(), port);
@@ -1917,6 +1921,7 @@ fn build_template_arguments(
                 expected: template_param_count,
                 actual: args.len(),
                 span: span.clone(),
+            fixes: Vec::new(),
             },
         );
         // Arity mismatch is an authoritative failure. Consume the
@@ -2215,6 +2220,7 @@ fn lower_data_item(
                                 "data `{name}`'s scalar body does not match declared type",
                             ),
                             span: body_span.clone(),
+                        fixes: Vec::new(),
                         },
                     );
                     None
@@ -2483,6 +2489,7 @@ fn lower_record_to_structural(
                     "data `{data_name}`'s type annotation does not resolve to a record type (Conj); cannot apply inhabitance checking to the body"
                 ),
                 span: body_span.clone(),
+            fixes: Vec::new(),
             },
         );
         return None;
@@ -2509,6 +2516,7 @@ fn lower_record_to_structural(
                         record_field.name
                     ),
                     span: record_field.span.clone(),
+                fixes: Vec::new(),
                 },
             );
             return None;
@@ -2522,6 +2530,7 @@ fn lower_record_to_structural(
                 Diagnostic::ResolveError {
                     name: format!("data `{data_name}` is missing required field `{type_label}`"),
                     span: body_span.clone(),
+                fixes: Vec::new(),
                 },
             );
             return None;
@@ -2584,6 +2593,7 @@ fn lower_structural_field_value(
                                 "data `{data_name}` field `{field_label}` does not satisfy the {cat:?} realization constraint: {reason}"
                             ),
                             span: span.clone(),
+                        fixes: Vec::new(),
                         },
                     );
                     return None;
@@ -2606,6 +2616,7 @@ fn lower_structural_field_value(
                         "data `{data_name}` field `{field_label}` must be a list literal matching the declared List<_> type"
                     ),
                     span: span.clone(),
+                fixes: Vec::new(),
                 },
             );
             return None;
@@ -2635,6 +2646,7 @@ fn lower_structural_field_value(
                         "data `{data_name}` field `{field_label}` must be a record literal matching the declared record type"
                     ),
                     span: span.clone(),
+                fixes: Vec::new(),
                 },
             );
             return None;
@@ -2660,6 +2672,7 @@ fn lower_structural_field_value(
                             field.name
                         ),
                         span: field.span.clone(),
+                    fixes: Vec::new(),
                     },
                 );
                 return None;
@@ -2674,6 +2687,7 @@ fn lower_structural_field_value(
                             "data `{data_name}` field `{field_label}` is missing nested field `{label}`"
                         ),
                         span: span.clone(),
+                    fixes: Vec::new(),
                     },
                 );
                 return None;
@@ -2714,6 +2728,7 @@ fn lower_structural_field_value(
                             "data `{data_name}` field `{field_label}` must be a constructor call matching the declared sum type"
                         ),
                         span: span.clone(),
+                    fixes: Vec::new(),
                     },
                 );
                 return None;
@@ -2735,6 +2750,7 @@ fn lower_structural_field_value(
                         "data `{data_name}` field `{field_label}` uses constructor `{variant_name}` which is not a variant of the declared sum type"
                     ),
                     span: variant_span.clone(),
+                fixes: Vec::new(),
                 },
             );
             return None;
@@ -2750,6 +2766,7 @@ fn lower_structural_field_value(
                             "data `{data_name}` field `{field_label}` constructor `{variant_name}` does not lower to a record payload shape: got {other:?}"
                         ),
                         span: variant_span.clone(),
+                    fixes: Vec::new(),
                     },
                 );
                 return None;
@@ -2763,6 +2780,7 @@ fn lower_structural_field_value(
                     expected: payload_fields.len(),
                     actual: args.len(),
                     span: variant_span.clone(),
+                fixes: Vec::new(),
                 },
             );
             return None;
@@ -2793,6 +2811,7 @@ fn lower_structural_field_value(
                 "data `{data_name}` field `{field_label}` does not match the declared structural type"
             ),
             span: span.clone(),
+        fixes: Vec::new(),
         },
     );
     None
@@ -3250,6 +3269,7 @@ fn lower_fn_item_expr_body(
                     invalid_cluster.members.join(", ")
                 ),
                 span: body_span.clone(),
+            fixes: Vec::new(),
             },
         );
         let bind_id = dag.alloc_node_id();
@@ -3315,6 +3335,7 @@ fn lower_fn_item_expr_body(
                         "function `{name}` is recursive but has no parameters; cannot terminate"
                     ),
                     span: body_span.clone(),
+                fixes: Vec::new(),
                 },
             );
             (err_port, err_port)
@@ -3335,6 +3356,7 @@ fn lower_fn_item_expr_body(
                         param = &params[0].name,
                     ),
                     span: body_span.clone(),
+                fixes: Vec::new(),
                 },
             );
             (err_port, err_port)
@@ -3440,6 +3462,7 @@ fn declaration_to_port_shape(
             return Err(Diagnostic::ResolveError {
                 name: format!("unknown type `{name}`"),
                 span: annotation_span.clone(),
+            fixes: Vec::new(),
             });
         }
     }
@@ -3619,6 +3642,7 @@ fn lower_lambda_expr(
         return Err(Diagnostic::ResolveError {
             name: "lambda expression requires an expected function type".to_string(),
             span: span.clone(),
+        fixes: Vec::new(),
         });
     };
     if expected_inputs.len() != params.len() {
@@ -3629,6 +3653,7 @@ fn lower_lambda_expr(
                 params.len(),
             ),
             span: span.clone(),
+        fixes: Vec::new(),
         });
     }
 
@@ -3659,6 +3684,7 @@ fn lower_lambda_expr(
             return Err(Diagnostic::ResolveError {
                 name,
                 span: span.clone(),
+            fixes: Vec::new(),
             });
         }
     }
@@ -3829,6 +3855,7 @@ fn callable_binding_conflict_diagnostic(
             arg_index + 1
         ),
         span: span.clone(),
+    fixes: Vec::new(),
     }
 }
 
@@ -4158,6 +4185,7 @@ fn lower_field_path_expr(
             Diagnostic::ResolveError {
                 name: "empty dotted path expression".to_string(),
                 span: span.clone(),
+            fixes: Vec::new(),
             },
         );
     };
@@ -4207,6 +4235,7 @@ fn lower_field_path_expr(
                 segments.join("."),
             ),
             span: span.clone(),
+        fixes: Vec::new(),
         },
     )
 }
@@ -4367,6 +4396,7 @@ fn lower_expr(
                     Diagnostic::ResolveError {
                         name: name.clone(),
                         span: span.clone(),
+                    fixes: Vec::new(),
                     },
                 );
                 port
@@ -4528,6 +4558,7 @@ fn lower_expr(
                     name: "lambda expression requires an expected function type at this position"
                         .to_string(),
                     span: span.clone(),
+                fixes: Vec::new(),
                 },
             );
             port
@@ -4758,6 +4789,7 @@ fn lower_record_literal_expr(
                 name: "record literals require an expected record type at this position"
                     .to_string(),
                 span: span.clone(),
+            fixes: Vec::new(),
             },
         );
     };
@@ -4768,6 +4800,7 @@ fn lower_record_literal_expr(
                 name: "record literal does not have an expected record type at this position"
                     .to_string(),
                 span: span.clone(),
+            fixes: Vec::new(),
             },
         );
     };
@@ -4791,6 +4824,7 @@ fn lower_record_literal_expr(
                         field.name
                     ),
                     span: field.span.clone(),
+                fixes: Vec::new(),
                 },
             );
         }
@@ -4805,6 +4839,7 @@ fn lower_record_literal_expr(
                         "record literal is missing required field `{label}` for the expected type"
                     ),
                     span: span.clone(),
+                fixes: Vec::new(),
                 },
             );
         };
@@ -4838,6 +4873,7 @@ fn lower_list_literal_expr(
                     name: "std `empty` constructor is unavailable while lowering a list literal"
                         .to_string(),
                     span: span.clone(),
+                fixes: Vec::new(),
                 },
             );
         }
@@ -4852,6 +4888,7 @@ fn lower_list_literal_expr(
                         "std `singleton` constructor is unavailable while lowering a list literal"
                             .to_string(),
                     span: span.clone(),
+                fixes: Vec::new(),
                 },
             );
         }
@@ -4865,6 +4902,7 @@ fn lower_list_literal_expr(
                     name: "std `cons` constructor is unavailable while lowering a list literal"
                         .to_string(),
                     span: span.clone(),
+                fixes: Vec::new(),
                 },
             );
         }
