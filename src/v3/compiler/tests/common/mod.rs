@@ -23,6 +23,10 @@
 //! because the OS eventually reaps `/tmp` and because panics in tests
 //! benefit from leaving artifacts visible.
 
+mod budgeted;
+
+pub use budgeted::{with_budget_ms, DEFAULT_BUDGET_MS};
+
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -231,4 +235,33 @@ pub fn require_fixture_cost_usize(lookup: CostLookup, context: &str) -> usize {
         // wrapping — single-authority claim holds if nobody reads it.
         panic!("complexity lens emitted cost that does not fit in usize for {context}: {cost}")
     })
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Per-test wall-clock budget macro (Layer 2 ratchet)
+// ────────────────────────────────────────────────────────────────────
+//
+// `#[macro_export]` places this at the integration-test crate root so
+// any `tests/*.rs` that declares `mod common;` can invoke
+// `budgeted_test! { ... }` unqualified.
+
+/// `budgeted_test! { name, { ... } }` — default 2000 ms.
+/// `budgeted_test! { 5000, name, { ... } }` — custom budget in ms.
+#[macro_export]
+macro_rules! budgeted_test {
+    ($ms:literal, $name:ident, $body:block) => {
+        #[test]
+        fn $name() {
+            $crate::common::budgeted::with_budget_ms($ms, || $body);
+        }
+    };
+    ($name:ident, $body:block) => {
+        #[test]
+        fn $name() {
+            $crate::common::budgeted::with_budget_ms(
+                $crate::common::budgeted::DEFAULT_BUDGET_MS,
+                || $body,
+            );
+        }
+    };
 }
