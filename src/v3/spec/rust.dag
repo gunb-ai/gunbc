@@ -988,6 +988,10 @@ data rust_language: LanguageSpec = {
 // **Dispatch state at this PR (Lane 1 Stage 1c PR 1):**
 // - `pattern_bindings` is LIVE — `emit_rust::render_branch_pattern`
 //   dispatches on it for the unused-payload-binding pilot.
+// - `variant_payload_field_access` is LIVE — `emit_rust` routes
+//   named variant-payload field reads through match-site field
+//   bindings because Rust cannot hold anonymous struct-variant
+//   payloads as first-class values.
 // - Every other field is authored-but-unread. Each field has a
 //   named rollout: the emitter change that consumes it removes
 //   the corresponding lint from the test-wrapper allow list in
@@ -996,6 +1000,7 @@ data rust_language: LanguageSpec = {
 data rust_clean_emission: CleanEmissionContract = {
   expression_wrapping: WrapOnlyInOperandPosition
   pattern_bindings: EmitUnderscoreWhenUnused
+  variant_payload_field_access: OverrideNamedFieldsAtBindingSite
   imports: IncludeOnlyReferenced
   block_return: NoWrappingOnTerminalExpression
   variable_bindings: EmitLetUnderscoreWhenUnused

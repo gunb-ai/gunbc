@@ -1,0 +1,250 @@
+module lenses.cost
+
+import std.list { List, empty, fold, cons }
+import std.substrate { Dag, Behavior, BranchPath, LoopNode, NodeId, PortId, node }
+import std.algebra { SymbolicCost, SizeVariable, sequential, iterate, max_path }
+
+type SymbolicCostEntry {
+  port: PortId
+  cost: SymbolicCostLookup
+}
+
+type SymbolicCostLookup
+  = MissingCost
+  | FoundCost(SymbolicCost)
+
+fn symbolic_cost_of(d: Dag, port_id: PortId) -> SymbolicCostLookup =
+  lookup_cost(compute_symbolic_costs(d), port_id)
+
+fn compute_symbolic_costs(d: Dag) -> List<SymbolicCostEntry> =
+  fold(d.nodes, seed_bind_params(d.nodes), |acc, behavior|
+    cons(entry_for(d, acc, behavior), acc)
+  )
+
+fn seed_bind_params(nodes: List<Behavior>) -> List<SymbolicCostEntry> =
+  match nodes {
+    Empty => empty()
+    Cons(payload) =>
+      concat_entries(params_of(payload.head), seed_bind_params(payload.tail))
+  }
+
+fn params_of(behavior: Behavior) -> List<SymbolicCostEntry> =
+  match behavior {
+    Value(v) => empty()
+    Transform(t) => empty()
+    Branch(b) => empty()
+    Loop(l) => empty()
+    Bind(bind) => param_entries(bind.params)
+  }
+
+fn param_entries(params: List<PortId>) -> List<SymbolicCostEntry> =
+  match params {
+    Empty => empty()
+    Cons(payload) =>
+      cons(
+        { port: payload.head, cost: FoundCost(ConstantCost(0)) },
+        param_entries(payload.tail)
+      )
+  }
+
+fn concat_entries(
+  a: List<SymbolicCostEntry>,
+  b: List<SymbolicCostEntry>
+) -> List<SymbolicCostEntry> =
+  match a {
+    Empty => b
+    Cons(payload) => cons(payload.head, concat_entries(payload.tail, b))
+  }
+
+fn entry_for(
+  d: Dag,
+  acc: List<SymbolicCostEntry>,
+  behavior: Behavior
+) -> SymbolicCostEntry =
+  match behavior {
+    Value(v) =>
+      { port: v.result_port, cost: FoundCost(ConstantCost(0)) }
+    Transform(t) =>
+      { port: t.result_port, cost: transform_cost(acc, t.inputs) }
+    Branch(b) =>
+      { port: b.result_port, cost: branch_cost(acc, b.input, b.paths) }
+    Loop(l) =>
+      { port: l.result_port, cost: loop_cost(d, acc, l) }
+    Bind(bind) =>
+      { port: bind.result_port, cost: lookup_cost(acc, bind.result_port) }
+  }
+
+// `loop_cost` composes iteration: bound × body.
+//
+// - Bound: `LinearCost(size_var_of(l.source))` — the runtime value
+//   the Loop descends upon (same carrier for `Cardinality { count }`
+//   and `Descent { cluster }` via `LoopNode.source`).
+// - Body: the already-lowered cost of `l.body`'s result port. The
+//   forward-fold contract guarantees the body's `entry_for` ran
+//   earlier in the walk (producers precede consumers in
+//   `d.nodes`), so its cost is already in `acc`.
+//
+// PR #537 reviewer call-out (briansrls, BLOCKING): the earlier
+// shape `loop_cost(acc, l.source)` passed only the source port
+// and then looked that same port up as "body cost" — so
+// recursive-body work silently contributed zero, violating Facts
+// Flow Forward. Now `l.body: NodeId` is resolved through the
+// `node(d, NodeId) -> Behavior?` substrate accessor to recover
+// the body's result port, and THAT port's cost is the honest
+// body cost.
+fn loop_cost(
+  d: Dag,
+  acc: List<SymbolicCostEntry>,
+  l: LoopNode
+) -> SymbolicCostLookup =
+  combine_iterate(
+    linear_at(l.source),
+    body_cost(d, acc, l.body)
+  )
+
+fn body_cost(
+  d: Dag,
+  acc: List<SymbolicCostEntry>,
+  body_id: NodeId
+) -> SymbolicCostLookup =
+  match node(d, body_id) {
+    None => MissingCost
+    Some(body_behavior) => lookup_cost(acc, behavior_result_port(body_behavior))
+  }
+
+fn behavior_result_port(b: Behavior) -> PortId =
+  match b {
+    Value(v) => v.result_port
+    Transform(t) => t.result_port
+    Branch(br) => br.result_port
+    Loop(lp) => lp.result_port
+    Bind(bind) => bind.result_port
+  }
+
+fn linear_at(port_id: PortId) -> SymbolicCostLookup =
+  FoundCost(LinearCost({ source_port: port_id }))
+
+fn combine_iterate(
+  bound: SymbolicCostLookup,
+  body: SymbolicCostLookup
+) -> SymbolicCostLookup =
+  match bound {
+    MissingCost => MissingCost
+    FoundCost(b) =>
+      match body {
+        MissingCost => MissingCost
+        FoundCost(y) => FoundCost(iterate(b, y))
+      }
+  }
+
+fn branch_cost(
+  acc: List<SymbolicCostEntry>,
+  input: PortId,
+  paths: List<BranchPath>
+) -> SymbolicCostLookup =
+  combine_sequential(
+    FoundCost(ConstantCost(1)),
+    combine_sequential(
+      lookup_cost(acc, input),
+      max_of_paths(acc, paths)
+    )
+  )
+
+fn max_of_paths(
+  acc: List<SymbolicCostEntry>,
+  paths: List<BranchPath>
+) -> SymbolicCostLookup =
+  fold(paths, FoundCost(ConstantCost(0)), |running, path|
+    combine_max(running, lookup_cost(acc, path.result_port))
+  )
+
+fn combine_max(
+  a: SymbolicCostLookup,
+  b: SymbolicCostLookup
+) -> SymbolicCostLookup =
+  match a {
+    MissingCost => MissingCost
+    FoundCost(ax) =>
+      match b {
+        MissingCost => MissingCost
+        FoundCost(bx) => FoundCost(dominant(ax, bx))
+      }
+  }
+
+fn dominant(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
+  max_path(cons(a, cons(b, empty())))
+
+fn transform_cost(
+  acc: List<SymbolicCostEntry>,
+  inputs: List<PortId>
+) -> SymbolicCostLookup =
+  combine_sequential(
+    FoundCost(ConstantCost(1)),
+    sum_costs(acc, inputs)
+  )
+
+fn sum_costs(
+  acc: List<SymbolicCostEntry>,
+  ports: List<PortId>
+) -> SymbolicCostLookup =
+  fold(ports, FoundCost(ConstantCost(0)), |running, port_id|
+    combine_sequential(running, lookup_cost(acc, port_id))
+  )
+
+fn combine_sequential(
+  a: SymbolicCostLookup,
+  b: SymbolicCostLookup
+) -> SymbolicCostLookup =
+  match a {
+    MissingCost => MissingCost
+    FoundCost(ax) =>
+      match b {
+        MissingCost => MissingCost
+        FoundCost(bx) => FoundCost(sequential(ax, bx))
+      }
+  }
+
+fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> SymbolicCostLookup =
+  match acc {
+    Empty => MissingCost
+    Cons(payload) =>
+      if payload.head.port == port_id then
+        payload.head.cost
+      else
+        lookup_cost(payload.tail, port_id)
+  }
+
+// ── Dimension<SymbolicCost> wiring — DEFERRED to Stage 2f ───────
+//
+// DB-7 §"Dimension<SymbolicCost> wiring" specifies a
+// `data symbolic_cost_dimension: Dimension<SymbolicCost> = {..}`
+// declaration with `witness_of`, `compose`, `identity` fields
+// carrying function references.
+//
+// Stage 2d does NOT ship this data declaration because v3's
+// current parser/lowerer rejects two v3 surface-grammar gaps that
+// the declaration's shape requires simultaneously:
+//
+//   1. Record literals inside `data X: T = { ... }` bodies. At
+//      M1(2.8) the lowerer reports "data has an opaque body —
+//      user code cannot yet use record / list / map literals
+//      inside data bodies" (DOWNSTREAM_REQUIREMENTS.md class-5
+//      gap #3).
+//   2. Record literals / match / lambdas inside `fn X { body }`
+//      block-bodied definitions. Constructing `Witness::Violates
+//      { reason, at }` — the MissingCost-to-violation shim the
+//      Dimension contract requires — hits the same block-body
+//      restriction.
+//
+// The lens ships its Behavior-variant lowering (`entry_for` +
+// helpers) as the authority. When Stage 2f's generic `analyze`
+// walker lands, it will materialize the `Dimension<SymbolicCost>`
+// instance alongside the surface-grammar extensions that unlock
+// the receipt form. Dispatching the instance from here today
+// would either require a parallel Rust-side declaration (bypassing
+// `.dag`-as-authority) or wait on the grammar extension — the
+// second path is the one the ROADMAP already sequences (Stage 2f
+// extracts the abstraction once multiple instances exist).
+//
+// See `docs/design-symbolic-cost-algebra.md` §"Dimension<SymbolicCost>
+// wiring" for the target shape.

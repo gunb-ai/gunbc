@@ -57,6 +57,37 @@ pub mod lens_cost {
     pub use generated::{cost_of, CostLookup};
 }
 
+/// Symbolic-cost lens (Lane 2 Stage 2d / DB-7). Authority lives in
+/// `src/v3/lenses/cost.dag`; the Rust projection is auto-emitted
+/// into `src/v3/compiler/src/lens_cost_symbolic_generated.rs` and
+/// re-exported so callers use `v3_compiler::lens_cost_symbolic::*`.
+///
+/// The `SymbolicCost` + `SizeVariable` carriers live in
+/// `src/v3/compiler/src/dag.rs` rather than the generated module
+/// because they're declared in `src/v3/std/algebra.dag`, which
+/// `emit_rust_module`'s `is_bootstrap_file` filter excludes from
+/// type emission. The hand-maintained Rust mirror adjacent to
+/// `Behavior` / `LoopBound` follows the same substrate-ownership
+/// pattern the other bootstrap-resident types use.
+pub mod lens_cost_symbolic {
+    #[allow(
+        dead_code,
+        unused_imports,
+        unused_parens,
+        unused_variables,
+        clippy::clone_on_copy,
+        clippy::collapsible_else_if
+    )]
+    mod generated {
+        use crate::dag::*;
+        use crate::diagnostics::*;
+
+        include!("lens_cost_symbolic_generated.rs");
+    }
+
+    pub use generated::{symbolic_cost_of, SymbolicCostEntry, SymbolicCostLookup};
+}
+
 /// Provenance lens. The authority lives in
 /// `src/v3/lenses/provenance.dag`; the Rust projection is auto-emitted
 /// into `src/v3/compiler/src/lens_provenance_generated.rs` and wrapped
@@ -128,6 +159,7 @@ mod lower;
 mod parse;
 mod pipeline_authority;
 mod tokenize;
+mod variant_payload;
 
 pub use dag::Dag;
 pub use diagnostics::{Diagnostic, SourceSpan};

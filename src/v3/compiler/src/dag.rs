@@ -1012,6 +1012,219 @@ impl LoopBound {
     }
 }
 
+/// 🟢 TERMINAL at Stage 2d scope. Rust mirror of the
+/// `SymbolicCost` coproduct declared in `src/v3/std/algebra.dag`.
+/// The .dag declaration is the authority — this mirror exists
+/// because `emit_rust_module` filters declarations from
+/// `src/v3/std/` as bootstrap-resident, so the generated
+/// `lens_cost_symbolic_generated.rs` references `SymbolicCost`
+/// by name without re-declaring it. Keeping the Rust shape
+/// adjacent to the other substrate carriers (`Behavior`,
+/// `LoopBound`, `Cluster`) matches the existing pattern used for
+/// every other .dag type the generated lenses consume.
+///
+/// The `SizeVariable` name field the DB-7 design doc sketches is
+/// deliberately not mirrored at this stage: the MVP render path
+/// pins structural equality on `source_port` alone (two
+/// `LinearCost` terms collapse to `PolynomialCost(var, 2)` when
+/// their ports match), and pulling a user-facing name through
+/// would require an InternTable lookup the lens doesn't yet run.
+/// Name-rendering lands when a concrete display consumer pins
+/// the missing piece — tracked in DB-7 Open Question §1's
+/// size-variable normalization.
+///
+/// Fields mirror the .dag variants exactly (anonymous tuple
+/// payloads render as `{ _0: ... }`, record payloads render as
+/// `{ field: ... }`); kept in sync by hand for now and tracked as
+/// Lane 1e scheduled-deletion work when substrate emission grows
+/// a cross-file type-mirror pass.
+///
+/// See `docs/design-symbolic-cost-algebra.md` (DB-7) for the
+/// dissolution receipt and variant rationale.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SymbolicCost {
+    ConstantCost { _0: i64 },
+    LinearCost { _0: SizeVariable },
+    PolynomialCost { var: SizeVariable, degree: i64 },
+    ProductCost { _0: Vec<SymbolicCost> },
+    SumCost { _0: Vec<SymbolicCost> },
+    LogCost { _0: SizeVariable },
+    UnknownCost { _0: String },
+}
+
+/// 🟢 TERMINAL at Stage 2d scope. Rust mirror of `SizeVariable`
+/// from `src/v3/std/algebra.dag`. Structural equality on
+/// `source_port` is how two `LinearCost` terms collapse into
+/// `PolynomialCost(var, 2)` through
+/// `std.algebra::combine_binary_product` — the nested-fold
+/// fingerprint DB-7's `all_pairs` acceptance fixture exercises.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SizeVariable {
+    pub source_port: PortId,
+}
+
+// Composition functions mirroring `src/v3/std/algebra.dag`.
+// `emit_rust_module` filters declarations under `src/v3/std/` as
+// bootstrap-resident, so the functions there never emit their own
+// Rust projection; `lens_cost_symbolic_generated.rs` references
+// `sequential`, `iterate`, `max_path` by name and resolves them
+// through `use crate::dag::*`. Kept in sync with the .dag source
+// by hand for now, same cadence as the `SymbolicCost` variant
+// mirror above.
+//
+// Algorithmic equivalence receipts:
+//   - `sequential` / `iterate` follow DB-7 §"Composition
+//     operations": sequential is a normalized sum, iterate is a
+//     normalized product.
+//   - `normalize` implements the Sum/Product reductions DB-7
+//     §"Dominance / normalization" specifies: drop `ConstantCost(0)`
+//     out of sums, collapse singleton wrappers, fold two identical
+//     `LinearCost` terms into `PolynomialCost(var, 2)`.
+//   - `dominates` implements the dominance partial order:
+//     Unknown dominates everything (safest over-approximation),
+//     Constant dominated by every other variant, Polynomial degrees
+//     strictly-order, Linear≡Polynomial(v, 1), Sum/Product use
+//     dominant-child summary.
+
+pub fn sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
+    normalize(SymbolicCost::SumCost { _0: vec![a, b] })
+}
+
+pub fn iterate(bound: SymbolicCost, body: SymbolicCost) -> SymbolicCost {
+    normalize(SymbolicCost::ProductCost {
+        _0: vec![bound, body],
+    })
+}
+
+pub fn max_path(paths: &[SymbolicCost]) -> SymbolicCost {
+    // Three-way step: candidate-wins / acc-wins / keep-both. Fixes
+    // PR #537 review (Facts Flow Forward violation): pairing paths
+    // via a two-way `if dominates(c, acc) then c else acc` silently
+    // dropped whichever path was ordered later when the two were
+    // incomparable (e.g. `Linear(n)` vs `Linear(m)` with distinct
+    // size variables). When neither dominates, preserve both via
+    // `sequential`, which normalizes through `drop_dominated`;
+    // `Big-O(f + g) = Big-O(max(f, g))` makes the sum asymptotically
+    // identical to the max.
+    paths
+        .iter()
+        .fold(SymbolicCost::ConstantCost { _0: 0 }, |acc, candidate| {
+            if dominates(candidate, &acc) {
+                candidate.clone()
+            } else if dominates(&acc, candidate) {
+                acc
+            } else {
+                sequential(acc, candidate.clone())
+            }
+        })
+}
+
+pub fn normalize(cost: SymbolicCost) -> SymbolicCost {
+    match cost {
+        SymbolicCost::SumCost { _0: terms } => reduce_sum(drop_zero_terms(terms)),
+        SymbolicCost::ProductCost { _0: terms } => reduce_product(drop_zero_terms(terms)),
+        other => other,
+    }
+}
+
+fn drop_zero_terms(terms: Vec<SymbolicCost>) -> Vec<SymbolicCost> {
+    terms
+        .into_iter()
+        .filter(|t| !matches!(t, SymbolicCost::ConstantCost { _0: 0 }))
+        .collect()
+}
+
+fn reduce_sum(mut terms: Vec<SymbolicCost>) -> SymbolicCost {
+    terms = drop_dominated_in_sum(terms);
+    match terms.len() {
+        0 => SymbolicCost::ConstantCost { _0: 0 },
+        1 => terms.into_iter().next().unwrap(),
+        _ => SymbolicCost::SumCost { _0: terms },
+    }
+}
+
+fn reduce_product(terms: Vec<SymbolicCost>) -> SymbolicCost {
+    match terms.len() {
+        0 => SymbolicCost::ConstantCost { _0: 0 },
+        1 => terms.into_iter().next().unwrap(),
+        2 => {
+            let mut iter = terms.into_iter();
+            let a = iter.next().unwrap();
+            let b = iter.next().unwrap();
+            combine_binary_product(a, b)
+        }
+        _ => SymbolicCost::ProductCost { _0: terms },
+    }
+}
+
+fn combine_binary_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
+    if let (SymbolicCost::LinearCost { _0: va }, SymbolicCost::LinearCost { _0: vb }) = (&a, &b) {
+        if va == vb {
+            return SymbolicCost::PolynomialCost {
+                var: va.clone(),
+                degree: 2,
+            };
+        }
+    }
+    SymbolicCost::ProductCost { _0: vec![a, b] }
+}
+
+fn drop_dominated_in_sum(terms: Vec<SymbolicCost>) -> Vec<SymbolicCost> {
+    let mut keep: Vec<SymbolicCost> = Vec::with_capacity(terms.len());
+    for term in terms {
+        let term_dominated = keep.iter().any(|k| dominates(k, &term));
+        if term_dominated {
+            continue;
+        }
+        keep.retain(|k| !dominates(&term, k));
+        keep.push(term);
+    }
+    keep
+}
+
+pub fn dominates(a: &SymbolicCost, b: &SymbolicCost) -> bool {
+    match a {
+        SymbolicCost::UnknownCost { .. } => true,
+        SymbolicCost::ConstantCost { .. } => matches!(b, SymbolicCost::ConstantCost { .. }),
+        SymbolicCost::LinearCost { _0: va } => match b {
+            SymbolicCost::ConstantCost { .. } | SymbolicCost::LogCost { .. } => true,
+            SymbolicCost::LinearCost { _0: vb } => va == vb,
+            SymbolicCost::PolynomialCost { var, degree } => va == var && *degree <= 1,
+            _ => false,
+        },
+        SymbolicCost::PolynomialCost {
+            var: va,
+            degree: ka,
+        } => match b {
+            SymbolicCost::ConstantCost { .. } | SymbolicCost::LogCost { .. } => true,
+            SymbolicCost::LinearCost { _0: vb } => va == vb && *ka >= 1,
+            SymbolicCost::PolynomialCost {
+                var: vb,
+                degree: kb,
+            } => va == vb && *ka >= *kb,
+            _ => false,
+        },
+        SymbolicCost::LogCost { _0: va } => match b {
+            SymbolicCost::ConstantCost { .. } => true,
+            SymbolicCost::LogCost { _0: vb } => va == vb,
+            _ => false,
+        },
+        // Composite dominance via "dominant child summary" (DB-7
+        // §Dominance). Both `Sum([A, B])` and `Product([A, B])` bound
+        // each child from below — sum and product of non-negative
+        // terms are ≥ any single term — so the composite dominates
+        // `b` iff *any* child does. Short-circuit evaluation keeps
+        // this O(n) worst-case over the (post-normalize) ≤ few-term
+        // lists. Fixes PR #537 review (codex): prior code hardcoded
+        // `LinearCost(_) => True` / `LogCost(_) => True` without
+        // inspecting terms, so e.g. `Product([Log(n)])` incorrectly
+        // dominated `Linear(n)`.
+        SymbolicCost::ProductCost { _0: terms } | SymbolicCost::SumCost { _0: terms } => {
+            terms.iter().any(|child| dominates(child, b))
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct LoopNode {
     pub id: NodeId,
@@ -1363,6 +1576,27 @@ pub(crate) struct PatternBindingRuleVariants {
     pub not_applicable: Option<DeclarationId>,
 }
 
+/// Cached `VariantPayloadFieldAccessRule` variant DeclarationIds
+/// resolved from `src/v3/std/clean_emission.dag`. Populated at
+/// bootstrap end and consumed by emitters when parsing
+/// `CleanEmissionContract.variant_payload_field_access`.
+///
+/// Like `PatternBindingRuleVariants`, this central cache is the sole
+/// bridge from `clean_emission.dag`'s variant labels to typed
+/// `DeclarationId`s. That keeps the "how do target specs classify
+/// variant-payload field access?" fact in one place instead of letting
+/// three emitters re-resolve the same names independently (Q5
+/// construction authority).
+#[derive(Debug, Default, Clone)]
+pub(crate) struct VariantPayloadFieldAccessRuleVariants {
+    /// `AccessFromPayloadBinding` — the bound payload expression is a
+    /// whole carrier whose fields can be projected directly.
+    pub access_from_payload_binding: Option<DeclarationId>,
+    /// `OverrideNamedFieldsAtBindingSite` — named payload fields must
+    /// be broken into per-field bindings at the match site.
+    pub override_named_fields_at_binding_site: Option<DeclarationId>,
+}
+
 /// Cached `VerifierOutputPolicy` variant DeclarationIds resolved
 /// from `src/v3/std/clean_emission.dag`. Populated at bootstrap
 /// end alongside `PatternBindingRuleVariants`. The
@@ -1430,6 +1664,11 @@ pub struct Dag {
     /// central cache is the right shape instead of per-emitter
     /// name lookups.
     pattern_binding_rule_variants: PatternBindingRuleVariants,
+    /// Cached `VariantPayloadFieldAccessRule` variant DeclarationIds
+    /// resolved from `src/v3/std/clean_emission.dag`. Every emitter
+    /// reads these typed ids when parsing
+    /// `CleanEmissionContract.variant_payload_field_access`.
+    variant_payload_field_access_rule_variants: VariantPayloadFieldAccessRuleVariants,
     /// Cached `VerifierOutputPolicy` variant DeclarationIds
     /// resolved from `src/v3/std/clean_emission.dag`. The
     /// `post_emit_verifier` harness dispatches on the cached typed
@@ -1467,6 +1706,8 @@ impl Dag {
             target_syntax: TargetSyntaxCache::default(),
             stdlib_types: StdlibTypeCache::default(),
             pattern_binding_rule_variants: PatternBindingRuleVariants::default(),
+            variant_payload_field_access_rule_variants:
+                VariantPayloadFieldAccessRuleVariants::default(),
             verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),
             clusters: Vec::new(),
             optional_match_disjs: HashMap::new(),
@@ -1662,6 +1903,17 @@ impl Dag {
     /// field — see `PatternBindingRuleVariants` for the rationale.
     pub(crate) fn pattern_binding_rule_variants(&self) -> &PatternBindingRuleVariants {
         &self.pattern_binding_rule_variants
+    }
+
+    /// Typed accessor for the cached `VariantPayloadFieldAccessRule`
+    /// variant handles resolved from
+    /// `src/v3/std/clean_emission.dag`. Consumed by per-target
+    /// emitters when parsing
+    /// `CleanEmissionContract.variant_payload_field_access`.
+    pub(crate) fn variant_payload_field_access_rule_variants(
+        &self,
+    ) -> &VariantPayloadFieldAccessRuleVariants {
+        &self.variant_payload_field_access_rule_variants
     }
 
     /// Typed accessor for the cached `VerifierOutputPolicy` variant
@@ -2072,6 +2324,27 @@ impl Dag {
             }
         }
         self.pattern_binding_rule_variants = pattern_binding_variants;
+
+        let mut variant_payload_field_access_variants =
+            VariantPayloadFieldAccessRuleVariants::default();
+        if let Some(parent) = self.declaration_by_name("VariantPayloadFieldAccessRule") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "AccessFromPayloadBinding" => {
+                            variant_payload_field_access_variants.access_from_payload_binding =
+                                Some(variant.ty);
+                        }
+                        "OverrideNamedFieldsAtBindingSite" => {
+                            variant_payload_field_access_variants
+                                .override_named_fields_at_binding_site = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        self.variant_payload_field_access_rule_variants = variant_payload_field_access_variants;
 
         // `VerifierOutputPolicy` variant resolution. Same shape as
         // the pattern-binding cache above: one walk of the Disj's
