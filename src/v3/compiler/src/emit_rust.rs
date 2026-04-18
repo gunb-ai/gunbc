@@ -51,6 +51,10 @@ use crate::dag::{
     TypeConnective, ValueBody, ValueNode,
 };
 use crate::operators::OperatorKind;
+use crate::variant_payload::{
+    variant_payload_shape, VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
+    VariantPayloadShape,
+};
 
 /// Errors the Rust emitter surfaces when the DAG reaches a shape it
 /// cannot render under the PR-B scope. Each variant names a specific
@@ -496,6 +500,7 @@ struct RustLanguageSyntax {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CleanEmissionContractBinding {
     pattern_bindings: PatternBindingRuleBinding,
+    variant_payload_field_access: VariantPayloadFieldAccessRuleBinding,
 }
 
 /// Rust-valid slice of `std.clean_emission.PatternBindingRule`.
@@ -881,8 +886,8 @@ impl RealizationIndexes {
 impl CleanEmissionContractBinding {
     /// Parse the portion of `data rust_clean_emission:
     /// CleanEmissionContract` this emitter consumes. Currently only
-    /// `pattern_bindings` dispatches (Lane 1 Stage 1c PR 1 pilot);
-    /// other rules parse when their consumers land.
+    /// `pattern_bindings` and `variant_payload_field_access`
+    /// dispatch; other rules parse when their consumers land.
     fn build(dag: &Dag) -> Result<Self, EmitError> {
         let declaration = dag
             .rust_clean_emission_spec()
@@ -898,7 +903,24 @@ impl CleanEmissionContractBinding {
             })?;
         let pattern_bindings =
             parse_pattern_binding_rule(dag, pattern_bindings_value, declaration)?;
-        Ok(Self { pattern_bindings })
+        let variant_payload_field_access_value = fields
+            .iter()
+            .find(|(label, _)| label == "variant_payload_field_access")
+            .map(|(_, value)| value)
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail:
+                    "rust_clean_emission is missing required `variant_payload_field_access` field",
+            })?;
+        let variant_payload_field_access = parse_variant_payload_field_access_rule(
+            dag,
+            variant_payload_field_access_value,
+            declaration,
+        )?;
+        Ok(Self {
+            pattern_bindings,
+            variant_payload_field_access,
+        })
     }
 }
 
@@ -966,6 +988,58 @@ fn parse_pattern_binding_rule(
         Err(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "rust_clean_emission.pattern_bindings constructor is not a known PatternBindingRule variant",
+        })
+    }
+}
+
+fn parse_variant_payload_field_access_rule(
+    dag: &Dag,
+    value: &FieldValue,
+    declaration: DeclarationId,
+) -> Result<VariantPayloadFieldAccessRuleBinding, EmitError> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail:
+                "rust_clean_emission.variant_payload_field_access must be a VariantPayloadFieldAccessRule variant",
+        });
+    };
+    if !payload.is_empty() {
+        return Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "VariantPayloadFieldAccessRule variants must not carry payload fields",
+        });
+    }
+    let variants = dag.variant_payload_field_access_rule_variants();
+    let access_from_payload_binding =
+        variants
+            .access_from_payload_binding
+            .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail:
+                "VariantPayloadFieldAccessRule.AccessFromPayloadBinding declaration was not found",
+        })?;
+    let override_named_fields_at_binding_site = variants
+        .override_named_fields_at_binding_site
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "VariantPayloadFieldAccessRule.OverrideNamedFieldsAtBindingSite declaration was not found",
+        })?;
+    if *constructor == override_named_fields_at_binding_site {
+        Ok(VariantPayloadFieldAccessRuleBinding::OverrideNamedFieldsAtBindingSite)
+    } else if *constructor == access_from_payload_binding {
+        Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "rust_clean_emission.variant_payload_field_access cannot use VariantPayloadFieldAccessRule.AccessFromPayloadBinding; Rust requires OverrideNamedFieldsAtBindingSite for named payloads",
+        })
+    } else {
+        Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "rust_clean_emission.variant_payload_field_access constructor is not a known VariantPayloadFieldAccessRule variant",
         })
     }
 }
@@ -1433,10 +1507,10 @@ fn render_named_template(template: &str, bindings: &[(&str, &str)]) -> String {
 
 /// Local name for a destructured field of a multi-field struct-variant
 /// payload. Used by both the pattern emitter and the arm-body renderer
-/// so the aliased destructure and the `field_overrides` lookup stay in
-/// lockstep. The leading `__` avoids colliding with user identifiers
-/// and silences unused-binding warnings on fields the arm body never
-/// references.
+/// so the aliased destructure and the payload-binding field routing
+/// stay in lockstep. The leading `__` avoids colliding with user
+/// identifiers and silences unused-binding warnings on fields the arm
+/// body never references.
 fn destructured_field_alias(binding_name: &str, field_label: &str) -> String {
     format!("__{binding_name}_{field_label}")
 }
@@ -2697,7 +2771,7 @@ enum RenderMode {
 #[derive(Debug, Clone, Default)]
 struct RenderLocals {
     names: HashMap<PortId, LocalBinding>,
-    field_overrides: HashMap<PortId, HashMap<String, LocalBinding>>,
+    payload_bindings: HashMap<PortId, VariantPayloadBinding<LocalBinding>>,
 }
 
 #[allow(dead_code)]
@@ -2853,6 +2927,13 @@ impl<'a> Ctx<'a> {
         mode: RenderMode,
     ) -> Result<String, EmitError> {
         if let Some(binding) = locals.names.get(&port) {
+            return self.render_binding(port, binding, mode);
+        }
+        if let Some(binding) = locals
+            .payload_bindings
+            .get(&port)
+            .and_then(VariantPayloadBinding::direct)
+        {
             return self.render_binding(port, binding, mode);
         }
         if let Some(binding) = self.bound_names.get(&port) {
@@ -3097,10 +3178,12 @@ impl<'a> Ctx<'a> {
                 t.inputs.len()
             )));
         }
-        if let Some(fields) = locals.field_overrides.get(&t.inputs[0]) {
-            if let Some(binding) = fields.get(field_label) {
-                return self.render_binding(t.output, binding, mode);
-            }
+        if let Some(binding) = locals
+            .payload_bindings
+            .get(&t.inputs[0])
+            .and_then(|binding| binding.field(field_label))
+        {
+            return self.render_binding(t.output, binding, mode);
         }
         let parent_expr = self.render_input_use(
             InputConsumer::Transform(t),
@@ -3399,8 +3482,8 @@ impl<'a> Ctx<'a> {
                 )),
             );
             cons_locals
-                .field_overrides
-                .insert(payload.payload_port, fields);
+                .payload_bindings
+                .insert(payload.payload_port, VariantPayloadBinding::Fields(fields));
         }
         let cons_body = self.render_port(
             cons_path.output,
@@ -3430,37 +3513,10 @@ impl<'a> Ctx<'a> {
     fn render_path_body(&self, path: &Path, locals: &RenderLocals) -> Result<String, EmitError> {
         let mut arm_locals = locals.clone();
         if let Some(binding) = &path.binding {
-            arm_locals.names.insert(
-                binding.payload_port,
-                LocalBinding::Borrowed(binding.binding_name.clone()),
-            );
-            // Named struct-variant payloads are observed at the .dag
-            // layer as a record value, even when the variant has just
-            // one field. Rust pattern matching binds named fields
-            // directly, so route downstream `.dag`-level
-            // `binding.field` projections through `field_overrides`
-            // instead of trying to read fields off the bound leaf.
-            if let BranchPattern::ResolvedVariant(resolved_id) = &path.pattern {
-                if let TypeConnective::Conj { children } =
-                    &self.dag.declaration(*resolved_id).connective
-                {
-                    if children.iter().any(|child| child.label != "_0") {
-                        let overrides = children
-                            .iter()
-                            .map(|child| {
-                                let local_name = if children.len() == 1 {
-                                    binding.binding_name.clone()
-                                } else {
-                                    destructured_field_alias(&binding.binding_name, &child.label)
-                                };
-                                (child.label.clone(), LocalBinding::Borrowed(local_name))
-                            })
-                            .collect();
-                        arm_locals
-                            .field_overrides
-                            .insert(binding.payload_port, overrides);
-                    }
-                }
+            if let Some(payload_binding) = self.render_variant_payload_binding(path, binding)? {
+                arm_locals
+                    .payload_bindings
+                    .insert(binding.payload_port, payload_binding);
             }
         }
         self.render_port(path.output, &arm_locals, RenderMode::OwnedConstructLastUse)
@@ -3505,18 +3561,23 @@ impl<'a> Ctx<'a> {
                 &[("name", &qualified_name)],
             ));
         };
-        let TypeConnective::Conj { children } = &self.dag.declaration(resolved_id).connective
-        else {
+        let Some(payload_shape) = variant_payload_shape(self.dag, resolved_id) else {
             return Err(EmitError::UnsupportedBehavior(format!(
                 "matched variant `{variant_name}` does not lower to a payload product"
             )));
         };
         let rendered_binding = self.render_payload_binding_name(path, binding);
-        if children.len() != 1 {
+        if matches!(
+            payload_shape,
+            VariantPayloadShape::NamedFields(ref fields) if fields.len() > 1
+        ) {
+            let VariantPayloadShape::NamedFields(field_labels) = payload_shape else {
+                unreachable!("guarded above")
+            };
             // Multi-field struct-variant: Rust won't let us access
             // `binding.field` on the enum because the payload has
             // no nominal type. The body can ONLY consume this payload
-            // via destructured fields routed through `field_overrides`
+            // via destructured fields routed through `payload_bindings`
             // — there is no Rust-level value the outer `binding @`
             // alias could refer to (Rust rejects taking the anonymous
             // struct payload as a value). So we always omit the
@@ -3527,22 +3588,22 @@ impl<'a> Ctx<'a> {
             // unused, every field renders as wildcard too. When it's
             // used, every field renders as its aliased local
             // (`__<binding>_<field>`), and `render_path_body`'s
-            // `field_overrides` population at the same payload port
+            // `payload_bindings` population at the same payload port
             // routes downstream `binding.field` reads to those locals
             // via `render_field_project`'s override lookup.
             let wildcard = self.indexes.syntax.patterns.wildcard.clone();
             let payload_unused = rendered_binding == wildcard;
-            let field_bindings = children
+            let field_bindings = field_labels
                 .iter()
                 .map(|child| {
                     let binding_text = if payload_unused {
                         wildcard.clone()
                     } else {
-                        destructured_field_alias(&binding.binding_name, &child.label)
+                        destructured_field_alias(&binding.binding_name, child)
                     };
                     Ok(render_named_template(
                         &self.indexes.syntax.patterns.field_binding,
-                        &[("field", &child.label), ("binding", &binding_text)],
+                        &[("field", child), ("binding", &binding_text)],
                     ))
                 })
                 .collect::<Result<Vec<_>, EmitError>>()?;
@@ -3560,7 +3621,7 @@ impl<'a> Ctx<'a> {
                 ],
             ));
         }
-        if children[0].label == "_0"
+        if payload_shape == VariantPayloadShape::PositionalSingle
             && (self.indexes.types.contains_key(&disj_id) || is_optional_match)
         {
             return Ok(render_named_template(
@@ -3568,17 +3629,32 @@ impl<'a> Ctx<'a> {
                 &[("name", &qualified_name), ("binding", &rendered_binding)],
             ));
         }
-        let bindings = render_named_template(
-            &self.indexes.syntax.patterns.field_binding,
-            &[
-                ("field", &children[0].label),
-                ("binding", &rendered_binding),
-            ],
-        );
-        Ok(render_named_template(
-            &self.indexes.syntax.patterns.variant_pattern,
-            &[("name", &qualified_name), ("bindings", &bindings)],
-        ))
+        match payload_shape {
+            VariantPayloadShape::Empty => Ok(render_named_template(
+                &self.indexes.syntax.patterns.variant_pattern_empty,
+                &[("name", &qualified_name)],
+            )),
+            VariantPayloadShape::PositionalSingle => {
+                let bindings = render_named_template(
+                    &self.indexes.syntax.patterns.field_binding,
+                    &[("field", "_0"), ("binding", &rendered_binding)],
+                );
+                Ok(render_named_template(
+                    &self.indexes.syntax.patterns.variant_pattern,
+                    &[("name", &qualified_name), ("bindings", &bindings)],
+                ))
+            }
+            VariantPayloadShape::NamedFields(field_labels) => {
+                let bindings = render_named_template(
+                    &self.indexes.syntax.patterns.field_binding,
+                    &[("field", &field_labels[0]), ("binding", &rendered_binding)],
+                );
+                Ok(render_named_template(
+                    &self.indexes.syntax.patterns.variant_pattern,
+                    &[("name", &qualified_name), ("bindings", &bindings)],
+                ))
+            }
+        }
     }
 
     /// E-5 / Lane 1 Stage 1c: render the arm's payload binding name
@@ -3602,6 +3678,51 @@ impl<'a> Ctx<'a> {
             PatternBindingRuleBinding::EmitBindingAlways
             | PatternBindingRuleBinding::EmitUnderscoreWhenUnused => binding.binding_name.clone(),
         }
+    }
+
+    fn render_variant_payload_binding(
+        &self,
+        path: &Path,
+        binding: &crate::dag::PayloadBinding,
+    ) -> Result<Option<VariantPayloadBinding<LocalBinding>>, EmitError> {
+        let BranchPattern::ResolvedVariant(variant_id) = &path.pattern else {
+            return Ok(None);
+        };
+        let Some(shape) = variant_payload_shape(self.dag, *variant_id) else {
+            return Ok(None);
+        };
+        let payload_binding_name = self.render_payload_binding_name(path, binding);
+        let wildcard = self.indexes.syntax.patterns.wildcard.clone();
+        Ok(match shape {
+            VariantPayloadShape::Empty => None,
+            VariantPayloadShape::PositionalSingle => Some(VariantPayloadBinding::Direct(
+                LocalBinding::Borrowed(payload_binding_name),
+            )),
+            VariantPayloadShape::NamedFields(field_labels) => {
+                match self.indexes.clean_emission.variant_payload_field_access {
+                    VariantPayloadFieldAccessRuleBinding::AccessFromPayloadBinding => Some(
+                        VariantPayloadBinding::Direct(LocalBinding::Borrowed(payload_binding_name)),
+                    ),
+                    VariantPayloadFieldAccessRuleBinding::OverrideNamedFieldsAtBindingSite => {
+                        let multiple_fields = field_labels.len() > 1;
+                        let fields = field_labels
+                            .into_iter()
+                            .map(|field_label| {
+                                let local_name = if payload_binding_name == wildcard {
+                                    wildcard.clone()
+                                } else if multiple_fields {
+                                    destructured_field_alias(&binding.binding_name, &field_label)
+                                } else {
+                                    payload_binding_name.clone()
+                                };
+                                (field_label, LocalBinding::Borrowed(local_name))
+                            })
+                            .collect();
+                        Some(VariantPayloadBinding::Fields(fields))
+                    }
+                }
+            }
+        })
     }
 
     /// Structural port-liveness walk. Returns true if `target`

@@ -12,6 +12,7 @@ import std.list { List }
 type CleanEmissionContract {
   expression_wrapping: ExpressionWrappingRule
   pattern_bindings: PatternBindingRule
+  variant_payload_field_access: VariantPayloadFieldAccessRule
   imports: ImportRule
   block_return: BlockReturnRule
   variable_bindings: VariableBindingRule
@@ -40,6 +41,22 @@ type PatternBindingRule
   | EmitUnderscoreWhenUnused
   | EmitPrefixedUnderscoreWhenUnused
   | NotApplicablePatternBinding
+
+// 🟢 TERMINAL. Governs how a match-arm payload binding answers
+// downstream field projections (`payload.head`, `payload.count`)
+// after the arm has introduced the payload-binding port.
+//
+// `AccessFromPayloadBinding` means the binding expression itself is a
+// whole payload carrier whose fields can be projected directly by the
+// target emitter (`v.head`, `__match.count`).
+//
+// `OverrideNamedFieldsAtBindingSite` means named payload fields cannot
+// be projected off the bound payload value in the target surface, so
+// the emitter must install per-field bindings at the match site and
+// route later `payload.field` reads through those bindings instead.
+type VariantPayloadFieldAccessRule
+  = AccessFromPayloadBinding
+  | OverrideNamedFieldsAtBindingSite
 
 // 🟢 TERMINAL. Governs which declared imports make it into the
 // emitted module (rustc's `unused_imports`).

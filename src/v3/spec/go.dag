@@ -920,6 +920,10 @@ data go_language: LanguageSpec = {
 //   header when no arm binds). Go's compiler treats unused locals
 //   as errors, so elision is required for correctness — not
 //   merely a warnings-posture choice.
+// - `variant_payload_field_access` is LIVE — `emit_go` treats the
+//   type-switch witness `v` as the whole payload carrier for named
+//   payloads, while positional single-field payloads bind directly
+//   to `v._0`.
 // - Every other field is authored-but-unread. Each field has a
 //   named rollout: the emitter change that consumes it removes
 //   the corresponding lint from the test-wrapper allow list in
@@ -928,6 +932,7 @@ data go_language: LanguageSpec = {
 data go_clean_emission: CleanEmissionContract = {
   expression_wrapping: WrapOnlyInOperandPosition
   pattern_bindings: EmitUnderscoreWhenUnused
+  variant_payload_field_access: AccessFromPayloadBinding
   imports: IncludeOnlyReferenced
   block_return: ExplicitReturnKeyword
   variable_bindings: EmitLetUnderscoreWhenUnused

@@ -174,8 +174,8 @@ let zero: Int = 0
 }
 
 /// E-5 / Lane 1 Stage 1c PR 2 — when at least one arm consumes its
-/// payload, the emitter must keep emitting `v :=` and the consuming
-/// arm's `name := v.field;` prefix. Companion regression test to
+/// payload, the emitter must keep emitting `v :=` and route reads
+/// through the type-switch witness. Companion regression test to
 /// `emit_go_unused_payload_binding_is_elided`; proves elision is
 /// keyed on port liveness per arm, not blanket suppression.
 #[test]
@@ -188,12 +188,32 @@ let zero: Int = 0
     let dag = compile_to_dag(source, "clean_emission.v3").expect("compiles");
     let rendered = emit_go(&dag).expect("emits go");
     assert!(
-        rendered.contains("value := v._0"),
-        "used binding must still be declared, got: {rendered}"
+        rendered.contains("case Boxed: return v._0"),
+        "used positional payload must still read from the type-switch witness, got: {rendered}"
     );
     assert!(
         rendered.contains("switch v := any("),
         "expected `v :=` to remain when any arm binds, got: {rendered}"
+    );
+}
+
+#[test]
+fn emit_go_named_single_field_payload_uses_the_variant_value() {
+    let source = "\
+type Point { x: Int y: Int }
+type Wrapped = Wrap { inner: Point } | Empty
+fn unwrap_or_zero(w: Wrapped) -> Int = match w { Wrap(payload) => payload.inner.x, Empty => 0 }
+let zero: Int = 0
+";
+    let dag = compile_to_dag(source, "variant_payload_named_single.v3").expect("compiles");
+    let rendered = emit_go(&dag).expect("emits go");
+    assert!(
+        rendered.contains("case Wrap: return ((v).inner).x"),
+        "named single-field payload access must project from the variant value, got: {rendered}"
+    );
+    assert!(
+        !rendered.contains("payload := v.inner"),
+        "named single-field payload must not rebind to the bare field value, got: {rendered}"
     );
 }
 
