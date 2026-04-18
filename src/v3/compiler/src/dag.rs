@@ -934,11 +934,11 @@ impl TransformRef {
     }
 }
 
-/// Bool-typed branch predicate port — Track 9 parallel to [`ParamRef`] /
-/// [`TransformRef`]. The only Rust constructor is [`Dag::branch_arm_of`],
-/// which checks the port resolves to `Bool`. The substrate field shape
-/// matches `src/v3/std/effects.dag`; direct `.dag` construction gains the
-/// same authority in the Lane 3c cycle (ROADMAP Track 9 debt).
+/// 🟢 **TERMINAL.** Bool-typed branch predicate port — Track 9 parallel to
+/// [`ParamRef`] / [`TransformRef`]. The only Rust constructor is
+/// [`Dag::branch_arm_of`], which checks the port resolves to `Bool`. The
+/// substrate field shape matches `src/v3/std/effects.dag`; direct `.dag`
+/// construction gains the same authority in the Lane 3c cycle (ROADMAP Track 9 debt).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BranchPredicateRef {
     port: PortId,
@@ -1013,19 +1013,11 @@ impl<T> NonSingletonList<T> {
 // `BranchArm` until the self-hosted pipeline consumes the `.dag` forms
 // directly.
 //
-// Receipt discipline (per coproduct — not only this section header):
-// - `HttpMethodScalar` … `EffectShape`, `OperationEffect`, `BreakingOperation`,
-//   `CompositionVerdict`: 🟢 **TERMINAL** — 1:1 mirrors of `std.effects` algebra
-//   carriers; the `.dag` file is naming authority, Rust is projection.
-// - `BranchPredicateRef`, `BranchArm`: 🟢 **TERMINAL** — Track 9 witness handles;
-//   only [`Dag::branch_arm_of`] constructs `BranchArm` with a Bool predicate port.
-// - `WorkflowEffect`: 🟡 **SCAFFOLD** — four-variant workflow sum aligned with
-//   `effects.dag`; Stage 2b idempotency analyzes `LinearEffect` in the shipped
-//   path; branch/loop/parallel return `IdempotencyUnsupported` until a branch-wise
-//   algebra exists (see `workflow_idempotency::analyze_workflow`).
-// - `WorkflowIdempotencyReport`, `IdempotencyUnsupportedDetail`: 🟢 **TERMINAL**
-//   lens boundary — explicit sum, not a silent `(verdict, Option<error>)` pair.
+// Each coproduct / boundary carrier below carries its own 🟢/🟡 dissolution
+// stamp (modeling-discipline principle 4); do not rely on this banner alone.
 
+/// 🟢 **TERMINAL.** HTTP verb literals — 1:1 with `std.effects` `HttpMethod`;
+/// naming authority is `effects.dag`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HttpMethodScalar {
     Get,
@@ -1037,6 +1029,8 @@ pub enum HttpMethodScalar {
     Options,
 }
 
+/// 🟢 **TERMINAL.** Where a stable idempotency key comes from — mirrors
+/// `KeySource` in `effects.dag`; no parallel spelling.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KeySource {
     PathParam { param: String },
@@ -1044,12 +1038,16 @@ pub enum KeySource {
     CompositeKey { fields: Vec<String> },
 }
 
+/// 🟢 **TERMINAL.** Why a create-shaped op is classified breaking — mirrors
+/// `CreateCause` in `effects.dag`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CreateCause {
     PostAlways,
     KeylessFallback { method: HttpMethodScalar },
 }
 
+/// 🟢 **TERMINAL.** Idempotent-side effect shapes — mirrors `IdempotentShape`
+/// in `effects.dag`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IdempotentShape {
     ReadEffect,
@@ -1057,37 +1055,47 @@ pub enum IdempotentShape {
     DeleteEffect { key_source: KeySource },
 }
 
+/// 🟢 **TERMINAL.** Breaking-side effect shapes — mirrors `BreakingShape` in
+/// `effects.dag`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BreakingShape {
     CreateEffect { cause: CreateCause },
     AppendEffect,
 }
 
+/// 🟢 **TERMINAL.** Classified per-op shape — sum of idempotent vs breaking
+/// carriers; mirrors `EffectShape` in `effects.dag`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EffectShape {
     IsIdempotent(IdempotentShape),
     IsBreaking(BreakingShape),
 }
 
+/// 🟢 **TERMINAL.** Named operation plus classified shape — mirrors the
+/// `OperationEffect` record in `effects.dag`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperationEffect {
     pub operation_name: String,
     pub shape: EffectShape,
 }
 
+/// 🟢 **TERMINAL.** First breaking witness in a composition chain — mirrors
+/// `BreakingOperation` in `effects.dag`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BreakingOperation {
     pub operation_name: String,
     pub shape: BreakingShape,
 }
 
+/// 🟢 **TERMINAL.** Result of linear `compose_effects` — mirrors
+/// `CompositionVerdict` in `effects.dag`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompositionVerdict {
     IdempotentComposition,
     BrokenBy { first_breaker: BreakingOperation },
 }
 
-/// Branch arm with a [`BranchPredicateRef`] witnessed as Bool by
+/// 🟢 **TERMINAL.** Branch arm with a [`BranchPredicateRef`] witnessed as Bool by
 /// [`Dag::branch_arm_of`] — the sole constructor for valid arms.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BranchArm {
@@ -1095,6 +1103,9 @@ pub struct BranchArm {
     body: Box<WorkflowEffect>,
 }
 
+/// 🟡 **SCAFFOLD.** Four-variant workflow sum aligned with `effects.dag`;
+/// Stage 2b analyzes `LinearEffect` only — non-linear variants surface
+/// `IdempotencyUnsupported` until branch-wise algebra lands.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkflowEffect {
     LinearEffect {
@@ -1121,6 +1132,8 @@ impl BranchArm {
     }
 }
 
+/// 🟢 **TERMINAL.** Explicit unsupported payload — names variant + stage +
+/// reason; not a silent `Option` alongside a verdict.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IdempotencyUnsupportedDetail {
     pub variant_name: String,
@@ -1128,6 +1141,8 @@ pub struct IdempotencyUnsupportedDetail {
     pub reason: String,
 }
 
+/// 🟢 **TERMINAL.** Stage 2b lens report sum — success path vs explicit
+/// unsupported; mirrors `WorkflowIdempotencyReport` in `effects.dag`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkflowIdempotencyReport {
     WorkflowCompositionVerdict(CompositionVerdict),
