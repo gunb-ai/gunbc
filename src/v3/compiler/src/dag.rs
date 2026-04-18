@@ -1932,9 +1932,12 @@ impl Dag {
         &self.clusters[id.index()]
     }
 
-    /// Staging hook: attach a [`WorkflowEffect`] on **native** [`Behavior`] nodes at
-    /// `root` (`Value` or `Bind` only). This does **not** populate a reflected
-    /// substrate field — `.dag` lens walkers still cannot see `lane2_workflow`.
+    /// **🟡 Scaffold hook (API is intentional, substrate is not).** Attaches a
+    /// [`WorkflowEffect`] on **native** [`Behavior`] nodes at `root` (`Value` or
+    /// `Bind` only). This does **not** populate a reflected substrate field —
+    /// `.dag` lens walkers cannot see `lane2_workflow`. Not a type-system proof
+    /// that `root` is “the” workflow root; tests and lowering use it under the
+    /// ROADMAP “Reflection boundary” contract until the fact is reflected.
     /// Returns `false` if `root` is missing or not `Value`/`Bind`. Downstream
     /// lowering should populate the same fields so
     /// [`crate::workflow_idempotency::analyze_workflow`] reads one graph-local
