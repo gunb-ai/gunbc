@@ -44,7 +44,7 @@ At parse time, indistinguishable from case 1: block body that isn't a `SurfaceEx
 
 **Dissolution trigger: NEVER via parser growth.** `{ host parse }` is not an unparseable `.dag` expression waiting for M2+ parser grammar. It's a host-runtime bridge; there is no `.dag` body to produce. If the parser grew to parse `host <symbol>` as regular syntax, these fns would still need the `ExternalRealization` bootstrap rewrite — the parser extension just changes the intermediate shape, not the dissolution story.
 
-Substrate accessor callables (DB-14) are **out of scope** for this design doc: do not document them here as a second “legitimate” meaning of `ArrowBody::Unparsed`. **`INVARIANTS.md` §E-9** still governs; the structural follow-up is tracked in **`src/v3/ROADMAP.md`** (deferral: E-9 substrate accessor bootstrap rewrite).
+Substrate accessor callables (DB-14) are **out of scope** for this design doc: do not document them here as a second “legitimate” meaning of `ArrowBody::Unparsed`. **`INVARIANTS.md` §E-9** still governs; the structural follow-up is tracked in **`ROADMAP.md`** (deferral: E-9 substrate accessor bootstrap rewrite).
 
 ### Case 2c: `compile` orchestrator (ordering authority)
 
@@ -144,7 +144,7 @@ The proper disambiguator is **downstream bootstrap / authority role**, not a sin
 
 ## Associations
 
-- **`src/v3/ROADMAP.md`** — deferral entry for E-9 substrate accessor bootstrap rewrite (accessor `Arrow.body` → `ExternalRealization(ref)`); substrate accessor semantics are **not** canonically documented in DB-16.
+- **`ROADMAP.md`** — deferral entry for E-9 substrate accessor bootstrap rewrite (accessor `Arrow.body` → `ExternalRealization(ref)`); substrate accessor semantics are **not** canonically documented in DB-16.
 - **Pipeline** — `PipelineStageBinding` + `materialize_pipeline_realizations` (case 2a).
 - **`src/v3/compiler/src/bootstrap.rs`** — `materialize_pipeline_realizations`
 - **`src/v3/compiler/pipeline.dag`** — case 2a (per-stage `host` fns) and case 2c (`fn compile { ... }` ordering surface)

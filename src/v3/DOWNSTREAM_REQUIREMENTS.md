@@ -274,7 +274,7 @@ forces the upgrade.
 
 ### Class 5 gap 5: `where` clause refinement facts
 
-**Status (as of 2026-04-17):** partial — parser foundation + `Declaration.refinement: Option<DeclarationId>` substrate edge landed via PR #496. Full semantics (predicate lowering, call-site structural-DAG check, Branch-arm narrowing extension) deferred; now tracked as **DB-11** in [`docs/design-m2-feature-parity.md`](../../docs/design-m2-feature-parity.md) and as **Deferral: 3a.3-full** in [`ROADMAP.md` §Active deferrals](./ROADMAP.md).
+**Status (as of 2026-04-17):** partial — parser foundation + `Declaration.refinement: Option<DeclarationId>` substrate edge landed via PR #496. Full semantics (predicate lowering, call-site structural-DAG check, Branch-arm narrowing extension) deferred; now tracked as **DB-11** in [`docs/design-m2-feature-parity.md`](../../docs/design-m2-feature-parity.md) and as **Deferral: 3a.3-full** in [`ROADMAP.md` §Active deferrals](../../ROADMAP.md).
 
 The original entry is preserved in the historical enumeration file; the active tracker for remaining work is the DB/ROADMAP pair. This is the canonical pattern: once a class-5 entry lands a dedicated DB doc, its live description lives there — not duplicated here.
 
