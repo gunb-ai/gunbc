@@ -86,11 +86,7 @@ fn transform_single_op_reports_constant_only_sum() {
 fn branch_reports_constant_when_both_arms_constant() {
     // `if 1 > 0 then 10 else 20` — both arms are leaf literals, so
     // max_path over two Constants stays Constant.
-    let cost = bind_cost(
-        "let r = if 1 > 0 then 10 else 20",
-        "test.v3",
-        "r",
-    );
+    let cost = bind_cost("let r = if 1 > 0 then 10 else 20", "test.v3", "r");
     assert!(
         is_constant(&cost),
         "branch over constant arms should report Constant, got {cost:?}"
@@ -122,9 +118,7 @@ fn sum_of_linear_and_constant_normalizes_to_linear() {
     // DB-7 acceptance gate: `SumCost([LinearCost, ConstantCost])`
     // normalizes to `LinearCost` (Constant is dominated).
     let port = PortId::new(0);
-    let linear = SymbolicCost::LinearCost {
-        _0: size_var(port),
-    };
+    let linear = SymbolicCost::LinearCost { _0: size_var(port) };
     let result = sequential(linear.clone(), SymbolicCost::ConstantCost { _0: 0 });
     assert_eq!(
         result, linear,
@@ -137,9 +131,7 @@ fn sum_of_constant_and_linear_normalizes_to_linear() {
     // Dominance is order-independent: Constant + Linear also
     // normalizes to Linear.
     let port = PortId::new(0);
-    let linear = SymbolicCost::LinearCost {
-        _0: size_var(port),
-    };
+    let linear = SymbolicCost::LinearCost { _0: size_var(port) };
     let result = sequential(SymbolicCost::ConstantCost { _0: 5 }, linear.clone());
     // ConstantCost(5) is non-zero but still dominated by Linear.
     assert!(
@@ -153,9 +145,7 @@ fn product_of_two_linears_over_same_var_folds_to_polynomial_squared() {
     // DB-7 §"Nested fold detection (O(n²) diagnostic)":
     // `iterate(Linear(n), Linear(n))` folds to `Polynomial(n, 2)`.
     let port = PortId::new(0);
-    let linear = SymbolicCost::LinearCost {
-        _0: size_var(port),
-    };
+    let linear = SymbolicCost::LinearCost { _0: size_var(port) };
     let result = iterate(linear.clone(), linear);
     match result {
         SymbolicCost::PolynomialCost { var, degree } => {
@@ -193,9 +183,7 @@ fn dominance_unknown_dominates_everything() {
     let unknown = SymbolicCost::UnknownCost {
         _0: "reflection".to_string(),
     };
-    let linear = SymbolicCost::LinearCost {
-        _0: size_var(port),
-    };
+    let linear = SymbolicCost::LinearCost { _0: size_var(port) };
     assert!(dominates(&unknown, &linear));
     assert!(dominates(&unknown, &SymbolicCost::ConstantCost { _0: 0 }));
 }
@@ -203,12 +191,8 @@ fn dominance_unknown_dominates_everything() {
 #[test]
 fn dominance_linear_dominates_log_and_constant() {
     let port = PortId::new(0);
-    let linear = SymbolicCost::LinearCost {
-        _0: size_var(port),
-    };
-    let log = SymbolicCost::LogCost {
-        _0: size_var(port),
-    };
+    let linear = SymbolicCost::LinearCost { _0: size_var(port) };
+    let log = SymbolicCost::LogCost { _0: size_var(port) };
     let constant = SymbolicCost::ConstantCost { _0: 3 };
     assert!(dominates(&linear, &log));
     assert!(dominates(&linear, &constant));
@@ -236,9 +220,7 @@ fn max_path_returns_dominant_term() {
     let port = PortId::new(0);
     let paths = vec![
         SymbolicCost::ConstantCost { _0: 0 },
-        SymbolicCost::LinearCost {
-            _0: size_var(port),
-        },
+        SymbolicCost::LinearCost { _0: size_var(port) },
         SymbolicCost::PolynomialCost {
             var: size_var(port),
             degree: 2,
@@ -258,12 +240,8 @@ fn normalize_keeps_singleton_costs_unchanged() {
     let port = PortId::new(0);
     for cost in [
         SymbolicCost::ConstantCost { _0: 7 },
-        SymbolicCost::LinearCost {
-            _0: size_var(port),
-        },
-        SymbolicCost::LogCost {
-            _0: size_var(port),
-        },
+        SymbolicCost::LinearCost { _0: size_var(port) },
+        SymbolicCost::LogCost { _0: size_var(port) },
         SymbolicCost::UnknownCost {
             _0: "opaque".to_string(),
         },
