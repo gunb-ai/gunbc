@@ -38,18 +38,30 @@ This lane closes the "❌ not wired" gaps across six stages. After Lane 2 comple
 
 **Scope:** port `dsl/std/effects.dag` → `src/v3/std/effects.dag`. Structural carry-over only.
 
-**Boundary note (cleared):** both Stage 2a follow-ups have landed.
+**Boundary note (cleared):** both Stage 2a follow-ups have landed; a third, deeper refinement was driven by reviewer feedback and landed in the same PR as R2.
 
 `DerivedOpEffect { method, path_template, shape }` was collapsed into `OperationEffect { operation_name, shape }` in PR #521. The `method` / `path_template` fields were carried as bootstrap-local staging glue but never consumed downstream — both modifier falsification and obligation generation project through `shape` alone, and `ReadEffect` already encodes "method was GET/HEAD/OPTIONS" structurally. `derive_op_effect` now returns `OperationEffect?`, so derivation outputs the same shape `compose_effects` composes.
 
-`ComposedEffect { operations, idempotent, breaking_operation }` was reshaped to `ComposedEffect { operations: List<OperationEffect>, verdict: CompositionVerdict }` with `type CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: OperationEffect }`. The previous `Bool + String?` summary admitted two illegal state combinations that the constructor maintained by behavioral invariant rather than structural one; the sum-shaped verdict makes the invariant load-bear on the type itself. `first_breaker` carries the full `OperationEffect` (not just a name) so downstream diagnostics project shape / cause / key-source directly. Design: [design-composed-effect-reshape.md](./design-composed-effect-reshape.md). v3-only per the same scope discipline PR #521 used.
+`ComposedEffect { operations, idempotent, breaking_operation }` was reshaped, and `EffectShape` partitioned, to eliminate state-space-unsoundness in both the summary fields and the breaker payload. The final post-R2 shape:
 
-Copy (post-reshape):
-- `EffectShape = ReadEffect | UpsertEffect | DeleteEffect | CreateEffect | AppendEffect`
+- `type IdempotentShape = ReadEffect | UpsertEffect { key_source } | DeleteEffect { key_source }`
+- `type BreakingShape = CreateEffect { cause } | AppendEffect`
+- `type EffectShape = IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)`
+- `type BreakingOperation { operation_name, shape: BreakingShape }`
+- `type CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: BreakingOperation }`
+- `type ComposedEffect { operations: List<OperationEffect>, verdict: CompositionVerdict }`
+
+Design: [design-composed-effect-reshape.md](./design-composed-effect-reshape.md) (R2). v3-only per the same scope discipline PR #521 used. The partition means `is_idempotent_effect` reads the outer variant directly; `operation_is_breaking` does too; `classify_idempotent_disagreement` narrows its argument to `BreakingShape` (dead-arm cleanup).
+
+Copy (post-reshape, R2):
+- `IdempotentShape = ReadEffect | UpsertEffect | DeleteEffect`
+- `BreakingShape = CreateEffect | AppendEffect`
+- `EffectShape = IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)`
 - `KeySource` (for upsert/delete key derivation)
 - `IdempotencyEvidence = LatticeEffect | IdentityEffect | NonIdempotent`
-- `CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: OperationEffect }`
-- `is_idempotent_effect`, `compose_effects`, `ComposedEffect`, `OperationEffect`
+- `BreakingOperation { operation_name, shape: BreakingShape }`
+- `CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: BreakingOperation }`
+- `is_idempotent_effect`, `operation_is_breaking`, `operation_to_breaker`, `compose_effects`, `ComposedEffect`, `OperationEffect`
 - `derive_effect_shape(method, path)` — HTTP method + path → EffectShape
 - `generate_idempotency_obligations`
 - `check_modifier_vs_derivation`
@@ -88,7 +100,7 @@ Lens reads each operation's declared `idempotent` modifier AND derives from path
 
 **Escalation:** if workflow structure isn't representable cleanly — e.g., control flow in a pipeline doesn't map to a linear `List<OperationEffect>` — surface. Don't stretch `compose_effects` to handle branches silently; the algebra needs to reflect branch-wise composition, which is a legitimate design extension.
 
-**Pre-start gate:** cleared. Both Stage 2a follow-ups have landed — `DerivedOpEffect` collapsed into `OperationEffect` (PR #521), and `ComposedEffect` reshaped to a `{ operations, verdict: CompositionVerdict }` record where the verdict is a sum of `IdempotentComposition | BrokenBy { first_breaker: OperationEffect }`. `compose_effects` outputs the durable shape; Stage 2b can consume it directly. The Stage 2b `WorkflowIdempotencyReport` shape above is one layer higher (a lens report with diagnostic), not a duplication of the algebra verdict — when Stage 2b implements it, the report's `breaking_op` field should project through `CompositionVerdict::BrokenBy.first_breaker` rather than reintroduce a parallel `Bool + String?` pair.
+**Pre-start gate:** cleared. All three Stage 2a follow-ups have landed — `DerivedOpEffect` collapsed into `OperationEffect` (PR #521), `ComposedEffect` reshaped to `{ operations, verdict: CompositionVerdict }`, and `EffectShape` partitioned into `IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)` with `BrokenBy`'s payload narrowed to `BreakingOperation { shape: BreakingShape }`. `compose_effects` outputs a state-space-sound verdict; Stage 2b can consume it directly. The Stage 2b `WorkflowIdempotencyReport` shape above is one layer higher (a lens report with diagnostic), not a duplication of the algebra verdict — when Stage 2b implements it, the report must match on `CompositionVerdict` and project through `BrokenBy.first_breaker.shape: BreakingShape` rather than reintroduce a parallel `Bool + String?` pair. The `breaking_op: String?` field in the draft `WorkflowIdempotencyReport` shape above is a design placeholder from before the Stage 2a partition landed; Stage 2b's implementer should replace it with a structural carrier derived from `CompositionVerdict` rather than copy the flat shape.
 
 ### Stage 2c — Test obligation materialization (M)
 

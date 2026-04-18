@@ -511,7 +511,17 @@ Implementation scope (M, once design locks): extend `TestClaim` with `requires: 
 
 ### Lane 2 Stage 2a / Track 17a boundary
 
-Cleared (this PR): `ComposedEffect { operations, idempotent, breaking_operation }` reshaped to `ComposedEffect { operations: List<OperationEffect>, verdict: CompositionVerdict }` with `type CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: OperationEffect }`. The previous shape admitted two illegal state combinations (`idempotent: true` + `breaking_operation: Some(_)` and `idempotent: false` + `breaking_operation: None`); the sum-shaped verdict makes both unrepresentable. `first_breaker` now carries the full `OperationEffect` rather than a `String?` name, so downstream diagnostics project shape / cause / key-source directly without a name-keyed lookup. Design: [design-composed-effect-reshape.md](../../docs/design-composed-effect-reshape.md). v3-only — v2's `dsl/std/effects.dag` stays on the `Bool + String?` shape per the same scope discipline PR #521 used. The Stage 2b pre-start gate no longer names `ComposedEffect` as an open shape.
+Cleared (this PR, R2): `ComposedEffect { operations, idempotent, breaking_operation }` reshaped and `EffectShape` partitioned by idempotency class. The final shapes are:
+- `type IdempotentShape = ReadEffect | UpsertEffect { key_source } | DeleteEffect { key_source }`
+- `type BreakingShape = CreateEffect { cause } | AppendEffect`
+- `type EffectShape = IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)`
+- `type BreakingOperation { operation_name, shape: BreakingShape }`
+- `type CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: BreakingOperation }`
+- `type ComposedEffect { operations: List<OperationEffect>, verdict: CompositionVerdict }`
+
+Three illegal-state boundaries were dissolved: the old `Bool + String?` admitted `(true, Some(_))` and `(false, None)`; R1's `BrokenBy { first_breaker: OperationEffect }` admitted `OperationEffect { shape: ReadEffect }` in the breaker slot. R2 narrows `first_breaker` to `BreakingOperation`, whose `shape` field is typed `BreakingShape` — naming an idempotent op as the workflow breaker is unrepresentable. Downstream: `is_idempotent_effect` reduces to a two-arm outer match; `classify_idempotent_disagreement` now takes `BreakingShape` directly (dead-arm cleanup). Design: [design-composed-effect-reshape.md](../../docs/design-composed-effect-reshape.md). v3-only — v2's `dsl/std/effects.dag` stays on the flat `EffectShape` + `Bool + String?` shape per the same scope discipline PR #521 used. The Stage 2b pre-start gate no longer names `ComposedEffect` as an open shape.
+
+**Reviewer trail.** R1 (commit `b42edc15`) lifted the `Bool + String?` summary to `CompositionVerdict` but kept `first_breaker: OperationEffect`. ChatGPT/codex review flagged that `BrokenBy` still admitted idempotent payloads and called the boundary "improved rather than fully cleared." R2 is the root-cause fix: partition at the type level, not at the constructor's `filter` call.
 
 Cleared (prior PR #521): `DerivedOpEffect { method, path_template, shape }` collapsed into `OperationEffect { operation_name, shape }`. The `method` / `path_template` fields were never consumed downstream — both the modifier check and obligation generator project through `shape` alone, and the `ReadEffect` variant already encodes "method was GET/HEAD/OPTIONS." `derive_op_effect` now returns `OperationEffect?` directly, so Stage 2b's `compose_effects` consumes the same shape derivation produces. Future diagnostic rendering that wants the originating method/path should attach a separate evidence carrier to the diagnostic, not smuggle transport facts onto the effect record.
 
