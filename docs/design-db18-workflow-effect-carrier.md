@@ -85,43 +85,44 @@ type BranchArm {
 }
 ```
 
-**Add `BranchPredicateRef` as a Track 9-style substrate integrity primitive** (`src/v3/std/substrate.dag` — alongside `NonEmptyList`, `NonSingletonList`, `ParamRef`, `TransformRef`; graduates WITH the first consumer per Track 9 discipline):
+**`BranchPredicateRef` — typed opaque handle** (shipped in PR #534 as `src/v3/compiler/src/dag.rs::BranchPredicateRef`, following the `ParamRef` / `TransformRef` Track 9 pattern from DB-9 R2.1):
 
-```dag
-// 🟢 TERMINAL. Typed opaque handle statically witnessing that the
-// referenced substrate port's declared type is Bool. The sole
-// constructor `bool_port_of` validates the port's type at
-// construction time; there is no unsafe escape hatch for producing
-// a BranchPredicateRef around a non-Bool port.
-//
-// Track 9 graduation rationale: this is the third Track 9 primitive
-// (after ParamRef and TransformRef from DB-9 R2.1). It graduates
-// here because BranchArm's first consumer (DB-18 §BranchArm) needs
-// a type-level witness for the Bool-typed-port invariant that
-// carries the Q4 dissolution receipt distinguishing BranchEffect
-// from ParallelEffect. A raw PortId would push the invariant into
-// constructor convention, which is API-level rather than type-level
-// enforcement — exactly the pattern Track 9 exists to dissolve.
-//
-// Second consumer candidate: computation-substrate Branch behavior's
-// condition slot. If a Track 9 graduation review determines the
-// invariant belongs there too, BranchPredicateRef extends rather than
-// duplicating — same primitive, two consumers. Not a Part 1 commit.
-type BranchPredicateRef
+```rust
+// Shipped in src/v3/compiler/src/dag.rs.
+// Typed opaque handle statically witnessing that the referenced
+// substrate port's declared type is Bool. There is no public
+// constructor; the only way to produce one is via Dag::branch_arm_of,
+// which validates the port and builds the whole BranchArm at once.
+pub struct BranchPredicateRef {
+    port: PortId,
+}
 
-// Sole constructor. Returns None when the port's declared type is
-// not Bool; callers that need to emit a Diagnostic on None do so
-// themselves (fail-closed discipline at the caller boundary, not at
-// the primitive boundary — same pattern as `Dag::param_of`).
-fn bool_port_of(dag: Dag, port: PortId) -> BranchPredicateRef?
-
-// Accessor. Recover the underlying PortId from the typed handle;
-// the witness that the port is Bool-typed is carried by the handle,
-// not by a duplicate inspection.
-fn port_of(bool_ref: BranchPredicateRef) -> PortId
+impl BranchPredicateRef {
+    // Accessor — recover the underlying PortId from the typed handle.
+    // The Bool witness is carried by the type; consumers do not
+    // re-inspect the port's declared type.
+    pub fn port_id(self) -> PortId { self.port }
+}
 ```
 
-**Fail-closed boundary placement.** `bool_port_of` returning `Option` is the Track 9 primitive's internal-validation contract (matching `param_of`). The primitive does not itself emit a `Diagnostic` — emitting diagnostics is not the responsibility of a typed-handle primitive. The *lowering path that calls `bool_port_of`* is required to handle `None` by emitting `Diagnostic::BranchConditionNotBool { port, actual_type, span }` per C-8, never by silently absorbing the absence. The primitive's `Option` is internal validation; the caller's `Diagnostic` emission is the fail-closed boundary. Part 2 Acceptance item 4 names this as a review gate — a silent `None` absorption fails Part 2 review.
+**Sole constructor: `Dag::branch_arm_of`** (shipped in PR #534).
+
+```rust
+impl Dag {
+    // The only way to produce a BranchArm (and therefore the only way
+    // to inhabit BranchPredicateRef). Validates that `port` resolves
+    // to Bool on the graph rooted at `root`; returns None if the
+    // port's declared type is not Bool.
+    pub fn branch_arm_of(
+        &self,
+        root: NodeId,
+        port: PortId,
+        body: WorkflowEffect,
+    ) -> Option<BranchArm> { ... }
+}
+```
+
+**Fail-closed boundary placement.** `Dag::branch_arm_of` returning `Option<BranchArm>` is the Track 9 internal-validation contract (matching `param_of`). The constructor itself does not emit a `Diagnostic` — emitting diagnostics is not the responsibility of a typed-handle primitive. The *caller that constructs a BranchArm* is required to handle `None` by emitting a `Diagnostic` identifying the non-Bool branch condition, never by silently absorbing the absence. Today the only caller is in-Rust test / lowering scaffolding; when Part 3 (data-declaration ingestion) lands, the surface-to-`BranchArm` lowering path inherits the same fail-closed discipline per C-8.
 
 **Why this belongs in `std/effects.dag` rather than `std/substrate.dag`.** `WorkflowEffect` is a concept of the effect algebra — it describes input shapes that `compose_effects` (and its downstream peers) dispatch over. The substrate's own declarations (`Dag`, `Declaration`, `Behavior`, `LoopBound`, `Cluster`) describe the *computation and type substrate*; the effect algebra is a lens-writable layer above that substrate. The existing file already hosts `OperationEffect`, `EffectShape`, `IdempotencyEvidence`, `CompositionVerdict` — all effect-algebra types. `WorkflowEffect` joins that family.
 
