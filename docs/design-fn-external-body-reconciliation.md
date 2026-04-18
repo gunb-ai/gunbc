@@ -144,5 +144,5 @@ The proper disambiguator is **downstream bootstrap / authority role**, not a sin
 - **`src/v3/compiler/src/parse.rs:64-91`** — `SurfaceItem::FnExternalBody` doc comment to update
 - **`src/v3/compiler/src/dag.rs:492-505`** — `ArrowBody::Unparsed` doc comment to review
 - **`src/v3/compiler/src/bootstrap.rs:238-252`** — the production case 2 bootstrap pass
-- **`src/v3/compiler/pipeline.dag`** — the production case 2 example
+- **`src/v3/compiler/pipeline.dag`** — production case 2a (per-stage `host` fns) and case 2c (`fn compile { ... }` ordering surface)
 - **`dsl/std/logic.dag`** — case 1 example (`classical_not`, `classical_and`, `classical_or`)
