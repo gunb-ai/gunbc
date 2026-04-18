@@ -1,7 +1,12 @@
 # Session relay (pointer)
 
-Transient PR review and CI state lives on **GitHub** — not as a hand-maintained mutable ledger in git (ChatGPT #530 review, 2026-04-18: coordination docs should **point**, not copy live bot/review fields).
+**Single authority:** PR review threads, bot comments, inline findings, and CI status are **authoritative on GitHub** — not duplicated as a mutable ledger in this repo (see [PR #530 discussion](https://github.com/gunb-ai/gunbc/pull/530), ChatGPT review 2026-04-18: docs should **point**, not copy live review fields).
 
-- **PR #530 —** https://github.com/gunb-ai/gunbc/pull/530 — use the PR **Conversation** and **Checks** tabs for current threads and status.
+| PR | URL |
+|:---|:---|
+| #530 | https://github.com/gunb-ai/gunbc/pull/530 |
+| #540 | https://github.com/gunb-ai/gunbc/pull/540 |
 
-**Latest ingest — ChatGPT auto-review `sha:4014aa346e67b88090b47055ebf7061c9d38b7ee` complete @ 2026-04-18T16:31:14Z:** **APPROVE_WITH_COMMENTS.** Confirms `lower.rs` `is_first` → mutual-recursion planner + regression test; doc pointer/index cleanup (phase-plan §4.1, M2 vs Lane 3 Stage 3a, `post-l15` → DB-8 determinism); substrate `ParamRef` / `TransformRef` comment-only tracked debt. **Non-blocking:** phase-plan header should not mirror bot verdicts — **addressed** in [`phase-plan-2026-04-18.md`](./phase-plan-2026-04-18.md) **Since last refresh** (this ingest); optional follow-up if `compute_mutually_recursive` gains callers: a first-authority view vs parallel `(items, is_first)` slices. [View conversation](https://chatgpt.com/g/g-p-69d1a39d61e88191835a38f9eba3ec9b-auto-review/c/69e3ada0-b13c-83ea-9da3-00184b788a28)
+For each PR: use **Conversation** (reviews, bots, threads) and **Checks** (CI).
+
+Stage 1d design artifacts carried on #540: [`emit-functions-inventory.md`](./emit-functions-inventory.md), [`spec-field-gaps.md`](./spec-field-gaps.md), [`emit-bridges.md`](./emit-bridges.md).
