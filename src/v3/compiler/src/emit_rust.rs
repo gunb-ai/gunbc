@@ -3483,15 +3483,21 @@ impl<'a> Ctx<'a> {
         if children.len() != 1 {
             // Multi-field struct-variant: Rust won't let us access
             // `binding.field` on the enum because the payload has
-            // no nominal type. When the payload is bound, destructure
-            // each field into an aliased local (`__<binding>_<field>`)
-            // and rely on `render_path_body` to mirror the same naming
-            // into `field_overrides`, so downstream `binding.field`
-            // projections route through `render_field_project`'s
-            // override lookup at `locals.field_overrides`. When E-5's
-            // `EmitUnderscoreWhenUnused` short-circuits the binding to
-            // `_`, the arm body cannot reference any field projection,
-            // so emit field wildcards and skip the `@` alias.
+            // no nominal type. The body can ONLY consume this payload
+            // via destructured fields routed through `field_overrides`
+            // — there is no Rust-level value the outer `binding @`
+            // alias could refer to (Rust rejects taking the anonymous
+            // struct payload as a value). So we always omit the
+            // `binding @` prefix here; field destructure carries
+            // everything the body can possibly use.
+            //
+            // When `EmitUnderscoreWhenUnused` reports the payload is
+            // unused, every field renders as wildcard too. When it's
+            // used, every field renders as its aliased local
+            // (`__<binding>_<field>`), and `render_path_body`'s
+            // `field_overrides` population at the same payload port
+            // routes downstream `binding.field` reads to those locals
+            // via `render_field_project`'s override lookup.
             let wildcard = self.indexes.syntax.patterns.wildcard.clone();
             let payload_unused = rendered_binding == wildcard;
             let field_bindings = children
@@ -3508,7 +3514,7 @@ impl<'a> Ctx<'a> {
                     ))
                 })
                 .collect::<Result<Vec<_>, EmitError>>()?;
-            let inner_pattern = render_named_template(
+            return Ok(render_named_template(
                 &self.indexes.syntax.patterns.variant_pattern,
                 &[
                     ("name", &qualified_name),
@@ -3520,11 +3526,7 @@ impl<'a> Ctx<'a> {
                         ),
                     ),
                 ],
-            );
-            if payload_unused {
-                return Ok(inner_pattern);
-            }
-            return Ok(format!("{rendered_binding} @ {inner_pattern}"));
+            ));
         }
         if children[0].label == "_0"
             && (self.indexes.types.contains_key(&disj_id) || is_optional_match)

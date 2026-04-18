@@ -25,7 +25,7 @@ pub fn check_named_connective(p0: &Declaration, p1: String) -> Vec<UnresolvedArr
         TypeConnective::Atom(_) => Vec::new(),
         TypeConnective::Conj { children: _ } => Vec::new(),
         TypeConnective::Disj { variants: _ } => Vec::new(),
-        a @ TypeConnective::Arrow {
+        TypeConnective::Arrow {
             inputs: __a_inputs,
             output: __a_output,
             body: __a_body,
