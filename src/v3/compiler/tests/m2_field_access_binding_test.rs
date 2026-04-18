@@ -188,7 +188,11 @@ fn alias_bindings_cover_method_backed_fields() {
     );
     assert_eq!(
         dag_fields.get("clusters"),
-        Some(&(String::from("AccessorMethod"), String::from("clusters"), true))
+        Some(&(
+            String::from("AccessorMethod"),
+            String::from("clusters"),
+            true
+        ))
     );
 
     let entry_fields = type_realization_fields_for(&dag, "FieldEntry");

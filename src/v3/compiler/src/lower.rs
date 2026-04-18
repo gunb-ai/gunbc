@@ -294,7 +294,8 @@ fn finalize_mutual_clusters(
             .filter_map(|member_name| {
                 let bind_id = *build_state.member_bind_ids.get(member_name)?;
                 let slot = *cluster_plan.per_member_positions.get(member_name)?;
-                dag.param_of(bind_id, slot).map(|param| MemberDescent { param })
+                dag.param_of(bind_id, slot)
+                    .map(|param| MemberDescent { param })
             })
             .collect();
         let intra_cluster_calls: Vec<IntraClusterCall> = build_state
@@ -3218,7 +3219,9 @@ fn lower_fn_item_expr_body(
 
     if let Some(cluster_index) = mutual_recursion.by_member.get(name).copied() {
         let cluster_state = &mut mutual_state.clusters[cluster_index];
-        cluster_state.member_bind_ids.insert(name.to_string(), bind_id);
+        cluster_state
+            .member_bind_ids
+            .insert(name.to_string(), bind_id);
         if let Some(loop_id) = produced_loop_id {
             cluster_state.loop_ids.push(loop_id);
         }
@@ -3229,12 +3232,13 @@ fn lower_fn_item_expr_body(
                 .filter_map(Behavior::as_transform)
                 .filter_map(|transform| match transform.target {
                     TransformTarget::Callable(target_decl)
-                        if cluster_decl_ids.contains(&callable_target_template(target_decl, dag)) =>
+                        if cluster_decl_ids
+                            .contains(&callable_target_template(target_decl, dag)) =>
                     {
                         Some(transform.id)
                     }
                     _ => None,
-                })
+                }),
         );
     }
 
@@ -5215,8 +5219,10 @@ fn strongly_connected_components(
         dfs(name, calls, &mut visited, &mut finish_order);
     }
 
-    let mut reverse: HashMap<String, Vec<String>> =
-        order.iter().map(|name| (name.clone(), Vec::new())).collect();
+    let mut reverse: HashMap<String, Vec<String>> = order
+        .iter()
+        .map(|name| (name.clone(), Vec::new()))
+        .collect();
     for (caller, callees) in calls {
         for callee in callees {
             reverse

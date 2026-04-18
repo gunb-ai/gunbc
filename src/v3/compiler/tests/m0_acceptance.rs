@@ -6,8 +6,7 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    AtomPayload, Behavior, Dag, LiteralBits, LoopBound, PortState, TransformTarget,
-    TypeConnective,
+    AtomPayload, Behavior, Dag, LiteralBits, LoopBound, PortState, TransformTarget, TypeConnective,
 };
 use v3_compiler::lens_depth::DepthLens;
 use v3_compiler::lens_provenance::{origin_of, Origin};
@@ -1359,11 +1358,19 @@ fn test_mutual_recursion_compiles_with_cluster_descent() {
         .find(|b| b.name == "odd")
         .expect("Bind(odd) must exist");
     let even_loop = dag
-        .node(dag.port(even_bind.value).produced_by.expect("even loop exists"))
+        .node(
+            dag.port(even_bind.value)
+                .produced_by
+                .expect("even loop exists"),
+        )
         .as_loop()
         .expect("even value is produced by a Loop");
     let odd_loop = dag
-        .node(dag.port(odd_bind.value).produced_by.expect("odd loop exists"))
+        .node(
+            dag.port(odd_bind.value)
+                .produced_by
+                .expect("odd loop exists"),
+        )
         .as_loop()
         .expect("odd value is produced by a Loop");
 
@@ -1375,13 +1382,13 @@ fn test_mutual_recursion_compiles_with_cluster_descent() {
         LoopBound::Descent { cluster } => cluster,
         other => panic!("expected mutual recursion descent bound, got {other:?}"),
     };
-    assert_eq!(even_cluster, odd_cluster, "cluster id is shared across members");
+    assert_eq!(
+        even_cluster, odd_cluster,
+        "cluster id is shared across members"
+    );
     assert_eq!(dag.clusters().len(), 1, "one SCC sidecar entry");
     assert_eq!(
-        dag.cluster(even_cluster)
-            .members
-            .iter()
-            .count(),
+        dag.cluster(even_cluster).members.iter().count(),
         2,
         "cluster records both members"
     );

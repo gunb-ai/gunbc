@@ -3451,15 +3451,9 @@ impl<'a> Ctx<'a> {
                                 let local_name = if children.len() == 1 {
                                     binding.binding_name.clone()
                                 } else {
-                                    destructured_field_alias(
-                                        &binding.binding_name,
-                                        &child.label,
-                                    )
+                                    destructured_field_alias(&binding.binding_name, &child.label)
                                 };
-                                (
-                                    child.label.clone(),
-                                    LocalBinding::Borrowed(local_name),
-                                )
+                                (child.label.clone(), LocalBinding::Borrowed(local_name))
                             })
                             .collect();
                         arm_locals

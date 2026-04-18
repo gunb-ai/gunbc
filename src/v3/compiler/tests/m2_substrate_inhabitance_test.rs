@@ -83,10 +83,7 @@ fn substrate_declares_expected_reflection_surface() {
     assert_eq!(record_fields(&dag, "ParamRef"), vec!["member", "slot"]);
     assert_eq!(record_fields(&dag, "TransformRef"), vec!["node"]);
     assert_eq!(record_fields(&dag, "MemberDescent"), vec!["param"]);
-    assert_eq!(
-        record_fields(&dag, "IntraClusterCall"),
-        vec!["transform"]
-    );
+    assert_eq!(record_fields(&dag, "IntraClusterCall"), vec!["transform"]);
     assert_eq!(
         record_fields(&dag, "Cluster"),
         vec!["members", "intra_cluster_calls"]
