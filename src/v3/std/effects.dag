@@ -194,12 +194,32 @@ fn last_path_param(template: PathTemplate) -> String? {
 //   Set<T> with insert/remove    → BoundedLattice (idempotent)
 //   List<T> with append          → FreeMonoid (NOT idempotent)
 
-type EffectShape
+// 🟢 TERMINAL. The idempotent subset of effect shapes. All variants
+// here form either an identity (ReadEffect) or a lattice meet on
+// their target state (UpsertEffect / DeleteEffect); repeat application
+// converges.
+type IdempotentShape
   = ReadEffect
   | UpsertEffect { key_source: KeySource }
   | DeleteEffect { key_source: KeySource }
-  | CreateEffect { cause: CreateCause }
+
+// 🟢 TERMINAL. The non-idempotent subset of effect shapes. Create
+// (POST-style) and Append (free monoid) both duplicate on repeat
+// application, so any workflow that includes them cannot be
+// retried convergently.
+type BreakingShape
+  = CreateEffect { cause: CreateCause }
   | AppendEffect
+
+// The fundamental classification of an operation's effect, expressed
+// as the disjoint union of its idempotent and breaking subsets.
+// Idempotency is not a property we then derive by scanning variants —
+// it is encoded in the outer variant `IsIdempotent` / `IsBreaking`
+// by construction, so `first_breaker: BreakingShape` and similar
+// restricted carriers are well-typed without filtering.
+type EffectShape
+  = IsIdempotent(IdempotentShape)
+  | IsBreaking(BreakingShape)
 
 // 🟢 TERMINAL at current derivation scope. `CreateEffect` has two
 // semantically distinct provenances that later diagnostics need to
@@ -250,14 +270,13 @@ type IdempotencyEvidence
   | IdentityEffect
   | NonIdempotent { reason: String }
 
-// Whether an effect is idempotent — derived from its shape.
+// Whether an effect is idempotent — the partition's outer variant
+// already encodes the answer, so this is a single-step match rather
+// than a per-variant enumeration.
 fn is_idempotent_effect(shape: EffectShape) -> Bool {
   match shape {
-    ReadEffect => true
-    UpsertEffect => true
-    DeleteEffect => true
-    CreateEffect => false
-    AppendEffect => false
+    IsIdempotent => true
+    IsBreaking => false
   }
 }
 
@@ -265,16 +284,22 @@ fn is_idempotent_effect(shape: EffectShape) -> Bool {
 // the single `EffectShape` authority, not a second authored fact.
 fn derive_idempotency_evidence(shape: EffectShape) -> IdempotencyEvidence {
   match shape {
-    ReadEffect => IdentityEffect
-    UpsertEffect => LatticeEffect
-    DeleteEffect => LatticeEffect
-    CreateEffect =>
-      NonIdempotent {
-        reason: "create-shaped effect duplicates on repeat application"
+    IsIdempotent(inner) =>
+      match inner {
+        ReadEffect => IdentityEffect
+        UpsertEffect => LatticeEffect
+        DeleteEffect => LatticeEffect
       }
-    AppendEffect =>
-      NonIdempotent {
-        reason: "append-shaped effect duplicates on repeat application"
+    IsBreaking(inner) =>
+      match inner {
+        CreateEffect =>
+          NonIdempotent {
+            reason: "create-shaped effect duplicates on repeat application"
+          }
+        AppendEffect =>
+          NonIdempotent {
+            reason: "append-shaped effect duplicates on repeat application"
+          }
       }
   }
 }
@@ -291,18 +316,34 @@ fn derive_idempotency_evidence(shape: EffectShape) -> IdempotencyEvidence {
 //   meet_a ∘ append_b applied twice ≠ applied once
 //   (the append duplicates on the second application)
 
+// Per-operation effect entry in a workflow.
+type OperationEffect {
+  operation_name: String
+  shape: EffectShape
+}
+
+// 🟢 TERMINAL. The breaking-subset projection of OperationEffect.
+// `shape: BreakingShape` structurally restricts the variant space —
+// no idempotent shape can inhabit this carrier — so naming an
+// idempotent op as the workflow breaker is unrepresentable, not
+// merely disallowed by a constructor convention.
+type BreakingOperation {
+  operation_name: String
+  shape: BreakingShape
+}
+
 // 🟢 TERMINAL. The composition of idempotent lattice meets is
 // idempotent; a single non-idempotent operation poisons the chain.
 // The judgment space is therefore exactly two states: the workflow
 // converges, or some operation broke convergence. No third state.
 //
-// `first_breaker` carries the full `OperationEffect` (not just a
-// name) so downstream diagnostics can project the breaking op's
-// shape, cause, and key source without a name-keyed lookup back
-// into `ComposedEffect.operations`.
+// `first_breaker: BreakingOperation` is a state-space-sound witness:
+// its `shape` field ranges only over `BreakingShape`, so the verdict
+// cannot name an idempotent op as the breaker. Downstream diagnostics
+// project shape / cause directly.
 type CompositionVerdict
   = IdempotentComposition
-  | BrokenBy { first_breaker: OperationEffect }
+  | BrokenBy { first_breaker: BreakingOperation }
 
 // The effects-algebra verdict for a composed workflow.
 //
@@ -315,28 +356,43 @@ type ComposedEffect {
   verdict: CompositionVerdict
 }
 
-// Per-operation effect entry in a workflow.
-type OperationEffect {
-  operation_name: String
-  shape: EffectShape
+// True if this operation is non-idempotent. Reads the partition
+// directly off `EffectShape` — no evidence-projection round-trip.
+fn operation_is_breaking(op: OperationEffect) -> Bool {
+  match op.shape {
+    IsIdempotent => false
+    IsBreaking => true
+  }
 }
 
-// True if this operation's derived evidence records non-idempotency.
-// The evidence is projected from `shape` on demand so `shape`
-// remains the only authored authority.
-fn operation_is_breaking(op: OperationEffect) -> Bool {
-  match derive_idempotency_evidence(shape: op.shape) {
-    LatticeEffect => false
-    IdentityEffect => false
-    NonIdempotent => true
+// Project an OperationEffect to the breaking-subset witness when its
+// shape falls in `BreakingShape`; `None` when the op is idempotent.
+// The outer-variant match is exhaustive, so adding a new EffectShape
+// partition member forces this projection to update.
+fn operation_to_breaker(op: OperationEffect) -> BreakingOperation? {
+  match op.shape {
+    IsIdempotent => None
+    IsBreaking(breaking) =>
+      Some(BreakingOperation {
+        operation_name: op.operation_name,
+        shape: breaking
+      })
   }
 }
 
 // Compose a list of operation effects into a workflow-level verdict.
+// Flat-maps each op through `operation_to_breaker`, then takes the
+// first breaker (if any). `BrokenBy` is only constructible from a
+// `BreakingOperation`, so the verdict is state-space sound.
 fn compose_effects(effects: List<OperationEffect>) -> ComposedEffect {
-  let breakers = effects |> filter(op => operation_is_breaking(op: op))
-  let verdict = match breakers |> first {
-    Some(op) => BrokenBy { first_breaker: op }
+  let breaker_candidates = effects |> flat_map(op =>
+    match operation_to_breaker(op: op) {
+      Some(b) => [b]
+      None => []
+    }
+  )
+  let verdict = match breaker_candidates |> first {
+    Some(b) => BrokenBy { first_breaker: b }
     None => IdempotentComposition
   }
   ComposedEffect {
@@ -382,7 +438,7 @@ fn parse_http_method(raw: String) -> HttpMethod? {
 }
 
 fn keyless_create(method: HttpMethod) -> EffectShape {
-  CreateEffect { cause: KeylessFallback { method: method } }
+  IsBreaking(CreateEffect { cause: KeylessFallback { method: method } })
 }
 
 // Given a last-param lookup result, build the Upsert variant when
@@ -391,14 +447,14 @@ fn keyless_create(method: HttpMethod) -> EffectShape {
 // share one key-resolution strategy across PUT and PATCH.
 fn upsert_or_create(last_param: String?, method: HttpMethod) -> EffectShape {
   match last_param {
-    Some(p) => UpsertEffect { key_source: PathParam { param: p } }
+    Some(p) => IsIdempotent(UpsertEffect { key_source: PathParam { param: p } })
     None => keyless_create(method: method)
   }
 }
 
 fn delete_or_create(last_param: String?, method: HttpMethod) -> EffectShape {
   match last_param {
-    Some(p) => DeleteEffect { key_source: PathParam { param: p } }
+    Some(p) => IsIdempotent(DeleteEffect { key_source: PathParam { param: p } })
     None => keyless_create(method: method)
   }
 }
@@ -408,10 +464,10 @@ fn derive_effect_shape(
   path: PathTemplate
 ) -> EffectShape {
   match method {
-    GET     => ReadEffect
-    HEAD    => ReadEffect
-    OPTIONS => ReadEffect
-    POST    => CreateEffect { cause: PostAlways }
+    GET     => IsIdempotent(ReadEffect)
+    HEAD    => IsIdempotent(ReadEffect)
+    OPTIONS => IsIdempotent(ReadEffect)
+    POST    => IsBreaking(CreateEffect { cause: PostAlways })
     DELETE  => delete_or_create(last_param: last_path_param(template: path), method: method)
     PUT     => upsert_or_create(last_param: last_path_param(template: path), method: method)
     PATCH   => upsert_or_create(last_param: last_path_param(template: path), method: method)
