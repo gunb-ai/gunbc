@@ -202,31 +202,23 @@ pub fn render_diagnostic_for_target(
     target: DiagnosticStyleTarget,
     diagnostic: &Diagnostic,
 ) -> Result<String, DiagnosticRenderError> {
-    let declaration = match target {
-        DiagnosticStyleTarget::Rust => dag
-            .rust_correction_style_spec()
-            .ok_or(DiagnosticRenderError::MissingCorrectionStyle(
-                "rust_correction_style",
-            ))?,
-        DiagnosticStyleTarget::Go => dag
-            .go_correction_style_spec()
-            .ok_or(DiagnosticRenderError::MissingCorrectionStyle(
-                "go_correction_style",
-            ))?,
-        DiagnosticStyleTarget::Python => dag
-            .python_correction_style_spec()
-            .ok_or(DiagnosticRenderError::MissingCorrectionStyle(
-                "python_correction_style",
-            ))?,
-    };
+    let declaration =
+        match target {
+            DiagnosticStyleTarget::Rust => dag.rust_correction_style_spec().ok_or(
+                DiagnosticRenderError::MissingCorrectionStyle("rust_correction_style"),
+            )?,
+            DiagnosticStyleTarget::Go => dag.go_correction_style_spec().ok_or(
+                DiagnosticRenderError::MissingCorrectionStyle("go_correction_style"),
+            )?,
+            DiagnosticStyleTarget::Python => dag.python_correction_style_spec().ok_or(
+                DiagnosticRenderError::MissingCorrectionStyle("python_correction_style"),
+            )?,
+        };
     let style = CorrectionStyleBinding::build(dag, declaration)?;
     Ok(render_diagnostic_with_style(diagnostic, &style))
 }
 
-fn render_diagnostic_with_style(
-    diagnostic: &Diagnostic,
-    style: &CorrectionStyleBinding,
-) -> String {
+fn render_diagnostic_with_style(diagnostic: &Diagnostic, style: &CorrectionStyleBinding) -> String {
     let mut lines = vec![format!(
         "ERROR at {}:{}-{}: {}",
         diagnostic.span().file,
