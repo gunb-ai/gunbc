@@ -16,8 +16,10 @@
 
 module std.verification
 
-import std.list { List }
+import std.list { List, map }
 import v3.std.substrate { ComparisonOp }
+import v3.spec.v3_l1 { DeclarationRef }
+import v3.std.resources { ResourceReference }
 
 // **🟡 Scaffold — DiagnosticKind.** This mirrors the compiler's native
 // diagnostic taxonomy until reflected substrate diagnostic facts can be
@@ -79,15 +81,57 @@ type TestPredicate
       comparator: ComparisonOp
       bound: Int
     }
+  | BehavioralObservation {
+      subject: DeclarationRef
+      input_sample: DeclarationRef
+      expected_output: DeclarationRef
+    }
+  // Mock transport is **not** duplicated here: declare it only on
+  // `TestClaim.requires` (obligation-walk authority). This variant only pairs
+  // subject + invariant declarations for the behavioral check.
+  | MockBackedInvariant {
+      subject: DeclarationRef
+      invariant: DeclarationRef
+    }
 
+// `requires` is the **only** place `ResourceReference` edges attach for a claim
+// (including mock backends when `predicate` is `MockBackedInvariant`). No parallel
+// resource slots on predicate variants — `obligation_for_claim` / materialization
+// read this list alone, so facts cannot diverge.
 type TestClaim {
   name: String
   source: String
   file_name: String
   predicate: TestPredicate
+  requires: List<ResourceReference>
 }
 
 type TestSuite {
   name: String
   claims: List<TestClaim>
+}
+
+// DB-15 — dependency-walk projection: each claim's `requires` list is the
+// obligation surface the compiler's declaration DAG consumes (no workflow
+// structure — that is a separate layer).
+type TestObligation {
+  claim_name: String
+  resources: List<ResourceReference>
+}
+
+// **Single authority for resource edges (including mock backends).** Every
+// `ResourceReference` for obligation materialization lives on `TestClaim.requires`
+// only. `TestPredicate` variants (including `MockBackedInvariant`) never carry
+// parallel resource facts — downstream walks call this projection instead of
+// inspecting the predicate for mock transports.
+fn claim_obligation_resources(c: TestClaim) -> List<ResourceReference> {
+  c.requires
+}
+
+fn obligation_for_claim(c: TestClaim) -> TestObligation {
+  TestObligation { claim_name: c.name, resources: claim_obligation_resources(c) }
+}
+
+fn materialize_test_obligations(claims: List<TestClaim>) -> List<TestObligation> {
+  map(claims, obligation_for_claim)
 }

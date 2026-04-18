@@ -719,6 +719,12 @@ pub struct ValueNode {
     pub data: LiteralBits,
     pub output: PortId,
     pub span: SourceSpan,
+    /// Lane 2 Stage 2b: idempotency projection for this node. **Native Rust only**
+    /// — not part of the reflected `Behavior` surface in `substrate.dag`, so `.dag`
+    /// lenses cannot read it until a workflow fact is reflected + realized.
+    /// Populated by lowering or [`Dag::try_register_lane2_workflow_effect`];
+    /// [`crate::workflow_idempotency::analyze_workflow`] reads it from the graph.
+    pub(crate) lane2_workflow: Option<Box<WorkflowEffect>>,
 }
 
 impl ValueNode {
@@ -928,6 +934,22 @@ impl TransformRef {
     }
 }
 
+/// 🟢 **TERMINAL.** Bool-typed branch predicate port — Track 9 parallel to
+/// [`ParamRef`] / [`TransformRef`]. The only Rust constructor is
+/// [`Dag::branch_arm_of`], which checks the port resolves to `Bool`. The
+/// substrate field shape matches `src/v3/std/effects.dag`; direct `.dag`
+/// construction gains the same authority in the Lane 3c cycle (ROADMAP Track 9 debt).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BranchPredicateRef {
+    port: PortId,
+}
+
+impl BranchPredicateRef {
+    pub fn port_id(self) -> PortId {
+        self.port
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NonEmptyList<T> {
     pub first: T,
@@ -942,6 +964,15 @@ impl<T> NonEmptyList<T> {
             first,
             rest: iter.collect(),
         })
+    }
+
+    pub fn to_vec(&self) -> Vec<T>
+    where
+        T: Clone,
+    {
+        std::iter::once(self.first.clone())
+            .chain(self.rest.iter().cloned())
+            .collect()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &T> {
@@ -975,16 +1006,171 @@ impl<T> NonSingletonList<T> {
     }
 }
 
+// ── std.effects mirror (DB-18 / Lane 2 Stage 2b) ───────────────────
+//
+// Structural carriers aligned with `src/v3/std/effects.dag` — the
+// compiler-side authority for `compose_effects`, `WorkflowEffect`, and
+// `BranchArm` until the self-hosted pipeline consumes the `.dag` forms
+// directly.
+//
+// Each coproduct / boundary carrier below carries its own 🟢/🟡 dissolution
+// stamp (modeling-discipline principle 4); do not rely on this banner alone.
+// 🔴 does not appear in this block — there is no intentionally-wrong deferred
+// carrier here; unsupported control flow is modeled via explicit sums, not
+// silent placeholders.
+
+/// 🟢 **TERMINAL.** HTTP verb literals — 1:1 with `std.effects` `HttpMethod`;
+/// naming authority is `effects.dag`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HttpMethodScalar {
+    Get,
+    Post,
+    Put,
+    Patch,
+    Delete,
+    Head,
+    Options,
+}
+
+/// 🟢 **TERMINAL.** Where a stable idempotency key comes from — mirrors
+/// `KeySource` in `effects.dag`; no parallel spelling.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KeySource {
+    PathParam { param: String },
+    InputField { field: String },
+    CompositeKey { fields: Vec<String> },
+}
+
+/// 🟢 **TERMINAL.** Why a create-shaped op is classified breaking — mirrors
+/// `CreateCause` in `effects.dag`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CreateCause {
+    PostAlways,
+    KeylessFallback { method: HttpMethodScalar },
+}
+
+/// 🟢 **TERMINAL.** Idempotent-side effect shapes — mirrors `IdempotentShape`
+/// in `effects.dag`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IdempotentShape {
+    ReadEffect,
+    UpsertEffect { key_source: KeySource },
+    DeleteEffect { key_source: KeySource },
+}
+
+/// 🟢 **TERMINAL.** Breaking-side effect shapes — mirrors `BreakingShape` in
+/// `effects.dag`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BreakingShape {
+    CreateEffect { cause: CreateCause },
+    AppendEffect,
+}
+
+/// 🟢 **TERMINAL.** Classified per-op shape — sum of idempotent vs breaking
+/// carriers; mirrors `EffectShape` in `effects.dag`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EffectShape {
+    IsIdempotent(IdempotentShape),
+    IsBreaking(BreakingShape),
+}
+
+/// 🟢 **TERMINAL.** Named operation plus classified shape — mirrors the
+/// `OperationEffect` record in `effects.dag`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OperationEffect {
+    pub operation_name: String,
+    pub shape: EffectShape,
+}
+
+/// 🟢 **TERMINAL.** First breaking witness in a composition chain — mirrors
+/// `BreakingOperation` in `effects.dag`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BreakingOperation {
+    pub operation_name: String,
+    pub shape: BreakingShape,
+}
+
+/// 🟢 **TERMINAL.** Result of linear `compose_effects` — mirrors
+/// `CompositionVerdict` in `effects.dag`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CompositionVerdict {
+    IdempotentComposition,
+    BrokenBy { first_breaker: BreakingOperation },
+}
+
+/// 🟢 **TERMINAL.** Branch arm with a [`BranchPredicateRef`] witnessed as Bool by
+/// [`Dag::branch_arm_of`] — the sole constructor for valid arms.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BranchArm {
+    condition: BranchPredicateRef,
+    body: Box<WorkflowEffect>,
+}
+
+/// 🟡 **SCAFFOLD.** Four-variant workflow sum aligned with `effects.dag`;
+/// Stage 2b analyzes `LinearEffect` only — non-linear variants surface
+/// `IdempotencyUnsupported` until branch-wise algebra lands.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkflowEffect {
+    LinearEffect {
+        ops: NonEmptyList<OperationEffect>,
+    },
+    BranchEffect {
+        arms: NonSingletonList<BranchArm>,
+    },
+    LoopEffect {
+        body: Box<WorkflowEffect>,
+    },
+    ParallelEffect {
+        branches: NonSingletonList<Box<WorkflowEffect>>,
+    },
+}
+
+impl BranchArm {
+    pub fn branch_predicate(&self) -> BranchPredicateRef {
+        self.condition
+    }
+
+    pub fn body(&self) -> &WorkflowEffect {
+        &self.body
+    }
+}
+
+/// 🟢 **TERMINAL.** Explicit unsupported payload — names variant + stage +
+/// reason; not a silent `Option` alongside a verdict.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IdempotencyUnsupportedDetail {
+    pub variant_name: String,
+    pub downstream_stage: String,
+    pub reason: String,
+}
+
+/// 🟢 **TERMINAL.** Stage 2b lens report sum — success path vs explicit
+/// unsupported; mirrors `WorkflowIdempotencyReport` in `effects.dag`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkflowIdempotencyReport {
+    WorkflowCompositionVerdict(CompositionVerdict),
+    IdempotencyUnsupported(IdempotencyUnsupportedDetail),
+}
+
+// ── end std.effects mirror (DB-18) ───────────────────────────────────
+// Cluster / loop-bound carriers below are Track 9 mutual-recursion
+// witnesses — not part of the Lane 2 Stage 2b effects algebra.
+
+/// 🟢 **TERMINAL.** Single cluster member's descent parameter — typed
+/// `ParamRef` witness (see `docs/design-mutual-recursion-lowering.md`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemberDescent {
     pub param: ParamRef,
 }
 
+/// 🟢 **TERMINAL.** One intra-cluster `Transform` call edge inside the SCC.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IntraClusterCall {
     pub transform: TransformRef,
 }
 
+/// 🟢 **TERMINAL.** Typed index over authoritative member/call topology for
+/// `LoopBound::Descent` — not a parallel copy of the Dag call graph.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cluster {
     pub members: NonSingletonList<MemberDescent>,
@@ -1253,6 +1439,10 @@ pub struct BindNode {
     /// no type tag. See the C2 dissolution receipt at the top of this file.
     pub params: Vec<PortId>,
     pub span: SourceSpan,
+    /// Lane 2 Stage 2b: idempotency projection for this bind. Same contract as
+    /// [`ValueNode::lane2_workflow`] (native Rust field; see that comment for the
+    /// substrate-reflection deferral).
+    pub(crate) lane2_workflow: Option<Box<WorkflowEffect>>,
 }
 
 impl BindNode {
@@ -1955,6 +2145,45 @@ impl Dag {
         &self.clusters[id.index()]
     }
 
+    /// **🟡 Scaffold hook (API is intentional, substrate is not).** Attaches a
+    /// [`WorkflowEffect`] on **native** [`Behavior`] nodes at `root` (`Value` or
+    /// `Bind` only). This does **not** populate a reflected substrate field —
+    /// `.dag` lens walkers cannot see `lane2_workflow`. Not a type-system proof
+    /// that `root` is “the” workflow root; tests and lowering use it under the
+    /// ROADMAP “Reflection boundary” contract until the fact is reflected.
+    /// Returns `false` if `root` is missing or not `Value`/`Bind`. Downstream
+    /// lowering should populate the same fields so
+    /// [`crate::workflow_idempotency::analyze_workflow`] reads one graph-local
+    /// store (not a parallel side table).
+    pub fn try_register_lane2_workflow_effect(
+        &mut self,
+        root: NodeId,
+        workflow: WorkflowEffect,
+    ) -> bool {
+        let Some(behavior) = self.nodes.get_mut(root.index()) else {
+            return false;
+        };
+        match behavior {
+            Behavior::Value(v) => {
+                v.lane2_workflow = Some(Box::new(workflow));
+                true
+            }
+            Behavior::Bind(b) => {
+                b.lane2_workflow = Some(Box::new(workflow));
+                true
+            }
+            Behavior::Transform(_) | Behavior::Branch(_) | Behavior::Loop(_) => false,
+        }
+    }
+
+    pub fn lane2_workflow_effect_at(&self, root: NodeId) -> Option<&WorkflowEffect> {
+        match self.node_opt(&root)? {
+            Behavior::Value(v) => v.lane2_workflow.as_deref(),
+            Behavior::Bind(b) => b.lane2_workflow.as_deref(),
+            Behavior::Transform(_) | Behavior::Branch(_) | Behavior::Loop(_) => None,
+        }
+    }
+
     pub fn optional_match_disj(&self, cardinality_decl_id: DeclarationId) -> Option<DeclarationId> {
         self.optional_match_disjs.get(&cardinality_decl_id).copied()
     }
@@ -2384,6 +2613,22 @@ impl Dag {
         let bind = self.node(member).as_bind()?;
         bind.params.get(slot)?;
         Some(ParamRef { member, slot })
+    }
+
+    /// Construct a [`BranchArm`] only when `port` is resolved to the `Bool`
+    /// primitive, packaging the port as a [`BranchPredicateRef`] (Track 9
+    /// parity with [`Dag::param_of`] / [`Dag::as_transform_ref`]).
+    pub fn branch_arm_of(&self, port: PortId, body: WorkflowEffect) -> Option<BranchArm> {
+        let bool_ty = self.bool_shape()?;
+        let p = self.port_opt(&port)?;
+        let ty = p.value_type()?;
+        if *ty != bool_ty {
+            return None;
+        }
+        Some(BranchArm {
+            condition: BranchPredicateRef { port },
+            body: Box::new(body),
+        })
     }
 
     pub fn as_transform_ref(&self, node: NodeId) -> Option<TransformRef> {

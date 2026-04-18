@@ -74,7 +74,7 @@ fn bootstrap_loads_verification_authority_types() {
 
     assert_eq!(
         record_fields(&dag, "TestClaim"),
-        vec!["name", "source", "file_name", "predicate"]
+        vec!["name", "source", "file_name", "predicate", "requires"]
     );
     assert_eq!(record_fields(&dag, "TestSuite"), vec!["name", "claims"]);
     assert_eq!(
@@ -126,6 +126,18 @@ fn bootstrap_loads_verification_authority_types() {
                     String::from("bound"),
                 ],
             ),
+            (
+                String::from("BehavioralObservation"),
+                vec![
+                    String::from("subject"),
+                    String::from("input_sample"),
+                    String::from("expected_output"),
+                ],
+            ),
+            (
+                String::from("MockBackedInvariant"),
+                vec![String::from("subject"), String::from("invariant")],
+            ),
         ]
     );
 }
@@ -133,6 +145,8 @@ fn bootstrap_loads_verification_authority_types() {
 #[test]
 fn verification_predicate_witnesses_compile_cleanly() {
     let src = r#"
+import std.list { empty }
+
 let pred_compiles: TestPredicate = Compiles
 let pred_fails: TestPredicate = FailsWithDiagnostic({ kind: ResolveError, detail_contains: Contains("missing") })
 let pred_fails_kind: TestPredicate = FailsWithDiagnostic({ kind: TypeMismatch, detail_contains: AnyDetail })
@@ -146,14 +160,16 @@ let claim_compiles: TestClaim = {
   name: "compiles",
   source: "let x: Int = 1",
   file_name: "compiles.v3",
-  predicate: pred_compiles
+  predicate: pred_compiles,
+  requires: empty()
 }
 
 let claim_fails: TestClaim = {
   name: "fails",
   source: "let x: Bool = 1",
   file_name: "fails.v3",
-  predicate: pred_fails
+  predicate: pred_fails,
+  requires: empty()
 }
 
 let suite: TestSuite = {

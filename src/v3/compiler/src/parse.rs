@@ -807,23 +807,14 @@ impl<'a> Parser<'a> {
         let open = self.expect_kind(TokenKind::LBrace)?;
         let mut fields: Vec<SurfaceRecordField> = Vec::new();
         while !matches!(self.peek().kind, TokenKind::RBrace) {
-            let name_token = self.bump().clone();
-            let field_name = match name_token.kind {
-                TokenKind::Ident(n) => n,
-                other => {
-                    return Err(Diagnostic::ParseError {
-                        message: format!("expected field name in record literal, got {other:?}"),
-                        span: name_token.span,
-                    });
-                }
-            };
+            let (field_name, name_span) = self.parse_field_label()?;
             self.expect_kind(TokenKind::Colon)?;
             let value = self.parse_expr()?;
             let field_end = expr_span(&value).byte_end;
             fields.push(SurfaceRecordField {
                 name: field_name,
                 value,
-                span: SourceSpan::new(self.file, name_token.span.byte_start, field_end),
+                span: SourceSpan::new(self.file, name_span.byte_start, field_end),
             });
             // Accept an optional comma between fields (whitespace
             // alone is also permitted).
@@ -996,10 +987,29 @@ impl<'a> Parser<'a> {
         Ok(params)
     }
 
+    /// Record field labels reuse [`Self::parse_ident`] semantics but also
+    /// accept `type` — the tokenizer maps it to [`TokenKind::KwType`], yet
+    /// `dsl/std/resources.dag` names a field `type` on `ResourceHandle`. Field
+    /// position is unambiguous (`type` cannot start a type expression here).
+    fn parse_field_label(&mut self) -> Result<(String, SourceSpan), Diagnostic> {
+        let name_token = self.bump().clone();
+        let name = match name_token.kind {
+            TokenKind::Ident(n) => n,
+            TokenKind::KwType => "type".to_string(),
+            other => {
+                return Err(Diagnostic::ParseError {
+                    message: format!("expected field label, got {other:?}"),
+                    span: name_token.span,
+                });
+            }
+        };
+        Ok((name, name_token.span))
+    }
+
     fn parse_record_fields(&mut self) -> Result<Vec<SurfaceField>, Diagnostic> {
         let mut fields = Vec::new();
         while !matches!(self.peek().kind, TokenKind::RBrace) {
-            let name = self.parse_ident()?;
+            let (name, _) = self.parse_field_label()?;
             self.expect_kind(TokenKind::Colon)?;
             let ty = self.parse_type_expr()?;
             fields.push(SurfaceField { name, ty });

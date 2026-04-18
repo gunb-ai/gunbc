@@ -155,15 +155,23 @@ pub mod lens_structural_resolution {
 
 mod bootstrap;
 mod infer;
+pub mod lens_idempotency;
 mod lower;
 mod parse;
 mod pipeline_authority;
 mod tokenize;
 mod variant_payload;
+pub(crate) mod workflow_idempotency;
 
-pub use dag::Dag;
+pub use dag::{Dag, NodeId};
 pub use diagnostics::{Diagnostic, SourceSpan};
 pub use emit_rust::EmitError;
+/// Lane 2 Stage 2b — **supported** public entry: [`analyze_workflow`] is the only
+/// idempotency API exported from this crate. Composition helpers such as
+/// `compose_operation_effects` / `operation_to_breaker` are **not** re-exported:
+/// naming and algebra authority live in `src/v3/std/effects.dag`, and the Rust
+/// bridge must not become a parallel public implementation surface.
+pub use lens_idempotency::analyze_workflow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StageSnapshotKind {

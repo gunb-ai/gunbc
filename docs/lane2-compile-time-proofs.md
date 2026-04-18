@@ -76,29 +76,31 @@ Copy (post-reshape, R3):
 
 ### Stage 2b — Workflow idempotency lens (L)
 
-**Scope:** create `src/v3/lenses/idempotency.dag`. Walks a pipeline (sequence of service operations), composes effects, emits diagnostic on chain break.
+**Scope:** create `src/v3/lenses/idempotency.dag`. End state: walk a lowered pipeline (sequence of service operations), compose effects, emit diagnostic on chain break. **Today:** `lane2_workflow` is populated by tests via staging hooks or by future lowering — not by a full HTTP/service pipeline in the Dag (see ROADMAP “Reflection boundary”).
 
-API shape:
+API shape (**shipped** — naming authority: `src/v3/std/effects.dag`; **public** Rust surface is `analyze_workflow` from `lens_idempotency` only — `workflow_idempotency` stays `pub(crate)` so the bridge does not accrete downstream consumers):
 ```
-fn analyze_workflow(d: Dag, workflow: NodeId) -> WorkflowIdempotencyReport
+fn analyze_workflow(d: Dag, workflow_root: NodeId) -> WorkflowIdempotencyReport
 
-type WorkflowIdempotencyReport {
-  idempotent: Bool
-  breaking_op: String?             // name of first non-idempotent op, if any
-  evidence_chain: List<OperationEffect>
-  diagnostic: Diagnostic?
-}
+type WorkflowIdempotencyReport
+  = WorkflowCompositionVerdict(CompositionVerdict)
+  | IdempotencyUnsupported(IdempotencyUnsupportedDetail)
+
+// CompositionVerdict = IdempotentComposition | BrokenBy { first_breaker: BreakingOperation }
 ```
 
-Lens reads each operation's declared `idempotent` modifier AND derives from path+method, then cross-checks via `check_modifier_vs_derivation`. Diagnostic fires when:
-- Declared idempotent but derivation disagrees (`Disagrees` case)
-- Workflow composition breaks because a single op is non-idempotent (`POST /logs` in a retry context)
-- Modifier claims `readonly` but method is write
+**Single authority.** `analyze_workflow` does **not** take a caller-authored `WorkflowEffect`. Facts are read only from **native Rust** `Value` / `Bind` nodes at `workflow_root` (`lane2_workflow` on those behaviors — populated by lowering or staging hooks, not a parallel `NodeId` map). The obsolete flat `{ idempotent: Bool, breaking_op: String?, … }` sketch below is superseded by the `CompositionVerdict` partition + explicit `IdempotencyUnsupported` carrier.
 
-**Acceptance:**
-- Fixture: GCP Secret Manager upsert + STS Exchange + IAM grant → all idempotent → report green
-- Fixture: above + `POST /audit_log` at the end → report red, naming `POST /audit_log` as breaking op
-- Fixture: `POST /secrets/create` (no path key) inside a retry loop → compile fails with specific diagnostic
+**Substrate reflection (follow-up).** `lane2_workflow` is **not** yet a field on the reflected `Behavior` facts that `substrate.dag` exposes to `.dag` lens walkers — the staged [`idempotency.dag`](../src/v3/lenses/idempotency.dag) stub delegates to Rust for that reason. ROADMAP tracks reflecting the same workflow fact for declarative self-inspection; until then the Rust analysis path is authoritative for Stage 2b consumers.
+
+**Deferred (service lowering + modifier bridge):** when operations in the lowered Dag carry declared `idempotent` modifiers and HTTP path/method facts, the lens cross-checks via `check_modifier_vs_derivation`. Diagnostic fires when declared idempotent disagrees with derivation, when composition breaks on a non-idempotent op, or when `readonly` disagrees with write semantics — that wiring is **not** in the current bootstrap path.
+
+**Acceptance — shipped in DB-18 tests (`lane2_stage_2b_db18_test.rs`):** staged `WorkflowEffect` chains on a compiled anchor (`try_register_lane2_workflow_effect`) exercise linear idempotency composition (e.g. GCP-style read/upsert/read green; append / POST-create breaking); non-linear `WorkflowEffect` variants return explicit `IdempotencyUnsupported`.
+
+**Acceptance — target fixtures (when lowering attaches real `OperationEffect` lists):**
+- GCP Secret Manager upsert + STS Exchange + IAM grant → all idempotent → report green
+- Same + `POST /audit_log` at the end → report red, naming the breaking op
+- `POST /secrets/create` (no path key) inside a retry loop → compile fails with specific diagnostic
 
 **Escalation:** if workflow structure isn't representable cleanly — e.g., control flow in a pipeline doesn't map to a linear `List<OperationEffect>` — surface. Don't stretch `compose_effects` to handle branches silently; the algebra needs to reflect branch-wise composition, which is a legitimate design extension.
 
