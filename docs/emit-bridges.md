@@ -15,13 +15,13 @@ These commands are intentionally broad — they over-approximate “name-adjacen
 **A — Tuple field probes on structural value bodies** (`(label, value)` string keys):
 
 ```bash
-rg 'find\(\|\(label, _\)\| label ==' src/v3/compiler/src/emit_rust.rs \
-  src/v3/compiler/src/emit_go.rs src/v3/compiler/src/emit_python.rs
+rg 'find\(\|\(label, _\)\| label ==' src/v3/compiler/src/emit_{rust,go,python}.rs
 ```
 
 **B — `named_variant_id(dag, "TypeName", "Variant")`**: resolves enum-like declarations by **parent type name + variant label** (emit-time, not only bootstrap).
 
 ```bash
+# From repo root (`gunbc/`). Per-file counts: `rg -c '…' path1 path2 path3`
 rg 'named_variant_id\(dag,' src/v3/compiler/src/emit_{rust,go,python}.rs
 ```
 
@@ -43,15 +43,20 @@ rg 'label == "(Empty|Cons|None|Some)"' src/v3/compiler/src/emit_{rust,go,python}
 rg 'label == "_0"' src/v3/compiler/src/emit_python.rs
 ```
 
-**Reproducible site counts (2026-04, this worktree):**
+**Reproducible site counts** (run from repo root; paths `src/v3/compiler/src/emit_{rust,go,python}.rs`):
 
-| Bucket | Count | Command / pattern |
-|--------|------:|-------------------|
-| `(label, _) == "…"` structural probes | **25** | `rg 'find\(\|\(label, _\)\| label ==' emit_{rust,go,python}.rs` |
-| `named_variant_id(` occurrences | **47** | `rg 'named_variant_id\(' emit_{rust,go,python}.rs` (includes **3** `fn named_variant_id` definitions — ~**44** call sites) |
-| `declaration_by_name("` | **11** | `rg 'declaration_by_name\("' emit_{rust,go,python}.rs` |
-| `label == "Empty"\|"Cons"\|"None"\|"Some"` | **8** | `rg 'label == "(Empty\|Cons\|None\|Some)"' emit_{rust,go,python}.rs` |
-| **Ordered sum (categories overlap minimally)** | **≥ 86** | Matches the lane estimate (**emit_rust ≫ emit_go ≫ emit_python**). |
+| Bucket | emit_rust | emit_go | emit_python | **Total** | Command / pattern |
+|--------|----------:|--------:|------------:|----------:|-------------------|
+| **A** `(label, _) == "…"` probes | 10 | 11 | 4 | **25** | `rg -c 'find\(\|\(label, _\)\| label =='` … |
+| **B** `named_variant_id(dag,` call sites | 29 | 8 | 3 | **40** | `rg -c 'named_variant_id\(dag,'` … — matches §B above |
+| **B′** `named_variant_id(` (any) | 34 | 9 | 4 | **47** | `rg -c 'named_variant_id\('` … — includes **3**× `fn named_variant_id` **definitions** (one per file) → **44** other occurrences on those lines |
+| **C** `declaration_by_name("` | 9 | 1 | 1 | **11** | `rg -c 'declaration_by_name\("' …` |
+| **D** `label == "Empty"\|…` | 2 | 4 | 2 | **8** | `rg -c 'label == "(Empty\|Cons\|None\|Some)"'` … |
+| **E** `label == "_0"` (Python tuple payload) | — | — | 2 | **2** | `rg -c 'label == "_0"' src/v3/compiler/src/emit_python.rs` |
+
+**Sums for planning:** **A + B + C + D = 25 + 40 + 11 + 8 = 84** (distinct pattern families; **B** is the methodology-consistent count for `named_variant_id(dag,`). **B′** is the broader line count if you include `fn named_variant_id` headers. **E** is Python-only and overlaps with D’s theme (B13) but not the same regex.
+
+The earlier **“≥ 86 sites”** lane estimate used a looser union/overlap mental model; **84** is the reproducible **sum of A–D** on this tree (**emit_rust ≫ emit_go ≫ emit_python**).
 
 *Notes:* `named_variant_id` is **shared infrastructure** — it is still a bridge relative to the thesis “substrate ids only,” because **parent/variant strings** cross the boundary until the walker caches **DeclarationId** handles earlier. Dissolution is “resolve once at index time; emit only typed ids.”
 
