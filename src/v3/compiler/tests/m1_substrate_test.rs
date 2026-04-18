@@ -1176,6 +1176,7 @@ fn m17_r9_data_item_has_unparsed_value_body_scaffold() {
     }
 }
 
+#[test]
 fn m18_match_on_user_sum_type_compiles() {
     // M1(2.8): match lowers to a Branch node with one Path per arm,
     // each carrying a BranchPattern::ResolvedVariant(DeclarationId)

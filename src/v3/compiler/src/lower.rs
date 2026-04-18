@@ -2612,10 +2612,7 @@ fn lower_structural_field_value(
         let referenced = dag.declaration(decl_id);
         if referenced
             .meta_tag
-            .zip(normalize_decl_ref_type_match(dag, expected_type))
-            .is_some_and(|(actual, expected)| {
-                normalize_decl_ref_type_match(dag, actual) == Some(expected)
-            })
+            .is_some_and(|actual| declaration_ref_types_equivalent(dag, actual, expected_type, 0))
         {
             return Some(crate::dag::FieldValue::Reference(decl_id));
         }
@@ -2922,8 +2919,72 @@ fn resolve_field_value_as_declaration_ref(
     Some(current)
 }
 
-fn normalize_decl_ref_type_match(dag: &Dag, decl: DeclarationId) -> Option<DeclarationId> {
-    resolve_decl_with_subst_lower(dag, decl, &LowerSubstStack::default(), 0)
+fn declaration_ref_types_equivalent(
+    dag: &Dag,
+    lhs: DeclarationId,
+    rhs: DeclarationId,
+    depth: usize,
+) -> bool {
+    if lhs == rhs {
+        return true;
+    }
+    if depth >= 32 {
+        return false;
+    }
+    let lhs_decl = dag.declaration(lhs);
+    let rhs_decl = dag.declaration(rhs);
+    match (&lhs_decl.connective, &rhs_decl.connective) {
+        (TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)), _) => {
+            declaration_ref_types_equivalent(dag, *next, rhs, depth + 1)
+        }
+        (_, TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next))) => {
+            declaration_ref_types_equivalent(dag, lhs, *next, depth + 1)
+        }
+        (
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            },
+            _,
+        ) if arguments.is_empty() => {
+            declaration_ref_types_equivalent(dag, *template, rhs, depth + 1)
+        }
+        (
+            _,
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            },
+        ) if arguments.is_empty() => {
+            declaration_ref_types_equivalent(dag, lhs, *template, depth + 1)
+        }
+        (
+            TypeConnective::Instantiation {
+                template: lhs_template,
+                arguments: lhs_arguments,
+            },
+            TypeConnective::Instantiation {
+                template: rhs_template,
+                arguments: rhs_arguments,
+            },
+        ) => {
+            declaration_ref_types_equivalent(dag, *lhs_template, *rhs_template, depth + 1)
+                && lhs_arguments.len() == rhs_arguments.len()
+                && lhs_arguments
+                    .iter()
+                    .zip(rhs_arguments.iter())
+                    .all(|(lhs_arg, rhs_arg)| {
+                        lhs_arg.parameter == rhs_arg.parameter
+                            && declaration_ref_types_equivalent(
+                                dag,
+                                lhs_arg.value,
+                                rhs_arg.value,
+                                depth + 1,
+                            )
+                    })
+        }
+        _ => false,
+    }
 }
 
 /// Realization category tag for the lower-time narrowing check.
