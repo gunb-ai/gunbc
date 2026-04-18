@@ -3629,20 +3629,32 @@ impl<'a> Ctx<'a> {
                 &[("name", &qualified_name), ("binding", &rendered_binding)],
             ));
         }
-        let VariantPayloadShape::NamedFields(field_labels) = payload_shape else {
-            return Ok(render_named_template(
+        match payload_shape {
+            VariantPayloadShape::Empty => Ok(render_named_template(
                 &self.indexes.syntax.patterns.variant_pattern_empty,
                 &[("name", &qualified_name)],
-            ));
-        };
-        let bindings = render_named_template(
-            &self.indexes.syntax.patterns.field_binding,
-            &[("field", &field_labels[0]), ("binding", &rendered_binding)],
-        );
-        Ok(render_named_template(
-            &self.indexes.syntax.patterns.variant_pattern,
-            &[("name", &qualified_name), ("bindings", &bindings)],
-        ))
+            )),
+            VariantPayloadShape::PositionalSingle => {
+                let bindings = render_named_template(
+                    &self.indexes.syntax.patterns.field_binding,
+                    &[("field", "_0"), ("binding", &rendered_binding)],
+                );
+                Ok(render_named_template(
+                    &self.indexes.syntax.patterns.variant_pattern,
+                    &[("name", &qualified_name), ("bindings", &bindings)],
+                ))
+            }
+            VariantPayloadShape::NamedFields(field_labels) => {
+                let bindings = render_named_template(
+                    &self.indexes.syntax.patterns.field_binding,
+                    &[("field", &field_labels[0]), ("binding", &rendered_binding)],
+                );
+                Ok(render_named_template(
+                    &self.indexes.syntax.patterns.variant_pattern,
+                    &[("name", &qualified_name), ("bindings", &bindings)],
+                ))
+            }
+        }
     }
 
     /// E-5 / Lane 1 Stage 1c: render the arm's payload binding name
