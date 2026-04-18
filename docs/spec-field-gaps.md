@@ -71,6 +71,7 @@ Specs referenced: `src/v3/spec/rust.dag`, `go.dag`, `python.dag` (+ shared `v3_l
 | Area | Declared | Gap |
 |------|----------|-----|
 | Rust `match` / if | `PatternMatchSyntax`, `match_arm`, etc. | **P1:** **List / vector patterns** and specialized branches may still assume std shapes — verify every path has a template or a declared fail. |
+| Rust positional payload `_0` | `variant_pattern_positional` vs `variant_pattern` + `field_overrides` | **P1:** **`render_branch_pattern`** and **`render_path_body`** compare conj field labels to **`_0`** (`==` / `!=`) — same **positional-payload bridge** as Python (`emit-bridges.md` bucket **E**, B13). Spec/substrate should declare **positional vs named single-field payload** without magic `_0` strings. |
 | Go `switch` / optional | Go control-flow templates | **P1:** **`None`/`Some`/`Empty`/`Cons` variant labels** compared by string in `render_optional_branch` / list branches — **bridge B13**; need **`MatchStrategy` / variant tagging in spec** or substrate metadata so the walker does not compare magic strings. |
 | Python `lambda __match` | `python_clean_emission.pattern_bindings` | **P1:** **`render_list_branch`** assumes **`Empty` / `Cons` labels**; **`render_branch_condition`** special-cases **`None`**; **`render_match_binding`** special-cases **payload field `_0`**. These need spec-declared **variant identity** (or std list hook) instead of literals. |
 | Bool splitting | Structural disj for `Classical` | **None** — uses substrate positions, not names (Rust `split_bool_paths`). |

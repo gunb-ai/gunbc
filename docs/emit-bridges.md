@@ -37,10 +37,10 @@ rg 'declaration_by_name\("' src/v3/compiler/src/emit_{rust,go,python}.rs
 rg 'label == "(Empty|Cons|None|Some)"' src/v3/compiler/src/emit_{rust,go,python}.rs
 ```
 
-**E — Payload shape** (`_0` tuple field):
+**E — Positional payload field name `_0`** (`label == "_0"` / `label != "_0"` on conj children — tuple / anonymous single-field payload routing):
 
 ```bash
-rg 'label == "_0"' src/v3/compiler/src/emit_python.rs
+rg 'label == "_0"|label != "_0"' src/v3/compiler/src/emit_{rust,go,python}.rs
 ```
 
 **Reproducible site counts** (run from repo root; paths `src/v3/compiler/src/emit_{rust,go,python}.rs`):
@@ -52,11 +52,11 @@ rg 'label == "_0"' src/v3/compiler/src/emit_python.rs
 | **B′** `named_variant_id(` (any) | 34 | 9 | 4 | **47** | `rg -c 'named_variant_id\('` … — includes **3**× `fn named_variant_id` **definitions** (one per file) → **44** other occurrences on those lines |
 | **C** `declaration_by_name("` | 9 | 1 | 1 | **11** | `rg -c 'declaration_by_name\("' …` |
 | **D** `label == "Empty"\|…` | 2 | 4 | 2 | **8** | `rg -c 'label == "(Empty\|Cons\|None\|Some)"'` … |
-| **E** `label == "_0"` (Python tuple payload) | — | — | 2 | **2** | `rg -c 'label == "_0"' src/v3/compiler/src/emit_python.rs` |
+| **E** `label == "_0"` / `label != "_0"` (positional payload) | 2 | 0 | 2 | **4** | `rg -c 'label == "_0"\|label != "_0"'` … |
 
-**Sums for planning:** **A + B + C + D = 25 + 40 + 11 + 8 = 84** (distinct pattern families; **B** is the methodology-consistent count for `named_variant_id(dag,`). **B′** is the broader line count if you include `fn named_variant_id` headers. **E** is Python-only and overlaps with D’s theme (B13) but not the same regex.
+**Sums for planning:** **A + B + C + D = 25 + 40 + 11 + 8 = 84** (distinct pattern families; **B** is the methodology-consistent count for `named_variant_id(dag,`). **B′** is the broader line count if you include `fn named_variant_id` headers. **E** is the **`_0` positional-payload bridge** (B13): **Rust and Python** both compare conj field labels to **`_0`**; **Go has none** under this regex. **A–D + E = 88** line occurrences across buckets (no double-count between rows).
 
-The earlier **“≥ 86 sites”** lane estimate used a looser union/overlap mental model; **84** is the reproducible **sum of A–D** on this tree (**emit_rust ≫ emit_go ≫ emit_python**).
+The earlier **“≥ 86 sites”** lane estimate used a looser union/overlap mental model; **84** for **A–D** and **4** for **E** are reproducible on this tree (**emit_rust ≫ emit_go ≫ emit_python**).
 
 *Notes:* `named_variant_id` is **shared infrastructure** — it is still a bridge relative to the thesis “substrate ids only,” because **parent/variant strings** cross the boundary until the walker caches **DeclarationId** handles earlier. Dissolution is “resolve once at index time; emit only typed ids.”
 
@@ -94,9 +94,11 @@ The earlier **“≥ 86 sites”** lane estimate used a looser union/overlap men
 | `emit_go.rs` `render_vector_list_pattern_branch` | `Empty` / `Cons` arms | Same as Python list branch. |
 | `emit_rust.rs` vector list pattern | `Empty` / `Cons` | Same. |
 | `emit_python.rs` `render_branch_condition` | `variant_name == "None"` for optional | Name bridge — optional **DeclarationId**-backed display or spec rule. |
-| `emit_python.rs` `render_match_binding` | `children[0].label == "_0"` for payload tuple shape | **P1:** Tuple projection spec or substrate **positional payload** fact — avoid magic `_0` string. |
+| `emit_python.rs` `render_match_binding` (and ctor path) | `children[0].label == "_0"` when arity-1 tuple payload | **P1:** Same — positional payload as a **substrate fact**, not a string sentinel. |
+| `emit_rust.rs` `render_path_body` | `child.label != "_0"` — multi-field vs single **positional** `_0` branch for `field_overrides` | **P1:** Same dissolution — **named fields vs anonymous `_0`** should be data on the variant payload Conj, not string-compare in emit. |
+| `emit_rust.rs` `render_branch_pattern` | `children[0].label == "_0"` → `variant_pattern_positional` template vs field-bound pattern | **P1:** Positional vs named payload is a **pattern strategy** in spec (already partially via templates; remove `_0` string anchor). |
 
-**Kills it:** Spec / substrate declares **which variant DeclarationIds** play which role for optional/list; walker never compares user-facing names.
+**Kills it:** Spec / substrate declares **which variant DeclarationIds** play which role for optional/list **and** whether a single-field payload uses **positional** vs **named** projection — emit compares **DeclarationId** roles / strategy enums, not magic labels.
 
 ---
 
