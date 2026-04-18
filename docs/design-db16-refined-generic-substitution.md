@@ -326,6 +326,16 @@ Tests land in `src/v3/compiler/tests/m2_feature_parity_test.rs` under the `test_
 
 10. **`test_3a4_refined_generic_callable_in_predicate_distinct_template_rejects`** — negative counterpart to #9. Same shape as #9 but the caller's predicate calls a *different* generic helper (`h2` instead of `h`). Discharge must reject — confirms that Transform-target substitution preserves no-entailment (D6): substitution concretizes arguments, but does not weaken identity of the callable itself.
 
+11. **`test_3a4_refined_generic_field_project_in_predicate_discharges`** — `FieldProject.field_child` substitution (D2 step 4, FieldProject arm). Shape:
+
+    ```
+    type Box<T> { inner: T, tag: Int }
+    fn f<T>(x: Box<T> where x.tag != 0) -> Box<T> = x
+    fn caller(b: Box<Int> where b.tag != 0) -> Box<Int> = f(b)
+    ```
+
+    `x.tag` lowers to a `Transform` with `target: FieldProject { field_label: "tag", field_child: Box<T>_decl }`. At the call site `f(b)` with `T := Int`, the cloned predicate body's FieldProject target must have `field_child` substituted to `Box<Int>_decl`, matching the caller's refined-Box<Int> carrier's predicate body. Without the substitution, the cloned body references `Box<T>_decl` while the caller's body references `Box<Int>_decl` — discharge fails at the first Transform node comparison. Tag-field-over-Int is used (not `x.inner == x.inner` over generic T) so the operator arm is unambiguously concrete and the test isolates the FieldProject substitution path; pairs symmetrically with #9 (which isolates the Callable arm). Locks the claim in D2 step 4 that FieldProject is in the admitted Transform-target substitution class.
+
 Additional tests MAY be added if Part 2 implementation uncovers an edge case (e.g., nested `Instantiation` layers under the refined-carrier connective, or refined-generic-passed-to-refined-generic) — size remains S+ (bounded).
 
 ---
