@@ -8,11 +8,16 @@
 // the composition algebra in `src/v3/std/algebra.dag` (+ its Rust
 // mirror in `dag.rs`) normalizes correctly.
 
+use std::io::Write;
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
+
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     dominates, iterate, max_path, normalize, sequential, Behavior, Dag, PortId, SizeVariable,
     SymbolicCost,
 };
+use v3_compiler::emit_rust::emit_rust_module;
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 
 fn find_bind_value(dag: &Dag, name: &str) -> PortId {
@@ -252,4 +257,74 @@ fn normalize_keeps_singleton_costs_unchanged() {
         let normalized = normalize(cost.clone());
         assert_eq!(normalized, cost, "normalize should pass through leaf costs");
     }
+}
+
+// ── Generated-module staleness guard ─────────────────────────────
+
+const GENERATED_LENS_HEADER: &str = "// AUTO-GENERATED from `src/v3/lenses/cost.dag` via\n\
+     // `emit_rust_module`. Regenerate instead of hand-editing.\n\n";
+
+fn lens_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("lenses")
+        .join("cost.dag")
+}
+
+fn emit_lens_module() -> String {
+    let source = std::fs::read_to_string(lens_path()).expect("read cost.dag");
+    let dag = compile_to_dag(&source, lens_path().to_string_lossy().as_ref())
+        .expect("cost.dag should compile cleanly");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "cost.dag should compile without diagnostics, got {:?}",
+        dag.diagnostics()
+    );
+    let raw = emit_rust_module(&dag).expect("emit compiled lens module");
+    format_rust_source(&format!("{GENERATED_LENS_HEADER}{raw}"))
+}
+
+fn format_rust_source(source: &str) -> String {
+    let mut child = Command::new("rustfmt")
+        .arg("--emit")
+        .arg("stdout")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn rustfmt");
+    child
+        .stdin
+        .as_mut()
+        .expect("rustfmt stdin")
+        .write_all(source.as_bytes())
+        .expect("write source to rustfmt");
+    let output = child.wait_with_output().expect("wait for rustfmt");
+    assert!(
+        output.status.success(),
+        "rustfmt failed on emitted lens module"
+    );
+    String::from_utf8(output.stdout).expect("rustfmt output should be utf-8")
+}
+
+#[test]
+fn cost_dag_compiles_cleanly() {
+    let source = std::fs::read_to_string(lens_path()).expect("read cost.dag");
+    let dag = compile_to_dag(&source, lens_path().to_string_lossy().as_ref())
+        .expect("cost.dag should compile cleanly");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "cost.dag should compile without diagnostics, got {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
+fn cost_generated_module_matches_checked_in_snapshot() {
+    let fresh = emit_lens_module();
+    let checked_in = include_str!("../src/lens_cost_symbolic_generated.rs");
+    assert_eq!(
+        fresh.trim(),
+        checked_in.trim(),
+        "checked-in `lens_cost_symbolic_generated.rs` is stale; run `cargo run --bin regen_lens_cost_symbolic`"
+    );
 }
