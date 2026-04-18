@@ -2610,7 +2610,13 @@ fn lower_structural_field_value(
 
     if let Some(decl_id) = resolve_field_value_as_declaration_ref(expr, symbols, dag) {
         let referenced = dag.declaration(decl_id);
-        if referenced.meta_tag == Some(expected_type) {
+        if referenced
+            .meta_tag
+            .zip(normalize_decl_ref_type_match(dag, expected_type))
+            .is_some_and(|(actual, expected)| {
+                normalize_decl_ref_type_match(dag, actual) == Some(expected)
+            })
+        {
             return Some(crate::dag::FieldValue::Reference(decl_id));
         }
     }
@@ -2914,6 +2920,10 @@ fn resolve_field_value_as_declaration_ref(
         current = next.ty;
     }
     Some(current)
+}
+
+fn normalize_decl_ref_type_match(dag: &Dag, decl: DeclarationId) -> Option<DeclarationId> {
+    resolve_decl_with_subst_lower(dag, decl, &LowerSubstStack::default(), 0)
 }
 
 /// Realization category tag for the lower-time narrowing check.
