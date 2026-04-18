@@ -149,6 +149,8 @@ fn bootstrap_loads_verification_authority_types() {
 #[test]
 fn verification_predicate_witnesses_compile_cleanly() {
     let src = r#"
+import std.list { empty }
+
 let pred_compiles: TestPredicate = Compiles
 let pred_fails: TestPredicate = FailsWithDiagnostic({ kind: ResolveError, detail_contains: Contains("missing") })
 let pred_fails_kind: TestPredicate = FailsWithDiagnostic({ kind: TypeMismatch, detail_contains: AnyDetail })
@@ -163,7 +165,7 @@ let claim_compiles: TestClaim = {
   source: "let x: Int = 1",
   file_name: "compiles.v3",
   predicate: pred_compiles,
-  requires: []
+  requires: empty()
 }
 
 let claim_fails: TestClaim = {
@@ -171,7 +173,7 @@ let claim_fails: TestClaim = {
   source: "let x: Bool = 1",
   file_name: "fails.v3",
   predicate: pred_fails,
-  requires: []
+  requires: empty()
 }
 
 let suite: TestSuite = {

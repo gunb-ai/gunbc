@@ -99,6 +99,10 @@ fn effects_dag_exposes_core_effect_algebra_types() {
         "ModifierAgreement",
         "ModifierAxisCheck",
         "ModifierCheck",
+        "WorkflowEffect",
+        "BranchArm",
+        "WorkflowIdempotencyReport",
+        "IdempotencyUnsupportedDetail",
     ] {
         assert_record_type(&dag, name);
     }
