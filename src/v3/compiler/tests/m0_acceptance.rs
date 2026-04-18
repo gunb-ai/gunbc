@@ -72,9 +72,18 @@ fn compile_any(src: &str, file: &str) -> Dag {
 fn test_let_binding_produces_dag_shape() {
     let dag = compile_to_dag("let x = 1 + 2", "test.v3").expect("compiles");
 
+    // Count only user-code nodes. The bootstrap Dag carries std
+    // module bodies (effects, list, algebra, ...) whose nodes live
+    // in `dag.nodes()` alongside user output; filtering by source
+    // span isolates the four structural nodes this fixture actually
+    // asserts.
+    let user_node_count = dag
+        .nodes()
+        .iter()
+        .filter(|behavior| behavior.span().file == "test.v3")
+        .count();
     assert_eq!(
-        dag.nodes().len(),
-        4,
+        user_node_count, 4,
         "Value(1) + Value(2) + Transform(Add) + Bind(x)"
     );
 
