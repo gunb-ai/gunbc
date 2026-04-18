@@ -752,17 +752,52 @@ fn test_3a4_refined_generic_distinct_refinement_rejects() {
 #[test]
 fn test_3a4_refined_generic_identity_across_instantiation_sites() {
     // Acceptance (DB-16): two distinct call sites of the same refined
-    // generic with matching concrete arguments must discharge
-    // symmetrically — dedup via find_equivalent_substituted_refined_decl
-    // keeps a canonical DeclarationId per (template, subst) so both
-    // sites see the same materialized carrier.
+    // generic with matching concrete arguments must not just compile
+    // — they must structurally share the canonical materialized
+    // carrier via dedup. Without dedup, each site would allocate a
+    // fresh substituted-refined-Int carrier, inflating the DAG with
+    // parallel-representation debt. With dedup, both sites resolve
+    // (via `find_equivalent_substituted_refined_decl`) to one of the
+    // existing caller-authored refined-Int carriers; no new carrier
+    // is allocated at materialization time.
+    //
+    // Lock the invariant structurally: count anonymous refined-Int
+    // declarations after compile. Expected: 2 (one per caller's own
+    // `where` clause); dedup failure would produce 3+ (adding
+    // materialize-allocated duplicates). This directly checks the
+    // substrate-hygiene claim from the design's D7 section.
     let src = "fn always_true<T>(x: T) -> Bool = 0 == 0\n\
                fn gate<T>(x: T where always_true(x)) -> T = x\n\
                fn one(n: Int where always_true(n)) -> Int = gate(n)\n\
                fn two(m: Int where always_true(m)) -> Int = gate(m)";
-    let _ = compile_to_dag(src, "test.v3").expect(
+    let dag = compile_to_dag(src, "test.v3").expect(
         "two distinct call sites of a refined generic with matching concrete refinements \
          must both discharge symmetrically",
+    );
+    let int_id = dag
+        .declaration_by_name("Int")
+        .expect("Int must be declared")
+        .id;
+    let anon_refined_int_count = dag
+        .declarations()
+        .iter()
+        .filter(|decl| {
+            if decl.name.is_some() || decl.refinement.is_none() {
+                return false;
+            }
+            matches!(
+                decl.connective,
+                v3_compiler::dag::TypeConnective::Atom(
+                    v3_compiler::dag::AtomPayload::ResolvedIdentifier(b)
+                ) if b == int_id
+            )
+        })
+        .count();
+    assert_eq!(
+        anon_refined_int_count, 2,
+        "expected exactly 2 anonymous refined-Int carriers (one per caller's \
+         own `where` clause); DB-16 materialization must dedup to those, not \
+         allocate fresh duplicates. Got {anon_refined_int_count} — dedup has regressed."
     );
 }
 
@@ -808,6 +843,37 @@ fn test_3a4_refined_generic_composite_discharges() {
     let _ = compile_to_dag(src, "test.v3").expect(
         "composite refined generic + matching composite caller must discharge \
          — DB-11's flatten-and-subset walk runs unchanged on the substituted carrier",
+    );
+}
+
+#[test]
+fn test_3a4_refined_generic_narrowing_composite_discharges() {
+    // Acceptance (DB-16 × DB-11 narrowing): narrowing and substitution
+    // compose. A refined generic with a composite `where pred_a(x) && pred_b(x)`
+    // predicate called from inside an `if pred_b(n)` arm that narrows
+    // a caller's concrete `pred_a(n)` argument must discharge: DB-11's
+    // arm-local narrowing builds the composite `pred_a && pred_b` on
+    // the caller's refined port; DB-16's materialization produces the
+    // substituted-refined carrier with the same composite; flatten-
+    // and-subset discharge (DB-11) runs unchanged over the shared
+    // substrate. Cross-product of the two feature classes; if
+    // narrowing and substitution compose as designed, this just works;
+    // if they don't, the bug surfaces now rather than at a future
+    // consumer.
+    // `pred_b` takes two args because DB-11's `narrowable_var_name`
+    // (`lower.rs:845`) only recognizes 2-argument `Operator`/`Call`
+    // conds as narrowing-eligible. Both args are `n` so the cond has
+    // exactly one scope-bound free variable — DB-11 narrows.
+    let src = "fn pred_a<T>(x: T) -> Bool = 0 == 0\n\
+               fn pred_b<T>(x: T, y: T) -> Bool = 0 == 0\n\
+               fn requires_both<T>(x: T where pred_a(x) && pred_b(x, x)) -> T = x\n\
+               fn caller(n: Int where pred_a(n)) -> Int = \
+                 if pred_b(n, n) then requires_both(n) else n";
+    let _ = compile_to_dag(src, "test.v3").expect(
+        "narrowing + substitution composition must discharge: the narrowed \
+         `pred_a && pred_b` refinement on the caller's port structurally \
+         matches the callee's substituted-refined carrier with the same \
+         composite, under DB-11's flatten-and-subset walk",
     );
 }
 
