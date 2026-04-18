@@ -50,9 +50,9 @@ module lenses.cost
 
 import std.list { List, empty, fold, cons }
 import std.substrate {
-  Dag, DagPort, Behavior, BranchPath, NodeId, PortId, Declaration,
-  TransformTarget, TransformNode, LoopBound, LoopNode,
-  Cluster, ClusterId
+  Dag, DagPort, Behavior, BranchNode, BranchPath, NodeId, PortId,
+  Declaration, DeclarationId, TransformTarget, TransformNode,
+  LoopBound, LoopNode, Cluster, ClusterId
 }
 import std.algebra {
   SymbolicCost, SizeVariable,
@@ -221,26 +221,17 @@ fn max_of_paths(
   acc: List<SymbolicCostEntry>,
   paths: List<BranchPath>
 ) -> SymbolicCostLookup =
-  fold(paths, FoundCost(ConstantCost(0)), max_path_step_lookup(acc))
+  fold(paths, FoundCost(ConstantCost(0)), |running, path|
+    combine_max(running, lookup_cost(acc, path.result_port))
+  )
 
-// Sole consumer of `max_path` from `std.algebra`. Closes over `acc`
-// via the named-helper / curry pattern the v3 lambda-resolution
-// prefers (DB-7 §Implementation notes — bidirectional inference
-// through closures doesn't yet cross the fold callback boundary).
-fn max_path_step_lookup(acc: List<SymbolicCostEntry>) -> fn(SymbolicCostLookup, BranchPath) -> SymbolicCostLookup =
-  |running, path| max_path_step(acc, running, path)
-
-fn max_path_step(
-  acc: List<SymbolicCostEntry>,
-  running: SymbolicCostLookup,
-  path: BranchPath
-) -> SymbolicCostLookup =
-  match running {
+fn combine_max(a: SymbolicCostLookup, b: SymbolicCostLookup) -> SymbolicCostLookup =
+  match a {
     MissingCost => MissingCost
-    FoundCost(r) =>
-      match lookup_cost(acc, path.result_port) {
+    FoundCost(ax) =>
+      match b {
         MissingCost => MissingCost
-        FoundCost(p) => FoundCost(dominant(r, p))
+        FoundCost(bx) => FoundCost(dominant(ax, bx))
       }
   }
 
@@ -317,10 +308,9 @@ fn sum_costs(
   acc: List<SymbolicCostEntry>,
   ports: List<PortId>
 ) -> SymbolicCostLookup =
-  fold(ports, FoundCost(ConstantCost(0)), sum_costs_step(acc))
-
-fn sum_costs_step(acc: List<SymbolicCostEntry>) -> fn(SymbolicCostLookup, PortId) -> SymbolicCostLookup =
-  |running, port_id| combine_sequential(running, lookup_cost(acc, port_id))
+  fold(ports, FoundCost(ConstantCost(0)), |running, port_id|
+    combine_sequential(running, lookup_cost(acc, port_id))
+  )
 
 // Fail-closed composition wrappers. A missing operand on either side
 // poisons the result so downstream doesn't substitute ConstantCost(0)
