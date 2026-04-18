@@ -42,7 +42,8 @@ fn branch_arm_of_requires_bool_port() {
         .unwrap(),
     };
     assert!(dag.branch_arm_of(int_bind.value, linear()).is_none());
-    assert!(dag.branch_arm_of(bool_bind.value, linear()).is_some());
+    let arm = dag.branch_arm_of(bool_bind.value, linear()).expect("bool arm");
+    assert_eq!(arm.branch_predicate().port_id(), bool_bind.value);
 }
 
 #[test]

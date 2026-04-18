@@ -928,6 +928,22 @@ impl TransformRef {
     }
 }
 
+/// Bool-typed branch predicate port — Track 9 parallel to [`ParamRef`] /
+/// [`TransformRef`]. The only Rust constructor is [`Dag::branch_arm_of`],
+/// which checks the port resolves to `Bool`. The substrate field shape
+/// matches `src/v3/std/effects.dag`; direct `.dag` construction gains the
+/// same authority in the Lane 3c cycle (ROADMAP Track 9 debt).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BranchPredicateRef {
+    port: PortId,
+}
+
+impl BranchPredicateRef {
+    pub fn port_id(self) -> PortId {
+        self.port
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NonEmptyList<T> {
     pub first: T,
@@ -1052,11 +1068,11 @@ pub enum CompositionVerdict {
     BrokenBy { first_breaker: BreakingOperation },
 }
 
-/// Branch arm with a condition port witnessed as `Bool` by
+/// Branch arm with a [`BranchPredicateRef`] witnessed as Bool by
 /// [`Dag::branch_arm_of`] — the sole constructor for valid arms.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BranchArm {
-    condition: PortId,
+    condition: BranchPredicateRef,
     body: Box<WorkflowEffect>,
 }
 
@@ -1077,7 +1093,7 @@ pub enum WorkflowEffect {
 }
 
 impl BranchArm {
-    pub fn condition_port(&self) -> PortId {
+    pub fn branch_predicate(&self) -> BranchPredicateRef {
         self.condition
     }
 
@@ -2238,8 +2254,8 @@ impl Dag {
     }
 
     /// Construct a [`BranchArm`] only when `port` is resolved to the `Bool`
-    /// primitive — the Track-9-style witness for a valid branch predicate
-    /// port (DB-18 / `branch_arm_of` parity with `param_of`).
+    /// primitive, packaging the port as a [`BranchPredicateRef`] (Track 9
+    /// parity with [`Dag::param_of`] / [`Dag::as_transform_ref`]).
     pub fn branch_arm_of(&self, port: PortId, body: WorkflowEffect) -> Option<BranchArm> {
         let bool_ty = self.bool_shape()?;
         let p = self.port_opt(&port)?;
@@ -2248,7 +2264,7 @@ impl Dag {
             return None;
         }
         Some(BranchArm {
-            condition: port,
+            condition: BranchPredicateRef { port },
             body: Box::new(body),
         })
     }

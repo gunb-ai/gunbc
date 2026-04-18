@@ -439,9 +439,19 @@ fn compose_effects(effects: List<OperationEffect>) -> CompositionVerdict {
 // `compose_effects`; branching / loop / parallel are structurally
 // distinct control-flow shapes — the idempotency lens reports
 // `Unsupported` for those until a branch-wise algebra lands.
+//
+// Track 9 parity: `BranchPredicateRef` mirrors `ParamRef` /
+// `TransformRef` in `substrate.dag` — a named witness carrier, not a
+// bare `PortId` on `BranchArm`. Validity (Bool-typed predicate port) is
+// enforced today by `Dag::branch_arm_of` on the Rust side; substrate
+// constructor symmetry is tracked under the same ROADMAP Track 9 debt
+// as other reflected handles.
+type BranchPredicateRef {
+  port: PortId
+}
 
 type BranchArm {
-  condition: PortId
+  condition: BranchPredicateRef
   body: WorkflowEffect
 }
 
