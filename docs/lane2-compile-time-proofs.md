@@ -102,28 +102,26 @@ Lens reads each operation's declared `idempotent` modifier AND derives from path
 
 **Escalation:** if workflow structure isn't representable cleanly — e.g., control flow in a pipeline doesn't map to a linear `List<OperationEffect>` — surface. Don't stretch `compose_effects` to handle branches silently; the algebra needs to reflect branch-wise composition, which is a legitimate design extension.
 
-**Input structure (DB-18) — `WorkflowEffect` substrate carrier.** The escalation clause above named the extension that DB-18 now locks in: workflow control-flow shape is promoted from "something the lens reconstructs from DAG shape at walk time" (a heuristic, which `feedback_lenses_not_passes` rejects) to a first-class substrate carrier `WorkflowEffect` that lowering produces and lenses read structurally. Shape (R2, post-ChatGPT-review and codex-review response):
+**Input structure (DB-18) — `WorkflowEffect` substrate carrier.** DB-18 lifts workflow control-flow shape from "something the lens reconstructs from DAG shape at walk time" (a heuristic that `feedback_lenses_not_passes` rejects) to a first-class substrate carrier. Shipped in PR #534 (eager-fox-851) as Rust mirrors in `src/v3/compiler/src/dag.rs`:
 
-```
-type WorkflowEffect
-  = LinearEffect { ops: List<OperationEffect> }          // empty = monoidal identity
-  | BranchEffect { arms: NonSingletonList<BranchArm> }
-  | LoopEffect { body: WorkflowEffect }
-  | ParallelEffect { branches: NonSingletonList<WorkflowEffect> }
+```rust
+pub enum WorkflowEffect {
+    Linear { ops: Vec<OperationEffect> },            // empty = monoidal identity
+    Branch { arms: NonSingletonList<BranchArm> },
+    Loop { body: Box<WorkflowEffect> },
+    Parallel { branches: NonSingletonList<Box<WorkflowEffect>> },
+}
 
-type BranchArm { condition: BoolPortRef; body: WorkflowEffect }
+pub struct BranchArm { condition: BranchPredicateRef, body: Box<WorkflowEffect> }
 
-// Track 9-style typed opaque handle — third primitive graduation
-// after ParamRef / TransformRef (DB-9 R2.1). Sole constructor
-// `bool_port_of(dag, port) -> BoolPortRef?` validates the port's
-// declared type is Bool; no unsafe escape hatch. Callers emit
-// Diagnostic::BranchConditionNotBool on None per C-8.
-type BoolPortRef                                           // opaque
+pub struct BranchPredicateRef { port: PortId }       // opaque; no public constructor
 ```
 
-Authority site: user-declared `data` declarations typed `WorkflowEffect` (one value per qualifying declaration; no sidecar table, no alternative hosting). Stage 2b is the initial consumer with **`LinearEffect`-only scope**: the lens matches on `LinearEffect` and delegates to `compose_effects(ops) -> CompositionVerdict` (post-PR #529; empty ops returns `IdempotentComposition` — the monoidal identity). The other three variants emit explicit fail-closed diagnostics (C-8) naming the downstream stage that will consume them — `BranchEffect` → Stage 2d branch-wise composition, `LoopEffect` → Stage 2d fixpoint / body convergence, `ParallelEffect` → Stage 2e parallelism-as-lens with commutativity witness. No silent skip; a `WorkflowEffect` the Stage 2b lens cannot verdict produces a `Diagnostic` explaining which variant, which downstream stage, and why. The `analyze_workflow` signature above becomes `fn analyze_workflow(d: Dag, workflow_decl: DeclarationId) -> WorkflowIdempotencyReport` (resolving the data-declaration's value to a `WorkflowEffect`); the NodeId-indexed form in the draft above is the pre-DB-18 sketch. `WorkflowEffect` and `CompositionVerdict` (post-PR #529) coexist on orthogonal axes — `WorkflowEffect` is the input-structure carrier, `CompositionVerdict` is the output-verdict carrier; no enclosing record pairs them (preserving the lesson PR #529 R3 locked).
+Authority site: `ValueNode.lane2_workflow: Option<Box<WorkflowEffect>>` on the computation-substrate Value node at the workflow root. Writes via `Dag::try_register_lane2_workflow_effect(root, workflow)`; reads via `Dag::lane2_workflow_effect_at(root)`. One workflow per root; no sidecar table; no parallel hosting. Stage 2b's analyzer (`src/v3/compiler/src/workflow_idempotency.rs::analyze_workflow(dag, root)`) walks the stored workflow and dispatches per variant: `LinearEffect` delegates to `compose_effects` and returns `WorkflowIdempotencyReport::Linear { verdict: CompositionVerdict }` (empty `ops` yields `IdempotentComposition` — the monoidal identity); the other three variants return `WorkflowIdempotencyReport::Unsupported { detail: IdempotencyUnsupportedDetail }` naming the downstream stage (`BranchEffect` / `LoopEffect` → Lane 2 Stage 2d; `ParallelEffect` → Lane 2 Stage 2e with commutativity witness). No silent skip; `IdempotencyUnsupportedDetail` carries the variant identity and its downstream consumer so the user (and CI) can distinguish "broken" from "out of scope."
 
-Design: [design-db18-workflow-effect-carrier.md](./design-db18-workflow-effect-carrier.md) — Part 1 R2 locks the 4-variant shape (with `LinearEffect.ops: List` allowing the monoidal identity), the typed `BoolPortRef` witness carrying the Q4 dissolution receipt, the authority-site decision (user-declared `data` typed `WorkflowEffect`), and the Q1–Q6 substrate-principle audit. **Part 2 gate cleared** by PR #529's merge (`8c7e7acdd`, 2026-04-18); Part 2 is structurally unblocked. Part 2 ships `type WorkflowEffect` + `type BranchArm` in `src/v3/std/effects.dag`, `type BoolPortRef` + `fn bool_port_of` in `src/v3/std/substrate.dag` (Track 9 graduation), the Rust mirrors in `src/v3/compiler/src/dag.rs`, the lens in `src/v3/lenses/idempotency.dag`, and reconciles `WorkflowIdempotencyReport` with `CompositionVerdict` (see DB-18 §Open questions).
+`BranchPredicateRef`'s sole constructor is `Dag::branch_arm_of(root, port, body) -> Option<BranchArm>`, which validates `port` resolves to `Bool` on the root's graph; `None` is the typed failure that callers must surface as a `Diagnostic`. `WorkflowEffect` and `CompositionVerdict` (PR #529) coexist on orthogonal axes — input structure vs output verdict; no enclosing record pairs them (preserving the PR #529 R3 lesson).
+
+Design: [design-db18-workflow-effect-carrier.md](./design-db18-workflow-effect-carrier.md) — locks the 4-variant shape, typed `BranchPredicateRef` witness, `ValueNode.lane2_workflow` authority site, and the Q1–Q6 substrate-principle audit. **Part 2 shipped in PR #534.** Part 3 follow-up (not yet shipped) covers (a) reflection of `ValueNode.lane2_workflow` into the `.dag` substrate surface so Lane 2 Stages 2d / 2e / 2f `.dag` lenses can read it, and (b) the data-declaration authoring surface `data my_flow: WorkflowEffect = ...` with lowering to `Dag::branch_arm_of` + `Dag::try_register_lane2_workflow_effect` and fail-closed `Diagnostic::BranchConditionNotBool` on non-Bool conditions.
 
 **Pre-start gate:** cleared. All Stage 2a follow-ups have landed — `DerivedOpEffect` collapsed into `OperationEffect` (PR #521); `EffectShape` partitioned into `IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)`; `BrokenBy`'s payload narrowed to `BreakingOperation { shape: BreakingShape }`; `ComposedEffect` removed. `compose_effects(effects: List<OperationEffect>) -> CompositionVerdict` is the algebra's output. Stage 2b consumes `CompositionVerdict` directly; callers pair it with their own input `List<OperationEffect>` for diagnostic rendering. The Stage 2b `WorkflowIdempotencyReport` shape above is one layer higher (a lens report with diagnostic), not a duplication of the algebra verdict — when Stage 2b implements it, the report must match on `CompositionVerdict` and project through `BrokenBy.first_breaker.shape: BreakingShape`. The `breaking_op: String?` field in the draft `WorkflowIdempotencyReport` shape above is a design placeholder from before the Stage 2a partition landed; Stage 2b's implementer should replace it with a structural carrier derived from `CompositionVerdict` rather than copy the flat shape. The implementer must not reintroduce a `ComposedEffect`-style record that pairs `CompositionVerdict` with a sibling list field, since that reintroduces the correlated-fields incoherence R3 just removed.
 

@@ -335,9 +335,17 @@ This is deliberate. PR #529 removed `ComposedEffect { operations, verdict }` bec
 
 ### What DB-18 DOES add (summary)
 
-- `type WorkflowEffect` (new coproduct) and `type BranchArm` (new record) in `src/v3/std/effects.dag`.
-- `type BranchPredicateRef` (new Track 9 typed opaque handle) with `fn Dag::branch_arm_of` and `fn port_of` in `src/v3/std/substrate.dag`. Third Track 9 primitive after `ParamRef` / `TransformRef`.
-- Authority-site convention: user-declared `data` typed `WorkflowEffect` is the host. No substrate-addition needed — the `data` declaration surface already exists.
+**Part 2 — shipped in PR #534 (eager-fox-851):**
+- Rust enum `WorkflowEffect` (four-variant coproduct) + struct `BranchArm` + struct `BranchPredicateRef` (private inner field) in `src/v3/compiler/src/dag.rs`.
+- Field `ValueNode.lane2_workflow: Option<Box<WorkflowEffect>>` — the authority site.
+- `Dag::branch_arm_of(root, port, body) -> Option<BranchArm>` — sole constructor; validates port is Bool-typed on the root's graph.
+- `Dag::try_register_lane2_workflow_effect` + `Dag::lane2_workflow_effect_at` — writer / reader accessors.
+- `workflow_idempotency::analyze_workflow` — analyzer: `LinearEffect` → `CompositionVerdict`; other variants → `WorkflowIdempotencyReport::Unsupported`.
+
+**Part 3 — follow-up (not shipped):**
+- Reflection of `ValueNode.lane2_workflow` into the `.dag` `substrate.dag` surface (unblocks Lane 2 Stages 2d / 2e / 2f as `.dag` consumers).
+- Data-declaration authoring surface: lowering a `data my_flow: WorkflowEffect = ...` literal into computation-substrate sub-DAGs that call `Dag::branch_arm_of` and `Dag::try_register_lane2_workflow_effect`.
+- Fail-closed `Diagnostic::BranchConditionNotBool` wired to the data-declaration lowering path with source-span precision.
 
 ---
 
