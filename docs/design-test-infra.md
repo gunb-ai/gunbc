@@ -116,10 +116,11 @@ type TestPredicate
     }
   | MockBackedInvariant {             // NEW — for Lane 2 Stage 2c
       subject: DeclarationRef
-      mock_transport: ResourceReference
       invariant: DeclarationRef
     }
 ```
+
+For mock-backed tests, declare mock `ResourceReference` targets only on `TestClaim.requires` (obligation authority) — not again inside `MockBackedInvariant`.
 
 `BehavioralObservation` encodes "the test runs the subject on a sample and compares to an independently-declared expected output." That's not rerunning a lens; it's running the subject and checking a separately-declared fact.
 
@@ -192,7 +193,7 @@ Questions **1–3** from R2 draft are **resolved** by the shipped `src/v3/std/ve
 
 2. **Per-claim vs per-predicate.** `requires` is **per `TestClaim`** (one list on the claim). Predicates that need runtime backing declare resources at the claim level; compile-time-only predicates (`PortHasState`, `CostBounded`, etc.) may use empty `requires` where applicable.
 
-3. **Tautology avoidance.** Enforced by **construction**: behavioral/mock variants (`BehavioralObservation`, `MockBackedInvariant`) point at `DeclarationRef` edges for subject / mock / invariant; there is no `TestPredicate` variant meaning “invoke lens L and compare.” Prose rule matches the expressible surface.
+3. **Tautology avoidance.** Enforced by **construction**: behavioral/mock variants (`BehavioralObservation`, `MockBackedInvariant`) point at `DeclarationRef` edges for subject / (for mocks: invariant, with mock carriers on `requires` only); there is no `TestPredicate` variant meaning “invoke lens L and compare.” Prose rule matches the expressible surface.
 
 4. **Lane 2 Stage 2c generation surface.** Still open for **implementation** — how each lens materializes into `TestPredicate` (generation rules). Out of scope for this design doc’s schema lock; tracked under Stage 2c / testgen.
 

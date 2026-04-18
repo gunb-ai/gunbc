@@ -136,11 +136,7 @@ fn bootstrap_loads_verification_authority_types() {
             ),
             (
                 String::from("MockBackedInvariant"),
-                vec![
-                    String::from("subject"),
-                    String::from("mock_transport"),
-                    String::from("invariant"),
-                ],
+                vec![String::from("subject"), String::from("invariant")],
             ),
         ]
     );

@@ -86,9 +86,11 @@ type TestPredicate
       input_sample: DeclarationRef
       expected_output: DeclarationRef
     }
+  // Mock transport is **not** duplicated here: declare it only on
+  // `TestClaim.requires` (obligation-walk authority). This variant only pairs
+  // subject + invariant declarations for the behavioral check.
   | MockBackedInvariant {
       subject: DeclarationRef
-      mock_transport: ResourceReference
       invariant: DeclarationRef
     }
 
