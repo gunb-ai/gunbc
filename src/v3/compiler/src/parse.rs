@@ -66,25 +66,18 @@ pub struct SurfaceModule {
 ///   with the discriminator in the Option.
 /// - **`FnExternalBody`** records `name + params + return_type +
 ///   body_span`. The parser does not distinguish **case 1** (std/ parse
-///   lag), **case 2a** (`pipeline.dag` per-stage host fns), **case 2b**
-///   (substrate accessors), or **case 2c** (`pipeline.dag`'s `compile`
-///   orchestrator) — all are "block body that is not a `SurfaceExpr`." All
-///   initially lower to `ArrowBody::Unparsed(body_span)`. At bootstrap,
-///   **per-stage pipeline fns** (`parse`, `lower`, …) are upgraded to
-///   `ExternalRealization` via `PipelineStageBinding` /
+///   lag), **case 2a** (`pipeline.dag` per-stage host fns), or **case 2c**
+///   (`pipeline.dag`'s `compile` orchestrator) — all are "block body that is
+///   not a `SurfaceExpr`." All initially lower to `ArrowBody::Unparsed(body_span)`.
+///   At bootstrap, **per-stage pipeline fns** (`parse`, `lower`, …) are upgraded
+///   to `ExternalRealization` via `PipelineStageBinding` /
 ///   `materialize_pipeline_realizations` (DB-16). **`compile` itself** has no
 ///   stage binding: it **stays** `Unparsed`, and
 ///   `pipeline_compile_order_stage_names` reads its **body span** as ordering
-///   authority.
-///   **Substrate accessors** (`src/v3/std/substrate.dag`, DB-14) still lower to
-///   `Unparsed` through bootstrap: multi-target `SubstrateAccessorBinding`
-///   records cannot collapse to a single realization id at `Dag::new()` (see
-///   `bootstrap.rs` comment on DB-14). That is an **interim authority split**
-///   against **`INVARIANTS.md` §E-9**, which requires externality on
-///   `Arrow.body` as `ExternalRealization(ref)` to a target-neutral marker —
-///   emitters must not treat "Unparsed = parse lag" for these callables. The
-///   signature flows forward; body spans are preserved for parse-lag growth,
-///   ordering facts, or host stubs.
+///   authority. DB-16 documents cases **1**, **2a**, and **2c** only; substrate
+///   accessor bootstrap alignment with **`INVARIANTS.md` §E-9** is **deferred**
+///   (see `src/v3/ROADMAP.md`). The signature flows forward; body spans are
+///   preserved for parse-lag growth, ordering facts, or host stubs.
 /// - **`Data`**, **`Module`**, **`Import`** replace the three former
 ///   parser-absorbed items. `Data` lowers to a declaration whose
 ///   connective is the resolved type; `Module` and `Import` lower
@@ -105,9 +98,7 @@ pub struct SurfaceModule {
 /// Verdict: terminal at M1(2.7) modulo the two M2 collapses noted
 /// above. `FnExternalBody` dissolution (DB-16): case 1 via parser growth;
 /// pipeline **case 2a** via bootstrap `ExternalRealization`; **`compile` (2c)**
-/// keeps `Unparsed` for ordering authority; accessors **case 2b** stay
-/// `Unparsed` at bootstrap only (DB-14 interim shape; E-9 calls for marker
-/// `ExternalRealization` — see variant docs).
+/// keeps `Unparsed` for ordering authority.
 #[derive(Debug, Clone)]
 pub enum SurfaceItem {
     Let {
@@ -143,22 +134,6 @@ pub enum SurfaceItem {
     /// `Unparsed` to `ExternalRealization`. Never becomes a user `.dag`
     /// body.
     ///
-    /// **Case 2b — DB-14 substrate accessors.** e.g. `substrate.dag` (`{ host port }`, …).
-    /// Lowers to `Unparsed`; bootstrap **does not** rewrite these Arrow bodies to
-    /// `ExternalRealization` (unlike 2a) because accessor → realization is
-    /// **per target language** and a single bootstrap-time id would mis-handle
-    /// multiple `SubstrateAccessorBinding` rows — see `bootstrap.rs` (DB-14 block).
-    /// Emitters recover the active realization via
-    /// `crate::emit_rust::build_substrate_accessor_index` (and analogous paths for
-    /// other emitters).
-    ///
-    /// **E-9 tension:** `INVARIANTS.md` §E-9 requires “externally realized” to mean
-    /// `ArrowBody::ExternalRealization(ref)` only (marker id), not `Unparsed` +
-    /// side tables. The current encoding is **interim debt** flagged in E-9’s
-    /// historical context; normative end state is marker-on-`Arrow.body` with
-    /// per-target resolution from spec — same meeting point as pipeline stages,
-    /// not a permanent second notion of “external” off the Arrow.
-    ///
     /// **Case 2c — `compile` orchestrator (`pipeline.dag`).** `fn compile(...) {
     /// ... }` lists stage names (`parse`, `lower`, …). No `PipelineStageBinding`
     /// targets `compile` itself — **`ArrowBody::Unparsed` persists** after
@@ -168,10 +143,9 @@ pub enum SurfaceItem {
     /// structured text, not std/ grammar debt.
     ///
     /// Downstream: per-stage pipeline fns via `PipelineStageBinding`; `compile`
-    /// span via `pipeline_authority`; accessors via DB-14 bindings at emission
-    /// (interim vs E-9). None of these implies case 1 — disambiguate by
-    /// declaration name + bootstrap / emitter role, not by "absence of binding"
-    /// alone.
+    /// span via `pipeline_authority`. Neither implies case 1 — disambiguate by
+    /// declaration name + bootstrap role for pipeline authority, not by
+    /// "absence of binding" alone.
     FnExternalBody {
         name: String,
         type_params: Vec<String>,

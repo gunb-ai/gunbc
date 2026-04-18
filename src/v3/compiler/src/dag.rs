@@ -562,36 +562,26 @@ pub struct TemplateArgument {
 ///
 ///   No dissolution trigger — terminal at the substrate level.
 ///
-/// - **`Unparsed`** — surface-grammar lag (**case 1**), **case 2b** DB-14
-///   substrate accessors (interim encoding; see **`INVARIANTS.md` §E-9**), and
-///   **case 2c** the `pipeline.dag` **`compile`** orchestrator (ordering
-///   authority). Used at M1(2.7) for block-bodied `fn foo(x) -> T { body }`
-///   declarations in std/ files where the body contains match/pipe/lambda/ etc.
-///   **`pipeline.dag` per-stage fns (case 2a)** parse as `FnExternalBody` →
-///   `Unparsed`, then bootstrap rewrites those Arrow bodies to
-///   `ExternalRealization` before inference — so `Unparsed` does not persist
-///   for those stages in a bootstrapped DAG. **`fn compile` (case 2c)** has no
-///   `PipelineStageBinding`: **`Unparsed` persists**;
-///   `pipeline_compile_order_stage_names` reads its **body span** as pipeline
-///   ordering authority. **Substrate accessors (2b)** also keep `Unparsed`
-///   through bootstrap today: multi-target `SubstrateAccessorBinding` dispatch
-///   does not yet materialize E-9’s `ExternalRealization(marker)` on
-///   `Arrow.body`, so **do not** read `Unparsed` here as “only parse lag” for
-///   those callables — emission pairs accessor id with a realization via the
-///   binding table (authority split; E-9 names the normative fix). The signature
-///   flows forward through the declaration table so callers can type-check
-///   against it; the body source span is preserved so M2+ parser extensions can
-///   reach in for case 1, or so pipeline authority can parse ordering for
-///   `compile`.
+/// - **`Unparsed`** — surface-grammar lag (**case 1**) and **case 2c** the
+///   `pipeline.dag` **`compile`** orchestrator (ordering authority). Used at
+///   M1(2.7) for block-bodied `fn foo(x) -> T { body }` declarations in std/
+///   files where the body contains match/pipe/lambda/ etc. **`pipeline.dag`
+///   per-stage fns (case 2a)** parse as `FnExternalBody` → `Unparsed`, then
+///   bootstrap rewrites those Arrow bodies to `ExternalRealization` before
+///   inference — so `Unparsed` does not persist for those stages in a
+///   bootstrapped DAG. **`fn compile` (case 2c)** has no `PipelineStageBinding`:
+///   **`Unparsed` persists**; `pipeline_compile_order_stage_names` reads its
+///   **body span** as pipeline ordering authority. The signature flows forward
+///   through the declaration table so callers can type-check against it; the
+///   body source span is preserved so M2+ parser extensions can reach in for
+///   case 1, or so pipeline authority can parse ordering for `compile`.
 ///   **User-range boundary:** `reject_user_unparsed_scaffolds` in
 ///   `src/v3/compiler/src/lower.rs` fails-closed any user-range
 ///   declaration carrying this variant (R14 + M1(2.8) Scaffold
 ///   Boundaries invariant). Bootstrap-range declarations stay
 ///   tolerated. Dissolution trigger for case-1 `Unparsed`: the M2
-///   surface-grammar extension. Case 2b’s dissolution is an **E-9-shaped**
-///   bootstrap/emission rewrite to `ExternalRealization(accessor_marker)`, not
-///   M2 parse growth. When every std/ block body becomes parseable, case-1
-///   `Unparsed` is removed via a reverse substrate-extension PR.
+///   surface-grammar extension. When every std/ block body becomes parseable,
+///   case-1 `Unparsed` is removed via a reverse substrate-extension PR.
 ///
 /// Verdict: terminal form is 3 variants (`UserDefined`,
 /// `ExternalRealization`, `NoBody`). The 5-variant shape is a

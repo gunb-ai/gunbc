@@ -199,13 +199,6 @@ pub(crate) fn bootstrap(dag: &mut Dag) {
 // id, and dispatches to the target-matching realization's carrier
 // template. See `emit_rust::RealizationIndexes::substrate_accessors`.
 //
-// **E-9 note (`INVARIANTS.md` §E-9):** the normative substrate contract is that
-// externality lives on `Arrow.body` as `ExternalRealization(ref)` to a
-// target-neutral marker, not split across `Unparsed` + binding rows. This block
-// documents the **interim** multi-target bootstrap constraint; a follow-up
-// should land the marker-based `ExternalRealization` path without reviving
-// side-channel “externality.”
-//
 // This diverges from `materialize_pipeline_realizations` (above), which
 // DOES upgrade Arrow bodies — pipeline stages are target-invariant
 // (same runtime for every target), so "one realization per stage" is

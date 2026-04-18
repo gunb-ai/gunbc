@@ -44,13 +44,7 @@ At parse time, indistinguishable from case 1: block body that isn't a `SurfaceEx
 
 **Dissolution trigger: NEVER via parser growth.** `{ host parse }` is not an unparseable `.dag` expression waiting for M2+ parser grammar. It's a host-runtime bridge; there is no `.dag` body to produce. If the parser grew to parse `host <symbol>` as regular syntax, these fns would still need the `ExternalRealization` bootstrap rewrite — the parser extension just changes the intermediate shape, not the dissolution story.
 
-### Case 2b: DB-14 substrate accessors (E-9 tension, interim encoding)
-
-Substrate accessors (`port`, `node`, `resolve_producer`, …) also parse as `FnExternalBody` → `ArrowBody::Unparsed`. **Bootstrap does not** rewrite them to `ExternalRealization` (unlike case 2a): the accessor → realization map is **per target language**, and pinning one realization id at `Dag::new()` would mis-handle multiple `SubstrateAccessorBinding` rows — see `bootstrap.rs` (DB-14 comment block).
-
-**This is not the same “steady state” as pipeline 2a.** **`INVARIANTS.md` §E-9** requires that an externally realized callable encode that fact **only** as `ArrowBody::ExternalRealization(ref)` (to a target-neutral marker), with per-target specs hanging off that marker — no parallel “externality” channel off `Arrow.body`. The current DB-14 path **splits authority**: `Unparsed` on the Arrow plus `SubstrateAccessorBinding` + emitter indexes at emission. E-9’s historical context names that split as the problem DB-14 was meant to converge out of; DB-16 **documents** the tension so readers do not mistake the interim encoding for invariant-approved design.
-
-**Dissolution / fix (substrate work, out of scope here):** land E-9’s marker-based `ExternalRealization` materialization for accessors (bootstrap or first emission boundary) while preserving multi-target resolution — same structural story as `materialize_pipeline_realizations`, not more `Unparsed` semantics.
+Substrate accessor callables (DB-14) are **out of scope** for this design doc: do not document them here as a second “legitimate” meaning of `ArrowBody::Unparsed`. **`INVARIANTS.md` §E-9** still governs; the structural follow-up is tracked in **`src/v3/ROADMAP.md`** (deferral: E-9 substrate accessor bootstrap rewrite).
 
 ### Case 2c: `compile` orchestrator (ordering authority)
 
@@ -88,9 +82,9 @@ to something like:
 >
 > The parser does not distinguish these cases — all are 'block body that isn't a SurfaceExpr.' The disambiguator is **downstream role** (binding rewrite vs ordering authority vs parse lag), not "no binding ⇒ case 1."
 
-### 2. Update ROADMAP to note the split (parse lag vs bootstrap paths)
+### 2. Update ROADMAP
 
-The ROADMAP's FnExternalBody dissolution reference (if any) should distinguish parse lag from per-stage pipeline rewrites vs persisted `compile` / accessor bodies. Currently the DOWNSTREAM_REQUIREMENTS.md doc lists `FnExternalBody` scaffolds together; a separate PR pruning that file can categorize each entry.
+Note parse lag vs per-stage pipeline rewrites vs persisted `compile`. Track substrate accessor `Arrow.body` / E-9 alignment under an explicit **deferral** entry (not mixed into DB-16 narrative).
 
 ### 3. Add one invariant test
 
@@ -121,17 +115,17 @@ Considered: split `SurfaceItem::FnExternalBody` into two variants (`FnExternalBo
 
 **Rejected because:**
 - The parser cannot distinguish the two at parse time. `fn parse(...) { host parse }` and `fn classical_not(...) { match b { ... } }` are both "block body that isn't a `SurfaceExpr`." Any distinction the parser tried to make (e.g., "does the body contain the keyword `host`?") would be a string-level heuristic, not a structural fact.
-- The divergence genuinely happens downstream, at bootstrap. Splitting at parse time forces the parser to know about compiler-internal concepts (pipeline stages, substrate accessor realizations — see DB-14) that are properly below it.
+- The divergence genuinely happens downstream, at bootstrap. Splitting at parse time forces the parser to know about compiler-internal concepts (pipeline stages) that are properly below it.
 - One parse-time variant + two bootstrap paths (parser-growth rewrite of `Unparsed` vs `PipelineStageBinding`-style rewrite to `ExternalRealization`) is the right layering.
 
-The proper disambiguator is **downstream bootstrap / authority role**, not a single boolean: `PipelineStageBinding` for per-stage pipeline fns; `pipeline_compile_order_stage_names` + persisted `Unparsed` for `compile`; DB-14 **interim** emission path for substrate accessors (contrast with **E-9** target shape on `Arrow.body`); absence of those *and* no special pipeline role implies parse lag (case 1).
+The proper disambiguator is **downstream bootstrap / authority role**, not a single boolean: `PipelineStageBinding` for per-stage pipeline fns; `pipeline_compile_order_stage_names` + persisted `Unparsed` for `compile`; absence of those *and* no special pipeline role implies parse lag (case 1).
 
 ---
 
 ## Out of scope
 
 - Splitting `SurfaceItem::FnExternalBody` into per-case variants. Rejected above.
-- Changing `ArrowBody::Unparsed`'s documentation beyond DB-16 scope. Per-stage pipeline stages reach `ExternalRealization` before inference; **`compile` (case 2c) and substrate accessors (case 2b) keep `Unparsed` through bootstrap** — dag.rs must distinguish case 1 vs 2c vs **2b’s E-9 tension** (not “all non-pipeline Unparsed is parse lag”).
+- Changing `ArrowBody::Unparsed`'s documentation beyond DB-16 scope. Per-stage pipeline stages reach `ExternalRealization` before inference; **`compile` (case 2c) keeps `Unparsed`** for ordering authority — dag.rs must distinguish case 1 vs 2a outcome vs 2c (not “all `Unparsed` is parse lag”).
 - Dissolving case 1. That's a full M2 parser work item, not DB-16's scope.
 - Auditing DOWNSTREAM_REQUIREMENTS.md entries that reference FnExternalBody — deferred to the docs-pruning PR.
 
@@ -139,8 +133,8 @@ The proper disambiguator is **downstream bootstrap / authority role**, not a sin
 
 ## Acceptance
 
-- [ ] Doc comment on `SurfaceItem::FnExternalBody` in parse.rs updated per §1 above — distinguishes cases 1, 2a, 2b, 2c and names their dissolution / persistence story.
-- [ ] Doc comment on `ArrowBody::Unparsed` in dag.rs lists case 1, persisted 2b/2c, and per-stage 2a rewrite — not "case 1 only."
+- [ ] Doc comment on `SurfaceItem::FnExternalBody` in parse.rs updated per §1 above — distinguishes cases 1, 2a, 2c and names their dissolution / persistence story (no accessor “second meaning” narrative).
+- [ ] Doc comment on `ArrowBody::Unparsed` in dag.rs lists case 1, 2c, and per-stage 2a rewrite — not "case 1 only."
 - [ ] Invariant test `pipeline_stages_lower_to_external_realization_not_unparsed` added and green.
 - [ ] No substrate shape change committed.
 
@@ -148,8 +142,8 @@ The proper disambiguator is **downstream bootstrap / authority role**, not a sin
 
 ## Associations
 
-- **E-9** (`INVARIANTS.md` §E-9) — normative rule: externality on `Arrow.body` as `ExternalRealization` only. DB-14 accessors today violate that letter (interim `Unparsed` + `SubstrateAccessorBinding`); DB-16 text must not read as revoking E-9.
-- **DB-14** ([design-substrate-external-primitives.md](./design-substrate-external-primitives.md)) — substrate external primitives; accessor **callables** use per-target bindings at emission until an E-9-shaped marker rewrite lands. Pipeline stages use `PipelineStageBinding` + bootstrap materialization (aligned with E-9 for 2a).
+- **`src/v3/ROADMAP.md`** — deferral entry for E-9 substrate accessor bootstrap rewrite (accessor `Arrow.body` → `ExternalRealization(ref)`); substrate accessor semantics are **not** canonically documented in DB-16.
+- **Pipeline** — `PipelineStageBinding` + `materialize_pipeline_realizations` (case 2a, aligned with E-9).
 - **`src/v3/compiler/src/parse.rs:64-91`** — `SurfaceItem::FnExternalBody` doc comment to update
 - **`src/v3/compiler/src/dag.rs:492-505`** — `ArrowBody::Unparsed` doc comment to review
 - **`src/v3/compiler/src/bootstrap.rs:238-252`** — the production case 2 bootstrap pass

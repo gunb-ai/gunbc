@@ -3733,10 +3733,6 @@ impl<'a> Ctx<'a> {
     /// time, against this emitter's `substrate_accessors` index — which was
     /// built from `SubstrateAccessorBinding` records filtered by
     /// `language == rust_language`. See `build_substrate_accessor_index`.
-    ///
-    /// **E-9 (`INVARIANTS.md` §E-9):** this path is interim — normative externality
-    /// belongs on `Arrow.body` as `ExternalRealization(marker)`; the binding-table
-    /// split is documented debt, not a second blessed substrate law.
     fn render_substrate_accessor(
         &self,
         t: &TransformNode,
