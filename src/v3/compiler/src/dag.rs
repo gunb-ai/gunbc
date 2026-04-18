@@ -562,26 +562,40 @@ pub struct TemplateArgument {
 ///
 ///   No dissolution trigger — terminal at the substrate level.
 ///
-/// - **`Unparsed`** — surface-grammar lag. Used at M1(2.7) for
-///   block-bodied `fn foo(x) -> T { body }` declarations in std/
-///   files where the body contains match/pipe/lambda/etc. —
-///   syntactic forms the parser can't yet lower. The signature
-///   flows forward through the declaration table so callers can
-///   type-check against it; the body source span is preserved so
-///   M2+ parser extensions can reach in and complete the lowering.
+/// - **`Unparsed`** — surface-grammar lag (**case 1**) and **case 2c** the
+///   `pipeline.dag` **`compile`** orchestrator (ordering authority). Used at
+///   M1(2.7) for block-bodied `fn foo(x) -> T { body }` declarations in std/
+///   files where the body contains match/pipe/lambda/ etc. **`pipeline.dag`
+///   per-stage fns (case 2a)** parse as `FnExternalBody` → `Unparsed`, then
+///   bootstrap rewrites those Arrow bodies to `ExternalRealization` before
+///   inference — so `Unparsed` does not persist for those stages in a
+///   bootstrapped DAG. **`fn compile` (case 2c)** has no `PipelineStageBinding`:
+///   **`Unparsed` persists**; `pipeline_compile_order_stage_names` reads its
+///   **body span** as pipeline ordering authority — **terminal for bootstrap
+///   ordering**, not a host bridge (contrast 2a) and not parse-lag debt
+///   (contrast case 1). **Dissolution for 2c:** a future substrate change that
+///   records stage order structurally and supersedes span extraction (then this
+///   path retires). The signature flows forward through the declaration table
+///   so callers can type-check against it; the body source span is preserved so
+///   M2+ parser extensions can reach in for case 1, or so pipeline authority can
+///   parse ordering for `compile`.
 ///   **User-range boundary:** `reject_user_unparsed_scaffolds` in
 ///   `src/v3/compiler/src/lower.rs` fails-closed any user-range
 ///   declaration carrying this variant (R14 + M1(2.8) Scaffold
 ///   Boundaries invariant). Bootstrap-range declarations stay
-///   tolerated. Dissolution trigger: the M2 surface-grammar
-///   extension. When every std/ block body becomes parseable,
-///   `Unparsed` is removed via a reverse substrate-extension PR.
+///   tolerated. **Case 1** dissolution: M2 surface-grammar extension — when
+///   every relevant std/ block body becomes parseable, case-1 `Unparsed` is
+///   removed via a reverse substrate-extension PR. **Case 2c** is not waiting on
+///   that grammar milestone.
 ///
 /// Verdict: terminal form is 3 variants (`UserDefined`,
 /// `ExternalRealization`, `NoBody`). The 5-variant shape is a
-/// transition state; both remaining scaffolds (`Pending`, `Unparsed`)
-/// have named triggers and (for `Unparsed`) an explicit user-range
-/// boundary gate.
+/// transition state: `Pending` and **case-1** `Unparsed` are scaffolds with
+/// named dissolution (M3 / M2 grammar). **`Unparsed` on `pipeline.dag`'s
+/// `compile` (DB-16 case 2c)** is different — **persistent bootstrap-range
+/// ordering authority** until structural pipeline order supersedes span
+/// extraction; it does **not** share case 1’s “wait for M2 parser” story. User-range
+/// `Unparsed` stays gated (R14).
 #[derive(Debug, Clone)]
 pub enum ArrowBody {
     /// User-defined function. NodeId is the root of a sub-DAG of L1 behavior

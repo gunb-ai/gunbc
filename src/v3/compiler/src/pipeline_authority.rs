@@ -222,7 +222,7 @@ fn require_snapshot_kind(
     }
 }
 
-fn pipeline_compile_order_names() -> Result<Vec<String>, String> {
+pub(crate) fn pipeline_compile_order_names() -> Result<Vec<String>, String> {
     let source = include_str!("../pipeline.dag");
     let tokens = tokenize::tokenize(source, PIPELINE_AUTHORITY_FILE)
         .map_err(|diag| format!("failed to tokenize pipeline authority: {diag:?}"))?;

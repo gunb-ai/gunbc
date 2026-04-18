@@ -3727,14 +3727,12 @@ impl<'a> Ctx<'a> {
     /// let `render_callable_transform` fall through to the standard
     /// dispatch.
     ///
-    /// Design: the accessor's Arrow body is intentionally left as
-    /// `Unparsed` at bootstrap (the `{ host <name> }` stub) because
-    /// the accessor → realization mapping is TARGET-specific. The
-    /// per-target resolution happens here, at emission time,
-    /// against this emitter's `substrate_accessors` index — which
-    /// was built from `SubstrateAccessorBinding` records filtered
-    /// by `language == rust_language`. See
-    /// `build_substrate_accessor_index`.
+    /// Design: the accessor's Arrow body stays `Unparsed` at bootstrap (the
+    /// `{ host <name> }` stub) because the accessor → realization mapping is
+    /// TARGET-specific. The per-target resolution happens here, at emission
+    /// time, against this emitter's `substrate_accessors` index — which was
+    /// built from `SubstrateAccessorBinding` records filtered by
+    /// `language == rust_language`. See `build_substrate_accessor_index`.
     fn render_substrate_accessor(
         &self,
         t: &TransformNode,

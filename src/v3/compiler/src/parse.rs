@@ -65,9 +65,19 @@ pub struct SurfaceModule {
 ///   structurally separate variants, not an `Option<SurfaceExpr>`
 ///   with the discriminator in the Option.
 /// - **`FnExternalBody`** records `name + params + return_type +
-///   body_span`. Lowers to a declaration whose connective is an
-///   `Arrow` with `ArrowBody::Unparsed(body_span)`. The signature
-///   flows forward; the body is preserved by span.
+///   body_span`. The parser does not distinguish **case 1** (std/ parse
+///   lag), **case 2a** (`pipeline.dag` per-stage host fns), or **case 2c**
+///   (`pipeline.dag`'s `compile` orchestrator) — all are "block body that is
+///   not a `SurfaceExpr`." All initially lower to `ArrowBody::Unparsed(body_span)`.
+///   At bootstrap, **per-stage pipeline fns** (`parse`, `lower`, …) are upgraded
+///   to `ExternalRealization` via `PipelineStageBinding` /
+///   `materialize_pipeline_realizations` (DB-16). **`compile` itself** has no
+///   stage binding: it **stays** `Unparsed`, and
+///   `pipeline_compile_order_stage_names` reads its **body span** as ordering
+///   authority. DB-16 documents cases **1**, **2a**, and **2c** only; substrate
+///   accessor bootstrap alignment with **`INVARIANTS.md` §E-9** is **deferred**
+///   (see `src/v3/ROADMAP.md`). The signature flows forward; body spans are
+///   preserved for parse-lag growth, ordering facts, or host stubs.
 /// - **`Data`**, **`Module`**, **`Import`** replace the three former
 ///   parser-absorbed items. `Data` lowers to a declaration whose
 ///   connective is the resolved type; `Module` and `Import` lower
@@ -86,9 +96,11 @@ pub struct SurfaceModule {
 /// - Pattern 4 (dimensional): fails.
 ///
 /// Verdict: terminal at M1(2.7) modulo the two M2 collapses noted
-/// above. `FnExternalBody` has its own dissolution trigger (when
-/// match/lambda and block-body parsing land in the parser, block bodies become real
-/// `Fn` items with full `SurfaceExpr` bodies).
+/// above. `FnExternalBody` dissolution (DB-16): case 1 via parser growth;
+/// pipeline **case 2a** via bootstrap `ExternalRealization`; **`compile` (2c)**
+/// keeps `Unparsed` as the **terminal** ordering-authority encoding until a
+/// structural pipeline-order carrier supersedes span extraction (see variant
+/// docs).
 #[derive(Debug, Clone)]
 pub enum SurfaceItem {
     Let {
@@ -110,12 +122,47 @@ pub enum SurfaceItem {
         span: SourceSpan,
     },
     /// Block-body scaffold: `fn f(x) -> T { body }` where the body is
-    /// not expressible in the M1(2.7) surface grammar. The parser
-    /// brace-skipped the body range and records its span. Lowers to
-    /// a declaration whose connective is an `Arrow` with
-    /// `ArrowBody::Unparsed(body_span)`. The signature flows forward
-    /// so callers can type-check against it; the body stays
-    /// scaffolded until the parser adopts match/lambda and block-body parsing.
+    /// not expressible as a `SurfaceExpr` at this parser stage.
+    ///
+    /// **Case 1 — parse lag.** Bodies in std/ that use match/lambda/
+    /// pipe / etc. Dissolves when the grammar grows: re-parse yields a
+    /// regular [`SurfaceItem::Fn`] with a full `SurfaceExpr` body, and
+    /// `ArrowBody::Unparsed` retires with this case.
+    ///
+    /// **Case 2a — pipeline host stages.** `v3.compiler.pipeline` fns such
+    /// as `{ host parse }`. Indistinguishable from case 1 at parse time; at
+    /// bootstrap, `PipelineStageBinding` data drives
+    /// `materialize_pipeline_realizations`, rewriting the Arrow body from
+    /// `Unparsed` to `ExternalRealization`. Never becomes a user `.dag`
+    /// body.
+    ///
+    /// **Case 2c — `compile` orchestrator (`pipeline.dag`).** `fn compile(...) {
+    /// ... }` lists stage names (`parse`, `lower`, …). No `PipelineStageBinding`
+    /// targets `compile` itself — **`ArrowBody::Unparsed` persists** after
+    /// bootstrap. `pipeline_compile_order_stage_names` consumes **`body_span`** as
+    /// the authority for which stages participate and in what order (facts
+    /// flow forward). Not parse lag (case 1): the body is intentional
+    /// structured text, not std/ grammar debt.
+    ///
+    /// **Receipt — terminal vs bridge:** Case 2c is **not** a bridge to
+    /// `ExternalRealization` (there is no host stage body to realize). For the
+    /// current substrate, the span is the **deliberate terminal encoding** of
+    /// pipeline order in bootstrap-range — same thesis meeting point (`Arrow →
+    /// body`), with the “implementation kind” being *ordering text* read by
+    /// `pipeline_authority`, not user DAG execution. **Dissolution trigger
+    /// (future substrate):** when pipeline stage order is represented by a
+    /// first-class structural fact (e.g. ordered declarations or a dedicated
+    /// carrier) that supersedes parsing `compile`'s brace body, migrate
+    /// `pipeline_compile_order_stage_names` to that source and retire this
+    /// span-backed path — **not** “M2 parses `compile` as `SurfaceExpr`.”
+    ///
+    /// Downstream: **case 1** only for std/ `FnExternalBody` parse lag. **2a**
+    /// per-stage fns via `PipelineStageBinding` → `ExternalRealization`. **2c**
+    /// `compile`: `pipeline_compile_order_names` / `pipeline_compile_order_stage_names`
+    /// always consume **`compile`'s `body_span`** for stage ordering — a live
+    /// authority path independent of “has `PipelineStageBinding` or not.” Do
+    /// not infer case 1 from absence of bindings: if the decl is `compile` in
+    /// `pipeline.dag`, treat as **2c** (ordering text), not parse lag.
     FnExternalBody {
         name: String,
         type_params: Vec<String>,
@@ -188,20 +235,10 @@ pub struct SurfaceParam {
     pub ty: SurfaceType,
     /// DB-11 (3a.3): optional `where <expr>` refinement predicate on
     /// the parameter. `None` for bare `x: Int`; `Some(expr)` for
-    /// `x: Int where x > 0`.
-    ///
-    /// **Current behavior (PR #496 foundation-only scope):**
-    /// lowering does NOT propagate this into
-    /// `Declaration.refinement`. Instead,
-    /// `report_unsupported_parameter_refinements` (in `lower.rs`)
-    /// emits an explicit "refinement not yet enforced"
-    /// `ResolveError` pointing at the predicate span, so the parsed
-    /// fact flows forward as a compile error rather than being
-    /// silently dropped. Fail-closed per C-8.
-    ///
-    /// Predicate lowering + call-site structural-DAG check +
-    /// Branch-arm narrowing are tracked in issue #498 as a
-    /// size-overrun follow-up to 3a.3.
+    /// `x: Int where x > 0`. Lowered into `Declaration.refinement` via
+    /// `lower_parameter_refinements_phase` except where fail-closed:
+    /// out-of-fragment predicate shapes (see `lower.rs`). Generic refined
+    /// carriers are materialized at inference via substitution (PR #522).
     pub refinement: Option<SurfaceExpr>,
 }
 
