@@ -133,3 +133,91 @@ let result: Int = if double(20) == 40 then 7 else 9
     };
     assert_eq!(rust, go, "Rust and Go outputs diverged");
 }
+
+/// E-5 / Lane 1 Stage 1c PR 2 pilot — unused match-arm payload
+/// bindings are elided under `go_clean_emission.pattern_bindings =
+/// EmitUnderscoreWhenUnused`. Before the pilot the Go emitter
+/// rendered `case Boxed: value := v._0; return 0`, which Go rejects
+/// with `value declared but not used`. After the pilot the arm
+/// renders `case Boxed: return 0`, and because no arm binds through
+/// `v` anymore the switch header drops `v :=` to keep `v` from
+/// becoming the new unused local.
+#[test]
+fn emit_go_unused_payload_binding_is_elided() {
+    let source = "\
+type BoxedInt = Boxed(Int) | Empty
+fn ignore_payload(b: BoxedInt) -> Int = match b { Boxed(value) => 0, Empty => 1 }
+let zero: Int = 0
+";
+    let dag = compile_to_dag(source, "clean_emission.v3").expect("compiles");
+    let rendered = emit_go(&dag).expect("emits go");
+    assert!(
+        !rendered.contains("value := v._0"),
+        "expected unused payload binding to be elided, got: {rendered}"
+    );
+    assert!(
+        !rendered.contains("value := v"),
+        "expected unused payload binding to be elided, got: {rendered}"
+    );
+    assert!(
+        rendered.contains("case Boxed:"),
+        "expected the Boxed arm to still be present, got: {rendered}"
+    );
+    assert!(
+        rendered.contains("case Empty:"),
+        "expected the Empty arm to still be present, got: {rendered}"
+    );
+    assert!(
+        rendered.contains("switch any(") && !rendered.contains("switch v := any("),
+        "expected the type-switch header to drop `v :=` when no arm binds, got: {rendered}"
+    );
+}
+
+/// E-5 / Lane 1 Stage 1c PR 2 — when at least one arm consumes its
+/// payload, the emitter must keep emitting `v :=` and the consuming
+/// arm's `name := v.field;` prefix. Companion regression test to
+/// `emit_go_unused_payload_binding_is_elided`; proves elision is
+/// keyed on port liveness per arm, not blanket suppression.
+#[test]
+fn emit_go_used_payload_binding_is_preserved() {
+    let source = "\
+type BoxedInt = Boxed(Int) | Empty
+fn unwrap_or_zero(b: BoxedInt) -> Int = match b { Boxed(value) => value, Empty => 0 }
+let zero: Int = 0
+";
+    let dag = compile_to_dag(source, "clean_emission.v3").expect("compiles");
+    let rendered = emit_go(&dag).expect("emits go");
+    assert!(
+        rendered.contains("value := v._0"),
+        "used binding must still be declared, got: {rendered}"
+    );
+    assert!(
+        rendered.contains("switch v := any("),
+        "expected `v :=` to remain when any arm binds, got: {rendered}"
+    );
+}
+
+/// E-5 / Lane 1 Stage 1c PR 2 roundtrip — emitted Go with an unused
+/// payload binding compiles and runs under `go run`. Proves the
+/// pilot fires end-to-end against Go's unused-local compile error,
+/// not just that the emission string looks right.
+///
+/// Gated behind `#[ignore]` like the other `go_*` roundtrips — CI
+/// sandboxes don't always carry a Go toolchain. Run locally:
+///
+///     cargo test -p v3-compiler --test m1_3_emit_go_test \
+///         emit_go_unused_payload_binding_compiles \
+///         -- --ignored --nocapture
+#[test]
+#[ignore]
+fn emit_go_unused_payload_binding_compiles() {
+    let source = "\
+type BoxedInt = Boxed(Int) | Empty
+fn ignore_payload(b: BoxedInt) -> Int = match b { Boxed(value) => 0, Empty => 1 }
+let result: Int = ignore_payload(Empty)
+";
+    let Some(stdout) = go_stdout(source) else {
+        return;
+    };
+    assert_eq!(stdout, "1");
+}

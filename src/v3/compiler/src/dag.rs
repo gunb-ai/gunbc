@@ -1145,6 +1145,12 @@ pub(crate) struct TargetSyntaxCache {
     /// `go_execution_model` declaration loaded from
     /// `src/v3/spec/go.dag`.
     pub go_execution_model: Option<DeclarationId>,
+    /// `go_clean_emission` CleanEmissionContract declaration loaded
+    /// from `src/v3/spec/go.dag`. Lane 1 Stage 1c PR 2 / E-5: the
+    /// Go emitter dispatches on this contract's rule fields so
+    /// emitted Go compiles under `gofmt -l` + the Go compiler's
+    /// own unused-local check by construction.
+    pub go_clean_emission: Option<DeclarationId>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -1406,6 +1412,15 @@ impl Dag {
     /// declaration loaded from `src/v3/spec/go.dag`.
     pub fn go_execution_model_spec(&self) -> Option<DeclarationId> {
         self.target_syntax.go_execution_model
+    }
+
+    /// Typed accessor for the Go `CleanEmissionContract`
+    /// declaration loaded from `src/v3/spec/go.dag` (E-5 / Lane 1
+    /// Stage 1c PR 2). Mirrors `rust_clean_emission_spec`; emitter
+    /// parses the structural fields and dispatches on the rule
+    /// variants.
+    pub fn go_clean_emission_spec(&self) -> Option<DeclarationId> {
+        self.target_syntax.go_clean_emission
     }
 
     /// Typed accessor for the cached `std.list.List` template.
@@ -1748,6 +1763,8 @@ impl Dag {
         self.target_syntax.go_language = self.declaration_by_name("go_language").map(|d| d.id);
         self.target_syntax.go_execution_model =
             self.declaration_by_name("go_execution_model").map(|d| d.id);
+        self.target_syntax.go_clean_emission =
+            self.declaration_by_name("go_clean_emission").map(|d| d.id);
         self.stdlib_types.list = self.declaration_by_name("List").map(|d| d.id);
     }
 }

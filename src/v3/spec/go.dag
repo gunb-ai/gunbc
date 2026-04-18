@@ -15,6 +15,17 @@ import v3.std.emit_model {
 import v3.std.computation_model {
   TargetExecutionModel, GarbageCollected, LexicalScoping
 }
+import v3.std.clean_emission {
+  CleanEmissionContract,
+  ExpressionWrappingRule, NoWrapping,
+  PatternBindingRule, EmitUnderscoreWhenUnused,
+  ImportRule, IncludeOnlyReferenced,
+  BlockReturnRule, ExplicitReturnKeyword,
+  VariableBindingRule, EmitLetBindingAlways,
+  MatchArmBodyRule, NotApplicableMatchArmBody,
+  CorrectionStyle, PostEmitVerifier,
+  VerifierOutputPolicy, RequireEmptyStdout
+}
 import std.list { List }
 
 data go_execution_model: TargetExecutionModel = {
@@ -800,4 +811,48 @@ data go_language: LanguageSpec = {
   patterns: go_patterns
   collection_ops: go_collection_ops
   values: go_value_construction
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Clean-emission contract (E-5 / Lane 1 Stage 1c PR 2).
+// ─────────────────────────────────────────────────────────────────
+//
+// Per-target rule choices for the E-5 invariant. Emitters read this
+// contract to shape emitted code so it passes Go's declared
+// verifier (`gofmt -l`; empty stdout ⇒ clean) by construction.
+//
+// **Dispatch state at this PR (Lane 1 Stage 1c PR 2):**
+// - `pattern_bindings` is LIVE — `emit_go::render_sum_branch`
+//   dispatches on it for the unused-payload-binding pilot. Go's
+//   realization of `EmitUnderscoreWhenUnused` is to elide the
+//   per-arm `{name} := {expr};` prefix entirely when the body does
+//   not consume the binding (and drop the type-switch `v :=`
+//   header when no arm binds). Go's compiler treats unused locals
+//   as errors, so elision is required for correctness — not
+//   merely a warnings-posture choice.
+// - Every other field is authored-but-unread. Each field has a
+//   named rollout: the emitter change that consumes it removes
+//   the corresponding lint from the test-wrapper allow list in
+//   the same PR (Lane 1d/1e consolidation).
+
+data go_clean_emission: CleanEmissionContract = {
+  expression_wrapping: NoWrapping
+  pattern_bindings: EmitUnderscoreWhenUnused
+  imports: IncludeOnlyReferenced
+  block_return: ExplicitReturnKeyword
+  variable_bindings: EmitLetBindingAlways
+  match_arm_body: NotApplicableMatchArmBody
+  correction_style: {
+    indent_unit: "\t"
+    line_ending: "\n"
+    string_quote: "%Q"
+    trailing_semicolon: false
+  }
+  post_emit_verifier: {
+    command: "gofmt"
+    args: ["-l"]
+    syntax_only: true
+    expected_exit_code: 0
+    output_policy: RequireEmptyStdout
+  }
 }
