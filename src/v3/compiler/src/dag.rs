@@ -571,8 +571,9 @@ pub struct TemplateArgument {
 ///   `Unparsed`, then bootstrap rewrites those Arrow bodies to
 ///   `ExternalRealization` before inference — so `Unparsed` does not persist
 ///   for those stages in a bootstrapped DAG. **`fn compile` (case 2c)** has no
-///   `PipelineStageBinding`: **`Unparsed` persists**; `pipeline_compile_order_names`
-///   reads its **body span** as pipeline ordering authority. **Substrate
+///   `PipelineStageBinding`: **`Unparsed` persists**;
+///   `pipeline_compile_order_stage_names` reads its **body span** as pipeline
+///   ordering authority. **Substrate
 ///   accessors** keep `Unparsed` through bootstrap by design (target-specific
 ///   realization dispatch). The signature flows forward through the declaration
 ///   table so callers can type-check against it; the body source span is

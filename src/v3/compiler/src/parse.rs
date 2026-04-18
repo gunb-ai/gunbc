@@ -73,8 +73,9 @@ pub struct SurfaceModule {
 ///   **per-stage pipeline fns** (`parse`, `lower`, …) are upgraded to
 ///   `ExternalRealization` via `PipelineStageBinding` /
 ///   `materialize_pipeline_realizations` (DB-16). **`compile` itself** has no
-///   stage binding: it **stays** `Unparsed`, and `pipeline_compile_order_names`
-///   reads its **body span** as ordering authority (`pipeline_authority.rs`).
+///   stage binding: it **stays** `Unparsed`, and
+///   `pipeline_compile_order_stage_names` reads its **body span** as ordering
+///   authority.
 ///   **Substrate accessors** (`src/v3/std/substrate.dag`, DB-14) **stay**
 ///   `Unparsed` for per-target emission. The signature flows forward; body
 ///   spans are preserved for parse-lag growth, ordering facts, or host stubs.
@@ -144,7 +145,7 @@ pub enum SurfaceItem {
     /// **Case 2c — `compile` orchestrator (`pipeline.dag`).** `fn compile(...) {
     /// ... }` lists stage names (`parse`, `lower`, …). No `PipelineStageBinding`
     /// targets `compile` itself — **`ArrowBody::Unparsed` persists** after
-    /// bootstrap. `pipeline_compile_order_names` consumes **`body_span`** as
+    /// bootstrap. `pipeline_compile_order_stage_names` consumes **`body_span`** as
     /// the authority for which stages participate and in what order (facts
     /// flow forward). Not parse lag (case 1): the body is intentional
     /// structured text, not std/ grammar debt.
