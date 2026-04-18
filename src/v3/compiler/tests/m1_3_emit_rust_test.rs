@@ -352,6 +352,24 @@ let zero: Int = 0",
     assert!(out.contains("BoxedInt::Empty => 0,"), "got: {out}");
 }
 
+#[test]
+fn emit_rust_named_single_field_payload_routes_field_access_through_binding() {
+    let out = emit(
+        "type Point { x: Int y: Int }
+type Wrapped = Wrap { inner: Point } | Empty
+fn unwrap_or_zero(w: Wrapped) -> Int = match w { Wrap(payload) => payload.inner.x, Empty => 0 }
+let zero: Int = 0",
+    );
+    assert!(
+        out.contains("Wrapped::Wrap { inner: payload } => (payload).x,"),
+        "expected named single-field payload access to route through the bound field, got: {out}"
+    );
+    assert!(
+        !out.contains("(payload).inner"),
+        "named single-field payload access must not project through a synthetic whole-payload binding, got: {out}"
+    );
+}
+
 /// E-5 / Lane 1 Stage 1c pilot — unused match-arm payload bindings
 /// render as `_` under `rust_clean_emission.pattern_bindings =
 /// EmitUnderscoreWhenUnused`. Before the pilot the emitter rendered

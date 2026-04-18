@@ -588,6 +588,43 @@ fn use_payload(b: BoxedInt) -> Int = match b { Boxed(unique_value) => unique_val
     run_python_module(&module);
 }
 
+#[test]
+fn emit_python_named_single_field_payload_projects_from_match_value() {
+    let module = emit_python_module_from_source(
+        "type Point { x: Int y: Int }
+type Wrapped = Wrap { inner: Point } | Empty
+fn unwrap_or_zero(w: Wrapped) -> Int = match w { Wrap(payload) => payload.inner.x, Empty => 0 }",
+        "python_variant_payload_named_single.v3",
+    );
+    assert!(
+        module.contains("__match.inner.x"),
+        "expected named single-field payload access to project from __match, got:\n{module}"
+    );
+    assert!(
+        !module.contains("__match.inner.inner"),
+        "named single-field payload access must not double-project through the inner field, got:\n{module}"
+    );
+    run_python_module(&module);
+}
+
+#[test]
+fn emit_python_named_multi_field_payload_projects_from_match_value() {
+    let module = emit_python_module_from_source(
+        "type Pair = Both { left: Int right: Int } | Empty
+fn right_or_zero(p: Pair) -> Int = match p { Both(payload) => payload.right, Empty => 0 }",
+        "python_variant_payload_named_multi.v3",
+    );
+    assert!(
+        module.contains("__match.right"),
+        "expected named multi-field payload access to project from __match, got:\n{module}"
+    );
+    assert!(
+        !module.contains("payload.right"),
+        "named multi-field payload access must not leak the source binding name, got:\n{module}"
+    );
+    run_python_module(&module);
+}
+
 /// E-5 / Lane 1 Stage 1c PR 4 — emitted Python passes
 /// `python_clean_emission.post_emit_verifier` as invoked through
 /// the shared harness (`python3 -m py_compile` +
