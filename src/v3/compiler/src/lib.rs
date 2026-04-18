@@ -124,12 +124,12 @@ pub mod lens_structural_resolution {
 
 mod bootstrap;
 mod infer;
+pub mod lens_idempotency;
 mod lower;
 mod parse;
 mod pipeline_authority;
 mod tokenize;
 pub(crate) mod workflow_idempotency;
-pub mod lens_idempotency;
 
 pub use dag::Dag;
 pub use diagnostics::{Diagnostic, SourceSpan};
