@@ -44,6 +44,14 @@ At parse time, indistinguishable from case 1: block body that isn't a `SurfaceEx
 
 **Dissolution trigger: NEVER via parser growth.** `{ host parse }` is not an unparseable `.dag` expression waiting for M2+ parser grammar. It's a host-runtime bridge; there is no `.dag` body to produce. If the parser grew to parse `host <symbol>` as regular syntax, these fns would still need the `ExternalRealization` bootstrap rewrite — the parser extension just changes the intermediate shape, not the dissolution story.
 
+### Case 2b: DB-14 substrate accessors (E-9 tension, interim encoding)
+
+Substrate accessors (`port`, `node`, `resolve_producer`, …) also parse as `FnExternalBody` → `ArrowBody::Unparsed`. **Bootstrap does not** rewrite them to `ExternalRealization` (unlike case 2a): the accessor → realization map is **per target language**, and pinning one realization id at `Dag::new()` would mis-handle multiple `SubstrateAccessorBinding` rows — see `bootstrap.rs` (DB-14 comment block).
+
+**This is not the same “steady state” as pipeline 2a.** **`INVARIANTS.md` §E-9** requires that an externally realized callable encode that fact **only** as `ArrowBody::ExternalRealization(ref)` (to a target-neutral marker), with per-target specs hanging off that marker — no parallel “externality” channel off `Arrow.body`. The current DB-14 path **splits authority**: `Unparsed` on the Arrow plus `SubstrateAccessorBinding` + emitter indexes at emission. E-9’s historical context names that split as the problem DB-14 was meant to converge out of; DB-16 **documents** the tension so readers do not mistake the interim encoding for invariant-approved design.
+
+**Dissolution / fix (substrate work, out of scope here):** land E-9’s marker-based `ExternalRealization` materialization for accessors (bootstrap or first emission boundary) while preserving multi-target resolution — same structural story as `materialize_pipeline_realizations`, not more `Unparsed` semantics.
+
 ### Case 2c: `compile` orchestrator (ordering authority)
 
 `pipeline.dag` also declares `fn compile(...) -> String { parse \n lower \n infer \n ... }`. Like other block-bodied compiler fns, it parses as `FnExternalBody` → `ArrowBody::Unparsed(body_span)`. There is **no** `PipelineStageBinding` for `compile` itself — only per-stage fns get that rewrite — so **`Unparsed` persists for `compile` after bootstrap.** Downstream, `pipeline_compile_order_stage_names` reads **`compile`'s body span** as the authoritative ordering surface for which stages exist and in what sequence. This is not case 1 parse lag: the body is intentional structured text consumed by the compiler, not std/ grammar debt waiting for M2.
@@ -116,14 +124,14 @@ Considered: split `SurfaceItem::FnExternalBody` into two variants (`FnExternalBo
 - The divergence genuinely happens downstream, at bootstrap. Splitting at parse time forces the parser to know about compiler-internal concepts (pipeline stages, substrate accessor realizations — see DB-14) that are properly below it.
 - One parse-time variant + two bootstrap paths (parser-growth rewrite of `Unparsed` vs `PipelineStageBinding`-style rewrite to `ExternalRealization`) is the right layering.
 
-The proper disambiguator is **downstream bootstrap / authority role**, not a single boolean: `PipelineStageBinding` for per-stage pipeline fns; `pipeline_compile_order_stage_names` + persisted `Unparsed` for `compile`; DB-14 markers for substrate accessors; absence of those *and* no special pipeline role implies parse lag (case 1).
+The proper disambiguator is **downstream bootstrap / authority role**, not a single boolean: `PipelineStageBinding` for per-stage pipeline fns; `pipeline_compile_order_stage_names` + persisted `Unparsed` for `compile`; DB-14 **interim** emission path for substrate accessors (contrast with **E-9** target shape on `Arrow.body`); absence of those *and* no special pipeline role implies parse lag (case 1).
 
 ---
 
 ## Out of scope
 
 - Splitting `SurfaceItem::FnExternalBody` into per-case variants. Rejected above.
-- Changing `ArrowBody::Unparsed`'s documentation beyond DB-16 scope. Per-stage pipeline stages reach `ExternalRealization` before inference; **`compile` (case 2c) and substrate accessors (case 2b) keep `Unparsed` by design** — the dag.rs ledger must say so explicitly.
+- Changing `ArrowBody::Unparsed`'s documentation beyond DB-16 scope. Per-stage pipeline stages reach `ExternalRealization` before inference; **`compile` (case 2c) and substrate accessors (case 2b) keep `Unparsed` through bootstrap** — dag.rs must distinguish case 1 vs 2c vs **2b’s E-9 tension** (not “all non-pipeline Unparsed is parse lag”).
 - Dissolving case 1. That's a full M2 parser work item, not DB-16's scope.
 - Auditing DOWNSTREAM_REQUIREMENTS.md entries that reference FnExternalBody — deferred to the docs-pruning PR.
 
@@ -140,7 +148,8 @@ The proper disambiguator is **downstream bootstrap / authority role**, not a sin
 
 ## Associations
 
-- **DB-14** ([design-substrate-external-primitives.md](./design-substrate-external-primitives.md)) — substrate accessors also use the case 2 pattern (trivial body + bootstrap rewrite). DB-14 uses `meta_tag` as the disambiguator; pipeline.dag uses `PipelineStageBinding`. Both are valid; the common thread is "downstream binding/marker determines the rewrite."
+- **E-9** (`INVARIANTS.md` §E-9) — normative rule: externality on `Arrow.body` as `ExternalRealization` only. DB-14 accessors today violate that letter (interim `Unparsed` + `SubstrateAccessorBinding`); DB-16 text must not read as revoking E-9.
+- **DB-14** ([design-substrate-external-primitives.md](./design-substrate-external-primitives.md)) — substrate external primitives; accessor **callables** use per-target bindings at emission until an E-9-shaped marker rewrite lands. Pipeline stages use `PipelineStageBinding` + bootstrap materialization (aligned with E-9 for 2a).
 - **`src/v3/compiler/src/parse.rs:64-91`** — `SurfaceItem::FnExternalBody` doc comment to update
 - **`src/v3/compiler/src/dag.rs:492-505`** — `ArrowBody::Unparsed` doc comment to review
 - **`src/v3/compiler/src/bootstrap.rs:238-252`** — the production case 2 bootstrap pass
