@@ -231,6 +231,52 @@ All six audit questions stamp cleanly. The full six-question audit is recorded i
 
 This section closes the R1 Open Question §5 (which read "Does the substrate need a `WorkflowDeclaration` record to host WorkflowEffect? ... Open for Part 2 design"). R2 answers: no new kind needed; `data` is the host; the answer is locked in Part 1, not deferred.
 
+### Source-to-handle contract — how a user-authored condition becomes a `BoolPortRef`
+
+The previous subsection locked *where* `WorkflowEffect` values live. This subsection locks *how* a user-authored `BranchArm.condition` reaches its `BoolPortRef` type. Without this rule, Part 2 could invent (a) name-keyed port recovery (violating `feedback_no_metadata_markers`), (b) a raw-id literal escape hatch (violating structural-opacity of substrate handles), or (c) lowering-time synthesis of a bool witness with no source anchor (violating `feedback_declare_facts_dont_derive`). R2.2 (this subsection, added in response to PR #531 ChatGPT review's second BLOCKING) locks the single legal path.
+
+**Contract (locked, Part 1):**
+
+1. **Surface form.** A `BranchArm.condition` is authored as an **ordinary Bool-typed expression** in the surface language — identical to the syntax the user writes for any Bool-typed value elsewhere. No DB-18-specific syntax. No port-lookup function. Example:
+
+   ```
+   data my_flow: WorkflowEffect = BranchEffect {
+     arms: [
+       BranchArm {
+         condition: auth_state == AuthOk          // Bool-typed expression
+         body: LinearEffect { ops: [Secret.get] }
+       }
+       BranchArm {
+         condition: retry_count < max_retries     // Bool-typed expression
+         body: LinearEffect { ops: [STS.exchange] }
+       }
+     ]
+   }
+   ```
+
+   The user writes the condition as an expression; lowering handles the handle-wrapping.
+
+2. **Lowering path (single authority).** When lowering encounters a `BranchArm.condition` surface-level expression:
+   1. Lower the expression into a computation sub-DAG via the standard value-expression → sub-DAG path (no DB-18-specific pipeline).
+   2. Take the sub-DAG's root output port.
+   3. Apply `bool_port_of(dag, port)`.
+   4. On `Some(bool_ref)`: construct `BranchArm { condition: bool_ref, body: <lowered body> }`.
+   5. On `None` (port's declared type is not Bool): emit `Diagnostic::BranchConditionNotBool { port, actual_type, span }` with the span pointing at the source expression (not the surrounding BranchArm or WorkflowEffect). Do NOT construct a `BranchArm` on the `None` path.
+
+   This path is the SOLE source → `BoolPortRef` recovery mechanism. No alternative.
+
+3. **Rejected alternative source forms:**
+   - **Named-port lookup** (e.g., `condition: port("my_branch_condition")`). Violates `feedback_no_metadata_markers` (string-keyed structural recovery).
+   - **Raw `NodeId` / `PortId` literal** (e.g., `condition: NodeId(42)`). Violates structural opacity of substrate handles; a `BoolPortRef` must come from `bool_port_of`, not from a user-authored integer.
+   - **Lowering-time synthesis without source anchor** (e.g., lowering fabricates a bool witness when the user didn't author one). Violates `feedback_declare_facts_dont_derive`.
+   - **Any path that produces a `BoolPortRef` without going through `bool_port_of`.** `BoolPortRef` has no unsafe constructor; this rejection is enforced by the Track 9 primitive's own shape.
+
+4. **Fail-closed span discipline.** The `Diagnostic::BranchConditionNotBool` span points at the source expression of the condition, not at the BranchArm or WorkflowEffect wrapper. User sees "this specific condition is not Bool-typed" with a pointer to the exact surface form that needs fixing. Part 2's Acceptance item 4 names this explicitly as a Part 2 review gate — a diagnostic pointing at the wrong span (or absent entirely) fails Part 2 review.
+
+**Why the expression-based form (and not a dedicated port-reference syntax).** Per `feedback_std_over_patterns` (the same rationale that chose `data` over `WorkflowDeclaration` for the host): reuse existing surface. The user already writes Bool-typed expressions for every other Bool-consuming slot (`if <expr> then ... else ...`, refinements `where <expr>`, modifier predicates). Adding a DB-18-specific syntax for branch conditions would enumerate a special case. The value-expression → sub-DAG → port → `bool_port_of` path is zero-new-syntax.
+
+**Why this belongs in Part 1 (not Part 2).** The reviewer's concern is explicit: Part 2 has "room to invent a second mechanism" if Part 1 doesn't lock it. Leaving this in Open Questions reopens the Q5 single-authority question at the source boundary, which is the concrete axis Q5 is supposed to close. R2.2 locks it in writing; Part 2's implementation is verified against this contract.
+
 ### Consumer contract — Stage 2b (LinearEffect-only scope)
 
 Stage 2b's `analyze_workflow` lens walks a `WorkflowEffect` value, dispatching per variant. Only `LinearEffect` yields a `CompositionVerdict`; the other three variants produce explicit diagnostics. Pseudocode shape (not the Part 2 implementation):
