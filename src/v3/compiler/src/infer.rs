@@ -25,10 +25,12 @@
 use std::collections::HashSet;
 
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, Dag, Declaration, DeclarationId, Field, LiteralBits, PortId,
-    PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective,
+    ArrowBody, AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, Field,
+    LiteralBits, PortId, PortState, TemplateArgument, TransformNode, TransformTarget,
+    TypeConnective,
 };
 use crate::diagnostics::{Diagnostic, SourceSpan};
+use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
 use crate::types::TypeShape;
 
@@ -1292,24 +1294,24 @@ enum CallableBindingResolution {
 /// `DeclarationId`. Pop on Instantiation exit keeps the stack balanced.
 /// See M1_DESIGN.md §4 Q4 / §5 for the walk semantics.
 #[derive(Clone)]
-struct SubstStack {
+pub(crate) struct SubstStack {
     frames: Vec<Vec<TemplateArgument>>,
 }
 
 impl SubstStack {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self { frames: Vec::new() }
     }
 
-    fn push(&mut self, args: Vec<TemplateArgument>) {
+    pub(crate) fn push(&mut self, args: Vec<TemplateArgument>) {
         self.frames.push(args);
     }
 
-    fn pop(&mut self) {
+    pub(crate) fn pop(&mut self) {
         self.frames.pop();
     }
 
-    fn lookup(&self, param_id: DeclarationId) -> Option<DeclarationId> {
+    pub(crate) fn lookup(&self, param_id: DeclarationId) -> Option<DeclarationId> {
         for frame in self.frames.iter().rev() {
             for arg in frame {
                 if arg.parameter == param_id {
@@ -2703,7 +2705,7 @@ fn materialize_specialized_payload_record(
     TypeShape::new(id)
 }
 
-fn concretize_decl_with_subst(
+pub(crate) fn concretize_decl_with_subst(
     dag: &mut Dag,
     current: DeclarationId,
     subst: &SubstStack,
@@ -2713,6 +2715,15 @@ fn concretize_decl_with_subst(
         return current;
     }
     let decl = dag.declaration(current).clone();
+    // DB-16 (3a.3 closure): refinement-bearing declarations whose base
+    // requires substitution materialize a fresh substituted-refined
+    // carrier — structurally identical to what `lower_parameter_refinement`
+    // would produce if the user had authored the refinement on the
+    // concrete type directly. Runs before the connective match so the
+    // refinement edge is preserved across the walk.
+    if decl.refinement.is_some() && refinement_base_requires_substitution(dag, current, subst) {
+        return materialize_substituted_refined_decl(dag, current, subst);
+    }
     match decl.connective {
         TypeConnective::Atom(AtomPayload::TypeParam(_)) => subst.lookup(current).unwrap_or(current),
         TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
@@ -2777,6 +2788,493 @@ fn concretize_decl_with_subst(
         }
         _ => current,
     }
+}
+
+/// DB-16 (3a.3 closure): gate used by both `concretize_decl_with_subst`
+/// (construction side) and `signature_type_shape` (consumer side) to
+/// decide whether a refinement-bearing declaration needs substitution
+/// before its refinement edge can be meaningfully consumed.
+///
+/// Returns `true` iff walking the refined carrier's base through
+/// `Atom(ResolvedIdentifier(_))` hops lands on either:
+/// - a `TypeParam` declaration whose id is bound in `subst`, or
+/// - an `Instantiation` whose arguments reference substitution-bound
+///   TypeParams (i.e., substitution would materially change the
+///   resolved base).
+///
+/// For concrete refined carriers (`Int where pred(x)`) the walk
+/// short-circuits to `false`; DB-11's identity-terminator fires
+/// unchanged. For refined TypeParams with no active binding (earlier
+/// iteration retry case) the walk also returns `false`.
+fn refinement_base_requires_substitution(
+    dag: &Dag,
+    current: DeclarationId,
+    subst: &SubstStack,
+) -> bool {
+    let decl = dag.declaration(current);
+    let TypeConnective::Atom(AtomPayload::ResolvedIdentifier(base)) = &decl.connective else {
+        return false;
+    };
+    refinement_base_walk(dag, *base, subst, 0)
+}
+
+fn refinement_base_walk(
+    dag: &Dag,
+    current: DeclarationId,
+    subst: &SubstStack,
+    depth: usize,
+) -> bool {
+    if depth >= WALK_DEPTH_LIMIT {
+        return false;
+    }
+    let decl = dag.declaration(current);
+    match &decl.connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => subst.lookup(current).is_some(),
+        TypeConnective::Atom(AtomPayload::ResolvedIdentifier(next)) => {
+            refinement_base_walk(dag, *next, subst, depth + 1)
+        }
+        TypeConnective::Instantiation { arguments, .. } => arguments
+            .iter()
+            .any(|arg| refinement_base_walk(dag, arg.value, subst, depth + 1)),
+        TypeConnective::Cardinality { element, .. } => {
+            refinement_base_walk(dag, *element, subst, depth + 1)
+        }
+        _ => false,
+    }
+}
+
+/// DB-16 (3a.3 closure): the sole construction site for substituted
+/// refined carriers. Called from `concretize_decl_with_subst`'s
+/// refinement branch during the `materialize_callable_signature_instantiations`
+/// phase. Produces a fresh anonymous `Declaration` structurally
+/// identical to what `lower_parameter_refinement` would produce if
+/// the user had authored the refinement on the concrete substituted
+/// base directly.
+///
+/// Dedups against existing substituted-refined carriers in the Dag
+/// before allocating — at fixpoint iteration N+1, if iteration N
+/// already produced a carrier for this (template, subst), the scan
+/// finds it and no new allocation happens.
+///
+/// Fail-closed per C-8: substrate-integrity violations register
+/// diagnostics rather than silently degrading to the template carrier.
+fn materialize_substituted_refined_decl(
+    dag: &mut Dag,
+    template_refined: DeclarationId,
+    subst: &SubstStack,
+) -> DeclarationId {
+    // Dedup: if a matching substituted-refined carrier already exists
+    // (e.g., from an earlier fixpoint iteration), reuse it.
+    if let Some(existing) = find_equivalent_substituted_refined_decl(dag, template_refined, subst) {
+        return existing;
+    }
+
+    let template_decl = dag.declaration(template_refined).clone();
+    let Some(template_pred_decl_id) = template_decl.refinement else {
+        // Caller (concretize_decl_with_subst's refinement branch) checks
+        // `decl.refinement.is_some()` before entering. Reaching this
+        // point means the caller contract was violated — surface that
+        // rather than masking it with a silent fallthrough.
+        unreachable!(
+            "materialize_substituted_refined_decl entered on declaration {:?} without refinement edge",
+            template_refined
+        );
+    };
+    let TypeConnective::Atom(AtomPayload::ResolvedIdentifier(template_base)) =
+        template_decl.connective
+    else {
+        // Caller also checks `refinement_base_requires_substitution`,
+        // whose first step returns false for any connective other than
+        // `Atom(ResolvedIdentifier(_))`. Reaching this point means the
+        // caller contract was violated.
+        unreachable!(
+            "materialize_substituted_refined_decl entered on declaration {:?} whose connective is not Atom(ResolvedIdentifier(_))",
+            template_refined
+        );
+    };
+    let template_span = template_decl.span.clone();
+
+    // Step 1: resolve the substituted base.
+    let Some(substituted_base) = resolve_decl_with_subst(dag, template_base, subst, 0) else {
+        dag.attach_diagnostic(Diagnostic::ResolveError {
+            name: "refined-generic substitution: substituted base did not resolve".to_string(),
+            span: template_span.clone(),
+        });
+        return template_refined;
+    };
+
+    // Step 2: extract original predicate slots.
+    let Some((original_param_port, original_body_port)) =
+        outer_predicate_slots(dag, template_pred_decl_id)
+    else {
+        let pred_span = dag.declaration(template_pred_decl_id).span.clone();
+        dag.attach_diagnostic(Diagnostic::ResolveError {
+            name: "refined-generic substitution: malformed predicate shape".to_string(),
+            span: pred_span,
+        });
+        return template_refined;
+    };
+
+    // Step 3: allocate fresh composite param port typed as substituted base.
+    let fresh_param_port = dag.alloc_port(None);
+    dag.set_port_type(fresh_param_port, TypeShape::new(substituted_base));
+
+    // Step 4: clone the predicate body, routing Transform targets
+    // through the active substitution stack.
+    let Some(cloned_body_port) = clone_predicate_body(
+        dag,
+        original_body_port,
+        original_param_port,
+        fresh_param_port,
+        subst,
+        0,
+    ) else {
+        dag.attach_diagnostic(Diagnostic::ResolveError {
+            name: "refined-generic substitution: out-of-fragment predicate body reached materialization"
+                .to_string(),
+            span: template_span.clone(),
+        });
+        return template_refined;
+    };
+
+    // Step 5: wrap cloned body in a fresh Bind.
+    let bind_id = dag.alloc_node_id();
+    dag.push_node(Behavior::Bind(BindNode {
+        id: bind_id,
+        name: "<refinement:substituted>".to_string(),
+        value: cloned_body_port,
+        params: vec![fresh_param_port],
+        span: template_span.clone(),
+    }));
+
+    // Step 5 (cont.): build the fresh predicate-Arrow Declaration.
+    // Inherit the original predicate's output type (Bool) — reading it
+    // from the original Arrow keeps this module independent of the
+    // Bool-decl lookup pattern `lower_parameter_refinement` uses.
+    let TypeConnective::Arrow {
+        output: bool_decl_id,
+        ..
+    } = &dag.declaration(template_pred_decl_id).connective
+    else {
+        // `outer_predicate_slots` rejected non-Arrow predicates at
+        // step 2 above; reaching this point means the predicate
+        // declaration's connective mutated between step 2 and step 5,
+        // which is impossible under `&mut Dag` exclusive access.
+        unreachable!(
+            "predicate declaration {:?} connective is not Arrow despite outer_predicate_slots succeeding",
+            template_pred_decl_id
+        );
+    };
+    let bool_decl_id = *bool_decl_id;
+
+    let fresh_pred_decl_id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id: fresh_pred_decl_id,
+        name: None,
+        connective: TypeConnective::Arrow {
+            inputs: vec![substituted_base],
+            output: bool_decl_id,
+            body: ArrowBody::UserDefined(bind_id),
+        },
+        type_params: Vec::new(),
+        meta_tag: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        span: template_span.clone(),
+    });
+
+    // Step 6: allocate the substituted-refined carrier Declaration.
+    let fresh_refined_id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id: fresh_refined_id,
+        name: None,
+        connective: TypeConnective::Atom(AtomPayload::ResolvedIdentifier(substituted_base)),
+        type_params: Vec::new(),
+        meta_tag: None,
+        inhabits: None,
+        value_body: None,
+        refinement: Some(fresh_pred_decl_id),
+        span: template_span,
+    });
+
+    fresh_refined_id
+}
+
+/// DB-16 (3a.3 closure): read-only lookup used by both
+/// `concretize_decl_with_subst` (pre-allocation dedup) and
+/// `signature_type_shape` (consumer-side lookup gate).
+///
+/// Given a template refined carrier and an active substitution, scans
+/// `dag.declarations()` for an already-materialized substituted-refined
+/// carrier whose base matches the substituted base AND whose predicate
+/// body walks structurally equal to what cloning the template's body
+/// with the given subst WOULD produce. Mirrors
+/// `find_equivalent_anonymous_instantiation`'s dedup pattern.
+///
+/// Pure read; no allocation. `&Dag`.
+fn find_equivalent_substituted_refined_decl(
+    dag: &Dag,
+    template_refined: DeclarationId,
+    subst: &SubstStack,
+) -> Option<DeclarationId> {
+    let template_decl = dag.declaration(template_refined);
+    let TypeConnective::Atom(AtomPayload::ResolvedIdentifier(template_base)) =
+        &template_decl.connective
+    else {
+        return None;
+    };
+    let template_pred_id = template_decl.refinement?;
+
+    let substituted_base = resolve_decl_with_subst(dag, *template_base, subst, 0)?;
+    if substituted_base == *template_base {
+        return None;
+    }
+
+    let (template_param, template_body) = outer_predicate_slots(dag, template_pred_id)?;
+
+    for decl in dag.declarations() {
+        if decl.name.is_some() {
+            continue;
+        }
+        if decl.id == template_refined {
+            continue;
+        }
+        let TypeConnective::Atom(AtomPayload::ResolvedIdentifier(cand_base)) = &decl.connective
+        else {
+            continue;
+        };
+        if *cand_base != substituted_base {
+            continue;
+        }
+        let Some(cand_pred_id) = decl.refinement else {
+            continue;
+        };
+        let Some((cand_param, cand_body)) = outer_predicate_slots(dag, cand_pred_id) else {
+            continue;
+        };
+        if predicate_bodies_equal_under_subst(
+            dag,
+            cand_body,
+            cand_param,
+            template_body,
+            template_param,
+            subst,
+            0,
+        ) {
+            return Some(decl.id);
+        }
+    }
+    None
+}
+
+/// DB-16 (3a.3 closure): lockstep structural equality on two predicate
+/// bodies, threading the active substitution stack through the
+/// template side's Transform target decl-level references. Used by
+/// `find_equivalent_substituted_refined_decl` to compare a candidate
+/// materialized body against what cloning the template would produce.
+///
+/// Pure read; walks Value/Transform nodes, treats the parameter-slot
+/// on each side as equivalent. Mirrors `clone_predicate_body`'s shape
+/// exactly so the comparison is faithful to what cloning emits.
+fn predicate_bodies_equal_under_subst(
+    dag: &Dag,
+    cand_port: PortId,
+    cand_param: PortId,
+    template_port: PortId,
+    template_param: PortId,
+    subst: &SubstStack,
+    depth: usize,
+) -> bool {
+    if depth >= WALK_DEPTH_LIMIT {
+        return false;
+    }
+    let cand_is_param = cand_port == cand_param;
+    let template_is_param = template_port == template_param;
+    if cand_is_param != template_is_param {
+        return false;
+    }
+    if cand_is_param {
+        return true;
+    }
+
+    let cand_node_id = dag.port(cand_port).produced_by;
+    let template_node_id = dag.port(template_port).produced_by;
+    match (cand_node_id, template_node_id) {
+        (None, None) => cand_port == template_port,
+        (Some(cand_id), Some(template_id)) => match (dag.node(cand_id), dag.node(template_id)) {
+            (Behavior::Value(cand_v), Behavior::Value(template_v)) => {
+                cand_v.data == template_v.data
+            }
+            (Behavior::Transform(cand_t), Behavior::Transform(template_t)) => {
+                if !transform_targets_equal_under_subst(
+                    dag,
+                    &cand_t.target,
+                    &template_t.target,
+                    subst,
+                ) {
+                    return false;
+                }
+                if cand_t.inputs.len() != template_t.inputs.len() {
+                    return false;
+                }
+                cand_t
+                    .inputs
+                    .iter()
+                    .zip(template_t.inputs.iter())
+                    .all(|(c, t)| {
+                        predicate_bodies_equal_under_subst(
+                            dag,
+                            *c,
+                            cand_param,
+                            *t,
+                            template_param,
+                            subst,
+                            depth + 1,
+                        )
+                    })
+            }
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+fn transform_targets_equal_under_subst(
+    dag: &Dag,
+    cand: &TransformTarget,
+    template: &TransformTarget,
+    subst: &SubstStack,
+) -> bool {
+    match (cand, template) {
+        (TransformTarget::Operator(a), TransformTarget::Operator(b)) => a == b,
+        (TransformTarget::Callable(cand_id), TransformTarget::Callable(template_id)) => {
+            callable_decls_equal_under_subst(dag, *cand_id, *template_id, subst)
+        }
+        (
+            TransformTarget::FieldProject {
+                field_label: cand_label,
+                field_child: cand_child,
+            },
+            TransformTarget::FieldProject {
+                field_label: template_label,
+                field_child: template_child,
+            },
+        ) => {
+            if cand_label != template_label {
+                return false;
+            }
+            match (cand_child, template_child) {
+                (None, None) => true,
+                (Some(cand), Some(template)) => {
+                    callable_decls_equal_under_subst(dag, *cand, *template, subst)
+                }
+                _ => false,
+            }
+        }
+        _ => false,
+    }
+}
+
+/// DB-16 (3a.3 closure): structural equivalence between two declaration
+/// references under an active substitution stack. Used by
+/// `transform_targets_equal_under_subst` to compare Callable /
+/// FieldProject target decl-level references when one side is a
+/// template-context Instantiation (possibly carrying extra bindings
+/// for outer TypeParams) and the other is a concrete site
+/// Instantiation (only bindings for the callee's own TypeParams).
+///
+/// Strategy: normalize both sides to their template-own-type-param
+/// bindings (filtering out substitution-stack artifacts from the
+/// template side), resolve through the subst stack on the template
+/// side, then compare. Falls back to
+/// `declaration_shapes_equivalent` when either side isn't an
+/// Instantiation (direct decl id match).
+fn callable_decls_equal_under_subst(
+    dag: &Dag,
+    cand_id: DeclarationId,
+    template_id: DeclarationId,
+    subst: &SubstStack,
+) -> bool {
+    if cand_id == template_id {
+        return true;
+    }
+    // Fast path: resolve template through subst and compare directly.
+    let template_resolved =
+        resolve_decl_with_subst(dag, template_id, subst, 0).unwrap_or(template_id);
+    if cand_id == template_resolved
+        || declaration_shapes_equivalent(dag, cand_id, template_resolved, 0)
+    {
+        return true;
+    }
+    // Fallback: both are Instantiations, compare by template own-type-params.
+    let (Some(cand_norm), Some(template_norm)) = (
+        normalized_instantiation_args(dag, cand_id),
+        normalized_instantiation_args(dag, template_id),
+    ) else {
+        return false;
+    };
+    if cand_norm.template != template_norm.template {
+        return false;
+    }
+    if cand_norm.args.len() != template_norm.args.len() {
+        return false;
+    }
+    cand_norm
+        .args
+        .iter()
+        .zip(template_norm.args.iter())
+        .all(|(c_arg, t_arg)| {
+            c_arg.parameter == t_arg.parameter && {
+                let t_val =
+                    resolve_decl_with_subst(dag, t_arg.value, subst, 0).unwrap_or(t_arg.value);
+                c_arg.value == t_val || declaration_shapes_equivalent(dag, c_arg.value, t_val, 0)
+            }
+        })
+}
+
+struct NormalizedInstantiation {
+    template: DeclarationId,
+    args: Vec<TemplateArgument>,
+}
+
+/// DB-16 (3a.3 closure): normalize an `Instantiation` declaration by
+/// stripping **only** self-bindings (`arg.parameter == arg.value`).
+///
+/// Self-bindings are reattachment artifacts produced by
+/// `resolve_callable_target`'s unification when a generic call site
+/// is encountered under an outer generic scope: the outer TypeParam
+/// binds to itself in the callee's argument list because no concrete
+/// value has been inferred yet. Those self-bindings are no-op under
+/// substitution (`SubstStack::lookup` short-circuits to `None` on
+/// them) but inflate argument-length comparisons in strict
+/// structural checks.
+///
+/// Non-self bindings are NEVER stripped: retained callable-argument
+/// identities (per `retained_template_arguments_for_target`) carry
+/// semantic meaning that must survive DB-16's equivalence walk. Two
+/// Instantiations that differ only by a non-self retained binding
+/// are structurally distinct and must compare unequal.
+fn normalized_instantiation_args(
+    dag: &Dag,
+    decl: DeclarationId,
+) -> Option<NormalizedInstantiation> {
+    let TypeConnective::Instantiation {
+        template,
+        arguments,
+    } = &dag.declaration(decl).connective
+    else {
+        return None;
+    };
+    let filtered: Vec<TemplateArgument> = arguments
+        .iter()
+        .filter(|arg| arg.parameter != arg.value)
+        .cloned()
+        .collect();
+    Some(NormalizedInstantiation {
+        template: *template,
+        args: filtered,
+    })
 }
 
 fn find_equivalent_anonymous_conj(dag: &Dag, children: &[Field]) -> Option<DeclarationId> {
@@ -3390,6 +3888,22 @@ fn signature_type_shape(
     let decl = dag.declaration(current);
     if decl.name.is_some() {
         return Some(TypeShape::new(current));
+    }
+    // DB-16 (3a.3 closure): read-only lookup gate. When the refinement
+    // base requires substitution, check whether
+    // `materialize_callable_signature_instantiations` has already
+    // produced a substituted-refined carrier for this
+    // (template_refined, subst) combination. If so, return that
+    // carrier. Construction lives at the phase; this gate reads.
+    if decl.refinement.is_some() && refinement_base_requires_substitution(dag, current, subst) {
+        if let Some(materialized) = find_equivalent_substituted_refined_decl(dag, current, subst) {
+            return Some(TypeShape::new(materialized));
+        }
+        // Lookup miss: the phase didn't materialize for this
+        // combination (TypeParam unbound at phase time, or call-site
+        // outside the phase walk). Fall through to the DB-11
+        // identity-terminator; downstream `is_retryable_generic_decl`
+        // classifies as retry.
     }
     // DB-11 (3a.3): refinement-bearing declarations are identity
     // terminators for signature walks. Without this, a refined param
