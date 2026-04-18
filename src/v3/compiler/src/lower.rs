@@ -2899,10 +2899,7 @@ fn resolve_field_value_as_declaration_ref(
         _ => return None,
     };
     let (first, rest) = segments.split_first()?;
-    let mut current = symbols
-        .get(*first)
-        .copied()
-        .or_else(|| dag.declaration_by_name(first).map(|d| d.id))?;
+    let mut current = symbols.get(*first).copied()?;
     for segment in rest {
         // Walk `current` through aliases / instantiation to a Conj,
         // then find the child field whose label matches `segment`.
@@ -5948,6 +5945,38 @@ mod tests {
             lowered,
             Some(crate::dag::FieldValue::Reference(style_value)),
             "alias-wrapped expected types should still accept same-typed declaration refs"
+        );
+    }
+
+    #[test]
+    fn declaration_ref_resolution_does_not_fall_back_to_global_names() {
+        let mut dag = Dag::new();
+        let global_only = push_test_declaration(
+            &mut dag,
+            "global_only",
+            TypeConnective::Conj {
+                children: Vec::new(),
+            },
+            None,
+        );
+
+        let resolved = resolve_field_value_as_declaration_ref(
+            &SurfaceExpr::Var {
+                name: "global_only".to_string(),
+                span: test_span(),
+            },
+            &HashMap::new(),
+            &dag,
+        );
+
+        assert_eq!(
+            dag.declaration(global_only).name.as_deref(),
+            Some("global_only"),
+            "test setup should create the global declaration"
+        );
+        assert_eq!(
+            resolved, None,
+            "declaration-ref lowering must fail closed when the name is not in scope"
         );
     }
 }
