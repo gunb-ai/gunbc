@@ -240,7 +240,7 @@ No migration needed for any row above — §3 briefs or ROADMAP's existing stanc
 | Lens-name-filter dissolution (#518 sites 2/4/5) | #518 broader migration | §3 brief handles; ROADMAP row added when that PR opens |
 | compiler.dag v2-path carryover (§6 Q3) | `hand_maintained_src` references `src/v2/stage0/src`, `cli_run.rs`, `v2_interpreter.rs` — v2 paths in a doc that should eventually key off v3 source | Lane 3 Stage 3c prerequisite OR downgrade to "open question until 3c starts" — needs director pre-clearance before migration |
 
-**Dispatch decision:** the §3 combined XS brief handles planner alignment. The remaining 4 items go to a **dedicated ROADMAP-hygiene chat** — do NOT fold into the XS brief, it won't get attention inside an XS dispatch. The compiler.dag v2-path row specifically should get director-chat pre-clearance first (is it a real 3c blocker, or a v2→v3 bridging detail that self-resolves?) before ROADMAP migration.
+**Dispatch decision:** §3 briefs cover 2 rows — the combined XS brief lands the planner alignment; the lens-name-filter brief lands that dissolution. The **variant-payload field-access general model** row needs a dedicated ROADMAP-hygiene chat (not folded into the XS brief — it won't get attention inside an XS dispatch). The **compiler.dag v2-path carryover** row needs director-chat pre-clearance first (is it a real 3c blocker, or a v2→v3 bridging detail that self-resolves?) before ROADMAP migration.
 
 ---
 
