@@ -38,6 +38,12 @@ This lane closes the "❌ not wired" gaps across six stages. After Lane 2 comple
 
 **Scope:** port `dsl/std/effects.dag` → `src/v3/std/effects.dag`. Structural carry-over only.
 
+**Boundary note:** `DerivedOpEffect { method, path_template, shape }` is tolerated in Stage 2a only as bootstrap-local staging glue between HTTP surface facts and the ported effects algebra. It is NOT the durable boundary for downstream consumers. Before Track 17a REST wiring or Stage 2b teaches consumers that this is canonical, the follow-up must either:
+- collapse `DerivedOpEffect` into the existing authority carriers that actually survive the lane boundary, or
+- classify it explicitly as scaffold debt with a named dissolution trigger if it must persist longer.
+
+Lane 2 does not get to silently normalize around this wider record shape.
+
 Copy:
 - `EffectShape = ReadEffect | UpsertEffect | DeleteEffect | CreateEffect | AppendEffect`
 - `KeySource` (for upsert/delete key derivation)
@@ -80,6 +86,8 @@ Lens reads each operation's declared `idempotent` modifier AND derives from path
 - Fixture: `POST /secrets/create` (no path key) inside a retry loop → compile fails with specific diagnostic
 
 **Escalation:** if workflow structure isn't representable cleanly — e.g., control flow in a pipeline doesn't map to a linear `List<OperationEffect>` — surface. Don't stretch `compose_effects` to handle branches silently; the algebra needs to reflect branch-wise composition, which is a legitimate design extension.
+
+**Pre-start gate:** Stage 2b does not start consuming `DerivedOpEffect` as if it were stable substrate. The Stage 2a follow-up above must land first: either the record collapses to the durable authority shape, or it gains an explicit scaffold classification plus a named dissolution trigger that bounds how long it can survive.
 
 ### Stage 2c — Test obligation materialization (M)
 

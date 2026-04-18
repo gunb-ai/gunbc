@@ -509,6 +509,15 @@ Implementation scope (M, once design locks): extend `TestClaim` with `requires: 
 
 **Prerequisite deferral: `dsl/std/resources.dag` → v3 reconciliation (S).** Zero references to `Resource`/`acquire`/`release` under `src/v3/` today. DB-15's `requires: List<ResourceReference>` is authored but unconsumed until this lands. Options: port declaration into `src/v3/std/resources.dag`, OR make `dsl/std/resources.dag` bootstrap-consumable by v3. Preferring the latter for single-authority. Separable from DB-15 implementation — can land independently. This is also a dissolution-of-dual-representation item; consider parking it in §Scheduled deletions if dsl/v3 duplication is the framing, or keep as a prerequisite deferral here. Preferring here for now since it's narrowly scoped.
 
+### Lane 2 Stage 2a / Track 17a boundary
+
+**Deferral: `DerivedOpEffect` boundary collapse or classification (S).** PR #517 intentionally keeps `DerivedOpEffect { method, path_template, shape }` as Stage 2a bootstrap glue so the effects algebra can port cleanly without teaching Stage 2a to invent more substrate. That shape is acceptable only as a short-lived bridge. Before Track 17a REST wiring or Stage 2b workflow-idempotency consumers start depending on it, a follow-up PR must do one of two things:
+
+1. Collapse `DerivedOpEffect` into the durable authority carriers that actually need to cross the lane boundary, OR
+2. Classify it explicitly as scaffold debt with a named dissolution trigger and enforcement path.
+
+The thing we must not do is let Track 17a treat the wider record as canonical by inertia. **Yellow-flag threshold:** this deferral must clear before any Track 17a consumer lands. Design anchor: [lane2-compile-time-proofs.md](../../docs/lane2-compile-time-proofs.md) Stage 2a / Stage 2b boundary note. No standalone DB yet; if the collapse needs a new durable carrier shape, write the DB in the follow-up PR instead of growing the scaffold ad hoc.
+
 ### Lane 1 Stage 1b
 
 **Deferral: 1b full implementation (M).** 1b's first attempt escalated (PR #495 shipped 1a; 1b code was reverted). Root cause: `.dag` linear-walk bodies for substrate accessors polluted every user DAG. DB-14 codifies the correct pattern (ExternalRealization mirroring pipeline.dag). Unblocked once DB-14 (PR #497) lands. Design: [design-substrate-external-primitives.md](../../docs/design-substrate-external-primitives.md) (DB-14). Acceptance in DB-14 §Acceptance.
