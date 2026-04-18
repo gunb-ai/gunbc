@@ -78,7 +78,7 @@ Copy (post-reshape, R3):
 
 **Scope:** create `src/v3/lenses/idempotency.dag`. End state: walk a lowered pipeline (sequence of service operations), compose effects, emit diagnostic on chain break. **Today:** `lane2_workflow` is populated by tests via staging hooks or by future lowering — not by a full HTTP/service pipeline in the Dag (see ROADMAP “Reflection boundary”).
 
-API shape (**shipped** — authority: `src/v3/std/effects.dag`, Rust: `workflow_idempotency.rs` / `lens_idempotency.rs`):
+API shape (**shipped** — naming authority: `src/v3/std/effects.dag`; **public** Rust surface is `analyze_workflow` from `lens_idempotency` only — `workflow_idempotency` stays `pub(crate)` so the bridge does not accrete downstream consumers):
 ```
 fn analyze_workflow(d: Dag, workflow_root: NodeId) -> WorkflowIdempotencyReport
 

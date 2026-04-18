@@ -1,8 +1,8 @@
 //! Lane 2 Stage 2b — workflow idempotency analysis (`std.effects` mirror).
 //!
 //! Authority for the algebra lives in `src/v3/std/effects.dag`; these helpers
-//! are the compiler-side projection used by tests and native consumers until
-//! the emitted lens module is the sole entry point. Workflow structure for
+//! are the crate-private compiler-side projection (tests + `lens_idempotency`)
+//! until the emitted lens module is the sole entry point. Workflow structure for
 //! analysis is read from **native** `Value` / `Bind` fields on the [`Dag`]
 //! (`lane2_workflow`), not from a free-floating `WorkflowEffect` argument or a
 //! parallel hash map. That pocket is not yet reflected in `substrate.dag` for
