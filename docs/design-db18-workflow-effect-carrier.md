@@ -63,33 +63,73 @@ DB-18 is that legitimate design extension, moved up-front rather than deferred. 
 //
 // Recursive composition: BranchEffect, LoopEffect, and ParallelEffect
 // each carry sub-WorkflowEffect fields, so arbitrary nesting composes.
-// LinearEffect terminates the recursion at a non-empty list of
+// LinearEffect terminates the recursion at a (possibly empty) list of
 // OperationEffect values — the same carrier compose_effects consumes
-// post-PR-#529.
+// post-PR-#529. The empty case is the monoidal identity.
 type WorkflowEffect
-  = LinearEffect { ops: NonEmptyList<OperationEffect> }
+  = LinearEffect { ops: List<OperationEffect> }
   | BranchEffect { arms: NonSingletonList<BranchArm> }
   | LoopEffect { body: WorkflowEffect }
   | ParallelEffect { branches: NonSingletonList<WorkflowEffect> }
 
-// 🟢 TERMINAL. A single arm of a BranchEffect — the condition port
-// witnessing "this arm is taken" plus the workflow executed when the
-// condition holds. Separating condition from workflow makes the
-// payload structurally distinct from ParallelEffect's
-// NonSingletonList<WorkflowEffect>, so the Q4 dissolution receipt
-// passes at the payload level rather than requiring a separate
-// discriminator tag.
+// 🟢 TERMINAL. A single arm of a BranchEffect — the Bool-typed
+// condition port witnessing "this arm is taken" plus the workflow
+// executed when the condition holds. Separating condition from
+// workflow makes the payload structurally distinct from
+// ParallelEffect's NonSingletonList<WorkflowEffect>, so the Q4
+// dissolution receipt passes at the payload level rather than
+// requiring a separate discriminator tag.
 //
-// `condition: PortId` — a typed substrate handle into the computation
-// DAG. The port is the producer of the Bool-typed value the branch
-// dispatches on. Constructor-validated: `branch_arm_of(port, body)`
-// returns `None` for non-Bool-typed ports, so a malformed arm is
-// unrepresentable.
+// `condition: BoolPortRef` — a typed opaque handle statically
+// witnessing that the referenced port is Bool-typed. Because
+// BoolPortRef has no unsafe constructor (see `type BoolPortRef`
+// below), a raw-literal `BranchArm { condition: <arbitrary PortId>, ... }`
+// is not representable: the field type itself rejects non-Bool ports
+// at the type level. No convention-level constructor discipline is
+// required.
 type BranchArm {
-  condition: PortId
+  condition: BoolPortRef
   body: WorkflowEffect
 }
 ```
+
+**Add `BoolPortRef` as a Track 9-style substrate integrity primitive** (`src/v3/std/substrate.dag` — alongside `NonEmptyList`, `NonSingletonList`, `ParamRef`, `TransformRef`; graduates WITH the first consumer per Track 9 discipline):
+
+```dag
+// 🟢 TERMINAL. Typed opaque handle statically witnessing that the
+// referenced substrate port's declared type is Bool. The sole
+// constructor `bool_port_of` validates the port's type at
+// construction time; there is no unsafe escape hatch for producing
+// a BoolPortRef around a non-Bool port.
+//
+// Track 9 graduation rationale: this is the third Track 9 primitive
+// (after ParamRef and TransformRef from DB-9 R2.1). It graduates
+// here because BranchArm's first consumer (DB-18 §BranchArm) needs
+// a type-level witness for the Bool-typed-port invariant that
+// carries the Q4 dissolution receipt distinguishing BranchEffect
+// from ParallelEffect. A raw PortId would push the invariant into
+// constructor convention, which is API-level rather than type-level
+// enforcement — exactly the pattern Track 9 exists to dissolve.
+//
+// Second consumer candidate: computation-substrate Branch behavior's
+// condition slot. If a Track 9 graduation review determines the
+// invariant belongs there too, BoolPortRef extends rather than
+// duplicating — same primitive, two consumers. Not a Part 1 commit.
+type BoolPortRef
+
+// Sole constructor. Returns None when the port's declared type is
+// not Bool; callers that need to emit a Diagnostic on None do so
+// themselves (fail-closed discipline at the caller boundary, not at
+// the primitive boundary — same pattern as `Dag::param_of`).
+fn bool_port_of(dag: Dag, port: PortId) -> BoolPortRef?
+
+// Accessor. Recover the underlying PortId from the typed handle;
+// the witness that the port is Bool-typed is carried by the handle,
+// not by a duplicate inspection.
+fn port_of(bool_ref: BoolPortRef) -> PortId
+```
+
+**On the fail-closed story for `bool_port_of` returning `Option`.** ChatGPT review flagged that `branch_arm_of(port, body) -> Option<BranchArm>` weakens fail-closed because a non-Bool condition port is a user-reachable modeling error. R2's response inverts the concern: `bool_port_of` returning `Option` is the Track 9 primitive's internal-validation contract (matching `param_of` from DB-9 R2.1). The primitive does not itself emit a `Diagnostic` — emitting diagnostics is not the responsibility of a typed-handle primitive. But the *lowering path that calls `bool_port_of`* is required to handle `None` by emitting a `Diagnostic::BranchConditionNotBool { port, actual_type, span }` per C-8, never by silently absorbing the absence. The primitive's Option is internal validation; the caller's Diagnostic emission is the fail-closed boundary. This is the same pattern Track 9 established for `param_of` (DB-9 R2.1): the primitive returns Option; the lowering site that consumes it is responsible for the Diagnostic. Part 2's Acceptance item names this explicitly as a required behavior on the lowering path — a silent `None` absorption in Part 2 implementation is a Part 2 review gate.
 
 **Why this belongs in `std/effects.dag` rather than `std/substrate.dag`.** `WorkflowEffect` is a concept of the effect algebra — it describes input shapes that `compose_effects` (and its downstream peers) dispatch over. The substrate's own declarations (`Dag`, `Declaration`, `Behavior`, `LoopBound`, `Cluster`) describe the *computation and type substrate*; the effect algebra is a lens-writable layer above that substrate. The existing file already hosts `OperationEffect`, `EffectShape`, `IdempotencyEvidence`, `CompositionVerdict` — all effect-algebra types. `WorkflowEffect` joins that family.
 
